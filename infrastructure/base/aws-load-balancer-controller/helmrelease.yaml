@@ -1,0 +1,34 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: aws-load-balancer-controller
+spec:
+  releaseName: aws-load-balancer-controller
+  chart:
+    spec:
+      chart: aws-load-balancer-controller
+      sourceRef:
+        kind: HelmRepository
+        name: eks
+        namespace: kube-system
+      version: "1.5.3"
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values:
+    clusterName: ${cluster_name}
+    serviceAccount:
+      # Has to match the policy created using terraform (IRSA)
+      name: load-balancer-controller
+      annotations:
+        eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/${cluster_name}-load-balancer-controller"
+    defaultTags:
+      environment: ${environment}
+      clusterName: ${cluster_name}
+    replicaCount: 1
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+    vpcId: ${vpc_id}

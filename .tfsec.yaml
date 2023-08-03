@@ -1,0 +1,13 @@
+# Ignore rules for the whole repository
+# It is preferable to ignore per resource: https://aquasecurity.github.io/tfsec/v1.28.1/guides/configuration/ignores/
+exclude:
+  # Demo mamagement cluster, need to work on security best-practices for real production
+  - aws-s3-encryption-customer-key
+  - aws-s3-enable-bucket-logging
+  - aws-ec2-no-public-egress-sgr
+  - aws-ec2-no-excessive-port-access
+  - aws-ec2-no-public-ingress-acl
+  - aws-ec2-no-excessive-port-access
+  - aws-ec2-no-public-ip-subnet
+  - aws-ec2-require-vpc-flow-logs-for-all-vpcs
+  - aws-eks-enable-control-plane-logging
