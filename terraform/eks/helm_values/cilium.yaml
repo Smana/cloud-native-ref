@@ -15,6 +15,7 @@ operator:
       cpu: 100m
       memory: 100Mi
   rollOutPods: true # Reload pods when the configmap is updated
+# Can't enable servicemonitor as the CRD is not yet installed
 prometheus:
   enabled: true
   serviceMonitor:
@@ -33,5 +34,6 @@ envoy:
     requests:
       cpu: 200m
       memory:
-gatewayAPI:
-  enabled: true
+# Deployed using Flux as we need to deploy the Gateway API CRDs first
+# gatewayAPI:
+#   enabled: true

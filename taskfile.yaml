@@ -1,6 +1,6 @@
 env:
   DOCKER_IMG: "ghcr.io/antonbabenko/pre-commit-terraform"
-  DOCKER_TAG: "latest"
+  DOCKER_TAG: "v1.79.1"
   REPO_NAME: "action-terraform-ci"
 
 version: "3"
