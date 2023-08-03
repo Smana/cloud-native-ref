@@ -12,13 +12,13 @@ module "eks" {
   cluster_addons = {
     coredns = {
       most_recent = true
-      configuration_values = {
+      configuration_values = jsonencode({
         tolerations = [
           {
             operator = "Exists"
           }
         ]
-      }
+      })
     }
     kube-proxy = {
       most_recent = true
