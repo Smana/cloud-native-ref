@@ -1,0 +1,13 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: gateway-api-crds
+spec:
+  interval: 10m
+  targetNamespace: kube-system
+  sourceRef:
+    kind: GitRepository
+    name: gateway-api
+  path: "./config/experimental"
+  prune: true
+  timeout: 1m
