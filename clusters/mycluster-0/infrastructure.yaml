@@ -1,0 +1,25 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 4m0s
+  path: ./infrastructure/mycluster-0
+  postBuild:
+    substitute:
+      domain_name: "cloud.ogenki.io"
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+      - kind: Secret
+        name: eks-mycluster-0-vars
+        optional: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: tf-irsa-mycluster-0
+    - name: tf-custom-resources

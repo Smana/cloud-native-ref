@@ -1,0 +1,91 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: external-secrets
+  namespace: security
+spec:
+  releaseName: external-secrets
+  chart:
+    spec:
+      chart: external-secrets
+      sourceRef:
+        kind: HelmRepository
+        name: external-secrets
+        namespace: flux-system
+      version: "0.9.0"
+  interval: 10m0s
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  values:
+    replicaCount: 1
+    serviceAccount:
+      annotations:
+        eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/${cluster_name}-external-secrets"
+      name: "external-secrets"
+
+    securityContext:
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 1000
+
+    resources:
+      limits:
+        cpu: 100m
+        memory: 150Mi
+
+    prometheus:
+      # -- deprecated. will be removed with 0.7.0, use serviceMonitor instead.
+      enabled: true
+      # -- will be used when we'll deploy the prometheus-operator
+    serviceMonitor:
+      enabled: false
+      additionalLabels: {}
+
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+
+    webhook:
+      replicaCount: 1
+      prometheus:
+        enabled: true
+      serviceMonitor:
+        enabled: false
+        additionalLabels: {}
+      resources:
+        limits:
+          cpu: 100m
+          memory: 50Mi
+      securityContext:
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+
+    certController:
+      replicaCount: 1
+      prometheus:
+        enabled: true
+      serviceMonitor:
+        enabled: false
+        additionalLabels: {}
+
+      securityContext:
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+
+      resources:
+        limits:
+          cpu: 100m
+          memory: 80Mi

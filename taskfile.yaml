@@ -1,0 +1,18 @@
+env:
+  DOCKER_IMG: "ghcr.io/antonbabenko/pre-commit-terraform"
+  DOCKER_TAG: "latest"
+  REPO_NAME: "action-terraform-ci"
+
+version: "3"
+
+tasks:
+  clean:
+    cmds:
+      - find . -type d -name "*.terraform" -or -name "*.terraform.lock.hcl" | sudo xargs rm -vrf
+
+  pre-commit:
+    cmds:
+      - |
+        USERID=$(id -u)
+        GROUPID=$(id -g)
+        docker run -e "USER=${USERID}:${GROUPID}" -v {{.USER_WORKING_DIR}}:/lint -w /lint $DOCKER_IMG:$DOCKER_TAG run -a

@@ -1,0 +1,41 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: external-dns
+spec:
+  releaseName: external-dns
+  chart:
+    spec:
+      chart: external-dns
+      sourceRef:
+        kind: HelmRepository
+        name: external-dns
+        namespace: kube-system
+      version: "1.12.2"
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values:
+    global:
+      imageRegistry: public.ecr.aws
+
+    fullnameOverride: external-dns
+
+    aws:
+      region: ${region}
+      zoneType: "public"
+      batchChangeSize: 1000
+
+    domainFilters: ["${domain_name}"]
+    logFormat: json
+    txtOwnerId: "${cluster_name}"
+    serviceAccount:
+      annotations:
+        eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/${cluster_name}-external-dns"
+    resources:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 200m
+        memory: 100Mi
