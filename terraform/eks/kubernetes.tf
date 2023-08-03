@@ -1,13 +1,8 @@
 # EKS post install kubernetes job with these changes
-# * Configure storageclasses (deplace default gp2 volumes with gp3)
-
 resource "kubernetes_service_account" "eks_init" {
   metadata {
     name      = "eks-init"
     namespace = "kube-system"
-    labels = {
-      owner = "vibe"
-    }
   }
   depends_on = [
     module.eks
@@ -62,7 +57,7 @@ resource "kubernetes_job" "delete_aws_cni_ds" {
         service_account_name = "eks-init"
         container {
           name  = "kubectl"
-          image = "bitnami/kubectl:1.22.6"
+          image = "bitnami/kubectl:1.27.3"
           args  = ["delete", "--ignore-not-found=true", "daemonsets", "aws-node", "-n", "kube-system"]
         }
         restart_policy = "Never"
