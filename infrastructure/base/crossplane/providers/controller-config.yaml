@@ -1,0 +1,9 @@
+apiVersion: pkg.crossplane.io/v1alpha1
+kind: ControllerConfig
+metadata:
+  name: aws-config
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/${cluster_name}-crossplane"
+spec:
+  podSecurityContext:
+    fsGroup: 2000
