@@ -46,6 +46,28 @@ spec:
   dependsOn:
     - name: crossplane-controller
 ---
+apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
+kind: Kustomization
+metadata:
+  name: crossplane-configuration
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 2m0s
+  path: ./infrastructure/mycluster-0/crossplane/configuration
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+      - kind: Secret
+        name: eks-mycluster-0-vars
+        optional: true
+  dependsOn:
+    - name: crossplane-providers
+---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
