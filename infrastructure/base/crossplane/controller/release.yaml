@@ -1,0 +1,28 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: crossplane
+spec:
+  releaseName: crossplane
+  chart:
+    spec:
+      chart: crossplane
+      sourceRef:
+        kind: HelmRepository
+        name: crossplane
+        namespace: crossplane-system
+      version: "1.13.0"
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values:
+    replicas: 1
+
+    resourcesCrossplane:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+    metrics:
+      enabled: true

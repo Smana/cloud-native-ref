@@ -66,6 +66,10 @@ resource "kubectl_manifest" "karpenter_provisioner" {
       providerRef:
         name: default
       ttlSecondsAfterEmpty: 30
+      startupTaints:
+      - key: node.cilium.io/agent-not-ready
+        value: "true"
+        effect: NoExecute
   YAML
 
   depends_on = [

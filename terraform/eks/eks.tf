@@ -48,9 +48,9 @@ module "eks" {
       # Use a single subnet for costs reasons
       subnet_ids = [element(module.vpc.private_subnets, 0)]
 
-      min_size     = 1
+      min_size     = 2
       max_size     = 3
-      desired_size = 1
+      desired_size = 2
 
       # Bottlerocket
       use_custom_launch_template = false
