@@ -11,6 +11,13 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+      - kind: Secret
+        name: eks-mycluster-0-vars
+        optional: true
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v1beta1
       kind: HelmRelease
@@ -29,6 +36,13 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+      - kind: Secret
+        name: eks-mycluster-0-vars
+        optional: true
   dependsOn:
     - name: crossplane-controller
 ---
