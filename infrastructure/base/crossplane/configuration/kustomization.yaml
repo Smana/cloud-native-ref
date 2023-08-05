@@ -6,3 +6,4 @@ namespace: crossplane-system
 resources:
   - irsa-composition.yaml
   - irsa-definition.yaml
+  - providerconfig.yaml
