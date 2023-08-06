@@ -27,12 +27,9 @@ spec:
           toFieldPath: spec.deletionPolicy
   environment:
     environmentConfigs:
-      - type: Selector
-        selector:
-          matchLabels:
-            - type: FromCompositeFieldPath
-              key: clusterRef
-              valueFromFieldPath: spec.parameters.clusterRef.id
+      - type: Reference
+        ref:
+          name: irsa-environment
 
   resources:
     - name: irsa-role
