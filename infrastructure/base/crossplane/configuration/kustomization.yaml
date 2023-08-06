@@ -4,6 +4,7 @@ namespace: crossplane-system
 
 # reference: https://github.com/upbound/platform-ref-aws/tree/main/package/cluster/irsa
 resources:
+  - environmentconfig.yaml
   - irsa-composition.yaml
   - irsa-definition.yaml
   - providerconfig.yaml

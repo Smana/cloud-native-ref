@@ -47,10 +47,20 @@ spec:
                       enum:
                         - StringEquals
                         - StringLike
+                    clusterRef:
+                      type: object
+                      description: "A reference to the Cluster object that this IRSA should be connected to."
+                      properties:
+                        id:
+                          type: string
+                          description: ID of the Cluster object this ref points to.
+                      required:
+                        - id
                     policyDocument:
                       type: string
                       description: The JSON policy document that is the content for the policy.
                   required:
+                    - clusterRef
                     - condition
                     - policyDocument
                     - serviceAccount

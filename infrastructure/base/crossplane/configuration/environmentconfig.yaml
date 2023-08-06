@@ -1,0 +1,12 @@
+apiVersion: apiextensions.crossplane.io/v1alpha1
+kind: EnvironmentConfig
+metadata:
+  name: irsa-environment
+data:
+  clusterName: ${cluster_name}
+  oidcUrl: ${oidc_issuer_url}
+  oidcHost: ${oidc_issuer_host}
+  oidcArn: ${oidc_provider_arn}
+  accountId: ${aws_account_id}
+  region: ${region}
+  vpcId: ${vpc_id}

@@ -25,6 +25,14 @@ spec:
         - type: FromCompositeFieldPath
           fromFieldPath: spec.deletionPolicy
           toFieldPath: spec.deletionPolicy
+  environment:
+    environmentConfigs:
+      - type: Selector
+        selector:
+          matchLabels:
+            - type: FromCompositeFieldPath
+              key: clusterRef
+              valueFromFieldPath: spec.parameters.clusterRef.id
 
   resources:
     - name: irsa-role
@@ -71,7 +79,9 @@ spec:
           combine:
             strategy: string
             variables:
+              - fromFieldPath: oidcArn
               - fromFieldPath: condition
+              - fromFieldPath: oidcHost
               - fromFieldPath: serviceAccount.namespace
               - fromFieldPath: serviceAccount.name
             string:
@@ -82,12 +92,12 @@ spec:
                     {
                       "Effect": "Allow",
                       "Principal": {
-                        "Federated": "${oidc_provider_arn}"
+                        "Federated": "%s"
                       },
                       "Action": "sts:AssumeRoleWithWebIdentity",
                       "Condition": {
                         "%s": {
-                          "${oidc_issuer_host}:sub": "system:serviceaccount:%s:%s"
+                          "%s:sub": "system:serviceaccount:%s:%s"
                         }
                       }
                     }
