@@ -26,3 +26,7 @@ spec:
 
     metrics:
       enabled: true
+
+    args:
+      # This is an alpha feature used with the IRSA composition
+      - --enable-environment-configs

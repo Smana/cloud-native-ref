@@ -13,7 +13,7 @@ module "iam_assumable_role_crossplane" {
   oidc_providers = {
     main = {
       provider_arn               = module.eks.oidc_provider_arn
-      namespace_service_accounts = ["system:serviceaccount:crossplane-system:crossplane*"]
+      namespace_service_accounts = ["crossplane-system:provider-aws-*"]
     }
   }
 }
@@ -30,6 +30,8 @@ resource "aws_iam_policy" "crossplane_irsa" {
         {
             "Effect": "Allow",
             "Action": [
+                "iam:Get*",
+                "iam:TagPolicy",
                 "iam:CreateRole",
                 "iam:CreatePolicy",
                 "iam:AttachRolePolicy",

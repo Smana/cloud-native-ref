@@ -11,9 +11,12 @@ resource "github_repository_deploy_key" "this" {
 }
 
 resource "flux_bootstrap_git" "this" {
-  depends_on = [github_repository_deploy_key.this]
-
   path = "clusters/${var.cluster_name}"
+
+  depends_on = [
+    helm_release.cilium,
+    github_repository_deploy_key.this
+  ]
 }
 
 resource "kubernetes_config_map" "flux_clusters_vars" {
