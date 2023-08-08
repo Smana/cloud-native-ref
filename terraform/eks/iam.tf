@@ -18,6 +18,7 @@ module "iam_assumable_role_crossplane" {
   }
 }
 
+#tfsec:ignore:aws-iam-no-policy-wildcards
 resource "aws_iam_policy" "crossplane_irsa" {
   name        = "crossplane_irsa_policy_${var.cluster_name}"
   path        = "/"
@@ -31,13 +32,18 @@ resource "aws_iam_policy" "crossplane_irsa" {
             "Effect": "Allow",
             "Action": [
                 "iam:Get*",
+                "iam:List*",
                 "iam:TagPolicy",
+                "iam:TagRole",
                 "iam:CreateRole",
                 "iam:CreatePolicy",
+                "iam:DeletePolicy",
+                "iam:DeleteRole",
+                "iam:DetachRolePolicy",
                 "iam:AttachRolePolicy",
                 "iam:PassRole"
             ],
-            "Resource": "*"
+            "Resource": "xplane-*"
         }
     ]
 }
