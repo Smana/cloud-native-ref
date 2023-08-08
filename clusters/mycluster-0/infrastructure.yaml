@@ -90,5 +90,4 @@ spec:
     kind: GitRepository
     name: flux-system
   dependsOn:
-    - name: crossplane-controller
-    - name: crossplane-providers
+    - name: crossplane-configuration
