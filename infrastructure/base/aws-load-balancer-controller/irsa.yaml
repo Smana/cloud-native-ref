@@ -1,7 +1,7 @@
 apiVersion: aws.platformref.upbound.io/v1alpha1
 kind: IRSA
 metadata:
-    name: xplane-external-dns-${cluster_name}
+    name: xplane-loadbalancer-controller-${cluster_name}
 spec:
     deletionPolicy: Delete
     parameters:
