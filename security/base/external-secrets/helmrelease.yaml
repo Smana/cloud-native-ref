@@ -22,7 +22,7 @@ spec:
     replicaCount: 1
     serviceAccount:
       annotations:
-        eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/${cluster_name}-external-secrets"
+        eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/xplane-external-secrets-${cluster_name}"
       name: "external-secrets"
 
     securityContext:

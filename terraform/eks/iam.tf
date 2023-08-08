@@ -31,8 +31,6 @@ resource "aws_iam_policy" "crossplane_irsa" {
         {
             "Effect": "Allow",
             "Action": [
-                "iam:Get*",
-                "iam:List*",
                 "iam:TagPolicy",
                 "iam:TagRole",
                 "iam:CreateRole",
@@ -44,9 +42,17 @@ resource "aws_iam_policy" "crossplane_irsa" {
                 "iam:PassRole"
             ],
             "Resource": [
-                "arn:aws:iam::*:role/irsa-xplane-*",
-                "arn:aws:iam::*:policy/irsa-xplane-*"
+                "arn:aws:iam::*:role/xplane-*",
+                "arn:aws:iam::*:policy/xplane-*"
             ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "iam:Get*",
+                "iam:List*"
+            ],
+            "Resource": "*"
         }
     ]
 }
