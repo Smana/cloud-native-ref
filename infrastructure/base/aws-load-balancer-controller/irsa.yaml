@@ -2,8 +2,6 @@ apiVersion: aws.platformref.upbound.io/v1alpha1
 kind: IRSA
 metadata:
     name: xplane-alb-controller
-    annotations:
-        condition: StringEquals
 spec:
     deletionPolicy: Delete
     parameters:
@@ -252,5 +250,5 @@ spec:
                 ]
             }
         serviceAccount:
-            name: aws-load-balancer-controller
+            name: load-balancer-controller
             namespace: kube-system

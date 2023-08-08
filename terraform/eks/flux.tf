@@ -20,6 +20,13 @@ resource "flux_bootstrap_git" "this" {
   ]
 }
 
+resource "kubernetes_namespace" "flux" {
+  metadata {
+    name = "flux-system"
+  }
+}
+
+
 resource "kubernetes_config_map" "flux_clusters_vars" {
   metadata {
     name      = "eks-${var.cluster_name}-vars"
@@ -36,7 +43,10 @@ resource "kubernetes_config_map" "flux_clusters_vars" {
     environment       = var.env
     vpc_id            = module.vpc.vpc_id
   }
-  depends_on = [helm_release.cilium]
+  depends_on = [
+    helm_release.cilium,
+    kubernetes_namespace.flux
+  ]
 }
 
 # Write Github secrets in order to use them as variables with flux's variables substitions
@@ -51,5 +61,8 @@ resource "kubernetes_secret" "flux_github_creds" {
     github_token      = var.github_token
     github_repository = var.github_repository
   }
-  depends_on = [helm_release.cilium]
+  depends_on = [
+    helm_release.cilium,
+    kubernetes_namespace.flux
+  ]
 }

@@ -2,8 +2,7 @@ apiVersion: aws.platformref.upbound.io/v1alpha1
 kind: IRSA
 metadata:
     name: xplane-external-secrets
-    annotations:
-        condition: StringEquals
+    namespace: security
 spec:
     deletionPolicy: Delete
     parameters:

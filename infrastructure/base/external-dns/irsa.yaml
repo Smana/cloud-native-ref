@@ -2,8 +2,6 @@ apiVersion: aws.platformref.upbound.io/v1alpha1
 kind: IRSA
 metadata:
     name: xplane-external-dns
-    annotations:
-        condition: StringEquals
 spec:
     deletionPolicy: Delete
     parameters:
