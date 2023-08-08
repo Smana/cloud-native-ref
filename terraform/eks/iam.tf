@@ -43,7 +43,7 @@ resource "aws_iam_policy" "crossplane_irsa" {
                 "iam:AttachRolePolicy",
                 "iam:PassRole"
             ],
-            "Resource": "xplane-*"
+            "Resource": "irsa-xplane-*"
         }
     ]
 }

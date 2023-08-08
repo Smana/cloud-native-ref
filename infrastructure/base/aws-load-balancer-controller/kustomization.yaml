@@ -3,5 +3,6 @@ kind: Kustomization
 namespace: kube-system
 
 resources:
+  - irsa.yaml
   - helmrelease.yaml
   - source.yaml
