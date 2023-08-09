@@ -1,0 +1,20 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: kyverno-policies
+  namespace: security
+spec:
+  releaseName: kyverno-policies
+  chart:
+    spec:
+      chart: kyverno-policies
+      sourceRef:
+        kind: HelmRepository
+        name: kyverno
+        namespace: flux-system
+      version: "3.0.3"
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values: {}
