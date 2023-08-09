@@ -13,6 +13,8 @@ spec:
         namespace: kube-system
       version: "1.14.0"
   interval: 10m0s
+  upgrade:
+    force: true
   install:
     remediation:
       retries: 3
