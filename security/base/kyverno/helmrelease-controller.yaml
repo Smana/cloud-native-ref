@@ -1,0 +1,22 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: kyverno
+  namespace: security
+spec:
+  releaseName: kyverno
+  chart:
+    spec:
+      chart: kyverno
+      sourceRef:
+        kind: HelmRepository
+        name: kyverno
+        namespace: flux-system
+      version: "3.0.4"
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: kyverno
+    # Need to set at least resources limits in a near future
