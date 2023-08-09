@@ -1,0 +1,21 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: echo-1
+  namespace: echo
+spec:
+  releaseName: echo-1
+  chart:
+    spec:
+      chart: echo-server
+      sourceRef:
+        kind: HelmRepository
+        name: echo
+        namespace: flux-system
+      version: "0.5.0"
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values:
+    replicaCount: 2
