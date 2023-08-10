@@ -34,6 +34,12 @@ variable "cilium_version" {
   type        = string
 }
 
+variable "gateway_api_version" {
+  description = "Gateway API CRDs version"
+  default     = "v0.7.1"
+  type        = string
+}
+
 # Flux
 variable "github_owner" {
   type        = string

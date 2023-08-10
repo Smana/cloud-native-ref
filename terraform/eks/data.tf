@@ -10,3 +10,8 @@ data "aws_ecrpublic_authorization_token" "token" {
 data "aws_eks_cluster_auth" "cluster_auth" {
   name = module.eks.cluster_name
 }
+
+data "http" "gateway_api_crds" {
+  count = length(local.gateway_api_crds_urls)
+  url   = local.gateway_api_crds_urls[count.index]
+}

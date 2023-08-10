@@ -26,6 +26,10 @@ terraform {
       source  = "hashicorp/helm"
       version = ">= 2.7"
     }
+    http = {
+      source  = "hashicorp/http"
+      version = ">= 3.4"
+    }
     tls = {
       source  = "hashicorp/tls"
       version = "3.1.0"
