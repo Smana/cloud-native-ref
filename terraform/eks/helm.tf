@@ -19,5 +19,8 @@ resource "helm_release" "cilium" {
     file("${path.module}/helm_values/cilium.yaml")
   ]
 
-  depends_on = [kubernetes_job.delete_aws_cni_ds]
+  depends_on = [
+    kubectl_manifest.gateway_api_crds,
+    kubernetes_job.delete_aws_cni_ds
+  ]
 }

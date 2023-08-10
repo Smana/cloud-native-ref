@@ -1,3 +1,10 @@
+# Install Gateway API CRD's. Requirement to be installed before Cilium is running
+resource "kubectl_manifest" "gateway_api_crds" {
+  count      = length(local.gateway_api_crds_urls)
+  yaml_body  = data.http.gateway_api_crds[count.index].body
+  depends_on = [module.eks]
+}
+
 # EKS post install kubernetes job with these changes
 resource "kubernetes_service_account" "eks_init" {
   metadata {
@@ -81,3 +88,5 @@ resource "kubernetes_job" "delete_aws_cni_ds" {
     module.eks
   ]
 }
+
+

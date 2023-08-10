@@ -34,6 +34,5 @@ envoy:
     requests:
       cpu: 200m
       memory:
-# Deployed using Flux as we need to deploy the Gateway API CRDs first
-# gatewayAPI:
-#   enabled: true
+gatewayAPI:
+  enabled: true
