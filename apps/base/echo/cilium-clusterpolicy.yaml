@@ -1,0 +1,28 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: mutate-cilium-gateway-echo-gateway
+  annotations:
+    policies.kyverno.io/title: Mutate echo gateway
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      We need to mutate the echo gateway service in order to configure the AWS LB.
+spec:
+  rules:
+    - name: mutate-svc-annotations
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+              namespaces:
+                - echo
+              name: cilium-gateway-echo-gateway
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            annotations:
+              external-dns.alpha.kubernetes.io/hostname: echo-${cluster_name}.${domain_name}
+              service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+              service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+              service.beta.kubernetes.io/aws-load-balancer-type: "nlb-ip"
