@@ -19,4 +19,6 @@ spec:
       retries: 3
   values:
     fullnameOverride: kyverno
+    # https://kyverno.io/docs/troubleshooting/#kyverno-fails-on-eks
+    hostNetwork: true
     # Need to set at least resources limits in a near future
