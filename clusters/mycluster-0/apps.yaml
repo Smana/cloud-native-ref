@@ -29,3 +29,7 @@ spec:
       kind: HelmRelease
       name: echo-2
       namespace: echo
+  dependsOn:
+    - name: security
+    - name: infrastructure
+    - name: observability
