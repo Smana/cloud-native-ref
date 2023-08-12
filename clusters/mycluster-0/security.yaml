@@ -24,3 +24,27 @@ spec:
       kind: HelmRelease
       name: external-secrets
       namespace: security
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: security-custom-resources
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 4m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./security/mycluster-0/custom-resources
+  postBuild:
+    substitute:
+      domain_name: "cloud.ogenki.io"
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+      - kind: Secret
+        name: eks-mycluster-0-vars
+        optional: true
+  dependsOn:
+    - name: security
