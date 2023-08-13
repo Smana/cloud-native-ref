@@ -8,7 +8,7 @@ eni:
 installNoConntrackIptablesRules: true
 ipam:
   mode: eni
-kubeProxyReplacement: strict
+kubeProxyReplacement: true
 operator:
   resources:
     limits:

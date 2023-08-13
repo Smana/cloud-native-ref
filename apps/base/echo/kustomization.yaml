@@ -2,7 +2,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - cilium-clusterpolicy.yaml
   - gateway.yaml
   - helmrelease-echo-1.yaml
   - helmrelease-echo-2.yaml
