@@ -32,4 +32,3 @@ spec:
   dependsOn:
     - name: security
     - name: infrastructure
-    - name: observability
