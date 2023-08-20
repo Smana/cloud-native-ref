@@ -45,6 +45,8 @@ resource "helm_release" "karpenter" {
     name  = "settings.aws.interruptionQueueName"
     value = module.karpenter.queue_name
   }
+
+  depends_on = [helm_release.cilium]
 }
 
 resource "kubectl_manifest" "karpenter_provisioner" {

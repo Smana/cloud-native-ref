@@ -11,13 +11,16 @@ spec:
         kind: HelmRepository
         name: eks
         namespace: kube-system
-      version: "1.5.3"
+      version: "1.6.0"
   interval: 10m0s
   install:
     remediation:
       retries: 3
   values:
     clusterName: ${cluster_name}
+    # Mandatory in order to be able to use Classic LB
+    # https://github.com/cilium/cilium/issues/27493
+    enableServiceMutatorWebhook: false
     serviceAccount:
       # Has to match the policy created using terraform (IRSA)
       name: load-balancer-controller
