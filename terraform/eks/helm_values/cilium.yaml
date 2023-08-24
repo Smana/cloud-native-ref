@@ -27,16 +27,14 @@ resources:
 routingMode: native
 tunnel: disabled
 
-# Disabled for the moment, trying to fix this issue first
-# https://github.com/cilium/cilium/issues/27493
-# envoy:
-#   enabled: true
-#   resources:
-#     limits:
-#       memory: 300Mi
-#     requests:
-#       cpu: 200m
-#       memory:
+envoy:
+  enabled: true
+  resources:
+    limits:
+      memory: 300Mi
+    requests:
+      cpu: 200m
+      memory: 300Mi
 
 gatewayAPI:
   enabled: true
