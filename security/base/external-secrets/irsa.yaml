@@ -15,14 +15,10 @@ spec:
                     {
                         "Effect": "Allow",
                         "Action": [
-                            "ssm:GetParameter*",
-                            "ssm:PutParameter",
-                            "ssm:DescribeParameters",
-                            "ssm:DeleteParameter*",
-                            "ssm:AddTagsToResource",
-                            "ssm:ListTagsForResource",
-                            "ssm:RemoveTagsFromResource",
-                            "tag:GetResources"
+                            "secretsmanager:GetResourcePolicy",
+                            "secretsmanager:GetSecretValue",
+                            "secretsmanager:DescribeSecret",
+                            "secretsmanager:ListSecretVersionIds"
                         ],
                         "Resource": [
                             "*"
