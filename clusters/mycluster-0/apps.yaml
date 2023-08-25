@@ -31,4 +31,5 @@ spec:
       namespace: echo
   dependsOn:
     - name: crds
+    - name: security
     - name: infrastructure
