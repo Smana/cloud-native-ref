@@ -33,4 +33,4 @@ spec:
 
         serviceAccount:
             name: external-secrets
-            namespace: kube-system
+            namespace: security
