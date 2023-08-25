@@ -3,4 +3,7 @@ kind: Kustomization
 namespace: security
 
 resources:
-  - crds.yaml
+  - crossplane-system.yaml
+  - echo.yaml
+  - observability.yaml
+  - security.yaml

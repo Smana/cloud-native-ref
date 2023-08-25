@@ -4,5 +4,4 @@ namespace: observability
 
 resources:
   - helmrelease.yaml
-  - namespace.yaml
   - source.yaml

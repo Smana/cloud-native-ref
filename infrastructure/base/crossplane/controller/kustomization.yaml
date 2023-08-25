@@ -3,6 +3,5 @@ kind: Kustomization
 namespace: crossplane-system
 
 resources:
-  - namespace.yaml
   - release.yaml
   - source.yaml
