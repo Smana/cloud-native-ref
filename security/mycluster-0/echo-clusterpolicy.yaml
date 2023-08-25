@@ -22,6 +22,6 @@ spec:
         patchStrategicMerge:
           metadata:
             annotations:
-              external-dns.alpha.kubernetes.io/hostname: echo-${cluster_name}.${domain_name}
+              external-dns.alpha.kubernetes.io/hostname: echo.${domain_name}
               service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
               service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
