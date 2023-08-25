@@ -30,5 +30,5 @@ spec:
       name: echo-2
       namespace: echo
   dependsOn:
-    - name: security
+    - name: crds
     - name: infrastructure

@@ -17,7 +17,6 @@ spec:
   install:
     remediation:
       retries: 3
-    crds: Create
     createNamespace: true
   upgrade:
     crds: CreateReplace
@@ -25,6 +24,8 @@ spec:
     global:
       rbac:
         createAggregateClusterRoles: true
+    crds:
+      enabled: false
 
     alertmanager:
       enabled: false

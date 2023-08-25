@@ -1,0 +1,21 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: crds-prometheus-operator
+  namespace: observability
+spec:
+  releaseName: crds-prometheus-operator
+  chart:
+    spec:
+      chart: prometheus-operator-crds
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+      version: "v0.5.1"
+  interval: 10m0s
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  values: {}
