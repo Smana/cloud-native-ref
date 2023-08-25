@@ -18,6 +18,12 @@ spec:
               namespaces:
                 - echo
               name: cilium-gateway-echo-gateway
+          - resources:
+              kinds:
+                - Service
+              namespaces:
+                - echo
+              name: cilium-gateway-tls-echo-gateway
       mutate:
         patchStrategicMerge:
           metadata:
