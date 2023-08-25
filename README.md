@@ -2,7 +2,7 @@
 
 ⚠️ **Work in progress** for a future blog post [here](https://blog.ogenki.io/)
 
-## Dependencies matters
+## Dependencies matter
 
 ```mermaid
 graph TD;
