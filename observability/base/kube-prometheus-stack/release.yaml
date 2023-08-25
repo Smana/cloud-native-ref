@@ -10,8 +10,8 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
-        namespace: observability
-      version: "47.1.0"
+        namespace: flux-system
+      version: "48.4.0"
   interval: 10m0s
   timeout: 30m
   install:
