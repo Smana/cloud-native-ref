@@ -12,13 +12,13 @@ spec:
         kind: HelmRepository
         name: kyverno
         namespace: flux-system
-      version: "3.0.4"
+      version: "3.0.5"
   interval: 10m0s
   install:
     remediation:
       retries: 3
   values:
     fullnameOverride: kyverno
-    # https://kyverno.io/docs/troubleshooting/#kyverno-fails-on-eks
-    hostNetwork: true
+    crds:
+      install: false
     # Need to set at least resources limits in a near future

@@ -25,6 +25,8 @@ spec:
         eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/xplane-external-secrets-${cluster_name}"
       name: "external-secrets"
 
+    installCRDs: false
+
     securityContext:
       capabilities:
         drop:
