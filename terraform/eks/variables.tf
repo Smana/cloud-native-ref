@@ -36,7 +36,7 @@ variable "cilium_version" {
 
 variable "gateway_api_version" {
   description = "Gateway API CRDs version"
-  default     = "v0.7.1"
+  default     = "v0.8.0"
   type        = string
 }
 

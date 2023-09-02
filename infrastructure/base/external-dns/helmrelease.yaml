@@ -11,7 +11,7 @@ spec:
         kind: HelmRepository
         name: external-dns
         namespace: kube-system
-      version: "1.12.2"
+      version: "1.13.0"
   interval: 10m0s
   install:
     remediation:
