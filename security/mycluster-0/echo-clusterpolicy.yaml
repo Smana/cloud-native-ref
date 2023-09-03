@@ -22,8 +22,8 @@ spec:
               kinds:
                 - Service
               namespaces:
-                - echo
-              name: cilium-gateway-tls-echo-gateway
+                - kube-system
+              name: cilium-gateway-tls-shared-gateway
       mutate:
         patchStrategicMerge:
           metadata:

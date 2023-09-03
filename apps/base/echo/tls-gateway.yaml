@@ -13,8 +13,10 @@ spec:
       port: 443
       protocol: HTTPS
       allowedRoutes:
-        namespaces:
-          from: All
+        from: Selector
+        selector:
+          matchLabels:
+            shared-gateway-access: "true"
       tls:
         mode: Terminate
         certificateRefs:
