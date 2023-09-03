@@ -4,5 +4,6 @@ kind: Kustomization
 resources:
   - ../base/kyverno
   - ../base/cert-manager
-  - echo-clusterpolicy.yaml
   - external-secrets
+  - echo-gw-clusterpolicy.yaml
+  - shared-gw-clusterpolicy.yaml
