@@ -9,6 +9,7 @@ spec:
   gatewayClassName: cilium
   listeners:
     - name: http
+      hostname: "*.cloud.ogenki.io"
       port: 443
       protocol: HTTPS
       allowedRoutes:
