@@ -23,7 +23,7 @@ spec:
                     "route53:ChangeResourceRecordSets",
                     "route53:ListResourceRecordSets"
                 ],
-                "Resource": "arn:aws:route53:::hostedzone/${domain_name}"
+                "Resource": "arn:aws:route53:::hostedzone/*"
                 },
                 {
                 "Effect": "Allow",

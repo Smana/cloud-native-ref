@@ -26,7 +26,6 @@ spec:
                     }
                 ]
             }
-
         serviceAccount:
             name: external-secrets
             namespace: security
