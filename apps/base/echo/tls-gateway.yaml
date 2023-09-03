@@ -1,20 +1,19 @@
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: Gateway
 metadata:
-  name: tls-echo-gateway
-  namespace: echo
+  name: tls-shared-gateway
+  namespace: kube-system
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   gatewayClassName: cilium
   listeners:
     - name: http
-      hostname: echo.cloud.ogenki.io
       port: 443
       protocol: HTTPS
       allowedRoutes:
         namespaces:
-          from: Same
+          from: All
       tls:
         mode: Terminate
         certificateRefs:
