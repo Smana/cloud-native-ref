@@ -4,7 +4,7 @@ metadata:
   name: tls-echo-gateway
   namespace: echo
   annotations:
-    cert-manager.io/issuer: cilium
+    cert-manager.io/cluster-issuer: letsencrypt-staging
 spec:
   gatewayClassName: cilium
   listeners:

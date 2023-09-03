@@ -1,0 +1,37 @@
+apiVersion: aws.platformref.upbound.io/v1alpha1
+kind: IRSA
+metadata:
+    name: xplane-cert-manager-${cluster_name}
+    namespace: security
+spec:
+    deletionPolicy: Delete
+    parameters:
+        condition: StringEquals
+        # Reference: https://cert-manager.io/docs/configuration/acme/dns01/route53/
+        policyDocument: |
+            {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                "Effect": "Allow",
+                "Action": "route53:GetChange",
+                "Resource": "arn:aws:route53:::change/*"
+                },
+                {
+                "Effect": "Allow",
+                "Action": [
+                    "route53:ChangeResourceRecordSets",
+                    "route53:ListResourceRecordSets"
+                ],
+                "Resource": "arn:aws:route53:::hostedzone/${domain_name}"
+                },
+                {
+                "Effect": "Allow",
+                "Action": "route53:ListHostedZonesByName",
+                "Resource": "*"
+                }
+            ]
+            }
+        serviceAccount:
+            name: cert-manager
+            namespace: security
