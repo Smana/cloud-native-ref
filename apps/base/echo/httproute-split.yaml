@@ -6,7 +6,7 @@ metadata:
 spec:
   parentRefs:
     - name: tls-shared-gateway
-      namespace: kube-system
+      namespace: infrastructure
   hostnames:
     - "split-echo.${domain_name}"
   rules:

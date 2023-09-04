@@ -12,6 +12,8 @@ This repository also is a reference for configuring a platform with the followin
 * Cilium is installed as the dropin replacement of the AWS CNI in kube-proxy less mode AND using a distinct daemonSet for Envoy (L7 loadbalancing)
 * Everything is deployed the GitOps way using Flux
 * Crossplane is used to configure IAM permissions required by the platform components
+* Manage DNS records automatically using External-DNS
+* Manage secrets from AWS secrets manager using External-Secrets
 
 ## Dependencies matter
 
