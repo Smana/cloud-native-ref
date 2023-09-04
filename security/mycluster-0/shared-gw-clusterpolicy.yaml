@@ -16,7 +16,7 @@ spec:
               kinds:
                 - Service
               namespaces:
-                - kube-system
+                - infrastructure
               name: cilium-gateway-tls-shared-gateway
       mutate:
         patchStrategicMerge:

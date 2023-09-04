@@ -2,6 +2,17 @@
 
 ⚠️ **Work in progress** for a future blog post [here](https://blog.ogenki.io/)
 
+The main purpose of this repository is to demonstrate how [**Cilium**](https://cilium.io/) implements the [**Gateway-API**](https://gateway-api.sigs.k8s.io/) standard.
+
+![overview](.assets/cilium-gateway-api.png)
+
+This repository also is a reference for configuring a platform with the following key components:
+
+* An EKS cluster deployed using Terraform ([here](./terraform/eks/README.md) for details)
+* Cilium is installed as the dropin replacement of the AWS CNI in kube-proxy less mode AND using a distinct daemonSet for Envoy (L7 loadbalancing)
+* Everything is deployed the GitOps way using Flux
+* Crossplane is used to configure IAM permissions required by the platform components
+
 ## Dependencies matter
 
 ```mermaid
