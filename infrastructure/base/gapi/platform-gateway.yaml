@@ -13,12 +13,14 @@ spec:
       protocol: HTTPS
       allowedRoutes:
         namespaces:
-          matchExpressions:
-            - key: kubernetes.io/metadata.name
-              operator: In
-              values:
-                - observability
-                - flux-system
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - observability
+                  - flux-system
       tls:
         mode: Terminate
         certificateRefs:
