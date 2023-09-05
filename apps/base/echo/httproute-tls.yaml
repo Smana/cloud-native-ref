@@ -5,8 +5,8 @@ metadata:
   namespace: echo
 spec:
   parentRefs:
-    - name: tls-shared-gateway
-      namespace: infrastructure
+    - name: echo-tls-gateway
+      namespace: echo
   hostnames:
     - "tls-echo-1.${domain_name}"
   rules:

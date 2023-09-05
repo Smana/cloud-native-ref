@@ -6,4 +6,5 @@ resources:
   - ../base/cert-manager
   - external-secrets
   - echo-gw-clusterpolicy.yaml
-  - shared-gw-clusterpolicy.yaml
+  - echo-tls-gw-clusterpolicy.yaml
+  - platform-gw-clusterpolicy.yaml

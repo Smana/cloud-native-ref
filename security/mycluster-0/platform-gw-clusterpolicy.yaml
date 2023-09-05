@@ -1,7 +1,7 @@
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: mutate-cilium-gateway-shared-gateway
+  name: mutate-cilium-platform-gateway
   annotations:
     policies.kyverno.io/title: Mutate shared gateway
     policies.kyverno.io/severity: medium
@@ -17,11 +17,11 @@ spec:
                 - Service
               namespaces:
                 - infrastructure
-              name: cilium-gateway-tls-shared-gateway
+              name: cilium-gateway-platform-gateway
       mutate:
         patchStrategicMerge:
           metadata:
             annotations:
-              external-dns.alpha.kubernetes.io/hostname: tls-echo-1.${domain_name},tls-echo-2.${domain_name},split-echo.${domain_name}
+              external-dns.alpha.kubernetes.io/hostname: gitops-${cluster_name}.${domain_name},grafana-${cluster_name}.${domain_name}
               service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
               service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp

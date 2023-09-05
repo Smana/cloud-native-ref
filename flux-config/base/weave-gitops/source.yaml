@@ -11,7 +11,6 @@ metadata:
     app.kubernetes.io/name: weave-gitops-dashboard
     app.kubernetes.io/part-of: weave-gitops
   name: ww-gitops
-  namespace: flux-system
 spec:
   interval: 1h0m0s
   type: oci

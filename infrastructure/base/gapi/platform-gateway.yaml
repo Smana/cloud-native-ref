@@ -1,8 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: Gateway
 metadata:
-  name: echo-tls-gateway
-  namespace: echo
+  name: platform-gateway
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
@@ -14,8 +13,13 @@ spec:
       protocol: HTTPS
       allowedRoutes:
         namespaces:
-          from: Same
+          matchExpressions:
+            - key: kubernetes.io/metadata.name
+              operator: In
+              values:
+                - observability
+                - flux-system
       tls:
         mode: Terminate
         certificateRefs:
-          - name: echo-tls
+          - name: platform-tls

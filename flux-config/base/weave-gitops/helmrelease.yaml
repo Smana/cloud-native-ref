@@ -6,7 +6,6 @@ metadata:
       This is the Weave GitOps Dashboard.  It provides
       a simple way to get insights into your GitOps workloads.
   name: weave-gitops
-  namespace: flux-system
 spec:
   chart:
     spec:
@@ -20,17 +19,3 @@ spec:
       create: true
       passwordHash: $2a$10$4EnJSNAJ4hJDahA/EH7f/OoPr3w9p1p6XfjTkIQkxeGaZZRkEu5gy
       username: admin
-    ingress:
-      enabled: true
-      annotations:
-        kubernetes.io/ingress.class: alb
-        alb.ingress.kubernetes.io/target-type: ip
-        alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
-        alb.ingress.kubernetes.io/scheme: internet-facing
-        alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
-        external-dns.alpha.kubernetes.io/hostname: gitops-${cluster_name}.${domain_name}
-      hosts:
-        - host: gitops-${cluster_name}.${domain_name}
-          paths:
-            - path: /*
-              pathType: ImplementationSpecific

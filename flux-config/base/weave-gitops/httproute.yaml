@@ -1,19 +1,18 @@
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
-  name: tls-echo-2
-  namespace: echo
+  name: weave-gitops
 spec:
   parentRefs:
-    - name: tls-shared-gateway
+    - name: platform-gateway
       namespace: infrastructure
   hostnames:
-    - "tls-echo-2.${domain_name}"
+    - "gitops-${cluster_name}.${domain_name}"
   rules:
     - matches:
         - path:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: echo-2-echo-server
-          port: 80
+        - name: weave-gitops
+          port: 9001
