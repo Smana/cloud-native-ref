@@ -6,8 +6,7 @@ resources:
   - helmrelease-echo-1.yaml
   - helmrelease-echo-2.yaml
   - httproute.yaml
-  - httproute-tls-echo-1.yaml
-  - httproute-tls-echo-2.yaml
   - httproute-split.yaml
+  - httproute-tls.yaml
   - source.yaml
   - tls-gateway.yaml
