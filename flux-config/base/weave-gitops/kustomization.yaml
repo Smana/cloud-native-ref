@@ -4,4 +4,5 @@ namespace: flux-system
 
 resources:
   - helmrelease.yaml
+  - httproute.yaml
   - source.yaml
