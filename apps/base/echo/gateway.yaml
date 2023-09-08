@@ -1,7 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: Gateway
 metadata:
-  name: echo-gateway
+  name: echo
   namespace: echo
 spec:
   gatewayClassName: cilium

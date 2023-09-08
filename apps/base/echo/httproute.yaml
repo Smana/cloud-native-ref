@@ -5,7 +5,7 @@ metadata:
   namespace: echo
 spec:
   parentRefs:
-    - name: echo-gateway
+    - name: echo
       namespace: echo
   rules:
     - matches:

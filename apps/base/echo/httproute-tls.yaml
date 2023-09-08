@@ -5,7 +5,7 @@ metadata:
   namespace: echo
 spec:
   parentRefs:
-    - name: echo-tls-gateway
+    - name: echo-tls
       namespace: echo
   hostnames:
     - "tls-echo-1.${domain_name}"

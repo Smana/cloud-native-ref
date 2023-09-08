@@ -1,7 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: Gateway
 metadata:
-  name: echo-tls-gateway
+  name: echo-tls
   namespace: echo
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
