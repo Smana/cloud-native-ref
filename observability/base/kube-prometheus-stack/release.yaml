@@ -11,7 +11,7 @@ spec:
         kind: HelmRepository
         name: prometheus-community
         namespace: flux-system
-      version: "50.0.0"
+      version: "50.3.1"
   interval: 10m0s
   timeout: 30m
   install:
@@ -30,6 +30,9 @@ spec:
     alertmanager:
       enabled: false
     grafana:
+      serviceMonitor:
+        labels:
+          prometheus-instance: main
       admin:
         existingSecret: "kube-prometheus-stack-grafana-admin"
       defaultDashboardsEnabled: true
@@ -101,7 +104,6 @@ spec:
         requests:
           cpu: 100m
           memory: 400Mi
-
     prometheus:
       configReloaderCpu: 300m
       prometheusSpec:
@@ -127,3 +129,7 @@ spec:
           limits:
             cpu: 500m
             memory: 1Gi
+    kubelet:
+      servicemonitor:
+        additionalLabels:
+          prometheus-instance: main
