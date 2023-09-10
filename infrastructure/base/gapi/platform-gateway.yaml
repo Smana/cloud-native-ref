@@ -1,7 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: Gateway
 metadata:
-  name: platform-gateway
+  name: platform
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:

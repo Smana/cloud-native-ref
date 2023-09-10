@@ -17,7 +17,7 @@ spec:
                 - Service
               namespaces:
                 - echo
-              name: cilium-gateway-echo-tls-gateway
+              name: cilium-gateway-echo-tls
       mutate:
         patchStrategicMerge:
           metadata:

@@ -17,7 +17,7 @@ spec:
                 - Service
               namespaces:
                 - infrastructure
-              name: cilium-gateway-platform-gateway
+              name: cilium-gateway-platform
       mutate:
         patchStrategicMerge:
           metadata:
