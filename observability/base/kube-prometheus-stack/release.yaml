@@ -27,6 +27,9 @@ spec:
     crds:
       enabled: false
 
+    commonLabels:
+      prometheus-instance: main
+
     alertmanager:
       enabled: false
     grafana:
