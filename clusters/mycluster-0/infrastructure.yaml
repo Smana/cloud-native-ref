@@ -70,6 +70,7 @@ spec:
   dependsOn:
     - name: crossplane-providers
 ---
+# The infrastructure components are deployed when Crossplane is available in order to creates irsa resources
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -93,4 +94,23 @@ spec:
     name: flux-system
   dependsOn:
     - name: crossplane-configuration
+---
+# Gateways must be created after Kyverno's cluster policies are applied in order to add AWS annotations
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-gateways
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 4m0s
+  path: ./infrastructure/mycluster-0/gapi
+  postBuild:
+    substitute:
+      domain_name: "cloud.ogenki.io"
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: crds
     - name: security
