@@ -93,3 +93,4 @@ spec:
     name: flux-system
   dependsOn:
     - name: crossplane-configuration
+    - name: security
