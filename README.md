@@ -4,10 +4,10 @@ The main purpose of this repository is to demonstrate how [**Cilium**](https://c
 
 ![overview](.assets/cilium-gateway-api.png)
 
-This repository also is a reference for configuring a platform with the following key components:
+This repository also is a reference for configuring a platform with the following key points:
 
 * An EKS cluster deployed using Terraform ([here](./terraform/eks/README.md) for details)
-* Cilium is installed as the dropin replacement of the AWS CNI in kube-proxy less mode AND using a distinct daemonSet for Envoy (L7 loadbalancing)
+* Cilium is installed as the drop-in replacement of the AWS CNI in kube-proxy less mode AND using a distinct daemonSet for Envoy (L7 loadbalancing)
 * Everything is deployed the GitOps way using Flux
 * Crossplane is used to configure IAM permissions required by the platform components
 * Manage DNS records automatically using External-DNS
@@ -41,7 +41,7 @@ This diagram can be hard to understand so these are the key information:
 
 Variables substitions is a very powerful [Flux](https://fluxcd.io/)'s feature that allows to reduce at its bare minimum code deduplication.
 
-It has been covered in this [previous article](http://localhost:1313/post/terraform-controller/#-focus-on-key-features-of-flux).
+This has been covered in this [previous article](http://localhost:1313/post/terraform-controller/#-focus-on-key-features-of-flux).
 
 ## ❓ How is Crossplane used
 
@@ -53,9 +53,9 @@ It needs to be installed and set up in three **successive steps**:
 2. Deployment of the AWS provider, which provides custom resources, including AWS roles, policies, etc.
 3. Installation of compositions that will generate AWS resources.
 
-There is a unique composition here: `irsa`. It allows de provide fine-grained permissions to a few Kubernetes operators.
+There is a unique composition here: `irsa` that allows to provide fine-grained permissions to a few Kubernetes operators.
 
-⚠️ This repository sets up a central EKS management cluster, and there are some **security considerations** to be aware of, particularly concerning AWS permissions. Specifically, `Crossplane` has the authority to manage (and even create) IAM roles with the prefix `xplane-`. Thus, if it's compromised, there's a potential to create a role with full admin privileges.
+⚠️ This repository sets up a central EKS management cluster, and there are some **security considerations** to be aware of, particularly concerning AWS permissions. Specifically, `Crossplane` is able to manage (and even create) IAM roles with the prefix `xplane-`. Thus, if it's compromised, there's a potential to create a role with full admin privileges.
 
 ### IRSA example with external-dns
 
@@ -104,11 +104,23 @@ spec:
             namespace: kube-system
 ```
 
-This is pretty straightforward! We define the policy and the serviceAccount to which it would be associated.
+This is pretty straightforward! We define the policy and the serviceAccount to which it would be associated then we have to wait a few seconds until the claims are ready and synced.
+
+ℹ️ Under the hood each IRSA resource creates 3 things: A role, a rolePolicy and a rolePolicyAttachment.
+
+```console
+kubectl get irsa --all-namespaces
+NAMESPACE     NAME                                         SYNCED   READY   CONNECTION-SECRET   AGE
+kube-system   xplane-external-dns-mycluster-0              True     True                        30m
+kube-system   xplane-loadbalancer-controller-mycluster-0   True     True                        30m
+security      xplane-cert-manager-mycluster-0              True     True                        32m
+security      xplane-external-secrets-mycluster-0          True     True                        32m
+```
 
 ## CI
 
 2 things are checked
+
 * The terraform code quality, conformance and security using pre-commit.
 * The kustomize and Kubernetes conformance using kubeconform and building the kustomize configuration.
 

@@ -34,3 +34,23 @@ tags = {
 3. Apply with `terraform apply -var-file variables.tfvars`
 
 
+## Cleaning things up
+
+In order to really clean everything you should follow these steps:
+
+1. Suspend Flux reconciliations
+   ```console
+   flux suspend kustomization --all
+   ```
+
+2. Delete `Gateways` (These create AWS loadbalancers)
+   ```console
+   kubectl delete gateways --all-namespaces --all
+   ```
+
+3. Wait 3/4 minutest and delete all `IRSA`
+   ```console
+   kubectl delete irsa --all-namespaces --all
+   ```
+
+4. `terraform destroy --var-file variables.tfvars`
