@@ -6,7 +6,7 @@ metadata:
 spec:
   parentRefs:
     - name: echo
-      namespace: infrastructure
+      namespace: echo
   hostnames:
     - "split-echo.${domain_name}"
   rules:
