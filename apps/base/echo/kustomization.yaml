@@ -3,10 +3,10 @@ kind: Kustomization
 
 resources:
   - gateway.yaml
+  - gateway-unsecure.yaml
   - helmrelease-echo-1.yaml
   - helmrelease-echo-2.yaml
   - httproute.yaml
   - httproute-split.yaml
-  - httproute-tls.yaml
+  - httproute-unsecure.yaml
   - source.yaml
-  - tls-gateway.yaml

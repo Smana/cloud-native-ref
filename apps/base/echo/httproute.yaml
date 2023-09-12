@@ -7,7 +7,35 @@ spec:
   parentRefs:
     - name: echo
       namespace: echo
+  hostnames:
+    - "echo.${domain_name}"
   rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /req-header-add
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            add:
+              - name: foo
+                value: bar
+      backendRefs:
+        - name: echo-1-echo-server
+          port: 80
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /resp-header-modify
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: bar
+                value: baz
+      backendRefs:
+        - name: echo-1-echo-server
+          port: 80
     - matches:
         - path:
             type: PathPrefix

@@ -1,12 +1,12 @@
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: mutate-cilium-echo-tls-gateway
+  name: mutate-cilium-echo-unsecure-gateway
   annotations:
-    policies.kyverno.io/title: Mutate echo TLS gateway
+    policies.kyverno.io/title: Mutate echo HTTP gateway
     policies.kyverno.io/severity: medium
     policies.kyverno.io/description: >-
-      We need to mutate the echo TLS gateway service in order to configure the AWS LB.
+      We need to mutate the echo gateway (Plain HTTP) service in order to configure the AWS LB.
 spec:
   rules:
     - name: mutate-svc-annotations
@@ -17,12 +17,12 @@ spec:
                 - Service
               namespaces:
                 - echo
-              name: cilium-gateway-echo-tls
+              name: cilium-gateway-unsecure-echo
       mutate:
         patchStrategicMerge:
           metadata:
             annotations:
-              external-dns.alpha.kubernetes.io/hostname: tls-echo-1.${domain_name}
+              external-dns.alpha.kubernetes.io/hostname: unsecure-echo.${domain_name}
               service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
               service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
           spec:

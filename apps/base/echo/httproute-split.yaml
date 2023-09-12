@@ -5,7 +5,7 @@ metadata:
   namespace: echo
 spec:
   parentRefs:
-    - name: echo-tls
+    - name: echo
       namespace: infrastructure
   hostnames:
     - "split-echo.${domain_name}"
