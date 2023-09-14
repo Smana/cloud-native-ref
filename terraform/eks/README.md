@@ -54,3 +54,11 @@ In order to really clean everything you should follow these steps:
    ```
 
 4. `terraform destroy --var-file variables.tfvars`
+
+One step:
+```console
+flux suspend kustomization --all && \
+kubectl delete gateways --all-namespaces --all && sleep 60 && \
+kubectl delete irsa --all-namespaces --all && sleep 30 && \
+terraform destroy --var-file variables.tfvars
+```

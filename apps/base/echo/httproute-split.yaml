@@ -17,7 +17,7 @@ spec:
       backendRefs:
         - name: echo-1-echo-server
           port: 80
-          weight: 9
+          weight: 95
         - name: echo-2-echo-server
           port: 80
-          weight: 1
+          weight: 5

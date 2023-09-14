@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - ../base/kyverno
   - ../base/cert-manager
+  - ../base/rbac
   - external-secrets
   - echo-gw-clusterpolicy.yaml
   - echo-unsecure-gw-clusterpolicy.yaml

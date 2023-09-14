@@ -1,0 +1,24 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: echo
+  name: gapi-admin
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gapi-platform-admin
+  namespace: echo
+subjects:
+  - kind: Group
+    name: "platform-admins"
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: gapi-admin
+  apiGroup: rbac.authorization.k8s.io
