@@ -41,7 +41,7 @@ This diagram can be hard to understand so these are the key information:
 
 Variables substitions is a very powerful [Flux](https://fluxcd.io/)'s feature that allows to reduce at its bare minimum code deduplication.
 
-This has been covered in this [previous article](http://localhost:1313/post/terraform-controller/#-focus-on-key-features-of-flux).
+This has been covered in this [previous article](https://blog.ogenki.io/post/terraform-controller/#variable-substitution).
 
 ## ❓ How is Crossplane used
 
@@ -59,7 +59,7 @@ There is a unique composition here: `irsa` that allows to provide fine-grained p
 
 ### IRSA example with external-dns
 
-I utilize a [Compostion](https://docs.crossplane.io/v1.13/concepts/compositions/) provided by [Upbound](https://www.upbound.io/) (the company behind Crossplane) available here. I've made minor adjustments to ensure that it works fine with the Terraform/Flux bootstrapping approach used in this repository.
+I utilize a [Compostion](https://docs.crossplane.io/v1.13/concepts/compositions/) provided by [Upbound](https://www.upbound.io/) (the company behind Crossplane) available [here](https://github.com/upbound/platform-ref-aws/tree/main/package/cluster/irsa). I've made minor adjustments to ensure that it works fine with the Terraform/Flux bootstrapping approach used in this repository.
 
 Here's is how to use the composition:
 
@@ -104,7 +104,7 @@ spec:
             namespace: kube-system
 ```
 
-This is pretty straightforward! We define the policy and the serviceAccount to which it would be associated then we have to wait a few seconds until the claims are ready and synced.
+This is pretty straightforward! We define the policy and the serviceAccount to which it has to be associated then we have to wait a few seconds until the claims are ready and synced.
 
 ℹ️ Under the hood each IRSA resource creates 3 things: A role, a rolePolicy and a rolePolicyAttachment.
 
@@ -121,7 +121,7 @@ security      xplane-external-secrets-mycluster-0          True     True        
 
 2 things are checked
 
-* The terraform code quality, conformance and security using pre-commit.
+* The terraform code quality, conformance and security using [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform).
 * The kustomize and Kubernetes conformance using kubeconform and building the kustomize configuration.
 
 In order to run the CI checks locally just run the following command
