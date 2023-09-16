@@ -10,6 +10,11 @@ spec:
   hostnames:
     - "echo.${domain_name}"
   rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
     - matches:
         - path:
             type: PathPrefix
