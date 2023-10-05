@@ -24,7 +24,7 @@ variable "cluster_name" {
 
 variable "cluster_version" {
   description = "k8s cluster version"
-  default     = "1.27"
+  default     = "1.28"
   type        = string
 }
 
@@ -62,6 +62,11 @@ variable "github_repository" {
 #   default     = "main"
 #   description = "branch name"
 # }
+
+variable "tailscale_authkey" {
+  type        = string
+  description = "Tailscale auth key used to join the tailnet"
+}
 
 variable "tags" {
   description = "A map of tags to add to all resources"

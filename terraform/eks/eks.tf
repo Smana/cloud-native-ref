@@ -41,6 +41,17 @@ module "eks" {
   subnet_ids               = module.vpc.private_subnets
   control_plane_subnet_ids = module.vpc.intra_subnets
 
+  cluster_security_group_additional_rules = {
+    ingress_source_security_group_id = {
+      description              = "Ingress from the Tailscale security group to the API server"
+      protocol                 = "tcp"
+      from_port                = 443
+      to_port                  = 443
+      type                     = "ingress"
+      source_security_group_id = module.tailscale.security_group_id
+    }
+  }
+
   eks_managed_node_groups = {
     main = {
       name        = "main"

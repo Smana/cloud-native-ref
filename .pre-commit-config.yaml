@@ -4,6 +4,7 @@ repos:
     hooks:
       - id: terraform_fmt
       - id: terraform_validate
+      - id: terraform_docs
       - id: terraform_tfsec
         args:
           - --args=--config-file=__GIT_WORKING_DIR__/.tfsec.yaml
