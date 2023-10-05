@@ -9,13 +9,6 @@ variable "region" {
   type        = string
 }
 
-# Network
-variable "vpc_cidr" {
-  description = "The IPv4 CIDR block for the VPC"
-  default     = "10.0.0.0/16"
-  type        = string
-}
-
 # EKS
 variable "cluster_name" {
   description = "Name of the EKS cluster to be created"
@@ -62,11 +55,6 @@ variable "github_repository" {
 #   default     = "main"
 #   description = "branch name"
 # }
-
-variable "tailscale_authkey" {
-  type        = string
-  description = "Tailscale auth key used to join the tailnet"
-}
 
 variable "tags" {
   description = "A map of tags to add to all resources"

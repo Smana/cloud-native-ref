@@ -85,7 +85,7 @@ resource "kubectl_manifest" "karpenter_node_template" {
       name: default
     spec:
       subnetSelector:
-        karpenter.sh/discovery: ${module.eks.cluster_name}
+        karpenter.sh/discovery: ${var.env}
       securityGroupSelector:
         karpenter.sh/discovery: ${module.eks.cluster_name}
       tags:
