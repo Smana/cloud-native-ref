@@ -7,7 +7,7 @@ module "eks" {
 
   cluster_name                   = var.cluster_name
   cluster_version                = var.cluster_version
-  cluster_endpoint_public_access = true
+  cluster_endpoint_public_access = false
 
   cluster_addons = {
     coredns = {
@@ -37,9 +37,9 @@ module "eks" {
     },
   ]
 
-  vpc_id                   = module.vpc.vpc_id
-  subnet_ids               = module.vpc.private_subnets
-  control_plane_subnet_ids = module.vpc.intra_subnets
+  vpc_id                   = data.aws_vpc.selected.id
+  subnet_ids               = data.aws_subnets.private.ids
+  control_plane_subnet_ids = data.aws_subnets.intra.ids
 
   cluster_security_group_additional_rules = {
     ingress_source_security_group_id = {
@@ -48,7 +48,7 @@ module "eks" {
       from_port                = 443
       to_port                  = 443
       type                     = "ingress"
-      source_security_group_id = module.tailscale.security_group_id
+      source_security_group_id = data.aws_security_group.tailscale.id
     }
   }
 
@@ -57,7 +57,7 @@ module "eks" {
       name        = "main"
       description = "EKS managed node group used to bootstrap Karpenter"
       # Use a single subnet for costs reasons
-      subnet_ids = [element(module.vpc.private_subnets, 0)]
+      subnet_ids = [element(data.aws_subnets.private.ids, 0)]
 
       min_size     = 2
       max_size     = 3

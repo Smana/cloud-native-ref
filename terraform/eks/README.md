@@ -1,7 +1,6 @@
-# Control plane
+# Control plane EKS cluster
 
 
-* Create a VPC (intra, private and public subnets)
 * Create a management EKS cluster in a single zone
 * Use SPOT instances
 * Use bottlerocket AMI
@@ -31,7 +30,7 @@ tags = {
 }
 ```
 
-3. Apply with `terraform apply -var-file variables.tfvars`
+3. Apply with `tofu apply -var-file variables.tfvars`
 
 
 ## Cleaning things up
@@ -53,12 +52,12 @@ In order to really clean everything you should follow these steps:
    kubectl delete irsa --all-namespaces --all
    ```
 
-4. `terraform destroy --var-file variables.tfvars`
+4. `tofu destroy --var-file variables.tfvars`
 
 One step:
 ```console
 flux suspend kustomization --all && \
 kubectl delete gateways --all-namespaces --all && sleep 60 && \
 kubectl delete irsa --all-namespaces --all && sleep 30 && \
-terraform destroy --var-file variables.tfvars
+tofu destroy --var-file variables.tfvars
 ```

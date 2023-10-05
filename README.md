@@ -12,6 +12,14 @@ Based on [this repository](https://github.com/Smana/cilium-gateway-api)
 
 ## 🔗 VPN connection using Tailscale
 
+The VPN configuration is done within the `tofu/network` directory.
+You can follow the steps described in this ([EADME](/terraform/network/README.md) in order to provision a server that allows to access to private resources within AWS.
+
+Most of the time we don't want to expose our resources publicly. For instance our platform tools such as `Grafana`, the `Flux web UI` should be access through a secured wire.
+The risk becomes even more significant when dealing with Kubernetes' API. Indeed, one of the primary recommendations for securing a cluster is to limit access to the API.
+
+Nevertheless, I intentionnaly created a distinct directory that allows to provision the network and a secured connection. So that there are no confusion with the EKS provisionning.
+
 ## 👮 Runtime security with Falco
 
 ## ✔️ Policies with Kyverno

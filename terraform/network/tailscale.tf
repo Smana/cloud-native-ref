@@ -1,13 +1,16 @@
 module "tailscale" {
   source = "../modules/tf-module-tailscale"
 
-  name   = "ogenki"
-  region = "eu-west-3"
-  env    = "dev"
+  region = var.region
+  env    = var.env
+
+  name     = var.tailscale.name
+  auth_key = var.tailscale.auth_key
 
   vpc_id           = module.vpc.vpc_id
   subnet_ids       = module.vpc.private_subnets
   advertise_routes = [module.vpc.vpc_cidr_block]
 
-  auth_key = var.tailscale_authkey
+  tags = var.tags
+
 }

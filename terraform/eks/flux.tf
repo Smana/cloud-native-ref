@@ -33,7 +33,7 @@ resource "kubernetes_config_map" "flux_clusters_vars" {
     aws_account_id    = data.aws_caller_identity.this.account_id
     region            = var.region
     environment       = var.env
-    vpc_id            = module.vpc.vpc_id
+    vpc_id            = data.aws_vpc.selected.id
   }
   depends_on = [flux_bootstrap_git.this]
 }
