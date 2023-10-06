@@ -1,5 +1,6 @@
-module "tailscale" {
-  source = "../modules/tf-module-tailscale"
+module "tailscale_subnet_router" {
+  source  = "Smana/tailscale-subnet-router/aws"
+  version = "1.0.2"
 
   region = var.region
   env    = var.env
@@ -10,6 +11,9 @@ module "tailscale" {
   vpc_id           = module.vpc.vpc_id
   subnet_ids       = module.vpc.private_subnets
   advertise_routes = [module.vpc.vpc_cidr_block]
+
+  prometheus_node_exporter_enabled = true
+  ssm_enabled                      = true
 
   tags = var.tags
 

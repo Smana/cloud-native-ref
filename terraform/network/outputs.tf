@@ -20,5 +20,5 @@ output "intra_subnets" {
 
 output "tailscale_security_group_id" {
   description = "value"
-  value       = module.tailscale.security_group_id
+  value       = module.tailscale_subnet_router.security_group_id
 }
