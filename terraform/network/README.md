@@ -7,7 +7,7 @@
 
 ### Prerequisites
 * Create a Tailscale account
-* Generate an auth key
+* Generate an API key
 
 Create the `variables.tfvars` file
 
@@ -15,9 +15,11 @@ Create the `variables.tfvars` file
 env    = "dev"
 region = "eu-west-3"
 
+
 tailscale = {
-  name     = "ogenki"
-  auth_key = "tskey-auth-..."
+  subnet_router_name = "ogenki"
+  tailnet            = "smainklh@gmail.com"
+  api_key            = "tskey-api-...."
 }
 
 tags = {
@@ -37,5 +39,3 @@ tailscale status
 100.118.83.67   ogenki               smainklh@    linux   -
 100.67.5.143    ip-10-0-10-77        smainklh@    linux   active; relay "par", tx 9881456 rx 45693984
 ```
-
-Then disable key expiry for this subnet router.

@@ -20,8 +20,9 @@ variable "vpc_cidr" {
 variable "tailscale" {
   type = map(string)
   default = {
-    name     = ""
-    auth_key = ""
+    subnet_router_name = ""
+    api_key            = ""
+    tailnet            = ""
   }
 }
 
