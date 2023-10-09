@@ -1,4 +1,4 @@
-resource "tailscale_acl" "sample_acl" {
+resource "tailscale_acl" "this" {
   acl = jsonencode({
     // Define access control lists for users, groups, autogroups, tags,
     // Tailscale IP addresses, and subnet ranges.
@@ -60,7 +60,7 @@ resource "tailscale_tailnet_key" "this" {
 
 module "tailscale_subnet_router" {
   source  = "Smana/tailscale-subnet-router/aws"
-  version = "1.0.2"
+  version = "1.0.3"
 
   region = var.region
   env    = var.env
@@ -68,12 +68,14 @@ module "tailscale_subnet_router" {
   name     = var.tailscale.subnet_router_name
   auth_key = tailscale_tailnet_key.this.key
 
-  vpc_id           = module.vpc.vpc_id
-  subnet_ids       = module.vpc.private_subnets
-  advertise_routes = [module.vpc.vpc_cidr_block]
+  vpc_id                = module.vpc.vpc_id
+  subnet_ids            = module.vpc.private_subnets
+  advertise_routes      = [module.vpc.vpc_cidr_block]
+  tailscale_ssh_enabled = true
 
   prometheus_node_exporter_enabled = true
-  ssm_enabled                      = true
+  // No need to enable SSH when Tailscale SSH is working
+  // ssm_enabled                      = true
 
   tags = var.tags
 
