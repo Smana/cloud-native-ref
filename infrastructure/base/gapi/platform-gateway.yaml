@@ -8,7 +8,7 @@ spec:
   gatewayClassName: cilium
   listeners:
     - name: http
-      hostname: "*.${domain_name}"
+      hostname: "*.priv.${domain_name}"
       port: 443
       protocol: HTTPS
       allowedRoutes:

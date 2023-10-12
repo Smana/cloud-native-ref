@@ -60,7 +60,7 @@ resource "tailscale_tailnet_key" "this" {
 
 module "tailscale_subnet_router" {
   source  = "Smana/tailscale-subnet-router/aws"
-  version = "1.0.3"
+  version = "1.0.4"
 
   region = var.region
   env    = var.env

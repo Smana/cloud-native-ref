@@ -7,7 +7,7 @@ spec:
     - name: platform
       namespace: infrastructure
   hostnames:
-    - "grafana-${cluster_name}.${domain_name}"
+    - "grafana-${cluster_name}.priv.${domain_name}"
   rules:
     - matches:
         - path:

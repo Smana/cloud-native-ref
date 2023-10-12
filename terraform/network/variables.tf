@@ -16,6 +16,11 @@ variable "vpc_cidr" {
   type        = string
 }
 
+variable "private_domain_name" {
+  description = "Route53 domain name for private records"
+  type        = string
+}
+
 
 variable "tailscale" {
   type = map(string)

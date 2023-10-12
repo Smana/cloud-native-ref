@@ -22,8 +22,9 @@ spec:
         patchStrategicMerge:
           metadata:
             annotations:
-              external-dns.alpha.kubernetes.io/hostname: gitops-${cluster_name}.${domain_name},grafana-${cluster_name}.${domain_name}
+              external-dns.alpha.kubernetes.io/hostname: gitops-${cluster_name}.priv.${domain_name},grafana-${cluster_name}.priv.${domain_name}
               service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
               service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+              alb.ingress.kubernetes.io/scheme: internal
           spec:
             loadBalancerClass: service.k8s.aws/nlb
