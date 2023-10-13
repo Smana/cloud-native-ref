@@ -9,7 +9,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: private-ca
-  namespace: cert-manager
+  namespace: security
 spec:
   isCA: true
   commonName: private-ca
