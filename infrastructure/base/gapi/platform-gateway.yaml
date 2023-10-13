@@ -3,7 +3,7 @@ kind: Gateway
 metadata:
   name: platform
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    cert-manager.io/cluster-issuer: private-ca
 spec:
   gatewayClassName: cilium
   listeners:

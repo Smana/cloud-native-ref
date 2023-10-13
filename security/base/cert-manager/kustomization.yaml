@@ -2,8 +2,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - cluster-issuer-prod.yaml
-  - cluster-issuer-staging.yaml
+  - le-clusterissuer-prod.yaml
+  - le-clusterissuer-staging.yaml
   - helmrelease.yaml
   - irsa.yaml
+  - self-signed-clusterissuer.yaml
   - source.yaml
