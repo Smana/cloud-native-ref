@@ -51,7 +51,7 @@ data "aws_security_group" "tailscale" {
 
   filter {
     name   = "tag:environment"
-    values = ["dev"]
+    values = [var.env]
   }
   filter {
     name   = "tag:app"

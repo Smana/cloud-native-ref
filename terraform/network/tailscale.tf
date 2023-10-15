@@ -17,7 +17,7 @@ resource "tailscale_acl" "this" {
         action = "check"
         src    = ["autogroup:member"]
         dst    = ["autogroup:self"]
-        users  = ["autogroup:nonroot", "root"]
+        users  = ["autogroup:nonroot"]
       }
     ]
 
@@ -28,27 +28,20 @@ resource "tailscale_acl" "this" {
       }
     }
 
-    // https://tailscale.com/kb/1218/nextdns/#disable-sharing-device-metadata-with-nextdns
-    nodeAttrs = [
-      {
-        target = ["*"]
-        attr   = ["nextdns:no-device-info"]
-      }
-    ]
-
   })
 }
 
 resource "tailscale_dns_nameservers" "this" {
   nameservers = [
-    "2a07:a8c0::9d:3ccb",                  // NextDNS nameserver https://tailscale.com/kb/1218/nextdns/
+    "1.1.1.1",                             // Cloudflare
     cidrhost(module.vpc.vpc_cidr_block, 2) // https://tailscale.com/kb/1141/aws-rds/#step-3-add-aws-dns-for-your-tailnet
   ]
 }
 
 resource "tailscale_dns_search_paths" "this" {
   search_paths = [
-    "${var.region}.compute.internal"
+    "${var.region}.compute.internal",
+    var.private_domain_name
   ]
 }
 
