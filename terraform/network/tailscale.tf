@@ -24,6 +24,7 @@ resource "tailscale_acl" "this" {
     // Allow the subnet router to advertise the VPC CIDR.
     autoApprovers = {
       routes = {
+        # tflint-ignore: terraform_deprecated_interpolation
         "${module.vpc.vpc_cidr_block}" = [var.tailscale.tailnet]
       }
     }

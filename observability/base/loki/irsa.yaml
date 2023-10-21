@@ -1,0 +1,38 @@
+apiVersion: aws.platformref.upbound.io/v1alpha1
+kind: IRSA
+metadata:
+    name: xplane-loki-${cluster_name}
+spec:
+    deletionPolicy: Delete
+    parameters:
+        condition: StringEquals
+        policyDocument: |
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "ReadPermissions",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:GetObject",
+                            "s3:ListBucket"
+                        ],
+                        "Resource": [
+                            "arn:aws:s3:::${region}-ogenki-loki",
+                            "arn:aws:s3:::${region}-ogenki-loki/*"
+                        ]
+                    },
+                    {
+                        "Sid": "WritePermissions",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:PutObject",
+                            "s3:DeleteObject"
+                        ],
+                        "Resource": "arn:aws:s3:::${region}-ogenki-loki/*"
+                    }
+                ]
+            }
+        serviceAccount:
+            name: loki
+            namespace: observability

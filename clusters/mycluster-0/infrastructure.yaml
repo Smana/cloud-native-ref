@@ -69,6 +69,29 @@ spec:
         optional: true
   dependsOn:
     - name: crossplane-providers
+# Deploy additional Crossplane custom resources
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
+kind: Kustomization
+metadata:
+  name: crossplane-custom-resources
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 2m0s
+  path: ./infrastructure/mycluster-0/crossplane/custom-resources
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+      - kind: Secret
+        name: eks-mycluster-0-vars
+        optional: true
+  dependsOn:
+    - name: crossplane-configuration
 ---
 # The infrastructure components are deployed when Crossplane is available in order to creates irsa resources
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -93,7 +116,7 @@ spec:
     kind: GitRepository
     name: flux-system
   dependsOn:
-    - name: crossplane-configuration
+    - name: crossplane-custom-resources
 ---
 # Gateways must be created after Kyverno's cluster policies are applied in order to add AWS annotations
 apiVersion: kustomize.toolkit.fluxcd.io/v1

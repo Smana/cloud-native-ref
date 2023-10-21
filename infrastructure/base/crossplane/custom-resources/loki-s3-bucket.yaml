@@ -1,0 +1,17 @@
+apiVersion: s3.aws.crossplane.io/v1beta1
+kind: Bucket
+metadata:
+  name: loki
+  annotations:
+    crossplane.io/external-name: ${region}-ogenki-loki
+spec:
+  forProvider:
+    acl: private
+    locationConstraint: ${region}
+    versioningConfiguration:
+      status: Enabled
+  providerConfigRef:
+    name: aws-provider-config
+  writeConnectionSecretToRef:
+    name: ogenki-loki-s3
+    namespace: observability

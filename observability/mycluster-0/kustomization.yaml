@@ -3,3 +3,4 @@ kind: Kustomization
 
 resources:
   - ../base/kube-prometheus-stack
+  - ../base/loki

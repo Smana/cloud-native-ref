@@ -1,0 +1,9 @@
+settings:
+  aws:
+    clusterName: ${cluster_name}
+    clusterEndpoint: ${cluster_endpoint}
+    defaultInstanceProfile: ${instance_profile_name}
+    interruptionQueueName: ${queue_name}
+serviceAccount:
+  annotations:
+    "eks.amazonaws.com/role-arn": ${irsa_arn}
