@@ -1,0 +1,34 @@
+# Based on https://grafana.com/docs/loki/latest/setup/install/helm/install-scalable/
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: loki
+spec:
+  releaseName: loki
+  chart:
+    spec:
+      chart: loki
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+      version: "5.35.0"
+  interval: 10m0s
+  timeout: 10m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+  values:
+    fullNameOverride: loki
+    loki:
+      serviceAnnotations:
+        eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/xplane-loki-${cluster_name}"
+      storage:
+        type: s3
+        s3:
+          endpoint: ${loki_s3_bucket_endpoint}
+          region: ${region}
+          s3ForcePathStyle: false
+          insecure: false

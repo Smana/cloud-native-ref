@@ -23,13 +23,13 @@ variable "cluster_version" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.14.2"
+  default     = "1.14.3"
   type        = string
 }
 
 variable "gateway_api_version" {
   description = "Gateway API CRDs version"
-  default     = "v0.8.0"
+  default     = "v0.8.1"
   type        = string
 }
 

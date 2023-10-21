@@ -20,6 +20,9 @@ spec:
       - kind: Secret
         name: eks-mycluster-0-vars
         optional: true
+      # We need this s3 bucket that is used for Loki
+      - kind: Secret
+        name: ogenki-loki-s3
   dependsOn:
     - name: crds
   healthChecks:

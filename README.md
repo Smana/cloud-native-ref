@@ -6,7 +6,7 @@ Based on [this repository](https://github.com/Smana/cilium-gateway-api)
 
 ## 🏗️ Crossplane configuration
 
-## 🔑 Federated authentication using Pinniped
+## 🛂 Federated authentication using Pinniped
 
 ## 🗒️ Audit logs with Loki and Vector
 
@@ -25,6 +25,8 @@ Anyway, I intentionnaly created a distinct directory that allows to provision th
 ## ✔️ Policies with Kyverno
 
 ## :closed_lock_with_key: Secrets management with Vault and external-secrets operator
+
+## 🔑 Private PKI with Vault
 
 ## 🌐 Network policies with Cilium
 
