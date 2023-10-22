@@ -7,7 +7,8 @@ module "iam_assumable_role_crossplane" {
   assume_role_condition_test = "StringLike"
 
   role_policy_arns = {
-    policy = aws_iam_policy.crossplane_irsa.arn
+    policy = aws_iam_policy.crossplane_irsa.arn,
+    policy = aws_iam_policy.crossplane_s3.arn
   }
 
   oidc_providers = {
@@ -22,7 +23,7 @@ module "iam_assumable_role_crossplane" {
 resource "aws_iam_policy" "crossplane_irsa" {
   name        = "crossplane_irsa_policy_${var.cluster_name}"
   path        = "/"
-  description = "Policy for creating IRSA on AWS EKS"
+  description = "Policy for creating IRSA on EKS"
 
   policy = <<EOF
 {
@@ -53,6 +54,41 @@ resource "aws_iam_policy" "crossplane_irsa" {
                 "iam:List*"
             ],
             "Resource": "*"
+        }
+    ]
+}
+EOF
+}
+
+#tfsec:ignore:aws-iam-no-policy-wildcards
+resource "aws_iam_policy" "crossplane_s3" {
+  name        = "crossplane_s3_policy_${var.cluster_name}"
+  path        = "/"
+  description = "Policy for managing S3 Buckets on EKS"
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": "s3:*",
+            "Resource": [
+                "arn:aws:s3:::foobar*",
+                "arn:aws:s3:::foobar*/*"
+            ]
+        },
+        {
+            "Effect": "Deny",
+            "Action": [
+                "s3:DeleteBucket",
+                "s3:DeleteObject",
+                "s3:DeleteObjectVersion"
+            ],
+            "Resource": [
+                "arn:aws:s3:::foobar*",
+                "arn:aws:s3:::foobar*/*"
+            ]
         }
     ]
 }
