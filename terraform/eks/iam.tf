@@ -1,5 +1,26 @@
+# AWS permissions for the EBS-CSI-DRIVER
+module "irsa_ebs_csi_driver" {
+  source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version   = "5.21.0"
+  role_name = "${var.cluster_name}-ebs_csi_driver"
+
+  assume_role_condition_test = "StringLike"
+
+  role_policy_arns = {
+    policy = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+  }
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:ebs-csi-*"]
+    }
+  }
+}
+
+
 # AWS permissions for Crossplane
-module "iam_assumable_role_crossplane" {
+module "irsa_crossplane" {
   source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version   = "5.21.0"
   role_name = "${var.cluster_name}-crossplane"

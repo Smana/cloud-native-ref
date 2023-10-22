@@ -1,0 +1,20 @@
+controller:
+  k8sTagClusterId: ${cluster_name}
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: ${irsa_role_arn}
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 100m
+      memory: 50Mi
+  enableMetrics: true
+  serviceMonitor:
+    forceEnable: true
+    labels:
+      prometheus-instance: main
+node:
+  resources:
+    limits:
+      cpu: 200m
+      memory: 200Mi

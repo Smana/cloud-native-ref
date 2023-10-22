@@ -1,7 +1,0 @@
-apiVersion: source.toolkit.fluxcd.io/v1beta2
-kind: HelmRepository
-metadata:
-  name: aws-ebs-csi-driver
-spec:
-  interval: 30m
-  url: https://kubernetes-sigs.github.io/aws-ebs-csi-driver
