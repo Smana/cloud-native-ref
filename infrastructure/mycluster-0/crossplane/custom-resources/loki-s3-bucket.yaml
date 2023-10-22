@@ -9,4 +9,4 @@ spec:
     region: ${region}
   writeConnectionSecretToRef:
     name: ogenki-loki-s3
-    namespace: observability
+    namespace: flux-system

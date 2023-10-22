@@ -3,5 +3,4 @@ kind: Kustomization
 
 resources:
   - ../base/aws-load-balancer-controller
-  - ../base/crossplane/custom-resources
   - ../base/external-dns

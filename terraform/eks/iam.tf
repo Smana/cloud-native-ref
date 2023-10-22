@@ -7,8 +7,8 @@ module "iam_assumable_role_crossplane" {
   assume_role_condition_test = "StringLike"
 
   role_policy_arns = {
-    policy = aws_iam_policy.crossplane_irsa.arn,
-    policy = aws_iam_policy.crossplane_s3.arn
+    irsa = aws_iam_policy.crossplane_irsa.arn,
+    s3   = aws_iam_policy.crossplane_s3.arn
   }
 
   oidc_providers = {
@@ -74,8 +74,8 @@ resource "aws_iam_policy" "crossplane_s3" {
             "Effect": "Allow",
             "Action": "s3:*",
             "Resource": [
-                "arn:aws:s3:::foobar*",
-                "arn:aws:s3:::foobar*/*"
+                "arn:aws:s3:::${var.region}-ogenki-loki",
+                "arn:aws:s3:::${var.region}-ogenki-loki/*"
             ]
         },
         {
@@ -86,8 +86,8 @@ resource "aws_iam_policy" "crossplane_s3" {
                 "s3:DeleteObjectVersion"
             ],
             "Resource": [
-                "arn:aws:s3:::foobar*",
-                "arn:aws:s3:::foobar*/*"
+                "arn:aws:s3:::${var.region}-ogenki-loki",
+                "arn:aws:s3:::${var.region}-ogenki-loki/*"
             ]
         }
     ]
