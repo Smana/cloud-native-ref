@@ -5,7 +5,7 @@ metadata:
 spec:
     deletionPolicy: Delete
     parameters:
-        condition: StringEquals
+        condition: StringLike
         # Reference: https://github.com/kubernetes-sigs/aws-ebs-csi-driver/blob/master/docs/example-iam-policy.json
         policyDocument: |
             {
@@ -143,5 +143,5 @@ spec:
             }
 
         serviceAccount:
-            name: aws-ebs-csi-driver
+            name: "ebs-csi*"
             namespace: kube-system

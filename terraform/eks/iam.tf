@@ -40,6 +40,7 @@ resource "aws_iam_policy" "crossplane_irsa" {
                 "iam:DeleteRole",
                 "iam:DetachRolePolicy",
                 "iam:AttachRolePolicy",
+                "iam:UpdateAssumeRolePolicy",
                 "iam:PassRole"
             ],
             "Resource": [
