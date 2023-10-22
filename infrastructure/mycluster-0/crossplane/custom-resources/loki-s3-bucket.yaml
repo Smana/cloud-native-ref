@@ -6,10 +6,7 @@ metadata:
     crossplane.io/external-name: ${region}-ogenki-loki
 spec:
   forProvider:
-    acl: private
-    locationConstraint: ${region}
-    versioningConfiguration:
-      status: Enabled
+    region: ${region}
   providerConfigRef:
     name: aws-provider-config
   writeConnectionSecretToRef:
