@@ -7,8 +7,6 @@ metadata:
 spec:
   forProvider:
     region: ${region}
-  providerConfigRef:
-    name: aws-provider-config
   writeConnectionSecretToRef:
     name: ogenki-loki-s3
     namespace: observability
