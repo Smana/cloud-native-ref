@@ -12,7 +12,7 @@ Based on [this repository](https://github.com/Smana/cilium-gateway-api)
 
 ## 🔗 VPN connection using Tailscale
 
-The VPN configuration is done within the `tofu/network` directory.
+The VPN configuration is done within the `terraform/network` directory.
 You can follow the steps described in this [README](/terraform/network/README.md) in order to provision a server that allows to access to private resources within AWS.
 
 Most of the time we don't want to expose our resources publicly. For instance our platform tools such as `Grafana`, the `Flux web UI` should be access through a secured wire.
