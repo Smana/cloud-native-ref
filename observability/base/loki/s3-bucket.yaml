@@ -7,6 +7,3 @@ metadata:
 spec:
   forProvider:
     region: ${region}
-  writeConnectionSecretToRef:
-    name: ogenki-loki-s3
-    namespace: flux-system

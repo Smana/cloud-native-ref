@@ -20,13 +20,14 @@ spec:
       - kind: Secret
         name: eks-mycluster-0-vars
         optional: true
-      # We need this s3 bucket that is used for Loki
-      - kind: Secret
-        name: ogenki-loki-s3
   dependsOn:
     - name: crds
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v1beta1
       kind: HelmRelease
       name: kube-prometheus-stack
+      namespace: observability
+    - apiVersion: helm.toolkit.fluxcd.io/v1beta1
+      kind: HelmRelease
+      name: loki
       namespace: observability

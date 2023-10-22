@@ -11,7 +11,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: grafana
-        namespace: flux-system
+        namespace: observability
       version: "5.35.0"
   interval: 10m0s
   timeout: 10m
@@ -28,7 +28,7 @@ spec:
       storage:
         type: s3
         s3:
-          endpoint: ${loki_s3_bucket_endpoint}
+          endpoint: "s3://${region}-ogenki-loki.s3.amazonaws.com"
           region: ${region}
           s3ForcePathStyle: false
           insecure: false
