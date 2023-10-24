@@ -28,7 +28,8 @@ spec:
       storage:
         type: s3
         s3:
-          endpoint: "s3://${region}-ogenki-loki.s3.amazonaws.com"
-          region: ${region}
-          s3ForcePathStyle: false
+          bucketnames: ${region}-ogenki-loki
+          s3: s3://${region}
+          s3ForcePathStyle: true
           insecure: false
+          sse_encryption: false
