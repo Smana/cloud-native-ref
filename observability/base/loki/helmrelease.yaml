@@ -22,10 +22,15 @@ spec:
     crds: CreateReplace
   values:
     fullNameOverride: loki
-    loki:
-      serviceAnnotations:
+    serviceAccount:
+      annotations:
         eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/xplane-loki-${cluster_name}"
+    loki:
       storage:
+        bucketNames:
+          admin: ${region}-ogenki-loki
+          chunks: ${region}-ogenki-loki
+          ruler: ${region}-ogenki-loki
         type: s3
         s3:
           bucketnames: ${region}-ogenki-loki
