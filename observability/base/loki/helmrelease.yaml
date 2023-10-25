@@ -26,6 +26,7 @@ spec:
       annotations:
         eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/xplane-loki-${cluster_name}"
     loki:
+      auth_enabled: false
       storage:
         bucketNames:
           admin: ${region}-ogenki-loki
