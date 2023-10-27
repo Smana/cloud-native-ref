@@ -10,7 +10,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: vector
-        namespace: flux-system
+        namespace: observability
       version: "0.21.3"
   interval: 10m0s
   timeout: 30m
