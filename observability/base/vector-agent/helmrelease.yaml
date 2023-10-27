@@ -1,0 +1,69 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: vector-agent
+spec:
+  releaseName: vector-agent
+  chart:
+    spec:
+      chart: vector-agent
+      sourceRef:
+        kind: HelmRepository
+        name: vector
+        namespace: flux-system
+      version: "0.21.3"
+  interval: 10m0s
+  timeout: 30m
+  install:
+    remediation:
+      retries: 3
+  values:
+    # fullnameOverride -- Override the full name of resources.
+    fullnameOverride: "vector-agent"
+    customConfig:
+      data_dir: /vector-data-dir
+      api:
+        enabled: true
+        address: 127.0.0.1:8686
+        playground: false
+      sources:
+        kubernetes_logs:
+          type: kubernetes_logs
+        host_metrics:
+          filesystem:
+            devices:
+              excludes: [binfmt_misc]
+            filesystems:
+              excludes: [binfmt_misc]
+            mountPoints:
+              excludes: ["*/proc/sys/fs/binfmt_misc"]
+          type: host_metrics
+        internal_metrics:
+          type: internal_metrics
+      sinks:
+        prom_exporter:
+          type: prometheus_exporter
+          inputs: [host_metrics, internal_metrics]
+          address: 0.0.0.0:9090
+        loki:
+          type: loki
+          inputs: [kubernetes_logs]
+          endpoint: http://loki-gateway
+          encoding:
+            codec: json
+          labels:
+            namespace: |
+              {{ print "{{ kubernetes.pod_namespace }}" }}
+            pod: |
+              {{ print "{{ kubernetes.pod_name }}" }}
+            node: |
+              {{ print "{{ kubernetes.pod_node_name }}" }}
+            pod_owner: |
+              {{ print "{{ kubernetes.pod_owner }}" }}
+            cluster: "mycluster-0"
+
+    # Configure a PodMonitor for Vector, requires the PodMonitor CRD to be installed.
+    podMonitor:
+      enabled: true
+      additionalLabels:
+        prometheus-instance: main
