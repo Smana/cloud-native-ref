@@ -78,6 +78,22 @@ spec:
               editable: true
               options:
                 path: /var/lib/grafana/dashboards/flux
+            - name: "karpenter"
+              orgId: 1
+              folder: "Karpenter"
+              type: file
+              disableDeletion: true
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards/karpenter
+            - name: "loki"
+              orgId: 1
+              folder: "Loki"
+              type: file
+              disableDeletion: true
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards/loki
       dashboards:
         flux:
           flux-controlplane:
@@ -85,6 +101,24 @@ spec:
             datasource: Prometheus
           flux-cluster:
             url: https://raw.githubusercontent.com/fluxcd/flux2/main/manifests/monitoring/monitoring-config/dashboards/cluster.json
+            datasource: Prometheus
+        karpenter:
+          karpenter-capacity:
+            url: https://raw.githubusercontent.com/aws/karpenter/main/website/content/en/v0.31/getting-started/getting-started-with-karpenter/karpenter-capacity-dashboard.json
+            datasource: Prometheus
+          karpenter-controllers:
+            url: https://raw.githubusercontent.com/aws/karpenter/main/website/content/en/v0.31/getting-started/getting-started-with-karpenter/karpenter-controllers.json
+            datasource: Prometheus
+          karpenter-performance:
+            url: https://raw.githubusercontent.com/aws/karpenter/main/website/content/en/v0.31/getting-started/getting-started-with-karpenter/karpenter-performance-dashboard.json
+            datasource: Prometheus
+          karpenter-controllers-allocation:
+            url: https://raw.githubusercontent.com/aws/karpenter/main/website/content/en/v0.31/getting-started/getting-started-with-karpenter/karpenter-controllers-allocation.json
+            datasource: Prometheus
+        loki:
+          kubernetes:
+            gnetId: 15141
+            revision: 1
             datasource: Prometheus
     kube-state-metrics:
       prometheusScrape: false # disable scrape annotation as we use servicemonitor
