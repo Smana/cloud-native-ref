@@ -6,12 +6,12 @@ spec:
   releaseName: vector-agent
   chart:
     spec:
-      chart: vector-agent
+      chart: vector
       sourceRef:
         kind: HelmRepository
         name: vector
         namespace: observability
-      version: "0.21.3"
+      version: "0.26.0"
   interval: 10m0s
   timeout: 30m
   install:
@@ -20,6 +20,7 @@ spec:
   values:
     # fullnameOverride -- Override the full name of resources.
     fullnameOverride: "vector-agent"
+    role: "Agent"
     customConfig:
       data_dir: /vector-data-dir
       api:
@@ -52,13 +53,13 @@ spec:
           encoding:
             codec: json
           labels:
-            namespace: >-
+            namespace: |-
               {{ print "{{ kubernetes.pod_namespace }}" }}
-            pod_name: >-
+            pod_name: |-
               {{ print "{{ kubernetes.pod_name }}" }}
-            node_name: >-
+            node_name: |-
               {{ print "{{ kubernetes.pod_node_name }}" }}
-            pod_owner: >-
+            pod_owner: |-
               {{ print "{{ kubernetes.pod_owner }}" }}
             cluster_name: "${cluster_name}"
 
