@@ -132,12 +132,12 @@
                     "showLegend": false
                 },
                 "tooltip": {
-                    "mode": "single",
+                    "mode": "single"
                 }
             },
             "targets": [
                 {
-                    "expr": "sum(count_over_time({namespace=~\"$namespace\", node_name=~\"$node_name\", pod_owner=~\"$pod_owner\", pod_name=~\"$pod_name\"} |= \"$query\" [$__interval]))",
+                    "expr": "sum(count_over_time({namespace=~\"$namespace\", node_name=~\"$node_name\", pod_owner=~\"$pod_owner\", pod_name=~\"$pod_name\", container_name=~\"$container_name\"} |= \"$query\" [$__interval]))",
                     "instant": false,
                     "legendFormat": "Log count",
                     "range": true,
@@ -168,7 +168,7 @@
             },
             "targets": [
                 {
-                    "expr": "{namespace=~\"$namespace\", node_name=~\"$node_name\", pod_owner=~\"$pod_owner\", pod_name=~\"$pod_name\"} |= \"$query\"",
+                    "expr": "{namespace=~\"$namespace\", node_name=~\"$node_name\", pod_owner=~\"$pod_owner\", pod_name=~\"$pod_name\", container_name=~\"$container_name\"} |= \"$query\"",
                     "refId": "A"
                 }
             ],
@@ -292,6 +292,36 @@
                 "options": [],
                 "query": {
                     "label": "pod_name",
+                    "stream": "",
+                    "type": 1
+                },
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "allValue": ".+",
+                "current": {
+                    "selected": true,
+                    "text": [
+                        "All"
+                    ],
+                    "value": [
+                        "$__all"
+                    ]
+                },
+                "datasource": "${DS_LOKI}",
+                "definition": "",
+                "hide": 0,
+                "includeAll": true,
+                "label": "container_name",
+                "multi": true,
+                "name": "container_name",
+                "options": [],
+                "query": {
+                    "label": "container_name",
                     "stream": "",
                     "type": 1
                 },

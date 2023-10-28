@@ -55,12 +55,14 @@ spec:
           labels:
             namespace: |-
               {{ print "{{ kubernetes.pod_namespace }}" }}
+            pod_owner: |-
+              {{ print "{{ kubernetes.pod_owner }}" }}
             pod_name: |-
               {{ print "{{ kubernetes.pod_name }}" }}
             node_name: |-
               {{ print "{{ kubernetes.pod_node_name }}" }}
-            pod_owner: |-
-              {{ print "{{ kubernetes.pod_owner }}" }}
+            container_name: |-
+              {{ print "{{ kubernetes.container_name }}" }}
             cluster_name: "${cluster_name}"
 
     # Configure a PodMonitor for Vector, requires the PodMonitor CRD to be installed.

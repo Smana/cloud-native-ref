@@ -9,10 +9,6 @@ controller:
       cpu: 100m
       memory: 50Mi
   enableMetrics: true
-  serviceMonitor:
-    forceEnable: true
-    labels:
-      prometheus-instance: main
 node:
   resources:
     limits:
