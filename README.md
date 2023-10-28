@@ -30,7 +30,7 @@ Anyway, I intentionnaly created a distinct directory that allows to provision th
 
 ## 🌐 Network policies with Cilium
 
-## 🕵️ CI
+## 🧪 CI
 
 2 things are checked
 

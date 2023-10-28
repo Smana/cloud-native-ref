@@ -53,7 +53,7 @@ spec:
           datasources:
             - name: Loki
               type: loki
-              url: http://loki-gateway:3100
+              url: http://loki-gateway
               jsonData:
                 httpHeaderName1: "X-Scope-OrgID"
               secureJsonData:
