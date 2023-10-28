@@ -116,10 +116,9 @@ spec:
             url: https://raw.githubusercontent.com/aws/karpenter/main/website/content/en/v0.31/getting-started/getting-started-with-karpenter/karpenter-controllers-allocation.json
             datasource: Prometheus
         loki:
-          kubernetes:
-            gnetId: 15141
-            revision: 1
+          kubernetes-logs:
             datasource: Loki
+            url: https://raw.githubusercontent.com/Smana/demo-secured-eks/main/observability/base/kube-prometheus-stack/grafana-dashboards/kubernetes_logs.json
     kube-state-metrics:
       prometheusScrape: false # disable scrape annotation as we use servicemonitor
       prometheus:

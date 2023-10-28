@@ -10,6 +10,8 @@ Based on [this repository](https://github.com/Smana/cilium-gateway-api)
 
 ## 🗒️ Audit logs with Loki and Vector
 
+ℹ️ In progress ...
+
 ## 🔗 VPN connection using Tailscale
 
 The VPN configuration is done within the `terraform/network` directory.
