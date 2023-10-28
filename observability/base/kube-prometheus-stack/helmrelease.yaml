@@ -119,7 +119,7 @@ spec:
           kubernetes:
             gnetId: 15141
             revision: 1
-            datasource: Prometheus
+            datasource: Loki
     kube-state-metrics:
       prometheusScrape: false # disable scrape annotation as we use servicemonitor
       prometheus:
