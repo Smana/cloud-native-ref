@@ -27,6 +27,12 @@ variable "cilium_version" {
   type        = string
 }
 
+variable "ebs_csi_driver_chart_version" {
+  description = "EBS CSI Driver Helm chart version"
+  default     = "2.24.0"
+  type        = string
+}
+
 variable "gateway_api_version" {
   description = "Gateway API CRDs version"
   default     = "v0.8.1"
