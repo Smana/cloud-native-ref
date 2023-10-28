@@ -52,15 +52,15 @@ spec:
           encoding:
             codec: json
           labels:
-            namespace: |
+            namespace: >-
               {{ print "{{ kubernetes.pod_namespace }}" }}
-            pod: |
+            pod_name: >-
               {{ print "{{ kubernetes.pod_name }}" }}
-            node: |
+            node_name: >-
               {{ print "{{ kubernetes.pod_node_name }}" }}
-            pod_owner: |
+            pod_owner: >-
               {{ print "{{ kubernetes.pod_owner }}" }}
-            cluster: "mycluster-0"
+            cluster_name: "${cluster_name}"
 
     # Configure a PodMonitor for Vector, requires the PodMonitor CRD to be installed.
     podMonitor:
