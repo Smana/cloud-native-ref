@@ -1,0 +1,32 @@
+apiVersion: firehose.aws.upbound.io/v1beta1
+kind: DeliveryStream
+metadata:
+  labels:
+    ogenki.io/id: "vector-stream"
+  name: xplane-vector
+spec:
+  forProvider:
+    destination: extended_s3
+    extendedS3Configuration:
+      - bucketArnSelector:
+          matchLabels:
+            ogenki.io/id: "vector-stream"
+        roleArnSelector:
+          matchLabels:
+            ogenki.io/id: "vector-stream-firehose"
+    httpEndpointConfiguration:
+      - accessKeySecretRef:
+          key: oidc_issuer_host
+          name: eks-mycluster-0-vars
+          namespace: crossplane-system
+        url: https://vector-cloudwatch-${cluster_name}.${domain_name}
+        retryDuration: 300
+        cloudwatchLoggingOptions:
+          - enabled: true
+            logGroupName: "xplane-vector"
+            logStreamName: "xplane-vector"
+        requestConfiguration:
+          - contentEncoding: GZIP
+        s3BackupMode: FailedDataOnly
+    name: xplane-vector
+    region: ${region}

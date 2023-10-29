@@ -3,5 +3,8 @@ kind: Kustomization
 
 resources:
   - controller-config.yaml
+  - provider-cloudwatchlogs.yaml
+  - provider-firehose.yaml
   - provider-iam.yaml
+  - provider-kinesis.yaml
   - provider-s3.yaml

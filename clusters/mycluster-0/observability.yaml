@@ -31,5 +31,9 @@ spec:
       namespace: observability
     - apiVersion: helm.toolkit.fluxcd.io/v1beta1
       kind: HelmRelease
+      name: vector-cloudwatch
+      namespace: observability
+    - apiVersion: helm.toolkit.fluxcd.io/v1beta1
+      kind: HelmRelease
       name: vector-agent
       namespace: observability

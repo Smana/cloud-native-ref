@@ -1,0 +1,28 @@
+apiVersion: iam.aws.upbound.io/v1beta1
+kind: Role
+metadata:
+  labels:
+    ogenki.io/id: "vector-stream-subscription"
+  name: xplane-subscription-vector
+spec:
+  forProvider:
+    assumeRolePolicy: |
+      {
+        "Statement": {
+          "Effect": "Allow",
+          "Principal": { "Service": "logs.${region}.amazonaws.com" },
+          "Action": "sts:AssumeRole"
+        }
+      }
+    inlinePolicy:
+      - name: xplane-cloudwatch-vector-kinesis
+        policy: |
+          {
+              "Statement":[
+                {
+                  "Effect":"Allow",
+                  "Action":["firehose:*"],
+                  "Resource":["arn:aws:firehose:${region}:${aws_account_id}:deliverystream/vector-stream"]
+                }
+              ]
+          }

@@ -1,0 +1,68 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: vector-cloudwatch
+spec:
+  releaseName: vector-cloudwatch
+  chart:
+    spec:
+      chart: vector
+      sourceRef:
+        kind: HelmRepository
+        name: vector
+        namespace: observability
+      version: "0.26.0"
+  interval: 10m0s
+  timeout: 30m
+  install:
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: "vector-cloudwatch"
+    role: "Aggregator"
+    customConfig:
+      data_dir: /vector-data-dir
+      api:
+        enabled: true
+        address: 127.0.0.1:8686
+        playground: false
+      sources:
+        firehose:
+          type: aws_kinesis_firehose
+          address: "0.0.0.0:8080"
+          access_keys: ["${oidc_issuer_host}"] # Using oidc issuer as string to share with the Firehose access key
+        internal_metrics:
+          type: internal_metrics
+      transforms:
+        parse:
+          type: remap
+          inputs: ["firehose"]
+          drop_on_error: false
+          source: |-
+            parsed = parse_aws_cloudwatch_log_subscription_message!(.message)
+            . = unnest(parsed.log_events)
+            . = map_values(.) -> |value| {
+              event = del(value.log_events)
+              value |= event
+              message = del(.message)
+              . |= object!(parse_json!(message))
+            }
+      sinks:
+        prom_exporter:
+          type: prometheus_exporter
+          inputs: [internal_metrics]
+          address: 0.0.0.0:9090
+        loki:
+          type: loki
+          inputs: [kubernetes_logs]
+          endpoint: http://loki-gateway
+          encoding:
+            codec: json
+          labels:
+            env: dev
+
+    # Configure a PodMonitor for Vector, requires the PodMonitor CRD to be installed.
+    podMonitor:
+      enabled: true
+      additionalLabels:
+        prometheus-instance: main

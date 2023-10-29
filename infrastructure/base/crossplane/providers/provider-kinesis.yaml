@@ -1,0 +1,8 @@
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-kinesis
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-kinesis:v0.43.1
+  controllerConfigRef:
+    name: aws-config

@@ -1,0 +1,15 @@
+apiVersion: cloudwatchlogs.aws.upbound.io/v1beta1
+kind: Destination
+metadata:
+  labels:
+    ogenki.io/id: "vector-stream"
+  name: xplane-vector
+spec:
+  forProvider:
+    region: ${region}
+    roleArnSelector:
+      matchLabels:
+        ogenki.io/id: "vector-stream-firehose"
+    targetArnSelector:
+      matchLabels:
+        ogenki.io/id: "vector-stream"

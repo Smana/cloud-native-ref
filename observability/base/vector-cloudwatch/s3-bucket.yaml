@@ -1,0 +1,11 @@
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: vector-cloudwatch
+  labels:
+    ogenki.io/id: "vector-stream"
+  annotations:
+    crossplane.io/external-name: ${region}-ogenki-vector-stream
+spec:
+  forProvider:
+    region: ${region}

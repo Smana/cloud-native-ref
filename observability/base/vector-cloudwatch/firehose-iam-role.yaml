@@ -1,0 +1,55 @@
+apiVersion: iam.aws.upbound.io/v1beta1
+kind: Role
+metadata:
+  labels:
+    ogenki.io/id: "vector-stream-firehose"
+  name: xplane-firehose-vector
+spec:
+  forProvider:
+    assumeRolePolicy: |
+      {
+        "Statement": {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "firehose.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole",
+          "Condition": {
+            "StringEquals": {
+              "sts:ExternalId": "${aws_account_id}"
+            }
+          }
+        }
+      }
+    inlinePolicy:
+      - name: xplane-firehose-vector-s3
+        policy: |
+          {
+              "Version": "2012-10-17",
+              "Statement": [
+                  {
+                      "Effect": "Allow",
+                      "Action": [
+                          "s3:AbortMultipartUpload",
+                          "s3:GetBucketLocation",
+                          "s3:GetObject",
+                          "s3:ListBucket",
+                          "s3:ListBucketMultipartUploads",
+                          "s3:PutObject"
+                      ],
+                      "Resource": [
+                          "arn:aws:s3:::eu-west-3-ogenki-vector-stream",
+                          "arn:aws:s3:::eu-west-3-ogenki-vector-stream/*"
+                      ]
+                  },
+                  {
+                      "Effect": "Allow",
+                      "Action": [
+                          "logs:PutLogEvents"
+                      ],
+                      "Resource": [
+                          "arn:aws:logs:eu-west-3:396740644681:log-group:vector:*"
+                      ]
+                  }
+              ]
+          }

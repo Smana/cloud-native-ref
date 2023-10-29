@@ -1,0 +1,19 @@
+apiVersion: cloudwatchlogs.aws.upbound.io/v1beta1
+kind: SubscriptionFilter
+metadata:
+  labels:
+    ogenki.io/id: "vector-stream"
+  name: xplane-vector
+spec:
+  forProvider:
+    destinationArnSelector:
+      matchLabels:
+        ogenki.io/id: "vector-stream"
+    distribution: Random
+    filterPattern: ""
+    logGroupName: xplane-vector
+    name: Destination
+    region: ${region}
+    roleArnSelector:
+      matchLabels:
+        ogenki.io/id: "vector-stream-subscription"
