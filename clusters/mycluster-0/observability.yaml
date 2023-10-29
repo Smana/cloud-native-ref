@@ -15,13 +15,11 @@ spec:
     substitute:
       domain_name: "cloud.ogenki.io"
     substituteFrom:
-      - kind: ConfigMap
-        name: eks-mycluster-0-vars
       - kind: Secret
         name: eks-mycluster-0-vars
-        optional: true
   dependsOn:
     - name: crds
+    - name: security
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v1beta1
       kind: HelmRelease
@@ -30,4 +28,8 @@ spec:
     - apiVersion: helm.toolkit.fluxcd.io/v1beta1
       kind: HelmRelease
       name: loki
+      namespace: observability
+    - apiVersion: helm.toolkit.fluxcd.io/v1beta1
+      kind: HelmRelease
+      name: vector-agent
       namespace: observability

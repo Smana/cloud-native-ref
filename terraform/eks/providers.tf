@@ -14,7 +14,8 @@ provider "flux" {
     cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
   }
   git = {
-    url = "ssh://git@github.com/${var.github_owner}/${var.github_repository}.git"
+    url    = "ssh://git@github.com/${var.github_owner}/${var.github_repository}.git"
+    branch = var.github_branch
     ssh = {
       username    = "git"
       private_key = tls_private_key.flux.private_key_pem

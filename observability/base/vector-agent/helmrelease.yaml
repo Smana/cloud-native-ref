@@ -18,7 +18,6 @@ spec:
     remediation:
       retries: 3
   values:
-    # fullnameOverride -- Override the full name of resources.
     fullnameOverride: "vector-agent"
     role: "Agent"
     customConfig:
@@ -63,6 +62,8 @@ spec:
               {{ print "{{ kubernetes.pod_node_name }}" }}
             container_name: |-
               {{ print "{{ kubernetes.container_name }}" }}
+            stream: |-
+              {{ print "{{ stream }}" }}
             cluster_name: "${cluster_name}"
 
     # Configure a PodMonitor for Vector, requires the PodMonitor CRD to be installed.

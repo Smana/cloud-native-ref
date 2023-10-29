@@ -4,7 +4,7 @@ metadata:
   name: grafana
 spec:
   parentRefs:
-    - name: platform
+    - name: platform-private
       namespace: infrastructure
   hostnames:
     - "grafana-${cluster_name}.priv.${domain_name}"

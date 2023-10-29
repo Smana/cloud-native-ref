@@ -14,3 +14,7 @@ node:
     limits:
       cpu: 200m
       memory: 200Mi
+  serviceMonitor:
+    forceEnable: true
+    labels:
+      prometheus-instance: main

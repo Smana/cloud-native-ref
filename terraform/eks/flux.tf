@@ -19,7 +19,8 @@ resource "flux_bootstrap_git" "this" {
   ]
 }
 
-resource "kubernetes_config_map" "flux_clusters_vars" {
+# Write secret items in order to use them as variables with flux's variables substitions
+resource "kubernetes_secret" "flux_clusters_vars" {
   metadata {
     name      = "eks-${var.cluster_name}-vars"
     namespace = "flux-system"
@@ -34,21 +35,6 @@ resource "kubernetes_config_map" "flux_clusters_vars" {
     region            = var.region
     environment       = var.env
     vpc_id            = data.aws_vpc.selected.id
-  }
-  depends_on = [flux_bootstrap_git.this]
-}
-
-# Write Github secrets in order to use them as variables with flux's variables substitions
-resource "kubernetes_secret" "flux_github_creds" {
-  metadata {
-    name      = "flux-github-creds"
-    namespace = "flux-system"
-  }
-
-  data = {
-    github_owner      = var.github_owner
-    github_token      = var.github_token
-    github_repository = var.github_repository
   }
   depends_on = [flux_bootstrap_git.this]
 }

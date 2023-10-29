@@ -49,6 +49,8 @@ resource "helm_release" "aws_ebs_csi_driver" {
   values = [
     file("${path.module}/helm_values/aws-ebs-csi-driver.yaml")
   ]
+
+  depends_on = [helm_release.cilium]
 }
 
 resource "helm_release" "karpenter" {
@@ -58,7 +60,7 @@ resource "helm_release" "karpenter" {
   name       = "karpenter"
   repository = "oci://public.ecr.aws/karpenter"
   chart      = "karpenter"
-  version    = "v0.31.1"
+  version    = var.karpenter_version
 
   values = [
     templatefile(
