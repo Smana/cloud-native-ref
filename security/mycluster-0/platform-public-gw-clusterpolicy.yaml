@@ -1,12 +1,12 @@
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: mutate-cilium-platform-gateway
+  name: mutate-cilium-platform-public-gateway
   annotations:
-    policies.kyverno.io/title: Mutate shared gateway
+    policies.kyverno.io/title: Mutate Vector Cloudwatch Gateway
     policies.kyverno.io/severity: medium
     policies.kyverno.io/description: >-
-      We need to mutate the shared gateway service in order to configure the AWS LB.
+      We need to mutate the public shared gateway service in order to configure the AWS LB.
 spec:
   rules:
     - name: mutate-svc-annotations
@@ -17,13 +17,13 @@ spec:
                 - Service
               namespaces:
                 - infrastructure
-              name: cilium-gateway-platform
+              name: cilium-gateway-platform-public
       mutate:
         patchStrategicMerge:
           metadata:
             annotations:
-              external-dns.alpha.kubernetes.io/hostname: gitops-${cluster_name}.priv.${domain_name},grafana-${cluster_name}.priv.${domain_name}
-              service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
+              external-dns.alpha.kubernetes.io/hostname: vector-cloudwatch-${cluster_name}.${domain_name}
+              service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
               service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
           spec:
             loadBalancerClass: service.k8s.aws/nlb

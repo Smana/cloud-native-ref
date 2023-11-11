@@ -27,6 +27,12 @@ variable "cilium_version" {
   type        = string
 }
 
+variable "karpenter_version" {
+  description = "Karpenter version"
+  default     = "v0.32.1"
+  type        = string
+}
+
 variable "ebs_csi_driver_chart_version" {
   description = "EBS CSI Driver Helm chart version"
   default     = "2.24.0"
@@ -56,11 +62,11 @@ variable "github_repository" {
   description = "github repository name"
 }
 
-# variable "branch" {
-#   type        = string
-#   default     = "main"
-#   description = "branch name"
-# }
+variable "github_branch" {
+  type        = string
+  default     = "main"
+  description = "Github branch name"
+}
 
 variable "tags" {
   description = "A map of tags to add to all resources"

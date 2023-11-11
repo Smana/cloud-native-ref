@@ -28,8 +28,11 @@ module "irsa_crossplane" {
   assume_role_condition_test = "StringLike"
 
   role_policy_arns = {
-    irsa = aws_iam_policy.crossplane_irsa.arn,
-    s3   = aws_iam_policy.crossplane_s3.arn
+    cloudwatch = aws_iam_policy.crossplane_cloudwatch.arn,
+    kinesis    = aws_iam_policy.crossplane_kinesis.arn,
+    firehose   = aws_iam_policy.crossplane_firehose.arn,
+    irsa       = aws_iam_policy.crossplane_irsa.arn,
+    s3         = aws_iam_policy.crossplane_s3.arn
   }
 
   oidc_providers = {
@@ -42,7 +45,7 @@ module "irsa_crossplane" {
 
 #tfsec:ignore:aws-iam-no-policy-wildcards
 resource "aws_iam_policy" "crossplane_irsa" {
-  name        = "crossplane_irsa_policy_${var.cluster_name}"
+  name        = "crossplane_irsa_${var.cluster_name}"
   path        = "/"
   description = "Policy for creating IRSA on EKS"
 
@@ -57,6 +60,7 @@ resource "aws_iam_policy" "crossplane_irsa" {
                 "iam:TagRole",
                 "iam:CreateRole",
                 "iam:CreatePolicy",
+                "iam:PutRolePolicy",
                 "iam:DeletePolicy",
                 "iam:DeleteRole",
                 "iam:DetachRolePolicy",
@@ -84,7 +88,7 @@ EOF
 
 #tfsec:ignore:aws-iam-no-policy-wildcards
 resource "aws_iam_policy" "crossplane_s3" {
-  name        = "crossplane_s3_policy_${var.cluster_name}"
+  name        = "crossplane_s3_${var.cluster_name}"
   path        = "/"
   description = "Policy for managing S3 Buckets on EKS"
 
@@ -97,7 +101,9 @@ resource "aws_iam_policy" "crossplane_s3" {
             "Action": "s3:*",
             "Resource": [
                 "arn:aws:s3:::${var.region}-ogenki-loki",
-                "arn:aws:s3:::${var.region}-ogenki-loki/*"
+                "arn:aws:s3:::${var.region}-ogenki-loki/*",
+                "arn:aws:s3:::${var.region}-ogenki-vector-stream",
+                "arn:aws:s3:::${var.region}-ogenki-vector-stream/*"
             ]
         },
         {
@@ -109,8 +115,109 @@ resource "aws_iam_policy" "crossplane_s3" {
             ],
             "Resource": [
                 "arn:aws:s3:::${var.region}-ogenki-loki",
-                "arn:aws:s3:::${var.region}-ogenki-loki/*"
+                "arn:aws:s3:::${var.region}-ogenki-loki/*",
+                "arn:aws:s3:::${var.region}-ogenki-vector-stream",
+                "arn:aws:s3:::${var.region}-ogenki-vector-stream/*"
             ]
+        }
+    ]
+}
+EOF
+}
+
+#tfsec:ignore:aws-iam-no-policy-wildcards
+resource "aws_iam_policy" "crossplane_cloudwatch" {
+  name        = "crossplane_cloudwatch_${var.cluster_name}"
+  path        = "/"
+  description = "Policy for managing Log groups and streams on EKS"
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:PutRetentionPolicy",
+                "logs:TagResource"
+            ],
+            "Resource": [
+              "arn:aws:logs:*:*:log-group:xplane-*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:DescribeLogGroups",
+                "logs:DescribeLogStreams",
+                "logs:FilterLogEvents",
+                "logs:GetLogEvents",
+                "logs:ListTagsLogGroup"
+            ],
+            "Resource": "arn:aws:logs:*"
+        }
+    ]
+}
+EOF
+}
+
+#tfsec:ignore:aws-iam-no-policy-wildcards
+resource "aws_iam_policy" "crossplane_firehose" {
+  name        = "crossplane_firehose_${var.cluster_name}"
+  path        = "/"
+  description = "Policy for managing Firehose DeliveryStreams on EKS"
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "firehose:CreateDeliveryStream",
+                "firehose:DescribeDeliveryStream",
+                "firehose:ListDeliveryStreams",
+                "firehose:PutRecord",
+                "firehose:PutRecordBatch",
+                "firehose:UpdateDestination",
+                "firehose:StartDeliveryStreamEncryption",
+                "firehose:StopDeliveryStreamEncryption",
+                "firehose:TagDeliveryStream",
+                "firehose:UntagDeliveryStream",
+                "firehose:DescribeDeliveryStreamEncryption",
+                "firehose:PutDestination",
+                "firehose:Get*",
+                "firehose:List*"
+            ],
+            "Resource": "arn:aws:firehose:*:*:deliverystream/xplane-*"
+        }
+    ]
+}
+EOF
+}
+
+
+#tfsec:ignore:aws-iam-no-policy-wildcards
+resource "aws_iam_policy" "crossplane_kinesis" {
+  name        = "crossplane_kinesis_${var.cluster_name}"
+  path        = "/"
+  description = "Policy for managing Kinesis on EKS"
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kinesis:Describe*",
+                "kinesis:List*",
+                "kinesis:Get*"
+            ],
+            "Resource": "*"
         }
     ]
 }

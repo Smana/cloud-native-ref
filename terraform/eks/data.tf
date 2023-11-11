@@ -1,5 +1,8 @@
 data "aws_caller_identity" "this" {}
 
+# tflint-ignore: terraform_unused_declarations
+data "aws_ecr_authorization_token" "token" {}
+
 data "aws_vpc" "selected" {
   filter {
     name   = "tag:project"

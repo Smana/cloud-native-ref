@@ -39,3 +39,8 @@ spec:
           s3ForcePathStyle: true
           insecure: false
           sse_encryption: false
+    # We already use Vector for logs collection
+    monitoring:
+      selfMonitoring:
+        grafanaAgent:
+          installOperator: false

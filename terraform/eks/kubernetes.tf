@@ -73,6 +73,9 @@ resource "kubernetes_job" "delete_aws_cni_ds" {
           effect = "NoExecute"
           value  = true
         }
+        toleration {
+          operator = "Exists"
+        }
       }
     }
     backoff_limit = 4

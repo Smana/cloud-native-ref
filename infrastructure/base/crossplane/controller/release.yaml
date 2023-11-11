@@ -11,7 +11,7 @@ spec:
         kind: HelmRepository
         name: crossplane
         namespace: crossplane-system
-      version: "1.13.2"
+      version: "1.14.0"
   interval: 10m0s
   install:
     remediation:

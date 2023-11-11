@@ -5,4 +5,5 @@ resources:
   - ../base/kyverno
   - ../base/cert-manager
   - external-secrets
-  - platform-gw-clusterpolicy.yaml
+  - platform-public-gw-clusterpolicy.yaml
+  - platform-private-gw-clusterpolicy.yaml
