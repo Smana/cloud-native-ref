@@ -82,6 +82,15 @@ spec:
     name: flux-system
   dependsOn:
     - name: crossplane-configuration
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v1beta1
+      kind: HelmRelease
+      name: aws-load-balancer-controller
+      namespace: kube-system
+    - apiVersion: helm.toolkit.fluxcd.io/v1beta1
+      kind: HelmRelease
+      name: external-dns
+      namespace: kube-system
 ---
 # Gateways must be created after Kyverno's cluster policies are applied in order to add AWS annotations
 apiVersion: kustomize.toolkit.fluxcd.io/v1

@@ -21,5 +21,13 @@ spec:
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v1beta1
       kind: HelmRelease
+      name: cert-manager
+      namespace: security
+    - apiVersion: helm.toolkit.fluxcd.io/v1beta1
+      kind: HelmRelease
+      name: kyverno
+      namespace: security
+    - apiVersion: helm.toolkit.fluxcd.io/v1beta1
+      kind: HelmRelease
       name: external-secrets
       namespace: security
