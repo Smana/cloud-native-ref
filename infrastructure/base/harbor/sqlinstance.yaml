@@ -1,0 +1,21 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: SQLInstance
+metadata:
+  name: xplane-harbor
+  namespace: harbor
+spec:
+  parameters:
+    region: ${region}
+    engine: postgres
+    dbPort: 5432
+    engineVersion: "15"
+    size: small
+    storageGB: 20
+    passwordSecretRef:
+      namespace: harbor
+      name: harbor-pg-masterpassword
+      key: password
+  compositionRef:
+    name: xsqlinstances.cloud.ogenki.io
+  writeConnectionSecretToRef:
+    name: harbor-sqlinstance

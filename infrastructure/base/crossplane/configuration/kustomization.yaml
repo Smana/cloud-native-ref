@@ -2,9 +2,12 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: crossplane-system
 
-# reference: https://github.com/upbound/platform-ref-aws/tree/main/package/cluster/irsa
+# reference: https://github.com/upbound/platform-ref-aws
 resources:
+  - aws-providerconfig.yaml
   - environmentconfig.yaml
   - irsa-composition.yaml
   - irsa-definition.yaml
-  - providerconfig.yaml
+  - k8s-providerconfig.yaml
+  - sql-instance-composition.yaml
+  - sql-instance-definition.yaml

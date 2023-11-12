@@ -1,0 +1,162 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xsqlinstances.cloud.ogenki.io
+  labels:
+    provider: aws
+spec:
+  writeConnectionSecretsToNamespace: crossplane-system
+  compositeTypeRef:
+    apiVersion: cloud.ogenki.io/v1alpha1
+    kind: XSQLInstance
+  patchSets:
+    - name: providerConfigRef
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.providerConfigName
+          toFieldPath: spec.providerConfigRef.name
+    - name: deletionPolicy
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.deletionPolicy
+          toFieldPath: spec.deletionPolicy
+    - name: region
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.region
+  environment:
+    environmentConfigs:
+      - type: Reference
+        ref:
+          name: eks-environment
+
+  resources:
+    - name: compositeSQLInstanceDbSubnetGroup
+      base:
+        apiVersion: rds.aws.upbound.io/v1beta1
+        kind: SubnetGroup
+        spec:
+          forProvider:
+            description: An excellent formation of subnetworks.
+      patches:
+        - type: PatchSet
+          patchSetName: providerConfigRef
+        - type: PatchSet
+          patchSetName: deletionPolicy
+        - type: PatchSet
+          patchSetName: region
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: privateSubnetIds
+          toFieldPath: spec.forProvider.subnetIds
+
+    - name: RDSInstance
+      base:
+        apiVersion: rds.aws.upbound.io/v1beta1
+        kind: Instance
+        spec:
+          forProvider:
+            dbSubnetGroupNameSelector:
+              matchControllerRef: true
+            instanceClass: db.t3.micro
+            username: master
+            skipFinalSnapshot: true
+            publiclyAccessible: false
+            port: 0
+            dbName: ""
+      patches:
+        - type: PatchSet
+          patchSetName: providerConfigRef
+        - type: PatchSet
+          patchSetName: deletionPolicy
+        - type: PatchSet
+          patchSetName: region
+        - fromFieldPath: metadata.uid
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-sql"
+        - fromFieldPath: "spec.parameters.size"
+          toFieldPath: "spec.forProvider.instanceClass"
+          transforms:
+            - type: map
+              map:
+                small: db.t3.small
+                medium: db.t3.medium
+                large: db.t3.large
+        - fromFieldPath: spec.writeConnectionSecretToRef.namespace
+          toFieldPath: spec.writeConnectionSecretToRef.namespace
+        - fromFieldPath: spec.parameters.engine
+          toFieldPath: spec.forProvider.engine
+        - fromFieldPath: spec.parameters.engineVersion
+          toFieldPath: spec.forProvider.engineVersion
+        - fromFieldPath: spec.parameters.storageGB
+          toFieldPath: spec.forProvider.allocatedStorage
+        - fromFieldPath: spec.parameters.autoGeneratePassword
+          toFieldPath: spec.forProvider.autoGeneratePassword
+        - fromFieldPath: spec.parameters.passwordSecretRef.namespace
+          toFieldPath: spec.forProvider.passwordSecretRef.namespace
+        - fromFieldPath: spec.parameters.passwordSecretRef.name
+          toFieldPath: spec.forProvider.passwordSecretRef.name
+        - fromFieldPath: spec.parameters.passwordSecretRef.key
+          toFieldPath: spec.forProvider.passwordSecretRef.key
+        - type: FromCompositeFieldPath
+          fromFieldPath: "spec.parameters.dbPort"
+          toFieldPath: "spec.forProvider.port"
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.address
+          toFieldPath: status.rdsAddress
+          policy:
+            fromFieldPath: Required
+      connectionDetails:
+        - fromFieldPath: status.atProvider.endpoint
+          name: endpoint
+        - fromFieldPath: status.atProvider.address
+          name: host
+        - fromFieldPath: spec.forProvider.username
+          name: username
+        - fromConnectionSecretKey: attribute.password
+          name: password
+
+    - name: externalRDSService
+      base:
+        apiVersion: kubernetes.crossplane.io/v1alpha1
+        kind: Object
+        metadata:
+          name: rds-service
+        spec:
+          forProvider:
+            manifest:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                namespace: default
+              spec:
+                type: ExternalName
+                externalName: ""
+                ports:
+                  - protocol: TCP
+                    port: 0
+                    targetPort: 0
+          managementPolicy: ObserveCreateUpdate
+      patches:
+        - fromFieldPath: spec.claimRef.name
+          toFieldPath: spec.forProvider.manifest.metadata.name
+          transforms:
+            - type: string
+              string:
+                fmt: "sqlinstance-%s"
+        - fromFieldPath: spec.claimRef.namespace
+          toFieldPath: spec.forProvider.manifest.metadata.namespace
+        - type: FromCompositeFieldPath
+          fromFieldPath: "status.rdsAddress"
+          toFieldPath: "spec.forProvider.manifest.spec.externalName"
+          policy:
+            fromFieldPath: Required
+        - type: FromCompositeFieldPath
+          fromFieldPath: "spec.parameters.dbPort"
+          toFieldPath: "spec.forProvider.manifest.spec.ports[0].port"
+        - type: FromCompositeFieldPath
+          fromFieldPath: "spec.parameters.dbPort"
+          toFieldPath: "spec.forProvider.manifest.spec.ports[0].targetPort"

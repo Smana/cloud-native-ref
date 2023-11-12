@@ -1,8 +1,8 @@
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-aws-s3
+  name: provider-aws-rds
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-s3:v0.44.0
+  package: xpkg.upbound.io/upbound/provider-aws-rds:v0.44.0
   controllerConfigRef:
     name: aws-config

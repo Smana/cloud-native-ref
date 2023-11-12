@@ -1,10 +1,10 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: xirsas.aws.platformref.upbound.io
+  name: xirsas.cloud.ogenki.io
 spec:
   compositeTypeRef:
-    apiVersion: aws.platformref.upbound.io/v1alpha1
+    apiVersion: cloud.ogenki.io/v1alpha1
     kind: XIRSA
   patchSets:
     - name: Name
@@ -29,7 +29,7 @@ spec:
     environmentConfigs:
       - type: Reference
         ref:
-          name: irsa-environment
+          name: eks-environment
 
   resources:
     - name: irsa-role

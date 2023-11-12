@@ -4,3 +4,4 @@ kind: Kustomization
 resources:
   - ../base/aws-load-balancer-controller
   - ../base/external-dns
+  - ../base/harbor

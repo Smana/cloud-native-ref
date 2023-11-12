@@ -1,4 +1,4 @@
-apiVersion: aws.platformref.upbound.io/v1alpha1
+apiVersion: cloud.ogenki.io/v1alpha1
 kind: IRSA
 metadata:
     name: xplane-cert-manager-${cluster_name}

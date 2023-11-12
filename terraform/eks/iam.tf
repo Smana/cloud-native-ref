@@ -1,7 +1,7 @@
 # AWS permissions for the EBS-CSI-DRIVER
 module "irsa_ebs_csi_driver" {
   source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version   = "5.21.0"
+  version   = "5.30.2"
   role_name = "${var.cluster_name}-ebs_csi_driver"
 
   assume_role_condition_test = "StringLike"
@@ -22,13 +22,14 @@ module "irsa_ebs_csi_driver" {
 # AWS permissions for Crossplane
 module "irsa_crossplane" {
   source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version   = "5.21.0"
+  version   = "5.30.2"
   role_name = "${var.cluster_name}-crossplane"
 
   assume_role_condition_test = "StringLike"
 
   role_policy_arns = {
     irsa = aws_iam_policy.crossplane_irsa.arn,
+    rds  = aws_iam_policy.crossplane_rds.arn
     s3   = aws_iam_policy.crossplane_s3.arn
   }
 
@@ -97,10 +98,10 @@ resource "aws_iam_policy" "crossplane_s3" {
             "Effect": "Allow",
             "Action": "s3:*",
             "Resource": [
+                "arn:aws:s3:::${var.region}-ogenki-harbor",
+                "arn:aws:s3:::${var.region}-ogenki-harbor/*",
                 "arn:aws:s3:::${var.region}-ogenki-loki",
-                "arn:aws:s3:::${var.region}-ogenki-loki/*",
-                "arn:aws:s3:::${var.region}-ogenki-vector-stream",
-                "arn:aws:s3:::${var.region}-ogenki-vector-stream/*"
+                "arn:aws:s3:::${var.region}-ogenki-loki/*"
             ]
         },
         {
@@ -111,8 +112,45 @@ resource "aws_iam_policy" "crossplane_s3" {
                 "s3:DeleteObjectVersion"
             ],
             "Resource": [
+                "arn:aws:s3:::${var.region}-ogenki-harbor",
+                "arn:aws:s3:::${var.region}-ogenki-harbor/*",
                 "arn:aws:s3:::${var.region}-ogenki-loki",
                 "arn:aws:s3:::${var.region}-ogenki-loki/*"
+            ]
+        }
+    ]
+}
+EOF
+}
+
+#tfsec:ignore:aws-iam-no-policy-wildcards
+resource "aws_iam_policy" "crossplane_rds" {
+  name        = "crossplane_rds_${var.cluster_name}"
+  path        = "/"
+  description = "Policy for managing RDS Instances on EKS"
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "rds:*"
+            ],
+            "Resource": [
+                "arn:aws:rds:*:*:db:xplane-*",
+                "arn:aws:rds:*:*:subgrp:xplane-*"
+            ]
+        },
+        {
+            "Effect": "Deny",
+            "Action": [
+                "rds:DeleteDBInstance"
+            ],
+            "Resource": [
+                "arn:aws:rds:*:*:db:*",
+                "arn:aws:rds:*:*:subgrp:*"
             ]
         }
     ]
