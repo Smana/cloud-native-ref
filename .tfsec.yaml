@@ -1,7 +1,7 @@
 # Ignore rules for the whole repository
 # It is preferable to ignore per resource: https://aquasecurity.github.io/tfsec/v1.28.1/guides/configuration/ignores/
 exclude:
-  # Demo mamagement cluster, need to work on security best-practices for real production
+  # Demo cluster, need to work on security best-practices for real production
   - aws-s3-encryption-customer-key
   - aws-s3-enable-bucket-logging
   - aws-ec2-no-public-egress-sgr
