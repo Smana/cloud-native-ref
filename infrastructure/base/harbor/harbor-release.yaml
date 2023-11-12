@@ -1,0 +1,74 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: harbor
+  namespace: harbor
+spec:
+  releaseName: harbor
+  chart:
+    spec:
+      chart: harbor
+      sourceRef:
+        kind: HelmRepository
+        name: harbor
+        namespace: flux-system
+      version: "1.13.1"
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: "harbor"
+    expose:
+      type: clusterIP
+      tls:
+        auto:
+          commonName: "ogenki"
+
+    externalURL: https://harbor.priv.${domain_name}
+
+    persistence:
+      enabled: true
+      imageChartStorage:
+        type: s3
+        s3:
+          region: ${region}
+          bucket: ${region}-ogenki-harbor
+
+    existingSecretAdminPassword: harbor-admin-password
+    existingSecretAdminPasswordKey: password
+
+    portal:
+      resources:
+        limits:
+          memory: 300Mi
+        requests:
+          cpu: 300m
+          memory: 300Mi
+
+    database:
+      type: external
+      external:
+        host: "sqlinstance-xplane-harbor"
+        port: "5432"
+        username: "master"
+        coreDatabase: "registry"
+        existingSecret: "harbor-sqlinstance"
+
+    redis:
+      type: external
+      external:
+        addr: "harbor-redis-master:6379"
+        username: "user"
+        existingSecret: "harbor-redis-password"
+
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          prometheus-instance: main
+
+    cache:
+      enabled: true
+      expireHours: 24

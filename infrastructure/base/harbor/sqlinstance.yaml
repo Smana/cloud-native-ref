@@ -1,0 +1,29 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: SQLInstance
+metadata:
+  name: xplane-harbor
+  namespace: harbor
+spec:
+  parameters:
+    region: ${region}
+    engine: postgres
+    dbPort: 5432
+    engineVersion: "15"
+    size: small
+    storageGB: 20
+    allowedCIDR: ${vpc_cidr_block}
+    databases:
+      - owner: harbor
+        name: harbor
+      - owner: harbor
+        name: notary_signer
+      - owner: harbor
+        name: notary_server
+    passwordSecretRef:
+      namespace: harbor
+      name: harbor-pg-masterpassword
+      key: password
+  compositionRef:
+    name: xsqlinstances.cloud.ogenki.io
+  writeConnectionSecretToRef:
+    name: xplane-harbor-rds

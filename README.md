@@ -10,7 +10,14 @@ Based on [this repository](https://github.com/Smana/cilium-gateway-api)
 
 ## 🗒️ Audit logs with Loki and Vector
 
+## 📦 OCI Registry with Harbor
 ℹ️ In progress ...
+
+The Harbor installation follows the best practices for high availability. It leverages recent Crossplane's features such as `Composition functions`
+
+* External RDS database
+* Redis cluster using the bitnami Helm chart
+* Storing artifacts in S3
 
 ## 🔗 VPN connection using Tailscale
 

@@ -1,0 +1,126 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xsqlinstances.cloud.ogenki.io
+spec:
+  claimNames:
+    kind: SQLInstance
+    plural: sqlinstances
+  connectionSecretKeys:
+    - username
+    - password
+    - endpoint
+    - host
+    - port
+  group: cloud.ogenki.io
+  names:
+    kind: XSQLInstance
+    plural: xsqlinstances
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                parameters:
+                  type: object
+                  properties:
+                    region:
+                      type: string
+                      description: Region is the region you'd like your resource to be created in.
+                    deletionPolicy:
+                      description: Delete the external resources when the Claim/XR is deleted. Defaults to Delete
+                      enum:
+                        - Delete
+                        - Orphan
+                      type: string
+                      default: Delete
+                    providerConfigName:
+                      description: Crossplane ProviderConfig to use for provisioning this resources
+                      type: string
+                      default: default
+                    engine:
+                      type: string
+                      description: This RDS Instance engine, see https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBInstance.html for possible values.
+                      enum:
+                        - postgres
+                        - mariadb
+                    size:
+                      type: string
+                      enum:
+                        - small
+                        - medium
+                        - large
+                      description: The machine size for this Database Instance.
+                    engineVersion:
+                      type: string
+                      description: This RDS Instance engine version, see https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBInstance.html for possible values.
+                    dbPort:
+                      type: integer
+                      description: "The port number on which the database server is listening."
+                    storageGB:
+                      type: integer
+                    passwordSecretRef:
+                      type: object
+                      description: "A reference to the Secret object containing database password"
+                      properties:
+                        namespace:
+                          type: string
+                        name:
+                          type: string
+                        key:
+                          type: string
+                      required:
+                        - namespace
+                        - name
+                        - key
+                    autoGeneratePassword:
+                      type: boolean
+                    allowedCIDR:
+                      type: string
+                      description: "The CIDR to allow access to the RDS instance"
+                    subnetIds:
+                      type: array
+                      description: "A list of the subnet IDs where the database will be provision"
+                      items:
+                        type: string
+                        description: ID of the Network object this ref points to.
+                    vpcId:
+                      type: string
+                      description: "The VPC ID where the database will be provision"
+                    databases:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: The name of the database.
+                          owner:
+                            type: string
+                            description: The owner of the database.
+                        required:
+                          - name
+                          - owner
+                  required:
+                    - region
+                    - engine
+                    - engineVersion
+                    - size
+                    - storageGB
+                    - passwordSecretRef
+                    - dbPort
+                    - allowedCIDR
+              required:
+                - parameters
+            status:
+              type: object
+              properties:
+                rdsAddress:
+                  description: Address of the RDS instance.
+                  type: string

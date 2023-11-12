@@ -19,22 +19,24 @@ resource "flux_bootstrap_git" "this" {
   ]
 }
 
-# Write secret items in order to use them as variables with flux's variables substitions
-resource "kubernetes_secret" "flux_clusters_vars" {
+# Write a ConfigMap for use with Flux's variable substitutions
+resource "kubernetes_config_map" "flux_clusters_vars" {
   metadata {
     name      = "eks-${var.cluster_name}-vars"
     namespace = "flux-system"
   }
 
   data = {
-    cluster_name      = var.cluster_name
-    oidc_provider_arn = module.eks.oidc_provider_arn
-    oidc_issuer_url   = module.eks.cluster_oidc_issuer_url
-    oidc_issuer_host  = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
-    aws_account_id    = data.aws_caller_identity.this.account_id
-    region            = var.region
-    environment       = var.env
-    vpc_id            = data.aws_vpc.selected.id
+    cluster_name       = var.cluster_name
+    oidc_provider_arn  = module.eks.oidc_provider_arn
+    oidc_issuer_url    = module.eks.cluster_oidc_issuer_url
+    oidc_issuer_host   = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
+    aws_account_id     = data.aws_caller_identity.this.account_id
+    region             = var.region
+    environment        = var.env
+    vpc_id             = data.aws_vpc.selected.id
+    vpc_cidr_block     = data.aws_vpc.selected.cidr_block
+    private_subnet_ids = jsonencode(data.aws_subnets.private.ids)
   }
   depends_on = [flux_bootstrap_git.this]
 }

@@ -23,19 +23,19 @@ variable "cluster_version" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.14.3"
+  default     = "1.14.4"
   type        = string
 }
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "v0.32.1"
+  default     = "v0.32.3"
   type        = string
 }
 
 variable "ebs_csi_driver_chart_version" {
   description = "EBS CSI Driver Helm chart version"
-  default     = "2.24.0"
+  default     = "2.25.0"
   type        = string
 }
 

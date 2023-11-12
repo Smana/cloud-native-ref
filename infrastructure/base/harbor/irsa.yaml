@@ -1,38 +1,39 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: IRSA
 metadata:
-    name: xplane-external-dns-${cluster_name}
+    name: xplane-harbor-${cluster_name}
+    namespace: harbor
 spec:
     deletionPolicy: Delete
     parameters:
         condition: StringEquals
-        # Reference: https://kubernetes-sigs.github.io/external-dns/v0.13.4/tutorials/aws/#iam-policy
         policyDocument: |
             {
                 "Version": "2012-10-17",
                 "Statement": [
                     {
+                        "Sid": "ReadPermissions",
                         "Effect": "Allow",
                         "Action": [
-                            "route53:ChangeResourceRecordSets"
+                            "s3:GetObject",
+                            "s3:ListBucket"
                         ],
                         "Resource": [
-                            "arn:aws:route53:::hostedzone/*"
+                            "arn:aws:s3:::${region}-ogenki-harbor",
+                            "arn:aws:s3:::${region}-ogenki-harbor/*"
                         ]
                     },
                     {
+                        "Sid": "WritePermissions",
                         "Effect": "Allow",
                         "Action": [
-                            "route53:ListHostedZones",
-                            "route53:ListResourceRecordSets"
+                            "s3:PutObject",
+                            "s3:DeleteObject"
                         ],
-                        "Resource": [
-                            "*"
-                        ]
+                        "Resource": "arn:aws:s3:::${region}-ogenki-harbor/*"
                     }
                 ]
             }
-
         serviceAccount:
-            name: external-dns
-            namespace: kube-system
+            name: harbor
+            namespace: harbor

@@ -1,7 +1,7 @@
 apiVersion: apiextensions.crossplane.io/v1alpha1
 kind: EnvironmentConfig
 metadata:
-  name: irsa-environment
+  name: eks-environment
 data:
   clusterName: ${cluster_name}
   oidcUrl: ${oidc_issuer_url}
@@ -10,3 +10,4 @@ data:
   accountId: ${aws_account_id}
   region: ${region}
   vpcId: ${vpc_id}
+  privateSubnetIds: ${private_subnet_ids}

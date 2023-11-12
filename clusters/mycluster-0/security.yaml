@@ -14,7 +14,7 @@ spec:
     substitute:
       domain_name: "cloud.ogenki.io"
     substituteFrom:
-      - kind: Secret
+      - kind: ConfigMap
         name: eks-mycluster-0-vars
   dependsOn:
     - name: crds
