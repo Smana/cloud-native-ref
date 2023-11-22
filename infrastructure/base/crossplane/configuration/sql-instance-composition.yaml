@@ -79,12 +79,12 @@ spec:
         spec:
           forProvider:
             cidrIpv4: 10.0.0.0/8
-            fromPort: 80
+            fromPort: 5432
             ipProtocol: tcp
             region: eu-west-3
             securityGroupIdSelector:
               matchControllerRef: true
-            toPort: 8080
+            toPort: 5432
       patches:
         - type: PatchSet
           patchSetName: providerConfigRef
@@ -96,6 +96,8 @@ spec:
           toFieldPath: spec.forProvider.cidrIpv4
         - fromFieldPath: "spec.parameters.dbPort"
           toFieldPath: "spec.forProvider.toPort"
+        - fromFieldPath: "spec.parameters.dbPort"
+          toFieldPath: "spec.forProvider.fromPort"
 
     - name: RDSInstance
       base:

@@ -28,6 +28,7 @@ module "irsa_crossplane" {
   assume_role_condition_test = "StringLike"
 
   role_policy_arns = {
+    ec2  = aws_iam_policy.crossplane_ec2.arn,
     irsa = aws_iam_policy.crossplane_irsa.arn,
     rds  = aws_iam_policy.crossplane_rds.arn
     s3   = aws_iam_policy.crossplane_s3.arn
@@ -76,6 +77,40 @@ resource "aws_iam_policy" "crossplane_irsa" {
             "Action": [
                 "iam:Get*",
                 "iam:List*"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+EOF
+}
+
+# Managing all the security groups can be a security issue, didn't find a way to restrict to the ones created by Crossplane so far
+#tfsec:ignore:aws-iam-no-policy-wildcards
+resource "aws_iam_policy" "crossplane_ec2" {
+  name        = "crossplane_ec2_${var.cluster_name}"
+  path        = "/"
+  description = "Policy for managing Security Groups on EKS"
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:AuthorizeSecurityGroupEgress",
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:CreateSecurityGroup",
+                "ec2:DeleteSecurityGroup",
+                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeSecurityGroupRules",
+                "ec2:RevokeSecurityGroupEgress",
+                "ec2:RevokeSecurityGroupIngress",
+                "ec2:ModifySecurityGroupRules",
+                "ec2:UpdateSecurityGroupRuleDescriptionsEgress",
+                "ec2:UpdateSecurityGroupRuleDescriptionsIngress",
+                "ec2:CreateTags"
             ],
             "Resource": "*"
         }

@@ -35,6 +35,7 @@ resource "kubernetes_config_map" "flux_clusters_vars" {
     region             = var.region
     environment        = var.env
     vpc_id             = data.aws_vpc.selected.id
+    vpc_cidr_block     = data.aws_vpc.cidr_block
     private_subnet_ids = jsonencode(data.aws_subnets.private.ids)
   }
   depends_on = [flux_bootstrap_git.this]

@@ -12,7 +12,7 @@ spec:
     size: small
     storageGB: 20
     vpcId: ${vpc_id}
-    allowedCIDR: "10.0.0.0/16"
+    allowedCIDR: ${vpc_cidr_block}
     passwordSecretRef:
       namespace: harbor
       name: harbor-pg-masterpassword
