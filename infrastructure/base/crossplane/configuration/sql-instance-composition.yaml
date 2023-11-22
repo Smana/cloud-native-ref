@@ -50,6 +50,59 @@ spec:
           fromFieldPath: privateSubnetIds
           toFieldPath: spec.forProvider.subnetIds
 
+    - name: SecurityGroup
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: SecurityGroup
+        spec:
+          forProvider:
+            description: Allow RDS Inbound traffic
+            name: test
+            region: eu-west-3
+            vpcId: default
+      patches:
+        - type: PatchSet
+          patchSetName: providerConfigRef
+        - type: PatchSet
+          patchSetName: deletionPolicy
+        - type: PatchSet
+          patchSetName: region
+        - fromFieldPath: spec.parameters.vpcId
+          toFieldPath: spec.forProvider.vpcId
+
+    - name: SecurityGroupIngressRule
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: SecurityGroupIngressRule
+        metadata:
+          annotations:
+            meta.upbound.io/example-id: ec2/v1beta1/securitygroupingressrule
+          labels:
+            testing.upbound.io/example-name: example
+          name: example
+        spec:
+          forProvider:
+            cidrIpv4: 10.0.0.0/8
+            fromPort: 80
+            ipProtocol: tcp
+            region: us-west-1
+            securityGroupIdSelector:
+              matchControllerRef: true
+              matchLabels:
+                resource: "SubnetGroup"
+            toPort: 8080
+      patches:
+        - type: PatchSet
+          patchSetName: providerConfigRef
+        - type: PatchSet
+          patchSetName: deletionPolicy
+        - type: PatchSet
+          patchSetName: region
+        - fromFieldPath: spec.parameters.allowedCIDR
+          toFieldPath: spec.forProvider.cidrIpv4
+        - fromFieldPath: "spec.parameters.dbPort"
+          toFieldPath: "spec.forProvider.toPort"
+
     - name: RDSInstance
       base:
         apiVersion: rds.aws.upbound.io/v1beta1
@@ -60,6 +113,10 @@ spec:
               matchControllerRef: true
             instanceClass: db.t3.micro
             username: master
+            vpcSecurityGroupIdSelector:
+              matchControllerRef: true
+              matchLabels:
+                resource: "SubnetGroup"
             skipFinalSnapshot: true
             publiclyAccessible: false
             port: 0
@@ -154,8 +211,7 @@ spec:
           toFieldPath: "spec.forProvider.manifest.spec.externalName"
           policy:
             fromFieldPath: Required
-        - type: FromCompositeFieldPath
-          fromFieldPath: "spec.parameters.dbPort"
+        - fromFieldPath: "spec.parameters.dbPort"
           toFieldPath: "spec.forProvider.manifest.spec.ports[0].port"
         - type: FromCompositeFieldPath
           fromFieldPath: "spec.parameters.dbPort"

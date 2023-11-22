@@ -80,12 +80,18 @@ spec:
                         - key
                     autoGeneratePassword:
                       type: boolean
+                    allowedCIDR:
+                      type: string
+                      description: "The CIDR to allow access to the RDS instance"
                     subnetIds:
                       type: array
                       description: "A list of the subnet IDs where the database will be provision"
                       items:
                         type: string
                         description: ID of the Network object this ref points to.
+                    vpcId:
+                      type: string
+                      description: "The VPC ID where the database will be provision"
                   required:
                     - region
                     - engine

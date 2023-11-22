@@ -5,6 +5,7 @@ resources:
   - aws-controllerconfig.yaml
   - k8s-controllerconfig.yaml
   - k8s-provider-rbac.yaml
+  - provider-ec2.yaml
   - provider-iam.yaml
   - provider-kubernetes.yaml
   - provider-rds.yaml
