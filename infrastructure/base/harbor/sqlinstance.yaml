@@ -11,6 +11,8 @@ spec:
     engineVersion: "15"
     size: small
     storageGB: 20
+    vpcId: ${vpc_id}
+    allowedCIDR: "10.0.0.0/16"
     passwordSecretRef:
       namespace: harbor
       name: harbor-pg-masterpassword

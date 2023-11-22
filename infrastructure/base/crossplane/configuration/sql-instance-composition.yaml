@@ -57,7 +57,7 @@ spec:
         spec:
           forProvider:
             description: Allow RDS Inbound traffic
-            name: test
+            name: ogenki
             region: eu-west-3
             vpcId: default
       patches:
@@ -67,6 +67,8 @@ spec:
           patchSetName: deletionPolicy
         - type: PatchSet
           patchSetName: region
+        - fromFieldPath: spec.claimRef.name
+          toFieldPath: spec.forProvider.metadata.name
         - fromFieldPath: spec.parameters.vpcId
           toFieldPath: spec.forProvider.vpcId
 
@@ -74,22 +76,14 @@ spec:
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
         kind: SecurityGroupIngressRule
-        metadata:
-          annotations:
-            meta.upbound.io/example-id: ec2/v1beta1/securitygroupingressrule
-          labels:
-            testing.upbound.io/example-name: example
-          name: example
         spec:
           forProvider:
             cidrIpv4: 10.0.0.0/8
             fromPort: 80
             ipProtocol: tcp
-            region: us-west-1
+            region: eu-west-3
             securityGroupIdSelector:
               matchControllerRef: true
-              matchLabels:
-                resource: "SubnetGroup"
             toPort: 8080
       patches:
         - type: PatchSet
@@ -115,8 +109,6 @@ spec:
             username: master
             vpcSecurityGroupIdSelector:
               matchControllerRef: true
-              matchLabels:
-                resource: "SubnetGroup"
             skipFinalSnapshot: true
             publiclyAccessible: false
             port: 0
