@@ -1,0 +1,33 @@
+# These permissions allow Crossplane to manage Kubernetes resources
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: crossplane-provider-kubernetes
+  namespace: crossplane-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: crossplane-system
+  name: crossplane-kubernetes
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "create", "delete", "update"]
+  - apiGroups: ["postgresql.sql.crossplane.io"]
+    resources: ["providerconfigs"]
+    verbs: ["get", "create", "delete", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: crossplane-kubernetes-services
+  namespace: crossplane-system
+subjects:
+  - kind: ServiceAccount
+    name: crossplane-provider-kubernetes
+    namespace: crossplane-system
+roleRef:
+  kind: ClusterRole
+  name: crossplane-kubernetes
+  apiGroup: rbac.authorization.k8s.io

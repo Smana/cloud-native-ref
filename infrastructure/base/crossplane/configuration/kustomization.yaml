@@ -2,9 +2,14 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: crossplane-system
 
-# reference: https://github.com/upbound/platform-ref-aws/tree/main/package/cluster/irsa
 resources:
   - environmentconfig.yaml
-  - irsa-composition.yaml
+  - function-auto-ready.yaml
+  - function-patch-and-transform.yaml
+  - function-go-templating.yaml
+  - irsa-composition.yaml # reference: https://github.com/upbound/platform-ref-aws
   - irsa-definition.yaml
-  - providerconfig.yaml
+  - providerconfig-aws.yaml
+  - providerconfig-k8s.yaml
+  - sql-instance-composition.yaml
+  - sql-instance-definition.yaml

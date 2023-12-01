@@ -13,7 +13,7 @@ spec:
     name: flux-system
   postBuild:
     substituteFrom:
-      - kind: Secret
+      - kind: ConfigMap
         name: eks-mycluster-0-vars
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v1beta1
@@ -37,7 +37,7 @@ spec:
     name: flux-system
   postBuild:
     substituteFrom:
-      - kind: Secret
+      - kind: ConfigMap
         name: eks-mycluster-0-vars
   dependsOn:
     - name: crossplane-controller
@@ -56,7 +56,7 @@ spec:
     name: flux-system
   postBuild:
     substituteFrom:
-      - kind: Secret
+      - kind: ConfigMap
         name: eks-mycluster-0-vars
   dependsOn:
     - name: crossplane-providers
@@ -75,7 +75,7 @@ spec:
     substitute:
       domain_name: "cloud.ogenki.io"
     substituteFrom:
-      - kind: Secret
+      - kind: ConfigMap
         name: eks-mycluster-0-vars
   sourceRef:
     kind: GitRepository

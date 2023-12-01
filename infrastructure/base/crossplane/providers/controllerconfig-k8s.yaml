@@ -1,0 +1,8 @@
+# Deprecated. See https://github.com/crossplane/crossplane/issues/3601
+# Issue: https://github.com/crossplane-contrib/provider-kubernetes/issues/61
+apiVersion: pkg.crossplane.io/v1alpha1
+kind: ControllerConfig
+metadata:
+  name: provider-kubernetes
+spec:
+  serviceAccountName: crossplane-provider-kubernetes

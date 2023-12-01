@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - bitnami-source.yaml
+  - externalsecret-admin-password.yaml
+  - externalsecret-redis-password.yaml
+  - externalsecret-sqlinstance-password.yaml
+  - harbor-release.yaml
+  - harbor-source.yaml
+  - httproute.yaml
+  - irsa.yaml
+  - redis-helmrelease.yaml
+  - s3-bucket.yaml
+  - sqlinstance.yaml
+#  - sql-providerconfig.yaml
