@@ -51,9 +51,10 @@ spec:
       external:
         host: "sqlinstance-xplane-harbor"
         port: "5432"
-        username: "master"
+        username: "harbor"
         coreDatabase: "registry"
-        existingSecret: "harbor-sqlinstance"
+        existingSecret: "sql-role-harbor"
+        sslmode: "require"
 
     redis:
       type: external

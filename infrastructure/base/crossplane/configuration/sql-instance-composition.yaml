@@ -154,6 +154,14 @@ spec:
                       small: db.t3.small
                     type: map
                 type: FromCompositeFieldPath
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.engine
+                toFieldPath: spec.forProvider.port
+                transforms:
+                  - map:
+                      postgres: 5432
+                      mariadb: 3306
+                    type: map
               - fromFieldPath: spec.claimRef.namespace
                 toFieldPath: spec.writeConnectionSecretToRef.namespace
                 type: FromCompositeFieldPath
@@ -185,9 +193,6 @@ spec:
                 type: FromCompositeFieldPath
               - fromFieldPath: spec.parameters.passwordSecretRef.key
                 toFieldPath: spec.forProvider.passwordSecretRef.key
-                type: FromCompositeFieldPath
-              - fromFieldPath: spec.parameters.dbPort
-                toFieldPath: spec.forProvider.port
                 type: FromCompositeFieldPath
               - fromFieldPath: status.atProvider.address
                 policy:
@@ -232,12 +237,23 @@ spec:
                   fromFieldPath: Required
                 toFieldPath: spec.forProvider.manifest.spec.externalName
                 type: FromCompositeFieldPath
-              - fromFieldPath: spec.parameters.dbPort
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.engine
                 toFieldPath: spec.forProvider.manifest.spec.ports[0].port
-                type: FromCompositeFieldPath
-              - fromFieldPath: spec.parameters.dbPort
+                transforms:
+                  - map:
+                      postgres: 5432
+                      mariadb: 3306
+                    type: map
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.engine
                 toFieldPath: spec.forProvider.manifest.spec.ports[0].targetPort
-                type: FromCompositeFieldPath
+                transforms:
+                  - map:
+                      postgres: 5432
+                      mariadb: 3306
+                    type: map
+
           - name: SQLProviderConfig
             base:
               apiVersion: kubernetes.crossplane.io/v1alpha1
@@ -251,7 +267,7 @@ spec:
                     apiVersion: postgresql.sql.crossplane.io/v1alpha1
                     kind: ProviderConfig
                     metadata:
-                      name: xplane-harbor
+                      name: ogenki
                     spec:
                       sslMode: require
                       credentials:
@@ -260,6 +276,9 @@ spec:
                           namespace: crossplane-system
                           name: uid-rds
             patches:
+              - fromFieldPath: spec.claimRef.name
+                toFieldPath: spec.forProvider.manifest.metadata.name
+                type: FromCompositeFieldPath
               - fromFieldPath: metadata.uid
                 type: FromCompositeFieldPath
                 toFieldPath: spec.forProvider.manifest.spec.credentials.connectionSecretRef.name
@@ -280,9 +299,6 @@ spec:
               {{- end -}}
             {{- end -}}
 
-            {{- $generatedClaimId := (index .observed.composite.resource.metadata "name") -}}
-            {{- $claimName := regexReplaceAll "-[^-]*$" $generatedClaimId  "" -}}
-
             {{- range $owner, $_ := $uniqueOwners }}
             ---
             apiVersion: postgresql.sql.crossplane.io/v1alpha1
@@ -297,9 +313,9 @@ spec:
                   login: true
               writeConnectionSecretToRef:
                 name: "sql-role-{{ $owner }}"
-                namespace:  crossplane-system
+                namespace:  {{ index $.observed.composite.resource.spec.claimRef "namespace" }}
               providerConfigRef:
-                name: {{ $claimName }}
+                name: {{ index $.observed.composite.resource.spec.claimRef "name" }}
             {{- end }}
 
             {{- range .observed.composite.resource.spec.parameters.databases }}
@@ -315,8 +331,9 @@ spec:
               forProvider:
                 owner: {{ .owner }}
               providerConfigRef:
-                name: {{ $claimName }}
+                name: {{ index $.observed.composite.resource.spec.claimRef "name" }}
             {{- end }}
+
     - step: automatically-detect-readiness
       functionRef:
         name: function-auto-ready
