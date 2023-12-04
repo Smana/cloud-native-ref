@@ -10,10 +10,45 @@ spec:
   hostnames:
     - "harbor.priv.${domain_name}"
   rules:
-    - matches:
+    - backendRefs:
+        - name: harbor-core
+          port: 80
+      matches:
+        - path:
+            type: PathPrefix
+            value: /chartrepo/
+    - backendRefs:
+        - name: harbor-core
+          port: 80
+      matches:
+        - path:
+            type: PathPrefix
+            value: /c/
+    - backendRefs:
+        - name: harbor-core
+          port: 80
+      matches:
         - path:
             type: PathPrefix
             value: /
-      backendRefs:
-        - name: harbor
+    - backendRefs:
+        - name: harbor-core
           port: 80
+      matches:
+        - path:
+            type: PathPrefix
+            value: /api/
+    - backendRefs:
+        - name: harbor-core
+          port: 80
+      matches:
+        - path:
+            type: PathPrefix
+            value: /service/
+    - backendRefs:
+        - name: harbor-core
+          port: 80
+      matches:
+        - path:
+            type: PathPrefix
+            value: /v2/
