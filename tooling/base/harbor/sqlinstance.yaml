@@ -2,7 +2,7 @@ apiVersion: cloud.ogenki.io/v1alpha1
 kind: SQLInstance
 metadata:
   name: xplane-harbor
-  namespace: harbor
+  namespace: tooling
 spec:
   parameters:
     region: ${region}
@@ -15,7 +15,7 @@ spec:
       - owner: harbor
         name: registry
     passwordSecretRef:
-      namespace: harbor
+      namespace: tooling
       name: harbor-pg-masterpassword
       key: password
   compositionRef:

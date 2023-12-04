@@ -7,3 +7,4 @@ resources:
   - infrastructure.yaml
   - observability.yaml
   - security.yaml
+  - tooling.yaml

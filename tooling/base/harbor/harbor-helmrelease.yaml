@@ -2,7 +2,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2beta1
 kind: HelmRelease
 metadata:
   name: harbor
-  namespace: harbor
+  namespace: tooling
 spec:
   releaseName: harbor
   chart:
@@ -30,6 +30,8 @@ spec:
     persistence:
       enabled: true
       imageChartStorage:
+        # An issue prevents from using IRSA: https://github.com/goharbor/harbor/pull/18686
+        # Currently this is not possible to push to S3 bucket
         type: s3
         s3:
           region: ${region}
@@ -37,6 +39,9 @@ spec:
 
     existingSecretAdminPassword: harbor-admin-password
     existingSecretAdminPasswordKey: password
+
+    registry:
+      serviceAccountName: harbor
 
     portal:
       resources:

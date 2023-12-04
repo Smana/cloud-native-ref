@@ -4,6 +4,23 @@
 
 Based on [this repository](https://github.com/Smana/cilium-gateway-api)
 
+## 🔄 Dependencies matter
+
+```mermaid
+graph TD;
+    Namespaces-->CRDs;
+    CRDs-->Observability;
+    CRDs-->Security;
+    CRDs-->Infrastructure;
+    Crossplane-->Infrastructure;
+    Crossplane-->Security;
+    Observability-->Tooling;
+    Infrastructure-->Tooling;
+    Security-->Tooling;
+    Security-->Observability;
+    Security-->Infrastructure
+```
+
 ## 🏗️ Crossplane configuration
 
 ## 🛂 Federated authentication using Pinniped
