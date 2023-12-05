@@ -21,7 +21,7 @@ spec:
                 values:
                   - observability
                   - flux-system
-                  - harbor
+                  - tooling
       tls:
         mode: Terminate
         certificateRefs:

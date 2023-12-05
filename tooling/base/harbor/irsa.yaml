@@ -2,7 +2,7 @@ apiVersion: cloud.ogenki.io/v1alpha1
 kind: IRSA
 metadata:
     name: xplane-harbor-${cluster_name}
-    namespace: harbor
+    namespace: tooling
 spec:
     deletionPolicy: Delete
     parameters:
@@ -36,4 +36,4 @@ spec:
             }
         serviceAccount:
             name: harbor
-            namespace: harbor
+            namespace: tooling
