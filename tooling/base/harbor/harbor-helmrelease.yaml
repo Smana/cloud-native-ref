@@ -32,10 +32,12 @@ spec:
       imageChartStorage:
         # An issue prevents from using IRSA: https://github.com/goharbor/harbor/pull/18686
         # Currently this is not possible to push to S3 bucket
-        type: s3
-        s3:
-          region: ${region}
-          bucket: ${region}-ogenki-harbor
+        # type: s3
+        # s3:
+        #   region: ${region}
+        #   bucket: ${region}-ogenki-harbor
+        # Use PVC while waiting for the above issue to be solved
+        type: filesystem
 
     existingSecretAdminPassword: harbor-admin-password
     existingSecretAdminPasswordKey: password
