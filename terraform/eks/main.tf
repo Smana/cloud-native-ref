@@ -26,6 +26,9 @@ module "eks" {
     vpc-cni = {
       most_recent = true
     }
+    eks-pod-identity-agent = {
+      most_recent = true
+    }
   }
 
   manage_aws_auth_configmap = true
