@@ -6,5 +6,6 @@ metadata:
   annotations:
     crossplane.io/external-name: ${region}-ogenki-harbor
 spec:
+  deletionPolicy: Orphan # The bucket should not be deleted when the resource is deleted in Crossplane
   forProvider:
     region: ${region}
