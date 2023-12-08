@@ -6,5 +6,6 @@ metadata:
   annotations:
     crossplane.io/external-name: ${region}-ogenki-harbor
 spec:
+  deletionPolicy: Orphan
   forProvider:
     region: ${region}

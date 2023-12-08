@@ -74,7 +74,7 @@ spec:
                 type: PatchSet
               - patchSetName: region
                 type: PatchSet
-              - fromFieldPath: spec.claimRef.name
+              - fromFieldPath: metadata.name
                 toFieldPath: spec.forProvider.name
                 type: FromCompositeFieldPath
               - fromFieldPath: vpcId
@@ -292,8 +292,18 @@ spec:
         source: Inline
         inline:
           template: |
+            {{ $claim  	:= .observed.composite.resource }}
+            {{ $parameters := .observed.composite.resource.spec.parameters }}
+
+            {{- $apiVersion := "" }}
+            {{- if eq $parameters.engine "postgres" }}
+              {{- $apiVersion = "postgresql.sql.crossplane.io/v1alpha1" }}
+            {{- else }}
+              {{- $apiVersion = "mysql.sql.crossplane.io/v1alpha1" }}
+            {{- end -}}
+
             {{- $uniqueOwners := dict -}}
-            {{- range .observed.composite.resource.spec.parameters.databases }}
+            {{- range $parameters.databases }}
               {{- if not (hasKey $uniqueOwners .owner) -}}
                 {{- $_ := set $uniqueOwners .owner true -}}
               {{- end -}}
@@ -301,26 +311,34 @@ spec:
 
             {{- range $owner, $_ := $uniqueOwners }}
             ---
-            apiVersion: postgresql.sql.crossplane.io/v1alpha1
+            apiVersion: {{ $apiVersion }}
+            {{- if eq $parameters.engine "postgres" }}
             kind: Role
+            {{- else }}
+            kind: User
+            {{- end }}
             metadata:
               annotations:
                 {{ setResourceNameAnnotation (print "owner-" (replace "_" "-" $owner)) }}
               name: {{ $owner }}
             spec:
+            {{ if eq $parameters.engine "postgres" }}
               forProvider:
                 privileges:
                   login: true
+            {{- else }}
+              forProvider: {}
+            {{- end }}
               writeConnectionSecretToRef:
                 name: "sql-role-{{ $owner }}"
-                namespace:  {{ index $.observed.composite.resource.spec.claimRef "namespace" }}
+                namespace:  {{ index $claim.spec.claimRef "namespace" }}
               providerConfigRef:
-                name: {{ index $.observed.composite.resource.spec.claimRef "name" }}
+                name: {{ index $claim.spec.claimRef "name" }}
             {{- end }}
 
-            {{- range .observed.composite.resource.spec.parameters.databases }}
+            {{- range $parameters.databases }}
             ---
-            apiVersion: postgresql.sql.crossplane.io/v1alpha1
+            apiVersion: {{ $apiVersion }}
             kind: Database
             metadata:
               name: {{ .name | replace "_" "-" }}
@@ -328,12 +346,14 @@ spec:
                 {{ setResourceNameAnnotation (print "db-" (replace "_" "-" .name)) }}
             spec:
               deletionPolicy: Orphan
+            {{ if eq $parameters.engine "postgres" }}
               forProvider:
                 owner: {{ .owner }}
+            {{- end }}
               providerConfigRef:
-                name: {{ index $.observed.composite.resource.spec.claimRef "name" }}
+                name: {{ index $claim.spec.claimRef "name" }}
             {{- end }}
 
-    - step: automatically-detect-readiness
+    - step: ready
       functionRef:
         name: function-auto-ready
