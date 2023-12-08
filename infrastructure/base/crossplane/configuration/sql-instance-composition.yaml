@@ -74,7 +74,7 @@ spec:
                 type: PatchSet
               - patchSetName: region
                 type: PatchSet
-              - fromFieldPath: metadata.name
+              - fromFieldPath: spec.claimRef.name
                 toFieldPath: spec.forProvider.name
                 type: FromCompositeFieldPath
               - fromFieldPath: vpcId
