@@ -1,0 +1,25 @@
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: aws-config
+spec:
+  deploymentTemplate:
+    metadata:
+      annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::${aws_account_id}:role/${cluster_name}-crossplane
+    spec:
+      template:
+        metadata:
+          creationTimestamp: "2023-12-10T15:41:23Z"
+        spec:
+          containers: null
+          securityContext:
+            fsGroup: 2000
+  serviceAccountTemplate:
+    metadata:
+      annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::${aws_account_id}:role/${cluster_name}-crossplane
+  serviceTemplate:
+    metadata:
+      annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::${aws_account_id}:role/${cluster_name}-crossplane

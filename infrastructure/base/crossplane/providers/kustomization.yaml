@@ -2,8 +2,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - controllerconfig-aws.yaml
   - controllerconfig-k8s.yaml
+  - deploymentruntimeconfig-aws.yaml
   - provider-ec2.yaml
   - provider-iam.yaml
   - provider-kubernetes.yaml
