@@ -6,7 +6,7 @@ data "aws_ecr_authorization_token" "token" {}
 data "aws_vpc" "selected" {
   filter {
     name   = "tag:project"
-    values = ["demo-secured-eks"]
+    values = ["demo-cloud-native-ref"]
   }
   filter {
     name   = "tag:owner"
@@ -44,7 +44,7 @@ data "aws_subnets" "intra" {
 data "aws_security_group" "tailscale" {
   filter {
     name   = "tag:project"
-    values = ["demo-secured-eks"]
+    values = ["demo-cloud-native-ref"]
   }
 
   filter {

@@ -23,7 +23,7 @@ tailscale = {
 }
 
 tags = {
-  project = "demo-secured-eks"
+  project = "demo-cloud-native-ref"
   owner   = "Smana"
 }
 ```

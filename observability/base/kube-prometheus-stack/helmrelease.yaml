@@ -118,7 +118,7 @@ spec:
         loki:
           kubernetes-logs:
             datasource: Loki
-            url: https://raw.githubusercontent.com/Smana/demo-secured-eks/main/observability/base/kube-prometheus-stack/grafana-dashboards/kubernetes_logs.json
+            url: https://raw.githubusercontent.com/Smana/demo-cloud-native-ref/main/observability/base/kube-prometheus-stack/grafana-dashboards/kubernetes_logs.json
     kube-state-metrics:
       prometheusScrape: false # disable scrape annotation as we use servicemonitor
       prometheus:
