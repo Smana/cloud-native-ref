@@ -1,8 +1,9 @@
-# Demo of a secured EKS cluster
+# Reference repository for building a Cloud Native platform
 
-⚠️ Work in progress in order to write new blog posts [here](https://blog.ogenki.io)
+**_This is an opiniated set of configuration allowing to manage a Cloud Native platform the GitOps way_**
 
-Based on [this repository](https://github.com/Smana/cilium-gateway-api)
+This repository is used to write new blog posts [**here**](https://blog.ogenki.io)
+
 
 ## 🔄 Dependencies matter
 
@@ -32,10 +33,11 @@ This diagram can be hard to understand so these are the key information:
 
 ### Requirements and security concerns
 
-The crossplane controllers permissions are defined using Terraform when the cluster is initialized.
-This is actually a set of [IAM policies](https://github.com/Smana/demo-cloud-native-ref/blob/main/terraform/eks/iam.tf#L23)a ttached to a role that will be used in order to managed AWS resources (IRSA).
+When the cluster is initialized, we define the permissions for the crossplane controllers using Terraform. This involves attaching a set of IAM policies to a role. This role is crucial for managing AWS resources, a process known as IRSA (IAM Roles for Service Accounts).
 
-For security purposes, we adhere to the principle of least privilege, granting only the essentials. For example, I've opted not to permit the controllers to delete stateful services like S3 or RDS, even though it's feasible through Crossplane configuration.
+We prioritize security by adhering to the principle of **least privilege**. This means we only grant the necessary permissions, avoiding any excess. For instance, although Crossplane allows it, I have chosen not to give the controllers the ability to delete stateful services like S3 or RDS. This decision is a deliberate step to minimize potential risks.
+
+Additionally, I have put a constraint on the resources the controllers can manage. Specifically, they are limited to managing only those resources which are prefixed with `xplane-`. This restriction helps in maintaining a more controlled and secure environment.
 
 ### How is Crossplane deployed?
 
@@ -46,11 +48,6 @@ It needs to be installed and set up in three **successive steps**:
 1. Installation of the Kubernetes operator
 2. Deployment of the AWS provider, which provides custom resources, including AWS roles, policies, etc.
 3. Installation of compositions that will generate AWS resources.
-
-There is a unique composition here: `irsa` that allows to provide fine-grained permissions to a few Kubernetes operators.
-
-⚠️ This repository sets up a central EKS management cluster, and there are some **security considerations** to be aware of, particularly concerning AWS permissions. Specifically, `Crossplane` is able to manage (and even create) IAM roles with the prefix `xplane-`. Thus, if it's compromised, there's a potential to create a role with full admin privileges.
-
 
 ## 🛂 Federated authentication using Pinniped
 
