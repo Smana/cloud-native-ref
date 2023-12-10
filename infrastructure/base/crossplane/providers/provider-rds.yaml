@@ -3,6 +3,8 @@ kind: Provider
 metadata:
   name: provider-aws-rds
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-rds:v0.45.0
-  controllerConfigRef:
+  package: xpkg.upbound.io/upbound/provider-aws-rds:v0.46.0
+  runtimeConfigRef:
+    apiVersion: pkg.crossplane.io/v1beta1
+    kind: DeploymentRuntimeConfig
     name: aws-config
