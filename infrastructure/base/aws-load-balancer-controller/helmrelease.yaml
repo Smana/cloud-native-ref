@@ -1,4 +1,4 @@
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
 kind: HelmRelease
 metadata:
   name: aws-load-balancer-controller
@@ -12,7 +12,7 @@ spec:
         name: eks
         namespace: kube-system
       version: "1.6.2"
-  interval: 10m0s
+  interval: 3m0s
   install:
     remediation:
       retries: 3
