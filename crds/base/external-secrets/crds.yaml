@@ -3,7 +3,7 @@ kind: Kustomization
 metadata:
   name: crds-external-secrets
 spec:
-  interval: 10m
+  interval: 2m
   targetNamespace: kube-system
   sourceRef:
     kind: GitRepository

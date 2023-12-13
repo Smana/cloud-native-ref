@@ -11,4 +11,4 @@ patches:
       kind: HelmRelease
       name: external-secrets
       namespace: kube-system
-      version: v2beta1
+      version: v2beta2
