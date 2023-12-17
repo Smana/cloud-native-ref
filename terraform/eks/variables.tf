@@ -23,7 +23,7 @@ variable "cluster_version" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.14.4"
+  default     = "1.14.5"
   type        = string
 }
 

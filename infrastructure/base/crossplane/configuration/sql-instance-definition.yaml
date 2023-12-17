@@ -30,9 +30,6 @@ spec:
                 parameters:
                   type: object
                   properties:
-                    region:
-                      type: string
-                      description: Region is the region you'd like your resource to be created in.
                     deletionPolicy:
                       description: Delete the external resources when the Claim/XR is deleted. Defaults to Delete
                       enum:
@@ -78,9 +75,6 @@ spec:
                         - key
                     autoGeneratePassword:
                       type: boolean
-                    allowedCIDR:
-                      type: string
-                      description: "The CIDR to allow access to the RDS instance"
                     subnetIds:
                       type: array
                       description: "A list of the subnet IDs where the database will be provision"
@@ -105,13 +99,11 @@ spec:
                           - name
                           - owner
                   required:
-                    - region
                     - engine
                     - engineVersion
                     - size
                     - storageGB
                     - passwordSecretRef
-                    - allowedCIDR
               required:
                 - parameters
             status:
