@@ -35,9 +35,9 @@ spec:
                 type: FromCompositeFieldPath
           - name: region
             patches:
-              - fromFieldPath: spec.parameters.region
+              - fromFieldPath: region
                 toFieldPath: spec.forProvider.region
-                type: FromCompositeFieldPath
+                type: FromEnvironmentFieldPath
 
         resources:
           - base:
@@ -100,9 +100,9 @@ spec:
                 type: PatchSet
               - patchSetName: region
                 type: PatchSet
-              - fromFieldPath: spec.parameters.allowedCIDR
+              - fromFieldPath: CIDRBlock
                 toFieldPath: spec.forProvider.cidrIpv4
-                type: FromCompositeFieldPath
+                type: FromEnvironmentFieldPath
               - fromFieldPath: spec.parameters.dbPort
                 toFieldPath: spec.forProvider.toPort
                 type: FromCompositeFieldPath

@@ -5,12 +5,10 @@ metadata:
   namespace: tooling
 spec:
   parameters:
-    region: ${region}
     engine: postgres
     engineVersion: "15"
     size: small
     storageGB: 20
-    allowedCIDR: ${vpc_cidr_block}
     databases:
       - owner: harbor
         name: registry
