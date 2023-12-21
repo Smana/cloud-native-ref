@@ -7,7 +7,7 @@ on:
 
 jobs:
   pre-commit:
-    name: Terraform CI 🛃
+    name: Pre-commit checks 🛃
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -20,5 +20,5 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Terraform checks (pre-commit)
+      - name: pre-commit checks
         run: task pre-commit
