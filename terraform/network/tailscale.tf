@@ -69,7 +69,7 @@ module "tailscale_subnet_router" {
 
   prometheus_node_exporter_enabled = true
   // No need to enable SSH when Tailscale SSH is working
-  // ssm_enabled                      = true
+  ssm_enabled = true
 
   tags = var.tags
 
