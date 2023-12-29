@@ -73,21 +73,31 @@ data "cloudinit_config" "vault_cloud_init" {
     content_type = "text/cloud-config"
     content = templatefile(
       "${path.module}/scripts/cloudinit-config.yaml",
-      {},
+      {
+        vault_config_b64 = base64encode(
+          templatefile(
+            "${path.module}/files/vault.hcl",
+            {}
+          )
+        )
+        tls_key_b64    = base64encode(file("${path.module}/.tls/vault-key.pem"))
+        tls_cert_b64   = base64encode(file("${path.module}/.tls/vault.pem"))
+        tls_cacert_b64 = base64encode(file("${path.module}/.tls/intermediate-ca.pem"))
+      },
     )
   }
 
   part {
     filename     = "init-vault.sh"
     content_type = "text/x-shellscript"
-    content = templatefile(
-      "${path.module}/scripts/startup_script.sh",
-      {
-        "region"                = var.region
-        "env"                   = var.env
-        "prom_exporter_enabled" = var.prometheus_node_exporter_enabled
-        "enable_ssm"            = var.enable_ssm
-      },
-    )
-  }
+    content = <<-EOF
+      ${file("${path.module}/scripts/setup-local-disks.sh")}
+      ${templatefile("${path.module}/scripts/startup_script.sh", {
+    "region"                = var.region
+    "env"                   = var.env
+    "prom_exporter_enabled" = var.prometheus_node_exporter_enabled
+    "enable_ssm"            = var.enable_ssm
+})}
+      EOF
+}
 }

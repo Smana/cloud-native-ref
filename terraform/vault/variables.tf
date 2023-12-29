@@ -15,6 +15,11 @@ variable "name" {
   type        = string
 }
 
+variable "leader_tls_servername" {
+  type        = string
+  description = "One of the shared DNS SAN used to create the certs use for mTLS"
+}
+
 variable "autoscaling" {
   description = "Autoscaling configuration"
   type = object({

@@ -4,12 +4,21 @@ echo "Vault init"
 
 export DEBIAN_FRONTEND=noninteractive
 
+# Vault
+
+chown vault:vault /etc/vault.d/vault.hcl
+chown -R vault:vault /opt/vault/data
+chown root:vault /opt/vault/tls/tls.key
+
+systemctl start vault.service
+systemctl enable vault service
+
 # Install Prometheus node exporter
 # --------------------------------
 if ${prom_exporter_enabled}; then
 useradd --system --no-create-home --shell /usr/sbin/nologin prometheus
 
-NODE_EXPORTER_VERSION=1.6.1
+NODE_EXPORTER_VERSION=1.7.0
 wget -O /tmp/node_exporter.tar.gz https://github.com/prometheus/node_exporter/releases/download/v$NODE_EXPORTER_VERSION/node_exporter-$NODE_EXPORTER_VERSION.linux-amd64.tar.gz
 tar -xzf /tmp/node_exporter.tar.gz -C /tmp
 mv /tmp/node_exporter-$NODE_EXPORTER_VERSION.linux-amd64/node_exporter /usr/local/bin/node_exporter
@@ -33,12 +42,4 @@ EOF
 systemctl daemon-reload
 systemctl start node-exporter
 systemctl enable node-exporter
-fi
-
-# SSM
-# ----
-if ${enable_ssm}; then
-snap install amazon-ssm-agent --classic
-systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
-systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
 fi
