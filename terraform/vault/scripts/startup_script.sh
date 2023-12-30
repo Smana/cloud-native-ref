@@ -7,7 +7,7 @@ export DEBIAN_FRONTEND=noninteractive
 # Vault
 
 chown vault:vault /etc/vault.d/vault.hcl
-chown -R vault:vault /opt/vault/data
+chown -R vault:vault ${vault_data_path}
 chown root:vault /opt/vault/tls/tls.key
 
 systemctl start vault.service

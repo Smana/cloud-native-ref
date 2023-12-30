@@ -3,6 +3,28 @@ variable "env" {
   type        = string
 }
 
+variable "domain_name" {
+  description = "The domain name for which the certificate should be issued"
+  type        = string
+}
+
+variable "mode" {
+  description = "Vault cluster mode (default dev, meaning a single node)"
+  type        = string
+  default     = "dev"
+
+  validation {
+    condition     = var.mode == "dev" || var.mode == "ha"
+    error_message = "The mode must be 'dev' (1 node) or 'ha' (5 nodes)."
+  }
+}
+
+variable "vault_data_path" {
+  description = "Directory where Vault's data will be stored in an EC2 instance"
+  type        = string
+  default     = "/opt/vault/data"
+}
+
 variable "region" {
   description = "AWS Region"
   default     = "eu-west-3"
@@ -18,20 +40,6 @@ variable "name" {
 variable "leader_tls_servername" {
   type        = string
   description = "One of the shared DNS SAN used to create the certs use for mTLS"
-}
-
-variable "autoscaling" {
-  description = "Autoscaling configuration"
-  type = object({
-    min     = number
-    desired = number
-    max     = number
-  })
-  default = {
-    min     = 1
-    desired = 1
-    max     = 2
-  }
 }
 
 variable "ami_filter" {

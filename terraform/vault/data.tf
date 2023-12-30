@@ -2,6 +2,11 @@
 # tflint-ignore: terraform_unused_declarations
 data "aws_ecr_authorization_token" "token" {}
 
+data "aws_route53_zone" "this" {
+  name         = var.domain_name
+  private_zone = true
+}
+
 data "aws_vpc" "selected" {
   filter {
     name   = "tag:project"
@@ -77,7 +82,9 @@ data "cloudinit_config" "vault_cloud_init" {
         vault_config_b64 = base64encode(
           templatefile(
             "${path.module}/files/vault.hcl",
-            {}
+            {
+              vault_data_path = var.vault_data_path
+            }
           )
         )
         tls_key_b64    = base64encode(file("${path.module}/.tls/vault-key.pem"))
@@ -91,13 +98,21 @@ data "cloudinit_config" "vault_cloud_init" {
     filename     = "init-vault.sh"
     content_type = "text/x-shellscript"
     content = <<-EOF
-      ${file("${path.module}/scripts/setup-local-disks.sh")}
-      ${templatefile("${path.module}/scripts/startup_script.sh", {
-    "region"                = var.region
-    "env"                   = var.env
-    "prom_exporter_enabled" = var.prometheus_node_exporter_enabled
-    "enable_ssm"            = var.enable_ssm
-})}
+      ${templatefile(
+    "${path.module}/scripts/setup-local-disks.sh",
+    {
+      "vault_data_path" = var.vault_data_path
+    }
+    )}
+      ${templatefile(
+    "${path.module}/scripts/startup_script.sh",
+    {
+      "region"                = var.region
+      "prom_exporter_enabled" = var.prometheus_node_exporter_enabled
+      "enable_ssm"            = var.enable_ssm
+      "vault_data_path"       = var.vault_data_path
+    }
+)}
       EOF
 }
 }

@@ -1,31 +1,83 @@
-module "asg_sg" {
-  source  = "terraform-aws-modules/security-group/aws"
-  version = "~> 5.0"
-
-  name        = local.name
-  description = "A security group"
+# NLB
+resource "aws_security_group" "nlb" {
+  name        = format("%s-nlb", local.name)
+  description = "Security group for the Vault NLB"
   vpc_id      = data.aws_vpc.selected.id
 
-  computed_ingress_with_source_security_group_id = [
-    {
-      rule                     = "http-80-tcp"
-      source_security_group_id = module.alb.security_group_id
-    }
-  ]
-  number_of_computed_ingress_with_source_security_group_id = 1
+  ingress {
+    from_port   = 8200
+    to_port     = 8200
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-  egress_rules = ["all-all"]
-
-  tags = var.tags
+  # Standard outbound rule
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
-resource "aws_iam_service_linked_role" "autoscaling" {
-  aws_service_name = "autoscaling.amazonaws.com"
-  description      = "A service linked role for autoscaling"
-  custom_suffix    = local.name
+resource "aws_security_group_rule" "allow_8200" {
+  type                     = "ingress"
+  from_port                = 8200
+  to_port                  = 8200
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.nlb.id
+  source_security_group_id = aws_security_group.vault.id
+}
 
-  # Sometimes good sleep is required to have some IAM resources created before they can be used
-  provisioner "local-exec" {
-    command = "sleep 10"
-  }
+
+# Autoscaling group
+resource "aws_security_group" "vault" {
+  name        = format("%s-asg", local.name)
+  description = "Vault ASG security group"
+  vpc_id      = data.aws_vpc.selected.id
+
+  tags = merge(
+    { Name = local.name },
+    var.tags,
+  )
+}
+
+resource "aws_security_group_rule" "vault_internal_api" {
+  description       = "Allow Vault nodes to reach other on port 8200 for API"
+  security_group_id = aws_security_group.vault.id
+  type              = "ingress"
+  from_port         = 8200
+  to_port           = 8200
+  protocol          = "tcp"
+  self              = true
+}
+
+resource "aws_security_group_rule" "vault_internal_raft" {
+  description       = "Allow Vault nodes to communicate on port 8201 for replication traffic, request forwarding, and Raft gossip"
+  security_group_id = aws_security_group.vault.id
+  type              = "ingress"
+  from_port         = 8201
+  to_port           = 8201
+  protocol          = "tcp"
+  self              = true
+}
+
+resource "aws_security_group_rule" "vault_network_lb_ingress" {
+  description       = "Allow specified CIDRs access to load balancer and nodes on port 8200"
+  security_group_id = aws_security_group.vault.id
+  type              = "ingress"
+  from_port         = 8200
+  to_port           = 8200
+  protocol          = "tcp"
+  cidr_blocks       = [data.aws_vpc.selected.cidr_block]
+}
+
+resource "aws_security_group_rule" "vault_outbound" {
+  description       = "Allow Vault nodes to send outbound traffic"
+  security_group_id = aws_security_group.vault.id
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
 }

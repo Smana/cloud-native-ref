@@ -7,16 +7,16 @@ module "vault_asg" {
 
   ignore_desired_capacity_changes = true
 
-  min_size         = var.autoscaling.min
-  max_size         = var.autoscaling.max
-  desired_capacity = var.autoscaling.desired
+  desired_capacity = var.mode == "dev" ? 1 : 5
+  min_size         = var.mode == "dev" ? 1 : 5
+  max_size         = var.mode == "dev" ? 1 : 5
 
-  vpc_zone_identifier     = data.aws_subnets.private.ids
-  service_linked_role_arn = aws_iam_service_linked_role.autoscaling.arn
+  vpc_zone_identifier = data.aws_subnets.private.ids
+  # service_linked_role_arn = aws_iam_service_linked_role.autoscaling.arn
 
   # Traffic source attachment
   create_traffic_source_attachment = true
-  traffic_source_identifier        = module.alb.target_groups[replace(local.name, "-", "_")].arn
+  traffic_source_identifier        = aws_lb_target_group.this.arn
   traffic_source_type              = "elbv2"
 
   # Launch template
@@ -40,7 +40,7 @@ module "vault_asg" {
     instance_metadata_tags      = "enabled"
   }
 
-  security_groups = [module.asg_sg.security_group_id]
+  security_groups = [aws_security_group.vault.id]
 
   use_mixed_instances_policy = true
   mixed_instances_policy = {

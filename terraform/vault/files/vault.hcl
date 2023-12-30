@@ -9,8 +9,9 @@ ui = true
 #disable_mlock = true
 
 storage "file" {
-  path = "/opt/vault/data"
+  path = "${vault_data_path}"
 }
+
 
 #storage "consul" {
 #  address = "127.0.0.1:8500"

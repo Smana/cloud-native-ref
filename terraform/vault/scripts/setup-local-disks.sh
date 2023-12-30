@@ -25,7 +25,7 @@ create_systemd_mount_unit() {
     local unit_name
     unit_name="$(systemd-escape --path --suffix=mount "$mount_point")"
     mkdir -p "$mount_point"
-    cat > "/etc/systemd/system/${unit_name}" << EOF
+    cat > "/etc/systemd/system/$${unit_name}" << EOF
 [Unit]
 Description=Mount at $mount_point
 [Mount]
@@ -42,7 +42,7 @@ EOF
 
 setup_raid0() {
     local md_name="vault"
-    local md_device="/dev/md/${md_name}"
+    local md_device="/dev/md/$${md_name}"
     local md_config="/.aws/mdadm.conf"
     local array_mount_point="$MNT_DIR"
     mkdir -p "$(dirname "$md_config")"
@@ -52,8 +52,8 @@ setup_raid0() {
               "$md_device" \
               --level=0 \
               --name="$md_name" \
-              --raid-devices="${#EPHEMERAL_DISKS[@]}" \
-              "${EPHEMERAL_DISKS[@]}"
+              --raid-devices="$${#EPHEMERAL_DISKS[@]}" \
+              "$${EPHEMERAL_DISKS[@]}"
         while [ -n "$(mdadm --detail "$md_device" | grep -ioE 'State :.*resyncing')" ]; do
             echo "Raid is resyncing..."
             sleep 1
@@ -62,7 +62,7 @@ setup_raid0() {
     fi
 
     local current_md_device
-    current_md_device=$(find /dev/md/ -type l -regex ".*/${md_name}_?[0-9a-z]*$" | tail -n1)
+    current_md_device=$(find /dev/md/ -type l -regex ".*/$${md_name}_?[0-9a-z]*$" | tail -n1)
     [[ -n $current_md_device ]] && md_device=$current_md_device
 
     if [[ -z $(lsblk "$md_device" -o fstype --noheadings) ]]; then
@@ -82,7 +82,7 @@ check_command systemd-analyze
 check_command blkid
 
 disks=($(find -L /dev/disk/by-id/ -xtype l -name '*NVMe_Instance_Storage_*'))
-if [[ ${#disks[@]} -eq 0 ]]; then
+if [[ $${#disks[@]} -eq 0 ]]; then
     echo "No ephemeral disks found, skipping disk setup"
     exit 0
 fi
@@ -92,7 +92,7 @@ if [[ $(id --user) -ne 0 ]]; then
     exit 1
 fi
 
-EPHEMERAL_DISKS=($(realpath "${disks[@]}" | sort -u))
+EPHEMERAL_DISKS=($(realpath "$${disks[@]}" | sort -u))
 
 setup_raid0
-echo "Successfully setup RAID-0 consisting of ${EPHEMERAL_DISKS[*]}"
+echo "Successfully setup RAID-0 consisting of $${EPHEMERAL_DISKS[*]}"
