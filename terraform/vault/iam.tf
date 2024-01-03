@@ -29,3 +29,33 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   role       = aws_iam_role.this.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
+
+# For the raft auto_join discovery
+resource "aws_iam_role_policy_attachment" "ec2_read_only" {
+  role       = aws_iam_role.this.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess"
+}
+
+
+# For the auto unseal using AWS KMS
+data "aws_iam_policy_document" "vault-kms-unseal" {
+  statement {
+    sid       = "VaultKMSUnseal"
+    effect    = "Allow"
+    resources = [aws_kms_key.vault.arn]
+
+    actions = [
+      "kms:Decrypt",
+      "kms:Encrypt",
+      "kms:DescribeKey",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*"
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "vault-kms-unseal" {
+  name   = "${local.name}-kms-unseal"
+  role   = aws_iam_role.this.id
+  policy = data.aws_iam_policy_document.vault-kms-unseal.json
+}

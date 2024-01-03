@@ -1,19 +1,16 @@
 write_files:
-  - content: ${vault_config_b64}
-    encoding: b64
-    path: /etc/vault.d/vault.hcl
   - content: ${tls_key_b64}
     encoding: b64
     path: /opt/vault/tls/tls.key
-    permissions: 0640
+    permissions: "0640"
   - content: ${tls_cert_b64}
     encoding: b64
     path: /opt/vault/tls/tls.crt
-    permissions: 0644
+    permissions: "0644"
   - content: ${tls_cacert_b64} # intermediate CA
     encoding: b64
     path: /opt/vault/tls/ca.pem
-    permissions: 0644
+    permissions: "0644"
 
 package_upgrade: true
 
@@ -26,4 +23,4 @@ apt:
 packages:
   - jq
   - snapd
-  - vault=1.4.7 # Latest version under MPL 2.0
+  - vault=1.14.8-1 # Latest version under MPL 2.0

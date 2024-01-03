@@ -97,5 +97,7 @@ module "vault_asg" {
     }
   }
 
-  tags = var.tags
+  tags = merge(
+    var.tags, local.tags
+  )
 }

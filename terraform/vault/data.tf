@@ -79,17 +79,9 @@ data "cloudinit_config" "vault_cloud_init" {
     content = templatefile(
       "${path.module}/scripts/cloudinit-config.yaml",
       {
-        vault_config_b64 = base64encode(
-          templatefile(
-            "${path.module}/files/vault.hcl",
-            {
-              vault_data_path = var.vault_data_path
-            }
-          )
-        )
         tls_key_b64    = base64encode(file("${path.module}/.tls/vault-key.pem"))
         tls_cert_b64   = base64encode(file("${path.module}/.tls/vault.pem"))
-        tls_cacert_b64 = base64encode(file("${path.module}/.tls/intermediate-ca.pem"))
+        tls_cacert_b64 = base64encode(file("${path.module}/.tls/ca-chain-bundle.pem"))
       },
     )
   }
@@ -111,6 +103,12 @@ data "cloudinit_config" "vault_cloud_init" {
       "prom_exporter_enabled" = var.prometheus_node_exporter_enabled
       "enable_ssm"            = var.enable_ssm
       "vault_data_path"       = var.vault_data_path
+      "vault_instance"        = local.tags.VaultInstance
+      "dev_mode"              = var.mode == "dev" ? true : false
+      "vault_data_path"       = var.vault_data_path
+      "leader_tls_servername" = var.leader_tls_servername
+      "kms_unseal_key_id"     = aws_kms_key.vault.id
+
     }
 )}
       EOF
