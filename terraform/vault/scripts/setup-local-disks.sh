@@ -40,39 +40,34 @@ EOF
     systemctl enable "$unit_name" --now
 }
 
-setup_raid0() {
-    local md_name="vault"
-    local md_device="/dev/md/$${md_name}"
-    local md_config="/.aws/mdadm.conf"
-    local array_mount_point="$MNT_DIR"
-    mkdir -p "$(dirname "$md_config")"
-
-    if [[ ! -s "$md_config" ]]; then
-        mdadm --create --force --verbose \
-              "$md_device" \
-              --level=0 \
-              --name="$md_name" \
-              --raid-devices="$${#EPHEMERAL_DISKS[@]}" \
-              "$${EPHEMERAL_DISKS[@]}"
-        while [ -n "$(mdadm --detail "$md_device" | grep -ioE 'State :.*resyncing')" ]; do
-            echo "Raid is resyncing..."
-            sleep 1
-        done
-        mdadm --detail --scan > "$md_config"
+vault_storage_mount() {
+  idx=1
+  for dev in "$${EPHEMERAL_DISKS[@]}"; do
+    if [[ -z "$(lsblk "$${dev}" -o fstype --noheadings)" ]]; then
+      mkfs.xfs -l su=8b "$${dev}"
     fi
-
-    local current_md_device
-    current_md_device=$(find /dev/md/ -type l -regex ".*/$${md_name}_?[0-9a-z]*$" | tail -n1)
-    [[ -n $current_md_device ]] && md_device=$current_md_device
-
-    if [[ -z $(lsblk "$md_device" -o fstype --noheadings) ]]; then
-        mkfs.xfs -l su=8b "$md_device"
+    if [[ ! -z "$(lsblk "$${dev}" -o MOUNTPOINT --noheadings)" ]]; then
+      echo "$${dev} is already mounted."
+      continue
     fi
-
-    mkdir -p "$array_mount_point"
-    local dev_uuid
-    dev_uuid=$(blkid -s UUID -o value "$md_device")
-    create_systemd_mount_unit "UUID=$dev_uuid" "$array_mount_point"
+    local mount_point="$${MNT_DIR}/$${idx}"
+    local mount_unit_name="$(systemd-escape --path --suffix=mount "$${mount_point}")"
+    mkdir -p "$${mount_point}"
+    cat > "/etc/systemd/system/$${mount_unit_name}" << EOF
+    [Unit]
+    Description=Mount EC2 Instance Store NVMe disk $${idx}
+    [Mount]
+    What=$${dev}
+    Where=$${mount_point}
+    Type=xfs
+    Options=defaults,noatime
+    [Install]
+    WantedBy=multi-user.target
+EOF
+    systemd-analyze verify "$${mount_unit_name}"
+    systemctl enable "$${mount_unit_name}" --now
+    idx=$((idx + 1))
+  done
 }
 
 MNT_DIR="/opt/vault/data"
@@ -94,5 +89,5 @@ fi
 
 EPHEMERAL_DISKS=($(realpath "$${disks[@]}" | sort -u))
 
-setup_raid0
-echo "Successfully setup RAID-0 consisting of $${EPHEMERAL_DISKS[*]}"
+vault_storage_mount
+echo "Successfully setup volume consisting of $${EPHEMERAL_DISKS[*]}"

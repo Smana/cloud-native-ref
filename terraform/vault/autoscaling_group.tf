@@ -42,60 +42,47 @@ module "vault_asg" {
 
   security_groups = [aws_security_group.vault.id]
 
-  use_mixed_instances_policy = true
-  mixed_instances_policy = {
-    instances_distribution = {
-      on_demand_base_capacity                  = 0
-      on_demand_percentage_above_base_capacity = 10
-      spot_allocation_strategy                 = "capacity-optimized"
-    }
-    override = [
-      {
-        instance_requirements = {
-          cpu_manufacturers   = ["amd"]
-          local_storage_types = ["ssd"]
-          memory_gib_per_vcpu = {
-            min = 2
-            max = 4
-          }
-          memory_mib = {
-            min = 2048
-          },
-          vcpu_count = {
-            min = 2
-            max = 4
-          }
-        }
-      }
-    ]
-  }
-  instance_requirements = {
+  # mode 'dev' = A unique small instance
+  instance_type = var.mode == "dev" ? "t3.micro" : null
 
-    burstable_performance   = "excluded"
-    excluded_instance_types = ["t*"]
-    instance_generations    = ["current"]
-    local_storage_types     = ["ssd", "hdd"]
+  # Otherwise 5 nodes with SSD disks and SPOT instances
+  use_mixed_instances_policy = var.mode == "ha"
+
+  mixed_instances_policy = var.mode == "ha" ? {
+    instances_distribution = {
+      on_demand_allocation_strategy            = "lowest-price"
+      on_demand_base_capacity                  = 0
+      on_demand_percentage_above_base_capacity = 5
+      spot_allocation_strategy                 = "lowest-price"
+      spot_instance_pools                      = 3
+    }
+  } : null
+
+  instance_requirements = var.mode == "ha" ? {
+    burstable_performance = "excluded"
+    instance_generations  = ["current"]
+    local_storage_types   = ["ssd", "hdd"]
 
     memory_gib_per_vcpu = {
-      min = 4
-      max = 16
+      min = 0.5
+      max = 8
     }
 
     memory_mib = {
-      min = 24
-      max = 128
+      min = 1024
+      max = 8192
     }
 
     network_interface_count = {
       min = 1
-      max = 16
+      max = 4
     }
 
     vcpu_count = {
-      min = 2
-      max = 96
+      min = 1
+      max = 12
     }
-  }
+  } : null
 
   tags = merge(
     var.tags, local.tags
