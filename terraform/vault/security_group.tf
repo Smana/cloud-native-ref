@@ -5,22 +5,25 @@ resource "aws_security_group" "nlb" {
   vpc_id      = data.aws_vpc.selected.id
 
   ingress {
-    from_port   = 8200
-    to_port     = 8200
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description     = "Allow to access to the Vault API through the NLB, only from the VPN"
+    from_port       = 8200
+    to_port         = 8200
+    protocol        = "tcp"
+    security_groups = [data.aws_security_group.tailscale.id]
   }
 
   # Standard outbound rule
   egress {
+    description = "Allow the NLB to communicate with the Instances"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [data.aws_vpc.selected.cidr_block]
   }
 }
 
 resource "aws_security_group_rule" "allow_8200" {
+  description              = "Allow to access to the Vault API"
   type                     = "ingress"
   from_port                = 8200
   to_port                  = 8200

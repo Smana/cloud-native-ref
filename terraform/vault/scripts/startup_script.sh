@@ -59,7 +59,7 @@ seal "awskms" {
 EOF
 
 systemctl start vault.service
-systemctl enable vault service
+systemctl enable vault.service
 
 # Install Prometheus node exporter
 # --------------------------------

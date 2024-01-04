@@ -38,6 +38,7 @@ resource "aws_iam_role_policy_attachment" "ec2_read_only" {
 
 
 # For the auto unseal using AWS KMS
+#tfsec:ignore:aws-iam-no-policy-wildcards
 data "aws_iam_policy_document" "vault-kms-unseal" {
   statement {
     sid       = "VaultKMSUnseal"

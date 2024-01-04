@@ -54,7 +54,6 @@ It needs to be installed and set up in three **successive steps**:
 ## 🗒️ Audit logs with Loki and Vector
 
 ## 📦 OCI Registry with Harbor
-ℹ️ In progress ...
 
 The Harbor installation follows the best practices for high availability. It leverages recent Crossplane's features such as `Composition functions`
 
@@ -79,6 +78,10 @@ Anyway, I intentionnaly created a distinct directory that allows to provision th
 ## :closed_lock_with_key: Secrets management with Vault and external-secrets operator
 
 ## 🔑 Private PKI with Vault
+ℹ️ In progress ...
+
+All the steps required to setup a Vault instance are described [here](/terraform/vault/README.md).
+
 
 ## 🌐 Network policies with Cilium
 

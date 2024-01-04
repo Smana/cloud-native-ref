@@ -81,7 +81,7 @@ data "cloudinit_config" "vault_cloud_init" {
       {
         tls_key_b64    = base64encode(file("${path.module}/.tls/vault-key.pem"))
         tls_cert_b64   = base64encode(file("${path.module}/.tls/vault.pem"))
-        tls_cacert_b64 = base64encode(file("${path.module}/.tls/ca-chain-bundle.pem"))
+        tls_cacert_b64 = base64encode(file("${path.module}/.tls/ca-chain.pem"))
       },
     )
   }
