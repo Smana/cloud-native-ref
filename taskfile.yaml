@@ -13,7 +13,7 @@ tasks:
 
   clean:
     cmds:
-      - find . -type d -name "*.terraform" -or -name "*.terraform.lock.hcl" | sudo xargs rm -vrf
+      - find . -type d -name "*.terraform" -or -name "*.terraform.lock.hcl" | sudo xargs rm -rf
 
   pre-commit:
     deps: [clean]

@@ -44,4 +44,5 @@ terraform.rc
 .vscode
 
 # Secrets directory
+**/.tls/*
 .secrets
