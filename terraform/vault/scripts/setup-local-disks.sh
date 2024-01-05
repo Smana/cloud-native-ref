@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-
 # Based on https://github.com/awslabs/amazon-eks-ami
-
 set -o errexit
+set -o pipefail
+set -o nounset
+
+if ! curl -s http://169.254.169.254/latest/meta-data/instance-id > /dev/null; then
+  echo "This script must be run on an EC2 instance."
+  exit 1
+fi
 set -o pipefail
 set -o nounset
 
