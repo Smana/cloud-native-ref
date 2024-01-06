@@ -1,8 +1,43 @@
 # Vault cluster
 
+- [Architecture](#🏗️-architecture)
+  - [High availability](#💪-high-availability)
+- [Getting started](#🚀-getting-started)
+- [PKI requirements](#🔑-public-key-infrastructure-pki-requirements)
+
+## 🏗️ Architecture
+
+### 💪 High availability
+
+⚠️ You can choose between two modes when creating a Vault instance: `dev`  and `ha` (default: `dev`). Here are the differences between these modes:
+
+|                    | Dev            |     HA        |
+|--------------------|----------------|---------------|
+| Number of nodes    |        1       |       5       |
+| Disk type          |      hdd       |      ssd      |
+| Vault storage type |      file      |     raft      |
+| Instance type(s)   |    t3.micro    |   mixed (lower-price)    |
+| Capacity type      |   on-demand    |     spot      |
+
+#### ℹ️ Regarding the HA mode
+
+In designing our production environment for HashiCorp Vault, I wanted a balance between performance and reliability. This led to several architectural decisions:
+
+1. Cluster Reliability via **Raft** Protocol: We're leveraging the raft protocol for its robustness in ensuring cluster reliability. This consensus mechanism is widely recognized for its effectiveness in distributed systems and is particularly crucial in a production environment.
+
+2. **Five-Node** Cluster Configuration: Best practices suggest a five-node cluster in production for optimal fault tolerance and availability. This setup significantly reduces the risk of service disruption, ensuring a high level of reliability.
+
+3. Ephemeral Node Strategy with **SPOT Instance**s: In a move towards operational flexibility and cost efficiency, we've chosen to treat nodes as ephemeral. This approach enables us to utilize SPOT instances, which are more cost-effective than standard instances. While this might introduce some volatility in node availability, it aligns with our goal of optimizing costs.
+
+4. Data Storage on **RAID0** Array: I've opted for a RAID0 array for data storage, prioritizing performance. RAID0 arrays offer faster data access and can enhance overall system performance. However, I'm aware that RAID0 does not offer redundancy. The Raft protocol as well as a robust backup/restore strategy should mitigate this risk.
+
+5. Vault **Auto-Unseal** Feature: To accommodate the ephemeral nature of our nodes, we've configured Vault's auto-unseal feature. This ensures that if a node is replaced or rejoins the cluster, Vault will automatically unseal, minimizing downtime and manual intervention. This feature is crucial for maintaining seamless access to the Vault, especially in an environment where node volatility is expected.
+
+This architecture is designed to strike a balance between performance, cost-efficiency, and resilience while embracing the **dynamic nature of cloud resources** for operational flexibility.
+
 ## 🚀 Getting started
 
-1. Create the certificates using [this procedure](#🔑-pki)
+1. It is **required** to provide Vault's certificates (`.tls/vault.pem`, `.tls/vault-key.pem` and `ca-chain.pem`). You can create the certificates using [this procedure](#🔑-public-key-infrastructure-pki-requirements)
 2. Prepare your `variables.tfvars` file:
 
 ```hcl
@@ -21,46 +56,47 @@ tags = {                                              # In my case, these tags a
 ```
 
 3. Run the command `tofu apply --var-file variables.tfvars`
-4. Connect to one of the EC2 instances using SSM and init the Vault instance as follows
+4. Connect to one of the EC2 instances using SSM and init the Vault instance:
 
+Switch to the `root` user
 ```console
 $ sudo su -
-root@ip-10-0-0-213:~# export VAULT_SKIP_VERIFY=true
-vault operator init -recovery-shares=1 -recovery-threshold=1
-Recovery Key 1: 0vn2C31WbudlZS6SBEKIOBiFM4JL10AnDG5ngNit9iw=
+```
 
-Initial Root Token: hvs.LMKRyua5kJJ8ztn2VYgm6QZp
+Initialize Vault as follows
+```console
+export VAULT_SKIP_VERIFY=true
+vault operator init -recovery-shares=1 -recovery-threshold=1
+```
+
+You should get an output that contains the `Recovery Key` and the `Root Token`
+```console
+Recovery Key 1: 0vn2C31WbudlZS6...
+
+Initial Root Token: hvs.LMKRyua5kJJ8...
 
 Success! Vault is initialized
-
-Recovery key initialized with 1 key shares and a key threshold of 1. Please
-securely distribute the key shares printed above.
 ```
+
 
 ⚠️ **Important**: Throughout the entire installation and configuration process, it's essential to securely retain the `root` token. This token should be kept until all user accounts have been created. After this point, for enhanced security, the `root` token must be revoked.
 
 Additionally, the `recovery key` requires careful handling. It should be securely stored in a highly safe location. Use the `recovery key` only in exceptionally rare situations, specifically when there is a need to generate a new `root` token. This key serves as a critical backup mechanism and should be treated with the utmost security.
 
-5. Check that the cluster is working properly using the root token above
+1. Check that the cluster is working properly using the root token above
 
 ```console
 vault login
-Token (will be hidden):
-Success! You are now authenticated. The token information displayed below
-is already stored in the token helper. You do NOT need to run "vault login"
-again. Future Vault requests will automatically use this token.
+```
 
-Key                  Value
----                  -----
-token                hvs.LMKRyua5kJJ8ztn2VYgm6QZp
-token_accessor       KtZ0MTgVqaqXzmHOLOeLK3Ky
-token_duration       ∞
-token_renewable      false
-token_policies       ["root"]
-identity_policies    []
-policies             ["root"]
+List all the cluster peers (members of the Vault cluster)
 
-root@ip-10-0-0-213:~# vault operator raft list-peers
+```console
+vault operator raft list-peers
+```
+
+you should get an output that looks like that
+```console
 Node                   Address             State       Voter
 ----                   -------             -----       -----
 i-0ef3177199c5252c6    10.0.0.213:8201     leader      true
@@ -68,7 +104,10 @@ i-0ad5039408a66cb2c    10.0.10.226:8201    follower    true
 i-0b26df9b89772e4c5    10.0.29.250:8201    follower    true
 i-0c7e7cc9590ec721d    10.0.42.25:8201     follower    true
 i-0118db2721ee07b6c    10.0.24.141:8201    follower    true
+```
 
+You can also check the cluster's status. The important information below is that Vault is "Initialized" and not "Sealed".
+```console
 vault status
 Key                      Value
 ---                      -----
@@ -90,35 +129,17 @@ Raft Committed Index     43
 Raft Applied Index       43
 ```
 
-## 💪 High availability
+## 🔑 Public Key Infrastructure (PKI): Requirements
 
-⚠️ You can choose between two modes when creating a Vault instance: `dev`  and `ha` (default: `dev`). Here are the differences between these modes:
+We're going to build a **three-tier Public Key Infrastructure** (PKI) which consists of a Root Certificate Authority (CA) at the top, Intermediate CAs in the middle, and End Entities at the bottom. The Root CA issues certificates to the Intermediate CAs, which in turn issue certificates to end users or devices. This structure enhances security by minimizing the Root CA's exposure and simplifies management and revocation of certificates, offering a scalable and flexible solution for digital security.
 
-|                    | Dev            |     HA        |
-|--------------------|----------------|---------------|
-| Number of nodes    |        1       |       5       |
-| Disk type          |      hdd       |      ssd      |
-| Vault storage type |      file      |     raft      |
-| Instance type(s)   |    t3.micro    |   mixed (lower-price)    |
-| Capacity type      |   on-demand    |     spot      |
-
-### ℹ️ Regarding the HA mode
-
-In designing our production environment for HashiCorp Vault, I wanted a balance between performance and reliability. This led to several architectural decisions:
-
-1. Cluster Reliability via **Raft** Protocol: We're leveraging the raft protocol for its robustness in ensuring cluster reliability. This consensus mechanism is widely recognized for its effectiveness in distributed systems and is particularly crucial in a production environment.
-
-2. **Five-Node** Cluster Configuration: Best practices suggest a five-node cluster in production for optimal fault tolerance and availability. This setup significantly reduces the risk of service disruption, ensuring a high level of reliability.
-
-3. Ephemeral Node Strategy with **SPOT Instance**s: In a move towards operational flexibility and cost efficiency, we've chosen to treat nodes as ephemeral. This approach enables us to utilize SPOT instances, which are more cost-effective than standard instances. While this might introduce some volatility in node availability, it aligns with our goal of optimizing costs.
-
-4. Data Storage on **RAID0** Array: I've opted for a RAID0 array for data storage, prioritizing performance. RAID0 arrays offer faster data access and can enhance overall system performance. However, I'm aware that RAID0 does not offer redundancy. The Raft protocol as well as a robust backup/restore strategy should mitigate this risk.
-
-5. Vault **Auto-Unseal** Feature: To accommodate the ephemeral nature of our nodes, we've configured Vault's auto-unseal feature. This ensures that if a node is replaced or rejoins the cluster, Vault will automatically unseal, minimizing downtime and manual intervention. This feature is crucial for maintaining seamless access to the Vault, especially in an environment where node volatility is expected.
-
-This architecture is designed to strike a balance between performance, cost-efficiency, and resilience while embracing the **dynamic nature of cloud resources** for operational flexibility.
-
-## 🔑 Public Key Infrastructure (PKI) Setup Guide
+```mermaid
+graph LR;
+    RootCA["Root CA"] --> IntermediateCA["Intermediate CA"];
+    IntermediateCA --> IssuerCA["Issuer CA (Vault)"];
+    IssuerCA --> LeafCertX["Leaf cert X"];
+    IssuerCA --> LeafCertY["Leaf cert Y"];
+```
 
 ⚠️ **Important:** All certificates will be stored in the directory `.tls`. This directory is ignored by git, as specified in the `.gitignore` file:
 ```
@@ -126,14 +147,6 @@ This architecture is designed to strike a balance between performance, cost-effi
 ```
 
 ### Step1: Generate the Root CA
-
-```mermaid
-graph TD;
-    Root CA-->Intermediate CA;
-    Intermediate CA-->Issuer CA (Vault);
-    Issuer CA (Vault)-->Leaf cert X;
-    Issuer CA (Vault)-->Leaf cert Y
-```
 
 1. Create the Root CA key:
 ```console
