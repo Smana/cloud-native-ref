@@ -81,7 +81,7 @@ Anyway, I intentionnaly created a distinct directory that allows to provision th
 ℹ️ In progress ...
 
 All the steps required to setup a Vault instance are described [here](/terraform/vault/README.md).
-
+The provided code outlines the setup and configuration of a **highly available, secure, and cost-efficient HashiCorp Vault cluster**. It describes the process of creating a Vault instance in either development or high availability mode, with detailed steps for initializing the Vault, managing security tokens, and configuring a robust **Public Key Infrastructure** (PKI) system. The focus is on balancing performance, security, and cost, using a multi-node cluster, ephemeral nodes with SPOT instances, and a tiered CA structure for digital security.
 
 ## 🌐 Network policies with Cilium
 
