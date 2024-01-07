@@ -37,8 +37,11 @@ This architecture is designed to strike a balance between performance, cost-effi
 
 ## 🚀 Getting started
 
-1. It is **required** to provide Vault's certificates (`.tls/vault.pem`, `.tls/vault-key.pem` and `ca-chain.pem`). You can create the certificates using [this procedure](#🔑-public-key-infrastructure-pki-requirements)
-2. Prepare your `variables.tfvars` file:
+1. First of all we need to create the **supporting resources** such as the VPC and subnets using [this directory](../../network/).
+
+2. It is required to provide Vault's certificates (`.tls/vault.pem`, `.tls/vault-key.pem` and `ca-chain.pem`). You can create the certificates using [this procedure](#🔑-public-key-infrastructure-pki-requirements)
+
+3. Prepare your `variables.tfvars` file:
 
 ```hcl
 name                  = "ogenki-vault"                # Name of your Vault instance
@@ -55,15 +58,19 @@ tags = {                                              # In my case, these tags a
 }
 ```
 
-3. Run the command `tofu apply --var-file variables.tfvars`
-4. Connect to one of the EC2 instances using SSM and init the Vault instance:
+4. Run the command `tofu apply --var-file variables.tfvars`
+
+5. Connect to one of the EC2 instances using SSM and init the Vault instance:
+
+Switch to the `root` user
 
 Switch to the `root` user
 ```console
-$ sudo su -
+sudo su -
 ```
 
 Initialize Vault as follows
+
 ```console
 export VAULT_SKIP_VERIFY=true
 vault operator init -recovery-shares=1 -recovery-threshold=1
@@ -83,7 +90,7 @@ Success! Vault is initialized
 
 Additionally, the `recovery key` requires careful handling. It should be securely stored in a highly safe location. Use the `recovery key` only in exceptionally rare situations, specifically when there is a need to generate a new `root` token. This key serves as a critical backup mechanism and should be treated with the utmost security.
 
-1. Check that the cluster is working properly using the root token above
+6. Check that the cluster is working properly using the root token above
 
 ```console
 vault login
@@ -142,6 +149,7 @@ graph LR;
 ```
 
 ⚠️ **Important:** All certificates will be stored in the directory `.tls`. This directory is ignored by git, as specified in the `.gitignore` file:
+
 ```
 **/.tls/*
 ```
@@ -149,48 +157,55 @@ graph LR;
 ### Step1: Generate the Root CA
 
 1. Create the Root CA key:
+
 ```console
 openssl ecparam -genkey -name secp384r1 -out root-ca-key.pem
 ```
 
 2. Create the Root CA certificate:
+
 ```console
 openssl req -x509 -new -nodes -key root-ca-key.pem -sha384 -days 3653 -out root-ca.pem
 ```
 
 During this process, you will be prompted to enter specific details:
+
 ```console
 Country Name (2 letter code) [AU]:FR
 State or Province Name (full name) [Some-State]:France
 Locality Name (eg, city) []:Paris
 Organization Name (eg, company) [Internet Widgits Pty Ltd]:Ogenki
 Organizational Unit Name (eg, section) []: # left blank
-Common Name (e.g. server FQDN or YOUR name) []:ogenki.io
+Common Name (e.g. server FQDN or YOUR name) []:Ogenki
 Email Address []:smaine.kahlouch@ogenki.io
 ```
 
 ⚠️ **Security Note**: For maximum security, store your Root CA in an offline, air-gapped environment such as a secure, physically isolated machine, a Hardware Security Module (HSM), or a securely stored USB device.
 
-
 ### Step2: Generate the intermediate CA
 
 1. Create the private key:
+
 ```console
 openssl ecparam -genkey -name secp384r1 -out intermediate-ca-key.pem
 ```
 
 2. Generate the Certificate Sign Request (CSR):
+
 ```console
 openssl req -new -key intermediate-ca-key.pem -out intermediate-ca.csr
 ```
+
 Fill in the details as prompted, changing the Common Name and leaving the challenge password blank:
+
 ```console
-Common Name (e.g. server FQDN or YOUR name) []:intermediate.ogenki.io
+Common Name (e.g. server FQDN or YOUR name) []:Ogenki Intermediate
 ```
 
 3. Create the intermediate CA certificate:
 A config file `intermediate-ca.cnf` is required:
-```toml
+
+```conf
 [req]
 distinguished_name = ogenki
 req_extensions = v3_req
@@ -201,7 +216,7 @@ C = FR
 ST = France
 L = Paris
 O = Ogenki
-CN = ogenki.io
+CN = Ogenki Intermediate
 
 [v3_req]
 basicConstraints = critical,CA:true
@@ -210,13 +225,16 @@ keyUsage = critical, keyCertSign, cRLSign, digitalSignature, keyEncipherment
 ```
 
 Execute this command to generate the Intermediate CA certificate:
+
 ```console
-openssl x509 -req -in intermediate-ca.csr -CA root-ca.pem -CAkey root-ca-key.pem -CAcreateserial -out intermediate-ca.pem -days 1024 -sha384 -extfile intermediate-ca.cnf -extensions v3_req
+openssl x509 -req -in intermediate-ca.csr -CA root-ca.pem -CAkey root-ca-key.pem -CAcreateserial -out intermediate-ca.pem -days 1827 -sha384 -extfile intermediate-ca.cnf -extensions v3_req
 ```
 
 ### Step3: Create the certificate for the Vault instance
+
 Generate the private key and a CSR for the Vault certificates. Use the `vault.cnf` config file:
-```toml
+
+```conf
 [req]
 distinguished_name = vault
 req_extensions = v3_req
@@ -239,18 +257,22 @@ DNS.1 = vault.priv.cloud.ogenki.io
 ```
 
 Generate the private key and CSR:
+
 ```console
 openssl genrsa -out vault-key.pem 2048
 openssl req -new -key vault-key.pem -out vault.csr -config vault.cnf
 ```
 
 Create the certificate
+
 ```console
 openssl x509 -req -in vault.csr -CA intermediate-ca.pem -CAkey intermediate-ca-key.pem -CAcreateserial -out vault.pem -days 365 -sha384 -extfile vault.cnf -extensions v3_req
 ```
 
 ### Generate the Full CA Chain and check
+
 Concatenate the intermediate and root certificates, then verify the Vault's certificate:
+
 ```console
 cat intermediate-ca.pem root-ca.pem > ca-chain.pem
 openssl verify -CAfile ca-chain.pem vault.pem
@@ -259,10 +281,10 @@ openssl verify -CAfile ca-chain.pem vault.pem
 Output should be `vault.pem: OK`.
 
 To view the content of the Vault's certificate:
+
 ```console
 openssl x509 -in vault.pem -noout -text
 ```
-
 
 <!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
 ## Requirements
@@ -277,8 +299,8 @@ openssl x509 -in vault.pem -noout -text
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.31.0 |
-| <a name="provider_cloudinit"></a> [cloudinit](#provider\_cloudinit) | 2.3.3 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.0 |
+| <a name="provider_cloudinit"></a> [cloudinit](#provider\_cloudinit) | ~> 2.3 |
 
 ## Modules
 
