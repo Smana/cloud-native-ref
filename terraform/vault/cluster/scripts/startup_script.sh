@@ -56,7 +56,6 @@ seal "awskms" {
   region     = "${region}"
   kms_key_id = "${kms_unseal_key_id}"
 }
-
 EOF
 
 systemctl start vault.service

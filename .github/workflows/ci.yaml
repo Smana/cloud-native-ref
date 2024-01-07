@@ -20,5 +20,12 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Write required vault files
+        run: |
+          mkdir -p terraform/vault/cluster/.tls
+          echo 'keep' > terraform/vault/cluster/.tls/vault.pem
+          echo 'keep' > terraform/vault/cluster/.tls/vault-key.pem
+          echo 'keep' > terraform/vault/cluster/.tls/ca-chain.pem
+
       - name: pre-commit checks
         run: task pre-commit
