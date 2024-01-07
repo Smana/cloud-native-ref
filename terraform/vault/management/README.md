@@ -1,60 +1,94 @@
-# Vault management
+# Vault Management
 
-This repository leverages the Vault provider in order to configure an existing Vault cluster.
+This repository facilitates the setup of an existing Vault cluster using the Vault provider.
 
 ## ✅ Requirements
 
-1. Follow the cluster creation [here](../cluster/README.md)
-2. The following files are required and should have been created in the previous step: `intermediate-ca.pem`, `root-ca-key.pem` and `root-ca-key.pem` (⚠️ This latter file is very sensitive, store it in a safe location and delete it as soon as this procedure is completed)
+1. **Cluster Creation:** Start by following the cluster creation instructions available [here](../cluster/README.md).
 
-## 🚀 Getting started
+2. **Required Files:** Ensure you have these files, generated in the previous step:
+   - `intermediate-ca.pem`
+   - `root-ca.pem`
+   - `root-ca-key.pem`
+     > ⚠️ **Important:** The `root-ca-key.pem` file is highly sensitive. Securely store it and delete it immediately after use.
 
-1. enable the pki and tune the max TTL to 10 years
+## 🚀 Getting Started
 
-```console
-vault secrets enable pki
-vault secrets tune -max-lease-ttl=315360000 pki
-```
-2. build and import the full chain bundle
+1. **Vault Authentication:**
+   - Authenticate to the Vault instance using the root token:
 
-```console
-cat .tls/intermediate-ca.pem .tls/root-ca.pem .tls/intermediate-ca-key.pem > .tls/bundle.pem
-vault write pki/config/ca pem_bundle=@.tls/bundle.pem
-```
+     ```console
+     export VAULT_TOKEN=<token>
+     export VAULT_SKIP_VERIFY=true
+     export VAULT_ADDR=https://vault.priv.cloud.ogenki.io:8200
+     ```
 
-3. Prepare your variables.tfvars file. Here is an example:
+   - ℹ️ **Note:** This guide does not include setting up an authentication system. It's recommended to use an identity provider instead of the root token for routine operations. Ensure the root token is securely stored.
 
-```hcl
-domain_name      = "priv.cloud.ogenki.io"
-pki_country      = "France"
-pki_organization = "Ogenki"
-pki_domains = [
-  "cluster.local",
-  "priv.cloud.ogenki.io"
-]
+2. **Enable PKI and Set TTL:**
+   - Activate the PKI (Public Key Infrastructure) secrets engine and set the maximum Time To Live (TTL) to 10 years:
 
-tags = {
-  project = "demo-cloud-native-ref"
-  owner   = "Smana"
-}
-```
+     ```bash
+     vault secrets enable pki
+     vault secrets tune -max-lease-ttl=315360000 pki
+     ```
 
-4. Run these commands
+3. **Build and Import the Full Chain Bundle:**
+   - Create the bundle and import it into Vault:
 
-```console
-tofu init
-tofu apply -var-file variables.tfvars
-```
+     ```console
+     cat .tls/intermediate-ca.pem .tls/root-ca.pem .tls/root-ca-key.pem > .tls/bundle.pem
+     vault write pki/config/ca pem_bundle=@.tls/bundle.pem
+     ```
 
-5. Test by generating a certificate
+4. **Prepare `variables.tfvars` File:**
+   - Example configuration:
 
-```console
-vault write -format=json pki_private_issuer/issue/Ogenki common_name="foobar.priv.cloud.ogenki.io" ttl="720h" > data.json
-jq -r '.data.ca_chain[]' data.json > vault_ca_chain.pem
-jq -r '.data.certificate' data.json > foobar-cert.pem
-openssl verify -CAfile vault_ca_chain.pem foobar-cert.pem
-foobar-cert.pem: OK
-```
+     ```hcl
+     domain_name      = "priv.cloud.ogenki.io"
+     pki_country      = "France"
+     pki_organization = "Ogenki"
+     pki_domains = [
+       "cluster.local",
+       "priv.cloud.ogenki.io"
+     ]
+
+     tags = {
+       project = "demo-cloud-native-ref"
+       owner   = "Smana"
+     }
+     ```
+
+5. **Execute Terraform Commands:**
+   - Initialize and apply the Terraform configuration:
+
+     ```console
+     tofu init
+     tofu apply -var-file variables.tfvars
+     ```
+
+6. **Test by Generating a Certificate:**
+   - Generate a certificate and verify it:
+
+     ```console
+     vault write -format=json pki_private_issuer/issue/pki_private_issuer common_name="foobar.priv.cloud.ogenki.io" ttl="720h" > data.json
+     jq -r '.data.ca_chain[]' data.json > vault_ca_chain.pem
+     jq -r '.data.certificate' data.json > foobar-cert.pem
+     openssl verify -CAfile vault_ca_chain.pem foobar-cert.pem
+     ```
+
+     The output should confirm `foobar-cert.pem: OK`.
+
+     And clean these test files
+     ```console
+     rm data.json vault_ca_chain.pem foobar-cert.pem
+     ```
+
+## 📝 Additional Notes
+
+- **Security Practices:** Adhere to best practices for managing sensitive data and Vault configurations.
+- **Documentation:** Consult the [Vault documentation](https://www.vaultproject.io/docs) for detailed information and advanced configurations.
+
 
 
 <!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
