@@ -81,6 +81,7 @@ setup_raid0() {
 }
 
 MNT_DIR="/opt/vault/data"
+mkdir -p $MNT_DIR
 
 check_command mdadm
 check_command systemd-analyze
@@ -89,15 +90,13 @@ check_command blkid
 disks=($(find -L /dev/disk/by-id/ -xtype l -name '*NVMe_Instance_Storage_*'))
 if [[ $${#disks[@]} -eq 0 ]]; then
     echo "No ephemeral disks found, skipping disk setup"
-    exit 0
+else
+  if [[ $(id --user) -ne 0 ]]; then
+      echo "Must be run as root"
+      exit 1
+  fi
+  EPHEMERAL_DISKS=($(realpath "$${disks[@]}" | sort -u))
+
+  setup_raid0
+  echo "Successfully setup RAID-0 consisting of $${EPHEMERAL_DISKS[*]}"
 fi
-
-if [[ $(id --user) -ne 0 ]]; then
-    echo "Must be run as root"
-    exit 1
-fi
-
-EPHEMERAL_DISKS=($(realpath "$${disks[@]}" | sort -u))
-
-setup_raid0
-echo "Successfully setup RAID-0 consisting of $${EPHEMERAL_DISKS[*]}"
