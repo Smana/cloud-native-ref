@@ -50,12 +50,13 @@ storage "raft" {
     leader_ca_cert_file     = "/opt/vault/tls/ca.pem"
   }
 }
+%{ endif }
 
 seal "awskms" {
   region     = "${region}"
   kms_key_id = "${kms_unseal_key_id}"
 }
-%{ endif }
+
 EOF
 
 systemctl start vault.service
