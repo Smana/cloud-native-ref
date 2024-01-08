@@ -37,6 +37,7 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
    - Create the bundle and import it into Vault:
 
      ```console
+     cd terraform/vault/management
      cat .tls/intermediate-ca.pem .tls/root-ca.pem .tls/root-ca-key.pem > .tls/bundle.pem
      vault write pki/config/ca pem_bundle=@.tls/bundle.pem
      ```
