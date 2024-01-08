@@ -1,13 +1,12 @@
 # Vault cluster
 
-- [Architecture](#🏗️-architecture)
-  - [High availability](#💪-high-availability)
+- [High availability](#💪-high-availability)
+- [Securit considerations](#🔒-security-considerations)
 - [Getting started](#🚀-getting-started)
 - [PKI requirements](#🔑-public-key-infrastructure-pki-requirements)
 
-## 🏗️ Architecture
 
-### 💪 High availability
+## 💪 High availability
 
 ⚠️ You can choose between two modes when creating a Vault instance: `dev`  and `ha` (default: `dev`). Here are the differences between these modes:
 
@@ -19,21 +18,26 @@
 | Instance type(s)   |    t3.micro    |   mixed (lower-price)    |
 | Capacity type      |   on-demand    |     spot      |
 
-#### ℹ️ Regarding the HA mode
+In designing our production environment for HashiCorp Vault, I opted for a balance between performance and reliability. Key architectural decisions include:
 
-In designing our production environment for HashiCorp Vault, I wanted a balance between performance and reliability. This led to several architectural decisions:
+1. **Raft Protocol for Cluster Reliability**: Utilizing the Raft protocol, recognized for its robustness in distributed systems, to ensure cluster reliability in a production environment.
 
-1. Cluster Reliability via **Raft** Protocol: We're leveraging the raft protocol for its robustness in ensuring cluster reliability. This consensus mechanism is widely recognized for its effectiveness in distributed systems and is particularly crucial in a production environment.
+2. **Five-Node Cluster Configuration**: Following best practices for fault tolerance and availability, this setup significantly reduces the risk of service disruption.
 
-2. **Five-Node** Cluster Configuration: Best practices suggest a five-node cluster in production for optimal fault tolerance and availability. This setup significantly reduces the risk of service disruption, ensuring a high level of reliability.
+3. **Ephemeral Node Strategy with SPOT Instances**: This approach provides operational flexibility and cost efficiency. The use of SPOT instances aligns with our goal of optimizing costs, despite potential node availability volatility.
 
-3. Ephemeral Node Strategy with **SPOT Instance**s: In a move towards operational flexibility and cost efficiency, we've chosen to treat nodes as ephemeral. This approach enables us to utilize SPOT instances, which are more cost-effective than standard instances. While this might introduce some volatility in node availability, it aligns with our goal of optimizing costs.
+4. **Data Storage on RAID0 Array**: Prioritizing performance, RAID0 arrays offer faster data access. The Raft protocol and a robust backup/restore strategy help mitigate the lack of redundancy in RAID0.
 
-4. Data Storage on **RAID0** Array: I've opted for a RAID0 array for data storage, prioritizing performance. RAID0 arrays offer faster data access and can enhance overall system performance. However, I'm aware that RAID0 does not offer redundancy. The Raft protocol as well as a robust backup/restore strategy should mitigate this risk.
+5. **Vault Auto-Unseal Feature**: Configured to accommodate the ephemeral nature of nodes, ensuring minimal downtime and manual intervention.
 
-5. Vault **Auto-Unseal** Feature: To accommodate the ephemeral nature of our nodes, we've configured Vault's auto-unseal feature. This ensures that if a node is replaced or rejoins the cluster, Vault will automatically unseal, minimizing downtime and manual intervention. This feature is crucial for maintaining seamless access to the Vault, especially in an environment where node volatility is expected.
+This architecture balances performance, cost-efficiency, and resilience, embracing the dynamic nature of cloud resources for operational flexibility.
 
-This architecture is designed to strike a balance between performance, cost-efficiency, and resilience while embracing the **dynamic nature of cloud resources** for operational flexibility.
+## 🔒 Security Considerations
+
+* Keep the Root CA offline.
+* Use hardened AMIs, such as those built with [this project](https://github.com/konstruktoid/hardened-images) from @konstruktoid. An Ubuntu AMI from Canonical is used by default.
+* Disable SSM once the cluster is operational and an Identity provider is configured.
+* Implement MFA for authentication.
 
 ## 🚀 Getting started
 
@@ -85,7 +89,6 @@ Initial Root Token: hvs.LMKRyua5kJJ8...
 Success! Vault is initialized
 ```
 
-
 ⚠️ **Important**: Throughout the entire installation and configuration process, it's essential to securely retain the `root` token. This token should be kept until all user accounts have been created. After this point, for enhanced security, the `root` token must be revoked.
 
 Additionally, the `recovery key` requires careful handling. It should be securely stored in a highly safe location. Use the `recovery key` only in exceptionally rare situations, specifically when there is a need to generate a new `root` token. This key serves as a critical backup mechanism and should be treated with the utmost security.
@@ -96,7 +99,7 @@ Additionally, the `recovery key` requires careful handling. It should be securel
 vault login
 ```
 
-List all the cluster peers (members of the Vault cluster)
+In `ha` mode you can also list all the cluster peers (members of the Vault cluster)
 
 ```console
 vault operator raft list-peers
