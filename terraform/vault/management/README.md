@@ -2,6 +2,13 @@
 
 This repository facilitates the setup of an existing Vault cluster using the Vault provider.
 
+1. **Configuring an Approle**:
+
+2. **Configure cert-manager**: In order to easily provision certificates in Kubernetes you should consider reading [this documentation](./docs/cert-manager.md)
+
+3. **Backup and Restore**: Implement a backup strategy. Follow this guide: [Backup and Restore](./docs/backup_restore.md).
+
+
 ## ✅ Requirements
 
 1. **Cluster Creation:** Start by following the cluster creation instructions available [here](../cluster/README.md).
@@ -38,7 +45,7 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
 
      ```console
      cd terraform/vault/management
-     cat .tls/intermediate-ca.pem .tls/root-ca.pem .tls/root-ca-key.pem > .tls/bundle.pem
+     cat .tls/intermediate-ca.pem .tls/root-ca.pem .tls/intermediate-ca-key.pem > .tls/bundle.pem
      vault write pki/config/ca pem_bundle=@.tls/bundle.pem
      ```
 
@@ -84,13 +91,6 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
      ```console
      rm data.json vault_ca_chain.pem foobar-cert.pem
      ```
-
-## 📝 Additional Notes
-
-- **Security Practices:** Adhere to best practices for managing sensitive data and Vault configurations.
-- **Documentation:** Consult the [Vault documentation](https://www.vaultproject.io/docs) for detailed information and advanced configurations.
-
-
 
 <!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
 ## Requirements

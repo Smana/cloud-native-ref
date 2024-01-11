@@ -9,6 +9,12 @@ variable "vault_domain_name" {
   default     = ""
 }
 
+variable "allowed_cidr_blocks" {
+  description = "List of CIDR blocks allowed to reach Vault's API"
+  type        = list(string)
+  default     = ["10.0.0.0/16"]
+}
+
 variable "pki_common_name" {
   description = "Common name to identify the Vault issuer"
   type        = string
