@@ -1,9 +1,9 @@
 ## 🚀 Getting started
 
 
-1. First of all we need to create the **supporting resources** such as the VPC and subnets using [this directory](../../network/).
+1. First of all we need to create the **supporting resources** such as the VPC and subnets using [this directory](../../../network/).
 
-2. It is required to provide Vault's certificates (`.tls/vault.pem`, `.tls/vault-key.pem` and `ca-chain.pem`). You can create the certificates using [this procedure](#🔑-public-key-infrastructure-pki-requirements)
+2. It is required to provide Vault's certificates (`.tls/vault.pem`, `.tls/vault-key.pem` and `ca-chain.pem`). You can create the certificates using [this procedure](pki_requirements.md)
 
 3. Prepare your `variables.tfvars` file:
 
