@@ -2,10 +2,14 @@
 
 **_This is an opiniated set of configuration allowing to manage a Cloud Native platform the GitOps way_**
 
-This repository is used to write new blog posts [**here**](https://blog.ogenki.io)
+Here is the big picture inspired by the [CNOE](https://cnoe.io/) framework.
+
+![overview](.assets/cloud-native-ref.png)
+
+ℹ️ This repository is used to write new blog posts [**here**](https://blog.ogenki.io)
 
 
-## 🔄 Dependencies matter
+## 🔄 Flux Dependencies matter
 
 ```mermaid
 graph TD;
@@ -49,9 +53,13 @@ It needs to be installed and set up in three **successive steps**:
 2. Deployment of the AWS provider, which provides custom resources, including AWS roles, policies, etc.
 3. Installation of compositions that will generate AWS resources.
 
-## 🛂 Federated authentication using Pinniped
+🏷️ Related blog posts:
+    * [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/cilium-gateway-api/)
+    * [My Kubernetes cluster (GKE) with Crossplane](https://blog.ogenki.io/post/crossplane_k3d/)
 
-## 🗒️ Audit logs with Loki and Vector
+## 🛂 Federated authentication using (Still not decided: need to explore https://goauthentik.io/)
+
+## 🗒️ Logs with Loki and Vector
 
 ## 📦 OCI Registry with Harbor
 
@@ -60,6 +68,8 @@ The Harbor installation follows the best practices for high availability. It lev
 * External RDS database
 * Redis cluster using the bitnami Helm chart
 * Storing artifacts in S3
+
+🏷️ Related blog post: [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/crossplane_composition_functions/)
 
 ## 🔗 VPN connection using Tailscale
 
@@ -70,6 +80,8 @@ Most of the time we don't want to expose our resources publicly. For instance ou
 The risk becomes even more significant when dealing with Kubernetes' API. Indeed, one of the primary recommendations for securing a cluster is to limit access to the API.
 
 Anyway, I intentionnaly created a distinct directory that allows to provision the network and a secured connection. So that there are no confusion with the EKS provisionning.
+
+🏷️ Related blog post: [Beyond Traditional VPNs: Simplifying Cloud Access with Tailscale](https://blog.ogenki.io/post/tailscale/)
 
 ## 👮 Runtime security with Falco
 

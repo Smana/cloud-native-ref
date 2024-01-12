@@ -2,7 +2,7 @@
 
 This repository facilitates the setup of an existing Vault cluster using the Vault provider.
 
-1. **Configuring an Approle**:
+1. **Configuring an Approle**: Learn what is an approle and how to set them up by reading [this](docs/approle.md).
 
 2. **Configure cert-manager**: In order to easily provision certificates in Kubernetes you should consider reading [this documentation](./docs/cert-manager.md)
 
@@ -115,6 +115,10 @@ No modules.
 
 | Name | Type |
 |------|------|
+| [vault_approle_auth_backend_role.cert_manager](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/approle_auth_backend_role) | resource |
+| [vault_approle_auth_backend_role.snapshot](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/approle_auth_backend_role) | resource |
+| [vault_auth_backend.approle](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/auth_backend) | resource |
+| [vault_mount.secret](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/mount) | resource |
 | [vault_mount.this](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/mount) | resource |
 | [vault_pki_secret_backend_intermediate_cert_request.this](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/pki_secret_backend_intermediate_cert_request) | resource |
 | [vault_pki_secret_backend_intermediate_set_signed.this](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/pki_secret_backend_intermediate_set_signed) | resource |
@@ -122,11 +126,15 @@ No modules.
 | [vault_pki_secret_backend_key.this](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/pki_secret_backend_key) | resource |
 | [vault_pki_secret_backend_role.this](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/pki_secret_backend_role) | resource |
 | [vault_pki_secret_backend_root_sign_intermediate.this](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/pki_secret_backend_root_sign_intermediate) | resource |
+| [vault_policy.admin](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
+| [vault_policy.cert_manager](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
+| [vault_policy.snapshot](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
+| <a name="input_allowed_cidr_blocks"></a> [allowed\_cidr\_blocks](#input\_allowed\_cidr\_blocks) | List of CIDR blocks allowed to reach Vault's API | `list(string)` | <pre>[<br>  "10.0.0.0/16"<br>]</pre> | no |
 | <a name="input_domain_name"></a> [domain\_name](#input\_domain\_name) | The domain name for which the certificate should be issued | `string` | n/a | yes |
 | <a name="input_pki_common_name"></a> [pki\_common\_name](#input\_pki\_common\_name) | Common name to identify the Vault issuer | `string` | `"Private PKI - Vault Issuer"` | no |
 | <a name="input_pki_country"></a> [pki\_country](#input\_pki\_country) | The country name used for generating certificates | `string` | n/a | yes |

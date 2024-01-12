@@ -30,6 +30,7 @@ module "irsa_crossplane" {
   role_policy_arns = {
     ec2  = aws_iam_policy.crossplane_ec2.arn,
     irsa = aws_iam_policy.crossplane_irsa.arn,
+    kms  = aws_iam_policy.crossplane_kms.arn,
     rds  = aws_iam_policy.crossplane_rds.arn
     s3   = aws_iam_policy.crossplane_s3.arn
   }
@@ -136,7 +137,9 @@ resource "aws_iam_policy" "crossplane_s3" {
                 "arn:aws:s3:::${var.region}-ogenki-harbor",
                 "arn:aws:s3:::${var.region}-ogenki-harbor/*",
                 "arn:aws:s3:::${var.region}-ogenki-loki",
-                "arn:aws:s3:::${var.region}-ogenki-loki/*"
+                "arn:aws:s3:::${var.region}-ogenki-loki/*",
+                "arn:aws:s3:::${var.region}-ogenki-vault-snapshot",
+                "arn:aws:s3:::${var.region}-ogenki-vault-snapshot/*"
             ]
         },
         {
@@ -150,7 +153,9 @@ resource "aws_iam_policy" "crossplane_s3" {
                 "arn:aws:s3:::${var.region}-ogenki-harbor",
                 "arn:aws:s3:::${var.region}-ogenki-harbor/*",
                 "arn:aws:s3:::${var.region}-ogenki-loki",
-                "arn:aws:s3:::${var.region}-ogenki-loki/*"
+                "arn:aws:s3:::${var.region}-ogenki-loki/*",
+                "arn:aws:s3:::${var.region}-ogenki-vault-snapshot",
+                "arn:aws:s3:::${var.region}-ogenki-vault-snapshot/*"
             ]
         }
     ]
@@ -187,6 +192,49 @@ resource "aws_iam_policy" "crossplane_rds" {
                 "arn:aws:rds:*:*:db:*",
                 "arn:aws:rds:*:*:subgrp:*"
             ]
+        }
+    ]
+}
+EOF
+}
+
+#tfsec:ignore:aws-iam-no-policy-wildcards
+resource "aws_iam_policy" "crossplane_kms" {
+  name        = "crossplane_kms_${var.cluster_name}"
+  path        = "/"
+  description = "Policy for creating KMS keys on EKS"
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kms:Get*",
+                "kms:ListAliases",
+                "kms:DescribeKey",
+                "kms:ListResourceTags"
+            ],
+            "Resource": [
+                "*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                    "kms:CreateKey",
+                    "kms:TagResource",
+                    "kms:CreateAlias"
+            ],
+            "Resource": [
+                "*"
+            ],
+            "Condition": {
+                "StringLike": {
+                    "aws:RequestTag/crossplane-name": "xplane-*"
+                }
+            }
         }
     ]
 }
