@@ -6,6 +6,7 @@ resources:
   - deploymentruntimeconfig-aws.yaml
   - provider-ec2.yaml
   - provider-iam.yaml
+  - provider-kms.yaml
   - provider-kubernetes.yaml
   - provider-rds.yaml
   - provider-s3.yaml

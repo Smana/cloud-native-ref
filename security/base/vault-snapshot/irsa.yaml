@@ -1,0 +1,48 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: IRSA
+metadata:
+    name: xplane-vault-snapshot-${cluster_name}
+spec:
+    parameters:
+        condition: StringEquals
+        # Reference: https://kubernetes-sigs.github.io/external-dns/v0.13.4/tutorials/aws/#iam-policy
+        policyDocument: |
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "ReadPermissions",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:GetObject",
+                            "s3:ListBucket"
+                        ],
+                        "Resource": [
+                            "arn:aws:s3:::${region}-ogenki-vault-snapshot",
+                            "arn:aws:s3:::${region}-ogenki-vault-snapshot/*"
+                        ]
+                    },
+                    {
+                        "Sid": "WritePermissions",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:PutObject"
+                        ],
+                        "Resource": "arn:aws:s3:::${region}-ogenki-vault-snapshot/*"
+                    },
+                    {
+                        "Sid": "AllowKMSUsage",
+                        "Effect": "Allow",
+                        "Action": [
+                            "kms:Decrypt",
+                            "kms:Encrypt",
+                            "kms:ReEncrypt*",
+                            "kms:GenerateDataKey*"
+                        ],
+                        "Resource": "*"
+                    }
+                ]
+            }
+        serviceAccount:
+            name: vault-snapshot
+            namespace: security
