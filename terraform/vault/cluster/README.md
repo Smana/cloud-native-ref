@@ -20,13 +20,13 @@ Deploy a Vault instance following HashiCorp's best practices. Complete these ste
 | Instance type(s)   |    t3.micro    |   mixed (lower-price)    |
 | Capacity type      |   on-demand    |     spot      |
 
-In designing our production environment for HashiCorp Vault, I opted for a balance between performance and reliability. Key architectural decisions include:
+In designing a production environment for HashiCorp Vault, I opted for a balance between performance and reliability. Key architectural decisions include:
 
 1. **Raft Protocol for Cluster Reliability**: Utilizing the Raft protocol, recognized for its robustness in distributed systems, to ensure cluster reliability in a production environment.
 
-2. **Five-Node Cluster Configuration**: Following best practices for fault tolerance and availability, this setup significantly reduces the risk of service disruption.
+2. **Five-Node Cluster Configuration**: Following best practices for fault tolerance and availability, this setup significantly reduces the risk of service disruption and is a recommended choice when using the Raft protocol.
 
-3. **Ephemeral Node Strategy with SPOT Instances**: This approach provides operational flexibility and cost efficiency. The use of SPOT instances aligns with our goal of optimizing costs, despite potential node availability volatility.
+3. **Ephemeral Node Strategy with SPOT Instances**: This approach provides operational flexibility and cost efficiency. Note that we also use multiple instance pools. When a Spot Instance in AWS Auto Scaling is interrupted, the system automatically replaces it with another available instance from a different Spot Instance pool, ensuring continuous operation while optimizing costs.
 
 4. **Data Storage on RAID0 Array**: Prioritizing performance, RAID0 arrays offer faster data access. The Raft protocol and a robust backup/restore strategy help mitigate the lack of redundancy in RAID0.
 
