@@ -2,7 +2,7 @@
 
 **_This is an opiniated set of configuration allowing to manage a Cloud Native platform the GitOps way_**
 
-Here is the big picture inspired by the [CNOE](https://cnoe.io/) framework.
+Here is the big picture inspired by the [CNOE](https://cnoe.io/) reference implementation.
 
 ![overview](.assets/cloud-native-ref.png)
 
@@ -54,8 +54,9 @@ It needs to be installed and set up in three **successive steps**:
 3. Installation of compositions that will generate AWS resources.
 
 🏷️ Related blog posts:
-    * [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/cilium-gateway-api/)
-    * [My Kubernetes cluster (GKE) with Crossplane](https://blog.ogenki.io/post/crossplane_k3d/)
+
+* [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/cilium-gateway-api/)
+* [My Kubernetes cluster (GKE) with Crossplane](https://blog.ogenki.io/post/crossplane_k3d/)
 
 ## 🛂 Federated authentication using (Still not decided: need to explore https://goauthentik.io/)
 
