@@ -60,7 +60,7 @@ APPROLE_SECRET_ID=$(vault write --field=secret_id -f auth/approle/role/snapshot-
 jq -nr --arg roleId "${APPROLE_ROLE_ID}" \
 --arg secretId "${APPROLE_SECRET_ID}" \
 --arg vaultAddr "${VAULT_ADDR}" \
---arg bucketName "${BUCKET_NAME} \
+--arg bucketName "${BUCKET_NAME}" \
 '{"APPROLE_ROLE_ID":$roleId,"APPROLE_SECRET_ID":$secretId,"VAULT_ADDR":$vaultAddr,"BUCKET_NAME":$bucketName}' > /tmp/secret.json
 ```
 
@@ -73,7 +73,7 @@ cat /tmp/secret.json
 Create the AWS Secrets Manager secret
 
 ```console
-aws secretsmanager create-secret --name 'security/vault/vault-snapshot' --description 'Used to backup and restore a Vault instance' file:///tmp/secret.json
+aws secretsmanager create-secret --name 'security/vault/vault-snapshot' --description 'Used to backup and restore a Vault instance' --secret-string file:///tmp/secret.json
 ```
 
 
