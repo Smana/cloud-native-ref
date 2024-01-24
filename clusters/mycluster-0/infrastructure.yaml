@@ -105,6 +105,9 @@ spec:
   postBuild:
     substitute:
       domain_name: "cloud.ogenki.io"
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
   sourceRef:
     kind: GitRepository
     name: flux-system

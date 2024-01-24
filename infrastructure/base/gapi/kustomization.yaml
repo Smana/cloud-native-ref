@@ -4,4 +4,5 @@ namespace: infrastructure
 
 resources:
   - platform-private-gateway.yaml
+  - platform-private-gateway-certificate.yaml
   - platform-public-gateway.yaml
