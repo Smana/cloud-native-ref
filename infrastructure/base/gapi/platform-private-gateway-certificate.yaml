@@ -1,0 +1,17 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: private-gateway-certificate
+spec:
+  secretName: private-gateway-tls
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+  commonName: private-gateway.priv.cloud.ogenki.io
+  dnsNames:
+    - gitops-${cluster_name}.priv.${domain_name}
+    - grafana-${cluster_name}.priv.${domain_name}
+    - harbor.priv.${domain_name}
+  issuerRef:
+    name: vault
+    kind: ClusterIssuer
+    group: cert-manager.io
