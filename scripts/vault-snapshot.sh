@@ -1,0 +1,168 @@
+#!/bin/sh
+set -e
+set -x
+# Removed color variables
+err="ERROR"
+info="INFO"
+warn="WARNING"
+
+# Replacing array with individual checks
+check_required_bin() {
+    for BIN in vault jq aws; do
+        if ! type "${BIN}" >/dev/null 2>&1; then
+            echo "${err}: ${BIN} binary not found"
+            exit 1
+        fi
+    done
+}
+
+export AWS_PAGER=""
+
+SCRIPT_NAME=$(basename "${0}")
+DEFAULT_DAYS=8 # Default number of days for snapshot validation
+
+# Writable volume
+export HOME=/snapshot
+
+usage() {
+    cat << EOF
+Backup or restore a Vault instance from an S3 bucket
+
+Usage: ./${SCRIPT_NAME} [save|restore] -s <snapshot_file> -b <bucket_name> -a <VAULT_ADDR> [-d <days>]
+      -h | --help               : Show this message
+      -s | --snapshot           : Vault snapshot file location
+      -b | --bucket             : AWS S3 bucket name
+      -a | --addr               : Vault address in the form "https://<address>:<port>"
+      -d | --days               : Number of days for snapshot validation (default: ${DEFAULT_DAYS} days)
+
+      ex:
+      # Run a snapshot (backup)
+      ./${SCRIPT_NAME} save -u https://vault.domain.tld:8200 -s /path/backup.snap -b mybucketname
+
+      # Restore from a snapshot
+      ./${SCRIPT_NAME} restore -u https://vault.domain.tld:8200 -s /path/backup.snap -b mybucketname -d 10
+EOF
+}
+
+# Options parsing
+COMMAND=$1
+NUM_DAYS=${DEFAULT_DAYS}
+shift
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h | --help) usage; exit 0;;
+    -s | --snapshot) SNAPSHOT_FILE=$2; shift 2;;
+    -b | --bucket) BUCKET_NAME=$2; shift 2;;
+    -a | --addr) VAULT_ADDR=$2; shift 2;;
+    -d | --days) NUM_DAYS=$2; shift 2;;
+    *)
+        echo "${err} : Unknown option"
+        usage
+        exit 3
+    ;;
+  esac
+done
+
+# Validate required parameters
+if [ -z "${VAULT_ADDR}" ]; then
+    echo "${err}: The Vault address must be provided (--addr)!"
+    usage
+    exit 1
+fi
+if [ -z "${SNAPSHOT_FILE}" ]; then
+    echo "${err}: The Vault snapshot file must be given (--snapshot)!"
+    usage
+    exit 1
+fi
+if [ -z "${BUCKET_NAME}" ]; then
+    echo "${err}: The S3 bucket name must be provided (--bucket)!"
+    usage
+    exit 1
+fi
+if ! echo "${NUM_DAYS}" | grep -E '^[0-9]+$' > /dev/null; then
+    echo "${err}: Number of days must be a positive integer (--days)!"
+    usage
+    exit 1
+fi
+
+# Check required environment variables
+if [ -z "${APPROLE_ROLE_ID}" ] || [ -z "${APPROLE_SECRET_ID}" ]; then
+    echo "${err}: The environment variables APPROLE_ROLE_ID and APPROLE_SECRET_ID must be set"
+    exit 1
+fi
+
+# Check if required binaries are installed
+generate_root_token() {
+    vault operator generate-root -init --format json | jq -cr '.nonce, .otp' > tmpfile
+    read VAULT_NONCE VAULT_OTP < tmpfile
+    rm tmpfile
+    VAULT_ENCODED_TOKEN=$(aws secretsmanager get-secret-value --secret-id vault-staging-hungry-hamster | jq -r '.SecretString' | jq -r '.recovery_key' | vault operator generate-root -nonce="${VAULT_NONCE}" --format json - | jq -cr '.encoded_root_token')
+    VAULT_TOKEN=$(vault operator generate-root -decode "${VAULT_ENCODED_TOKEN}" -otp "${VAULT_OTP}")
+    echo "${VAULT_TOKEN}"
+}
+
+discover_leader() {
+    echo "${info}: Authenticating with Vault..."
+    VAULT_TOKEN=$(vault write -field=token auth/approle/login role_id=${APPROLE_ROLE_ID} secret_id=${APPROLE_SECRET_ID})
+    if [ -z "${VAULT_TOKEN}" ]; then
+        echo "${err}: Authentication failed. Unable to retrieve Vault token."
+        exit 1
+    fi
+
+    echo "${info}: Discovering the leader node..."
+    export VAULT_TOKEN
+    LEADER_ADDRESS=$(vault read -format=json sys/storage/raft/configuration | jq -r '.data.config.servers[] | select(.leader == true) | .address' | sed 's/:8201/:8200/')
+    unset VAULT_TOKEN
+
+    if [ -z "${LEADER_ADDRESS}" ]; then
+        echo "${err}: Unable to discover the leader node."
+        exit 1
+    fi
+    echo "${info}: Leader node discovered at ${LEADER_ADDRESS}"
+    VAULT_ADDR=https://"${LEADER_ADDRESS}"
+}
+
+save() {
+    echo "${info}: Starting Vault backup to S3..."
+    check_required_bin
+    discover_leader
+    vault login -no-print $(vault write -field=token auth/approle/login role_id=${APPROLE_ROLE_ID} secret_id=${APPROLE_SECRET_ID})
+    vault operator raft snapshot save "${SNAPSHOT_FILE}"
+    aws s3 cp "${SNAPSHOT_FILE}" s3://"${BUCKET_NAME}"/"$(date +"%Y-%m-%d_%H:%M:%S_%Z").snap"
+}
+
+restore() {
+    echo "${info}: Restoring Vault from S3..."
+    check_required_bin
+    discover_leader
+    VAULT_TOKEN=$(generate_root_token)
+    echo "${info}: Fetching latest backup from S3 bucket ${BUCKET_NAME}"
+    SNAP=$(aws s3 ls "${BUCKET_NAME}" | sort | tail -n 1 | awk '{print $4}')
+    aws s3 cp s3://"${BUCKET_NAME}"/"${SNAP}" /tmp/vault.snap
+    echo "${info}: Restoring snapshot ${SNAP}"
+    vault operator raft snapshot restore -force /tmp/vault.snap
+
+    trap "vault token revoke ${VAULT_TOKEN}" EXIT
+
+    echo "${info}: Check that the timestamp from the path secret/check_timestamp is less than ${NUM_DAYS} days"
+    CURR_TS=$(date "+%s")
+    VAULT_TS=$(vault kv get --field=value secret/check_timestamp)
+
+    if [ $((CURR_TS - VAULT_TS)) -gt $((NUM_DAYS * 86400)) ]; then
+        echo "${err}: The restored snapshot is more than ${NUM_DAYS} days old."
+        exit 1
+    fi
+
+    vault kv put secret/check_timestamp value=$(date "+%s") &>/dev/null
+}
+
+# Command execution
+case "${COMMAND}" in
+save) save;;
+restore) restore;;
+*)
+    echo "${err}: Unknown command '${COMMAND}'. Use 'save' or 'restore'."
+    usage
+    exit 2
+;;
+esac
