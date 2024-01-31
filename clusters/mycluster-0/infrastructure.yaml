@@ -91,26 +91,3 @@ spec:
       kind: HelmRelease
       name: external-dns
       namespace: kube-system
----
-# Gateways must be created after Kyverno's cluster policies are applied in order to add AWS annotations
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: infrastructure-gateways
-  namespace: flux-system
-spec:
-  prune: true
-  interval: 4m0s
-  path: ./infrastructure/mycluster-0/gapi
-  postBuild:
-    substitute:
-      domain_name: "cloud.ogenki.io"
-    substituteFrom:
-      - kind: ConfigMap
-        name: eks-mycluster-0-vars
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  dependsOn:
-    - name: crds
-    - name: security
