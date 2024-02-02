@@ -66,11 +66,9 @@ resource "helm_release" "karpenter" {
     templatefile(
       "${path.module}/helm_values/karpenter.yaml",
       {
-        cluster_name          = module.eks.cluster_name,
-        cluster_endpoint      = module.eks.cluster_endpoint,
-        irsa_arn              = module.karpenter.irsa_arn
-        instance_profile_name = module.karpenter.instance_profile_name
-        queue_name            = module.karpenter.queue_name
+        cluster_name     = module.eks.cluster_name,
+        cluster_endpoint = module.eks.cluster_endpoint,
+        queue_name       = module.karpenter.queue_name
     })
   ]
 

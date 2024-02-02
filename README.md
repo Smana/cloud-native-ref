@@ -91,7 +91,6 @@ Anyway, I intentionnaly created a distinct directory that allows to provision th
 ## :closed_lock_with_key: Secrets management with Vault and external-secrets operator
 
 ## 🔑 Private PKI with Vault
-ℹ️ _**In progress** ..._
 
 The Vault creation is made in 2 steps:
 
@@ -99,6 +98,8 @@ The Vault creation is made in 2 steps:
 2. Then configure it using [this directory](/terraform/vault/management/README.md)
 
 ℹ️ The provided code outlines the setup and configuration of a **highly available, secure, and cost-efficient HashiCorp Vault cluster**. It describes the process of creating a Vault instance in either development or high availability mode, with detailed steps for initializing the Vault, managing security tokens, and configuring a robust **Public Key Infrastructure** (PKI) system. The focus is on balancing performance, security, and cost, using a multi-node cluster, ephemeral nodes with SPOT instances, and a tiered CA structure for digital security.
+
+🏷️ Related blog post: [TLS with Gateway API: Efficient and Secure Management of Public and Private Certificates](https://blog.ogenki.io/post/pki-gapi/)
 
 ## 🌐 Network policies with Cilium
 
