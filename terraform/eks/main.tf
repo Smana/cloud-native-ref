@@ -9,8 +9,6 @@ module "eks" {
   cluster_version                = var.cluster_version
   cluster_endpoint_public_access = false
 
-  enable_cluster_creator_admin_permissions = true
-
   cluster_addons = {
     coredns = {
       most_recent = true
@@ -33,13 +31,16 @@ module "eks" {
     }
   }
 
-  access_entries = {
-    smana = {
-      user_name         = "smana"
-      principal_arn     = "arn:aws:iam::${data.aws_caller_identity.this.account_id}:user/smana"
-      kubernetes_groups = ["cluster-admin"]
-    }
-  }
+  enable_cluster_creator_admin_permissions = true
+
+  #access_entries = {
+  # # No need to define this user as this is the one that creates the cluster and the variable 'enable_cluster_creator_admin_permissions' is set to true
+  #  smana = {
+  #    user_name         = "smana"
+  #    principal_arn     = "arn:aws:iam::${data.aws_caller_identity.this.account_id}:user/smana"
+  #    kubernetes_groups = ["cluster-admin"]
+  #  }
+  #}
 
   vpc_id                   = data.aws_vpc.selected.id
   subnet_ids               = data.aws_subnets.private.ids
