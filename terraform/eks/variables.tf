@@ -17,8 +17,20 @@ variable "cluster_name" {
 
 variable "cluster_version" {
   description = "k8s cluster version"
-  default     = "1.28"
+  default     = "1.29"
   type        = string
+}
+
+variable "enable_ssm" {
+  description = "If true, allow to connect to the instances using AWS Systems Manager"
+  type        = bool
+  default     = false
+}
+
+variable "iam_role_additional_policies" {
+  description = "Additional policies to be added to the IAM role"
+  type        = map(string)
+  default     = {}
 }
 
 variable "cilium_version" {
@@ -29,7 +41,7 @@ variable "cilium_version" {
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "v0.32.3"
+  default     = "v0.33.2"
   type        = string
 }
 

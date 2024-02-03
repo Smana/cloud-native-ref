@@ -3,11 +3,13 @@
 #tfsec:ignore:aws-eks-no-public-cluster-access-to-cidr
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 19"
+  version = "~> 20"
 
   cluster_name                   = var.cluster_name
   cluster_version                = var.cluster_version
   cluster_endpoint_public_access = false
+
+  enable_cluster_creator_admin_permissions = true
 
   cluster_addons = {
     coredns = {
@@ -31,14 +33,13 @@ module "eks" {
     }
   }
 
-  manage_aws_auth_configmap = true
-  aws_auth_users = [
-    {
-      userarn  = "arn:aws:iam::${data.aws_caller_identity.this.account_id}:user/smana"
-      username = "smana"
-      groups   = ["system:masters"]
-    },
-  ]
+  access_entries = {
+    smana = {
+      user_name         = "smana"
+      principal_arn     = "arn:aws:iam::${data.aws_caller_identity.this.account_id}:user/smana"
+      kubernetes_groups = ["cluster-admin"]
+    }
+  }
 
   vpc_id                   = data.aws_vpc.selected.id
   subnet_ids               = data.aws_subnets.private.ids
