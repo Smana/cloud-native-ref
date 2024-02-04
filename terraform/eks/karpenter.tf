@@ -31,6 +31,12 @@ resource "kubectl_manifest" "karpenter_nodepool" {
           nodeClassRef:
             name: default
           requirements:
+            - key: "kubernetes.io/arch"
+              operator: In
+              values: ["amd64"]
+            - key: karpenter.sh/capacity-type
+              operator: In
+              values: ["spot"]
             - key: "karpenter.k8s.aws/instance-category"
               operator: In
               values: ["c", "m", "r"]
