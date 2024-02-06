@@ -35,7 +35,7 @@ variable "iam_role_additional_policies" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.14.6"
+  default     = "1.15.0"
   type        = string
 }
 
