@@ -58,7 +58,7 @@ It needs to be installed and set up in three **successive steps**:
 * [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/cilium-gateway-api/)
 * [My Kubernetes cluster (GKE) with Crossplane](https://blog.ogenki.io/post/crossplane_k3d/)
 
-## 🛂 Federated authentication using (Still not decided: need to explore https://goauthentik.io/)
+## 🛂 Federated authentication using (Still not decided: need to explore https://goauthentik.io/ or https://casdoor.org/)
 
 ## 🗒️ Logs with Loki and Vector
 
