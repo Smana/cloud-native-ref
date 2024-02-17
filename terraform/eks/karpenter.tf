@@ -49,6 +49,9 @@ resource "kubectl_manifest" "karpenter_nodepool" {
             - key: "karpenter.k8s.aws/instance-generation"
               operator: Gt
               values: ["2"]
+            # - key: "karpenter.k8s.aws/instance-local-nvme"
+            #   operator: Gt
+            #   values: ["150"]
       limits:
         cpu: 200
       disruption:
@@ -69,6 +72,7 @@ resource "kubectl_manifest" "karpenter_ec2_nodeclass" {
       name: default
     spec:
       amiFamily: AL2
+      # instanceStorePolicy: "RAID0"
       role: ${module.karpenter.node_iam_role_name}
       subnetSelectorTerms:
         - tags:
