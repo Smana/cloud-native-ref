@@ -4,6 +4,8 @@ namespace: crossplane-system
 
 resources:
   - environmentconfig.yaml
+  - epi-composition.yaml
+  - epi-definition.yaml
   - function-auto-ready.yaml
   - function-patch-and-transform.yaml
   - function-go-templating.yaml

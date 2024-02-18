@@ -1,0 +1,86 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xepis.cloud.ogenki.io
+  labels:
+    provider: aws
+spec:
+  claimNames:
+    kind: EPI
+    plural: epis
+  group: cloud.ogenki.io
+  names:
+    kind: XEPI
+    plural: xepis
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                parameters:
+                  type: object
+                  description: EKS Pod Identity parameters.
+                  properties:
+                    clusterName:
+                      type: string
+                      description: Name of the EKS cluster to create the pod identity association with
+                    serviceAccount:
+                      type: object
+                      description: Configuration for SA
+                      properties:
+                        name:
+                          type: string
+                          description: name kubernetes SA
+                        namespace:
+                          type: string
+                          description: namespace kubernetes SA
+                      required:
+                        - name
+                        - namespace
+                    policyDocument:
+                      type: string
+                      description: The JSON policy document that is the content for the policy.
+                    additionalPolicyArns:
+                      description: Object containing key-value pairs for additional policies.
+                      type: object
+                      additionalProperties:
+                        type: string
+                  required:
+                    - clusterName
+                    - policyDocument
+                    - serviceAccount
+                deletionPolicy:
+                  type: string
+                  description: DeletionPolicy specifies what will happen to the underlying external when this managed resource is deleted - either "Delete" or "Orphan" the external resource.
+                providerConfigRef:
+                  type: object
+                  description: crossplane provider credentials to use.
+                  properties:
+                    name:
+                      type: string
+                  required:
+                    - name
+              required:
+                - parameters
+            status:
+              type: object
+              properties:
+                AssociationArn:
+                  description: The ARN of the Pod Identity Association
+                  type: string
+                roleArn:
+                  description: The ARN of the role
+                  type: string
+                policyArn:
+                  description: The ARN of the policy
+                  type: string
+                observed:
+                  description: Freeform field containing information about the observed status.
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true

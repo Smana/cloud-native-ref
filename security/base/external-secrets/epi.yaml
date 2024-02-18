@@ -1,12 +1,14 @@
 apiVersion: cloud.ogenki.io/v1alpha1
-kind: IRSA
+kind: EPI
 metadata:
     name: xplane-external-secrets-${cluster_name}
     namespace: security
 spec:
-    deletionPolicy: Delete
     parameters:
-        condition: StringEquals
+        clusterName: ${cluster_name}
+        serviceAccount:
+            name: external-secrets
+            namespace: security
         # Reference: https://github.com/external-secrets/external-secrets/blob/main/terraform/aws/modules/cluster/irsa.tf
         policyDocument: |
             {
@@ -26,6 +28,3 @@ spec:
                     }
                 ]
             }
-        serviceAccount:
-            name: external-secrets
-            namespace: security

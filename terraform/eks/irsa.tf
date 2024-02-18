@@ -29,6 +29,7 @@ module "irsa_crossplane" {
 
   role_policy_arns = {
     ec2  = aws_iam_policy.crossplane_ec2.arn,
+    eks  = aws_iam_policy.crossplane_eks.arn,
     irsa = aws_iam_policy.crossplane_irsa.arn,
     kms  = aws_iam_policy.crossplane_kms.arn,
     rds  = aws_iam_policy.crossplane_rds.arn
@@ -112,6 +113,31 @@ resource "aws_iam_policy" "crossplane_ec2" {
                 "ec2:UpdateSecurityGroupRuleDescriptionsEgress",
                 "ec2:UpdateSecurityGroupRuleDescriptionsIngress",
                 "ec2:CreateTags"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+EOF
+}
+
+#tfsec:ignore:aws-iam-no-policy-wildcards
+resource "aws_iam_policy" "crossplane_eks" {
+  name        = "crossplane_eks_${var.cluster_name}"
+  path        = "/"
+  description = "Policy for managing EKS Pod identities"
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "eks:DescribePodIdentityAssociation",
+                "eks:CreatePodIdentityAssociation",
+                "eks:DeletePodIdentityAssociation",
+                "eks:TagResource"
             ],
             "Resource": "*"
         }

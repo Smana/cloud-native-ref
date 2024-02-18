@@ -5,6 +5,7 @@ resources:
   - controllerconfig-k8s.yaml
   - deploymentruntimeconfig-aws.yaml
   - provider-ec2.yaml
+  - provider-eks.yaml
   - provider-iam.yaml
   - provider-kms.yaml
   - provider-kubernetes.yaml
