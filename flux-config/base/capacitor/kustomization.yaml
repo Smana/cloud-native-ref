@@ -3,6 +3,6 @@ kind: Kustomization
 namespace: flux-system
 
 resources:
-  - helmrelease.yaml
+  - capacitor.yaml
   - httproute.yaml
   - source.yaml

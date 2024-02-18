@@ -94,31 +94,50 @@ spec:
               editable: true
               options:
                 path: /var/lib/grafana/dashboards/loki
+            - name: "views"
+              orgId: 1
+              folder: "Views"
+              type: file
+              disableDeletion: true
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards/views
       dashboards:
         flux:
           flux-controlplane:
-            url: https://raw.githubusercontent.com/fluxcd/flux2/main/manifests/monitoring/monitoring-config/dashboards/control-plane.json
+            url: https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/main/monitoring/configs/dashboards/control-plane.json
             datasource: Prometheus
           flux-cluster:
-            url: https://raw.githubusercontent.com/fluxcd/flux2/main/manifests/monitoring/monitoring-config/dashboards/cluster.json
+            url: https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/main/monitoring/configs/dashboards/cluster.json
             datasource: Prometheus
+          flux-logs:
+            url: https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/main/monitoring/configs/dashboards/logs.json
+            datasource: Loki
         karpenter:
           karpenter-capacity:
-            url: https://raw.githubusercontent.com/aws/karpenter/main/website/content/en/v0.31/getting-started/getting-started-with-karpenter/karpenter-capacity-dashboard.json
-            datasource: Prometheus
-          karpenter-controllers:
-            url: https://raw.githubusercontent.com/aws/karpenter/main/website/content/en/v0.31/getting-started/getting-started-with-karpenter/karpenter-controllers.json
+            url: https://karpenter.sh/v0.34/getting-started/getting-started-with-karpenter/karpenter-capacity-dashboard.json
             datasource: Prometheus
           karpenter-performance:
-            url: https://raw.githubusercontent.com/aws/karpenter/main/website/content/en/v0.31/getting-started/getting-started-with-karpenter/karpenter-performance-dashboard.json
+            url: https://karpenter.sh/v0.34/getting-started/getting-started-with-karpenter/karpenter-performance-dashboard.json
             datasource: Prometheus
-          karpenter-controllers-allocation:
-            url: https://raw.githubusercontent.com/aws/karpenter/main/website/content/en/v0.31/getting-started/getting-started-with-karpenter/karpenter-controllers-allocation.json
+        # Dashboards from https://github.com/dotdc/grafana-dashboards-kubernetes
+        views:
+          k8s-views-global:
+            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-global.json
+            datasource: Prometheus
+          k8s-views-namespaces:
+            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-namespaces.json
+            datasource: Prometheus
+          k8s-views-nodes:
+            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-nodes.json
+            datasource: Prometheus
+          k8s-views-pods:
+            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-pods.json
             datasource: Prometheus
         loki:
-          kubernetes-logs:
+          quick-search-logs:
             datasource: Loki
-            url: https://raw.githubusercontent.com/Smana/demo-cloud-native-ref/main/observability/base/kube-prometheus-stack/grafana-dashboards/kubernetes_logs.json
+            url: https://raw.githubusercontent.com/Smana/demo-cloud-native-ref/main/observability/base/kube-prometheus-stack/grafana-dashboards/quick-search-logs.json
     kube-state-metrics:
       prometheusScrape: false # disable scrape annotation as we use servicemonitor
       prometheus:
