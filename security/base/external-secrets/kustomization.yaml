@@ -3,6 +3,6 @@ kind: Kustomization
 
 resources:
   - clustersecretstore.yaml
-  - irsa.yaml
+  - epi.yaml
   - helmrelease.yaml
   - source.yaml

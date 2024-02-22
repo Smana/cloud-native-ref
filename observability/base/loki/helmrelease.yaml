@@ -12,7 +12,7 @@ spec:
         kind: HelmRepository
         name: grafana
         namespace: observability
-      version: "5.35.0"
+      version: "5.43.2"
   interval: 4m0s
   timeout: 10m
   install:
@@ -22,9 +22,6 @@ spec:
     crds: CreateReplace
   values:
     fullNameOverride: loki
-    serviceAccount:
-      annotations:
-        eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/xplane-loki-${cluster_name}"
     loki:
       auth_enabled: false
       storage:
