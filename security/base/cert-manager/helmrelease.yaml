@@ -12,7 +12,7 @@ spec:
         kind: HelmRepository
         name: jetstack
         namespace: flux-system
-      version: "v1.14.2"
+      version: "v1.14.3"
   interval: 2m0s
   install:
     createNamespace: true
