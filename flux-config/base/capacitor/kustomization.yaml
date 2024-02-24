@@ -4,5 +4,6 @@ namespace: flux-system
 
 resources:
   - capacitor.yaml
+  - cnp.yaml
   - httproute.yaml
   - source.yaml
