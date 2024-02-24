@@ -29,7 +29,7 @@ This diagram can be hard to understand so these are the key information:
 
 * **Namespaces** are the first resources to be created, all other resources may be namespace scoped
 * **CRDs** that allow to extend Kubernetes capabilities must be present in order to use them in all other applications when needed.
-* **Crossplane** creates [IRSA](https://docs.aws.amazon.com/emr/latest/EMR-on-EKS-DevelopmentGuide/setting-up-enable-IAM.html) permissions which are required by some components
+* **Crossplane** creates [IRSA](https://docs.aws.amazon.com/emr/latest/EMR-on-EKS-DevelopmentGuide/setting-up-enable-IAM.html) or [EPI](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html) permissions which are required by some components
 * **Security** defines `external-secrets` that are needed by some applications in order to start.
 
 ## 🏗️ Crossplane configuration
