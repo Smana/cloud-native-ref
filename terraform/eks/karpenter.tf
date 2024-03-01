@@ -71,7 +71,7 @@ resource "kubectl_manifest" "karpenter_ec2_nodeclass" {
     metadata:
       name: default
     spec:
-      amiFamily: AL2
+      amiFamily: AL2023
       # instanceStorePolicy: "RAID0"
       role: ${module.karpenter.node_iam_role_name}
       subnetSelectorTerms:

@@ -41,7 +41,7 @@ variable "cilium_version" {
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "v0.34.0"
+  default     = "0.35.0"
   type        = string
 }
 
