@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - crossplane-system.yaml
+  - echo.yaml
   - harbor.yaml
   - infrastructure.yaml
   - observability.yaml

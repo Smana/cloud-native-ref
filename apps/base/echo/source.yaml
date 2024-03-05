@@ -1,0 +1,8 @@
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: echo
+  namespace: flux-system
+spec:
+  interval: 30m
+  url: https://ealenn.github.io/charts

@@ -8,11 +8,14 @@ spec:
   gatewayClassName: cilium
   infrastructure:
     annotations:
-      external-dns.alpha.kubernetes.io/hostname: vector-cloudwatch-${cluster_name}.${domain_name}
+      external-dns.alpha.kubernetes.io/hostname: echo.${domain_name},split-echo.${domain_name}
       service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
       service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
   listeners:
     - name: http
+      protocol: HTTP
+      port: 80
+    - name: https
       hostname: "*.${domain_name}"
       port: 443
       protocol: HTTPS
@@ -24,7 +27,7 @@ spec:
               - key: kubernetes.io/metadata.name
                 operator: In
                 values:
-                  - observability
+                  - echo
       tls:
         mode: Terminate
         certificateRefs:
