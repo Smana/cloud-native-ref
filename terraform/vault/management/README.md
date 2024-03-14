@@ -99,13 +99,13 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | ~> 1.4 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 5.0 |
-| <a name="requirement_vault"></a> [vault](#requirement\_vault) | ~> 3.23 |
+| <a name="requirement_vault"></a> [vault](#requirement\_vault) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_vault"></a> [vault](#provider\_vault) | ~> 3.23 |
+| <a name="provider_vault"></a> [vault](#provider\_vault) | ~> 4.0 |
 
 ## Modules
 
