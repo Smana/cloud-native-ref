@@ -22,10 +22,10 @@ cluster_name = "mycluster-0" # Generated with petname
 
 github_owner    = "Smana"
 github_token    = <REDACTED>
-repository_name = "cilium-gateway-api"
+repository_name = "demo-cloud-native-ref"
 
 tags = {
-  GithubRepo = "cilium-gateway-api"
+  GithubRepo = "demo-cloud-native-ref"
   GithubOrg  = "Smana"
 }
 ```
