@@ -1,0 +1,16 @@
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: GRPCRoute
+metadata:
+  name: productcatalogservice
+spec:
+  parentRefs:
+    - namespace: onlineboutique
+      name: onlineboutique
+  rules:
+    - matches:
+        - method:
+            service: hipstershop.ProductCatalogService
+            method: ListProducts
+      backendRefs:
+        - name: productcatalogservice
+          port: 3550

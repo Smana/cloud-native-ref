@@ -7,5 +7,6 @@ resources:
   - harbor.yaml
   - infrastructure.yaml
   - observability.yaml
+  - onlineboutique.yaml
   - security.yaml
   - tooling.yaml
