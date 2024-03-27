@@ -11,7 +11,7 @@ spec:
         kind: HelmRepository
         name: prometheus-community
         namespace: flux-system
-      version: "57.1.1"
+      version: "57.2.0"
   interval: 10m0s
   timeout: 30m
   install:
