@@ -9,11 +9,11 @@ spec:
   gatewayClassName: cilium
   infrastructure:
     annotations:
-      external-dns.alpha.kubernetes.io/hostname: boutique.${domain_name}
+      external-dns.alpha.kubernetes.io/hostname: boutique.${domain_name},boutique-product.${domain_name}
       service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
       service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
   listeners:
-    - name: http
+    - name: https
       hostname: "boutique.${domain_name}"
       port: 443
       protocol: HTTPS
@@ -24,3 +24,14 @@ spec:
         mode: Terminate
         certificateRefs:
           - name: onlineboutique-tls
+    - name: grpc
+      hostname: "boutique-product.${domain_name}"
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Same
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: onlineboutique-product-tls

@@ -5,9 +5,9 @@ metadata:
   namespace: onlineboutique
 spec:
   parentRefs:
-    - name: platform-public
+    - name: onlineboutique
+      namespace: onlineboutique
       sectionName: https
-      namespace: infrastructure
   hostnames:
     - "boutique.${domain_name}"
   rules:
