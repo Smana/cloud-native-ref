@@ -13,3 +13,6 @@ spec:
         kind: HelmRepository
         name: onlineboutique
         namespace: flux-system
+  values:
+    frontend:
+      externalService: false
