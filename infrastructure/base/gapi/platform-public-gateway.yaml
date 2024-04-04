@@ -8,7 +8,7 @@ spec:
   gatewayClassName: cilium
   infrastructure:
     annotations:
-      external-dns.alpha.kubernetes.io/hostname: echo.${domain_name},split-echo.${domain_name}
+      external-dns.alpha.kubernetes.io/hostname: echo.${domain_name},split-echo.${domain_name},mirror-echo.${domain_name}
       service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
       service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
   listeners:

@@ -6,5 +6,6 @@ resources:
   - helmrelease-echo-1.yaml
   - helmrelease-echo-2.yaml
   - httproute.yaml
+  - httproute-mirroring.yaml
   - httproute-split.yaml
   - source.yaml

@@ -58,11 +58,11 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /google
+            value: /redirect-path-and-host
       filters:
         - type: RequestRedirect
           requestRedirect:
-            hostname: google.fr
+            hostname: example.com
             scheme: https
             path:
               type: ReplaceFullPath
