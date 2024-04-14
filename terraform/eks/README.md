@@ -1,6 +1,5 @@
 # Control plane EKS cluster
 
-
 * Create a management EKS cluster in a single zone
 * Use SPOT instances
 * Use bottlerocket AMI
@@ -47,9 +46,9 @@ In order to really clean everything you should follow these steps:
    kubectl delete gateways --all-namespaces --all
    ```
 
-3. Wait 3/4 minutest and delete all `IRSA`
+3. Wait 3/4 minutest and delete all `IRSA` and `EPI`
    ```console
-   kubectl delete irsa --all-namespaces --all
+   kubectl delete irsa,epi --all-namespaces --all
    ```
 
 4. `tofu destroy --var-file variables.tfvars`
@@ -58,6 +57,6 @@ One step:
 ```console
 flux suspend kustomization --all && \
 kubectl delete gateways --all-namespaces --all && sleep 60 && \
-kubectl delete irsa --all-namespaces --all && sleep 30 && \
+kubectl delete irsa,epi --all-namespaces --all && sleep 30 && \
 tofu destroy --var-file variables.tfvars
 ```

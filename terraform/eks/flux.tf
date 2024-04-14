@@ -20,6 +20,14 @@ resource "flux_bootstrap_git" "this" {
 }
 
 # Write a ConfigMap for use with Flux's variable substitutions
+# Creating it before Flux bootstrap in order to speed up the first reconciliation
+resource "kubernetes_namespace" "flux_system" {
+  metadata {
+    name = "flux-system"
+  }
+  depends_on = [module.eks]
+}
+
 resource "kubernetes_config_map" "flux_clusters_vars" {
   metadata {
     name      = "eks-${var.cluster_name}-vars"
@@ -38,5 +46,5 @@ resource "kubernetes_config_map" "flux_clusters_vars" {
     vpc_cidr_block     = data.aws_vpc.selected.cidr_block
     private_subnet_ids = jsonencode(data.aws_subnets.private.ids)
   }
-  depends_on = [flux_bootstrap_git.this]
+  depends_on = [kubernetes_namespace.flux_system]
 }

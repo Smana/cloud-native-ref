@@ -35,13 +35,13 @@ variable "iam_role_additional_policies" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.15.0"
+  default     = "1.15.3"
   type        = string
 }
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "v0.34.3"
+  default     = "0.36.0"
   type        = string
 }
 
@@ -63,9 +63,10 @@ variable "github_owner" {
   description = "github owner"
 }
 
-variable "github_token" {
+variable "github_token_secretsmanager_name" {
   type        = string
-  description = "github token"
+  description = "SecretsManager name from where to retrieve the Github token. (The key must be 'github-token')"
+  default     = "github/flux-github-token"
   sensitive   = true
 }
 
