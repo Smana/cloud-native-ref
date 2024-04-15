@@ -4,6 +4,5 @@ namespace: observability
 
 resources:
   - helmrelease.yaml
-  - irsa.yaml
   - s3-bucket.yaml
   - source.yaml

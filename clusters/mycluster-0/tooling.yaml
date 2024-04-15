@@ -17,6 +17,7 @@ spec:
       - kind: ConfigMap
         name: eks-mycluster-0-vars
   dependsOn:
+    - name: observability
     - name: infrastructure
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v1beta1

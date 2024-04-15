@@ -1,11 +1,15 @@
 apiVersion: cloud.ogenki.io/v1alpha1
-kind: IRSA
+kind: EPI
 metadata:
     name: xplane-loadbalancer-controller-${cluster_name}
+    namespace: kube-system
 spec:
     deletionPolicy: Delete
     parameters:
-        condition: StringEquals
+        clusterName: ${cluster_name}
+        serviceAccount:
+            name: load-balancer-controller
+            namespace: kube-system
         # Reference: https://github.com/kubernetes-sigs/aws-load-balancer-controller/blob/main/docs/install/iam_policy.json
         policyDocument: |
             {
@@ -249,6 +253,3 @@ spec:
                     }
                 ]
             }
-        serviceAccount:
-            name: load-balancer-controller
-            namespace: kube-system

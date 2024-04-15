@@ -4,7 +4,6 @@ namespace: security
 
 resources:
   - external-secrets.yaml
-  - irsa.yaml
   - kms.yaml
   - s3-bucket.yaml
   - serviceaccount.yaml

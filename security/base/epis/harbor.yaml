@@ -1,11 +1,15 @@
 apiVersion: cloud.ogenki.io/v1alpha1
-kind: IRSA
+kind: EPI
 metadata:
-    name: xplane-loki-${cluster_name}
+    name: xplane-harbor-${cluster_name}
+    namespace: tooling
 spec:
     deletionPolicy: Delete
     parameters:
-        condition: StringEquals
+        clusterName: ${cluster_name}
+        serviceAccount:
+            name: harbor
+            namespace: tooling
         policyDocument: |
             {
                 "Version": "2012-10-17",
@@ -18,8 +22,8 @@ spec:
                             "s3:ListBucket"
                         ],
                         "Resource": [
-                            "arn:aws:s3:::${region}-ogenki-loki",
-                            "arn:aws:s3:::${region}-ogenki-loki/*"
+                            "arn:aws:s3:::${region}-ogenki-harbor",
+                            "arn:aws:s3:::${region}-ogenki-harbor/*"
                         ]
                     },
                     {
@@ -29,10 +33,7 @@ spec:
                             "s3:PutObject",
                             "s3:DeleteObject"
                         ],
-                        "Resource": "arn:aws:s3:::${region}-ogenki-loki/*"
+                        "Resource": "arn:aws:s3:::${region}-ogenki-harbor/*"
                     }
                 ]
             }
-        serviceAccount:
-            name: loki
-            namespace: observability

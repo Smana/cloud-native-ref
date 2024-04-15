@@ -10,7 +10,6 @@ resources:
   - harbor-serviceaccount.yaml
   - harbor-source.yaml
   - httproute.yaml
-  - irsa.yaml
   - redis-helmrelease.yaml
   - s3-bucket.yaml
   - sqlinstance.yaml

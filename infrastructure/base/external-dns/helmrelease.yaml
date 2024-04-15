@@ -11,7 +11,7 @@ spec:
         kind: HelmRepository
         name: external-dns
         namespace: kube-system
-      version: "1.13.1"
+      version: "1.14.4"
   interval: 10m0s
   install:
     remediation:
@@ -19,6 +19,10 @@ spec:
   values:
     global:
       imageRegistry: public.ecr.aws
+
+    # Requires a recent image tag in order to support EPI
+    image:
+      tag: "v0.14.1"
 
     fullnameOverride: external-dns
 
@@ -30,9 +34,6 @@ spec:
     domainFilters: ["${domain_name}"]
     logFormat: json
     txtOwnerId: "${cluster_name}"
-    serviceAccount:
-      annotations:
-        eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/xplane-external-dns-${cluster_name}"
     resources:
       limits:
         memory: 100Mi

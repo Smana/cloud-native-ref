@@ -3,6 +3,5 @@ kind: Kustomization
 
 resources:
   - clustersecretstore.yaml
-  - epi.yaml
   - helmrelease.yaml
   - source.yaml

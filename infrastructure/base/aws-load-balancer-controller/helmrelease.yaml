@@ -21,8 +21,6 @@ spec:
     serviceAccount:
       # Has to match the policy created using terraform (IRSA)
       name: load-balancer-controller
-      annotations:
-        eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/xplane-loadbalancer-controller-${cluster_name}"
     defaultTags:
       environment: ${environment}
       clusterName: ${cluster_name}

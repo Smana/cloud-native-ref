@@ -5,6 +5,5 @@ resources:
   - le-clusterissuer-prod.yaml
   - le-clusterissuer-staging.yaml
   - helmrelease.yaml
-  - irsa.yaml
   - source.yaml
   - vault-clusterissuer.yaml

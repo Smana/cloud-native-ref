@@ -1,11 +1,14 @@
 apiVersion: cloud.ogenki.io/v1alpha1
-kind: IRSA
+kind: EPI
 metadata:
     name: xplane-vault-snapshot-${cluster_name}
+    namespace: security
 spec:
     parameters:
-        condition: StringEquals
-        # Reference: https://kubernetes-sigs.github.io/external-dns/v0.13.4/tutorials/aws/#iam-policy
+        clusterName: ${cluster_name}
+        serviceAccount:
+            name: vault-snapshot
+            namespace: security
         policyDocument: |
             {
                 "Version": "2012-10-17",
@@ -43,6 +46,3 @@ spec:
                     }
                 ]
             }
-        serviceAccount:
-            name: vault-snapshot
-            namespace: security

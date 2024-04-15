@@ -24,8 +24,7 @@ module "eks" {
       most_recent = true
     }
     vpc-cni = {
-      most_recent    = true
-      before_compute = true
+      most_recent = true
     }
     eks-pod-identity-agent = {
       most_recent = true

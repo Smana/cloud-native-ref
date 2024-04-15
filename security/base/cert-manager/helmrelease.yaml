@@ -25,9 +25,6 @@ spec:
       leaderElection:
         namespace: "security"
     installCRDs: false
-    serviceAccount:
-      annotations:
-        eks.amazonaws.com/role-arn: "arn:aws:iam::${aws_account_id}:role/xplane-cert-manager-${cluster_name}"
     resources:
       limits:
         cpu: 300m
