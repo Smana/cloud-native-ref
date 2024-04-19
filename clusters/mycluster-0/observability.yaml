@@ -18,7 +18,6 @@ spec:
       - kind: ConfigMap
         name: eks-mycluster-0-vars
   dependsOn:
-    - name: crds
     - name: security
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v1beta1

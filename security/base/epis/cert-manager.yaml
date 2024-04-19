@@ -1,12 +1,14 @@
 apiVersion: cloud.ogenki.io/v1alpha1
-kind: IRSA
+kind: EPI
 metadata:
     name: xplane-cert-manager-${cluster_name}
     namespace: security
 spec:
-    deletionPolicy: Delete
     parameters:
-        condition: StringEquals
+        clusterName: ${cluster_name}
+        serviceAccount:
+            name: cert-manager
+            namespace: security
         # Reference: https://cert-manager.io/docs/configuration/acme/dns01/route53/
         policyDocument: |
             {
@@ -32,6 +34,3 @@ spec:
                 }
             ]
             }
-        serviceAccount:
-            name: cert-manager
-            namespace: security

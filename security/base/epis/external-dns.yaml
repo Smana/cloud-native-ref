@@ -1,11 +1,15 @@
 apiVersion: cloud.ogenki.io/v1alpha1
-kind: IRSA
+kind: EPI
 metadata:
     name: xplane-external-dns-${cluster_name}
+    namespace: kube-system
 spec:
     deletionPolicy: Delete
     parameters:
-        condition: StringEquals
+        clusterName: ${cluster_name}
+        serviceAccount:
+            name: external-dns
+            namespace: kube-system
         # Reference: https://kubernetes-sigs.github.io/external-dns/v0.13.4/tutorials/aws/#iam-policy
         policyDocument: |
             {
@@ -32,7 +36,3 @@ spec:
                     }
                 ]
             }
-
-        serviceAccount:
-            name: external-dns
-            namespace: kube-system

@@ -14,23 +14,29 @@ Here is the big picture inspired by the [CNOE](https://cnoe.io/) reference imple
 ```mermaid
 graph TD;
     Namespaces-->CRDs;
-    CRDs-->Observability;
-    CRDs-->Security;
-    CRDs-->Infrastructure;
-    Crossplane-->Infrastructure;
-    Crossplane-->Security;
+    CRDs-->Crossplane;
+    Crossplane-->EPIs["EKS Pod Identities"];
+    EPIs["EKS Pod Identities"]-->Security;
+    EPIs["EKS Pod Identities"]-->Infrastructure;
+    EPIs["EKS Pod Identities"]-->Observability;
     Observability-->Tooling;
     Infrastructure-->Tooling;
-    Security-->Tooling;
+    Security-->Infrastructure;
     Security-->Observability
 ```
 
 This diagram can be hard to understand so these are the key information:
 
-* **Namespaces** are the first resources to be created, all other resources may be namespace scoped
-* **CRDs** that allow to extend Kubernetes capabilities must be present in order to use them in all other applications when needed.
-* **Crossplane** creates [IRSA](https://docs.aws.amazon.com/emr/latest/EMR-on-EKS-DevelopmentGuide/setting-up-enable-IAM.html) or [EPI](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html) permissions which are required by some components
-* **Security** defines `external-secrets` that are needed by some applications in order to start.
+- **Namespaces** - Namespaces are the foundational resources in Kubernetes. All subsequent resources can be scoped to namespaces.
+
+- **Custom Resource Definitions (CRDs)** - CRDs extend Kubernetes' capabilities by defining new resource types. These must be established before they can be utilized in other applications.
+
+- **Crossplane** - Utilized for provisioning the necessary infrastructure components within Kubernetes.
+
+- **EKS Pod Identities** - Created using Crossplane, these identities are necessary to grant specific AWS API permissions to certain cluster components.
+
+- **Security** - Among other things, this step deploys `external-secrets` which is essential to use sensitive data into our applications
+
 
 ## 🏗️ Crossplane configuration
 
