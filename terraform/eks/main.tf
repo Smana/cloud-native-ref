@@ -75,7 +75,7 @@ module "eks" {
 
       capacity_type        = "SPOT"
       force_update_version = true
-      instance_types       = ["c6i.xlarge", "c5.xlarge"]
+      instance_types       = ["c7i.xlarge", "c6i.xlarge", "c5.xlarge"]
       taints = [
         {
           key    = "node.cilium.io/agent-not-ready"
