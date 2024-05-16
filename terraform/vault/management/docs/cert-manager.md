@@ -82,7 +82,7 @@ As stated in the requirements, Vault should be reachable from the Kubernetes clu
 
    Create the variables specific to your Vault instance.
    ```console
-   VAULT_DDR=https//vault.priv.cloud.ogenki.io
+   VAULT_ADDR=https://vault.priv.cloud.ogenki.io
    CA_CHAIN_B64=$(base64 -w0 .tls/ca-chain.pem)
    ```
 

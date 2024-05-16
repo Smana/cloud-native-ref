@@ -35,13 +35,13 @@ variable "iam_role_additional_policies" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.15.3"
+  default     = "1.15.5"
   type        = string
 }
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "0.36.0"
+  default     = "0.36.1"
   type        = string
 }
 
@@ -53,7 +53,7 @@ variable "ebs_csi_driver_chart_version" {
 
 variable "gateway_api_version" {
   description = "Gateway API CRDs version"
-  default     = "v1.0.0"
+  default     = "v1.1.0"
   type        = string
 }
 
