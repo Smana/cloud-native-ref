@@ -13,6 +13,11 @@ module "eks" {
     coredns = {
       most_recent = true
       configuration_values = jsonencode({
+        "autoScaling" : {
+          "enabled" : true,
+          "minReplicas" : 2,
+          "maxReplicas" : 4
+        }
         tolerations = [
           {
             operator = "Exists"
