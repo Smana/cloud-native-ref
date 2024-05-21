@@ -25,6 +25,14 @@ resource "kubernetes_namespace" "flux_system" {
   metadata {
     name = "flux-system"
   }
+
+  # Ignore changes to labels to avoid because they are modified by Flux bootstrap.
+  lifecycle {
+    ignore_changes = [
+      metadata[0].labels,
+    ]
+  }
+
   depends_on = [module.eks]
 }
 

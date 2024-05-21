@@ -75,10 +75,7 @@ module "eks" {
       max_size     = 3
       desired_size = 2
 
-      # Bottlerocket
-      use_custom_launch_template = false
-      ami_type                   = "BOTTLEROCKET_x86_64"
-      platform                   = "bottlerocket"
+      ami_type = "AL2_x86_64"
 
       capacity_type        = "SPOT"
       force_update_version = true
