@@ -75,10 +75,26 @@ module "eks" {
       max_size     = 3
       desired_size = 2
 
-      # Bottlerocket
-      use_custom_launch_template = false
-      ami_type                   = "BOTTLEROCKET_x86_64"
-      platform                   = "bottlerocket"
+      ami_type = "AL2023_x86_64_STANDARD"
+
+      use_latest_ami_release_version = true
+
+      cloudinit_pre_nodeadm = [
+        {
+          content_type = "application/node.eks.aws"
+          content      = <<-EOT
+            ---
+            apiVersion: node.eks.aws/v1alpha1
+            kind: NodeConfig
+            spec:
+              kubelet:
+                config:
+                  shutdownGracePeriod: 30s
+                  featureGates:
+                    DisableKubeletCloudCredentialProviders: true
+          EOT
+        }
+      ]
 
       capacity_type        = "SPOT"
       force_update_version = true
