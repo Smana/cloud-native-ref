@@ -11,7 +11,7 @@ spec:
     auth:
       appRole:
         path: approle
-        roleId: 6ddca779-62c0-71e8-27b3-9ea168d06023 # !! This value changes each time I recreate the whole platform
+        roleId: daabf5fd-cc71-446c-8648-a7586bc89ed0 # !! This value changes each time I recreate the whole platform
         secretRef:
           name: cert-manager-vault-approle
           key: secretId
