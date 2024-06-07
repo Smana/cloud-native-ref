@@ -17,7 +17,7 @@ variable "cluster_name" {
 
 variable "cluster_version" {
   description = "k8s cluster version"
-  default     = "1.29"
+  default     = "1.30"
   type        = string
 }
 
@@ -41,7 +41,7 @@ variable "cilium_version" {
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "0.36.1"
+  default     = "0.37.0"
   type        = string
 }
 
