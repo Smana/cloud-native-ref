@@ -1,48 +1,48 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: EPI
 metadata:
-    name: xplane-vault-snapshot-${cluster_name}
-    namespace: security
+  name: xplane-vault-snapshot-${cluster_name}
+  namespace: security
 spec:
-    parameters:
-        clusterName: ${cluster_name}
-        serviceAccount:
-            name: vault-snapshot
-            namespace: security
-        policyDocument: |
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "ReadPermissions",
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:ListBucket"
-                        ],
-                        "Resource": [
-                            "arn:aws:s3:::${region}-ogenki-vault-snapshot",
-                            "arn:aws:s3:::${region}-ogenki-vault-snapshot/*"
-                        ]
-                    },
-                    {
-                        "Sid": "WritePermissions",
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:PutObject"
-                        ],
-                        "Resource": "arn:aws:s3:::${region}-ogenki-vault-snapshot/*"
-                    },
-                    {
-                        "Sid": "AllowKMSUsage",
-                        "Effect": "Allow",
-                        "Action": [
-                            "kms:Decrypt",
-                            "kms:Encrypt",
-                            "kms:ReEncrypt*",
-                            "kms:GenerateDataKey*"
-                        ],
-                        "Resource": "*"
-                    }
-                ]
-            }
+  parameters:
+    clusterName: ${cluster_name}
+    serviceAccount:
+      name: vault-snapshot
+      namespace: security
+    policyDocument: |
+      {
+          "Version": "2012-10-17",
+          "Statement": [
+              {
+                  "Sid": "ReadPermissions",
+                  "Effect": "Allow",
+                  "Action": [
+                      "s3:GetObject",
+                      "s3:ListBucket"
+                  ],
+                  "Resource": [
+                      "arn:aws:s3:::${region}-ogenki-vault-snapshot",
+                      "arn:aws:s3:::${region}-ogenki-vault-snapshot/*"
+                  ]
+              },
+              {
+                  "Sid": "WritePermissions",
+                  "Effect": "Allow",
+                  "Action": [
+                      "s3:PutObject"
+                  ],
+                  "Resource": "arn:aws:s3:::${region}-ogenki-vault-snapshot/*"
+              },
+              {
+                  "Sid": "AllowKMSUsage",
+                  "Effect": "Allow",
+                  "Action": [
+                      "kms:Decrypt",
+                      "kms:Encrypt",
+                      "kms:ReEncrypt*",
+                      "kms:GenerateDataKey*"
+                  ],
+                  "Resource": "*"
+              }
+          ]
+      }

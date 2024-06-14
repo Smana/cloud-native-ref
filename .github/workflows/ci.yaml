@@ -1,9 +1,9 @@
-name: pre-commit
+name: CI
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: ["main"]
 
 jobs:
   pre-commit:
@@ -29,3 +29,26 @@ jobs:
 
       - name: pre-commit checks
         run: task pre-commit
+
+  kubernetes-validation:
+    name: Kubernetes validation ☸
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Flux clusters manifests
+        uses: dagger/dagger-for-github@v5
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.0.4
+          args: validate --manifests "./clusters" --catalog
+
+      - name: Validate Kubernetes manifests (Kustomize directories)
+        uses: dagger/dagger-for-github@v5
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.0.4
+          args: validate --manifests "." --kustomize --flux --env="cluster_name:foobar,region:eu-west-3,domain_name:example.com" --catalog --crds https://github.com/kubernetes-sigs/gateway-api/tree/main/config/crd/experimental
