@@ -1,39 +1,39 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: EPI
 metadata:
-    name: xplane-harbor-${cluster_name}
-    namespace: tooling
+  name: xplane-harbor-${cluster_name}
+  namespace: tooling
 spec:
-    deletionPolicy: Delete
-    parameters:
-        clusterName: ${cluster_name}
-        serviceAccount:
-            name: harbor
-            namespace: tooling
-        policyDocument: |
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "ReadPermissions",
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:ListBucket"
-                        ],
-                        "Resource": [
-                            "arn:aws:s3:::${region}-ogenki-harbor",
-                            "arn:aws:s3:::${region}-ogenki-harbor/*"
-                        ]
-                    },
-                    {
-                        "Sid": "WritePermissions",
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:PutObject",
-                            "s3:DeleteObject"
-                        ],
-                        "Resource": "arn:aws:s3:::${region}-ogenki-harbor/*"
-                    }
-                ]
-            }
+  deletionPolicy: Delete
+  parameters:
+    clusterName: ${cluster_name}
+    serviceAccount:
+      name: harbor
+      namespace: tooling
+    policyDocument: |
+      {
+          "Version": "2012-10-17",
+          "Statement": [
+              {
+                  "Sid": "ReadPermissions",
+                  "Effect": "Allow",
+                  "Action": [
+                      "s3:GetObject",
+                      "s3:ListBucket"
+                  ],
+                  "Resource": [
+                      "arn:aws:s3:::${region}-ogenki-harbor",
+                      "arn:aws:s3:::${region}-ogenki-harbor/*"
+                  ]
+              },
+              {
+                  "Sid": "WritePermissions",
+                  "Effect": "Allow",
+                  "Action": [
+                      "s3:PutObject",
+                      "s3:DeleteObject"
+                  ],
+                  "Resource": "arn:aws:s3:::${region}-ogenki-harbor/*"
+              }
+          ]
+      }

@@ -21,4 +21,4 @@ spec:
     fullnameOverride: kyverno
     crds:
       install: false
-    # Need to set at least resources limits in a near future
+# Need to set at least resources limits in a near future

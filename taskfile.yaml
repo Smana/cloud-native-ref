@@ -18,12 +18,8 @@ tasks:
   pre-commit:
     deps: [clean]
     cmds:
-      - defer: { task: clean }
+      - defer: {task: clean}
       - |
         USERID=$(id -u)
         GROUPID=$(id -g)
         docker run -e "USER=${USERID}:${GROUPID}" -v {{.USER_WORKING_DIR}}:/lint -w /lint $DOCKER_IMG:$DOCKER_TAG run -a
-
-  flux-validate:
-    cmds:
-      - ./scripts/validate.sh

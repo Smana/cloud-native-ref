@@ -1,38 +1,38 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: EPI
 metadata:
-    name: xplane-loki-${cluster_name}
-    namespace: observability
+  name: xplane-loki-${cluster_name}
+  namespace: observability
 spec:
-    parameters:
-        clusterName: ${cluster_name}
-        serviceAccount:
-            name: loki
-            namespace: observability
-        policyDocument: |
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "ReadPermissions",
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:ListBucket"
-                        ],
-                        "Resource": [
-                            "arn:aws:s3:::${region}-ogenki-loki",
-                            "arn:aws:s3:::${region}-ogenki-loki/*"
-                        ]
-                    },
-                    {
-                        "Sid": "WritePermissions",
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:PutObject",
-                            "s3:DeleteObject"
-                        ],
-                        "Resource": "arn:aws:s3:::${region}-ogenki-loki/*"
-                    }
-                ]
-            }
+  parameters:
+    clusterName: ${cluster_name}
+    serviceAccount:
+      name: loki
+      namespace: observability
+    policyDocument: |
+      {
+          "Version": "2012-10-17",
+          "Statement": [
+              {
+                  "Sid": "ReadPermissions",
+                  "Effect": "Allow",
+                  "Action": [
+                      "s3:GetObject",
+                      "s3:ListBucket"
+                  ],
+                  "Resource": [
+                      "arn:aws:s3:::${region}-ogenki-loki",
+                      "arn:aws:s3:::${region}-ogenki-loki/*"
+                  ]
+              },
+              {
+                  "Sid": "WritePermissions",
+                  "Effect": "Allow",
+                  "Action": [
+                      "s3:PutObject",
+                      "s3:DeleteObject"
+                  ],
+                  "Resource": "arn:aws:s3:::${region}-ogenki-loki/*"
+              }
+          ]
+      }
