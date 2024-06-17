@@ -44,6 +44,8 @@ jobs:
           verb: call
           module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.0.4
           args: validate --manifests "./clusters" --catalog
+        env:
+          DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
 
       - name: Validate Kubernetes manifests (Kustomize directories)
         uses: dagger/dagger-for-github@v5
@@ -52,3 +54,5 @@ jobs:
           verb: call
           module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.0.4
           args: validate --manifests "." --kustomize --flux --env="cluster_name:foobar,region:eu-west-3,domain_name:example.com" --catalog --crds https://github.com/kubernetes-sigs/gateway-api/tree/main/config/crd/experimental
+        env:
+          DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
