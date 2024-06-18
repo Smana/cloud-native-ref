@@ -1,0 +1,9 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: gitlab-operator
+spec:
+  interval: 5m0s
+  url: https://gitlab.com/gitlab-org/cloud-native/gitlab-operator
+  ref:
+    tag: 1.0.2
