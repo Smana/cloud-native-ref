@@ -1,13 +1,13 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: crds-cert-manager
+  name: crds-gateway-api
 spec:
-  interval: 2m
-  targetNamespace: security
+  interval: 10m
+  targetNamespace: kube-system
   sourceRef:
     kind: GitRepository
-    name: cert-manager
-  path: "./deploy/crds"
+    name: gateway-api
+  path: "./config/crd/experimental"
   prune: true
   timeout: 1m

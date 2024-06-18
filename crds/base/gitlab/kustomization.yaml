@@ -4,3 +4,4 @@ namespace: security
 
 resources:
   - crds.yaml
+  - source.yaml

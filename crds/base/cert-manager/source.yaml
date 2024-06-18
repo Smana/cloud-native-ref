@@ -1,9 +1,0 @@
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
-metadata:
-  name: cert-manager
-spec:
-  interval: 5m0s
-  url: https://github.com/cert-manager/cert-manager.git
-  ref:
-    tag: v1.15.0

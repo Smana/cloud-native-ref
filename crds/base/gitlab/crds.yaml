@@ -7,7 +7,7 @@ spec:
   targetNamespace: kube-system
   sourceRef:
     kind: GitRepository
-    name: gateway-api
+    name: gitlab-operator
   path: "./deploy/chart/crds"
   prune: true
   timeout: 1m

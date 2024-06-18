@@ -2,6 +2,7 @@ apiVersion: apps.gitlab.com/v1beta1
 kind: GitLab
 metadata:
   name: gitlab
+  namespace: tooling
 spec:
   chart:
     version: "8.0.2"
