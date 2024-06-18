@@ -1,0 +1,32 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: gitlab-operator
+  namespace: tooling
+spec:
+  releaseName: gitlab-operator
+  chart:
+    spec:
+      chart: gitlab-operator
+      sourceRef:
+        kind: HelmRepository
+        name: gitlab
+        namespace: flux-system
+      version: "1.0.2"
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values:
+    resources:
+      limits:
+        cpu: 200m
+        memory: 300Mi
+      requests:
+        cpu: 200m
+        memory: 100Mi
+
+    nginx-ingress:
+      serviceAccount:
+        # The ingress traffic will be handled by the Gateway API
+        create: false

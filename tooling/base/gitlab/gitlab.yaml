@@ -1,0 +1,34 @@
+apiVersion: apps.gitlab.com/v1beta1
+kind: GitLab
+metadata:
+  name: gitlab
+spec:
+  chart:
+    version: "8.0.2"
+    values:
+      global:
+        edition: ce
+        gitlabVersion: ""
+
+        hosts:
+          domain: gitlab.${domain_name}
+          ingress:
+            configureCertmanager: true
+
+        monitoring:
+          enabled: true
+
+        initialRootPassword:
+          secret: gitlab-initial-root-password
+          key: password
+
+        email:
+          from: "gitlab@ogenki.io"
+          display_name: Ogenki GitLab
+
+      certmanager:
+        # Cert-Manager is already installed in the cluster
+        installCRDs: false
+        install: false
+      certmanager-issuer:
+        email: smainklh@gmail.com
