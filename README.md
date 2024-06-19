@@ -1,6 +1,29 @@
-# Reference repository for building a Cloud Native platform
+# Reference Repository for Building a Cloud Native Platform
 
-**_This is an opiniated set of configuration allowing to manage a Cloud Native platform the GitOps way_**
+**_This is an opinionated set of configurations for managing a Cloud Native platform using GitOps principles._**
+
+This repository provides a comprehensive guide and set of tools for building, managing, and maintaining a Cloud Native platform. It includes configurations for Kubernetes, Crossplane, Flux, Vault, and more, with a focus on security, scalability, and best practices.
+
+## Table of Contents
+- [Reference Repository for Building a Cloud Native Platform](#reference-repository-for-building-a-cloud-native-platform)
+  - [Table of Contents](#table-of-contents)
+  - [🌟 Overview](#-overview)
+  - [🔄 Flux Dependencies Matter](#-flux-dependencies-matter)
+  - [🏗️ Crossplane Configuration](#️-crossplane-configuration)
+    - [Requirements and Security Concerns](#requirements-and-security-concerns)
+    - [How is Crossplane Deployed?](#how-is-crossplane-deployed)
+  - [📦 OCI Registry with Harbor](#-oci-registry-with-harbor)
+  - [🔗 VPN connection using Tailscale](#-vpn-connection-using-tailscale)
+  - [🔑 Private PKI with Vault](#-private-pki-with-vault)
+  - [🌐 Network policies with Cilium](#-network-policies-with-cilium)
+  - [🧪 CI](#-ci)
+
+## 🌟 Overview
+
+- 💬 [**Discussions**](https://github.com/Smana/demo-cloud-native-ref/discussions): Explore improvement areas, define the roadmap, and prioritize issues. Feel free to ask any questions 🙏.
+- 🛠️ [**Issues**](https://github.com/Smana/demo-cloud-native-ref/issues): Track tasks and report bugs to ensure prompt resolution.
+- 📅 [**Project**](https://github.com/users/Smana/projects/1): Detailed project planning and prioritization information.
+
 
 Here is the big picture inspired by the [CNOE](https://cnoe.io/) reference implementation.
 
@@ -9,7 +32,8 @@ Here is the big picture inspired by the [CNOE](https://cnoe.io/) reference imple
 ℹ️ This repository is used to write new blog posts [**here**](https://blog.ogenki.io)
 
 
-## 🔄 Flux Dependencies matter
+## 🔄 Flux Dependencies Matter
+Flux is a set of continuous and progressive delivery solutions for Kubernetes that automate the application deployment process. The following diagram illustrates the key dependencies in our setup:
 
 ```mermaid
 graph TD;
@@ -38,42 +62,36 @@ This diagram can be hard to understand so these are the key information:
 - **Security** - Among other things, this step deploys `external-secrets` which is essential to use sensitive data into our applications
 
 
-## 🏗️ Crossplane configuration
+## 🏗️ Crossplane Configuration
 
-### Requirements and security concerns
+### Requirements and Security Concerns
 
-When the cluster is initialized, we define the permissions for the crossplane controllers using Terraform. This involves attaching a set of IAM policies to a role. This role is crucial for managing AWS resources, a process known as IRSA (IAM Roles for Service Accounts).
+When the cluster is initialized, we define the permissions for the Crossplane controllers using Terraform. This involves attaching a set of IAM policies to a role. This role is crucial for managing AWS resources, a process known as IRSA (IAM Roles for Service Accounts).
 
 We prioritize security by adhering to the principle of **least privilege**. This means we only grant the necessary permissions, avoiding any excess. For instance, although Crossplane allows it, I have chosen not to give the controllers the ability to delete stateful services like S3 or RDS. This decision is a deliberate step to minimize potential risks.
 
 Additionally, I have put a constraint on the resources the controllers can manage. Specifically, they are limited to managing only those resources which are prefixed with `xplane-`. This restriction helps in maintaining a more controlled and secure environment.
 
-### How is Crossplane deployed?
+### How is Crossplane Deployed?
 
-Basically [Crossplane](https://www.crossplane.io/) allows to provision and manage Cloud Infrastructure (and even more) using the native Kubernetes features.
+[Crossplane](https://www.crossplane.io/) allows provisioning and managing Cloud Infrastructure (and even more) using native Kubernetes features. It needs to be installed and set up in three **successive steps**:
 
-It needs to be installed and set up in three **successive steps**:
-
-1. Installation of the Kubernetes operator
+1. Installation of the Kubernetes operator.
 2. Deployment of the AWS provider, which provides custom resources, including AWS roles, policies, etc.
 3. Installation of compositions that will generate AWS resources.
 
 🏷️ Related blog posts:
 
-* [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/cilium-gateway-api/)
-* [My Kubernetes cluster (GKE) with Crossplane](https://blog.ogenki.io/post/crossplane_k3d/)
-
-## 🛂 Federated authentication using (Still not decided: need to explore https://goauthentik.io/ or https://casdoor.org/)
-
-## 🗒️ Logs with Loki and Vector
+- [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/cilium-gateway-api/)
+- [My Kubernetes Cluster (GKE) with Crossplane](https://blog.ogenki.io/post/crossplane_k3d/)
 
 ## 📦 OCI Registry with Harbor
 
-The Harbor installation follows the best practices for high availability. It leverages recent Crossplane's features such as `Composition functions`
+The Harbor installation follows best practices for high availability. It leverages recent Crossplane features such as `Composition functions`:
 
-* External RDS database
-* Redis cluster using the bitnami Helm chart
-* Storing artifacts in S3
+- External RDS database
+- Redis cluster using the Bitnami Helm chart
+- Storing artifacts in S3
 
 🏷️ Related blog post: [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/crossplane_composition_functions/)
 
@@ -88,12 +106,6 @@ The risk becomes even more significant when dealing with Kubernetes' API. Indeed
 Anyway, I intentionnaly created a distinct directory that allows to provision the network and a secured connection. So that there are no confusion with the EKS provisionning.
 
 🏷️ Related blog post: [Beyond Traditional VPNs: Simplifying Cloud Access with Tailscale](https://blog.ogenki.io/post/tailscale/)
-
-## 👮 Runtime security with Falco
-
-## ✔️ Policies with Kyverno
-
-## :closed_lock_with_key: Secrets management with Vault and external-secrets operator
 
 ## 🔑 Private PKI with Vault
 
@@ -110,17 +122,8 @@ The Vault creation is made in 2 steps:
 
 ## 🧪 CI
 
-2 things are checked
+Currently support 2 ways of declaring tasks
+* [Task](https://taskfile.dev/installation/) for terraform code quality, conformance and security using [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform).
+* [Dagger](https://dagger.io/) for kustomize and Kubernetes conformance using kubeconform and building the kustomize configuration.
 
-* The terraform code quality, conformance and security using [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform).
-* The kustomize and Kubernetes conformance using kubeconform and building the kustomize configuration.
-
-In order to run the CI checks locally just run the following command
-
-ℹ️ It requires [task](https://taskfile.dev/installation/) to be installed
-
-```console
- task check
-```
-
-The same tasks are run in `Github Actions`.
+We're aiming to switch everything to Dagger. Work in progress
