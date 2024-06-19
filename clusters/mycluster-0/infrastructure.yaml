@@ -16,7 +16,7 @@ spec:
       - kind: ConfigMap
         name: eks-mycluster-0-vars
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1beta1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: crossplane
       namespace: crossplane-system
@@ -84,11 +84,11 @@ spec:
     - name: eks-pod-identities
     - name: crossplane-providers
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1beta1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: aws-load-balancer-controller
       namespace: kube-system
-    - apiVersion: helm.toolkit.fluxcd.io/v1beta1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: external-dns
       namespace: kube-system
