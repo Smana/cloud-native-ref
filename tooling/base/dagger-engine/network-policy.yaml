@@ -1,16 +1,12 @@
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: gha-runner-scale-set
+  name: dagger-engine
 spec:
-  description: "Restrict internal traffic to the GitHub Actions runner scale set."
+  description: "Allow internal traffic to the Dagger Engine service."
   endpointSelector:
-    matchExpressions:
-      - key: k8s:actions.github.com/scale-set-name
-        operator: In
-        values:
-          - default-gha-runner-scale-set
-          - dagger-gha-runner-scale-set
+    matchLabels:
+      k8s:actions.github.com/scale-set-name: dagger-engine
   egress:
     - toEndpoints:
         - matchLabels:
@@ -22,13 +18,6 @@ spec:
               protocol: UDP
             - port: "53"
               protocol: TCP
-    - toEndpoints:
-        - matchLabels:
-            k8s:app.kubernetes.io/name: dagger-engine
-      toPorts:
-        - ports:
-            - port: "8080"
-              protocol: TCP
     - toEntities:
         - world
       toPorts:
@@ -36,4 +25,15 @@ spec:
             - port: "80"
               protocol: TCP
             - port: "443"
+              protocol: TCP
+  ingress:
+    - fromEndpoints:
+        - key: k8s:actions.github.com/scale-set-name
+          operator: In
+          values:
+            - default-gha-runner-scale-set
+            - dagger-gha-runner-scale-set
+      fromPorts:
+        - ports:
+            - port: "8080"
               protocol: TCP

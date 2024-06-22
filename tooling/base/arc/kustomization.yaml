@@ -4,6 +4,7 @@ namespace: tooling
 
 resources:
   - controller-helmrelease.yaml
+  - dagger-scale-set-helmrelease.yaml
   - default-scale-set-helmrelease.yaml
   - externalsecret.yaml
   - network-policy.yaml

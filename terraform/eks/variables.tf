@@ -45,6 +45,17 @@ variable "karpenter_version" {
   type        = string
 }
 
+variable "karpenter_limits" {
+  description = "Define limits for Karpenter per node pool."
+  type = map(object(
+    {
+      cpu    = optional(number, 50),
+      memory = optional(string, "50Gi")
+    }
+    )
+  )
+}
+
 variable "ebs_csi_driver_chart_version" {
   description = "EBS CSI Driver Helm chart version"
   default     = "2.25.0"

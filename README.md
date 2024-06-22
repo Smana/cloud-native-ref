@@ -22,6 +22,7 @@ This repository provides a comprehensive guide and set of tools for building, ma
     - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners)
       - [Overview](#overview-1)
       - [Enabling Self-Hosted Runners](#enabling-self-hosted-runners)
+      - [Dagger example with Self-Hosted Runners](#dagger-example-with-self-hosted-runners)
 
 ## 🌟 Overview
 
@@ -153,3 +154,34 @@ This feature can be enabled within the `tooling` kustomization. By leveraging se
 - **Increased Security**: Run CI tasks within our secure internal environment.
 
 For detailed information on setting up and using GitHub Self-Hosted Runners, please refer to this [documentation](https://docs.github.com/en/actions/hosting-your-own-runners).
+
+#### Dagger example with Self-Hosted Runners
+
+```yaml
+name: Cache testing
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+
+  test-cache:
+    name: Testing in-cluster cache
+    runs-on: dagger-gha-runner-scale-set
+    container:
+      image: smana/dagger-cli:v0.11.9
+    env:
+      _EXPERIMENTAL_DAGGER_RUNNER_HOST: "tcp://dagger-engine:8080"
+      cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+
+    steps:
+      - name: Simulate a build with heavy packages
+        uses: dagger/dagger-for-github@v5
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/shykes/daggerverse.git/wolfi@dfb1f91fa463b779021d65011f0060f7decda0ba
+          args: container --packages "python3,py3-pip,go,rust,clang"
+```
