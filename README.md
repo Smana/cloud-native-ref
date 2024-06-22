@@ -130,23 +130,7 @@ The Vault creation is made in 2 steps:
 
 ### 🚧 Transition to Dagger
 
-Currently support 2 ways of declaring tasks
-* [Task](https://taskfile.dev/installation/) for terraform code quality, conformance and security using [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform).
-* [Dagger](https://dagger.io/) for kustomize and Kubernetes conformance using kubeconform and building the kustomize configuration.
-
-We're aiming to switch everything to Dagger. Work in progress
-
-### 🏠 Using self-hosted runners
-
-It is possible to run CI tasks in our internal platform using **Self Hosted Github Runners**. This can be enabled within the `tooling` kustomization.
-By doing so we're able to reach private endpoints and therefore enhance the security level. For more information on Github Self hosted runners please read this [doc](https://docs.github.com/en/actions/hosting-your-own-runners).
-
-
-# 🧪 CI
-
-## 🚧 Transition to Dagger
-
-### Overview
+#### Overview
 Our CI currently supports two ways of declaring tasks. We are in the process of transitioning to using [Dagger](https://dagger.io/) exclusively. Here's a breakdown of the current methods:
 
 1. **[Task](https://taskfile.dev/installation/)**:
@@ -157,15 +141,15 @@ Our CI currently supports two ways of declaring tasks. We are in the process of 
    - Used for Kustomize and Kubernetes conformance.
    - Employs `kubeconform` for Kubernetes configuration validation.
 
-### Goal
+#### Goal
 We aim to standardize our CI tasks using Dagger across all processes. This transition is currently a work in progress.
 
-## 🏠 Using Self-Hosted Runners
+### 🏠 Using Self-Hosted Runners
 
-### Overview
+#### Overview
 For enhanced security and access to private endpoints, our CI tasks can be run on our internal platform using **Self-Hosted GitHub Runners**.
 
-### Enabling Self-Hosted Runners
+#### Enabling Self-Hosted Runners
 This feature can be enabled within the `tooling` kustomization. By leveraging self-hosted runners, we achieve:
 
 - **Access to Private Endpoints**: Directly interact with internal resources that are not publicly accessible.
