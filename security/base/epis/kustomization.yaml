@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - cert-manager.yaml
+  - default-gha-runner-scale-set.yaml
   - external-dns.yaml
   - external-secrets.yaml
   - harbor.yaml

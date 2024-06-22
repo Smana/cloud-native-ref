@@ -15,8 +15,16 @@ This repository provides a comprehensive guide and set of tools for building, ma
   - [📦 OCI Registry with Harbor](#-oci-registry-with-harbor)
   - [🔗 VPN connection using Tailscale](#-vpn-connection-using-tailscale)
   - [🔑 Private PKI with Vault](#-private-pki-with-vault)
-  - [🌐 Network policies with Cilium](#-network-policies-with-cilium)
   - [🧪 CI](#-ci)
+    - [🚧 Transition to Dagger](#-transition-to-dagger)
+    - [🏠 Using self-hosted runners](#-using-self-hosted-runners)
+- [🧪 CI](#-ci-1)
+  - [🚧 Transition to Dagger](#-transition-to-dagger-1)
+    - [Overview](#overview)
+    - [Goal](#goal)
+  - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners-1)
+    - [Overview](#overview-1)
+    - [Enabling Self-Hosted Runners](#enabling-self-hosted-runners)
 
 ## 🌟 Overview
 
@@ -100,7 +108,7 @@ The Harbor installation follows best practices for high availability. It leverag
 The VPN configuration is done within the `terraform/network` directory.
 You can follow the steps described in this [README](/terraform/network/README.md) in order to provision a server that allows to access to private resources within AWS.
 
-Most of the time we don't want to expose our resources publicly. For instance our platform tools such as `Grafana`, the `Flux web UI` should be access through a secured wire.
+Most of the time we don't want to expose our resources publicly. For instance our platform tools such as `Grafana`, `Harbor` should be access through a secured wire.
 The risk becomes even more significant when dealing with Kubernetes' API. Indeed, one of the primary recommendations for securing a cluster is to limit access to the API.
 
 Anyway, I intentionnaly created a distinct directory that allows to provision the network and a secured connection. So that there are no confusion with the EKS provisionning.
@@ -118,12 +126,49 @@ The Vault creation is made in 2 steps:
 
 🏷️ Related blog post: [TLS with Gateway API: Efficient and Secure Management of Public and Private Certificates](https://blog.ogenki.io/post/pki-gapi/)
 
-## 🌐 Network policies with Cilium
-
 ## 🧪 CI
+
+### 🚧 Transition to Dagger
 
 Currently support 2 ways of declaring tasks
 * [Task](https://taskfile.dev/installation/) for terraform code quality, conformance and security using [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform).
 * [Dagger](https://dagger.io/) for kustomize and Kubernetes conformance using kubeconform and building the kustomize configuration.
 
 We're aiming to switch everything to Dagger. Work in progress
+
+### 🏠 Using self-hosted runners
+
+It is possible to run CI tasks in our internal platform using **Self Hosted Github Runners**. This can be enabled within the `tooling` kustomization.
+By doing so we're able to reach private endpoints and therefore enhance the security level. For more information on Github Self hosted runners please read this [doc](https://docs.github.com/en/actions/hosting-your-own-runners).
+
+
+# 🧪 CI
+
+## 🚧 Transition to Dagger
+
+### Overview
+Our CI currently supports two ways of declaring tasks. We are in the process of transitioning to using [Dagger](https://dagger.io/) exclusively. Here's a breakdown of the current methods:
+
+1. **[Task](https://taskfile.dev/installation/)**:
+   - Utilized for Terraform code quality, conformance, and security.
+   - Integrates with [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform) to ensure best practices and security standards are met.
+
+2. **[Dagger](https://dagger.io/)**:
+   - Used for Kustomize and Kubernetes conformance.
+   - Employs `kubeconform` for Kubernetes configuration validation.
+
+### Goal
+We aim to standardize our CI tasks using Dagger across all processes. This transition is currently a work in progress.
+
+## 🏠 Using Self-Hosted Runners
+
+### Overview
+For enhanced security and access to private endpoints, our CI tasks can be run on our internal platform using **Self-Hosted GitHub Runners**.
+
+### Enabling Self-Hosted Runners
+This feature can be enabled within the `tooling` kustomization. By leveraging self-hosted runners, we achieve:
+
+- **Access to Private Endpoints**: Directly interact with internal resources that are not publicly accessible.
+- **Increased Security**: Run CI tasks within our secure internal environment.
+
+For detailed information on setting up and using GitHub Self-Hosted Runners, please refer to this [documentation](https://docs.github.com/en/actions/hosting-your-own-runners).

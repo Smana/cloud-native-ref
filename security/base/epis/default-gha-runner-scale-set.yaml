@@ -1,0 +1,32 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: EPI
+metadata:
+  name: xplane-default-actions-runner-${cluster_name}
+  namespace: security
+spec:
+  parameters:
+    clusterName: ${cluster_name}
+    serviceAccount:
+      name: default-gha-runner-scale-set
+      namespace: tooling
+    # Example policy, not used for the moment.
+    policyDocument: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:GetDownloadUrlForLayer",
+              "ecr:BatchGetImage",
+              "ecr:BatchCheckLayerAvailability",
+              "ecr:GetAuthorizationToken",
+              "ecr:InitiateLayerUpload",
+              "ecr:UploadLayerPart",
+              "ecr:CompleteLayerUpload",
+              "ecr:PutImage"
+            ],
+            "Resource": "arn:aws:ecr:us-west-2:123456789012:repository/my-repo"
+          }
+        ]
+      }
