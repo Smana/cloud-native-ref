@@ -27,6 +27,18 @@ tags = {
   GithubRepo = "demo-cloud-native-ref"
   GithubOrg  = "Smana"
 }
+
+
+karpenter_limits = {
+  "default" = {
+    cpu    = "20"
+    memory = "64Gi"
+  }
+  "io" = {
+    cpu    = "20"
+    memory = "64Gi"
+  }
+}
 ```
 
 3. Apply with `tofu apply -var-file variables.tfvars`

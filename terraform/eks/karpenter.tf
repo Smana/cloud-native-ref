@@ -19,70 +19,26 @@ resource "aws_eks_pod_identity_association" "karpenter" {
   role_arn        = module.karpenter.iam_role_arn
 }
 
-resource "kubectl_manifest" "karpenter_nodepool" {
-  yaml_body = <<-YAML
-    apiVersion: karpenter.sh/v1beta1
-    kind: NodePool
-    metadata:
-      name: default
-    spec:
-      template:
-        spec:
-          nodeClassRef:
-            name: default
-          requirements:
-            - key: "kubernetes.io/arch"
-              operator: In
-              values: ["amd64"]
-            - key: karpenter.sh/capacity-type
-              operator: In
-              values: ["spot"]
-            - key: "karpenter.k8s.aws/instance-category"
-              operator: In
-              values: ["c", "m", "r"]
-            - key: "karpenter.k8s.aws/instance-cpu"
-              operator: In
-              values: ["4", "8", "16", "32"]
-            - key: "karpenter.k8s.aws/instance-hypervisor"
-              operator: In
-              values: ["nitro"]
-            - key: "karpenter.k8s.aws/instance-generation"
-              operator: Gt
-              values: ["2"]
-            # - key: "karpenter.k8s.aws/instance-local-nvme"
-            #   operator: Gt
-            #   values: ["150"]
-      limits:
-        cpu: 200
-      disruption:
-        consolidationPolicy: WhenEmpty
-        consolidateAfter: 30s
-  YAML
+resource "kubectl_manifest" "karpenter" {
+  for_each = {
+    for file_name in flatten([
+      data.kubectl_filename_list.karpenter_default.matches,
+      data.kubectl_filename_list.karpenter_io.matches
+    ]) : file_name => file_name
+  }
 
-  depends_on = [
-    helm_release.karpenter
-  ]
-}
-
-resource "kubectl_manifest" "karpenter_ec2_nodeclass" {
-  yaml_body = <<-YAML
-    apiVersion: karpenter.k8s.aws/v1beta1
-    kind: EC2NodeClass
-    metadata:
-      name: default
-    spec:
-      amiFamily: "AL2"
-      # instanceStorePolicy: "RAID0"
-      role: ${module.karpenter.node_iam_role_name}
-      subnetSelectorTerms:
-        - tags:
-            karpenter.sh/discovery: ${var.env}
-      securityGroupSelectorTerms:
-        - tags:
-            karpenter.sh/discovery: ${module.eks.cluster_name}
-      tags:
-        karpenter.sh/discovery: ${module.eks.cluster_name}
-  YAML
+  yaml_body = templatefile(
+    each.key,
+    {
+      cluster_name                   = module.eks.cluster_name,
+      env                            = var.env,
+      karpenter_node_iam_role_name   = module.karpenter.node_iam_role_name
+      default_nodepool_cpu_limits    = var.karpenter_limits.default.cpu
+      default_nodepool_memory_limits = var.karpenter_limits.default.memory
+      io_nodepool_cpu_limits         = var.karpenter_limits.io.cpu
+      io_nodepool_memory_limits      = var.karpenter_limits.io.memory
+    }
+  )
 
   depends_on = [
     helm_release.karpenter

@@ -2,7 +2,6 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: default-gha-runner-scale-set
-  namespace: tooling
 spec:
   releaseName: default-gha-runner-scale-set
   chart:
@@ -19,7 +18,7 @@ spec:
   values:
     runnerGroup: "default"
     githubConfigUrl: "https://github.com/Smana/demo-cloud-native-ref"
-    githubConfigSecret: default-gha-runner-scale-set
+    githubConfigSecret: gha-runner-scale-set
     maxRunners: 5
 
     ## We'll probably want to use our internal PKI for this.

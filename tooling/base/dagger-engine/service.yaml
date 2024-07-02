@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dagger-engine
+  labels:
+    app.kubernetes.io/name: dagger-engine
+spec:
+  selector:
+    app.kubernetes.io/name: dagger-engine
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080

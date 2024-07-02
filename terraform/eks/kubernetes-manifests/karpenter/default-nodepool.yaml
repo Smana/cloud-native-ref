@@ -1,0 +1,29 @@
+apiVersion: karpenter.sh/v1beta1
+kind: NodePool
+metadata:
+  name: default
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        name: default
+      requirements:
+        - key: "kubernetes.io/arch"
+          operator: In
+          values: ["amd64"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        # Do not select big instance types in order to avoid blast radius
+        - key: karpenter.k8s.aws/instance-cpu
+          operator: Lt
+          values: ["26"]
+        - key: karpenter.k8s.aws/instance-memory
+          operator: Lt
+          values: ["50001"]
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30s
+  limits:
+    cpu: ${default_nodepool_cpu_limits}
+    memory: ${default_nodepool_memory_limits}

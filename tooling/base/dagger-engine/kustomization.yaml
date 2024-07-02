@@ -3,8 +3,8 @@ kind: Kustomization
 namespace: tooling
 
 resources:
-  - controller-helmrelease.yaml
-  - default-scale-set-helmrelease.yaml
-  - externalsecret.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - pdb.yaml
+  - service.yaml
   - network-policy.yaml
-  - source.yaml

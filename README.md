@@ -16,12 +16,11 @@ This repository provides a comprehensive guide and set of tools for building, ma
   - [🔗 VPN connection using Tailscale](#-vpn-connection-using-tailscale)
   - [🔑 Private PKI with Vault](#-private-pki-with-vault)
   - [🧪 CI](#-ci)
-    - [🚧 Transition to Dagger](#-transition-to-dagger)
-      - [Overview](#overview)
-      - [Goal](#goal)
+    - [Overview](#overview)
     - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners)
       - [Overview](#overview-1)
       - [Enabling Self-Hosted Runners](#enabling-self-hosted-runners)
+      - [Dagger example with Self-Hosted Runners](#dagger-example-with-self-hosted-runners)
 
 ## 🌟 Overview
 
@@ -125,21 +124,12 @@ The Vault creation is made in 2 steps:
 
 ## 🧪 CI
 
-### 🚧 Transition to Dagger
+### Overview
 
-#### Overview
-Our CI currently supports two ways of declaring tasks. We are in the process of transitioning to using [Dagger](https://dagger.io/) exclusively. Here's a breakdown of the current methods:
+We leverage **[Dagger](https://dagger.io/)** for all our CI tasks. Here's what is currently run:
 
-1. **[Task](https://taskfile.dev/installation/)**:
-   - Utilized for Terraform code quality, conformance, and security.
-   - Integrates with [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform) to ensure best practices and security standards are met.
-
-2. **[Dagger](https://dagger.io/)**:
-   - Used for Kustomize and Kubernetes conformance.
-   - Employs `kubeconform` for Kubernetes configuration validation.
-
-#### Goal
-We aim to standardize our CI tasks using Dagger across all processes. This transition is currently a work in progress.
+* Validation of Kubernetes and Kustomize manifests using `kubeconform`
+* Validation of Terraform/Opentofu configurations using the [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform)
 
 ### 🏠 Using Self-Hosted Runners
 
@@ -153,3 +143,34 @@ This feature can be enabled within the `tooling` kustomization. By leveraging se
 - **Increased Security**: Run CI tasks within our secure internal environment.
 
 For detailed information on setting up and using GitHub Self-Hosted Runners, please refer to this [documentation](https://docs.github.com/en/actions/hosting-your-own-runners).
+
+#### Dagger example with Self-Hosted Runners
+
+```yaml
+name: Cache testing
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+
+  test-cache:
+    name: Testing in-cluster cache
+    runs-on: dagger-gha-runner-scale-set
+    container:
+      image: smana/dagger-cli:v0.11.9
+    env:
+      _EXPERIMENTAL_DAGGER_RUNNER_HOST: "tcp://dagger-engine:8080"
+      cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+
+    steps:
+      - name: Simulate a build with heavy packages
+        uses: dagger/dagger-for-github@v5
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/shykes/daggerverse.git/wolfi@dfb1f91fa463b779021d65011f0060f7decda0ba
+          args: container --packages "python3,py3-pip,go,rust,clang"
+```

@@ -1,7 +1,7 @@
 ---
 name: Enhancement Suggestion
 about: Suggest an idea for this project
-title: '[ENHANCEMENT] Brief Description of Enhancement'
+title: 'Brief Description of Enhancement'
 labels: enhancement
 assignees: ''
 
@@ -15,12 +15,10 @@ assignees: ''
 
 ### Motivation
 *Explain why this enhancement would be useful to the project or users.*
+*Describe the potential benefits of the enhancement, including possible impacts on performance, usability, and efficiency.*
 
 ### Detailed Explanation
 *Provide a detailed explanation of the proposed enhancement. Include any preliminary ideas you have about the implementation, and how it integrates with existing functionalities.*
-
-### Benefits
-*Describe the potential benefits of the enhancement, including possible impacts on performance, usability, and efficiency.*
 
 ### Possible Drawbacks
 *Consider any possible drawbacks or issues that might arise with the implementation of this enhancement.*
