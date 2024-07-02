@@ -28,12 +28,12 @@ spec:
               protocol: TCP
   ingress:
     - fromEndpoints:
-        - key: k8s:actions.github.com/scale-set-name
-          operator: In
-          values:
-            - default-gha-runner-scale-set
-            - dagger-gha-runner-scale-set
-      fromPorts:
+        - matchLabels:
+            k8s:actions.github.com/scale-set-name: default-gha-runner-scale-set
+    - fromEndpoints:
+        - matchLabels:
+            k8s:actions.github.com/scale-set-name: dagger-gha-runner-scale-set
+      toPorts:
         - ports:
             - port: "8080"
               protocol: TCP
