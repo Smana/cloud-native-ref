@@ -14,12 +14,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Task
-        uses: arduino/setup-task@v1
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Write required vault files
         run: |
           mkdir -p terraform/vault/cluster/.tls
@@ -27,8 +21,14 @@ jobs:
           echo 'keep' > terraform/vault/cluster/.tls/vault-key.pem
           echo 'keep' > terraform/vault/cluster/.tls/ca-chain.pem
 
-      - name: pre-commit checks
-        run: task pre-commit
+      - name: Validate Terraform Opentofu configuration
+        uses: dagger/dagger-for-github@v5
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/Smana/daggerverse/pre-commit-tf@pre-commit-tf/v0.0.1
+          args: run --dir "." --tf-binary="tofu"
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
 
   kubernetes-validation:
     name: Kubernetes validation ☸

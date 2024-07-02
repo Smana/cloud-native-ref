@@ -4,7 +4,7 @@ metadata:
   name: dagger-engine
   labels:
     app.kubernetes.io/name: dagger-engine
-    app.kubernetes.io/version: "v0.11.8"
+    app.kubernetes.io/version: "v0.11.9"
 data:
   engine.toml: |
     debug = true

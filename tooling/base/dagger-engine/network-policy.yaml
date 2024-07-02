@@ -6,7 +6,7 @@ spec:
   description: "Allow internal traffic to the Dagger Engine service."
   endpointSelector:
     matchLabels:
-      k8s:actions.github.com/scale-set-name: dagger-engine
+      k8s:app.kubernetes.io/name: dagger-engine
   egress:
     - toEndpoints:
         - matchLabels:

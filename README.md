@@ -16,9 +16,7 @@ This repository provides a comprehensive guide and set of tools for building, ma
   - [🔗 VPN connection using Tailscale](#-vpn-connection-using-tailscale)
   - [🔑 Private PKI with Vault](#-private-pki-with-vault)
   - [🧪 CI](#-ci)
-    - [🚧 Transition to Dagger](#-transition-to-dagger)
-      - [Overview](#overview)
-      - [Goal](#goal)
+    - [Overview](#overview)
     - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners)
       - [Overview](#overview-1)
       - [Enabling Self-Hosted Runners](#enabling-self-hosted-runners)
@@ -126,21 +124,12 @@ The Vault creation is made in 2 steps:
 
 ## 🧪 CI
 
-### 🚧 Transition to Dagger
+### Overview
 
-#### Overview
-Our CI currently supports two ways of declaring tasks. We are in the process of transitioning to using [Dagger](https://dagger.io/) exclusively. Here's a breakdown of the current methods:
+We leverage **[Dagger](https://dagger.io/)** for all our CI tasks. Here's what is currently run:
 
-1. **[Task](https://taskfile.dev/installation/)**:
-   - Utilized for Terraform code quality, conformance, and security.
-   - Integrates with [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform) to ensure best practices and security standards are met.
-
-2. **[Dagger](https://dagger.io/)**:
-   - Used for Kustomize and Kubernetes conformance.
-   - Employs `kubeconform` for Kubernetes configuration validation.
-
-#### Goal
-We aim to standardize our CI tasks using Dagger across all processes. This transition is currently a work in progress.
+* Validation of Kubernetes and Kustomize manifests using `kubeconform`
+* Validation of Terraform/Opentofu configurations using the [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform)
 
 ### 🏠 Using Self-Hosted Runners
 

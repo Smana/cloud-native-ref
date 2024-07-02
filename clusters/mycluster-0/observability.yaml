@@ -24,11 +24,11 @@ spec:
       kind: HelmRelease
       name: kube-prometheus-stack
       namespace: observability
-    - apiVersion: helm.toolkit.fluxcd.io/v2
-      kind: HelmRelease
-      name: loki
-      namespace: observability
-    - apiVersion: helm.toolkit.fluxcd.io/v2
-      kind: HelmRelease
-      name: vector-agent
-      namespace: observability
+    # - apiVersion: helm.toolkit.fluxcd.io/v2
+    #   kind: HelmRelease
+    #   name: loki
+    #   namespace: observability
+    # - apiVersion: helm.toolkit.fluxcd.io/v2
+    #   kind: HelmRelease
+    #   name: vector-agent
+    #   namespace: observability
