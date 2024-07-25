@@ -25,10 +25,8 @@ resources:
     cpu: 300m
     memory: 256Mi
 routingMode: native
-tunnel: disabled
 
 envoy:
-  enabled: true
   resources:
     limits:
       memory: 300Mi
