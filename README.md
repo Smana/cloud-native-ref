@@ -18,8 +18,6 @@ This repository provides a comprehensive guide and set of tools for building, ma
   - [🧪 CI](#-ci)
     - [Overview](#overview)
     - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners)
-      - [Overview](#overview-1)
-      - [Enabling Self-Hosted Runners](#enabling-self-hosted-runners)
 
 ## 🌟 Overview
 
@@ -28,11 +26,7 @@ This repository provides a comprehensive guide and set of tools for building, ma
 - 📅 [**Project**](https://github.com/users/Smana/projects/1): Detailed project planning and prioritization information.
 
 
-Here is the big picture inspired by the [CNOE](https://cnoe.io/) reference implementation.
-
 ![overview](.assets/cloud-native-ref.png)
-
-ℹ️ This repository is used to write new blog posts [**here**](https://blog.ogenki.io)
 
 
 ## 🔄 Flux Dependencies Matter
@@ -58,9 +52,9 @@ This diagram can be hard to understand so these are the key information:
 
 - **Custom Resource Definitions (CRDs)** - CRDs extend Kubernetes' capabilities by defining new resource types. These must be established before they can be utilized in other applications.
 
-- **Crossplane** - Utilized for provisioning the necessary infrastructure components within Kubernetes.
+- **Crossplane** - Used to provision the necessary infrastructure components from Kubernetes.
 
-- **EKS Pod Identities** - Created using Crossplane, these identities are necessary to grant specific AWS API permissions to certain cluster components.
+- **EKS Pod Identities** - Created using Crossplane, these IAM roles are necessary to grant specific AWS API permissions to certain applications.
 
 - **Security** - Among other things, this step deploys `external-secrets` which is essential to use sensitive data into our applications
 
@@ -132,11 +126,8 @@ We leverage **[Dagger](https://dagger.io/)** for all our CI tasks. Here's what i
 
 ### 🏠 Using Self-Hosted Runners
 
-#### Overview
-For enhanced security and access to private endpoints, our CI tasks can be run on our internal platform using **Self-Hosted GitHub Runners**.
-
-#### Enabling Self-Hosted Runners
-This feature can be enabled within the `tooling` kustomization. By leveraging self-hosted runners, we achieve:
+Deploying
+This feature can be enabled within the `tooling` kustomization. By leveraging **Self-Hosted GitHub Runners**, we achieve:
 
 - **Access to Private Endpoints**: Directly interact with internal resources that are not publicly accessible.
 - **Increased Security**: Run CI tasks within our secure internal environment.
