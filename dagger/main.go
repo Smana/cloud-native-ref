@@ -7,7 +7,6 @@ import (
 	"dagger/cloud-native-ref/internal/dagger"
 	"fmt"
 	"strings"
-	"unicode"
 )
 
 type CloudNativeRef struct{}
@@ -34,7 +33,7 @@ const (
 // bootstrapContainer creates a container with the necessary tools to bootstrap the EKS cluster
 func bootstrapContainer(env []string) (*dagger.Container, error) {
 	// init a wolfi container with the necessary tools
-	ctr := dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "opentofu"})
+	ctr := dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "git", "opentofu"})
 
 	// Add the environment variables to the container
 	for _, e := range env {
@@ -48,31 +47,34 @@ func bootstrapContainer(env []string) (*dagger.Container, error) {
 	return ctr, nil
 }
 
-// camelCaseToKebabCase converts a string from camelCase to kebab-case
-func camelCaseToKebabCase(s string) string {
-	var builder strings.Builder
-	for i, r := range s {
-		if i > 0 && unicode.IsUpper(r) {
-			builder.WriteRune('-')
-		}
-		builder.WriteRune(unicode.ToLower(r))
-	}
-	return builder.String()
-}
-
-// getSecretValue returns the plaintext value of a secret
-func getSecretValue(ctx context.Context, secret *dagger.Secret) (string, error) {
-	plainText, err := secret.Plaintext(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get secret value from the secret passed: %w", err)
-	}
-
-	return plainText, nil
-}
-
-// Bootstrap the EKS cluster
-func (m *CloudNativeRef) Bootstrap(
+// Clean all Terraform cache files
+func (m *CloudNativeRef) Clean(
 	ctx context.Context,
+
+	// source is the directory where the Terraform configuration is stored
+	// +required
+	source *dagger.Directory,
+) (string, error) {
+
+	ctr, err := bootstrapContainer([]string{})
+	if err != nil {
+		return "", err
+	}
+
+	cmd := []string{"find", ".", "-type", "d", "-name", "*.terraform", "-or", "-name", "*.terraform.lock.hcl", "-exec", "rm", "-vrf", "{}", "+"}
+	return ctr.
+		WithMountedDirectory("/cloud-native-ref", source).
+		WithWorkdir("/cloud-native-ref").
+		WithExec(cmd).Stdout(ctx)
+}
+
+// Plan display the terraform plan for all the modules
+func (m *CloudNativeRef) Plan(
+	ctx context.Context,
+
+	// source is the directory where the Terraform configuration is stored
+	// +required
+	source *dagger.Directory,
 
 	// The directory where the AWS authentication files will be stored
 	// +optional
@@ -93,6 +95,77 @@ func (m *CloudNativeRef) Bootstrap(
 	// The AWS access key ID
 	// +optional
 	accessKeyID *dagger.Secret,
+
+	// a list of environment variables, expected in (key:value) format
+	// +optional
+	env []string,
+
+) (string, error) {
+
+	ctr, err := bootstrapContainer(env)
+	if err != nil {
+		return "", err
+	}
+
+	// mount the source directory
+	ctr = ctr.WithMountedDirectory("/cloud-native-ref", source)
+
+	// Add the AWS credentials if provided as environment variables
+	if accessKeyID != nil && secretAccessKey != nil {
+		accessKeyIDValue, err := getSecretValue(ctx, accessKeyID)
+		if err != nil {
+			return "", err
+		}
+		secretAccessKeyValue, err := getSecretValue(ctx, secretAccessKey)
+		if err != nil {
+			return "", err
+		}
+		ctr = ctr.WithEnvVariable("AWS_ACCESS_KEY_ID", accessKeyIDValue).
+			WithEnvVariable("AWS_SECRET_ACCESS_KEY", secretAccessKeyValue)
+	}
+
+	if authDir != nil {
+		ctr = ctr.WithMountedDirectory("/root/.aws/", authDir)
+	}
+
+	createNetwork(ctx, ctr, false)
+
+	return ctr.
+		WithExec([]string{"echo", "Bootstrap the EKS cluster"}).
+		Stdout(ctx)
+}
+
+// Bootstrap the EKS cluster
+func (m *CloudNativeRef) Bootstrap(
+	ctx context.Context,
+
+	// source is the directory where the Terraform configuration is stored
+	// +required
+	source *dagger.Directory,
+
+	// The directory where the AWS authentication files will be stored
+	// +optional
+	authDir *dagger.Directory,
+
+	// The AWS IAM Role ARN to assume
+	// +optional
+	assumeRoleArn string,
+
+	// The AWS profile to use
+	// +optional
+	profile string,
+
+	// The AWS secret access key
+	// +optional
+	secretAccessKey *dagger.Secret,
+
+	// The AWS access key ID
+	// +optional
+	accessKeyID *dagger.Secret,
+
+	// apply if set to true, the terraform apply will be executed
+	// +optional
+	apply bool,
 
 	// Tooling applications to enable
 	// +optional
@@ -117,6 +190,9 @@ func (m *CloudNativeRef) Bootstrap(
 		return "", err
 	}
 
+	// mount the source directory
+	ctr = ctr.WithMountedDirectory("/cloud-native-ref", source)
+
 	// Add the AWS credentials if provided as environment variables
 	if accessKeyID != nil && secretAccessKey != nil {
 		accessKeyIDValue, err := getSecretValue(ctx, accessKeyID)
@@ -135,8 +211,9 @@ func (m *CloudNativeRef) Bootstrap(
 		ctr = ctr.WithMountedDirectory("/root/.aws/", authDir)
 	}
 
+	createNetwork(ctx, ctr, apply)
+
 	return ctr.
 		WithExec([]string{"echo", "Bootstrap the EKS cluster"}).
-		Terminal().
 		Stdout(ctx)
 }
