@@ -61,7 +61,7 @@ func (m *CloudNativeRef) Clean(
 		return "", err
 	}
 
-	cmd := []string{"find", ".", "-type", "d", "-name", "*.terraform", "-or", "-name", "*.terraform.lock.hcl", "-exec", "rm", "-vrf", "{}", "+"}
+	cmd := []string{"find", ".", "(", "-type", "d", "-name", "*.terraform", "-or", "-name", "*.terraform.lock.hcl", ")", "-exec", "rm", "-vrf", "{}", "+"}
 	return ctr.
 		WithMountedDirectory("/cloud-native-ref", source).
 		WithWorkdir("/cloud-native-ref").
@@ -211,7 +211,12 @@ func (m *CloudNativeRef) Bootstrap(
 		ctr = ctr.WithMountedDirectory("/root/.aws/", authDir)
 	}
 
-	createNetwork(ctx, ctr, apply)
+	networkOutput, err := createNetwork(ctx, ctr, true)
+	if err != nil {
+		return "", err
+	}
+
+	fmt.Printf("Network output: %v\n", networkOutput)
 
 	return ctr.
 		WithExec([]string{"echo", "Bootstrap the EKS cluster"}).

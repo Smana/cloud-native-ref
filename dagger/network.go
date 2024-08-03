@@ -6,18 +6,19 @@ import (
 	"fmt"
 )
 
-func createNetwork(ctx context.Context, ctr *dagger.Container, apply bool) (string, error) {
-	_, err := tfRun(ctx, ctr, "/cloud-native-ref/terraform/network", apply, []string{"-var-file", "variables.tfvars"})
+func createNetwork(ctx context.Context, ctr *dagger.Container, apply bool) (map[string]interface{}, error) {
+	workDir := "/cloud-native-ref/terraform/network"
+
+	// Firts we need to import Tailscale ACLs due to a bug in the Terraform provider
+	cmd := []string{"tofu", "import", "--var-file", "variables.tfvars", "tailscale_acl.this", "acl"}
+	_, err := ctr.WithWorkdir(workDir).WithExec(cmd).Stdout(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to create the network: %w", err)
+		return nil, fmt.Errorf("failed to import the Tailscale ACLs: %w", err)
 	}
 
-	outputsJson, err := ctr.WithExec([]string{"tofu", "output", "-json"}).WithWorkdir("/cloud-native-ref/terraform/network").Stdout(ctx)
+	output, err := tfRun(ctx, ctr, workDir, apply, []string{"-var-file", "variables.tfvars"})
 	if err != nil {
-		return "", fmt.Errorf("failed to get the output of the network: %w", err)
+		return nil, fmt.Errorf("failed to create the network: %w", err)
 	}
-
-	fmt.Printf("Network outputs: %s\n", outputsJson)
-
-	return "", nil
+	return output, nil
 }
