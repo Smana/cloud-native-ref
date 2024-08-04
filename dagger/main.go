@@ -33,7 +33,7 @@ const (
 // bootstrapContainer creates a container with the necessary tools to bootstrap the EKS cluster
 func bootstrapContainer(env []string) (*dagger.Container, error) {
 	// init a wolfi container with the necessary tools
-	ctr := dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "git", "opentofu"})
+	ctr := dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "bind-tools", "git", "opentofu", "tailscale"})
 
 	// Add the environment variables to the container
 	for _, e := range env {
@@ -167,6 +167,20 @@ func (m *CloudNativeRef) Bootstrap(
 	// +optional
 	apply bool,
 
+	// tsKey is the Tailscale key to use
+	// +optional
+	tsKey *dagger.Secret,
+
+	// tsTailnet is the Tailscale tailnet to use
+	// +optional
+	// +default="smainklh@gmail.com"
+	tsTailnet string,
+
+	// tsHostname is the Tailscale hostname to use
+	// +optional
+	// +default="cloud-native-ref"
+	tsHostname string,
+
 	// Tooling applications to enable
 	// +optional
 	toolingApps ToolingApp,
@@ -193,32 +207,32 @@ func (m *CloudNativeRef) Bootstrap(
 	// mount the source directory
 	ctr = ctr.WithMountedDirectory("/cloud-native-ref", source)
 
-	// Add the AWS credentials if provided as environment variables
 	if accessKeyID != nil && secretAccessKey != nil {
-		accessKeyIDValue, err := getSecretValue(ctx, accessKeyID)
-		if err != nil {
-			return "", err
-		}
-		secretAccessKeyValue, err := getSecretValue(ctx, secretAccessKey)
-		if err != nil {
-			return "", err
-		}
-		ctr = ctr.WithEnvVariable("AWS_ACCESS_KEY_ID", accessKeyIDValue).
-			WithEnvVariable("AWS_SECRET_ACCESS_KEY", secretAccessKeyValue)
+		ctr = ctr.WithSecretVariable("AWS_ACCESS_KEY_ID", accessKeyID).
+			WithSecretVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey)
 	}
 
 	if authDir != nil {
 		ctr = ctr.WithMountedDirectory("/root/.aws/", authDir)
 	}
 
-	networkOutput, err := createNetwork(ctx, ctr, true)
+	// networkOutput, err := createNetwork(ctx, ctr, true)
+	// if err != nil {
+	// 	return "", err
+	// }
+
+	// fmt.Printf("Network output: %s\n", networkOutput)
+
+	svc, err := tailscaleService(ctx, tsKey, tsTailnet, tsHostname)
 	if err != nil {
 		return "", err
 	}
 
-	fmt.Printf("Network output: %v\n", networkOutput)
-
 	return ctr.
-		WithExec([]string{"echo", "Bootstrap the EKS cluster"}).
+		WithServiceBinding("tailscale", svc).
+		WithEnvVariable("ALL_PROXY", "socks5://tailscale:1055").
+		WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
+		WithEnvVariable("http_proxy", "http://tailscale:1055").
+		WithExec([]string{"ping", "-c", "3", "100.103.180.69"}).
 		Stdout(ctx)
 }
