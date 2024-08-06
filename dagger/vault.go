@@ -6,20 +6,18 @@ import (
 	"fmt"
 )
 
-func createVaultCluster(ctx context.Context, ctr *dagger.Container, apply bool) (string, error) {
-	_, err := tfRun(ctx, ctr, "/cloud-native-ref/terraform/vault/cluster", apply, []string{"-var-file", "variables.tfvars", "-auto-approve"})
+func createVault(ctx context.Context, ctr *dagger.Container, apply bool) (map[string]interface{}, error) {
+	workDir := "/cloud-native-ref/terraform/vault/cluster"
+	_, err := tfRun(ctx, ctr, workDir, apply, []string{"-var-file", "variables.tfvars", "-auto-approve"})
 	if err != nil {
-		return "", fmt.Errorf("failed to create the vault cluster: %w", err)
+		return nil, fmt.Errorf("failed to create the vault cluster: %w", err)
 	}
 
-	outputsJson, err := ctr.WithExec([]string{"tofu", "output", "-json"}).WithWorkdir("/cloud-native-ref/terraform/vault/cluster").Stdout(ctx)
+	output, err := tfRun(ctx, ctr, workDir, apply, []string{"-var-file", "variables.tfvars"})
 	if err != nil {
-		return "", fmt.Errorf("failed to get the output of the vault cluster: %w", err)
+		return nil, fmt.Errorf("failed to create the network: %w", err)
 	}
-
-	fmt.Printf("Vault cluster outputs: %s\n", outputsJson)
-
-	return "", nil
+	return output, nil
 }
 
 // // init the vault server

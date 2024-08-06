@@ -86,17 +86,44 @@ func tailscaleService(ctx context.Context, tsKey *dagger.Secret, tsTailnet strin
 		return nil, fmt.Errorf("failed to generate Tailscale auth key: %s", err)
 	}
 
-	ctr := dag.Apko().Wolfi([]string{"bash", "tailscale"})
+	ctr := dag.Apko().Wolfi([]string{"bash", "bind-tools", "curl", "netcat-openbsd", "nmap"})
+
+	// Installing unstable tailscale binaries
+	binDir := dag.Arc().
+		Unarchive(dag.HTTP("https://pkgs.tailscale.com/unstable/tailscale_1.71.72_amd64.tgz").WithName("tailscale_1.71.72_amd64.tgz"))
+	tailscaledBin := binDir.File("tailscale_1.71.72_amd64/tailscaled")
+	tailscaleBin := binDir.File("tailscale_1.71.72_amd64/tailscale")
 
 	tsScript := `#!/bin/bash
-tailscaled --tun=userspace-networking --socks5-server=0.0.0.0:1055 --outbound-http-proxy-listen=0.0.0.0:1055 & \
-tailscale login --hostname "$TAILSCALE_HOSTNAME" --authkey "$TAILSCALE_AUTHKEY" & \
-tailscale up --accept-dns --accept-routes --hostname="$TAILSCALE_HOSTNAME"
+
+# Retrieve the binaries from the sourceDir
+# Start the tailscaled process in the background
+tailscaled --tun=userspace-networking &
+TAILSCALED_PID=$!
+
+# Wait for a few seconds to ensure the process starts
+sleep 5
+
+# Run the tailscale login and up commands
+tailscale login --hostname "$TAILSCALE_HOSTNAME" --authkey "$TAILSCALE_AUTHKEY"
+tailscale up --accept-dns=true --accept-routes --hostname="$TAILSCALE_HOSTNAME"
+
+# Kill the background tailscaled process
+kill $TAILSCALED_PID
+
+# Wait for the process to terminate
+wait $TAILSCALED_PID
+
+# Relaunch the tailscaled process in the foreground
+tailscaled --tun=userspace-networking --socks5-server=:1055
 `
+
 	svc := ctr.
 		WithEnvVariable("TAILSCALE_HOSTNAME", tsHostname).
 		WithSecretVariable("TAILSCALE_AUTHKEY", authKey).
 		WithNewFile("/bin/tailscale-up", tsScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
+		WithFile("/bin/tailscaled", tailscaledBin, dagger.ContainerWithFileOpts{Permissions: 0750}).
+		WithFile("/bin/tailscale", tailscaleBin, dagger.ContainerWithFileOpts{Permissions: 0750}).
 		WithExec([]string{"/bin/tailscale-up"}).WithExposedPort(1055).AsService()
 
 	return svc, nil

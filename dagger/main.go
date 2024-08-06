@@ -7,6 +7,7 @@ import (
 	"dagger/cloud-native-ref/internal/dagger"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type CloudNativeRef struct{}
@@ -33,7 +34,7 @@ const (
 // bootstrapContainer creates a container with the necessary tools to bootstrap the EKS cluster
 func bootstrapContainer(env []string) (*dagger.Container, error) {
 	// init a wolfi container with the necessary tools
-	ctr := dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "bind-tools", "git", "opentofu", "tailscale"})
+	ctr := dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "bind-tools", "curl", "netcat-openbsd", "nmap", "git", "opentofu", "tailscale"})
 
 	// Add the environment variables to the container
 	for _, e := range env {
@@ -216,12 +217,89 @@ func (m *CloudNativeRef) Bootstrap(
 		ctr = ctr.WithMountedDirectory("/root/.aws/", authDir)
 	}
 
-	// networkOutput, err := createNetwork(ctx, ctr, true)
-	// if err != nil {
-	// 	return "", err
-	// }
+	networkOutput, err := createNetwork(ctx, ctr, true)
+	if err != nil {
+		return "", err
+	}
 
-	// fmt.Printf("Network output: %s\n", networkOutput)
+	fmt.Printf("Network output: %s\n", networkOutput)
+
+	vaultOutput, err := createVault(ctx, ctr, true)
+	if err != nil {
+		return "", err
+	}
+	vaultAsgMap := vaultOutput["autoscaling_group_id"].(map[string]interface{})
+	vaultAsg := vaultAsgMap["value"].(string)
+
+	accessKey, err := getSecretValue(ctx, accessKeyID)
+	if err != nil {
+		return "", err
+	}
+	secretKey, err := getSecretValue(ctx, secretAccessKey)
+	if err != nil {
+		return "", err
+	}
+
+	sess := createSession("eu-west-3", accessKey, secretKey)
+
+	instanceID, err := getInstanceIDFromASG(sess, vaultAsg)
+	if err != nil {
+		return "", err
+	}
+	fmt.Printf("Instance ID: %s\n", instanceID)
+
+	err = checkInstanceReady(sess, instanceID, 5, time.Minute)
+	if err != nil {
+		return "", err
+	}
+
+	// This script returns the root token if Vault is not initialized
+	vaultInitScript := `#!/bin/bash
+#!/bin/bash
+
+export VAULT_SKIP_VERIFY=true
+
+# Check Vault status
+status_output=$(vault status -format=json)
+
+# Check if Vault is initialized
+is_initialized=$(echo "$status_output" | jq -r '.initialized')
+
+# Initialize Vault only if it is not initialized
+if [ "$is_initialized" == "false" ]; then
+    # Initialize Vault and store the output in a variable in JSON format
+    init_output=$(vault operator init -recovery-shares=1 -recovery-threshold=1 -format=json)
+
+    # Extract the root token from the JSON output using jq
+    root_token=$(echo "$init_output" | jq -r '.root_token')
+
+    # Print the root token
+    echo "$root_token"
+else
+    # Print an empty string
+    echo ""
+fi
+`
+	vaultSecretName := "vault/tokens"
+	vaultRooToken := ""
+	output, err := executeScriptOnInstance(sess, instanceID, vaultInitScript)
+	if err != nil {
+		return "", err
+	}
+	output = strings.TrimSpace(output)
+	if output != "" {
+		secretData := map[string]string{"root": output}
+		storeOutputInSecretsManager(sess, vaultSecretName, secretData)
+		vaultRooToken = output
+	} else {
+		secretData, err := getSecretManager(sess, vaultSecretName)
+		if err != nil {
+			return "", err
+		}
+		vaultRooToken = secretData["root"]
+	}
+
+	fmt.Printf("Vault root token: %s\n", vaultRooToken)
 
 	svc, err := tailscaleService(ctx, tsKey, tsTailnet, tsHostname)
 	if err != nil {
@@ -230,9 +308,10 @@ func (m *CloudNativeRef) Bootstrap(
 
 	return ctr.
 		WithServiceBinding("tailscale", svc).
-		WithEnvVariable("ALL_PROXY", "socks5://tailscale:1055").
+		WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
 		WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
+		WithEnvVariable("HTTPS_PROXY", "http://tailscale:1055").
 		WithEnvVariable("http_proxy", "http://tailscale:1055").
-		WithExec([]string{"ping", "-c", "3", "100.103.180.69"}).
+		Terminal().
 		Stdout(ctx)
 }
