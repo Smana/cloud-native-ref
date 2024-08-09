@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"dagger/cloud-native-ref/internal/dagger"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -18,7 +20,16 @@ import (
 )
 
 // createSession initializes an AWS session
-func createSession(region, accessKey, secretKey string) *session.Session {
+func createSession(ctx context.Context, region string, accessKeyID, secretAccessKey *dagger.Secret) (*session.Session, error) {
+
+	accessKey, err := getSecretValue(ctx, accessKeyID)
+	if err != nil {
+		return nil, err
+	}
+	secretKey, err := getSecretValue(ctx, secretAccessKey)
+	if err != nil {
+		return nil, err
+	}
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(region),
 		Credentials: credentials.NewStaticCredentials(
@@ -30,7 +41,7 @@ func createSession(region, accessKey, secretKey string) *session.Session {
 	if err != nil {
 		log.Fatalf("Failed to create session: %v", err)
 	}
-	return sess
+	return sess, nil
 }
 
 // getInstanceIDFromASG retrieves an instance ID from the given Auto Scaling group
