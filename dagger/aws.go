@@ -20,7 +20,7 @@ import (
 )
 
 // createSession initializes an AWS session
-func createSession(ctx context.Context, region string, accessKeyID, secretAccessKey *dagger.Secret) (*session.Session, error) {
+func createAWSSession(ctx context.Context, region string, accessKeyID, secretAccessKey *dagger.Secret) (*session.Session, error) {
 
 	accessKey, err := getSecretValue(ctx, accessKeyID)
 	if err != nil {

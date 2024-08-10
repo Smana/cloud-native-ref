@@ -91,29 +91,98 @@ fi
 	return vaultRooToken, nil
 }
 
-// // init the vault server
-// func initVault() (string, error) {
-// 	// Create a new dagger container with the necessary tools
-// 	ctr, err := bootstrapContainer([]string{
-// 		"VAULT_ADDR:http://vault:8200",
-// 		"VAULT_TOKEN:root",
-// 	})
-// 	if err != nil {
-// 		return "", err
-// 	}
-// 	return root_token, nil
-// }
+func configureVaultPKI(
+	ctx context.Context,
+	tailscaleSvc *dagger.Service,
+	vaultAddr string,
+	vaultRootToken string,
+	sess *session.Session,
+	secretName string,
+) error {
 
-// // generate approle role id and secret id for cert-manager
-// func generateCertManagerCreds() (string, string, error) {
-// 	// Create a new dagger container with the necessary tools
-// 	ctr, err := bootstrapContainer([]string{
-// 		"VAULT_ADDR:http://vault:8200",
-// 		"VAULT_TOKEN:root",
-// 	})
-// 	if err != nil {
-// 		return "", "", err
-// 	}
+	rootCerts, err := getSecretManager(sess, secretName)
+	if err != nil {
+		return err
+	}
 
-// 	return role_id, secret_id, nil
-// }
+	bundlePlaintext := rootCerts["bundle"]
+	if bundlePlaintext == "" {
+		return fmt.Errorf("bundle not found in secret")
+	}
+
+	bundle := dag.SetSecret("bundle", rootCerts["bundle"])
+
+	ctr, err := vaultContainer([]string{fmt.Sprintf("VAULT_ADDR:%s", vaultAddr), fmt.Sprintf("VAULT_TOKEN:%s", vaultRootToken), "VAULT_SKIP_VERIFY:true"})
+	if err != nil {
+		return err
+	}
+
+	ctr = ctr.
+		WithServiceBinding("tailscale", tailscaleSvc).
+		WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
+		WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
+		WithEnvVariable("http_proxy", "http://tailscale:1055")
+
+	vaultInitScript := `#!/bin/bash
+
+wait_for_vault() {
+    local max_retries=10
+    local timeout_seconds=300
+    local interval=$((timeout_seconds / max_retries))
+    local attempt=1
+
+    while [[ $attempt -le $max_retries ]]
+    do
+        echo "Attempt $attempt: Checking $VAULT_ADDR..."
+        if curl -k --output /dev/null --silent --head --fail "$VAULT_ADDR"; then
+            return 0
+        else
+            echo "URL $VAULT_ADDR is not reachable. Waiting for $interval seconds before retrying..."
+            sleep $interval
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    echo "URL $VAULT_ADDR is still not reachable after $max_retries attempts."
+    return 1
+}
+
+wait_for_vault
+
+# Enable PKI secrets engine
+if ! vault secrets list --format=json | jq -e '.["pki/"]' > /dev/null; then
+	vault secrets enable pki
+	vault write pki/config/ca pem_bundle="${VAULT_PKI_CA_BUNDLE}"
+fi
+
+# Check the PKI configuration, returns a code 0 if the configuration is correct (There might be a better way to do this)
+if [[ $(vault pki health-check --format=json pki|jq -r '.ca_validity_period[0].status') == "ok" ]]; then
+	echo "PKI configuration is correct"
+else
+	echo "PKI configuration is incorrect"
+	exit 1
+fi
+
+# Expected max-lease-ttl value
+expected_ttl="315360000"
+
+# Read the configuration of the pki secrets engine
+actual_ttl=$(vault read -format=json sys/mounts/pki/tune | jq -r '.data.max_lease_ttl')
+
+# Check if the actual value matches the expected value
+if [ "$actual_ttl" == "$expected_ttl" ]; then
+  echo "The max-lease-ttl value is as expected: $actual_ttl"
+else
+  vault secrets tune -max-lease-ttl="$expected_ttl" pki
+fi
+`
+
+	ctr.
+		WithSecretVariable("VAULT_PKI_CA_BUNDLE", bundle).
+		WithNewFile("/bin/configure-vault-pki", vaultInitScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
+		Terminal().
+		WithExec([]string{"/bin/configure-vault-pki"}).
+		Stdout(ctx)
+
+	return err
+}
