@@ -33,27 +33,11 @@ const (
 // bootstrapContainer creates a container with the necessary tools to bootstrap the EKS cluster
 func bootstrapContainer(env []string) (*dagger.Container, error) {
 	// init a wolfi container with the necessary tools
-	ctr := dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "bind-tools", "curl", "git", "opentofu"})
+	ctr := dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "bind-tools", "curl", "git", "jq", "opentofu", "vault"})
 
 	// Add the environment variables to the container
 	for _, e := range env {
 		parts := strings.Split(e, ":")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid environment variable format, must be in the form <key>:<value>: %s", e)
-		}
-		ctr = ctr.WithEnvVariable(parts[0], parts[1])
-	}
-
-	return ctr, nil
-}
-
-func vaultContainer(env []string) (*dagger.Container, error) {
-	// init a wolfi container with the necessary tools
-	ctr := dag.Apko().Wolfi([]string{"bash", "bind-tools", "curl", "jq", "vault"})
-
-	// Add the environment variables to the container
-	for _, e := range env {
-		parts := strings.SplitN(e, ":", 2)
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid environment variable format, must be in the form <key>:<value>: %s", e)
 		}
@@ -202,6 +186,20 @@ func (m *CloudNativeRef) Bootstrap(
 	// +default="cloud-native-ref"
 	tsHostname string,
 
+	// privateDomainName is the private domain name to use
+	// +optional
+	// +default="priv.cloud.ogenki.io"
+	privateDomainName string,
+
+	// vaultAddr is the Vault address to use
+	// +optional
+	vaultAddr string,
+
+	// vaultSkipVerify is the Vault skip verify to use
+	// +optional
+	// +default="true"
+	vaultSkipVerify string,
+
 	// Tooling applications to enable
 	// +optional
 	toolingApps ToolingApp,
@@ -228,52 +226,61 @@ func (m *CloudNativeRef) Bootstrap(
 	// mount the source directory
 	ctr = ctr.WithMountedDirectory("/cloud-native-ref", source)
 
+	// Configure AWS authentication
 	if accessKeyID != nil && secretAccessKey != nil {
 		ctr = ctr.WithSecretVariable("AWS_ACCESS_KEY_ID", accessKeyID).
 			WithSecretVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey)
 	}
-
 	if authDir != nil {
 		ctr = ctr.WithMountedDirectory("/root/.aws/", authDir)
 	}
 
-	networkOutput, err := createNetwork(ctx, ctr, true)
+	// Create the network components
+	_, err = createNetwork(ctx, ctr, true)
 	if err != nil {
 		return "", err
 	}
-
-	fmt.Printf("Network output: %s\n", networkOutput)
-
 	sess, err := createAWSSession(ctx, region, accessKeyID, secretAccessKey)
 	if err != nil {
 		return "", err
 	}
-
-	vaultOutput, err := createVault(ctx, ctr, true)
-	if err != nil {
-		return "", err
-	}
-
-	vaultRootToken, err := initVault(vaultOutput, sess)
-	if err != nil {
-		return "", err
-	}
-
 	tailscaleSvc, err := tailscaleService(ctx, tsKey, tsTailnet, tsHostname)
 	if err != nil {
 		return "", err
 	}
 
-	err = configureVaultPKI(ctx, tailscaleSvc, "https://vault.priv.cloud.ogenki.io:8200", vaultRootToken, sess, "certificates/priv.cloud.ogenki.io/root-ca")
+	// Deploy and configure Vault
+	if vaultAddr == "" && privateDomainName != "" {
+		vaultAddr = fmt.Sprintf("https://vault.%s:8200", privateDomainName)
+	}
+	vaultOutput, err := createVault(ctx, ctr, true)
+	if err != nil {
+		return "", err
+	}
+	vaultRootToken, err := initVault(vaultOutput, sess)
+	if err != nil {
+		return "", err
+	}
+	vaultRootTokenSecret := dag.SetSecret("vaultRootToken", vaultRootToken)
+	ctr = ctr.
+		WithEnvVariable("VAULT_ADDR", vaultAddr).
+		WithEnvVariable("VAULT_SKIP_VERIFY", vaultSkipVerify).
+		WithSecretVariable("VAULT_TOKEN", vaultRootTokenSecret).
+		WithServiceBinding("tailscale", tailscaleSvc).
+		WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
+		WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
+		WithEnvVariable("http_proxy", "http://tailscale:1055")
+	err = configureVaultPKI(ctx, ctr, sess, fmt.Sprintf("certificates/%s/root-ca", privateDomainName))
+	if err != nil {
+		return "", err
+	}
+	_, err = configureVault(ctx, ctr, true)
 	if err != nil {
 		return "", err
 	}
 
 	return ctr.
-		WithServiceBinding("tailscale", tailscaleSvc).
-		WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
-		WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
-		WithEnvVariable("http_proxy", "http://tailscale:1055").
 		Terminal().
+		WithExec([]string{"echo", "Bootstrap the EKS cluster"}).
 		Stdout(ctx)
 }

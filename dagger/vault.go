@@ -12,14 +12,10 @@ import (
 
 func createVault(ctx context.Context, ctr *dagger.Container, apply bool) (map[string]interface{}, error) {
 	workDir := "/cloud-native-ref/terraform/vault/cluster"
-	_, err := tfRun(ctx, ctr, workDir, apply, []string{"-var-file", "variables.tfvars", "-auto-approve"})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create the vault cluster: %w", err)
-	}
 
 	output, err := tfRun(ctx, ctr, workDir, apply, []string{"-var-file", "variables.tfvars"})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create the network: %w", err)
+		return nil, fmt.Errorf("failed to create the vault cluster: %w", err)
 	}
 	return output, nil
 }
@@ -93,9 +89,7 @@ fi
 
 func configureVaultPKI(
 	ctx context.Context,
-	tailscaleSvc *dagger.Service,
-	vaultAddr string,
-	vaultRootToken string,
+	ctr *dagger.Container,
 	sess *session.Session,
 	secretName string,
 ) error {
@@ -111,17 +105,6 @@ func configureVaultPKI(
 	}
 
 	bundle := dag.SetSecret("bundle", rootCerts["bundle"])
-
-	ctr, err := vaultContainer([]string{fmt.Sprintf("VAULT_ADDR:%s", vaultAddr), fmt.Sprintf("VAULT_TOKEN:%s", vaultRootToken), "VAULT_SKIP_VERIFY:true"})
-	if err != nil {
-		return err
-	}
-
-	ctr = ctr.
-		WithServiceBinding("tailscale", tailscaleSvc).
-		WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
-		WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
-		WithEnvVariable("http_proxy", "http://tailscale:1055")
 
 	vaultInitScript := `#!/bin/bash
 
@@ -180,9 +163,17 @@ fi
 	ctr.
 		WithSecretVariable("VAULT_PKI_CA_BUNDLE", bundle).
 		WithNewFile("/bin/configure-vault-pki", vaultInitScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
-		Terminal().
 		WithExec([]string{"/bin/configure-vault-pki"}).
 		Stdout(ctx)
 
 	return err
+}
+
+func configureVault(ctx context.Context, ctr *dagger.Container, apply bool) (map[string]interface{}, error) {
+	workDir := "/cloud-native-ref/terraform/vault/management"
+	output, err := tfRun(ctx, ctr, workDir, apply, []string{"-var-file", "variables.tfvars"})
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure the vault cluster: %w", err)
+	}
+	return output, nil
 }
