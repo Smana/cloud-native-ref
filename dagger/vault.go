@@ -31,7 +31,6 @@ func initVault(
 	if err != nil {
 		return "", err
 	}
-	fmt.Printf("Instance ID: %s\n", instanceID)
 
 	err = checkInstanceReady(sess, instanceID, 5, time.Minute)
 	if err != nil {

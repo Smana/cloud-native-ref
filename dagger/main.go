@@ -11,25 +11,6 @@ import (
 
 type CloudNativeRef struct{}
 
-// Possible applications to enable, these applications are optional and can be enabled during the bootstrap process
-type SecurityApp string
-type ObservabilityApp string
-type ToolingApp string
-
-const (
-	certManager     SecurityApp = "certManager"
-	externalSecrets SecurityApp = "externalSecrets"
-	kyverno         SecurityApp = "kyverno"
-
-	kubePrometheusStack ObservabilityApp = "kubePrometheusStack"
-	loki                ObservabilityApp = "loki"
-	vectorAgent         ObservabilityApp = "vectorAgent"
-
-	daggerEngine ToolingApp = "daggerEngine"
-	ghaRunners   ToolingApp = "ghaRunners"
-	harbor       ToolingApp = "harbor"
-)
-
 // bootstrapContainer creates a container with the necessary tools to bootstrap the EKS cluster
 func bootstrapContainer(env []string) (*dagger.Container, error) {
 	// init a wolfi container with the necessary tools
@@ -202,15 +183,20 @@ func (m *CloudNativeRef) Bootstrap(
 
 	// Tooling applications to enable
 	// +optional
-	toolingApps ToolingApp,
+	toolingApps []string,
 
 	// Security applications to enable
 	// +optional
-	securityApps SecurityApp,
+	// +default=["../base/cert-manager", "../base/external-secrets", "../base/kyverno"]
+	securityApps []string,
 
 	// Observability applications to enable
 	// +optional
-	observabilityApps ObservabilityApp,
+	// +default=["kube-prometheus-stack"]
+	observabilityApps []string,
+
+	// branch is the new branch to use for flux configuration
+	branch string,
 
 	// a list of environment variables, expected in (key:value) format
 	// +optional
@@ -226,55 +212,66 @@ func (m *CloudNativeRef) Bootstrap(
 	// mount the source directory
 	ctr = ctr.WithMountedDirectory("/cloud-native-ref", source)
 
-	// Configure AWS authentication
-	if accessKeyID != nil && secretAccessKey != nil {
-		ctr = ctr.WithSecretVariable("AWS_ACCESS_KEY_ID", accessKeyID).
-			WithSecretVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey)
-	}
-	if authDir != nil {
-		ctr = ctr.WithMountedDirectory("/root/.aws/", authDir)
+	// // Configure AWS authentication
+	// if accessKeyID != nil && secretAccessKey != nil {
+	// 	ctr = ctr.WithSecretVariable("AWS_ACCESS_KEY_ID", accessKeyID).
+	// 		WithSecretVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey)
+	// }
+	// if authDir != nil {
+	// 	ctr = ctr.WithMountedDirectory("/root/.aws/", authDir)
+	// }
+
+	// // Create the network components
+	// _, err = createNetwork(ctx, ctr, true)
+	// if err != nil {
+	// 	return "", err
+	// }
+	// sess, err := createAWSSession(ctx, region, accessKeyID, secretAccessKey)
+	// if err != nil {
+	// 	return "", err
+	// }
+	// tailscaleSvc, err := tailscaleService(ctx, tsKey, tsTailnet, tsHostname)
+	// if err != nil {
+	// 	return "", err
+	// }
+
+	// // Deploy and configure Vault
+	// if vaultAddr == "" && privateDomainName != "" {
+	// 	vaultAddr = fmt.Sprintf("https://vault.%s:8200", privateDomainName)
+	// }
+	// vaultOutput, err := createVault(ctx, ctr, true)
+	// if err != nil {
+	// 	return "", err
+	// }
+	// vaultRootToken, err := initVault(vaultOutput, sess)
+	// if err != nil {
+	// 	return "", err
+	// }
+	// vaultRootTokenSecret := dag.SetSecret("vaultRootToken", vaultRootToken)
+	// ctr = ctr.
+	// 	WithEnvVariable("VAULT_ADDR", vaultAddr).
+	// 	WithEnvVariable("VAULT_SKIP_VERIFY", vaultSkipVerify).
+	// 	WithSecretVariable("VAULT_TOKEN", vaultRootTokenSecret).
+	// 	WithServiceBinding("tailscale", tailscaleSvc).
+	// 	WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
+	// 	WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
+	// 	WithEnvVariable("http_proxy", "http://tailscale:1055")
+	// err = configureVaultPKI(ctx, ctr, sess, fmt.Sprintf("certificates/%s/root-ca", privateDomainName))
+	// if err != nil {
+	// 	return "", err
+	// }
+	// _, err = configureVault(ctx, ctr, true)
+	// if err != nil {
+	// 	return "", err
+	// }
+
+	// Update kustomizations
+	dir, err := createKustomization(ctx, ctr, source, branch, "security/mycluster-0", securityApps)
+	if err != nil {
+		return "", err
 	}
 
-	// Create the network components
-	_, err = createNetwork(ctx, ctr, true)
-	if err != nil {
-		return "", err
-	}
-	sess, err := createAWSSession(ctx, region, accessKeyID, secretAccessKey)
-	if err != nil {
-		return "", err
-	}
-	tailscaleSvc, err := tailscaleService(ctx, tsKey, tsTailnet, tsHostname)
-	if err != nil {
-		return "", err
-	}
-
-	// Deploy and configure Vault
-	if vaultAddr == "" && privateDomainName != "" {
-		vaultAddr = fmt.Sprintf("https://vault.%s:8200", privateDomainName)
-	}
-	vaultOutput, err := createVault(ctx, ctr, true)
-	if err != nil {
-		return "", err
-	}
-	vaultRootToken, err := initVault(vaultOutput, sess)
-	if err != nil {
-		return "", err
-	}
-	vaultRootTokenSecret := dag.SetSecret("vaultRootToken", vaultRootToken)
-	ctr = ctr.
-		WithEnvVariable("VAULT_ADDR", vaultAddr).
-		WithEnvVariable("VAULT_SKIP_VERIFY", vaultSkipVerify).
-		WithSecretVariable("VAULT_TOKEN", vaultRootTokenSecret).
-		WithServiceBinding("tailscale", tailscaleSvc).
-		WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
-		WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
-		WithEnvVariable("http_proxy", "http://tailscale:1055")
-	err = configureVaultPKI(ctx, ctr, sess, fmt.Sprintf("certificates/%s/root-ca", privateDomainName))
-	if err != nil {
-		return "", err
-	}
-	_, err = configureVault(ctx, ctr, true)
+	_, err = dir.Directory("security/mycluster-0").Export(ctx, "/tmp/security/mycluster-0")
 	if err != nil {
 		return "", err
 	}
@@ -283,4 +280,42 @@ func (m *CloudNativeRef) Bootstrap(
 		Terminal().
 		WithExec([]string{"echo", "Bootstrap the EKS cluster"}).
 		Stdout(ctx)
+}
+
+func (m *CloudNativeRef) UpdateKustomization(
+	ctx context.Context,
+
+	// source is the directory where the Terraform configuration is stored
+	// +required
+	source *dagger.Directory,
+
+	// branch is the new branch to use for flux configuration
+	// +required
+	branch string,
+
+	// kustPath is the path to the kustomize directory
+	// +required
+	path string,
+
+	// resources is the list of resources to use
+	// +required
+	resources []string,
+
+) (*dagger.Directory, error) {
+
+	ctr, err := bootstrapContainer([]string{})
+	if err != nil {
+		return nil, err
+	}
+
+	// mount the source directory
+	ctr = ctr.WithMountedDirectory("/cloud-native-ref", source)
+
+	// Update kustomizations
+	dir, err := createKustomization(ctx, ctr, source, branch, path, resources)
+	if err != nil {
+		return nil, err
+	}
+
+	return dir, nil
 }

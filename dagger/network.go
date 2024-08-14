@@ -86,13 +86,7 @@ func tailscaleService(ctx context.Context, tsKey *dagger.Secret, tsTailnet strin
 		return nil, fmt.Errorf("failed to generate Tailscale auth key: %s", err)
 	}
 
-	ctr := dag.Apko().Wolfi([]string{"bash", "bind-tools", "curl", "netcat-openbsd", "nmap"})
-
-	// Installing unstable tailscale binaries
-	binDir := dag.Arc().
-		Unarchive(dag.HTTP("https://pkgs.tailscale.com/unstable/tailscale_1.71.72_amd64.tgz").WithName("tailscale_1.71.72_amd64.tgz"))
-	tailscaledBin := binDir.File("tailscale_1.71.72_amd64/tailscaled")
-	tailscaleBin := binDir.File("tailscale_1.71.72_amd64/tailscale")
+	ctr := dag.Apko().Wolfi([]string{"bash", "tailscale"})
 
 	tsScript := `#!/bin/bash
 
@@ -122,8 +116,6 @@ tailscaled --tun=userspace-networking --socks5-server=:1055
 		WithEnvVariable("TAILSCALE_HOSTNAME", tsHostname).
 		WithSecretVariable("TAILSCALE_AUTHKEY", authKey).
 		WithNewFile("/bin/tailscale-up", tsScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
-		WithFile("/bin/tailscaled", tailscaledBin, dagger.ContainerWithFileOpts{Permissions: 0750}).
-		WithFile("/bin/tailscale", tailscaleBin, dagger.ContainerWithFileOpts{Permissions: 0750}).
 		WithExec([]string{"/bin/tailscale-up"}).WithExposedPort(1055).AsService()
 
 	return svc, nil

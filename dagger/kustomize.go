@@ -1,86 +1,64 @@
 package main
 
 import (
-	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
-
-	"gopkg.in/yaml.v2"
+	"context"
+	"dagger/cloud-native-ref/internal/dagger"
+	"path"
+	"strings"
 )
 
-// Kustomization struct definition (assuming it's defined somewhere in your code)
-type Kustomization struct {
-	Resources []string `yaml:"resources"`
+func createKustomization(ctx context.Context, ctr *dagger.Container, source *dagger.Directory, branch string, kustPath string, resources []string) (*dagger.Directory, error) {
+
+	ctr = ctr.WithExec([]string{"apk", "add", "kustomize"})
+
+	// bash script that changes the git branch given a parameter --branch <branch>, kustdir <kustdir>, and resources <resources>
+	// it should change the current directory to the kustdir and run the kustomize create --resources <resources>
+	// the resources should be a comma separated list of resources
+	updateKustomizationScript := `#!/bin/bash
+set -e
+# Function to display usage instructions
+usage() {
+  echo "Usage: $0 --resources <resources>"
+  exit 1
 }
 
-// updateKustomizationResources reads a kustomization.yaml file from the given path, updates the resources list, and writes it back.
-func updateKustomizationResources(relativePath string, newResources []string) error {
-	// Get the root of the current git repository
-	gitRoot, err := getGitRoot()
-	if err != nil {
-		return err
-	}
+# Check if the correct number of arguments are provided
+if [ "$#" -ne 2 ]; then
+  usage
+fi
 
-	// Construct the full path
-	path := filepath.Join(gitRoot, relativePath)
+# Parse command line arguments
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    --resources)
+      RESOURCES="$2"
+      shift
+      ;;
+    *)
+      usage
+      ;;
+  esac
+  shift
+done
 
-	// Ensure the directory exists
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directories: %w", err)
-	}
+# Remove existing kustomization.yaml if it exists
+if [ -f "kustomization.yaml" ]; then
+  echo "Removing existing kustomization.yaml"
+  rm -f "kustomization.yaml"
+fi
 
-	// Ensure the file exists
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if _, err := os.Create(path); err != nil {
-			return fmt.Errorf("failed to create file: %w", err)
-		}
-	}
+# Run kustomize create with the specified resources
+kustomize create --resources "$RESOURCES"
+if [ $? -ne 0 ]; then
+  echo "Failed to run kustomize create"
+  exit 1
+fi
 
-	// Read the existing kustomization.yaml file
-	fileData, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("failed to read kustomization file: %w", err)
-	}
+echo "Script executed successfully!"
+`
 
-	// Unmarshal the YAML data into a generic map to check for the kustomization keys
-	var genericData map[string]interface{}
-	err = yaml.Unmarshal(fileData, &genericData)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal YAML: %w", err)
-	}
-
-	// Check if the file contains kustomization-specific keys
-	if _, ok := genericData["resources"]; !ok {
-		if _, ok := genericData["bases"]; !ok {
-			if _, ok := genericData["patches"]; !ok {
-				return errors.New("the provided file is not a valid kustomization.yaml")
-			}
-		}
-	}
-
-	// Unmarshal the YAML data into a Kustomization struct
-	var kustomization Kustomization
-	err = yaml.Unmarshal(fileData, &kustomization)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal YAML: %w", err)
-	}
-
-	// Update the resources field
-	kustomization.Resources = newResources
-
-	// Marshal the updated struct back to YAML
-	updatedData, err := yaml.Marshal(&kustomization)
-	if err != nil {
-		return fmt.Errorf("failed to marshal updated YAML: %w", err)
-	}
-
-	// Write the updated YAML back to the file
-	err = os.WriteFile(path, updatedData, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write updated kustomization file: %w", err)
-	}
-
-	return nil
+	return ctr.WithWorkdir(path.Join("/cloud-native-ref", kustPath)).
+		WithNewFile("/bin/update-kustomization", updateKustomizationScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
+		WithExec([]string{"/bin/update-kustomization", "--resources", strings.Join(resources, ",")}).
+		Directory(path.Join("/cloud-native-ref", kustPath)), nil
 }

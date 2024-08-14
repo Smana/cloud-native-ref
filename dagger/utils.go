@@ -5,21 +5,17 @@ import (
 	"dagger/cloud-native-ref/internal/dagger"
 	"fmt"
 	"net"
-	"strings"
 	"time"
-	"unicode"
 )
 
-// camelCaseToKebabCase converts a string from camelCase to kebab-case
-func camelCaseToKebabCase(s string) string {
-	var builder strings.Builder
-	for i, r := range s {
-		if i > 0 && unicode.IsUpper(r) {
-			builder.WriteRune('-')
+// isValidApp checks if an app is valid
+func isValidApp(app string, validApps []string) bool {
+	for _, a := range validApps {
+		if a == app {
+			return true
 		}
-		builder.WriteRune(unicode.ToLower(r))
 	}
-	return builder.String()
+	return false
 }
 
 // getSecretValue returns the plaintext value of a secret
