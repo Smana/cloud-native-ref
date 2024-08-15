@@ -3,119 +3,114 @@ package main
 import (
 	"context"
 	"dagger/cloud-native-ref/internal/dagger"
-	"encoding/json"
 	"fmt"
-
-	"github.com/go-resty/resty/v2"
+	"strings"
 )
 
-type tailscaleAuthKeyResponse struct {
-	ID           string `json:"id"`
-	Key          string `json:"key"`
-	Created      string `json:"created"`
-	Expires      string `json:"expires"`
-	Capabilities struct {
-		Devices struct {
-			Create struct {
-				Reusable      bool `json:"reusable"`
-				Ephemeral     bool `json:"ephemeral"`
-				Preauthorized bool `json:"preauthorized"`
-			} `json:"create"`
-		} `json:"devices"`
-	} `json:"capabilities"`
+// tailscaleAuthKey generate a Tailscale auth key
+func tailscaleAuthKey(ctx context.Context, container *dagger.Container) (*dagger.Secret, error) {
+	script := `#!/bin/bash
+# Set the Tailscale API endpoint and the tailnet
+tailnet=${TS_TAILNET}
+apiEndpoint="https://api.tailscale.com/api/v2/tailnet/${tailnet}/keys"
+
+# Set the Tailscale API key
+tsKeyValue="${TS_API_KEY}"
+
+# Create the request body
+body=$(cat <<EOF
+{
+  "capabilities": {
+    "devices": {
+      "create": {
+        "reusable": true,
+        "ephemeral": true,
+        "preauthorized": true
+      }
+    }
+  },
+  "expirySeconds": 3600
 }
+EOF
+)
 
-// tailscaleAuthKey creates a Tailscale auth key
-func tailscaleAuthKey(tsKeyValue, tailnet string) (*dagger.Secret, error) {
-	// Tailscale API endpoint for creating auth keys
-	apiEndpoint := fmt.Sprintf("https://api.tailscale.com/api/v2/tailnet/%s/keys", tailnet)
+# Make the POST request to the Tailscale API to create an auth key
+response=$(curl -s -w "%{http_code}" -o /tmp/tailscale_response.json -X POST "$apiEndpoint" \
+  -H "Authorization: Bearer $tsKeyValue" \
+  -H "Content-Type: application/json" \
+  -d "$body")
 
-	// Create a new Resty client
-	client := resty.New()
+# Extract the HTTP status code
+http_status=$(tail -n1 <<< "$response")
 
-	// Define the request body
-	body := map[string]interface{}{
-		"capabilities": map[string]interface{}{
-			"devices": map[string]interface{}{
-				"create": map[string]bool{
-					"reusable":      true,
-					"ephemeral":     true,
-					"preauthorized": true,
-				},
-			},
-		},
-		"expirySeconds": 3600,
-	}
+# Check if the request was successful
+if [[ "$http_status" -ne 200 ]]; then
+  echo "Failed to create auth key: HTTP $http_status"
+  exit 1
+fi
 
-	// Make a POST request to the Tailscale API to create an auth key
-	resp, err := client.R().
-		SetHeader("Authorization", "Bearer "+tsKeyValue).
-		SetHeader("Content-Type", "application/json").
-		SetBody(body).
-		Post(apiEndpoint)
+# Parse the JSON response to extract the auth key
+authKey=$(jq -r '.key' /tmp/tailscale_response.json)
 
+if [[ "$authKey" == "null" ]]; then
+  echo "Failed to parse the auth key from the response"
+  exit 1
+fi
+
+# Output the auth key
+echo "$authKey"
+
+# Cleanup
+rm -f /tmp/tailscale_response.json
+`
+	authKey, err := container.
+		WithNewFile("/bin/tailscale-authkey", script, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
+		WithExec([]string{"/bin/tailscale-authkey"}).
+		Stdout(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create auth key: %s", err)
+		return nil, fmt.Errorf("failed to create auth key: %w", err)
 	}
 
-	// Check if the request was successful
-	if resp.IsError() {
-		return nil, fmt.Errorf("failed to create auth key: %s", resp.Status())
-	}
-
-	var authKeyResponse tailscaleAuthKeyResponse
-	err = json.Unmarshal(resp.Body(), &authKeyResponse)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %s", err)
-	}
-
-	authKey := dag.SetSecret("TAILSCALE_AUTHKEY", authKeyResponse.Key)
-
-	return authKey, nil
+	return dag.SetSecret("tsAuthKey", strings.TrimSpace(authKey)), nil
 }
 
 // tailscaleService creates a Tailscale dagger Service
-func tailscaleService(ctx context.Context, tsKey *dagger.Secret, tsTailnet string, tsHostname string) (*dagger.Service, error) {
-	tsAPIKey, err := getSecretValue(ctx, tsKey)
-	if err != nil {
-		return nil, err
-	}
+func tailscaleService(ctx context.Context, container *dagger.Container) (*dagger.Service, error) {
 
-	authKey, err := tailscaleAuthKey(tsAPIKey, tsTailnet)
+	authKey, err := tailscaleAuthKey(ctx, container)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate Tailscale auth key: %s", err)
 	}
 
-	ctr := dag.Apko().Wolfi([]string{"bash", "tailscale"})
+	container = container.WithExec([]string{"apk", "add", "tailscale"})
 
-	tsScript := `#!/bin/bash
+	tsUpScript := `#!/bin/bash
 
 # Retrieve the binaries from the sourceDir
 # Start the tailscaled process in the background
 tailscaled --tun=userspace-networking &
-TAILSCALED_PID=$!
+TS_PID=$!
 
 # Wait for a few seconds to ensure the process starts
 sleep 5
 
 # Run the tailscale login and up commands
-tailscale login --hostname "$TAILSCALE_HOSTNAME" --authkey "$TAILSCALE_AUTHKEY"
-tailscale up --accept-dns=true --accept-routes --hostname="$TAILSCALE_HOSTNAME"
+tailscale login --hostname "$TS_HOSTNAME" --authkey "$TS_AUTH_KEY"
+tailscale up --accept-dns=true --accept-routes --hostname="$TS_HOSTNAME"
 
 # Kill the background tailscaled process
-kill $TAILSCALED_PID
+kill $TS_PID
 
 # Wait for the process to terminate
-wait $TAILSCALED_PID
+wait $TS_PID
 
 # Relaunch the tailscaled process in the foreground
 tailscaled --tun=userspace-networking --socks5-server=:1055
 `
 
-	svc := ctr.
-		WithEnvVariable("TAILSCALE_HOSTNAME", tsHostname).
-		WithSecretVariable("TAILSCALE_AUTHKEY", authKey).
-		WithNewFile("/bin/tailscale-up", tsScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
+	svc := container.
+		WithSecretVariable("TS_AUTH_KEY", authKey).
+		WithNewFile("/bin/tailscale-up", tsUpScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
 		WithExec([]string{"/bin/tailscale-up"}).WithExposedPort(1055).AsService()
 
 	return svc, nil
@@ -126,6 +121,7 @@ func createNetwork(ctx context.Context, ctr *dagger.Container, apply bool) (map[
 
 	// Firts we need to import Tailscale ACLs due to a bug in the Terraform provider
 	importScript := `
+tofu init
 if tofu state list | grep -q "tailscale_acl.this"; then
     echo "Resource tailscale_acl.this already exists in the state."
 else

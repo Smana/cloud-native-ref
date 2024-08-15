@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"dagger/cloud-native-ref/internal/dagger"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -20,18 +19,18 @@ import (
 )
 
 // createSession initializes an AWS session
-func createAWSSession(ctx context.Context, region string, accessKeyID, secretAccessKey *dagger.Secret) (*session.Session, error) {
+func createAWSSession(ctx context.Context, cRef *CloudNativeRef) (*session.Session, error) {
 
-	accessKey, err := getSecretValue(ctx, accessKeyID)
+	accessKey, err := getSecretValue(ctx, cRef.AWSAccessKeyID)
 	if err != nil {
 		return nil, err
 	}
-	secretKey, err := getSecretValue(ctx, secretAccessKey)
+	secretKey, err := getSecretValue(ctx, cRef.AWSSecretAccessKey)
 	if err != nil {
 		return nil, err
 	}
 	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(region),
+		Region: aws.String(cRef.AWSRegion),
 		Credentials: credentials.NewStaticCredentials(
 			accessKey, // your AWS Access Key ID
 			secretKey, // your AWS Secret Access Key
@@ -166,13 +165,13 @@ func executeScriptOnInstance(sess *session.Session, instanceID, scriptContent st
 }
 
 // storeOutputInSecretsManager stores the key-value pairs in AWS Secrets Manager
-func storeOutputInSecretsManager(sess *session.Session, secretName string, secretData map[string]string) error {
+func storeOutputInSecretsManager(sess *session.Session, secretName string, secretData map[string]string) (string, error) {
 	svcSM := secretsmanager.New(sess)
 
 	// Convert the key-value pairs to a JSON string
 	secretValue, err := json.Marshal(secretData)
 	if err != nil {
-		return fmt.Errorf("failed to marshal secret data: %w", err)
+		return "", fmt.Errorf("failed to marshal secret data: %w", err)
 	}
 
 	// Trim any whitespace characters from the JSON string
@@ -192,10 +191,10 @@ func storeOutputInSecretsManager(sess *session.Session, secretName string, secre
 				SecretString: aws.String(string(secretString)),
 			})
 			if err != nil {
-				return fmt.Errorf("failed to create secret: %w", err)
+				return "", fmt.Errorf("failed to create secret: %w", err)
 			}
 		} else {
-			return fmt.Errorf("failed to get secret value: %w", err)
+			return "", fmt.Errorf("failed to get secret value: %w", err)
 		}
 	} else {
 		// If the secret exists, update it
@@ -204,11 +203,18 @@ func storeOutputInSecretsManager(sess *session.Session, secretName string, secre
 			SecretString: aws.String(string(secretString)),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to update secret: %w", err)
+			return "", fmt.Errorf("failed to update secret: %w", err)
 		}
 	}
 
-	return nil
+	// Generate a pre-signed URL for the GetSecretValue operation
+	req, _ := svcSM.GetSecretValueRequest(getSecretValueInput)
+	urlStr, err := req.Presign(15 * time.Minute) // URL valid for 15 minutes
+	if err != nil {
+		return "", fmt.Errorf("failed to generate pre-signed URL: %w", err)
+	}
+
+	return urlStr, nil
 }
 
 // getSecret retrieves the secret value from AWS Secrets Manager and parses it into a map

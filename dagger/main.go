@@ -9,44 +9,130 @@ import (
 	"strings"
 )
 
-type CloudNativeRef struct{}
+const (
+	// These are values specific to the cloud-native-ref repository
+	repoName       = "cloud-native-ref"
+	tailnet        = "smainklh@gmail.com"
+	eksClusterName = "mycluster-0"
+)
 
-// bootstrapContainer creates a container with the necessary tools to bootstrap the EKS cluster
-func bootstrapContainer(env []string) (*dagger.Container, error) {
-	// init a wolfi container with the necessary tools
-	ctr := dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "bind-tools", "curl", "git", "jq", "opentofu", "vault"})
-
-	// Add the environment variables to the container
-	for _, e := range env {
-		parts := strings.Split(e, ":")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid environment variable format, must be in the form <key>:<value>: %s", e)
-		}
-		ctr = ctr.WithEnvVariable(parts[0], parts[1])
-	}
-
-	return ctr, nil
+type CloudNativeRef struct {
+	Container          *dagger.Container
+	AWSAccessKeyID     *dagger.Secret
+	AWSSecretAccessKey *dagger.Secret
+	AWSProfile         string
+	AWSRegion          string
+	AWSAssumeRoleArn   string
 }
 
-// Clean all Terraform cache files
-func (m *CloudNativeRef) Clean(
+func New(
 	ctx context.Context,
 
-	// source is the directory where the Terraform configuration is stored
-	// +required
-	source *dagger.Directory,
-) (string, error) {
+	// Custom container to use as a base container.
+	// +optional
+	container *dagger.Container,
 
-	ctr, err := bootstrapContainer([]string{})
-	if err != nil {
-		return "", err
+	// a list of environment variables, expected in (key:value) format
+	// +optional
+	env []string,
+
+	// The directory where the AWS authentication files will be stored
+	// +optional
+	authDir *dagger.Directory,
+
+	// The AWS IAM Role ARN to assume
+	// +optional
+	assumeRoleArn string,
+
+	// The AWS profile to use
+	// +optional
+	profile string,
+
+	// The AWS secret access key
+	// +optional
+	secretAccessKey *dagger.Secret,
+
+	// The AWS access key ID
+	// +optional
+	accessKeyID *dagger.Secret,
+
+	// AWS region to use
+	// +optional
+	// +default="eu-west-3"
+	region string,
+
+	// tsAPIKey is the Tailscale API key to use
+	// +required
+	tsKey *dagger.Secret,
+
+	// tsTailnet is the Tailscale tailnet to use
+	// +optional
+	tsTailnet string,
+
+	// tsHostname is the Tailscale hostname to use
+	// +optional
+	// +default=""
+	tsHostname string,
+) (*CloudNativeRef, error) {
+	if tsHostname == "" {
+		tsHostname = repoName
+	}
+	if tsTailnet == "" {
+		tsTailnet = tailnet
 	}
 
-	cmd := []string{"find", ".", "(", "-type", "d", "-name", "*.terraform", "-or", "-name", "*.terraform.lock.hcl", ")", "-exec", "rm", "-vrf", "{}", "+"}
-	return ctr.
-		WithMountedDirectory("/cloud-native-ref", source).
-		WithWorkdir("/cloud-native-ref").
-		WithExec(cmd).Stdout(ctx)
+	cRef := &CloudNativeRef{}
+
+	if container == nil {
+
+		// init a wolfi container with the necessary tools
+		container = dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "curl", "git", "jq", "opentofu"})
+
+		// Add the environment variables to the container
+		for _, e := range env {
+			parts := strings.Split(e, ":")
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid environment variable format, must be in the form <key>:<value>: %s", e)
+			}
+			container = container.WithEnvVariable(parts[0], parts[1])
+		}
+
+		// Add Tailscale environment variables
+		container = container.
+			WithEnvVariable("TS_HOSTNAME", tsHostname).
+			WithEnvVariable("TS_TAILNET", tsTailnet)
+
+		// Configure AWS authentication
+		if accessKeyID != nil && secretAccessKey != nil {
+			container = container.WithSecretVariable("AWS_ACCESS_KEY_ID", accessKeyID).
+				WithSecretVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey)
+		}
+		if authDir != nil {
+			container = container.WithMountedDirectory("/root/.aws/", authDir)
+		}
+	}
+
+	// Add tailscale environment variables
+	container = container.
+		WithEnvVariable("TS_HOSTNAME", tsHostname).
+		WithEnvVariable("TS_TAILNET", tsTailnet).
+		WithSecretVariable("TS_API_KEY", tsKey)
+
+	// Setting AWS parameters
+	cRef.AWSRegion = region
+	if accessKeyID != nil && secretAccessKey != nil {
+		cRef.AWSAccessKeyID = accessKeyID
+		cRef.AWSSecretAccessKey = secretAccessKey
+	}
+	if profile != "" {
+		cRef.AWSProfile = profile
+	}
+	if assumeRoleArn != "" {
+		cRef.AWSAssumeRoleArn = assumeRoleArn
+	}
+
+	cRef.Container = container
+	return cRef, nil
 }
 
 // Plan display the terraform plan for all the modules
@@ -82,14 +168,8 @@ func (m *CloudNativeRef) Plan(
 	env []string,
 
 ) (string, error) {
-
-	ctr, err := bootstrapContainer(env)
-	if err != nil {
-		return "", err
-	}
-
 	// mount the source directory
-	ctr = ctr.WithMountedDirectory("/cloud-native-ref", source)
+	container := m.Container.WithMountedDirectory(fmt.Sprintf("/%s", repoName), source)
 
 	// Add the AWS credentials if provided as environment variables
 	if accessKeyID != nil && secretAccessKey != nil {
@@ -101,71 +181,62 @@ func (m *CloudNativeRef) Plan(
 		if err != nil {
 			return "", err
 		}
-		ctr = ctr.WithEnvVariable("AWS_ACCESS_KEY_ID", accessKeyIDValue).
+		container = container.WithEnvVariable("AWS_ACCESS_KEY_ID", accessKeyIDValue).
 			WithEnvVariable("AWS_SECRET_ACCESS_KEY", secretAccessKeyValue)
 	}
 
 	if authDir != nil {
-		ctr = ctr.WithMountedDirectory("/root/.aws/", authDir)
+		container = container.WithMountedDirectory("/root/.aws/", authDir)
 	}
 
-	createNetwork(ctx, ctr, false)
+	createNetwork(ctx, container, false)
 
-	return ctr.
+	return container.
 		WithExec([]string{"echo", "Bootstrap the EKS cluster"}).
 		Stdout(ctx)
 }
 
-// Bootstrap the EKS cluster
-func (m *CloudNativeRef) Bootstrap(
+// Create the network resources (VPC, subnets, etc.)
+func (m *CloudNativeRef) Network(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
 	// +required
 	source *dagger.Directory,
 
-	// The directory where the AWS authentication files will be stored
+	// env is a list of environment variables, expected in (key:value) format
 	// +optional
-	authDir *dagger.Directory,
+	env []string,
 
-	// The AWS IAM Role ARN to assume
-	// +optional
-	assumeRoleArn string,
+) (*dagger.Container, error) {
+	// mount the source directory
+	container := m.Container.WithMountedDirectory(fmt.Sprintf("/%s", repoName), source)
 
-	// The AWS profile to use
-	// +optional
-	profile string,
+	// Create the network components
+	_, err := createNetwork(ctx, container, true)
+	if err != nil {
+		return nil, err
+	}
 
-	// The AWS secret access key
-	// +optional
-	secretAccessKey *dagger.Secret,
+	return container, nil
+}
 
-	// The AWS access key ID
-	// +optional
-	accessKeyID *dagger.Secret,
+type VaultConfig struct {
+	Addr                string
+	SkipVerify          string
+	RootTokenUrl        string
+	CertManagerRoleID   string
+	CertManagerSecretID *dagger.Secret
+	Container           *dagger.Container
+}
 
-	// AWS region to use
-	// +optional
-	// +default="eu-west-3"
-	region string,
+// Deploy and configure a Vault instance
+func (m *CloudNativeRef) Vault(
+	ctx context.Context,
 
-	// apply if set to true, the terraform apply will be executed
-	// +optional
-	apply bool,
-
-	// tsKey is the Tailscale key to use
-	// +optional
-	tsKey *dagger.Secret,
-
-	// tsTailnet is the Tailscale tailnet to use
-	// +optional
-	// +default="smainklh@gmail.com"
-	tsTailnet string,
-
-	// tsHostname is the Tailscale hostname to use
-	// +optional
-	// +default="cloud-native-ref"
-	tsHostname string,
+	// source is the directory where the Terraform configuration is stored
+	// +required
+	source *dagger.Directory,
 
 	// privateDomainName is the private domain name to use
 	// +optional
@@ -181,117 +252,112 @@ func (m *CloudNativeRef) Bootstrap(
 	// +default="true"
 	vaultSkipVerify string,
 
-	// Tooling applications to enable
-	// +optional
-	toolingApps []string,
-
-	// Security applications to enable
-	// +optional
-	// +default=["../base/cert-manager", "../base/external-secrets", "../base/kyverno"]
-	securityApps []string,
-
-	// Observability applications to enable
-	// +optional
-	// +default=["kube-prometheus-stack"]
-	observabilityApps []string,
-
-	// branch is the new branch to use for flux configuration
-	branch string,
-
-	// a list of environment variables, expected in (key:value) format
+	// env is a list of environment variables, expected in (key:value) format
 	// +optional
 	env []string,
 
-) (string, error) {
-
-	ctr, err := bootstrapContainer(env)
-	if err != nil {
-		return "", err
-	}
-
+) (*VaultConfig, error) {
 	// mount the source directory
-	ctr = ctr.WithMountedDirectory("/cloud-native-ref", source)
+	container := m.Container.
+		WithMountedDirectory(fmt.Sprintf("/%s", repoName), source).
+		WithExec([]string{"apk", "add", "vault"})
 
-	// // Configure AWS authentication
-	// if accessKeyID != nil && secretAccessKey != nil {
-	// 	ctr = ctr.WithSecretVariable("AWS_ACCESS_KEY_ID", accessKeyID).
-	// 		WithSecretVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey)
-	// }
-	// if authDir != nil {
-	// 	ctr = ctr.WithMountedDirectory("/root/.aws/", authDir)
-	// }
-
-	// // Create the network components
-	// _, err = createNetwork(ctx, ctr, true)
-	// if err != nil {
-	// 	return "", err
-	// }
-	// sess, err := createAWSSession(ctx, region, accessKeyID, secretAccessKey)
-	// if err != nil {
-	// 	return "", err
-	// }
-	// tailscaleSvc, err := tailscaleService(ctx, tsKey, tsTailnet, tsHostname)
-	// if err != nil {
-	// 	return "", err
-	// }
-
-	// // Deploy and configure Vault
-	// if vaultAddr == "" && privateDomainName != "" {
-	// 	vaultAddr = fmt.Sprintf("https://vault.%s:8200", privateDomainName)
-	// }
-	// vaultOutput, err := createVault(ctx, ctr, true)
-	// if err != nil {
-	// 	return "", err
-	// }
-	// vaultRootToken, err := initVault(vaultOutput, sess)
-	// if err != nil {
-	// 	return "", err
-	// }
-	// vaultRootTokenSecret := dag.SetSecret("vaultRootToken", vaultRootToken)
-	// ctr = ctr.
-	// 	WithEnvVariable("VAULT_ADDR", vaultAddr).
-	// 	WithEnvVariable("VAULT_SKIP_VERIFY", vaultSkipVerify).
-	// 	WithSecretVariable("VAULT_TOKEN", vaultRootTokenSecret).
-	// 	WithServiceBinding("tailscale", tailscaleSvc).
-	// 	WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
-	// 	WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
-	// 	WithEnvVariable("http_proxy", "http://tailscale:1055")
-	// err = configureVaultPKI(ctx, ctr, sess, fmt.Sprintf("certificates/%s/root-ca", privateDomainName))
-	// if err != nil {
-	// 	return "", err
-	// }
-	// _, err = configureVault(ctx, ctr, true)
-	// if err != nil {
-	// 	return "", err
-	// }
-
-	// Update kustomizations
-	dir, err := createKustomization(ctx, ctr, source, branch, "security/mycluster-0", securityApps)
+	sess, err := createAWSSession(ctx, m)
 	if err != nil {
-		return "", err
+		return nil, err
+	}
+	tailscaleSvc, err := tailscaleService(ctx, container)
+	if err != nil {
+		return nil, err
 	}
 
-	_, err = dir.Directory("security/mycluster-0").Export(ctx, "/tmp/security/mycluster-0")
-	if err != nil {
-		return "", err
+	// Set the Vault address
+	if vaultAddr == "" && privateDomainName != "" {
+		vaultAddr = fmt.Sprintf("https://vault.%s:8200", privateDomainName)
 	}
 
-	return ctr.
-		Terminal().
-		WithExec([]string{"echo", "Bootstrap the EKS cluster"}).
-		Stdout(ctx)
+	// Apply the Terraform Vault configuration
+	vaultOutput, err := createVault(ctx, container, true)
+	if err != nil {
+		return nil, err
+	}
+
+	// Retrieve the Vault root token
+	vaultSecretData, err := initVault(vaultOutput, sess)
+	if err != nil {
+		return nil, err
+	}
+
+	vaultRootTokenSecret := dag.SetSecret("vaultRootToken", vaultSecretData["root_token"])
+	container = container.
+		WithEnvVariable("VAULT_ADDR", vaultAddr).
+		WithEnvVariable("VAULT_SKIP_VERIFY", vaultSkipVerify).
+		WithSecretVariable("VAULT_TOKEN", vaultRootTokenSecret).
+		WithServiceBinding("tailscale", tailscaleSvc).
+		WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
+		WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
+		WithEnvVariable("http_proxy", "http://tailscale:1055")
+
+	// Configure the Vault PKI
+	err = configureVaultPKI(ctx, container, sess, fmt.Sprintf("certificates/%s/root-ca", privateDomainName))
+	if err != nil {
+		return nil, err
+	}
+
+	// Configure the Vault (policies, auth methods, etc.)
+	_, err = configureVault(ctx, container, true)
+	if err != nil {
+		return nil, err
+	}
+
+	// retrieve Cert Manager appRole
+	certManagerAppRole, err := certManagerApprole(ctx, container, sess)
+	if err != nil {
+		return nil, err
+	}
+
+	return &VaultConfig{
+		Addr:                vaultAddr,
+		SkipVerify:          vaultSkipVerify,
+		RootTokenUrl:        vaultSecretData["secret_manager_url"],
+		CertManagerRoleID:   string(certManagerAppRole["role_id"]),
+		CertManagerSecretID: dag.SetSecret("certManagerSecretID", string(certManagerAppRole["secret_id"])),
+		Container:           container,
+	}, nil
 }
 
-func (m *CloudNativeRef) UpdateKustomization(
+// Create an EKS cluster
+func (m *CloudNativeRef) EKS(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
 	// +required
 	source *dagger.Directory,
 
-	// branch is the new branch to use for flux configuration
+	// env is a list of environment variables, expected in (key:value) format
+	// +optional
+	env []string,
+
+) (*dagger.Container, error) {
+	// mount the source directory
+	container := m.Container.WithMountedDirectory(fmt.Sprintf("/%s", repoName), source)
+
+	// Create the network components
+	_, err := createEKS(ctx, container, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return container, nil
+}
+
+// Takes a source directory and a list of resources to update the kustomization file
+func (m *CloudNativeRef) UpdateKustomization(
+	ctx context.Context,
+
+	// source is the directory where the Terraform configuration is stored
 	// +required
-	branch string,
+	source *dagger.Directory,
 
 	// kustPath is the path to the kustomize directory
 	// +required
@@ -303,19 +369,69 @@ func (m *CloudNativeRef) UpdateKustomization(
 
 ) (*dagger.Directory, error) {
 
-	ctr, err := bootstrapContainer([]string{})
-	if err != nil {
-		return nil, err
-	}
-
 	// mount the source directory
-	ctr = ctr.WithMountedDirectory("/cloud-native-ref", source)
+	ctr := m.Container.WithMountedDirectory(fmt.Sprintf("/%s", repoName), source)
 
 	// Update kustomizations
-	dir, err := createKustomization(ctx, ctr, source, branch, path, resources)
+	dir, err := updateKustomization(ctr, path, resources)
 	if err != nil {
 		return nil, err
 	}
 
 	return dir, nil
+}
+
+func (m *CloudNativeRef) Up(
+	ctx context.Context,
+
+	// source is the directory where the Terraform configuration is stored
+	// +required
+	source *dagger.Directory,
+
+	// privateDomainName is the private domain name to use
+	// +optional
+	// +default="priv.cloud.ogenki.io"
+	privateDomainName string,
+
+	// vaultAddr is the Vault address to use
+	// +optional
+	vaultAddr string,
+
+	// vaultSkipVerify is the Vault skip verify to use
+	// +optional
+	// +default="true"
+	vaultSkipVerify string,
+
+	// env is a list of environment variables, expected in (key:value) format
+	// +optional
+	env []string,
+
+) (string, error) {
+	_, err := m.Network(ctx, source, env)
+	if err != nil {
+		return "", fmt.Errorf("failed to create network resources: %w", err)
+	}
+
+	vault, err := m.Vault(ctx, source, privateDomainName, vaultAddr, vaultSkipVerify, env)
+	if err != nil {
+		return "", fmt.Errorf("failed to create Vault resources: %w", err)
+	}
+
+	_, err = m.EKS(ctx, source, env)
+	if err != nil {
+		return "", fmt.Errorf("failed to create EKS resources: %w", err)
+	}
+
+	return m.Container.
+		WithExec([]string{
+			"echo",
+			fmt.Sprintf(
+				"VaultAddr: %s\nVaultRootTokenUrl: %s\nCertManagerAppRoleId: %s\nEKSGetCredentials: aws eks update-kubeconfig --name %s --alias %s",
+				vault.Addr,
+				vault.RootTokenUrl,
+				vault.CertManagerRoleID,
+				eksClusterName,
+				eksClusterName,
+			),
+		}).Stdout(ctx)
 }

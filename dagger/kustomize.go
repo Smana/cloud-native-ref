@@ -1,13 +1,13 @@
 package main
 
 import (
-	"context"
 	"dagger/cloud-native-ref/internal/dagger"
+	"fmt"
 	"path"
 	"strings"
 )
 
-func createKustomization(ctx context.Context, ctr *dagger.Container, source *dagger.Directory, branch string, kustPath string, resources []string) (*dagger.Directory, error) {
+func updateKustomization(ctr *dagger.Container, kustPath string, resources []string) (*dagger.Directory, error) {
 
 	ctr = ctr.WithExec([]string{"apk", "add", "kustomize"})
 
@@ -16,30 +16,14 @@ func createKustomization(ctx context.Context, ctr *dagger.Container, source *dag
 	// the resources should be a comma separated list of resources
 	updateKustomizationScript := `#!/bin/bash
 set -e
-# Function to display usage instructions
-usage() {
-  echo "Usage: $0 --resources <resources>"
-  exit 1
-}
 
 # Check if the correct number of arguments are provided
-if [ "$#" -ne 2 ]; then
-  usage
+if [ "$#" -ne 1 ]; then
+  echo "Usage: $0 <resources>"
+  exit 1
 fi
 
-# Parse command line arguments
-while [[ "$#" -gt 0 ]]; do
-  case $1 in
-    --resources)
-      RESOURCES="$2"
-      shift
-      ;;
-    *)
-      usage
-      ;;
-  esac
-  shift
-done
+RESOURCES="$1"
 
 # Remove existing kustomization.yaml if it exists
 if [ -f "kustomization.yaml" ]; then
@@ -55,10 +39,10 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "Script executed successfully!"
-`
+	`
 
-	return ctr.WithWorkdir(path.Join("/cloud-native-ref", kustPath)).
+	return ctr.WithWorkdir(path.Join(fmt.Sprintf("/%s", repoName), kustPath)).
 		WithNewFile("/bin/update-kustomization", updateKustomizationScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
-		WithExec([]string{"/bin/update-kustomization", "--resources", strings.Join(resources, ",")}).
-		Directory(path.Join("/cloud-native-ref", kustPath)), nil
+		WithExec([]string{"/bin/update-kustomization", strings.Join(resources, ",")}).
+		Directory(path.Join(fmt.Sprintf("/%s", repoName), kustPath)), nil
 }
