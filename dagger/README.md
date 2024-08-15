@@ -43,12 +43,8 @@ Using this automatic way of deploying everything **relies on AWS secretsmanager*
 }
 ```
 
-### Remove Terraform cache files
-```console
-dagger call clean --source="." -v
-```
-
 ### Bootstrap the whole platform
 ```console
- dagger call bootstrap --source "." --access-key-id=env:AWS_ACCESS_KEY_ID --secret-access-key=env:AWS_SECRET_ACCESS_KEY -v
+ dagger call --access-key-id=env:AWS_ACCESS_KEY_ID --secret-access-key=env:AWS_SECRET_ACCESS_KEY --ts-key=env:TAILSCALE_APIKEY \
+ up --source "." --branch <flux_branch>
  ```

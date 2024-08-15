@@ -165,13 +165,13 @@ func executeScriptOnInstance(sess *session.Session, instanceID, scriptContent st
 }
 
 // storeOutputInSecretsManager stores the key-value pairs in AWS Secrets Manager
-func storeOutputInSecretsManager(sess *session.Session, secretName string, secretData map[string]string) (string, error) {
+func storeOutputInSecretsManager(sess *session.Session, secretName string, secretData map[string]string) error {
 	svcSM := secretsmanager.New(sess)
 
 	// Convert the key-value pairs to a JSON string
 	secretValue, err := json.Marshal(secretData)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal secret data: %w", err)
+		return fmt.Errorf("failed to marshal secret data: %w", err)
 	}
 
 	// Trim any whitespace characters from the JSON string
@@ -191,10 +191,10 @@ func storeOutputInSecretsManager(sess *session.Session, secretName string, secre
 				SecretString: aws.String(string(secretString)),
 			})
 			if err != nil {
-				return "", fmt.Errorf("failed to create secret: %w", err)
+				return fmt.Errorf("failed to create secret: %w", err)
 			}
 		} else {
-			return "", fmt.Errorf("failed to get secret value: %w", err)
+			return fmt.Errorf("failed to get secret value: %w", err)
 		}
 	} else {
 		// If the secret exists, update it
@@ -203,18 +203,11 @@ func storeOutputInSecretsManager(sess *session.Session, secretName string, secre
 			SecretString: aws.String(string(secretString)),
 		})
 		if err != nil {
-			return "", fmt.Errorf("failed to update secret: %w", err)
+			return fmt.Errorf("failed to update secret: %w", err)
 		}
 	}
 
-	// Generate a pre-signed URL for the GetSecretValue operation
-	req, _ := svcSM.GetSecretValueRequest(getSecretValueInput)
-	urlStr, err := req.Presign(15 * time.Minute) // URL valid for 15 minutes
-	if err != nil {
-		return "", fmt.Errorf("failed to generate pre-signed URL: %w", err)
-	}
-
-	return urlStr, nil
+	return nil
 }
 
 // getSecret retrieves the secret value from AWS Secrets Manager and parses it into a map

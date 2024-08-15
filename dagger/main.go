@@ -7,6 +7,7 @@ import (
 	"dagger/cloud-native-ref/internal/dagger"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 const (
@@ -283,12 +284,12 @@ func (m *CloudNativeRef) Vault(
 	}
 
 	// Retrieve the Vault root token
-	vaultSecretData, err := initVault(vaultOutput, sess)
+	rootToken, err := initVault(vaultOutput, sess)
 	if err != nil {
 		return nil, err
 	}
 
-	vaultRootTokenSecret := dag.SetSecret("vaultRootToken", vaultSecretData["root_token"])
+	vaultRootTokenSecret := dag.SetSecret("vaultRootToken", rootToken)
 	container = container.
 		WithEnvVariable("VAULT_ADDR", vaultAddr).
 		WithEnvVariable("VAULT_SKIP_VERIFY", vaultSkipVerify).
@@ -319,7 +320,6 @@ func (m *CloudNativeRef) Vault(
 	return &VaultConfig{
 		Addr:                vaultAddr,
 		SkipVerify:          vaultSkipVerify,
-		RootTokenUrl:        vaultSecretData["secret_manager_url"],
 		CertManagerRoleID:   string(certManagerAppRole["role_id"]),
 		CertManagerSecretID: dag.SetSecret("certManagerSecretID", string(certManagerAppRole["secret_id"])),
 		Container:           container,
@@ -334,6 +334,10 @@ func (m *CloudNativeRef) EKS(
 	// +required
 	source *dagger.Directory,
 
+	// branch is the branch to use for flux bootstrap
+	// +required
+	branch string,
+
 	// env is a list of environment variables, expected in (key:value) format
 	// +optional
 	env []string,
@@ -343,7 +347,7 @@ func (m *CloudNativeRef) EKS(
 	container := m.Container.WithMountedDirectory(fmt.Sprintf("/%s", repoName), source)
 
 	// Create the network components
-	_, err := createEKS(ctx, container, true)
+	_, err := createEKS(ctx, container, true, branch)
 	if err != nil {
 		return nil, err
 	}
@@ -381,12 +385,16 @@ func (m *CloudNativeRef) UpdateKustomization(
 	return dir, nil
 }
 
-func (m *CloudNativeRef) Up(
+func (m *CloudNativeRef) Bootstrap(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
 	// +required
 	source *dagger.Directory,
+
+	// branch is the branch to use for flux bootstrap
+	// +required
+	branch string,
 
 	// privateDomainName is the private domain name to use
 	// +optional
@@ -412,14 +420,39 @@ func (m *CloudNativeRef) Up(
 		return "", fmt.Errorf("failed to create network resources: %w", err)
 	}
 
-	vault, err := m.Vault(ctx, source, privateDomainName, vaultAddr, vaultSkipVerify, env)
-	if err != nil {
-		return "", fmt.Errorf("failed to create Vault resources: %w", err)
-	}
+	var wg sync.WaitGroup
+	errChan := make(chan error, 2)
 
-	_, err = m.EKS(ctx, source, env)
-	if err != nil {
-		return "", fmt.Errorf("failed to create EKS resources: %w", err)
+	var vault *VaultConfig
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		var err error
+		vault, err = m.Vault(ctx, source, privateDomainName, vaultAddr, vaultSkipVerify, env)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to create Vault resources: %w", err)
+			return
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		_, err := m.EKS(ctx, source, branch, env)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to create EKS resources: %w", err)
+			return
+		}
+	}()
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		if err != nil {
+			return "", err
+		}
 	}
 
 	return m.Container.

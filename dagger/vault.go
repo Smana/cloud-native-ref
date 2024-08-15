@@ -23,18 +23,18 @@ func createVault(ctx context.Context, ctr *dagger.Container, apply bool) (map[st
 func initVault(
 	vaultOutput map[string]interface{},
 	sess *session.Session,
-) (map[string]string, error) {
+) (string, error) {
 	vaultAsgMap := vaultOutput["autoscaling_group_id"].(map[string]interface{})
 	vaultAsg := vaultAsgMap["value"].(string)
 
 	instanceID, err := getInstanceIDFromASG(sess, vaultAsg)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	err = checkInstanceReady(sess, instanceID, 5, time.Minute)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	// This script returns the root token if Vault is not initialized
@@ -67,25 +67,25 @@ fi
 	vaultSecretName := fmt.Sprintf("vault/%s/tokens", repoName)
 	output, err := executeScriptOnInstance(sess, instanceID, vaultInitScript)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	output = strings.TrimSpace(output)
-	secretData := map[string]string{}
+	token := strings.TrimSpace(output)
 	if output != "" {
-		secretData := map[string]string{"root_token": output}
-		secretManageUrl, err := storeOutputInSecretsManager(sess, vaultSecretName, secretData)
+		secretData := map[string]string{"root": output}
+		err := storeOutputInSecretsManager(sess, vaultSecretName, secretData)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		secretData["secret_manager_url"] = secretManageUrl
 	} else {
-		secretData, err = getSecretManager(sess, vaultSecretName)
+		secretData, err := getSecretManager(sess, vaultSecretName)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
+		token = secretData["root"]
 	}
 
-	return secretData, nil
+	return token, nil
+
 }
 
 func configureVaultPKI(
@@ -206,12 +206,10 @@ echo "${CERT_MANAGER_ROLE_ID},${CERT_MANAGER_SECRET_ID}"
 		"role_id":   appRoleID,
 		"secret_id": appRoleSecretID,
 	}
-	secretManagerUrl, err := storeOutputInSecretsManager(sess, fmt.Sprintf("vault/%s/cert-manager/approle", repoName), secretData)
+	err = storeOutputInSecretsManager(sess, fmt.Sprintf("vault/%s/cert-manager/approle", repoName), secretData)
 	if err != nil {
 		return nil, err
 	}
-
-	secretData["secret_manager_url"] = secretManagerUrl
 
 	return secretData, nil
 }
