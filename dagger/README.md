@@ -68,4 +68,10 @@ CertManagerAppRoleId: b44bc6c4-6fd4-513f-2ee1-15e6c48baaa6
 EKSGetCredentials: aws eks update-kubeconfig --name mycluster-0 --alias mycluster-0
 ```
 
-Report the ApproleId into the `ClusterIssuer` definition [here](../security/base/cert-manager/vault-clusterissuer.yaml).
+3. Report the ApproleId into the `ClusterIssuer` definition [here](../security/base/cert-manager/vault-clusterissuer.yaml). Then push your changes
+
+```console
+git pull --set-upstream origin <flux_branch>
+git commit -m "chore(cert-manager): update vault approle id"
+git push
+```

@@ -85,7 +85,7 @@ resource "aws_launch_template" "ha" {
 
 module "vault_asg" {
   source  = "terraform-aws-modules/autoscaling/aws"
-  version = "~> 7.3"
+  version = "~> 8.0"
 
   name                            = local.name
   ignore_desired_capacity_changes = true
@@ -94,9 +94,12 @@ module "vault_asg" {
   max_size                        = var.mode == "dev" ? 1 : 5
   vpc_zone_identifier             = data.aws_subnets.private.ids
 
-  create_traffic_source_attachment = true
-  traffic_source_identifier        = aws_lb_target_group.this.arn
-  traffic_source_type              = "elbv2"
+  traffic_source_attachments = {
+    ex-alb = {
+      traffic_source_identifier = aws_lb_target_group.this.arn
+      traffic_source_type       = "elbv2"
+    }
+  }
 
   create_launch_template = false
   launch_template_id     = var.mode == "dev" ? aws_launch_template.dev.id : aws_launch_template.ha.id

@@ -62,7 +62,7 @@ This architecture balances performance, cost-efficiency, and resilience, embraci
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_vault_asg"></a> [vault\_asg](#module\_vault\_asg) | terraform-aws-modules/autoscaling/aws | ~> 7.3 |
+| <a name="module_vault_asg"></a> [vault\_asg](#module\_vault\_asg) | terraform-aws-modules/autoscaling/aws | ~> 8.0 |
 
 ## Resources
 
