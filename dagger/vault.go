@@ -70,8 +70,8 @@ fi
 		return "", err
 	}
 	token := strings.TrimSpace(output)
-	if output != "" {
-		secretData := map[string]string{"root": output}
+	if token != "" {
+		secretData := map[string]string{"root": token}
 		err := storeOutputInSecretsManager(sess, vaultSecretName, secretData)
 		if err != nil {
 			return "", err

@@ -3,7 +3,7 @@ package main
 import (
 	"dagger/cloud-native-ref/internal/dagger"
 	"fmt"
-	"path"
+	"path/filepath"
 	"strings"
 )
 
@@ -15,7 +15,7 @@ func updateKustomization(ctr *dagger.Container, kustPath string, resources []str
 	// it should change the current directory to the kustdir and run the kustomize create --resources <resources>
 	// the resources should be a comma separated list of resources
 	updateKustomizationScript := `#!/bin/bash
-set -e
+set -eo pipefail
 
 # Check if the correct number of arguments are provided
 if [ "$#" -ne 1 ]; then
@@ -41,8 +41,8 @@ fi
 echo "Script executed successfully!"
 	`
 
-	return ctr.WithWorkdir(path.Join(fmt.Sprintf("/%s", repoName), kustPath)).
+	return ctr.WithWorkdir(filepath.Join(fmt.Sprintf("/%s", repoName), kustPath)).
 		WithNewFile("/bin/update-kustomization", updateKustomizationScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
 		WithExec([]string{"/bin/update-kustomization", strings.Join(resources, ",")}).
-		Directory(path.Join(fmt.Sprintf("/%s", repoName), kustPath)), nil
+		Directory(filepath.Join(fmt.Sprintf("/%s", repoName), kustPath)), nil
 }

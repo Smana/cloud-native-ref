@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -38,7 +37,7 @@ func createAWSSession(ctx context.Context, cRef *CloudNativeRef) (*session.Sessi
 		),
 	})
 	if err != nil {
-		log.Fatalf("Failed to create session: %v", err)
+		return nil, fmt.Errorf("failed to create session: %v", err)
 	}
 	return sess, nil
 }

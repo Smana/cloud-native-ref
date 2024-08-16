@@ -459,9 +459,8 @@ func (m *CloudNativeRef) Bootstrap(
 		WithExec([]string{
 			"echo",
 			fmt.Sprintf(
-				"VaultAddr: %s\nVaultRootTokenUrl: %s\nCertManagerAppRoleId: %s\nEKSGetCredentials: aws eks update-kubeconfig --name %s --alias %s",
+				"VaultAddr: %s\nCertManagerAppRoleId: %s\nEKSGetCredentials: aws eks update-kubeconfig --name %s --alias %s",
 				vault.Addr,
-				vault.RootTokenUrl,
 				vault.CertManagerRoleID,
 				eksClusterName,
 				eksClusterName,
