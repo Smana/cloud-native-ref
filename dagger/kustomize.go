@@ -7,13 +7,11 @@ import (
 	"strings"
 )
 
+// updateKustomization updates the kustomization.yaml file with the specified resources
 func updateKustomization(ctr *dagger.Container, kustPath string, resources []string) (*dagger.Directory, error) {
 
 	ctr = ctr.WithExec([]string{"apk", "add", "kustomize"})
 
-	// bash script that changes the git branch given a parameter --branch <branch>, kustdir <kustdir>, and resources <resources>
-	// it should change the current directory to the kustdir and run the kustomize create --resources <resources>
-	// the resources should be a comma separated list of resources
 	updateKustomizationScript := `#!/bin/bash
 set -eo pipefail
 

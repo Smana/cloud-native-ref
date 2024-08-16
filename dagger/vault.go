@@ -64,14 +64,14 @@ else
     echo ""
 fi
 `
-	vaultSecretName := fmt.Sprintf("vault/%s/tokens", repoName)
+	vaultSecretName := fmt.Sprintf("vault/%s/tokens/root", repoName)
 	output, err := executeScriptOnInstance(sess, instanceID, vaultInitScript)
 	if err != nil {
 		return "", err
 	}
 	token := strings.TrimSpace(output)
 	if token != "" {
-		secretData := map[string]string{"root": token}
+		secretData := map[string]string{"token": token}
 		err := storeOutputInSecretsManager(sess, vaultSecretName, secretData)
 		if err != nil {
 			return "", err
@@ -81,7 +81,7 @@ fi
 		if err != nil {
 			return "", err
 		}
-		token = secretData["root"]
+		token = secretData["token"]
 	}
 
 	return token, nil
@@ -206,7 +206,7 @@ echo "${CERT_MANAGER_ROLE_ID},${CERT_MANAGER_SECRET_ID}"
 		"role_id":   appRoleID,
 		"secret_id": appRoleSecretID,
 	}
-	err = storeOutputInSecretsManager(sess, fmt.Sprintf("vault/%s/cert-manager/approle", repoName), secretData)
+	err = storeOutputInSecretsManager(sess, fmt.Sprintf("vault/%s/approles/cert-manager", repoName), secretData)
 	if err != nil {
 		return nil, err
 	}
