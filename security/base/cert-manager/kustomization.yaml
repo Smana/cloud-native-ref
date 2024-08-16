@@ -7,3 +7,4 @@ resources:
   - helmrelease.yaml
   - source.yaml
   - vault-clusterissuer.yaml
+  - vault-approle-externalsecret.yaml
