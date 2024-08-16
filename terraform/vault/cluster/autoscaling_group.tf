@@ -85,7 +85,7 @@ resource "aws_launch_template" "ha" {
 
 module "vault_asg" {
   source  = "terraform-aws-modules/autoscaling/aws"
-  version = "~> 7.3"
+  version = "~> 8.0"
 
   name                            = local.name
   ignore_desired_capacity_changes = true
