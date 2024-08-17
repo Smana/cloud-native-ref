@@ -21,8 +21,8 @@ This repository provides a comprehensive guide and set of tools for building, ma
 
 ## 🌟 Overview
 
-- 💬 [**Discussions**](https://github.com/Smana/demo-cloud-native-ref/discussions): Explore improvement areas, define the roadmap, and prioritize issues. Feel free to ask any questions 🙏.
-- 🛠️ [**Issues**](https://github.com/Smana/demo-cloud-native-ref/issues): Track tasks and report bugs to ensure prompt resolution.
+- 💬 [**Discussions**](https://github.com/Smana/cloud-native-ref/discussions): Explore improvement areas, define the roadmap, and prioritize issues. Feel free to ask any questions 🙏.
+- 🛠️ [**Issues**](https://github.com/Smana/cloud-native-ref/issues): Track tasks and report bugs to ensure prompt resolution.
 - 📅 [**Project**](https://github.com/users/Smana/projects/1): Detailed project planning and prioritization information.
 
 

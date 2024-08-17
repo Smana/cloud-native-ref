@@ -62,7 +62,7 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
      ]
 
      tags = {
-       project = "demo-cloud-native-ref"
+       project = "cloud-native-ref"
        owner   = "Smana"
      }
      ```

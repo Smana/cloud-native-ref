@@ -24,7 +24,7 @@ enable_ssm            = true                          # Allow to access to the E
 
 
 tags = {                                              # In my case, these tags are also used to identify the supporting resources (VPC, subnets...)
-  project = "demo-cloud-native-ref"
+  project = "cloud-native-ref"
   owner   = "Smana"
 }
 ```

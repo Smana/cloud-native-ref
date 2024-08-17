@@ -23,7 +23,7 @@ tailscale = {
 }
 
 tags = {
-  project = "demo-cloud-native-ref"
+  project = "cloud-native-ref"
   owner   = "Smana"
 }
 ```
