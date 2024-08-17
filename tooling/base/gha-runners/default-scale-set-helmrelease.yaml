@@ -17,7 +17,7 @@ spec:
       retries: 3
   values:
     runnerGroup: "default"
-    githubConfigUrl: "https://github.com/Smana/demo-cloud-native-ref"
+    githubConfigUrl: "https://github.com/Smana/cloud-native-ref"
     githubConfigSecret: gha-runner-scale-set
     maxRunners: 5
 

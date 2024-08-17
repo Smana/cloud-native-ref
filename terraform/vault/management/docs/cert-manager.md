@@ -6,9 +6,9 @@ Integrate `cert-manager` with Vault for robust certificate management in Kuberne
 
 Before integrating `cert-manager` with Vault, ensure these prerequisites are met:
 
-- **Vault Setup**: A Vault instance with permissions to manage [approles](https://developer.hashicorp.com/vault/docs/auth/approle). Use our guide for [building a Vault cluster](https://github.com/Smana/demo-cloud-native-ref/blob/main/terraform/vault/cluster/README.md).
-- **TLS Configuration**: Ensure a proper TLS setup, including the CA chain. If you've followed the [PKI requirements procedure](https://github.com/Smana/demo-cloud-native-ref/blob/refactor_docs_per_topic/terraform/vault/cluster/docs/pki_requirements.md), you should have `.tls/ca-chain.pem` locally.
-- **Kubernetes Cluster**: A Kubernetes cluster capable of reaching the Vault. You can set one up using our [EKS cluster guide](https://github.com/Smana/demo-cloud-native-ref/blob/main/terraform/eks/README.md).
+- **Vault Setup**: A Vault instance with permissions to manage [approles](https://developer.hashicorp.com/vault/docs/auth/approle). Use our guide for [building a Vault cluster](https://github.com/Smana/cloud-native-ref/blob/main/terraform/vault/cluster/README.md).
+- **TLS Configuration**: Ensure a proper TLS setup, including the CA chain. If you've followed the [PKI requirements procedure](https://github.com/Smana/cloud-native-ref/blob/refactor_docs_per_topic/terraform/vault/cluster/docs/pki_requirements.md), you should have `.tls/ca-chain.pem` locally.
+- **Kubernetes Cluster**: A Kubernetes cluster capable of reaching the Vault. You can set one up using our [EKS cluster guide](https://github.com/Smana/cloud-native-ref/blob/main/terraform/eks/README.md).
 
 Once these requirements are met, you're ready to proceed with the `cert-manager` integration.
 

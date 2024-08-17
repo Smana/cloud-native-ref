@@ -20,11 +20,10 @@ env          = "dev"
 cluster_name = "mycluster-0" # Generated with petname
 
 github_owner    = "Smana"
-github_token    = <REDACTED>
-repository_name = "demo-cloud-native-ref"
+github_repository = "cloud-native-ref"
 
 tags = {
-  GithubRepo = "demo-cloud-native-ref"
+  GithubRepo = "cloud-native-ref"
   GithubOrg  = "Smana"
 }
 

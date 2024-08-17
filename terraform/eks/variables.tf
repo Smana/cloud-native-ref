@@ -69,15 +69,15 @@ variable "gateway_api_version" {
 }
 
 # Flux
-variable "github_owner" {
+variable "github_org" {
   type        = string
-  description = "github owner"
+  description = "github organization name"
 }
 
-variable "github_token_secretsmanager_name" {
+variable "github_token_secretsmanager_id" {
   type        = string
-  description = "SecretsManager name from where to retrieve the Github token. (The key must be 'github-token')"
-  default     = "github/flux-github-token"
+  description = "SecretsManager id from where to retrieve the Github Personal Access Token. (The key must be 'github-token')"
+  default     = "github/flux-github-pat"
   sensitive   = true
 }
 

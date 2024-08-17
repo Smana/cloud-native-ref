@@ -10,7 +10,7 @@ data "aws_route53_zone" "this" {
 data "aws_vpc" "selected" {
   filter {
     name   = "tag:project"
-    values = ["demo-cloud-native-ref"]
+    values = ["cloud-native-ref"]
   }
   filter {
     name   = "tag:owner"
@@ -37,7 +37,7 @@ data "aws_subnets" "private" {
 data "aws_security_group" "tailscale" {
   filter {
     name   = "tag:project"
-    values = ["demo-cloud-native-ref"]
+    values = ["cloud-native-ref"]
   }
 
   filter {

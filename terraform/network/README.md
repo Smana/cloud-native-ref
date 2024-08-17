@@ -14,7 +14,7 @@ Create the `variables.tfvars` file
 ```hcl
 env    = "dev"
 region = "eu-west-3"
-
+private_domain_name = "priv.cloud.ogenki.io"
 
 tailscale = {
   subnet_router_name = "ogenki"
@@ -23,7 +23,7 @@ tailscale = {
 }
 
 tags = {
-  project = "demo-cloud-native-ref"
+  project = "cloud-native-ref"
   owner   = "Smana"
 }
 ```

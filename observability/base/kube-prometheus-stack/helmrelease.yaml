@@ -137,7 +137,7 @@ spec:
         loki:
           quick-search-logs:
             datasource: Loki
-            url: https://raw.githubusercontent.com/Smana/demo-cloud-native-ref/main/observability/base/kube-prometheus-stack/grafana-dashboards/quick-search-logs.json
+            url: https://raw.githubusercontent.com/Smana/cloud-native-ref/main/observability/base/kube-prometheus-stack/grafana-dashboards/quick-search-logs.json
     kube-state-metrics:
       prometheusScrape: false # disable scrape annotation as we use servicemonitor
       prometheus:

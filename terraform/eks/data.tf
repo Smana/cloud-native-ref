@@ -3,7 +3,7 @@ data "aws_caller_identity" "this" {}
 data "aws_vpc" "selected" {
   filter {
     name   = "tag:project"
-    values = ["demo-cloud-native-ref"]
+    values = ["cloud-native-ref"]
   }
   filter {
     name   = "tag:owner"
@@ -41,7 +41,7 @@ data "aws_subnets" "intra" {
 data "aws_security_group" "tailscale" {
   filter {
     name   = "tag:project"
-    values = ["demo-cloud-native-ref"]
+    values = ["cloud-native-ref"]
   }
 
   filter {
@@ -68,8 +68,8 @@ data "aws_eks_cluster_auth" "cluster_auth" {
   name = module.eks.cluster_name
 }
 
-data "aws_secretsmanager_secret_version" "github_token" {
-  secret_id = var.github_token_secretsmanager_name
+data "aws_secretsmanager_secret_version" "github_pat" {
+  secret_id = var.github_token_secretsmanager_id
 }
 
 data "http" "gateway_api_crds" {
