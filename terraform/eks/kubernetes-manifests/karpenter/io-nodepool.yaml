@@ -1,4 +1,4 @@
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: io
@@ -6,7 +6,7 @@ spec:
   template:
     spec:
       nodeClassRef:
-        apiVersion: karpenter.k8s.aws/v1beta1
+        group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: io
       requirements:
@@ -33,7 +33,8 @@ spec:
           value: "true"
           effect: NoSchedule
   disruption:
-    consolidationPolicy: WhenUnderutilized
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 30s
   limits:
     cpu: ${io_nodepool_cpu_limits}
     memory: ${io_nodepool_memory_limits}
