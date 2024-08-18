@@ -6,4 +6,4 @@ resources:
   # Uncomment the following resources to include them in the kustomization
   # - ../base/dagger-engine
   # - ../base/gha-runners
-  #  - ../base/harbor
+  # - ../base/harbor

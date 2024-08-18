@@ -34,9 +34,20 @@ resource "tailscale_acl" "this" {
 
 resource "tailscale_dns_nameservers" "this" {
   nameservers = [
-    "1.1.1.1",                             // Cloudflare
-    cidrhost(module.vpc.vpc_cidr_block, 2) // https://tailscale.com/kb/1141/aws-rds/#step-3-add-aws-dns-for-your-tailnet
+    "1.1.1.1" // Cloudflare
   ]
+}
+
+resource "tailscale_dns_split_nameservers" "private" {
+  domain = var.private_domain_name
+
+  nameservers = [cidrhost(module.vpc.vpc_cidr_block, 2)]
+}
+
+resource "tailscale_dns_split_nameservers" "ec2" {
+  domain = "${var.region}.compute.internal"
+
+  nameservers = [cidrhost(module.vpc.vpc_cidr_block, 2)]
 }
 
 resource "tailscale_dns_search_paths" "this" {
