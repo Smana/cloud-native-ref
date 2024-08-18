@@ -1,6 +1,6 @@
 module "zones" {
   source  = "terraform-aws-modules/route53/aws//modules/zones"
-  version = "~> 3.0"
+  version = "~> 4.0"
 
   zones = {
     "priv.cloud.ogenki.io" = {
