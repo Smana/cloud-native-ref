@@ -87,7 +87,7 @@ func New(
 	if container == nil {
 
 		// init a wolfi container with the necessary tools
-		container = dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "git", "jq", "opentofu"})
+		container = dag.Apko().Wolfi([]string{"aws-cli-v2", "bash", "curl", "git", "jq", "opentofu"})
 
 		// Add the environment variables to the container
 		for _, e := range env {
