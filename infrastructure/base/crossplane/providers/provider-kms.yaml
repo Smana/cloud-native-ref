@@ -3,7 +3,7 @@ kind: Provider
 metadata:
   name: provider-aws-kms
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-kms:v1.1.0
+  package: xpkg.upbound.io/upbound/provider-aws-kms:v1.11.0
   runtimeConfigRef:
     apiVersion: pkg.crossplane.io/v1beta1
     kind: DeploymentRuntimeConfig

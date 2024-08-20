@@ -210,6 +210,16 @@ resource "aws_iam_policy" "crossplane_rds" {
             ]
         },
         {
+            "Action": [
+                "rds:DescribeDBInstances"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+                "arn:aws:rds:*:*:db:*",
+                "arn:aws:rds:*:*:subgrp:*"
+            ]
+        },
+        {
             "Effect": "Deny",
             "Action": [
                 "rds:DeleteDBInstance"

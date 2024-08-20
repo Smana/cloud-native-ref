@@ -3,7 +3,7 @@ kind: Provider
 metadata:
   name: provider-aws-rds
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-rds:v0.47.1
+  package: xpkg.upbound.io/upbound/provider-aws-rds:v1.11.0
   runtimeConfigRef:
     apiVersion: pkg.crossplane.io/v1beta1
     kind: DeploymentRuntimeConfig
