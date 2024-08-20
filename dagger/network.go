@@ -105,7 +105,7 @@ kill $TS_PID
 wait $TS_PID
 
 # Relaunch the tailscaled process in the foreground
-tailscaled --tun=userspace-networking --socks5-server=:1055
+tailscaled --tun=userspace-networking --socks5-server=:1055 --outbound-http-proxy-listen=:1055
 `
 
 	svc := container.
