@@ -45,7 +45,7 @@ spec:
               kind: SubnetGroup
               spec:
                 forProvider:
-                  description: List of subnets to attache the RDS intsance to.
+                  description: List of subnets to attach the RDS instance to.
             name: compositeSQLInstanceDbSubnetGroup
             patches:
               - patchSetName: providerConfigRef
@@ -110,7 +110,7 @@ spec:
                 toFieldPath: spec.forProvider.fromPort
                 type: FromCompositeFieldPath
           - base:
-              apiVersion: rds.aws.upbound.io/v1beta1
+              apiVersion: rds.aws.upbound.io/v1beta2
               kind: Instance
               spec:
                 forProvider:

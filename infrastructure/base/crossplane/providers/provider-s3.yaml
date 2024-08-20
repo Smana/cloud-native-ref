@@ -3,7 +3,7 @@ kind: Provider
 metadata:
   name: provider-aws-s3
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-s3:v1.1.0
+  package: xpkg.upbound.io/upbound/provider-aws-s3:v1.11.0
   runtimeConfigRef:
     apiVersion: pkg.crossplane.io/v1beta1
     kind: DeploymentRuntimeConfig
