@@ -115,6 +115,7 @@ spec:
               spec:
                 forProvider:
                   dbName: ""
+                  identifierPrefix: ""
                   dbSubnetGroupNameSelector:
                     matchControllerRef: true
                   instanceClass: db.t3.micro
@@ -139,6 +140,8 @@ spec:
                 type: FromConnectionSecretKey
             name: RDSInstance
             patches:
+              - fromFieldPath: spec.claimRef.name
+                toFieldPath: spec.forProvider.identifierPrefix
               - patchSetName: providerConfigRef
                 type: PatchSet
               - patchSetName: deletionPolicy
