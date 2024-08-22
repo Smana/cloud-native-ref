@@ -6,9 +6,11 @@ spec:
   gatewayClassName: cilium
   infrastructure:
     annotations:
-      external-dns.alpha.kubernetes.io/hostname: capacitor-${cluster_name}.priv.${domain_name},grafana-${cluster_name}.priv.${domain_name},harbor.priv.${domain_name}
+      service.beta.kubernetes.io/aws-load-balancer-name: "ogenki-platform-private-gateway"
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
       service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
-      service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+      service.beta.kubernetes.io/aws-load-balancer-type: "external"
+      external-dns.alpha.kubernetes.io/hostname: capacitor-${cluster_name}.priv.${domain_name},grafana-${cluster_name}.priv.${domain_name},harbor.priv.${domain_name}
   listeners:
     - name: http
       hostname: "*.priv.${domain_name}"
