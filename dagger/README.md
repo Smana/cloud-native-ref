@@ -30,7 +30,6 @@ Using this automated deployment process **relies on AWS Secrets Manager** to sto
 * **Tailscale Configuration**: ⚠️ Currently, Tailscale does not support "Split DNS" in userspace networking mode. You must start the local (laptop) Tailscale instance to reach private resources. Additionally, specify the DNS resolver in Docker's configuration (`daemon.json`) to use the AWS private DNS resolver.
 
 ```json
-
 {
   "dns": [
     "10.0.0.2",
@@ -71,7 +70,7 @@ EKSGetCredentials: aws eks update-kubeconfig --name mycluster-0 --alias mycluste
 3. Report the ApproleId into the `ClusterIssuer` definition [here](../security/base/cert-manager/vault-clusterissuer.yaml). Then push your changes
 
 ```console
-git pull --set-upstream origin <flux_branch>
+git pull --set-upstream origin <flux_branch> --rebase
 git commit -m "chore(cert-manager): update vault approle id"
 git push
 ```
