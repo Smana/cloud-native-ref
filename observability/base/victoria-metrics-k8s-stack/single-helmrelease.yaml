@@ -6,13 +6,13 @@ spec:
   releaseName: victoria-metrics-k8s-stack
   chart:
     spec:
-      chart: kube-prometheus-stack
+      chart: victoria-metrics-k8s-stack
       sourceRef:
         kind: HelmRepository
-        name: victoriametrics
+        name: victoria-metrics
         namespace: flux-system
       version: "0.25.3"
-  interval: 10m0s
+  interval: 4m0s
   timeout: 30m
   install:
     remediation:
