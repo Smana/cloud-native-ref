@@ -9,7 +9,7 @@ spec:
   commonName: private-gateway.priv.cloud.ogenki.io
   dnsNames:
     - capacitor-${cluster_name}.priv.${domain_name}
-    - grafana-${cluster_name}.priv.${domain_name}
+    - grafana.priv.${domain_name}
     - harbor.priv.${domain_name}
   issuerRef:
     name: vault

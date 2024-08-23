@@ -1,0 +1,287 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: victoria-metrics-k8s-stack
+spec:
+  releaseName: victoria-metrics-k8s-stack
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      sourceRef:
+        kind: HelmRepository
+        name: victoriametrics
+        namespace: flux-system
+      version: "0.25.3"
+  interval: 10m0s
+  timeout: 30m
+  install:
+    remediation:
+      retries: 3
+  values:
+    tenant: "0"
+
+    ## -- Might be interesting to have a look to the Grafana Operator
+    grafanaOperatorDashboardsFormat:
+      enabled: false
+      instanceSelector:
+        matchLabels:
+          dashboards: "grafana"
+      allowCrossNamespaceImport: false
+
+    vmsingle:
+      spec:
+        retentionPeriod: "1d" # Minimal retention, for tests only
+        replicaCount: 1
+        storage:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 10Gi
+
+    alertmanager:
+      enabled: true
+      annotations: {}
+      # spec for VMAlertmanager crd
+      # https://docs.victoriametrics.com/operator/api.html#vmalertmanagerspec
+      spec:
+        selectAllByDefault: true
+        image:
+          tag: v0.25.0
+        externalURL: "https://alertmanager.priv.${domain_name}"
+
+        # if this one defined, it will be used for alertmanager configuration and config parameter will be ignored
+        # configSecret: "alertmanager-config"
+
+      config:
+        templates:
+          - "/etc/vm/configs/**/*.tmpl"
+        route:
+          # group_by: ["alertgroup", "job"]
+          # group_wait: 30s
+          # group_interval: 5m
+          # repeat_interval: 12h
+          receiver: "blackhole"
+          ## routes:
+          ###################################################
+          ## Duplicate code_owner routes to teams
+          ## These will send alerts to team channels but continue
+          ## processing through the rest of the tree to handled by on-call
+          # - matchers:
+          #     - code_owner_channel!=""
+          #     - severity=~"info|warning|critical"
+          #   group_by: ["code_owner_channel", "alertgroup", "job"]
+          #   receiver: slack-code-owners
+          # ###################################################
+          # ## Standard on-call routes
+          # - matchers:
+          #     - severity=~"info|warning|critical"
+          #   receiver: slack-monitoring
+          #   continue: true
+
+        # inhibit_rules:
+        #   - target_matchers:
+        #       - severity=~"warning|info"
+        #     source_matchers:
+        #       - severity=critical
+        #     equal:
+        #       - cluster
+        #       - namespace
+        #       - alertname
+        #   - target_matchers:
+        #       - severity=info
+        #     source_matchers:
+        #       - severity=warning
+        #     equal:
+        #       - cluster
+        #       - namespace
+        #       - alertname
+        #   - target_matchers:
+        #       - severity=info
+        #     source_matchers:
+        #       - alertname=InfoInhibitor
+        #     equal:
+        #       - cluster
+        #       - namespace
+
+        receivers:
+          - name: blackhole
+          # - name: "slack-monitoring"
+          #   slack_configs:
+          #     - channel: "#channel"
+          #       send_resolved: true
+          #       title: '{{ template "slack.monzo.title" . }}'
+          #       icon_emoji: '{{ template "slack.monzo.icon_emoji" . }}'
+          #       color: '{{ template "slack.monzo.color" . }}'
+          #       text: '{{ template "slack.monzo.text" . }}'
+          #       actions:
+          #         - type: button
+          #           text: "Runbook :green_book:"
+          #           url: "{{ (index .Alerts 0).Annotations.runbook_url }}"
+          #         - type: button
+          #           text: "Query :mag:"
+          #           url: "{{ (index .Alerts 0).GeneratorURL }}"
+          #         - type: button
+          #           text: "Dashboard :grafana:"
+          #           url: "{{ (index .Alerts 0).Annotations.dashboard }}"
+          #         - type: button
+          #           text: "Silence :no_bell:"
+          #           url: '{{ template "__alert_silence_link" . }}'
+          #         - type: button
+          #           text: '{{ template "slack.monzo.link_button_text" . }}'
+          #           url: "{{ .CommonAnnotations.link_url }}"
+          # - name: slack-code-owners
+          #   slack_configs:
+          #     - channel: "#{{ .CommonLabels.code_owner_channel }}"
+          #       send_resolved: true
+          #       title: '{{ template "slack.monzo.title" . }}'
+          #       icon_emoji: '{{ template "slack.monzo.icon_emoji" . }}'
+          #       color: '{{ template "slack.monzo.color" . }}'
+          #       text: '{{ template "slack.monzo.text" . }}'
+          #       actions:
+          #         - type: button
+          #           text: "Runbook :green_book:"
+          #           url: "{{ (index .Alerts 0).Annotations.runbook }}"
+          #         - type: button
+          #           text: "Query :mag:"
+          #           url: "{{ (index .Alerts 0).GeneratorURL }}"
+          #         - type: button
+          #           text: "Dashboard :grafana:"
+          #           url: "{{ (index .Alerts 0).Annotations.dashboard }}"
+          #         - type: button
+          #           text: "Silence :no_bell:"
+          #           url: '{{ template "__alert_silence_link" . }}'
+          #         - type: button
+          #           text: '{{ template "slack.monzo.link_button_text" . }}'
+          #           url: "{{ .CommonAnnotations.link_url }}"
+          #
+      # better alert templates for slack
+      # source https://gist.github.com/milesbxf/e2744fc90e9c41b47aa47925f8ff6512
+      monzoTemplate:
+        enabled: true
+
+    grafana:
+      admin:
+        existingSecret: "victoria-metrics-k8s-stack-admin"
+      sidecar:
+        datasources:
+          enabled: true
+          initDatasources: true
+          createVMReplicasDatasources: false
+          # JSON options for VM datasources
+          # See https://grafana.com/docs/grafana/latest/administration/provisioning/#json-data
+          jsonData: {}
+          #  timeInterval: "1m"
+        dashboards:
+          additionalDashboardLabels: {}
+          additionalDashboardAnnotations: {}
+          enabled: true
+          multicluster: false
+
+      additionalDataSources:
+        - name: Loki
+          type: loki
+          url: http://loki-gateway
+          jsonData:
+            httpHeaderName1: "X-Scope-OrgID"
+          secureJsonData:
+            httpHeaderValue1: "1"
+
+      dashboardProviders:
+        dashboardproviders.yaml:
+          apiVersion: 1
+          providers:
+            - name: "default"
+              orgId: 1
+              folder: ""
+              type: file
+              disableDeletion: false
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards/default
+            - name: "flux"
+              orgId: 1
+              folder: "Flux"
+              type: file
+              disableDeletion: true
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards/flux
+            - name: "karpenter"
+              orgId: 1
+              folder: "Karpenter"
+              type: file
+              disableDeletion: true
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards/karpenter
+            - name: "loki"
+              orgId: 1
+              folder: "Loki"
+              type: file
+              disableDeletion: true
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards/loki
+            - name: "views"
+              orgId: 1
+              folder: "Views"
+              type: file
+              disableDeletion: true
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards/views
+
+      dashboards:
+        default:
+          nodeexporter:
+            gnetId: 1860
+            revision: 22
+            datasource: VictoriaMetrics
+        flux:
+          flux-controlplane:
+            url: https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/main/monitoring/configs/dashboards/control-plane.json
+            datasource: Prometheus
+          flux-cluster:
+            url: https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/main/monitoring/configs/dashboards/cluster.json
+            datasource: Prometheus
+          flux-logs:
+            url: https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/main/monitoring/configs/dashboards/logs.json
+            datasource: Loki
+        karpenter:
+          karpenter-capacity:
+            url: https://karpenter.sh/v0.34/getting-started/getting-started-with-karpenter/karpenter-capacity-dashboard.json
+            datasource: Prometheus
+          karpenter-performance:
+            url: https://karpenter.sh/v0.34/getting-started/getting-started-with-karpenter/karpenter-performance-dashboard.json
+            datasource: Prometheus
+        # Dashboards from https://github.com/dotdc/grafana-dashboards-kubernetes
+        views:
+          k8s-views-global:
+            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-global.json
+            datasource: Prometheus
+          k8s-views-namespaces:
+            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-namespaces.json
+            datasource: Prometheus
+          k8s-views-nodes:
+            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-nodes.json
+            datasource: Prometheus
+          k8s-views-pods:
+            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-pods.json
+            datasource: Prometheus
+
+    # Do not scrape controlplane components as it is a managed service on EKS
+    kubeApiServer:
+      enabled: false
+    kubeControllerManager:
+      enabled: false
+    kubeEtcd:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+    kubeProxy:
+      enabled: false
+
+    # Deployed with all the other CRDs, flux kustomization
+    crds:
+      enabled: false
