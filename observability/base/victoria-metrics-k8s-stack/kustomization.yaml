@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: observability
 
 resources:
+  - externalsecret-alertmanager-slack-app.yaml
   - externalsecret-grafana-admin.yaml
   - httproute.yaml
   - source.yaml
