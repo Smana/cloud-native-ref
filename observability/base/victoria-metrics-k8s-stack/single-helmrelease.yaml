@@ -95,11 +95,12 @@ spec:
         datasources:
           enabled: true
           initDatasources: true
-          createVMReplicasDatasources: false
-          # JSON options for VM datasources
-          # See https://grafana.com/docs/grafana/latest/administration/provisioning/#json-data
-          jsonData: {}
-          #  timeInterval: "1m"
+        plugins:
+          - "https://github.com/VictoriaMetrics/grafana-datasource/releases/download/v0.5.0/victoriametrics-datasource-v0.5.0.zip;victoriametrics-datasource"
+        grafana.ini:
+          plugins:
+            allow_loading_unsigned_plugins: victoriametrics-datasource
+        defaultDatasourceType: "victoriametrics-datasource"
         dashboards:
           additionalDashboardLabels: {}
           additionalDashboardAnnotations: {}

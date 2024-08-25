@@ -10,3 +10,6 @@ resources:
   # Choose between single or cluster helm release
   - single-helmrelease.yaml
   # - cluster-helmrelease.yaml
+  # Victoria Metrics Operator resources
+  - vmpodscrapes
+  - vmservicescrapes
