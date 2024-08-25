@@ -7,8 +7,8 @@ resources:
   - externalsecret-grafana-admin.yaml
   - source.yaml
   # Choose between single or cluster helm release
-  - single-helmrelease.yaml
-  # - cluster-helmrelease.yaml
+  - helmrelease-single.yaml
+  # - helmrelease-cluster.yaml
   # HttpRoutes
   - httproute-grafana.yaml
   - httproute-vmsingle.yaml # To be changed if cluster is chosen
@@ -17,3 +17,4 @@ resources:
   # Victoria Metrics Operator resources
   - vmpodscrapes
   - vmservicescrapes
+  - vmrules
