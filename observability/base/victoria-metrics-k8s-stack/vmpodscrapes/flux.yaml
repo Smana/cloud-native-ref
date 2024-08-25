@@ -1,10 +1,8 @@
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
 metadata:
   name: flux-system
   namespace: flux-system
-  labels:
-    prometheus-instance: "main"
 spec:
   namespaceSelector:
     matchNames:

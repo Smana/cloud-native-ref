@@ -8,9 +8,11 @@ spec:
   renewBefore: 360h # 15d
   commonName: private-gateway.priv.cloud.ogenki.io
   dnsNames:
-    - capacitor-${cluster_name}.priv.${domain_name}
-    - grafana-${cluster_name}.priv.${domain_name}
+    - grafana.priv.${domain_name}
     - harbor.priv.${domain_name}
+    - vm.priv.${domain_name}
+    - vmalertmanager-${cluster_name}.priv.${domain_name}
+    - vmagent-${cluster_name}.priv.${domain_name}
   issuerRef:
     name: vault
     kind: ClusterIssuer

@@ -10,7 +10,7 @@ spec:
       service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
       service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
       service.beta.kubernetes.io/aws-load-balancer-type: "external"
-      external-dns.alpha.kubernetes.io/hostname: capacitor-${cluster_name}.priv.${domain_name},grafana-${cluster_name}.priv.${domain_name},harbor.priv.${domain_name}
+      external-dns.alpha.kubernetes.io/hostname: "harbor.priv.${domain_name},grafana.priv.${domain_name},vm.priv.${domain_name},vmalertmanager-${cluster_name}.priv.${domain_name},vmagent-${cluster_name}.priv.${domain_name}"
   listeners:
     - name: http
       hostname: "*.priv.${domain_name}"
@@ -25,7 +25,6 @@ spec:
                 operator: In
                 values:
                   - observability
-                  - flux-system
                   - tooling
       tls:
         mode: Terminate

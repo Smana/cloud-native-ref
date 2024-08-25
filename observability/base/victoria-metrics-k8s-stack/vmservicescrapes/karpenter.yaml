@@ -1,0 +1,15 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: karpenter
+  namespace: karpenter
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: karpenter
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+  namespaceSelector:
+    matchNames:
+      - karpenter
