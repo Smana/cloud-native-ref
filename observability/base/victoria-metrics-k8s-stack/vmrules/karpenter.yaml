@@ -15,12 +15,11 @@ spec:
           labels:
             severity: warning
           annotations:
+            message: Problem with registering new nodes in the cluster.
             description: |
               Karpenter in the nodepool {{ $labels.nodeppol }} launched new nodes, but some of the nodes did not register in the cluster during 15 minutes.
-            summary: Problem with registering new nodes in the cluster.
-            runbook_url: "https://runbook.url"
-            dashboard: "https://dashboard.url"
-            link_url: "https://link.url"
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/"
+            dashboard: "https://grafana.priv.${domain_name}/dashboards"
 
         - alert: KarpenterNodepoolAlmostFull
           expr: sum by (nodepool,resource_type) (karpenter_nodepool_usage) / sum by (nodepool,resource_type) (karpenter_nodepool_limit) * 100 > 80
@@ -28,12 +27,11 @@ spec:
           labels:
             severity: warning
           annotations:
+            message: Nodepool almost full, you should increase limits.
             description: |
               Nodepool {{ $labels.nodeppol }} has launched {{ $value }}% of {{ $labels.resource_type }} resources of the limit.
-            summary: Nodepool almost full, you should increase limits.
-            runbook_url: "https://runbook.url"
-            dashboard: "https://dashboard.url"
-            link_url: "https://link.url"
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/"
+            dashboard: "https://grafana.priv.${domain_name}/dashboards"
 
         - alert: KarpenterCloudproviderErrors
           expr: increase(karpenter_cloudprovider_errors_total[10m]) > 0
@@ -41,9 +39,8 @@ spec:
           labels:
             severity: warning
           annotations:
+            message: Cloud provider errors detected by Karpenter.
             description: |
               Karpenter received an error during an API call to the cloud provider.
-            summary: Cloud provider errors detected by Karpenter.
-            runbook_url: "https://runbook.url"
-            dashboard: "https://dashboard.url"
-            link_url: "https://link.url"
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/"
+            dashboard: "https://grafana.priv.${domain_name}/dashboards"

@@ -1,3 +1,24 @@
+# Agent
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cilium-agent
+  namespace: kube-system
+  labels:
+    k8s-app: cilium
+    app.kubernetes.io/name: cilium-agent
+    app.kubernetes.io/part-of: cilium
+spec:
+  clusterIP: None
+  type: ClusterIP
+  selector:
+    k8s-app: cilium
+  ports:
+    - name: metrics
+      port: 9962
+      protocol: TCP
+      targetPort: prometheus
 ---
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMServiceScrape
@@ -18,22 +39,34 @@ spec:
       interval: "10s"
       honorLabels: true
       path: /metrics
-      relabelings:
-        - replacement: ${1}
-          sourceLabels:
-            - __meta_kubernetes_pod_node_name
-          targetLabel: node
-    - port: envoy-metrics
-      interval: "10s"
-      honorLabels: true
-      path: /metrics
-      relabelings:
-        - replacement: ${1}
+      relabelConfigs:
+        - action: replace
           sourceLabels:
             - __meta_kubernetes_pod_node_name
           targetLabel: node
   targetLabels:
     - k8s-app
+# Envoy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cilium-envoy
+  namespace: kube-system
+  labels:
+    k8s-app: cilium-envoy
+    app.kubernetes.io/name: cilium-envoy
+    app.kubernetes.io/part-of: cilium
+spec:
+  clusterIP: None
+  type: ClusterIP
+  selector:
+    k8s-app: cilium-envoy
+  ports:
+    - name: metrics
+      port: 9964
+      protocol: TCP
+      targetPort: envoy-metrics
 ---
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMServiceScrape
@@ -48,24 +81,49 @@ spec:
       k8s-app: cilium-envoy
   namespaceSelector:
     matchNames:
-      - default
+      - kube-system
   endpoints:
-    - port: envoy-metrics
+    - port: metrics
       interval: "10s"
       honorLabels: true
       path: /metrics
-      relabelings:
-        - replacement: ${1}
+      targetPort: envoy-metrics
+      relabelConfigs:
+        - action: replace
           sourceLabels:
             - __meta_kubernetes_pod_node_name
           targetLabel: node
   targetLabels:
     - k8s-app
+# Operator
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: cilium-operator
+  namespace: kube-system
+  labels:
+    io.cilium/app: operator
+    name: cilium-operator
+    app.kubernetes.io/part-of: cilium
+    app.kubernetes.io/name: cilium-operator
+spec:
+  clusterIP: None
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 9963
+      protocol: TCP
+      targetPort: prometheus
+  selector:
+    io.cilium/app: operator
+    name: cilium-operator
 ---
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMServiceScrape
 metadata:
   name: cilium-operator
+  namespace: kube-system
   labels:
     app.kubernetes.io/name: cilium-operator
 spec:
@@ -75,7 +133,7 @@ spec:
       name: cilium-operator
   namespaceSelector:
     matchNames:
-      - default
+      - kube-system
   endpoints:
     - port: metrics
       interval: "10s"
