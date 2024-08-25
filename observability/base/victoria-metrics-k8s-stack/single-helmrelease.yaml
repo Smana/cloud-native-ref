@@ -43,6 +43,7 @@ spec:
       enabled: true
 
       spec:
+        externalURL: "https://vmalertmanager-${cluster_name}.priv.${domain_name}"
         secrets:
           - "victoria-metrics-k8s-stack-alertmanager-slack-app"
 
@@ -60,7 +61,7 @@ spec:
           - target_matchers:
               - severity=info
             source_matchers:
-              - alertname=InfoInhibitor
+              - alertname=~InfoInhibitor|Watchdog|KubeCPUOvercommit
 
         receivers:
           - name: "slack-monitoring"
@@ -95,15 +96,7 @@ spec:
         datasources:
           enabled: true
           initDatasources: true
-        plugins:
-          - "https://github.com/VictoriaMetrics/grafana-datasource/releases/download/v0.5.0/victoriametrics-datasource-v0.5.0.zip;victoriametrics-datasource"
-        grafana.ini:
-          plugins:
-            allow_loading_unsigned_plugins: victoriametrics-datasource
-        defaultDatasourceType: "victoriametrics-datasource"
         dashboards:
-          additionalDashboardLabels: {}
-          additionalDashboardAnnotations: {}
           enabled: true
           multicluster: false
 
@@ -179,7 +172,7 @@ spec:
             datasource: Loki
         karpenter:
           default:
-            gnetId: 18862
+            gnetId: 20398
             revision: 2
             datasource: VictoriaMetrics
         # Dashboards from https://github.com/dotdc/grafana-dashboards-kubernetes

@@ -5,11 +5,15 @@ namespace: observability
 resources:
   - externalsecret-alertmanager-slack-app.yaml
   - externalsecret-grafana-admin.yaml
-  - httproute.yaml
   - source.yaml
   # Choose between single or cluster helm release
   - single-helmrelease.yaml
   # - cluster-helmrelease.yaml
+  # HttpRoutes
+  - httproute-grafana.yaml
+  - httproute-vmsingle.yaml # To be changed if cluster is chosen
+  - httproute-vmalertmanager.yaml
+  - httproute-vmagent.yaml
   # Victoria Metrics Operator resources
   - vmpodscrapes
   - vmservicescrapes
