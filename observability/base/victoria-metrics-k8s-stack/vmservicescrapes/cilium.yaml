@@ -141,3 +141,30 @@ spec:
       path: /metrics
   targetLabels:
     - io.cilium/app
+# Hubble
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  labels:
+    app.kubernetes.io/name: hubble
+  name: hubble
+  namespace: kube-system
+spec:
+  endpoints:
+    - honorLabels: true
+      interval: 10s
+      path: /metrics
+      port: hubble-metrics
+      relabelConfigs:
+        - action: replace
+          sourceLabels:
+            - __meta_kubernetes_pod_node_name
+          targetLabel: node
+      scheme: http
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      k8s-app: hubble

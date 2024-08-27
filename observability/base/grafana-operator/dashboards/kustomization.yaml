@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: observability
+
+resources:
+  - cilium-cilium.yaml
+  - cilium-hubble-dns-namespace.yaml
+  - cilium-hubble-l7-http-metrics.yaml
+  - cilium-hubble-network-overview-namespace.yaml
+  - cilium-hubble.yaml
+  - cilium-operator.yaml
+  - flux-cluster.yaml
+  - flux-control-plane.yaml
+  - flux-logs.yaml
+  - kubernetes-karpenter.yaml
+  - kubernetes-logs.yaml
+  - kubernetes-node-exporter-full.yaml
+  - kubernetes-quick-search-logs.yaml
+  - kubernetes-views-global.yaml
+  - kubernetes-views-namespaces.yaml
+  - kubernetes-views-nodes.yaml
+  - kubernetes-views-pods.yaml

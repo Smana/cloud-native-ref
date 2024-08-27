@@ -38,6 +38,6 @@ spec:
             runbook_url: "https://fluxcd.io/flux/cheatsheets/troubleshooting/"
             dashboard: "https://grafana.priv.${domain_name}/dashboards"
           expr: sum(gotk_suspend_status) by (name, kind, exported_namespace) > 0
-          for: 5m
+          for: 45m
           labels:
             severity: warning

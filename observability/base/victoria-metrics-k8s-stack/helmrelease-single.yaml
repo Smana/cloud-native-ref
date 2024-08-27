@@ -21,9 +21,8 @@ spec:
   values:
     tenant: "0"
 
-    ## -- Might be interesting to have a look to the Grafana Operator
     grafanaOperatorDashboardsFormat:
-      enabled: false
+      enabled: true
       instanceSelector:
         matchLabels:
           dashboards: "grafana"
@@ -109,123 +108,28 @@ spec:
         dashboards:
           enabled: true
           multicluster: false
-
-      additionalDataSources:
-        - name: Loki
-          type: loki
-          url: http://loki-gateway
-          jsonData:
-            httpHeaderName1: "X-Scope-OrgID"
-          secureJsonData:
-            httpHeaderValue1: "1"
-
-      dashboardProviders:
-        dashboardproviders.yaml:
-          apiVersion: 1
-          providers:
-            - name: "default"
-              orgId: 1
-              folder: ""
-              type: file
-              disableDeletion: false
-              editable: true
-              options:
-                path: /var/lib/grafana/dashboards/default
-            - name: "cilium"
-              orgId: 1
-              folder: "Cilium"
-              type: file
-              disableDeletion: true
-              editable: true
-              options:
-                path: /var/lib/grafana/dashboards/cilium
-            - name: "flux"
-              orgId: 1
-              folder: "Flux"
-              type: file
-              disableDeletion: true
-              editable: true
-              options:
-                path: /var/lib/grafana/dashboards/flux
-            - name: "karpenter"
-              orgId: 1
-              folder: "Karpenter"
-              type: file
-              disableDeletion: true
-              editable: true
-              options:
-                path: /var/lib/grafana/dashboards/karpenter
-            - name: "loki"
-              orgId: 1
-              folder: "Loki"
-              type: file
-              disableDeletion: true
-              editable: true
-              options:
-                path: /var/lib/grafana/dashboards/loki
-            - name: "views"
-              orgId: 1
-              folder: "Views"
-              type: file
-              disableDeletion: true
-              editable: true
-              options:
-                path: /var/lib/grafana/dashboards/views
-
-      dashboards:
-        default:
-          nodeexporter:
-            gnetId: 1860
-            revision: 22
-            datasource: VictoriaMetrics
-        cilium:
-          cilium:
-            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/cilium-agent/dashboards/cilium-dashboard.json
-            datasource: VictoriaMetrics
-          cilium-operator:
-            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/cilium-operator/dashboards/cilium-operator-dashboard.json
-            datasource: VictoriaMetrics
-          hubble:
-            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-dashboard.json
-            datasource: VictoriaMetrics
-          hubble-dns-namespace:
-            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-dns-namespace.json
-            datasource: VictoriaMetrics
-          hubble-l7-http-metrics:
-            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-l7-http-metrics-by-workload.json
-            datasource: VictoriaMetrics
-          hubble-network-overview-namespace:
-            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-network-overview-namespace.json
-            datasource: VictoriaMetrics
-        flux:
-          flux-controlplane:
-            url: https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/main/monitoring/configs/dashboards/control-plane.json
-            datasource: VictoriaMetrics
-          flux-cluster:
-            url: https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/main/monitoring/configs/dashboards/cluster.json
-            datasource: VictoriaMetrics
-          flux-logs:
-            url: https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/main/monitoring/configs/dashboards/logs.json
-            datasource: Loki
-        karpenter:
-          karpenter:
-            gnetId: 20398
-            revision: 1
-            datasource: VictoriaMetrics
-        # Dashboards from https://github.com/dotdc/grafana-dashboards-kubernetes
-        views:
-          k8s-views-global:
-            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-global.json
-            datasource: VictoriaMetrics
-          k8s-views-namespaces:
-            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-namespaces.json
-            datasource: VictoriaMetrics
-          k8s-views-nodes:
-            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-nodes.json
-            datasource: VictoriaMetrics
-          k8s-views-pods:
-            url: https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-pods.json
-            datasource: VictoriaMetrics
+      extraInitContainers:
+        - name: "load-vm-ds-plugin"
+          image: "curlimages/curl:7.85.0"
+          command: ["/bin/sh"]
+          workingDir: "/var/lib/grafana"
+          securityContext:
+            runAsUser: 472
+            runAsNonRoot: true
+            runAsGroup: 472
+          args:
+            - "-c"
+            - |
+              set -ex
+              mkdir -p /var/lib/grafana/plugins/
+              ver=$(curl -s https://api.github.com/repos/VictoriaMetrics/victoriametrics-datasource/releases/latest | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+              curl -L https://github.com/VictoriaMetrics/victoriametrics-datasource/releases/download/$ver/victoriametrics-datasource-$ver.tar.gz -o /var/lib/grafana/plugins/vm-plugin.tar.gz
+              tar -xf /var/lib/grafana/plugins/vm-plugin.tar.gz -C /var/lib/grafana/plugins/
+              rm /var/lib/grafana/plugins/vm-plugin.tar.gz
+          volumeMounts:
+            # For grafana-operator users, change `name: storage` to `name: grafana-data`
+            - name: storage
+              mountPath: /var/lib/grafana
 
     # Do not scrape controlplane components as it is a managed service on EKS
     kubeApiServer:
