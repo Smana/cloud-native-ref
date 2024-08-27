@@ -1,0 +1,46 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  labels:
+    app: karpenter
+  name: karpenter
+  namespace: karpenter
+spec:
+  groups:
+    - name: karpenter
+      rules:
+        - alert: KarpenterCanNotRegisterNewNodes
+          expr: sum by (nodepool) (karpenter_nodeclaims_launched) - sum by (nodepool)(karpenter_nodeclaims_registered) != 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            message: Problem with registering new nodes in the cluster.
+            description: |
+              Karpenter in the nodepool {{ $labels.nodeppol }} launched new nodes, but some of the nodes did not register in the cluster during 15 minutes.
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/"
+            dashboard: "https://grafana.priv.${domain_name}/dashboards"
+
+        - alert: KarpenterNodepoolAlmostFull
+          expr: sum by (nodepool,resource_type) (karpenter_nodepool_usage) / sum by (nodepool,resource_type) (karpenter_nodepool_limit) * 100 > 80
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            message: Nodepool almost full, you should increase limits.
+            description: |
+              Nodepool {{ $labels.nodeppol }} has launched {{ $value }}% of {{ $labels.resource_type }} resources of the limit.
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/"
+            dashboard: "https://grafana.priv.${domain_name}/dashboards"
+
+        - alert: KarpenterCloudproviderErrors
+          expr: increase(karpenter_cloudprovider_errors_total[10m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            message: Cloud provider errors detected by Karpenter.
+            description: |
+              Karpenter received an error during an API call to the cloud provider.
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/"
+            dashboard: "https://grafana.priv.${domain_name}/dashboards"

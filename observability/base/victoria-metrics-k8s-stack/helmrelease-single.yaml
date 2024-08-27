@@ -2,6 +2,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: victoria-metrics-k8s-stack
+  namespace: observability
 spec:
   releaseName: victoria-metrics-k8s-stack
   chart:
@@ -28,6 +29,10 @@ spec:
           dashboards: "grafana"
       allowCrossNamespaceImport: false
 
+    vmagent:
+      externalLabels:
+        cluster: "${cluster_name}"
+
     vmsingle:
       spec:
         retentionPeriod: "1d" # Minimal retention, for tests only
@@ -38,6 +43,8 @@ spec:
           resources:
             requests:
               storage: 10Gi
+        extraArgs:
+          maxLabelsPerTimeseries: "50"
 
     alertmanager:
       enabled: true
@@ -56,14 +63,17 @@ spec:
 
         route:
           receiver: "slack-monitoring"
-
-        inhibit_rules:
-          - target_matchers:
-              - severity=info
-            source_matchers:
-              - alertname=~InfoInhibitor|Watchdog|KubeCPUOvercommit
+          routes:
+            - matchers:
+                - alertname =~ "InfoInhibitor|Watchdog|KubeCPUOvercommit"
+              receiver: "blackhole"
+            - matchers:
+                - severity=~"info|warning|critical"
+              receiver: slack-monitoring
+              continue: true
 
         receivers:
+          - name: "blackhole"
           - name: "slack-monitoring"
             slack_configs:
               - channel: "#alerts"
@@ -121,6 +131,14 @@ spec:
               editable: true
               options:
                 path: /var/lib/grafana/dashboards/default
+            - name: "cilium"
+              orgId: 1
+              folder: "Cilium"
+              type: file
+              disableDeletion: true
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards/cilium
             - name: "flux"
               orgId: 1
               folder: "Flux"
@@ -160,6 +178,25 @@ spec:
             gnetId: 1860
             revision: 22
             datasource: VictoriaMetrics
+        cilium:
+          cilium:
+            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/cilium-agent/dashboards/cilium-dashboard.json
+            datasource: VictoriaMetrics
+          cilium-operator:
+            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/cilium-operator/dashboards/cilium-operator-dashboard.json
+            datasource: VictoriaMetrics
+          hubble:
+            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-dashboard.json
+            datasource: VictoriaMetrics
+          hubble-dns-namespace:
+            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-dns-namespace.json
+            datasource: VictoriaMetrics
+          hubble-l7-http-metrics:
+            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-l7-http-metrics-by-workload.json
+            datasource: VictoriaMetrics
+          hubble-network-overview-namespace:
+            url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-network-overview-namespace.json
+            datasource: VictoriaMetrics
         flux:
           flux-controlplane:
             url: https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/main/monitoring/configs/dashboards/control-plane.json
@@ -171,9 +208,9 @@ spec:
             url: https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/main/monitoring/configs/dashboards/logs.json
             datasource: Loki
         karpenter:
-          default:
+          karpenter:
             gnetId: 20398
-            revision: 2
+            revision: 1
             datasource: VictoriaMetrics
         # Dashboards from https://github.com/dotdc/grafana-dashboards-kubernetes
         views:

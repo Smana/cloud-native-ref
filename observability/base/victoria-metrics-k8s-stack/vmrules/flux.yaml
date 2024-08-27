@@ -1,0 +1,43 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  labels:
+    prometheus-instance: main
+  name: flux-system
+  namespace: flux-system
+spec:
+  groups:
+    - name: flux-system
+      rules:
+        - alert: FluxReconciliationFailure
+          annotations:
+            message: Flux resource has been unhealthy for more than 5m
+            description: "{{ $labels.kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} reconciliation has been failing for more than ten minutes."
+            runbook_url: "https://fluxcd.io/flux/cheatsheets/troubleshooting/"
+            dashboard: "https://grafana.priv.${domain_name}/dashboards"
+          expr: max(gotk_reconcile_condition{status="False",type="Ready"}) by (exported_namespace, name, kind) + on(exported_namespace, name, kind) (max(gotk_reconcile_condition{status="Deleted"}) by (exported_namespace, name, kind)) * 2 == 1
+          for: 10m
+          labels:
+            severity: warning
+        - alert: FluxHelmOperatorErrors
+          annotations:
+            message: Flux Helm operator errors
+            description: >
+              There is an issue deploying `{{ $labels.release_name }}` release helm chart.
+              Errors count `{{ $value }}`.
+            runbook_url: "https://fluxcd.io/flux/cheatsheets/troubleshooting/"
+            dashboard: "https://grafana.priv.${domain_name}/dashboards"
+          for: 5m
+          expr: sum(increase(flux_helm_operator_release_duration_seconds_count{success="false"}[5m])) by (release_name) > 0
+          labels:
+            severity: warning
+        - alert: FluxSuspended
+          annotations:
+            message: (Flux) Resource suspended for more than 45m
+            description: "`{{ $labels.kind }}` `{{ $labels.name  }}` in namespace `{{ $labels.exported_namespace }}` is suspended."
+            runbook_url: "https://fluxcd.io/flux/cheatsheets/troubleshooting/"
+            dashboard: "https://grafana.priv.${domain_name}/dashboards"
+          expr: sum(gotk_suspend_status) by (name, kind, exported_namespace) > 0
+          for: 5m
+          labels:
+            severity: warning

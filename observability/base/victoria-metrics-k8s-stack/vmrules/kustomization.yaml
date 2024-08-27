@@ -3,4 +3,5 @@ kind: Kustomization
 
 resources:
   - cilium.yaml
+  - flux.yaml
   - karpenter.yaml
