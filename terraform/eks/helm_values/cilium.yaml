@@ -34,5 +34,20 @@ envoy:
       cpu: 200m
       memory: 300Mi
 
+hubble:
+  metrics:
+    enabled:
+      - dns:query;ignoreAAAA
+      - drop
+      - tcp
+      - flow
+      - icmp
+      - http
+    enableOpenMetrics: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
 gatewayAPI:
   enabled: true

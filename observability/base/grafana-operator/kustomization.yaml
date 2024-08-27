@@ -1,7 +1,11 @@
-# These CRDs are kept for backward compatibility. Victoriametrics is able to convert them.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: observability
 
 resources:
+  - dashboards
+  - datasources
+  - folders
+  - grafana-victoriametrics.yaml
   - helmrelease.yaml
   - source.yaml
