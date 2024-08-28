@@ -1,0 +1,90 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: cilium-cilium
+spec:
+  folder: "cilium"
+  allowCrossNamespaceImport: true
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "VictoriaMetrics"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  url: "https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/cilium-agent/dashboards/cilium-dashboard.json"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: cilium-hubble-dns-namespace
+spec:
+  folder: "cilium"
+  allowCrossNamespaceImport: true
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "VictoriaMetrics"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  url: "https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-dns-namespace.json"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: cilium-hubble-l7-http-metrics
+spec:
+  folder: "cilium"
+  allowCrossNamespaceImport: true
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "VictoriaMetrics"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  url: "https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-l7-http-metrics-by-workload.json"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: cilium-hubble-network-overview-namespace
+spec:
+  folder: "cilium"
+  allowCrossNamespaceImport: true
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "VictoriaMetrics"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  url: "https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-network-overview-namespace.json"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: cilium-hubble
+spec:
+  folder: "cilium"
+  allowCrossNamespaceImport: true
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "VictoriaMetrics"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  url: "https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-dashboard.json"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: cilium-operator
+spec:
+  folder: "cilium"
+  allowCrossNamespaceImport: true
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "VictoriaMetrics"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  url: "https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/cilium-operator/dashboards/cilium-operator-dashboard.json"

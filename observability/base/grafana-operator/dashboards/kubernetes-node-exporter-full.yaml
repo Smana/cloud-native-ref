@@ -4,6 +4,9 @@ metadata:
   name: kubernetes-node-exporter-full
 spec:
   folder: "kubernetes"
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "VictoriaMetrics"
   instanceSelector:
     matchLabels:
       dashboards: "grafana"

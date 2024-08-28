@@ -8,7 +8,7 @@ spec:
     - name: platform-private
       namespace: infrastructure
   hostnames:
-    - "hubble.priv.${domain_name}"
+    - "hubble-${cluster_name}.priv.${domain_name}"
   rules:
     - backendRefs:
         - name: hubble-ui

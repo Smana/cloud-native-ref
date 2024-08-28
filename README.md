@@ -41,8 +41,8 @@ graph TD;
     EPIs["EKS Pod Identities"]-->Security;
     EPIs["EKS Pod Identities"]-->Infrastructure;
     EPIs["EKS Pod Identities"]-->Observability;
-    Observability-->Tooling;
-    Infrastructure-->Tooling;
+    Observability-->Apps["Other apps"];
+    Infrastructure-->Apps["Other apps"];
     Security-->Infrastructure;
     Security-->Observability
 ```

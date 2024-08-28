@@ -1,10 +1,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: kube-system
+namespace: flux-system
 
 resources:
   - grafana-dashboards.yaml
   - grafana-folder.yaml
-  - httproute-hubble-ui.yaml
-  - vmrules.yaml
-  - vmservicescrapes.yaml
+  - vmpodscrape.yaml
+  - vmrule.yaml
