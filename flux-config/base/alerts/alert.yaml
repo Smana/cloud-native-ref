@@ -1,0 +1,15 @@
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: slack
+  namespace: flux-system
+spec:
+  summary: "${cluster_name} cluster components impacted"
+  providerRef:
+    name: flux-slack-app
+  eventSeverity: error
+  eventSources:
+    - kind: GitRepository
+      name: "*"
+    - kind: Kustomization
+      name: "*"

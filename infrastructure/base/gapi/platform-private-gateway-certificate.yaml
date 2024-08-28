@@ -9,9 +9,9 @@ spec:
   commonName: private-gateway.priv.cloud.ogenki.io
   dnsNames:
     - grafana.priv.${domain_name}
-    - hubble.priv.${domain_name}
     - harbor.priv.${domain_name}
     - vm.priv.${domain_name}
+    - hubble-${cluster_name}.priv.${domain_name}
     - vmalertmanager-${cluster_name}.priv.${domain_name}
     - vmagent-${cluster_name}.priv.${domain_name}
   issuerRef:

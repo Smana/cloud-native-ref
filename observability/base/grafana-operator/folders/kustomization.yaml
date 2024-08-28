@@ -3,6 +3,4 @@ kind: Kustomization
 namespace: observability
 
 resources:
-  - cilium.yaml
-  - flux.yaml
   - kubernetes.yaml

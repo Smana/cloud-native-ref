@@ -3,15 +3,6 @@ kind: Kustomization
 namespace: observability
 
 resources:
-  - cilium-cilium.yaml
-  - cilium-hubble-dns-namespace.yaml
-  - cilium-hubble-l7-http-metrics.yaml
-  - cilium-hubble-network-overview-namespace.yaml
-  - cilium-hubble.yaml
-  - cilium-operator.yaml
-  - flux-cluster.yaml
-  - flux-control-plane.yaml
-  - flux-logs.yaml
   - kubernetes-karpenter.yaml
   - kubernetes-logs.yaml
   - kubernetes-node-exporter-full.yaml

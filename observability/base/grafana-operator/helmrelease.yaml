@@ -15,12 +15,10 @@ spec:
   interval: 10m0s
   timeout: 30m
   install:
+    crds: "Skip"
     remediation:
       retries: 3
   values:
-    namespaceScope: true
-    watchNamespaces: "observability"
-
     resources:
       limits:
         cpu: 100m
