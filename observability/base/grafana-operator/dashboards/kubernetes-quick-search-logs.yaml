@@ -4,6 +4,7 @@ metadata:
     name: kubernetes-quick-search-logs
 spec:
     resyncPeriod: 30s
+    folder: "Kubernetes"
     datasources:
         - inputName: "DS_LOKI"
           datasourceName: "Loki"

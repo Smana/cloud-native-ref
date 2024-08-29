@@ -116,7 +116,7 @@ tailscaled --tun=userspace-networking --socks5-server=:1055 --outbound-http-prox
 	return svc, nil
 }
 
-func createNetwork(ctx context.Context, ctr *dagger.Container, apply bool) (map[string]interface{}, error) {
+func createNetwork(ctx context.Context, ctr *dagger.Container, tfarg string) (map[string]interface{}, error) {
 	workDir := "/cloud-native-ref/terraform/network"
 
 	// Firts we need to import Tailscale ACLs due to a bug in the Terraform provider
@@ -135,9 +135,18 @@ fi
 		return nil, fmt.Errorf("failed to import the Tailscale ACLs: %w", err)
 	}
 
-	output, err := tfRun(ctx, ctr, workDir, apply, []string{"-var-file", "variables.tfvars"})
+	output, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars"})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create the network: %w", err)
 	}
 	return output, nil
+}
+
+func destroyNetwork(ctx context.Context, ctr *dagger.Container) error {
+	workDir := "/cloud-native-ref/terraform/network"
+	_, err := tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars", "-auto-approve"})
+	if err != nil {
+		return fmt.Errorf("failed to destroy the network: %w", err)
+	}
+	return nil
 }

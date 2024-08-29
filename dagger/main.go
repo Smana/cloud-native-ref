@@ -15,6 +15,7 @@ const (
 	repoName       = "cloud-native-ref"
 	tailnet        = "smainklh@gmail.com"
 	eksClusterName = "mycluster-0"
+	region         = "eu-west-3"
 )
 
 type CloudNativeRef struct {
@@ -190,7 +191,10 @@ func (m *CloudNativeRef) Plan(
 		container = container.WithMountedDirectory("/root/.aws/", authDir)
 	}
 
-	createNetwork(ctx, container, false)
+	_, err := createNetwork(ctx, container, "plan")
+	if err != nil {
+		return "", err
+	}
 
 	return container.
 		WithExec([]string{"echo", "Bootstrap the EKS cluster"}).
@@ -214,7 +218,7 @@ func (m *CloudNativeRef) Network(
 	container := m.Container.WithMountedDirectory(fmt.Sprintf("/%s", repoName), source)
 
 	// Create the network components
-	_, err := createNetwork(ctx, container, true)
+	_, err := createNetwork(ctx, container, "apply")
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +282,7 @@ func (m *CloudNativeRef) Vault(
 	}
 
 	// Apply the Terraform Vault configuration
-	vaultOutput, err := createVault(ctx, container, true)
+	vaultOutput, err := createVault(ctx, container, "apply")
 	if err != nil {
 		return nil, err
 	}
@@ -300,13 +304,13 @@ func (m *CloudNativeRef) Vault(
 		WithEnvVariable("http_proxy", "http://tailscale:1055")
 
 	// Configure the Vault PKI
-	err = configureVaultPKI(ctx, container, sess, fmt.Sprintf("certificates/%s/root-ca", privateDomainName))
+	_, err = configureVaultPKI(ctx, container, sess, fmt.Sprintf("certificates/%s/root-ca", privateDomainName))
 	if err != nil {
 		return nil, err
 	}
 
 	// Configure the Vault (policies, auth methods, etc.)
-	_, err = configureVault(ctx, container, true)
+	_, err = configureVault(ctx, container, "apply")
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +351,7 @@ func (m *CloudNativeRef) EKS(
 	container := m.Container.WithMountedDirectory(fmt.Sprintf("/%s", repoName), source)
 
 	// Create the network components
-	_, err := createEKS(ctx, container, true, branch)
+	_, err := createEKS(ctx, container, "apply", branch)
 	if err != nil {
 		return nil, err
 	}
@@ -466,4 +470,110 @@ func (m *CloudNativeRef) Bootstrap(
 				eksClusterName,
 			),
 		}).Stdout(ctx)
+}
+
+func (m *CloudNativeRef) Destroy(
+	ctx context.Context,
+
+	// source is the directory where the Terraform configuration is stored
+	// +required
+	source *dagger.Directory,
+
+	// branch is the branch to use for flux bootstrap
+	// +required
+	branch string,
+
+	// privateDomainName is the private domain name to use
+	// +optional
+	// +default="priv.cloud.ogenki.io"
+	privateDomainName string,
+
+	// vaultAddr is the Vault address to use
+	// +optional
+	vaultAddr string,
+
+	// vaultSkipVerify is the Vault skip verify to use
+	// +optional
+	// +default="true"
+	vaultSkipVerify string,
+
+	// env is a list of environment variables, expected in (key:value) format
+	// +optional
+	env []string,
+
+) error {
+	// mount the source directory
+	container := m.Container.WithMountedDirectory(fmt.Sprintf("/%s", repoName), source)
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, 2)
+
+	wg.Add(2)
+
+	sess, err := createAWSSession(ctx, m)
+	if err != nil {
+		return err
+	}
+	tailscaleSvc, err := tailscaleService(ctx, container)
+	if err != nil {
+		return err
+	}
+
+	// Set the Vault address
+	if vaultAddr == "" && privateDomainName != "" {
+		vaultAddr = fmt.Sprintf("https://vault.%s:8200", privateDomainName)
+	}
+
+	vaultSecretName := fmt.Sprintf("vault/%s/tokens/root", repoName)
+
+	secretData, err := getSecretManager(sess, vaultSecretName)
+	if err != nil {
+		return err
+	}
+	rootToken := secretData["token"]
+
+	vaultRootTokenSecret := dag.SetSecret("vaultRootToken", rootToken)
+	container = container.
+		WithEnvVariable("VAULT_ADDR", vaultAddr).
+		WithEnvVariable("VAULT_SKIP_VERIFY", vaultSkipVerify).
+		WithSecretVariable("VAULT_TOKEN", vaultRootTokenSecret).
+		WithServiceBinding("tailscale", tailscaleSvc).
+		WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
+		WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
+		WithEnvVariable("http_proxy", "http://tailscale:1055")
+
+	go func() {
+		defer wg.Done()
+		err := destroyEKS(ctx, container, sess, branch)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to destroy EKS resources: %w", err)
+			return
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		err := destroyVault(ctx, container)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to destroy Vault resources: %w", err)
+			return
+		}
+	}()
+
+	wg.Wait()
+
+	close(errChan)
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+
+	// Destroy the network components
+	err = destroyNetwork(ctx, container)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
