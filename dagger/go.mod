@@ -16,25 +16,33 @@ require (
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.16
-	go.opentelemetry.io/otel v1.28.0
-	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.0.0-20240822161223-002c0a4c0352
-	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.4.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.28.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.28.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.28.0
-	go.opentelemetry.io/otel/log v0.4.0
-	go.opentelemetry.io/otel/metric v1.28.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.28.0
-	go.opentelemetry.io/otel/sdk/log v0.4.0
-	go.opentelemetry.io/otel/trace v1.28.0
+	go.opentelemetry.io/otel v1.29.0
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.5.0
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.5.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.29.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.29.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.29.0
+	go.opentelemetry.io/otel/log v0.5.0
+	go.opentelemetry.io/otel/metric v1.29.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.29.0
+	go.opentelemetry.io/otel/sdk/log v0.5.0
+	go.opentelemetry.io/otel/trace v1.29.0
 	go.opentelemetry.io/proto/otlp v1.3.1
-	golang.org/x/exp v0.0.0-20240822175202-778ce7bba035
+	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948
 	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/sync v0.8.0
 	golang.org/x/sys v0.24.0 // indirect
 	golang.org/x/text v0.17.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240822170219-fc7c04adadcd // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240822170219-fc7c04adadcd // indirect
-	google.golang.org/grpc v1.65.0
+	google.golang.org/genproto/googleapis/api v0.0.0-20240827150818-7e3bb234dfed // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240827150818-7e3bb234dfed // indirect
+	google.golang.org/grpc v1.66.0
 	google.golang.org/protobuf v1.34.2 // indirect
 )
+
+replace go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc => go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.0.0-20240518090000-14441aefdf88
+
+replace go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp => go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.3.0
+
+replace go.opentelemetry.io/otel/log => go.opentelemetry.io/otel/log v0.3.0
+
+replace go.opentelemetry.io/otel/sdk/log => go.opentelemetry.io/otel/sdk/log v0.3.0

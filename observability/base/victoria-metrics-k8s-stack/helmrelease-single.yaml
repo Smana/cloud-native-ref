@@ -108,6 +108,11 @@ spec:
         dashboards:
           enabled: true
           multicluster: false
+      dashboardProviders:
+        dashboardproviders.yaml:
+          apiVersion: 1
+          providers: []
+      dashboards: {}
       extraInitContainers:
         - name: "load-vm-ds-plugin"
           image: "curlimages/curl:8.9.1"

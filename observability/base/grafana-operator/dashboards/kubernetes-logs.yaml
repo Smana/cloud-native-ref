@@ -1,388 +1,389 @@
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
-  name: kubernetes-logs
+    name: kubernetes-logs
 spec:
-  resyncPeriod: 30s
-  datasources:
-    - inputName: "DS_LOKI"
-      datasourceName: "Loki"
-  instanceSelector:
-    matchLabels:
-      dashboards: "grafana"
-  json: >
-    {
-        "__inputs": [
-            {
-                "name": "DS_LOKI",
-                "label": "Loki",
-                "description": "",
-                "type": "datasource",
-                "pluginId": "loki",
-                "pluginName": "Loki"
-            }
-        ],
-        "__requires": [
-            {
-                "type": "grafana",
-                "id": "grafana",
-                "name": "Grafana",
-                "version": "8.1.5"
-            },
-            {
-                "type": "panel",
-                "id": "logs",
-                "name": "Logs",
-                "version": ""
-            },
-            {
-                "type": "datasource",
-                "id": "loki",
-                "name": "Loki",
-                "version": "1.0.0"
-            },
-            {
-                "type": "panel",
-                "id": "timeseries",
-                "name": "Time series",
-                "version": ""
-            }
-        ],
-        "annotations": {
-            "list": [
+    resyncPeriod: 30s
+    folder: "Kubernetes"
+    datasources:
+        - inputName: "DS_LOKI"
+          datasourceName: "Loki"
+    instanceSelector:
+        matchLabels:
+            dashboards: "grafana"
+    json: >
+        {
+            "__inputs": [
                 {
-                    "builtIn": 1,
-                    "datasource": "-- Grafana --",
-                    "enable": true,
-                    "hide": true,
-                    "iconColor": "rgba(0, 211, 255, 1)",
-                    "name": "Annotations & Alerts",
-                    "target": {
-                        "limit": 100,
-                        "matchAny": false,
-                        "tags": [],
-                        "type": "dashboard"
-                    },
-                    "type": "dashboard"
+                    "name": "DS_LOKI",
+                    "label": "Loki",
+                    "description": "",
+                    "type": "datasource",
+                    "pluginId": "loki",
+                    "pluginName": "Loki"
                 }
-            ]
-        },
-        "description": "Logs collected from Kubernetes",
-        "editable": true,
-        "gnetId": 15141,
-        "graphTooltip": 0,
-        "id": null,
-        "links": [],
-        "panels": [
-            {
-                "datasource": "${DS_LOKI}",
-                "description": "",
-                "fieldConfig": {
-                    "defaults": {
-                        "color": {
-                            "mode": "palette-classic"
+            ],
+            "__requires": [
+                {
+                    "type": "grafana",
+                    "id": "grafana",
+                    "name": "Grafana",
+                    "version": "8.1.5"
+                },
+                {
+                    "type": "panel",
+                    "id": "logs",
+                    "name": "Logs",
+                    "version": ""
+                },
+                {
+                    "type": "datasource",
+                    "id": "loki",
+                    "name": "Loki",
+                    "version": "1.0.0"
+                },
+                {
+                    "type": "panel",
+                    "id": "timeseries",
+                    "name": "Time series",
+                    "version": ""
+                }
+            ],
+            "annotations": {
+                "list": [
+                    {
+                        "builtIn": 1,
+                        "datasource": "-- Grafana --",
+                        "enable": true,
+                        "hide": true,
+                        "iconColor": "rgba(0, 211, 255, 1)",
+                        "name": "Annotations & Alerts",
+                        "target": {
+                            "limit": 100,
+                            "matchAny": false,
+                            "tags": [],
+                            "type": "dashboard"
                         },
-                        "custom": {
-                            "axisCenteredZero": false,
-                            "axisColorMode": "text",
-                            "axisLabel": "",
-                            "axisPlacement": "auto",
-                            "barAlignment": 0,
-                            "drawStyle": "bars",
-                            "fillOpacity": 0,
-                            "gradientMode": "none",
-                            "hideFrom": {
-                                "legend": false,
-                                "tooltip": false,
-                                "viz": false
+                        "type": "dashboard"
+                    }
+                ]
+            },
+            "description": "Logs collected from Kubernetes",
+            "editable": true,
+            "gnetId": 15141,
+            "graphTooltip": 0,
+            "id": null,
+            "links": [],
+            "panels": [
+                {
+                    "datasource": "${DS_LOKI}",
+                    "description": "",
+                    "fieldConfig": {
+                        "defaults": {
+                            "color": {
+                                "mode": "palette-classic"
                             },
-                            "insertNulls": false,
-                            "lineInterpolation": "linear",
-                            "lineWidth": 1,
-                            "pointSize": 5,
-                            "scaleDistribution": {
-                                "type": "linear"
+                            "custom": {
+                                "axisCenteredZero": false,
+                                "axisColorMode": "text",
+                                "axisLabel": "",
+                                "axisPlacement": "auto",
+                                "barAlignment": 0,
+                                "drawStyle": "bars",
+                                "fillOpacity": 0,
+                                "gradientMode": "none",
+                                "hideFrom": {
+                                    "legend": false,
+                                    "tooltip": false,
+                                    "viz": false
+                                },
+                                "insertNulls": false,
+                                "lineInterpolation": "linear",
+                                "lineWidth": 1,
+                                "pointSize": 5,
+                                "scaleDistribution": {
+                                    "type": "linear"
+                                },
+                                "showPoints": "auto",
+                                "spanNulls": false,
+                                "stacking": {
+                                    "group": "A",
+                                    "mode": "none"
+                                },
+                                "thresholdsStyle": {
+                                    "mode": "off"
+                                }
                             },
-                            "showPoints": "auto",
-                            "spanNulls": false,
-                            "stacking": {
-                                "group": "A",
-                                "mode": "none"
-                            },
-                            "thresholdsStyle": {
-                                "mode": "off"
+                            "mappings": [],
+                            "thresholds": {
+                                "mode": "absolute",
+                                "steps": [
+                                    {
+                                        "color": "green",
+                                        "value": null
+                                    },
+                                    {
+                                        "color": "red",
+                                        "value": 80
+                                    }
+                                ]
                             }
                         },
-                        "mappings": [],
-                        "thresholds": {
-                            "mode": "absolute",
-                            "steps": [
-                                {
-                                    "color": "green",
-                                    "value": null
-                                },
-                                {
-                                    "color": "red",
-                                    "value": 80
-                                }
-                            ]
+                        "overrides": []
+                    },
+                    "gridPos": {
+                        "h": 4,
+                        "w": 24,
+                        "x": 0,
+                        "y": 0
+                    },
+                    "id": 4,
+                    "options": {
+                        "legend": {
+                            "calcs": [],
+                            "displayMode": "list",
+                            "placement": "bottom",
+                            "showLegend": false
+                        },
+                        "tooltip": {
+                            "mode": "single"
                         }
                     },
-                    "overrides": []
-                },
-                "gridPos": {
-                    "h": 4,
-                    "w": 24,
-                    "x": 0,
-                    "y": 0
-                },
-                "id": 4,
-                "options": {
-                    "legend": {
-                        "calcs": [],
-                        "displayMode": "list",
-                        "placement": "bottom",
-                        "showLegend": false
-                    },
-                    "tooltip": {
-                        "mode": "single"
-                    }
-                },
-                "targets": [
-                    {
-                        "expr": "sum(count_over_time({namespace=~\"$namespace\", node_name=~\"$node_name\", pod_owner=~\"$pod_owner\", pod_name=~\"$pod_name\", container_name=~\"$container_name\", stream=\"$stream\"} |= \"$query\" [$__interval]))",
-                        "instant": false,
-                        "legendFormat": "Log count",
-                        "range": true,
-                        "refId": "A"
-                    }
-                ],
-                "type": "timeseries"
-            },
-            {
-                "datasource": "${DS_LOKI}",
-                "description": "Logs from services running in Kubernetes",
-                "gridPos": {
-                    "h": 25,
-                    "w": 24,
-                    "x": 0,
-                    "y": 4
-                },
-                "id": 2,
-                "options": {
-                    "dedupStrategy": "none",
-                    "enableLogDetails": true,
-                    "prettifyLogMessage": false,
-                    "showCommonLabels": false,
-                    "showLabels": false,
-                    "showTime": false,
-                    "sortOrder": "Descending",
-                    "wrapLogMessage": false
-                },
-                "targets": [
-                    {
-                        "expr": "{namespace=~\"$namespace\", node_name=~\"$node_name\", pod_owner=~\"$pod_owner\", pod_name=~\"$pod_name\", container_name=~\"$container_name\", stream=~\"$stream\"} |= \"$query\"",
-                        "refId": "A"
-                    }
-                ],
-                "type": "logs"
-            }
-        ],
-        "refresh": "",
-        "schemaVersion": 30,
-        "style": "dark",
-        "tags": [],
-        "templating": {
-            "list": [
-                {
-                    "current": {
-                        "selected": false,
-                        "text": "",
-                        "value": ""
-                    },
-                    "description": "String to search for",
-                    "hide": 0,
-                    "label": "Search Query",
-                    "name": "query",
-                    "options": [
+                    "targets": [
                         {
-                            "selected": true,
-                            "text": "",
-                            "value": ""
+                            "expr": "sum(count_over_time({namespace=~\"$namespace\", node_name=~\"$node_name\", pod_owner=~\"$pod_owner\", pod_name=~\"$pod_name\", container_name=~\"$container_name\", stream=\"$stream\"} |= \"$query\" [$__interval]))",
+                            "instant": false,
+                            "legendFormat": "Log count",
+                            "range": true,
+                            "refId": "A"
                         }
                     ],
-                    "query": "",
-                    "skipUrlSync": false,
-                    "type": "textbox"
+                    "type": "timeseries"
                 },
                 {
-                    "allValue": ".+",
-                    "current": {},
                     "datasource": "${DS_LOKI}",
-                    "definition": "label_values(namespace)",
-                    "hide": 0,
-                    "includeAll": true,
-                    "multi": true,
-                    "name": "namespace",
-                    "options": [],
-                    "query": "label_values(namespace)",
-                    "refresh": 1,
-                    "regex": "",
-                    "skipUrlSync": false,
-                    "sort": 0,
-                    "type": "query"
-                },
-                {
-                    "allValue": ".+",
-                    "current": {},
-                    "datasource": "${DS_LOKI}",
-                    "definition": "",
-                    "hide": 0,
-                    "includeAll": true,
-                    "label": "node_name",
-                    "multi": true,
-                    "name": "node_name",
-                    "options": [],
-                    "query": {
-                        "label": "node_name",
-                        "stream": "",
-                        "type": 1
+                    "description": "Logs from services running in Kubernetes",
+                    "gridPos": {
+                        "h": 25,
+                        "w": 24,
+                        "x": 0,
+                        "y": 4
                     },
-                    "refresh": 1,
-                    "regex": "",
-                    "skipUrlSync": false,
-                    "sort": 1,
-                    "type": "query"
-                },
-                {
-                    "allValue": ".+",
-                    "current": {
-                        "selected": true,
-                        "text": [
-                            "All"
-                        ],
-                        "value": [
-                            "$__all"
-                        ]
+                    "id": 2,
+                    "options": {
+                        "dedupStrategy": "none",
+                        "enableLogDetails": true,
+                        "prettifyLogMessage": false,
+                        "showCommonLabels": false,
+                        "showLabels": false,
+                        "showTime": false,
+                        "sortOrder": "Descending",
+                        "wrapLogMessage": false
                     },
-                    "datasource": "${DS_LOKI}",
-                    "definition": "",
-                    "hide": 0,
-                    "includeAll": true,
-                    "label": "pod_owner",
-                    "multi": true,
-                    "name": "pod_owner",
-                    "options": [],
-                    "query": {
-                        "label": "pod_owner",
-                        "stream": "",
-                        "type": 1
-                    },
-                    "refresh": 1,
-                    "regex": "",
-                    "skipUrlSync": false,
-                    "sort": 1,
-                    "type": "query"
-                },
-                {
-                    "allValue": ".+",
-                    "current": {
-                        "selected": true,
-                        "text": [
-                            "All"
-                        ],
-                        "value": [
-                            "$__all"
-                        ]
-                    },
-                    "datasource": "${DS_LOKI}",
-                    "definition": "",
-                    "hide": 0,
-                    "includeAll": true,
-                    "label": "pod_name",
-                    "multi": true,
-                    "name": "pod_name",
-                    "options": [],
-                    "query": {
-                        "label": "pod_name",
-                        "stream": "",
-                        "type": 1
-                    },
-                    "refresh": 1,
-                    "regex": "",
-                    "skipUrlSync": false,
-                    "sort": 1,
-                    "type": "query"
-                },
-                {
-                    "allValue": ".+",
-                    "current": {
-                        "selected": true,
-                        "text": [
-                            "All"
-                        ],
-                        "value": [
-                            "$__all"
-                        ]
-                    },
-                    "datasource": "${DS_LOKI}",
-                    "definition": "",
-                    "hide": 0,
-                    "includeAll": true,
-                    "label": "container_name",
-                    "multi": true,
-                    "name": "container_name",
-                    "options": [],
-                    "query": {
-                        "label": "container_name",
-                        "stream": "",
-                        "type": 1
-                    },
-                    "refresh": 1,
-                    "regex": "",
-                    "skipUrlSync": false,
-                    "sort": 1,
-                    "type": "query"
-                },
-                {
-                    "allValue": ".+",
-                    "current": {
-                        "selected": true,
-                        "text": [
-                            "All"
-                        ],
-                        "value": [
-                            "$__all"
-                        ]
-                    },
-                    "datasource": "${DS_LOKI}",
-                    "definition": "",
-                    "hide": 0,
-                    "includeAll": true,
-                    "label": "stream",
-                    "multi": false,
-                    "name": "stream",
-                    "options": [],
-                    "query": {
-                        "label": "stream",
-                        "stream": "",
-                        "type": 1
-                    },
-                    "refresh": 1,
-                    "regex": "",
-                    "skipUrlSync": false,
-                    "sort": 1,
-                    "type": "query"
+                    "targets": [
+                        {
+                            "expr": "{namespace=~\"$namespace\", node_name=~\"$node_name\", pod_owner=~\"$pod_owner\", pod_name=~\"$pod_name\", container_name=~\"$container_name\", stream=~\"$stream\"} |= \"$query\"",
+                            "refId": "A"
+                        }
+                    ],
+                    "type": "logs"
                 }
-            ]
-        },
-        "time": {
-            "from": "now-6h",
-            "to": "now"
-        },
-        "timepicker": {},
-        "timezone": "",
-        "title": "Loki Kubernetes Logs",
-        "uid": "fc647bde-03d4-446d-ad7f-07813695766f",
-        "version": 13
-    }
+            ],
+            "refresh": "",
+            "schemaVersion": 30,
+            "style": "dark",
+            "tags": [],
+            "templating": {
+                "list": [
+                    {
+                        "current": {
+                            "selected": false,
+                            "text": "",
+                            "value": ""
+                        },
+                        "description": "String to search for",
+                        "hide": 0,
+                        "label": "Search Query",
+                        "name": "query",
+                        "options": [
+                            {
+                                "selected": true,
+                                "text": "",
+                                "value": ""
+                            }
+                        ],
+                        "query": "",
+                        "skipUrlSync": false,
+                        "type": "textbox"
+                    },
+                    {
+                        "allValue": ".+",
+                        "current": {},
+                        "datasource": "${DS_LOKI}",
+                        "definition": "label_values(namespace)",
+                        "hide": 0,
+                        "includeAll": true,
+                        "multi": true,
+                        "name": "namespace",
+                        "options": [],
+                        "query": "label_values(namespace)",
+                        "refresh": 1,
+                        "regex": "",
+                        "skipUrlSync": false,
+                        "sort": 0,
+                        "type": "query"
+                    },
+                    {
+                        "allValue": ".+",
+                        "current": {},
+                        "datasource": "${DS_LOKI}",
+                        "definition": "",
+                        "hide": 0,
+                        "includeAll": true,
+                        "label": "node_name",
+                        "multi": true,
+                        "name": "node_name",
+                        "options": [],
+                        "query": {
+                            "label": "node_name",
+                            "stream": "",
+                            "type": 1
+                        },
+                        "refresh": 1,
+                        "regex": "",
+                        "skipUrlSync": false,
+                        "sort": 1,
+                        "type": "query"
+                    },
+                    {
+                        "allValue": ".+",
+                        "current": {
+                            "selected": true,
+                            "text": [
+                                "All"
+                            ],
+                            "value": [
+                                "$__all"
+                            ]
+                        },
+                        "datasource": "${DS_LOKI}",
+                        "definition": "",
+                        "hide": 0,
+                        "includeAll": true,
+                        "label": "pod_owner",
+                        "multi": true,
+                        "name": "pod_owner",
+                        "options": [],
+                        "query": {
+                            "label": "pod_owner",
+                            "stream": "",
+                            "type": 1
+                        },
+                        "refresh": 1,
+                        "regex": "",
+                        "skipUrlSync": false,
+                        "sort": 1,
+                        "type": "query"
+                    },
+                    {
+                        "allValue": ".+",
+                        "current": {
+                            "selected": true,
+                            "text": [
+                                "All"
+                            ],
+                            "value": [
+                                "$__all"
+                            ]
+                        },
+                        "datasource": "${DS_LOKI}",
+                        "definition": "",
+                        "hide": 0,
+                        "includeAll": true,
+                        "label": "pod_name",
+                        "multi": true,
+                        "name": "pod_name",
+                        "options": [],
+                        "query": {
+                            "label": "pod_name",
+                            "stream": "",
+                            "type": 1
+                        },
+                        "refresh": 1,
+                        "regex": "",
+                        "skipUrlSync": false,
+                        "sort": 1,
+                        "type": "query"
+                    },
+                    {
+                        "allValue": ".+",
+                        "current": {
+                            "selected": true,
+                            "text": [
+                                "All"
+                            ],
+                            "value": [
+                                "$__all"
+                            ]
+                        },
+                        "datasource": "${DS_LOKI}",
+                        "definition": "",
+                        "hide": 0,
+                        "includeAll": true,
+                        "label": "container_name",
+                        "multi": true,
+                        "name": "container_name",
+                        "options": [],
+                        "query": {
+                            "label": "container_name",
+                            "stream": "",
+                            "type": 1
+                        },
+                        "refresh": 1,
+                        "regex": "",
+                        "skipUrlSync": false,
+                        "sort": 1,
+                        "type": "query"
+                    },
+                    {
+                        "allValue": ".+",
+                        "current": {
+                            "selected": true,
+                            "text": [
+                                "All"
+                            ],
+                            "value": [
+                                "$__all"
+                            ]
+                        },
+                        "datasource": "${DS_LOKI}",
+                        "definition": "",
+                        "hide": 0,
+                        "includeAll": true,
+                        "label": "stream",
+                        "multi": false,
+                        "name": "stream",
+                        "options": [],
+                        "query": {
+                            "label": "stream",
+                            "stream": "",
+                            "type": 1
+                        },
+                        "refresh": 1,
+                        "regex": "",
+                        "skipUrlSync": false,
+                        "sort": 1,
+                        "type": "query"
+                    }
+                ]
+            },
+            "time": {
+                "from": "now-6h",
+                "to": "now"
+            },
+            "timepicker": {},
+            "timezone": "",
+            "title": "Loki Kubernetes Logs",
+            "uid": "fc647bde-03d4-446d-ad7f-07813695766f",
+            "version": 13
+        }

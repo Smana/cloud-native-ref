@@ -79,7 +79,7 @@ Description=Prometheus exporter for server metrics
 Restart=always
 User=prometheus
 ExecStart=/usr/local/bin/node_exporter
-ExecReload=/bin/kill -HUP $MAINPID
+ExecReload=/bin/kill -HUP \$MAINPID
 TimeoutStopSec=20s
 SendSIGKILL=no
 

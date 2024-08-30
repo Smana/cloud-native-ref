@@ -10,16 +10,43 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 )
 
-func createVault(ctx context.Context, ctr *dagger.Container, apply bool) (map[string]interface{}, error) {
+// createVault creates the vault cluster
+func createVault(ctx context.Context, ctr *dagger.Container, tfarg string) (map[string]interface{}, error) {
 	workDir := fmt.Sprintf("/%s/terraform/vault/cluster", repoName)
 
-	output, err := tfRun(ctx, ctr, workDir, apply, []string{"-var-file", "variables.tfvars"})
+	_, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars"})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create the vault cluster: %w", err)
 	}
-	return output, nil
+
+	if tfarg == "apply" {
+		output, err := tfRun(ctx, ctr, workDir, "output", []string{"-var-file", "variables.tfvars"})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get the output of the vault cluster: %w", err)
+		}
+		return output, nil
+	}
+
+	return nil, nil
 }
 
+// destroyVault destroys the vault cluster
+func destroyVault(ctx context.Context, ctr *dagger.Container) error {
+	workDir := fmt.Sprintf("/%s/terraform/vault/management", repoName)
+	_, err := tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars", "--auto-approve"})
+	if err != nil {
+		return fmt.Errorf("failed to destroy the vault configuration: %w", err)
+	}
+
+	workDir = fmt.Sprintf("/%s/terraform/vault/cluster", repoName)
+	_, err = tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars", "--auto-approve"})
+	if err != nil {
+		return fmt.Errorf("failed to destroy the vault cluster: %w", err)
+	}
+	return nil
+}
+
+// initVault initializes the vault cluster and returns the root token
 func initVault(
 	vaultOutput map[string]interface{},
 	sess *session.Session,
@@ -88,21 +115,22 @@ fi
 
 }
 
+// configureVaultPKI configures the Vault PKI
 func configureVaultPKI(
 	ctx context.Context,
 	ctr *dagger.Container,
 	sess *session.Session,
 	secretName string,
-) error {
+) (string, error) {
 
 	rootCerts, err := getSecretManager(sess, secretName)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	bundlePlaintext := rootCerts["bundle"]
 	if bundlePlaintext == "" {
-		return fmt.Errorf("bundle not found in secret")
+		return "", fmt.Errorf("bundle not found in secret")
 	}
 
 	bundle := dag.SetSecret("bundle", rootCerts["bundle"])
@@ -161,24 +189,24 @@ else
 fi
 `
 
-	ctr.
+	return ctr.
 		WithSecretVariable("VAULT_PKI_CA_BUNDLE", bundle).
 		WithNewFile("/bin/configure-vault-pki", vaultInitScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
 		WithExec([]string{"/bin/configure-vault-pki"}).
 		Stdout(ctx)
-
-	return err
 }
 
-func configureVault(ctx context.Context, ctr *dagger.Container, apply bool) (map[string]interface{}, error) {
+// configureVault configures the vault cluster
+func configureVault(ctx context.Context, ctr *dagger.Container, tfarg string) (map[string]interface{}, error) {
 	workDir := fmt.Sprintf("/%s/terraform/vault/management", repoName)
-	output, err := tfRun(ctx, ctr, workDir, apply, []string{"-var-file", "variables.tfvars"})
+	_, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars"})
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure the vault cluster: %w", err)
 	}
-	return output, nil
+	return nil, nil
 }
 
+// certManagerApprole creates the AppRole for the cert-manager
 func certManagerApprole(ctx context.Context, container *dagger.Container, sess *session.Session) (map[string]string, error) {
 	// Create the AppRole for the cert-manager
 	appRoleScript := `#!/bin/bash

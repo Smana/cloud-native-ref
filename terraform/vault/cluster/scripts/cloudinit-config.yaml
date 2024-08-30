@@ -18,7 +18,7 @@ apt:
   sources:
     hashicorp.list:
       keyid: 798AEC654E5C15428C8E42EEAA16FCBCA621E701
-      source: "deb [arch=amd64] https://apt.releases.hashicorp.com mantic main"
+      source: "deb [arch=amd64] https://apt.releases.hashicorp.com noble main"
 
 packages:
   - jq

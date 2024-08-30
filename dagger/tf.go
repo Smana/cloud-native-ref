@@ -8,7 +8,7 @@ import (
 )
 
 // tfRun applies the terraform configuration
-func tfRun(ctx context.Context, ctr *dagger.Container, workDir string, apply bool, args []string) (map[string]interface{}, error) {
+func tfRun(ctx context.Context, ctr *dagger.Container, workDir string, arg string, params []string) (map[string]interface{}, error) {
 
 	// First init the terraform configuration
 	ctr = ctr.WithWorkdir(workDir).WithExec([]string{"tofu", "init"})
@@ -18,33 +18,37 @@ func tfRun(ctx context.Context, ctr *dagger.Container, workDir string, apply boo
 	}
 
 	cmd := []string{"tofu", "plan"}
-	if apply {
+	if arg == "apply" {
 		cmd = []string{"tofu", "apply", "-auto-approve"}
+	} else if arg == "destroy" {
+		cmd = []string{"tofu", "destroy", "-auto-approve"}
 	}
-	cmd = append(cmd, args...)
+	cmd = append(cmd, params...)
 	_, err = ctr.WithWorkdir(workDir).
 		WithExec(cmd).Stdout(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run the terraform command: %w", err)
 	}
 
-	output := ""
-	if apply {
-		output, err = ctr.WithWorkdir(workDir).
+	if arg == "output" {
+		output, err := ctr.WithWorkdir(workDir).
 			WithExec([]string{"tofu", "output", "-json"}).
 			Stdout(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get the output of the directory %s: %w", workDir, err)
 		}
+
+		var outputJson map[string]interface{}
+
+		// convert string to json for output
+		err = json.Unmarshal([]byte(output), &outputJson)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal the output of the directory %s: %s", workDir, err)
+		}
+
+		return outputJson, nil
 	}
 
-	var outputJson map[string]interface{}
+	return nil, nil
 
-	// convert string to json for output
-	err = json.Unmarshal([]byte(output), &outputJson)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal the output of the directory %s: %s", workDir, err)
-	}
-
-	return outputJson, nil
 }

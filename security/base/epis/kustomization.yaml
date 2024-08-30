@@ -10,3 +10,4 @@ resources:
   - load-balancer-controller.yaml
   - loki.yaml
   - vault-snapshot.yaml
+  - victoriametrics.yaml

@@ -12,7 +12,7 @@ resources:
   - httproute-grafana.yaml
   - httproute-vmsingle.yaml # To be changed if cluster is chosen
   - httproute-vmalertmanager.yaml
-  - httproute-vmagent.yaml
   # Victoria Metrics Operator resources
+  - vmscrapeconfigs
   - vmservicescrapes
   - vmrules
