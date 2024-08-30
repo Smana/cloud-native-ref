@@ -13,7 +13,6 @@ spec:
     - vm.priv.${domain_name}
     - hubble-${cluster_name}.priv.${domain_name}
     - vmalertmanager-${cluster_name}.priv.${domain_name}
-    - vmagent-${cluster_name}.priv.${domain_name}
   issuerRef:
     name: vault
     kind: ClusterIssuer

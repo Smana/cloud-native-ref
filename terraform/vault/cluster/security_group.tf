@@ -32,7 +32,6 @@ resource "aws_security_group_rule" "allow_8200" {
   source_security_group_id = aws_security_group.vault.id
 }
 
-
 # Autoscaling group
 resource "aws_security_group" "vault" {
   name        = format("%s-asg", local.name)
@@ -71,6 +70,16 @@ resource "aws_security_group_rule" "vault_network_ingress" {
   type              = "ingress"
   from_port         = 8200
   to_port           = 8201
+  protocol          = "tcp"
+  cidr_blocks       = [data.aws_vpc.selected.cidr_block]
+}
+
+resource "aws_security_group_rule" "vault_node_exporter" {
+  description       = "Allow Prometheus to scrape the node exporter"
+  security_group_id = aws_security_group.vault.id
+  type              = "ingress"
+  from_port         = 9100
+  to_port           = 9100
   protocol          = "tcp"
   cidr_blocks       = [data.aws_vpc.selected.cidr_block]
 }

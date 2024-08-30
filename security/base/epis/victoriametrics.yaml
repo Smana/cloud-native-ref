@@ -1,0 +1,27 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: EPI
+metadata:
+  name: xplane-victoriametrics-${cluster_name}
+  namespace: observability
+spec:
+  parameters:
+    clusterName: ${cluster_name}
+    serviceAccount:
+      name: vmagent-victoria-metrics-k8s-stack
+      namespace: observability
+    policyDocument: |
+      {
+        "Version" : "2012-10-17",
+        "Id" : "AllowEC2DescribeAndList",
+        "Statement" : [
+          {
+            "Sid" : "",
+            "Effect" : "Allow",
+            "Action" : [
+              "ec2:DescribeInstances",
+              "ec2:DescribeAvailabilityZones"
+              ],
+            "Resource" : "*"
+          }
+        ]
+      }

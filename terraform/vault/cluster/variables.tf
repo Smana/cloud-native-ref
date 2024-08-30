@@ -47,7 +47,7 @@ variable "ami_filter" {
   type        = map(list(string))
 
   default = {
-    name = ["ubuntu/images/hvm-ssd-gp3/ubuntu-mantic-23.10-amd64-server-*"]
+    name = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
   }
 }
 
