@@ -142,7 +142,8 @@ func (m *CloudNativeRef) Plan(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +required
+	// +defaultPath="./.."
+	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
 	// The directory where the AWS authentication files will be stored
@@ -206,7 +207,8 @@ func (m *CloudNativeRef) Network(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +required
+	// +defaultPath="./.."
+	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
 	// env is a list of environment variables, expected in (key:value) format
@@ -240,7 +242,8 @@ func (m *CloudNativeRef) Vault(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +required
+	// +defaultPath="./.."
+	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
 	// privateDomainName is the private domain name to use
@@ -335,7 +338,8 @@ func (m *CloudNativeRef) EKS(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +required
+	// +defaultPath="./.."
+	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
 	// branch is the branch to use for flux bootstrap
@@ -364,7 +368,8 @@ func (m *CloudNativeRef) UpdateKustomization(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +required
+	// +defaultPath="./.."
+	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
 	// kustPath is the path to the kustomize directory
@@ -393,7 +398,8 @@ func (m *CloudNativeRef) Bootstrap(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +required
+	// +defaultPath="./.."
+	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
 	// branch is the branch to use for flux bootstrap
@@ -476,7 +482,8 @@ func (m *CloudNativeRef) Destroy(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +required
+	// +defaultPath="./.."
+	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
 	// branch is the branch to use for flux bootstrap
