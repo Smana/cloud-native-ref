@@ -33,13 +33,13 @@ func createVault(ctx context.Context, ctr *dagger.Container, tfarg string) (map[
 // destroyVault destroys the vault cluster
 func destroyVault(ctx context.Context, ctr *dagger.Container) error {
 	workDir := fmt.Sprintf("/%s/terraform/vault/management", repoName)
-	_, err := tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars", "--auto-approve"})
+	_, err := tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars"})
 	if err != nil {
 		return fmt.Errorf("failed to destroy the vault configuration: %w", err)
 	}
 
 	workDir = fmt.Sprintf("/%s/terraform/vault/cluster", repoName)
-	_, err = tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars", "--auto-approve"})
+	_, err = tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars"})
 	if err != nil {
 		return fmt.Errorf("failed to destroy the vault cluster: %w", err)
 	}

@@ -551,7 +551,7 @@ func (m *CloudNativeRef) Destroy(
 
 	go func() {
 		defer wg.Done()
-		err := destroyEKS(ctx, container, sess, branch)
+		err := destroyEKS(ctx, container, branch)
 		if err != nil {
 			errChan <- fmt.Errorf("failed to destroy EKS resources: %w", err)
 			return

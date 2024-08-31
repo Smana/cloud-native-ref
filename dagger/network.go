@@ -144,7 +144,7 @@ fi
 
 func destroyNetwork(ctx context.Context, ctr *dagger.Container) error {
 	workDir := "/cloud-native-ref/terraform/network"
-	_, err := tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars", "-auto-approve"})
+	_, err := tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars"})
 	if err != nil {
 		return fmt.Errorf("failed to destroy the network: %w", err)
 	}

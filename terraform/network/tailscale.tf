@@ -65,7 +65,7 @@ resource "tailscale_tailnet_key" "this" {
 
 module "tailscale_subnet_router" {
   source  = "Smana/tailscale-subnet-router/aws"
-  version = "1.0.5"
+  version = "1.1.0"
 
   region = var.region
   env    = var.env
@@ -78,10 +78,14 @@ module "tailscale_subnet_router" {
   advertise_routes      = [module.vpc.vpc_cidr_block]
   tailscale_ssh_enabled = true
 
-  prometheus_node_exporter_enabled = true
-  // No need to enable SSH when Tailscale SSH is working
-  ssm_enabled = true
+  prometheus_node_exporter_enabled = lookup(var.tailscale, "prometheus_enabled", false) ? true : false
+  ssm_enabled                      = lookup(var.tailscale, "ssm_enabled", false) ? true : false
 
-  tags = var.tags
+  tags = merge(var.tags,
+    {
+      app                           = "tailscale"
+      "observability:node-exporter" = lookup(var.tailscale, "prometheus_enabled", "false") ? "true" : "false"
+    }
+  )
 
 }
