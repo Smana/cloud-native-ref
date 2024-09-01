@@ -23,11 +23,12 @@ variable "private_domain_name" {
 
 
 variable "tailscale" {
-  type = map(string)
+  type = map(any)
   default = {
     subnet_router_name = ""
     api_key            = ""
     tailnet            = ""
+    prometheus_enabled = false
   }
 }
 

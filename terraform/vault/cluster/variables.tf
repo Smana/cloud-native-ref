@@ -58,7 +58,6 @@ variable "ami_owner" {
   default = "099720109477" # AWS account ID of Canonical
 }
 
-
 variable "enable_ssm" {
   description = "If true, allow to connect to the instances using AWS Systems Manager"
   type        = bool

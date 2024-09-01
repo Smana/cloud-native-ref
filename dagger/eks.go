@@ -4,22 +4,7 @@ import (
 	"context"
 	"dagger/cloud-native-ref/internal/dagger"
 	"fmt"
-	"time"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/eks"
 )
-
-// execKubectl executes a kubectl command with the specified arguments
-func execKubectl(ctx context.Context, ctr *dagger.Container, args []string) (string, error) {
-	ctr = ctr.WithExec([]string{"apk", "add", "kubectl"})
-	return ctr.
-		WithExec([]string{"aws", "eks", "update-kubeconfig", "--name", eksClusterName, "--region", region}).
-		WithExec(append([]string{"kubectl"}, args...)).
-		Stdout(ctx)
-}
 
 // createEKS creates the EKS cluster
 func createEKS(ctx context.Context, ctr *dagger.Container, tfarg string, branch string) (map[string]interface{}, error) {
@@ -33,51 +18,84 @@ func createEKS(ctx context.Context, ctr *dagger.Container, tfarg string, branch 
 }
 
 // destroyEKS destroys the EKS cluster
-func destroyEKS(ctx context.Context, ctr *dagger.Container, sess *session.Session, branch string) error {
+func destroyEKS(ctx context.Context, container *dagger.Container, branch string) error {
 	workDir := "/cloud-native-ref/terraform/eks"
 
-	// check if the EKS cluster is still there
-	EKS := eks.New(sess)
+	container = container.WithExec([]string{"apk", "add", "flux", "kubectl"})
 
-	_, err := EKS.DescribeCluster(&eks.DescribeClusterInput{
-		Name: aws.String(eksClusterName),
-	})
+	eksDestroyScript := `#!/bin/bash
+
+set -e
+
+while (($#)); do
+  case "$1" in
+    -c | --cluster-name) CLUSTER_NAME=${2}; shift 2;;
+    -r | --region) REGION=${2}; shift 2;;
+    *)
+        echo "${err} : Unknown option"
+        usage
+        exit 3
+    ;;
+  esac
+done
+
+if [ -z "$CLUSTER_NAME" ] || [ -z "$REGION" ]; then
+	echo "Cluster name and region are required"
+	exit 1
+fi
+
+# Check if the cluster is up and running and active
+if ! aws eks describe-cluster --name $CLUSTER_NAME --region $REGION --query 'cluster.status' --output text | grep -q ACTIVE; then
+	echo "Cluster $CLUSTER_NAME is not active"
+	exit 0
+fi
+
+# EKS get credentials
+aws eks update-kubeconfig --name $CLUSTER_NAME --region $REGION
+
+# Suspend all Flux reconciliations
+flux suspend kustomization --all
+
+NODEPOOLS=$(kubectl get nodepools -o json | jq -r '.items[].metadata.name')
+if ! [ -z "$NODEPOOLS" ]; then
+  kubectl delete nodepools --all
+fi
+
+GATEWAYS=($(kubectl get gateways --all-namespaces -o json | jq -r '.items[].metadata.name'))
+GAPI_SVC=($(kubectl get svc --all-namespaces -l gateway.networking.k8s.io/gateway-name -o json | jq -r '.items[].metadata.name'))
+if ! [ -z "$GATEWAYS" ] || ! [ -z "$GAPI_SVC" ]; then
+  kubectl delete gateways --all --all-namespaces
+  kubectl delete svc -l gateway.networking.k8s.io/gateway-name --all-namespaces
+fi
+
+# Wait for gateways to be deleted
+sleep 75
+
+EPIS=$(kubectl get epis -o json | jq -r '.items[].metadata.name')
+if ! [ -z "$EPIS" ]; then
+	kubectl delete epis --all --all-namespaces
+fi
+
+# Delete flux resources from Opentofu state
+tofu init
+if tofu state list | grep -q "flux_bootstrap_git.this"; then
+    tofu state rm flux_bootstrap_git.this
+fi
+if tofu state list | grep -q "kubernetes_namespace.flux_system"; then
+	tofu state rm kubernetes_namespace.flux_system
+fi
+`
+
+	_, err := container.
+		WithWorkdir(workDir).
+		WithNewFile("/bin/eks-destroy", eksDestroyScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
+		WithExec([]string{"/bin/eks-destroy", "-c", eksClusterName, "-r", region}).
+		Stdout(ctx)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			if aerr.Code() == eks.ErrCodeResourceNotFoundException {
-				return nil
-			}
-		}
-		return fmt.Errorf("failed to describe the EKS cluster: %w", err)
+		return fmt.Errorf("failed to delete Kubernenes resources before destroying the EKS cluster: %w", err)
 	}
 
-	// suspend Flux reconciliation by scaling down all deployments of the flux-system namespace
-	_, err = execKubectl(ctx, ctr, []string{"scale", "deployments", "--all", "--namespace=flux-system", "--replicas=0"})
-	if err != nil {
-		return fmt.Errorf("failed to scale down all deployments of the flux-system namespace: %w", err)
-	}
-
-	// Delete all nodepools and wait for a minute to allow the nodes to be terminated
-	_, err = execKubectl(ctx, ctr, []string{"delete", "nodepools", "--all"})
-	if err != nil {
-		return fmt.Errorf("failed to delete all nodepools: %w", err)
-	}
-
-	// Delete all gateways (Gateways create LoadBalancers which need to be deleted before the EKS cluster can be destroyed)
-	_, err = execKubectl(ctx, ctr, []string{"delete", "gateways", "--all"})
-	if err != nil {
-		return fmt.Errorf("failed to delete all gateways: %w", err)
-	}
-
-	// Delete eks pod identities
-	_, err = execKubectl(ctx, ctr, []string{"delete", "epis", "--all", "--all-namespaces"})
-	if err != nil {
-		return fmt.Errorf("failed to delete all EKS Pod Identities: %w", err)
-	}
-
-	time.Sleep(60 * time.Second)
-
-	_, err = tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars", "-auto-approve", "-var", fmt.Sprintf("github_branch=%s", branch)})
+	_, err = tfRun(ctx, container, workDir, "destroy", []string{"-var-file", "variables.tfvars", "-var", fmt.Sprintf("github_branch=%s", branch)})
 	if err != nil {
 		return fmt.Errorf("failed to destroy the EKS cluster: %w", err)
 	}

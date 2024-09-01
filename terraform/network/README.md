@@ -20,11 +20,12 @@ tailscale = {
   subnet_router_name = "ogenki"
   tailnet            = "smainklh@gmail.com"
   api_key            = "tskey-api-...."
+  prometheus_enabled = "true"
 }
 
 tags = {
-  project = "cloud-native-ref"
-  owner   = "Smana"
+  project =                     = "cloud-native-ref"
+  owner                         = "Smana"
 }
 ```
 

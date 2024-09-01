@@ -55,8 +55,7 @@ git checkout -b <flux_branch>
 
 2. Run the `bootstrap` function
 ```console
-dagger call --access-key-id=env:AWS_ACCESS_KEY_ID --secret-access-key=env:AWS_SECRET_ACCESS_KEY --ts-key=env:TAILSCALE_APIKEY \
-bootstrap --source "." --branch <flux_branch>
+dagger call --access-key-id=env:AWS_ACCESS_KEY_ID --secret-access-key=env:AWS_SECRET_ACCESS_KEY --ts-key=env:TAILSCALE_APIKEY bootstrap --branch <flux_branch>
  ```
 
 It takes over 20 minutes to get everything up and running. You should see an output similar to the following:
@@ -80,6 +79,5 @@ git push
 ⚠️ Really everything will be deleted
 
 ```console
-dagger call --access-key-id=env:AWS_ACCESS_KEY_ID --secret-access-key=env:AWS_SECRET_ACCESS_KEY --ts-key=env:TAILSCALE_APIKEY \
-destroy --source "." --branch <flux_branch>
+dagger call --access-key-id=env:AWS_ACCESS_KEY_ID --secret-access-key=env:AWS_SECRET_ACCESS_KEY --ts-key=env:TAILSCALE_APIKEY destroy --branch <flux_branch>
 ```

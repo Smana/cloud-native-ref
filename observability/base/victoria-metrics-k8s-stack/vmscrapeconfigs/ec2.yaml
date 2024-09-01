@@ -15,7 +15,7 @@ spec:
       source_labels: [__meta_ec2_tag_Name]
       target_label: ec2_name
     - action: replace
-      source_labels: [__meta_ec2_tag_app_application]
+      source_labels: [__meta_ec2_tag_app]
       target_label: ec2_application
     - action: replace
       source_labels: [__meta_ec2_availability_zone]
