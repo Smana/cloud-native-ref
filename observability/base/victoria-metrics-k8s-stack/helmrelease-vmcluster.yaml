@@ -21,6 +21,12 @@ spec:
   values:
     tenant: "0"
 
+    defaultRules:
+      rule:
+        spec:
+          annotations:
+            dashboard: "https://grafana.priv.${domain_name}/dashboards"
+
     grafanaOperatorDashboardsFormat:
       enabled: true
       instanceSelector:
@@ -33,17 +39,101 @@ spec:
         cluster: "${cluster_name}"
 
     vmsingle:
+      enabled: false
+
+    vmcluster:
+      enabled: true
       spec:
-        retentionPeriod: "1d" # Minimal retention, for tests only
-        replicaCount: 1
-        storage:
-          accessModes:
-            - ReadWriteOnce
+        retentionPeriod: "10d"
+        replicationFactor: 2
+        vmstorage:
+          storage:
+            volumeClaimTemplate:
+              storageClassName: "gp3"
+              spec:
+                resources:
+                  requests:
+                    storage: 10Gi
           resources:
+            limits:
+              cpu: "1"
+              memory: 1500Mi
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: "app.kubernetes.io/name"
+                        operator: In
+                        values:
+                          - "vmstorage"
+                  topologyKey: "kubernetes.io/hostname"
+          topologySpreadConstraints:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: vmstorage
+              maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: ScheduleAnyway
+        vmselect:
+          storage:
+            volumeClaimTemplate:
+              storageClassName: "gp3"
+              spec:
+                resources:
+                  requests:
+                    storage: 2Gi
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: "app.kubernetes.io/name"
+                        operator: In
+                        values:
+                          - "vmselect"
+                  topologyKey: "kubernetes.io/hostname"
+          topologySpreadConstraints:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: vmselect
+              maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: ScheduleAnyway
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1000Mi"
             requests:
-              storage: 10Gi
-        extraArgs:
-          maxLabelsPerTimeseries: "50"
+              cpu: "0.5"
+              memory: "500Mi"
+        vminsert:
+          extraArgs:
+            maxLabelsPerTimeseries: "30"
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: "app.kubernetes.io/name"
+                        operator: In
+                        values:
+                          - "vminsert"
+                  topologyKey: "kubernetes.io/hostname"
+          topologySpreadConstraints:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: vminsert
+              maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: ScheduleAnyway
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1000Mi
+            requests:
+              cpu: "0.5"
+              memory: "500Mi"
 
     alertmanager:
       enabled: true

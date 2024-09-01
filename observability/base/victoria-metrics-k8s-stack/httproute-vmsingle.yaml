@@ -8,7 +8,7 @@ spec:
     - name: platform-private
       namespace: infrastructure
   hostnames:
-    - "vm.priv.${domain_name}"
+    - "vmui.priv.${domain_name}"
   rules:
     - backendRefs:
         - name: vmsingle-victoria-metrics-k8s-stack

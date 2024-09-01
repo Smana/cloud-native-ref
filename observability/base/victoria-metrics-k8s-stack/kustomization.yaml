@@ -5,14 +5,22 @@ resources:
   - externalsecret-alertmanager-slack-app.yaml
   - externalsecret-grafana-admin.yaml
   - source.yaml
-  # Choose between single or cluster helm release
-  - helmrelease-single.yaml
-  # - helmrelease-cluster.yaml
+
   # HttpRoutes
   - httproute-grafana.yaml
-  - httproute-vmsingle.yaml # To be changed if cluster is chosen
   - httproute-vmalertmanager.yaml
+
   # Victoria Metrics Operator resources
   - vmscrapeconfigs
   - vmservicescrapes
   - vmrules
+
+  # Choose between single or cluster helm release
+
+  # VM Single
+  # - helmrelease-vmsingle.yaml
+  # - httproute-vmsingle.yaml
+
+  # VM Cluster
+  - helmrelease-vmcluster.yaml
+  - httproute-vmcluster.yaml
