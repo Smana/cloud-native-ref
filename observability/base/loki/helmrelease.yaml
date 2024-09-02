@@ -5,6 +5,8 @@ metadata:
   name: loki
 spec:
   releaseName: loki
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: loki

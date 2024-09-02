@@ -5,6 +5,8 @@ metadata:
   namespace: security
 spec:
   releaseName: cert-manager
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: cert-manager

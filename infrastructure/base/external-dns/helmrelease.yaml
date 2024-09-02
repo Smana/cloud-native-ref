@@ -4,6 +4,8 @@ metadata:
   name: external-dns
 spec:
   releaseName: external-dns
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: external-dns

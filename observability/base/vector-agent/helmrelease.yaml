@@ -4,6 +4,8 @@ metadata:
   name: vector-agent
 spec:
   releaseName: vector-agent
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: vector

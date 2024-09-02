@@ -4,6 +4,8 @@ metadata:
   name: grafana-operator
 spec:
   releaseName: grafana-operator
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: grafana-operator
