@@ -5,6 +5,8 @@ metadata:
   namespace: tooling
 spec:
   releaseName: harbor
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: harbor

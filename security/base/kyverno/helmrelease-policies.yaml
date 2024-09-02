@@ -5,6 +5,8 @@ metadata:
   namespace: security
 spec:
   releaseName: kyverno-policies
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: kyverno-policies

@@ -4,6 +4,8 @@ metadata:
   name: default-gha-runner-scale-set
 spec:
   releaseName: default-gha-runner-scale-set
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: gha-runner-scale-set

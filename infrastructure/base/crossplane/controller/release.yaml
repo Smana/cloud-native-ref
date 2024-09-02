@@ -4,6 +4,8 @@ metadata:
   name: crossplane
 spec:
   releaseName: crossplane
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: crossplane

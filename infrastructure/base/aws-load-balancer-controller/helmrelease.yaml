@@ -4,6 +4,8 @@ metadata:
   name: aws-load-balancer-controller
 spec:
   releaseName: aws-load-balancer-controller
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: aws-load-balancer-controller
