@@ -10,7 +10,7 @@ spec:
       service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
       service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
       service.beta.kubernetes.io/aws-load-balancer-type: "external"
-      external-dns.alpha.kubernetes.io/hostname: "harbor.priv.${domain_name},grafana.priv.${domain_name},vmui.priv.${domain_name},vminsert.priv.${domain_name},vmselect.priv.${domain_name},vmstorage.priv.${domain_name},hubble-${cluster_name}.priv.${domain_name},vmalertmanager-${cluster_name}.priv.${domain_name}"
+      external-dns.alpha.kubernetes.io/hostname: "harbor.priv.${domain_name},grafana.priv.${domain_name},vm.priv.${domain_name},hubble-${cluster_name}.priv.${domain_name},vmalertmanager-${cluster_name}.priv.${domain_name},vmagent-${cluster_name}.priv.${domain_name}"
   listeners:
     - name: http
       hostname: "*.priv.${domain_name}"

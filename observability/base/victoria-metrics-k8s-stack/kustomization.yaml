@@ -8,6 +8,7 @@ resources:
 
   # HttpRoutes
   - httproute-grafana.yaml
+  - httproute-vmagent.yaml
   - httproute-vmalertmanager.yaml
 
   # Victoria Metrics Operator resources

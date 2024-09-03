@@ -10,12 +10,10 @@ spec:
   dnsNames:
     - grafana.priv.${domain_name}
     - harbor.priv.${domain_name}
-    - vmui.priv.${domain_name}
-    - vminsert.priv.${domain_name}
-    - vmselect.priv.${domain_name}
-    - vmstorage.priv.${domain_name}
+    - vm.priv.${domain_name}
     - hubble-${cluster_name}.priv.${domain_name}
     - vmalertmanager-${cluster_name}.priv.${domain_name}
+    - vmagent-${cluster_name}.priv.${domain_name}
   issuerRef:
     name: vault
     kind: ClusterIssuer
