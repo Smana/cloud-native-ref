@@ -26,6 +26,10 @@ spec:
     vmsingle:
       enabled: false
 
+    alertmanager:
+      spec:
+        replicaCount: 2
+
     vmcluster:
       enabled: true
       spec:
