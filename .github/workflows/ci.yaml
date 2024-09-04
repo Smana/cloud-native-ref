@@ -26,7 +26,7 @@ jobs:
         with:
           version: "latest"
           verb: call
-          module: github.com/Smana/daggerverse/pre-commit-tf@pre-commit-tf/v0.1.0
+          module: github.com/Smana/daggerverse/pre-commit-tf@pre-commit-tf/v0.1.1
           args: run --dir "." --tf-binary="tofu"
           # cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
 

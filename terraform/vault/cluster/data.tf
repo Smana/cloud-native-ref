@@ -105,7 +105,6 @@ data "cloudinit_config" "vault_cloud_init" {
       "vault_data_path"       = var.vault_data_path
       "vault_instance"        = local.tags.VaultInstance
       "dev_mode"              = var.mode == "dev" ? true : false
-      "vault_data_path"       = var.vault_data_path
       "leader_tls_servername" = var.leader_tls_servername
       "kms_unseal_key_id"     = aws_kms_key.vault.id
 
