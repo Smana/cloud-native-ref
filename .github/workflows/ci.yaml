@@ -52,5 +52,5 @@ jobs:
           version: "latest"
           verb: call
           module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.1.0
-          args: validate --manifests "." --kustomize --flux --env="cluster_name:foobar,region:eu-west-3,domain_name:example.com" --catalog --crds https://github.com/kubernetes-sigs/gateway-api/tree/main/config/crd/experimental
+          args: validate --manifests "." --kustomize --flux --env="cluster_name:foobar,region:eu-west-3,domain_name:example.com" --catalog --crds https://github.com/kubernetes-sigs/gateway-api/tree/main/config/crd/experimental,https://raw.githubusercontent.com/grafana/grafana-operator/master/config/crd/bases/grafana.integreatly.org_grafanadashboards.yaml  # These are CRDs that are not supported yet by the datree catalog
           # cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}

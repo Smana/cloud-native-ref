@@ -6,4 +6,3 @@ spec:
   instanceSelector:
     matchLabels:
       dashboards: "grafana"
-  title: Kubernetes

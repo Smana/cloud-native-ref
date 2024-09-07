@@ -3,7 +3,7 @@ kind: GrafanaDashboard
 metadata:
   name: kubernetes-karpenter
 spec:
-  folder: "Kubernetes"
+  folderRef: "kubernetes"
   datasources:
     - inputName: "DS_PROMETHEUS"
       datasourceName: "VictoriaMetrics"
