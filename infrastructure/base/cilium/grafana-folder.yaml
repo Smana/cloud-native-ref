@@ -7,4 +7,3 @@ spec:
   instanceSelector:
     matchLabels:
       dashboards: "grafana"
-  title: Cilium

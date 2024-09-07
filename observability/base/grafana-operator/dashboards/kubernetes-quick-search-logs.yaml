@@ -3,8 +3,7 @@ kind: GrafanaDashboard
 metadata:
     name: kubernetes-quick-search-logs
 spec:
-    resyncPeriod: 30s
-    folder: "Kubernetes"
+    folderRef: "kubernetes"
     datasources:
         - inputName: "DS_LOKI"
           datasourceName: "Loki"

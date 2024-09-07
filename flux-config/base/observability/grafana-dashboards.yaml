@@ -4,7 +4,7 @@ kind: GrafanaDashboard
 metadata:
   name: flux-cluster
 spec:
-  folder: "Flux"
+  folderRef: "flux"
   allowCrossNamespaceImport: true
   datasources:
     - inputName: "DS_PROMETHEUS"
@@ -19,7 +19,7 @@ kind: GrafanaDashboard
 metadata:
   name: flux-control-plane
 spec:
-  folder: "Flux"
+  folderRef: "flux"
   allowCrossNamespaceImport: true
   datasources:
     - inputName: "DS_PROMETHEUS"
@@ -34,7 +34,7 @@ kind: GrafanaDashboard
 metadata:
   name: flux-logs
 spec:
-  folder: "Flux"
+  folderRef: "flux"
   allowCrossNamespaceImport: true
   datasources:
     - inputName: "DS_LOKI"

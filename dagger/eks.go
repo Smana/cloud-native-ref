@@ -69,12 +69,15 @@ if ! [ -z "$GATEWAYS" ] || ! [ -z "$GAPI_SVC" ]; then
 fi
 
 # Wait for gateways to be deleted
-sleep 75
+sleep 30
 
 EPIS=$(kubectl get epis -o json | jq -r '.items[].metadata.name')
 if ! [ -z "$EPIS" ]; then
 	kubectl delete epis --all --all-namespaces
 fi
+
+# Wait for epis to be deleted
+sleep 30
 
 # Delete flux resources from Opentofu state
 tofu init
