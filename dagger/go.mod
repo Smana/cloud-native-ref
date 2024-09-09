@@ -28,7 +28,7 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.5.0
 	go.opentelemetry.io/otel/trace v1.29.0
 	go.opentelemetry.io/proto/otlp v1.3.1
-	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
+	golang.org/x/exp 701f63a606c0
 	golang.org/x/net v0.29.0 // indirect
 	golang.org/x/sync v0.8.0
 	golang.org/x/sys v0.25.0 // indirect
