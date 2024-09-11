@@ -15,6 +15,7 @@ This repository provides a comprehensive guide and set of tools for building, ma
   - [📦 OCI Registry with Harbor](#-oci-registry-with-harbor)
   - [🔗 VPN connection using Tailscale](#-vpn-connection-using-tailscale)
   - [🔑 Private PKI with Vault](#-private-pki-with-vault)
+  - [👁️ Observability](#️-observability)
   - [🧪 CI](#-ci)
     - [Overview](#overview)
     - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners)
@@ -115,6 +116,18 @@ The Vault creation is made in 2 steps:
 ℹ️ The provided code outlines the setup and configuration of a **highly available, secure, and cost-efficient HashiCorp Vault cluster**. It describes the process of creating a Vault instance in either development or high availability mode, with detailed steps for initializing the Vault, managing security tokens, and configuring a robust **Public Key Infrastructure** (PKI) system. The focus is on balancing performance, security, and cost, using a multi-node cluster, ephemeral nodes with SPOT instances, and a tiered CA structure for digital security.
 
 🏷️ Related blog post: [TLS with Gateway API: Efficient and Secure Management of Public and Private Certificates](https://blog.ogenki.io/post/pki-gapi/)
+
+
+## 👁️ Observability
+
+To effectively **identify issues and optimize performance**, a comprehensive monitoring stack is essential. Several tools are available to provide detailed insights into system health, covering key areas such as metrics, logs, tracing, and profiling. Here's an overview of our current setup:
+
+* **Metrics**: We’ve implemented a combination of VictoriaMetrics and Grafana operators to collect, visualize, and analyze metrics. This stack enables real-time monitoring, custom dashboards, and the ability to configure alerts and notifications for proactive issue management.
+
+* **Logs**: (Coming soon)
+
+🏷️ Related blog posts:
+    * [Harness the Power of VictoriaMetrics and Grafana Operators for Metrics Management](https://blog.ogenki.io/post/series/observability/metrics)
 
 ## 🧪 CI
 
