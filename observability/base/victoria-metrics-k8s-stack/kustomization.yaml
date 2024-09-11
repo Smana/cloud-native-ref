@@ -13,7 +13,7 @@ resources:
 
   # Victoria Metrics Operator resources
   - vmscrapeconfigs
-  - vmservicescrapes
+  - vmservicecrapes
   - vmrules
 
   - vm-common-helm-values-configmap.yaml
