@@ -95,7 +95,7 @@ data:
       dashboards: {}
       extraInitContainers:
         - name: "load-vm-ds-plugin"
-          image: "curlimages/curl:8.9.1"
+          image: "curlimages/curl:8.10.0"
           command: ["/bin/sh"]
           workingDir: "/var/lib/grafana"
           securityContext:
