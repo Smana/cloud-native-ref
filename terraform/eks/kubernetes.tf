@@ -64,7 +64,7 @@ resource "kubernetes_job" "delete_aws_cni_ds" {
         service_account_name = "eks-init"
         container {
           name  = "kubectl"
-          image = "bitnami/kubectl:1.31.0"
+          image = "bitnami/kubectl:1.31.1"
           args  = ["delete", "--ignore-not-found=true", "daemonsets", "aws-node", "-n", "kube-system"]
         }
         restart_policy = "Never"
