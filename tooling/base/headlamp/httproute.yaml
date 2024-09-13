@@ -1,0 +1,14 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: headlamp
+spec:
+  parentRefs:
+    - name: platform-private
+      namespace: infrastructure
+  hostnames:
+    - "headlamp-${cluster_name}.priv.${domain_name}"
+  rules:
+    - backendRefs:
+        - name: headlamp
+          port: 80
