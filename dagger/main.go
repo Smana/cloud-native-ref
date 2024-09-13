@@ -142,7 +142,7 @@ func (m *CloudNativeRef) Plan(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +defaultPath="./.."
+	// +defaultPath="."
 	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
@@ -207,7 +207,7 @@ func (m *CloudNativeRef) Network(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +defaultPath="./.."
+	// +defaultPath="."
 	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
@@ -242,7 +242,7 @@ func (m *CloudNativeRef) Vault(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +defaultPath="./.."
+	// +defaultPath="."
 	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
@@ -338,7 +338,7 @@ func (m *CloudNativeRef) EKS(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +defaultPath="./.."
+	// +defaultPath="."
 	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
@@ -368,7 +368,7 @@ func (m *CloudNativeRef) UpdateKustomization(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +defaultPath="./.."
+	// +defaultPath="."
 	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
@@ -398,7 +398,7 @@ func (m *CloudNativeRef) Bootstrap(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +defaultPath="./.."
+	// +defaultPath="."
 	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 
@@ -482,7 +482,7 @@ func (m *CloudNativeRef) Destroy(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
-	// +defaultPath="./.."
+	// +defaultPath="."
 	// +ignore=["!**/terraform"]
 	source *dagger.Directory,
 

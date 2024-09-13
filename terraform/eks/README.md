@@ -86,19 +86,19 @@ tofu destroy --var-file variables.tfvars
 | <a name="requirement_kubectl"></a> [kubectl](#requirement\_kubectl) | >= 2.0.0 |
 | <a name="requirement_kubernetes"></a> [kubernetes](#requirement\_kubernetes) | >= 2.20 |
 | <a name="requirement_random"></a> [random](#requirement\_random) | ~> 3.5 |
-| <a name="requirement_tls"></a> [tls](#requirement\_tls) | 4.0.5 |
+| <a name="requirement_tls"></a> [tls](#requirement\_tls) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.0 |
-| <a name="provider_aws.virginia"></a> [aws.virginia](#provider\_aws.virginia) | ~> 5.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.67.0 |
+| <a name="provider_aws.virginia"></a> [aws.virginia](#provider\_aws.virginia) | 5.67.0 |
 | <a name="provider_flux"></a> [flux](#provider\_flux) | 1.3.0 |
-| <a name="provider_helm"></a> [helm](#provider\_helm) | >= 2.7 |
-| <a name="provider_http"></a> [http](#provider\_http) | >= 3.4 |
-| <a name="provider_kubectl"></a> [kubectl](#provider\_kubectl) | >= 2.0.0 |
-| <a name="provider_kubernetes"></a> [kubernetes](#provider\_kubernetes) | >= 2.20 |
+| <a name="provider_helm"></a> [helm](#provider\_helm) | 2.15.0 |
+| <a name="provider_http"></a> [http](#provider\_http) | 3.4.5 |
+| <a name="provider_kubectl"></a> [kubectl](#provider\_kubectl) | 2.0.4 |
+| <a name="provider_kubernetes"></a> [kubernetes](#provider\_kubernetes) | 2.32.0 |
 
 ## Modules
 

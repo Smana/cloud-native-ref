@@ -55,8 +55,8 @@ This architecture balances performance, cost-efficiency, and resilience, embraci
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.0 |
-| <a name="provider_cloudinit"></a> [cloudinit](#provider\_cloudinit) | ~> 2.3 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.67.0 |
+| <a name="provider_cloudinit"></a> [cloudinit](#provider\_cloudinit) | 2.3.5 |
 
 ## Modules
 
