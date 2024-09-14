@@ -36,5 +36,5 @@ spec:
         emptyDir: {}
       - name: script
         configMap:
-          name: deploy-plugins
+          name: headlamp-deploy-plugins
           defaultMode: 0500

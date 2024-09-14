@@ -7,7 +7,7 @@ spec:
     - name: platform-private
       namespace: infrastructure
   hostnames:
-    - "headlamp-${cluster_name}.priv.${domain_name}"
+    - "headlamp.priv.${domain_name}"
   rules:
     - backendRefs:
         - name: headlamp

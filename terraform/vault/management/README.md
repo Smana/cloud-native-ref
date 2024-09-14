@@ -105,7 +105,7 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
 
 | Name | Version |
 |------|---------|
-| <a name="provider_vault"></a> [vault](#provider\_vault) | 4.4.0 |
+| <a name="provider_vault"></a> [vault](#provider\_vault) | ~> 4.0 |
 
 ## Modules
 
