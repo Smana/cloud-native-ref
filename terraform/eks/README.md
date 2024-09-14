@@ -86,7 +86,7 @@ tofu destroy --var-file variables.tfvars
 | <a name="requirement_kubectl"></a> [kubectl](#requirement\_kubectl) | >= 2.0.0 |
 | <a name="requirement_kubernetes"></a> [kubernetes](#requirement\_kubernetes) | >= 2.20 |
 | <a name="requirement_random"></a> [random](#requirement\_random) | ~> 3.5 |
-| <a name="requirement_tls"></a> [tls](#requirement\_tls) | 4.0.5 |
+| <a name="requirement_tls"></a> [tls](#requirement\_tls) | ~> 4.0 |
 
 ## Providers
 

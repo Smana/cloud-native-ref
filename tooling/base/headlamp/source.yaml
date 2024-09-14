@@ -1,0 +1,7 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: headlamp
+spec:
+  interval: 24h
+  url: https://headlamp-k8s.github.io/headlamp/

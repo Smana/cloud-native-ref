@@ -4,5 +4,5 @@ metadata:
   name: victoria-metrics
   namespace: observability
 spec:
-  interval: 30m
+  interval: 2h
   url: https://victoriametrics.github.io/helm-charts

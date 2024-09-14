@@ -1,0 +1,40 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: headlamp
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: headlamp
+      version: "0.25.0"
+      sourceRef:
+        kind: HelmRepository
+        name: headlamp
+      interval: 12h
+  values:
+    config:
+      pluginsDir: /build/plugins
+
+    initContainers:
+      - name: headlamp-plugins
+        image: busybox
+        command:
+          - /scripts/deploy-plugins.sh
+        volumeMounts:
+          - name: headlamp-plugins
+            mountPath: /build/plugins
+          - name: script
+            mountPath: /scripts
+
+    volumeMounts:
+      - name: headlamp-plugins
+        mountPath: /build/plugins
+
+    volumes:
+      - name: headlamp-plugins
+        emptyDir: {}
+      - name: script
+        configMap:
+          name: headlamp-deploy-plugins
+          defaultMode: 0500
