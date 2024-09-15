@@ -1,0 +1,23 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: zitadel
+spec:
+  gatewayClassName: cilium
+  infrastructure:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-name: "ogenki-zitadel-gateway"
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
+      service.beta.kubernetes.io/aws-load-balancer-type: "external"
+      external-dns.alpha.kubernetes.io/hostname: "zitadel.priv.${domain_name}"
+  listeners:
+    - name: http
+      hostname: "*.priv.${domain_name}"
+      port: 443
+      protocol: TLS
+      allowedRoutes:
+        namespaces:
+          from: Same
+      tls:
+        mode: Passthrough

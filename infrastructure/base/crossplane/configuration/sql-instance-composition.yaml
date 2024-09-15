@@ -63,7 +63,6 @@ spec:
               spec:
                 forProvider:
                   description: Allow RDS Inbound traffic
-                  name: ogenki
                   region: eu-west-3
                   vpcId: default
             name: SecurityGroup
@@ -74,9 +73,15 @@ spec:
                 type: PatchSet
               - patchSetName: region
                 type: PatchSet
-              - fromFieldPath: spec.claimRef.name
+              - type: CombineFromComposite
                 toFieldPath: spec.forProvider.name
-                type: FromCompositeFieldPath
+                combine:
+                  strategy: string
+                  variables:
+                    - fromFieldPath: spec.claimRef.name
+                    - fromFieldPath: spec.id
+                  string:
+                    fmt: "%s-%s"
               - fromFieldPath: vpcId
                 toFieldPath: spec.forProvider.vpcId
                 type: FromEnvironmentFieldPath

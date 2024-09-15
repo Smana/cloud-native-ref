@@ -1,0 +1,13 @@
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TLSRoute
+metadata:
+  name: zitadel
+spec:
+  parentRefs:
+    - name: zitadel
+  hostnames:
+    - "zitadel.priv.${domain_name}"
+  rules:
+    - backendRefs:
+        - name: zitadel
+          port: 8080
