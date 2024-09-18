@@ -4,6 +4,8 @@ metadata:
   name: headlamp
 spec:
   interval: 30m
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: headlamp
@@ -26,6 +28,12 @@ spec:
             mountPath: /build/plugins
           - name: script
             mountPath: /scripts
+
+    resources:
+      limits:
+        memory: 256Mi
+      requests:
+        cpu: 300m
 
     volumeMounts:
       - name: headlamp-plugins
