@@ -5,7 +5,7 @@ go 1.22.5
 require github.com/aws/aws-sdk-go v1.55.5
 
 require (
-	github.com/99designs/gqlgen v0.17.51
+	github.com/99designs/gqlgen v0.17.54
 	github.com/Khan/genqlient v0.7.0
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
@@ -35,7 +35,7 @@ require (
 	golang.org/x/text v0.18.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
-	google.golang.org/grpc v1.66.2
+	google.golang.org/grpc v1.67.0
 	google.golang.org/protobuf v1.34.2 // indirect
 )
 
