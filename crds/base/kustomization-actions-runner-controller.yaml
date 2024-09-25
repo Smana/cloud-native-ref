@@ -1,13 +1,13 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: crds-gateway-api
+  name: crds-actions-runner-controller
+  namespace: tooling
 spec:
   interval: 10m
-  targetNamespace: kube-system
   sourceRef:
     kind: GitRepository
-    name: gateway-api
-  path: "./config/crd/experimental"
+    name: actions-runner-controller
+  path: "./config/crd/bases"
   prune: true
-  timeout: 1m
+  timeout: 10m

@@ -1,8 +1,8 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: external-secrets
-  namespace: flux-system
+  name: vector
+  namespace: observability
 spec:
   interval: 30m
-  url: https://charts.external-secrets.io
+  url: https://helm.vector.dev

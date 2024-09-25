@@ -1,9 +1,10 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
-  name: grafana-operator
+  name: kyverno
+  namespace: security
 spec:
   interval: 5m0s
-  url: https://github.com/grafana/grafana-operator
+  url: https://github.com/kyverno/kyverno
   ref:
-    tag: v5.13.0
+    tag: v1.12.6

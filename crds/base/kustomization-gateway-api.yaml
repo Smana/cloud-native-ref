@@ -1,13 +1,14 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: crds-victoria-metrics-operator
+  name: crds-gateway-api
+  namespace: kube-system
 spec:
   interval: 10m
-  targetNamespace: observability
+  targetNamespace: kube-system
   sourceRef:
     kind: GitRepository
-    name: victoria-metrics-operator
-  path: "./config/crd/overlay"
+    name: gateway-api
+  path: "./config/crd/experimental"
   prune: true
   timeout: 1m

@@ -3,5 +3,4 @@ kind: Kustomization
 namespace: crossplane-system
 
 resources:
-  - release.yaml
-  - source.yaml
+  - helmrelease.yaml

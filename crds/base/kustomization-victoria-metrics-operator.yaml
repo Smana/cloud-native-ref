@@ -1,13 +1,14 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: crds-grafana-operator
+  name: crds-victoria-metrics-operator
+  namespace: observability
 spec:
   interval: 10m
   targetNamespace: observability
   sourceRef:
     kind: GitRepository
-    name: grafana-operator
-  path: "./config/crd/bases"
+    name: victoria-metrics-operator
+  path: "./config/crd/overlay"
   prune: true
   timeout: 1m

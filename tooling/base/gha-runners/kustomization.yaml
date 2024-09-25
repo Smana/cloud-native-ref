@@ -8,4 +8,3 @@ resources:
   - default-scale-set-helmrelease.yaml
   - externalsecret.yaml
   - network-policy.yaml
-  - source.yaml

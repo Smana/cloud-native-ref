@@ -2,6 +2,7 @@ apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
   name: victoria-metrics-operator
+  namespace: observability
 spec:
   interval: 5m0s
   url: https://github.com/VictoriaMetrics/operator.git

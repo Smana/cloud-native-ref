@@ -2,6 +2,7 @@ apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
   name: actions-runner-controller
+  namespace: tooling
 spec:
   interval: 5m0s
   url: https://github.com/actions/actions-runner-controller
