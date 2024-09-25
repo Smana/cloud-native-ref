@@ -127,7 +127,8 @@ To effectively **identify issues and optimize performance**, a comprehensive mon
 * **Logs**: (Coming soon)
 
 🏷️ Related blog posts:
-    * [Harness the Power of VictoriaMetrics and Grafana Operators for Metrics Management](https://blog.ogenki.io/post/series/observability/metrics)
+
+* [Harness the Power of VictoriaMetrics and Grafana Operators for Metrics Management](https://blog.ogenki.io/post/series/observability/metrics)
 
 ## 🧪 CI
 
