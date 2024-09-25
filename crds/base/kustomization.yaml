@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - crds-cert-manager.yaml
+  - helmrelease-prometheus-operator.yaml
+  - kustomization-actions-runner-controller.yaml
+  - kustomization-external-secrets.yaml
+  - kustomization-gateway-api.yaml
+  - kustomization-grafana-operator.yaml
+  - kustomization-kyverno.yaml
+  - kustomization-victoria-metrics-operator.yaml

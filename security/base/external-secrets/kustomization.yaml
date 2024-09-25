@@ -4,4 +4,3 @@ kind: Kustomization
 resources:
   - clustersecretstore.yaml
   - helmrelease.yaml
-  - source.yaml

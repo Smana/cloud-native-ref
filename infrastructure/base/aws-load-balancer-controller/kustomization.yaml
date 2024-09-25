@@ -4,4 +4,3 @@ namespace: kube-system
 
 resources:
   - helmrelease.yaml
-  - source.yaml

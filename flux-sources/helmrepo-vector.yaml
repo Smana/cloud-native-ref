@@ -1,0 +1,8 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: vector
+  namespace: observability
+spec:
+  interval: 30m
+  url: https://helm.vector.dev

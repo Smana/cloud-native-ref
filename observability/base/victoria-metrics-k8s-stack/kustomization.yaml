@@ -4,7 +4,6 @@ kind: Kustomization
 resources:
   - externalsecret-alertmanager-slack-app.yaml
   - externalsecret-grafana-admin.yaml
-  - source.yaml
 
   # HttpRoutes
   - httproute-grafana.yaml
