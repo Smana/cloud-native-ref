@@ -5,6 +5,5 @@ resources:
   - le-clusterissuer-prod.yaml
   - le-clusterissuer-staging.yaml
   - helmrelease.yaml
-  - source.yaml
   - vault-clusterissuer.yaml
   - vault-approle-externalsecret.yaml

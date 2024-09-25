@@ -4,4 +4,3 @@ kind: Kustomization
 resources:
   - helmrelease-controller.yaml
   - helmrelease-policies.yaml
-  - source.yaml

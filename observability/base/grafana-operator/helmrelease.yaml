@@ -11,7 +11,7 @@ spec:
       chart: grafana-operator
       sourceRef:
         kind: HelmRepository
-        name: grafana-operator
+        name: grafana-oci
         namespace: observability
       version: "v5.12.0"
   interval: 10m0s
