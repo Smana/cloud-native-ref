@@ -1,0 +1,23 @@
+# Based on https://grafana.com/docs/grafana-oncall/latest/setup/install/helm/install-scalable/
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: grafana-oncall
+spec:
+  releaseName: grafana-oncall
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: oncall
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: observability
+      version: "1.9.29"
+  interval: 4m0s
+  timeout: 10m
+  install:
+    remediation:
+      retries: 3
+  values:
