@@ -5,7 +5,7 @@ module "karpenter" {
   cluster_name = module.eks.cluster_name
 
   node_iam_role_additional_policies = merge(
-    var.enable_ssm ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
+    var.ssm_enabled ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
     var.iam_role_additional_policies
   )
 

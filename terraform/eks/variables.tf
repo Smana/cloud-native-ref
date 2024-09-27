@@ -21,7 +21,7 @@ variable "cluster_version" {
   type        = string
 }
 
-variable "enable_ssm" {
+variable "ssm_enabled" {
   description = "If true, allow to connect to the instances using AWS Systems Manager"
   type        = bool
   default     = false
@@ -35,13 +35,13 @@ variable "iam_role_additional_policies" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.16.1"
+  default     = "1.16.2"
   type        = string
 }
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "1.0.0"
+  default     = "1.0.3"
   type        = string
 }
 
