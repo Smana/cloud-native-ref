@@ -6,4 +6,4 @@ spec:
   interval: 5m0s
   url: https://github.com/VictoriaMetrics/operator.git
   ref:
-    tag: v0.48.1
+    tag: v0.48.2
