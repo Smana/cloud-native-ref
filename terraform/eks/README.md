@@ -147,7 +147,7 @@ tofu destroy --var-file variables.tfvars
 |------|-------------|------|---------|:--------:|
 | <a name="input_cilium_version"></a> [cilium\_version](#input\_cilium\_version) | Cilium cluster version | `string` | `"1.16.2"` | no |
 | <a name="input_cluster_name"></a> [cluster\_name](#input\_cluster\_name) | Name of the EKS cluster to be created | `string` | n/a | yes |
-| <a name="input_cluster_version"></a> [cluster\_version](#input\_cluster\_version) | k8s cluster version | `string` | `"1.30"` | no |
+| <a name="input_cluster_version"></a> [cluster\_version](#input\_cluster\_version) | k8s cluster version | `string` | `"1.31"` | no |
 | <a name="input_ebs_csi_driver_chart_version"></a> [ebs\_csi\_driver\_chart\_version](#input\_ebs\_csi\_driver\_chart\_version) | EBS CSI Driver Helm chart version | `string` | `"2.25.0"` | no |
 | <a name="input_env"></a> [env](#input\_env) | The environment of the EKS cluster | `string` | n/a | yes |
 | <a name="input_gateway_api_version"></a> [gateway\_api\_version](#input\_gateway\_api\_version) | Gateway API CRDs version | `string` | `"v1.1.0"` | no |
