@@ -101,7 +101,7 @@ data "cloudinit_config" "vault_cloud_init" {
     {
       "region"                = var.region
       "prom_exporter_enabled" = var.prometheus_node_exporter_enabled
-      "enable_ssm"            = var.enable_ssm
+      "ssm_enabled"           = var.ssm_enabled
       "vault_data_path"       = var.vault_data_path
       "vault_instance"        = local.tags.VaultInstance
       "dev_mode"              = var.mode == "dev" ? true : false

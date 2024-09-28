@@ -25,7 +25,7 @@ resource "aws_iam_role" "this" {
 
 # enable AWS Systems Manager service core functionality
 resource "aws_iam_role_policy_attachment" "ssm" {
-  count      = var.enable_ssm ? 1 : 0
+  count      = var.ssm_enabled ? 1 : 0
   role       = aws_iam_role.this.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }

@@ -9,6 +9,8 @@ module "eks" {
   cluster_version                = var.cluster_version
   cluster_endpoint_public_access = false
 
+  bootstrap_self_managed_addons = false
+
   cluster_addons = {
     coredns = {
       most_recent = true
@@ -26,12 +28,6 @@ module "eks" {
           ]
         }
       )
-    }
-    kube-proxy = {
-      most_recent = true
-    }
-    vpc-cni = {
-      most_recent = true
     }
     eks-pod-identity-agent = {
       most_recent = true
@@ -76,6 +72,11 @@ module "eks" {
       desired_size = 2
 
       ami_type = "AL2_x86_64"
+
+      iam_role_additional_policies = merge(
+        var.ssm_enabled ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
+        var.iam_role_additional_policies
+      )
 
       capacity_type        = "SPOT"
       force_update_version = true

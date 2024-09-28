@@ -54,7 +54,9 @@ fi
 aws eks update-kubeconfig --name $CLUSTER_NAME --region $REGION
 
 # Suspend all Flux reconciliations
-flux suspend kustomization --all
+if $(kubectl get ns flux-system &>/dev/null); then
+	flux suspend kustomization --all
+fi
 
 NODEPOOLS=$(kubectl get nodepools -o json | jq -r '.items[].metadata.name')
 if ! [ -z "$NODEPOOLS" ]; then

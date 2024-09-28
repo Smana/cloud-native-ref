@@ -4,7 +4,7 @@ resource "helm_release" "cilium" {
   force_update    = true
   cleanup_on_fail = false
   replace         = true
-  timeout         = 180
+  timeout         = 800 # Should wait for nodes to be ready
   repository      = "https://helm.cilium.io"
   chart           = "cilium"
   version         = var.cilium_version
@@ -16,12 +16,15 @@ resource "helm_release" "cilium" {
   }
 
   values = [
-    file("${path.module}/helm_values/cilium.yaml")
+    templatefile("${path.module}/helm_values/cilium.yaml",
+      {
+        cluster_endpoint = replace(module.eks.cluster_endpoint, "https://", "")
+      }
+    )
   ]
 
   depends_on = [
     kubectl_manifest.gateway_api_crds,
-    kubernetes_job.delete_aws_cni_ds
   ]
 }
 
