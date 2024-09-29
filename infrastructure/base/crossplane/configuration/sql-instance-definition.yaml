@@ -36,7 +36,6 @@ spec:
                         - Delete
                         - Orphan
                       type: string
-                      default: Delete
                     providerConfigName:
                       description: Crossplane ProviderConfig to use for provisioning this resources
                       type: string
