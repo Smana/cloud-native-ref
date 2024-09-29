@@ -55,108 +55,110 @@ spec:
 
                       _metadata = lambda resourceName: str -> any {
                           {
-                              name: oxr.spec.id,
-                              annotations: {"krm.kcl.dev/composition-resource-name": resourceName}
+                              name = oxr.spec.id
+                              annotations = {
+                                "krm.kcl.dev/composition-resource-name" = resourceName
+                              }
                           }
                       }
 
                       _items = [
                           {
-                              apiVersion: "rds.aws.upbound.io/v1beta1",
-                              kind: "SubnetGroup",
-                              metadata: _metadata(oxr.spec.claimRef.name),
+                              apiVersion = "rds.aws.upbound.io/v1beta1"
+                              kind = "SubnetGroup"
+                              metadata = _metadata(oxr.spec.claimRef.name)
                               spec: {
-                                  providerConfigRef: {name: oxr.spec.parameters.providerConfigName},
-                                  deletionPolicy: _deletionPolicy,
-                                  forProvider: {
-                                      description: "List of subnets to attach the RDS instance to.",
-                                      subnetIds: envConfig.privateSubnetIds,
-                                      region: _region
+                                  providerConfigRef.name = oxr.spec.parameters.providerConfigName
+                                  forProvider = {
+                                      description = "List of subnets to attach the RDS instance to."
+                                      subnetIds = envConfig.privateSubnetIds
+                                      region = _region
                                   }
                               }
-                          },
+                              deletionPolicy = _deletionPolicy
+                          }
                           {
-                              apiVersion: "ec2.aws.upbound.io/v1beta1",
-                              kind: "SecurityGroup",
-                              metadata: _metadata(oxr.spec.claimRef.name),
-                              spec: {
-                                  providerConfigRef: {name: oxr.spec.parameters.providerConfigName},
-                                  deletionPolicy: _deletionPolicy,
-                                  forProvider: {
-                                      description: "Allow RDS Inbound traffic",
-                                      vpcId: oxr.spec.vpcId,
-                                      region: _region
+                              apiVersion = "ec2.aws.upbound.io/v1beta1"
+                              kind = "SecurityGroup"
+                              metadata = _metadata(oxr.spec.claimRef.name)
+                              spec = {
+                                  providerConfigRef.name = oxr.spec.parameters.providerConfigName
+                                  deletionPolicy = _deletionPolicy
+                                  forProvider = {
+                                      description = "Allow RDS Inbound traffic"
+                                      vpcId = oxr.spec.vpcId
+                                      region = _region
                                   }
                               }
-                          },
+                          }
                           {
-                              apiVersion: "ec2.aws.upbound.io/v1beta1",
-                              kind: "SecurityGroupRule",
-                              metadata: _metadata(oxr.spec.claimRef.name),
-                              spec: {
-                                  providerConfigRef: {name: oxr.spec.parameters.providerConfigName},
-                                  deletionPolicy: _deletionPolicy,
-                                  forProvider: {
-                                      cidrIpv4: oxr.spec.parameters.CIDRBlock,
-                                      ipProtocol: "tcp",
-                                      region: _region,
-                                      securityGroupIdSelector: {matchControllerRef: True},
-                                      fromPort: _dbPort,
-                                      toPort: _dbPort
+                              apiVersion = "ec2.aws.upbound.io/v1beta1"
+                              kind = "SecurityGroupRule"
+                              metadata = _metadata(oxr.spec.claimRef.name)
+                              spec = {
+                                  providerConfigRef.name = oxr.spec.parameters.providerConfigName
+                                  deletionPolicy = _deletionPolicy
+                                  forProvider = {
+                                      cidrIpv4 = oxr.spec.parameters.CIDRBlock
+                                      ipProtocol = "tcp"
+                                      region = _region
+                                      securityGroupIdSelector = {matchControllerRef = True}
+                                      fromPort = _dbPort
+                                      toPort = _dbPort
                                   }
                               }
-                          },
+                          }
                           {
-                              apiVersion: "rds.aws.upbound.io/v1beta2",
-                              kind: "Instance",
-                              metadata: _metadata(oxr.spec.claimRef.name),
-                              spec: {
-                                  forProvider: {
-                                      identifierPrefix: oxr.spec.claimRef.name,
-                                      region: _region,
-                                      dbName: oxr.spec.parameters.dbName,
-                                      port: _dbPort,
-                                      engine: oxr.spec.parameters.engine,
+                              apiVersion = "rds.aws.upbound.io/v1beta2"
+                              kind = "Instance"
+                              metadata = _metadata(oxr.spec.claimRef.name)
+                              spec = {
+                                  forProvider = {
+                                      identifierPrefix = oxr.spec.claimRef.name
+                                      region = _region
+                                      dbName = oxr.spec.parameters.dbName
+                                      port = _dbPort
+                                      engine = oxr.spec.parameters.engine
                                       if oxr.spec?.parameters?.engineVersion:
-                                          engineVersion: oxr.spec.parameters.engineVersion,
+                                          engineVersion = oxr.spec.parameters.engineVersion
                                       if oxr.spec.parameters.size == "small":
-                                          instanceClass: "db.t3.small",
+                                          instanceClass = "db.t3.small"
                                       elif oxr.spec.parameters.size == "medium":
-                                          instanceClass: "db.t3.medium",
+                                          instanceClass = "db.t3.medium"
                                       elif oxr.spec.parameters.size == "large":
-                                          instanceClass: "db.t3.large",
-                                      dbSubnetGroupNameSelector: {matchControllerRef: True},
-                                      vpcSecurityGroupIdSelector: {matchControllerRef: True},
-                                      passwordSecretRef: {
-                                          name = oxr.spec.id + "-password",
-                                          namespace: oxr.spec.claimRef.namespace,
-                                          key: "password"
+                                          instanceClass = "db.t3.large"
+                                      dbSubnetGroupNameSelector = {matchControllerRef = True}
+                                      vpcSecurityGroupIdSelector = {matchControllerRef = True}
+                                      passwordSecretRef = {
+                                          name = oxr.spec.id + "-password"
+                                          namespace = oxr.spec.claimRef.namespace
+                                          key = "password"
                                       }
                                   }
                               }
-                          },
+                          }
                           {
-                              apiVersion: "kubernetes.crossplane.io/v1alpha1",
-                              kind: "Object",
-                              metadata = _metadata(oxr.spec.claimRef.name + "rds-service")
-                              spec: {
-                                  forProvider: {
-                                      manifest: {
-                                          apiVersion: "v1",
-                                          kind: "Service",
-                                          metadata: {
-                                              name = oxr.spec.claimRef.name + "-rds-service",
-                                              namespace: oxr.spec.claimRef.namespace
-                                          },
-                                          spec: {
-                                              externalName = oxr.spec.claimRef.name + "-rds-instance",
-                                              ports: [
+                              apiVersion = "kubernetes.crossplane.io/v1alpha1"
+                              kind = "Object"
+                              metadata = _metadata(oxr.spec.claimRef.name + "-rds-service")
+                              spec = {
+                                  forProvider = {
+                                      manifest = {
+                                          apiVersion = "v1"
+                                          kind = "Service"
+                                          metadata = {
+                                              name = oxr.spec.claimRef.name + "-rds-service"
+                                              namespace = oxr.spec.claimRef.namespace
+                                          }
+                                          spec = {
+                                              externalName = oxr.spec.claimRef.name + "-rds-instance"
+                                              ports = [
                                                   {
-                                                      port: _dbPort,
-                                                      targetPort: _dbPort
+                                                      port = _dbPort
+                                                      targetPort = _dbPort
                                                   }
-                                              ],
-                                              type: "ExternalName"
+                                              ]
+                                              type = "ExternalName"
                                           }
                                       }
                                   }
