@@ -27,6 +27,9 @@ spec:
             spec:
               type: object
               properties:
+                id:
+                  type: string
+                  description: Database ID
                 parameters:
                   type: object
                   properties:

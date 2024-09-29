@@ -21,7 +21,7 @@ spec:
                   environmentConfigs:
                       - type: Reference
                         ref:
-                            name: eks-envvars
+                            name: eks-environment
         - step: normal
           functionRef:
               name: function-kcl
@@ -40,12 +40,17 @@ spec:
                           _providerConfigRef?: str
                           _deletionPolicy?: str
 
-                      if oxr.spec.parameters.region != "":
+                      if oxr.spec?.parameters?.region:
                           _region = oxr.spec.parameters.region
-                      elif envConfig.region != "":
+                      elif envConfig?.region:
                           _region = envConfig.region
 
-                      if oxr.spec.parameters.deletionPolicy != "":
+                      if oxr.spec.parameters.engine == "postgres":
+                          _dbPort = 5432
+                      elif oxr.spec.parameters.engine == "mariadb":
+                          _dbPort = 3306
+
+                      if oxr.spec?.parameters?.deletionPolicy:
                           _deletionPolicy = oxr.spec.parameters.deletionPolicy
 
                       _metadata = lambda resourceName: str -> any {
@@ -96,33 +101,34 @@ spec:
                                       ipProtocol: "tcp",
                                       region: _region,
                                       securityGroupIdSelector: {matchControllerRef: True},
-                                      fromPort: oxr.spec.parameters.dbPort,
-                                      toPort: oxr.spec.parameters.dbPort
+                                      fromPort: _dbPort,
+                                      toPort: _dbPort
                                   }
                               }
                           },
                           {
-                              apiVersion: "rds.aws.upbound.io/v1beta1",
+                              apiVersion: "rds.aws.upbound.io/v1beta2",
                               kind: "Instance",
                               metadata: _metadata(oxr.spec.claimRef.name),
                               spec: {
                                   forProvider: {
                                       identifierPrefix: oxr.spec.claimRef.name,
+                                      region: _region,
                                       dbName: oxr.spec.parameters.dbName,
-                                      port: oxr.spec.parameters.dbPort,
+                                      port: _dbPort,
                                       engine: oxr.spec.parameters.engine,
-                                      if oxr.spec.parameters.engineVersion != "":
+                                      if oxr.spec?.parameters?.engineVersion:
                                           engineVersion: oxr.spec.parameters.engineVersion,
                                       if oxr.spec.parameters.size == "small":
-                                          dbInstanceClass: "db.t3.small",
+                                          instanceClass: "db.t3.small",
                                       elif oxr.spec.parameters.size == "medium":
-                                          dbInstanceClass: "db.t3.medium",
+                                          instanceClass: "db.t3.medium",
                                       elif oxr.spec.parameters.size == "large":
-                                          dbInstanceClass: "db.t3.large",
+                                          instanceClass: "db.t3.large",
                                       dbSubnetGroupNameSelector: {matchControllerRef: True},
                                       vpcSecurityGroupIdSelector: {matchControllerRef: True},
                                       passwordSecretRef: {
-                                          name: oxr.spec.id + "-password",
+                                          name = oxr.spec.id + "-password",
                                           namespace: oxr.spec.claimRef.namespace,
                                           key: "password"
                                       }
@@ -132,22 +138,22 @@ spec:
                           {
                               apiVersion: "kubernetes.crossplane.io/v1alpha1",
                               kind: "Object",
-                              metadata: _metadata(oxr.spec.claimRef.name) + "rds-service",
+                              metadata = _metadata(oxr.spec.claimRef.name + "rds-service")
                               spec: {
                                   forProvider: {
                                       manifest: {
                                           apiVersion: "v1",
                                           kind: "Service",
                                           metadata: {
-                                              name: oxr.spec.claimRef.name + "-rds-service",
+                                              name = oxr.spec.claimRef.name + "-rds-service",
                                               namespace: oxr.spec.claimRef.namespace
                                           },
                                           spec: {
-                                              externalName: oxr.spec.claimRef.name + "-rds-instance",
+                                              externalName = oxr.spec.claimRef.name + "-rds-instance",
                                               ports: [
                                                   {
-                                                      port: oxr.spec.parameters.dbPort,
-                                                      targetPort: oxr.spec.parameters.dbPort
+                                                      port: _dbPort,
+                                                      targetPort: _dbPort
                                                   }
                                               ],
                                               type: "ExternalName"
@@ -157,6 +163,8 @@ spec:
                               }
                           }
                       ]
+
+                      items = _items
 
         - step: ready
           functionRef:

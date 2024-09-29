@@ -3,6 +3,7 @@ kind: SQLInstance
 metadata:
   name: xplane-zitadel
 spec:
+  id: zitadel
   parameters:
     engine: postgres
     engineVersion: "16"
