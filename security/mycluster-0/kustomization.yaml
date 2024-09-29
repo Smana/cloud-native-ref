@@ -5,5 +5,5 @@ resources:
   - ../base/kyverno
   - ../base/cert-manager
   - ../base/vault-snapshot
-  #  - ../base/zitadel # Need to find a way to restore the configuration from a backup
+  # - ../base/zitadel # Need to find a way to restore the configuration from a backup
   - external-secrets

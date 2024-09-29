@@ -27,6 +27,9 @@ spec:
             spec:
               type: object
               properties:
+                id:
+                  type: string
+                  description: Database ID
                 parameters:
                   type: object
                   properties:
@@ -36,11 +39,9 @@ spec:
                         - Delete
                         - Orphan
                       type: string
-                      default: Delete
                     providerConfigName:
                       description: Crossplane ProviderConfig to use for provisioning this resources
                       type: string
-                      default: default
                     engine:
                       type: string
                       description: This RDS Instance engine, see https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBInstance.html for possible values.

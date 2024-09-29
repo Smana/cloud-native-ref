@@ -7,11 +7,21 @@ resources:
   - epi-composition.yaml
   - epi-definition.yaml
   - function-auto-ready.yaml
+  - function-environment-configs.yaml
   - function-patch-and-transform.yaml
   - function-go-templating.yaml
-  - irsa-composition.yaml # reference: https://github.com/upbound/platform-ref-aws
-  - irsa-definition.yaml
+  - function-kcl.yaml
   - providerconfig-aws.yaml
   - providerconfig-k8s.yaml
   - sql-instance-composition.yaml
   - sql-instance-definition.yaml
+
+# Generate the configmap that includes the KCL codes
+configMapGenerator:
+  - name: kcl-codes
+    options:
+      disableNameSuffixHash: true
+    files:
+      - kcl/epi.k
+      - kcl/databases.k
+      - kcl/rds.k

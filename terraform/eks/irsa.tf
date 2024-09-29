@@ -61,6 +61,7 @@ resource "aws_iam_policy" "crossplane_irsa" {
                 "iam:TagRole",
                 "iam:CreateRole",
                 "iam:CreatePolicy",
+                "iam:CreatePolicyVersion",
                 "iam:PutRolePolicy",
                 "iam:DeletePolicy",
                 "iam:DeleteRole",
