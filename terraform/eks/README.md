@@ -79,7 +79,7 @@ tofu destroy --var-file variables.tfvars
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | ~> 1.4 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 5.0 |
-| <a name="requirement_flux"></a> [flux](#requirement\_flux) | 1.3.0 |
+| <a name="requirement_flux"></a> [flux](#requirement\_flux) | 1.4.0 |
 | <a name="requirement_github"></a> [github](#requirement\_github) | ~> 6.0 |
 | <a name="requirement_helm"></a> [helm](#requirement\_helm) | >= 2.7 |
 | <a name="requirement_http"></a> [http](#requirement\_http) | >= 3.4 |
@@ -94,7 +94,7 @@ tofu destroy --var-file variables.tfvars
 |------|---------|
 | <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.0 |
 | <a name="provider_aws.virginia"></a> [aws.virginia](#provider\_aws.virginia) | ~> 5.0 |
-| <a name="provider_flux"></a> [flux](#provider\_flux) | 1.3.0 |
+| <a name="provider_flux"></a> [flux](#provider\_flux) | 1.4.0 |
 | <a name="provider_helm"></a> [helm](#provider\_helm) | >= 2.7 |
 | <a name="provider_http"></a> [http](#provider\_http) | >= 3.4 |
 | <a name="provider_kubectl"></a> [kubectl](#provider\_kubectl) | >= 2.0.0 |
@@ -120,7 +120,7 @@ tofu destroy --var-file variables.tfvars
 | [aws_iam_policy.crossplane_kms](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.crossplane_rds](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.crossplane_s3](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
-| [flux_bootstrap_git.this](https://registry.terraform.io/providers/fluxcd/flux/1.3.0/docs/resources/bootstrap_git) | resource |
+| [flux_bootstrap_git.this](https://registry.terraform.io/providers/fluxcd/flux/1.4.0/docs/resources/bootstrap_git) | resource |
 | [helm_release.aws_ebs_csi_driver](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |
 | [helm_release.cilium](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |
 | [helm_release.karpenter](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |
