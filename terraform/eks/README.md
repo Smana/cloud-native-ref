@@ -105,8 +105,8 @@ tofu destroy --var-file variables.tfvars
 | Name | Source | Version |
 |------|--------|---------|
 | <a name="module_eks"></a> [eks](#module\_eks) | terraform-aws-modules/eks/aws | ~> 20 |
-| <a name="module_irsa_crossplane"></a> [irsa\_crossplane](#module\_irsa\_crossplane) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.44.1 |
-| <a name="module_irsa_ebs_csi_driver"></a> [irsa\_ebs\_csi\_driver](#module\_irsa\_ebs\_csi\_driver) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.44.1 |
+| <a name="module_irsa_crossplane"></a> [irsa\_crossplane](#module\_irsa\_crossplane) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.45.0 |
+| <a name="module_irsa_ebs_csi_driver"></a> [irsa\_ebs\_csi\_driver](#module\_irsa\_ebs\_csi\_driver) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.45.0 |
 | <a name="module_karpenter"></a> [karpenter](#module\_karpenter) | terraform-aws-modules/eks/aws//modules/karpenter | ~> 20.0 |
 
 ## Resources
@@ -150,7 +150,7 @@ tofu destroy --var-file variables.tfvars
 | <a name="input_cluster_version"></a> [cluster\_version](#input\_cluster\_version) | k8s cluster version | `string` | `"1.31"` | no |
 | <a name="input_ebs_csi_driver_chart_version"></a> [ebs\_csi\_driver\_chart\_version](#input\_ebs\_csi\_driver\_chart\_version) | EBS CSI Driver Helm chart version | `string` | `"2.25.0"` | no |
 | <a name="input_env"></a> [env](#input\_env) | The environment of the EKS cluster | `string` | n/a | yes |
-| <a name="input_gateway_api_version"></a> [gateway\_api\_version](#input\_gateway\_api\_version) | Gateway API CRDs version | `string` | `"v1.1.0"` | no |
+| <a name="input_gateway_api_version"></a> [gateway\_api\_version](#input\_gateway\_api\_version) | Gateway API CRDs version | `string` | `"v1.2.0"` | no |
 | <a name="input_github_branch"></a> [github\_branch](#input\_github\_branch) | Github branch name | `string` | `"main"` | no |
 | <a name="input_github_org"></a> [github\_org](#input\_github\_org) | github organization name | `string` | n/a | yes |
 | <a name="input_github_repository"></a> [github\_repository](#input\_github\_repository) | github repository name | `string` | n/a | yes |

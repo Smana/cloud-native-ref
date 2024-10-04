@@ -11,7 +11,11 @@ spec:
     auth:
       appRole:
         path: approle
+<<<<<<< HEAD
         roleId: 25b6d22c-04a2-db78-6094-fdd7c2fa0f93 # !! This value changes each time I recreate the whole platform
+=======
+        roleId: ac21eafb-c892-b20f-0e64-3b9052d4497a # !! This value changes each time I recreate the whole platform
+>>>>>>> b724ea2 (chore(gapi): upgrade v1.2.0)
         secretRef:
           name: cert-manager-vault-approle
           key: secret_id
