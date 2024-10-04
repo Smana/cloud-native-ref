@@ -6,3 +6,4 @@ resources:
   - ../base/cilium
   - ../base/external-dns
   - ../base/gapi
+  - ../base/rabbitmq-cluster-operator

@@ -7,6 +7,7 @@ resources:
   - gitrepo-gateway-api.yaml
   - gitrepo-grafana-operator.yaml
   - gitrepo-kyverno.yaml
+  - gitrepo-rabbitmq-cluster-operator.yaml
   - gitrepo-victoria-metrics.yaml
   - helmrepo-actions-runner-controller.yaml
   - helmrepo-bitnami.yaml
