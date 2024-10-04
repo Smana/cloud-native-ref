@@ -7,4 +7,4 @@ spec:
   url: https://github.com/actions/actions-runner-controller
   ref:
     # renovate: regex:^gha-runner-scale-set-.*$
-    tag: gha-runner-scale-set-0.9.2
+    tag: v0.27.6
