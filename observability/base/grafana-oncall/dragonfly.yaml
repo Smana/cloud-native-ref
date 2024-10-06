@@ -1,0 +1,29 @@
+apiVersion: dragonflydb.io/v1alpha1
+kind: Dragonfly
+metadata:
+  labels:
+    app.kubernetes.io/name: dragonfly
+    app.kubernetes.io/instance: oncall
+    app.kubernetes.io/part-of: dragonfly-operator
+  name: oncall
+spec:
+  replicas: 1
+  authentication:
+    passwordFromSecret:
+      name: oncall-dragonfly
+      key: password
+  resources:
+    requests:
+      cpu: 500m
+      memory: 500Mi
+    limits:
+      cpu: 600m
+      memory: 750Mi
+  snapshot:
+    cron: "*/15 * * * *"
+    persistentVolumeClaimSpec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi

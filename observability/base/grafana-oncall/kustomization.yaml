@@ -3,6 +3,8 @@ kind: Kustomization
 namespace: observability
 
 resources:
+  - dragonfly.yaml
+  - external-secret-dragonfly.yaml
   - external-secret-rabbitmq.yaml
   - helmrelease.yaml
-  - rabbitmq-instance.yaml
+  - rabbitmq.yaml
