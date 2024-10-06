@@ -9,6 +9,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: rabbitmq-cluster-operator
-  path: "./config/crds/bases"
+  path: "./config/crd/bases"
   prune: true
   timeout: 1m

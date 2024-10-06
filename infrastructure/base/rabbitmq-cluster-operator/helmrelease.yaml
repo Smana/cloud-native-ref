@@ -12,7 +12,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: bitnami
-        namespace: kube-system
+        namespace: flux-system
       version: "4.3.24"
   interval: 3m0s
   install:
@@ -22,15 +22,11 @@ spec:
   values:
     clusterOperator:
       metrics:
-        service:
-          enabled: true
         serviceMonitor:
           enabled: true
 
     msgTopologyOperator:
       metrics:
-        service:
-          enabled: true
         serviceMonitor:
           enabled: true
 

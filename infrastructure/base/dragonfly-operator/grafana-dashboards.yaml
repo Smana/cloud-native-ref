@@ -3,6 +3,7 @@ apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
   name: dragonfly-operator
+  namespace: infrastructure
 spec:
   folderRef: "observability"
   allowCrossNamespaceImport: true

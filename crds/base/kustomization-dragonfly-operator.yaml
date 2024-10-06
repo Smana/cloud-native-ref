@@ -9,6 +9,24 @@ spec:
   sourceRef:
     kind: GitRepository
     name: dragonfly-operator
-  path: "./manifests/crd.yaml"
+  path: "./manifests"
   prune: true
   timeout: 1m
+  postBuild:
+    substitute:
+      kustomizeContent: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: crd-apply
+        spec:
+          template:
+            spec:
+              containers:
+                - name: crd-apply
+                  image: bitnami/kubectl:latest
+                  command:
+                    - /bin/sh
+                    - -c
+                    - |
+                      kubectl apply -f ./manifests/crd.yaml
