@@ -22,7 +22,7 @@ spec:
   values:
     auth:
       existingSecret: "harbor-valkey-password"
-      existingSecretPasswordKey: "password"
+      existingSecretPasswordKey: "REDIS_PASSWORD"
 
     master:
       ## Valkey master resource requests and limits

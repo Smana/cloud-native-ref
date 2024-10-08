@@ -2,6 +2,7 @@ apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaFolder
 metadata:
   name: flux
+  namespace: flux-system
 spec:
   allowCrossNamespaceImport: true
   instanceSelector:
