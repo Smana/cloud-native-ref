@@ -4,7 +4,6 @@ namespace: tooling
 resources:
   - httproute.yaml
   - helmrelease.yaml
-  - source.yaml
 
 configMapGenerator:
   - name: headlamp-deploy-plugins

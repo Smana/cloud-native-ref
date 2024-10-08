@@ -2,14 +2,12 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - bitnami-source.yaml
   - externalsecret-admin-password.yaml
-  - externalsecret-redis-password.yaml
   - externalsecret-sqlinstance-password.yaml
-  - harbor-helmrelease.yaml
-  - harbor-serviceaccount.yaml
-  - harbor-source.yaml
+  - externalsecret-valkey-password.yaml
+  - helmrelease-harbor.yaml
+  - serviceaccount-harbor.yaml
   - httproute.yaml
-  - redis-helmrelease.yaml
+  - helmrelease-valkey.yaml
   - s3-bucket.yaml
   - sqlinstance.yaml

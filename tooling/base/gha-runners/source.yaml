@@ -1,8 +1,0 @@
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: gha-runner-scale-set
-spec:
-  type: "oci"
-  interval: 5m0s
-  url: oci://ghcr.io/actions/actions-runner-controller-charts

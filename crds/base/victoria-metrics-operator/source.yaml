@@ -1,9 +1,0 @@
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
-metadata:
-  name: victoria-metrics-operator
-spec:
-  interval: 5m0s
-  url: https://github.com/VictoriaMetrics/operator.git
-  ref:
-    tag: v0.48.3
