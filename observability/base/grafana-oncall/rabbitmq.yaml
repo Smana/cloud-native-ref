@@ -1,0 +1,9 @@
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: oncall-rabbitmq
+spec:
+  replicas: 1
+  secretBackend:
+    externalSecret:
+      name: "oncall-rabbitmq"
