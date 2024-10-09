@@ -55,7 +55,7 @@ spec:
 
                       _metadata = lambda resourceName: str -> any {
                           {
-                              name = oxr.spec.id
+                              name = oxr.spec.claimRef.name
                               annotations = {
                                 "krm.kcl.dev/composition-resource-name" = resourceName
                               }
@@ -66,7 +66,7 @@ spec:
                           {
                               apiVersion = "rds.aws.upbound.io/v1beta1"
                               kind = "SubnetGroup"
-                              metadata = _metadata(oxr.spec.claimRef.name)
+                              metadata = _metadata(oxr.spec.claimRef.name + "-subnet-group")
                               spec: {
                                   providerConfigRef.name = oxr.spec.parameters.providerConfigName
                                   forProvider = {
@@ -80,13 +80,13 @@ spec:
                           {
                               apiVersion = "ec2.aws.upbound.io/v1beta1"
                               kind = "SecurityGroup"
-                              metadata = _metadata(oxr.spec.claimRef.name)
+                              metadata = _metadata(oxr.spec.claimRef.name + "-security-group")
                               spec = {
                                   providerConfigRef.name = oxr.spec.parameters.providerConfigName
                                   deletionPolicy = _deletionPolicy
                                   forProvider = {
                                       description = "Allow RDS Inbound traffic"
-                                      vpcId = oxr.spec.vpcId
+                                      vpcId = envConfig.vpcId
                                       region = _region
                                   }
                               }
@@ -94,24 +94,25 @@ spec:
                           {
                               apiVersion = "ec2.aws.upbound.io/v1beta1"
                               kind = "SecurityGroupRule"
-                              metadata = _metadata(oxr.spec.claimRef.name)
+                              metadata = _metadata(oxr.spec.claimRef.name + "-security-group-rule")
                               spec = {
                                   providerConfigRef.name = oxr.spec.parameters.providerConfigName
                                   deletionPolicy = _deletionPolicy
                                   forProvider = {
                                       cidrIpv4 = oxr.spec.parameters.CIDRBlock
-                                      ipProtocol = "tcp"
+                                      protocol = "tcp"
                                       region = _region
                                       securityGroupIdSelector = {matchControllerRef = True}
                                       fromPort = _dbPort
                                       toPort = _dbPort
+                                      type = "ingress"
                                   }
                               }
                           }
                           {
                               apiVersion = "rds.aws.upbound.io/v1beta2"
                               kind = "Instance"
-                              metadata = _metadata(oxr.spec.claimRef.name)
+                              metadata = _metadata(oxr.spec.claimRef.name + "-rds-instance")
                               spec = {
                                   forProvider = {
                                       identifierPrefix = oxr.spec.claimRef.name
@@ -129,9 +130,15 @@ spec:
                                           instanceClass = "db.t3.large"
                                       dbSubnetGroupNameSelector = {matchControllerRef = True}
                                       vpcSecurityGroupIdSelector = {matchControllerRef = True}
+                                      allocatedStorage = oxr.spec.parameters.storageGB
+                                      skipFinalSnapshot = True
+                                      username = "master"
                                       passwordSecretRef = {
-                                          name = oxr.spec.id + "-password"
-                                          namespace = oxr.spec.claimRef.namespace
+                                          name = oxr.spec.parameters.passwordSecretRef.name
+                                          if oxr.spec?.parameters?.passwordSecretRef?.namespace:
+                                            namespace = oxr.spec.claimRef.namespace
+                                          else:
+                                            namespace = oxr.spec.claimRef.namespace
                                           key = "password"
                                       }
                                   }
