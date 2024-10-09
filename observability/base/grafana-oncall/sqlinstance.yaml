@@ -1,0 +1,22 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: SQLInstance
+metadata:
+  name: xplane-oncall
+  namespace: tooling
+spec:
+  parameters:
+    engine: postgres
+    engineVersion: "16"
+    size: small
+    storageGB: 20
+    databases:
+      - owner: oncall
+        name: oncall
+    passwordSecretRef:
+      namespace: tooling
+      name: oncall-pg-masterpassword
+      key: password
+  compositionRef:
+    name: xsqlinstances.cloud.ogenki.io
+  writeConnectionSecretToRef:
+    name: xplane-oncall-rds
