@@ -1,0 +1,14 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crds-rabbitmq-cluster-operator
+  namespace: infrastructure
+spec:
+  interval: 10m
+  targetNamespace: infrastructure
+  sourceRef:
+    kind: GitRepository
+    name: rabbitmq-cluster-operator
+  path: "./config/crd/bases"
+  prune: true
+  timeout: 1m
