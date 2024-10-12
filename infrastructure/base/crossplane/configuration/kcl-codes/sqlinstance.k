@@ -1,10 +1,8 @@
+import base64
+
 oxr = option("params").oxr
 ocds = option("params").ocds
-#envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
-envConfig = {
-    "region": "eu-west-3"
-    "privateSubnetIds": ["subnet-0b1e7b7b1b1b1b1b1", "subnet-0b1e7b7b1b1b1b1b2"]
-}
+envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
 
 schema aws:
     _region: str = "eu-west-3"
@@ -24,12 +22,11 @@ elif oxr.spec.parameters.engine == "mariadb":
 if oxr.spec?.parameters?.deletionPolicy:
     _deletionPolicy = oxr.spec.parameters.deletionPolicy
 
-_metadata = lambda suffix: str -> any {
+_metadata = lambda resourceName: str -> any {
     {
-        name = oxr.spec.claimRef.name + "-" + suffix
-        namespace = oxr.spec.claimRef.namespace
-        labels = {
-            "app.kubernetes.io/managed-by": "crossplane"
+        name = oxr.spec.claimRef.name
+        annotations = {
+            "krm.kcl.dev/composition-resource-name" = resourceName
         }
     }
 }
@@ -38,10 +35,10 @@ _items = [
     {
         apiVersion = "rds.aws.upbound.io/v1beta1"
         kind = "SubnetGroup"
-        metadata = _metadata(oxr.spec.claimRef.name)
+        metadata = _metadata(oxr.spec.claimRef.name + "-subnet-group")
         spec: {
             providerConfigRef.name = oxr.spec.parameters.providerConfigName
-            forProvider: {
+            forProvider = {
                 description = "List of subnets to attach the RDS instance to."
                 subnetIds = envConfig.privateSubnetIds
                 region = _region
@@ -52,13 +49,14 @@ _items = [
     {
         apiVersion = "ec2.aws.upbound.io/v1beta1"
         kind = "SecurityGroup"
-        metadata = _metadata(oxr.spec.claimRef.name)
+        metadata = _metadata(oxr.spec.claimRef.name + "-security-group")
         spec = {
             providerConfigRef.name = oxr.spec.parameters.providerConfigName
             deletionPolicy = _deletionPolicy
             forProvider = {
+                name = oxr.spec.claimRef.name
                 description = "Allow RDS Inbound traffic"
-                vpcId = oxr.spec.vpcId
+                vpcId = envConfig.vpcId
                 region = _region
             }
         }
@@ -66,24 +64,25 @@ _items = [
     {
         apiVersion = "ec2.aws.upbound.io/v1beta1"
         kind = "SecurityGroupRule"
-        metadata = _metadata(oxr.spec.claimRef.name)
+        metadata = _metadata(oxr.spec.claimRef.name + "-security-group-rule")
         spec = {
             providerConfigRef.name = oxr.spec.parameters.providerConfigName
             deletionPolicy = _deletionPolicy
             forProvider = {
-                cidrIpv4 = oxr.spec.parameters.CIDRBlock
-                ipProtocol = "tcp"
+                cidrBlocks = [envConfig.vpc_cidr_block]
+                protocol = "tcp"
                 region = _region
                 securityGroupIdSelector = {matchControllerRef = True}
                 fromPort = _dbPort
                 toPort = _dbPort
+                type = "ingress"
             }
         }
     }
     {
         apiVersion = "rds.aws.upbound.io/v1beta2"
         kind = "Instance"
-        metadata = _metadata(oxr.spec.claimRef.name)
+        metadata = _metadata(oxr.spec.claimRef.name + "-rds-instance")
         spec = {
             forProvider = {
                 identifierPrefix = oxr.spec.claimRef.name
@@ -101,18 +100,76 @@ _items = [
                     instanceClass = "db.t3.large"
                 dbSubnetGroupNameSelector = {matchControllerRef = True}
                 vpcSecurityGroupIdSelector = {matchControllerRef = True}
+                allocatedStorage = oxr.spec.parameters.storageGB
+                skipFinalSnapshot = True
+                username = "master"
                 passwordSecretRef = {
-                    name = oxr.spec.id + "-password"
-                    namespace = oxr.spec.claimRef.namespace
+                    name = oxr.spec.parameters.passwordSecretRef.name
+                    if oxr.spec?.parameters?.passwordSecretRef?.namespace:
+                        namespace = oxr.spec.claimRef.namespace
+                    else:
+                        namespace = oxr.spec.claimRef.namespace
                     key = "password"
                 }
             }
         }
     }
     {
-        apiVersion = "kubernetes.crossplane.io/v1alpha1"
+        apiVersion = "kubernetes.crossplane.io/v1alpha2"
         kind = "Object"
-        metadata = _metadata("rds-service")
+        metadata = _metadata(oxr.spec.claimRef.name + "-rds-secret")
+        spec = {
+            references = [
+                {
+                    patchesFrom = {
+                        apiVersion = "rds.aws.upbound.io/v1beta1"
+                        kind = "Instance"
+                        name = oxr.spec.claimRef.name
+                        namespace = "crossplane-system"
+                        fieldPath = "spec.forProvider.username"
+                    }
+                    toFieldPath = "stringData.username"
+                }
+                {
+                    patchesFrom = {
+                        apiVersion = "v1"
+                        kind = "Secret"
+                        name = oxr.spec.parameters.passwordSecretRef.name
+                        if oxr.spec?.parameters?.passwordSecretRef?.namespace:
+                            namespace = oxr.spec.claimRef.namespace
+                        else:
+                            namespace = oxr.spec.claimRef.namespace
+                        fieldPath = "data.password"
+                    }
+                    toFieldPath = "data.password"
+                }
+                {
+                    patchesFrom = {
+                        apiVersion = "rds.aws.upbound.io/v1beta1"
+                        kind = "Instance"
+                        name = oxr.spec.claimRef.name
+                        namespace = "crossplane-system"
+                        fieldPath = "status.atProvider.address"
+                    }
+                    toFieldPath = "stringData.endpoint"
+                }
+            ]
+            forProvider.manifest = {
+                apiVersion = "v1"
+                kind = "Secret"
+                metadata = {
+                    name = oxr.spec.claimRef.name
+                    namespace = oxr.spec.claimRef.namespace
+                }
+                data.port = base64.encode(str(_dbPort))
+            }
+            providerConfigRef.name = oxr.spec.id + "-sql"
+        }
+    }
+    {
+        apiVersion = "kubernetes.crossplane.io/v1alpha2"
+        kind = "Object"
+        metadata = _metadata(oxr.spec.claimRef.name + "-rds-service")
         spec = {
             forProvider = {
                 manifest = {

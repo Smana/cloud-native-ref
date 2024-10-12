@@ -15,3 +15,11 @@ resources:
   - providerconfig-k8s.yaml
   - sql-instance-composition.yaml
   - sql-instance-definition.yaml
+
+# Generate the configmap that includes the KCL codes
+configMapGenerator:
+  - name: kcl-codes
+    options:
+      disableNameSuffixHash: true
+    files:
+      - kcl-codes/sqlinstance.k

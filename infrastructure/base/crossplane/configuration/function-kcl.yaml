@@ -5,3 +5,26 @@ metadata:
   annotations:
 spec:
   package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.10.0
+  runtimeConfigRef:
+    name: mount-kcl-codes
+---
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: mount-kcl-codes
+spec:
+  deploymentTemplate:
+    spec:
+      selector: {}
+      template:
+        spec:
+          containers:
+            - name: package-runtime
+              volumeMounts:
+                - mountPath: /kcl
+                  name: kcl
+                  readOnly: true
+          volumes:
+            - name: kcl
+              configMap:
+                name: kcl-codes
