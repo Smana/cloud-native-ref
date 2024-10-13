@@ -4,11 +4,6 @@ oxr = option("params").oxr
 ocds = option("params").ocds
 envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
 
-schema aws:
-    _region: str = "eu-west-3"
-    _providerConfigRef?: str
-    _deletionPolicy?: str
-
 if oxr.spec?.parameters?.region:
     _region = oxr.spec.parameters.region
 elif envConfig?.region:
@@ -22,11 +17,11 @@ elif oxr.spec.parameters.engine == "mariadb":
 if oxr.spec?.parameters?.deletionPolicy:
     _deletionPolicy = oxr.spec.parameters.deletionPolicy
 
-_metadata = lambda resourceName: str -> any {
+_metadata = lambda suffix: str -> any {
     {
-        name = oxr.spec.claimRef.name
+        name = oxr.spec.claimRef.name + "-" + suffix
         annotations = {
-            "krm.kcl.dev/composition-resource-name" = resourceName
+            "krm.kcl.dev/composition-resource-name" = oxr.spec.claimRef.name + "-" + suffix
         }
     }
 }
@@ -35,7 +30,7 @@ _items = [
     {
         apiVersion = "rds.aws.upbound.io/v1beta1"
         kind = "SubnetGroup"
-        metadata = _metadata(oxr.spec.claimRef.name + "-subnet-group")
+        metadata = _metadata("rds-subnet-group")
         spec: {
             providerConfigRef.name = oxr.spec.parameters.providerConfigName
             forProvider = {
@@ -49,7 +44,7 @@ _items = [
     {
         apiVersion = "ec2.aws.upbound.io/v1beta1"
         kind = "SecurityGroup"
-        metadata = _metadata(oxr.spec.claimRef.name + "-security-group")
+        metadata = _metadata("rds-security-group")
         spec = {
             providerConfigRef.name = oxr.spec.parameters.providerConfigName
             deletionPolicy = _deletionPolicy
@@ -64,12 +59,12 @@ _items = [
     {
         apiVersion = "ec2.aws.upbound.io/v1beta1"
         kind = "SecurityGroupRule"
-        metadata = _metadata(oxr.spec.claimRef.name + "-security-group-rule")
+        metadata = _metadata("rds-security-group-rule")
         spec = {
             providerConfigRef.name = oxr.spec.parameters.providerConfigName
             deletionPolicy = _deletionPolicy
             forProvider = {
-                cidrBlocks = [envConfig.vpc_cidr_block]
+                cidrBlocks = [envConfig.CIDRBlock]
                 protocol = "tcp"
                 region = _region
                 securityGroupIdSelector = {matchControllerRef = True}
@@ -82,7 +77,7 @@ _items = [
     {
         apiVersion = "rds.aws.upbound.io/v1beta2"
         kind = "Instance"
-        metadata = _metadata(oxr.spec.claimRef.name + "-rds-instance")
+        metadata = _metadata("rds-instance")
         spec = {
             forProvider = {
                 identifierPrefix = oxr.spec.claimRef.name
@@ -105,71 +100,20 @@ _items = [
                 username = "master"
                 passwordSecretRef = {
                     name = oxr.spec.parameters.passwordSecretRef.name
-                    if oxr.spec?.parameters?.passwordSecretRef?.namespace:
-                        namespace = oxr.spec.claimRef.namespace
-                    else:
-                        namespace = oxr.spec.claimRef.namespace
+                    namespace = oxr.spec.claimRef.namespace
                     key = "password"
                 }
             }
-        }
-    }
-    {
-        apiVersion = "kubernetes.crossplane.io/v1alpha2"
-        kind = "Object"
-        metadata = _metadata(oxr.spec.claimRef.name + "-rds-secret")
-        spec = {
-            references = [
-                {
-                    patchesFrom = {
-                        apiVersion = "rds.aws.upbound.io/v1beta1"
-                        kind = "Instance"
-                        name = oxr.spec.claimRef.name
-                        namespace = "crossplane-system"
-                        fieldPath = "spec.forProvider.username"
-                    }
-                    toFieldPath = "stringData.username"
-                }
-                {
-                    patchesFrom = {
-                        apiVersion = "v1"
-                        kind = "Secret"
-                        name = oxr.spec.parameters.passwordSecretRef.name
-                        if oxr.spec?.parameters?.passwordSecretRef?.namespace:
-                            namespace = oxr.spec.claimRef.namespace
-                        else:
-                            namespace = oxr.spec.claimRef.namespace
-                        fieldPath = "data.password"
-                    }
-                    toFieldPath = "data.password"
-                }
-                {
-                    patchesFrom = {
-                        apiVersion = "rds.aws.upbound.io/v1beta1"
-                        kind = "Instance"
-                        name = oxr.spec.claimRef.name
-                        namespace = "crossplane-system"
-                        fieldPath = "status.atProvider.address"
-                    }
-                    toFieldPath = "stringData.endpoint"
-                }
-            ]
-            forProvider.manifest = {
-                apiVersion = "v1"
-                kind = "Secret"
-                metadata = {
-                    name = oxr.spec.claimRef.name
-                    namespace = oxr.spec.claimRef.namespace
-                }
-                data.port = base64.encode(str(_dbPort))
+            writeConnectionSecretToRef = {
+                name = oxr.spec.claimRef.name + "-rds-connection"
+                namespace = oxr.spec.claimRef.namespace
             }
-            providerConfigRef.name = oxr.spec.id + "-sql"
         }
     }
     {
         apiVersion = "kubernetes.crossplane.io/v1alpha2"
         kind = "Object"
-        metadata = _metadata(oxr.spec.claimRef.name + "-rds-service")
+        metadata = _metadata("rds-service")
         spec = {
             forProvider = {
                 manifest = {

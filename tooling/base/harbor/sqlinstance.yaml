@@ -6,7 +6,7 @@ metadata:
 spec:
   parameters:
     engine: postgres
-    engineVersion: "15"
+    engineVersion: "16"
     size: small
     storageGB: 20
     databases:

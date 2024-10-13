@@ -22,4 +22,6 @@ configMapGenerator:
     options:
       disableNameSuffixHash: true
     files:
-      - kcl-codes/sqlinstance.k
+      - kcl/epi.k
+      - kcl/databases.k
+      - kcl/rds.k

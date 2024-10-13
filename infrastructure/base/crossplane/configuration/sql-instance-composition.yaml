@@ -22,6 +22,7 @@ spec:
                       - type: Reference
                         ref:
                             name: eks-environment
+
         - step: rds
           functionRef:
               name: function-kcl
@@ -30,7 +31,17 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: /kcl/sqlinstance.k
+                  source: /kcl/rds.k
+
+        - step: databases
+          functionRef:
+              name: function-kcl
+          input:
+              apiVersion: krm.kcl.dev/v1alpha1
+              kind: KCLRun
+              spec:
+                  target: Resources
+                  source: /kcl/databases.k
 
         - step: ready
           functionRef:
