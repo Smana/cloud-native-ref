@@ -47,10 +47,19 @@ spec:
                       type: string
                       description: The JSON policy document that is the content for the policy.
                     additionalPolicyArns:
-                      description: Object containing key-value pairs for additional policies.
-                      type: object
-                      additionalProperties:
-                        type: string
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: The name of the policy
+                          arn:
+                            type: string
+                            description: The ARN of the policy
+                        required:
+                          - name
+                          - arn
                     providerConfigName:
                       description: Crossplane ProviderConfig to use for provisioning these resources
                       type: string

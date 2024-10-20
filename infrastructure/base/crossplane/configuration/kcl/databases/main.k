@@ -13,10 +13,10 @@ elif oxr.spec.parameters.engine == "mariadb":
     _SQLApiVersion = "mysql.sql.crossplane.io / v1alpha1"
     _dbPort = 3306
 
-if oxr.spec.parameters.providerConfigName == "":
-    _providerConfigName = oxr.spec.claimRef.name + "-sql-" + oxr.spec.parameters.engine
-else:
+if oxr.spec.parameters.providerConfigName:
     _providerConfigName = oxr.spec.parameters.providerConfigName
+else:
+    _providerConfigName = oxr.spec.claimRef.name + "-sql-" + oxr.spec.parameters.engine
 _metadata = lambda resourceName: str, suffix -> any {
     {
         name = resourceName

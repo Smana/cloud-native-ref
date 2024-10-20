@@ -29,7 +29,7 @@ spec:
         kind: KCLRun
         spec:
           target: Resources
-          source: /kcl/epi.k
+          source: oci://ttl.sh/ogenki-cnref/eks-pod-identity:v0.0.5-24h
 
     - step: ready
       functionRef:

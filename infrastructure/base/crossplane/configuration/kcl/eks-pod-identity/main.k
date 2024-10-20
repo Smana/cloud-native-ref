@@ -7,14 +7,33 @@ if oxr.spec?.parameters?.region:
 elif envConfig?.region:
     _region = envConfig.region
 
-if oxr.spec?.parameters?.deletionPolicy:
-    _deletionPolicy = oxr.spec.parameters.deletionPolicy
-
+if oxr.spec?.deletionPolicy:
+    _deletionPolicy = oxr.spec.deletionPolicy
+else:
+    _deletionPolicy = "Delete"
 _metadata = lambda suffix: str -> any {
     {
         name = oxr.spec.claimRef.name + "-" + suffix
         annotations = {
             "krm.kcl.dev/composition-resource-name" = oxr.spec.claimRef.name + "-" + suffix
+        }
+    }
+}
+
+_attachPolicy = lambda policyArn: any -> any {
+    {
+        apiVersion = "iam.aws.upbound.io/v1beta1"
+        kind = "RolePolicyAttachment"
+        metadata = _metadata(policyArn.name + "-iam-role-policy-attachment")
+        spec: {
+            providerConfigRef.name = oxr.spec.parameters.providerConfigName
+            forProvider = {
+                policyArn = policyArn.arn
+                roleSelector = {
+                    matchControllerRef = True
+                }
+            }
+            deletionPolicy = _deletionPolicy
         }
     }
 }
@@ -44,8 +63,8 @@ _items = [
 }
 """
             }
+            deletionPolicy = _deletionPolicy
         }
-        deletionPolicy = _deletionPolicy
     }
     {
         apiVersion = "iam.aws.upbound.io/v1beta1"
@@ -73,8 +92,8 @@ _items = [
                     matchControllerRef: True
                 }
             }
+            deletionPolicy = _deletionPolicy
         }
-        deletionPolicy = _deletionPolicy
     }
     {
         apiVersion = "eks.aws.upbound.io/v1beta1"
@@ -91,9 +110,12 @@ _items = [
                     matchControllerRef = True
                 }
             }
+            deletionPolicy = _deletionPolicy
         }
-        deletionPolicy = _deletionPolicy
     }
 ]
+
+if oxr.spec.parameters?.additionalPolicyArns:
+    _items += [_attachPolicy(policy) for policy in oxr.spec.parameters.additionalPolicyArns]
 
 items = _items

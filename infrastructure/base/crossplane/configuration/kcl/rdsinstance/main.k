@@ -1,5 +1,3 @@
-import base64
-
 oxr = option("params").oxr
 ocds = option("params").ocds
 envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
@@ -124,7 +122,8 @@ _items = [
                         namespace = oxr.spec.claimRef.namespace
                     }
                     spec = {
-                        externalName = ocds[oxr.spec.claimRef.name + "-rds-instance"].Resource.status.atProvider.address
+                        if oxr.spec.claimRef.name + "-rds-instance" in ocds:
+                            externalName = ocds[oxr.spec.claimRef.name + "-rds-instance"].Resource.status.atProvider.address
                         ports = [
                             {
                                 port = _dbPort

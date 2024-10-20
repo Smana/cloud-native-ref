@@ -31,7 +31,7 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: /kcl/rds.k
+                  source: oci://ttl.sh/ogenki-cnref/rdsinstance:v0.0.3-24h
 
         - step: databases
           functionRef:
@@ -41,7 +41,7 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: /kcl/databases.k
+                  source: oci://ttl.sh/ogenki-cnref/databases:v0.0.4-24h
 
         - step: ready
           functionRef:
