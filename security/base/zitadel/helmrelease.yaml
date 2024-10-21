@@ -33,7 +33,7 @@ spec:
           CertPath: /tls/tls.crt
         Database:
           Postgres:
-            Host: sqlinstance-xplane-zitadel
+            Host: xplane-zitadel-rds-service
             Port: 5432
             Database: zitadel
             MaxOpenConns: 20

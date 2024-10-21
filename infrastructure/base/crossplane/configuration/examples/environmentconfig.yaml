@@ -1,0 +1,16 @@
+# This manifest is not deployed. It is just used for validating crossplane compositions using
+# crossplane render --extra-resources environmentconfig-example.yaml ...
+apiVersion: apiextensions.crossplane.io/v1alpha1
+kind: EnvironmentConfig
+metadata:
+  name: eks-environment
+data:
+  clusterName: "mycluster-0"
+  oidcUrl: "https://oidc.eks.eu-west-3.amazonaws.com/id/foobar"
+  oidcHost: "oidc.eks.eu-west-3.amazonaws.com"
+  oidcArn: "arn:aws:iam::123456789012:oidc-provider/oidc.eks.eu-west-3.amazonaws.com/id/foobar"
+  accountId: "123456789012"
+  region: "eu-west-3"
+  vpcId: "vpc-0"
+  CIDRBlock: "10.0.0.0/16"
+  privateSubnetIds: "subnet-0,subnet-1,subnet-2"

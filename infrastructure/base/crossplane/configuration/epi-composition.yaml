@@ -7,211 +7,29 @@ spec:
   compositeTypeRef:
     apiVersion: cloud.ogenki.io/v1alpha1
     kind: XEPI
-  environment:
-    environmentConfigs:
-      - ref:
-          name: eks-environment
-        type: Reference
   mode: Pipeline
   pipeline:
-    - step: patch-and-transform
+    - step: environmentConfigs
       functionRef:
-        name: function-patch-and-transform
+        name: function-environment-configs
       input:
-        apiVersion: pt.fn.crossplane.io/v1beta1
-        kind: Resources
-        patchSets:
-          - name: Name
-            patches:
-              - fromFieldPath: metadata.name
-                toFieldPath: metadata.annotations[crossplane.io/external-name]
-                type: FromCompositeFieldPath
-              - fromFieldPath: metadata.labels[crossplane.io/claim-name]
-                toFieldPath: metadata.annotations[crossplane.io/external-name]
-                type: FromCompositeFieldPath
-          - name: providerConfigRef
-            patches:
-              - fromFieldPath: spec.providerConfigRef.name
-                toFieldPath: spec.providerConfigRef.name
-                type: FromCompositeFieldPath
-          - name: deletionPolicy
-            patches:
-              - fromFieldPath: spec.deletionPolicy
-                toFieldPath: spec.deletionPolicy
-                type: FromCompositeFieldPath
-          - name: region
-            patches:
-              - fromFieldPath: region
-                toFieldPath: spec.forProvider.region
-                type: FromEnvironmentFieldPath
-        resources:
-          - name: iam-role
-            base:
-              apiVersion: iam.aws.upbound.io/v1beta1
-              kind: Role
-              metadata:
-                labels:
-                  resource: Role
-              spec:
-                forProvider:
-                  assumeRolePolicy: |
-                    {
-                      "Version": "2012-10-17",
-                      "Statement": [
-                        {
-                          "Effect": "Allow",
-                          "Principal": {
-                            "Service": "pods.eks.amazonaws.com"
-                          },
-                          "Action": [
-                            "sts:AssumeRole",
-                            "sts:TagSession"
-                          ]
-                        }
-                      ]
-                    }
-            patches:
-              - patchSetName: Name
-                type: PatchSet
-              - patchSetName: providerConfigRef
-                type: PatchSet
-              - patchSetName: deletionPolicy
-                type: PatchSet
-              - fromFieldPath: status.atProvider.arn
-                policy:
-                  fromFieldPath: Optional
-                toFieldPath: status.roleArn
-                type: ToCompositeFieldPath
-              - fromFieldPath: status.conditions
-                policy:
-                  fromFieldPath: Optional
-                toFieldPath: status.observed.role.conditions
-                type: ToCompositeFieldPath
-              - fromFieldPath: metadata.annotations[serviceAccount/namespace]
-                toFieldPath: serviceAccount.namespace
-                type: ToEnvironmentFieldPath
-              - fromFieldPath: metadata.annotations[serviceAccount/name]
-                toFieldPath: serviceAccount.name
-                type: ToEnvironmentFieldPath
+        apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+        kind: Input
+        spec:
+          environmentConfigs:
+            - type: Reference
+              ref:
+                name: eks-environment
 
-          - name: iam-policy
-            base:
-              apiVersion: iam.aws.upbound.io/v1beta1
-              kind: Policy
-              metadata:
-                labels:
-                  resource: Policy
-            patches:
-              - patchSetName: providerConfigRef
-                type: PatchSet
-              - patchSetName: deletionPolicy
-                type: PatchSet
-              - fromFieldPath: spec.parameters.policyDocument
-                toFieldPath: spec.forProvider.policy
-                type: FromCompositeFieldPath
-              - fromFieldPath: metadata.annotations[crossplane.io/external-name]
-                toFieldPath: status.policyArn
-                type: ToCompositeFieldPath
-              - fromFieldPath: status.conditions
-                policy:
-                  fromFieldPath: Optional
-                toFieldPath: status.observed.policy.conditions
-                type: ToCompositeFieldPath
-
-          - name: iam-policy-attachment
-            base:
-              apiVersion: iam.aws.upbound.io/v1beta1
-              kind: RolePolicyAttachment
-              metadata:
-                labels:
-                  resource: RolePolicyAttachment
-              spec:
-                forProvider:
-                  policyArnSelector:
-                    matchControllerRef: true
-                    matchLabels:
-                      resource: Policy
-                  roleSelector:
-                    matchControllerRef: true
-                    matchLabels:
-                      resource: Role
-            patches:
-              - patchSetName: providerConfigRef
-                type: PatchSet
-              - patchSetName: deletionPolicy
-                type: PatchSet
-              - fromFieldPath: status.conditions
-                policy:
-                  fromFieldPath: Optional
-                toFieldPath: status.observed.rpa.conditions
-                type: ToCompositeFieldPath
-
-          - name: eks-pod-identity-association
-            base:
-              apiVersion: eks.aws.upbound.io/v1beta1
-              kind: PodIdentityAssociation
-              metadata:
-                labels:
-                  resource: EKSPodIdentityAssociation
-              spec:
-                forProvider:
-                  roleArnSelector:
-                    matchControllerRef: true
-                    matchLabels:
-                      resource: Role
-            patches:
-              - patchSetName: providerConfigRef
-                type: PatchSet
-              - patchSetName: deletionPolicy
-                type: PatchSet
-              - patchSetName: region
-                type: PatchSet
-              - fromFieldPath: spec.parameters.clusterName
-                toFieldPath: spec.forProvider.clusterName
-                type: FromCompositeFieldPath
-              - fromFieldPath: spec.parameters.serviceAccount.name
-                toFieldPath: spec.forProvider.serviceAccount
-                type: FromCompositeFieldPath
-              - fromFieldPath: spec.parameters.serviceAccount.namespace
-                toFieldPath: spec.forProvider.namespace
-                type: FromCompositeFieldPath
-              - fromFieldPath: status.conditions
-                policy:
-                  fromFieldPath: Optional
-                toFieldPath: status.observed.rpa.conditions
-                type: ToCompositeFieldPath
-
-    - step: additional-policies
+    - step: epi
       functionRef:
-        name: function-go-templating
+        name: function-kcl
       input:
-        apiVersion: gotemplating.fn.crossplane.io/v1beta1
-        kind: GoTemplate
-        source: Inline
-        inline:
-          template: |
-            {{ $claim  	:= .observed.composite.resource }}
-            {{ $parameters := .observed.composite.resource.spec.parameters }}
-
-            {{- range $key, $value := $parameters.additionalPolicyArns }}
-            ---
-            apiVersion: iam.aws.upbound.io/v1beta1
-            kind: RolePolicyAttachment
-            metadata:
-              name: "{{ index $claim.spec.claimRef "name" }}-{{ $key | lower }}"
-              annotations:
-                {{ setResourceNameAnnotation (print "rpa-" (replace "_" "-" $key | lower)) }}
-            spec:
-              deletionPolicy: {{ default "Delete" (index $parameters "deletionPolicy") }}
-              forProvider:
-                policyArn: {{ $value }}
-                roleSelector:
-                  matchControllerRef: true
-                  matchLabels:
-                    resource: Role
-              providerConfigRef:
-                name: default
-            {{- end }}
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLRun
+        spec:
+          target: Resources
+          source: oci://ttl.sh/ogenki-cnref/eks-pod-identity:v0.0.5-24h
 
     - step: ready
       functionRef:

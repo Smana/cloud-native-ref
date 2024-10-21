@@ -1,0 +1,43 @@
+kcl_options:
+  - key: params
+    value:
+      ctx:
+        "apiextensions.crossplane.io/environment":
+          region: "eu-west-3"
+      oxr:
+        spec:
+          claimRef:
+            name: "myname"
+            namespace: "myns"
+          parameters:
+            clusterName: "mycluster-0"
+            serviceAccount:
+              name: foobar
+              namespace: security
+            policyDocument: |
+              {
+              "Version": "2012-10-17",
+              "Statement": [
+                  {
+                  "Effect": "Allow",
+                  "Action": "route53:GetChange",
+                  "Resource": "arn:aws:route53:::change/*"
+                  },
+                  {
+                  "Effect": "Allow",
+                  "Action": [
+                      "route53:ChangeResourceRecordSets",
+                      "route53:ListResourceRecordSets"
+                  ],
+                  "Resource": "arn:aws:route53:::hostedzone/*"
+                  },
+                  {
+                  "Effect": "Allow",
+                  "Action": "route53:ListHostedZonesByName",
+                  "Resource": "*"
+                  }
+              ]
+              }
+            additionalPolicyArns:
+              - name: "r53admin"
+                arn: "arn:aws:iam::aws:policy/AmazonRoute53FullAccess"

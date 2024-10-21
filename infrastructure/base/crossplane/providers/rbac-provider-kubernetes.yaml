@@ -13,10 +13,13 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["services"]
-    verbs: ["get", "create", "delete", "update"]
+    verbs: ["get", "create", "delete", "update", "patch"]
   - apiGroups: ["postgresql.sql.crossplane.io"]
     resources: ["providerconfigs"]
-    verbs: ["get", "create", "delete", "update"]
+    verbs: ["get", "create", "delete", "update", "patch"]
+  - apiGroups: ["rds.aws.upbound.io"]
+    resources: ["instances"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
