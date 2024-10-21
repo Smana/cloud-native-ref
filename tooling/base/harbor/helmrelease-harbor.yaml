@@ -57,11 +57,11 @@ spec:
     database:
       type: external
       external:
-        host: "sqlinstance-xplane-harbor"
+        host: "xplane-harbor-rds-service"
         port: "5432"
         username: "harbor"
         coreDatabase: "registry"
-        existingSecret: "sql-role-harbor"
+        existingSecret: "xplane-harbor-owner-harbor"
         sslmode: "require"
 
     redis:

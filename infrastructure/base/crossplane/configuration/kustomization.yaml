@@ -6,11 +6,7 @@ resources:
   - environmentconfig.yaml
   - epi-composition.yaml
   - epi-definition.yaml
-  - function-auto-ready.yaml
-  - function-patch-and-transform.yaml
-  - function-go-templating.yaml
-  - irsa-composition.yaml # reference: https://github.com/upbound/platform-ref-aws
-  - irsa-definition.yaml
+  - functions.yaml
   - providerconfig-aws.yaml
   - providerconfig-k8s.yaml
   - sql-instance-composition.yaml
