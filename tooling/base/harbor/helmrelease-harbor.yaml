@@ -59,8 +59,8 @@ spec:
       external:
         host: "xplane-harbor-rds-service"
         port: "5432"
-        username: "xplane-harbor-harbor"
-        coreDatabase: "xplane-harbor-registry"
+        username: "harbor"
+        coreDatabase: "registry"
         existingSecret: "xplane-harbor-owner-harbor"
         sslmode: "require"
 

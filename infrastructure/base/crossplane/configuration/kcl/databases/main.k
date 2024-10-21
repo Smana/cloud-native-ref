@@ -17,7 +17,7 @@ if oxr.spec.parameters.providerConfigName:
     _providerConfigName = oxr.spec.parameters.providerConfigName
 else:
     _providerConfigName = oxr.spec.claimRef.name + "-sql-" + oxr.spec.parameters.engine
-_metadata = lambda resourceName: str, suffix -> any {
+_metadata = lambda resourceName, suffix, externalName: str -> any {
     {
         name = resourceName
         annotations = {
@@ -25,6 +25,8 @@ _metadata = lambda resourceName: str, suffix -> any {
                 "krm.kcl.dev/composition-resource-name" = resourceName
             else:
                 "krm.kcl.dev/composition-resource-name" = resourceName + "-" + suffix
+            if externalName:
+                "crossplane.io/external-name" = externalName
         }
     }
 }
@@ -70,7 +72,7 @@ _SQLOwner = lambda owner: str -> any {
             kind = "Role"
         elif _SQLApiVersion == "mysql.sql.crossplane.io/v1alpha1":
             kind = "User"
-        metadata = _metadata(oxr.spec.claimRef.name + "-" + owner, "owner")
+        metadata = _metadata(oxr.spec.claimRef.name + "-" + owner, "owner", externalName=owner)
         spec = {
             providerConfigRef = {
                 name = _providerConfigName
@@ -99,12 +101,14 @@ _SQLDatabase = lambda db: any -> any {
     {
         apiVersion = _SQLApiVersion
         kind = "Database"
-        metadata = _metadata(oxr.spec.claimRef.name + "-" + db.name, "database")
+        metadata = _metadata(resourceName=oxr.spec.claimRef.name + "-" + db.name, suffix="database", externalName=db.name)
         spec = {
             providerConfigRef = {
                 name = _providerConfigName
             }
-            forProvider = {}
+            forProvider = {
+                owner = db.owner
+            }
         }
     }
 }
@@ -113,7 +117,7 @@ _SQLGrant = lambda db: any -> any {
     {
         apiVersion = _SQLApiVersion
         kind = "Grant"
-        metadata = _metadata(oxr.spec.claimRef.name + "-" + db.owner + "-" + db.name, "grant")
+        metadata = _metadata(oxr.spec.claimRef.name + "-" + db.owner + "-" + db.name, "grant", "")
         spec = {
             providerConfigRef.name = _providerConfigName
             forProvider = {
@@ -131,7 +135,7 @@ _items = [
     {
         apiVersion = "kubernetes.crossplane.io/v1alpha2"
         kind = "Object"
-        metadata = _metadata(oxr.spec.claimRef.name + "-provider-config-" + oxr.spec.parameters.engine, "kubernetes")
+        metadata = _metadata(oxr.spec.claimRef.name + "-provider-config-" + oxr.spec.parameters.engine, "kubernetes", "")
         spec = {
             forProvider = {
                 manifest = _SQLProviderConfig(oxr.spec.parameters.engine)
@@ -141,7 +145,7 @@ _items = [
     {
         apiVersion = "kubernetes.crossplane.io/v1alpha2"
         kind = "Object"
-        metadata = _metadata(oxr.spec.claimRef.name + "-rds-secret-" + oxr.spec.parameters.engine, "kubernetes")
+        metadata = _metadata(oxr.spec.claimRef.name + "-rds-secret-" + oxr.spec.parameters.engine, "kubernetes", "")
         spec = {
             references = [
                 {

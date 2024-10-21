@@ -11,7 +11,14 @@ cd infrastructure/base/crossplane/configuration/kcl
 kcl mod init rdsinstance
 ```
 
-After writing the code, you can push it to an OCI registry as follows:
+After writing the code, we can render the output directly from the module directory using the command
+
+```console
+cd rdsinstance
+kcl run -Y settings-example.yam
+```
+
+Then you can push it to an OCI registry as follows:
 
 ```console
 cd rdsinstance
