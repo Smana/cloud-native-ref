@@ -25,7 +25,7 @@ cd rdsinstance
 kcl mod push oci://ttl.sh/ogenki-cnref/rdsinstance:v0.0.1-24h
 ```
 
-The OCI artifact will be available for 24 hours, as specified in the tag. You can then reference it in your Crossplane composition:
+Here we're using [TTL.sh](https://ttl.sh/) and the OCI artifact will be available for 24 hours, as specified in the tag. You can then reference it in your Crossplane composition:
 
 ```yaml
 ...
