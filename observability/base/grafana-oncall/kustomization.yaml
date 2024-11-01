@@ -9,6 +9,8 @@ resources:
   - externalsecret-sqlinstance-password.yaml
   - externalsecret-valkey.yaml
   - helmrelease-oncall.yaml
+  - helmrelease-rabbitmq.yaml
   - helmrelease-valkey.yaml
-  - rabbitmq.yaml
+  - httproute-oncall.yaml
+  - httproute-rabbitmq.yaml
   - sqlinstance.yaml

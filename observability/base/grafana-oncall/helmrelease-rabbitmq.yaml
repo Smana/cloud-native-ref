@@ -1,0 +1,116 @@
+# Based on https://grafana.com/docs/grafana-oncall/latest/setup/install/helm/install-scalable/
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: oncall-rabbitmq
+spec:
+  releaseName: oncall-rabbitmq
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: rabbitmq
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
+        namespace: flux-system
+      version: "15.0.3"
+  interval: 5m0s
+  timeout: 15m
+  install:
+    remediation:
+      retries: 3
+  values:
+    auth:
+      username: oncall
+      existingPasswordSecret: "oncall-rabbitmq"
+      existingSecretPasswordKey: "password"
+      existingErlangSecret: "oncall-rabbitmq"
+      existingSecretErlangKey: "erlang-cookie-secret"
+
+      # Todo: enable TLS
+      tls:
+        enabled: false
+
+    replicaCount: 1
+
+    resourcesPreset: "nano"
+
+    persistence:
+      storageClass: "gp3"
+      size: 8Gi
+
+    ingress:
+      enabled: false
+
+    networkPolicy:
+      ## To be replaced with cilium network policy
+      enabled: true
+
+    metrics:
+      enabled: true
+      serviceMonitor:
+        default:
+          enabled: true
+        perObject:
+          enabled: true
+        detailed:
+          enabled: true
+
+      prometheusRule:
+        enabled: true
+        namespace: "observability"
+        rules:
+          - alert: RabbitmqDown
+            expr: rabbitmq_up{service="{{ template "common.names.fullname" . }}"} == 0
+            for: 5m
+            labels:
+              severity: error
+            annotations:
+              summary: Rabbitmq down (instance {{ "{{ $labels.instance }}" }})
+              description: RabbitMQ node down
+          - alert: ClusterDown
+            expr: |
+              sum(rabbitmq_running{service="{{ template "common.names.fullname" . }}"})
+              < {{ .Values.replicaCount }}
+            for: 5m
+            labels:
+              severity: error
+            annotations:
+              summary: Cluster down (instance {{ "{{ $labels.instance }}" }})
+              description: |
+                Less than {{ .Values.replicaCount }} nodes running in RabbitMQ cluster
+                VALUE = {{ "{{ $value }}" }}
+          - alert: ClusterPartition
+            expr: rabbitmq_partitions{service="{{ template "common.names.fullname" . }}"} > 0
+            for: 5m
+            labels:
+              severity: error
+            annotations:
+              summary: Cluster partition (instance {{ "{{ $labels.instance }}" }})
+              description: |
+                Cluster partition
+                VALUE = {{ "{{ $value }}" }}
+          - alert: OutOfMemory
+            expr: |
+              rabbitmq_node_mem_used{service="{{ template "common.names.fullname" . }}"}
+              / rabbitmq_node_mem_limit{service="{{ template "common.names.fullname" . }}"}
+              * 100 > 90
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: Out of memory (instance {{ "{{ $labels.instance }}" }})
+              description: |
+                Memory available for RabbmitMQ is low (< 10%)\n  VALUE = {{ "{{ $value }}" }}
+                LABELS: {{ "{{ $labels }}" }}
+          - alert: TooManyConnections
+            expr: rabbitmq_connectionsTotal{service="{{ template "common.names.fullname" . }}"} > 1000
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: Too many connections (instance {{ "{{ $labels.instance }}" }})
+              description: |
+                RabbitMQ instance has too many connections (> 1000)
+                VALUE = {{ "{{ $value }}" }}\n  LABELS: {{ "{{ $labels }}" }}

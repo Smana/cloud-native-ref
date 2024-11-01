@@ -91,7 +91,7 @@ spec:
     externalRedis:
       host: oncall-valkey-master
       port: 6379
-      username: user
+      username: default
       existingSecret: "oncall-valkey"
       passwordKey: password
 
