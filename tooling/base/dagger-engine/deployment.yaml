@@ -24,7 +24,7 @@ spec:
       serviceAccountName: default
       containers:
         - name: dagger-engine
-          image: registry.dagger.io/engine:v0.13.5
+          image: registry.dagger.io/engine:v0.13.7
           imagePullPolicy: IfNotPresent
           args:
             - --addr
