@@ -1,0 +1,33 @@
+kcl_options:
+  - key: params
+    value:
+      ctx:
+        "apiextensions.crossplane.io/environment":
+          "clusterName": "mycluster-0"
+          region: "eu-west-3"
+      oxr:
+        spec:
+          claimRef:
+            name: "myname"
+            namespace: "myns"
+          cnpg:
+            instances: 3
+            primaryUpdateStrategy: "unsupervised"
+            backup:
+              schedule: "0 0 * * *"
+              bucketName: "myname-rds-instance-backups"
+            postgresql:
+              parameters:
+                max_connections: 100
+              pg_hba:
+                - "host all all"
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "1Gi"
+              limits:
+                cpu: "1"
+                memory: "2Gi"
+            storage:
+              size: "20Gi"
+              storageClass: "gp3"

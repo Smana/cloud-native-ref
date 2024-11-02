@@ -16,9 +16,9 @@ kcl_options:
           claimRef:
             name: "myname"
             namespace: "myns"
-          parameters:
+          rds:
             engine: postgres
-            engineVersion: "15"
+            engineVersion: "16"
             size: small
             storageGB: 20
             passwordSecretRef:

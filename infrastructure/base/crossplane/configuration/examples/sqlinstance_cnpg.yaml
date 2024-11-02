@@ -1,12 +1,12 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: SQLInstance
 metadata:
-  name: xplane-zitadel
+  name: xplane-foobar
   namespace: tooling
 spec:
   claimRef:
-    name: xplane-zitadel
-    namespace: security
+    name: xplane-foobar
+    namespace: tooling
   cnpg:
     instances: 1
     backup:

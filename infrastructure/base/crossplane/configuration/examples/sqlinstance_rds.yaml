@@ -7,7 +7,7 @@ spec:
   claimRef:
     name: xplane-foobar
     namespace: tooling
-  parameters:
+  rds:
     engine: postgres
     engineVersion: "16"
     size: small

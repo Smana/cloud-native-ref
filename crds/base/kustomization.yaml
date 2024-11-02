@@ -9,4 +9,5 @@ resources:
   - kustomization-gateway-api.yaml
   - kustomization-grafana-operator.yaml
   - kustomization-kyverno.yaml
+  - kustomization-cloudnative-pg.yaml
   - kustomization-victoria-metrics-operator.yaml

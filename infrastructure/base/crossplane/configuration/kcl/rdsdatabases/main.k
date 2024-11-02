@@ -6,17 +6,17 @@ oxr = option("params").oxr
 ocds = option("params").ocds
 envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
 
-if oxr.spec.parameters.engine == "postgres":
+if oxr.spec.rds.engine == "postgres":
     _SQLApiVersion = "postgresql.sql.crossplane.io/v1alpha1"
     _dbPort = 5432
-elif oxr.spec.parameters.engine == "mariadb":
+elif oxr.spec.rds.engine == "mariadb":
     _SQLApiVersion = "mysql.sql.crossplane.io / v1alpha1"
     _dbPort = 3306
 
-if oxr.spec.parameters.providerConfigName:
-    _providerConfigName = oxr.spec.parameters.providerConfigName
+if oxr.spec.rds.providerConfigName:
+    _providerConfigName = oxr.spec.rds.providerConfigName
 else:
-    _providerConfigName = oxr.spec.claimRef.name + "-sql-" + oxr.spec.parameters.engine
+    _providerConfigName = oxr.spec.claimRef.name + "-sql-" + oxr.spec.rds.engine
 _metadata = lambda resourceName, suffix, externalName: str -> any {
     {
         name = resourceName
@@ -135,17 +135,17 @@ _items = [
     {
         apiVersion = "kubernetes.crossplane.io/v1alpha2"
         kind = "Object"
-        metadata = _metadata(oxr.spec.claimRef.name + "-provider-config-" + oxr.spec.parameters.engine, "kubernetes", "")
+        metadata = _metadata(oxr.spec.claimRef.name + "-provider-config-" + oxr.spec.rds.engine, "kubernetes", "")
         spec = {
             forProvider = {
-                manifest = _SQLProviderConfig(oxr.spec.parameters.engine)
+                manifest = _SQLProviderConfig(oxr.spec.rds.engine)
             }
         }
     }
     {
         apiVersion = "kubernetes.crossplane.io/v1alpha2"
         kind = "Object"
-        metadata = _metadata(oxr.spec.claimRef.name + "-rds-secret-" + oxr.spec.parameters.engine, "kubernetes", "")
+        metadata = _metadata(oxr.spec.claimRef.name + "-rds-secret-" + oxr.spec.rds.engine, "kubernetes", "")
         spec = {
             references = [
                 {
@@ -172,7 +172,7 @@ _items = [
                     patchesFrom = {
                         apiVersion = "v1"
                         kind = "Secret"
-                        name = oxr.spec.parameters.passwordSecretRef.name
+                        name = oxr.spec.rds.passwordSecretRef.name
                         namespace = oxr.spec.claimRef.namespace
                         fieldPath = "data.password"
                     }
@@ -192,15 +192,15 @@ _items = [
     }
 ]
 
-if oxr.spec.parameters?.databases:
+if oxr.spec.rds?.databases:
     # Remove duplicates
-    owners = [d.owner for d in oxr.spec.parameters.databases]
+    owners = [d.owner for d in oxr.spec.rds.databases]
     unique_owners = to_set(owners)
 
     _items += [_SQLOwner(owner) for owner in unique_owners]
 
-    _items += [_SQLDatabase(_database) for _database in oxr.spec.parameters.databases]
+    _items += [_SQLDatabase(_database) for _database in oxr.spec.rds.databases]
 
-    _items += [_SQLGrant(_database) for _database in oxr.spec.parameters.databases]
+    _items += [_SQLGrant(_database) for _database in oxr.spec.rds.databases]
 
 items = _items

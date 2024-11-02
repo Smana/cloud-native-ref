@@ -27,10 +27,7 @@ spec:
             spec:
               type: object
               properties:
-                id:
-                  type: string
-                  description: Database ID
-                parameters:
+                rds:
                   type: object
                   properties:
                     deletionPolicy:
@@ -40,12 +37,12 @@ spec:
                         - Orphan
                       type: string
                     providerConfigName:
-                      description: Crossplane ProviderConfig to use for provisioning this resources
+                      description: Crossplane ProviderConfig to use for provisioning this resource
                       type: string
                       default: default
                     engine:
                       type: string
-                      description: This RDS Instance engine, see https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBInstance.html for possible values.
+                      description: This RDS Instance engine, see AWS docs for possible values.
                       enum:
                         - postgres
                         - mariadb
@@ -58,12 +55,12 @@ spec:
                       description: The machine size for this Database Instance.
                     engineVersion:
                       type: string
-                      description: This RDS Instance engine version, see https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBInstance.html for possible values.
+                      description: This RDS Instance engine version.
                     storageGB:
                       type: integer
                     passwordSecretRef:
                       type: object
-                      description: "A reference to the Secret object containing database password"
+                      description: A reference to the Secret object containing the database password.
                       properties:
                         namespace:
                           type: string
@@ -79,13 +76,12 @@ spec:
                       type: boolean
                     subnetIds:
                       type: array
-                      description: "A list of the subnet IDs where the database will be provision"
+                      description: A list of subnet IDs where the database will be provisioned.
                       items:
                         type: string
-                        description: ID of the Network object this ref points to.
                     vpcId:
                       type: string
-                      description: "The VPC ID where the database will be provision"
+                      description: The VPC ID where the database will be provisioned.
                     databases:
                       type: array
                       items:
@@ -106,11 +102,80 @@ spec:
                     - size
                     - storageGB
                     - passwordSecretRef
-              required:
-                - parameters
+
+                cnpg:
+                  type: object
+                  properties:
+                    instances:
+                      type: integer
+                      default: 3
+                    primaryUpdateStrategy:
+                      type: string
+                      default: "unsupervised"
+                    backup:
+                      type: object
+                      properties:
+                        schedule:
+                          type: string
+                          nullable: true
+                        bucketName:
+                          type: string
+                          nullable: true
+                    postgresql:
+                      type: object
+                      properties:
+                        parameters:
+                          type: object
+                          additionalProperties: true
+                        pg_hba:
+                          type: array
+                          items:
+                            type: string
+                          nullable: true
+                    resources:
+                      type: object
+                      properties:
+                        requests:
+                          type: object
+                          properties:
+                            cpu:
+                              type: string
+                              default: "200m"
+                            memory:
+                              type: string
+                              default: "500Mi"
+                        limits:
+                          type: object
+                          properties:
+                            cpu:
+                              type: string
+                              default: "200m"
+                            memory:
+                              type: string
+                              default: "500Mi"
+                    storage:
+                      type: object
+                      properties:
+                        size:
+                          type: string
+                          default: "3Gi"
+                        storageClass:
+                          type: string
+                          default: "gp3"
+                  required:
+                    - instances
+                    - database
+
+              oneOf:
+                - required: ["rds"]
+                - required: ["cnpg"]
+
             status:
               type: object
               properties:
                 rdsAddress:
                   description: Address of the RDS instance.
                   type: string
+
+          required:
+            - spec

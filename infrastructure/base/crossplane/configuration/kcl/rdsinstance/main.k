@@ -2,18 +2,18 @@ oxr = option("params").oxr
 ocds = option("params").ocds
 envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
 
-if oxr.spec?.parameters?.region:
-    _region = oxr.spec.parameters.region
+if oxr.spec?.rds?.region:
+    _region = oxr.spec.rds.region
 elif envConfig?.region:
     _region = envConfig.region
 
-if oxr.spec.parameters.engine == "postgres":
+if oxr.spec.rds.engine == "postgres":
     _dbPort = 5432
-elif oxr.spec.parameters.engine == "mariadb":
+elif oxr.spec.rds.engine == "mariadb":
     _dbPort = 3306
 
-if oxr.spec?.parameters?.deletionPolicy:
-    _deletionPolicy = oxr.spec.parameters.deletionPolicy
+if oxr.spec?.rds?.deletionPolicy:
+    _deletionPolicy = oxr.spec.rds.deletionPolicy
 
 _metadata = lambda suffix: str -> any {
     {
@@ -30,7 +30,7 @@ _items = [
         kind = "SubnetGroup"
         metadata = _metadata("rds-subnet-group")
         spec: {
-            providerConfigRef.name = oxr.spec.parameters.providerConfigName
+            providerConfigRef.name = oxr.spec.rds.providerConfigName
             forProvider = {
                 description = "List of subnets to attach the RDS instance to."
                 subnetIds = envConfig.privateSubnetIds
@@ -44,7 +44,7 @@ _items = [
         kind = "SecurityGroup"
         metadata = _metadata("rds-security-group")
         spec = {
-            providerConfigRef.name = oxr.spec.parameters.providerConfigName
+            providerConfigRef.name = oxr.spec.rds.providerConfigName
             deletionPolicy = _deletionPolicy
             forProvider = {
                 name = oxr.spec.claimRef.name
@@ -59,7 +59,7 @@ _items = [
         kind = "SecurityGroupRule"
         metadata = _metadata("rds-security-group-rule")
         spec = {
-            providerConfigRef.name = oxr.spec.parameters.providerConfigName
+            providerConfigRef.name = oxr.spec.rds.providerConfigName
             deletionPolicy = _deletionPolicy
             forProvider = {
                 cidrBlocks = [envConfig.CIDRBlock]
@@ -80,24 +80,24 @@ _items = [
             forProvider = {
                 identifierPrefix = oxr.spec.claimRef.name
                 region = _region
-                dbName = oxr.spec.parameters.dbName
+                dbName = oxr.spec.rds.dbName
                 port = _dbPort
-                engine = oxr.spec.parameters.engine
-                if oxr.spec?.parameters?.engineVersion:
-                    engineVersion = oxr.spec.parameters.engineVersion
-                if oxr.spec.parameters.size == "small":
+                engine = oxr.spec.rds.engine
+                if oxr.spec?.rds?.engineVersion:
+                    engineVersion = oxr.spec.rds.engineVersion
+                if oxr.spec.rds.size == "small":
                     instanceClass = "db.t3.small"
-                elif oxr.spec.parameters.size == "medium":
+                elif oxr.spec.rds.size == "medium":
                     instanceClass = "db.t3.medium"
-                elif oxr.spec.parameters.size == "large":
+                elif oxr.spec.rds.size == "large":
                     instanceClass = "db.t3.large"
                 dbSubnetGroupNameSelector = {matchControllerRef = True}
                 vpcSecurityGroupIdSelector = {matchControllerRef = True}
-                allocatedStorage = oxr.spec.parameters.storageGB
+                allocatedStorage = oxr.spec.rds.storageGB
                 skipFinalSnapshot = True
                 username = "master"
                 passwordSecretRef = {
-                    name = oxr.spec.parameters.passwordSecretRef.name
+                    name = oxr.spec.rds.passwordSecretRef.name
                     namespace = oxr.spec.claimRef.namespace
                     key = "password"
                 }
