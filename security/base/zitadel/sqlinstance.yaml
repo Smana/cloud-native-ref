@@ -4,9 +4,6 @@ metadata:
   name: xplane-zitadel
   namespace: tooling
 spec:
-  claimRef:
-    name: xplane-zitadel
-    namespace: security
   cnpg:
     instances: 1
     backup:

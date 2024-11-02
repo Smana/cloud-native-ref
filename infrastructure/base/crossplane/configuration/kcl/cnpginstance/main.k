@@ -47,6 +47,9 @@ _items = [
                             backup = {
                                 barmanObjectStore = {
                                     destinationPath = "s3://" + oxr.spec.cnpg.backup.bucketName + "/" + oxr.spec.claimRef.name
+                                    s3Credentials = {
+                                        inheritFromIAMRole = True
+                                    }
                                 }
                             }
                         storage = {
@@ -77,7 +80,7 @@ _items = [
                         dataFrom = [
                             {
                                 extract = {
-                                    conversionStrategy = "default"
+                                    conversionStrategy = "Default"
                                     key = "cnpg/" + oxr.spec.claimRef.name + "/owner"
                                 }
                             }
@@ -89,7 +92,7 @@ _items = [
                         }
                         target = {
                             creationPolicy = "Owner"
-                            deletionPolicy = "Owner"
+                            deletionPolicy = "Retain"
                             name = oxr.spec.claimRef.name + "-cnpg-owner"
                         }
                     }
@@ -159,20 +162,20 @@ if oxr.spec.cnpg.backup?.schedule:
             spec: {
                 forProvider = {
                     policy = """{
-    "Version": "2012-10-17"
+    "Version": "2012-10-17",
     "Statement": [
         {
-            "Effect": "Allow"
+            "Effect": "Allow",
             "Action": [
-                "s3:GetObject"
+                "s3:GetObject",
                 "s3:PutObject"
-            ]
+            ],
             "Resource": "arn:aws:s3:::${oxr.spec.cnpg.backup.bucketName}/${oxr.spec.claimRef.name}/*"
-        }
+        },
         {
-            "Effect": "Allow"
-            "Action": "s3:ListBucket"
-            "Resource": "arn:aws:s3:::{oxr.spec.cnpg.backup.bucketName}"
+            "Effect": "Allow",
+            "Action": "s3:ListBucket",
+            "Resource": "arn:aws:s3:::${oxr.spec.cnpg.backup.bucketName}",
             "Condition": {
                 "StringLike": {
                     "s3:prefix": "${oxr.spec.claimRef.name}/*"

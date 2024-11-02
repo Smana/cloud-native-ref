@@ -6,17 +6,17 @@ oxr = option("params").oxr
 ocds = option("params").ocds
 envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
 
-if oxr.spec.rds.engine == "postgres":
+if oxr.spec?.rds?.engine == "postgres":
     _SQLApiVersion = "postgresql.sql.crossplane.io/v1alpha1"
     _dbPort = 5432
-elif oxr.spec.rds.engine == "mariadb":
+elif oxr.spec?.rds?.engine == "mariadb":
     _SQLApiVersion = "mysql.sql.crossplane.io / v1alpha1"
     _dbPort = 3306
 
-if oxr.spec.rds.providerConfigName:
-    _providerConfigName = oxr.spec.rds.providerConfigName
+if oxr.spec?.rds?.providerConfigName:
+    _providerConfigName = oxr.spec?.rds?.providerConfigName
 else:
-    _providerConfigName = oxr.spec.claimRef.name + "-sql-" + oxr.spec.rds.engine
+    _providerConfigName = oxr.spec.claimRef.name + "-sql-" + oxr.spec?.rds?.engine
 _metadata = lambda resourceName, suffix, externalName: str -> any {
     {
         name = resourceName
