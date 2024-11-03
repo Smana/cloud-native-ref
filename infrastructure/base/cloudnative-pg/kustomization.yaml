@@ -4,3 +4,4 @@ namespace: kube-system
 
 resources:
   - helmrelease.yaml
+  - s3-bucket.yaml

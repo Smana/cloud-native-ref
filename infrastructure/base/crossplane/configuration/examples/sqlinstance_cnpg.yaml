@@ -5,18 +5,31 @@ metadata:
   namespace: tooling
 spec:
   claimRef:
-    name: xplane-foobar
-    namespace: tooling
+    name: "myname"
+    namespace: "myns"
+  size: "small"
+  storageGB: 20
+  databases:
+    - owner: "foo"
+      name: "bar"
+    - owner: "titi"
+      name: "toto"
+    - owner: "tata"
+      name: "tutu"
   cnpg:
-    instances: 1
+    instances: 3
+    primaryUpdateStrategy: "unsupervised"
+    createSuperuser: true
     backup:
       schedule: "0 0 * * *"
-      bucketName: "eu-west-3-ogenki-cnpg-backups"
-    resources:
-      limits:
-        cpu: "1"
-        memory: "2Gi"
-    storage:
-      size: "20Gi"
-  compositionRef:
-    name: xsqlinstances.cloud.ogenki.io
+      bucketName: "myname-rds-instance-backups"
+    initSQL: |
+      CREATE EXTENSION pg_stat_statements;
+      CREATE EXTENSION pg_trgm;
+      CREATE EXTENSION pgcrypto;
+    postgresql:
+      parameters:
+        max_connections: 100
+      pg_hba:
+        - "host all all"
+    storageClass: "gp3"

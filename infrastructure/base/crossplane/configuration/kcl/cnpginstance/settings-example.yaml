@@ -10,24 +10,29 @@ kcl_options:
           claimRef:
             name: "myname"
             namespace: "myns"
+          size: "small"
+          storageGB: 20
+          databases:
+            - owner: "foo"
+              name: "bar"
+            - owner: "titi"
+              name: "toto"
+            - owner: "tata"
+              name: "tutu"
           cnpg:
             instances: 3
             primaryUpdateStrategy: "unsupervised"
+            createSuperuser: true
             backup:
               schedule: "0 0 * * *"
               bucketName: "myname-rds-instance-backups"
+            initSQL: |
+              CREATE EXTENSION pg_stat_statements;
+              CREATE EXTENSION pg_trgm;
+              CREATE EXTENSION pgcrypto;
             postgresql:
               parameters:
                 max_connections: 100
               pg_hba:
                 - "host all all"
-            resources:
-              requests:
-                cpu: "500m"
-                memory: "1Gi"
-              limits:
-                cpu: "1"
-                memory: "2Gi"
-            storage:
-              size: "20Gi"
-              storageClass: "gp3"
+            storageClass: "gp3"

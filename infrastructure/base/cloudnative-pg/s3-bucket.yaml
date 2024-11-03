@@ -1,0 +1,11 @@
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: cnpg-backups
+  namespace: infrastructure
+  annotations:
+    crossplane.io/external-name: ${region}-ogenki-cnpg-backups
+spec:
+  deletionPolicy: Orphan # The bucket should not be deleted when the resource is deleted in Crossplane
+  forProvider:
+    region: ${region}

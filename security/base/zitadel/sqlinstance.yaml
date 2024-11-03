@@ -4,16 +4,21 @@ metadata:
   name: xplane-zitadel
   namespace: tooling
 spec:
+  databases:
+    - owner: "zitadel"
+      name: "zitadel"
+    - owner: "zitadel"
+      name: "zitadel_audit"
+  size: "small"
+  storageGB: 20
   cnpg:
     instances: 1
+    initSQL: |
+      CREATE EXTENSION pg_stat_statements;
+      CREATE EXTENSION pg_trgm;
+      CREATE EXTENSION pgcrypto;
     backup:
       schedule: "0 0 * * *"
       bucketName: "eu-west-3-ogenki-cnpg-backups"
-    resources:
-      limits:
-        cpu: "1"
-        memory: "2Gi"
-    storage:
-      size: "20Gi"
   compositionRef:
     name: xsqlinstances.cloud.ogenki.io

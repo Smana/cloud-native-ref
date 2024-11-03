@@ -31,17 +31,17 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: oci://ttl.sh/ogenki-cnref/rdsinstance:v0.0.6-24h
+                  source: oci://ttl.sh/ogenki-cnref/rdsinstance:v0.0.8-24h
 
-        # - step: rdsdatabases
-        #   functionRef:
-        #       name: function-kcl
-        #   input:
-        #       apiVersion: krm.kcl.dev/v1alpha1
-        #       kind: KCLRun
-        #       spec:
-        #           target: Resources
-        #           source: oci://ttl.sh/ogenki-cnref/rdsdatabases:v0.0.3-24h
+        - step: databases
+          functionRef:
+              name: function-kcl
+          input:
+              apiVersion: krm.kcl.dev/v1alpha1
+              kind: KCLRun
+              spec:
+                  target: Resources
+                  source: oci://ttl.sh/ogenki-cnref/databases:v0.0.9-24h
 
         - step: cnpginstance
           functionRef:
@@ -51,7 +51,7 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: oci://ttl.sh/ogenki-cnref/cnpginstance:v0.0.5-24h
+                  source: oci://ttl.sh/ogenki-cnref/cnpginstance:v0.0.6-24h
 
         - step: ready
           functionRef:

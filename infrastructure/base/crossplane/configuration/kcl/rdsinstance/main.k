@@ -12,8 +12,8 @@ if oxr.spec?.rds?.engine == "postgres":
 elif oxr.spec?.rds?.engine == "mariadb":
     _dbPort = 3306
 
-if oxr.spec?.rds?.deletionPolicy:
-    _deletionPolicy = oxr.spec.rds.deletionPolicy
+if oxr.spec?.deletionPolicy:
+    _deletionPolicy = oxr.spec.deletionPolicy
 
 _metadata = lambda suffix: str -> any {
     {
@@ -88,15 +88,15 @@ if oxr.spec?.rds:
                     engine = oxr.spec.rds.engine
                     if oxr.spec?.rds?.engineVersion:
                         engineVersion = oxr.spec.rds.engineVersion
-                    if oxr.spec.rds.size == "small":
+                    if oxr.spec.size == "small":
                         instanceClass = "db.t3.small"
-                    elif oxr.spec.rds.size == "medium":
+                    elif oxr.spec.size == "medium":
                         instanceClass = "db.t3.medium"
-                    elif oxr.spec.rds.size == "large":
+                    elif oxr.spec.size == "large":
                         instanceClass = "db.t3.large"
                     dbSubnetGroupNameSelector = {matchControllerRef = True}
                     vpcSecurityGroupIdSelector = {matchControllerRef = True}
-                    allocatedStorage = oxr.spec.rds.storageGB
+                    allocatedStorage = oxr.spec.storageGB
                     skipFinalSnapshot = True
                     username = "master"
                     passwordSecretRef = {
