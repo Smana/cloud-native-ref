@@ -77,7 +77,7 @@ _items = [
                                         name = oxr.spec.claimRef.name + "-cnpg-" + oxr.spec.databases[0].name
                                     }
                                     if oxr.spec.cnpg?.initSQL or len(oxr.spec.databases) > 1:
-                                        postInitApplicationSQL = {
+                                        postInitApplicationSQLRefs = {
                                             configMapRefs = [
                                                 {
                                                     name = oxr.spec.claimRef.name + "-cnpg-bootsrapsql"
@@ -87,7 +87,7 @@ _items = [
                                         }
                                 }
                             }
-                        if len(oxr.spec.databases) > 1:
+                        if oxr.spec.databases and len(oxr.spec.databases) > 1:
                             envFrom = [{
                                 secretRef = {
                                     name = oxr.spec.claimRef.name + "-cnpg-" + db.name
@@ -156,8 +156,8 @@ if oxr.spec.databases:
                             template = {
                                 type = "kubernetes.io/basic-auth"
                                 data = {
-                                    username = '{.username}'
-                                    password = '{.password}'
+                                    username = '{{.username}}'
+                                    password = '{{.password}}'
                                 }
                             }
                         }
@@ -201,7 +201,7 @@ if oxr.spec.databases:
                                 template = {
                                     type = "kubernetes.io/basic-auth"
                                     data = {
-                                        password = '{.password}'
+                                        password = '{{.password}}'
                                     }
                                 }
                             }
@@ -212,7 +212,7 @@ if oxr.spec.databases:
         } for db in oxr.spec.databases[1::]]
 
 
-if len(oxr.spec.databases) > 1:
+if oxr.spec.databases and len(oxr.spec.databases) > 1:
     _dbSQL = "".join(["""
 CREATE DATABASE {};
 CREATE ROLE {} WITH LOGIN PASSWORD {};
@@ -221,7 +221,7 @@ GRANT ALL PRIVILEGES ON DATABASE {} TO {};
 
 if oxr.spec.cnpg?.initSQL:
     _initSQL = oxr.spec.cnpg.initSQL
-    if len(oxr.spec.databases) > 1:
+    if oxr.spec.databases and len(oxr.spec.databases) > 1:
         _initSQL = _dbSQL + _initSQL
 
 
@@ -292,8 +292,8 @@ if oxr.spec.cnpg?.createSuperuser:
                                 template = {
                                     type = "kubernetes.io/basic-auth"
                                     data = {
-                                        username = '{.username}'
-                                        password = '{.password}'
+                                        username = '{{.username}}'
+                                        password = '{{.password}}'
                                     }
                                 }
                             }

@@ -47,15 +47,15 @@ spec:
                     required:
                       - name
                       - owner
-                  size:
-                    description: The machine size for this Database Instance.
-                    type: string
-                    enum:
-                      - small
-                      - medium
-                      - large
-                  storageGB:
-                    type: integer
+                size:
+                  description: The machine size for this Database Instance.
+                  type: string
+                  enum:
+                    - small
+                    - medium
+                    - large
+                storageGB:
+                  type: integer
 
                 rds:
                   type: object

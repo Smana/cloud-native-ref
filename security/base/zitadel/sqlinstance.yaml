@@ -8,7 +8,7 @@ spec:
     - owner: "zitadel"
       name: "zitadel"
     - owner: "zitadel"
-      name: "zitadel_audit"
+      name: "audit"
   size: "small"
   storageGB: 20
   cnpg:
