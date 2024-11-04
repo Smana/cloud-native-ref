@@ -26,6 +26,11 @@ spec:
               protocol: TCP
             - port: "443"
               protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:cnpg.io/cluster: xplane-zitadel-cnpg-cluster
+      toPorts:
+        - ports:
             - port: "5432"
               protocol: TCP
   ingress:

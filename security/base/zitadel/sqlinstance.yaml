@@ -4,15 +4,11 @@ metadata:
   name: xplane-zitadel
   namespace: tooling
 spec:
-  databases:
-    - owner: "zitadel"
-      name: "zitadel"
-    - owner: "zitadel"
-      name: "audit"
   size: "small"
   storageGB: 20
   cnpg:
     instances: 1
+    createSuperuser: true
     initSQL: |
       CREATE EXTENSION pg_stat_statements;
       CREATE EXTENSION pg_trgm;

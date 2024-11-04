@@ -9,7 +9,7 @@ kcl_options:
           claimRef:
             name: "myname"
             namespace: "myns"
-          parameters:
+          rds:
             engine: postgres
             databases:
               - owner: harbor

@@ -68,15 +68,18 @@ _items = [
                     spec = {
                         instances = oxr.spec.cnpg.instances
                         primaryUpdateStrategy = oxr.spec.cnpg.primaryUpdateStrategy
-                        if oxr.spec.databases:
+                        if oxr.spec.cnpg?.createSuperuser:
+                            enableSuperuserAccess = True
+                        if oxr.spec.cnpg?.initSQL or oxr.spec.cnpg?.databases:
                             bootstrap = {
                                 initdb = {
-                                    database = oxr.spec.databases[0].name
-                                    owner = oxr.spec.databases[0].owner
-                                    secret = {
-                                        name = oxr.spec.claimRef.name + "-cnpg-" + oxr.spec.databases[0].name
-                                    }
-                                    if oxr.spec.cnpg?.initSQL or len(oxr.spec.databases) > 1:
+                                    if oxr.spec.databases:
+                                        database = oxr.spec.databases[0].name
+                                        owner = oxr.spec.databases[0].owner
+                                        secret = {
+                                            name = oxr.spec.claimRef.name + "-cnpg-" + oxr.spec.databases[0].name
+                                        }
+                                    if oxr.spec.cnpg?.initSQL:
                                         postInitApplicationSQLRefs = {
                                             configMapRefs = [
                                                 {
@@ -87,20 +90,18 @@ _items = [
                                         }
                                 }
                             }
-                        if oxr.spec.databases and len(oxr.spec.databases) > 1:
-                            envFrom = [{
-                                secretRef = {
-                                    name = oxr.spec.claimRef.name + "-cnpg-" + db.name
-                                }
-                            } for db in oxr.spec.databases[1::]]
                         if oxr.spec.cnpg.backup:
                             backup = {
                                 barmanObjectStore = {
-                                    destinationPath = "s3://" + oxr.spec.cnpg.backup.bucketName + "/" + oxr.spec.claimRef.name
+                                    destinationPath = "s3://" + oxr.spec.cnpg.backup.bucketName
                                     s3Credentials = {
                                         inheritFromIAMRole = True
                                     }
                                 }
+                            }
+                        if oxr.spec.cnpg?.createSuperuser:
+                            superuserSecret = {
+                                name = oxr.spec.claimRef.name + "-cnpg-superuser"
                             }
                         storage = {
                             size = str(oxr.spec.storageGB) + "Gi"
@@ -166,64 +167,9 @@ if oxr.spec.databases:
             }
         }
     }]
-    if len(oxr.spec.databases) > 1:
-        _items += [{
-            apiVersion = "kubernetes.crossplane.io/v1alpha2"
-            kind = "Object"
-            metadata = _metadata("cnpg-externalsecret-" + db.name)
-            spec = {
-                deletionPolicy = _deletionPolicy
-                forProvider = {
-                    manifest = {
-                        apiVersion = "external-secrets.io/v1beta1"
-                        kind = "ExternalSecret"
-                        metadata = {
-                            name = oxr.spec.claimRef.name + "-cnpg-" + db.name
-                            namespace = oxr.spec.claimRef.namespace
-                        }
-                        spec = {
-                            data = [
-                                {
-                                    secretKey = db.owner.upper() + "_PASSWORD"
-                                    remoteRef = {
-                                        key = "cnpg/" + oxr.spec.claimRef.name + "/" + db.name
-                                        property = "password"
-                                    }
-                                }
-                            ]
-                            refreshInterval = "30m"
-                            secretStoreRef = {
-                                kind = "ClusterSecretStore"
-                                name = "clustersecretstore"
-                            }
-                            target = {
-                                name = oxr.spec.claimRef.name + "-cnpg-" + db.name
-                                template = {
-                                    type = "kubernetes.io/basic-auth"
-                                    data = {
-                                        password = '{{.password}}'
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } for db in oxr.spec.databases[1::]]
-
-
-if oxr.spec.databases and len(oxr.spec.databases) > 1:
-    _dbSQL = "".join(["""
-CREATE DATABASE {};
-CREATE ROLE {} WITH LOGIN PASSWORD {};
-GRANT ALL PRIVILEGES ON DATABASE {} TO {};
-""".format(db.name, db.owner, "'$({{" + db.owner.upper() + "_PASSWORD}})'", db.name, db.owner) for db in oxr.spec.databases[1::]])
 
 if oxr.spec.cnpg?.initSQL:
     _initSQL = oxr.spec.cnpg.initSQL
-    if oxr.spec.databases and len(oxr.spec.databases) > 1:
-        _initSQL = _dbSQL + _initSQL
-
 
 _items += [
     {
@@ -370,20 +316,16 @@ if oxr.spec.cnpg.backup?.schedule:
         {
             "Effect": "Allow",
             "Action": [
-                "s3:GetObject",
-                "s3:PutObject"
+                "s3:ListBucket"
             ],
-            "Resource": "arn:aws:s3:::${oxr.spec.cnpg.backup.bucketName}/${oxr.spec.claimRef.name}/*"
+            "Resource": "arn:aws:s3:::${oxr.spec.cnpg.backup.bucketName}"
         },
         {
             "Effect": "Allow",
-            "Action": "s3:ListBucket",
-            "Resource": "arn:aws:s3:::${oxr.spec.cnpg.backup.bucketName}",
-            "Condition": {
-                "StringLike": {
-                    "s3:prefix": "${oxr.spec.claimRef.name}/*"
-                }
-            }
+            "Action": [
+                "s3:*"
+            ],
+            "Resource": "arn:aws:s3:::${oxr.spec.cnpg.backup.bucketName}/*"
         }
     ]
 }
@@ -415,7 +357,7 @@ if oxr.spec.cnpg.backup?.schedule:
             spec: {
                 forProvider = {
                     clusterName = envConfig.clusterName
-                    serviceAccount = oxr.spec.claimRef.name
+                    serviceAccount = oxr.spec.claimRef.name + "-cnpg-cluster"
                     namespace = oxr.spec.claimRef.namespace
                     region = _region
                     roleArnSelector = {

@@ -15,10 +15,6 @@ kcl_options:
           databases:
             - owner: "foo"
               name: "bar"
-            - owner: "titi"
-              name: "toto"
-            - owner: "tata"
-              name: "tutu"
           cnpg:
             instances: 3
             primaryUpdateStrategy: "unsupervised"
