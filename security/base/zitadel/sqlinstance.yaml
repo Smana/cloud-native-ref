@@ -3,16 +3,13 @@ kind: SQLInstance
 metadata:
   name: xplane-zitadel
 spec:
-  parameters:
-    engine: postgres
-    engineVersion: "16"
-    size: small
-    storageGB: 20
-    passwordSecretRef:
-      namespace: security
-      name: zitadel-pg-masterpassword
-      key: password
+  size: "small"
+  storageGB: 20
+  cnpg:
+    instances: 1
+    createSuperuser: true
+    backup:
+      schedule: "0 0 * * *"
+      bucketName: "eu-west-3-ogenki-cnpg-backups"
   compositionRef:
     name: xsqlinstances.cloud.ogenki.io
-  writeConnectionSecretToRef:
-    name: xplane-zitadel-rds

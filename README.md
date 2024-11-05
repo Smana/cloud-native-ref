@@ -4,10 +4,12 @@
 
 This repository provides a comprehensive guide and set of tools for building, managing, and maintaining a Cloud Native platform. It includes configurations for Kubernetes, Crossplane, Flux, Vault, and more, with a focus on security, scalability, and best practices.
 
+![overview](.assets/cloud-native-ref.png)
+
 ## Table of Contents
 - [Reference Repository for Building a Cloud Native Platform](#reference-repository-for-building-a-cloud-native-platform)
   - [Table of Contents](#table-of-contents)
-  - [🌟 Overview](#-overview)
+  - [🚀 Getting started](#-getting-started)
   - [🔄 Flux Dependencies Matter](#-flux-dependencies-matter)
   - [🏗️ Crossplane Configuration](#️-crossplane-configuration)
     - [Requirements and Security Concerns](#requirements-and-security-concerns)
@@ -19,17 +21,16 @@ This repository provides a comprehensive guide and set of tools for building, ma
   - [🧪 CI](#-ci)
     - [Overview](#overview)
     - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners)
-
-## 🌟 Overview
-
-- 💬 [**Slack Channel**](https://ogenki.slack.com/): Feel free to come and chat with us if you have any issue, ideas or questions.
-- 💡 [**Discussions**](https://github.com/Smana/cloud-native-ref/discussions): Explore improvement areas, define the roadmap, and prioritize issues.
-- 🛠️ [**Issues**](https://github.com/Smana/cloud-native-ref/issues): Track tasks and report bugs to ensure prompt resolution.
-- 📅 [**Project**](https://github.com/users/Smana/projects/1): Detailed project planning and prioritization information.
+  - [💬 Chating and contributing](#-chating-and-contributing)
 
 
-![overview](.assets/cloud-native-ref.png)
+## 🚀 Getting started
 
+There are basically 3 things to run when deploying the whole stack:
+
+1. 📡 [Install the network requirements](./terraform/network/README.md)
+2. 🔒 [Deploy a Vault instance](./terraform/vault/cluster/README.md)
+3. ☸️ [Bootstrap the EKS cluster and Flux components](./terraform/eks/README.md)
 
 ## 🔄 Flux Dependencies Matter
 Flux is a set of continuous and progressive delivery solutions for Kubernetes that automate the application deployment process. The following diagram illustrates the key dependencies in our setup:
@@ -150,3 +151,10 @@ This feature can be enabled within the `tooling` kustomization. By leveraging **
 For detailed information on setting up and using GitHub Self-Hosted Runners, please refer to this [documentation](https://docs.github.com/en/actions/hosting-your-own-runners).
 
 🏷️ Related blog post: Dagger: [The missing piece of the developer experience](https://blog.ogenki.io/post/dagger-intro/)
+
+## 💬 Chating and contributing
+
+- 🗨️ [**Slack Channel**](https://ogenki.slack.com/): Feel free to come and chat with us if you have any issue, ideas or questions.
+- 💡 [**Discussions**](https://github.com/Smana/cloud-native-ref/discussions): Explore improvement areas, define the roadmap, and prioritize issues.
+- 🛠️ [**Issues**](https://github.com/Smana/cloud-native-ref/issues): Track tasks and report bugs to ensure prompt resolution.
+- 📅 [**Project**](https://github.com/users/Smana/projects/1): Detailed project planning and prioritization information.

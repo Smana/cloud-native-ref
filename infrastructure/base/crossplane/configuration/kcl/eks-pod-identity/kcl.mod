@@ -1,4 +1,4 @@
 [package]
 name = "eks-pod-identity"
-edition = "v0.10.4"
+edition = "v0.10.7"
 version = "0.0.5"

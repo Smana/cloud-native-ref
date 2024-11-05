@@ -7,16 +7,17 @@ spec:
   claimRef:
     name: xplane-foobar
     namespace: tooling
-  parameters:
+  deletionPolicy: Delete
+  size: small
+  storageGB: 20
+  databases:
+    - owner: foobar
+      name: db1
+    - owner: barbaz
+      name: db2
+  rds:
     engine: postgres
     engineVersion: "16"
-    size: small
-    storageGB: 20
-    databases:
-      - owner: foobar
-        name: db1
-      - owner: barbaz
-        name: db2
     passwordSecretRef:
       namespace: tooling
       name: foobar-pg-masterpassword

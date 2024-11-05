@@ -17,7 +17,7 @@
 
 ```hcl
 env          = "dev"
-cluster_name = "mycluster-0" # Generated with petname
+cluster_name = "mycluster-0"
 
 github_owner    = "Smana"
 github_repository = "cloud-native-ref"
@@ -40,7 +40,8 @@ karpenter_limits = {
 }
 ```
 
-3. Apply with `tofu apply -var-file variables.tfvars`
+3. Apply with
+   `tofu apply -var-file variables.tfvars --var=github_branch=<flux_github_branch>`
 
 
 ## Cleaning things up

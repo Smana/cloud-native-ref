@@ -1,37 +1,47 @@
 # Network and VPN server
 
+This module deploys several things:
 
-## Provision a Tailscale subnet router
+* Base network resources: VPC, subnets
+* A route53 private zone
+* A Tailscale [Subnet Router](https://tailscale.com/kb/1019/subnets) in order to access to securely access to private resources
 
-### What is a subnet router?
+## Prerequisites
 
-### Prerequisites
 * Create a Tailscale account
 * Generate an API key
 
 Create the `variables.tfvars` file
 
 ```hcl
-env    = "dev"
-region = "eu-west-3"
+env                 = "dev"
+region              = "eu-west-3"
 private_domain_name = "priv.cloud.ogenki.io"
 
 tailscale = {
   subnet_router_name = "ogenki"
   tailnet            = "smainklh@gmail.com"
-  api_key            = "tskey-api-...."
-  prometheus_enabled = "true"
+  api_key            = "tskey-api-<REDACTED>" # Generated in Tailscale Admin console
+  prometheus_enabled = true
+  ssm_enabled        = true
 }
 
 tags = {
-  project =                     = "cloud-native-ref"
-  owner                         = "Smana"
+  project = "cloud-native-ref"
+  owner   = "Smana"
 }
+
 ```
 
 ℹ️ The tags are important here as they are used later on to provision the EKS cluster
 
-### Apply
+## Apply
+
+```console
+cd terraform/network
+tofu init
+tofu apply --var-file variables.tfvars
+```
 
 You can check that the instance has successfully joined the `tailnet` by running this command
 

@@ -67,7 +67,7 @@ spec:
     redis:
       type: external
       external:
-        addr: "harbor-valkey-master:6379"
+        addr: "harbor-valkey-primary:6379"
         username: "user"
         existingSecret: "harbor-valkey-password"
 

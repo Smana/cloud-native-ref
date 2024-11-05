@@ -14,14 +14,19 @@ kcl_options:
       oxr:
         spec:
           claimRef:
-            name: "myname"
-            namespace: "myns"
-          parameters:
+            name: xplane-foobar
+            namespace: tooling
+          deletionPolicy: Delete
+          size: small
+          storageGB: 20
+          rds:
             engine: postgres
-            engineVersion: "15"
-            size: small
-            storageGB: 20
+            engineVersion: "16"
             passwordSecretRef:
               namespace: tooling
-              name: harbor-pg-masterpassword
+              name: foobar-pg-masterpassword
               key: password
+          compositionRef:
+            name: xsqlinstances.cloud.ogenki.io
+          writeConnectionSecretToRef:
+            name: xplane-foobar-rds

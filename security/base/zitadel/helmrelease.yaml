@@ -15,6 +15,7 @@ spec:
         name: zitadel
       interval: 12h
   values:
+    replicaCount: 1
     initJob:
       backoffLimit: 30 # The database (RDS) takes time to initialize
     zitadel:
@@ -33,7 +34,7 @@ spec:
           CertPath: /tls/tls.crt
         Database:
           Postgres:
-            Host: xplane-zitadel-rds-service
+            Host: xplane-zitadel-cnpg-cluster-rw
             Port: 5432
             Database: zitadel
             MaxOpenConns: 20
