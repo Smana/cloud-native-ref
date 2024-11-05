@@ -24,9 +24,10 @@ to_set = lambda items: [str] {
     [item for item in {item = None for item in items}]
 }
 
-if oxr.spec?.rds:
+if oxr.spec.rds:
     _instanceType = "rds"
 
+_items = []
 # rds uses the SQL provider
 if _instanceType == "rds":
     if oxr.spec?.rds?.engine == "postgres":
@@ -74,7 +75,7 @@ if _instanceType == "rds":
             apiVersion = _SQLApiVersion
             if _SQLApiVersion == "postgresql.sql.crossplane.io/v1alpha1":
                 kind = "Role"
-            elif _SQLApiVersion == "mysql.sql.crossplane.io/v1alpha1":
+            else:
                 kind = "User"
             metadata = _metadata(oxr.spec.claimRef.name + "-" + owner, "owner", externalName=owner)
             spec = {

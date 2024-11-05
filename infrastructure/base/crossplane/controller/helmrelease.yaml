@@ -13,7 +13,7 @@ spec:
         kind: HelmRepository
         name: crossplane
         namespace: crossplane-system
-      version: "1.17.2"
+      version: "1.18.0"
   interval: 2m0s
   install:
     remediation:
@@ -28,7 +28,3 @@ spec:
 
     metrics:
       enabled: true
-
-    args:
-      # This is an alpha feature used with the IRSA composition
-      - --enable-environment-configs

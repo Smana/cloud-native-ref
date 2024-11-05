@@ -15,6 +15,7 @@ spec:
         name: zitadel
       interval: 12h
   values:
+    replicaCount: 1
     initJob:
       backoffLimit: 30 # The database (RDS) takes time to initialize
     zitadel:

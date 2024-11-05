@@ -4,7 +4,7 @@ metadata:
   name: xplane-harbor
   namespace: tooling
 spec:
-  parameters:
+  rds:
     engine: postgres
     engineVersion: "16"
     size: small

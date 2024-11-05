@@ -23,25 +23,25 @@ spec:
                         ref:
                             name: eks-environment
 
-        # - step: rds
-        #   functionRef:
-        #       name: function-kcl
-        #   input:
-        #       apiVersion: krm.kcl.dev/v1alpha1
-        #       kind: KCLRun
-        #       spec:
-        #           target: Resources
-        #           source: oci://ttl.sh/ogenki-cnref/rdsinstance:v0.0.8-24h
+        - step: rds
+          functionRef:
+              name: function-kcl
+          input:
+              apiVersion: krm.kcl.dev/v1alpha1
+              kind: KCLRun
+              spec:
+                  target: Resources
+                  source: oci://ttl.sh/ogenki-cnref/rdsinstance:v0.0.8-24h
 
-        # - step: databases
-        #   functionRef:
-        #       name: function-kcl
-        #   input:
-        #       apiVersion: krm.kcl.dev/v1alpha1
-        #       kind: KCLRun
-        #       spec:
-        #           target: Resources
-        #           source: oci://ttl.sh/ogenki-cnref/databases:v0.0.9-24h
+        - step: databases
+          functionRef:
+              name: function-kcl
+          input:
+              apiVersion: krm.kcl.dev/v1alpha1
+              kind: KCLRun
+              spec:
+                  target: Resources
+                  source: oci://ttl.sh/ogenki-cnref/databases:v0.0.12-24h
 
         - step: cnpginstance
           functionRef:
