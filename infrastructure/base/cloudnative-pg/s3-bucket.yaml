@@ -2,7 +2,6 @@ apiVersion: s3.aws.upbound.io/v1beta1
 kind: Bucket
 metadata:
   name: cnpg-backups
-  namespace: infrastructure
   annotations:
     crossplane.io/external-name: ${region}-ogenki-cnpg-backups
 spec:

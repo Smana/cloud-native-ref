@@ -51,7 +51,7 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: oci://ttl.sh/ogenki-cnref/cnpginstance:v0.0.21-24h
+                  source: oci://ttl.sh/ogenki-cnref/cnpginstance:v0.0.22-24h
 
         - step: ready
           functionRef:

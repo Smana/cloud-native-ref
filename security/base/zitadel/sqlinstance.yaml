@@ -2,17 +2,12 @@ apiVersion: cloud.ogenki.io/v1alpha1
 kind: SQLInstance
 metadata:
   name: xplane-zitadel
-  namespace: tooling
 spec:
   size: "small"
   storageGB: 20
   cnpg:
     instances: 1
     createSuperuser: true
-    initSQL: |
-      CREATE EXTENSION pg_stat_statements;
-      CREATE EXTENSION pg_trgm;
-      CREATE EXTENSION pgcrypto;
     backup:
       schedule: "0 0 * * *"
       bucketName: "eu-west-3-ogenki-cnpg-backups"

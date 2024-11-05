@@ -4,14 +4,14 @@ metadata:
   name: xplane-harbor
   namespace: tooling
 spec:
+  databases:
+    - owner: harbor
+      name: registry
+  size: small
+  storageGB: 20
   rds:
     engine: postgres
     engineVersion: "16"
-    size: small
-    storageGB: 20
-    databases:
-      - owner: harbor
-        name: registry
     passwordSecretRef:
       namespace: tooling
       name: harbor-pg-masterpassword

@@ -21,10 +21,8 @@ spec:
   values:
     crds:
       create: false
-    montioring:
+    monitoring:
       podMonitorEnabled: true
-    grafanaDashboard:
-      create: true
     resources:
       limits:
         memory: 400Mi

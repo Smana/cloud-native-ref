@@ -14,7 +14,7 @@ spec:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
-      version: "1.0.3"
+      version: "2.0.2"
   interval: 10m0s
   install:
     remediation:
@@ -24,8 +24,8 @@ spec:
       existingSecret: "harbor-valkey-password"
       existingSecretPasswordKey: "REDIS_PASSWORD"
 
-    master:
-      ## Valkey master resource requests and limits
+    primary:
+      ## Valkey primary resource requests and limits
       ## ref: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
       ## @param master.resourcesPreset Set container resources according to one common preset (allowed values: none, nano, micro, small, medium, large, xlarge, 2xlarge). This is ignored if master.resources is set (master.resources is recommended for production).
       ## More information: https://github.com/bitnami/charts/blob/main/bitnami/common/templates/_resources.tpl#L15
