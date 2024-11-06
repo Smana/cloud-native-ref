@@ -8,6 +8,9 @@ spec:
   cnpg:
     instances: 1
     createSuperuser: true
+    objectStoreRecovery:
+      bucketName: "eu-west-3-ogenki-cnpg-backups"
+      path: "zitadel-basebackup-20241106"
     backup:
       schedule: "0 0 * * *"
       bucketName: "eu-west-3-ogenki-cnpg-backups"

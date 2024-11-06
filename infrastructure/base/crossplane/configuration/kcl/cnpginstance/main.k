@@ -73,25 +73,30 @@ if oxr.spec.cnpg:
                             primaryUpdateStrategy = oxr.spec.cnpg.primaryUpdateStrategy
                             if oxr.spec.cnpg?.createSuperuser:
                                 enableSuperuserAccess = True
-                            if oxr.spec.cnpg?.initSQL or oxr.spec.cnpg?.databases:
+                            if oxr.spec.cnpg?.initSQL or oxr.spec.cnpg?.databases or oxr.spec.cnpg?.objectStoreRecovery:
                                 bootstrap = {
-                                    initdb = {
-                                        if oxr.spec.databases:
-                                            database = oxr.spec.databases[0].name
-                                            owner = oxr.spec.databases[0].owner
-                                            secret = {
-                                                name = oxr.spec.claimRef.name + "-cnpg-" + oxr.spec.databases[0].name
-                                            }
-                                        if oxr.spec.cnpg?.initSQL:
-                                            postInitApplicationSQLRefs = {
-                                                configMapRefs = [
-                                                    {
-                                                        name = oxr.spec.claimRef.name + "-cnpg-bootsrapsql"
-                                                        key = "init.sql"
-                                                    }
-                                                ]
-                                            }
-                                    }
+                                    if oxr.spec.cnpg.objectStoreRecovery:
+                                        recovery: {
+                                            source: oxr.spec.cnpg.objectStoreRecovery.path
+                                        }
+                                    else:
+                                        initdb = {
+                                            if oxr.spec.databases:
+                                                database = oxr.spec.databases[0].name
+                                                owner = oxr.spec.databases[0].owner
+                                                secret = {
+                                                    name = oxr.spec.claimRef.name + "-cnpg-" + oxr.spec.databases[0].name
+                                                }
+                                            if oxr.spec.cnpg?.initSQL:
+                                                postInitApplicationSQLRefs = {
+                                                    configMapRefs = [
+                                                        {
+                                                            name = oxr.spec.claimRef.name + "-cnpg-bootsrapsql"
+                                                            key = "init.sql"
+                                                        }
+                                                    ]
+                                                }
+                                        }
                                 }
                             if oxr.spec.cnpg.backup:
                                 backup = {
@@ -110,7 +115,25 @@ if oxr.spec.cnpg:
                                 size = str(oxr.spec.storageGB) + "Gi"
                                 storageClassName = oxr.spec.cnpg.storageClassName
                             }
+                            monitoring = {
+                                enablePodMonitor = True
+                            }
                             resources = _instanceResources
+                            if oxr.spec.cnpg.objectStoreRecovery:
+                                externalClusters = [
+                                    {
+                                        name = oxr.spec.cnpg.objectStoreRecovery.path
+                                        barmanObjectStore = {
+                                            destinationPath = "s3://" + oxr.spec.cnpg.objectStoreRecovery.bucketName
+                                            s3Credentials = {
+                                                inheritFromIAMRole = True
+                                            }
+                                            wal: {
+                                                maxParallel: 8
+                                            }
+                                        }
+                                    }
+                                ]
                         }
                     }
                 }

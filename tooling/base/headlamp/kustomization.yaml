@@ -4,11 +4,3 @@ namespace: tooling
 resources:
   - httproute.yaml
   - helmrelease.yaml
-
-configMapGenerator:
-  - name: headlamp-deploy-plugins
-    files:
-      - ./deploy-plugins.sh
-
-generatorOptions:
-  disableNameSuffixHash: true
