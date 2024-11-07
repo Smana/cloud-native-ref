@@ -9,7 +9,7 @@ spec:
   chart:
     spec:
       chart: headlamp
-      version: "0.25.0"
+      version: "0.26.0"
       sourceRef:
         kind: HelmRepository
         name: headlamp
@@ -17,17 +17,22 @@ spec:
   values:
     config:
       pluginsDir: /build/plugins
-
     initContainers:
-      - name: headlamp-plugins
-        image: busybox
-        command:
-          - /scripts/deploy-plugins.sh
+      - command:
+          - /bin/sh
+          - -c
+          - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/
+        image: ghcr.io/ashu8912/flux-plugin:0.1.1-beta
+        imagePullPolicy: Always
+        name: headlamp-plugins
         volumeMounts:
-          - name: headlamp-plugins
-            mountPath: /build/plugins
-          - name: script
-            mountPath: /scripts
+          - mountPath: /build/plugins
+            name: headlamp-plugins
+    persistentVolumeClaim:
+      accessModes:
+        - ReadWriteOnce
+      enabled: true
+      size: 1Gi
 
     resources:
       limits:
@@ -36,13 +41,10 @@ spec:
         cpu: 300m
 
     volumeMounts:
-      - name: headlamp-plugins
-        mountPath: /build/plugins
+      - mountPath: /build/plugins
+        name: headlamp-plugins
 
     volumes:
       - name: headlamp-plugins
-        emptyDir: {}
-      - name: script
-        configMap:
-          name: headlamp-deploy-plugins
-          defaultMode: 0500
+        persistentVolumeClaim:
+          claimName: headlamp

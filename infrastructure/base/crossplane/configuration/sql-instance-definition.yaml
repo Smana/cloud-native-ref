@@ -115,6 +115,17 @@ spec:
                       description: Create a superuser for the Postgres cluster.
                       type: boolean
                       default: true
+                    objectStoreRecovery:
+                      type: object
+                      properties:
+                        bucketName:
+                          description: The name of the S3 bucket to store backups.
+                          type: string
+                          nullable: true
+                        path:
+                          description: The path to the backup in the S3 bucket (Usualy a cluster name).
+                          type: string
+                          nullable: true
                     backup:
                       type: object
                       properties:
