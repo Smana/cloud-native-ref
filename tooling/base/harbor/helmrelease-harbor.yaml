@@ -31,20 +31,31 @@ spec:
     persistence:
       enabled: true
       imageChartStorage:
-        # An issue prevents from using IRSA: https://github.com/goharbor/harbor/pull/18686
+        # An issue prevents from using EKS Pod Identity: https://github.com/goharbor/harbor/pull/18686
         # Currently this is not possible to push to S3 bucket
-        # type: s3
-        # s3:
-        #   region: ${region}
-        #   bucket: ${region}-ogenki-harbor
-        # Use PVC while waiting for the above issue to be solved
-        type: filesystem
+        type: s3
+        s3:
+          region: ${region}
+          bucket: ${region}-ogenki-harbor
 
     existingSecretAdminPassword: harbor-admin-password
     existingSecretAdminPasswordKey: password
 
     registry:
       serviceAccountName: harbor
+      registry:
+        # See the iam-user.yaml file for the creation of the user and the policy
+        extraEnvVars:
+          - name: REGISTRY_STORAGE_S3_ACCESSKEY
+            valueFrom:
+              secretKeyRef:
+                name: xplane-harbor-access-key
+                key: username
+          - name: REGISTRY_STORAGE_S3_SECRETKEY
+            valueFrom:
+              secretKeyRef:
+                name: xplane-harbor-access-key
+                key: password
 
     portal:
       resources:

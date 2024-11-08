@@ -30,7 +30,7 @@ module "irsa_crossplane" {
   role_policy_arns = {
     ec2  = aws_iam_policy.crossplane_ec2.arn,
     eks  = aws_iam_policy.crossplane_eks.arn,
-    irsa = aws_iam_policy.crossplane_irsa.arn,
+    irsa = aws_iam_policy.crossplane_iam.arn,
     kms  = aws_iam_policy.crossplane_kms.arn,
     rds  = aws_iam_policy.crossplane_rds.arn
     s3   = aws_iam_policy.crossplane_s3.arn
@@ -45,10 +45,10 @@ module "irsa_crossplane" {
 }
 
 #tfsec:ignore:aws-iam-no-policy-wildcards
-resource "aws_iam_policy" "crossplane_irsa" {
-  name        = "crossplane_irsa_${var.cluster_name}"
+resource "aws_iam_policy" "crossplane_iam" {
+  name        = "crossplane_iam_${var.cluster_name}"
   path        = "/"
-  description = "Policy for creating IRSA on EKS"
+  description = "Policy for managing AWS IAM on EKS"
 
   policy = <<EOF
 {
@@ -68,10 +68,15 @@ resource "aws_iam_policy" "crossplane_irsa" {
                 "iam:DetachRolePolicy",
                 "iam:AttachRolePolicy",
                 "iam:UpdateAssumeRolePolicy",
-                "iam:PassRole"
+                "iam:PassRole",
+                "iam:CreateUser",
+                "iam:CreateAccessKey",
+                "iam:AttachUserPolicy",
+                "iam:TagUser"
             ],
             "Resource": [
                 "arn:aws:iam::*:role/xplane-*",
+                "arn:aws:iam::*:user/xplane-*",
                 "arn:aws:iam::*:policy/xplane-*"
             ]
         },
