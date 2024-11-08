@@ -1,0 +1,75 @@
+# This is a workaround as I cannot use EKS Pod Identity for Harbor to write into S3 bucket
+apiVersion: iam.aws.upbound.io/v1beta1
+kind: User
+metadata:
+  name: xplane-harbor
+  labels:
+    cloud.ogenki.io/name: harbor
+spec:
+  forProvider: {}
+---
+apiVersion: iam.aws.upbound.io/v1beta1
+kind: AccessKey
+metadata:
+  name: xplane-harbor
+  labels:
+    cloud.ogenki.io/name: harbor
+spec:
+  forProvider:
+    userSelector:
+      matchLabels:
+        cloud.ogenki.io/name: harbor
+  writeConnectionSecretToRef:
+    name: xplane-harbor-access-key
+    namespace: tooling
+---
+apiVersion: iam.aws.upbound.io/v1beta1
+kind: Policy
+metadata:
+  name: xplane-harbor-s3
+  labels:
+    cloud.ogenki.io/name: harbor-s3
+spec:
+  forProvider:
+    # Allow to read/write to the bucket ${region}-ogenki-harbor
+    policy: |
+      {
+          "Version": "2012-10-17",
+          "Statement": [
+              {
+                  "Effect": "Allow",
+                  "Action": [
+                      "s3:ListBucket",
+                      "s3:GetBucketLocation",
+                      "s3:ListBucketMultipartUploads"
+                  ],
+                  "Resource": [
+                      "arn:aws:s3:::${region}-ogenki-harbor"
+                  ]
+              },
+              {
+                  "Effect": "Allow",
+                  "Action": [
+                      "s3:PutObject",
+                      "s3:GetObject",
+                      "s3:DeleteObject"
+                  ],
+                  "Resource": [
+                      "arn:aws:s3:::${region}-ogenki-harbor/*"
+                  ]
+              }
+          ]
+      }
+---
+apiVersion: iam.aws.upbound.io/v1beta1
+kind: UserPolicyAttachment
+metadata:
+  name: xplane-harbor-s3
+spec:
+  forProvider:
+    policyArnSelector:
+      matchLabels:
+        cloud.ogenki.io/name: harbor-s3
+    userSelector:
+      matchLabels:
+        cloud.ogenki.io/name: harbor
