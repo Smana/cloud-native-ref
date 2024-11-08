@@ -90,7 +90,7 @@ Additionally, I have put a constraint on the resources the controllers can manag
 The Harbor installation follows best practices for high availability. It leverages recent Crossplane features such as `Composition functions`:
 
 - External RDS database
-- Redis cluster using the Bitnami Helm chart
+- Valkey cluster using the Bitnami Helm chart
 - Storing artifacts in S3
 
 🏷️ Related blog post: [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/crossplane_composition_functions/)

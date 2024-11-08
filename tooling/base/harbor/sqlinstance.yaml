@@ -2,21 +2,16 @@ apiVersion: cloud.ogenki.io/v1alpha1
 kind: SQLInstance
 metadata:
   name: xplane-harbor
-  namespace: tooling
 spec:
-  databases:
-    - owner: harbor
-      name: registry
-  size: small
+  size: "small"
   storageGB: 20
-  rds:
-    engine: postgres
-    engineVersion: "16"
-    passwordSecretRef:
-      namespace: tooling
-      name: harbor-pg-masterpassword
-      key: password
+  cnpg:
+    instances: 1
+    objectStoreRecovery:
+      bucketName: "eu-west-3-ogenki-cnpg-backups"
+      path: "harbor-20241109"
+    backup:
+      schedule: "0 1 * * *"
+      bucketName: "eu-west-3-ogenki-cnpg-backups"
   compositionRef:
     name: xsqlinstances.cloud.ogenki.io
-  writeConnectionSecretToRef:
-    name: xplane-harbor-rds

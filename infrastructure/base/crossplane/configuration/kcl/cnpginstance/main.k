@@ -73,7 +73,7 @@ if oxr.spec.cnpg:
                             primaryUpdateStrategy = oxr.spec.cnpg.primaryUpdateStrategy
                             if oxr.spec.cnpg?.createSuperuser:
                                 enableSuperuserAccess = True
-                            if oxr.spec.cnpg?.initSQL or oxr.spec.cnpg?.databases or oxr.spec.cnpg?.objectStoreRecovery:
+                            if oxr.spec.cnpg?.initSQL or oxr.spec.databases or oxr.spec.cnpg?.objectStoreRecovery:
                                 bootstrap = {
                                     if oxr.spec.cnpg.objectStoreRecovery:
                                         recovery: {

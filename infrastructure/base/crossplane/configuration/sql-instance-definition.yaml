@@ -114,7 +114,7 @@ spec:
                     createSuperuser:
                       description: Create a superuser for the Postgres cluster.
                       type: boolean
-                      default: true
+                      default: false
                     objectStoreRecovery:
                       type: object
                       properties:

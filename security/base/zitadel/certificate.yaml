@@ -9,6 +9,7 @@ spec:
   commonName: zitadel.priv.${domain_name}
   dnsNames:
     - zitadel.priv.${domain_name}
+    - sso.priv.${domain_name}
   issuerRef:
     name: vault
     kind: ClusterIssuer
