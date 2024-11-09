@@ -1,9 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: tooling
 
 resources:
   - externalsecret-admin-password.yaml
-  - externalsecret-sqlinstance-password.yaml
+  - externalsecret-cnpg-harbor-registry.yaml
   - externalsecret-valkey-password.yaml
   - helmrelease-harbor.yaml
   - serviceaccount-harbor.yaml

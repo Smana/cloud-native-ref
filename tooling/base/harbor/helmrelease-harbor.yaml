@@ -2,7 +2,6 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: harbor
-  namespace: tooling
 spec:
   releaseName: harbor
   driftDetection:
@@ -68,11 +67,11 @@ spec:
     database:
       type: external
       external:
-        host: "xplane-harbor-rds-service"
+        host: "xplane-harbor-cnpg-cluster-rw"
         port: "5432"
         username: "harbor"
         coreDatabase: "registry"
-        existingSecret: "xplane-harbor-owner-harbor"
+        existingSecret: "xplane-harbor-cnpg-registry"
         sslmode: "require"
 
     redis:
