@@ -7,7 +7,7 @@ toolchain go1.23.2
 require github.com/aws/aws-sdk-go v1.55.5
 
 require (
-	github.com/99designs/gqlgen v0.17.55
+	github.com/99designs/gqlgen v0.17.56
 	github.com/Khan/genqlient v0.7.0
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
