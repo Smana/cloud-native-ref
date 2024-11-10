@@ -3,7 +3,7 @@ kind: CiliumNetworkPolicy
 metadata:
   name: zitadel
 spec:
-  description: "Allow internal traffic to the Zitadel service."
+  description: "Limit traffic to and from the Zitadel application"
   endpointSelector:
     matchLabels:
       k8s:app.kubernetes.io/name: zitadel
@@ -22,8 +22,6 @@ spec:
         - world
       toPorts:
         - ports:
-            - port: "80"
-              protocol: TCP
             - port: "443"
               protocol: TCP
     - toEndpoints:

@@ -8,12 +8,12 @@ spec:
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-name: "ogenki-zitadel-gateway"
       service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
-      service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
       service.beta.kubernetes.io/aws-load-balancer-type: "external"
-      external-dns.alpha.kubernetes.io/hostname: "zitadel.priv.${domain_name},sso.priv.${domain_name}"
+      external-dns.alpha.kubernetes.io/hostname: "auth.${domain_name}"
   listeners:
-    - name: http
-      hostname: "*.priv.${domain_name}"
+    - name: auth
+      hostname: "auth.${domain_name}"
       port: 443
       protocol: TLS
       allowedRoutes:

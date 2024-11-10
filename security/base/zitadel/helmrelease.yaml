@@ -4,6 +4,7 @@ metadata:
   name: zitadel
 spec:
   interval: 30m
+  timeout: 30m
   driftDetection:
     mode: enabled
   chart:
@@ -27,7 +28,7 @@ spec:
             Format: json
         ExternalPort: 443
         ExternalSecure: true
-        ExternalDomain: "zitadel.priv.${domain_name}"
+        ExternalDomain: "auth.${domain_name}"
         TLS:
           Enabled: true
           KeyPath: /tls/tls.key

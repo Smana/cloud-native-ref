@@ -38,6 +38,17 @@ karpenter_limits = {
     memory = "64Gi"
   }
 }
+
+# Optional if an external OIDC provider should be used to authenticate users
+cluster_identity_providers = {
+  zitadel = {
+    client_id      = "702vqsrjicklgb7c5b7b50i1gc"
+    issuer_url     = "https://auth.cloud.ogenki.io"
+    username_claim = "email"
+    groups_claim   = "groups"
+  }
+}
+
 ```
 
 3. Apply with
@@ -106,8 +117,8 @@ tofu destroy --var-file variables.tfvars
 | Name | Source | Version |
 |------|--------|---------|
 | <a name="module_eks"></a> [eks](#module\_eks) | terraform-aws-modules/eks/aws | ~> 20 |
-| <a name="module_irsa_crossplane"></a> [irsa\_crossplane](#module\_irsa\_crossplane) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.47.1 |
-| <a name="module_irsa_ebs_csi_driver"></a> [irsa\_ebs\_csi\_driver](#module\_irsa\_ebs\_csi\_driver) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.47.1 |
+| <a name="module_irsa_crossplane"></a> [irsa\_crossplane](#module\_irsa\_crossplane) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.48.0 |
+| <a name="module_irsa_ebs_csi_driver"></a> [irsa\_ebs\_csi\_driver](#module\_irsa\_ebs\_csi\_driver) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.48.0 |
 | <a name="module_karpenter"></a> [karpenter](#module\_karpenter) | terraform-aws-modules/eks/aws//modules/karpenter | ~> 20.0 |
 
 ## Resources
@@ -147,6 +158,7 @@ tofu destroy --var-file variables.tfvars
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_cilium_version"></a> [cilium\_version](#input\_cilium\_version) | Cilium cluster version | `string` | `"1.16.2"` | no |
+| <a name="input_cluster_identity_providers"></a> [cluster\_identity\_providers](#input\_cluster\_identity\_providers) | Map of cluster identity provider configurations to enable for the cluster. | `any` | `{}` | no |
 | <a name="input_cluster_name"></a> [cluster\_name](#input\_cluster\_name) | Name of the EKS cluster to be created | `string` | n/a | yes |
 | <a name="input_cluster_version"></a> [cluster\_version](#input\_cluster\_version) | k8s cluster version | `string` | `"1.31"` | no |
 | <a name="input_ebs_csi_driver_chart_version"></a> [ebs\_csi\_driver\_chart\_version](#input\_ebs\_csi\_driver\_chart\_version) | EBS CSI Driver Helm chart version | `string` | `"2.25.0"` | no |
