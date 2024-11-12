@@ -45,6 +45,8 @@ module "eks" {
   #  }
   #}
 
+  cluster_identity_providers = var.cluster_identity_providers
+
   vpc_id                   = data.aws_vpc.selected.id
   subnet_ids               = data.aws_subnets.private.ids
   control_plane_subnet_ids = data.aws_subnets.intra.ids

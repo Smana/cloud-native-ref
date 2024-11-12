@@ -33,6 +33,12 @@ variable "iam_role_additional_policies" {
   default     = {}
 }
 
+variable "cluster_identity_providers" {
+  description = "Map of cluster identity provider configurations to enable for the cluster."
+  type        = any
+  default     = {}
+}
+
 variable "cilium_version" {
   description = "Cilium cluster version"
   default     = "1.16.2"

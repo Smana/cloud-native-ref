@@ -5,11 +5,14 @@ metadata:
 spec:
   size: "small"
   storageGB: 20
+  databases:
+    - name: registry
+      owner: harbor
   cnpg:
     instances: 1
     objectStoreRecovery:
       bucketName: "eu-west-3-ogenki-cnpg-backups"
-      path: "harbor-20241109"
+      path: "harbor-20241111"
     backup:
       schedule: "0 1 * * *"
       bucketName: "eu-west-3-ogenki-cnpg-backups"

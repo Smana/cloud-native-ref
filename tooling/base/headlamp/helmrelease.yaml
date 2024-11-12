@@ -17,6 +17,12 @@ spec:
   values:
     config:
       pluginsDir: /build/plugins
+      oidc:
+        secret:
+          create: false
+        externalSecret:
+          enabled: true
+          name: "headlamp-envvars"
     initContainers:
       - command:
           - /bin/sh

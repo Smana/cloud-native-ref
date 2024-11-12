@@ -1,3 +1,6 @@
+# This manifest is not deployed. This is just an example of how to create a public gateway for the platform.
+# It uses cert-manager to provision a certificate for the gateway. The certificate is referenced in the gateway spec.
+
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -12,7 +15,6 @@ spec:
       service.beta.kubernetes.io/aws-load-balancer-name: "ogenki-platform-public-gateway"
       service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
       service.beta.kubernetes.io/aws-load-balancer-type: "external"
-      external-dns.alpha.kubernetes.io/hostname: arc-webhook.${domain_name}
   listeners:
     - name: http
       hostname: "*.${domain_name}"
