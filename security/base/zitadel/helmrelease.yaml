@@ -20,6 +20,7 @@ spec:
     initJob:
       backoffLimit: 30 # Wait for the CNPG database instance to be ready
     zitadel:
+      masterkeySecretName: "zitadel-masterkey" # Populated from the zitadel-envvars secret
       configmapConfig:
         Log:
           Formatter:

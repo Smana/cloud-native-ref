@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: security
 resources:
   - externalsecret-zitadel-envvars.yaml
+  - externalsecret-zitadel-masterkey.yaml
   - certificate.yaml
   - gateway.yaml
   - helmrelease.yaml
