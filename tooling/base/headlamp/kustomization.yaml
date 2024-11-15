@@ -5,4 +5,3 @@ resources:
   - externalsecret-zitadel-envvars.yaml
   - httproute.yaml
   - helmrelease.yaml
-  - rbac-admin.yaml
