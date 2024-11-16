@@ -5,5 +5,6 @@ resources:
   - ../base/kyverno
   - ../base/cert-manager
   - ../base/vault-snapshot
+  - ../base/rbac
   - ../base/zitadel
   - external-secrets
