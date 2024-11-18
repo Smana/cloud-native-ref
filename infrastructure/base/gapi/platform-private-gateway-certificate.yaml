@@ -16,6 +16,6 @@ spec:
     - vmalertmanager-${cluster_name}.priv.${domain_name}
     - vmagent-${cluster_name}.priv.${domain_name}
   issuerRef:
-    name: vault
+    name: openbao
     kind: ClusterIssuer
     group: cert-manager.io

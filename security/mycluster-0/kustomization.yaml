@@ -4,7 +4,7 @@ kind: Kustomization
 resources:
   - ../base/kyverno
   - ../base/cert-manager
-  - ../base/vault-snapshot
+  - ../base/openbao-snapshot
   - ../base/rbac
   - ../base/zitadel
   - external-secrets

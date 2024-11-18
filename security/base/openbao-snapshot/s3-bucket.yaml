@@ -1,0 +1,55 @@
+---
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: openbao-snapshot
+  labels:
+    cloud.ogenki.io/name: openbao-snapshot
+  annotations:
+    crossplane.io/external-name: ${region}-ogenki-openbao-snapshot
+spec:
+  deletionPolicy: Orphan # The bucket should not be deleted when the resource is deleted in Crossplane
+  forProvider:
+    region: ${region}
+---
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: BucketServerSideEncryptionConfiguration
+metadata:
+  labels:
+    cloud.ogenki.io/name: openbao-snapshot
+  name: xplane-openbao-snapshot
+spec:
+  forProvider:
+    bucketSelector:
+      matchLabels:
+        cloud.ogenki.io/name: openbao-snapshot
+    region: ${region}
+    rule:
+      - applyServerSideEncryptionByDefault:
+          - kmsMasterKeyIdSelector:
+              matchLabels:
+                cloud.ogenki.io/name: openbao-snapshot
+            sseAlgorithm: aws:kms
+---
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: BucketLifecycleConfiguration
+metadata:
+  labels:
+    cloud.ogenki.io/name: openbao-snapshot
+  name: xplane-openbao-snapshot
+spec:
+  forProvider:
+    bucketSelector:
+      matchLabels:
+        cloud.ogenki.io/name: openbao-snapshot
+    region: ${region}
+    rule:
+      - transition:
+          - days: 30
+            storageClass: GLACIER
+        id: glacier
+        status: Enabled
+      - expiration:
+          - days: 120
+        id: expiration
+        status: Enabled

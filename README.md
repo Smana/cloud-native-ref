@@ -2,7 +2,7 @@
 
 **_This is an opinionated set of configurations for managing a Cloud Native platform using GitOps principles._**
 
-This repository provides a comprehensive guide and set of tools for building, managing, and maintaining a Cloud Native platform. It includes configurations for Kubernetes, Crossplane, Flux, Vault, and more, with a focus on security, scalability, and best practices.
+This repository provides a comprehensive guide and set of tools for building, managing, and maintaining a Cloud Native platform. It includes configurations for Kubernetes, Crossplane, Flux, OpenBao, and more, with a focus on security, scalability, and best practices.
 
 ![overview](.assets/cloud-native-ref.png)
 
@@ -16,7 +16,7 @@ This repository provides a comprehensive guide and set of tools for building, ma
     - [How is Crossplane Deployed?](#how-is-crossplane-deployed)
   - [📦 OCI Registry with Harbor](#-oci-registry-with-harbor)
   - [🔗 VPN connection using Tailscale](#-vpn-connection-using-tailscale)
-  - [🔑 Private PKI with Vault](#-private-pki-with-vault)
+  - [🔑 Private PKI with OpenBao](#-private-pki-with-openbao)
   - [👁️ Observability](#️-observability)
   - [🧪 CI](#-ci)
     - [Overview](#overview)
@@ -29,7 +29,7 @@ This repository provides a comprehensive guide and set of tools for building, ma
 There are basically 3 things to run when deploying the whole stack:
 
 1. 📡 [Install the network requirements](./terraform/network/README.md)
-2. 🔒 [Deploy a Vault instance](./terraform/vault/cluster/README.md)
+2. 🔒 [Deploy a OpenBao instance](./terraform/openbao/cluster/README.md)
 3. ☸️ [Bootstrap the EKS cluster and Flux components](./terraform/eks/README.md)
 
 ## 🔄 Flux Dependencies Matter
@@ -107,14 +107,16 @@ Anyway, I intentionnaly created a distinct directory that allows to provision th
 
 🏷️ Related blog post: [Beyond Traditional VPNs: Simplifying Cloud Access with Tailscale](https://blog.ogenki.io/post/tailscale/)
 
-## 🔑 Private PKI with Vault
+## 🔑 Private PKI with OpenBao
 
-The Vault creation is made in 2 steps:
+:information_source: OpenBao is an opensource fork of the Hashicorp Vault solution.
 
-1. Create the cluster as described [here](/terraform/vault/cluster/README.md)
-2. Then configure it using [this directory](/terraform/vault/management/README.md)
+The OpenBao instance creation is made in 2 steps:
 
-ℹ️ The provided code outlines the setup and configuration of a **highly available, secure, and cost-efficient HashiCorp Vault cluster**. It describes the process of creating a Vault instance in either development or high availability mode, with detailed steps for initializing the Vault, managing security tokens, and configuring a robust **Public Key Infrastructure** (PKI) system. The focus is on balancing performance, security, and cost, using a multi-node cluster, ephemeral nodes with SPOT instances, and a tiered CA structure for digital security.
+1. Create the cluster as described [here](/terraform/openbao/cluster/README.md)
+2. Then configure it using [this directory](/terraform/openbao/management/README.md)
+
+ℹ️ The provided code outlines the setup and configuration of a **highly available, secure, and cost-efficient OpenBao cluster**. It describes the process of creating a OpenBao instance in either development or high availability mode, with detailed steps for initializing the OpenBao, managing security tokens, and configuring a robust **Public Key Infrastructure** (PKI) system. The focus is on balancing performance, security, and cost, using a multi-node cluster, ephemeral nodes with SPOT instances, and a tiered CA structure for digital security.
 
 🏷️ Related blog post: [TLS with Gateway API: Efficient and Secure Management of Public and Private Certificates](https://blog.ogenki.io/post/pki-gapi/)
 

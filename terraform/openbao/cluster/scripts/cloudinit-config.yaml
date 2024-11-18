@@ -1,0 +1,21 @@
+write_files:
+  - content: ${tls_key_b64}
+    encoding: b64
+    path: /opt/openbao/tls/tls.key
+    permissions: "0640"
+  - content: ${tls_cert_b64}
+    encoding: b64
+    path: /opt/openbao/tls/tls.crt
+    permissions: "0644"
+  - content: ${tls_cacert_b64} # intermediate CA
+    encoding: b64
+    path: /opt/openbao/tls/ca.pem
+    permissions: "0644"
+
+package_upgrade: true
+
+packages:
+  - jq
+  - gpg
+  - snapd
+  - wget

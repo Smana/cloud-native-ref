@@ -1,0 +1,48 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: EPI
+metadata:
+    name: xplane-openbao-snapshot-${cluster_name}
+    namespace: security
+spec:
+    parameters:
+        clusterName: ${cluster_name}
+        serviceAccount:
+            name: openbao-snapshot
+            namespace: security
+        policyDocument: |
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "ReadPermissions",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:GetObject",
+                            "s3:ListBucket"
+                        ],
+                        "Resource": [
+                            "arn:aws:s3:::${region}-ogenki-openbao-snapshot",
+                            "arn:aws:s3:::${region}-ogenki-openbao-snapshot/*"
+                        ]
+                    },
+                    {
+                        "Sid": "WritePermissions",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:PutObject"
+                        ],
+                        "Resource": "arn:aws:s3:::${region}-ogenki-openbao-snapshot/*"
+                    },
+                    {
+                        "Sid": "AllowKMSUsage",
+                        "Effect": "Allow",
+                        "Action": [
+                            "kms:Decrypt",
+                            "kms:Encrypt",
+                            "kms:ReEncrypt*",
+                            "kms:GenerateDataKey*"
+                        ],
+                        "Resource": "*"
+                    }
+                ]
+            }
