@@ -67,8 +67,8 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
      }
      ```
 
-5. **Execute Terraform Commands:**
-   - Initialize and apply the Terraform configuration:
+5. **Execute OpentofuCommands:**
+   - Initialize and apply the Opentofu configuration:
 
      ```console
      tofu init

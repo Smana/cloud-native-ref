@@ -97,7 +97,7 @@ module "eks" {
     "karpenter.sh/discovery" = var.cluster_name
   }
 
-  // For the load balancer to work refer to https://github.com/terraform-aws-modules/terraform-aws-eks/blob/master/docs/faq.md
+  // For the load balancer to work refer to https://github.com/opentofu-aws-modules/opentofu-aws-eks/blob/master/docs/faq.md
   node_security_group_tags = {
     "kubernetes.io/cluster/${var.cluster_name}" = null
   }

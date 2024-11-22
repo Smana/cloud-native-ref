@@ -14,7 +14,7 @@
         ],
         "ignorePaths": [
             "clusters",
-            "terraform"
+            "opentofu"
         ]
     },
     "helm-values": {
@@ -23,7 +23,7 @@
         ],
         "ignorePaths": [
             "clusters",
-            "terraform"
+            "opentofu"
         ]
     },
     "kubernetes": {
@@ -32,7 +32,7 @@
         ],
         "ignorePaths": [
             "clusters",
-            "terraform"
+            "opentofu"
         ]
     }
 }

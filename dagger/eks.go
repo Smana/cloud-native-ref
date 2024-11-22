@@ -8,7 +8,7 @@ import (
 
 // createEKS creates the EKS cluster
 func createEKS(ctx context.Context, ctr *dagger.Container, tfarg string, branch string) (map[string]interface{}, error) {
-	workDir := "/cloud-native-ref/terraform/eks"
+	workDir := "/cloud-native-ref/opentofu/eks"
 
 	output, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars", "-var", fmt.Sprintf("github_branch=%s", branch)})
 	if err != nil {
@@ -19,7 +19,7 @@ func createEKS(ctx context.Context, ctr *dagger.Container, tfarg string, branch 
 
 // destroyEKS destroys the EKS cluster
 func destroyEKS(ctx context.Context, container *dagger.Container, branch string) error {
-	workDir := "/cloud-native-ref/terraform/eks"
+	workDir := "/cloud-native-ref/opentofu/eks"
 
 	container = container.WithExec([]string{"apk", "add", "flux", "kubectl"})
 

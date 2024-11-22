@@ -8,12 +8,12 @@ This Dagger workflow simplifies the bootstrap process for deploying and configur
 graph TD
     A[Create AWS Network and Tailscale Subnet Router with Terraform]
 
-    A --> B[Deploy and Configure Vault]
+    A --> B[Deploy and Configure OpenBao]
 
-    B --> B1[Create EKS Cluster and Wait for Vault Initialization]
-    B1 --> B2[Connect to Vault and Run Initialization]
+    B --> B1[Create EKS Cluster and Wait for OpenBao Initialization]
+    B1 --> B2[Connect to OpenBao and Run Initialization]
     B2 --> B3[Run PKI Configuration]
-    B3 --> B4[Apply Vault Management]
+    B3 --> B4[Apply OpenBao Management]
     B4 --> B5[Retrieve Cert-Manager AppRole]
 
     A --> D[Deploy EKS Cluster]
@@ -23,7 +23,7 @@ graph TD
 
 Using this automated deployment process **relies on AWS Secrets Manager** to store and retrieve sensitive data.
 
-* **Generate Certificates**: To use Vault as a private PKI, follow the [procedure](../terraform/openbao/cluster/docs/pki_requirements.md) to provision certificates (root, intermediate, and the one used for the Vault server itself). These certificates must be stored in AWS Secrets Manager beforehand.
+* **Generate Certificates**: To use OpenBao as a private PKI, follow the [procedure](../opentofu/openbao/cluster/docs/pki_requirements.md) to provision certificates (root, intermediate, and the one used for the OpenBao server itself). These certificates must be stored in AWS Secrets Manager beforehand.
 
 * **Prepare the variables.tfvars Files**: The workflow commands expect a `variables.tfvars` file to be present in each module executed.
 

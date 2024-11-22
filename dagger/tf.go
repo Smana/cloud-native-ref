@@ -7,14 +7,14 @@ import (
 	"fmt"
 )
 
-// tfRun applies the terraform configuration
+// tfRun applies the opentofu configuration
 func tfRun(ctx context.Context, ctr *dagger.Container, workDir string, arg string, params []string) (map[string]interface{}, error) {
 
-	// First init the terraform configuration
+	// First init the opentofu configuration
 	ctr = ctr.WithWorkdir(workDir).WithExec([]string{"tofu", "init"})
 	_, err := ctr.Stdout(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to init the terraform configuration of the directory %s: %w", workDir, err)
+		return nil, fmt.Errorf("failed to init the opentofu configuration of the directory %s: %w", workDir, err)
 	}
 
 	cmd := []string{"tofu", "plan"}
@@ -27,7 +27,7 @@ func tfRun(ctx context.Context, ctr *dagger.Container, workDir string, arg strin
 	_, err = ctr.WithWorkdir(workDir).
 		WithExec(cmd).Stdout(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to run the terraform command: %w", err)
+		return nil, fmt.Errorf("failed to run the opentofu command: %w", err)
 	}
 
 	if arg == "output" {

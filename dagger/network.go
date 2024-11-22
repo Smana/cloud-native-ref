@@ -117,9 +117,9 @@ tailscaled --tun=userspace-networking --socks5-server=:1055 --outbound-http-prox
 }
 
 func createNetwork(ctx context.Context, ctr *dagger.Container, tfarg string) (map[string]interface{}, error) {
-	workDir := "/cloud-native-ref/terraform/network"
+	workDir := "/cloud-native-ref/opentofu/network"
 
-	// Firts we need to import Tailscale ACLs due to a bug in the Terraform provider
+	// Firts we need to import Tailscale ACLs due to a bug in the Opentofu provider
 	importScript := `
 tofu init
 if tofu state list | grep -q "tailscale_acl.this"; then
@@ -143,7 +143,7 @@ fi
 }
 
 func destroyNetwork(ctx context.Context, ctr *dagger.Container) error {
-	workDir := "/cloud-native-ref/terraform/network"
+	workDir := "/cloud-native-ref/opentofu/network"
 	_, err := tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars"})
 	if err != nil {
 		return fmt.Errorf("failed to destroy the network: %w", err)

@@ -137,13 +137,13 @@ func New(
 	return cRef, nil
 }
 
-// Plan display the terraform plan for all the modules
+// Plan display the tofu plan for all the modules
 func (m *CloudNativeRef) Plan(
 	ctx context.Context,
 
-	// source is the directory where the Terraform configuration is stored
+	// source is the directory where the Opentofu configuration is stored
 	// +defaultPath="."
-	// +ignore=["!**/terraform"]
+	// +ignore=["!**/opentofu"]
 	source *dagger.Directory,
 
 	// The directory where the AWS authentication files will be stored
@@ -206,9 +206,9 @@ func (m *CloudNativeRef) Plan(
 func (m *CloudNativeRef) Network(
 	ctx context.Context,
 
-	// source is the directory where the Terraform configuration is stored
+	// source is the directory where the Opentofu configuration is stored
 	// +defaultPath="."
-	// +ignore=["!**/terraform"]
+	// +ignore=["!**/opentofu"]
 	source *dagger.Directory,
 
 	// env is a list of environment variables, expected in (key:value) format
@@ -241,9 +241,9 @@ type OpenBaoConfig struct {
 func (m *CloudNativeRef) Openbao(
 	ctx context.Context,
 
-	// source is the directory where the Terraform configuration is stored
+	// source is the directory where the Opentofu configuration is stored
 	// +defaultPath="."
-	// +ignore=["!**/terraform"]
+	// +ignore=["!**/opentofu"]
 	source *dagger.Directory,
 
 	// privateDomainName is the private domain name to use
@@ -284,7 +284,7 @@ func (m *CloudNativeRef) Openbao(
 		openbaoAddr = fmt.Sprintf("https://bao.%s:8200", privateDomainName)
 	}
 
-	// Apply the Terraform OpenBao configuration
+	// Apply the OpentofuOpenBao configuration
 	openbaoOutput, err := createOpenBao(ctx, container, "apply")
 	if err != nil {
 		return nil, err
@@ -337,9 +337,9 @@ func (m *CloudNativeRef) Openbao(
 func (m *CloudNativeRef) EKS(
 	ctx context.Context,
 
-	// source is the directory where the Terraform configuration is stored
+	// source is the directory where the Opentofu configuration is stored
 	// +defaultPath="."
-	// +ignore=["!**/terraform"]
+	// +ignore=["!**/opentofu"]
 	source *dagger.Directory,
 
 	// branch is the branch to use for flux bootstrap
@@ -367,9 +367,9 @@ func (m *CloudNativeRef) EKS(
 func (m *CloudNativeRef) UpdateKustomization(
 	ctx context.Context,
 
-	// source is the directory where the Terraform configuration is stored
+	// source is the directory where the Opentofu configuration is stored
 	// +defaultPath="."
-	// +ignore=["!**/terraform"]
+	// +ignore=["!**/opentofu"]
 	source *dagger.Directory,
 
 	// kustPath is the path to the kustomize directory
@@ -397,9 +397,9 @@ func (m *CloudNativeRef) UpdateKustomization(
 func (m *CloudNativeRef) Bootstrap(
 	ctx context.Context,
 
-	// source is the directory where the Terraform configuration is stored
+	// source is the directory where the Opentofu configuration is stored
 	// +defaultPath="."
-	// +ignore=["!**/terraform"]
+	// +ignore=["!**/opentofu"]
 	source *dagger.Directory,
 
 	// branch is the branch to use for flux bootstrap
@@ -481,9 +481,9 @@ func (m *CloudNativeRef) Bootstrap(
 func (m *CloudNativeRef) Destroy(
 	ctx context.Context,
 
-	// source is the directory where the Terraform configuration is stored
+	// source is the directory where the Opentofu configuration is stored
 	// +defaultPath="."
-	// +ignore=["!**/terraform"]
+	// +ignore=["!**/opentofu"]
 	source *dagger.Directory,
 
 	// branch is the branch to use for flux bootstrap

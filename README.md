@@ -28,9 +28,9 @@ This repository provides a comprehensive guide and set of tools for building, ma
 
 There are basically 3 things to run when deploying the whole stack:
 
-1. 📡 [Install the network requirements](./terraform/network/README.md)
-2. 🔒 [Deploy a OpenBao instance](./terraform/openbao/cluster/README.md)
-3. ☸️ [Bootstrap the EKS cluster and Flux components](./terraform/eks/README.md)
+1. 📡 [Install the network requirements](./opentofu/network/README.md)
+2. 🔒 [Deploy a OpenBao instance](./opentofu/openbao/cluster/README.md)
+3. ☸️ [Bootstrap the EKS cluster and Flux components](./opentofu/eks/README.md)
 
 ## 🔄 Flux Dependencies Matter
 Flux is a set of continuous and progressive delivery solutions for Kubernetes that automate the application deployment process. The following diagram illustrates the key dependencies in our setup:
@@ -66,7 +66,7 @@ This diagram can be hard to understand so these are the key information:
 
 ### Requirements and Security Concerns
 
-When the cluster is initialized, we define the permissions for the Crossplane controllers using Terraform. This involves attaching a set of IAM policies to a role. This role is crucial for managing AWS resources, a process known as IRSA (IAM Roles for Service Accounts).
+When the cluster is initialized, we define the permissions for the Crossplane controllers using Opentofu. This involves attaching a set of IAM policies to a role. This role is crucial for managing AWS resources.
 
 We prioritize security by adhering to the principle of **least privilege**. This means we only grant the necessary permissions, avoiding any excess. For instance, although Crossplane allows it, I have chosen not to give the controllers the ability to delete stateful services like S3 or RDS. This decision is a deliberate step to minimize potential risks.
 
@@ -97,8 +97,8 @@ The Harbor installation follows best practices for high availability. It leverag
 
 ## 🔗 VPN connection using Tailscale
 
-The VPN configuration is done within the `terraform/network` directory.
-You can follow the steps described in this [README](/terraform/network/README.md) in order to provision a server that allows to access to private resources within AWS.
+The VPN configuration is done within the `opentofu/network` directory.
+You can follow the steps described in this [README](/opentofu/network/README.md) in order to provision a server that allows to access to private resources within AWS.
 
 Most of the time we don't want to expose our resources publicly. For instance our platform tools such as `Grafana`, `Harbor` should be access through a secured wire.
 The risk becomes even more significant when dealing with Kubernetes' API. Indeed, one of the primary recommendations for securing a cluster is to limit access to the API.
@@ -113,8 +113,8 @@ Anyway, I intentionnaly created a distinct directory that allows to provision th
 
 The OpenBao instance creation is made in 2 steps:
 
-1. Create the cluster as described [here](/terraform/openbao/cluster/README.md)
-2. Then configure it using [this directory](/terraform/openbao/management/README.md)
+1. Create the cluster as described [here](/opentofu/openbao/cluster/README.md)
+2. Then configure it using [this directory](/opentofu/openbao/management/README.md)
 
 ℹ️ The provided code outlines the setup and configuration of a **highly available, secure, and cost-efficient OpenBao cluster**. It describes the process of creating a OpenBao instance in either development or high availability mode, with detailed steps for initializing the OpenBao, managing security tokens, and configuring a robust **Public Key Infrastructure** (PKI) system. The focus is on balancing performance, security, and cost, using a multi-node cluster, ephemeral nodes with SPOT instances, and a tiered CA structure for digital security.
 
