@@ -1,0 +1,22 @@
+---
+apiVersion: kms.aws.upbound.io/v1beta1
+kind: Key
+metadata:
+  labels:
+    cloud.ogenki.io/name: openbao-snapshot
+  name: xplane-openbao-snapshot
+spec:
+  forProvider:
+    deletionWindowInDays: 7
+    description: Used for the Vault s3 bucket
+    region: ${region}
+---
+apiVersion: kms.aws.upbound.io/v1beta1
+kind: Alias
+metadata:
+  name: xplane-openbao-snapshot
+spec:
+  forProvider:
+    region: ${region}
+    targetKeyIdRef:
+      name: xplane-openbao-snapshot

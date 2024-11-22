@@ -23,7 +23,7 @@ graph TD
 
 Using this automated deployment process **relies on AWS Secrets Manager** to store and retrieve sensitive data.
 
-* **Generate Certificates**: To use Vault as a private PKI, follow the [procedure](../terraform/vault/cluster/docs/pki_requirements.md) to provision certificates (root, intermediate, and the one used for the Vault server itself). These certificates must be stored in AWS Secrets Manager beforehand.
+* **Generate Certificates**: To use Vault as a private PKI, follow the [procedure](../terraform/openbao/cluster/docs/pki_requirements.md) to provision certificates (root, intermediate, and the one used for the Vault server itself). These certificates must be stored in AWS Secrets Manager beforehand.
 
 * **Prepare the variables.tfvars Files**: The workflow commands expect a `variables.tfvars` file to be present in each module executed.
 
@@ -61,16 +61,16 @@ dagger call --access-key-id=env:AWS_ACCESS_KEY_ID --secret-access-key=env:AWS_SE
 It takes over 20 minutes to get everything up and running. You should see an output similar to the following:
 
 ```console
-VaultAddr: https://vault.priv.cloud.ogenki.io:8200
+VaultAddr: https://bao.priv.cloud.ogenki.io:8200
 CertManagerAppRoleId: b44bc6c4-6fd4-513f-2ee1-15e6c48baaa6
 EKSGetCredentials: aws eks update-kubeconfig --name mycluster-0 --alias mycluster-0
 ```
 
-3. Report the ApproleId into the `ClusterIssuer` definition [here](../security/base/cert-manager/vault-clusterissuer.yaml). Then push your changes
+3. Report the ApproleId into the `ClusterIssuer` definition [here](../security/base/cert-manager/bao-clusterissuer.yaml). Then push your changes
 
 ```console
 git pull --set-upstream origin <flux_branch> --rebase
-git commit -m "chore(cert-manager): update vault approle id"
+git commit -m "chore(cert-manager): update openbao approle id"
 git push
 ```
 

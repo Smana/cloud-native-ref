@@ -228,7 +228,7 @@ func (m *CloudNativeRef) Network(
 	return container, nil
 }
 
-type VaultConfig struct {
+type OpenBaoConfig struct {
 	Addr                string
 	SkipVerify          string
 	RootTokenUrl        string
@@ -237,8 +237,8 @@ type VaultConfig struct {
 	Container           *dagger.Container
 }
 
-// Deploy and configure a Vault instance
-func (m *CloudNativeRef) Vault(
+// Deploy and configure a OpenBao instance
+func (m *CloudNativeRef) Openbao(
 	ctx context.Context,
 
 	// source is the directory where the Terraform configuration is stored
@@ -251,24 +251,24 @@ func (m *CloudNativeRef) Vault(
 	// +default="priv.cloud.ogenki.io"
 	privateDomainName string,
 
-	// vaultAddr is the Vault address to use
+	// openbaoAddr is the OpenBao address to use
 	// +optional
-	vaultAddr string,
+	openbaoAddr string,
 
-	// vaultSkipVerify is the Vault skip verify to use
+	// openbaoSkipVerify is the OpenBao skip verify to use
 	// +optional
 	// +default="true"
-	vaultSkipVerify string,
+	openbaoSkipVerify string,
 
 	// env is a list of environment variables, expected in (key:value) format
 	// +optional
 	env []string,
 
-) (*VaultConfig, error) {
+) (*OpenBaoConfig, error) {
 	// mount the source directory
 	container := m.Container.
 		WithMountedDirectory(fmt.Sprintf("/%s", repoName), source).
-		WithExec([]string{"apk", "add", "vault"})
+		WithExec([]string{"apk", "add", "openbao"})
 
 	sess, err := createAWSSession(ctx, m)
 	if err != nil {
@@ -279,41 +279,41 @@ func (m *CloudNativeRef) Vault(
 		return nil, err
 	}
 
-	// Set the Vault address
-	if vaultAddr == "" && privateDomainName != "" {
-		vaultAddr = fmt.Sprintf("https://vault.%s:8200", privateDomainName)
+	// Set the OpenBao address
+	if openbaoAddr == "" && privateDomainName != "" {
+		openbaoAddr = fmt.Sprintf("https://bao.%s:8200", privateDomainName)
 	}
 
-	// Apply the Terraform Vault configuration
-	vaultOutput, err := createVault(ctx, container, "apply")
+	// Apply the Terraform OpenBao configuration
+	openbaoOutput, err := createOpenBao(ctx, container, "apply")
 	if err != nil {
 		return nil, err
 	}
 
-	// Retrieve the Vault root token
-	rootToken, err := initVault(vaultOutput, sess)
+	// Retrieve the OpenBao root token
+	rootToken, err := initOpenBao(openbaoOutput, sess)
 	if err != nil {
 		return nil, err
 	}
 
-	vaultRootTokenSecret := dag.SetSecret("vaultRootToken", rootToken)
+	openbaoRootTokenSecret := dag.SetSecret("openbaoRootToken", rootToken)
 	container = container.
-		WithEnvVariable("VAULT_ADDR", vaultAddr).
-		WithEnvVariable("VAULT_SKIP_VERIFY", vaultSkipVerify).
-		WithSecretVariable("VAULT_TOKEN", vaultRootTokenSecret).
+		WithEnvVariable("VAULT_ADDR", openbaoAddr).
+		WithEnvVariable("VAULT_SKIP_VERIFY", openbaoSkipVerify).
+		WithSecretVariable("VAULT_TOKEN", openbaoRootTokenSecret).
 		WithServiceBinding("tailscale", tailscaleSvc).
 		WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
 		WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
 		WithEnvVariable("http_proxy", "http://tailscale:1055")
 
-	// Configure the Vault PKI
-	_, err = configureVaultPKI(ctx, container, sess, fmt.Sprintf("certificates/%s/root-ca", privateDomainName))
+	// Configure the OpenBao PKI
+	_, err = configureOpenBaoPKI(ctx, container, sess, fmt.Sprintf("certificates/%s/root-ca", privateDomainName))
 	if err != nil {
 		return nil, err
 	}
 
-	// Configure the Vault (policies, auth methods, etc.)
-	_, err = configureVault(ctx, container, "apply")
+	// Configure the OpenBao (policies, auth methods, etc.)
+	_, err = configureOpenBao(ctx, container, "apply")
 	if err != nil {
 		return nil, err
 	}
@@ -324,9 +324,9 @@ func (m *CloudNativeRef) Vault(
 		return nil, err
 	}
 
-	return &VaultConfig{
-		Addr:                vaultAddr,
-		SkipVerify:          vaultSkipVerify,
+	return &OpenBaoConfig{
+		Addr:                openbaoAddr,
+		SkipVerify:          openbaoSkipVerify,
 		CertManagerRoleID:   string(certManagerAppRole["role_id"]),
 		CertManagerSecretID: dag.SetSecret("certManagerSecretID", string(certManagerAppRole["secret_id"])),
 		Container:           container,
@@ -411,14 +411,14 @@ func (m *CloudNativeRef) Bootstrap(
 	// +default="priv.cloud.ogenki.io"
 	privateDomainName string,
 
-	// vaultAddr is the Vault address to use
+	// openbaoAddr is the OpenBao address to use
 	// +optional
-	vaultAddr string,
+	openbaoAddr string,
 
-	// vaultSkipVerify is the Vault skip verify to use
+	// openbaoSkipVerify is the OpenBao skip verify to use
 	// +optional
 	// +default="true"
-	vaultSkipVerify string,
+	openbaoSkipVerify string,
 
 	// env is a list of environment variables, expected in (key:value) format
 	// +optional
@@ -433,16 +433,16 @@ func (m *CloudNativeRef) Bootstrap(
 	var wg sync.WaitGroup
 	errChan := make(chan error, 2)
 
-	var vault *VaultConfig
+	var openbao *OpenBaoConfig
 
 	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
 		var err error
-		vault, err = m.Vault(ctx, source, privateDomainName, vaultAddr, vaultSkipVerify, env)
+		openbao, err = m.Openbao(ctx, source, privateDomainName, openbaoAddr, openbaoSkipVerify, env)
 		if err != nil {
-			errChan <- fmt.Errorf("failed to create Vault resources: %w", err)
+			errChan <- fmt.Errorf("failed to create OpenBao resources: %w", err)
 			return
 		}
 	}()
@@ -469,9 +469,9 @@ func (m *CloudNativeRef) Bootstrap(
 		WithExec([]string{
 			"echo",
 			fmt.Sprintf(
-				"VaultAddr: %s\nCertManagerAppRoleId: %s\nEKSGetCredentials: aws eks update-kubeconfig --name %s --alias %s",
-				vault.Addr,
-				vault.CertManagerRoleID,
+				"OpenBaoAddr: %s\nCertManagerAppRoleId: %s\nEKSGetCredentials: aws eks update-kubeconfig --name %s --alias %s",
+				openbao.Addr,
+				openbao.CertManagerRoleID,
 				eksClusterName,
 				eksClusterName,
 			),
@@ -495,14 +495,14 @@ func (m *CloudNativeRef) Destroy(
 	// +default="priv.cloud.ogenki.io"
 	privateDomainName string,
 
-	// vaultAddr is the Vault address to use
+	// openbaoAddr is the OpenBao address to use
 	// +optional
-	vaultAddr string,
+	openbaoAddr string,
 
-	// vaultSkipVerify is the Vault skip verify to use
+	// openbaoSkipVerify is the OpenBao skip verify to use
 	// +optional
 	// +default="true"
-	vaultSkipVerify string,
+	openbaoSkipVerify string,
 
 	// env is a list of environment variables, expected in (key:value) format
 	// +optional
@@ -526,24 +526,24 @@ func (m *CloudNativeRef) Destroy(
 		return err
 	}
 
-	// Set the Vault address
-	if vaultAddr == "" && privateDomainName != "" {
-		vaultAddr = fmt.Sprintf("https://vault.%s:8200", privateDomainName)
+	// Set the OpenBao address
+	if openbaoAddr == "" && privateDomainName != "" {
+		openbaoAddr = fmt.Sprintf("https://bao.%s:8200", privateDomainName)
 	}
 
-	vaultSecretName := fmt.Sprintf("vault/%s/tokens/root", repoName)
+	openbaoSecretName := fmt.Sprintf("openbao/%s/tokens/root", repoName)
 
-	secretData, err := getSecretManager(sess, vaultSecretName)
+	secretData, err := getSecretManager(sess, openbaoSecretName)
 	if err != nil {
 		return err
 	}
 	rootToken := secretData["token"]
 
-	vaultRootTokenSecret := dag.SetSecret("vaultRootToken", rootToken)
+	openbaoRootTokenSecret := dag.SetSecret("openbaoRootToken", rootToken)
 	container = container.
-		WithEnvVariable("VAULT_ADDR", vaultAddr).
-		WithEnvVariable("VAULT_SKIP_VERIFY", vaultSkipVerify).
-		WithSecretVariable("VAULT_TOKEN", vaultRootTokenSecret).
+		WithEnvVariable("VAULT_ADDR", openbaoAddr).
+		WithEnvVariable("VAULT_SKIP_VERIFY", openbaoSkipVerify).
+		WithSecretVariable("VAULT_TOKEN", openbaoRootTokenSecret).
 		WithServiceBinding("tailscale", tailscaleSvc).
 		WithEnvVariable("ALL_PROXY", "socks5h://tailscale:1055").
 		WithEnvVariable("HTTP_PROXY", "http://tailscale:1055").
@@ -560,9 +560,9 @@ func (m *CloudNativeRef) Destroy(
 
 	go func() {
 		defer wg.Done()
-		err := destroyVault(ctx, container)
+		err := destroyOpenBao(ctx, container)
 		if err != nil {
-			errChan <- fmt.Errorf("failed to destroy Vault resources: %w", err)
+			errChan <- fmt.Errorf("failed to destroy OpenBao resources: %w", err)
 			return
 		}
 	}()

@@ -172,8 +172,8 @@ resource "aws_iam_policy" "crossplane_s3" {
                 "arn:aws:s3:::${var.region}-ogenki-harbor/*",
                 "arn:aws:s3:::${var.region}-ogenki-loki",
                 "arn:aws:s3:::${var.region}-ogenki-loki/*",
-                "arn:aws:s3:::${var.region}-ogenki-vault-snapshot",
-                "arn:aws:s3:::${var.region}-ogenki-vault-snapshot/*",
+                "arn:aws:s3:::${var.region}-ogenki-openbao-snapshot",
+                "arn:aws:s3:::${var.region}-ogenki-openbao-snapshot/*",
                 "arn:aws:s3:::${var.region}-ogenki-cnpg-backups",
                 "arn:aws:s3:::${var.region}-ogenki-cnpg-backups/*"
             ]
@@ -190,8 +190,8 @@ resource "aws_iam_policy" "crossplane_s3" {
                 "arn:aws:s3:::${var.region}-ogenki-harbor/*",
                 "arn:aws:s3:::${var.region}-ogenki-loki",
                 "arn:aws:s3:::${var.region}-ogenki-loki/*",
-                "arn:aws:s3:::${var.region}-ogenki-vault-snapshot",
-                "arn:aws:s3:::${var.region}-ogenki-vault-snapshot/*",
+                "arn:aws:s3:::${var.region}-ogenki-openbao-snapshot",
+                "arn:aws:s3:::${var.region}-ogenki-openbao-snapshot/*",
                 "arn:aws:s3:::${var.region}-ogenki-cnpg-backups",
                 "arn:aws:s3:::${var.region}-ogenki-cnpg-backups/*"
             ]

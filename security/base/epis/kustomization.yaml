@@ -9,5 +9,5 @@ resources:
   - harbor.yaml
   - load-balancer-controller.yaml
   - loki.yaml
-  - vault-snapshot.yaml
+  - openbao-snapshot.yaml
   - victoriametrics.yaml
