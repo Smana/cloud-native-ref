@@ -16,12 +16,12 @@ jobs:
 
       - name: Write required openbao files
         run: |
-          mkdir -p terraform/openbao/cluster/.tls
-          echo 'keep' > terraform/openbao/cluster/.tls/openbao.pem
-          echo 'keep' > terraform/openbao/cluster/.tls/openbao-key.pem
-          echo 'keep' > terraform/openbao/cluster/.tls/ca-chain.pem
+          mkdir -p opentofu/openbao/cluster/.tls
+          echo 'keep' > opentofu/openbao/cluster/.tls/openbao.pem
+          echo 'keep' > opentofu/openbao/cluster/.tls/openbao-key.pem
+          echo 'keep' > opentofu/openbao/cluster/.tls/ca-chain.pem
 
-      - name: Validate Terraform Opentofu configuration
+      - name: Validate Opentofu configuration
         uses: dagger/dagger-for-github@v7
         with:
           version: "latest"

@@ -12,7 +12,7 @@ import (
 
 // createOpenBao creates the OpenBao cluster
 func createOpenBao(ctx context.Context, ctr *dagger.Container, tfarg string) (map[string]interface{}, error) {
-	workDir := fmt.Sprintf("/%s/terraform/openbao/cluster", repoName)
+	workDir := fmt.Sprintf("/%s/opentofu/openbao/cluster", repoName)
 
 	_, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars"})
 	if err != nil {
@@ -32,13 +32,13 @@ func createOpenBao(ctx context.Context, ctr *dagger.Container, tfarg string) (ma
 
 // destroyOpenBao destroys the OpenBao cluster
 func destroyOpenBao(ctx context.Context, ctr *dagger.Container) error {
-	workDir := fmt.Sprintf("/%s/terraform/openbao/management", repoName)
+	workDir := fmt.Sprintf("/%s/opentofu/openbao/management", repoName)
 	_, err := tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars"})
 	if err != nil {
 		return fmt.Errorf("failed to destroy the OpenBao configuration: %w", err)
 	}
 
-	workDir = fmt.Sprintf("/%s/terraform/openbao/cluster", repoName)
+	workDir = fmt.Sprintf("/%s/opentofu/openbao/cluster", repoName)
 	_, err = tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars"})
 	if err != nil {
 		return fmt.Errorf("failed to destroy the OpenBao cluster: %w", err)
@@ -198,7 +198,7 @@ fi
 
 // configureOpenBao configures the bao cluster
 func configureOpenBao(ctx context.Context, ctr *dagger.Container, tfarg string) (map[string]interface{}, error) {
-	workDir := fmt.Sprintf("/%s/terraform/openbao/management", repoName)
+	workDir := fmt.Sprintf("/%s/opentofu/openbao/management", repoName)
 	_, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars"})
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure the bao cluster: %w", err)

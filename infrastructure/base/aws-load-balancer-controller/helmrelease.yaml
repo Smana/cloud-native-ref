@@ -21,7 +21,7 @@ spec:
   values:
     clusterName: ${cluster_name}
     serviceAccount:
-      # Has to match the policy created using terraform (IRSA)
+      # Has to match the EKS Pod Identity ServiceAccount
       name: load-balancer-controller
     defaultTags:
       environment: ${environment}
