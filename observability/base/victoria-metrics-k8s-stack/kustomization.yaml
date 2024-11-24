@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - externalsecret-alertmanager-slack-app.yaml
-  - externalsecret-grafana-admin.yaml
+  - externalsecret-grafana-envvars.yaml
 
   # HttpRoutes
   - httproute-grafana.yaml
@@ -15,7 +15,9 @@ resources:
   - vmservicecrapes
   - vmrules
 
+  # Common Helm values for both single and cluster
   - vm-common-helm-values-configmap.yaml
+
   # Choose between single or cluster helm release
 
   # VM Single

@@ -4,9 +4,9 @@ namespace: observability
 
 resources:
   - externalsecret-admin.yaml
+  - externalsecret-cnpg-oncall.yaml
   - externalsecret-rabbitmq.yaml
   - externalsecret-slackapp.yaml
-  - externalsecret-sqlinstance-password.yaml
   - externalsecret-valkey.yaml
   - helmrelease-oncall.yaml
   - helmrelease-rabbitmq.yaml

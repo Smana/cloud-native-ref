@@ -14,7 +14,7 @@ spec:
         kind: HelmRepository
         name: grafana
         namespace: observability
-      version: "1.11.5"
+      version: "1.13.5"
   interval: 5m0s
   timeout: 15m
   install:
@@ -28,8 +28,8 @@ spec:
       replicaCount: 1
       resources:
         limits:
-          cpu: 200m
-          memory: 256Mi
+          cpu: 500m
+          memory: 768Mi
 
     celery:
       replicaCount: 1
@@ -66,14 +66,12 @@ spec:
       enabled: false
 
     externalPostgresql:
-      host: xplane-oncall-rds-service
+      host: xplane-oncall-cnpg-cluster-rw
       port: 5432
       db_name: "oncall"
       user: "oncall"
-      existingSecret: "xplane-oncall-owner-oncall"
+      existingSecret: "xplane-oncall-cnpg-oncall"
       passwordKey: "password"
-      options: >-
-        sslmode=require
 
     rabbitmq:
       enabled: false
