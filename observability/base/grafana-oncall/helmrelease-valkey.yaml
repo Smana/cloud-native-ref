@@ -2,7 +2,6 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: oncall-valkey
-  namespace: tooling
 spec:
   releaseName: oncall-valkey
   driftDetection:

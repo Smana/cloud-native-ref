@@ -10,7 +10,7 @@ spec:
     createSuperuser: true
     objectStoreRecovery:
       bucketName: "eu-west-3-ogenki-cnpg-backups"
-      path: "zitadel-20241201"
+      path: "zitadel-20241202"
     backup:
       schedule: "0 0 * * *"
       bucketName: "eu-west-3-ogenki-cnpg-backups"

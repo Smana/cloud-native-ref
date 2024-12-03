@@ -11,7 +11,7 @@ spec:
     auth:
       appRole:
         path: approle
-        roleId: f9c76d89-31d5-4667-9234-030a06bf0171 # !! This value changes each time I recreate the whole platform
+        roleId: c9c57231-55a5-0cbd-87ad-fee8c4e5e8a7 # !! This value changes each time I recreate the whole platform
         secretRef:
           name: cert-manager-openbao-approle
           key: secret_id
