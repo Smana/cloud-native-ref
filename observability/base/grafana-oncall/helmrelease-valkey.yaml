@@ -13,7 +13,7 @@ spec:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
-      version: "1.0.2"
+      version: "2.1.1"
   interval: 10m0s
   install:
     remediation:
@@ -23,7 +23,7 @@ spec:
       existingSecret: "oncall-valkey"
       existingSecretPasswordKey: "password"
 
-    master:
+    primary:
       ## Valkey master resource requests and limits
       ## ref: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
       ## @param master.resourcesPreset Set container resources according to one common preset (allowed values: none, nano, micro, small, medium, large, xlarge, 2xlarge). This is ignored if master.resources is set (master.resources is recommended for production).

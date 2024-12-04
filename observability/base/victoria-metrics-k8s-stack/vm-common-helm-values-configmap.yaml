@@ -78,18 +78,45 @@ data:
                     text: '{{ template "slack.monzo.link_button_text" . }}'
                     url: "{{ .CommonAnnotations.link_url }}"
 
+    defaultDashboards:
+      enabled: true
+      grafanaOperator:
+          enabled: true
+          spec:
+            instanceSelector:
+              matchLabels:
+                dashboards: "grafana"
+            allowCrossNamespaceImport: true
+      dashboards:
+        victoriametrics-vmalert:
+          enabled: true
+        victoriametrics-operator:
+          enabled: true
+
     grafana:
       sidecar:
         datasources:
           enabled: true
           initDatasources: true
         dashboards:
+          provider:
+            name: default
+            orgid: 1
+          folder: /var/lib/grafana/dashboards
+          defaultFolderName: default
           enabled: true
           multicluster: false
-      dashboardProviders:
-        dashboardproviders.yaml:
-          apiVersion: 1
-          providers: []
+      dashboardproviders.yaml:
+        apiVersion: 1
+        providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
       dashboards: {}
       plugins:
         - "grafana-oncall-app"
@@ -109,12 +136,32 @@ data:
           token_url: "https://auth.${domain_name}/oauth/v2/token"
           api_url: "https://auth.${domain_name}/oidc/v1/userinfo"
           role_attribute_path: >
-            contains(roles[*], 'admin') && 'Admin' || contains(roles[*], 'editor') && 'Editor' || 'Viewer'
+            contains(roles[*], 'admin') && 'Admin' ||
+            contains(roles[*], 'backend') && 'Editor' ||
+            contains(roles[*], 'frontend') && 'Editor' ||
+            contains(roles[*], 'data') && 'Editor' ||
+            'Viewer'
       admin:
         existingSecret: "victoria-metrics-k8s-stack-grafana-envvars"
         userKey: "GF_SECURITY_ADMIN_USER"
         passwordKey: "GF_SECURITY_ADMIN_PASSWORD"
       envFromSecret: "victoria-metrics-k8s-stack-grafana-envvars"
+      extraVolumes:
+        - name: "plugin-provisioning-oncall"
+          configMap:
+            name: "grafana-provisioning"
+            key: "plugin-oncall.yaml"
+        - name: "rbac-provisioning"
+          configMap:
+            name: "grafana-provisioning"
+            key: "rbac.yaml"
+      extraVolumeMounts:
+        - name: "plugin-provisioning-oncall"
+          mountPath: "/etc/grafana/provisioning/plugins/oncall.yaml"
+          subPath: "plugin-oncall.yaml"
+        - name: "rbac-provisioning"
+          mountPath: "/etc/grafana/provisioning/access-control/rbac.yaml"
+          subPath: "rbac.yaml"
       extraInitContainers:
         - name: "load-vm-ds-plugin"
           image: "curlimages/curl:8.11.0"

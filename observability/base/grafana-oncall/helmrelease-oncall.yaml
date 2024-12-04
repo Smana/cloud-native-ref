@@ -14,7 +14,7 @@ spec:
         kind: HelmRepository
         name: grafana
         namespace: observability
-      version: "1.13.5"
+      version: "1.13.6"
   interval: 5m0s
   timeout: 15m
   install:
@@ -87,7 +87,7 @@ spec:
       enabled: false
 
     externalRedis:
-      host: oncall-valkey-master
+      host: oncall-valkey-primary
       port: 6379
       username: default
       existingSecret: "oncall-valkey"

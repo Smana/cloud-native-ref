@@ -7,4 +7,3 @@ resources:
   - ../base/cloudnative-pg
   - ../base/external-dns
   - ../base/gapi
-  - ../base/rabbitmq-cluster-operator

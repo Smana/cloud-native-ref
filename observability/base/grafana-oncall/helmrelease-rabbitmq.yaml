@@ -14,7 +14,7 @@ spec:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
-      version: "15.0.6"
+      version: "15.1.0"
   interval: 5m0s
   timeout: 15m
   install:
@@ -55,6 +55,7 @@ spec:
         perObject:
           enabled: true
         detailed:
+          family: ["queue_coarse_metrics", "queue_consumer_count"]
           enabled: true
 
       prometheusRule:

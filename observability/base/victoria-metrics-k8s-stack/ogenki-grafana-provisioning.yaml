@@ -1,0 +1,57 @@
+# Create a configmap for the Grafana provisioning plugin
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  namespace: observability
+data:
+  "plugin-oncall.yaml": |
+    apiVersion: 1
+    apps:
+      - type: grafana-oncall-app
+        name: grafana-oncall-app
+        jsonData:
+          stackId: 5
+          orgId: 100
+          onCallApiUrl: "http://oncall-engine:8080/"
+          grafanaUrl: "http://victoria-metrics-k8s-stack-grafana/"
+
+  ## !! RBAC is not supported in Grafana Open Source version !!
+  # "rbac.yaml": |
+  #   apiVersion: 2
+
+  #   roles:
+  #     - name: 'custom:folder:backend_editor'
+  #       uid: 'backend_editor_role'
+  #       description: 'Edit permissions for the backend folder'
+  #       version: 1
+  #       global: true
+  #       permissions:
+  #         - action: 'folders:write'
+  #           scope: 'folders:name:backend'
+  #         - action: 'dashboards:write'
+  #           scope: 'folders:name:backend'
+
+  #     - name: 'custom:folder:frontend_editor'
+  #       uid: 'frontend_editor_role'
+  #       description: 'Edit permissions for the frontend folder'
+  #       version: 1
+  #       global: true
+  #       permissions:
+  #         - action: 'folders:write'
+  #           scope: 'folders:name:frontend'
+  #         - action: 'dashboards:write'
+  #           scope: 'folders:name:frontend'
+
+  #   teams:
+  #     - name: 'Backend'
+  #       orgId: 1
+  #       roles:
+  #         - uid: 'backend_editor_role'
+  #           global: true
+
+  #     - name: 'Frontend'
+  #       orgId: 1
+  #       roles:
+  #         - uid: 'frontend_editor_role'
+  #           global: true

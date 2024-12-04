@@ -10,5 +10,4 @@ resources:
   - kustomization-grafana-operator.yaml
   - kustomization-kyverno.yaml
   - kustomization-cloudnative-pg.yaml
-  - kustomization-rabbitmq-cluster-operator.yaml
   - kustomization-victoria-metrics-operator.yaml

@@ -3,6 +3,7 @@ kind: GrafanaDashboard
 metadata:
   name: databases-cloudnative-pg
 spec:
+  allowCrossNamespaceImport: true
   folderRef: "databases"
   datasources:
     - inputName: "DS_PROMETHEUS"
@@ -10,4 +11,4 @@ spec:
   instanceSelector:
     matchLabels:
       dashboards: "grafana"
-  url: "https://grafana.com/api/dashboards/20417/revisions/1/download"
+  url: "https://grafana.com/api/dashboards/20417/revisions/3/download"

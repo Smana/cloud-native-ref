@@ -27,3 +27,6 @@ resources:
   # VM Cluster
   # - helmrelease-vmcluster.yaml
   # - httproute-vmcluster.yaml
+
+  # Grafana provisioning (Plugins config, RBAC, etc)
+  - ogenki-grafana-provisioning.yaml
