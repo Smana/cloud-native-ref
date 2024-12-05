@@ -1,14 +1,16 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: EPI
 metadata:
-  name: xplane-foobar-mycluster-0
+  name: xplane-foobar
   namespace: security
 spec:
   claimRef:
-    name: xplane-foobar-mycluster-0
+    name: xplane-foobar
     namespace: security
   parameters:
-    clusterName: "mycluster-0"
+    clusters:
+      - name: "mycluster-0"
+        region: "eu-west-3"
     serviceAccount:
       name: foobar
       namespace: security

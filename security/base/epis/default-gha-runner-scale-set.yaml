@@ -1,11 +1,13 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: EPI
 metadata:
-  name: xplane-default-actions-runner-${cluster_name}
-  namespace: security
+  name: xplane-default-actions-runner
+  namespace: tooling
 spec:
   parameters:
-    clusterName: ${cluster_name}
+    clusters:
+      - name: "mycluster-0"
+        region: "eu-west-3"
     serviceAccount:
       name: default-gha-runner-scale-set
       namespace: tooling

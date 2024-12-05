@@ -10,7 +10,11 @@ kcl_options:
             name: "myname"
             namespace: "myns"
           parameters:
-            clusterName: "mycluster-0"
+            clusters:
+              - name: "mycluster-0"
+                region: "eu-west-3"
+              - name: "mycluster-1"
+                region: "eu-west-1"
             serviceAccount:
               name: foobar
               namespace: security
