@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: observability
+
+resources:
+  - externalsecret-admin.yaml
+  - externalsecret-cnpg-oncall.yaml
+  - externalsecret-rabbitmq.yaml
+  - externalsecret-slackapp.yaml
+  - externalsecret-valkey.yaml
+  - helmrelease-oncall.yaml
+  - helmrelease-rabbitmq.yaml
+  - helmrelease-valkey.yaml
+  - httproute-oncall.yaml
+  - httproute-rabbitmq.yaml
+  - sqlinstance.yaml

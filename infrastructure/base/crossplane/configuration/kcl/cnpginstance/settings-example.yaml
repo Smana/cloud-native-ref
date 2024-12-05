@@ -22,6 +22,7 @@ kcl_options:
             backup:
               schedule: "0 0 * * *"
               bucketName: "myname-rds-instance-backups"
+              retentionPolicy: "10d"
             initSQL: |
               CREATE EXTENSION pg_stat_statements;
               CREATE EXTENSION pg_trgm;

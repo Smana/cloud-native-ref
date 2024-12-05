@@ -1,0 +1,100 @@
+# Based on https://grafana.com/docs/grafana-oncall/latest/setup/install/helm/install-scalable/
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: oncall
+spec:
+  releaseName: oncall
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: oncall
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: observability
+      version: "1.13.6"
+  interval: 5m0s
+  timeout: 15m
+  install:
+    remediation:
+      retries: 3
+  values:
+    base_url: oncall.priv.${domain_name}
+    base_url_protocol: https
+
+    engine:
+      replicaCount: 1
+      resources:
+        limits:
+          cpu: 500m
+          memory: 768Mi
+
+    celery:
+      replicaCount: 1
+      resources:
+        limits:
+          cpu: 300m
+          memory: 516Mi
+
+    oncall:
+      secrets:
+        existingSecret: "grafana-oncall"
+        secretKey: "secret_key"
+        mirageSecretKey: "mirage_secret_key"
+      slack:
+        enabled: true
+        existingSecret: "oncall-slack-app"
+        clientIdKey: "client_id"
+        clientSecretKey: "client_secret"
+        signingSecretKey: "signing_secret"
+
+    ingress:
+      enabled: false
+
+    ingress-nginx:
+      enabled: false
+
+    cert-manager:
+      enabled: false
+
+    database:
+      type: postgresql
+
+    mariadb:
+      enabled: false
+
+    externalPostgresql:
+      host: xplane-oncall-cnpg-cluster-rw
+      port: 5432
+      db_name: "oncall"
+      user: "oncall"
+      existingSecret: "xplane-oncall-cnpg-oncall"
+      passwordKey: "password"
+
+    rabbitmq:
+      enabled: false
+
+    externalRabbitmq:
+      host: oncall-rabbitmq
+      port: 5672
+      existingSecret: oncall-rabbitmq
+      passwordKey: "password"
+      usernameKey: "username"
+
+    redis:
+      enabled: false
+
+    externalRedis:
+      host: oncall-valkey-primary
+      port: 6379
+      username: default
+      existingSecret: "oncall-valkey"
+      passwordKey: password
+
+    externalGrafana:
+      url: https://grafana.priv.${domain_name}
+
+    networkPolicy:
+      enabled: false

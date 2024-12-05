@@ -2,14 +2,15 @@ apiVersion: grafana.integreatly.org/v1beta1
 kind: Grafana
 metadata:
   name: grafana-victoriametrics
+  namespace: observability
   labels:
     dashboards: "grafana"
 spec:
   external:
     url: http://victoria-metrics-k8s-stack-grafana
     adminPassword:
-      name: victoria-metrics-k8s-stack-grafana-admin
-      key: admin-password
+      name: victoria-metrics-k8s-stack-grafana-envvars
+      key: GF_SECURITY_ADMIN_PASSWORD
     adminUser:
-      name: victoria-metrics-k8s-stack-grafana-admin
-      key: admin-user
+      name: victoria-metrics-k8s-stack-grafana-envvars
+      key: GF_SECURITY_ADMIN_USER

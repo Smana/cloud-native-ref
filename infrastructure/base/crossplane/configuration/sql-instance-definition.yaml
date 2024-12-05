@@ -137,6 +137,10 @@ spec:
                           description: The name of the S3 bucket to store backups.
                           type: string
                           nullable: true
+                        retentionPolicy:
+                          description: The retention policy for backups.
+                          type: string
+                          default: "15d"
                     initSQL:
                       description: SQL to run on the primary instance after creation.
                       type: string

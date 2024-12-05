@@ -105,7 +105,14 @@ if oxr.spec.cnpg:
                                         s3Credentials = {
                                             inheritFromIAMRole = True
                                         }
+                                        wal = {
+                                            compression = "bzip2"
+                                        }
+                                        data = {
+                                            compression = "bzip2"
+                                        }
                                     }
+                                    retentionPolicy = oxr.spec.cnpg.backup.retentionPolicy
                                 }
                             if oxr.spec.cnpg?.createSuperuser:
                                 superuserSecret = {

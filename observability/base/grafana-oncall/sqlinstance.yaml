@@ -1,18 +1,16 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: SQLInstance
 metadata:
-  name: xplane-zitadel
+  name: xplane-oncall
+  namespace: "observability"
 spec:
   size: "small"
   storageGB: 20
+  databases:
+    - owner: "oncall"
+      name: "oncall"
   cnpg:
     instances: 1
-    createSuperuser: true
-    objectStoreRecovery:
-      bucketName: "eu-west-3-ogenki-cnpg-backups"
-      path: "zitadel-20241202"
     backup:
       schedule: "0 0 * * *"
       bucketName: "eu-west-3-ogenki-cnpg-backups"
-  compositionRef:
-    name: xsqlinstances.cloud.ogenki.io

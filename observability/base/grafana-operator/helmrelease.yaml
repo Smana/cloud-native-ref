@@ -2,6 +2,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: grafana-operator
+  namespace: observability
 spec:
   releaseName: grafana-operator
   driftDetection:
