@@ -6,7 +6,7 @@ spec:
   size: "small"
   storageGB: 20
   cnpg:
-    instances: 1
+    instances: 2
     createSuperuser: true
     objectStoreRecovery:
       bucketName: "eu-west-3-ogenki-cnpg-backups"

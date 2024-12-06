@@ -37,7 +37,7 @@ spec:
       namespace: tooling
     - apiVersion: cloud.ogenki.io/v1alpha1
       kind: EPI
-      name: xplane-load-balancer-controller
+      name: xplane-loadbalancer-controller
       namespace: kube-system
     - apiVersion: cloud.ogenki.io/v1alpha1
       kind: EPI

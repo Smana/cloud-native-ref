@@ -1,7 +1,7 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: EPI
 metadata:
-    name: xplane-loadbalancer-controller-${cluster_name}
+    name: xplane-loadbalancer-controller
     namespace: kube-system
 spec:
     deletionPolicy: Delete

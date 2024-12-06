@@ -75,7 +75,7 @@ spec:
                 accessModes: ["ReadWriteOnce"]
                 resources:
                   requests:
-                    storage: 10Gi
+                    storage: 50Gi
         - name: varrundagger
           ephemeral:
             volumeClaimTemplate:
@@ -83,7 +83,7 @@ spec:
                 accessModes: ["ReadWriteOnce"]
                 resources:
                   requests:
-                    storage: 90Gi
+                    storage: 50Gi
       tolerations:
         - effect: NoSchedule
           key: ogenki/io

@@ -6,7 +6,7 @@ metadata:
   namespace: flux-system
 spec:
   prune: true
-  interval: 4m0s
+  interval: 2m0s
   path: ./infrastructure/mycluster-0/crossplane/controller
   sourceRef:
     kind: GitRepository
