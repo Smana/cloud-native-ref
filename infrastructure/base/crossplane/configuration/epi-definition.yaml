@@ -27,9 +27,21 @@ spec:
                   type: object
                   description: EKS Pod Identity parameters.
                   properties:
-                    clusterName:
-                      type: string
-                      description: Name of the EKS cluster to create the pod identity association with
+                    clusters:
+                      description: List of EKS clusters to associate the Pod Identity with.
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: The name of the EKS cluster
+                          region:
+                            type: string
+                            description: The region of the EKS cluster
+                        required:
+                          - name
+                          - region
                     serviceAccount:
                       type: object
                       description: Configuration for SA
@@ -65,7 +77,7 @@ spec:
                       type: string
                       default: default
                   required:
-                    - clusterName
+                    - clusters
                     - policyDocument
                     - serviceAccount
                 deletionPolicy:

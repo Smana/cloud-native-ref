@@ -1,11 +1,13 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: EPI
 metadata:
-    name: xplane-openbao-snapshot-${cluster_name}
+    name: xplane-openbao-snapshot
     namespace: security
 spec:
     parameters:
-        clusterName: ${cluster_name}
+        clusters:
+            - name: "mycluster-0"
+              region: "eu-west-3"
         serviceAccount:
             name: openbao-snapshot
             namespace: security

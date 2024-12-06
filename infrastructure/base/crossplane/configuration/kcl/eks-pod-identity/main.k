@@ -2,11 +2,6 @@ oxr = option("params").oxr
 ocds = option("params").ocds
 envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
 
-if oxr.spec?.parameters?.region:
-    _region = oxr.spec.parameters.region
-elif envConfig?.region:
-    _region = envConfig.region
-
 if oxr.spec?.deletionPolicy:
     _deletionPolicy = oxr.spec.deletionPolicy
 else:
@@ -95,25 +90,26 @@ _items = [
             deletionPolicy = _deletionPolicy
         }
     }
-    {
-        apiVersion = "eks.aws.upbound.io/v1beta1"
-        kind = "PodIdentityAssociation"
-        metadata = _metadata("pod-identity-association")
-        spec: {
-            providerConfigRef.name = oxr.spec.parameters.providerConfigName
-            forProvider = {
-                clusterName = oxr.spec.parameters.clusterName
-                serviceAccount = oxr.spec.parameters.serviceAccount.name
-                namespace = oxr.spec.parameters.serviceAccount.namespace
-                region = _region
-                roleArnSelector = {
-                    matchControllerRef = True
-                }
-            }
-            deletionPolicy = _deletionPolicy
-        }
-    }
 ]
+
+_items += [{
+    apiVersion = "eks.aws.upbound.io/v1beta1"
+    kind = "PodIdentityAssociation"
+    metadata = _metadata("pod-identity-association")
+    spec: {
+        providerConfigRef.name = oxr.spec.parameters.providerConfigName
+        forProvider = {
+            clusterName = cluster.name
+            serviceAccount = oxr.spec.parameters.serviceAccount.name
+            namespace = oxr.spec.parameters.serviceAccount.namespace
+            region = cluster.region
+            roleArnSelector = {
+                matchControllerRef = True
+            }
+        }
+        deletionPolicy = _deletionPolicy
+    }
+} for cluster in oxr.spec.parameters.clusters]
 
 if oxr.spec.parameters?.additionalPolicyArns:
     _items += [_attachPolicy(policy) for policy in oxr.spec.parameters.additionalPolicyArns]

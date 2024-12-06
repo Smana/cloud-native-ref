@@ -1,11 +1,13 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: EPI
 metadata:
-  name: xplane-victoriametrics-${cluster_name}
+  name: xplane-victoriametrics
   namespace: observability
 spec:
   parameters:
-    clusterName: ${cluster_name}
+    clusters:
+      - name: "mycluster-0"
+        region: "eu-west-3"
     serviceAccount:
       name: vmagent-victoria-metrics-k8s-stack
       namespace: observability

@@ -1,12 +1,14 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: EPI
 metadata:
-    name: xplane-loadbalancer-controller-${cluster_name}
+    name: xplane-loadbalancer-controller
     namespace: kube-system
 spec:
     deletionPolicy: Delete
     parameters:
-        clusterName: ${cluster_name}
+        clusters:
+            - name: "mycluster-0"
+              region: "eu-west-3"
         serviceAccount:
             name: load-balancer-controller
             namespace: kube-system
