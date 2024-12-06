@@ -1,0 +1,25 @@
+name: Cache testing
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  test-cache:
+    name: Testing in-cluster cache
+    runs-on: dagger-gha-runner-scale-set
+    container:
+      image: smana/dagger-cli:v0.14.0
+    env:
+      _EXPERIMENTAL_DAGGER_RUNNER_HOST: "tcp://dagger-engine:8080"
+
+    steps:
+      - name: Simulate a build with heavy packages
+        uses: dagger/dagger-for-github@v6
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/dagger/dagger/modules/wolfi@v0.14.0
+          args: container --packages "python3,py3-pip,go,rust,clang,nodejs,apk-tools" with-exec --args "echo,'hello world'" stdout
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
