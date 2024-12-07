@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - ../base/headlamp
+  - ../base/dagger-engine
+  - ../base/gha-runners
   # Enabling only when needed for cost reasons
   # - ../base/harbor
-  # - ../base/dagger-engine
-  # - ../base/gha-runners
