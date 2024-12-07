@@ -2,7 +2,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../base/harbor
   - ../base/headlamp
-  - ../base/dagger-engine
-  - ../base/gha-runners
+  # Enabling only when needed for cost reasons
+  # - ../base/harbor
+  # - ../base/dagger-engine
+  # - ../base/gha-runners
