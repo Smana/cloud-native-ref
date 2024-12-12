@@ -14,7 +14,7 @@ spec:
         kind: HelmRepository
         name: grafana
         namespace: observability
-      version: "1.13.9"
+      version: "1.13.10"
   interval: 5m0s
   timeout: 15m
   install:
