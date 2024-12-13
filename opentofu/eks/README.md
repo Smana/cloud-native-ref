@@ -157,7 +157,7 @@ tofu destroy --var-file variables.tfvars
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_cilium_version"></a> [cilium\_version](#input\_cilium\_version) | Cilium cluster version | `string` | `"1.16.2"` | no |
+| <a name="input_cilium_version"></a> [cilium\_version](#input\_cilium\_version) | Cilium cluster version | `string` | `"1.16.4"` | no |
 | <a name="input_cluster_identity_providers"></a> [cluster\_identity\_providers](#input\_cluster\_identity\_providers) | Map of cluster identity provider configurations to enable for the cluster. | `any` | `{}` | no |
 | <a name="input_cluster_name"></a> [cluster\_name](#input\_cluster\_name) | Name of the EKS cluster to be created | `string` | n/a | yes |
 | <a name="input_cluster_version"></a> [cluster\_version](#input\_cluster\_version) | k8s cluster version | `string` | `"1.31"` | no |
@@ -170,7 +170,7 @@ tofu destroy --var-file variables.tfvars
 | <a name="input_github_token_secretsmanager_id"></a> [github\_token\_secretsmanager\_id](#input\_github\_token\_secretsmanager\_id) | SecretsManager id from where to retrieve the Github Personal Access Token. (The key must be 'github-token') | `string` | `"github/flux-github-pat"` | no |
 | <a name="input_iam_role_additional_policies"></a> [iam\_role\_additional\_policies](#input\_iam\_role\_additional\_policies) | Additional policies to be added to the IAM role | `map(string)` | `{}` | no |
 | <a name="input_karpenter_limits"></a> [karpenter\_limits](#input\_karpenter\_limits) | Define limits for Karpenter per node pool. | <pre>map(object(<br>    {<br>      cpu    = optional(number, 50),<br>      memory = optional(string, "50Gi")<br>    }<br>    )<br>  )</pre> | n/a | yes |
-| <a name="input_karpenter_version"></a> [karpenter\_version](#input\_karpenter\_version) | Karpenter version | `string` | `"1.0.3"` | no |
+| <a name="input_karpenter_version"></a> [karpenter\_version](#input\_karpenter\_version) | Karpenter version | `string` | `"1.1.1"` | no |
 | <a name="input_region"></a> [region](#input\_region) | AWS Region | `string` | `"eu-west-3"` | no |
 | <a name="input_ssm_enabled"></a> [ssm\_enabled](#input\_ssm\_enabled) | If true, allow to connect to the instances using AWS Systems Manager | `bool` | `false` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to add to all resources | `map(string)` | `{}` | no |

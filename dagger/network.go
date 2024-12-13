@@ -111,7 +111,7 @@ tailscaled --tun=userspace-networking --socks5-server=:1055 --outbound-http-prox
 	svc := container.
 		WithSecretVariable("TS_AUTH_KEY", authKey).
 		WithNewFile("/bin/tailscale-up", tsUpScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
-		WithExec([]string{"/bin/tailscale-up"}).WithExposedPort(1055).AsService()
+		WithExposedPort(1055).AsService(dagger.ContainerAsServiceOpts{Args: []string{"/bin/tailscale-up"}})
 
 	return svc, nil
 }

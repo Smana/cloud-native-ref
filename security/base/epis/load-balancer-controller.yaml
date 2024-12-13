@@ -46,6 +46,7 @@ spec:
                             "ec2:GetCoipPoolUsage",
                             "ec2:DescribeCoipPools",
                             "ec2:GetSecurityGroupsForVpc",
+                            "elasticloadbalancing:DescribeCapacityReservation",
                             "elasticloadbalancing:DescribeLoadBalancers",
                             "elasticloadbalancing:DescribeLoadBalancerAttributes",
                             "elasticloadbalancing:DescribeListeners",
@@ -57,7 +58,8 @@ spec:
                             "elasticloadbalancing:DescribeTargetHealth",
                             "elasticloadbalancing:DescribeTags",
                             "elasticloadbalancing:DescribeTrustStores",
-                            "elasticloadbalancing:DescribeListenerAttributes"
+                            "elasticloadbalancing:DescribeListenerAttributes",
+                            "elasticloadbalancing:ModifyCapacityReservation"
                         ],
                         "Resource": "*"
                     },
