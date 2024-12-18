@@ -11,7 +11,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
-      version: "17.0.0"
+      version: "17.0.2"
   interval: 10m0s
   install:
     createNamespace: true
