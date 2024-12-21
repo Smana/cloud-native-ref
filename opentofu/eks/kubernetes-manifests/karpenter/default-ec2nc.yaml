@@ -6,6 +6,8 @@ spec:
   amiSelectorTerms:
     - alias: al2@latest
   role: ${karpenter_node_iam_role_name}
+  kubelet:
+    maxPods: 100
   subnetSelectorTerms:
     - tags:
         karpenter.sh/discovery: ${env}

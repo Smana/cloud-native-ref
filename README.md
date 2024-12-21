@@ -33,7 +33,8 @@ There are basically 3 things to run when deploying the whole stack:
 3. ☸️ [Bootstrap the EKS cluster and Flux components](./opentofu/eks/README.md)
 
 ## 🔄 Flux Dependencies Matter
-Flux is a set of continuous and progressive delivery solutions for Kubernetes that automate the application deployment process. The following diagram illustrates the key dependencies in our setup:
+
+[Flux](https://fluxcd.io/) is a foundational component responsible for deploying all resources as soon as the Kubernetes cluster becomes operational. Below is a diagram that highlights the key dependencies in our setup:
 
 ```mermaid
 graph TD;
@@ -116,7 +117,7 @@ The OpenBao instance creation is made in 2 steps:
 1. Create the cluster as described [here](/opentofu/openbao/cluster/README.md)
 2. Then configure it using [this directory](/opentofu/openbao/management/README.md)
 
-ℹ️ The provided code outlines the setup and configuration of a **highly available, secure, and cost-efficient OpenBao cluster**. It describes the process of creating a OpenBao instance in either development or high availability mode, with detailed steps for initializing the OpenBao, managing security tokens, and configuring a robust **Public Key Infrastructure** (PKI) system. The focus is on balancing performance, security, and cost, using a multi-node cluster, ephemeral nodes with SPOT instances, and a tiered CA structure for digital security.
+The provided code outlines the setup and configuration of a **highly available, secure, and cost-efficient OpenBao cluster**. It describes the process of creating a OpenBao instance in either development or high availability mode, with detailed steps for initializing the OpenBao, managing security tokens, and configuring a robust **Public Key Infrastructure** (PKI) system. The focus is on balancing performance, security, and cost, using a multi-node cluster, ephemeral nodes with SPOT instances, and a tiered CA structure for digital security.
 
 🏷️ Related blog post: [TLS with Gateway API: Efficient and Secure Management of Public and Private Certificates](https://blog.ogenki.io/post/pki-gapi/)
 
