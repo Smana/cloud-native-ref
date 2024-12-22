@@ -23,7 +23,7 @@ tailscale = {
   tailnet            = "smainklh@gmail.com"
   api_key            = "tskey-api-<REDACTED>" # Generated in Tailscale Admin console
   prometheus_enabled = true
-  ssm_enabled        = true
+  enable_ssm        = true
 }
 
 tags = {

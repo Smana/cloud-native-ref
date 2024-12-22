@@ -77,3 +77,19 @@ resource "helm_release" "karpenter" {
 
   depends_on = [helm_release.cilium]
 }
+
+resource "helm_release" "flux-operator" {
+  name             = "flux-operator"
+  namespace        = "flux-system"
+  atomic           = true
+  force_update     = true
+  cleanup_on_fail  = false
+  replace          = true
+  timeout          = 180
+  repository       = "oci://ghcr.io/controlplaneio-fluxcd/charts"
+  chart            = "flux-operator"
+  version          = var.flux_operator_version
+  create_namespace = true
+
+  depends_on = [helm_release.cilium]
+}

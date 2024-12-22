@@ -1,0 +1,19 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: flux-operator
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/name: flux-operator
+spec:
+  namespaceSelector:
+    matchNames:
+      - flux-system
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: flux-operator
+  endpoints:
+    - targetPort: 8080
+      path: /metrics
+      interval: 60s
+      scrapeTimeout: 30s

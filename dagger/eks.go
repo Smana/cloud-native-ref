@@ -10,7 +10,7 @@ import (
 func createEKS(ctx context.Context, ctr *dagger.Container, tfarg string, branch string) (map[string]interface{}, error) {
 	workDir := "/cloud-native-ref/opentofu/eks"
 
-	output, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars", "-var", fmt.Sprintf("github_branch=%s", branch)})
+	output, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars", "-var", fmt.Sprintf("flux_git_ref=refs/heads/%s", branch)})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create the EKS cluster: %w", err)
 	}
@@ -100,7 +100,7 @@ fi
 		return fmt.Errorf("failed to delete Kubernenes resources before destroying the EKS cluster: %w", err)
 	}
 
-	_, err = tfRun(ctx, container, workDir, "destroy", []string{"-var-file", "variables.tfvars", "-var", fmt.Sprintf("github_branch=%s", branch)})
+	_, err = tfRun(ctx, container, workDir, "destroy", []string{"-var-file", "variables.tfvars", "-var", fmt.Sprintf("flux_git_ref=refs/heads/%s", branch)})
 	if err != nil {
 		return fmt.Errorf("failed to destroy the EKS cluster: %w", err)
 	}

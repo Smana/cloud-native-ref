@@ -101,7 +101,7 @@ data "cloudinit_config" "openbao_cloud_init" {
     {
       "region"                = var.region
       "prom_exporter_enabled" = var.prometheus_node_exporter_enabled
-      "ssm_enabled"           = var.ssm_enabled
+      "enable_ssm"            = var.enable_ssm
       "openbao_version"       = var.openbao_version
       "openbao_data_path"     = var.openbao_data_path
       "openbao_instance"      = local.tags.OpenBaoInstance

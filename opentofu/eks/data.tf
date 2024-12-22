@@ -78,6 +78,10 @@ data "http" "gateway_api_crds" {
 }
 
 # Kubernetes manifests
+data "kubectl_filename_list" "flux" {
+  pattern = "${path.module}/kubernetes-manifests/flux/*.yaml"
+}
+
 data "kubectl_filename_list" "karpenter_default" {
   pattern = "${path.module}/kubernetes-manifests/karpenter/default-*.yaml"
 }

@@ -1,0 +1,31 @@
+apiVersion: fluxcd.controlplane.io/v1
+kind: FluxInstance
+metadata:
+  name: flux
+  namespace: flux-system
+spec:
+  distribution:
+    version: "2.4.x"
+    registry: "ghcr.io/fluxcd"
+    artifact: "oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests"
+  components:
+    - source-controller
+    - kustomize-controller
+    - helm-controller
+    - notification-controller
+%{ if enable_flux_image_update_automation ~}
+    - image-reflector-controller
+    - image-automation-controller
+%{ endif ~}
+  cluster:
+    type: kubernetes
+    networkPolicy: true
+  storage:
+    class: "gp3"
+    size: "5Gi"
+  sync:
+    kind: GitRepository
+    url: ${repository_sync_url}
+    ref: ${git_ref}
+    path: "clusters/${cluster_name}"
+    pullSecret: "flux-system"

@@ -1,7 +1,7 @@
 # AWS permissions for the EBS-CSI-DRIVER
 module "irsa_ebs_csi_driver" {
   source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version   = "5.48.0"
+  version   = "5.51.0"
   role_name = "${var.cluster_name}-ebs_csi_driver"
 
   assume_role_condition_test = "StringLike"

@@ -14,7 +14,7 @@ domain_name           = "priv.cloud.ogenki.io"        # Route53 private zone whe
 env                   = "dev"                         # Environment used to tags resources
 mode                  = "ha"                          # Important: More about this setting in this documentation.
 region                = "eu-west-3"                   # Where all the resources will be created
-ssm_enabled           = true                          # Allow to access to the EC2 instances. Enabled for provisionning, but then it should be disabled.
+enable_ssm           = true                          # Allow to access to the EC2 instances. Enabled for provisionning, but then it should be disabled.
 
 # Prefer using hardened AMI
 # ami_owner = "3xxxxxxxxx"                              # Account ID where the hardened AMI is
