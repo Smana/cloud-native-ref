@@ -14,7 +14,7 @@ import (
 func createOpenBao(ctx context.Context, ctr *dagger.Container, tfarg string) (map[string]interface{}, error) {
 	workDir := fmt.Sprintf("/%s/opentofu/openbao/cluster", repoName)
 
-	_, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars"})
+	_, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars", "-var", "enable_ssm=true"})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create the OpenBao cluster: %w", err)
 	}

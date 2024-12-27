@@ -104,6 +104,7 @@ This architecture balances performance, cost-efficiency, and resilience, embraci
 | <a name="input_ami_filter"></a> [ami\_filter](#input\_ami\_filter) | List of maps used to create the AMI filter for the action runner AMI. | `map(list(string))` | <pre>{<br>  "name": [<br>    "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"<br>  ]<br>}</pre> | no |
 | <a name="input_ami_owner"></a> [ami\_owner](#input\_ami\_owner) | Owner ID of the AMI | `string` | `"099720109477"` | no |
 | <a name="input_domain_name"></a> [domain\_name](#input\_domain\_name) | The domain name for which the certificate should be issued | `string` | n/a | yes |
+| <a name="input_enable_ssm"></a> [enable\_ssm](#input\_enable\_ssm) | If true, allow to connect to the instances using AWS Systems Manager | `bool` | `false` | no |
 | <a name="input_env"></a> [env](#input\_env) | The environment of the OpenBao cluster | `string` | n/a | yes |
 | <a name="input_leader_tls_servername"></a> [leader\_tls\_servername](#input\_leader\_tls\_servername) | One of the shared DNS SAN used to create the certs use for mTLS | `string` | n/a | yes |
 | <a name="input_mode"></a> [mode](#input\_mode) | OpenBao cluster mode (default dev, meaning a single node) | `string` | `"dev"` | no |
@@ -112,7 +113,6 @@ This architecture balances performance, cost-efficiency, and resilience, embraci
 | <a name="input_openbao_version"></a> [openbao\_version](#input\_openbao\_version) | OpenBao version to install | `string` | `"2.1.0"` | no |
 | <a name="input_prometheus_node_exporter_enabled"></a> [prometheus\_node\_exporter\_enabled](#input\_prometheus\_node\_exporter\_enabled) | If set to true install and start a prometheus node exporter | `bool` | `false` | no |
 | <a name="input_region"></a> [region](#input\_region) | AWS Region | `string` | `"eu-west-3"` | no |
-| <a name="input_ssm_enabled"></a> [ssm\_enabled](#input\_ssm\_enabled) | If true, allow to connect to the instances using AWS Systems Manager | `bool` | `false` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to add to all resources | `map(string)` | `{}` | no |
 
 ## Outputs

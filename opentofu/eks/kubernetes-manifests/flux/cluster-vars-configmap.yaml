@@ -1,0 +1,16 @@
+# This ConfigMap will be used to store variables that are used in the Flux manifests
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eks-${cluster_name}-vars
+  namespace: flux-system
+data:
+  cluster_name: "${cluster_name}"
+  oidc_provider_arn: "${oidc_provider_arn}"
+  oidc_issuer_url: "${oidc_issuer_url}"
+  oidc_issuer_host: "${oidc_issuer_host}"
+  aws_account_id: "${aws_account_id}"
+  region: "${region}"
+  environment: "${environment}"
+  vpc_id: "${vpc_id}"
+  vpc_cidr_block: "${vpc_cidr_block}"

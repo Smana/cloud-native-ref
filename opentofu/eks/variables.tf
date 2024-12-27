@@ -21,7 +21,7 @@ variable "cluster_version" {
   type        = string
 }
 
-variable "ssm_enabled" {
+variable "enable_ssm" {
   description = "If true, allow to connect to the instances using AWS Systems Manager"
   type        = bool
   default     = false
@@ -75,11 +75,6 @@ variable "gateway_api_version" {
 }
 
 # Flux
-variable "github_org" {
-  type        = string
-  description = "github organization name"
-}
-
 variable "github_token_secretsmanager_id" {
   type        = string
   description = "SecretsManager id from where to retrieve the Github Personal Access Token. (The key must be 'github-token')"
@@ -87,15 +82,27 @@ variable "github_token_secretsmanager_id" {
   sensitive   = true
 }
 
-variable "github_repository" {
+variable "flux_operator_version" {
+  description = "Flux Operator version"
+  default     = "0.12.0"
   type        = string
-  description = "github repository name"
 }
 
-variable "github_branch" {
+variable "enable_flux_image_update_automation" {
+  description = "Enable Flux image update automation"
+  default     = false
+  type        = bool
+}
+
+variable "flux_sync_repository_url" {
+  description = "The repository URL to sync with Flux"
   type        = string
-  default     = "main"
-  description = "Github branch name"
+}
+
+variable "flux_git_ref" {
+  description = "Git branch or tag in the format refs/heads/main or refs/tags/v1.0.0"
+  type        = string
+  // default     = "refs/heads/main"
 }
 
 variable "tags" {

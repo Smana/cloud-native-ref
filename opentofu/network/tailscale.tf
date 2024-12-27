@@ -79,7 +79,7 @@ module "tailscale_subnet_router" {
   tailscale_ssh_enabled = true
 
   prometheus_node_exporter_enabled = lookup(var.tailscale, "prometheus_enabled", false) ? true : false
-  ssm_enabled                      = lookup(var.tailscale, "ssm_enabled", false) ? true : false
+  ssm_enabled                      = lookup(var.tailscale, "enable_ssm", false) ? true : false
 
   tags = merge(var.tags,
     {

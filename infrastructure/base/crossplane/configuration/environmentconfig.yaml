@@ -11,4 +11,3 @@ data:
   region: ${region}
   vpcId: ${vpc_id}
   CIDRBlock: ${vpc_cidr_block}
-  privateSubnetIds: ${private_subnet_ids}

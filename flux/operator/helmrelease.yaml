@@ -1,0 +1,11 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flux-operator
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: flux-operator
+  chartRef:
+    kind: OCIRepository
+    name: flux-operator

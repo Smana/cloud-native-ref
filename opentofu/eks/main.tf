@@ -76,7 +76,7 @@ module "eks" {
       ami_type = "AL2_x86_64"
 
       iam_role_additional_policies = merge(
-        var.ssm_enabled ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
+        var.enable_ssm ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
         var.iam_role_additional_policies
       )
 
