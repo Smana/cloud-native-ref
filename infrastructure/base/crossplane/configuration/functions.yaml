@@ -4,7 +4,7 @@ kind: Function
 metadata:
   name: function-environment-configs
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-environment-configs:v0.0.7
+  package: xpkg.upbound.io/crossplane-contrib/function-environment-configs:v0.2.0
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Function
@@ -12,11 +12,11 @@ metadata:
   name: function-kcl
   annotations:
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.10.3
+  package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.10.10
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
   name: function-auto-ready
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-auto-ready:v0.2.1
+  package: xpkg.upbound.io/crossplane-contrib/function-auto-ready:v0.4.0

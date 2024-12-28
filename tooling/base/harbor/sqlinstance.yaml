@@ -3,18 +3,21 @@ kind: SQLInstance
 metadata:
   name: xplane-harbor
 spec:
+  instances: 1
   size: "small"
-  storageGB: 20
+  storageSize: 20Gi
   databases:
     - name: registry
       owner: harbor
-  cnpg:
-    instances: 1
-    objectStoreRecovery:
-      bucketName: "eu-west-3-ogenki-cnpg-backups"
-      path: "harbor-20241111"
-    backup:
-      schedule: "0 1 * * *"
-      bucketName: "eu-west-3-ogenki-cnpg-backups"
+  roles:
+    - name: harbor
+      comment: "Harbor admin user"
+      superuser: true
+  objectStoreRecovery:
+    bucketName: "eu-west-3-ogenki-cnpg-backups"
+    path: "harbor-20241111"
+  backup:
+    schedule: "0 1 * * *"
+    bucketName: "eu-west-3-ogenki-cnpg-backups"
   compositionRef:
     name: xsqlinstances.cloud.ogenki.io

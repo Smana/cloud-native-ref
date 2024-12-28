@@ -4,13 +4,16 @@ metadata:
   name: xplane-oncall
   namespace: "observability"
 spec:
+  instances: 1
   size: "small"
-  storageGB: 20
+  storageSize: "20Gi"
   databases:
     - owner: "oncall"
       name: "oncall"
-  cnpg:
-    instances: 1
-    backup:
-      schedule: "0 0 * * *"
-      bucketName: "eu-west-3-ogenki-cnpg-backups"
+  roles:
+    - name: "oncall"
+      comment: "User for oncall CNPG Instance"
+      superuser: false
+  backup:
+    schedule: "0 0 * * *"
+    bucketName: "eu-west-3-ogenki-cnpg-backups"

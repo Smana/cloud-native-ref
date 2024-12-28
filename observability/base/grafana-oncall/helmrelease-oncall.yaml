@@ -70,7 +70,7 @@ spec:
       port: 5432
       db_name: "oncall"
       user: "oncall"
-      existingSecret: "xplane-oncall-cnpg-oncall"
+      existingSecret: "xplane-oncall-cnpg-role-oncall"
       passwordKey: "password"
 
     rabbitmq:

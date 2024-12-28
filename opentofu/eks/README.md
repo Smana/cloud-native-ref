@@ -116,7 +116,7 @@ tofu destroy --var-file variables.tfvars
 | Name | Source | Version |
 |------|--------|---------|
 | <a name="module_eks"></a> [eks](#module\_eks) | terraform-aws-modules/eks/aws | ~> 20 |
-| <a name="module_irsa_crossplane"></a> [irsa\_crossplane](#module\_irsa\_crossplane) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.48.0 |
+| <a name="module_irsa_crossplane"></a> [irsa\_crossplane](#module\_irsa\_crossplane) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.51.0 |
 | <a name="module_irsa_ebs_csi_driver"></a> [irsa\_ebs\_csi\_driver](#module\_irsa\_ebs\_csi\_driver) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.51.0 |
 | <a name="module_karpenter"></a> [karpenter](#module\_karpenter) | terraform-aws-modules/eks/aws//modules/karpenter | ~> 20.0 |
 
@@ -129,7 +129,6 @@ tofu destroy --var-file variables.tfvars
 | [aws_iam_policy.crossplane_eks](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.crossplane_iam](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.crossplane_kms](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
-| [aws_iam_policy.crossplane_rds](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.crossplane_s3](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [helm_release.aws_ebs_csi_driver](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |
 | [helm_release.cilium](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |

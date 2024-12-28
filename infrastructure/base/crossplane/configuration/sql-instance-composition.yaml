@@ -23,7 +23,7 @@ spec:
                         ref:
                             name: eks-environment
 
-        - step: rds
+        - step: cloudnativepg
           functionRef:
               name: function-kcl
           input:
@@ -31,27 +31,7 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: oci://ttl.sh/ogenki-cnref/rdsinstance:v0.0.8-24h
-
-        - step: databases
-          functionRef:
-              name: function-kcl
-          input:
-              apiVersion: krm.kcl.dev/v1alpha1
-              kind: KCLRun
-              spec:
-                  target: Resources
-                  source: oci://ttl.sh/ogenki-cnref/databases:v0.0.12-24h
-
-        - step: cnpginstance
-          functionRef:
-              name: function-kcl
-          input:
-              apiVersion: krm.kcl.dev/v1alpha1
-              kind: KCLRun
-              spec:
-                  target: Resources
-                  source: oci://ttl.sh/ogenki-cnref/cnpginstance:v0.0.29-24h
+                  source: oci://ttl.sh/ogenki-cnref/cloudnativepg:v0.1.0-24h
 
         - step: ready
           functionRef:
