@@ -69,7 +69,7 @@ This diagram can be hard to understand so these are the key information:
 
 When the cluster is initialized, we define the permissions for the Crossplane controllers using Opentofu. This involves attaching a set of IAM policies to a role. This role is crucial for managing AWS resources.
 
-We prioritize security by adhering to the principle of **least privilege**. This means we only grant the necessary permissions, avoiding any excess. For instance, although Crossplane allows it, I have chosen not to give the controllers the ability to delete stateful services like S3 or RDS. This decision is a deliberate step to minimize potential risks.
+We prioritize security by adhering to the principle of **least privilege**. This means we only grant the necessary permissions, avoiding any excess. For instance, although Crossplane allows it, I have chosen not to give the controllers the ability to delete stateful services like S3, IAM or Route53. This decision is a deliberate step to minimize potential risks.
 
 Additionally, I have put a constraint on the resources the controllers can manage. Specifically, they are limited to managing only those resources which are prefixed with `xplane-`. This restriction helps in maintaining a more controlled and secure environment.
 
@@ -90,7 +90,7 @@ Additionally, I have put a constraint on the resources the controllers can manag
 
 The Harbor installation follows best practices for high availability. It leverages recent Crossplane features such as `Composition functions`:
 
-- External RDS database
+- A [CloudNativePG](https://cloudnative-pg.io/) instance.
 - Valkey cluster using the Bitnami Helm chart
 - Storing artifacts in S3
 
