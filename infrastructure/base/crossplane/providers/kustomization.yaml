@@ -8,6 +8,4 @@ resources:
   - provider-iam.yaml
   - provider-kms.yaml
   - provider-kubernetes.yaml
-  - provider-rds.yaml
   - provider-s3.yaml
-  - provider-sql.yaml

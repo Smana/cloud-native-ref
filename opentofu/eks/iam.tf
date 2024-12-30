@@ -22,7 +22,7 @@ module "irsa_ebs_csi_driver" {
 # AWS permissions for Crossplane
 module "irsa_crossplane" {
   source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version   = "5.48.0"
+  version   = "5.51.0"
   role_name = "${var.cluster_name}-crossplane"
 
   assume_role_condition_test = "StringLike"
@@ -32,7 +32,6 @@ module "irsa_crossplane" {
     eks  = aws_iam_policy.crossplane_eks.arn,
     irsa = aws_iam_policy.crossplane_iam.arn,
     kms  = aws_iam_policy.crossplane_kms.arn,
-    rds  = aws_iam_policy.crossplane_rds.arn
     s3   = aws_iam_policy.crossplane_s3.arn
   }
 
@@ -194,51 +193,6 @@ resource "aws_iam_policy" "crossplane_s3" {
                 "arn:aws:s3:::${var.region}-ogenki-openbao-snapshot/*",
                 "arn:aws:s3:::${var.region}-ogenki-cnpg-backups",
                 "arn:aws:s3:::${var.region}-ogenki-cnpg-backups/*"
-            ]
-        }
-    ]
-}
-EOF
-}
-
-#tfsec:ignore:aws-iam-no-policy-wildcards
-resource "aws_iam_policy" "crossplane_rds" {
-  name        = "crossplane_rds_${var.cluster_name}"
-  path        = "/"
-  description = "Policy for managing RDS Instances on EKS"
-
-  policy = <<EOF
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "rds:*"
-            ],
-            "Resource": [
-                "arn:aws:rds:*:*:db:xplane-*",
-                "arn:aws:rds:*:*:subgrp:xplane-*"
-            ]
-        },
-        {
-            "Action": [
-                "rds:DescribeDBInstances"
-            ],
-            "Effect": "Allow",
-            "Resource": [
-                "arn:aws:rds:*:*:db:*",
-                "arn:aws:rds:*:*:subgrp:*"
-            ]
-        },
-        {
-            "Effect": "Deny",
-            "Action": [
-                "rds:DeleteDBInstance"
-            ],
-            "Resource": [
-                "arn:aws:rds:*:*:db:*",
-                "arn:aws:rds:*:*:subgrp:*"
             ]
         }
     ]

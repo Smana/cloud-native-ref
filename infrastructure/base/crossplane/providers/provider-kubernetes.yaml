@@ -42,9 +42,9 @@ rules:
   - apiGroups: ["rds.aws.upbound.io"]
     resources: ["instances"]
     verbs: ["get"]
-  #  Manage CNPG PostgreSQL clusters and scheduled backups
+  #  Manage CNPG PostgreSQL databases, clusters, roles, and scheduled backups
   - apiGroups: ["postgresql.cnpg.io"]
-    resources: ["clusters", "scheduledbackups"]
+    resources: ["databases", "clusters", "roles", "scheduledbackups"]
     verbs: ["get", "create", "delete", "update", "patch"]
   # Manage external secrets
   - apiGroups: ["external-secrets.io"]

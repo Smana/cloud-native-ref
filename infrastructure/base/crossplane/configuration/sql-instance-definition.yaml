@@ -47,6 +47,84 @@ spec:
                     required:
                       - name
                       - owner
+                roles:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: The name of the role.
+                      comment:
+                        type: string
+                        description: The comment for the role.
+                      superuser:
+                        type: boolean
+                        description: Is the role a superuser.
+                      inRoles:
+                        type: array
+                        items:
+                          type: string
+                        description: The roles this role is a member of.
+                    required:
+                      - name
+                      - superuser
+
+                instances:
+                  description: The number of instances to create.
+                  type: integer
+                  default: 3
+                primaryUpdateStrategy:
+                  description: The update strategy for the primary instance.
+                  type: string
+                  default: "unsupervised"
+                createSuperuser:
+                  description: Create a superuser for the Postgres cluster.
+                  type: boolean
+                  default: false
+                objectStoreRecovery:
+                  type: object
+                  properties:
+                    bucketName:
+                      description: The name of the S3 bucket to store backups.
+                      type: string
+                      nullable: true
+                    path:
+                      description: The path to the backup in the S3 bucket (Usualy a cluster name).
+                      type: string
+                      nullable: true
+                backup:
+                  type: object
+                  properties:
+                    schedule:
+                      description: The schedule for backups in cron format.
+                      type: string
+                      nullable: true
+                    bucketName:
+                      description: The name of the S3 bucket to store backups.
+                      type: string
+                      nullable: true
+                    retentionPolicy:
+                      description: The retention policy for backups.
+                      type: string
+                      default: "15d"
+                initSQL:
+                  description: SQL to run on the primary instance after creation.
+                  type: string
+                  nullable: true
+                postgresql:
+                  type: object
+                  properties:
+                    parameters:
+                      description: Custom Postgres parameters to set.
+                      type: object
+                      additionalProperties: true
+                    pg_hba:
+                      description: Custom pg_hba.conf entries.
+                      type: array
+                      items:
+                        type: string
+                      nullable: true
                 size:
                   description: The machine size for this Database Instance.
                   type: string
@@ -54,131 +132,21 @@ spec:
                     - small
                     - medium
                     - large
-                storageGB:
-                  type: integer
-
-                rds:
-                  type: object
-                  properties:
-                    providerConfigName:
-                      description: Crossplane ProviderConfig to use for provisioning this resource
-                      type: string
-                      default: default
-                    engine:
-                      type: string
-                      description: This RDS Instance engine, see AWS docs for possible values.
-                      enum:
-                        - postgres
-                        - mariadb
-                    engineVersion:
-                      type: string
-                      description: This RDS Instance engine version.
-                    passwordSecretRef:
-                      type: object
-                      description: A reference to the Secret object containing the database password.
-                      properties:
-                        namespace:
-                          type: string
-                        name:
-                          type: string
-                        key:
-                          type: string
-                      required:
-                        - namespace
-                        - name
-                        - key
-                    subnetIds:
-                      type: array
-                      description: A list of subnet IDs where the database will be provisioned.
-                      items:
-                        type: string
-                    vpcId:
-                      type: string
-                      description: The VPC ID where the database will be provisioned.
-                  required:
-                    - engine
-                    - engineVersion
-                    - passwordSecretRef
-
-                cnpg:
-                  type: object
-                  properties:
-                    instances:
-                      description: The number of instances to create.
-                      type: integer
-                      default: 3
-                    primaryUpdateStrategy:
-                      description: The update strategy for the primary instance.
-                      type: string
-                      default: "unsupervised"
-                    createSuperuser:
-                      description: Create a superuser for the Postgres cluster.
-                      type: boolean
-                      default: false
-                    objectStoreRecovery:
-                      type: object
-                      properties:
-                        bucketName:
-                          description: The name of the S3 bucket to store backups.
-                          type: string
-                          nullable: true
-                        path:
-                          description: The path to the backup in the S3 bucket (Usualy a cluster name).
-                          type: string
-                          nullable: true
-                    backup:
-                      type: object
-                      properties:
-                        schedule:
-                          description: The schedule for backups in cron format.
-                          type: string
-                          nullable: true
-                        bucketName:
-                          description: The name of the S3 bucket to store backups.
-                          type: string
-                          nullable: true
-                        retentionPolicy:
-                          description: The retention policy for backups.
-                          type: string
-                          default: "15d"
-                    initSQL:
-                      description: SQL to run on the primary instance after creation.
-                      type: string
-                      nullable: true
-                    postgresql:
-                      type: object
-                      properties:
-                        parameters:
-                          description: Custom Postgres parameters to set.
-                          type: object
-                          additionalProperties: true
-                        pg_hba:
-                          description: Custom pg_hba.conf entries.
-                          type: array
-                          items:
-                            type: string
-                          nullable: true
-                    storageClass:
-                      description: The storage class to use for the Postgres cluster.
-                      type: string
-                      default: "gp3"
-                  required:
-                    - instances
-
+                storageSize:
+                  type: string
+                storageClass:
+                  description: The storage class to use for the Postgres cluster.
+                  type: string
+                  default: "gp3"
               required:
+                - instances
                 - size
-                - storageGB
-
-              oneOf:
-                - required: ["rds"]
-                - required: ["cnpg"]
-
+                - storageSize
             status:
               type: object
               properties:
                 instanceAddress:
                   description: Address of the Database instance.
                   type: string
-
           required:
             - spec

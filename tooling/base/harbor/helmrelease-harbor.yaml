@@ -71,7 +71,7 @@ spec:
         port: "5432"
         username: "harbor"
         coreDatabase: "registry"
-        existingSecret: "xplane-harbor-cnpg-registry"
+        existingSecret: "xplane-harbor-cnpg-role-harbor"
         sslmode: "require"
 
     redis:

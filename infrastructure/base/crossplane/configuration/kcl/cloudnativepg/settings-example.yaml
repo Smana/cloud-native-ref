@@ -1,0 +1,45 @@
+kcl_options:
+  - key: params
+    value:
+      ctx:
+        "apiextensions.crossplane.io/environment":
+          "clusterName": "mycluster-0"
+          region: "eu-west-3"
+      oxr:
+        spec:
+          claimRef:
+            name: "myname"
+            namespace: "myns"
+          instances: 3
+          size: "small"
+          primaryUpdateStrategy: "unsupervised"
+          createSuperuser: true
+          backup:
+            schedule: "0 0 * * *"
+            bucketName: "myname-rds-instance-backups"
+            retentionPolicy: "10d"
+          initSQL: |
+            CREATE EXTENSION pg_stat_statements;
+            CREATE EXTENSION pg_trgm;
+            CREATE EXTENSION pgcrypto;
+          postgresql:
+            parameters:
+              max_connections: 100
+            pg_hba:
+              - "host all all"
+          storageSize: 20Gi
+          storageClass: "gp3"
+          roles:
+            - name: "myname-user"
+              comment: "User for myname CNPG Instance"
+              superuser: false
+              inRoles:
+                - pg_monitor
+            - name: "myname-root"
+              comment: "Root user for myname CNPG Instance"
+              superuser: true
+          databases:
+            - name: "db1"
+              owner: "myname-user"
+            - name: "db2"
+              owner: "myname-root"
