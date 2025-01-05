@@ -4,24 +4,52 @@
 
 This repository provides a comprehensive guide and set of tools for building, managing, and maintaining a Cloud Native platform. It includes configurations for Kubernetes, Crossplane, Flux, OpenBao, and more, with a focus on security, scalability, and best practices.
 
+## Table of Contents
+
+- [☑️ Curated Toolset and Use Cases](#️-curated-toolset-and-use-cases)
+- [🚀 Getting started](#-getting-started)
+- [🔄 Flux Dependencies Matter](#-flux-dependencies-matter)
+- [🏗️ Crossplane Configuration](#️-crossplane-configuration)
+  - [Requirements and Security Concerns](#requirements-and-security-concerns)
+  - [How is Crossplane Deployed?](#how-is-crossplane-deployed)
+- [📦 OCI Registry with Harbor](#-oci-registry-with-harbor)
+- [🔗 VPN connection using Tailscale](#-vpn-connection-using-tailscale)
+- [🔑 Private PKI with OpenBao](#-private-pki-with-openbao)
+- [👁️ Observability](#️-observability)
+- [🧪 CI](#-ci)
+  - [Overview](#overview)
+  - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners)
+- [💬 Chating and contributing](#-chating-and-contributing)
+
+## ☑️ Curated Toolset and Use Cases
+
 ![overview](.assets/cloud-native-ref.png)
 
-## Table of Contents
-- [Reference Repository for Building a Cloud Native Platform](#reference-repository-for-building-a-cloud-native-platform)
-  - [Table of Contents](#table-of-contents)
-  - [🚀 Getting started](#-getting-started)
-  - [🔄 Flux Dependencies Matter](#-flux-dependencies-matter)
-  - [🏗️ Crossplane Configuration](#️-crossplane-configuration)
-    - [Requirements and Security Concerns](#requirements-and-security-concerns)
-    - [How is Crossplane Deployed?](#how-is-crossplane-deployed)
-  - [📦 OCI Registry with Harbor](#-oci-registry-with-harbor)
-  - [🔗 VPN connection using Tailscale](#-vpn-connection-using-tailscale)
-  - [🔑 Private PKI with OpenBao](#-private-pki-with-openbao)
-  - [👁️ Observability](#️-observability)
-  - [🧪 CI](#-ci)
-    - [Overview](#overview)
-    - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners)
-  - [💬 Chating and contributing](#-chating-and-contributing)
+| Technology                                                                                                           | Domain                 | What it is used for?                                                                                      |
+|----------------------------------------------------------------------------------------------------------------------|------------------------|----------------------------------------------------------------------------------------------------------|
+| ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)    | Infrastructure         | Container orchestration, core platform on which applications are deployed                                |
+| ![Crossplane](https://img.shields.io/badge/Crossplane-4D4D4D?style=for-the-badge&logo=crossplane&logoColor=white)    | Infrastructure         | Framework to compose application and infrastructure components, providing proper abstraction levels      |
+| ![OpenTofu](https://img.shields.io/badge/OpenTofu-24B8EB?style=for-the-badge&logo=open-tofu&logoColor=white)         | Infrastructure         | Open-source alternative to Terraform for provisioning and managing infrastructure                        |
+| ![Harbor](https://img.shields.io/badge/Harbor-60B932?style=for-the-badge&logo=harbor&logoColor=white)                | Application            | Secure container image registry with scanning and signing capabilities                                   |
+| ![Headlamp](https://img.shields.io/badge/Headlamp-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)        | Application            | Web-based GUI for Kubernetes cluster management                                                          |
+| ![CloudNativePG](https://img.shields.io/badge/CloudNativePG-316192?style=for-the-badge&logo=postgresql&logoColor=white) | Data                   | Kubernetes operator managing PostgreSQL clusters with high availability and failover support             |
+| ![Valkey](https://img.shields.io/badge/Valkey-4B0082?style=for-the-badge&logo=key&logoColor=white)                   | Data                   | Redis-like key-value data store                                                                          |
+| ![Dagger](https://img.shields.io/badge/Dagger-000000?style=for-the-badge&logo=dagger&logoColor=white)                | Continuous Delivery    | CI/CD tool used to define and run pipelines as code                                                      |
+| ![Flux](https://img.shields.io/badge/Flux-0D1117?style=for-the-badge&logo=flux&logoColor=white)                      | Continuous Delivery    | GitOps engine ensuring that what is defined in the GitHub repository is deployed on Kubernetes           |
+| ![VictoriaMetrics](https://img.shields.io/badge/VictoriaMetrics-2A4666?style=for-the-badge&logo=prometheus&logoColor=white) | Observability          | High-performance monitoring solution for collecting and querying metrics                                 |
+| ![Tailscale](https://img.shields.io/badge/Tailscale-006AFC?style=for-the-badge&logo=tailscale&logoColor=white)        | Networking             | VPN solution for secure connections between Kubernetes clusters and other resources                      |
+| ![Gateway API](https://img.shields.io/badge/Gateway--API-0088CE?style=for-the-badge&logo=kubernetes&logoColor=white) | Networking             | Defines standard APIs for configuring Kubernetes ingress and traffic routing                             |
+| ![Cilium](https://img.shields.io/badge/Cilium-4A90E2?style=for-the-badge&logo=cilium&logoColor=white)                | Networking             | Advanced networking, security, and observability for Kubernetes using eBPF                              |
+| ![External DNS](https://img.shields.io/badge/External--DNS-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white) | Networking             | Synchronizes Kubernetes resources with DNS providers like Route 53, Cloudflare, and others               |
+| ![OpenBao](https://img.shields.io/badge/OpenBao-232F3E?style=for-the-badge&logo=openbao&logoColor=white)             | Security               | Open-source fork of Vault for secure secret storage, encryption, and access management                   |
+| ![Cert-manager](https://img.shields.io/badge/Cert--manager-326CE5?style=for-the-badge&logo=cert-manager&logoColor=white) | Security               | Automates the creation and renewal of TLS certificates                                                   |
+| ![ZITADEL](https://img.shields.io/badge/ZITADEL-002B5C?style=for-the-badge&logo=zitadel&logoColor=white)             | Security               | Cloud-native identity and access management system                                                       |
+| ![ExternalSecrets Operator](https://img.shields.io/badge/ExternalSecrets_Operator-FF6C37?style=for-the-badge&logo=external-secrets&logoColor=white) | Security               | Synchronizes secrets from external secret managers (e.g., Vault, AWS Secrets Manager) into Kubernetes    |
+| ![Route 53](https://img.shields.io/badge/Route_53-FF9900?style=for-the-badge&logo=amazon&logoColor=white)            | Managed Services       | DNS service for routing traffic to applications and resources                                            |
+| ![KMS](https://img.shields.io/badge/KMS-FF9900?style=for-the-badge&logo=amazon&logoColor=white)                      | Managed Services       | Key management service to encrypt sensitive data                                                         |
+| ![IAM](https://img.shields.io/badge/IAM-FF9900?style=for-the-badge&logo=amazon&logoColor=white)                      | Managed Services       | Identity and Access Management for controlling access to AWS resources                                   |
+| ![ELB](https://img.shields.io/badge/ELB-FF9900?style=for-the-badge&logo=amazon&logoColor=white)                      | Managed Services       | Load balancer service to distribute traffic across multiple instances                                    |
+| ![S3](https://img.shields.io/badge/S3-FF9900?style=for-the-badge&logo=amazon&logoColor=white)                        | Managed Services       | Cloud storage service for storing and retrieving any amount of data                                      |
 
 
 ## 🚀 Getting started

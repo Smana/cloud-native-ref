@@ -1,7 +1,7 @@
 # AWS permissions for the EBS-CSI-DRIVER
 module "irsa_ebs_csi_driver" {
   source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version   = "5.52.0"
+  version   = "5.52.1"
   role_name = "${var.cluster_name}-ebs_csi_driver"
 
   assume_role_condition_test = "StringLike"
@@ -22,7 +22,7 @@ module "irsa_ebs_csi_driver" {
 # AWS permissions for Crossplane
 module "irsa_crossplane" {
   source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version   = "5.52.0"
+  version   = "5.52.1"
   role_name = "${var.cluster_name}-crossplane"
 
   assume_role_condition_test = "StringLike"
