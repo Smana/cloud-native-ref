@@ -4,7 +4,7 @@ go 1.22.7
 
 toolchain go1.23.2
 
-require github.com/aws/aws-sdk-go v1.55.5
+require github.com/aws/aws-sdk-go v1.55.6
 
 require go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 
