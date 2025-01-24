@@ -12,7 +12,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: harbor
-      version: "1.15.1"
+      version: "1.16.2"
   interval: 10m0s
   install:
     remediation:
