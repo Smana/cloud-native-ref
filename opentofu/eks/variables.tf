@@ -17,7 +17,7 @@ variable "cluster_name" {
 
 variable "cluster_version" {
   description = "k8s cluster version"
-  default     = "1.31"
+  default     = "1.32"
   type        = string
 }
 
@@ -41,13 +41,13 @@ variable "cluster_identity_providers" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.16.5"
+  default     = "1.16.6"
   type        = string
 }
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "1.1.1"
+  default     = "1.1.2"
   type        = string
 }
 
@@ -64,13 +64,13 @@ variable "karpenter_limits" {
 
 variable "ebs_csi_driver_chart_version" {
   description = "EBS CSI Driver Helm chart version"
-  default     = "2.25.0"
+  default     = "2.39.0"
   type        = string
 }
 
 variable "gateway_api_version" {
   description = "Gateway API CRDs version"
-  default     = "v1.2.0"
+  default     = "v1.2.1"
   type        = string
 }
 
@@ -84,7 +84,7 @@ variable "github_token_secretsmanager_id" {
 
 variable "flux_operator_version" {
   description = "Flux Operator version"
-  default     = "0.12.0"
+  default     = "0.13.0"
   type        = string
 }
 
