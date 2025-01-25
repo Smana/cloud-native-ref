@@ -157,22 +157,22 @@ tofu destroy --var-file variables.tfvars
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_cilium_version"></a> [cilium\_version](#input\_cilium\_version) | Cilium cluster version | `string` | `"1.16.5"` | no |
+| <a name="input_cilium_version"></a> [cilium\_version](#input\_cilium\_version) | Cilium cluster version | `string` | `"1.16.6"` | no |
 | <a name="input_cluster_identity_providers"></a> [cluster\_identity\_providers](#input\_cluster\_identity\_providers) | Map of cluster identity provider configurations to enable for the cluster. | `any` | `{}` | no |
 | <a name="input_cluster_name"></a> [cluster\_name](#input\_cluster\_name) | Name of the EKS cluster to be created | `string` | n/a | yes |
-| <a name="input_cluster_version"></a> [cluster\_version](#input\_cluster\_version) | k8s cluster version | `string` | `"1.31"` | no |
-| <a name="input_ebs_csi_driver_chart_version"></a> [ebs\_csi\_driver\_chart\_version](#input\_ebs\_csi\_driver\_chart\_version) | EBS CSI Driver Helm chart version | `string` | `"2.25.0"` | no |
+| <a name="input_cluster_version"></a> [cluster\_version](#input\_cluster\_version) | k8s cluster version | `string` | `"1.32"` | no |
+| <a name="input_ebs_csi_driver_chart_version"></a> [ebs\_csi\_driver\_chart\_version](#input\_ebs\_csi\_driver\_chart\_version) | EBS CSI Driver Helm chart version | `string` | `"2.39.0"` | no |
 | <a name="input_enable_flux_image_update_automation"></a> [enable\_flux\_image\_update\_automation](#input\_enable\_flux\_image\_update\_automation) | Enable Flux image update automation | `bool` | `false` | no |
 | <a name="input_enable_ssm"></a> [enable\_ssm](#input\_enable\_ssm) | If true, allow to connect to the instances using AWS Systems Manager | `bool` | `false` | no |
 | <a name="input_env"></a> [env](#input\_env) | The environment of the EKS cluster | `string` | n/a | yes |
 | <a name="input_flux_git_ref"></a> [flux\_git\_ref](#input\_flux\_git\_ref) | Git branch or tag in the format refs/heads/main or refs/tags/v1.0.0 | `string` | n/a | yes |
-| <a name="input_flux_operator_version"></a> [flux\_operator\_version](#input\_flux\_operator\_version) | Flux Operator version | `string` | `"0.12.0"` | no |
+| <a name="input_flux_operator_version"></a> [flux\_operator\_version](#input\_flux\_operator\_version) | Flux Operator version | `string` | `"0.13.0"` | no |
 | <a name="input_flux_sync_repository_url"></a> [flux\_sync\_repository\_url](#input\_flux\_sync\_repository\_url) | The repository URL to sync with Flux | `string` | n/a | yes |
-| <a name="input_gateway_api_version"></a> [gateway\_api\_version](#input\_gateway\_api\_version) | Gateway API CRDs version | `string` | `"v1.2.0"` | no |
+| <a name="input_gateway_api_version"></a> [gateway\_api\_version](#input\_gateway\_api\_version) | Gateway API CRDs version | `string` | `"v1.2.1"` | no |
 | <a name="input_github_token_secretsmanager_id"></a> [github\_token\_secretsmanager\_id](#input\_github\_token\_secretsmanager\_id) | SecretsManager id from where to retrieve the Github Personal Access Token. (The key must be 'github-token') | `string` | `"github/flux-github-pat"` | no |
 | <a name="input_iam_role_additional_policies"></a> [iam\_role\_additional\_policies](#input\_iam\_role\_additional\_policies) | Additional policies to be added to the IAM role | `map(string)` | `{}` | no |
 | <a name="input_karpenter_limits"></a> [karpenter\_limits](#input\_karpenter\_limits) | Define limits for Karpenter per node pool. | <pre>map(object(<br>    {<br>      cpu    = optional(number, 50),<br>      memory = optional(string, "50Gi")<br>    }<br>    )<br>  )</pre> | n/a | yes |
-| <a name="input_karpenter_version"></a> [karpenter\_version](#input\_karpenter\_version) | Karpenter version | `string` | `"1.1.1"` | no |
+| <a name="input_karpenter_version"></a> [karpenter\_version](#input\_karpenter\_version) | Karpenter version | `string` | `"1.1.2"` | no |
 | <a name="input_region"></a> [region](#input\_region) | AWS Region | `string` | `"eu-west-3"` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to add to all resources | `map(string)` | `{}` | no |
 

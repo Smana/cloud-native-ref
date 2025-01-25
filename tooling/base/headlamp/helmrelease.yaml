@@ -9,7 +9,7 @@ spec:
   chart:
     spec:
       chart: headlamp
-      version: "0.27.0"
+      version: "0.28.0"
       sourceRef:
         kind: HelmRepository
         name: headlamp
@@ -28,7 +28,7 @@ spec:
           - /bin/sh
           - -c
           - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/
-        image: ghcr.io/ashu8912/flux-plugin:0.1.1-beta
+        image: ghcr.io/headlamp-k8s/headlamp-plugin-flux:latest
         imagePullPolicy: Always
         name: headlamp-plugins
         volumeMounts:
