@@ -17,7 +17,6 @@ resource "vault_pki_secret_backend_key" "this" {
 }
 
 # Create a CSR (Certificate Signing Request)
-#tfsec:ignore:general-secrets-no-plaintext-exposure
 resource "vault_pki_secret_backend_intermediate_cert_request" "this" {
   backend     = vault_mount.this.path
   type        = "existing"

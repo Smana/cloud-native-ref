@@ -43,7 +43,7 @@ module "irsa_crossplane" {
   }
 }
 
-#tfsec:ignore:aws-iam-no-policy-wildcards
+#trivy:ignore:AVD-AWS-0342
 resource "aws_iam_policy" "crossplane_iam" {
   name        = "crossplane_iam_${var.cluster_name}"
   path        = "/"
@@ -93,8 +93,6 @@ resource "aws_iam_policy" "crossplane_iam" {
 EOF
 }
 
-# Managing all the security groups can be a security issue, didn't find a way to restrict to the ones created by Crossplane so far
-#tfsec:ignore:aws-iam-no-policy-wildcards
 resource "aws_iam_policy" "crossplane_ec2" {
   name        = "crossplane_ec2_${var.cluster_name}"
   path        = "/"
@@ -128,7 +126,6 @@ resource "aws_iam_policy" "crossplane_ec2" {
 EOF
 }
 
-#tfsec:ignore:aws-iam-no-policy-wildcards
 resource "aws_iam_policy" "crossplane_eks" {
   name        = "crossplane_eks_${var.cluster_name}"
   path        = "/"
@@ -153,7 +150,6 @@ resource "aws_iam_policy" "crossplane_eks" {
 EOF
 }
 
-#tfsec:ignore:aws-iam-no-policy-wildcards
 resource "aws_iam_policy" "crossplane_s3" {
   name        = "crossplane_s3_${var.cluster_name}"
   path        = "/"
@@ -200,7 +196,6 @@ resource "aws_iam_policy" "crossplane_s3" {
 EOF
 }
 
-#tfsec:ignore:aws-iam-no-policy-wildcards
 resource "aws_iam_policy" "crossplane_kms" {
   name        = "crossplane_kms_${var.cluster_name}"
   path        = "/"

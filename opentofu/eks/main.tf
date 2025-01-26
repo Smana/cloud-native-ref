@@ -1,6 +1,4 @@
-# Demo cluster we need to access to the API publicly
-#tfsec:ignore:aws-eks-no-public-cluster-access
-#tfsec:ignore:aws-eks-no-public-cluster-access-to-cidr
+#trivy:ignore:AVD-AWS-0104 # Allow unrestricted egress traffic
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20"
@@ -10,6 +8,14 @@ module "eks" {
   cluster_endpoint_public_access = false
 
   bootstrap_self_managed_addons = false
+
+  cluster_enabled_log_types = [
+    "api",
+    "audit",
+    "authenticator",
+    "controllerManager",
+    "scheduler"
+  ]
 
   cluster_addons = {
     coredns = {
