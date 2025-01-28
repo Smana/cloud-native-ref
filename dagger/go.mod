@@ -9,7 +9,7 @@ require github.com/aws/aws-sdk-go v1.55.6
 require go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 
 require (
-	github.com/99designs/gqlgen v0.17.63
+	github.com/99designs/gqlgen v0.17.64
 	github.com/Khan/genqlient v0.7.0
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
