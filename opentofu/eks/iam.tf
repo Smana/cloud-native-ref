@@ -43,7 +43,6 @@ module "irsa_crossplane" {
   }
 }
 
-#trivy:ignore:AVD-AWS-0342
 resource "aws_iam_policy" "crossplane_iam" {
   name        = "crossplane_iam_${var.cluster_name}"
   path        = "/"

@@ -84,7 +84,6 @@ resource "aws_security_group_rule" "openbao_node_exporter" {
   cidr_blocks       = [data.aws_vpc.selected.cidr_block]
 }
 
-#trivy:ignore:AVD-AWS-0104
 resource "aws_security_group_rule" "openbao_outbound" {
   description       = "Allow OpenBao nodes to send outbound traffic"
   security_group_id = aws_security_group.openbao.id

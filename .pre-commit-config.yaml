@@ -7,6 +7,7 @@ repos:
       - id: terraform_validate
       - id: terraform_trivy
         args:
+          - --args=--ignorefile=__GIT_WORKING_DIR__/.trivyignore.yaml
           - --args=--skip-dirs="**/.terraform"
       - id: terraform_tflint
         args:
