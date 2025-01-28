@@ -1,0 +1,13 @@
+misconfigurations:
+  - id: AVD-AWS-0342
+    paths:
+      - "iam.tf"
+  - id: AVD-AWS-0104
+    statement: Unrestricted Egress Access
+    paths:
+      - "security_group.tf"
+      - "terraform-aws-modules/eks/aws/node_groups.tf"
+  - id: AVD-AWS-0065
+    statement: No KMS key rotation in this demo repo
+    paths:
+      - "kms.tf"

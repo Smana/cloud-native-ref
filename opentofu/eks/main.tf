@@ -1,4 +1,3 @@
-#trivy:ignore:AVD-AWS-0104 # Allow unrestricted egress traffic
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20"

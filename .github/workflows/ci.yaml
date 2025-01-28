@@ -27,7 +27,7 @@ jobs:
           version: "latest"
           verb: call
           module: github.com/Smana/daggerverse/pre-commit-tf@pre-commit-tf/v0.1.1
-          args: run --dir "." --tf-binary="tofu"
+          args: run --dir "." --tf-binary="tofu" --version=v1.97.0
 
   kubernetes-validation:
     name: Kubernetes validation ☸
