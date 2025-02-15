@@ -84,7 +84,7 @@ variable "github_token_secretsmanager_id" {
 
 variable "flux_operator_version" {
   description = "Flux Operator version"
-  default     = "0.13.0"
+  default     = "0.14.0"
   type        = string
 }
 
