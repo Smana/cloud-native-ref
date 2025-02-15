@@ -3,7 +3,7 @@ kind: Provider
 metadata:
   name: provider-aws-eks
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-eks:v1.18.2
+  package: xpkg.upbound.io/upbound/provider-aws-eks:v1.20.1
   runtimeConfigRef:
     apiVersion: pkg.crossplane.io/v1beta1
     kind: DeploymentRuntimeConfig
