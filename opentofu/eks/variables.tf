@@ -41,7 +41,7 @@ variable "cluster_identity_providers" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.17.0"
+  default     = "1.17.1"
   type        = string
 }
 
@@ -75,16 +75,16 @@ variable "gateway_api_version" {
 }
 
 # Flux
-variable "github_token_secretsmanager_id" {
+variable "github_app_secret_id" {
   type        = string
-  description = "SecretsManager id from where to retrieve the Github Personal Access Token. (The key must be 'github-token')"
-  default     = "github/flux-github-pat"
+  description = "SecretsManager id from where to retrieve the Github App information. ref: https://fluxcd.io/flux/components/source/gitrepositories/#github"
+  default     = "github/flux-app"
   sensitive   = true
 }
 
 variable "flux_operator_version" {
   description = "Flux Operator version"
-  default     = "0.14.0"
+  default     = "0.15.0"
   type        = string
 }
 

@@ -18,10 +18,6 @@ terraform {
       source  = "alekc/kubectl"
       version = ">= 2.0.0"
     }
-    flux = {
-      source  = "fluxcd/flux"
-      version = "1.4.0"
-    }
     helm = {
       source  = "hashicorp/helm"
       version = ">= 2.7"

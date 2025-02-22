@@ -8,6 +8,21 @@
 * Write a secret that contains the cluster's specific variables that will be used with Flux. (please refer to [variables substitutions](https://fluxcd.io/flux/components/kustomize/kustomization/#post-build-variable-substitution))
 * Deploy Cilium
 
+## Prerequisites
+
+The Flux installation process is based on a Github App and, in our example, a secret must be pull from AWS secrets manager.
+Here's how to prepare the secret:
+
+1. Create a Json file containing the required information as described in [flux documentation](https://fluxcd.io/flux/components/source/gitrepositories/#github).
+  ```console
+  jq -n --arg key "$(cat your-githubapp.private-key.pem)" '{githubAppID: "<app_id>", githubAppInstallationID: "<installation_id>", githubAppPrivateKey: $key}' > flux-ghapp.Json
+  ```
+
+2. Create the AWS Secret manager resource
+  ```console
+  aws secretsmanager create-secret --name github/flux-app --description "FluxCD Github App" --region eu-west-3 --secret-string file://flux-ghapp.json
+  ```
+
 ## How to apply this?
 
 1. Edit the file `backend.tf` and put your own S3 bucket name.
@@ -80,7 +95,7 @@ One step:
 ```console
 flux suspend kustomization --all && \
 kubectl delete gateways --all-namespaces --all && sleep 60 && \
-kubectl delete irsa,epi --all-namespaces --all && sleep 30 && \
+kubectl delete epi --all-namespaces --all && sleep 30 && \
 tofu destroy --var-file variables.tfvars
 ```
 
@@ -91,7 +106,6 @@ tofu destroy --var-file variables.tfvars
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | ~> 1.4 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 5.0 |
-| <a name="requirement_flux"></a> [flux](#requirement\_flux) | 1.4.0 |
 | <a name="requirement_github"></a> [github](#requirement\_github) | ~> 6.0 |
 | <a name="requirement_helm"></a> [helm](#requirement\_helm) | >= 2.7 |
 | <a name="requirement_http"></a> [http](#requirement\_http) | >= 3.4 |
@@ -143,7 +157,7 @@ tofu destroy --var-file variables.tfvars
 | [aws_caller_identity.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
 | [aws_ecrpublic_authorization_token.token](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ecrpublic_authorization_token) | data source |
 | [aws_eks_cluster_auth.cluster_auth](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/eks_cluster_auth) | data source |
-| [aws_secretsmanager_secret_version.github_pat](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret_version) | data source |
+| [aws_secretsmanager_secret_version.github_app](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret_version) | data source |
 | [aws_security_group.tailscale](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/security_group) | data source |
 | [aws_subnets.intra](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/subnets) | data source |
 | [aws_subnets.private](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/subnets) | data source |
@@ -157,7 +171,7 @@ tofu destroy --var-file variables.tfvars
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_cilium_version"></a> [cilium\_version](#input\_cilium\_version) | Cilium cluster version | `string` | `"1.17.0"` | no |
+| <a name="input_cilium_version"></a> [cilium\_version](#input\_cilium\_version) | Cilium cluster version | `string` | `"1.17.1"` | no |
 | <a name="input_cluster_identity_providers"></a> [cluster\_identity\_providers](#input\_cluster\_identity\_providers) | Map of cluster identity provider configurations to enable for the cluster. | `any` | `{}` | no |
 | <a name="input_cluster_name"></a> [cluster\_name](#input\_cluster\_name) | Name of the EKS cluster to be created | `string` | n/a | yes |
 | <a name="input_cluster_version"></a> [cluster\_version](#input\_cluster\_version) | k8s cluster version | `string` | `"1.32"` | no |
@@ -166,10 +180,10 @@ tofu destroy --var-file variables.tfvars
 | <a name="input_enable_ssm"></a> [enable\_ssm](#input\_enable\_ssm) | If true, allow to connect to the instances using AWS Systems Manager | `bool` | `false` | no |
 | <a name="input_env"></a> [env](#input\_env) | The environment of the EKS cluster | `string` | n/a | yes |
 | <a name="input_flux_git_ref"></a> [flux\_git\_ref](#input\_flux\_git\_ref) | Git branch or tag in the format refs/heads/main or refs/tags/v1.0.0 | `string` | n/a | yes |
-| <a name="input_flux_operator_version"></a> [flux\_operator\_version](#input\_flux\_operator\_version) | Flux Operator version | `string` | `"0.14.0"` | no |
+| <a name="input_flux_operator_version"></a> [flux\_operator\_version](#input\_flux\_operator\_version) | Flux Operator version | `string` | `"0.15.0"` | no |
 | <a name="input_flux_sync_repository_url"></a> [flux\_sync\_repository\_url](#input\_flux\_sync\_repository\_url) | The repository URL to sync with Flux | `string` | n/a | yes |
 | <a name="input_gateway_api_version"></a> [gateway\_api\_version](#input\_gateway\_api\_version) | Gateway API CRDs version | `string` | `"v1.2.1"` | no |
-| <a name="input_github_token_secretsmanager_id"></a> [github\_token\_secretsmanager\_id](#input\_github\_token\_secretsmanager\_id) | SecretsManager id from where to retrieve the Github Personal Access Token. (The key must be 'github-token') | `string` | `"github/flux-github-pat"` | no |
+| <a name="input_github_app_secret_id"></a> [github\_app\_secret\_id](#input\_github\_app\_secret\_id) | SecretsManager id from where to retrieve the Github App information. ref: https://fluxcd.io/flux/components/source/gitrepositories/#github | `string` | `"github/flux-app"` | no |
 | <a name="input_iam_role_additional_policies"></a> [iam\_role\_additional\_policies](#input\_iam\_role\_additional\_policies) | Additional policies to be added to the IAM role | `map(string)` | `{}` | no |
 | <a name="input_karpenter_limits"></a> [karpenter\_limits](#input\_karpenter\_limits) | Define limits for Karpenter per node pool. | <pre>map(object(<br>    {<br>      cpu    = optional(number, 50),<br>      memory = optional(string, "50Gi")<br>    }<br>    )<br>  )</pre> | n/a | yes |
 | <a name="input_karpenter_version"></a> [karpenter\_version](#input\_karpenter\_version) | Karpenter version | `string` | `"1.2.1"` | no |
