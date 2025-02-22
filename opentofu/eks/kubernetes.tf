@@ -64,8 +64,8 @@ resource "kubernetes_secret" "flux_system" {
   }
 
   data = {
-    username = "git"
-    password = jsondecode(data.aws_secretsmanager_secret_version.github_pat.secret_string)["github-token"]
+    for key, value in jsondecode(data.aws_secretsmanager_secret_version.github_app.secret_string) :
+    key => value
   }
 
   depends_on = [helm_release.flux-operator]

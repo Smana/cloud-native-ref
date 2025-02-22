@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   distribution:
-    version: "2.4.x"
+    version: "2.x"
     registry: "ghcr.io/fluxcd"
     artifact: "oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests"
   components:
@@ -29,3 +29,11 @@ spec:
     ref: ${git_ref}
     path: "clusters/${cluster_name}"
     pullSecret: "flux-system"
+  kustomize:
+    patches:
+      - patch: |
+          - op: add
+            path: /spec/provider
+            value: github
+        target:
+          kind: GitRepository

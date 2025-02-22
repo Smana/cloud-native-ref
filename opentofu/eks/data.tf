@@ -68,8 +68,8 @@ data "aws_eks_cluster_auth" "cluster_auth" {
   name = module.eks.cluster_name
 }
 
-data "aws_secretsmanager_secret_version" "github_pat" {
-  secret_id = var.github_token_secretsmanager_id
+data "aws_secretsmanager_secret_version" "github_app" {
+  secret_id = var.github_app_secret_id
 }
 
 data "http" "gateway_api_crds" {
