@@ -22,6 +22,7 @@ spec:
     auth:
       existingSecret: "harbor-valkey-password"
       existingSecretPasswordKey: "REDIS_PASSWORD"
+      usePasswordFiles: false
 
     primary:
       ## Valkey primary resource requests and limits
