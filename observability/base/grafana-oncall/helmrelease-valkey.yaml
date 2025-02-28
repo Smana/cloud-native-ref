@@ -22,6 +22,7 @@ spec:
     auth:
       existingSecret: "oncall-valkey"
       existingSecretPasswordKey: "password"
+      usePasswordFiles: false
 
     primary:
       ## Valkey master resource requests and limits
