@@ -1,6 +1,3 @@
-config {
-  module = true
-}
 plugin "aws" {
   enabled = true
   version = "0.38.0"
