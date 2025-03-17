@@ -84,7 +84,7 @@ variable "github_app_secret_id" {
 
 variable "flux_operator_version" {
   description = "Flux Operator version"
-  default     = "0.16.0"
+  default     = "0.18.0"
   type        = string
 }
 
