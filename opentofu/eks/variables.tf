@@ -41,13 +41,13 @@ variable "cluster_identity_providers" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.17.1"
+  default     = "1.17.2"
   type        = string
 }
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "1.2.1"
+  default     = "1.2.3"
   type        = string
 }
 
@@ -84,7 +84,7 @@ variable "github_app_secret_id" {
 
 variable "flux_operator_version" {
   description = "Flux Operator version"
-  default     = "0.16.0"
+  default     = "0.18.0"
   type        = string
 }
 
