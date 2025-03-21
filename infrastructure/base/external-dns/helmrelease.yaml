@@ -26,8 +26,6 @@ spec:
     image:
       tag: "v0.14.1"
 
-    fullnameOverride: external-dns
-
     aws:
       region: ${region}
       zoneType: "public"
