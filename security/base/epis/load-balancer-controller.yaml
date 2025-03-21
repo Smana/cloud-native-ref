@@ -46,7 +46,7 @@ spec:
                             "ec2:GetCoipPoolUsage",
                             "ec2:DescribeCoipPools",
                             "ec2:GetSecurityGroupsForVpc",
-                            "elasticloadbalancing:DescribeCapacityReservation",
+                            "ec2:DescribeIpamPools",
                             "elasticloadbalancing:DescribeLoadBalancers",
                             "elasticloadbalancing:DescribeLoadBalancerAttributes",
                             "elasticloadbalancing:DescribeListeners",
@@ -59,7 +59,7 @@ spec:
                             "elasticloadbalancing:DescribeTags",
                             "elasticloadbalancing:DescribeTrustStores",
                             "elasticloadbalancing:DescribeListenerAttributes",
-                            "elasticloadbalancing:ModifyCapacityReservation"
+                            "elasticloadbalancing:DescribeCapacityReservation"
                         ],
                         "Resource": "*"
                     },
@@ -209,7 +209,9 @@ spec:
                             "elasticloadbalancing:ModifyTargetGroup",
                             "elasticloadbalancing:ModifyTargetGroupAttributes",
                             "elasticloadbalancing:DeleteTargetGroup",
-                            "elasticloadbalancing:ModifyListenerAttributes"
+                            "elasticloadbalancing:ModifyListenerAttributes",
+                            "elasticloadbalancing:ModifyCapacityReservation",
+                            "elasticloadbalancing:ModifyIpPools"
                         ],
                         "Resource": "*",
                         "Condition": {
@@ -255,7 +257,8 @@ spec:
                             "elasticloadbalancing:ModifyListener",
                             "elasticloadbalancing:AddListenerCertificates",
                             "elasticloadbalancing:RemoveListenerCertificates",
-                            "elasticloadbalancing:ModifyRule"
+                            "elasticloadbalancing:ModifyRule",
+                            "elasticloadbalancing:SetRulePriorities"
                         ],
                         "Resource": "*"
                     }
