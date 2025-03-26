@@ -1,4 +1,7 @@
 resource "tailscale_acl" "this" {
+  // Overwrite the existing content of the ACL.
+  overwrite_existing_content = lookup(var.tailscale, "overwrite_existing_content", false)
+
   acl = jsonencode({
     // Define access control lists for users, groups, autogroups, tags,
     // Tailscale IP addresses, and subnet ranges.
@@ -28,7 +31,6 @@ resource "tailscale_acl" "this" {
         "${module.vpc.vpc_cidr_block}" = [var.tailscale.tailnet]
       }
     }
-
   })
 }
 
@@ -64,8 +66,9 @@ resource "tailscale_tailnet_key" "this" {
 }
 
 module "tailscale_subnet_router" {
+
   source  = "Smana/tailscale-subnet-router/aws"
-  version = "1.1.0"
+  version = "1.2.1"
 
   region = var.region
   env    = var.env
@@ -76,10 +79,11 @@ module "tailscale_subnet_router" {
   vpc_id                = module.vpc.vpc_id
   subnet_ids            = module.vpc.private_subnets
   advertise_routes      = [module.vpc.vpc_cidr_block]
+  tailscale_version     = lookup(var.tailscale, "tailscale_version", "")
   tailscale_ssh_enabled = true
 
   prometheus_node_exporter_enabled = lookup(var.tailscale, "prometheus_enabled", false) ? true : false
-  ssm_enabled                      = lookup(var.tailscale, "enable_ssm", false) ? true : false
+  ssm_enabled                      = lookup(var.tailscale, "ssm_enabled", false) ? true : false
 
   tags = merge(var.tags,
     {
