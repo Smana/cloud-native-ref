@@ -2,7 +2,7 @@
 resource "kubectl_manifest" "gateway_api_crds" {
   count      = length(local.gateway_api_crds_urls)
   yaml_body  = data.http.gateway_api_crds[count.index].body
-  depends_on = [module.eks.eks_cluster]
+  depends_on = [module.eks.cluster_name]
 }
 
 
