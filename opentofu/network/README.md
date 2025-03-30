@@ -19,11 +19,12 @@ region              = "eu-west-3"
 private_domain_name = "priv.cloud.ogenki.io"
 
 tailscale = {
-  subnet_router_name = "ogenki"
-  tailnet            = "smainklh@gmail.com"
-  api_key            = "tskey-api-<REDACTED>" # Generated in Tailscale Admin console
-  prometheus_enabled = true
-  enable_ssm        = true
+  subnet_router_name         = "ogenki"
+  tailnet                    = "smainklh@gmail.com"
+  api_key                    = "tskey-api-<REDACTED>" # Generated in Tailscale Admin console
+  prometheus_enabled         = true
+  ssm_enabled                = true
+  overwrite_existing_content = true # Be careful it will replace the existing ACLs
 }
 
 tags = {
@@ -72,7 +73,7 @@ tailscale status
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_tailscale_subnet_router"></a> [tailscale\_subnet\_router](#module\_tailscale\_subnet\_router) | Smana/tailscale-subnet-router/aws | 1.1.0 |
+| <a name="module_tailscale_subnet_router"></a> [tailscale\_subnet\_router](#module\_tailscale\_subnet\_router) | Smana/tailscale-subnet-router/aws | 1.2.1 |
 | <a name="module_vpc"></a> [vpc](#module\_vpc) | terraform-aws-modules/vpc/aws | ~> 5.0 |
 | <a name="module_zones"></a> [zones](#module\_zones) | terraform-aws-modules/route53/aws//modules/zones | ~> 5.0 |
 
