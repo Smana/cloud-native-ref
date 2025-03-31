@@ -50,6 +50,7 @@ chown root:openbao /opt/openbao/tls/tls.key
 cat << EOF > /etc/openbao/openbao.hcl
 cluster_addr  = "https://$PRIVATE_IP:8201"
 api_addr      = "https://$PRIVATE_IP:8200"
+ui            = true
 
 listener "tcp" {
   address = "[::]:8200"
