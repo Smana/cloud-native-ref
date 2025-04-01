@@ -5,6 +5,7 @@ terramate {
     }
     experiments = [
       "scripts",
+      "outputs-sharing"
     ]
   }
 }

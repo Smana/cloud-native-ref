@@ -115,22 +115,3 @@ tailscaled --tun=userspace-networking --socks5-server=:1055 --outbound-http-prox
 
 	return svc, nil
 }
-
-func createNetwork(ctx context.Context, ctr *dagger.Container, tfarg string) (map[string]interface{}, error) {
-	workDir := "/cloud-native-ref/opentofu/network"
-
-	output, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars"})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create the network: %w", err)
-	}
-	return output, nil
-}
-
-func destroyNetwork(ctx context.Context, ctr *dagger.Container) error {
-	workDir := "/cloud-native-ref/opentofu/network"
-	_, err := tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars"})
-	if err != nil {
-		return fmt.Errorf("failed to destroy the network: %w", err)
-	}
-	return nil
-}

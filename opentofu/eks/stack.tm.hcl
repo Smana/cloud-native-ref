@@ -17,4 +17,5 @@ stack {
     "/opentofu/openbao/cluster",
     "/opentofu/openbao/management"
   ]
+
 }
