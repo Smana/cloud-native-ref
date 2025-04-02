@@ -14,10 +14,27 @@ stack {
 
 script "init_openbao" {
   description = "Openbao initial configuration"
-  job {
+  lets {
+    openbao_url = "https://bao.priv.cloud.ogenki.io:8200"
+    openbao_secret_name = "openbao/cloud-native-ref/tokens/root"
+    region = "eu-west-3"
+    profile = ""
+  }
+job {
     description = "Init the root token"
     commands = [
-      "echo test"
+      [
+        "bash",
+        tm_abspath("init-openbao.sh"),
+        "--url",
+        let.openbao_url,
+        "--secret-name",
+        let.openbao_secret_name,
+        "--region",
+        let.region,
+        "--profile",
+        let.profile
+      ]
     ]
   }
 }
