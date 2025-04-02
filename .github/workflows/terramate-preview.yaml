@@ -1,0 +1,216 @@
+name: OpenTofu Preview
+
+on:
+  pull_request:
+    paths:
+      - "opentofu/**"
+      - ".github/workflows/terramate-preview.yaml"
+
+jobs:
+  preview:
+    name: Plan OpenTofu changes in changed Terramate stacks
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      checks: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Install Terramate
+        uses: terramate-io/terramate-action@v2
+
+      - name: Install OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.9.0
+          tofu_wrapper: false
+
+      - name: Check Terramate formatting
+        run: terramate fmt --check
+
+      - name: Check OpenTofu formatting
+        run: tofu fmt -recursive -check -diff
+
+      - name: List changed stacks
+        id: list
+        run: terramate list --changed
+
+      # We should assume an IAM role for production cases
+      - name: Configure AWS credentials
+        id: auth
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-3
+
+      # Workaround: these files have to be present for the tofu plan to pass
+      - name: Write required openbao files
+        run: |
+          mkdir -p opentofu/openbao/cluster/.tls
+          echo 'keep' > opentofu/openbao/cluster/.tls/openbao.pem
+          echo 'keep' > opentofu/openbao/cluster/.tls/openbao-key.pem
+          echo 'keep' > opentofu/openbao/cluster/.tls/ca-chain.pem
+
+      # Create variables specific to Ogenki platform
+      - name: Create Network tfvars file
+        env:
+          TAILSCALE_API_KEY: ${{ secrets.TAILSCALE_API_KEY }}
+        run: |
+          cat > opentofu/network/variables.tfvars << EOF
+            env                 = "dev"
+            region              = "eu-west-3"
+            private_domain_name = "priv.cloud.ogenki.io"
+
+            tailscale = {
+              subnet_router_name         = "ogenki"
+              tailnet                    = "smainklh@gmail.com"
+              # This is a sensitive value
+              api_key                    = "${TAILSCALE_API_KEY}"
+              prometheus_enabled         = true
+              ssm_enabled                = true
+              overwrite_existing_content = true
+            }
+
+            tags = {
+              project = "cloud-native-ref"
+              owner   = "Smana"
+            }
+          EOF
+
+      - name: Create EKS tfvars file
+        run: |
+          cat > opentofu/eks/variables.tfvars << EOF
+              env          = "dev"
+              cluster_name = "mycluster-0"
+
+              flux_sync_repository_url = "https://github.com/Smana/cloud-native-ref.git"
+              flux_git_ref             = "refs/heads/${{ github.head_ref }}"
+
+              tags = {
+                GithubRepo = "cloud-native-ref"
+                GithubOrg  = "Smana"
+              }
+
+              enable_ssm = true
+
+              karpenter_limits = {
+                "default" = {
+                  cpu    = "20"
+                  memory = "64Gi"
+                }
+                "io" = {
+                  cpu    = "20"
+                  memory = "64Gi"
+                }
+              }
+
+              cluster_identity_providers = {
+                zitadel = {
+                  client_id      = "293655038025345449"
+                  issuer_url     = "https://auth.cloud.ogenki.io"
+                  username_claim = "email"
+                  groups_claim   = "groups"
+                }
+              }
+          EOF
+
+      - name: Generate Ephemeral Tailscale Auth Key
+        id: generate-key # Give the step an ID to reference its outputs if needed
+        env:
+          TAILSCALE_API_KEY: ${{ secrets.TAILSCALE_API_KEY }}
+        run: |
+          # Define the properties of the key we want to generate
+          # Ephemeral, tagged as 'ci', expires relatively quickly (API handles default expiry for ephemeral)
+          KEY_REQUEST_BODY=$(cat <<EOF
+          {
+            "capabilities": {
+              "devices": {
+                "create": {
+                  "reusable": false,
+                  "ephemeral": true,
+                  "preauthorized": false,
+                  "tags": ["tag:ci"]
+                }
+              }
+            },
+            "expirySeconds": 1800
+          }
+          EOF
+          )
+
+          echo "Requesting Tailscale Auth Key..."
+          # Call the Tailscale API using the API Key for authentication (-u :API_KEY)
+          # Use `-` as the tailnet to refer to the tailnet associated with the API key
+          API_RESPONSE=$(curl -s -X POST "https://api.tailscale.com/api/v2/tailnet/-/keys" \
+            -u ":${TAILSCALE_API_KEY}" \
+            -H "Content-Type: application/json" \
+            --data-binary "${KEY_REQUEST_BODY}")
+
+          # Check if the API call was successful and extract the key
+          AUTH_KEY=$(echo "${API_RESPONSE}" | jq -r '.key')
+
+          if [ -z "$AUTH_KEY" ] || [ "$AUTH_KEY" == "null" ]; then
+            echo "::error::Failed to generate Tailscale Auth Key. API Response:"
+            echo "${API_RESPONSE}"
+            exit 1
+          fi
+
+          echo "Successfully generated Tailscale Auth Key."
+          # Mask the key in logs and export it as an environment variable for the next steps
+          echo "::add-mask::${AUTH_KEY}"
+          echo "TS_AUTH_KEY=${AUTH_KEY}" >> $GITHUB_ENV
+
+      - name: Setup Tailscale using Generated Key
+        uses: tailscale/github-action@v3
+        with:
+          # Use the Auth Key generated in the previous step (now in env var)
+          authkey: ${{ env.TS_AUTH_KEY }}
+          args: "--accept-routes --hostname=github-${{ github.run_id }}"
+
+      # Excluding OpenBao, will do manually
+      - name: Initialize OpenTofu in changed stacks
+        if: steps.list.outputs.stdout
+        id: init
+        run: |
+          terramate run \
+           --parallel 1 \
+           --changed \
+           --no-tags openbao \
+           -- \
+           tofu init -lock-timeout=5m
+
+      - name: Validate OpenTofu configuration in changed stacks
+        if: steps.list.outputs.stdout
+        id: validate
+        run: |
+          terramate run \
+            --parallel 5 \
+            --changed \
+           --no-tags openbao \
+            -- \
+            tofu validate
+
+      - name: Plan OpenTofu changes in changed stacks
+        if: steps.list.outputs.stdout
+        id: plan
+        run: |
+          terramate run \
+            --parallel 5 \
+            --no-tags openbao \
+            --changed \
+            --sync-preview \
+            --tofu-plan-file=out.otplan \
+            --continue-on-error \
+            -- \
+            tofu plan -out out.otplan -detailed-exitcode -lock=false -var-file=variables.tfvars
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
