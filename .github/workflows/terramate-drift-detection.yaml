@@ -117,58 +117,13 @@ jobs:
               }
           EOF
 
-      - name: Generate Ephemeral Tailscale Auth Key
-        id: generate-key # Give the step an ID to reference its outputs if needed
-        env:
-          TAILSCALE_API_KEY: ${{ secrets.TAILSCALE_API_KEY }}
-        run: |
-          # Define the properties of the key we want to generate
-          # Ephemeral, tagged as 'ci', expires relatively quickly (API handles default expiry for ephemeral)
-          KEY_REQUEST_BODY=$(cat <<EOF
-          {
-            "capabilities": {
-              "devices": {
-                "create": {
-                  "reusable": false,
-                  "ephemeral": true,
-                  "preauthorized": false,
-                  "tags": ["tag:ci"]
-                }
-              }
-            },
-            "expirySeconds": 1800
-          }
-          EOF
-          )
-
-          echo "Requesting Tailscale Auth Key..."
-          # Call the Tailscale API using the API Key for authentication (-u :API_KEY)
-          # Use `-` as the tailnet to refer to the tailnet associated with the API key
-          API_RESPONSE=$(curl -s -X POST "https://api.tailscale.com/api/v2/tailnet/-/keys" \
-            -u ":${TAILSCALE_API_KEY}" \
-            -H "Content-Type: application/json" \
-            --data-binary "${KEY_REQUEST_BODY}")
-
-          # Check if the API call was successful and extract the key
-          AUTH_KEY=$(echo "${API_RESPONSE}" | jq -r '.key')
-
-          if [ -z "$AUTH_KEY" ] || [ "$AUTH_KEY" == "null" ]; then
-            echo "::error::Failed to generate Tailscale Auth Key. API Response:"
-            echo "${API_RESPONSE}"
-            exit 1
-          fi
-
-          echo "Successfully generated Tailscale Auth Key."
-          # Mask the key in logs and export it as an environment variable for the next steps
-          echo "::add-mask::${AUTH_KEY}"
-          echo "TS_AUTH_KEY=${AUTH_KEY}" >> $GITHUB_ENV
-
-      - name: Setup Tailscale using Generated Key
+      # We should use an Oauth key
+      - name: Install Tailscale
         uses: tailscale/github-action@v3
         with:
-          # Use the Auth Key generated in the previous step (now in env var)
-          authkey: ${{ env.TS_AUTH_KEY }}
-          args: "--accept-routes --hostname=github-${{ github.run_id }}"
+          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          hostname: gh-runner-${{ github.run_id }}
+          tags: tag:ci
 
       - name: Initialize OpenTofu
         id: init
