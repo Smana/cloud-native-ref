@@ -75,6 +75,12 @@ func New(
 	// +optional
 	// +default=""
 	tsHostname string,
+
+	// tmVersion is the version of the Terramate CLI to use
+	// +optional
+	// +default="0.13.0"
+	tmVersion string,
+
 ) (*CloudNativeRef, error) {
 	if tsHostname == "" {
 		tsHostname = repoName
@@ -87,8 +93,16 @@ func New(
 
 	if container == nil {
 
-		// init a wolfi container with the necessary tools
+		// init a alpine container with the necessary tools
 		container = dag.Container().From("alpine:latest").WithExec([]string{"apk", "add", "aws-cli-v2", "bash", "curl", "git", "go", "jq", "opentofu"})
+
+		// Download the kubeconform archive and extract the binary into a dagger *File
+		terramateBin := dag.Arc().
+			Unarchive(dag.HTTP(fmt.Sprintf("https://github.com/terramate-io/terramate/releases/download/v%s/terramate_%s_linux_x86_64.tar.gz", tmVersion, tmVersion)).
+				WithName(fmt.Sprintf("terramate_%s_linux_x86_64.tar.gz", tmVersion))).File("terramate_0/terramate")
+
+		// Add the terramate binary to the container
+		container = container.WithFile("/bin/terramate", terramateBin, dagger.ContainerWithFileOpts{Permissions: 0750})
 
 		// Add the environment variables to the container
 		for _, e := range env {

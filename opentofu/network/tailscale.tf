@@ -31,6 +31,10 @@ resource "tailscale_acl" "this" {
         "${module.vpc.vpc_cidr_block}" = [var.tailscale.tailnet]
       }
     }
+
+    tagOwners = {
+      "tag:ci" = [var.tailscale.tailnet]
+    }
   })
 }
 

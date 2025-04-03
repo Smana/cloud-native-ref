@@ -10,42 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 )
 
-// createOpenBao creates the OpenBao cluster
-func createOpenBao(ctx context.Context, ctr *dagger.Container, tfarg string) (map[string]interface{}, error) {
-	workDir := fmt.Sprintf("/%s/opentofu/openbao/cluster", repoName)
-
-	_, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars", "-var", "enable_ssm=true"})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create the OpenBao cluster: %w", err)
-	}
-
-	if tfarg == "apply" {
-		output, err := tfRun(ctx, ctr, workDir, "output", []string{"-var-file", "variables.tfvars"})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get the output of the OpenBao cluster: %w", err)
-		}
-		return output, nil
-	}
-
-	return nil, nil
-}
-
-// destroyOpenBao destroys the OpenBao cluster
-func destroyOpenBao(ctx context.Context, ctr *dagger.Container) error {
-	workDir := fmt.Sprintf("/%s/opentofu/openbao/management", repoName)
-	_, err := tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars"})
-	if err != nil {
-		return fmt.Errorf("failed to destroy the OpenBao configuration: %w", err)
-	}
-
-	workDir = fmt.Sprintf("/%s/opentofu/openbao/cluster", repoName)
-	_, err = tfRun(ctx, ctr, workDir, "destroy", []string{"-var-file", "variables.tfvars"})
-	if err != nil {
-		return fmt.Errorf("failed to destroy the OpenBao cluster: %w", err)
-	}
-	return nil
-}
-
 // initOpenBao initializes the bao cluster and returns the root token
 func initOpenBao(
 	baoOutput map[string]interface{},
