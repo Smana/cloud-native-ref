@@ -75,11 +75,26 @@ if [ "$is_initialized" == "false" ]; then
     # Extract the root token from the JSON output using jq
     root_token=$(echo "$init_output" | jq -r '.root_token')
 
+    # Create JSON object for the secret value
+    secret_value=$(jq -n --arg token "$root_token" '{"token": $token}')
+
     # Store the root token in AWS Secrets Manager
     if [ -z "$PROFILE" ]; then
-        aws secretsmanager create-secret --name "$SECRET_NAME" --secret-string "$root_token" --region "$REGION"
+        if aws secretsmanager describe-secret --name "$SECRET_NAME" --region "$REGION" &>/dev/null; then
+            # Secret exists, update it
+            aws secretsmanager update-secret --name "$SECRET_NAME" --secret-string "$secret_value" --region "$REGION"
+        else
+            # Secret doesn't exist, create it
+            aws secretsmanager create-secret --name "$SECRET_NAME" --secret-string "$secret_value" --region "$REGION"
+        fi
     else
-        aws secretsmanager create-secret --name "$SECRET_NAME" --secret-string "$root_token" --region "$REGION" --profile "$PROFILE"
+        if aws secretsmanager describe-secret --name "$SECRET_NAME" --region "$REGION" --profile "$PROFILE" &>/dev/null; then
+            # Secret exists, update it
+            aws secretsmanager update-secret --name "$SECRET_NAME" --secret-string "$secret_value" --region "$REGION" --profile "$PROFILE"
+        else
+            # Secret doesn't exist, create it
+            aws secretsmanager create-secret --name "$SECRET_NAME" --secret-string "$secret_value" --region "$REGION" --profile "$PROFILE"
+        fi
     fi
 else
     echo "OpenBao is already initialized"

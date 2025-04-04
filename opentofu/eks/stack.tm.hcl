@@ -19,3 +19,21 @@ stack {
     "/opentofu/openbao/management"
   ]
 }
+
+
+script "deploy" {
+  description = "Deploy network infrastructure"
+  lets {
+    provisioner = "tofu"
+  }
+  job {
+    name = "deploy"
+    description = "Tofu init and apply"
+    commands = [
+      [let.provisioner, "init"],
+      [let.provisioner, "validate"],
+      ["trivy", "config", "."],
+      [let.provisioner, "apply", "-auto-approve"],
+    ]
+  }
+}
