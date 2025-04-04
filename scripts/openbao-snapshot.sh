@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-set -x
+
 # Removed color variables
 err="ERROR"
 info="INFO"

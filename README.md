@@ -54,6 +54,19 @@ There are basically 3 things to run when deploying the whole stack:
 2. 🔒 [Deploy a OpenBao instance](./opentofu/openbao/cluster/README.md)
 3. ☸️ [Bootstrap the EKS cluster and Flux components](./opentofu/eks/README.md)
 
+Using Terramate makes things much easier:
+
+1. Deploy all the resources
+```console
+terramate script run --parallel=2 --no-tags openbao-management deploy
+```
+This command deploys all the modules except the openbao configuration as we need an additional step below.
+
+2. Initilize and configure Openbao
+```
+terramate script run --chdir opentofu/openbao/management openbao configure
+```
+
 ## 🔄 Flux Dependencies Matter
 
 [Flux](https://fluxcd.io/) is a foundational component responsible for deploying all resources as soon as the Kubernetes cluster becomes operational. Below is a diagram that highlights the key dependencies in our setup:

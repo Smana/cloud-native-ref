@@ -1,6 +1,6 @@
 stack {
-  name        = "eks"
-  description = "eks"
+  name        = "EKS cluster"
+  description = "EKS cluster"
   id          = "51322224-ac05-497c-bbaf-e2a821a9b2d8"
 
   after = [
@@ -14,26 +14,4 @@ stack {
     "infrastructure"
   ]
 
-  wants = [
-    "/opentofu/openbao/cluster",
-    "/opentofu/openbao/management"
-  ]
-}
-
-
-script "deploy" {
-  description = "Deploy network infrastructure"
-  lets {
-    provisioner = "tofu"
-  }
-  job {
-    name = "deploy"
-    description = "Tofu init and apply"
-    commands = [
-      [let.provisioner, "init"],
-      [let.provisioner, "validate"],
-      ["trivy", "config", "."],
-      [let.provisioner, "apply", "-auto-approve"],
-    ]
-  }
 }

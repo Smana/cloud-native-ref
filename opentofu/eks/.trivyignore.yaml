@@ -1,0 +1,22 @@
+# We need to work on these security issues
+misconfigurations:
+  - id: AVD-KSV-0001
+  - id: AVD-KSV-0003
+  - id: AVD-KSV-0004
+  - id: AVD-KSV-0011
+  - id: AVD-KSV-0012
+  - id: AVD-KSV-0014
+  - id: AVD-KSV-0016
+  - id: AVD-KSV-0018
+  - id: AVD-KSV-0020
+  - id: AVD-KSV-0021
+  - id: AVD-KSV-0030
+  - id: AVD-KSV-0032
+  - id: AVD-KSV-0033
+  - id: AVD-KSV-0035
+  - id: AVD-KSV-0039
+  - id: AVD-KSV-0040
+  - id: AVD-KSV-0104
+  - id: AVD-KSV-0106
+  - id: AVD-KSV-0110
+  - id: AVD-KSV-0118
