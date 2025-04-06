@@ -2,32 +2,41 @@
 
 set -e
 
-# This script is used to configure OpenBao. It supports two operations:
+# This script is used to configure OpenBao. It supports three operations:
 # - init: Initialize the OpenBao cluster and store the root token in AWS Secrets Manager
 # - pki: Configure OpenBao's private key infrastructure
+# - cert-manager: Configure cert-manager to use OpenBao for certificate management
 
 OPENBAO_URL=""
 SECRET_NAME=""
 SKIP_VERIFY=false
 REGION="eu-west-3"
 PROFILE=""
+EKS_CLUSTER_NAME=""
+APPROLE=""
 
 usage() {
     echo "Usage: $0 <command> [options]"
     echo "Commands:"
-    echo "  init    Initialize OpenBao cluster"
-    echo "  pki     Configure PKI secrets engine"
+    echo "  init          Initialize OpenBao cluster"
+    echo "  pki           Configure PKI secrets engine"
+    echo "  cert-manager  Configure cert-manager to use OpenBao"
     echo ""
-    echo "Options:"
+    echo "Common Options:"
     echo "  --url <OpenBao URL>         OpenBao server URL (required)"
     echo "  --secret-name <Secret Name> AWS Secrets Manager secret name (required)"
     echo "  --skip-verify               Skip TLS verification"
     echo "  --region <Region>          AWS region (default: eu-west-3)"
     echo "  --profile <Profile>        AWS profile"
     echo ""
+    echo "Cert-manager Options:"
+    echo "  --eks-cluster-name <Name>  EKS cluster name (required for cert-manager)"
+    echo "  --approle <Name>           AppRole name (required for cert-manager)"
+    echo ""
     echo "Example:"
     echo "  $0 init --url https://openbao:8200 --secret-name openbao/root-token"
     echo "  $0 pki --url https://openbao:8200 --secret-name openbao/root-token"
+    echo "  $0 cert-manager --url https://openbao:8200 --secret-name openbao/root-token --eks-cluster-name mycluster --approle cert-manager"
 }
 
 # Common function to parse arguments
@@ -52,6 +61,14 @@ parse_args() {
                 ;;
             --profile)
                 PROFILE="$2"
+                shift 2
+                ;;
+            --eks-cluster-name)
+                EKS_CLUSTER_NAME="$2"
+                shift 2
+                ;;
+            --approle)
+                APPROLE="$2"
                 shift 2
                 ;;
             *)
@@ -254,6 +271,60 @@ configure_pki() {
     fi
 }
 
+# Configure cert-manager
+configure_cert_manager() {
+    # Check if required parameters are provided
+    if [ -z "$EKS_CLUSTER_NAME" ]; then
+        echo "EKS cluster name is required for cert-manager configuration"
+        usage
+        exit 1
+    fi
+
+    if [ -z "$APPROLE" ]; then
+        echo "AppRole name is required for cert-manager configuration"
+        usage
+        exit 1
+    fi
+
+    # Get the Vault token from AWS Secrets Manager
+    AWS_CMD=$(get_aws_cmd)
+    VAULT_TOKEN=$($AWS_CMD secretsmanager get-secret-value --secret-id "$SECRET_NAME" --region "$REGION" --output text --query SecretString | jq -r '.token')
+    export VAULT_TOKEN="$VAULT_TOKEN"
+
+    echo "Using Vault address: $VAULT_ADDR"
+
+    # Retrieve the approle id and secret
+    APPROLE_ID=$(bao read --field=role_id auth/approle/role/$APPROLE/role-id)
+    APPROLE_SECRET=$(bao write --field=secret_id -f auth/approle/role/$APPROLE/secret-id)
+
+    # Check if the cluster exists
+    $AWS_CMD eks list-clusters --query clusters --output json --region "$REGION" | jq -e "any(.[]; . == \"$EKS_CLUSTER_NAME\")"
+    if [ $? -ne 0 ]; then
+        echo "Cluster $EKS_CLUSTER_NAME does not exist"
+        exit 1
+    fi
+
+    # Update kubeconfig
+    $AWS_CMD eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --alias "$EKS_CLUSTER_NAME" --region "$REGION" $(if [ -n "$PROFILE" ]; then echo "--profile $PROFILE"; fi)
+
+    # Check the namespace `flux-system` exists. It should have been created by the EKS module.
+    if ! kubectl get namespace flux-system >> /dev/null 2>&1; then
+        echo "Namespace flux-system does not exist"
+        exit 1
+    fi
+
+    # Create the secret that contains the approle credentials
+    # Delete it first if it exists
+    if kubectl get secret cert-manager-openbao-approle --namespace flux-system >> /dev/null 2>&1; then
+        kubectl delete secret cert-manager-openbao-approle --namespace flux-system
+    fi
+
+    kubectl create secret generic cert-manager-openbao-approle \
+        --namespace flux-system \
+        --from-literal=cert-manager-approle-id=$APPROLE_ID \
+        --from-literal=cert-manager-approle-secret=$APPROLE_SECRET
+}
+
 # Main script
 if [ $# -lt 1 ]; then
     usage
@@ -273,6 +344,11 @@ case "$COMMAND" in
         parse_args "$@"
         check_prerequisites
         configure_pki
+        ;;
+    cert-manager)
+        parse_args "$@"
+        check_prerequisites
+        configure_cert_manager
         ;;
     *)
         echo "Unknown command: $COMMAND"
