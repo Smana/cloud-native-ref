@@ -13,5 +13,6 @@ spec:
         path: approle
         roleId: ${cert-manager-approle-id}
         secretRef:
+          # This secret should have been created before
           name: cert-manager-openbao-approle
-          key: secret_id
+          key: cert-manager-approle-secret

@@ -1,5 +1,15 @@
+# Global variables that are used in all scripts
+# Use your own values for these variables
 globals {
-    provisioner = "tofu"
+  provisioner                      = "tofu"
+  region                           = "eu-west-3"
+  profile                          = ""
+  eks_cluster_name                 = "mycluster-0"
+  openbao_url                      = "https://bao.priv.cloud.ogenki.io:8200"
+  root_token_secret_name           = "openbao/cloud-native-ref/tokens/root"
+  root_ca_secret_name              = "certificates/priv.cloud.ogenki.io/root-ca"
+  cert_manager_approle_secret_name = "openbao/cloud-native-ref/approles/cert-manager"
+  cert_manager_approle             = "cert-manager"
 }
 
 script "init" {
@@ -22,7 +32,7 @@ script "preview" {
       [global.provisioner, "validate"],
       ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
       [global.provisioner, "plan", "-out=out.tfplan", "-detailed-exitcode", "-lock=false", "-var-file=variables.tfvars", {
-        sync_preview        = true
+        sync_preview   = true
         tofu_plan_file = "out.tfplan"
       }],
     ]
@@ -41,8 +51,8 @@ script "deploy" {
       ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
       [global.provisioner, "apply", "-auto-approve", "-var-file=variables.tfvars",
         {
-        sync_deployment = true
-        tofu_plan_file = "out.tfplan"
+          sync_deployment = true
+          tofu_plan_file  = "out.tfplan"
         }
       ],
     ]
@@ -57,8 +67,8 @@ script "drift" "detect" {
     commands = [
       ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
       [global.provisioner, "plan", "-out=out.tfplan", "-detailed-exitcode", "-lock=false", "-var-file=variables.tfvars", {
-        sync_drift_status   = true
-        tofu_plan_file = "out.tfplan"
+        sync_drift_status = true
+        tofu_plan_file    = "out.tfplan"
       }],
     ]
   }
@@ -72,8 +82,8 @@ script "drift" "reconcile" {
     commands = [
       ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
       [global.provisioner, "apply", "-input=false", "-auto-approve", "-lock-timeout=5m", "-var-file=variables.tfvars", "drift.tfplan", {
-        sync_deployment     = true
-        tofu_plan_file = "drift.tfplan"
+        sync_deployment = true
+        tofu_plan_file  = "drift.tfplan"
       }],
 
     ]
@@ -96,17 +106,8 @@ script "opentofu" "render" {
 
 script "openbao" "configure" {
   description = "Init OpenBao cluster and configure PKI"
-  lets {
-    provisioner = "tofu"
-    openbao_url = "https://bao.priv.cloud.ogenki.io:8200"
-    openbao_secret_name = "openbao/cloud-native-ref/tokens/root"
-    region = "eu-west-3"
-    profile = ""
-    eks_cluster_name = "mycluster-0"
-    cert_manager_approle = "cert-manager"
-  }
   job {
-    name = "openbao-configure"
+    name        = "openbao-configure"
     description = "OpenBao configuration"
     commands = [
       # Initialize OpenBao cluster
@@ -115,13 +116,13 @@ script "openbao" "configure" {
         "../../../scripts/openbao-config.sh",
         "init",
         "--url",
-        let.openbao_url,
-        "--secret-name",
-        let.openbao_secret_name,
+        global.openbao_url,
+        "--root-token-secret-name",
+        global.root_token_secret_name,
         "--region",
-        let.region,
+        global.region,
         "--profile",
-        let.profile,
+        global.profile,
         "--skip-verify",
       ],
       # PKI configuration
@@ -130,11 +131,13 @@ script "openbao" "configure" {
         "../../../scripts/openbao-config.sh",
         "pki",
         "--url",
-        let.openbao_url,
-        "--secret-name",
-        let.openbao_secret_name,
+        global.openbao_url,
+        "--root-token-secret-name",
+        global.root_token_secret_name,
+        "--root-ca-secret-name",
+        global.root_ca_secret_name,
         "--region",
-        let.region,
+        global.region,
         "--skip-verify",
       ],
       # Module management: Configure OpenBao (SecretsEngine, Approles, PKI, etc.)
@@ -144,8 +147,8 @@ script "openbao" "configure" {
       ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
       [global.provisioner, "apply", "-auto-approve", "-var-file=variables.tfvars",
         {
-        sync_deployment = true
-        tofu_plan_file = "out.tfplan"
+          sync_deployment = true
+          tofu_plan_file  = "out.tfplan"
         }
       ],
       # Configure cert-manager
@@ -154,18 +157,20 @@ script "openbao" "configure" {
         "../../../scripts/openbao-config.sh",
         "cert-manager",
         "--url",
-        let.openbao_url,
-        "--secret-name",
-        let.openbao_secret_name,
+        global.openbao_url,
+        "--root-token-secret-name",
+        global.root_token_secret_name,
         "--eks-cluster-name",
-        let.eks_cluster_name,
+        global.eks_cluster_name,
+        "--cert-manager-approle-secret-name",
+        global.cert_manager_approle_secret_name,
         "--approle",
-        let.cert_manager_approle,
+        global.cert_manager_approle,
         "--skip-verify",
         "--region",
-        let.region,
+        global.region,
         "--profile",
-        let.profile,
+        global.profile,
       ],
 
     ]

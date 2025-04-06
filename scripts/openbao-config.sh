@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -e
+set -x
 
 # This script is used to configure OpenBao. It supports three operations:
 # - init: Initialize the OpenBao cluster and store the root token in AWS Secrets Manager
@@ -8,7 +9,9 @@ set -e
 # - cert-manager: Configure cert-manager to use OpenBao for certificate management
 
 OPENBAO_URL=""
-SECRET_NAME=""
+ROOT_TOKEN_SECRET_NAME=""
+ROOT_CA_SECRET_NAME=""
+CERTMANAGER_APPROLE_SECRET_NAME=""
 SKIP_VERIFY=false
 REGION="eu-west-3"
 PROFILE=""
@@ -23,20 +26,22 @@ usage() {
     echo "  cert-manager  Configure cert-manager to use OpenBao"
     echo ""
     echo "Common Options:"
-    echo "  --url <OpenBao URL>         OpenBao server URL (required)"
-    echo "  --secret-name <Secret Name> AWS Secrets Manager secret name (required)"
-    echo "  --skip-verify               Skip TLS verification"
-    echo "  --region <Region>          AWS region (default: eu-west-3)"
-    echo "  --profile <Profile>        AWS profile"
+    echo "  --url <OpenBao URL>                     OpenBao server URL (required)"
+    echo "  --root-token-secret-name <Secret Name>  AWS Secrets Manager secret name for the root token (required)"
+    echo "  --root-ca-secret-name <Secret Name>     AWS Secrets Manager for the root CA certificate (required for pki)"
+    echo "  --skip-verify                           Skip TLS verification"
+    echo "  --region <Region>                       AWS region (default: eu-west-3)"
+    echo "  --profile <Profile>                     AWS profile"
     echo ""
     echo "Cert-manager Options:"
-    echo "  --eks-cluster-name <Name>  EKS cluster name (required for cert-manager)"
-    echo "  --approle <Name>           AppRole name (required for cert-manager)"
+    echo "  --eks-cluster-name <Name>                           EKS cluster name (required for cert-manager)"
+    echo "  --cert-manager-approle-secret-name <Secret Name>    AWS Secrets Manager secret name for the cert-manager approle credentials (required for cert-manager)"
+    echo "  --approle <Name>                                    AppRole name (required for cert-manager)"
     echo ""
     echo "Example:"
-    echo "  $0 init --url https://openbao:8200 --secret-name openbao/root-token"
-    echo "  $0 pki --url https://openbao:8200 --secret-name openbao/root-token"
-    echo "  $0 cert-manager --url https://openbao:8200 --secret-name openbao/root-token --eks-cluster-name mycluster --approle cert-manager"
+    echo "  $0 init --url https://openbao:8200 --root-token-secret-name openbao/root-token"
+    echo "  $0 pki --url https://openbao:8200 --root-token-secret-name openbao/root-token --root-ca-secret-name certificates/domain.tld/root-ca"
+    echo "  $0 cert-manager --url https://openbao:8200 --root-token-secret-name openbao/root-token --cert-manager-secret-name cert-manager/openbao-approle --eks-cluster-name mycluster --approle cert-manager"
 }
 
 # Common function to parse arguments
@@ -47,8 +52,16 @@ parse_args() {
                 OPENBAO_URL="$2"
                 shift 2
                 ;;
-            --secret-name)
-                SECRET_NAME="$2"
+            --root-token-secret-name)
+                ROOT_TOKEN_SECRET_NAME="$2"
+                shift 2
+                ;;
+            --root-ca-secret-name)
+                ROOT_CA_SECRET_NAME="$2"
+                shift 2
+                ;;
+            --cert-manager-approle-secret-name)
+                CERTMANAGER_APPROLE_SECRET_NAME="$2"
                 shift 2
                 ;;
             --skip-verify)
@@ -85,8 +98,20 @@ parse_args() {
         exit 1
     fi
 
-    if [ -z "$SECRET_NAME" ]; then
-        echo "Secret Name is required"
+    if [ -z "$ROOT_TOKEN_SECRET_NAME" ]; then
+        echo "Root token secret name is required"
+        usage
+        exit 1
+    fi
+
+    if [ "$COMMAND" = "pki" ] && [ -z "$ROOT_CA_SECRET_NAME" ]; then
+        echo "Root CA secret name is required for PKI configuration"
+        usage
+        exit 1
+    fi
+
+    if [ "$COMMAND" = "cert-manager" ] && [ -z "$CERTMANAGER_APPROLE_SECRET_NAME" ]; then
+        echo "Cert-manager approle secret name is required"
         usage
         exit 1
     fi
@@ -101,24 +126,37 @@ parse_args() {
 check_prerequisites() {
     # Check if bao is installed
     if ! command -v bao &> /dev/null; then
-        echo "bao is not installed"
+        echo "Error: bao is not installed"
         exit 1
     fi
 
     # Check if jq is installed
     if ! command -v jq &> /dev/null; then
-        echo "jq is not installed"
+        echo "Error: jq is not installed"
         exit 1
+    fi
+
+    # Check if kubectl is installed (needed for cert-manager)
+    if ! command -v kubectl &> /dev/null; then
+        echo "Warning: kubectl is not installed. This is required for cert-manager configuration."
     fi
 }
 
 # Common function to get AWS command
 get_aws_cmd() {
     if [ -n "$PROFILE" ]; then
-        echo "aws --profile $PROFILE"
+        echo "aws --profile $PROFILE --region $REGION"
     else
-        echo "aws"
+        echo "aws --region $REGION"
     fi
+}
+
+# Function to log messages with timestamps
+log_message() {
+    local level=$1
+    shift
+    local message="$*"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $message"
 }
 
 # Function to wait for OpenBao to be ready
@@ -132,14 +170,17 @@ wait_for_openbao() {
     PORT=$(echo "$OPENBAO_URL" | sed -E 's|https?://[^:]+:([0-9]+).*|\1|')
     while [[ $attempt -le $max_retries ]]
     do
-        echo "Attempt $attempt: Checking Host: \"$HOST\" Port: \"$PORT\"..."
+        log_message "INFO" "Attempt $attempt: Checking Host: \"$HOST\" Port: \"$PORT\"..."
         if nc -z -w 5 "$HOST" "$PORT"; then
-            echo "OpenBao is ready"
+            log_message "INFO" "OpenBao is ready"
             return 0
         fi
         sleep $interval
         attempt=$((attempt + 1))
     done
+
+    log_message "ERROR" "OpenBao is not ready after $max_retries attempts"
+    return 1
 }
 
 # Function to check OpenBao status
@@ -151,12 +192,12 @@ check_openbao_status() {
 
     while [[ $attempt -le $max_retries ]]
     do
-        echo "Attempt $attempt: Checking $OPENBAO_URL..."
+        log_message "INFO" "Attempt $attempt: Checking $OPENBAO_URL..."
         status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health")
 
         case $status_code in
             200)
-                echo "OpenBao is initialized, unsealed, and active"
+                log_message "INFO" "OpenBao is initialized, unsealed, and active"
                 return 0
                 ;;
         esac
@@ -165,61 +206,106 @@ check_openbao_status() {
         attempt=$((attempt + 1))
     done
 
-    echo "OpenBao is not initialized, unsealed, or active"
+    log_message "ERROR" "OpenBao is not initialized, unsealed, or active"
     return 1
+}
+
+create_or_update_secret() {
+    local aws_cmd=$1
+    local secret_name=$2
+    local secret_value=$3
+
+    # First check if the secret exists
+    if $aws_cmd secretsmanager describe-secret --secret-id "$secret_name" >/dev/null 2>&1; then
+        log_message "INFO" "Secret exists, updating it..."
+        if ! $aws_cmd secretsmanager update-secret --secret-id "$secret_name" --secret-string "$secret_value" >/dev/null 2>&1; then
+            log_message "ERROR" "Failed to update secret $secret_name"
+            return 1
+        fi
+    else
+        log_message "INFO" "Secret does not exist, creating it..."
+        if ! $aws_cmd secretsmanager create-secret --name "$secret_name" --secret-string "$secret_value" >/dev/null 2>&1; then
+            log_message "ERROR" "Failed to create secret $secret_name"
+            return 1
+        fi
+    fi
+
+    log_message "INFO" "Successfully updated AWS Secrets Manager entry for $secret_name"
+    return 0
 }
 
 # Initialize OpenBao
 init_openbao() {
-    wait_for_openbao
+    if ! wait_for_openbao; then
+        log_message "ERROR" "Failed to wait for OpenBao to be ready"
+        exit 1
+    fi
 
     # Check if OpenBao is already initialized
     status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health")
     if [ "$status_code" = "200" ]; then
-        echo "OpenBao is already initialized, unsealed, and active"
+        log_message "INFO" "OpenBao is already initialized, unsealed, and active"
         exit 0
     fi
 
     if [ "$status_code" = "501" ]; then
-        echo "OpenBao is not initialized - proceeding with initialization"
+        log_message "INFO" "OpenBao is not initialized - proceeding with initialization"
         init_output=$(bao operator init -recovery-shares=1 -recovery-threshold=1 -format=json)
+        if [ $? -ne 0 ]; then
+            log_message "ERROR" "Failed to initialize OpenBao"
+            exit 1
+        fi
+
         root_token=$(echo "$init_output" | jq -r '.root_token')
+        if [ -z "$root_token" ]; then
+            log_message "ERROR" "Failed to extract root token from initialization output"
+            exit 1
+        fi
+
         secret_value=$(jq -n --arg token "$root_token" '{"token": $token}')
 
         # Store the root token in AWS Secrets Manager
-        echo "Storing root token in AWS Secrets Manager..."
+        log_message "INFO" "Storing root token in AWS Secrets Manager..."
         AWS_CMD=$(get_aws_cmd)
 
-        # First check if the secret exists
-        if $AWS_CMD secretsmanager describe-secret --secret-id "$SECRET_NAME" --region "$REGION" >/dev/null 2>&1; then
-            echo "Secret exists, updating it..."
-            $AWS_CMD secretsmanager update-secret --secret-id "$SECRET_NAME" --secret-string "$secret_value" --region "$REGION" >/dev/null 2>&1
-        else
-            echo "Secret does not exist, creating it..."
-            $AWS_CMD secretsmanager create-secret --name "$SECRET_NAME" --secret-string "$secret_value" --region "$REGION" >/dev/null 2>&1
+        if ! create_or_update_secret "$AWS_CMD" "$ROOT_TOKEN_SECRET_NAME" "$secret_value"; then
+            log_message "ERROR" "Failed to store root token in AWS Secrets Manager"
+            exit 1
         fi
     else
-        echo "Unexpected status code: $status_code"
+        log_message "ERROR" "Unexpected status code: $status_code"
         exit 1
     fi
 
     # Final health check
-    echo "Performing final health check..."
-    check_openbao_status
+    log_message "INFO" "Performing final health check..."
+    if ! check_openbao_status; then
+        log_message "ERROR" "Final health check failed"
+        exit 1
+    fi
 }
 
 # Configure PKI
 configure_pki() {
     # Check if OpenBao is reachable and initialized
     if ! curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health" | grep -q "200"; then
-        echo "OpenBao is not reachable or not properly initialized"
+        log_message "ERROR" "OpenBao is not reachable or not properly initialized"
         exit 1
     fi
 
     # Retrieve the root token from AWS Secrets Manager
     AWS_CMD=$(get_aws_cmd)
-    root_token=$($AWS_CMD secretsmanager get-secret-value --secret-id "$SECRET_NAME" --region "$REGION" --output text --query 'SecretString' | jq -r '.token')
-    ca_bundle=$($AWS_CMD secretsmanager get-secret-value --secret-id certificates/priv.cloud.ogenki.io/root-ca --query "SecretString" --region "$REGION" --output text | jq -r .bundle)
+    root_token=$($AWS_CMD secretsmanager get-secret-value --secret-id "$ROOT_TOKEN_SECRET_NAME" --output text --query 'SecretString' | jq -r '.token')
+    if [ -z "$root_token" ]; then
+        log_message "ERROR" "Failed to retrieve root token from AWS Secrets Manager"
+        exit 1
+    fi
+
+    ca_bundle=$($AWS_CMD secretsmanager get-secret-value --secret-id "$ROOT_CA_SECRET_NAME" --query "SecretString" --output text | jq -r .bundle)
+    if [ -z "$ca_bundle" ]; then
+        log_message "ERROR" "Failed to retrieve CA bundle from AWS Secrets Manager"
+        exit 1
+    fi
 
     export VAULT_TOKEN="$root_token"
 
@@ -228,7 +314,7 @@ configure_pki() {
     is_initialized=$(echo "$status_output" | jq -r '.initialized')
 
     if [ "$is_initialized" == "false" ]; then
-        echo "OpenBao is not initialized"
+        log_message "ERROR" "OpenBao is not initialized"
         exit 1
     fi
 
@@ -275,54 +361,77 @@ configure_pki() {
 configure_cert_manager() {
     # Check if required parameters are provided
     if [ -z "$EKS_CLUSTER_NAME" ]; then
-        echo "EKS cluster name is required for cert-manager configuration"
+        log_message "ERROR" "EKS cluster name is required for cert-manager configuration"
         usage
         exit 1
     fi
 
     if [ -z "$APPROLE" ]; then
-        echo "AppRole name is required for cert-manager configuration"
+        log_message "ERROR" "AppRole name is required for cert-manager configuration"
         usage
         exit 1
     fi
 
     # Get the Vault token from AWS Secrets Manager
     AWS_CMD=$(get_aws_cmd)
-    VAULT_TOKEN=$($AWS_CMD secretsmanager get-secret-value --secret-id "$SECRET_NAME" --region "$REGION" --output text --query SecretString | jq -r '.token')
-    export VAULT_TOKEN="$VAULT_TOKEN"
+    root_token=$($AWS_CMD secretsmanager get-secret-value --secret-id "$ROOT_TOKEN_SECRET_NAME" --output text --query 'SecretString' | jq -r '.token')
+    if [ -z "$root_token" ]; then
+        log_message "ERROR" "Failed to retrieve root token from AWS Secrets Manager"
+        exit 1
+    fi
 
-    echo "Using Vault address: $VAULT_ADDR"
+    export VAULT_TOKEN="$root_token"
+
+    log_message "INFO" "Using Vault address: $VAULT_ADDR"
 
     # Retrieve the approle id and secret
     APPROLE_ID=$(bao read --field=role_id auth/approle/role/$APPROLE/role-id)
+    if [ -z "$APPROLE_ID" ]; then
+        log_message "ERROR" "Failed to retrieve approle ID"
+        exit 1
+    fi
+
     APPROLE_SECRET=$(bao write --field=secret_id -f auth/approle/role/$APPROLE/secret-id)
+    if [ -z "$APPROLE_SECRET" ]; then
+        log_message "ERROR" "Failed to retrieve approle secret"
+        exit 1
+    fi
 
     # Check if the cluster exists
-    $AWS_CMD eks list-clusters --query clusters --output json --region "$REGION" | jq -e "any(.[]; . == \"$EKS_CLUSTER_NAME\")"
-    if [ $? -ne 0 ]; then
-        echo "Cluster $EKS_CLUSTER_NAME does not exist"
+    if ! $AWS_CMD eks list-clusters --query clusters --output json --region "$REGION" | jq -e "any(.[]; . == \"$EKS_CLUSTER_NAME\")" >/dev/null; then
+        log_message "ERROR" "Cluster $EKS_CLUSTER_NAME does not exist"
         exit 1
     fi
 
     # Update kubeconfig
-    $AWS_CMD eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --alias "$EKS_CLUSTER_NAME" --region "$REGION" $(if [ -n "$PROFILE" ]; then echo "--profile $PROFILE"; fi)
-
-    # Check the namespace `flux-system` exists. It should have been created by the EKS module.
-    if ! kubectl get namespace flux-system >> /dev/null 2>&1; then
-        echo "Namespace flux-system does not exist"
+    log_message "INFO" "Updating kubeconfig for cluster $EKS_CLUSTER_NAME"
+    if ! $AWS_CMD eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --alias "$EKS_CLUSTER_NAME" --region "$REGION" $(if [ -n "$PROFILE" ]; then echo "--profile $PROFILE"; fi); then
+        log_message "ERROR" "Failed to update kubeconfig"
         exit 1
     fi
 
-    # Create the secret that contains the approle credentials
-    # Delete it first if it exists
-    if kubectl get secret cert-manager-openbao-approle --namespace flux-system >> /dev/null 2>&1; then
-        kubectl delete secret cert-manager-openbao-approle --namespace flux-system
+    # Create a JSON object with the approle credentials
+    secret_value=$(jq -n \
+        --arg approle_id "$APPROLE_ID" \
+        --arg approle_secret "$APPROLE_SECRET" \
+        '{"cert-manager-approle-id": $approle_id, "cert-manager-approle-secret": $approle_secret}')
+
+    if ! create_or_update_secret "$AWS_CMD" "$CERTMANAGER_APPROLE_SECRET_NAME" "$secret_value"; then
+        log_message "ERROR" "Failed to store approle credentials in AWS Secrets Manager"
+        exit 1
+    fi
+
+    log_message "INFO" "Creating a secret in the cluster"
+
+    if kubectl get secret -n flux-system cert-manager-openbao-approle > /dev/null 2>&1; then
+        log_message "INFO" "Secret already exists, updating it"
+        kubectl delete secret -n flux-system cert-manager-openbao-approle
     fi
 
     kubectl create secret generic cert-manager-openbao-approle \
-        --namespace flux-system \
-        --from-literal=cert-manager-approle-id=$APPROLE_ID \
-        --from-literal=cert-manager-approle-secret=$APPROLE_SECRET
+    --from-literal=cert-manager-approle-id="$APPROLE_ID" \
+    --from-literal=cert-manager-approle-secret="$APPROLE_SECRET" \
+    --namespace flux-system
 }
 
 # Main script
