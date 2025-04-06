@@ -16,8 +16,6 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: eks-mycluster-0-vars
-      - kind: Secret
-        name: cert-manager-openbao-approle
   dependsOn:
     - name: crossplane-providers
   healthChecks:
@@ -68,6 +66,8 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: eks-mycluster-0-vars
+      - kind: Secret
+        name: cert-manager-openbao-approle
   dependsOn:
     - name: eks-pod-identities
   healthChecks:

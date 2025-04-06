@@ -30,6 +30,7 @@ This repository provides a comprehensive guide and set of tools for building, ma
 | ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)    | Infrastructure         | Container orchestration, core platform on which applications are deployed                                |
 | ![Crossplane](https://img.shields.io/badge/Crossplane-4D4D4D?style=for-the-badge&logo=crossplane&logoColor=white)    | Infrastructure         | Framework to compose application and infrastructure components, providing proper abstraction levels      |
 | ![OpenTofu](https://img.shields.io/badge/OpenTofu-24B8EB?style=for-the-badge&logo=open-tofu&logoColor=white)         | Infrastructure         | Open-source alternative to Terraform for provisioning and managing infrastructure                        |
+| ![Terramate](https://img.shields.io/badge/Terramate-4B7782?style=for-the-badge&logo=key&logoColor=white)             | Infrastructure         | Tool for managing and organizing OpenTofu code and configurations across multiple stacks      |
 | ![Harbor](https://img.shields.io/badge/Harbor-60B932?style=for-the-badge&logo=harbor&logoColor=white)                | Application            | Secure container image registry with scanning and signing capabilities                                   |
 | ![Headlamp](https://img.shields.io/badge/Headlamp-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)        | Application            | Web-based GUI for Kubernetes cluster management                                                          |
 | ![CloudNativePG](https://img.shields.io/badge/CloudNativePG-316192?style=for-the-badge&logo=postgresql&logoColor=white) | Data                   | Kubernetes operator managing PostgreSQL clusters with high availability and failover support             |
@@ -48,24 +49,86 @@ This repository provides a comprehensive guide and set of tools for building, ma
 | ![Managed Services](https://img.shields.io/badge/Managed_Services-FF9900?style=for-the-badge&logo=amazon&logoColor=white)            | Managed Services       | Cloud Services such as DNS (Route53), IAM, Load Balancing, KMS (Encrypt sensitive data) and Storage (S3)                                            |
 ## 🚀 Getting started
 
-There are basically 3 things to run when deploying the whole stack:
+### Prerequisites
 
-1. 📡 [Install the network requirements](./opentofu/network/README.md)
-2. 🔒 [Deploy a OpenBao instance](./opentofu/openbao/cluster/README.md)
-3. ☸️ [Bootstrap the EKS cluster and Flux components](./opentofu/eks/README.md)
+Before you begin, ensure you have the following:
 
-Using Terramate makes things much easier:
+1. **AWS Account** with appropriate permissions
+2. **Required Tools**:
+   - [OpenTofu](https://opentofu.org/) (v1.4 or later)
+   - [Terramate](https://terramate.io/) (latest version)
+   - [kubectl](https://kubernetes.io/docs/tasks/tools/)
+   - [bao](https://openbao.org/) CLI (for OpenBao operations)
+   - [jq](https://jqlang.github.io/jq/) (for JSON processing)
+3. **GitHub Account** (for Flux GitOps)
+4. **Tailscale Account** (for secure VPN access)
 
-1. Deploy all the resources
-```console
-terramate script run --parallel=2 --no-tags openbao-management deploy
-```
-This command deploys all the modules except the openbao configuration as we need an additional step below.
+### Deployment Steps
 
-2. Initilize and configure Openbao
-```
-terramate script run --chdir opentofu/openbao/management openbao configure
-```
+The platform is deployed in three main stages:
+
+1. 📡 **Network Setup**
+   - Deploy VPC, subnets, and VPN access
+   - [Follow network setup guide](./opentofu/network/README.md)
+
+2. 🔒 **OpenBao Deployment**
+   - Deploy and configure OpenBao for secrets management
+   - [Follow OpenBao setup guide](./opentofu/openbao/cluster/README.md)
+
+3. ☸️ **Kubernetes Cluster**
+   - Bootstrap EKS cluster with Flux for GitOps
+   - [Follow EKS setup guide](./opentofu/eks/README.md)
+
+### Quick Deployment with Terramate
+
+For a streamlined deployment experience, use [**Terramate**](https://terramate.io/) to orchestrate the entire process:
+
+1. **Configure Global Variables**
+   - Review and update the variables in `workflows.tm.hcl`:
+     ```hcl
+     globals {
+       provisioner                      = "tofu"
+       region                           = "eu-west-3"
+       profile                          = ""
+       eks_cluster_name                 = "mycluster-0"
+       openbao_url                      = "https://bao.priv.cloud.ogenki.io:8200"
+       root_token_secret_name           = "openbao/cloud-native-ref/tokens/root"
+       root_ca_secret_name              = "certificates/priv.cloud.ogenki.io/root-ca"
+       cert_manager_approle_secret_name = "openbao/cloud-native-ref/approles/cert-manager"
+       cert_manager_approle             = "cert-manager"
+     }
+     ```
+   - Adjust these values according to your environment
+
+2. **Deploy Core Infrastructure**
+   ```bash
+   terramate script run --parallel=2 --no-tags openbao-management deploy
+   ```
+   This command deploys all modules except OpenBao configuration, which requires a separate step.
+
+3. **Configure OpenBao**
+   ```bash
+   terramate script run --chdir opentofu/openbao/management openbao configure
+   ```
+
+### Post-Deployment
+
+After deployment, verify your setup:
+
+1. **Check Network Access**
+   ```bash
+   tailscale status
+   ```
+
+2. **Verify OpenBao Status**
+   ```bash
+   bao status
+   ```
+
+3. **Confirm Kubernetes Access**
+   ```bash
+   kubectl get nodes
+   ```
 
 ## 🔄 Flux Dependencies Matter
 
@@ -161,7 +224,7 @@ The provided code outlines the setup and configuration of a **highly available, 
 
 To effectively **identify issues and optimize performance**, a comprehensive monitoring stack is essential. Several tools are available to provide detailed insights into system health, covering key areas such as metrics, logs, tracing, and profiling. Here's an overview of our current setup:
 
-* **Metrics**: We’ve implemented a combination of VictoriaMetrics and Grafana operators to collect, visualize, and analyze metrics. This stack enables real-time monitoring, custom dashboards, and the ability to configure alerts and notifications for proactive issue management.
+* **Metrics**: We've implemented a combination of VictoriaMetrics and Grafana operators to collect, visualize, and analyze metrics. This stack enables real-time monitoring, custom dashboards, and the ability to configure alerts and notifications for proactive issue management.
 
 * **Logs**: (Coming soon)
 

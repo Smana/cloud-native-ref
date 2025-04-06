@@ -1,7 +1,6 @@
 #!/bin/bash
 
 set -e
-set -x
 
 # This script is used to configure OpenBao. It supports three operations:
 # - init: Initialize the OpenBao cluster and store the root token in AWS Secrets Manager
@@ -429,8 +428,8 @@ configure_cert_manager() {
     fi
 
     kubectl create secret generic cert-manager-openbao-approle \
-    --from-literal=cert-manager-approle-id="$APPROLE_ID" \
-    --from-literal=cert-manager-approle-secret="$APPROLE_SECRET" \
+    --from-literal=cert_manager_approle_id="$APPROLE_ID" \
+    --from-literal=cert_manager_approle_secret="$APPROLE_SECRET" \
     --namespace flux-system
 }
 

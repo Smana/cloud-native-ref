@@ -1,31 +1,8 @@
-package main
-
-import (
-	"context"
-	"dagger/cloud-native-ref/internal/dagger"
-	"fmt"
-)
-
-// createEKS creates the EKS cluster
-func createEKS(ctx context.Context, ctr *dagger.Container, tfarg string, branch string) (map[string]interface{}, error) {
-	workDir := "/cloud-native-ref/opentofu/eks"
-
-	output, err := tfRun(ctx, ctr, workDir, tfarg, []string{"-var-file", "variables.tfvars", "-var", fmt.Sprintf("flux_git_ref=refs/heads/%s", branch)})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create the EKS cluster: %w", err)
-	}
-	return output, nil
-}
-
-// destroyEKS destroys the EKS cluster
-func destroyEKS(ctx context.Context, container *dagger.Container, branch string) error {
-	workDir := "/cloud-native-ref/opentofu/eks"
-
-	container = container.WithExec([]string{"apk", "add", "flux", "kubectl"})
-
-	eksDestroyScript := `#!/bin/bash
+#!/bin/bash
 
 set -e
+
+# This script is used to prepare the EKS cluster for destruction.
 
 while (($#)); do
   case "$1" in
@@ -89,20 +66,3 @@ fi
 if tofu state list | grep -q "kubernetes_namespace.flux_system"; then
 	tofu state rm kubernetes_namespace.flux_system
 fi
-`
-
-	_, err := container.
-		WithWorkdir(workDir).
-		WithNewFile("/bin/eks-destroy", eksDestroyScript, dagger.ContainerWithNewFileOpts{Permissions: 0750}).
-		WithExec([]string{"/bin/eks-destroy", "-c", eksClusterName, "-r", region}).
-		Stdout(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to delete Kubernenes resources before destroying the EKS cluster: %w", err)
-	}
-
-	_, err = tfRun(ctx, container, workDir, "destroy", []string{"-var-file", "variables.tfvars", "-var", fmt.Sprintf("flux_git_ref=refs/heads/%s", branch)})
-	if err != nil {
-		return fmt.Errorf("failed to destroy the EKS cluster: %w", err)
-	}
-	return nil
-}
