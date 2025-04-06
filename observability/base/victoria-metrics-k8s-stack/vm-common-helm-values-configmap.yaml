@@ -164,7 +164,7 @@ data:
           subPath: "rbac.yaml"
       extraInitContainers:
         - name: "load-vm-ds-plugin"
-          image: "curlimages/curl:8.12.1"
+          image: "curlimages/curl:8.13.0"
           command: ["/bin/sh"]
           workingDir: "/var/lib/grafana"
           securityContext:
