@@ -1,3 +1,14 @@
+
+variable "region" {
+  description = "The region to deploy the resources"
+  type        = string
+}
+
+variable "openbao_root_token_secret_id" {
+  description = "The secret ID for the OpenBao root token"
+  type        = string
+}
+
 variable "domain_name" {
   description = "The domain name for which the certificate should be issued"
   type        = string

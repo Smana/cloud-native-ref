@@ -1,0 +1,4 @@
+misconfigurations:
+  - id: AVD-AWS-0099
+  - id: AVD-AWS-0102
+  - id: AVD-AWS-0105

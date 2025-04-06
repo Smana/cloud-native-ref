@@ -105,6 +105,7 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
 
 | Name | Version |
 |------|---------|
+| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.0 |
 | <a name="provider_vault"></a> [vault](#provider\_vault) | ~> 4.0 |
 
 ## Modules
@@ -129,6 +130,7 @@ No modules.
 | [vault_policy.admin](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
 | [vault_policy.cert_manager](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
 | [vault_policy.snapshot](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
+| [aws_secretsmanager_secret_version.openbao_root_token_secret](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret_version) | data source |
 
 ## Inputs
 
@@ -137,6 +139,7 @@ No modules.
 | <a name="input_allowed_cidr_blocks"></a> [allowed\_cidr\_blocks](#input\_allowed\_cidr\_blocks) | List of CIDR blocks allowed to reach Vault's API | `list(string)` | <pre>[<br>  "10.0.0.0/16"<br>]</pre> | no |
 | <a name="input_domain_name"></a> [domain\_name](#input\_domain\_name) | The domain name for which the certificate should be issued | `string` | n/a | yes |
 | <a name="input_openbao_domain_name"></a> [openbao\_domain\_name](#input\_openbao\_domain\_name) | Vault domain name (default: bao.<domain\_name>) | `string` | `""` | no |
+| <a name="input_openbao_root_token_secret_id"></a> [openbao\_root\_token\_secret\_id](#input\_openbao\_root\_token\_secret\_id) | The secret ID for the OpenBao root token | `string` | n/a | yes |
 | <a name="input_pki_common_name"></a> [pki\_common\_name](#input\_pki\_common\_name) | Common name to identify the Vault issuer | `string` | `"Private PKI - Vault Issuer"` | no |
 | <a name="input_pki_country"></a> [pki\_country](#input\_pki\_country) | The country name used for generating certificates | `string` | n/a | yes |
 | <a name="input_pki_domains"></a> [pki\_domains](#input\_pki\_domains) | List of domain names that can be used within the certificates | `list(string)` | <pre>[<br>  "cluster.local"<br>]</pre> | no |
@@ -145,6 +148,7 @@ No modules.
 | <a name="input_pki_max_lease_ttl"></a> [pki\_max\_lease\_ttl](#input\_pki\_max\_lease\_ttl) | Maximum TTL (in seconds) that can be requested for certificates (default 3 years) | `number` | `94670856` | no |
 | <a name="input_pki_mount_path"></a> [pki\_mount\_path](#input\_pki\_mount\_path) | Vault Issuer PKI mount path | `string` | `"pki_private_issuer"` | no |
 | <a name="input_pki_organization"></a> [pki\_organization](#input\_pki\_organization) | The organization name used for generating certificates | `string` | n/a | yes |
+| <a name="input_region"></a> [region](#input\_region) | The region to deploy the resources | `string` | n/a | yes |
 
 ## Outputs
 
