@@ -125,21 +125,6 @@ script "openbao" "configure" {
         global.profile,
         "--skip-verify",
       ],
-      # PKI configuration
-      [
-        "bash",
-        "../../../scripts/openbao-config.sh",
-        "pki",
-        "--url",
-        global.openbao_url,
-        "--root-token-secret-name",
-        global.root_token_secret_name,
-        "--root-ca-secret-name",
-        global.root_ca_secret_name,
-        "--region",
-        global.region,
-        "--skip-verify",
-      ],
       # Module management: Configure OpenBao (SecretsEngine, Approles, PKI, etc.)
       [global.provisioner, "init"],
       [global.provisioner, "validate"],
@@ -151,28 +136,42 @@ script "openbao" "configure" {
           tofu_plan_file  = "out.tfplan"
         }
       ],
-      # Configure cert-manager
+    ]
+  }
+}
+
+script "eks" "destroy" {
+  description = "Destroy the EKS cluster"
+  job {
+    name        = "eks-destroy"
+    description = "Destroy the EKS cluster"
+    commands = [
       [
         "bash",
-        "../../../scripts/openbao-config.sh",
-        "cert-manager",
-        "--url",
-        global.openbao_url,
-        "--root-token-secret-name",
-        global.root_token_secret_name,
-        "--eks-cluster-name",
+        "../../scripts/eks-prepare-destroy.sh",
+        "--cluster-name",
         global.eks_cluster_name,
-        "--cert-manager-approle-secret-name",
-        global.cert_manager_approle_secret_name,
-        "--approle",
-        global.cert_manager_approle,
-        "--skip-verify",
         "--region",
         global.region,
         "--profile",
         global.profile,
       ],
+      [
+        global.provisioner, "destroy"
+      ]
+    ]
+  }
+}
 
+script "destroy" {
+  description = "Opentofu destroy"
+  job {
+    name        = "destroy"
+    description = "Opentofu destroy"
+    commands = [
+      [
+        global.provisioner, "destroy", "-var-file=variables.tfvars"
+      ]
     ]
   }
 }

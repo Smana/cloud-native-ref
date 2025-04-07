@@ -1,1 +1,2 @@
-misconfigurations: []
+misconfigurations:
+  - id: AVD-AWS-0098

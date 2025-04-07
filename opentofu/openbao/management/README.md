@@ -116,11 +116,14 @@ No modules.
 
 | Name | Type |
 |------|------|
+| [aws_secretsmanager_secret.approle_credentials](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/secretsmanager_secret) | resource |
+| [aws_secretsmanager_secret_version.approle_credentials](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/secretsmanager_secret_version) | resource |
 | [vault_approle_auth_backend_role.cert_manager](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/approle_auth_backend_role) | resource |
 | [vault_approle_auth_backend_role.snapshot](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/approle_auth_backend_role) | resource |
 | [vault_auth_backend.approle](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/auth_backend) | resource |
 | [vault_mount.secret](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/mount) | resource |
 | [vault_mount.this](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/mount) | resource |
+| [vault_pki_secret_backend_config_ca.pki](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/pki_secret_backend_config_ca) | resource |
 | [vault_pki_secret_backend_intermediate_cert_request.this](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/pki_secret_backend_intermediate_cert_request) | resource |
 | [vault_pki_secret_backend_intermediate_set_signed.this](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/pki_secret_backend_intermediate_set_signed) | resource |
 | [vault_pki_secret_backend_issuer.this](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/pki_secret_backend_issuer) | resource |
@@ -130,13 +133,16 @@ No modules.
 | [vault_policy.admin](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
 | [vault_policy.cert_manager](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
 | [vault_policy.snapshot](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
+| [aws_secretsmanager_secret.root_ca](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret) | data source |
 | [aws_secretsmanager_secret_version.openbao_root_token_secret](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret_version) | data source |
+| [aws_secretsmanager_secret_version.root_ca](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret_version) | data source |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_allowed_cidr_blocks"></a> [allowed\_cidr\_blocks](#input\_allowed\_cidr\_blocks) | List of CIDR blocks allowed to reach Vault's API | `list(string)` | <pre>[<br>  "10.0.0.0/16"<br>]</pre> | no |
+| <a name="input_cert_manager_approle_secret_name"></a> [cert\_manager\_approle\_secret\_name](#input\_cert\_manager\_approle\_secret\_name) | The name of the AWS Secrets Manager secret containing the cert-manager AppRole credentials | `string` | n/a | yes |
 | <a name="input_domain_name"></a> [domain\_name](#input\_domain\_name) | The domain name for which the certificate should be issued | `string` | n/a | yes |
 | <a name="input_openbao_domain_name"></a> [openbao\_domain\_name](#input\_openbao\_domain\_name) | Vault domain name (default: bao.<domain\_name>) | `string` | `""` | no |
 | <a name="input_openbao_root_token_secret_id"></a> [openbao\_root\_token\_secret\_id](#input\_openbao\_root\_token\_secret\_id) | The secret ID for the OpenBao root token | `string` | n/a | yes |
@@ -149,8 +155,13 @@ No modules.
 | <a name="input_pki_mount_path"></a> [pki\_mount\_path](#input\_pki\_mount\_path) | Vault Issuer PKI mount path | `string` | `"pki_private_issuer"` | no |
 | <a name="input_pki_organization"></a> [pki\_organization](#input\_pki\_organization) | The organization name used for generating certificates | `string` | n/a | yes |
 | <a name="input_region"></a> [region](#input\_region) | The region to deploy the resources | `string` | n/a | yes |
+| <a name="input_root_ca_secret_name"></a> [root\_ca\_secret\_name](#input\_root\_ca\_secret\_name) | The name of the AWS Secrets Manager secret containing the root CA certificate bundle | `string` | n/a | yes |
 
 ## Outputs
 
-No outputs.
+| Name | Description |
+|------|-------------|
+| <a name="output_approle_credentials_secret_arn"></a> [approle\_credentials\_secret\_arn](#output\_approle\_credentials\_secret\_arn) | The ARN of the AWS Secrets Manager secret containing the cert-manager AppRole credentials |
+| <a name="output_cert_manager_approle_role_id"></a> [cert\_manager\_approle\_role\_id](#output\_cert\_manager\_approle\_role\_id) | The role ID of the cert-manager AppRole |
+| <a name="output_root_token_secret_arn"></a> [root\_token\_secret\_arn](#output\_root\_token\_secret\_arn) | The ARN of the AWS Secrets Manager secret containing the root token |
 <!-- END_TF_DOCS -->

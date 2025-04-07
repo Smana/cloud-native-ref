@@ -250,7 +250,7 @@ init_openbao() {
     if [ "$status_code" = "501" ]; then
         log_message "INFO" "OpenBao is not initialized - proceeding with initialization"
         init_output=$(bao operator init -recovery-shares=1 -recovery-threshold=1 -format=json)
-        if [ $? -ne 0 ]; then
+        if ! echo "$init_output" | jq -r '.root_token' > /dev/null; then
             log_message "ERROR" "Failed to initialize OpenBao"
             exit 1
         fi
@@ -384,13 +384,13 @@ configure_cert_manager() {
     log_message "INFO" "Using Vault address: $VAULT_ADDR"
 
     # Retrieve the approle id and secret
-    APPROLE_ID=$(bao read --field=role_id auth/approle/role/$APPROLE/role-id)
+    APPROLE_ID=$(bao read --field=role_id auth/approle/role/"$APPROLE"/role-id)
     if [ -z "$APPROLE_ID" ]; then
         log_message "ERROR" "Failed to retrieve approle ID"
         exit 1
     fi
 
-    APPROLE_SECRET=$(bao write --field=secret_id -f auth/approle/role/$APPROLE/secret-id)
+    APPROLE_SECRET=$(bao write --field=secret_id -f auth/approle/role/"$APPROLE"/secret-id)
     if [ -z "$APPROLE_SECRET" ]; then
         log_message "ERROR" "Failed to retrieve approle secret"
         exit 1
@@ -404,7 +404,11 @@ configure_cert_manager() {
 
     # Update kubeconfig
     log_message "INFO" "Updating kubeconfig for cluster $EKS_CLUSTER_NAME"
-    if ! $AWS_CMD eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --alias "$EKS_CLUSTER_NAME" --region "$REGION" $(if [ -n "$PROFILE" ]; then echo "--profile $PROFILE"; fi); then
+    profile_arg=""
+    if [ -n "$PROFILE" ]; then
+        profile_arg="--profile $PROFILE"
+    fi
+    if ! $AWS_CMD eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --alias "$EKS_CLUSTER_NAME" --region "$REGION" "$profile_arg"; then
         log_message "ERROR" "Failed to update kubeconfig"
         exit 1
     fi
