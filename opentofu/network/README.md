@@ -66,8 +66,8 @@ tailscale status
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.0 |
-| <a name="provider_tailscale"></a> [tailscale](#provider\_tailscale) | ~> 0.18 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.94.1 |
+| <a name="provider_tailscale"></a> [tailscale](#provider\_tailscale) | 0.18.0 |
 
 ## Modules
 
@@ -97,7 +97,8 @@ tailscale status
 | <a name="input_private_domain_name"></a> [private\_domain\_name](#input\_private\_domain\_name) | Route53 domain name for private records | `string` | n/a | yes |
 | <a name="input_region"></a> [region](#input\_region) | AWS Region | `string` | `"eu-west-3"` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to add to all resources | `map(string)` | `{}` | no |
-| <a name="input_tailscale"></a> [tailscale](#input\_tailscale) | n/a | `map(any)` | <pre>{<br>  "api_key": "",<br>  "prometheus_enabled": false,<br>  "subnet_router_name": "",<br>  "tailnet": ""<br>}</pre> | no |
+| <a name="input_tailscale_api_key"></a> [tailscale\_api\_key](#input\_tailscale\_api\_key) | Tailscale API Key | `string` | n/a | yes |
+| <a name="input_tailscale_config"></a> [tailscale\_config](#input\_tailscale\_config) | n/a | `map(any)` | <pre>{<br>  "api_key": "",<br>  "prometheus_enabled": false,<br>  "subnet_router_name": "",<br>  "tailnet": ""<br>}</pre> | no |
 | <a name="input_vpc_cidr"></a> [vpc\_cidr](#input\_vpc\_cidr) | The IPv4 CIDR block for the VPC | `string` | `"10.0.0.0/16"` | no |
 
 ## Outputs

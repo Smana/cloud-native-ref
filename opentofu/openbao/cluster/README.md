@@ -55,8 +55,8 @@ This architecture balances performance, cost-efficiency, and resilience, embraci
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.0 |
-| <a name="provider_cloudinit"></a> [cloudinit](#provider\_cloudinit) | ~> 2.3 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.94.1 |
+| <a name="provider_cloudinit"></a> [cloudinit](#provider\_cloudinit) | 2.3.6 |
 
 ## Modules
 
@@ -92,6 +92,8 @@ This architecture balances performance, cost-efficiency, and resilience, embraci
 | [aws_ecr_authorization_token.token](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ecr_authorization_token) | data source |
 | [aws_iam_policy_document.openbao-kms-unseal](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_route53_zone.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/route53_zone) | data source |
+| [aws_secretsmanager_secret.openbao_certificates](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret) | data source |
+| [aws_secretsmanager_secret_version.openbao_certificates](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret_version) | data source |
 | [aws_security_group.tailscale](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/security_group) | data source |
 | [aws_subnets.private](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/subnets) | data source |
 | [aws_vpc.selected](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/vpc) | data source |
@@ -109,6 +111,7 @@ This architecture balances performance, cost-efficiency, and resilience, embraci
 | <a name="input_leader_tls_servername"></a> [leader\_tls\_servername](#input\_leader\_tls\_servername) | One of the shared DNS SAN used to create the certs use for mTLS | `string` | n/a | yes |
 | <a name="input_mode"></a> [mode](#input\_mode) | OpenBao cluster mode (default dev, meaning a single node) | `string` | `"dev"` | no |
 | <a name="input_name"></a> [name](#input\_name) | Name of the resources created for this OpenBao cluster | `string` | `"openbao"` | no |
+| <a name="input_openbao_certificates_secret_name"></a> [openbao\_certificates\_secret\_name](#input\_openbao\_certificates\_secret\_name) | The name of the AWS Secrets Manager secret containing the OpenBao certificates | `string` | n/a | yes |
 | <a name="input_openbao_data_path"></a> [openbao\_data\_path](#input\_openbao\_data\_path) | Directory where OpenBao's data will be stored in an EC2 instance | `string` | `"/opt/openbao/data"` | no |
 | <a name="input_openbao_version"></a> [openbao\_version](#input\_openbao\_version) | OpenBao version to install | `string` | `"2.2.0"` | no |
 | <a name="input_prometheus_node_exporter_enabled"></a> [prometheus\_node\_exporter\_enabled](#input\_prometheus\_node\_exporter\_enabled) | If set to true install and start a prometheus node exporter | `bool` | `false` | no |

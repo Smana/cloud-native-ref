@@ -99,14 +99,16 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | ~> 1.4 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 5.0 |
+| <a name="requirement_kubernetes"></a> [kubernetes](#requirement\_kubernetes) | >= 2.20 |
 | <a name="requirement_vault"></a> [vault](#requirement\_vault) | ~> 4.0 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.0 |
-| <a name="provider_vault"></a> [vault](#provider\_vault) | ~> 4.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.94.1 |
+| <a name="provider_kubernetes"></a> [kubernetes](#provider\_kubernetes) | 2.36.0 |
+| <a name="provider_vault"></a> [vault](#provider\_vault) | 4.7.0 |
 
 ## Modules
 
@@ -118,8 +120,10 @@ No modules.
 |------|------|
 | [aws_secretsmanager_secret.approle_credentials](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/secretsmanager_secret) | resource |
 | [aws_secretsmanager_secret_version.approle_credentials](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/secretsmanager_secret_version) | resource |
+| [kubernetes_secret.cert_manager_openbao_approle](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/secret) | resource |
 | [vault_approle_auth_backend_role.cert_manager](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/approle_auth_backend_role) | resource |
 | [vault_approle_auth_backend_role.snapshot](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/approle_auth_backend_role) | resource |
+| [vault_approle_auth_backend_role_secret_id.cert_manager](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/approle_auth_backend_role_secret_id) | resource |
 | [vault_auth_backend.approle](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/auth_backend) | resource |
 | [vault_mount.secret](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/mount) | resource |
 | [vault_mount.this](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/mount) | resource |
@@ -133,6 +137,8 @@ No modules.
 | [vault_policy.admin](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
 | [vault_policy.cert_manager](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
 | [vault_policy.snapshot](https://registry.terraform.io/providers/hashicorp/vault/latest/docs/resources/policy) | resource |
+| [aws_eks_cluster.cluster](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/eks_cluster) | data source |
+| [aws_eks_cluster_auth.cluster_auth](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/eks_cluster_auth) | data source |
 | [aws_secretsmanager_secret.root_ca](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret) | data source |
 | [aws_secretsmanager_secret_version.openbao_root_token_secret](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret_version) | data source |
 | [aws_secretsmanager_secret_version.root_ca](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret_version) | data source |
@@ -144,6 +150,7 @@ No modules.
 | <a name="input_allowed_cidr_blocks"></a> [allowed\_cidr\_blocks](#input\_allowed\_cidr\_blocks) | List of CIDR blocks allowed to reach Vault's API | `list(string)` | <pre>[<br>  "10.0.0.0/16"<br>]</pre> | no |
 | <a name="input_cert_manager_approle_secret_name"></a> [cert\_manager\_approle\_secret\_name](#input\_cert\_manager\_approle\_secret\_name) | The name of the AWS Secrets Manager secret containing the cert-manager AppRole credentials | `string` | n/a | yes |
 | <a name="input_domain_name"></a> [domain\_name](#input\_domain\_name) | The domain name for which the certificate should be issued | `string` | n/a | yes |
+| <a name="input_eks_cluster_name"></a> [eks\_cluster\_name](#input\_eks\_cluster\_name) | The name of the EKS cluster | `string` | n/a | yes |
 | <a name="input_openbao_domain_name"></a> [openbao\_domain\_name](#input\_openbao\_domain\_name) | Vault domain name (default: bao.<domain\_name>) | `string` | `""` | no |
 | <a name="input_openbao_root_token_secret_id"></a> [openbao\_root\_token\_secret\_id](#input\_openbao\_root\_token\_secret\_id) | The secret ID for the OpenBao root token | `string` | n/a | yes |
 | <a name="input_pki_common_name"></a> [pki\_common\_name](#input\_pki\_common\_name) | Common name to identify the Vault issuer | `string` | `"Private PKI - Vault Issuer"` | no |
@@ -163,5 +170,4 @@ No modules.
 |------|-------------|
 | <a name="output_approle_credentials_secret_arn"></a> [approle\_credentials\_secret\_arn](#output\_approle\_credentials\_secret\_arn) | The ARN of the AWS Secrets Manager secret containing the cert-manager AppRole credentials |
 | <a name="output_cert_manager_approle_role_id"></a> [cert\_manager\_approle\_role\_id](#output\_cert\_manager\_approle\_role\_id) | The role ID of the cert-manager AppRole |
-| <a name="output_root_token_secret_arn"></a> [root\_token\_secret\_arn](#output\_root\_token\_secret\_arn) | The ARN of the AWS Secrets Manager secret containing the root token |
 <!-- END_TF_DOCS -->

@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@v3 # Or latest version
+        uses: ludeeus/action-shellcheck@master
         with:
           # Optional: specify severity level (style, info, warning, error)
           # severity: warning

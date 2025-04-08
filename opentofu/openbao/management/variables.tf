@@ -31,11 +31,6 @@ variable "root_ca_secret_name" {
   type        = string
 }
 
-variable "openbao_certificates_secret_name" {
-  description = "The name of the AWS Secrets Manager secret containing the OpenBao certificates"
-  type        = string
-}
-
 variable "cert_manager_approle_secret_name" {
   description = "The name of the AWS Secrets Manager secret containing the cert-manager AppRole credentials"
   type        = string
