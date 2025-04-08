@@ -7,19 +7,8 @@ on:
 
 env:
   # Network module
-  TF_VAR_tailscale.api_key: ${{ secrets.TAILSCALE_API_KEY }}
+  TF_VAR_tailscale_api_key: ${{ secrets.TAILSCALE_API_KEY }}
 
-  # EKS module
-  TF_VAR_flux_git_ref: "refs/heads/${{ github.head_ref }}"
-
-  # Network variables
-  PRIVATE_DOMAIN_NAME: priv.cloud.ogenki.io
-  TAILSCALE_SUBNET_ROUTER_NAME: ogenki
-  TAILSCALE_TAILNET: smainklh@gmail.com
-
-  # Identity provider variables
-  ZITADEL_CLIENT_ID: ${{ secrets.ZITADEL_CLIENT_ID }}
-  ZITADEL_ISSUER_URL: https://auth.cloud.ogenki.io
 
 jobs:
   preview:
@@ -108,11 +97,11 @@ jobs:
               overwrite_existing_content = true
             }
 
-#             tags = {
-#               project = "cloud-native-ref"
-#               owner   = "Smana"
-#             }
-#           EOF
+            tags = {
+             project = "cloud-native-ref"
+             owner   = "Smana"
+           }
+          EOF
 
           # Create EKS variables.tfvars
           cat > opentofu/eks/variables.tfvars << EOF
