@@ -62,8 +62,7 @@ jobs:
         with:
           # Optional: specify severity level (style, info, warning, error)
           # severity: warning
-          # Optional: specify specific scripts or directories
-          # check_paths: './scripts'
+          check_paths: "./scripts"
         env:
           # Optional: If you want ShellCheck to follow sourced files
           SHELLCHECK_OPTS: -x

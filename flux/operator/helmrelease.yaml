@@ -9,3 +9,4 @@ spec:
   chartRef:
     kind: OCIRepository
     name: flux-operator
+    version: 0.18.0

@@ -44,7 +44,7 @@ resource "vault_pki_secret_backend_root_sign_intermediate" "this" {
 resource "vault_pki_secret_backend_intermediate_set_signed" "this" {
   backend = vault_mount.this.path
   # Chaining the certificate used by the Vault CA, the intermediate and the root that are both part of the ca-chain.pem file
-  certificate = "${vault_pki_secret_backend_root_sign_intermediate.this.certificate}\n${file("${path.module}/.tls/ca-chain.pem")}"
+  certificate = "${vault_pki_secret_backend_root_sign_intermediate.this.certificate}\n${jsondecode(data.aws_secretsmanager_secret_version.root_ca.secret_string).ca}"
 }
 
 resource "vault_pki_secret_backend_issuer" "this" {
