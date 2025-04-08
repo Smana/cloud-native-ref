@@ -3,11 +3,6 @@ name: Scheduled OpenTofu Drift Detection
 on:
   schedule:
     - cron: "0 12 * * *"
-  pull_request:
-    paths:
-      - "opentofu/**"
-      - ".github/workflows/terramate-drift-detection.yaml"
-  workflow_dispatch:
 
 env:
   AWS_REGION: eu-west-3

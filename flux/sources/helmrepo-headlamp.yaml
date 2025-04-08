@@ -5,5 +5,4 @@ metadata:
   namespace: tooling
 spec:
   interval: 24h
-  type: oci
   url: https://headlamp-k8s.github.io/headlamp/

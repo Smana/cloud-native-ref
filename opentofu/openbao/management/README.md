@@ -106,9 +106,9 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.94.1 |
-| <a name="provider_kubernetes"></a> [kubernetes](#provider\_kubernetes) | 2.36.0 |
-| <a name="provider_vault"></a> [vault](#provider\_vault) | 4.7.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.0 |
+| <a name="provider_kubernetes"></a> [kubernetes](#provider\_kubernetes) | >= 2.20 |
+| <a name="provider_vault"></a> [vault](#provider\_vault) | ~> 4.0 |
 
 ## Modules
 

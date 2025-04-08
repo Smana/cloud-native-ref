@@ -66,8 +66,8 @@ tailscale status
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.94.1 |
-| <a name="provider_tailscale"></a> [tailscale](#provider\_tailscale) | 0.18.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.0 |
+| <a name="provider_tailscale"></a> [tailscale](#provider\_tailscale) | ~> 0.18 |
 
 ## Modules
 

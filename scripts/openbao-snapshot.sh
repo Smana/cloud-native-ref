@@ -4,7 +4,8 @@ set -e
 # Removed color variables
 err="ERROR"
 info="INFO"
-warn="WARNING"
+# warn is used in error messages
+export warn="WARNING"
 
 # Replacing array with individual checks
 check_required_bin() {
@@ -94,7 +95,7 @@ fi
 # Check if required binaries are installed
 generate_root_token() {
     bao operator generate-root -init --format json | jq -cr '.nonce, .otp' > tmpfile
-    read VAULT_NONCE VAULT_OTP < tmpfile
+    read -r VAULT_NONCE VAULT_OTP < tmpfile
     rm tmpfile
     VAULT_ENCODED_TOKEN=$(aws secretsmanager get-secret-value --secret-id bao-staging-hungry-hamster | jq -r '.SecretString' | jq -r '.recovery_key' | bao operator generate-root -nonce="${VAULT_NONCE}" --format json - | jq -cr '.encoded_root_token')
     VAULT_TOKEN=$(bao operator generate-root -decode "${VAULT_ENCODED_TOKEN}" -otp "${VAULT_OTP}")
@@ -103,7 +104,7 @@ generate_root_token() {
 
 discover_leader() {
     echo "${info}: Authenticating with OpenBao..."
-    VAULT_TOKEN=$(bao write -field=token auth/approle/login role_id=${APPROLE_ROLE_ID} secret_id=${APPROLE_SECRET_ID})
+    VAULT_TOKEN=$(bao write -field=token auth/approle/login role_id="${APPROLE_ROLE_ID}" secret_id="${APPROLE_SECRET_ID}")
     if [ -z "${VAULT_TOKEN}" ]; then
         echo "${err}: Authentication failed. Unable to retrieve OpenBao token."
         exit 1
@@ -119,16 +120,16 @@ discover_leader() {
         exit 1
     fi
     echo "${info}: Leader node discovered at ${LEADER_ADDRESS}"
-    VAULT_ADDR=https://"${LEADER_ADDRESS}"
+    VAULT_ADDR="https://${LEADER_ADDRESS}"
 }
 
 save() {
     echo "${info}: Starting OpenBao backup to S3..."
     check_required_bin
     discover_leader
-    bao login -no-print $(bao write -field=token auth/approle/login role_id=${APPROLE_ROLE_ID} secret_id=${APPROLE_SECRET_ID})
+    bao login -no-print "$(bao write -field=token auth/approle/login role_id="${APPROLE_ROLE_ID}" secret_id="${APPROLE_SECRET_ID}")"
     bao operator raft snapshot save "${SNAPSHOT_FILE}"
-    aws s3 cp "${SNAPSHOT_FILE}" s3://"${BUCKET_NAME}"/"$(date +"%Y-%m-%d_%H:%M:%S_%Z").snap"
+    aws s3 cp "${SNAPSHOT_FILE}" "s3://${BUCKET_NAME}/$(date +"%Y-%m-%d_%H:%M:%S_%Z").snap"
 }
 
 restore() {
@@ -138,11 +139,11 @@ restore() {
     VAULT_TOKEN=$(generate_root_token)
     echo "${info}: Fetching latest backup from S3 bucket ${BUCKET_NAME}"
     SNAP=$(aws s3 ls "${BUCKET_NAME}" | sort | tail -n 1 | awk '{print $4}')
-    aws s3 cp s3://"${BUCKET_NAME}"/"${SNAP}" /tmp/bao.snap
+    aws s3 cp "s3://${BUCKET_NAME}/${SNAP}" /tmp/bao.snap
     echo "${info}: Restoring snapshot ${SNAP}"
     bao operator raft snapshot restore -force /tmp/bao.snap
 
-    trap "bao token revoke ${VAULT_TOKEN}" EXIT
+    trap 'bao token revoke "${VAULT_TOKEN}"' EXIT
 
     echo "${info}: Check that the timestamp from the path secret/check_timestamp is less than ${NUM_DAYS} days"
     CURR_TS=$(date "+%s")
@@ -153,7 +154,7 @@ restore() {
         exit 1
     fi
 
-    bao kv put secret/check_timestamp value=$(date "+%s") &>/dev/null
+    bao kv put secret/check_timestamp "value=$(date "+%s")" >/dev/null 2>&1
 }
 
 # Command execution

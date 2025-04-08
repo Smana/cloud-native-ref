@@ -118,20 +118,20 @@ tofu destroy --var-file variables.tfvars
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.94.1 |
-| <a name="provider_aws.virginia"></a> [aws.virginia](#provider\_aws.virginia) | 5.94.1 |
-| <a name="provider_helm"></a> [helm](#provider\_helm) | 2.17.0 |
-| <a name="provider_http"></a> [http](#provider\_http) | 3.4.5 |
-| <a name="provider_kubectl"></a> [kubectl](#provider\_kubectl) | 2.1.3 |
-| <a name="provider_kubernetes"></a> [kubernetes](#provider\_kubernetes) | 2.36.0 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.0 |
+| <a name="provider_aws.virginia"></a> [aws.virginia](#provider\_aws.virginia) | ~> 5.0 |
+| <a name="provider_helm"></a> [helm](#provider\_helm) | >= 2.7 |
+| <a name="provider_http"></a> [http](#provider\_http) | >= 3.4 |
+| <a name="provider_kubectl"></a> [kubectl](#provider\_kubectl) | >= 2.0.0 |
+| <a name="provider_kubernetes"></a> [kubernetes](#provider\_kubernetes) | >= 2.20 |
 
 ## Modules
 
 | Name | Source | Version |
 |------|--------|---------|
 | <a name="module_eks"></a> [eks](#module\_eks) | terraform-aws-modules/eks/aws | ~> 20 |
-| <a name="module_irsa_crossplane"></a> [irsa\_crossplane](#module\_irsa\_crossplane) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.54.0 |
-| <a name="module_irsa_ebs_csi_driver"></a> [irsa\_ebs\_csi\_driver](#module\_irsa\_ebs\_csi\_driver) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.54.0 |
+| <a name="module_irsa_crossplane"></a> [irsa\_crossplane](#module\_irsa\_crossplane) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.54.1 |
+| <a name="module_irsa_ebs_csi_driver"></a> [irsa\_ebs\_csi\_driver](#module\_irsa\_ebs\_csi\_driver) | terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks | 5.54.1 |
 | <a name="module_karpenter"></a> [karpenter](#module\_karpenter) | terraform-aws-modules/eks/aws//modules/karpenter | ~> 20.0 |
 
 ## Resources

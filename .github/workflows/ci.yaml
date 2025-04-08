@@ -50,7 +50,7 @@ jobs:
           version: "latest"
           verb: call
           module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.1.3
-          args: validate --manifests "." --exclude ".github/*,opentofu/*" --env "domain_name:cluster.local,cluster_name:foobar,region:eu-west-3" --kustomize --flux --catalog
+          args: validate --manifests "." --exclude ".github/*,opentofu/*" --env "domain_name:cluster.local,cluster_name:foobar,region:eu-west-3,cert_manager_role_id:random" --kustomize --flux --catalog
 
   shellcheck:
     name: Check the shell scripts 💻
@@ -62,7 +62,7 @@ jobs:
         with:
           # Optional: specify severity level (style, info, warning, error)
           # severity: warning
-          check_paths: "./scripts"
+          scandir: "./scripts"
         env:
           # Optional: If you want ShellCheck to follow sourced files
           SHELLCHECK_OPTS: -x
