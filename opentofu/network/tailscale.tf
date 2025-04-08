@@ -1,6 +1,6 @@
 resource "tailscale_acl" "this" {
   // Overwrite the existing content of the ACL.
-  overwrite_existing_content = lookup(var.tailscale, "overwrite_existing_content", false)
+  overwrite_existing_content = lookup(var.tailscale_config, "overwrite_existing_content", false)
 
   acl = jsonencode({
     // Define access control lists for users, groups, autogroups, tags,
@@ -28,12 +28,12 @@ resource "tailscale_acl" "this" {
     autoApprovers = {
       routes = {
         # tflint-ignore: terraform_deprecated_interpolation
-        "${module.vpc.vpc_cidr_block}" = [var.tailscale.tailnet]
+        "${module.vpc.vpc_cidr_block}" = [var.tailscale_config.tailnet]
       }
     }
 
     tagOwners = {
-      "tag:ci" = [var.tailscale.tailnet]
+      "tag:ci" = [var.tailscale_config.tailnet]
     }
   })
 }
@@ -77,22 +77,22 @@ module "tailscale_subnet_router" {
   region = var.region
   env    = var.env
 
-  name     = var.tailscale.subnet_router_name
+  name     = var.tailscale_config.subnet_router_name
   auth_key = tailscale_tailnet_key.this.key
 
   vpc_id                = module.vpc.vpc_id
   subnet_ids            = module.vpc.private_subnets
   advertise_routes      = [module.vpc.vpc_cidr_block]
-  tailscale_version     = lookup(var.tailscale, "tailscale_version", "")
+  tailscale_version     = lookup(var.tailscale_config, "tailscale_version", "")
   tailscale_ssh_enabled = true
 
-  prometheus_node_exporter_enabled = lookup(var.tailscale, "prometheus_enabled", false) ? true : false
-  ssm_enabled                      = lookup(var.tailscale, "ssm_enabled", false) ? true : false
+  prometheus_node_exporter_enabled = lookup(var.tailscale_config, "prometheus_enabled", false) ? true : false
+  ssm_enabled                      = lookup(var.tailscale_config, "ssm_enabled", false) ? true : false
 
   tags = merge(var.tags,
     {
       app                           = "tailscale"
-      "observability:node-exporter" = lookup(var.tailscale, "prometheus_enabled", "false") ? "true" : "false"
+      "observability:node-exporter" = var.tailscale_config.prometheus_enabled ? "true" : "false"
     }
   )
 

@@ -12,3 +12,17 @@ provider "vault" {
 data "aws_secretsmanager_secret_version" "openbao_root_token_secret" {
   secret_id = var.openbao_root_token_secret_id
 }
+
+data "aws_eks_cluster" "cluster" {
+  name = var.eks_cluster_name
+}
+
+data "aws_eks_cluster_auth" "cluster_auth" {
+  name = var.eks_cluster_name
+}
+
+provider "kubernetes" {
+  host                   = data.aws_eks_cluster.cluster.endpoint
+  token                  = data.aws_eks_cluster_auth.cluster_auth.token
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
+}

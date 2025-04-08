@@ -64,6 +64,11 @@ variable "ami_owner" {
   default = "099720109477" # AWS account ID of Canonical
 }
 
+variable "openbao_certificates_secret_name" {
+  description = "The name of the AWS Secrets Manager secret containing the OpenBao certificates"
+  type        = string
+}
+
 variable "enable_ssm" {
   description = "If true, allow to connect to the instances using AWS Systems Manager"
   type        = bool

@@ -26,6 +26,16 @@ variable "allowed_cidr_blocks" {
   default     = ["10.0.0.0/16"]
 }
 
+variable "root_ca_secret_name" {
+  description = "The name of the AWS Secrets Manager secret containing the root CA certificate bundle"
+  type        = string
+}
+
+variable "cert_manager_approle_secret_name" {
+  description = "The name of the AWS Secrets Manager secret containing the cert-manager AppRole credentials"
+  type        = string
+}
+
 variable "pki_common_name" {
   description = "Common name to identify the Vault issuer"
   type        = string
@@ -70,4 +80,9 @@ variable "pki_max_lease_ttl" {
   description = "Maximum TTL (in seconds) that can be requested for certificates (default 3 years)"
   type        = number
   default     = 94670856
+}
+
+variable "eks_cluster_name" {
+  description = "The name of the EKS cluster"
+  type        = string
 }

@@ -11,7 +11,7 @@ spec:
     auth:
       appRole:
         path: approle
-        roleId: ${cert_manager_approle_id}
+        roleId: ${cert_manager_role_id}
         secretRef:
           # This secret should have been created before
           name: cert-manager-openbao-approle

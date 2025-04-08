@@ -21,8 +21,13 @@ variable "private_domain_name" {
   type        = string
 }
 
+variable "tailscale_api_key" {
+  description = "Tailscale API Key"
+  type        = string
+  sensitive   = true
+}
 
-variable "tailscale" {
+variable "tailscale_config" {
   type = map(any)
   default = {
     subnet_router_name = ""

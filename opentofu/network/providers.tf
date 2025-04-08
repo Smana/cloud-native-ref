@@ -3,6 +3,6 @@ provider "aws" {
 }
 
 provider "tailscale" {
-  api_key = var.tailscale.api_key
-  tailnet = var.tailscale.tailnet
+  api_key = var.tailscale_api_key
+  tailnet = var.tailscale_config.tailnet
 }
