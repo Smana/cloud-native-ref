@@ -31,6 +31,11 @@ variable "root_ca_secret_name" {
   type        = string
 }
 
+variable "openbao_certificates_secret_name" {
+  description = "The name of the AWS Secrets Manager secret containing the OpenBao certificates"
+  type        = string
+}
+
 variable "cert_manager_approle_secret_name" {
   description = "The name of the AWS Secrets Manager secret containing the cert-manager AppRole credentials"
   type        = string
@@ -80,4 +85,9 @@ variable "pki_max_lease_ttl" {
   description = "Maximum TTL (in seconds) that can be requested for certificates (default 3 years)"
   type        = number
   default     = 94670856
+}
+
+variable "eks_cluster_name" {
+  description = "The name of the EKS cluster"
+  type        = string
 }

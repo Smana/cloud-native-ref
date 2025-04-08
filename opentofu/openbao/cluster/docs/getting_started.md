@@ -10,10 +10,10 @@
     SECRET_NAME="certificates/priv.cloud.ogenki.io/openbao"
 
     SECRETS_JSONFILE=$(mktemp)
-    jq -nr --arg key "$(cat .tls/openbao.key)" --arg cert "$(cat .tls/openbao.pem)" --arg ca "$(cat .tls/ca-chain.pem)" '{"cert":$cert,"key":$key,"ca":$ca}' > $SECRETS_JSONFILE
+    jq -nr --arg key "$(cat .tls/openbao-key.pem)" --arg cert "$(cat .tls/openbao.pem)" --arg ca "$(cat .tls/ca-chain.pem)" '{"cert":$cert,"key":$key,"ca":$ca}' > $SECRETS_JSONFILE
 
     # Create secrets in AWS Secrets Manager
-    aws secretsmanager create-secret --name openbao/cloud-native-ref/secrets/openbao --secret-string file:///$SECRETS_JSONFILE
+    aws secretsmanager create-secret --name $SECRET_NAME --secret-string file:///$SECRETS_JSONFILE --region eu-west-3
 
     # Clean up
     rm $SECRETS_JSONFILE
@@ -29,7 +29,7 @@ env                              = "dev"                                        
 mode                             = "dev"                                         # Important: More about this setting in this documentation.
 region                           = "eu-west-3"                                   # Where all the resources will be created
 enable_ssm                       = true                                          # Allow to access to the EC2 instances. Enabled for provisionning, but then it should be disabled.
-openbao_certificates_secret_name = "openbao/cloud-native-ref/secrets/openbao"    # The name of the AWS Secrets Manager secret containing the OpenBao certificates
+openbao_certificates_secret_name = "certificates/priv.cloud.ogenki.io/openbao"   # The name of the AWS Secrets Manager secret containing the OpenBao certificates
 
 # Prefer using hardened AMI
 # ami_owner = "3xxxxxxxxx"                              # Account ID where the hardened AMI is

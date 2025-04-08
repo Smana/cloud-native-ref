@@ -1,4 +1,3 @@
-
 # tflint-ignore: terraform_unused_declarations
 data "aws_ecr_authorization_token" "token" {}
 
@@ -74,8 +73,11 @@ data "aws_secretsmanager_secret" "openbao_certificates" {
 }
 
 data "aws_secretsmanager_secret_version" "openbao_certificates" {
-  secret_id  = data.aws_secretsmanager_secret.openbao_certificates.id
-  version_id = data.aws_secretsmanager_secret.openbao_certificates.version_id
+  secret_id = data.aws_secretsmanager_secret.openbao_certificates.id
+}
+
+locals {
+  openbao_certificates = jsondecode(data.aws_secretsmanager_secret_version.openbao_certificates.secret_string)
 }
 
 data "cloudinit_config" "openbao_cloud_init" {
@@ -88,9 +90,9 @@ data "cloudinit_config" "openbao_cloud_init" {
     content = templatefile(
       "${path.module}/scripts/cloudinit-config.yaml",
       {
-        tls_key_b64    = base64encode(data.aws_secretsmanager_secret_version.openbao_certificates.secret_string.key)
-        tls_cert_b64   = base64encode(data.aws_secretsmanager_secret_version.openbao_certificates.secret_string.cert)
-        tls_cacert_b64 = base64encode(data.aws_secretsmanager_secret_version.openbao_certificates.secret_string.ca)
+        tls_key_b64    = base64encode(local.openbao_certificates.key)
+        tls_cert_b64   = base64encode(local.openbao_certificates.cert)
+        tls_cacert_b64 = base64encode(local.openbao_certificates.ca)
       },
     )
   }
