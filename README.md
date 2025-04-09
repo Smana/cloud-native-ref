@@ -83,7 +83,12 @@ The platform is deployed in three main stages:
 
 For a streamlined deployment experience, use [**Terramate**](https://terramate.io/) to orchestrate the entire process:
 
-1. **Configure Global Variables**
+1. **Set sensitive values** using environment variables.
+   ```
+   export TF_VAR_tailscale_api_key=<TS_API_KEY>
+   ```
+
+2. **Configure Global Variables**
    - Review and update the variables in `workflows.tm.hcl`:
      ```hcl
      globals {
@@ -100,15 +105,15 @@ For a streamlined deployment experience, use [**Terramate**](https://terramate.i
      ```
    - Adjust these values according to your environment
 
-2. **Deploy Core Infrastructure**
+3. **Deploy Core Infrastructure**
    ```bash
    terramate script run --parallel=2 --no-tags openbao-management deploy
    ```
    This command deploys all modules except OpenBao configuration, which requires a separate step.
 
-3. **Configure OpenBao**
+4. **Configure OpenBao**
    ```bash
-   terramate script run --chdir opentofu/openbao/management openbao configure
+   terramate script run openbao configure
    ```
 
 ### Post-Deployment

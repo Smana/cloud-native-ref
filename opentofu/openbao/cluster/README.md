@@ -2,7 +2,7 @@
 
 Deploy a OpenBao instance following HashiCorp's best practices. Complete these steps in order:
 
-1. **Server Certificates**: Prepare certificates first. You can provide yours or use the guide: [Public Key Infrastructure (PKI): Requirements](./docs/pki_requirements.md).
+1. **Server Certificates**: Prepare certificates first and store them in the expected AWS SecretsManager resources. You can provide yours or use the guide: [Public Key Infrastructure (PKI): Requirements](./docs/pki_requirements.md).
 
 2. **OpenBao Instance Setup**: Start your OpenBao instance. See [Getting Started](./docs/getting_started.md) for instructions.
 
