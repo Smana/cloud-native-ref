@@ -13,11 +13,8 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
 
 1. **Cluster Creation:** Start by following the cluster creation instructions available [here](../cluster/README.md).
 
-2. **Required Files:** Ensure you have these files, generated in the previous step:
-   - `intermediate-ca.pem`
-   - `root-ca.pem`
-   - `root-ca-key.pem`
-     > ⚠️ **Important:** The `root-ca-key.pem` file is highly sensitive. Securely store it and delete it immediately after use.
+2. **Required Certificates from AWS SecretsManager:** The certificates generated in the previous step must be stored in AWS Secrets Manager.
+   - We need 2 keys named `ca` and `bundle` (:information_source: a bundle is the ca-chain along with the key)
 
 ## 🚀 Getting Started
 
