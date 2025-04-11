@@ -4,8 +4,7 @@ terramate {
       organization = "ogenki"
     }
     experiments = [
-      "scripts",
-      "outputs-sharing"
+      "scripts"
     ]
   }
 }

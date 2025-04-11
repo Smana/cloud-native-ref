@@ -10,7 +10,6 @@ pki_domains = [
   "cluster.local",
   "priv.cloud.ogenki.io"
 ]
-eks_cluster_name = "mycluster-0"
 tags = {
   project = "cloud-native-ref"
   owner   = "Smana"

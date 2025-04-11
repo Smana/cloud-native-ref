@@ -1,5 +1,4 @@
 data "aws_caller_identity" "this" {}
-
 data "aws_vpc" "selected" {
   filter {
     name   = "tag:project"
@@ -14,8 +13,6 @@ data "aws_vpc" "selected" {
     values = ["dev"]
   }
 }
-
-
 data "aws_subnets" "private" {
   filter {
     name   = "vpc-id"
@@ -26,7 +23,6 @@ data "aws_subnets" "private" {
     values = ["vpc-${var.region}-${var.env}-private-*"]
   }
 }
-
 data "aws_subnets" "intra" {
   filter {
     name   = "vpc-id"
@@ -69,7 +65,11 @@ data "aws_eks_cluster_auth" "cluster_auth" {
 }
 
 data "aws_secretsmanager_secret_version" "github_app" {
-  secret_id = var.github_app_secret_id
+  secret_id = var.github_app_secret_name
+}
+
+data "aws_secretsmanager_secret_version" "cert_manager_approle" {
+  secret_id = var.cert_manager_approle_secret_name
 }
 
 data "http" "gateway_api_crds" {

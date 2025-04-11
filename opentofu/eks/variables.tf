@@ -47,7 +47,7 @@ variable "cilium_version" {
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "1.2.3"
+  default     = "1.3.3"
   type        = string
 }
 
@@ -75,10 +75,17 @@ variable "gateway_api_version" {
 }
 
 # Flux
-variable "github_app_secret_id" {
+variable "github_app_secret_name" {
   type        = string
-  description = "SecretsManager id from where to retrieve the Github App information. ref: https://fluxcd.io/flux/components/source/gitrepositories/#github"
+  description = "SecretsManager name from where to retrieve the Github App information. ref: https://fluxcd.io/flux/components/source/gitrepositories/#github"
   default     = "github/flux-app"
+  sensitive   = true
+}
+
+variable "cert_manager_approle_secret_name" {
+  type        = string
+  description = "SecretsManager name from where to retrieve the cert-manager approle information."
+  default     = "openbao/approles/cert-manager"
   sensitive   = true
 }
 
@@ -102,7 +109,7 @@ variable "flux_sync_repository_url" {
 variable "flux_git_ref" {
   description = "Git branch or tag in the format refs/heads/main or refs/tags/v1.0.0"
   type        = string
-  // default     = "refs/heads/main"
+  default     = "refs/heads/main"
 }
 
 variable "tags" {

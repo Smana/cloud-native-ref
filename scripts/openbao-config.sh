@@ -10,12 +10,9 @@ set -e
 OPENBAO_URL=""
 ROOT_TOKEN_SECRET_NAME=""
 ROOT_CA_SECRET_NAME=""
-CERTMANAGER_APPROLE_SECRET_NAME=""
 SKIP_VERIFY=false
 REGION="eu-west-3"
 PROFILE=""
-EKS_CLUSTER_NAME=""
-APPROLE=""
 
 usage() {
     echo "Usage: $0 <command> [options]"
@@ -32,15 +29,9 @@ usage() {
     echo "  --region <Region>                       AWS region (default: eu-west-3)"
     echo "  --profile <Profile>                     AWS profile"
     echo ""
-    echo "Cert-manager Options:"
-    echo "  --eks-cluster-name <Name>                           EKS cluster name (required for cert-manager)"
-    echo "  --cert-manager-approle-secret-name <Secret Name>    AWS Secrets Manager secret name for the cert-manager approle credentials (required for cert-manager)"
-    echo "  --approle <Name>                                    AppRole name (required for cert-manager)"
-    echo ""
     echo "Example:"
     echo "  $0 init --url https://openbao:8200 --root-token-secret-name openbao/root-token"
     echo "  $0 pki --url https://openbao:8200 --root-token-secret-name openbao/root-token --root-ca-secret-name certificates/domain.tld/root-ca"
-    echo "  $0 cert-manager --url https://openbao:8200 --root-token-secret-name openbao/root-token --cert-manager-secret-name cert-manager/openbao-approle --eks-cluster-name mycluster --approle cert-manager"
 }
 
 # Common function to parse arguments
@@ -59,10 +50,6 @@ parse_args() {
                 ROOT_CA_SECRET_NAME="$2"
                 shift 2
                 ;;
-            --cert-manager-approle-secret-name)
-                CERTMANAGER_APPROLE_SECRET_NAME="$2"
-                shift 2
-                ;;
             --skip-verify)
                 SKIP_VERIFY=true
                 shift
@@ -73,14 +60,6 @@ parse_args() {
                 ;;
             --profile)
                 PROFILE="$2"
-                shift 2
-                ;;
-            --eks-cluster-name)
-                EKS_CLUSTER_NAME="$2"
-                shift 2
-                ;;
-            --approle)
-                APPROLE="$2"
                 shift 2
                 ;;
             *)
@@ -308,15 +287,6 @@ configure_pki() {
 
     export VAULT_TOKEN="$root_token"
 
-    # Check OpenBao status
-    status_output=$(bao status -format=json)
-    is_initialized=$(echo "$status_output" | jq -r '.initialized')
-
-    if [ "$is_initialized" == "false" ]; then
-        log_message "ERROR" "OpenBao is not initialized"
-        exit 1
-    fi
-
     # Enable PKI secrets engine
     if ! bao secrets list --format=json | jq -e '.["pki/"]' > /dev/null; then
         echo "Enabling PKI secrets engine..."
@@ -356,87 +326,6 @@ configure_pki() {
     fi
 }
 
-# Configure cert-manager
-configure_cert_manager() {
-    # Check if required parameters are provided
-    if [ -z "$EKS_CLUSTER_NAME" ]; then
-        log_message "ERROR" "EKS cluster name is required for cert-manager configuration"
-        usage
-        exit 1
-    fi
-
-    if [ -z "$APPROLE" ]; then
-        log_message "ERROR" "AppRole name is required for cert-manager configuration"
-        usage
-        exit 1
-    fi
-
-    # Get the Vault token from AWS Secrets Manager
-    AWS_CMD=$(get_aws_cmd)
-    root_token=$($AWS_CMD secretsmanager get-secret-value --secret-id "$ROOT_TOKEN_SECRET_NAME" --output text --query 'SecretString' | jq -r '.token')
-    if [ -z "$root_token" ]; then
-        log_message "ERROR" "Failed to retrieve root token from AWS Secrets Manager"
-        exit 1
-    fi
-
-    export VAULT_TOKEN="$root_token"
-
-    log_message "INFO" "Using Vault address: $VAULT_ADDR"
-
-    # Retrieve the approle id and secret
-    APPROLE_ID=$(bao read --field=role_id auth/approle/role/"$APPROLE"/role-id)
-    if [ -z "$APPROLE_ID" ]; then
-        log_message "ERROR" "Failed to retrieve approle ID"
-        exit 1
-    fi
-
-    APPROLE_SECRET=$(bao write --field=secret_id -f auth/approle/role/"$APPROLE"/secret-id)
-    if [ -z "$APPROLE_SECRET" ]; then
-        log_message "ERROR" "Failed to retrieve approle secret"
-        exit 1
-    fi
-
-    # Check if the cluster exists
-    if ! $AWS_CMD eks list-clusters --query clusters --output json --region "$REGION" | jq -e "any(.[]; . == \"$EKS_CLUSTER_NAME\")" >/dev/null; then
-        log_message "ERROR" "Cluster $EKS_CLUSTER_NAME does not exist"
-        exit 1
-    fi
-
-    # Update kubeconfig
-    log_message "INFO" "Updating kubeconfig for cluster $EKS_CLUSTER_NAME"
-    profile_arg=""
-    if [ -n "$PROFILE" ]; then
-        profile_arg="--profile $PROFILE"
-    fi
-    if ! $AWS_CMD eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --alias "$EKS_CLUSTER_NAME" --region "$REGION" "$profile_arg"; then
-        log_message "ERROR" "Failed to update kubeconfig"
-        exit 1
-    fi
-
-    # Create a JSON object with the approle credentials
-    secret_value=$(jq -n \
-        --arg approle_id "$APPROLE_ID" \
-        --arg approle_secret "$APPROLE_SECRET" \
-        '{"cert-manager-approle-id": $approle_id, "cert-manager-approle-secret": $approle_secret}')
-
-    if ! create_or_update_secret "$AWS_CMD" "$CERTMANAGER_APPROLE_SECRET_NAME" "$secret_value"; then
-        log_message "ERROR" "Failed to store approle credentials in AWS Secrets Manager"
-        exit 1
-    fi
-
-    log_message "INFO" "Creating a secret in the cluster"
-
-    if kubectl get secret -n flux-system cert-manager-openbao-approle > /dev/null 2>&1; then
-        log_message "INFO" "Secret already exists, updating it"
-        kubectl delete secret -n flux-system cert-manager-openbao-approle
-    fi
-
-    kubectl create secret generic cert-manager-openbao-approle \
-    --from-literal=cert_manager_approle_id="$APPROLE_ID" \
-    --from-literal=cert_manager_approle_secret="$APPROLE_SECRET" \
-    --namespace flux-system
-}
-
 # Main script
 if [ $# -lt 1 ]; then
     usage
@@ -456,11 +345,6 @@ case "$COMMAND" in
         parse_args "$@"
         check_prerequisites
         configure_pki
-        ;;
-    cert-manager)
-        parse_args "$@"
-        check_prerequisites
-        configure_cert_manager
         ;;
     *)
         echo "Unknown command: $COMMAND"

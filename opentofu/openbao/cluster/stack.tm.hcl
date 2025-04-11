@@ -8,6 +8,7 @@ stack {
   tags = [
     "aws",
     "openbao",
+    "openbao-cluster",
     "security"
   ]
 }

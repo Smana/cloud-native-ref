@@ -10,6 +10,8 @@ tags = {
 
 enable_ssm = true
 
+cert_manager_approle_secret_name = "openbao/cloud-native-ref/approles/cert-manager"
+
 karpenter_limits = {
   "default" = {
     cpu    = "20"

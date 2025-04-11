@@ -95,12 +95,3 @@ fi
 
 # Wait for epis to be deleted
 sleep 30
-
-# Delete flux resources from Opentofu state
-tofu init
-if tofu state list | grep -q "flux_bootstrap_git.this"; then
-    tofu state rm flux_bootstrap_git.this
-fi
-if tofu state list | grep -q "kubernetes_namespace.flux_system"; then
-	tofu state rm kubernetes_namespace.flux_system
-fi
