@@ -1,4 +1,4 @@
-script "openbao" "configure" {
+script "deploy" {
   description = "Init OpenBao cluster and configure PKI"
   job {
     name        = "openbao-configure"
