@@ -33,8 +33,8 @@ resource "kubectl_manifest" "karpenter" {
   ]
 }
 
-# Flux manifests
-resource "kubectl_manifest" "flux" {
+# Flux variables substitution
+resource "kubectl_manifest" "flux_eks_variables" {
   for_each = { for file_name in data.kubectl_filename_list.flux.matches : file_name => file_name }
   yaml_body = templatefile(each.key,
     {
@@ -53,6 +53,20 @@ resource "kubectl_manifest" "flux" {
       vpc_cidr_block                      = data.aws_vpc.selected.cidr_block
     }
   )
+
+  depends_on = [helm_release.flux-operator]
+}
+
+resource "kubernetes_secret" "flux_cert_manager_approle" {
+  metadata {
+    name      = "cert-manager-openbao-approle"
+    namespace = "flux-system"
+  }
+
+  data = {
+    cert_manager_approle_id     = jsondecode(data.aws_secretsmanager_secret_version.cert_manager_approle.secret_string).cert_manager_approle_id
+    cert_manager_approle_secret = jsondecode(data.aws_secretsmanager_secret_version.cert_manager_approle.secret_string).cert_manager_approle_secret
+  }
 
   depends_on = [helm_release.flux-operator]
 }

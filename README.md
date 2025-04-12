@@ -127,6 +127,8 @@ After deployment, verify your setup:
 
 2. **Verify OpenBao Status**
    ```bash
+   export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
+   export VAULT_SKIP_VERIFY=true
    bao status
    ```
 

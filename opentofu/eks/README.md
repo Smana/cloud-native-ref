@@ -148,15 +148,17 @@ tofu destroy --var-file variables.tfvars
 | [helm_release.cilium](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |
 | [helm_release.flux-operator](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |
 | [helm_release.karpenter](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |
-| [kubectl_manifest.flux](https://registry.terraform.io/providers/alekc/kubectl/latest/docs/resources/manifest) | resource |
+| [kubectl_manifest.flux_eks_variables](https://registry.terraform.io/providers/alekc/kubectl/latest/docs/resources/manifest) | resource |
 | [kubectl_manifest.gateway_api_crds](https://registry.terraform.io/providers/alekc/kubectl/latest/docs/resources/manifest) | resource |
 | [kubectl_manifest.karpenter](https://registry.terraform.io/providers/alekc/kubectl/latest/docs/resources/manifest) | resource |
 | [kubernetes_annotations.gp2](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/annotations) | resource |
+| [kubernetes_secret.flux_cert_manager_approle](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/secret) | resource |
 | [kubernetes_secret.flux_system](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/secret) | resource |
 | [kubernetes_storage_class_v1.gp3](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/storage_class_v1) | resource |
 | [aws_caller_identity.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
 | [aws_ecrpublic_authorization_token.token](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ecrpublic_authorization_token) | data source |
 | [aws_eks_cluster_auth.cluster_auth](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/eks_cluster_auth) | data source |
+| [aws_secretsmanager_secret_version.cert_manager_approle](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret_version) | data source |
 | [aws_secretsmanager_secret_version.github_app](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/secretsmanager_secret_version) | data source |
 | [aws_security_group.tailscale](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/security_group) | data source |
 | [aws_subnets.intra](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/subnets) | data source |
@@ -171,6 +173,7 @@ tofu destroy --var-file variables.tfvars
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
+| <a name="input_cert_manager_approle_secret_name"></a> [cert\_manager\_approle\_secret\_name](#input\_cert\_manager\_approle\_secret\_name) | SecretsManager name from where to retrieve the cert-manager approle information. | `string` | `"openbao/approles/cert-manager"` | no |
 | <a name="input_cilium_version"></a> [cilium\_version](#input\_cilium\_version) | Cilium cluster version | `string` | `"1.17.2"` | no |
 | <a name="input_cluster_identity_providers"></a> [cluster\_identity\_providers](#input\_cluster\_identity\_providers) | Map of cluster identity provider configurations to enable for the cluster. | `any` | `{}` | no |
 | <a name="input_cluster_name"></a> [cluster\_name](#input\_cluster\_name) | Name of the EKS cluster to be created | `string` | n/a | yes |
@@ -179,14 +182,14 @@ tofu destroy --var-file variables.tfvars
 | <a name="input_enable_flux_image_update_automation"></a> [enable\_flux\_image\_update\_automation](#input\_enable\_flux\_image\_update\_automation) | Enable Flux image update automation | `bool` | `false` | no |
 | <a name="input_enable_ssm"></a> [enable\_ssm](#input\_enable\_ssm) | If true, allow to connect to the instances using AWS Systems Manager | `bool` | `false` | no |
 | <a name="input_env"></a> [env](#input\_env) | The environment of the EKS cluster | `string` | n/a | yes |
-| <a name="input_flux_git_ref"></a> [flux\_git\_ref](#input\_flux\_git\_ref) | Git branch or tag in the format refs/heads/main or refs/tags/v1.0.0 | `string` | n/a | yes |
+| <a name="input_flux_git_ref"></a> [flux\_git\_ref](#input\_flux\_git\_ref) | Git branch or tag in the format refs/heads/main or refs/tags/v1.0.0 | `string` | `"refs/heads/main"` | no |
 | <a name="input_flux_operator_version"></a> [flux\_operator\_version](#input\_flux\_operator\_version) | Flux Operator version | `string` | `"0.18.0"` | no |
 | <a name="input_flux_sync_repository_url"></a> [flux\_sync\_repository\_url](#input\_flux\_sync\_repository\_url) | The repository URL to sync with Flux | `string` | n/a | yes |
 | <a name="input_gateway_api_version"></a> [gateway\_api\_version](#input\_gateway\_api\_version) | Gateway API CRDs version | `string` | `"v1.2.1"` | no |
-| <a name="input_github_app_secret_id"></a> [github\_app\_secret\_id](#input\_github\_app\_secret\_id) | SecretsManager id from where to retrieve the Github App information. ref: https://fluxcd.io/flux/components/source/gitrepositories/#github | `string` | `"github/flux-app"` | no |
+| <a name="input_github_app_secret_name"></a> [github\_app\_secret\_name](#input\_github\_app\_secret\_name) | SecretsManager name from where to retrieve the Github App information. ref: https://fluxcd.io/flux/components/source/gitrepositories/#github | `string` | `"github/flux-app"` | no |
 | <a name="input_iam_role_additional_policies"></a> [iam\_role\_additional\_policies](#input\_iam\_role\_additional\_policies) | Additional policies to be added to the IAM role | `map(string)` | `{}` | no |
 | <a name="input_karpenter_limits"></a> [karpenter\_limits](#input\_karpenter\_limits) | Define limits for Karpenter per node pool. | <pre>map(object(<br>    {<br>      cpu    = optional(number, 50),<br>      memory = optional(string, "50Gi")<br>    }<br>    )<br>  )</pre> | n/a | yes |
-| <a name="input_karpenter_version"></a> [karpenter\_version](#input\_karpenter\_version) | Karpenter version | `string` | `"1.2.3"` | no |
+| <a name="input_karpenter_version"></a> [karpenter\_version](#input\_karpenter\_version) | Karpenter version | `string` | `"1.3.3"` | no |
 | <a name="input_region"></a> [region](#input\_region) | AWS Region | `string` | `"eu-west-3"` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to add to all resources | `map(string)` | `{}` | no |
 

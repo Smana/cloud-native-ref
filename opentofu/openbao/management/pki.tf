@@ -9,7 +9,7 @@ resource "vault_mount" "this" {
 
 # Configure PKI with the root CA
 resource "vault_pki_secret_backend_config_ca" "pki" {
-  backend    = vault_mount.this.path
+  backend    = "pki"
   pem_bundle = jsondecode(data.aws_secretsmanager_secret_version.root_ca.secret_string).bundle
 }
 
@@ -32,7 +32,7 @@ resource "vault_pki_secret_backend_intermediate_cert_request" "this" {
 
 # Sign our CSR
 resource "vault_pki_secret_backend_root_sign_intermediate" "this" {
-  backend              = vault_mount.this.path
+  backend              = "pki"
   csr                  = vault_pki_secret_backend_intermediate_cert_request.this.csr
   common_name          = var.pki_common_name
   exclude_cn_from_sans = true

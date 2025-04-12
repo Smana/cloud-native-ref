@@ -68,7 +68,6 @@ spec:
         name: eks-mycluster-0-vars
       - kind: Secret
         name: cert-manager-openbao-approle
-        optional: true # will be created by the current kustomization
   dependsOn:
     - name: eks-pod-identities
   healthChecks:

@@ -81,8 +81,3 @@ variable "pki_max_lease_ttl" {
   type        = number
   default     = 94670856
 }
-
-variable "eks_cluster_name" {
-  description = "The name of the EKS cluster"
-  type        = string
-}
