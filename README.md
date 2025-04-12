@@ -105,15 +105,9 @@ For a streamlined deployment experience, use [**Terramate**](https://terramate.i
      ```
    - Adjust these values according to your environment
 
-3. **Deploy Core Infrastructure**
+3. **Deploy the Openbao and EKS clusters**
    ```bash
-   terramate script run --parallel=2 --no-tags openbao-management deploy
-   ```
-   This command deploys all modules except OpenBao configuration, which requires a separate step.
-
-4. **Configure OpenBao**
-   ```bash
-   terramate script run openbao configure
+   terramate script run deploy
    ```
 
 ### Post-Deployment

@@ -1,4 +1,4 @@
-script "eks" "destroy" {
+script "destroy" {
   description = "Destroy the EKS cluster"
   job {
     name        = "eks-destroy"
