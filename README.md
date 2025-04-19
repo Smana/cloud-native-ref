@@ -89,7 +89,7 @@ For a streamlined deployment experience, use [**Terramate**](https://terramate.i
    ```
 
 2. **Configure Global Variables**
-   - Review and update the variables in `workflows.tm.hcl`:
+   - Review and update the variables in `opentofu/config.tm.hcl`:
      ```hcl
      globals {
        provisioner                      = "tofu"
