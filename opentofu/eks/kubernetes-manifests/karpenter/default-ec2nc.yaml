@@ -4,7 +4,7 @@ metadata:
   name: default
 spec:
   amiSelectorTerms:
-    - alias: al2@latest
+    - alias: bottlerocket@1.37.0
   role: ${karpenter_node_iam_role_name}
   kubelet:
     maxPods: 100
