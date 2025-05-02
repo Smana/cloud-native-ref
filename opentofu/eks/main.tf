@@ -79,7 +79,7 @@ module "eks" {
       max_size     = 3
       desired_size = 2
 
-      ami_type = "AL2_x86_64"
+      ami_type = "BOTTLEROCKET_x86_64"
 
       iam_role_additional_policies = merge(
         var.enable_ssm ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
@@ -89,6 +89,13 @@ module "eks" {
       capacity_type        = "SPOT"
       force_update_version = true
       instance_types       = ["c7i.xlarge", "c6i.xlarge", "c5.xlarge"]
+      bootstrap_extra_args = <<-EOT
+        [settings.host-containers.admin]
+        enabled = false
+
+        [settings.host-containers.control]
+        enabled = true
+      EOT
       taints = [
         {
           key    = "node.cilium.io/agent-not-ready"
