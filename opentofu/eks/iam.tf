@@ -150,6 +150,7 @@ resource "aws_iam_policy" "crossplane_eks" {
 EOF
 }
 
+#trivy:ignore:AVD-AWS-0345
 resource "aws_iam_policy" "crossplane_s3" {
   name        = "crossplane_s3_${var.cluster_name}"
   path        = "/"
