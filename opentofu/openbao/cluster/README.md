@@ -113,7 +113,7 @@ This architecture balances performance, cost-efficiency, and resilience, embraci
 | <a name="input_name"></a> [name](#input\_name) | Name of the resources created for this OpenBao cluster | `string` | `"openbao"` | no |
 | <a name="input_openbao_certificates_secret_name"></a> [openbao\_certificates\_secret\_name](#input\_openbao\_certificates\_secret\_name) | The name of the AWS Secrets Manager secret containing the OpenBao certificates | `string` | n/a | yes |
 | <a name="input_openbao_data_path"></a> [openbao\_data\_path](#input\_openbao\_data\_path) | Directory where OpenBao's data will be stored in an EC2 instance | `string` | `"/opt/openbao/data"` | no |
-| <a name="input_openbao_version"></a> [openbao\_version](#input\_openbao\_version) | OpenBao version to install | `string` | `"2.2.0"` | no |
+| <a name="input_openbao_version"></a> [openbao\_version](#input\_openbao\_version) | OpenBao version to install | `string` | `"2.2.1"` | no |
 | <a name="input_prometheus_node_exporter_enabled"></a> [prometheus\_node\_exporter\_enabled](#input\_prometheus\_node\_exporter\_enabled) | If set to true install and start a prometheus node exporter | `bool` | `false` | no |
 | <a name="input_region"></a> [region](#input\_region) | AWS Region | `string` | `"eu-west-3"` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to add to all resources | `map(string)` | `{}` | no |

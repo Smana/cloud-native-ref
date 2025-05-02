@@ -2,7 +2,7 @@
 
 * Create a management EKS cluster in a single zone
 * Use SPOT instances
-* Use Amazon Linux AMI (Currently Bottlerocket doesn't work and having issues with AL2023)
+* Use Bottlerocket AMI
 * Install and configure Karpenter
 * Install and configure Flux
 * Write a secret that contains the cluster's specific variables that will be used with Flux. (please refer to [variables substitutions](https://fluxcd.io/flux/components/kustomize/kustomization/#post-build-variable-substitution))
@@ -185,7 +185,7 @@ tofu destroy --var-file variables.tfvars
 | <a name="input_flux_git_ref"></a> [flux\_git\_ref](#input\_flux\_git\_ref) | Git branch or tag in the format refs/heads/main or refs/tags/v1.0.0 | `string` | `"refs/heads/main"` | no |
 | <a name="input_flux_operator_version"></a> [flux\_operator\_version](#input\_flux\_operator\_version) | Flux Operator version | `string` | `"0.19.0"` | no |
 | <a name="input_flux_sync_repository_url"></a> [flux\_sync\_repository\_url](#input\_flux\_sync\_repository\_url) | The repository URL to sync with Flux | `string` | n/a | yes |
-| <a name="input_gateway_api_version"></a> [gateway\_api\_version](#input\_gateway\_api\_version) | Gateway API CRDs version | `string` | `"v1.2.1"` | no |
+| <a name="input_gateway_api_version"></a> [gateway\_api\_version](#input\_gateway\_api\_version) | Gateway API CRDs version | `string` | `"v1.3.0"` | no |
 | <a name="input_github_app_secret_name"></a> [github\_app\_secret\_name](#input\_github\_app\_secret\_name) | SecretsManager name from where to retrieve the Github App information. ref: https://fluxcd.io/flux/components/source/gitrepositories/#github | `string` | `"github/flux-app"` | no |
 | <a name="input_iam_role_additional_policies"></a> [iam\_role\_additional\_policies](#input\_iam\_role\_additional\_policies) | Additional policies to be added to the IAM role | `map(string)` | `{}` | no |
 | <a name="input_karpenter_limits"></a> [karpenter\_limits](#input\_karpenter\_limits) | Define limits for Karpenter per node pool. | <pre>map(object(<br>    {<br>      cpu    = optional(number, 50),<br>      memory = optional(string, "50Gi")<br>    }<br>    )<br>  )</pre> | n/a | yes |

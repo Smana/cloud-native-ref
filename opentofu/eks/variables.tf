@@ -70,7 +70,7 @@ variable "ebs_csi_driver_chart_version" {
 
 variable "gateway_api_version" {
   description = "Gateway API CRDs version"
-  default     = "v1.2.1"
+  default     = "v1.3.0"
   type        = string
 }
 
