@@ -1,0 +1,35 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: victoria-logs
+  namespace: observability
+spec:
+  releaseName: victoria-logs
+  chart:
+    spec:
+      chart: victoria-logs-cluster
+      sourceRef:
+        kind: HelmRepository
+        name: victoria-metrics
+        namespace: observability
+      version: "0.9.8"
+  interval: 2m0s
+  timeout: 10m
+  install:
+    remediation:
+      retries: 3
+  valuesFrom:
+    - kind: ConfigMap
+      name: vl-common-helm-values
+      valuesKey: values.yaml
+  values:
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+    server:
+      replicaCount: 2
+      topologySpreadConstraints: []
+      affinity: {}
+      persistentVolume:
+        # Should be calculated based on the logs you send and retention policy
+        size: 30Gi

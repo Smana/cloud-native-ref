@@ -185,6 +185,27 @@ data:
             # For grafana-operator users, change `name: storage` to `name: grafana-data`
             - name: storage
               mountPath: /var/lib/grafana
+        - name: "load-vl-ds-plugin"
+          image: "curlimages/curl:8.13.0"
+          command: [ "/bin/sh" ]
+          workingDir: "/var/lib/grafana"
+          securityContext:
+            runAsUser: 472
+            runAsNonRoot: true
+            runAsGroup: 472
+          args:
+          - "-c"
+          - |
+            set -ex
+            mkdir -p /var/lib/grafana/plugins/
+            ver=$(curl -s -L https://api.github.com/repos/VictoriaMetrics/victorialogs-datasource/releases/latest | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            curl -L https://github.com/VictoriaMetrics/victorialogs-datasource/releases/download/$ver/victoriametrics-logs-datasource-$ver.tar.gz -o /var/lib/grafana/plugins/vl-plugin.tar.gz
+            tar -xf /var/lib/grafana/plugins/vl-plugin.tar.gz -C /var/lib/grafana/plugins/
+            rm /var/lib/grafana/plugins/vl-plugin.tar.gz
+          volumeMounts:
+            # For grafana-operator users, change `name: storage` to `name: grafana-data`
+            - name: storage
+              mountPath: /var/lib/grafana
 
     # Do not scrape controlplane components as it is a managed service on EKS
     kubeApiServer:
