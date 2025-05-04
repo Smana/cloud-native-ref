@@ -1,0 +1,161 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: victoria-logs
+  namespace: observability
+spec:
+  releaseName: victoria-logs
+  chart:
+    spec:
+      chart: victoria-logs-cluster
+      sourceRef:
+        kind: HelmRepository
+        name: victoria-metrics
+        namespace: observability
+      version: "0.0.2"
+  interval: 2m0s
+  timeout: 10m
+  install:
+    remediation:
+      retries: 3
+  values:
+    printNotes: false
+
+    vlselect:
+      horizontalPodAutoscaler:
+        enabled: true
+        maxReplicas: 10
+        minReplicas: 2
+        metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 70
+
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                      - "vlselect"
+              topologyKey: "kubernetes.io/hostname"
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              app: vlselect
+          maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+
+      resources:
+        limits:
+          cpu: 100m
+          memory: 200Mi
+        requests:
+          cpu: 100m
+          memory: 200Mi
+
+      vmServiceScrape:
+        enabled: true
+
+    vlinsert:
+      horizontalPodAutoscaler:
+        enabled: true
+        maxReplicas: 10
+        minReplicas: 2
+        metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 70
+
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                      - "vlinsert"
+              topologyKey: "kubernetes.io/hostname"
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              app: vlinsert
+          maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+
+      resources:
+        limits:
+          cpu: 100m
+          memory: 200Mi
+        requests:
+          cpu: 100m
+          memory: 200Mi
+
+      vmServiceScrape:
+        enabled: true
+
+    vlstorage:
+      # -- Enable deployment of vlstorage component. StatefulSet is used
+      enabled: true
+      retentionPeriod: 7d
+      retentionDiskSpaceUsage: "9GiB"
+      replicaCount: 3
+
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                      - "vlstorage"
+              topologyKey: "kubernetes.io/hostname"
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              app: vlstorage
+          maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+
+      persistentVolume:
+        enabled: true
+        size: 10Gi
+
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 500m
+          memory: 512Mi
+
+      vmServiceScrape:
+        enabled: true
+
+    vector:
+      enabled: true

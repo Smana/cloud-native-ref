@@ -41,10 +41,6 @@ spec:
       namespace: kube-system
     - apiVersion: cloud.ogenki.io/v1alpha1
       kind: EPI
-      name: xplane-loki
-      namespace: observability
-    - apiVersion: cloud.ogenki.io/v1alpha1
-      kind: EPI
       name: xplane-victoriametrics
       namespace: observability
 ---

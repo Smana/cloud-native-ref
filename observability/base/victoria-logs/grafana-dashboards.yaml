@@ -1,0 +1,14 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: observability-victoria-logs-explorer
+  namespace: observability
+spec:
+  allowCrossNamespaceImport: true
+  datasources:
+    - inputName: "DS_VICTORIALOGS"
+      datasourceName: "VictoriaLogs"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  url: "https://grafana.com/api/dashboards/22759/revisions/6/download"

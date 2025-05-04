@@ -1,0 +1,44 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: victoria-logs
+  namespace: observability
+spec:
+  releaseName: victoria-logs
+  chart:
+    spec:
+      chart: victoria-logs-single
+      sourceRef:
+        kind: HelmRepository
+        name: victoria-metrics
+        namespace: observability
+      version: "0.9.8"
+  interval: 4m0s
+  timeout: 30m
+  install:
+    remediation:
+      retries: 3
+  values:
+    printNotes: false
+
+    server:
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 500m
+          memory: 512Mi
+
+      vmServiceScrape:
+        enabled: true
+
+    vector:
+      enabled: true
+
+    dashboards:
+      enabled: true
+      grafanaOperator:
+        enabled: true
+        spec:
+          allowCrossNamespaceImport: true
