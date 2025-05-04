@@ -3,9 +3,7 @@ kind: Kustomization
 
 resources:
   - kubernetes-karpenter.yaml
-  - kubernetes-logs.yaml
   - kubernetes-node-exporter-full.yaml
-  - kubernetes-quick-search-logs.yaml
   - kubernetes-views-global.yaml
   - kubernetes-views-namespaces.yaml
   - kubernetes-views-nodes.yaml

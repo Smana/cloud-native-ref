@@ -85,14 +85,6 @@ spec:
         name: eks-mycluster-0-vars
   dependsOn:
     - name: observability-grafana-operator
-  # - apiVersion: helm.toolkit.fluxcd.io/v2
-  #   kind: HelmRelease
-  #   name: loki
-  #   namespace: observability
-  # - apiVersion: helm.toolkit.fluxcd.io/v2
-  #   kind: HelmRelease
-  #   name: vector-agent
-  #   namespace: observability
 # Don't want to deploy OnCall every time, it's a bit heavy
 # ---
 # apiVersion: kustomize.toolkit.fluxcd.io/v1beta2

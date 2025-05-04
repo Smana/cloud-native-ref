@@ -18,20 +18,27 @@ spec:
   install:
     remediation:
       retries: 3
-  valuesFrom:
-    - kind: ConfigMap
-      name: vl-common-helm-values
-      valuesKey: values.yaml
   values:
-    vmsingle:
-      spec:
-        retentionPeriod: "1d" # Minimal retention, for tests only
-        replicaCount: 1
-        storage:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: 10Gi
-        extraArgs:
-          maxLabelsPerTimeseries: "50"
+    printNotes: false
+
+    server:
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 500m
+          memory: 512Mi
+
+      vmServiceScrape:
+        enabled: true
+
+    vector:
+      enabled: true
+
+    dashboards:
+      enabled: true
+      grafanaOperator:
+        enabled: true
+        spec:
+          allowCrossNamespaceImport: true

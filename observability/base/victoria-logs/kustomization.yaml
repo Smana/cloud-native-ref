@@ -5,9 +5,6 @@ resources:
   - grafana-dashboards.yaml
   - grafana-datasource.yaml
 
-  # Common Helm values for both single and cluster
-  - vl-common-helm-values-configmap.yaml
-
   # Choose between single or cluster helm release
 
   # VM Single

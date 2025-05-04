@@ -11,5 +11,5 @@ spec:
     - "vl.priv.${domain_name}"
   rules:
     - backendRefs:
-        - name: vlselect-victoria-log
-          port: 9428
+        - name: victoria-logs-victoria-logs-cluster-vlselect
+          port: 9471
