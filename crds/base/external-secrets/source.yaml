@@ -6,4 +6,4 @@ spec:
   interval: 5m0s
   url: https://github.com/external-secrets/external-secrets
   ref:
-    tag: v0.16.1
+    tag: v0.16.2
