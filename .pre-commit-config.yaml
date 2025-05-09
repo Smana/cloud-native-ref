@@ -3,11 +3,7 @@ repos:
     rev: v1.99.0
     hooks:
       - id: terraform_fmt
-      - id: terraform_docs
       - id: terraform_validate
-      # - id: terraform_trivy # Will replace with the Trivy Github Action instead
-      #   args:
-      #     - --args=--skip-dirs="**/.terraform"
       - id: terraform_tflint
         args:
           - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
