@@ -12,7 +12,7 @@ spec:
         kind: HelmRepository
         name: victoria-metrics
         namespace: observability
-      version: "0.47.0"
+      version: "0.47.1"
   interval: 4m0s
   timeout: 30m
   install:
