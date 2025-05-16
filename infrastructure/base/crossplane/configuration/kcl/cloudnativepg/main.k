@@ -167,7 +167,7 @@ if oxr.spec.roles:
             deletionPolicy = _deletionPolicy
             forProvider = {
                 manifest = {
-                    apiVersion = "external-secrets.io/v1beta1"
+                    apiVersion = "external-secrets.io/v1"
                     kind = "ExternalSecret"
                     metadata = {
                         name = oxr.spec.claimRef.name + "-cnpg-role-" + role.name
@@ -263,7 +263,7 @@ if oxr.spec.createSuperuser:
                 deletionPolicy = _deletionPolicy
                 forProvider = {
                     manifest = {
-                        apiVersion = "external-secrets.io/v1beta1"
+                        apiVersion = "external-secrets.io/v1"
                         kind = "ExternalSecret"
                         metadata = {
                             name = oxr.spec.claimRef.name + "-cnpg-superuser"

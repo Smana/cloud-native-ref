@@ -101,3 +101,32 @@ When comparing a Flux resource between clusters, follow these steps:
 
 When comparing resources, look for differences in the `spec`, `status` and `events`, including the referenced ConfigMaps and Secrets.
 The Flux resource `spec` represents the desired state and should be the main focus of the comparison, while the status and events represent the current state in the cluster.
+
+# Additional Context-Specific Suggestions
+
+## AWS EKS
+- When troubleshooting service account permissions, check for IAM Role for Service Account (IRSA) annotations and corresponding AWS IAM policies.
+- Always confirm the AWS region and EKS cluster name when switching or referencing clusters.
+
+## Cilium (CNI & Network Policies)
+- For network connectivity issues, check Cilium pod logs and CiliumNetworkPolicy resources.
+- Use Cilium Hubble (if enabled) for advanced network observability and troubleshooting.
+
+## Gateway API
+- For ingress and traffic routing, prefer Gateway API resources (`Gateway`, `HTTPRoute`, `GatewayClass`) over legacy `Ingress` resources.
+- Ensure Cilium is configured as the Gateway API implementation for ingress.
+
+# Crossplane Composition Troubleshooting
+
+When troubleshooting a Crossplane Composition or Composite Resource (XR), follow these steps:
+
+- Use the `get_kubernetes_resources` tool to list CompositeResourceDefinitions (CRDs) and Compositions to identify the relevant composite kind and composition.
+- Use the `get_kubernetes_resources` tool to get the specific Composite Resource (XR) instance you want to troubleshoot. Analyze its `spec`, `status`, and `conditions` fields.
+- Identify the Composition in use by checking the XR's `compositionRef` or `compositionSelector` fields.
+- Use the `get_kubernetes_resources` tool to get the referenced Composition and analyze its pipeline, resources, and functions.
+- To get the managed resources created by the XR, look at the XR's `status.resources` field, which lists all managed resources (with their kind, name, and namespace).
+- For each managed resource, use the `get_kubernetes_resources` tool to get its status and events. Analyze for errors, failed conditions, or drift.
+- If a managed resource is in a failed state, use the `get_kubernetes_logs` tool to fetch logs from the relevant controller pod (e.g., provider-aws, provider-kubernetes) for deeper analysis.
+- If any issues are found, create a root cause analysis report for the user, including which managed resource failed and why.
+- If no issues are found, create a report with the current status of the XR and all its managed resources.
+
