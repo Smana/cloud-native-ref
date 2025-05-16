@@ -228,11 +228,12 @@ To effectively **identify issues and optimize performance**, a comprehensive mon
 
 * **Metrics**: We've implemented a combination of VictoriaMetrics and Grafana operators to collect, visualize, and analyze metrics. This stack enables real-time monitoring, custom dashboards, and the ability to configure alerts and notifications for proactive issue management.
 
-* **Logs**: (Coming soon)
+* **Logs**: We use VictoriaLogs for log collection and analysis, providing a high-performance, cost-effective solution that seamlessly integrates with our VictoriaMetrics stack for unified observability.
 
 🏷️ Related blog posts:
 
 * [Harness the Power of VictoriaMetrics and Grafana Operators for Metrics Management](https://blog.ogenki.io/post/series/observability/metrics)
+* [VictoriaMetrics : Effective alerts, from theory to practice](https://blog.ogenki.io/post/series/observability/alerts/)
 
 ## 🧪 CI
 
