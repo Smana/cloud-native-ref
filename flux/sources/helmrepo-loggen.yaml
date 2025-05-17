@@ -1,0 +1,8 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: loggen
+  namespace: observability
+spec:
+  interval: 30m
+  url: https://smana.github.io/loggen/helm/loggen

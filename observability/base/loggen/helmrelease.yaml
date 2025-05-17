@@ -1,0 +1,31 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: loggen
+spec:
+  interval: 30m
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: loggen
+      version: "0.1.1"
+      sourceRef:
+        kind: HelmRepository
+        name: loggen
+      interval: 12h
+  values:
+    args:
+      - --sleep
+      - "0.1"
+      - --error-rate
+      - "10"
+      - --format
+      - "raw"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+      limits:
+        cpu: 100m
+        memory: 100Mi
