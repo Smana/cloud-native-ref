@@ -9,19 +9,22 @@ spec:
   chart:
     spec:
       chart: loggen
-      version: "0.1.1"
+      version: "0.1.4"
       sourceRef:
         kind: HelmRepository
         name: loggen
       interval: 12h
   values:
+    replicaCount: 2
     args:
       - --sleep
       - "0.1"
       - --error-rate
-      - "10"
+      - "0.1"
       - --format
-      - "raw"
+      - "json"
+      - --latency
+      - "0.2"
     resources:
       requests:
         cpu: 100m
