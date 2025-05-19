@@ -33,7 +33,7 @@ jobs:
         uses: terramate-io/terramate-action@v2
 
       - name: Install asdf
-        uses: asdf-vm/actions/setup@v3
+        uses: asdf-vm/actions/setup@v4
         with:
           asdf_branch: v0.15.0
 
