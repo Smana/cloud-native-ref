@@ -20,3 +20,4 @@ misconfigurations:
   - id: AVD-KSV-0106
   - id: AVD-KSV-0110
   - id: AVD-KSV-0118
+  - id: AVD-KSV-0125
