@@ -13,7 +13,7 @@ spec:
         kind: HelmRepository
         name: eks
         namespace: kube-system
-      version: "1.13.2"
+      version: "1.13.3"
   interval: 3m0s
   install:
     remediation:
