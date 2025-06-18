@@ -10,10 +10,12 @@ resource "helm_release" "cilium" {
   version         = var.cilium_version
   namespace       = "kube-system"
 
-  set {
-    name  = "cluster.name"
-    value = var.cluster_name
-  }
+  set = [
+    {
+      name  = "cluster.name"
+      value = var.cluster_name
+    }
+  ]
 
   values = [
     templatefile("${path.module}/helm_values/cilium.yaml",
@@ -40,14 +42,16 @@ resource "helm_release" "aws_ebs_csi_driver" {
   version         = var.ebs_csi_driver_chart_version
   namespace       = "kube-system"
 
-  set {
-    name  = "controller.k8sTagClusterId"
-    value = var.cluster_name
-  }
-  set {
-    name  = "controller.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = module.irsa_ebs_csi_driver.iam_role_arn
-  }
+  set = [
+    {
+      name  = "controller.k8sTagClusterId"
+      value = var.cluster_name
+    },
+    {
+      name  = "controller.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+      value = module.irsa_ebs_csi_driver.iam_role_arn
+    }
+  ]
 
   values = [
     file("${path.module}/helm_values/aws-ebs-csi-driver.yaml")
