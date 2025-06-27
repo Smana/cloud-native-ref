@@ -13,7 +13,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: kyverno
-      version: "3.4.3"
+      version: "3.4.4"
   interval: 10m0s
   install:
     remediation:
