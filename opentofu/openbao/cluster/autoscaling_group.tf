@@ -85,7 +85,7 @@ resource "aws_launch_template" "ha" {
 
 module "openbao_asg" {
   source  = "terraform-aws-modules/autoscaling/aws"
-  version = "~> 8.0"
+  version = "~> 9.0"
 
   name                            = local.name
   ignore_desired_capacity_changes = true
