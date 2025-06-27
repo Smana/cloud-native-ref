@@ -16,6 +16,9 @@ spec:
       interval: 12h
   values:
     config:
+      # while waiting for the helm chart to be published
+      image:
+        tag: "0.32.0"
       pluginsDir: /build/plugins
       oidc:
         secret:
