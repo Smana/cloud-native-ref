@@ -20,6 +20,7 @@ resource "aws_secretsmanager_secret" "cert_manager_approle_credentials" {
 
 # Generate a new secret ID for the AppRole
 resource "vault_approle_auth_backend_role_secret_id" "cert_manager" {
+  namespace = vault_auth_backend.approle.namespace
   backend   = vault_auth_backend.approle.path
   role_name = vault_approle_auth_backend_role.cert_manager.role_name
 }
