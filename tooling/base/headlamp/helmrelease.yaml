@@ -17,7 +17,7 @@ spec:
   values:
     # while waiting for the helm chart to be published
     image:
-      tag: "0.32.0"
+      tag: "v0.32.0"
     config:
       pluginsDir: /build/plugins
       oidc:
