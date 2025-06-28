@@ -54,18 +54,18 @@ As stated in the requirements, OpenBao should be reachable from the Kubernetes c
    export VAULT_SKIP_VERIFY=true
    export VAULT_TOKEN=<token>
    export VAULT_ADDR="https://bao.priv.cloud.ogenki.io"
+   export VAULT_NAMESPACE=admin/pki
    bao secrets list
    ```
 
    This command should output something like
    ```console
-    Path                   Type         Accessor              Description
-    ----                   ----         --------              -----------
-    cubbyhole/             cubbyhole    cubbyhole_7e5150cd    per-token private secret storage
-    identity/              identity     identity_900b3c87     identity store
-    pki/                   pki          pki_0b833e86          n/a
-    pki_private_issuer/    pki          pki_23f1dc2d          Ogenki OpenBao Issuer
-    sys/                   system       system_8f1e8dc2       system endpoints used for control, policy and debugging
+    Path                   Type            Accessor              Description
+    ----                   ----            --------              -----------
+    cubbyhole/             ns_cubbyhole    cubbyhole_0a9868ae    per-token private secret storage
+    identity/              ns_identity     identity_b8da0ca0     identity store
+    pki_private_issuer/    pki             pki_ed08cceb          Private PKI - Vault Issuer
+    sys/                   ns_system       system_c5e57be6       system endpoints used for control, policy and debugging
    ```
 
 2. Build the variables needed to create the `ClusterIssuer`
