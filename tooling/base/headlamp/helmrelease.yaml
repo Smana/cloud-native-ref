@@ -15,10 +15,10 @@ spec:
         name: headlamp
       interval: 12h
   values:
+    # while waiting for the helm chart to be published
+    image:
+      tag: "0.32.0"
     config:
-      # while waiting for the helm chart to be published
-      image:
-        tag: "0.32.0"
       pluginsDir: /build/plugins
       oidc:
         secret:
