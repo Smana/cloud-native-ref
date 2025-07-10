@@ -4,8 +4,17 @@ metadata:
   name: io
 spec:
   amiSelectorTerms:
-    - alias: al2@latest
+    - alias: bottlerocket@1.42.0
+  # Configure ephemeral storage for pods, creating a RAID0 volume from the containers filesystem
   instanceStorePolicy: "RAID0"
+  userData: |
+    [settings.bootstrap-commands.k8s-ephemeral-storage]
+    commands = [
+        ["apiclient", "ephemeral-storage", "init"],
+        ["apiclient", "ephemeral-storage" ,"bind", "--dirs", "/var/lib/containerd", "/var/lib/kubelet", "/var/log/pods"]
+    ]
+    essential = true
+    mode = "always"
   role: ${karpenter_node_iam_role_name}
   subnetSelectorTerms:
     - tags:
@@ -13,8 +22,5 @@ spec:
   securityGroupSelectorTerms:
     - tags:
         karpenter.sh/discovery: ${cluster_name}
-  userData: |
-    #!/bin/bash
-    /usr/bin/setup-local-disks raid0
   tags:
     karpenter.sh/discovery: ${cluster_name}
