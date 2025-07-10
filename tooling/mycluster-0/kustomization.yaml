@@ -5,6 +5,5 @@ resources:
   - ../base/headlamp
   - ../base/harbor
   # Enabling only when needed for cost reasons
-  # - ../base/harbor
   # - ../base/dagger-engine
   # - ../base/gha-runners

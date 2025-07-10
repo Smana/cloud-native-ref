@@ -17,7 +17,7 @@ variable "cluster_name" {
 
 variable "cluster_version" {
   description = "k8s cluster version"
-  default     = "1.32"
+  default     = "1.33"
   type        = string
 }
 
@@ -47,7 +47,7 @@ variable "cilium_version" {
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "1.5.1"
+  default     = "1.5.2"
   type        = string
 }
 
@@ -91,7 +91,7 @@ variable "cert_manager_approle_secret_name" {
 
 variable "flux_operator_version" {
   description = "Flux Operator version"
-  default     = "0.23.0"
+  default     = "0.24.1"
   type        = string
 }
 
