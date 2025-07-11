@@ -3,5 +3,4 @@ kind: Kustomization
 
 resources:
   - ../base/victoria-logs
-  # Log generator for demo purposes
-  # - ../base/loggen
+  - ../base/loggen

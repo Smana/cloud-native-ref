@@ -23,28 +23,36 @@ spec:
         externalSecret:
           enabled: true
           name: "headlamp-envvars"
-    initContainers:
-      - command:
-          - /bin/sh
-          - -c
-          - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/
-        image: ghcr.io/headlamp-k8s/headlamp-plugin-flux:latest
-        imagePullPolicy: Always
-        name: headlamp-plugins
-        volumeMounts:
-          - mountPath: /build/plugins
-            name: headlamp-plugins
-
     resources:
       limits:
         memory: 256Mi
       requests:
         cpu: 300m
-
+    initContainers:
+      - command:
+          - /bin/sh
+          - -c
+          - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/ && chown -R 100:101 /build
+        image: ghcr.io/headlamp-k8s/headlamp-plugin-flux:latest
+        imagePullPolicy: Always
+        name: headlamp-plugins
+        securityContext:
+          runAsNonRoot: false
+          privileged: false
+          runAsUser: 0
+          runAsGroup: 0
+        volumeMounts:
+          - mountPath: /build/plugins
+            name: headlamp-plugins
+    persistentVolumeClaim:
+      accessModes:
+        - ReadWriteOnce
+      enabled: true
+      size: 1Gi
     volumeMounts:
       - mountPath: /build/plugins
         name: headlamp-plugins
-
     volumes:
       - name: headlamp-plugins
-        emptyDir: {}
+        persistentVolumeClaim:
+          claimName: headlamp
