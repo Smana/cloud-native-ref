@@ -4,7 +4,8 @@ metadata:
   name: io
 spec:
   amiSelectorTerms:
-    - alias: al2@latest
+    - alias: bottlerocket@1.42.0
+  # Configure ephemeral storage for pods, creating a RAID0 volume from nvme devices for the containers filesystem
   instanceStorePolicy: "RAID0"
   role: ${karpenter_node_iam_role_name}
   subnetSelectorTerms:
@@ -13,8 +14,5 @@ spec:
   securityGroupSelectorTerms:
     - tags:
         karpenter.sh/discovery: ${cluster_name}
-  userData: |
-    #!/bin/bash
-    /usr/bin/setup-local-disks raid0
   tags:
     karpenter.sh/discovery: ${cluster_name}
