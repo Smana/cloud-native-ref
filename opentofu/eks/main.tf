@@ -89,11 +89,9 @@ module "eks" {
       capacity_type        = "SPOT"
       force_update_version = true
       instance_types       = ["c7i.xlarge", "c6i.xlarge", "c5.xlarge"]
+      # Exemple of how to configure Bottlerocket. https://bottlerocket.dev/en/os/1.41.x/api/settings/
       bootstrap_extra_args = <<-EOT
         [settings.host-containers.admin]
-        enabled = false
-
-        [settings.host-containers.control]
         enabled = true
       EOT
       taints = [
