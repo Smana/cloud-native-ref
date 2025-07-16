@@ -22,10 +22,6 @@ spec:
     global:
       imageRegistry: public.ecr.aws
 
-    # Requires a recent image tag in order to support EPI
-    image:
-      tag: "v0.14.1"
-
     aws:
       region: ${region}
       zoneType: "public"
