@@ -1,0 +1,358 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kubescape
+  namespace: security
+spec:
+  releaseName: kubescape
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: kubescape-operator
+      sourceRef:
+        kind: HelmRepository
+        name: kubescape
+      version: "1.27.4"
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values:
+    clusterName: "${cluster_name}"
+
+    ksNamespace: security
+
+    excludeNamespaces: ""
+
+    capabilities:
+      # ====== configuration scanning related capabilities ======
+      #
+      # Default configuration scanning setup
+      configurationScan: enable
+      nodeScan: enable
+
+      # ====== Image vulnerabilities scanning related capabilities ======
+      #
+      nodeSbomGeneration: enable # Warning: When disabled along with enableClusterWideSecretAccess: false, vulnerability scanning capabilities will be limited
+      vulnerabilityScan: enable
+      relevancy: enable
+      # Generate VEX documents alongside the image vulnerabilities report (experimental)
+      vexGeneration: disable
+
+      # ====== Runtime related capabilities ======
+      #
+      runtimeObservability: enable
+      networkPolicyService: enable
+      networkEventsStreaming: disable
+      runtimeDetection: enable
+      malwareDetection: disable
+      nodeProfileService: disable # this should only be enabled when using a backend service that supports node profiles
+      admissionController: enable
+      httpDetection: enable
+      seccompProfileService: enable
+      manageWorkloads: disable
+      syncSBOM: disable
+
+      # ====== Other capabilities ======
+      #
+      # This is an experimental capability with an elevated security risk. Read the
+      # matching docs before enabling.
+      autoUpgrading: disable
+      kubescapeOffline: disable
+      prometheusExporter: disable
+      # seccompGenerator: disable
+
+    serviceScanConfig:
+      enabled: false
+      interval: 1h
+
+    configurations:
+      otelUrl: # default is empty
+      persistence: enable
+
+    # installation of the alertCRD chart
+    alertCRD:
+      installDefault: true # install the default CRD
+      scopeClustered: true # it is better to have the CRDs in the cluster scope
+      scopeNamespaced: false # enable scopeNamespaced when there are no permissions for creating cluster scoped CRDs
+
+    # -----------------------------------------------------------------------------------------
+    # ------------------------ Cloud Providers ------------------------------------------------
+    # -----------------------------------------------------------------------------------------
+    cloudProviderMetadata:
+      cloudRegion:
+      awsIamRoleArn:
+
+    # -----------------------------------------------------------------------------------------
+    # ------------------------- Configurations ------------------------------------------------
+    # -----------------------------------------------------------------------------------------
+
+    persistence:
+      size:
+        backingStorage: 5Gi
+        kubevuln: 2Gi
+
+    global:
+      networkPolicy:
+        enabled: false
+        createEgressRules: false
+        apiServerIP: ""
+        apiServerPort: 443
+        httpsProxyIP: ""
+        httpsProxyPort: ""
+      overrideRuntimePath: ""
+      overrideDefaultCaCertificates:
+        enabled: false
+        caCertificates: ""
+      extraCaCertificates:
+        enabled: false
+        secretName: ""
+
+    # Might be interesting to see how to configure Harbor here
+    imageScanning:
+      privateRegistries:
+        credentials:
+          # - registry: "<registry.example.com>"
+          #   username: "<username/clientID>"
+          #   password: "<password/clientSecret>"
+          #   skipTlsVerify: false   # optional (skip TLS verification, default is false)
+          #   insecure: false        # optional (use http instead of https, default is false)
+          # Add more credentials as needed
+
+    # -----------------------------------------------------------------------------------------
+    # ----------------------- Microservices - core --------------------------------------------
+    # -----------------------------------------------------------------------------------------
+
+    kubescape:
+      resources:
+        requests:
+          cpu: 400m
+          memory: 400Mi
+        limits:
+          cpu: 1
+          memory: 1Gi
+
+      service:
+        type: ClusterIP
+        port: 8080
+
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          prometheus-instance: main
+
+    # +++++++++++++++++++++++++++++++ Operator ++++++++++++++++++++++++++++++++++++++++++++++++
+    operator:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 100Mi
+        limits:
+          cpu: 300m
+          memory: 300Mi
+
+    kubevuln:
+      replicaCount: 1
+
+      service:
+        type: ClusterIP
+        port: 8080
+        targetPort: 8080
+        protocol: TCP
+
+      resources:
+        requests:
+          cpu: 300m
+          memory: 1000Mi
+          ephemeral-storage: 5Gi
+        limits:
+          cpu: 1500m
+          memory: 5000Mi
+          ephemeral-storage: 10Gi
+      config:
+        maxImageSize: 5368709120 # set the maximum image size for scanning. This refers to the size of the zipped image. If the size of the non-zipped image is larger, increase the ephemeral-storage limits. It is recommended to use the same size as the requested ephemeral-storage
+        maxSBOMSize: 20971520
+        scanTimeout: 5m # set timeout for scanning an image
+        grypeDbListingURL: "" # set the URL for the grype db listing, if empty the default URL will be used
+        useDefaultMatchers: false # set to true to use the default matchers
+        storeFilteredSboms: false
+
+      env:
+        - name: CA_MAX_VULN_SCAN_ROUTINES # TODO update the kubevuln
+          value: "1"
+
+    # +++++++++++++++++++++++++++++++ Host-scanner ++++++++++++++++++++++++++++++++++++++++++++++++
+
+    hostScanner:
+      resources:
+        limits:
+          cpu: 0.4m
+          memory: 400Mi
+        requests:
+          cpu: 0.1m
+          memory: 200Mi
+
+    # +++++++++++++++++++++++++++++++ Storage ++++++++++++++++++++++++++++++++++++++++++++++++
+
+    storage:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 400Mi
+        limits:
+          cpu: 1500m
+          memory: 1500Mi
+
+    # +++++++++++++++++++++++++++++ Node-agent ++++++++++++++++++++++++++++++++++++++++++++++++
+
+    nodeAgent:
+      # Specific configuration for Bottlerocket
+      seLinuxType: super_t
+
+      config:
+        maxLearningPeriod: 10m # duration string
+        learningPeriod: 2m # duration string
+        updatePeriod: 10m # duration string
+        nodeProfileInterval: 10m # duration string
+        networkStreamingInterval: 2m # duration string
+        prometheusExporter: disable
+        httpExporterConfig:
+          url: http://synchronizer:8089/apis/v1/kubescape.io
+          maxAlertsPerMinute: 1000
+          method: POST
+        alertManagerExporterUrls: []
+        stdoutExporter: true
+        syslogExporterURL: ""
+        skipKernelVersionCheck: false
+        malwareScanAllFiles: false
+        hostMalwareSensor: disable
+        hostNetworkSensor: disable
+
+      serviceMonitor:
+        enabled: true
+        interval: 30s
+        scrapeTimeout: 15s
+        additionalLabels:
+          prometheus-instance: main
+
+      resources:
+        requests:
+          cpu: 300m
+          memory: 2Gi
+        limits:
+          cpu: 500m
+          memory: 2Gi
+
+    # +++++++++++++++++++++++++++++++ ClamAV ++++++++++++++++++++++++++++++++++++++++++++++++
+    clamav:
+      resources:
+        limits:
+          cpu: 300m
+          memory: 512Mi
+        requests:
+          cpu: 100m
+          memory: 256Mi
+
+    # +++++++++++++++++++++++++++++ Synchronizer ++++++++++++++++++++++++++++++++++++++++++++++++
+
+    synchronizer:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 250Mi
+        limits:
+          cpu: 200m
+          memory: 500Mi
+
+    # -----------------------------------------------------------------------------------------
+    # ------------------------ Microservice - helpers -----------------------------------------
+    # -----------------------------------------------------------------------------------------
+
+    # +++++++++++++++++++++++++++++++ OTEL-collector ++++++++++++++++++++++++++++++++++++++++++++++++
+
+    # opentelemetry collector
+    otelCollector:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 500Mi
+        limits:
+          cpu: 1
+          memory: 1Gi
+
+    # +++++++++++++++++++++++++++++ Discovery ++++++++++++++++++++++++++++++++++++++++++++++++
+
+    # service discovery job for discovering backend server URLs
+    serviceDiscovery:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 10Mi
+        limits:
+          cpu: 100m
+          memory: 50Mi
+
+    # +++++++++++++++++++++++++++++ Prometheus exporter ++++++++++++++++++++++++++++++++++++++++++++++++
+
+    # Prometheus exporter
+    prometheusExporter:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 10Mi
+        limits:
+          cpu: 50m
+          memory: 100Mi
+
+    # +++++++++++++++++++++++++++++ Upgrader ++++++++++++++++++++++++++++++++++++++++++++++++
+
+    # Configures the Helm Release Upgrader
+    helmReleaseUpgrader:
+      # A cron schedule of how often the updating CronJob should run
+      schedule: "0 14 * * *"
+
+      resources:
+        requests:
+          cpu: 500m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+
+    # -----------------------------------------------------------------------------------------
+    # --------------------------- Schedulers --------------------------------------------------
+    # -----------------------------------------------------------------------------------------
+
+    kubescapeScheduler:
+      scanSchedule: "*/5 * * * *"
+
+      resources:
+        requests:
+          cpu: 1m
+          memory: 10Mi
+        limits:
+          cpu: 10m
+          memory: 20Mi
+
+    kubevulnScheduler:
+      scanSchedule: "*/5 * * * *"
+
+      resources:
+        requests:
+          cpu: 1m
+          memory: 10Mi
+        limits:
+          cpu: 10m
+          memory: 20Mi
+
+    registryScanScheduler:
+      scanSchedule: "*/5 * * * *"
+
+      resources:
+        requests:
+          cpu: 1m
+          memory: 10Mi
+        limits:
+          cpu: 10m
+          memory: 20Mi
