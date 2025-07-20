@@ -15,14 +15,14 @@ spec:
         name: loggen
       interval: 12h
   values:
-    replicaCount: 2
+    replicaCount: 3
     args:
       - --sleep
       - "0.1"
       - --error-rate
       - "0.1"
       - --format
-      - "json"
+      - "raw"
       - --latency
       - "0.2"
     resources:
@@ -30,5 +30,5 @@ spec:
         cpu: 100m
         memory: 100Mi
       limits:
-        cpu: 100m
+        cpu: 400m
         memory: 100Mi

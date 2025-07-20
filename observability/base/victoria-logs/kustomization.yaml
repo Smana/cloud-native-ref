@@ -8,9 +8,9 @@ resources:
   # Choose between single or cluster helm release
 
   # VM Single
-  - helmrelease-vlsingle.yaml
-  - httproute-vlsingle.yaml
+  # - helmrelease-vlsingle.yaml
+  # - httproute-vlsingle.yaml
 
   # VM Cluster
-  # - helmrelease-vlcluster.yaml
-  # - httproute-vlcluster.yaml
+  - helmrelease-vlcluster.yaml
+  - httproute-vlcluster.yaml
