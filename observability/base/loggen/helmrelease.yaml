@@ -22,7 +22,7 @@ spec:
       - --error-rate
       - "0.1"
       - --format
-      - "json"
+      - "raw"
       - --latency
       - "0.2"
     resources:
@@ -30,5 +30,5 @@ spec:
         cpu: 100m
         memory: 100Mi
       limits:
-        cpu: 100m
+        cpu: 400m
         memory: 100Mi
