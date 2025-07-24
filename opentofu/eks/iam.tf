@@ -2,7 +2,7 @@
 module "irsa_ebs_csi_driver" {
   source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version   = "5.59.0"
-  role_name = "${var.cluster_name}-ebs_csi_driver"
+  role_name = "${var.name}-ebs_csi_driver"
 
   assume_role_condition_test = "StringLike"
 
@@ -23,7 +23,7 @@ module "irsa_ebs_csi_driver" {
 module "irsa_crossplane" {
   source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version   = "5.59.0"
-  role_name = "${var.cluster_name}-crossplane"
+  role_name = "${var.name}-crossplane"
 
   assume_role_condition_test = "StringLike"
 
@@ -45,7 +45,7 @@ module "irsa_crossplane" {
 
 #trivy:ignore:AVD-AWS-0342
 resource "aws_iam_policy" "crossplane_iam" {
-  name        = "crossplane_iam_${var.cluster_name}"
+  name        = "crossplane_iam_${var.name}"
   path        = "/"
   description = "Policy for managing AWS IAM on EKS"
 
@@ -94,7 +94,7 @@ EOF
 }
 
 resource "aws_iam_policy" "crossplane_ec2" {
-  name        = "crossplane_ec2_${var.cluster_name}"
+  name        = "crossplane_ec2_${var.name}"
   path        = "/"
   description = "Policy for managing Security Groups on EKS"
 
@@ -127,7 +127,7 @@ EOF
 }
 
 resource "aws_iam_policy" "crossplane_eks" {
-  name        = "crossplane_eks_${var.cluster_name}"
+  name        = "crossplane_eks_${var.name}"
   path        = "/"
   description = "Policy for managing EKS Pod identities"
 
@@ -152,7 +152,7 @@ EOF
 
 #trivy:ignore:AVD-AWS-0345
 resource "aws_iam_policy" "crossplane_s3" {
-  name        = "crossplane_s3_${var.cluster_name}"
+  name        = "crossplane_s3_${var.name}"
   path        = "/"
   description = "Policy for managing S3 Buckets on EKS"
 
@@ -194,7 +194,7 @@ EOF
 }
 
 resource "aws_iam_policy" "crossplane_kms" {
-  name        = "crossplane_kms_${var.cluster_name}"
+  name        = "crossplane_kms_${var.name}"
   path        = "/"
   description = "Policy for creating KMS keys on EKS"
 

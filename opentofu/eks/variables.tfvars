@@ -1,5 +1,5 @@
-env          = "dev"
-cluster_name = "mycluster-0" # Generated with petname
+env  = "dev"
+name = "mycluster-0" # Generated with petname
 
 flux_sync_repository_url = "https://github.com/Smana/cloud-native-ref.git"
 
@@ -23,7 +23,7 @@ karpenter_limits = {
   }
 }
 
-cluster_identity_providers = {
+identity_providers = {
   zitadel = {
     client_id      = "293655038025345449"
     issuer_url     = "https://auth.cloud.ogenki.io"

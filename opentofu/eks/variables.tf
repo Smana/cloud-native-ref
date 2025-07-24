@@ -10,12 +10,12 @@ variable "region" {
 }
 
 # EKS
-variable "cluster_name" {
+variable "name" {
   description = "Name of the EKS cluster to be created"
   type        = string
 }
 
-variable "cluster_version" {
+variable "kubernetes_version" {
   description = "k8s cluster version"
   default     = "1.33"
   type        = string
@@ -33,7 +33,7 @@ variable "iam_role_additional_policies" {
   default     = {}
 }
 
-variable "cluster_identity_providers" {
+variable "identity_providers" {
   description = "Map of cluster identity provider configurations to enable for the cluster."
   type        = any
   default     = {}
@@ -91,7 +91,7 @@ variable "cert_manager_approle_secret_name" {
 
 variable "flux_operator_version" {
   description = "Flux Operator version"
-  default     = "0.24.1"
+  default     = "0.25.0"
   type        = string
 }
 

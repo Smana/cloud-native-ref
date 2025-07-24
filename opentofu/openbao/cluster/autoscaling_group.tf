@@ -85,7 +85,7 @@ resource "aws_launch_template" "ha" {
 
 module "openbao_asg" {
   source  = "terraform-aws-modules/autoscaling/aws"
-  version = "~> 8.0"
+  version = "~> 9.0"
 
   name                            = local.name
   ignore_desired_capacity_changes = true
@@ -118,7 +118,21 @@ module "openbao_asg" {
   security_groups = [aws_security_group.openbao.id]
 
   use_mixed_instances_policy = var.mode == "ha"
+
+
   mixed_instances_policy = var.mode == "ha" ? {
+    launch_template = {
+      override = [
+        {
+          instance_type     = "t3.small"
+          weighted_capacity = "2"
+        },
+        {
+          instance_type     = "t3.medium"
+          weighted_capacity = "1"
+        },
+      ]
+    }
     instances_distribution = {
       on_demand_allocation_strategy            = "lowest-price"
       on_demand_base_capacity                  = 0

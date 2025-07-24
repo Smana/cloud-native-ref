@@ -1,7 +1,7 @@
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
-  name: observability-victoria-logs-explorer
+  name: observability-victoria-logs-cluster
   namespace: observability
 spec:
   allowCrossNamespaceImport: true
@@ -11,4 +11,4 @@ spec:
   instanceSelector:
     matchLabels:
       dashboards: "grafana"
-  url: "https://grafana.com/api/dashboards/22759/revisions/6/download"
+  url: "https://grafana.com/api/dashboards/23274/revisions/2/download"
