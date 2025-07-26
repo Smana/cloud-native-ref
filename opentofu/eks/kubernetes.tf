@@ -42,7 +42,7 @@ resource "kubectl_manifest" "flux_eks_variables" {
       enable_flux_image_update_automation = var.enable_flux_image_update_automation
       repository_sync_url                 = var.flux_sync_repository_url
       git_ref                             = var.flux_git_ref
-      cluster_name                        = var.cluster_name
+      cluster_name                        = var.name
       oidc_provider_arn                   = module.eks.oidc_provider_arn
       oidc_issuer_url                     = module.eks.cluster_oidc_issuer_url
       oidc_issuer_host                    = replace(module.eks.cluster_oidc_issuer_url, "https://", "")

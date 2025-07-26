@@ -13,7 +13,7 @@ resource "helm_release" "cilium" {
   set = [
     {
       name  = "cluster.name"
-      value = var.cluster_name
+      value = var.name
     }
   ]
 
@@ -45,7 +45,7 @@ resource "helm_release" "aws_ebs_csi_driver" {
   set = [
     {
       name  = "controller.k8sTagClusterId"
-      value = var.cluster_name
+      value = var.name
     },
     {
       name  = "controller.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"

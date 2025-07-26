@@ -1,15 +1,13 @@
 #trivy:ignore:AVD-AWS-0104 # Allow unrestricted egress traffic
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 20"
+  version = "~> 21"
 
-  cluster_name                   = var.cluster_name
-  cluster_version                = var.cluster_version
-  cluster_endpoint_public_access = false
+  name                   = var.name
+  kubernetes_version     = var.kubernetes_version
+  endpoint_public_access = false
 
-  bootstrap_self_managed_addons = false
-
-  cluster_enabled_log_types = [
+  enabled_log_types = [
     "api",
     "audit",
     "authenticator",
@@ -17,7 +15,7 @@ module "eks" {
     "scheduler"
   ]
 
-  cluster_addons = {
+  addons = {
     coredns = {
       most_recent = true
       configuration_values = jsonencode(
@@ -51,13 +49,13 @@ module "eks" {
   #  }
   #}
 
-  cluster_identity_providers = var.cluster_identity_providers
+  identity_providers = var.identity_providers
 
   vpc_id                   = data.aws_vpc.selected.id
   subnet_ids               = data.aws_subnets.private.ids
   control_plane_subnet_ids = data.aws_subnets.intra.ids
 
-  cluster_security_group_additional_rules = {
+  security_group_additional_rules = {
     ingress_source_security_group_id = {
       description              = "Ingress from the Tailscale security group to the API server"
       protocol                 = "tcp"
@@ -81,6 +79,11 @@ module "eks" {
 
       ami_type = "BOTTLEROCKET_x86_64"
 
+      metadata_options = {
+        http_endpoint = "enabled"
+        http_tokens   = "required"
+      }
+
       iam_role_additional_policies = merge(
         var.enable_ssm ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
         var.iam_role_additional_policies
@@ -90,26 +93,26 @@ module "eks" {
       force_update_version = true
       instance_types       = ["c7i.xlarge", "c6i.xlarge", "c5.xlarge"]
       # Exemple of how to configure Bottlerocket. https://bottlerocket.dev/en/os/1.41.x/api/settings/
-      bootstrap_extra_args = <<-EOT
-        [settings.host-containers.admin]
-        enabled = true
-      EOT
-      taints = [
-        {
+      # bootstrap_extra_args = <<-EOT
+      #   [settings.host-containers.admin]
+      #   enabled = true
+      # EOT
+      taints = {
+        "cilium" = {
           key    = "node.cilium.io/agent-not-ready"
           value  = "true"
           effect = "NO_EXECUTE"
         }
-      ]
+      }
     }
   }
 
   tags = {
-    "karpenter.sh/discovery" = var.cluster_name
+    "karpenter.sh/discovery" = var.name
   }
 
   // For the load balancer to work refer to https://github.com/opentofu-aws-modules/opentofu-aws-eks/blob/master/docs/faq.md
   node_security_group_tags = {
-    "kubernetes.io/cluster/${var.cluster_name}" = null
+    "kubernetes.io/cluster/${var.name}" = null
   }
 }
