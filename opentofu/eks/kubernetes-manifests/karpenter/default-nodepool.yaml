@@ -28,7 +28,7 @@ spec:
           operator: Lt
           values: ["50001"]
   disruption:
-    consolidationPolicy: WhenEmpty
+    consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 30s
   limits:
     cpu: ${default_nodepool_cpu_limits}

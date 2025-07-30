@@ -41,7 +41,7 @@ variable "identity_providers" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.17.6"
+  default     = "1.18.0"
   type        = string
 }
 
@@ -91,7 +91,7 @@ variable "cert_manager_approle_secret_name" {
 
 variable "flux_operator_version" {
   description = "Flux Operator version"
-  default     = "0.25.0"
+  default     = "0.26.0"
   type        = string
 }
 
