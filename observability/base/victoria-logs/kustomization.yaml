@@ -7,12 +7,15 @@ resources:
 
   # Choose between single or cluster helm release
 
-  # VM Single
+  # VL Single
   - helmrelease-vlsingle.yaml
   - httproute-vlsingle.yaml
   - grafana-dashboard-vlsingle.yaml
+  - vmalert-vmsingle.yaml # When VictoriaMetrics is installed in single mode
 
-  # VM Cluster
+
+  # VL Cluster
   # - helmrelease-vlcluster.yaml
   # - httproute-vlcluster.yaml
   # - grafana-dashboard-vlcluster.yaml
+  # - vmalert-vlcluster.yaml # When VictoriaMetrics is installed in cluster mode
