@@ -1,0 +1,30 @@
+# This configuration is only used when the cluster mode is enabled for both victoria-logs and victoria-metrics
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlert
+metadata:
+  labels:
+    app.kubernetes.io/component: victoria-logs-vmalert
+    app.kubernetes.io/instance: victoria-logs
+  name: victoria-logs
+  namespace: observability
+spec:
+  selectAllByDefault: true
+  datasource:
+    url: http://victoria-logs-victoria-logs-single-server.observability.svc.cluster.local.:9428
+  evaluationInterval: 20s
+  image:
+    tag: v1.122.0
+  notifiers:
+    - url: http://vmalertmanager-victoria-metrics-k8s-stack-0.vmalertmanager-victoria-metrics-k8s-stack.observability.svc.cluster.local.:9093
+  port: "8080"
+  remoteRead:
+    url: http://vmselect-victoria-metrics-k8s-stack.observability.svc.cluster.local.:8481
+  remoteWrite:
+    url: http://vminsert-victoria-metrics-k8s-stack.observability.svc.cluster.local.:8480/api/v1/write
+  resources:
+    limits:
+      cpu: 100m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi

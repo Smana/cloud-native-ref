@@ -1,0 +1,29 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlert
+metadata:
+  labels:
+    app.kubernetes.io/component: victoria-logs-vmalert
+    app.kubernetes.io/instance: victoria-logs
+  name: victoria-logs
+  namespace: observability
+spec:
+  selectAllByDefault: true
+  datasource:
+    url: http://victoria-logs-victoria-logs-cluster-vlselect.observability.svc.cluster.local.:9471
+  evaluationInterval: 20s
+  image:
+    tag: v1.122.0
+  notifiers:
+    - url: http://vmalertmanager-victoria-metrics-k8s-stack-0.vmalertmanager-victoria-metrics-k8s-stack.observability.svc.cluster.local.:9093
+  port: "8080"
+  remoteRead:
+    url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc.cluster.local.:8429
+  remoteWrite:
+    url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc.cluster.local.:8429/api/v1/write
+  resources:
+    limits:
+      cpu: 100m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
