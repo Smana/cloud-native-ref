@@ -42,8 +42,6 @@ spec:
       enabled: true
       servicemonitor:
         enabled: true
-        labels:
-          prometheus-instance: main
 
     webhook:
       replicaCount: 1

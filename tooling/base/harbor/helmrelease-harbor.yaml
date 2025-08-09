@@ -85,8 +85,6 @@ spec:
       enabled: true
       serviceMonitor:
         enabled: true
-        additionalLabels:
-          prometheus-instance: main
 
     cache:
       enabled: true

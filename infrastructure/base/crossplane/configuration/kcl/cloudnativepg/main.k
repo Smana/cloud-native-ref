@@ -229,29 +229,30 @@ if oxr.spec.databases:
 if oxr.spec.initSQL:
     _initSQL = oxr.spec.initSQL
 
-_items += [
-    {
-        apiVersion = "kubernetes.crossplane.io/v1alpha2"
-        kind = "Object"
-        metadata = _metadata("cnpg-bootsrapsql")
-        spec = {
-            deletionPolicy = _deletionPolicy
-            forProvider = {
-                manifest = {
-                    apiVersion = "v1"
-                    kind = "ConfigMap"
-                    metadata = {
-                        name = oxr.spec.claimRef.name + "-cnpg-bootsrapsql"
-                        namespace = oxr.spec.claimRef.namespace
-                    }
-                    data = {
-                        "init.sql" = _initSQL
+    _items += [
+        {
+            apiVersion = "kubernetes.crossplane.io/v1alpha2"
+            kind = "Object"
+            metadata = _metadata("cnpg-bootsrapsql")
+            spec = {
+                deletionPolicy = _deletionPolicy
+                forProvider = {
+                    manifest = {
+                        apiVersion = "v1"
+                        kind = "ConfigMap"
+                        metadata = {
+                            name = oxr.spec.claimRef.name + "-cnpg-bootsrapsql"
+                            namespace = oxr.spec.claimRef.namespace
+                        }
+                        data = {
+                            "init.sql" = _initSQL
+                        }
                     }
                 }
             }
         }
-    }
-]
+    ]
+
 # Create superuser secret if requested
 if oxr.spec.createSuperuser:
     _items += [

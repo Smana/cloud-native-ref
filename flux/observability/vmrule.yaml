@@ -1,8 +1,6 @@
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
-  labels:
-    prometheus-instance: main
   name: flux-system
   namespace: flux-system
 spec:
