@@ -8,9 +8,11 @@ metadata:
   name: victoria-logs
   namespace: observability
 spec:
-  selectAllByDefault: true
+  ruleSelector:
+    matchLabels:
+      vmlog: "true"
   datasource:
-    url: http://victoria-logs-victoria-logs-single-server.observability.svc.cluster.local.:9428
+    url: http://victoria-logs-victoria-logs-cluster-vlselect.observability.svc.cluster.local.:9471
   evaluationInterval: 20s
   image:
     tag: v1.122.0

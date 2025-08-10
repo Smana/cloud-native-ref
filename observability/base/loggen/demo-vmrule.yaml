@@ -1,0 +1,18 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: loggen
+  namespace: observability
+  labels:
+    vmlog: "true"
+spec:
+  groups:
+    - name: loggen
+      type: vlogs
+      interval: 10m
+      rules:
+        - alert: HTTPError500
+          annotations:
+            message: "{{ $labels.pod }} has {{ $value }} server errors in the last 10 minutes"
+            description: "{{ $labels.pod }} has {{ $value }} server errors in the last 10 minutes"
+          expr: 'kubernetes.pod_labels.app.kubernetes.io/instance:"loggen" AND log.status:"5"* | count() as server_errors | filter server_errors:>100'

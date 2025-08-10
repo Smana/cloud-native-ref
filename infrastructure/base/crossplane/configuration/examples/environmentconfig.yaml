@@ -1,6 +1,6 @@
 # This manifest is not deployed. It is just used for validating crossplane compositions using
 # crossplane render --extra-resources environmentconfig-example.yaml ...
-apiVersion: apiextensions.crossplane.io/v1alpha1
+apiVersion: apiextensions.crossplane.io/v1beta1
 kind: EnvironmentConfig
 metadata:
   name: eks-environment
