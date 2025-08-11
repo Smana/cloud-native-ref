@@ -22,7 +22,7 @@ spec:
       - --error-rate
       - "0.1"
       - --format
-      - "json"
+      - "raw"
       - --latency
       - "0.2"
     resources:
