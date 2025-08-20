@@ -59,4 +59,3 @@ resource "vault_pki_secret_backend_issuer" "this" {
   issuer_ref  = vault_pki_secret_backend_intermediate_set_signed.this.imported_issuers[0]
   issuer_name = lower(replace(var.pki_common_name, " ", "-"))
 }
-

@@ -2,17 +2,17 @@
 
 # The EKS Pod Identity for the EBS-CSI-DRIVER is created here because we need to define the GP3 volume type as default
 module "identity_ebs_csi_driver" {
-  source    = "terraform-aws-modules/eks-pod-identity/aws"
-  version   = "2.0.0"
-  name = "${var.name}-ebs_csi_driver"
+  source  = "terraform-aws-modules/eks-pod-identity/aws"
+  version = "2.0.0"
+  name    = "${var.name}-ebs_csi_driver"
 
   attach_aws_ebs_csi_policy = true
 
   associations = {
     (var.name) = {
-        cluster_name = var.name
-        namespace = "kube-system"
-        service_account = "ebs-csi-controller-sa"
+      cluster_name    = var.name
+      namespace       = "kube-system"
+      service_account = "ebs-csi-controller-sa"
     }
   }
 }
@@ -21,23 +21,23 @@ module "identity_ebs_csi_driver" {
 # AWS permissions for Crossplane
 # We only give the required permissions for Crossplane resources we want to manage
 module "identity_crossplane" {
-  source    = "terraform-aws-modules/eks-pod-identity/aws"
-  version   = "2.0.0"
-  name = "${var.name}-crossplane"
+  source  = "terraform-aws-modules/eks-pod-identity/aws"
+  version = "2.0.0"
+  name    = "${var.name}-crossplane"
 
   additional_policy_arns = {
-    ec2  = aws_iam_policy.crossplane_ec2.arn,
-    eks  = aws_iam_policy.crossplane_eks.arn,
+    ec2 = aws_iam_policy.crossplane_ec2.arn,
+    eks = aws_iam_policy.crossplane_eks.arn,
     iam = aws_iam_policy.crossplane_iam.arn,
-    kms  = aws_iam_policy.crossplane_kms.arn,
-    s3   = aws_iam_policy.crossplane_s3.arn
+    kms = aws_iam_policy.crossplane_kms.arn,
+    s3  = aws_iam_policy.crossplane_s3.arn
   }
 
   associations = {
     (var.name) = {
-        cluster_name = var.name
-        namespace = "crossplane-system"
-        service_account = "provider-aws"
+      cluster_name    = var.name
+      namespace       = "crossplane-system"
+      service_account = "provider-aws"
     }
   }
 }

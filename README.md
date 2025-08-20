@@ -48,6 +48,7 @@ This repository provides a comprehensive guide and set of tools for building, ma
 | ![ZITADEL](https://img.shields.io/badge/ZITADEL-002B5C?style=for-the-badge&logo=zitadel&logoColor=white)             | Security               | Cloud-native identity and access management system                                                       |
 | ![ExternalSecrets Operator](https://img.shields.io/badge/ExternalSecrets_Operator-FF6C37?style=for-the-badge&logo=external-secrets&logoColor=white) | Security               | Synchronizes secrets from external secret managers (e.g., Vault, AWS Secrets Manager) into Kubernetes    |
 | ![Managed Services](https://img.shields.io/badge/Managed_Services-FF9900?style=for-the-badge&logo=amazon&logoColor=white)            | Managed Services       | Cloud Services such as DNS (Route53), IAM, Load Balancing, KMS (Encrypt sensitive data) and Storage (S3)                                            |
+
 ## 🚀 Getting started
 
 ### Prerequisites
@@ -85,12 +86,14 @@ The platform is deployed in three main stages:
 For a streamlined deployment experience, use [**Terramate**](https://terramate.io/) to orchestrate the entire process:
 
 1. **Set sensitive values** using environment variables.
+
    ```
    export TF_VAR_tailscale_api_key=<TS_API_KEY>
    ```
 
 2. **Configure Global Variables**
    - Review and update the variables in `opentofu/config.tm.hcl`:
+
      ```hcl
      globals {
        provisioner                      = "tofu"
@@ -104,9 +107,11 @@ For a streamlined deployment experience, use [**Terramate**](https://terramate.i
        cert_manager_approle             = "cert-manager"
      }
      ```
+
    - Adjust these values according to your environment
 
 3. **Deploy the Openbao and EKS clusters**
+
    ```bash
    terramate script run deploy
    ```
@@ -116,11 +121,13 @@ For a streamlined deployment experience, use [**Terramate**](https://terramate.i
 After deployment, verify your setup:
 
 1. **Check Network Access**
+
    ```bash
    tailscale status
    ```
 
 2. **Verify OpenBao Status**
+
    ```bash
    export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
    export VAULT_SKIP_VERIFY=true
@@ -128,6 +135,7 @@ After deployment, verify your setup:
    ```
 
 3. **Confirm Kubernetes Access**
+
    ```bash
    kubectl get nodes
    ```
@@ -161,7 +169,6 @@ This diagram can be hard to understand so these are the key information:
 - **EKS Pod Identities** - Created using Crossplane, these IAM roles are necessary to grant specific AWS API permissions to certain applications.
 
 - **Security** - Among other things, this step deploys `external-secrets` which is essential to use sensitive data into our applications
-
 
 ## 🏗️ Crossplane Configuration
 
@@ -221,19 +228,18 @@ The provided code outlines the setup and configuration of a **highly available, 
 
 🏷️ Related blog post: [TLS with Gateway API: Efficient and Secure Management of Public and Private Certificates](https://blog.ogenki.io/post/pki-gapi/)
 
-
 ## 👁️ Observability
 
 To effectively **identify issues and optimize performance**, a comprehensive monitoring stack is essential. Several tools are available to provide detailed insights into system health, covering key areas such as metrics, logs, tracing, and profiling. Here's an overview of our current setup:
 
-* **Metrics**: We've implemented a combination of VictoriaMetrics and Grafana operators to collect, visualize, and analyze metrics. This stack enables real-time monitoring, custom dashboards, and the ability to configure alerts and notifications for proactive issue management.
+- **Metrics**: We've implemented a combination of VictoriaMetrics and Grafana operators to collect, visualize, and analyze metrics. This stack enables real-time monitoring, custom dashboards, and the ability to configure alerts and notifications for proactive issue management.
 
-* **Logs**: We use VictoriaLogs for log collection and analysis, providing a high-performance, cost-effective solution that seamlessly integrates with our VictoriaMetrics stack for unified observability.
+- **Logs**: We use VictoriaLogs for log collection and analysis, providing a high-performance, cost-effective solution that seamlessly integrates with our VictoriaMetrics stack for unified observability.
 
 🏷️ Related blog posts:
 
-* [Harness the Power of VictoriaMetrics and Grafana Operators for Metrics Management](https://blog.ogenki.io/post/series/observability/metrics)
-* [VictoriaMetrics : Effective alerts, from theory to practice](https://blog.ogenki.io/post/series/observability/alerts/)
+- [Harness the Power of VictoriaMetrics and Grafana Operators for Metrics Management](https://blog.ogenki.io/post/series/observability/metrics)
+- [VictoriaMetrics : Effective alerts, from theory to practice](https://blog.ogenki.io/post/series/observability/alerts/)
 
 ## 🧪 CI
 
@@ -241,8 +247,8 @@ To effectively **identify issues and optimize performance**, a comprehensive mon
 
 We leverage **[Dagger](https://dagger.io/)** for all our CI tasks. Here's what is currently run:
 
-* Validation of Kubernetes and Kustomize manifests using `kubeconform`
-* Validation of Terraform/Opentofu configurations using the [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform)
+- Validation of Kubernetes and Kustomize manifests using `kubeconform`
+- Validation of Terraform/Opentofu configurations using the [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform)
 
 ### 🏠 Using Self-Hosted Runners
 
