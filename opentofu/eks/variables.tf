@@ -41,7 +41,7 @@ variable "identity_providers" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.18.0"
+  default     = "1.18.1"
   type        = string
 }
 
