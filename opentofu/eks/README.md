@@ -84,9 +84,9 @@ In order to really clean everything you should follow these steps:
    kubectl delete gateways --all-namespaces --all
    ```
 
-3. Wait 3/4 minutest and delete all `IRSA` and `EPI`
+3. Wait 3/4 minutest and delete all  `EPI`
    ```console
-   kubectl delete irsa,epi --all-namespaces --all
+   kubectl delete epi --all-namespaces --all
    ```
 
 4. `tofu destroy --var-file variables.tfvars`

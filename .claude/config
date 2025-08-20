@@ -129,4 +129,3 @@ When troubleshooting a Crossplane Composition or Composite Resource (XR), follow
 - If a managed resource is in a failed state, use the `get_kubernetes_logs` tool to fetch logs from the relevant controller pod (e.g., provider-aws, provider-kubernetes) for deeper analysis.
 - If any issues are found, create a root cause analysis report for the user, including which managed resource failed and why.
 - If no issues are found, create a report with the current status of the XR and all its managed resources.
-
