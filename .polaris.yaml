@@ -12,21 +12,21 @@ checks:
   hostPortSet: warning
   hostIPC: danger
   hostPID: danger
-  
+
   # Images
   tagNotSpecified: danger
   pullPolicyNotAlways: ignore  # We use specific tags, not latest
-  
+
   # Health checks
   readinessProbeMissing: warning
   livenessProbeMissing: warning
-  
+
   # Resources
   cpuRequestsMissing: warning
   cpuLimitsMissing: warning
   memoryRequestsMissing: warning
   memoryLimitsMissing: warning
-  
+
   # Networking
   tlsSettingsMissing: ignore  # We handle TLS at ingress level
 
@@ -44,19 +44,19 @@ exemptions:
       - aws-load-balancer-controller
       - ebs-csi-controller
       - ebs-csi-node
-  
+
   - namespace: flux-operator
     controllerNames:
       - flux-operator
       - flux-operator-controller
-  
+
   - namespace: crossplane-system
     controllerNames:
       - crossplane
       - crossplane-rbac-manager
       - provider-aws
       - provider-kubernetes
-  
+
   - namespace: observability
     controllerNames:
       - grafana-operator
@@ -64,7 +64,7 @@ exemptions:
       - vmagent
       - vmalert
       - vmauth
-  
+
   - namespace: security
     controllerNames:
       - cert-manager
@@ -77,7 +77,7 @@ exemptions:
       - kyverno-background-controller
       - kyverno-cleanup-controller
       - kyverno-reports-controller
-  
+
   - namespace: tooling
     controllerNames:
       - harbor-core
