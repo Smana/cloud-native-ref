@@ -1,0 +1,41 @@
+extends: default
+
+rules:
+  # Allow longer lines for URLs and complex configurations
+  line-length:
+    max: 120
+    level: warning
+
+  # Allow multiple documents in single file (common in Kubernetes)
+  document-start: disable
+
+  # Be more lenient with indentation in complex nested structures
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Allow truthy values like "on" which are common in CI configs
+  truthy:
+    allowed-values: ['true', 'false', 'on', 'off', 'yes', 'no']
+    check-keys: false
+
+  # Allow comments to be more flexible
+  comments:
+    min-spaces-from-content: 1
+
+  # Allow empty lines at document end
+  empty-lines:
+    max-end: 1
+
+  # Allow brackets for better readability in some cases
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+ignore: |
+  .git/
+  .github/
+  vendor/
+  .secrets/
+  **/.terraform/
