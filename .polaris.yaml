@@ -1,0 +1,109 @@
+checks:
+  # Security
+  hostIPCSet: danger
+  hostPIDSet: danger
+  notReadOnlyRootFilesystem: warning
+  privilegeEscalationAllowed: danger
+  runAsRootAllowed: warning
+  runAsPrivileged: danger
+  dangerousCapabilities: danger
+  insecureCapabilities: warning
+  hostNetworkSet: warning
+  hostPortSet: warning
+  hostIPC: danger
+  hostPID: danger
+  
+  # Images
+  tagNotSpecified: danger
+  pullPolicyNotAlways: ignore  # We use specific tags, not latest
+  
+  # Health checks
+  readinessProbeMissing: warning
+  livenessProbeMissing: warning
+  
+  # Resources
+  cpuRequestsMissing: warning
+  cpuLimitsMissing: warning
+  memoryRequestsMissing: warning
+  memoryLimitsMissing: warning
+  
+  # Networking
+  tlsSettingsMissing: ignore  # We handle TLS at ingress level
+
+exemptions:
+  - namespace: kube-system
+    controllerNames:
+      - kube-apiserver
+      - kube-controller-manager
+      - kube-scheduler
+      - etcd
+      - kube-proxy
+      - cilium
+      - cilium-operator
+      - coredns
+      - aws-load-balancer-controller
+      - ebs-csi-controller
+      - ebs-csi-node
+  
+  - namespace: flux-operator
+    controllerNames:
+      - flux-operator
+      - flux-operator-controller
+  
+  - namespace: crossplane-system
+    controllerNames:
+      - crossplane
+      - crossplane-rbac-manager
+      - provider-aws
+      - provider-kubernetes
+  
+  - namespace: observability
+    controllerNames:
+      - grafana-operator
+      - victoria-metrics-operator
+      - vmagent
+      - vmalert
+      - vmauth
+  
+  - namespace: security
+    controllerNames:
+      - cert-manager
+      - cert-manager-cainjector
+      - cert-manager-webhook
+      - external-secrets
+      - external-secrets-cert-controller
+      - external-secrets-webhook
+      - kyverno-admission-controller
+      - kyverno-background-controller
+      - kyverno-cleanup-controller
+      - kyverno-reports-controller
+  
+  - namespace: tooling
+    controllerNames:
+      - harbor-core
+      - harbor-database
+      - harbor-jobservice
+      - harbor-nginx
+      - harbor-portal
+      - harbor-redis
+      - harbor-registry
+      - harbor-trivy
+      - headlamp
+
+customChecks:
+  replicas:
+    successMessage: "Deployment has multiple replicas"
+    failureMessage: "Deployment should have multiple replicas for HA"
+    category: "Reliability"
+    severity: "warning"
+    target: "Deployment"
+    schema:
+      '$schema': http://json-schema.org/draft-07/schema
+      type: object
+      properties:
+        spec:
+          type: object
+          properties:
+            replicas:
+              type: integer
+              minimum: 2

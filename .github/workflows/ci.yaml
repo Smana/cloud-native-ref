@@ -5,6 +5,11 @@ on:
   push:
     branches: ["main"]
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 jobs:
   pre-commit:
     name: Pre-commit checks 🛃
@@ -29,6 +34,55 @@ jobs:
           module: github.com/Smana/daggerverse/pre-commit-tf@pre-commit-tf/v0.1.2
           args: run --dir "." --tf-binary="tofu"
 
+  security-scan:
+    name: Security scanning 🔒
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Checkov static analysis
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          quiet: true
+          soft_fail: true
+          framework: terraform,kubernetes,secrets
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+
+      - name: Upload Checkov scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+
+      - name: Detect secrets with TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
   kubernetes-validation:
     name: Kubernetes validation ☸
     runs-on: ubuntu-latest
@@ -52,6 +106,19 @@ jobs:
           module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.1.3
           args: validate --manifests "." --exclude ".github/*,opentofu/*" --env "domain_name:cluster.local,cluster_name:foobar,region:eu-west-3,cert_manager_approle_id:random" --kustomize --flux --catalog
 
+      - name: Run Polaris configuration validation
+        uses: fairwindsops/polaris/.github/actions/setup-polaris@master
+        with:
+          version: '8.5.0'
+
+      - name: Validate Kubernetes best practices
+        run: |
+          find . -name "*.yaml" -o -name "*.yml" | grep -E "(infrastructure|security|observability|tooling|namespaces|crds)/" | head -20 | \
+          while read file; do
+            echo "Validating $file"
+            polaris validate --config .polaris.yaml --resource "$file" || true
+          done
+
   shellcheck:
     name: Check the shell scripts 💻
     runs-on: ubuntu-latest
@@ -60,9 +127,7 @@ jobs:
       - name: Run ShellCheck
         uses: ludeeus/action-shellcheck@master
         with:
-          # Optional: specify severity level (style, info, warning, error)
-          # severity: warning
+          severity: warning
           scandir: "./scripts"
         env:
-          # Optional: If you want ShellCheck to follow sourced files
           SHELLCHECK_OPTS: -x
