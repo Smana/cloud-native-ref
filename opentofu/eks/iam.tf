@@ -15,6 +15,8 @@ module "identity_ebs_csi_driver" {
       service_account = "ebs-csi-controller-sa"
     }
   }
+
+  depends_on = [module.eks]
 }
 
 
@@ -40,6 +42,8 @@ module "identity_crossplane" {
       service_account = "provider-aws"
     }
   }
+
+  depends_on = [module.eks]
 }
 
 #trivy:ignore:AVD-AWS-0342
