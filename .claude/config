@@ -1,4 +1,16 @@
-# AI Chat Guidelines for Flux MCP Server
+# AI Chat Guidelines for MCP Servers
+
+## MCP Servers Configuration
+
+The following MCP servers are available for specialized operations:
+
+### Git MCP Server
+- Use for repository operations, commit analysis, branch management, and GitOps workflows
+- Provides enhanced Git functionality beyond basic CLI commands
+
+### Flux MCP Server
+- Use for GitOps troubleshooting, resource analysis, and Flux-specific operations
+- Always check FluxInstance status before other Flux resources
 
 ## Purpose
 
