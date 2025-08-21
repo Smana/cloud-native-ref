@@ -5,6 +5,7 @@ An **approle** in HashiCorp Vault is a machine-based authentication method. It a
 1. Define the permissions needed by the application. Here we need to be able to take snapshots.
 
 `policies/snapshot.hcl`
+
 ```hcl
 path "sys/storage/raft/snapshot" {
   capabilities = ["read"]
@@ -19,6 +20,7 @@ resource "vault_policy" "snapshot" {
 ```
 
 2. Create the Approle
+
 ```hcl
 resource "vault_auth_backend" "approle" {
   type = "approle"
@@ -32,8 +34,6 @@ resource "vault_approle_auth_backend_role" "snapshot" {
 }
 ```
 
-
-
 3. Retrieve the secrets that will be used by the application.
 
 ```console
@@ -42,7 +42,7 @@ export APPROLE_SECRET_ID=$(bao write --field=secret_id -f auth/approle/role/snap
 ```
 
 We can create a token by running this command.
+
 ```console
 bao write auth/approle/login role_id=${APPROLE_ROLE_ID} secret_id=${APPROLE_SECRET_ID}
 ```
-

@@ -39,3 +39,81 @@ terraform.rc
 # Secrets directory
 **/.tls/*
 .secrets
+
+# Sensitive configuration files
+*.tfvars
+!*.tfvars.example
+variables.auto.tfvars
+*.auto.tfvars
+
+# Certificate and key files
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+
+# Backup files
+*.backup
+*.bak
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.envrc
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+
+# IDE files
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+
+# Kubeconfig files (local development)
+kubeconfig*
+*.kubeconfig
+!kubeconfig.example
+
+# OpenBao specific
+.vault-token
+vault-token
+*.vault
+
+# AWS credentials
+.aws/credentials
+aws-credentials
+credentials
+
+# SSH keys
+id_rsa*
+id_ed25519*
+*.priv
+
+# Log files
+*.log
+logs/
+
+# Coverage reports
+coverage/
+*.coverage
+
+# Package manager files
+node_modules/
+.pnpm-debug.log*
+.yarn-debug.log*
+.yarn-error.log*

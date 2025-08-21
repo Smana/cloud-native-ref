@@ -49,7 +49,7 @@ resource "helm_release" "aws_ebs_csi_driver" {
     },
     {
       name  = "controller.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-      value = module.irsa_ebs_csi_driver.iam_role_arn
+      value = module.identity_ebs_csi_driver.iam_role_arn
     }
   ]
 

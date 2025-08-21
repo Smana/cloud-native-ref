@@ -1,6 +1,5 @@
 ## 🚀 Getting started
 
-
 1. First of all we need to create the **supporting resources** such as the VPC and subnets using [this directory](../../../network/).
 
 2. It is required to provide OpenBao's certificates (`.tls/openbao.pem`, `.tls/openbao-key.pem` and `ca-chain.pem`). You can create the certificates using [this procedure](pki_requirements.md)
@@ -49,6 +48,7 @@ tags = {                                              # In my case, these tags a
 5. Connect to one of the EC2 instances using SSM and init the OpenBao instance:
 
 Switch to the `root` user
+
 ```console
 sudo su -
 ```
@@ -61,6 +61,7 @@ bao operator init -recovery-shares=1 -recovery-threshold=1
 ```
 
 You should get an output that contains the `Recovery Key` and the `Root Token`
+
 ```console
 Recovery Key 1: 0vn2C31WbudlZS6...
 
@@ -86,6 +87,7 @@ bao operator raft list-peers
 ```
 
 you should get an output that looks like that
+
 ```console
 Node                   Address             State       Voter
 ----                   -------             -----       -----
@@ -97,6 +99,7 @@ i-0118db2721ee07b6c    10.0.24.141:8201    follower    true
 ```
 
 You can also check the cluster's status. The important information below is that OpenBao is "Initialized" and not "Sealed".
+
 ```console
 bao status
 Key                      Value

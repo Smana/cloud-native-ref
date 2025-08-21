@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "git": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-git"
+      ],
+      "env": {}
+    },
+    "flux-operator-mcp": {
+      "command": "/usr/local/bin/flux-operator-mcp",
+      "args": [
+        "serve"
+      ],
+      "env": {
+        "KUBECONFIG": "~/.kube/config"
+      }
+    }
+  }
+}

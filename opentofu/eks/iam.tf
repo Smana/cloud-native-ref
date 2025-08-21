@@ -1,46 +1,49 @@
-# AWS permissions for the EBS-CSI-DRIVER
-module "irsa_ebs_csi_driver" {
-  source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version   = "5.60.0"
-  role_name = "${var.name}-ebs_csi_driver"
+# Note: The EKS Pod identities are created as part of this EKS module but in a production context we would have multiple clusters and we would have to create the EKS Pod identities in a separate module because they can be shared across clusters.
 
-  assume_role_condition_test = "StringLike"
+# The EKS Pod Identity for the EBS-CSI-DRIVER is created here because we need to define the GP3 volume type as default
+module "identity_ebs_csi_driver" {
+  source  = "terraform-aws-modules/eks-pod-identity/aws"
+  version = "2.0.0"
+  name    = "${var.name}-ebs_csi_driver"
 
-  role_policy_arns = {
-    policy = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-  }
+  attach_aws_ebs_csi_policy = true
 
-  oidc_providers = {
-    main = {
-      provider_arn               = module.eks.oidc_provider_arn
-      namespace_service_accounts = ["kube-system:ebs-csi-*"]
+  associations = {
+    (var.name) = {
+      cluster_name    = var.name
+      namespace       = "kube-system"
+      service_account = "ebs-csi-controller-sa"
     }
   }
+
+  depends_on = [module.eks]
 }
 
 
 # AWS permissions for Crossplane
-module "irsa_crossplane" {
-  source    = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version   = "5.60.0"
-  role_name = "${var.name}-crossplane"
+# We only give the required permissions for Crossplane resources we want to manage
+module "identity_crossplane" {
+  source  = "terraform-aws-modules/eks-pod-identity/aws"
+  version = "2.0.0"
+  name    = "${var.name}-crossplane"
 
-  assume_role_condition_test = "StringLike"
-
-  role_policy_arns = {
-    ec2  = aws_iam_policy.crossplane_ec2.arn,
-    eks  = aws_iam_policy.crossplane_eks.arn,
-    irsa = aws_iam_policy.crossplane_iam.arn,
-    kms  = aws_iam_policy.crossplane_kms.arn,
-    s3   = aws_iam_policy.crossplane_s3.arn
+  additional_policy_arns = {
+    ec2 = aws_iam_policy.crossplane_ec2.arn,
+    eks = aws_iam_policy.crossplane_eks.arn,
+    iam = aws_iam_policy.crossplane_iam.arn,
+    kms = aws_iam_policy.crossplane_kms.arn,
+    s3  = aws_iam_policy.crossplane_s3.arn
   }
 
-  oidc_providers = {
-    main = {
-      provider_arn               = module.eks.oidc_provider_arn
-      namespace_service_accounts = ["crossplane-system:provider-aws-*"]
+  associations = {
+    (var.name) = {
+      cluster_name    = var.name
+      namespace       = "crossplane-system"
+      service_account = "provider-aws"
     }
   }
+
+  depends_on = [module.eks]
 }
 
 #trivy:ignore:AVD-AWS-0342

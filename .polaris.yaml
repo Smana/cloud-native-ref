@@ -1,0 +1,31 @@
+checks:
+  # Security
+  hostIPCSet: danger
+  hostPIDSet: danger
+  notReadOnlyRootFilesystem: warning
+  privilegeEscalationAllowed: danger
+  runAsRootAllowed: warning
+  runAsPrivileged: danger
+  dangerousCapabilities: danger
+  insecureCapabilities: warning
+  hostNetworkSet: warning
+  hostPortSet: warning
+  hostIPC: danger
+  hostPID: danger
+
+  # Images
+  tagNotSpecified: danger
+  pullPolicyNotAlways: ignore  # We use specific tags, not latest
+
+  # Health checks
+  readinessProbeMissing: warning
+  livenessProbeMissing: warning
+
+  # Resources
+  cpuRequestsMissing: warning
+  cpuLimitsMissing: warning
+  memoryRequestsMissing: warning
+  memoryLimitsMissing: warning
+
+  # Networking
+  # tlsSettingsMissing: ignore  # We handle TLS at ingress level

@@ -17,12 +17,14 @@ Once these requirements are met, you're ready to proceed with the `cert-manager`
 ℹ️ **Note**: If you've used the code from this repository to set up the EKS cluster, `cert-manager` should already be operational, deployed via GitOps with Flux. In this case, you can skip the installation step.
 
 Add the Helm repository:
+
 ```console
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 ```
 
 Deploy cert-manager:
+
 ```console
 helm install \
   cert-manager jetstack/cert-manager \
@@ -33,6 +35,7 @@ helm install \
 ```
 
 Check that the pods are actually running
+
 ```console
 kubectl get po -n cert-manager
 NAME                                       READY   STATUS    RESTARTS   AGE
@@ -50,6 +53,7 @@ As stated in the requirements, OpenBao should be reachable from the Kubernetes c
 ⚠️ During this procedure we'll use the `root` token but this is strongly recommended to configure an Identity provider as soon as the cluster is up and running. More about that [here](root_token.md).
 
 1. Check that you can effectively access to OpenBao.
+
    ```console
    export VAULT_SKIP_VERIFY=true
    export VAULT_TOKEN=<token>
@@ -59,6 +63,7 @@ As stated in the requirements, OpenBao should be reachable from the Kubernetes c
    ```
 
    This command should output something like
+
    ```console
     Path                   Type            Accessor              Description
     ----                   ----            --------              -----------
@@ -70,17 +75,20 @@ As stated in the requirements, OpenBao should be reachable from the Kubernetes c
 
 2. Build the variables needed to create the `ClusterIssuer`
    Check that the `cert-manager` approle is already created. You can list the available approles:
+
    ```console
    bao list auth/approle/role
    ```
 
    Retrieve the `role_id` and `secret_id`
+
    ```console
    CERT_MANAGER_ROLE_ID=$(bao read --field=role_id auth/approle/role/cert-manager/role-id)
    CERT_MANAGER_SECRET_ID=$(bao write --field=secret_id -f auth/approle/role/cert-manager/secret-id)
    ```
 
    Create the variables specific to your OpenBao instance.
+
    ```console
    VAULT_ADDR=https://bao.priv.cloud.ogenki.io
    CA_CHAIN_B64=$(base64 -w0 .tls/ca-chain.pem)
@@ -88,11 +96,13 @@ As stated in the requirements, OpenBao should be reachable from the Kubernetes c
 
 3. Create the `bao` ClusterIssuer
    The secret_id should be stored in a secret as follows. (In this example cert-manager has been installed in the `security` namespace)
+
    ```console
    kubectl create secret generic cert-manager-openbao-approle --from-literal=secretId="${CERT_MANAGER_SECRET_ID}" -n security
    ```
 
    Create the CR
+
    ```console
    kubectl apply -f - <<EOF
    apiVersion: cert-manager.io/v1
@@ -116,10 +126,13 @@ As stated in the requirements, OpenBao should be reachable from the Kubernetes c
    ```
 
    Check that the openbao ClusterIssuer has been properly initialized
+
    ```console
    kubectl describe clusterissuers.cert-manager.io openbao | grep -A 10 ^Status:
    ```
+
    It should be `Ready` with the reason `VaultVerified`
+
    ```console
    Status:
    Conditions:
@@ -135,6 +148,7 @@ As stated in the requirements, OpenBao should be reachable from the Kubernetes c
 ## Create your first certificate
 
 1. Create a test certificate:
+
    ```console
    kubectl apply -f - <<EOF
    apiVersion: cert-manager.io/v1
@@ -157,6 +171,7 @@ As stated in the requirements, OpenBao should be reachable from the Kubernetes c
    ```
 
 2. Check that it has been properly provision
+
    ```console
    kubectl describe cert foobar | grep -A 20 ^Status:
    Status:
@@ -181,6 +196,7 @@ As stated in the requirements, OpenBao should be reachable from the Kubernetes c
    ```
 
    You can also check the certificate contents
+
    ```console
    kubectl get secrets foobar-tls -o jsonpath="{.data.tls\.crt}" | base64 -d | openssl x509 -noout -text
    Warning: Reading certificate from stdin since no -in or -new option is given

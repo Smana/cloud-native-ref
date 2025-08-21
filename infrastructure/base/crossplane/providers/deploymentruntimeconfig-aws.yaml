@@ -5,5 +5,5 @@ metadata:
 spec:
   serviceAccountTemplate:
     metadata:
-      annotations:
-        eks.amazonaws.com/role-arn: arn:aws:iam::${aws_account_id}:role/${cluster_name}-crossplane
+      name: provider-aws
+  deploymentTemplate: {}

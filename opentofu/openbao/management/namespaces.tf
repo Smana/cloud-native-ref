@@ -10,4 +10,3 @@ resource "vault_namespace" "pki" {
   namespace = vault_namespace.admin.path
   path      = "pki"
 }
-

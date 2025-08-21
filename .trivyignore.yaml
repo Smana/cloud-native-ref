@@ -1,0 +1,29 @@
+misconfigurations:
+  # Common AWS security findings that are intentionally configured
+  - id: AVD-AWS-0099
+  - id: AVD-AWS-0102
+  - id: AVD-AWS-0105
+  # Secret manager uses default key - acceptable for this use case
+  - id: AVD-AWS-0098
+  # Kubernetes security contexts - these are example/demo files from Karpenter
+  - id: AVD-KSV-0030
+  - id: AVD-KSV-0104
+  - id: AVD-KSV-0106
+  - id: AVD-KSV-0110
+  - id: AVD-KSV-0118
+  - id: AVD-KSV-0125
+  - id: AVD-KSV-0011
+  - id: AVD-KSV-0012
+  - id: AVD-KSV-0014
+  - id: AVD-KSV-0016
+  - id: AVD-KSV-0018
+  - id: AVD-KSV-0020
+  - id: AVD-KSV-0021
+  - id: AVD-KSV-0001
+  - id: AVD-KSV-0003
+  - id: AVD-KSV-0004
+  - id: AVD-KSV-0032
+  - id: AVD-KSV-0033
+  - id: AVD-KSV-0035
+  - id: AVD-KSV-0039
+  - id: AVD-KSV-0040

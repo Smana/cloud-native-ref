@@ -14,11 +14,13 @@ The Flux installation process is based on a Github App and, in our example, a se
 Here's how to prepare the secret:
 
 1. Create a Json file containing the required information as described in [flux documentation](https://fluxcd.io/flux/components/source/gitrepositories/#github).
+
   ```console
   jq -n --arg key "$(cat your-githubapp.private-key.pem)" '{githubAppID: "<app_id>", githubAppInstallationID: "<installation_id>", githubAppPrivateKey: $key}' > flux-ghapp.Json
   ```
 
 2. Create the AWS Secret manager resource
+
   ```console
   aws secretsmanager create-secret --name github/flux-app --description "FluxCD Github App" --region eu-west-3 --secret-string file://flux-ghapp.json
   ```
@@ -69,29 +71,32 @@ cluster_identity_providers = {
   :information_source: Git branch or tag in the format refs/heads/main or refs/tags/v1.0.0
    `tofu apply -var-file variables.tfvars --var=git_ref=<flux_git_ref>`
 
-
 ## Cleaning things up
 
 In order to really clean everything you should follow these steps:
 
 1. Suspend Flux reconciliations
+
    ```console
    flux suspend kustomization --all
    ```
 
 2. Delete `Gateways` (These create AWS loadbalancers)
+
    ```console
    kubectl delete gateways --all-namespaces --all
    ```
 
-3. Wait 3/4 minutest and delete all `IRSA` and `EPI`
+3. Wait 3/4 minutest and delete all  `EPI`
+
    ```console
-   kubectl delete irsa,epi --all-namespaces --all
+   kubectl delete epi --all-namespaces --all
    ```
 
 4. `tofu destroy --var-file variables.tfvars`
 
 One step:
+
 ```console
 flux suspend kustomization --all && \
 kubectl delete gateways --all-namespaces --all && sleep 60 && \

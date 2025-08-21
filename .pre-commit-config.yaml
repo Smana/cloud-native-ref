@@ -1,14 +1,65 @@
 repos:
-  - repo: https://github.com/antonbabenko/pre-commit-terraform.git
+  # General code quality
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: 'opentofu/eks/kubernetes-manifests/flux/instance\.yaml$'
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-symlinks
+      - id: check-executables-have-shebangs
+      - id: detect-private-key
+
+  # OpenTofu/Terraform
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
     rev: v1.99.0
     hooks:
       - id: terraform_fmt
+        args:
+          - --args=-diff
+          - --args=-write=true
       - id: terraform_validate
+        args:
+          - --args=-json
       - id: terraform_tflint
         args:
           - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+      - id: terraform_trivy
+        args:
+          - --args=--ignorefile=__GIT_WORKING_DIR__/.trivyignore.yaml
 
-  - repo: https://github.com/pre-commit/pre-commit-hooks.git
-    rev: v4.6.0
+  # Security scanning
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
     hooks:
-      - id: check-merge-conflict
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+
+  # Markdown - disabled due to Node.js compatibility issues in CI
+  # - repo: https://github.com/igorshubovych/markdownlint-cli
+  #   rev: v0.42.0
+  #   hooks:
+  #     - id: markdownlint
+  #       args: [--fix]
+
+default_language_version:
+  python: python3
+
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit.com hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ""
+  autoupdate_commit_msg: "[pre-commit.ci] pre-commit autoupdate"
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false
