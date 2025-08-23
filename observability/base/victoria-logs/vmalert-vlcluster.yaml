@@ -22,7 +22,7 @@ spec:
   remoteRead:
     url: http://vmselect-victoria-metrics-k8s-stack.observability.svc.cluster.local.:8481
   remoteWrite:
-    url: http://vminsert-victoria-metrics-k8s-stack.observability.svc.cluster.local.:8480/api/v1/write
+    url: http://vminsert-victoria-metrics-k8s-stack.observability.svc.cluster.local.:8480
   resources:
     limits:
       cpu: 100m

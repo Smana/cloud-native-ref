@@ -16,6 +16,14 @@ spec:
         namespace: flux-system
       interval: 12h
   values:
+    global:
+      security:
+        allowInsecureImages: true
+    # Using a custom image from https://github.com/civitatis/kubernetes-event-exporter because of this issue: https://github.com/civitatis/kubernetes-event-exporter
+    image:
+      registry: ghcr.io
+      repository: civitatis/kubernetes-event-exporter
+      tag: "1.8"
     config:
       logLevel: debug
       logFormat: pretty
