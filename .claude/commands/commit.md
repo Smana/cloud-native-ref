@@ -17,8 +17,8 @@ Or with options:
 ## What This Command Does
 
 1. Unless specified with `--no-verify`, automatically runs pre-commit checks:
-   - **Cleans Terraform temporary files** to avoid validation conflicts
-   - **Silently sets up pre-commit environment** (uv venv, install pre-commit, install hooks)
+   - **Automatically cleans Terraform temporary files** to avoid validation conflicts (no user confirmation needed)
+   - **Automatically sets up pre-commit environment** (uv venv, install pre-commit, install hooks) silently without user confirmation
    - **Only stops if environment setup fails** - otherwise proceeds automatically
    - Runs `pre-commit run --all-files` to validate configuration and security
    - **Analyzes any failing checks and provides detailed report with recommendations**
@@ -159,14 +159,15 @@ Example of splitting commits:
 
 ## Environment Setup
 
-The command automatically handles pre-commit environment setup:
+The command automatically handles pre-commit environment setup without requiring user confirmation:
 
-1. **Cleans Terraform temporary files** (silently removes `.terraform`, `.terraform.lock.hcl`, `.terragrunt-cache` directories)
-2. **Creates virtual environment** if `.venv` doesn't exist (using `uv venv`)
-3. **Installs pre-commit** if not already installed (using `uv pip install pre-commit`)
-4. **Installs pre-commit hooks** if not already installed (using `pre-commit install`)
+1. **Automatically cleans Terraform temporary files** (silently removes `.terraform`, `.terraform.lock.hcl`, `.terragrunt-cache` directories)
+2. **Automatically creates virtual environment** if `.venv` doesn't exist (using `uv venv`)
+3. **Automatically installs pre-commit** if not already installed (using `uv pip install pre-commit`)
+4. **Automatically installs pre-commit hooks** if not already installed (using `pre-commit install`)
 5. **Only reports setup issues** if any of these steps fail
 6. **Proceeds silently** if setup is successful
+7. **No user validation or confirmation required** for preparation steps
 
 ### Terraform Cleanup Command
 ```bash
