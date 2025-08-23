@@ -13,6 +13,6 @@ spec:
       rules:
         - alert: HTTPError500
           annotations:
-            message: "{{ $labels.pod }} has {{ $value }} server errors in the last 10 minutes"
-            description: "{{ $labels.pod }} has {{ $value }} server errors in the last 10 minutes"
+            message: "`{{ $labels.pod }}` has `{{ $value }}` server errors in the last 10 minutes"
+            description: "`{{ $labels.pod }}` has `{{ $value }}` server errors in the last 10 minutes"
           expr: 'kubernetes.pod_labels.app.kubernetes.io/instance:"loggen" AND log.status:"5"* | count() as server_errors | filter server_errors:>100'

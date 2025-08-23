@@ -10,9 +10,9 @@ spec:
     type: victoriametrics-logs-datasource
     name: VictoriaLogs
     # Single
-    url: http://victoria-logs-victoria-logs-single-server.observability:9428
+    # url: http://victoria-logs-victoria-logs-single-server.observability:9428
     # Cluster
-    # url: http://victoria-logs-victoria-logs-cluster-vlselect.observability:9471
+    url: http://victoria-logs-victoria-logs-cluster-vlselect.observability:9471
   instanceSelector:
     matchLabels:
       dashboards: grafana
