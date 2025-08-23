@@ -19,7 +19,8 @@ spec:
     config:
       logLevel: debug
       logFormat: pretty
-      clusterName: ""
+      metricsNamePrefix: "event_exporter_"
+      clusterName: "${cluster_name}"
       receivers:
         - name: "dump"
           file:
@@ -28,7 +29,7 @@ spec:
         - name: "victorialogs"
           loki:
             # url: "http://victoria-logs-single-server.victoria-logs.svc.cluster.local:9428/insert/loki/api/v1/push"
-            url: "http://victoria-logs-victoria-logs-cluster-vlinsert.observability.svc.cluster.local:9471/insert/loki/api/v1/push"
+            url: "http://victoria-logs-victoria-logs-cluster-vlinsert.observability.svc.cluster.local:9481/insert/loki/api/v1/push"
             streamLabels:
               source: kubernetes-event-exporter
 
