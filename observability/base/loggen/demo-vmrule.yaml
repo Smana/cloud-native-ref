@@ -11,8 +11,10 @@ spec:
       type: vlogs
       interval: 10m
       rules:
-        - alert: HTTPError500
+        - alert: LoggenHTTPError500
           annotations:
-            message: "`{{ $labels.pod }}` has `{{ $value }}` server errors in the last 10 minutes"
-            description: "`{{ $labels.pod }}` has `{{ $value }}` server errors in the last 10 minutes"
-          expr: 'kubernetes.pod_labels.app.kubernetes.io/instance:"loggen" AND log.status:"5"* | count() as server_errors | filter server_errors:>100'
+            message: "The application Loggen is throwing too many errors in the last 10 minutes"
+            description: 'The pod `{{ index $labels "kubernetes.pod_name" }}` has `{{ $value }}` server errors in the last 10 minutes'
+          expr: 'kubernetes.pod_labels.app.kubernetes.io/instance:"loggen" AND log.status:"5"* | stats by (kubernetes.pod_name) count() as server_errors | filter server_errors:>100'
+          labels:
+            severity: warning
