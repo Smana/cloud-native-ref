@@ -21,12 +21,12 @@ resources:
   # Choose between single or cluster helm release
 
   # VM Single
-  - helmrelease-vmsingle.yaml
-  - httproute-vmsingle.yaml
+  # - helmrelease-vmsingle.yaml
+  # - httproute-vmsingle.yaml
 
   # VM Cluster
-  # - helmrelease-vmcluster.yaml
-  # - httproute-vmcluster.yaml
+  - helmrelease-vmcluster.yaml
+  - httproute-vmcluster.yaml
 
   # Grafana provisioning (Plugins config, RBAC, etc)
   - ogenki-grafana-provisioning.yaml
