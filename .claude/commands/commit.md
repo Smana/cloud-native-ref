@@ -17,10 +17,12 @@ Or with options:
 ## What This Command Does
 
 1. Unless specified with `--no-verify`, automatically runs pre-commit checks:
-   - Ensures virtual environment is activated using `uv venv` if needed
-   - Installs pre-commit in the virtual environment using `uv pip install pre-commit` in not already installed
-   - Installs pre-commit hooks with `pre-commit install` if not already installed
+   - **Cleans Terraform temporary files** to avoid validation conflicts
+   - **Silently sets up pre-commit environment** (uv venv, install pre-commit, install hooks)
+   - **Only stops if environment setup fails** - otherwise proceeds automatically
    - Runs `pre-commit run --all-files` to validate configuration and security
+   - **Analyzes any failing checks and provides detailed report with recommendations**
+   - **Stops commit process if checks fail and suggests fixes**
 2. Checks which files are staged with `git status`
 3. If 0 files are staged, automatically adds all modified and new files with `git add`
 4. Performs a `git diff` to understand what changes are being committed
@@ -155,13 +157,50 @@ Example of splitting commits:
 
 - `--no-verify`: Skip running the pre-commit hooks
 
+## Environment Setup
+
+The command automatically handles pre-commit environment setup:
+
+1. **Cleans Terraform temporary files** (silently removes `.terraform`, `.terraform.lock.hcl`, `.terragrunt-cache` directories)
+2. **Creates virtual environment** if `.venv` doesn't exist (using `uv venv`)
+3. **Installs pre-commit** if not already installed (using `uv pip install pre-commit`)
+4. **Installs pre-commit hooks** if not already installed (using `pre-commit install`)
+5. **Only reports setup issues** if any of these steps fail
+6. **Proceeds silently** if setup is successful
+
+### Terraform Cleanup Command
+```bash
+find . -type d \( -name ".terraform" -o -name ".terragrunt-cache" \) -exec rm -rf {} +
+find . -name ".terraform.lock.hcl" -delete
+```
+This prevents validation conflicts from stale Terraform state.
+
+## Pre-commit Check Analysis
+
+When pre-commit checks fail, the command will:
+
+1. **Categorize failures** by type (formatting, security, validation, etc.)
+2. **Provide specific recommendations** for each failing check
+3. **Identify root causes** (e.g., missing dependencies, configuration issues)
+4. **Suggest immediate fixes** where possible
+5. **Stop the commit process** until issues are resolved
+
+Common failure categories and solutions:
+
+- **Terraform validation failures**: Usually require `terraform init` in affected directories
+- **Formatting issues**: Can often be auto-fixed by re-running pre-commit
+- **Security issues**: Require manual review and fixes
+- **YAML/JSON syntax**: Need manual correction of syntax errors
+- **Large files**: Remove or use Git LFS for large assets
+
 ## Important Notes
 
-- By default, pre-commit hooks will run to ensure configuration validation and security checks pass
-- If these checks fail, you'll be asked if you want to proceed with the commit anyway or fix the issues first
+- **Pre-commit checks must pass before committing** - no exceptions unless using `--no-verify`
+- The command will provide detailed analysis of any failing checks with actionable recommendations
 - If specific files are already staged, the command will only commit those files
 - If no files are staged, it will automatically stage all modified and new files
 - The commit message will be constructed based on the changes detected
 - Before committing, the command will review the diff to identify if multiple commits would be more appropriate
 - If suggesting multiple commits, it will help you stage and commit the changes separately
 - Always reviews the commit diff to ensure the message matches the changes
+- Uses the git user configuration (name and email) from `.git/config` for commit authorship
