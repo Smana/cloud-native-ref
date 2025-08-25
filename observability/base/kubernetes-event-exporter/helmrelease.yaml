@@ -1,0 +1,70 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kubernetes-event-exporter
+spec:
+  interval: 30m
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: kubernetes-event-exporter
+      version: "3.6.0"
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
+        namespace: flux-system
+      interval: 12h
+  values:
+    global:
+      security:
+        allowInsecureImages: true
+    # Using a custom image from https://github.com/civitatis/kubernetes-event-exporter because of this issue: https://github.com/civitatis/kubernetes-event-exporter
+    image:
+      registry: ghcr.io
+      repository: civitatis/kubernetes-event-exporter
+      tag: "1.8"
+    config:
+      logLevel: debug
+      logFormat: pretty
+      metricsNamePrefix: "event_exporter_"
+      clusterName: "${cluster_name}"
+      receivers:
+        - name: "dump"
+          file:
+            path: "/dev/stdout"
+            layout: {}
+        - name: "victorialogs"
+          loki:
+            # url: "http://victoria-logs-single-server.victoria-logs.svc.cluster.local:9428/insert/loki/api/v1/push"
+            url: "http://victoria-logs-victoria-logs-cluster-vlinsert.observability.svc.cluster.local:9481/insert/loki/api/v1/push"
+            streamLabels:
+              source: kubernetes-event-exporter
+
+      route:
+        routes:
+          - match:
+              - receiver: "dump"
+              - receiver: "victorialogs"
+
+    metrics:
+      enabled: false
+
+      serviceMonitor:
+        enabled: true
+        namespace: "observability"
+
+      prometheusRule:
+        enabled: true
+        namespace: "observability"
+        groups:
+          - name: KubernetesEventExporter
+            rules:
+              - alert: KubernetesEventExporterTooManyWatchErrors
+                annotations:
+                  message: "Kubernetes Event Exporter instance in namespace {{ `{{` }} $labels.namespace {{ `}}` }} has reported too many watch errors in 5 minutes."
+                expr: |
+                  sum(watch_errors{namespace="{{ include "common.names.namespace" . }}"})
+                for: 5m
+                labels:
+                severity: critical
