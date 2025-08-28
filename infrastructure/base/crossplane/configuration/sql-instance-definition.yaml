@@ -1,7 +1,7 @@
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: xsqlinstances.cloud.ogenki.io
+  name: sqlinstances.cloud.ogenki.io
 spec:
   claimNames:
     kind: SQLInstance
@@ -14,8 +14,8 @@ spec:
     - port
   group: cloud.ogenki.io
   names:
-    kind: XSQLInstance
-    plural: xsqlinstances
+    kind: SQLInstance
+    plural: sqlinstances
   versions:
     - name: v1alpha1
       served: true

@@ -1,17 +1,15 @@
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: xepis.cloud.ogenki.io
+  name: epis.cloud.ogenki.io
   labels:
     provider: aws
 spec:
-  claimNames:
-    kind: EPI
-    plural: epis
+  scope: Namespaced
   group: cloud.ogenki.io
   names:
-    kind: XEPI
-    plural: xepis
+    kind: EPI
+    plural: epis
   versions:
     - name: v1alpha1
       served: true
