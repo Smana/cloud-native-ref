@@ -13,6 +13,7 @@ spec:
     - host
     - port
   group: cloud.ogenki.io
+  scope: Namespaced
   names:
     kind: SQLInstance
     plural: sqlinstances
