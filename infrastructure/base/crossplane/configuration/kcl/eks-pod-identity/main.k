@@ -17,7 +17,7 @@ _metadata = lambda suffix: str -> any {
 
 _attachPolicy = lambda policyArn: any -> any {
     {
-        apiVersion = "iam.aws.upbound.io/v1beta1"
+        apiVersion = "iam.aws.m.upbound.io/v1beta1"
         kind = "RolePolicyAttachment"
         metadata = _metadata(policyArn.name + "-iam-role-policy-attachment")
         spec: {
@@ -35,7 +35,7 @@ _attachPolicy = lambda policyArn: any -> any {
 
 _items = [
     {
-        apiVersion = "iam.aws.upbound.io/v1beta1"
+        apiVersion = "iam.aws.m.upbound.io/v1beta1"
         kind = "Role"
         metadata = _metadata("iam-role")
         spec: {
@@ -62,7 +62,7 @@ _items = [
         }
     }
     {
-        apiVersion = "iam.aws.upbound.io/v1beta1"
+        apiVersion = "iam.aws.m.upbound.io/v1beta1"
         kind = "Policy"
         metadata = _metadata("iam-policy")
         spec: {
@@ -74,7 +74,7 @@ _items = [
         }
     }
     {
-        apiVersion = "iam.aws.upbound.io/v1beta1"
+        apiVersion = "iam.aws.m.upbound.io/v1beta1"
         kind = "RolePolicyAttachment"
         metadata = _metadata("iam-role-policy-attachment")
         spec: {
@@ -93,7 +93,7 @@ _items = [
 ]
 
 _items += [{
-    apiVersion = "eks.aws.upbound.io/v1beta1"
+    apiVersion = "eks.aws.m.upbound.io/v1beta1"
     kind = "PodIdentityAssociation"
     metadata = _metadata("pod-identity-association")
     spec: {
