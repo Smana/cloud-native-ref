@@ -278,7 +278,7 @@ if oxr.spec.backup?.schedule:
             }
         }
         {
-            apiVersion = "iam.aws.m.upbound.io/v1beta1"
+            apiVersion = "iam.aws.m.crossplane.io/v1beta1"
             kind = "Role"
             metadata = _metadata("cnpg-iam-role")
             spec: {
@@ -304,7 +304,7 @@ if oxr.spec.backup?.schedule:
             }
         }
         {
-            apiVersion = "iam.aws.m.upbound.io/v1beta1"
+            apiVersion = "iam.aws.m.crossplane.io/v1beta1"
             kind = "Policy"
             metadata = _metadata("cnpg-iam-policy")
             spec: {
@@ -334,7 +334,7 @@ if oxr.spec.backup?.schedule:
             }
         }
         {
-            apiVersion = "iam.aws.m.upbound.io/v1beta1"
+            apiVersion = "iam.aws.m.crossplane.io/v1beta1"
             kind = "RolePolicyAttachment"
             metadata = _metadata("cnpg-iam-role-policy-attachment")
             spec: {
@@ -350,7 +350,7 @@ if oxr.spec.backup?.schedule:
             }
         }
         {
-            apiVersion = "eks.aws.m.upbound.io/v1beta1"
+            apiVersion = "eks.aws.m.crossplane.io/v1beta1"
             kind = "PodIdentityAssociation"
             metadata = _metadata("cnpg-pod-identity-association")
             spec: {
