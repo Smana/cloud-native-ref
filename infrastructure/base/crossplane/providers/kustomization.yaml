@@ -7,5 +7,4 @@ resources:
   - provider-eks.yaml
   - provider-iam.yaml
   - provider-kms.yaml
-  - provider-kubernetes.yaml
   - provider-s3.yaml
