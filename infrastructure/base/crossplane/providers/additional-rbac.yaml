@@ -1,0 +1,28 @@
+# ClusterRole for aggregating permissions to Crossplane in order to manage CNPG resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: crossplane-system
+  name: cnpg:aggregate-to-crossplane
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  # Create the RDS service
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "create", "delete", "update", "patch"]
+  # Create the PostgreSQL provider config for the RDS service
+  - apiGroups: ["postgresql.sql.crossplane.io"]
+    resources: ["providerconfigs"]
+    verbs: ["get", "create", "delete", "update", "patch"]
+  - apiGroups: ["rds.aws.upbound.io"]
+    resources: ["instances"]
+    verbs: ["get"]
+  #  Manage CNPG PostgreSQL databases, clusters, roles, and scheduled backups
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["databases", "clusters", "roles", "scheduledbackups"]
+    verbs: ["get", "create", "delete", "update", "patch"]
+  # Manage external secrets
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets"]
+    verbs: ["get", "create", "delete", "update", "patch"]
