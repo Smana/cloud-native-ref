@@ -21,7 +21,6 @@ spec:
         cloud.ogenki.io/name: harbor
   writeConnectionSecretToRef:
     name: xplane-harbor-access-key
-    namespace: tooling
 ---
 apiVersion: iam.aws.m.upbound.io/v1beta1
 kind: Policy

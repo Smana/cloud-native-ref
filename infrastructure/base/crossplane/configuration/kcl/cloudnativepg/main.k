@@ -170,7 +170,7 @@ if oxr.spec.roles:
             ]
             target = {
                 creationPolicy = "Owner"
-                deletePolicy = "Retain"
+                deletionPolicy = "Retain"
                 name = oxr.metadata.name + "-cnpg-role-" + role.name
             }
         }
