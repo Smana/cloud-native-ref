@@ -3,9 +3,6 @@ kind: CompositeResourceDefinition
 metadata:
   name: sqlinstances.cloud.ogenki.io
 spec:
-  claimNames:
-    kind: SQLInstance
-    plural: sqlinstances
   connectionSecretKeys:
     - username
     - password
