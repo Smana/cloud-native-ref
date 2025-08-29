@@ -2,10 +2,6 @@ oxr = option("params").oxr
 ocds = option("params").ocds
 envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
 
-if oxr.spec?.deletionPolicy:
-    _deletionPolicy = oxr.spec.deletionPolicy
-else:
-    _deletionPolicy = "Delete"
 _metadata = lambda suffix: str -> any {
     {
         name = oxr.metadata.name + "-" + suffix
@@ -22,14 +18,16 @@ _attachPolicy = lambda policyArn: any -> any {
         kind = "RolePolicyAttachment"
         metadata = _metadata(policyArn.name + "-iam-role-policy-attachment")
         spec: {
-            providerConfigRef.name = oxr.spec.parameters.providerConfigName
+            providerConfigRef = {
+                kind = "ProviderConfig"
+                name = oxr.spec.parameters.providerConfigName
+            }
             forProvider = {
                 policyArn = policyArn.arn
                 roleSelector = {
                     matchControllerRef = True
                 }
             }
-            deletionPolicy = _deletionPolicy
         }
     }
 }
@@ -40,7 +38,10 @@ _items = [
         kind = "Role"
         metadata = _metadata("iam-role")
         spec: {
-            providerConfigRef.name = oxr.spec.parameters.providerConfigName
+            providerConfigRef = {
+                kind = "ProviderConfig"
+                name = oxr.spec.parameters.providerConfigName
+            }
             forProvider = {
                 assumeRolePolicy = """{
 "Version": "2012-10-17",
@@ -59,7 +60,6 @@ _items = [
 }
 """
             }
-            deletionPolicy = _deletionPolicy
         }
     }
     {
@@ -67,11 +67,13 @@ _items = [
         kind = "Policy"
         metadata = _metadata("iam-policy")
         spec: {
-            providerConfigRef.name = oxr.spec.parameters.providerConfigName
+            providerConfigRef = {
+                kind = "ProviderConfig"
+                name = oxr.spec.parameters.providerConfigName
+            }
             forProvider = {
                 policy = oxr.spec.parameters.policyDocument
             }
-            deletionPolicy = _deletionPolicy
         }
     }
     {
@@ -79,7 +81,10 @@ _items = [
         kind = "RolePolicyAttachment"
         metadata = _metadata("iam-role-policy-attachment")
         spec: {
-            providerConfigRef.name = oxr.spec.parameters.providerConfigName
+            providerConfigRef = {
+                kind = "ProviderConfig"
+                name = oxr.spec.parameters.providerConfigName
+            }
             forProvider = {
                 policyArnSelector = {
                     matchControllerRef = True
@@ -88,7 +93,6 @@ _items = [
                     matchControllerRef: True
                 }
             }
-            deletionPolicy = _deletionPolicy
         }
     }
 ]
@@ -98,7 +102,10 @@ _items += [{
     kind = "PodIdentityAssociation"
     metadata = _metadata("pod-identity-association")
     spec: {
-        providerConfigRef.name = oxr.spec.parameters.providerConfigName
+        providerConfigRef = {
+            kind = "ProviderConfig"
+            name = oxr.spec.parameters.providerConfigName
+        }
         forProvider = {
             clusterName = cluster.name
             serviceAccount = oxr.spec.parameters.serviceAccount.name
@@ -108,7 +115,6 @@ _items += [{
                 matchControllerRef = True
             }
         }
-        deletionPolicy = _deletionPolicy
     }
 } for cluster in oxr.spec.parameters.clusters]
 
