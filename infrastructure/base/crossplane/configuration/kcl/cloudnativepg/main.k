@@ -184,6 +184,10 @@ if oxr.spec.databases:
         metadata = {
             name = oxr.metadata.name + "-cnpg-" + oxr.spec.databases[0].name
             namespace = oxr.metadata.namespace
+            if ocds?.status?.applied == "true":
+                annotations = {
+                    "krm.kcl.dev/ready": "True"
+                }
         }
         spec = {
             name = db.name
@@ -266,6 +270,10 @@ if oxr.spec.backup?.schedule:
             metadata = {
                 name = oxr.metadata.name + "-cnpg-daily-backup"
                 namespace = oxr.metadata.namespace
+                # There isn't any field status that tells the resource is healthy so we need this annotation
+                annotations = {
+                    "krm.kcl.dev/ready": "True"
+                }
             }
             spec = {
                 schedule = oxr.spec.backup.schedule
