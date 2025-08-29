@@ -9,9 +9,9 @@ _region = envConfig.region
 
 _metadata = lambda suffix: str -> any {
     {
-        name = oxr.spec.claimRef.name + "-" + suffix
+        name = oxr.metadata.name + "-" + suffix
         annotations = {
-            "krm.kcl.dev/composition-resource-name" = oxr.spec.claimRef.name + "-" + suffix
+            "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-" + suffix
         }
     }
 }
@@ -57,8 +57,8 @@ _items = [
         apiVersion = "postgresql.cnpg.io/v1"
         kind = "Cluster"
         metadata = {
-            name = oxr.spec.claimRef.name + "-cnpg-cluster"
-            namespace = oxr.spec.claimRef.namespace
+            name = oxr.metadata.name + "-cnpg-cluster"
+            namespace = oxr.metadata.namespace
         }
         spec = {
             instances = oxr.spec.instances
@@ -77,13 +77,13 @@ _items = [
                                 database = oxr.spec.databases[0].name
                                 owner = oxr.spec.databases[0].owner
                                 secret = {
-                                    name = oxr.spec.claimRef.name + "-cnpg-" + oxr.spec.databases[0].name
+                                    name = oxr.metadata.name + "-cnpg-" + oxr.spec.databases[0].name
                                 }
                             if oxr.spec.initSQL:
                                 postInitApplicationSQLRefs = {
                                     configMapRefs = [
                                         {
-                                            name = oxr.spec.claimRef.name + "-cnpg-bootsrapsql"
+                                            name = oxr.metadata.name + "-cnpg-bootsrapsql"
                                             key = "init.sql"
                                         }
                                     ]
@@ -108,7 +108,7 @@ _items = [
                 }
             if oxr.spec.createSuperuser:
                 superuserSecret = {
-                    name = oxr.spec.claimRef.name + "-cnpg-superuser"
+                    name = oxr.metadata.name + "-cnpg-superuser"
                 }
             storage = {
                 size = oxr.spec.storageSize
@@ -141,7 +141,7 @@ _items = [
                     superuser = role.superuser
                     inRoles = role.inRoles
                     passwordSecret = {
-                        name = oxr.spec.claimRef.name + "-cnpg-role-" + role.name
+                        name = oxr.metadata.name + "-cnpg-role-" + role.name
                     }
                 } for role in oxr.spec.roles]
         }
@@ -153,8 +153,8 @@ if oxr.spec.roles:
         apiVersion = "external-secrets.io/v1"
         kind = "ExternalSecret"
         metadata = {
-            name = oxr.spec.claimRef.name + "-cnpg-role-" + role.name
-            namespace = oxr.spec.claimRef.namespace
+            name = oxr.metadata.name + "-cnpg-role-" + role.name
+            namespace = oxr.metadata.namespace
         }
         spec = {
             refreshInterval = "30m"
@@ -166,14 +166,14 @@ if oxr.spec.roles:
                 {
                     extract = {
                         conversionStrategy = "Default"
-                        key = "cnpg/" + oxr.spec.claimRef.name + "/roles/" + role.name
+                        key = "cnpg/" + oxr.metadata.name + "/roles/" + role.name
                     }
                 }
             ]
             target = {
                 creationPolicy = "Owner"
                 deletePolicy = "Retain"
-                name = oxr.spec.claimRef.name + "-cnpg-role-" + role.name
+                name = oxr.metadata.name + "-cnpg-role-" + role.name
             }
         }
     } for role in oxr.spec.roles]
@@ -184,14 +184,14 @@ if oxr.spec.databases:
         apiVersion = "postgresql.cnpg.io/v1"
         kind = "Database"
         metadata = {
-            name = oxr.spec.claimRef.name + "-cnpg-" + oxr.spec.databases[0].name
-            namespace = oxr.spec.claimRef.namespace
+            name = oxr.metadata.name + "-cnpg-" + oxr.spec.databases[0].name
+            namespace = oxr.metadata.namespace
         }
         spec = {
             name = db.name
             owner = db.owner
             cluster = {
-                name = oxr.spec.claimRef.name + "-cnpg-cluster"
+                name = oxr.metadata.name + "-cnpg-cluster"
             }
         }
     } for db in oxr.spec.databases]
@@ -204,8 +204,8 @@ if oxr.spec.initSQL:
             apiVersion = "v1"
             kind = "ConfigMap"
             metadata = {
-                name = oxr.spec.claimRef.name + "-cnpg-bootsrapsql"
-                namespace = oxr.spec.claimRef.namespace
+                name = oxr.metadata.name + "-cnpg-bootsrapsql"
+                namespace = oxr.metadata.namespace
             }
             data = {
                 "init.sql" = _initSQL
@@ -220,22 +220,22 @@ if oxr.spec.createSuperuser:
             apiVersion = "external-secrets.io/v1"
             kind = "ExternalSecret"
             metadata = {
-                name = oxr.spec.claimRef.name + "-cnpg-superuser"
-                namespace = oxr.spec.claimRef.namespace
+                name = oxr.metadata.name + "-cnpg-superuser"
+                namespace = oxr.metadata.namespace
             }
             spec = {
                 data = [
                     {
                         secretKey = "username"
                         remoteRef = {
-                            key = "cnpg/" + oxr.spec.claimRef.name + "/superuser"
+                            key = "cnpg/" + oxr.metadata.name + "/superuser"
                             property = "username"
                         }
                     }
                     {
                         secretKey = "password"
                         remoteRef = {
-                            key = "cnpg/" + oxr.spec.claimRef.name + "/superuser"
+                            key = "cnpg/" + oxr.metadata.name + "/superuser"
                             property = "password"
                         }
                     }
@@ -246,7 +246,7 @@ if oxr.spec.createSuperuser:
                     name = "clustersecretstore"
                 }
                 target = {
-                    name = oxr.spec.claimRef.name + "-cnpg-superuser"
+                    name = oxr.metadata.name + "-cnpg-superuser"
                     template = {
                         type = "kubernetes.io/basic-auth"
                         data = {
@@ -266,19 +266,19 @@ if oxr.spec.backup?.schedule:
             apiVersion = "postgresql.cnpg.io/v1"
             kind = "ScheduledBackup"
             metadata = {
-                name = oxr.spec.claimRef.name + "-cnpg-daily-backup"
-                namespace = oxr.spec.claimRef.namespace
+                name = oxr.metadata.name + "-cnpg-daily-backup"
+                namespace = oxr.metadata.namespace
             }
             spec = {
                 schedule = oxr.spec.backup.schedule
                 backupOwnerReference = "self"
                 cluster = {
-                    name = oxr.spec.claimRef.name + "-cnpg-cluster"
+                    name = oxr.metadata.name + "-cnpg-cluster"
                 }
             }
         }
         {
-            apiVersion = "iam.aws.m.crossplane.io/v1beta1"
+            apiVersion = "iam.aws.m.upbound.io/v1beta1"
             kind = "Role"
             metadata = _metadata("cnpg-iam-role")
             spec: {
@@ -304,7 +304,7 @@ if oxr.spec.backup?.schedule:
             }
         }
         {
-            apiVersion = "iam.aws.m.crossplane.io/v1beta1"
+            apiVersion = "iam.aws.m.upbound.io/v1beta1"
             kind = "Policy"
             metadata = _metadata("cnpg-iam-policy")
             spec: {
@@ -334,7 +334,7 @@ if oxr.spec.backup?.schedule:
             }
         }
         {
-            apiVersion = "iam.aws.m.crossplane.io/v1beta1"
+            apiVersion = "iam.aws.m.upbound.io/v1beta1"
             kind = "RolePolicyAttachment"
             metadata = _metadata("cnpg-iam-role-policy-attachment")
             spec: {
@@ -350,14 +350,14 @@ if oxr.spec.backup?.schedule:
             }
         }
         {
-            apiVersion = "eks.aws.m.crossplane.io/v1beta1"
+            apiVersion = "eks.aws.m.upbound.io/v1beta1"
             kind = "PodIdentityAssociation"
             metadata = _metadata("cnpg-pod-identity-association")
             spec: {
                 forProvider = {
                     clusterName = envConfig.clusterName
-                    serviceAccount = oxr.spec.claimRef.name + "-cnpg-cluster"
-                    namespace = oxr.spec.claimRef.namespace
+                    serviceAccount = oxr.metadata.name + "-cnpg-cluster"
+                    namespace = oxr.metadata.namespace
                     region = _region
                     roleArnSelector = {
                         matchControllerRef = True

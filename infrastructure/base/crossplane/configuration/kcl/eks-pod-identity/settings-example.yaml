@@ -5,10 +5,10 @@ kcl_options:
         "apiextensions.crossplane.io/environment":
           region: "eu-west-3"
       oxr:
+        metadata:
+          name: "myname"
+          namespace: "myns"
         spec:
-          claimRef:
-            name: "myname"
-            namespace: "myns"
           parameters:
             clusters:
               - name: "mycluster-0"

@@ -8,16 +8,17 @@ else:
     _deletionPolicy = "Delete"
 _metadata = lambda suffix: str -> any {
     {
-        name = oxr.spec.claimRef.name + "-" + suffix
+        name = oxr.metadata.name + "-" + suffix
+        namespace = oxr.metadata.namespace
         annotations = {
-            "krm.kcl.dev/composition-resource-name" = oxr.spec.claimRef.name + "-" + suffix
+            "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-" + suffix
         }
     }
 }
 
 _attachPolicy = lambda policyArn: any -> any {
     {
-        apiVersion = "iam.aws.m.crossplane.io/v1beta1"
+        apiVersion = "iam.aws.m.upbound.io/v1beta1"
         kind = "RolePolicyAttachment"
         metadata = _metadata(policyArn.name + "-iam-role-policy-attachment")
         spec: {
@@ -35,7 +36,7 @@ _attachPolicy = lambda policyArn: any -> any {
 
 _items = [
     {
-        apiVersion = "iam.aws.m.crossplane.io/v1beta1"
+        apiVersion = "iam.aws.m.upbound.io/v1beta1"
         kind = "Role"
         metadata = _metadata("iam-role")
         spec: {
@@ -62,7 +63,7 @@ _items = [
         }
     }
     {
-        apiVersion = "iam.aws.m.crossplane.io/v1beta1"
+        apiVersion = "iam.aws.m.upbound.io/v1beta1"
         kind = "Policy"
         metadata = _metadata("iam-policy")
         spec: {
@@ -74,7 +75,7 @@ _items = [
         }
     }
     {
-        apiVersion = "iam.aws.m.crossplane.io/v1beta1"
+        apiVersion = "iam.aws.m.upbound.io/v1beta1"
         kind = "RolePolicyAttachment"
         metadata = _metadata("iam-role-policy-attachment")
         spec: {
@@ -93,7 +94,7 @@ _items = [
 ]
 
 _items += [{
-    apiVersion = "eks.aws.m.crossplane.io/v1beta1"
+    apiVersion = "eks.aws.m.upbound.io/v1beta1"
     kind = "PodIdentityAssociation"
     metadata = _metadata("pod-identity-association")
     spec: {
