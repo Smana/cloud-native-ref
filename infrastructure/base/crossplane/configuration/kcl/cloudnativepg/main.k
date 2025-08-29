@@ -2,14 +2,12 @@ oxr = option("params").oxr
 ocds = option("params").ocds
 envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
 
-if oxr.spec.deletionPolicy:
-    _deletionPolicy = oxr.spec.deletionPolicy
-
 _region = envConfig.region
 
 _metadata = lambda suffix: str -> any {
     {
         name = oxr.metadata.name + "-" + suffix
+        namespace = oxr.metadata.namespace
         annotations = {
             "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-" + suffix
         }
@@ -300,7 +298,6 @@ if oxr.spec.backup?.schedule:
 }
 """
                 }
-                deletionPolicy = _deletionPolicy
             }
         }
         {
@@ -330,7 +327,6 @@ if oxr.spec.backup?.schedule:
 }
 """
                 }
-                deletionPolicy = _deletionPolicy
             }
         }
         {
@@ -346,7 +342,6 @@ if oxr.spec.backup?.schedule:
                         matchControllerRef: True
                     }
                 }
-                deletionPolicy = _deletionPolicy
             }
         }
         {
@@ -363,7 +358,6 @@ if oxr.spec.backup?.schedule:
                         matchControllerRef = True
                     }
                 }
-                deletionPolicy = _deletionPolicy
             }
         }
     ]

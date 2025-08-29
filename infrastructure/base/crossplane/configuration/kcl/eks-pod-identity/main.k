@@ -12,16 +12,18 @@ _metadata = lambda suffix: str -> any {
     }
 }
 
+_providerConfigRef = oxr.spec.parameters.providerConfigRef or {
+    kind = "ClusterProviderConfig"
+    name = "default"
+}
+
 _attachPolicy = lambda policyArn: any -> any {
     {
         apiVersion = "iam.aws.m.upbound.io/v1beta1"
         kind = "RolePolicyAttachment"
         metadata = _metadata(policyArn.name + "-iam-role-policy-attachment")
         spec: {
-            providerConfigRef = {
-                kind = "ProviderConfig"
-                name = oxr.spec.parameters.providerConfigName
-            }
+            providerConfigRef = _providerConfigRef
             forProvider = {
                 policyArn = policyArn.arn
                 roleSelector = {
@@ -38,10 +40,7 @@ _items = [
         kind = "Role"
         metadata = _metadata("iam-role")
         spec: {
-            providerConfigRef = {
-                kind = "ProviderConfig"
-                name = oxr.spec.parameters.providerConfigName
-            }
+            providerConfigRef = _providerConfigRef
             forProvider = {
                 assumeRolePolicy = """{
 "Version": "2012-10-17",
@@ -67,10 +66,7 @@ _items = [
         kind = "Policy"
         metadata = _metadata("iam-policy")
         spec: {
-            providerConfigRef = {
-                kind = "ProviderConfig"
-                name = oxr.spec.parameters.providerConfigName
-            }
+            providerConfigRef = _providerConfigRef
             forProvider = {
                 policy = oxr.spec.parameters.policyDocument
             }
@@ -81,10 +77,7 @@ _items = [
         kind = "RolePolicyAttachment"
         metadata = _metadata("iam-role-policy-attachment")
         spec: {
-            providerConfigRef = {
-                kind = "ProviderConfig"
-                name = oxr.spec.parameters.providerConfigName
-            }
+            providerConfigRef = _providerConfigRef
             forProvider = {
                 policyArnSelector = {
                     matchControllerRef = True
@@ -102,10 +95,7 @@ _items += [{
     kind = "PodIdentityAssociation"
     metadata = _metadata("pod-identity-association")
     spec: {
-        providerConfigRef = {
-            kind = "ProviderConfig"
-            name = oxr.spec.parameters.providerConfigName
-        }
+        providerConfigRef = _providerConfigRef
         forProvider = {
             clusterName = cluster.name
             serviceAccount = oxr.spec.parameters.serviceAccount.name

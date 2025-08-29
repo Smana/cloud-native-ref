@@ -70,10 +70,20 @@ spec:
                         required:
                           - name
                           - arn
-                    providerConfigName:
-                      description: Crossplane ProviderConfig to use for provisioning these resources
-                      type: string
-                      default: default
+                    providerConfigRef:
+                      type: object
+                      description: ProviderConfig Reference (use a ClusterProviderConfig "default" if not specified)
+                      properties:
+                        kind:
+                          description: The kind of the referenced object.
+                          type: string
+                          enum:
+                            - ProviderConfig
+                            - ClusterProviderConfig
+                          default: ClusterProviderConfig
+                        name:
+                          description: The name of the referenced object.
+                          type: string
                   required:
                     - clusters
                     - policyDocument

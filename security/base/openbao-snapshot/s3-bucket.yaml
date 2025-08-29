@@ -1,5 +1,5 @@
 ---
-apiVersion: s3.aws.crossplane.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
   name: openbao-snapshot
@@ -8,11 +8,10 @@ metadata:
   annotations:
     crossplane.io/external-name: ${region}-ogenki-openbao-snapshot
 spec:
-  deletionPolicy: Orphan # The bucket should not be deleted when the resource is deleted in Crossplane
   forProvider:
     region: ${region}
 ---
-apiVersion: s3.aws.crossplane.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: BucketServerSideEncryptionConfiguration
 metadata:
   labels:
@@ -26,12 +25,12 @@ spec:
     region: ${region}
     rule:
       - applyServerSideEncryptionByDefault:
-          - kmsMasterKeyIdSelector:
-              matchLabels:
-                cloud.ogenki.io/name: openbao-snapshot
-            sseAlgorithm: aws:kms
+          kmsMasterKeyIdSelector:
+            matchLabels:
+              cloud.ogenki.io/name: openbao-snapshot
+          sseAlgorithm: aws:kms
 ---
-apiVersion: s3.aws.crossplane.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: BucketLifecycleConfiguration
 metadata:
   labels:
