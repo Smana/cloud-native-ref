@@ -3,12 +3,6 @@ kind: CompositeResourceDefinition
 metadata:
   name: sqlinstances.cloud.ogenki.io
 spec:
-  connectionSecretKeys:
-    - username
-    - password
-    - endpoint
-    - host
-    - port
   group: cloud.ogenki.io
   scope: Namespaced
   names:
