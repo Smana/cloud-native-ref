@@ -12,7 +12,7 @@ metadata:
   name: function-kcl
   annotations:
 spec:
-  package: xpkg.crossplane.io/crossplane-contrib/function-kcl:v0.11.1
+  package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.11.1
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Function

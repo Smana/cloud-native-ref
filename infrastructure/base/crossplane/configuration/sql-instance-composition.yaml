@@ -7,9 +7,8 @@ metadata:
 spec:
     compositeTypeRef:
         apiVersion: cloud.ogenki.io/v1alpha1
-        kind: XSQLInstance
+        kind: SQLInstance
     mode: Pipeline
-    writeConnectionSecretsToNamespace: crossplane-system
     pipeline:
         - step: environmentConfigs
           functionRef:

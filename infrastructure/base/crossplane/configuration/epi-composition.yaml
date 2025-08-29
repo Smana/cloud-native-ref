@@ -1,12 +1,11 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  creationTimestamp: "2024-02-18T18:06:04Z"
   name: xepis.cloud.ogenki.io
 spec:
   compositeTypeRef:
     apiVersion: cloud.ogenki.io/v1alpha1
-    kind: XEPI
+    kind: EPI
   mode: Pipeline
   pipeline:
     - step: environmentConfigs
