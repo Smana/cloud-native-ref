@@ -17,7 +17,7 @@ spec:
       - kind: ConfigMap
         name: eks-mycluster-0-vars
   dependsOn:
-    - name: crossplane-providers
+    - name: crossplane-configuration
   healthChecks:
     - apiVersion: cloud.ogenki.io/v1alpha1
       kind: EPI

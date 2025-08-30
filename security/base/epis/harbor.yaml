@@ -4,7 +4,6 @@ metadata:
   name: xplane-harbor
   namespace: tooling
 spec:
-  deletionPolicy: Delete
   clusters:
     - name: "mycluster-0"
       region: "eu-west-3"

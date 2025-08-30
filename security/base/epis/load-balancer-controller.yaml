@@ -4,7 +4,6 @@ metadata:
     name: xplane-loadbalancer-controller
     namespace: kube-system
 spec:
-    deletionPolicy: Delete
     clusters:
         - name: "mycluster-0"
           region: "eu-west-3"

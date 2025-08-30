@@ -4,7 +4,6 @@ metadata:
     name: xplane-external-dns
     namespace: kube-system
 spec:
-    deletionPolicy: Delete
     clusters:
         - name: "mycluster-0"
           region: "eu-west-3"
