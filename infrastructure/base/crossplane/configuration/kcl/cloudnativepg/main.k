@@ -313,6 +313,8 @@ if oxr.spec.backup?.schedule:
             kind = "Policy"
             metadata = _metadata("cnpg-iam-policy")
             spec: {
+                if oxr.spec.managementPolicies:
+                    managementPolicies = oxr.spec.managementPolicies
                 forProvider = {
                     policy = """{
     "Version": "2012-10-17",
@@ -342,6 +344,8 @@ if oxr.spec.backup?.schedule:
             kind = "RolePolicyAttachment"
             metadata = _metadata("cnpg-iam-role-policy-attachment")
             spec: {
+                if oxr.spec.managementPolicies:
+                    managementPolicies = oxr.spec.managementPolicies
                 forProvider = {
                     policyArnSelector = {
                         matchControllerRef = True
@@ -357,6 +361,8 @@ if oxr.spec.backup?.schedule:
             kind = "PodIdentityAssociation"
             metadata = _metadata("cnpg-pod-identity-association")
             spec: {
+                if oxr.spec.managementPolicies:
+                    managementPolicies = oxr.spec.managementPolicies
                 forProvider = {
                     clusterName = envConfig.clusterName
                     serviceAccount = oxr.metadata.name + "-cnpg-cluster"

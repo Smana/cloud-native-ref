@@ -12,7 +12,7 @@ _metadata = lambda suffix: str -> any {
     }
 }
 
-_providerConfigRef = oxr.spec.parameters.providerConfigRef or {
+_providerConfigRef = oxr.spec.providerConfigRef or {
     kind = "ClusterProviderConfig"
     name = "default"
 }
@@ -23,6 +23,8 @@ _attachPolicy = lambda policyArn: any -> any {
         kind = "RolePolicyAttachment"
         metadata = _metadata(policyArn.name + "-iam-role-policy-attachment")
         spec: {
+            if oxr.spec.managementPolicies:
+                managementPolicies = oxr.spec.managementPolicies
             providerConfigRef = _providerConfigRef
             forProvider = {
                 policyArn = policyArn.arn
@@ -40,6 +42,8 @@ _items = [
         kind = "Role"
         metadata = _metadata("iam-role")
         spec: {
+            if oxr.spec.managementPolicies:
+                managementPolicies = oxr.spec.managementPolicies
             providerConfigRef = _providerConfigRef
             forProvider = {
                 assumeRolePolicy = """{
@@ -68,7 +72,7 @@ _items = [
         spec: {
             providerConfigRef = _providerConfigRef
             forProvider = {
-                policy = oxr.spec.parameters.policyDocument
+                policy = oxr.spec.policyDocument
             }
         }
     }
@@ -77,6 +81,8 @@ _items = [
         kind = "RolePolicyAttachment"
         metadata = _metadata("iam-role-policy-attachment")
         spec: {
+            if oxr.spec.managementPolicies:
+                managementPolicies = oxr.spec.managementPolicies
             providerConfigRef = _providerConfigRef
             forProvider = {
                 policyArnSelector = {
@@ -95,20 +101,22 @@ _items += [{
     kind = "PodIdentityAssociation"
     metadata = _metadata("pod-identity-association")
     spec: {
+        if oxr.spec.managementPolicies:
+            managementPolicies = oxr.spec.managementPolicies
         providerConfigRef = _providerConfigRef
         forProvider = {
             clusterName = cluster.name
-            serviceAccount = oxr.spec.parameters.serviceAccount.name
-            namespace = oxr.spec.parameters.serviceAccount.namespace
+            serviceAccount = oxr.spec.serviceAccount.name
+            namespace = oxr.spec.serviceAccount.namespace
             region = cluster.region
             roleArnSelector = {
                 matchControllerRef = True
             }
         }
     }
-} for cluster in oxr.spec.parameters.clusters]
+} for cluster in oxr.spec.clusters]
 
 if oxr.spec.parameters?.additionalPolicyArns:
-    _items += [_attachPolicy(policy) for policy in oxr.spec.parameters.additionalPolicyArns]
+    _items += [_attachPolicy(policy) for policy in oxr.spec.additionalPolicyArns]
 
 items = _items

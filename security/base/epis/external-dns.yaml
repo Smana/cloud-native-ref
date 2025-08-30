@@ -5,36 +5,35 @@ metadata:
     namespace: kube-system
 spec:
     deletionPolicy: Delete
-    parameters:
-        clusters:
-            - name: "mycluster-0"
-              region: "eu-west-3"
-        serviceAccount:
-            name: external-dns
-            namespace: kube-system
-        # Reference: https://kubernetes-sigs.github.io/external-dns/v0.13.4/tutorials/aws/#iam-policy
-        policyDocument: |
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "route53:ChangeResourceRecordSets"
-                        ],
-                        "Resource": [
-                            "arn:aws:route53:::hostedzone/*"
-                        ]
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "route53:ListHostedZones",
-                            "route53:ListResourceRecordSets"
-                        ],
-                        "Resource": [
-                            "*"
-                        ]
-                    }
-                ]
-            }
+    clusters:
+        - name: "mycluster-0"
+          region: "eu-west-3"
+    serviceAccount:
+        name: external-dns
+        namespace: kube-system
+    # Reference: https://kubernetes-sigs.github.io/external-dns/v0.13.4/tutorials/aws/#iam-policy
+    policyDocument: |
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "route53:ChangeResourceRecordSets"
+                    ],
+                    "Resource": [
+                        "arn:aws:route53:::hostedzone/*"
+                    ]
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "route53:ListHostedZones",
+                        "route53:ListResourceRecordSets"
+                    ],
+                    "Resource": [
+                        "*"
+                    ]
+                }
+            ]
+        }

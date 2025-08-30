@@ -19,12 +19,17 @@ spec:
             spec:
               type: object
               properties:
-                deletionPolicy:
-                  description: Delete the external resources when the Claim/XR is deleted. Defaults to Delete
-                  enum:
-                    - Delete
-                    - Orphan
-                  type: string
+                managementPolicies:
+                  description: The management policy for the Pod Identity.
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - "Delete"
+                      - "Create"
+                      - "Update"
+                      - "LateInitialize"
+                      - "Observe"
                 databases:
                   type: array
                   items:

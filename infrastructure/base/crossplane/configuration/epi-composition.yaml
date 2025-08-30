@@ -28,7 +28,7 @@ spec:
         kind: KCLRun
         spec:
           target: Resources
-          source: oci://ttl.sh/ogenki-cnref/eks-pod-identity:v0.2.10-24h
+          source: oci://ttl.sh/ogenki-cnref/eks-pod-identity:v0.2.11-24h
 
     - step: ready
       functionRef:
