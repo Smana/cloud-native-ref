@@ -1,0 +1,65 @@
+---
+# ClusterRole for aggregating permissions to Crossplane in order to manage CNPG resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: crossplane-system
+  name: cnpg:aggregate-to-crossplane
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  #  Manage CNPG PostgreSQL databases, clusters, roles, and scheduled backups
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["databases", "clusters", "roles", "scheduledbackups"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: crossplane-system
+  name: external-secrets:aggregate-to-crossplane # pragma: allowlist secret
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  # Manage external secrets
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets"]
+    verbs: ["*"]
+---
+# Thats probably a workaround because it doesn't seem to work without it
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: crossplane-system
+  name: crossplane:aws-upbound-provider
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  # Manage AWS provider configs
+  - apiGroups:
+      - aws.m.upbound.io
+    resources:
+      - clusterproviderconfigs
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - aws.m.upbound.io
+    resources:
+      - providerconfigusages
+    verbs:
+      - "*"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: crossplane:aws-upbound
+subjects:
+  - kind: ServiceAccount
+    name: provider-aws
+    namespace: crossplane-system
+roleRef:
+  kind: ClusterRole
+  name: crossplane:aws-upbound-provider
+  apiGroup: rbac.authorization.k8s.io

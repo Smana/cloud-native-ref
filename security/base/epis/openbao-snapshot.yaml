@@ -4,47 +4,46 @@ metadata:
     name: xplane-openbao-snapshot
     namespace: security
 spec:
-    parameters:
-        clusters:
-            - name: "mycluster-0"
-              region: "eu-west-3"
-        serviceAccount:
-            name: openbao-snapshot
-            namespace: security
-        policyDocument: |
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "ReadPermissions",
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:ListBucket"
-                        ],
-                        "Resource": [
-                            "arn:aws:s3:::${region}-ogenki-openbao-snapshot",
-                            "arn:aws:s3:::${region}-ogenki-openbao-snapshot/*"
-                        ]
-                    },
-                    {
-                        "Sid": "WritePermissions",
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:PutObject"
-                        ],
-                        "Resource": "arn:aws:s3:::${region}-ogenki-openbao-snapshot/*"
-                    },
-                    {
-                        "Sid": "AllowKMSUsage",
-                        "Effect": "Allow",
-                        "Action": [
-                            "kms:Decrypt",
-                            "kms:Encrypt",
-                            "kms:ReEncrypt*",
-                            "kms:GenerateDataKey*"
-                        ],
-                        "Resource": "*"
-                    }
-                ]
-            }
+    clusters:
+        - name: "mycluster-0"
+          region: "eu-west-3"
+    serviceAccount:
+        name: openbao-snapshot
+        namespace: security
+    policyDocument: |
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "ReadPermissions",
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:GetObject",
+                        "s3:ListBucket"
+                    ],
+                    "Resource": [
+                        "arn:aws:s3:::${region}-ogenki-openbao-snapshot",
+                        "arn:aws:s3:::${region}-ogenki-openbao-snapshot/*"
+                    ]
+                },
+                {
+                    "Sid": "WritePermissions",
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:PutObject"
+                    ],
+                    "Resource": "arn:aws:s3:::${region}-ogenki-openbao-snapshot/*"
+                },
+                {
+                    "Sid": "AllowKMSUsage",
+                    "Effect": "Allow",
+                    "Action": [
+                        "kms:Decrypt",
+                        "kms:Encrypt",
+                        "kms:ReEncrypt*",
+                        "kms:GenerateDataKey*"
+                    ],
+                    "Resource": "*"
+                }
+            ]
+        }

@@ -4,26 +4,25 @@ metadata:
   name: xplane-victoriametrics
   namespace: observability
 spec:
-  parameters:
-    clusters:
-      - name: "mycluster-0"
-        region: "eu-west-3"
-    serviceAccount:
-      name: vmagent-victoria-metrics-k8s-stack
-      namespace: observability
-    policyDocument: |
-      {
-        "Version" : "2012-10-17",
-        "Id" : "AllowEC2DescribeAndList",
-        "Statement" : [
-          {
-            "Sid" : "",
-            "Effect" : "Allow",
-            "Action" : [
-              "ec2:DescribeInstances",
-              "ec2:DescribeAvailabilityZones"
-              ],
-            "Resource" : "*"
-          }
-        ]
-      }
+  clusters:
+    - name: "mycluster-0"
+      region: "eu-west-3"
+  serviceAccount:
+    name: vmagent-victoria-metrics-k8s-stack
+    namespace: observability
+  policyDocument: |
+    {
+      "Version" : "2012-10-17",
+      "Id" : "AllowEC2DescribeAndList",
+      "Statement" : [
+        {
+          "Sid" : "",
+          "Effect" : "Allow",
+          "Action" : [
+            "ec2:DescribeInstances",
+            "ec2:DescribeAvailabilityZones"
+            ],
+          "Resource" : "*"
+        }
+      ]
+    }

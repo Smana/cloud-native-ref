@@ -13,5 +13,6 @@ spec:
   backup:
     schedule: "0 0 * * *"
     bucketName: "eu-west-3-ogenki-cnpg-backups"
-  compositionRef:
-    name: xsqlinstances.cloud.ogenki.io
+  crossplane:
+    compositionRef:
+      name: xsqlinstances.cloud.ogenki.io

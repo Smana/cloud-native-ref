@@ -1,21 +1,13 @@
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: xsqlinstances.cloud.ogenki.io
+  name: sqlinstances.cloud.ogenki.io
 spec:
-  claimNames:
+  group: cloud.ogenki.io
+  scope: Namespaced
+  names:
     kind: SQLInstance
     plural: sqlinstances
-  connectionSecretKeys:
-    - username
-    - password
-    - endpoint
-    - host
-    - port
-  group: cloud.ogenki.io
-  names:
-    kind: XSQLInstance
-    plural: xsqlinstances
   versions:
     - name: v1alpha1
       served: true
@@ -27,12 +19,17 @@ spec:
             spec:
               type: object
               properties:
-                deletionPolicy:
-                  description: Delete the external resources when the Claim/XR is deleted. Defaults to Delete
-                  enum:
-                    - Delete
-                    - Orphan
-                  type: string
+                managementPolicies:
+                  description: The management policy for the Pod Identity.
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - "Delete"
+                      - "Create"
+                      - "Update"
+                      - "LateInitialize"
+                      - "Observe"
                 databases:
                   type: array
                   items:

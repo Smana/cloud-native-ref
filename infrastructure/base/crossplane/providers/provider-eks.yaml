@@ -3,6 +3,6 @@ kind: Provider
 metadata:
   name: provider-aws-eks
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-eks:v1
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-eks:v2.0.0
   runtimeConfigRef:
     name: aws-config

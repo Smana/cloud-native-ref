@@ -1,5 +1,5 @@
 # This is a workaround as I cannot use EKS Pod Identity for Harbor to write into S3 bucket
-apiVersion: iam.aws.upbound.io/v1beta1
+apiVersion: iam.aws.m.upbound.io/v1beta1
 kind: User
 metadata:
   name: xplane-harbor
@@ -8,7 +8,7 @@ metadata:
 spec:
   forProvider: {}
 ---
-apiVersion: iam.aws.upbound.io/v1beta1
+apiVersion: iam.aws.m.upbound.io/v1beta1
 kind: AccessKey
 metadata:
   name: xplane-harbor
@@ -21,9 +21,8 @@ spec:
         cloud.ogenki.io/name: harbor
   writeConnectionSecretToRef:
     name: xplane-harbor-access-key
-    namespace: tooling
 ---
-apiVersion: iam.aws.upbound.io/v1beta1
+apiVersion: iam.aws.m.upbound.io/v1beta1
 kind: Policy
 metadata:
   name: xplane-harbor-s3
@@ -61,7 +60,7 @@ spec:
           ]
       }
 ---
-apiVersion: iam.aws.upbound.io/v1beta1
+apiVersion: iam.aws.m.upbound.io/v1beta1
 kind: UserPolicyAttachment
 metadata:
   name: xplane-harbor-s3

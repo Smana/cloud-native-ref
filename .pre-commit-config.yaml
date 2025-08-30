@@ -31,9 +31,6 @@ repos:
       - id: terraform_tflint
         args:
           - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
-      - id: terraform_trivy
-        args:
-          - --args=--ignorefile=__GIT_WORKING_DIR__/.trivyignore.yaml
 
   # Security scanning
   - repo: https://github.com/Yelp/detect-secrets

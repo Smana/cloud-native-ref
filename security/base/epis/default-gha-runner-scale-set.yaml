@@ -4,31 +4,30 @@ metadata:
   name: xplane-default-actions-runner
   namespace: tooling
 spec:
-  parameters:
-    clusters:
-      - name: "mycluster-0"
-        region: "eu-west-3"
-    serviceAccount:
-      name: default-gha-runner-scale-set
-      namespace: tooling
-    # Example policy, not used for the moment.
-    policyDocument: |
-      {
-        "Version": "2012-10-17",
-        "Statement": [
-          {
-            "Effect": "Allow",
-            "Action": [
-              "ecr:GetDownloadUrlForLayer",
-              "ecr:BatchGetImage",
-              "ecr:BatchCheckLayerAvailability",
-              "ecr:GetAuthorizationToken",
-              "ecr:InitiateLayerUpload",
-              "ecr:UploadLayerPart",
-              "ecr:CompleteLayerUpload",
-              "ecr:PutImage"
-            ],
-            "Resource": "arn:aws:ecr:us-west-2:123456789012:repository/my-repo"
-          }
-        ]
-      }
+  clusters:
+    - name: "mycluster-0"
+      region: "eu-west-3"
+  serviceAccount:
+    name: default-gha-runner-scale-set
+    namespace: tooling
+  # Example policy, not used for the moment.
+  policyDocument: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "ecr:GetDownloadUrlForLayer",
+            "ecr:BatchGetImage",
+            "ecr:BatchCheckLayerAvailability",
+            "ecr:GetAuthorizationToken",
+            "ecr:InitiateLayerUpload",
+            "ecr:UploadLayerPart",
+            "ecr:CompleteLayerUpload",
+            "ecr:PutImage"
+          ],
+          "Resource": "arn:aws:ecr:us-west-2:123456789012:repository/my-repo"
+        }
+      ]
+    }
