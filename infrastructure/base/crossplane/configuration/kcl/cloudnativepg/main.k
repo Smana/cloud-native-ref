@@ -184,7 +184,7 @@ if oxr.spec.databases:
         metadata = {
             name = oxr.metadata.name + "-cnpg-" + oxr.spec.databases[0].name
             namespace = oxr.metadata.namespace
-            if ocds?.status?.applied == "true":
+            if ocds[oxr.metadata.name + "-cnpg-" + oxr.spec.databases[0].name]?.Resource?.status?.applied == "true":
                 annotations = {
                     "krm.kcl.dev/ready": "True"
                 }

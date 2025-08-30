@@ -43,6 +43,11 @@ spec:
       kind: EPI
       name: xplane-victoriametrics
       namespace: observability
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: EPI
+      failed: status.conditions.filter(c, c.type == 'Synced' || c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Synced' || c.type == 'Ready').all(c, c.status == 'True')
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
