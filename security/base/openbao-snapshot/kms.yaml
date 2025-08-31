@@ -1,5 +1,5 @@
 ---
-apiVersion: kms.aws.upbound.io/v1beta1
+apiVersion: kms.aws.m.upbound.io/v1beta1
 kind: Key
 metadata:
   labels:
@@ -11,7 +11,7 @@ spec:
     description: Used for the Vault s3 bucket
     region: ${region}
 ---
-apiVersion: kms.aws.upbound.io/v1beta1
+apiVersion: kms.aws.m.upbound.io/v1beta1
 kind: Alias
 metadata:
   name: xplane-openbao-snapshot

@@ -1,17 +1,15 @@
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: xepis.cloud.ogenki.io
+  name: epis.cloud.ogenki.io
   labels:
     provider: aws
 spec:
-  claimNames:
-    kind: EPI
-    plural: epis
+  scope: Namespaced
   group: cloud.ogenki.io
   names:
-    kind: XEPI
-    plural: xepis
+    kind: EPI
+    plural: epis
   versions:
     - name: v1alpha1
       served: true
@@ -23,68 +21,83 @@ spec:
             spec:
               type: object
               properties:
-                parameters:
+                managementPolicies:
+                  description: The management policy for the Pod Identity.
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - "Delete"
+                      - "Create"
+                      - "Update"
+                      - "LateInitialize"
+                      - "Observe"
+                clusters:
+                  description: List of EKS clusters to associate the Pod Identity with.
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: The name of the EKS cluster
+                      region:
+                        type: string
+                        description: The region of the EKS cluster
+                    required:
+                      - name
+                      - region
+                serviceAccount:
                   type: object
-                  description: EKS Pod Identity parameters.
+                  description: Configuration for SA
                   properties:
-                    clusters:
-                      description: List of EKS clusters to associate the Pod Identity with.
-                      type: array
-                      items:
-                        type: object
-                        properties:
-                          name:
-                            type: string
-                            description: The name of the EKS cluster
-                          region:
-                            type: string
-                            description: The region of the EKS cluster
-                        required:
-                          - name
-                          - region
-                    serviceAccount:
-                      type: object
-                      description: Configuration for SA
-                      properties:
-                        name:
-                          type: string
-                          description: name kubernetes SA
-                        namespace:
-                          type: string
-                          description: namespace kubernetes SA
-                      required:
-                        - name
-                        - namespace
-                    policyDocument:
+                    name:
                       type: string
-                      description: The JSON policy document that is the content for the policy.
-                    additionalPolicyArns:
-                      type: array
-                      items:
-                        type: object
-                        properties:
-                          name:
-                            type: string
-                            description: The name of the policy
-                          arn:
-                            type: string
-                            description: The ARN of the policy
-                        required:
-                          - name
-                          - arn
-                    providerConfigName:
-                      description: Crossplane ProviderConfig to use for provisioning these resources
+                      description: name kubernetes SA
+                    namespace:
                       type: string
-                      default: default
+                      description: namespace kubernetes SA
                   required:
-                    - clusters
-                    - policyDocument
-                    - serviceAccount
-                deletionPolicy:
+                    - name
+                    - namespace
+                policyDocument:
                   type: string
-                  description: DeletionPolicy specifies what will happen to the underlying external when this managed resource is deleted - either "Delete" or "Orphan" the external resource.
+                  description: The JSON policy document that is the content for the policy.
+                additionalPolicyArns:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: The name of the policy
+                      arn:
+                        type: string
+                        description: The ARN of the policy
+                    required:
+                      - name
+                      - arn
+                providerConfigRef:
+                  type: object
+                  description: ProviderConfig Reference (use a ClusterProviderConfig "default" if not specified)
+                  properties:
+                    kind:
+                      description: The kind of the referenced object.
+                      type: string
+                      enum:
+                        - ProviderConfig
+                        - ClusterProviderConfig
+                      default: ClusterProviderConfig
+                    name:
+                      description: The name of the referenced object.
+                      type: string
               required:
-                - parameters
+                - clusters
+                - policyDocument
+                - serviceAccount
+            deletionPolicy:
+              type: string
+              description: DeletionPolicy specifies what will happen to the underlying external when this managed resource is deleted - either "Delete" or "Orphan" the external resource.
             status:
               type: object
               properties:

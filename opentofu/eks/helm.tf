@@ -36,7 +36,7 @@ resource "helm_release" "aws_ebs_csi_driver" {
   force_update    = true
   cleanup_on_fail = false
   replace         = true
-  timeout         = 180
+  timeout         = 800
   repository      = "https://kubernetes-sigs.github.io/aws-ebs-csi-driver"
   chart           = "aws-ebs-csi-driver"
   version         = var.ebs_csi_driver_chart_version

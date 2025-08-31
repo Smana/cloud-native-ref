@@ -6,10 +6,10 @@ kcl_options:
           "clusterName": "mycluster-0"
           region: "eu-west-3"
       oxr:
+        metadata:
+          name: "myname"
+          namespace: "myns"
         spec:
-          claimRef:
-            name: "myname"
-            namespace: "myns"
           instances: 3
           size: "small"
           primaryUpdateStrategy: "unsupervised"
@@ -43,3 +43,4 @@ kcl_options:
               owner: "myname-user"
             - name: "db2"
               owner: "myname-root"
+          managementPolicies: ["Observe"]

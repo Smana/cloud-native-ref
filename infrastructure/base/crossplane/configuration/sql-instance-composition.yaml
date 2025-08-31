@@ -7,9 +7,8 @@ metadata:
 spec:
     compositeTypeRef:
         apiVersion: cloud.ogenki.io/v1alpha1
-        kind: XSQLInstance
+        kind: SQLInstance
     mode: Pipeline
-    writeConnectionSecretsToNamespace: crossplane-system
     pipeline:
         - step: environmentConfigs
           functionRef:
@@ -31,7 +30,7 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: oci://ttl.sh/ogenki-cnref/cloudnativepg:v0.1.3-24h
+                  source: oci://ttl.sh/ogenki-cnref/cloudnativepg:v0.2.20-24h
 
         - step: ready
           functionRef:

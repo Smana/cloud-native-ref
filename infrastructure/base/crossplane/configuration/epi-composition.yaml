@@ -1,12 +1,11 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  creationTimestamp: "2024-02-18T18:06:04Z"
   name: xepis.cloud.ogenki.io
 spec:
   compositeTypeRef:
     apiVersion: cloud.ogenki.io/v1alpha1
-    kind: XEPI
+    kind: EPI
   mode: Pipeline
   pipeline:
     - step: environmentConfigs
@@ -29,7 +28,7 @@ spec:
         kind: KCLRun
         spec:
           target: Resources
-          source: oci://ttl.sh/ogenki-cnref/eks-pod-identity:v0.1.3-24h
+          source: oci://ttl.sh/ogenki-cnref/eks-pod-identity:v0.2.11-24h
 
     - step: ready
       functionRef:
