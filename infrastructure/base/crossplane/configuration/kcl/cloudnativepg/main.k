@@ -184,10 +184,9 @@ if oxr.spec.databases:
         metadata = {
             name = oxr.metadata.name + "-cnpg-" + oxr.spec.databases[0].name
             namespace = oxr.metadata.namespace
-            if ocds[oxr.metadata.name + "-cnpg-" + oxr.spec.databases[0].name]?.Resource?.status?.applied == "true":
-                annotations = {
-                    "krm.kcl.dev/ready": "True"
-                }
+            annotations = {
+                "krm.kcl.dev/ready": "True"
+            } if ocds[oxr.metadata.name + "-cnpg-" + db.name]?.Resource?.status?.applied == True else {}
         }
         spec = {
             name = db.name
