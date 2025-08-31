@@ -22,6 +22,9 @@ The following MCP servers are available for specialized operations:
 - Use for advanced contextual analysis and documentation search
 - Provides enhanced search capabilities across codebases and documentation
 - Useful for finding relevant configuration patterns and best practices
+- Refer to the latest version-specific official documentation provided via the Context7 plugin before answering any programming questions
+- Verify that all code aligns with current API specifications
+- Primary directive is to provide the most effective, accurate, and high-quality programming help possible
 
 ## Purpose
 
@@ -141,14 +144,94 @@ The Flux resource `spec` represents the desired state and should be the main foc
 
 # Crossplane Composition Troubleshooting
 
-When troubleshooting a Crossplane Composition or Composite Resource (XR), follow these steps:
+When troubleshooting a Crossplane Composition or Composite Resource (XR), follow this systematic approach:
 
-- Use the `get_kubernetes_resources` tool to list CompositeResourceDefinitions (CRDs) and Compositions to identify the relevant composite kind and composition.
-- Use the `get_kubernetes_resources` tool to get the specific Composite Resource (XR) instance you want to troubleshoot. Analyze its `spec`, `status`, and `conditions` fields.
+## Initial Assessment
+- Use the `get_kubernetes_resources` tool to list CompositeResourceDefinitions (XRDs) and Compositions to identify the relevant composite kind and composition.
+- Use the `get_kubernetes_resources` tool to get the specific Composite Resource (XR) instance. Analyze its `spec`, `status`, `conditions`, and `events` fields.
+- Check XR readiness conditions: look for `Ready`, `Synced`, and any provider-specific conditions.
+- If available, use `crossplane beta trace <xr-name>` via Bash to trace the complete resource hierarchy and dependencies.
+
+## Composition Analysis
 - Identify the Composition in use by checking the XR's `compositionRef` or `compositionSelector` fields.
-- Use the `get_kubernetes_resources` tool to get the referenced Composition and analyze its pipeline, resources, and functions.
-- To get the managed resources created by the XR, look at the XR's `status.resources` field, which lists all managed resources (with their kind, name, and namespace).
-- For each managed resource, use the `get_kubernetes_resources` tool to get its status and events. Analyze for errors, failed conditions, or drift.
-- If a managed resource is in a failed state, use the `get_kubernetes_logs` tool to fetch logs from the relevant controller pod (e.g., provider-aws, provider-kubernetes) for deeper analysis.
-- If any issues are found, create a root cause analysis report for the user, including which managed resource failed and why.
-- If no issues are found, create a report with the current status of the XR and all its managed resources.
+- Use the `get_kubernetes_resources` tool to get the referenced Composition and analyze its `spec.pipeline`, `spec.resources`, and `spec.functions`.
+- For compositions using function pipeline: examine function order, inputs, and step dependencies.
+- If available, use `crossplane beta render <xr-file> <composition-file>` via Bash to locally validate composition logic.
+
+## Managed Resource Investigation
+- Extract managed resources from the XR's `status.resources` field (kind, name, namespace).
+- For each managed resource, use the `get_kubernetes_resources` tool to get detailed status, conditions, and events.
+- Look for common failure patterns:
+  - IAM permission errors (403/AccessDenied)
+  - Resource naming conflicts or invalid characters
+  - Provider connection issues (authentication, network)
+  - Resource dependencies not being met
+  - Field validation errors or missing required parameters
+
+## Provider and Controller Analysis
+- Use the `get_kubernetes_resources` tool to check Crossplane core controller status (`crossplane-system` namespace).
+- Check provider controller status and readiness (e.g., `provider-aws`, `provider-kubernetes`).
+- If controllers are failing, use the `get_kubernetes_logs` tool to fetch logs from relevant controller pods.
+- Look for provider configuration issues: check ProviderConfig resources and authentication.
+
+## Advanced CLI Diagnostics
+- Use `crossplane beta trace <xr-name> --show-connection-secrets` via Bash to visualize complete resource dependency graph with secrets.
+- Run `crossplane beta top -s` via Bash to monitor Crossplane controller resource usage and performance metrics.
+- Enable function debugging with `crossplane render --context-files <dir> --include-function-results` for pipeline data flow analysis.
+- Validate composition pipeline: `crossplane render <xr> <composition> | crossplane beta validate -` via Bash.
+- Use `crossplane beta render --observed-resources` to include current cluster state in local rendering.
+
+## Advanced Diagnostics
+- For composition functions, check function container logs and enable debug mode using DeploymentRuntimeConfig with `--debug` flag.
+- Use the `get_kubernetes_logs` tool to examine crossplane core controller logs for reconciliation errors.
+- Check for resource finalizer issues that might prevent deletion or updates.
+- Examine provider-specific CRDs (e.g., AWS resources) for field validation errors.
+- Monitor function pipeline execution order and context propagation between functions.
+- Check for composition rendering failures, template errors, and function crashes.
+
+## Validation and Testing
+- If modifying compositions, use `crossplane beta validate` via Bash to check composition syntax.
+- Test composition changes in a non-production environment first.
+- Verify XRD schema matches the composition's expected inputs and outputs.
+
+## Observability and Monitoring Integration
+- Deploy Crossplane metrics collection by enabling `metrics.enabled=true` in Helm chart configuration.
+- Monitor key Prometheus metrics via `get_kubernetes_resources` tool:
+  - `crossplane_managed_resource_ready`: Resource readiness status
+  - `composition_run_function_seconds_bucket`: Function pipeline performance
+  - `controller_runtime_reconcile_errors_total`: Controller reconciliation failures
+- Use Grafana dashboard (ID: 21169) for visual monitoring of Crossplane health and managed resource states.
+- Set up alerting on reconciliation error spikes and function pipeline failures.
+
+## Composition Function Pipeline Debugging
+- Trace function execution order with `crossplane beta trace` showing complete pipeline flow.
+- Debug function pipeline locally using gRPC proxy for development environments.
+- Validate function context propagation with `--include-context` during rendering.
+- Check function performance metrics: `composition_run_function_seconds_bucket` for latency analysis.
+- Monitor function pipeline errors: context propagation issues, function ordering, gRPC communication failures.
+
+## Enhanced Provider-Specific Debugging
+- Enable provider debug mode using DeploymentRuntimeConfig with `--debug` flag via `get_kubernetes_resources` and `apply_kubernetes_resource` tools.
+- Check provider-specific error patterns:
+  - **AWS**: MovedPermanently errors (region/endpoint configuration), IAM policy validation
+  - **GCP**: CloudSQL connection failures, API quota limits, service account permissions
+  - **Azure**: ProviderConfig reference validation, resource group permissions
+- Use the `get_kubernetes_logs` tool with `--previous` flag for crash analysis of provider pods.
+- Verify provider authentication: check ProviderConfig credentials and rotation status.
+
+## Common Issue Resolution
+- **IAM Issues**: Check EKS Pod Identity associations and AWS IAM policies for the provider service account.
+- **Function Pipeline Errors**: Validate function ordering, context propagation, and gRPC communication between functions.
+- **Schema Validation Issues**: Check for unknown fields, missing required parameters, and type mismatches in compositions.
+- **Resource Dependency Loops**: Identify circular dependencies and timing issues using `crossplane beta trace`.
+- **Provider Authentication**: Verify service account permissions, credential rotation, and ProviderConfig references.
+- **Resource Naming**: Ensure all managed resource names comply with provider naming conventions (e.g., AWS resource naming rules).
+- **Composition Rendering Failures**: Check for template errors, missing context, and function crashes during pipeline execution.
+
+## Reporting
+- If any issues are found, create a comprehensive root cause analysis report including:
+  - Failed resource hierarchy (XR → Composition → Managed Resources)
+  - Specific error messages and conditions
+  - Provider controller logs if relevant
+  - Recommended remediation steps
+- If no issues are found, provide a status report showing XR health and all managed resource states.
