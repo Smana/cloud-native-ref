@@ -14,7 +14,7 @@ metadata:
     # Can be useful for local debugging
     # render.crossplane.io/runtime: Development
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.11.2
+  package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.11.4
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Function

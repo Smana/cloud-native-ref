@@ -1,0 +1,463 @@
+name: KCL Modules CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'infrastructure/base/crossplane/configuration/kcl/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'infrastructure/base/crossplane/configuration/kcl/**'
+
+env:
+  REGISTRY: ghcr.io
+  KCL_MODULES_PATH: infrastructure/base/crossplane/configuration/kcl
+  KCL_VERSION: "0.11.3"
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      has-changes: ${{ steps.set-matrix.outputs.has-changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed KCL files
+        id: changed-files
+        uses: tj-actions/changed-files@v46
+        with:
+          files: |
+            infrastructure/base/crossplane/configuration/kcl/**/*.k
+            infrastructure/base/crossplane/configuration/kcl/**/kcl.mod
+
+      - name: Set matrix for changed modules
+        id: set-matrix
+        run: |
+          echo "Changed files: ${{ steps.changed-files.outputs.all_changed_files }}"
+          echo "Any changed: ${{ steps.changed-files.outputs.any_changed }}"
+
+          # Extract unique module names from file paths
+          changed_modules=()
+          if [[ "${{ steps.changed-files.outputs.any_changed }}" == "true" ]]; then
+            for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+              echo "Processing file: $file"
+              # Extract module directory from file path (e.g., infrastructure/base/crossplane/configuration/kcl/cloudnativepg/main.k)
+              if [[ "$file" =~ infrastructure/base/crossplane/configuration/kcl/([^/]+)/ ]]; then
+                module="${BASH_REMATCH[1]}"
+                echo "  → Found module: $module"
+                # Check if it's a valid KCL module (has kcl.mod) and not already in the list
+                if [[ -f "infrastructure/base/crossplane/configuration/kcl/${module}/kcl.mod" ]] && [[ ! " ${changed_modules[*]} " =~ " ${module} " ]]; then
+                  changed_modules+=("$module")
+                  echo "  → Added module: $module"
+                fi
+              fi
+            done
+          fi
+
+          echo "Final detected modules: ${changed_modules[*]}"
+
+          # Build matrix
+          if [ ${#changed_modules[@]} -eq 0 ]; then
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+          else
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+            matrix="{\"include\":["
+            for i in "${!changed_modules[@]}"; do
+              if [ $i -gt 0 ]; then matrix+=","; fi
+              matrix+="{\"module\":\"${changed_modules[$i]}\",\"path\":\"infrastructure/base/crossplane/configuration/kcl/${changed_modules[$i]}\"}"
+            done
+            matrix+="]}"
+            echo "matrix=$matrix" >> $GITHUB_OUTPUT
+            echo "Generated matrix: $matrix"
+          fi
+
+  quality-checks:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install KCL binary
+        run: |
+          curl -L -o kcl.tar.gz "https://github.com/kcl-lang/cli/releases/download/v${{ env.KCL_VERSION }}/kcl-v${{ env.KCL_VERSION }}-linux-amd64.tar.gz"
+          tar -xzf kcl.tar.gz
+          sudo mv kcl /usr/local/bin/
+          chmod +x /usr/local/bin/kcl
+          kcl --version
+
+      - name: Cache KCL modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.kcl
+          key: ${{ runner.os }}-kcl-${{ hashFiles(format('{0}/{1}/kcl.mod.lock', env.KCL_MODULES_PATH, matrix.module)) }}
+          restore-keys: |
+            ${{ runner.os }}-kcl-
+
+      - name: Install module dependencies
+        working-directory: ${{ matrix.path }}
+        run: |
+          echo "Installing dependencies for module: ${{ matrix.module }}"
+          # Check if module has dependencies and install them
+          if [ -f "kcl.mod" ] && grep -q "dependencies" kcl.mod; then
+            echo "Dependencies found, installing..."
+            kcl mod pull || echo "No dependencies to pull"
+          else
+            echo "No dependencies found or kcl.mod not present"
+          fi
+
+      - name: Format check
+        working-directory: ${{ matrix.path }}
+        run: |
+          echo "Checking format for module: ${{ matrix.module }}"
+          kcl fmt .
+          # Use git diff --quiet to check if kcl fmt made any changes. It exits with 1 if there's a diff.
+          if ! git diff --quiet .; then
+            echo "❌ Code is not formatted. Run 'kcl fmt .' in ${{ matrix.module }} directory"
+            echo "Files that were reformatted:"
+            # Show the diff to make it easy to see what needs to be fixed.
+            git diff .
+            exit 1
+          fi
+          echo "✅ Code formatting is correct"
+
+      - name: Lint KCL code
+        working-directory: ${{ matrix.path }}
+        run: |
+          echo "Linting module: ${{ matrix.module }}"
+          kcl lint . --format json > lint-results.json || true
+
+          # Check if there are any lint issues
+          if [ -s lint-results.json ] && [ "$(cat lint-results.json)" != "{}" ] && [ "$(cat lint-results.json)" != "[]" ]; then
+            echo "⚠️ Lint issues found:"
+            cat lint-results.json | jq .
+          else
+            echo "✅ No lint issues found"
+          fi
+
+      - name: Run tests
+        working-directory: ${{ matrix.path }}
+        run: |
+          echo "Running tests for module: ${{ matrix.module }}"
+          if find . -name "*_test.k" | grep -q .; then
+            kcl test . --fail-fast
+            echo "✅ All tests passed"
+          else
+            echo "ℹ️ No test files found (*_test.k)"
+          fi
+
+      - name: Validate KCL configuration
+        working-directory: ${{ matrix.path }}
+        run: |
+          echo "Validating KCL configuration for module: ${{ matrix.module }}"
+
+          # A KCL module is considered a Crossplane function if it has both a kcl.mod
+          # and a settings-example.yaml file for mocking runtime parameters.
+          if [ -f "kcl.mod" ] && [ -f "settings-example.yaml" ]; then
+            echo "   Found settings-example.yaml, running validation with settings..."
+            if kcl run . -Y settings-example.yaml --output /dev/null; then
+              echo "✅ KCL configuration is valid with mock parameters."
+            else
+              echo "❌ KCL configuration validation failed with mock parameters."
+              exit 1
+            fi
+          else
+            echo "   No settings-example.yaml found, running standard validation..."
+            kcl run . --output /dev/null
+            echo "✅ KCL configuration is valid."
+          fi
+
+  publish:
+    needs: [detect-changes, quality-checks]
+    if: needs.detect-changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+      fail-fast: false
+
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      REGISTRY: ghcr.io
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install KCL binary
+        run: |
+          curl -L -o kcl.tar.gz "https://github.com/kcl-lang/cli/releases/download/v${{ env.KCL_VERSION }}/kcl-v${{ env.KCL_VERSION }}-linux-amd64.tar.gz"
+          tar -xzf kcl.tar.gz
+          sudo mv kcl /usr/local/bin/
+          chmod +x /usr/local/bin/kcl
+          kcl --version
+
+      - name: Login to GitHub Container Registry
+        run: kcl registry login ${{ env.REGISTRY }} --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract module info
+        id: module-info
+        working-directory: ${{ matrix.path }}
+        run: |
+          version=$(grep "^version" kcl.mod | sed 's/version = "\(.*\)"/\1/' | tr -d '"')
+          name=$(grep "^name" kcl.mod | sed 's/name = "\(.*\)"/\1/' | tr -d '"')
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "name=$name" >> $GITHUB_OUTPUT
+          echo "Module: $name, Version: $version"
+
+      - name: Generate unique version for PR
+        id: pr-version
+        env:
+          MODULE_VERSION: ${{ steps.module-info.outputs.version }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_VERSION="${MODULE_VERSION}-pr${{ github.event.pull_request.number }}"
+            echo "version=$PR_VERSION" >> $GITHUB_OUTPUT
+            echo "is_pr=true" >> $GITHUB_OUTPUT
+            echo "Using PR version: $PR_VERSION"
+          else
+            echo "version=$MODULE_VERSION" >> $GITHUB_OUTPUT
+            echo "is_pr=false" >> $GITHUB_OUTPUT
+            echo "Using release version: $MODULE_VERSION"
+          fi
+
+      - name: Build and publish KCL module
+        working-directory: ${{ matrix.path }}
+        env:
+          MODULE_NAME: ${{ steps.module-info.outputs.name }}
+          MODULE_VERSION: ${{ steps.module-info.outputs.version }}
+          PUBLISH_VERSION: ${{ steps.pr-version.outputs.version }}
+          IS_PR: ${{ steps.pr-version.outputs.is_pr }}
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          FULL_MODULE_NAME="${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-${MODULE_NAME}"
+
+          echo "Publishing module: ${MODULE_NAME}"
+          echo "Original version: ${MODULE_VERSION}"
+          echo "Publish version: ${PUBLISH_VERSION}"
+          echo "Registry: ${FULL_MODULE_NAME}"
+          echo "Is PR: ${IS_PR}"
+
+          kcl mod download || true
+
+          echo "Attempting to publish oci://${FULL_MODULE_NAME}:v${PUBLISH_VERSION}"
+          if ! kcl mod push "oci://${FULL_MODULE_NAME}:v${PUBLISH_VERSION}"; then
+            if [ "$IS_PR" = "true" ]; then
+              echo "❌ Failed to publish PR module"
+            else
+              echo "❌ Failed to publish module - version v${PUBLISH_VERSION} may already exist"
+              echo "💡 Tip: Increment the version in kcl.mod or delete the existing package version"
+            fi
+            exit 1
+          fi
+
+          echo "✅ Successfully published ${MODULE_NAME}:v${PUBLISH_VERSION}"
+
+          if [ "$IS_PR" = "false" ]; then
+            echo "🚀 Publishing 'latest' tag for release version"
+            kcl mod push "oci://${FULL_MODULE_NAME}:latest"
+            echo "✅ Successfully published ${MODULE_NAME}:latest"
+          fi
+
+      - name: Generate publication summary
+        env:
+          MODULE_NAME: ${{ steps.module-info.outputs.name }}
+          MODULE_VERSION: ${{ steps.module-info.outputs.version }}
+          PUBLISH_VERSION: ${{ steps.pr-version.outputs.version }}
+          IS_PR: ${{ steps.pr-version.outputs.is_pr }}
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          if [ "$IS_PR" = "true" ]; then
+            echo "## 🧪 Published KCL Module (PR Preview): $MODULE_NAME" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Module Name**: \`$MODULE_NAME\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Original Version**: \`v$MODULE_VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **PR Version**: \`v$PUBLISH_VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Registry**: \`${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-$MODULE_NAME\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Note**: This is a PR preview version that can be overwritten on subsequent pushes." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Test Usage" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "kcl mod add ${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-$MODULE_NAME:v$PUBLISH_VERSION" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## 📦 Published KCL Module: $MODULE_NAME" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Module Name**: \`$MODULE_NAME\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Version**: \`v$PUBLISH_VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Registry**: \`${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-$MODULE_NAME\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Tags**: \`v$PUBLISH_VERSION\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Usage" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "kcl mod add ${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-$MODULE_NAME:v$PUBLISH_VERSION" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  validate-composition-versions:
+    needs: [detect-changes, publish]
+    if: needs.detect-changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Extract module info
+        id: module-info
+        working-directory: ${{ matrix.path }}
+        run: |
+          version=$(grep "^version" kcl.mod | sed 's/version = "\(.*\)"/\1/' | tr -d '"')
+          name=$(grep "^name" kcl.mod | sed 's/name = "\(.*\)"/\1/' | tr -d '"')
+
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "name=$name" >> $GITHUB_OUTPUT
+
+      - name: Validate composition versions
+        run: |
+          MODULE_NAME="${{ steps.module-info.outputs.name }}"
+          MODULE_VERSION="${{ steps.module-info.outputs.version }}"
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          EXPECTED_REGISTRY_URL="oci://${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-${MODULE_NAME}:v${MODULE_VERSION}"
+          MODULE_SEARCH_STRING="crossplane-${MODULE_NAME}:"
+
+          echo "🔍 Checking Crossplane compositions for module: $MODULE_NAME"
+          echo "📦 Expected final version: v$MODULE_VERSION"
+          echo "🗃️ Expected final registry URL: $EXPECTED_REGISTRY_URL"
+          echo
+
+          # Find all composition files and check which ones reference the module
+          ALL_COMPS=$(find infrastructure/base/crossplane/configuration -name "*-composition.yaml")
+          RELEVANT_COMPS=""
+          for comp in $ALL_COMPS; do
+              if yq -e ".spec.pipeline[].input.spec.source | select(contains(\"${MODULE_SEARCH_STRING}\"))" "$comp" > /dev/null; then
+                  RELEVANT_COMPS="$RELEVANT_COMPS $comp"
+              fi
+          done
+
+          if [ -z "$RELEVANT_COMPS" ]; then
+            echo "✅ No compositions found referencing module '$MODULE_NAME'. Nothing to validate."
+            exit 0
+          fi
+
+          echo "📋 Found compositions referencing '$MODULE_NAME':"
+          printf '%s\n' $RELEVANT_COMPS
+          echo
+
+          OUTDATED_COMPS=""
+          for comp in $RELEVANT_COMPS; do
+            echo "🔎 Validating composition: $comp"
+
+            # Extract the OCI source reference for the current module
+            CURRENT_SOURCE=$(yq eval ".spec.pipeline[].input.spec.source | select(contains(\"${MODULE_SEARCH_STRING}\"))" "$comp")
+
+            if [ -z "$CURRENT_SOURCE" ]; then
+              echo "  ⚠️ Could not extract source URL from $comp. Skipping."
+              continue
+            fi
+
+            echo "  📍 Current source URL: $CURRENT_SOURCE"
+
+            if [ "$CURRENT_SOURCE" = "$EXPECTED_REGISTRY_URL" ]; then
+              echo "  ✅ Version is up to date."
+            else
+              echo "  ❌ Version is out of date!"
+              echo "      Expected: $EXPECTED_REGISTRY_URL"
+              echo "      Found:    $CURRENT_SOURCE"
+              OUTDATED_COMPS="$OUTDATED_COMPS $comp"
+            fi
+            echo
+          done
+
+          if [ -n "$OUTDATED_COMPS" ]; then
+            echo "========================================================================"
+            echo "❌ VALIDATION FAILED: Composition versions must match module versions."
+            echo
+            echo "The following compositions are using incorrect versions:"
+            printf '  - %s\n' $OUTDATED_COMPS
+            echo
+            echo "🔧 ACTION REQUIRED:"
+            echo "   Please update the 'source' field in these files to:"
+            echo "   => $EXPECTED_REGISTRY_URL"
+            echo "========================================================================"
+            exit 1
+          else
+            echo "✅ All relevant compositions are using the correct module version!"
+          fi
+
+      - name: Generate validation summary
+        if: always()
+        env:
+          MODULE_NAME: ${{ steps.module-info.outputs.name }}
+          MODULE_VERSION: ${{ steps.module-info.outputs.version }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "## ✅ Composition Validation Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All Crossplane compositions are using the correct version:" >> $GITHUB_STEP_SUMMARY
+            echo "- **Module**: \`$MODULE_NAME\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Version**: \`v$MODULE_VERSION\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Composition Validation Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Some compositions are not using the latest module version." >> $GITHUB_STEP_SUMMARY
+            echo "Check the job logs for details and update commands." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  summary:
+    needs: [detect-changes, quality-checks, publish, validate-composition-versions]
+    if: always() && needs.detect-changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate workflow summary
+        run: |
+          echo "# 🎯 KCL Modules CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.quality-checks.result }}" = "success" ]; then
+            echo "✅ **Quality Checks**: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Quality Checks**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Publishing status
+          if [ "${{ needs.publish.result }}" = "success" ]; then
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              echo "✅ **Publishing**: PR Preview Published" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "✅ **Publishing**: Release Published" >> $GITHUB_STEP_SUMMARY
+            fi
+          elif [ "${{ needs.publish.result }}" = "failure" ]; then
+            echo "❌ **Publishing**: Failed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⏭️ **Publishing**: Skipped" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Composition validation status
+          if [ "${{ needs.validate-composition-versions.result }}" = "success" ]; then
+            echo "✅ **Composition Validation**: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.validate-composition-versions.result }}" = "failure" ]; then
+            echo "❌ **Composition Validation**: Failed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⏭️ **Composition Validation**: Skipped" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger**: ${{ github.event_name }} on \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY

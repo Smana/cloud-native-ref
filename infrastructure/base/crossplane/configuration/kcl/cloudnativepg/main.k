@@ -182,11 +182,11 @@ if oxr.spec.databases:
         apiVersion = "postgresql.cnpg.io/v1"
         kind = "Database"
         metadata = {
-            name = oxr.metadata.name + "-cnpg-" + oxr.spec.databases[0].name
+            name = oxr.metadata.name + "-cnpg-" + db.name
             namespace = oxr.metadata.namespace
             annotations = {
                 "krm.kcl.dev/ready": "True"
-            } if ocds[oxr.metadata.name + "-cnpg-" + db.name]?.Resource?.status?.applied == True else {}
+            } if ocds?[oxr.metadata.name + "-cnpg-" + db.name]?.Resource?.status?.applied == True else {}
         }
         spec = {
             name = db.name
@@ -262,14 +262,14 @@ if oxr.spec.createSuperuser:
 
 # Create daily backups using EKS pod identity for AWS auth
 if oxr.spec.backup?.schedule:
-    _items += [
+    _backupResources = [
         {
             apiVersion = "postgresql.cnpg.io/v1"
             kind = "ScheduledBackup"
             metadata = {
                 name = oxr.metadata.name + "-cnpg-daily-backup"
                 namespace = oxr.metadata.namespace
-                # There isn't any field status that tells the resource is healthy so we need this annotation
+                # We need this annotations because there aren't any field status that tells the resource is healthy
                 annotations = {
                     "krm.kcl.dev/ready": "True"
                 }
@@ -374,5 +374,6 @@ if oxr.spec.backup?.schedule:
             }
         }
     ]
+    _items += _backupResources
 
 items = _items
