@@ -251,7 +251,16 @@ jobs:
           kcl mod download || true
 
           echo "Attempting to publish oci://${FULL_MODULE_NAME}:v${PUBLISH_VERSION}"
-          if ! kcl mod push "oci://${FULL_MODULE_NAME}:v${PUBLISH_VERSION}"; then
+          if [ "$IS_PR" = "true" ]; then
+            # Use --force for PR versions to allow overwriting
+            PUSH_CMD="kcl mod push --force oci://${FULL_MODULE_NAME}:v${PUBLISH_VERSION}"
+            echo "Using --force flag for PR version (allows overwrite)"
+          else
+            # Use normal push for release versions
+            PUSH_CMD="kcl mod push oci://${FULL_MODULE_NAME}:v${PUBLISH_VERSION}"
+          fi
+
+          if ! $PUSH_CMD; then
             if [ "$IS_PR" = "true" ]; then
               echo "❌ Failed to publish PR module"
             else
