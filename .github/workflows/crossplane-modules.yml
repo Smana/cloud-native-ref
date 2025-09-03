@@ -1,4 +1,4 @@
-name: KCL Modules CI/CD Pipeline
+name: Crossplane Modules
 
 on:
   push:

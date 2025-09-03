@@ -28,7 +28,7 @@ spec:
         kind: KCLRun
         spec:
           target: Resources
-          source: oci://ghcr.io/smana/cloud-native-ref/crossplane-eks-pod-identity:v0.2.1-pr1050
+          source: oci://ghcr.io/smana/cloud-native-ref/crossplane-eks-pod-identity:v0.2.1
 
     - step: ready
       functionRef:

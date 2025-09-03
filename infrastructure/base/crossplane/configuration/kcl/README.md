@@ -74,14 +74,14 @@ The CI/CD pipeline automatically:
    - **Main**: Publishes with original version + `latest` tag
    - Publishes to GitHub Container Registry
 
-3. **Composition Validation** (main branch only):
+3. **Composition Validation**:
    - Validates that compositions reference the latest module versions
    - Fails workflow if versions are mismatched
    - Provides clear instructions for manual updates
 
 ## CI/CD Pipeline
 
-The workflow is defined in [`.github/workflows/kcl-modules.yml`](../../../../../../.github/workflows/kcl-modules.yml).
+The workflow is defined in [`.github/workflows/crossplane-modules.yml`](../../../../../../.github/workflows/crossplane-modules.yml).
 
 ### Triggers
 
@@ -99,35 +99,17 @@ graph TD
     D --> E[Manual Update Required]
 ```
 
-### Environment Variables
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `GITHUB_TOKEN` | Automatically provided for registry authentication | - |
-
 ## Manual Operations
 
 ### Publishing a Module Manually
 
 ```bash
-# Set registry environment (if needed)
-export KPM_REG=ghcr.io
-export KPM_REPO=smana
-
 # Publish module
 cd infrastructure/base/crossplane/configuration/kcl/cloudnativepg
 kcl mod push ghcr.io/smana/cloud-native-ref/crossplane-cloudnativepg:v0.2.1
 
 # Pull/download module
 kcl mod pull ghcr.io/smana/cloud-native-ref/crossplane-cloudnativepg:v0.2.1
-```
-
-### Updating Compositions Manually
-
-```bash
-# Update the composition YAML file directly
-# Change the source field to the new version:
-# source: oci://ghcr.io/smana/kcl-cloudnativepg:v0.2.1
 ```
 
 ## Usage in Crossplane Compositions
@@ -150,74 +132,8 @@ spec:
         kind: KCLRun
         spec:
           target: Resources
-          source: oci://ghcr.io/smana/kcl-cloudnativepg:v0.2.1
+          source: oci://ghcr.io/smana/crossplane-cloudnativepg:v0.2.1
 ```
-
-## Best Practices
-
-### Code Quality
-
-1. **Format Code**: Always run `kcl fmt .` before committing
-2. **Write Tests**: Add `*_test.k` files for complex logic
-3. **Validate Output**: Test your KCL generates valid Kubernetes manifests
-4. **Version Appropriately**: Follow semantic versioning
-
-### Module Design
-
-1. **Single Responsibility**: Each module should handle one specific resource type
-2. **Parameterization**: Use `oxr.spec` and environment configs for flexibility
-3. **Error Handling**: Validate inputs and provide meaningful error messages
-4. **Documentation**: Document module parameters and usage
-
-### Security
-
-1. **No Secrets**: Never include secrets in KCL code
-2. **External Secrets**: Use External Secrets Operator for secret management
-3. **Least Privilege**: Generated IAM policies should follow least privilege principle
-4. **Validation**: Validate all external inputs
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Format Check Failures**:
-
-   ```bash
-   kcl fmt .
-   git add -A && git commit -m "fix: format KCL code"
-   ```
-
-2. **Lint Warnings**:
-
-   ```bash
-   kcl lint . --format json
-   # Fix issues shown in output
-   ```
-
-3. **Registry Push Failures**:
-   - Check GitHub token permissions
-   - Ensure package name doesn't conflict
-   - Verify version isn't already published
-
-4. **Composition Reference Issues**:
-   - Check OCI URL format
-   - Verify tag/version exists in registry
-   - Ensure Crossplane can pull from registry
-
-### Getting Help
-
-- **KCL Documentation**: <https://kcl-lang.io/>
-- **Crossplane Functions**: <https://docs.crossplane.io/latest/concepts/composition-functions/>
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make changes to KCL modules
-4. Test locally using the commands above
-5. Create a pull request
-6. CI will run quality checks
-7. After merge to main, modules are automatically published
 
 ## Current Compositions
 
@@ -225,12 +141,3 @@ The following Crossplane compositions in this repository reference these KCL mod
 
 - [`sql-instance-composition.yaml`](../sql-instance-composition.yaml) - References `cloudnativepg` module
 - [`epi-composition.yaml`](../epi-composition.yaml) - References `eks-pod-identity` module
-
-### Current Status
-
-Based on the composition files, the current module references are:
-
-- **cloudnativepg**: `oci://ttl.sh/ogenki-cnref/cloudnativepg:v0.2.20-24h` (needs update to `ghcr.io/smana/kcl-cloudnativepg:v0.2.1`)
-- **eks-pod-identity**: `oci://ttl.sh/ogenki-cnref/eks-pod-identity:v0.2.11-24h` (needs update to `ghcr.io/smana/kcl-eks-pod-identity:v0.2.1`)
-
-When the workflow validation runs, it will detect these mismatches and provide instructions to update them to the GitHub Container Registry URLs.
