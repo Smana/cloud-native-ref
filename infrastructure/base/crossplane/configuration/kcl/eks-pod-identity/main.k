@@ -1,3 +1,4 @@
+# This module manages EKS Pod Identity using Crossplane AWS Provider.
 oxr = option("params").oxr
 ocds = option("params").ocds
 envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]

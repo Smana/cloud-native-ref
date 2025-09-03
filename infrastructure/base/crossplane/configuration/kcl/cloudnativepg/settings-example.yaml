@@ -44,3 +44,6 @@ kcl_options:
             - name: "db2"
               owner: "myname-root"
           managementPolicies: ["Observe"]
+      ocds:
+        "test-instance-cnpg-testdb":
+          { "Resource": { "status": { "applied": true } } }
