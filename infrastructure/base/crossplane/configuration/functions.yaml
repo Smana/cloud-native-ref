@@ -14,7 +14,9 @@ metadata:
     # Can be useful for local debugging
     # render.crossplane.io/runtime: Development
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.11.4
+  #package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.11.4
+  # Using a custom image while waiting for this PR: https://github.com/crossplane-contrib/function-kcl/pull/315
+  package: ghcr.io/smana/cloud-native-ref/function-kcl:test-ready-fix-v2
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Function

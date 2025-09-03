@@ -22,7 +22,7 @@ variable "mode" {
 variable "openbao_version" {
   description = "OpenBao version to install"
   type        = string
-  default     = "2.3.2"
+  default     = "2.4.0"
 }
 
 variable "openbao_data_path" {
