@@ -68,7 +68,10 @@ resource "kubernetes_secret" "flux_cert_manager_approle" {
     cert_manager_approle_secret = jsondecode(data.aws_secretsmanager_secret_version.cert_manager_approle.secret_string).cert_manager_approle_secret
   }
 
-  depends_on = [helm_release.flux-operator]
+  depends_on = [
+    helm_release.flux-operator,
+    module.eks
+  ]
 }
 
 resource "kubernetes_secret" "flux_system" {
@@ -82,7 +85,10 @@ resource "kubernetes_secret" "flux_system" {
     key => value
   }
 
-  depends_on = [helm_release.flux-operator]
+  depends_on = [
+    helm_release.flux-operator,
+    module.eks
+  ]
 }
 
 
