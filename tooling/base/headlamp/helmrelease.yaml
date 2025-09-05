@@ -24,13 +24,35 @@ spec:
           enabled: true
           name: "headlamp-envvars"
     initContainers:
-      - command:
+      - name: flux-plugin
+        command:
           - /bin/sh
           - -c
           - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/
         image: ghcr.io/headlamp-k8s/headlamp-plugin-flux:latest
         imagePullPolicy: Always
-        name: headlamp-plugins
+        volumeMounts:
+          - mountPath: /build/plugins
+            name: headlamp-plugins
+
+      - name: cert-manager-plugin
+        command:
+          - /bin/sh
+          - -c
+          - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/
+        image: ghcr.io/headlamp-k8s/headlamp-plugin-cert-manager:latest
+        imagePullPolicy: Always
+        volumeMounts:
+          - mountPath: /build/plugins
+            name: headlamp-plugins
+
+      - name: ai-assistant-plugin
+        command:
+          - /bin/sh
+          - -c
+          - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/
+        image: ghcr.io/headlamp-k8s/headlamp-plugin-ai-assistant:latest
+        imagePullPolicy: Always
         volumeMounts:
           - mountPath: /build/plugins
             name: headlamp-plugins
