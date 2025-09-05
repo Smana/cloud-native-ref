@@ -64,6 +64,11 @@ variables.auto.tfvars
 .env.*.local
 .envrc
 
+# Virtual environment
+.venv/
+venv/
+env/
+
 # OS generated files
 .DS_Store
 .DS_Store?
