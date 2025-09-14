@@ -260,6 +260,36 @@ if oxr.spec.createSuperuser:
         }
     ]
 
+# Create AtlasMigration resource if atlasSchema is defined
+if oxr.spec.atlasSchema:
+    _items += [
+        {
+            apiVersion = "db.atlasgo.io/v1alpha1"
+            kind = "AtlasMigration"
+            metadata = {
+                name = oxr.metadata.name + "-atlas-migration"
+                namespace = oxr.metadata.namespace
+            }
+            spec = {
+                urlFrom = {
+                    secretKeyRef = {
+                        key = "uri"
+                        name = oxr.metadata.name + "-cnpg-cluster-app"
+                    }
+                }
+                dir = {
+                    remote = {
+                        name = oxr.metadata.name + "-migrations"
+                        url = oxr.spec.atlasSchema.url
+                        ref = oxr.spec.atlasSchema.ref
+                        path = oxr.spec.atlasSchema.path
+                    }
+                }
+                env = "k8s"
+            }
+        }
+    ]
+
 # Create daily backups using EKS pod identity for AWS auth
 if oxr.spec.backup?.schedule:
     _backupResources = [

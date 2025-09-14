@@ -22,6 +22,11 @@ kcl_options:
             CREATE EXTENSION pg_stat_statements;
             CREATE EXTENSION pg_trgm;
             CREATE EXTENSION pgcrypto;
+          # Alternatively, instead of using initSQL, you can use AtlasSchema to manage your database schema.
+          atlasSchema:
+            url: "https://github.com/Smana/image-gallery"
+            ref: "main"
+            path: "internal/platform/database/migrations"
           postgresql:
             parameters:
               max_connections: 100
