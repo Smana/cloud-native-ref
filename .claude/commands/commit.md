@@ -205,3 +205,4 @@ Common failure categories and solutions:
 - If suggesting multiple commits, it will help you stage and commit the changes separately
 - Always reviews the commit diff to ensure the message matches the changes
 - Uses the git user configuration (name and email) from `.git/config` for commit authorship
+- Do not co-author commits
