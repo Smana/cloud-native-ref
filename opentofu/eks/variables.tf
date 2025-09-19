@@ -61,13 +61,13 @@ variable "identity_providers" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.18.1"
+  default     = "1.18.2"
   type        = string
 }
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "1.6.3"
+  default     = "1.7.1"
   type        = string
 }
 

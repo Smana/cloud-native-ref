@@ -194,6 +194,15 @@ Common failure categories and solutions:
 - **YAML/JSON syntax**: Need manual correction of syntax errors
 - **Large files**: Remove or use Git LFS for large assets
 
+## Commit Message Format
+
+Commits should use a clean conventional format without co-authoring attribution:
+- ✨ feat: description of feature
+- 🐛 fix: description of fix
+- 🔧 chore: description of maintenance change
+
+**Do NOT include co-authoring footers or tool attribution in commit messages.**
+
 ## Important Notes
 
 - **Pre-commit checks must pass before committing** - no exceptions unless using `--no-verify`
@@ -205,3 +214,4 @@ Common failure categories and solutions:
 - If suggesting multiple commits, it will help you stage and commit the changes separately
 - Always reviews the commit diff to ensure the message matches the changes
 - Uses the git user configuration (name and email) from `.git/config` for commit authorship
+- **Never add co-authoring attribution or tool footers to commit messages**
