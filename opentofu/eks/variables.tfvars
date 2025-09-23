@@ -14,7 +14,7 @@ cert_manager_approle_secret_name = "openbao/cloud-native-ref/approles/cert-manag
 
 karpenter_limits = {
   "default" = {
-    cpu    = "20"
+    cpu    = "21"
     memory = "64Gi"
   }
   "io" = {
