@@ -1,0 +1,10 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: atlas-operator
+  namespace: infrastructure
+spec:
+  interval: 10m
+  url: oci://ghcr.io/ariga/charts/atlas-operator
+  ref:
+    semver: "0.7.11"
