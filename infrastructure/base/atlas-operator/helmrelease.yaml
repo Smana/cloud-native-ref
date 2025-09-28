@@ -6,13 +6,10 @@ spec:
   releaseName: atlas-operator
   driftDetection:
     mode: enabled
-  chart:
-    spec:
-      chart: atlas-operator
-      sourceRef:
-        kind: OCIRepository
-        name: atlas-operator
-        namespace: infrastructure
+  chartRef:
+    kind: OCIRepository
+    name: atlas-operator
+    namespace: infrastructure
   interval: 10m0s
   install:
     remediation:
