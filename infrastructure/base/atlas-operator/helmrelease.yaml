@@ -1,0 +1,23 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: atlas-operator
+spec:
+  releaseName: atlas-operator
+  driftDetection:
+    mode: enabled
+  chartRef:
+    kind: OCIRepository
+    name: atlas-operator
+    namespace: infrastructure
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 256Mi

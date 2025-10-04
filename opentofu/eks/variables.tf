@@ -32,7 +32,7 @@ variable "name" {
 
 variable "kubernetes_version" {
   description = "k8s cluster version"
-  default     = "1.33"
+  default     = "1.34"
   type        = string
 
   validation {
@@ -111,7 +111,7 @@ variable "cert_manager_approle_secret_name" {
 
 variable "flux_operator_version" {
   description = "Flux Operator version"
-  default     = "0.28.0"
+  default     = "0.30.0"
   type        = string
 }
 
