@@ -6,20 +6,26 @@ This repository provides a comprehensive guide and set of tools for building, ma
 
 ## Table of Contents
 
-- [☑️ Curated Toolset and Use Cases](#️-curated-toolset-and-use-cases)
-- [🚀 Getting started](#-getting-started)
-- [🔄 Flux Dependencies Matter](#-flux-dependencies-matter)
-- [🏗️ Crossplane Configuration](#️-crossplane-configuration)
-  - [Requirements and Security Concerns](#requirements-and-security-concerns)
-  - [How is Crossplane Deployed?](#how-is-crossplane-deployed)
-- [📦 OCI Registry with Harbor](#-oci-registry-with-harbor)
-- [🔗 VPN connection using Tailscale](#-vpn-connection-using-tailscale)
-- [🔑 Private PKI with OpenBao](#-private-pki-with-openbao)
-- [👁️ Observability](#️-observability)
-- [🧪 CI](#-ci)
-  - [Overview](#overview)
-  - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners)
-- [💬 Chating and contributing](#-chating-and-contributing)
+- [Reference Repository for Building a Cloud Native Platform](#reference-repository-for-building-a-cloud-native-platform)
+  - [Table of Contents](#table-of-contents)
+  - [☑️ Curated Toolset and Use Cases](#️-curated-toolset-and-use-cases)
+  - [🚀 Getting started](#-getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Deployment Steps](#deployment-steps)
+    - [Quick Deployment with Terramate](#quick-deployment-with-terramate)
+    - [Post-Deployment](#post-deployment)
+  - [🔄 Flux Dependencies Matter](#-flux-dependencies-matter)
+  - [🏗️ Crossplane Configuration](#️-crossplane-configuration)
+    - [Requirements and Security Concerns](#requirements-and-security-concerns)
+    - [How is Crossplane Deployed?](#how-is-crossplane-deployed)
+  - [📦 OCI Registry with Harbor](#-oci-registry-with-harbor)
+  - [🔗 VPN connection using Tailscale](#-vpn-connection-using-tailscale)
+  - [🔑 Private PKI with OpenBao](#-private-pki-with-openbao)
+  - [👁️ Observability](#️-observability)
+  - [🧪 CI](#-ci)
+    - [Overview](#overview)
+    - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners)
+  - [💬 Chating and contributing](#-chating-and-contributing)
 
 ## ☑️ Curated Toolset and Use Cases
 
@@ -34,6 +40,7 @@ This repository provides a comprehensive guide and set of tools for building, ma
 | ![Harbor](https://img.shields.io/badge/Harbor-60B932?style=for-the-badge&logo=harbor&logoColor=white)                | Application            | Secure container image registry with scanning and signing capabilities                                   |
 | ![Headlamp](https://img.shields.io/badge/Headlamp-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)        | Application            | Web-based GUI for Kubernetes cluster management                                                          |
 | ![CloudNativePG](https://img.shields.io/badge/CloudNativePG-316192?style=for-the-badge&logo=postgresql&logoColor=white) | Data                   | Kubernetes operator managing PostgreSQL clusters with high availability and failover support             |
+| ![Atlas operator](https://img.shields.io/badge/Atlas-5a664c?style=for-the-badge&logo=postgresql&logoColor=white) | Data                   | Kubernetes operator managing databases schema migrations             |
 | ![Valkey](https://img.shields.io/badge/Valkey-4B0082?style=for-the-badge&logo=key&logoColor=white)                   | Data                   | Redis-like key-value data store                                                                          |
 | ![Dagger](https://img.shields.io/badge/Dagger-FF6666?style=for-the-badge&logo=dagger&logoColor=white)                | Continuous Integration    | CI/CD tool used to define and run pipelines as code                                                      |
 | ![Flux](https://img.shields.io/badge/Flux-006AFC?style=for-the-badge&logo=flux&logoColor=white)                      | Continuous Delivery    | GitOps engine ensuring that what is defined in the GitHub repository is deployed on Kubernetes           |
