@@ -69,17 +69,26 @@ _kubernetesResources = [
                     }
                 }
                 spec = {
-                    if oxr.spec.runAsNonRoot:
-                        securityContext = {
+                    automountServiceAccountToken = oxr.spec?.automountServiceAccountToken or False
+                    securityContext = {
+                        seccompProfile = {
+                            type = "RuntimeDefault"
+                        }
+                        if oxr.spec.runAsNonRoot:
                             runAsNonRoot = True
                             runAsUser = 1001
                             fsGroup = 1001
-                        }
+                    }
+                    if oxr.spec.securityContext?.enableWritableTmp != False:
+                        volumes = [{
+                            name = "tmp"
+                            emptyDir = {}
+                        }]
                     if oxr.spec.spreadAcrossZones:
                         topologySpreadConstraints = [{
                             maxSkew = 1
                             topologyKey = "topology.kubernetes.io/zone"
-                            whenUnsatisfiable = "DoNotSchedule"
+                            whenUnsatisfiable = "ScheduleAnyway"
                             labelSelector = {
                                 matchLabels = {
                                     "app.kubernetes.io/name" = oxr.metadata.name
@@ -119,6 +128,19 @@ _kubernetesResources = [
                         name = oxr.metadata.name
                         image = oxr.spec.image.repository + ":" + (oxr.spec.image.tag or "latest")
                         imagePullPolicy = oxr.spec.image.pullPolicy or "IfNotPresent"
+                        securityContext = {
+                            allowPrivilegeEscalation = False if oxr.spec.securityContext?.allowPrivilegeEscalation == None else oxr.spec.securityContext.allowPrivilegeEscalation
+                            readOnlyRootFilesystem = True if oxr.spec.securityContext?.readOnlyRootFilesystem == None else oxr.spec.securityContext.readOnlyRootFilesystem
+                            runAsNonRoot = True if oxr.spec.securityContext?.runAsNonRoot == None else oxr.spec.securityContext.runAsNonRoot
+                            capabilities = {
+                                drop = oxr.spec.securityContext?.capabilities?.drop or ["ALL"]
+                            }
+                        }
+                        if oxr.spec.securityContext?.enableWritableTmp != False:
+                            volumeMounts = [{
+                                name = "tmp"
+                                mountPath = "/tmp"
+                            }]
                         if oxr.spec.route?.port:
                             ports = [{
                                 containerPort = oxr.spec.route.port
@@ -233,6 +255,7 @@ if oxr.spec.pdb?.enabled:
                 }
             }
             minAvailable = oxr.spec.pdb.minAvailable or 1
+            unhealthyPodEvictionPolicy = oxr.spec.pdb.unhealthyPodEvictionPolicy or "AlwaysAllow"
         }
     }]
 

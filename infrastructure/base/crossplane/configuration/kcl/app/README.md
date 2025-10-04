@@ -46,49 +46,51 @@ resources:
 | **KV Store** | 100m CPU, 256Mi RAM | 200m CPU, 512Mi RAM | 500m CPU, 1Gi RAM |
 | **SQL Instance** | Configurable via SQLInstance composition | | |
 
+## Security
+
+This module enforces security best practices by default:
+
+- **Read-only root filesystem**: Containers cannot write to their root filesystem
+- **Non-root user**: Containers run as non-privileged users (UID 1001)
+- **No privilege escalation**: Prevents containers from gaining additional privileges
+- **Dropped capabilities**: All Linux capabilities are dropped by default
+- **Seccomp profile**: RuntimeDefault seccomp profile applied
+- **Service account token**: Not auto-mounted unless explicitly enabled
+- **Writable /tmp**: Provided via emptyDir volume for temporary files
+
+All security settings can be customized via `spec.securityContext` and `spec.automountServiceAccountToken`.
+
 ## Examples
 
-### Basic Web Application
+The `examples/` directory contains:
+- **app-basic.yaml**: Minimal configuration (just image and port)
+- **app-complete.yaml**: Full-featured app with database, autoscaling, HA, and security
+- **app-custom-security.yaml**: Example of overriding security defaults
 
-Deploy a simple web application with auto-scaling:
+### Basic Application
+
+Minimal configuration - just specify the container and port:
 
 ```yaml
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: App
 metadata:
-  name: web-app
-  namespace: default
+  name: basic-app
+  namespace: demo
 spec:
   image:
-    repository: "nginx"
-    tag: "1.21"
-    pullPolicy: "IfNotPresent"
-
-  autoscaling:
-    enabled: true
-    minReplicas: 2
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 70
+    repository: ghcr.io/example/basic-app
+    tag: "v1.0.0"
 
   route:
-    port: 80
-    internetFacing: true
-    rules:
-      - backendPort: 80
-        pathPrefix: /
-
-  resources:
-    requests:
-      cpu: "100m"
-      memory: "128Mi"
-    limits:
-      cpu: "500m"
-      memory: "512Mi"
+    port: 8080
 ```
 
-### Full-Stack Application with Infrastructure
+All other settings use secure defaults (read-only filesystem, non-root, etc.).
 
-Deploy a complete application with database, cache, and S3 storage:
+### Complete Application with Database
+
+Full-featured application with PostgreSQL database, Atlas migrations, autoscaling, and high availability:
 
 ```yaml
 apiVersion: cloud.ogenki.io/v1alpha1

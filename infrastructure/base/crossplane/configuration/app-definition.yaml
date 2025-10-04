@@ -77,6 +77,11 @@ spec:
                       type: integer
                       description: Minimum available pods
                       minimum: 1
+                    unhealthyPodEvictionPolicy:
+                      type: string
+                      description: Unhealthy pod eviction policy
+                      enum: ["IfHealthyBudget", "AlwaysAllow"]
+                      default: "AlwaysAllow"
                 resources:
                   type: object
                   description: Resource requirements
@@ -120,6 +125,40 @@ spec:
                   description: Anti-affinity preset
                   enum: ["soft", "hard"]
                   default: "soft"
+                automountServiceAccountToken:
+                  type: boolean
+                  description: Auto-mount service account token
+                  default: false
+                securityContext:
+                  type: object
+                  description: Container and pod security context settings
+                  properties:
+                    allowPrivilegeEscalation:
+                      type: boolean
+                      description: Allow privilege escalation
+                      default: false
+                    readOnlyRootFilesystem:
+                      type: boolean
+                      description: Mount root filesystem as read-only
+                      default: true
+                    runAsNonRoot:
+                      type: boolean
+                      description: Require container to run as non-root user
+                      default: true
+                    capabilities:
+                      type: object
+                      description: Linux capabilities
+                      properties:
+                        drop:
+                          type: array
+                          description: Capabilities to drop
+                          items:
+                            type: string
+                          default: ["ALL"]
+                    enableWritableTmp:
+                      type: boolean
+                      description: Enable writable /tmp directory via emptyDir volume
+                      default: true
                 configs:
                   type: object
                   description: Configuration files to mount

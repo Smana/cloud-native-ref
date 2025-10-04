@@ -1,0 +1,16 @@
+---
+# Basic app example - minimal configuration with secure defaults
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: basic-app
+  namespace: demo
+spec:
+  # Minimum required: container image
+  image:
+    repository: ghcr.io/example/basic-app
+    tag: "v1.0.0"
+
+  # Simple HTTP service
+  route:
+    port: 8080

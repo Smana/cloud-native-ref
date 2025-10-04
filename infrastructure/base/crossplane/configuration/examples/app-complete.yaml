@@ -1,0 +1,98 @@
+---
+# Complete app example - demonstrates all features including database, security, HA, etc.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: image-gallery
+  namespace: demo
+spec:
+  # Container image configuration
+  image:
+    repository: ghcr.io/smana/image-gallery
+    tag: "v1.0.0"
+    pullPolicy: IfNotPresent
+
+  # Replicas and autoscaling
+  replicas: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+  # Resource requirements
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+
+  # Pod scheduling and topology
+  runAsNonRoot: true
+  spreadAcrossZones: true
+  antiAffinityPreset: soft
+
+  # Security settings (optional - these are the secure defaults)
+  automountServiceAccountToken: false  # default
+  securityContext:
+    allowPrivilegeEscalation: false    # default
+    readOnlyRootFilesystem: true       # default
+    runAsNonRoot: true                 # default
+    capabilities:
+      drop: ["ALL"]                    # default
+    enableWritableTmp: true            # default - provides /tmp emptyDir volume
+
+  # Pod disruption budget for high availability
+  pdb:
+    enabled: true
+    minAvailable: 1
+    unhealthyPodEvictionPolicy: AlwaysAllow  # default
+
+  # HTTP routing configuration
+  route:
+    port: 8080
+    internetFacing: true
+
+  # SQL database with Atlas schema migrations
+  sqlInstance:
+    enabled: true
+    size: small
+    storageSize: 20Gi
+    instances: 2
+    primaryUpdateStrategy: unsupervised
+    createSuperuser: false
+
+    # Define database roles
+    roles:
+      - name: image-gallery-app
+        comment: "Application user for image-gallery"
+        superuser: false
+        inRoles:
+          - pg_monitor
+
+    # Create databases
+    databases:
+      - name: image-gallery
+        owner: image-gallery-app
+
+    # Atlas schema migrations from git repository
+    atlasSchema:
+      url: "https://github.com/Smana/image-gallery.git"
+      ref: "main"
+      path: "internal/platform/database/migrations"
+
+    # PostgreSQL configuration
+    postgresql:
+      parameters:
+        max_connections: 100
+        shared_buffers: "256MB"
+      pg_hba:
+        - "host all all 0.0.0.0/0 md5"
+
+    # Backup configuration
+    backup:
+      schedule: "0 2 * * *"  # Daily at 2 AM
+      bucketName: image-gallery-db-backups
+      retentionPolicy: "30d"
