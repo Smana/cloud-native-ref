@@ -2,35 +2,112 @@ oxr = option("params").oxr
 ocds = option("params").ocds
 envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
 
+# Cache frequently accessed values
+_name = oxr.metadata.name
+_namespace = oxr.metadata.namespace
+
+# Common labels
+_appLabels = {
+    "app.kubernetes.io/name" = _name
+    "app.kubernetes.io/instance" = _name
+}
+
+_podSelector = {
+    matchLabels = _appLabels
+}
+
 _metadata = lambda suffix: str -> any {
     {
-        name = oxr.metadata.name + "-" + suffix
-        namespace = oxr.metadata.namespace
+        name = _name + "-" + suffix
+        namespace = _namespace
         annotations = {
-            "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-" + suffix
+            "krm.kcl.dev/composition-resource-name" = _name + "-" + suffix
         }
     }
 }
+
+# Build affinity configuration
+_buildAffinity = lambda onDemand: bool, antiAffinityPreset: str -> any {
+    _affinity = {}
+
+    # Node affinity for on-demand instances
+    if onDemand:
+        _affinity["nodeAffinity"] = {
+            requiredDuringSchedulingIgnoredDuringExecution = {
+                nodeSelectorTerms = [{
+                    matchExpressions = [{
+                        key = "karpenter.sh/capacity-type"
+                        operator = "In"
+                        values = ["on-demand"]
+                    }]
+                }]
+            }
+        }
+
+    # Pod anti-affinity
+    if antiAffinityPreset == "hard":
+        _affinity["podAntiAffinity"] = {
+            requiredDuringSchedulingIgnoredDuringExecution = [{
+                labelSelector = _podSelector
+                topologyKey = "kubernetes.io/hostname"
+            }]
+        }
+    elif antiAffinityPreset == "soft":
+        _affinity["podAntiAffinity"] = {
+            preferredDuringSchedulingIgnoredDuringExecution = [{
+                weight = 100
+                podAffinityTerm = {
+                    labelSelector = _podSelector
+                    topologyKey = "kubernetes.io/hostname"
+                }
+            }]
+        }
+
+    _affinity if _affinity else None
+}
+
+# Constants
+_DEFAULTS = {
+    # Resource requirements
+    cpu_request = "100m"
+    memory_request = "128Mi"
+    cpu_limit = "200m"
+    memory_limit = "256Mi"
+
+    # Health checks
+    health_check_initial_delay = 30
+    health_check_period = 10
+    readiness_initial_delay = 5
+    readiness_period = 5
+
+    # Autoscaling
+    hpa_min_replicas = 1
+    hpa_max_replicas = 5
+    cpu_utilization_target = 70
+
+    # PodDisruptionBudget
+    pdb_min_available = 1
+    pdb_eviction_policy = "AlwaysAllow"
+
+    # KV Store
+    valkey_chart_version = "3.0.31"
+}
+
+# Default resource requirements
+_defaultRequests = {
+    cpu: _DEFAULTS.cpu_request
+    memory: _DEFAULTS.memory_request
+}
+_defaultLimits = {
+    cpu: _DEFAULTS.cpu_limit
+    memory: _DEFAULTS.memory_limit
+}
+
 # Set resource requirements based on size
 _setResourceRequirements = lambda resources: any -> any {
     {
-        requests: resources?.requests or {
-            cpu: "100m"
-            memory: "128Mi"
-        }
-        limits: resources?.limits or {
-            cpu: "200m"
-            memory: "256Mi"
-        }
-    } if resources else {
-        requests: {
-            cpu: "100m"
-            memory: "128Mi"
-        }
-        limits: {
-            cpu: "200m"
-            memory: "256Mi"
-        }
+        requests: resources?.requests or _defaultRequests
+        limits: resources?.limits or _defaultLimits
     }
 }
 
@@ -42,31 +119,20 @@ _kubernetesResources = [
         apiVersion = "apps/v1"
         kind = "Deployment"
         metadata = {
-            name = oxr.metadata.name
-            namespace = oxr.metadata.namespace
+            name = _name
+            namespace = _namespace
             annotations = {
-                "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-deployment"
+                "krm.kcl.dev/composition-resource-name" = _name + "-deployment"
             }
-            labels = {
-                "app.kubernetes.io/name" = oxr.metadata.name
-                "app.kubernetes.io/instance" = oxr.metadata.name
-            }
+            labels = _appLabels
         }
         spec = {
             if oxr.spec.autoscaling?.enabled != True:
                 replicas = oxr.spec.replicas or 1
-            selector = {
-                matchLabels = {
-                    "app.kubernetes.io/name" = oxr.metadata.name
-                    "app.kubernetes.io/instance" = oxr.metadata.name
-                }
-            }
+            selector = _podSelector
             template = {
                 metadata = {
-                    labels = {
-                        "app.kubernetes.io/name" = oxr.metadata.name
-                        "app.kubernetes.io/instance" = oxr.metadata.name
-                    }
+                    labels = _appLabels
                 }
                 spec = {
                     automountServiceAccountToken = oxr.spec?.automountServiceAccountToken or False
@@ -89,109 +155,13 @@ _kubernetesResources = [
                             maxSkew = 1
                             topologyKey = "topology.kubernetes.io/zone"
                             whenUnsatisfiable = "ScheduleAnyway"
-                            labelSelector = {
-                                matchLabels = {
-                                    "app.kubernetes.io/name" = oxr.metadata.name
-                                }
-                            }
+                            labelSelector = _podSelector
                         }]
                     # Build affinity configuration (node + pod affinity)
-                    if oxr.spec.onDemand and oxr.spec.antiAffinityPreset == "hard":
-                        affinity = {
-                            nodeAffinity = {
-                                requiredDuringSchedulingIgnoredDuringExecution = {
-                                    nodeSelectorTerms = [{
-                                        matchExpressions = [{
-                                            key = "karpenter.sh/capacity-type"
-                                            operator = "In"
-                                            values = ["on-demand"]
-                                        }]
-                                    }]
-                                }
-                            }
-                            podAntiAffinity = {
-                                requiredDuringSchedulingIgnoredDuringExecution = [{
-                                    labelSelector = {
-                                        matchLabels = {
-                                            "app.kubernetes.io/name" = oxr.metadata.name
-                                        }
-                                    }
-                                    topologyKey = "kubernetes.io/hostname"
-                                }]
-                            }
-                        }
-                    elif oxr.spec.onDemand and oxr.spec.antiAffinityPreset == "soft":
-                        affinity = {
-                            nodeAffinity = {
-                                requiredDuringSchedulingIgnoredDuringExecution = {
-                                    nodeSelectorTerms = [{
-                                        matchExpressions = [{
-                                            key = "karpenter.sh/capacity-type"
-                                            operator = "In"
-                                            values = ["on-demand"]
-                                        }]
-                                    }]
-                                }
-                            }
-                            podAntiAffinity = {
-                                preferredDuringSchedulingIgnoredDuringExecution = [{
-                                    weight = 100
-                                    podAffinityTerm = {
-                                        labelSelector = {
-                                            matchLabels = {
-                                                "app.kubernetes.io/name" = oxr.metadata.name
-                                            }
-                                        }
-                                        topologyKey = "kubernetes.io/hostname"
-                                    }
-                                }]
-                            }
-                        }
-                    elif oxr.spec.onDemand:
-                        affinity = {
-                            nodeAffinity = {
-                                requiredDuringSchedulingIgnoredDuringExecution = {
-                                    nodeSelectorTerms = [{
-                                        matchExpressions = [{
-                                            key = "karpenter.sh/capacity-type"
-                                            operator = "In"
-                                            values = ["on-demand"]
-                                        }]
-                                    }]
-                                }
-                            }
-                        }
-                    elif oxr.spec.antiAffinityPreset == "hard":
-                        affinity = {
-                            podAntiAffinity = {
-                                requiredDuringSchedulingIgnoredDuringExecution = [{
-                                    labelSelector = {
-                                        matchLabels = {
-                                            "app.kubernetes.io/name" = oxr.metadata.name
-                                        }
-                                    }
-                                    topologyKey = "kubernetes.io/hostname"
-                                }]
-                            }
-                        }
-                    elif oxr.spec.antiAffinityPreset == "soft":
-                        affinity = {
-                            podAntiAffinity = {
-                                preferredDuringSchedulingIgnoredDuringExecution = [{
-                                    weight = 100
-                                    podAffinityTerm = {
-                                        labelSelector = {
-                                            matchLabels = {
-                                                "app.kubernetes.io/name" = oxr.metadata.name
-                                            }
-                                        }
-                                        topologyKey = "kubernetes.io/hostname"
-                                    }
-                                }]
-                            }
-                        }
+                    if oxr.spec.onDemand or oxr.spec.antiAffinityPreset:
+                        affinity = _buildAffinity(oxr.spec.onDemand or False, oxr.spec.antiAffinityPreset or "")
                     containers = [{
-                        name = oxr.metadata.name
+                        name = _name
                         image = oxr.spec.image.repository + ":" + (oxr.spec.image.tag or "latest")
                         imagePullPolicy = oxr.spec.image.pullPolicy or "IfNotPresent"
                         securityContext = {
@@ -220,16 +190,16 @@ _kubernetesResources = [
                                     path = "/health"
                                     port = "http"
                                 }
-                                initialDelaySeconds = 30
-                                periodSeconds = 10
+                                initialDelaySeconds = _DEFAULTS.health_check_initial_delay
+                                periodSeconds = _DEFAULTS.health_check_period
                             }
                             readinessProbe = {
                                 httpGet = {
                                     path = "/ready"
                                     port = "http"
                                 }
-                                initialDelaySeconds = 5
-                                periodSeconds = 5
+                                initialDelaySeconds = _DEFAULTS.readiness_initial_delay
+                                periodSeconds = _DEFAULTS.readiness_period
                             }
                     }]
                 }
@@ -241,21 +211,15 @@ _kubernetesResources = [
         apiVersion = "v1"
         kind = "Service"
         metadata = {
-            name = oxr.metadata.name
-            namespace = oxr.metadata.namespace
+            name = _name
+            namespace = _namespace
             annotations = {
-                "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-service"
+                "krm.kcl.dev/composition-resource-name" = _name + "-service"
             }
-            labels = {
-                "app.kubernetes.io/name" = oxr.metadata.name
-                "app.kubernetes.io/instance" = oxr.metadata.name
-            }
+            labels = _appLabels
         }
         spec = {
-            selector = {
-                "app.kubernetes.io/name" = oxr.metadata.name
-                "app.kubernetes.io/instance" = oxr.metadata.name
-            }
+            selector = _appLabels
             if oxr.spec.route?.port:
                 ports = [{
                     name = "http"
@@ -275,27 +239,27 @@ if oxr.spec.autoscaling?.enabled:
         apiVersion = "autoscaling/v2"
         kind = "HorizontalPodAutoscaler"
         metadata = {
-            name = oxr.metadata.name
-            namespace = oxr.metadata.namespace
+            name = _name
+            namespace = _namespace
             annotations = {
-                "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-hpa"
+                "krm.kcl.dev/composition-resource-name" = _name + "-hpa"
             }
         }
         spec = {
             scaleTargetRef = {
                 apiVersion = "apps/v1"
                 kind = "Deployment"
-                name = oxr.metadata.name
+                name = _name
             }
-            minReplicas = oxr.spec.autoscaling.minReplicas or 1
-            maxReplicas = oxr.spec.autoscaling.maxReplicas or 5
+            minReplicas = oxr.spec.autoscaling.minReplicas or _DEFAULTS.hpa_min_replicas
+            maxReplicas = oxr.spec.autoscaling.maxReplicas or _DEFAULTS.hpa_max_replicas
             metrics = [{
                 type = "Resource"
                 resource = {
                     name = "cpu"
                     target = {
                         type = "Utilization"
-                        averageUtilization = oxr.spec.autoscaling.targetCPUUtilizationPercentage or 70
+                        averageUtilization = oxr.spec.autoscaling.targetCPUUtilizationPercentage or _DEFAULTS.cpu_utilization_target
                     }
                 }
             }]
@@ -308,20 +272,16 @@ if oxr.spec.pdb?.enabled:
         apiVersion = "policy/v1"
         kind = "PodDisruptionBudget"
         metadata = {
-            name = oxr.metadata.name
-            namespace = oxr.metadata.namespace
+            name = _name
+            namespace = _namespace
             annotations = {
-                "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-pdb"
+                "krm.kcl.dev/composition-resource-name" = _name + "-pdb"
             }
         }
         spec = {
-            selector = {
-                matchLabels = {
-                    "app.kubernetes.io/name" = oxr.metadata.name
-                }
-            }
-            minAvailable = oxr.spec.pdb.minAvailable or 1
-            unhealthyPodEvictionPolicy = oxr.spec.pdb.unhealthyPodEvictionPolicy or "AlwaysAllow"
+            selector = _podSelector
+            minAvailable = oxr.spec.pdb.minAvailable or _DEFAULTS.pdb_min_available
+            unhealthyPodEvictionPolicy = oxr.spec.pdb.unhealthyPodEvictionPolicy or _DEFAULTS.pdb_eviction_policy
         }
     }]
 
@@ -367,10 +327,10 @@ if oxr.spec.route:
         apiVersion = "gateway.networking.k8s.io/v1"
         kind = "HTTPRoute"
         metadata = {
-            name = oxr.metadata.name
-            namespace = oxr.metadata.namespace
+            name = _name
+            namespace = _namespace
             annotations = {
-                "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-httproute"
+                "krm.kcl.dev/composition-resource-name" = _name + "-httproute"
             }
         }
         spec = {
@@ -392,7 +352,7 @@ if oxr.spec.route:
                     }
                 } for rule in (oxr.spec.route.rules or [{backendPort: oxr.spec.route.port, pathPrefix: "/"}])]
                 backendRefs = [{
-                    name = oxr.metadata.name
+                    name = _name
                     port = rule.backendPort
                 } for rule in (oxr.spec.route.rules or [{backendPort: oxr.spec.route.port}])]
             }]
@@ -405,18 +365,14 @@ if oxr.spec.networkPolicies?.enabled:
         apiVersion = "cilium.io/v2"
         kind = "CiliumNetworkPolicy"
         metadata = {
-            name = oxr.metadata.name
-            namespace = oxr.metadata.namespace
+            name = _name
+            namespace = _namespace
             annotations = {
-                "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-cilium-netpol"
+                "krm.kcl.dev/composition-resource-name" = _name + "-cilium-netpol"
             }
         }
         spec = {
-            endpointSelector = {
-                matchLabels = {
-                    "app.kubernetes.io/name" = oxr.metadata.name
-                }
-            }
+            endpointSelector = _podSelector
             if oxr.spec.networkPolicies.ingress:
                 ingress = oxr.spec.networkPolicies.ingress
             if oxr.spec.networkPolicies.egress:
@@ -427,30 +383,31 @@ if oxr.spec.networkPolicies?.enabled:
 # Infrastructure resources
 # Key-Value Store (Valkey/Redis)
 if oxr.spec.kvStore?.enabled:
+    _kvType = oxr.spec.kvStore.type or "valkey"
     _items += [{
         apiVersion = "helm.toolkit.fluxcd.io/v2"
         kind = "HelmRelease"
         metadata = {
-            name = oxr.metadata.name + "-" + (oxr.spec.kvStore.type or "valkey")
-            namespace = oxr.metadata.namespace
+            name = _name + "-" + _kvType
+            namespace = _namespace
             annotations = {
-                "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-kvstore"
+                "krm.kcl.dev/composition-resource-name" = _name + "-kvstore"
             }
         }
         spec = {
-            releaseName = oxr.metadata.name + "-" + (oxr.spec.kvStore.type or "valkey")
+            releaseName = _name + "-" + _kvType
             driftDetection = {
                 mode = "enabled"
             }
             chart = {
                 spec = {
-                    chart = oxr.spec.kvStore.type or "valkey"
+                    chart = _kvType
                     sourceRef = {
                         kind = "HelmRepository"
                         name = "bitnami"
                         namespace = "flux-system"
                     }
-                    version = "3.0.31"
+                    version = _DEFAULTS.valkey_chart_version
                 }
             }
             interval = "10m0s"
@@ -533,6 +490,9 @@ if oxr.spec.sqlInstance?.enabled:
 
 # S3 Bucket
 if oxr.spec.s3Bucket?.enabled:
+    _bucketName = _name + "-s3-bucket"
+    _bucketArn = "arn:aws:s3:::" + _bucketName
+
     _items += [{
         apiVersion = "s3.aws.upbound.io/v1beta1"
         kind = "Bucket"
@@ -568,15 +528,15 @@ if oxr.spec.s3Bucket?.enabled:
         metadata = _metadata("s3-pod-identity")
         spec = {
             serviceAccount = {
-                name = oxr.metadata.name
-                namespace = oxr.metadata.namespace
+                name = _name
+                namespace = _namespace
             }
             clusters = [{
                 name = envConfig.clusterName
                 region = envConfig.region
             }]
-            bucketName = oxr.metadata.name + "-s3-bucket"
-            bucketArn = "arn:aws:s3:::" + bucketName
+            bucketName = _bucketName
+            bucketArn = _bucketArn
             if oxr.spec.s3Bucket.permissions == "custom" and oxr.spec.s3Bucket.customPolicy:
                 policyDocument = oxr.spec.s3Bucket.customPolicy
             elif oxr.spec.s3Bucket.permissions == "readwrite":
@@ -588,7 +548,7 @@ if oxr.spec.s3Bucket?.enabled:
             "Action": [
                 "s3:ListBucket"
             ],
-            "Resource": "${bucketArn}"
+            "Resource": \"""" + _bucketArn + """\"
         },
         {
             "Effect": "Allow",
@@ -597,7 +557,7 @@ if oxr.spec.s3Bucket?.enabled:
                 "s3:PutObject",
                 "s3:DeleteObject"
             ],
-            "Resource": "${bucketArn}/*"
+            "Resource": \"""" + _bucketArn + """/*\"
         }
     ]
 }"""
@@ -610,14 +570,14 @@ if oxr.spec.s3Bucket?.enabled:
             "Action": [
                 "s3:ListBucket"
             ],
-            "Resource": "${bucketArn}"
+            "Resource": \"""" + _bucketArn + """\"
         },
         {
             "Effect": "Allow",
             "Action": [
                 "s3:GetObject"
             ],
-            "Resource": "${bucketArn}/*"
+            "Resource": \"""" + _bucketArn + """/*\"
         }
     ]
 }"""
