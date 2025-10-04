@@ -95,8 +95,28 @@ _kubernetesResources = [
                                 }
                             }
                         }]
+                    # Build affinity configuration
+                    _affinity = {}
+
+                    # On-demand instance requirement (Karpenter)
+                    if oxr.spec.onDemand:
+                        _affinity |= {
+                            nodeAffinity = {
+                                requiredDuringSchedulingIgnoredDuringExecution = {
+                                    nodeSelectorTerms = [{
+                                        matchExpressions = [{
+                                            key = "karpenter.sh/capacity-type"
+                                            operator = "In"
+                                            values = ["on-demand"]
+                                        }]
+                                    }]
+                                }
+                            }
+                        }
+
+                    # Anti-affinity presets
                     if oxr.spec.antiAffinityPreset == "hard":
-                        affinity = {
+                        _affinity |= {
                             podAntiAffinity = {
                                 requiredDuringSchedulingIgnoredDuringExecution = [{
                                     labelSelector = {
@@ -109,7 +129,7 @@ _kubernetesResources = [
                             }
                         }
                     elif oxr.spec.antiAffinityPreset == "soft":
-                        affinity = {
+                        _affinity |= {
                             podAntiAffinity = {
                                 preferredDuringSchedulingIgnoredDuringExecution = [{
                                     weight = 100
@@ -124,6 +144,10 @@ _kubernetesResources = [
                                 }]
                             }
                         }
+
+                    # Apply affinity if any rules are set
+                    if _affinity:
+                        affinity = _affinity
                     containers = [{
                         name = oxr.metadata.name
                         image = oxr.spec.image.repository + ":" + (oxr.spec.image.tag or "latest")
@@ -509,11 +533,12 @@ if oxr.spec.s3Bucket?.enabled:
                 name = envConfig.clusterName
                 region = envConfig.region
             }]
+            bucketName = oxr.metadata.name + "-s3-bucket"
+            bucketArn = "arn:aws:s3:::" + bucketName
             if oxr.spec.s3Bucket.permissions == "custom" and oxr.spec.s3Bucket.customPolicy:
                 policyDocument = oxr.spec.s3Bucket.customPolicy
             elif oxr.spec.s3Bucket.permissions == "readwrite":
-                policyDocument = """
-{
+                policyDocument = """{
     "Version": "2012-10-17",
     "Statement": [
         {
@@ -521,7 +546,7 @@ if oxr.spec.s3Bucket?.enabled:
             "Action": [
                 "s3:ListBucket"
             ],
-            "Resource": "arn:aws:s3:::*"
+            "Resource": "${bucketArn}"
         },
         {
             "Effect": "Allow",
@@ -530,14 +555,12 @@ if oxr.spec.s3Bucket?.enabled:
                 "s3:PutObject",
                 "s3:DeleteObject"
             ],
-            "Resource": "arn:aws:s3:::*/*"
+            "Resource": "${bucketArn}/*"
         }
     ]
-}
-"""
+}"""
             elif oxr.spec.s3Bucket.permissions == "readonly":
-                policyDocument = """
-{
+                policyDocument = """{
     "Version": "2012-10-17",
     "Statement": [
         {
@@ -545,18 +568,17 @@ if oxr.spec.s3Bucket?.enabled:
             "Action": [
                 "s3:ListBucket"
             ],
-            "Resource": "arn:aws:s3:::*"
+            "Resource": "${bucketArn}"
         },
         {
             "Effect": "Allow",
             "Action": [
                 "s3:GetObject"
             ],
-            "Resource": "arn:aws:s3:::*/*"
+            "Resource": "${bucketArn}/*"
         }
     ]
-}
-"""
+}"""
         }
     }]
 

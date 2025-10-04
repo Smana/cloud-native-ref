@@ -68,6 +68,11 @@ spec:
   # Options: "soft" (preferred) or "hard" (required)
   antiAffinityPreset: soft
 
+  # Karpenter instance type: use on-demand instances instead of spot
+  # Set to true for workloads requiring guaranteed availability (default: false)
+  # When true, pods will only run on on-demand EC2 instances
+  onDemand: false
+
   # ============================================================================
   # Security Context
   # ============================================================================
