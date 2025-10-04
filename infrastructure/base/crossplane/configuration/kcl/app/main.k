@@ -73,22 +73,18 @@ _DEFAULTS = {
     memory_request = "128Mi"
     cpu_limit = "200m"
     memory_limit = "256Mi"
-
     # Health checks
     health_check_initial_delay = 30
     health_check_period = 10
     readiness_initial_delay = 5
     readiness_period = 5
-
     # Autoscaling
     hpa_min_replicas = 1
     hpa_max_replicas = 5
     cpu_utilization_target = 70
-
     # PodDisruptionBudget
     pdb_min_available = 1
     pdb_eviction_policy = "AlwaysAllow"
-
     # KV Store
     valkey_chart_version = "3.0.31"
 }
