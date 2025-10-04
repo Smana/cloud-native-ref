@@ -95,12 +95,9 @@ _kubernetesResources = [
                                 }
                             }
                         }]
-                    # Build affinity configuration
-                    _affinity = {}
-
-                    # On-demand instance requirement (Karpenter)
-                    if oxr.spec.onDemand:
-                        _affinity |= {
+                    # Build affinity configuration (node + pod affinity)
+                    if oxr.spec.onDemand and oxr.spec.antiAffinityPreset == "hard":
+                        affinity = {
                             nodeAffinity = {
                                 requiredDuringSchedulingIgnoredDuringExecution = {
                                     nodeSelectorTerms = [{
@@ -112,11 +109,6 @@ _kubernetesResources = [
                                     }]
                                 }
                             }
-                        }
-
-                    # Anti-affinity presets
-                    if oxr.spec.antiAffinityPreset == "hard":
-                        _affinity |= {
                             podAntiAffinity = {
                                 requiredDuringSchedulingIgnoredDuringExecution = [{
                                     labelSelector = {
@@ -128,8 +120,19 @@ _kubernetesResources = [
                                 }]
                             }
                         }
-                    elif oxr.spec.antiAffinityPreset == "soft":
-                        _affinity |= {
+                    elif oxr.spec.onDemand and oxr.spec.antiAffinityPreset == "soft":
+                        affinity = {
+                            nodeAffinity = {
+                                requiredDuringSchedulingIgnoredDuringExecution = {
+                                    nodeSelectorTerms = [{
+                                        matchExpressions = [{
+                                            key = "karpenter.sh/capacity-type"
+                                            operator = "In"
+                                            values = ["on-demand"]
+                                        }]
+                                    }]
+                                }
+                            }
                             podAntiAffinity = {
                                 preferredDuringSchedulingIgnoredDuringExecution = [{
                                     weight = 100
@@ -144,10 +147,49 @@ _kubernetesResources = [
                                 }]
                             }
                         }
-
-                    # Apply affinity if any rules are set
-                    if _affinity:
-                        affinity = _affinity
+                    elif oxr.spec.onDemand:
+                        affinity = {
+                            nodeAffinity = {
+                                requiredDuringSchedulingIgnoredDuringExecution = {
+                                    nodeSelectorTerms = [{
+                                        matchExpressions = [{
+                                            key = "karpenter.sh/capacity-type"
+                                            operator = "In"
+                                            values = ["on-demand"]
+                                        }]
+                                    }]
+                                }
+                            }
+                        }
+                    elif oxr.spec.antiAffinityPreset == "hard":
+                        affinity = {
+                            podAntiAffinity = {
+                                requiredDuringSchedulingIgnoredDuringExecution = [{
+                                    labelSelector = {
+                                        matchLabels = {
+                                            "app.kubernetes.io/name" = oxr.metadata.name
+                                        }
+                                    }
+                                    topologyKey = "kubernetes.io/hostname"
+                                }]
+                            }
+                        }
+                    elif oxr.spec.antiAffinityPreset == "soft":
+                        affinity = {
+                            podAntiAffinity = {
+                                preferredDuringSchedulingIgnoredDuringExecution = [{
+                                    weight = 100
+                                    podAffinityTerm = {
+                                        labelSelector = {
+                                            matchLabels = {
+                                                "app.kubernetes.io/name" = oxr.metadata.name
+                                            }
+                                        }
+                                        topologyKey = "kubernetes.io/hostname"
+                                    }
+                                }]
+                            }
+                        }
                     containers = [{
                         name = oxr.metadata.name
                         image = oxr.spec.image.repository + ":" + (oxr.spec.image.tag or "latest")
