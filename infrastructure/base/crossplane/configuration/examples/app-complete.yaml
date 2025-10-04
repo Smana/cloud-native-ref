@@ -179,6 +179,15 @@ spec:
             protocol: TCP
 
   # ============================================================================
+  # Key-Value Store - Valkey/Redis for Caching and Sessions
+  # ============================================================================
+  # Deploys a Valkey (Redis-compatible) cluster for caching, sessions, or queues
+  kvStore:
+    enabled: true
+    type: valkey                       # Options: valkey (default), redis
+    size: small                        # Options: small, medium, large
+
+  # ============================================================================
   # PostgreSQL Database - CloudNativePG with Atlas Migrations
   # ============================================================================
   # Deploys a highly-available PostgreSQL cluster with automated schema management
@@ -223,3 +232,14 @@ spec:
       schedule: "0 2 * * *"            # Cron schedule: daily at 2 AM UTC
       bucketName: image-gallery-db-backups  # S3 bucket for backups
       retentionPolicy: "30d"           # Keep backups for 30 days
+
+  # ============================================================================
+  # S3 Bucket - Object Storage
+  # ============================================================================
+  # Creates an S3 bucket with IAM permissions scoped to this application
+  s3Bucket:
+    enabled: true
+    region: eu-west-3                  # AWS region for the bucket
+    permissions: readwrite             # Options: readwrite, readonly, custom
+    versioning: true                   # Enable object versioning
+    retentionDays: 90                  # Delete objects older than 90 days
