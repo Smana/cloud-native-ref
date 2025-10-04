@@ -241,93 +241,96 @@ spec:
                           - backendPort
                 networkPolicies:
                   type: object
-                  description: Network policies configuration
+                  description: Cilium Network policies configuration
                   properties:
                     enabled:
                       type: boolean
-                      description: Enable network policies
+                      description: Enable Cilium network policies
                       default: false
-                    policies:
-                      type: object
-                      properties:
-                        ingress:
-                          type: array
-                          description: Ingress network policies
-                          items:
-                            type: object
-                            properties:
-                              name:
-                                type: string
-                                description: Policy name
-                              from:
-                                type: array
-                                description: Source selectors
-                                items:
+                    ingress:
+                      type: array
+                      description: Ingress rules
+                      items:
+                        type: object
+                        properties:
+                          fromEndpoints:
+                            type: array
+                            description: Source endpoint selectors
+                            items:
+                              type: object
+                              properties:
+                                matchLabels:
                                   type: object
-                                  properties:
-                                    namespaceSelector:
-                                      type: object
-                                      description: Namespace selector
-                                      properties:
-                                        matchLabels:
-                                          type: object
-                                          additionalProperties:
-                                            type: string
-                              ports:
-                                type: array
-                                description: Allowed ports
-                                items:
+                                  description: Label selectors for source endpoints
+                                  additionalProperties:
+                                    type: string
+                          toPorts:
+                            type: array
+                            description: Port and protocol restrictions
+                            items:
+                              type: object
+                              properties:
+                                ports:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      port:
+                                        type: string
+                                        description: Port number or name
+                                      protocol:
+                                        type: string
+                                        description: Protocol (TCP, UDP, ANY)
+                                        enum: ["TCP", "UDP", "ANY"]
+                                        default: "TCP"
+                    egress:
+                      type: array
+                      description: Egress rules
+                      items:
+                        type: object
+                        properties:
+                          toEndpoints:
+                            type: array
+                            description: Destination endpoint selectors
+                            items:
+                              type: object
+                              properties:
+                                matchLabels:
                                   type: object
-                                  properties:
-                                    protocol:
-                                      type: string
-                                      enum: ["TCP", "UDP", "SCTP"]
-                                      default: "TCP"
-                                    port:
-                                      type: integer
-                                      minimum: 1
-                                      maximum: 65535
-                            required:
-                              - name
-                        egress:
-                          type: array
-                          description: Egress network policies
-                          items:
-                            type: object
-                            properties:
-                              name:
-                                type: string
-                                description: Policy name
-                              to:
-                                type: array
-                                description: Destination selectors
-                                items:
-                                  type: object
-                                  properties:
-                                    namespaceSelector:
-                                      type: object
-                                      description: Namespace selector
-                                      properties:
-                                        matchLabels:
-                                          type: object
-                                          additionalProperties:
-                                            type: string
-                              ports:
-                                type: array
-                                description: Allowed ports
-                                items:
-                                  type: object
-                                  properties:
-                                    protocol:
-                                      type: string
-                                      enum: ["TCP", "UDP", "SCTP"]
-                                      default: "TCP"
-                                    port:
-                                      type: integer
-                                      minimum: 1
-                                      maximum: 65535
-                            required:
-                              - name
+                                  description: Label selectors for destination endpoints
+                                  additionalProperties:
+                                    type: string
+                          toFQDNs:
+                            type: array
+                            description: DNS-based egress rules
+                            items:
+                              type: object
+                              properties:
+                                matchName:
+                                  type: string
+                                  description: Exact DNS name match
+                                matchPattern:
+                                  type: string
+                                  description: DNS pattern match with wildcards
+                          toPorts:
+                            type: array
+                            description: Port and protocol restrictions
+                            items:
+                              type: object
+                              properties:
+                                ports:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      port:
+                                        type: string
+                                        description: Port number or name
+                                      protocol:
+                                        type: string
+                                        description: Protocol (TCP, UDP, ANY)
+                                        enum: ["TCP", "UDP", "ANY"]
+                                        default: "TCP"
                 # Infrastructure components
                 kvStore:
                   type: object

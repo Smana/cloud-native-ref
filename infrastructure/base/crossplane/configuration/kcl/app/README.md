@@ -60,12 +60,31 @@ This module enforces security best practices by default:
 
 All security settings can be customized via `spec.securityContext` and `spec.automountServiceAccountToken`.
 
+## Network Policies
+
+Optional **Cilium Network Policies** provide micro-segmentation and zero-trust networking:
+
+- **Layer 3-4 policies**: Control traffic based on endpoints and ports
+- **FQDN-based egress**: Allow external API calls by DNS name
+- **Default deny**: No network policies are created by default - explicit allow model when enabled
+
+Network policies are disabled by default. Enable with `spec.networkPolicies.enabled: true`.
+
+**Example use cases:**
+- Restrict ingress to only Gateway pods
+- Allow egress to specific databases or services
+- Control external API access by FQDN
+- Implement defense-in-depth with DNS-aware policies
+
+See `examples/app-with-network-policies.yaml` for detailed examples.
+
 ## Examples
 
 The `examples/` directory contains:
 - **app-basic.yaml**: Minimal configuration (just image and port)
-- **app-complete.yaml**: Full-featured app with database, autoscaling, HA, and security
+- **app-complete.yaml**: Full-featured app with database, autoscaling, HA, security, and network policies
 - **app-custom-security.yaml**: Example of overriding security defaults
+- **app-with-network-policies.yaml**: Comprehensive Cilium network policy examples
 
 ### Basic Application
 

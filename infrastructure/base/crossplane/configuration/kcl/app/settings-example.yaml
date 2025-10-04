@@ -25,6 +25,16 @@ kcl_options:
           pdb:
             enabled: true
             minAvailable: 1
+            unhealthyPodEvictionPolicy: "AlwaysAllow"
+          # Security settings (optional - secure defaults applied if omitted)
+          automountServiceAccountToken: false
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            enableWritableTmp: true
           resources:
             requests:
               cpu: "100m"
@@ -63,27 +73,43 @@ kcl_options:
             rules:
               - backendPort: 8080
                 pathPrefix: /
-          networkPolicies: # Create CiliumNetworkPolicies to restrict traffic
+          networkPolicies: # Create CiliumNetworkPolicy to restrict traffic
             enabled: true
-            policies:
-              ingress:
-                - name: allow-from-gateway
-                  from:
-                    - namespaceSelector:
-                        matchLabels:
-                          gateway: "true"
-                  ports:
-                    - protocol: TCP
-                      port: 8080
-              egress:
-                - name: allow-to-same-namespace
-                  to:
-                    - namespaceSelector:
-                        matchLabels:
-                          name: "myns"
-                  ports:
-                    - protocol: TCP
-                      port: 8080
+            ingress:
+              - fromEndpoints:
+                - matchLabels:
+                    "io.kubernetes.pod.namespace": "gateway-system"
+                    "app.kubernetes.io/name": "cilium-gateway"
+                toPorts:
+                - ports:
+                  - port: "8080"
+                    protocol: TCP
+            egress:
+              # Allow DNS
+              - toEndpoints:
+                - matchLabels:
+                    "io.kubernetes.pod.namespace": "kube-system"
+                    "k8s-app": "kube-dns"
+                toPorts:
+                - ports:
+                  - port: "53"
+                    protocol: UDP
+              # Allow to database
+              - toEndpoints:
+                - matchLabels:
+                    "app.kubernetes.io/name": "myname-sqlinstance"
+                toPorts:
+                - ports:
+                  - port: "5432"
+                    protocol: TCP
+              # Allow external HTTPS
+              - toFQDNs:
+                - matchPattern: "*.github.com"
+                - matchName: "api.example.com"
+                toPorts:
+                - ports:
+                  - port: "443"
+                    protocol: TCP
           # Parameters for the underlying infrastructure
           kvStore: # By default it creates a Valkey Helmrelease
             enabled: true

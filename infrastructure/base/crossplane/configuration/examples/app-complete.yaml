@@ -1,98 +1,220 @@
 ---
-# Complete app example - demonstrates all features including database, security, HA, etc.
+# Complete App Example
+#
+# This example demonstrates all available features of the App composition:
+# - Container configuration with autoscaling
+# - Security hardening (read-only filesystem, non-root, dropped capabilities)
+# - High availability with pod disruption budgets and zone spreading
+# - Network policies for zero-trust micro-segmentation
+# - PostgreSQL database with CloudNativePG and Atlas migrations
+# - HTTP routing with Gateway API
+#
+# This is a production-ready configuration suitable for critical workloads.
+# For minimal configuration, see app-basic.yaml
+
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: App
 metadata:
   name: image-gallery
   namespace: demo
 spec:
-  # Container image configuration
+  # ============================================================================
+  # Container Configuration
+  # ============================================================================
+  # Define the container image to deploy. The tag should use semantic versioning
+  # and avoid 'latest' for production deployments.
   image:
     repository: ghcr.io/smana/image-gallery
     tag: "v1.0.0"
-    pullPolicy: IfNotPresent
+    pullPolicy: IfNotPresent  # Use Always for :latest, IfNotPresent for versioned tags
 
-  # Replicas and autoscaling
+  # ============================================================================
+  # Scaling Configuration
+  # ============================================================================
+  # Initial replica count when autoscaling is disabled or during startup
   replicas: 2
+
+  # Horizontal Pod Autoscaler (HPA) - automatically scales based on CPU utilization
   autoscaling:
     enabled: true
-    minReplicas: 2
-    maxReplicas: 5
-    targetCPUUtilizationPercentage: 70
+    minReplicas: 2              # Minimum pods for high availability
+    maxReplicas: 5              # Maximum pods to prevent runaway scaling
+    targetCPUUtilizationPercentage: 70  # Scale up when CPU exceeds 70%
 
-  # Resource requirements
+  # ============================================================================
+  # Resource Management
+  # ============================================================================
+  # Define compute resources for optimal scheduling and performance
+  # Requests: guaranteed resources, used for scheduling decisions
+  # Limits: maximum resources the container can consume
   resources:
     requests:
-      cpu: "100m"
-      memory: "128Mi"
+      cpu: "100m"      # 0.1 CPU cores
+      memory: "128Mi"  # 128 MiB RAM
     limits:
-      cpu: "200m"
-      memory: "256Mi"
+      cpu: "200m"      # 0.2 CPU cores max
+      memory: "256Mi"  # 256 MiB RAM max
 
-  # Pod scheduling and topology
+  # ============================================================================
+  # Pod Scheduling and Topology
+  # ============================================================================
+  # Security: run as non-root user (UID 1001)
   runAsNonRoot: true
+
+  # High Availability: distribute pods across availability zones
   spreadAcrossZones: true
+
+  # Anti-affinity: prevent multiple pods from running on the same node
+  # Options: "soft" (preferred) or "hard" (required)
   antiAffinityPreset: soft
 
-  # Security settings (optional - these are the secure defaults)
-  automountServiceAccountToken: false  # default
-  securityContext:
-    allowPrivilegeEscalation: false    # default
-    readOnlyRootFilesystem: true       # default
-    runAsNonRoot: true                 # default
-    capabilities:
-      drop: ["ALL"]                    # default
-    enableWritableTmp: true            # default - provides /tmp emptyDir volume
+  # ============================================================================
+  # Security Context
+  # ============================================================================
+  # All settings below are secure defaults - only override if necessary
+  automountServiceAccountToken: false  # Don't mount SA token unless needed
 
-  # Pod disruption budget for high availability
+  securityContext:
+    allowPrivilegeEscalation: false    # Prevent privilege escalation
+    readOnlyRootFilesystem: true       # Immutable container filesystem
+    runAsNonRoot: true                 # Enforce non-root user
+    capabilities:
+      drop: ["ALL"]                    # Drop all Linux capabilities
+    enableWritableTmp: true            # Provide writable /tmp via emptyDir
+
+  # ============================================================================
+  # High Availability - Pod Disruption Budget
+  # ============================================================================
+  # Ensures minimum availability during voluntary disruptions (node drains, updates)
   pdb:
     enabled: true
-    minAvailable: 1
-    unhealthyPodEvictionPolicy: AlwaysAllow  # default
+    minAvailable: 1  # At least 1 pod must remain available
+    unhealthyPodEvictionPolicy: AlwaysAllow  # Allow eviction of unhealthy pods
 
-  # HTTP routing configuration
+  # ============================================================================
+  # HTTP Routing
+  # ============================================================================
+  # Configure HTTP service and Gateway API routing
   route:
-    port: 8080
-    internetFacing: true
+    port: 8080               # Container port to expose
+    internetFacing: true     # Create public HTTPRoute
 
-  # SQL database with Atlas schema migrations
+  # ============================================================================
+  # Network Policies - Zero Trust Networking
+  # ============================================================================
+  # Cilium Network Policies implement micro-segmentation and defense in depth.
+  # By default, when enabled, all traffic is denied except what's explicitly allowed.
+  networkPolicies:
+    enabled: true
+
+    # Ingress Rules: control incoming traffic to the application
+    ingress:
+      # Allow HTTP traffic from Cilium Gateway (for internet-facing routes)
+      - fromEndpoints:
+        - matchLabels:
+            "io.kubernetes.pod.namespace": "gateway-system"
+            "app.kubernetes.io/name": "cilium-gateway"
+        toPorts:
+        - ports:
+          - port: "8080"
+            protocol: TCP
+
+      # Allow health checks from Prometheus in observability namespace
+      - fromEndpoints:
+        - matchLabels:
+            "io.kubernetes.pod.namespace": "observability"
+            "app.kubernetes.io/name": "prometheus"
+        toPorts:
+        - ports:
+          - port: "8080"
+            protocol: TCP
+
+    # Egress Rules: control outgoing traffic from the application
+    egress:
+      # DNS: required for service discovery and external name resolution
+      - toEndpoints:
+        - matchLabels:
+            "io.kubernetes.pod.namespace": "kube-system"
+            "k8s-app": "kube-dns"
+        toPorts:
+        - ports:
+          - port: "53"
+            protocol: UDP
+          - port: "53"
+            protocol: TCP
+
+      # Database: allow connections to PostgreSQL CloudNativePG cluster
+      - toEndpoints:
+        - matchLabels:
+            "cnpg.io/cluster": "image-gallery-sqlinstance-cnpg-cluster"
+        toPorts:
+        - ports:
+          - port: "5432"
+            protocol: TCP
+
+      # External APIs: FQDN-based egress for external services
+      # Use matchPattern for wildcards or matchName for exact domains
+      - toFQDNs:
+        - matchPattern: "*.github.com"           # GitHub API (for Atlas migrations)
+        - matchName: "s3.eu-west-3.amazonaws.com"  # AWS S3 (for image storage)
+        - matchPattern: "*.amazonaws.com"        # Other AWS services
+        toPorts:
+        - ports:
+          - port: "443"
+            protocol: TCP
+
+      # Kubernetes API: allow pods to interact with k8s API if needed
+      - toEndpoints:
+        - matchLabels:
+            "io.kubernetes.pod.namespace": "default"
+            component: "apiserver"
+        toPorts:
+        - ports:
+          - port: "443"
+            protocol: TCP
+
+  # ============================================================================
+  # PostgreSQL Database - CloudNativePG with Atlas Migrations
+  # ============================================================================
+  # Deploys a highly-available PostgreSQL cluster with automated schema management
   sqlInstance:
     enabled: true
-    size: small
-    storageSize: 20Gi
-    instances: 2
-    primaryUpdateStrategy: unsupervised
-    createSuperuser: false
+    size: small                         # Options: small, medium, large
+    storageSize: 20Gi                   # Persistent volume size
+    instances: 2                        # Number of PostgreSQL replicas (HA)
+    primaryUpdateStrategy: unsupervised # Allow automated rolling updates
+    createSuperuser: false              # Don't create superuser (security best practice)
 
-    # Define database roles
+    # Database Roles: define PostgreSQL users with specific privileges
     roles:
       - name: image-gallery-app
         comment: "Application user for image-gallery"
-        superuser: false
+        superuser: false               # Application users should not be superusers
         inRoles:
-          - pg_monitor
+          - pg_monitor                 # Allow monitoring via pg_stat_* views
 
-    # Create databases
+    # Databases: create PostgreSQL databases
     databases:
       - name: image-gallery
-        owner: image-gallery-app
+        owner: image-gallery-app       # Database owner (grants full privileges)
 
-    # Atlas schema migrations from git repository
+    # Atlas Schema Migrations: automated schema management from Git
+    # Atlas analyzes your schema files and applies migrations declaratively
     atlasSchema:
       url: "https://github.com/Smana/image-gallery.git"
       ref: "main"
       path: "internal/platform/database/migrations"
 
-    # PostgreSQL configuration
+    # PostgreSQL Configuration: fine-tune database parameters
     postgresql:
       parameters:
-        max_connections: 100
-        shared_buffers: "256MB"
-      pg_hba:
-        - "host all all 0.0.0.0/0 md5"
+        max_connections: 100           # Maximum concurrent connections
+        shared_buffers: "256MB"        # Memory for caching data
+      pg_hba:                          # Host-based authentication rules
+        - "host all all 0.0.0.0/0 md5" # Allow password auth from all IPs (within cluster)
 
-    # Backup configuration
+    # Backup Configuration: automated backups to S3
     backup:
-      schedule: "0 2 * * *"  # Daily at 2 AM
-      bucketName: image-gallery-db-backups
-      retentionPolicy: "30d"
+      schedule: "0 2 * * *"            # Cron schedule: daily at 2 AM UTC
+      bucketName: image-gallery-db-backups  # S3 bucket for backups
+      retentionPolicy: "30d"           # Keep backups for 30 days

@@ -333,6 +333,31 @@ if oxr.spec.route:
         }
     }]
 
+# CiliumNetworkPolicy
+if oxr.spec.networkPolicies?.enabled:
+    _items += [{
+        apiVersion = "cilium.io/v2"
+        kind = "CiliumNetworkPolicy"
+        metadata = {
+            name = oxr.metadata.name
+            namespace = oxr.metadata.namespace
+            annotations = {
+                "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-cilium-netpol"
+            }
+        }
+        spec = {
+            endpointSelector = {
+                matchLabels = {
+                    "app.kubernetes.io/name" = oxr.metadata.name
+                }
+            }
+            if oxr.spec.networkPolicies.ingress:
+                ingress = oxr.spec.networkPolicies.ingress
+            if oxr.spec.networkPolicies.egress:
+                egress = oxr.spec.networkPolicies.egress
+        }
+    }]
+
 # Infrastructure resources
 # Key-Value Store (Valkey/Redis)
 if oxr.spec.kvStore?.enabled:
