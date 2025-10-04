@@ -1,0 +1,398 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: apps.cloud.ogenki.io
+spec:
+  group: cloud.ogenki.io
+  scope: Namespaced
+  names:
+    kind: App
+    plural: apps
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # Deployment specific parameters
+                image:
+                  type: object
+                  properties:
+                    repository:
+                      type: string
+                      description: Container image repository
+                    tag:
+                      type: string
+                      description: Container image tag
+                      default: "latest"
+                    pullPolicy:
+                      type: string
+                      description: Image pull policy
+                      enum: ["Always", "Never", "IfNotPresent"]
+                      default: "IfNotPresent"
+                  required:
+                    - repository
+                autoscaling:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable horizontal pod autoscaling
+                      default: false
+                    minReplicas:
+                      type: integer
+                      description: Minimum number of replicas
+                      minimum: 1
+                      default: 1
+                    maxReplicas:
+                      type: integer
+                      description: Maximum number of replicas
+                      minimum: 1
+                      default: 5
+                    targetCPUUtilizationPercentage:
+                      type: integer
+                      description: Target CPU utilization percentage
+                      minimum: 1
+                      maximum: 100
+                      default: 70
+                replicas:
+                  type: integer
+                  description: Number of replicas when autoscaling is disabled
+                  minimum: 1
+                  default: 1
+                pdb:
+                  type: object
+                  description: Pod Disruption Budget configuration
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable Pod Disruption Budget
+                      default: false
+                    minAvailable:
+                      type: integer
+                      description: Minimum available pods
+                      minimum: 1
+                resources:
+                  type: object
+                  description: Resource requirements
+                  properties:
+                    requests:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                          description: CPU request
+                          pattern: "^[0-9]+m?$"
+                        memory:
+                          type: string
+                          description: Memory request
+                          pattern: "^[0-9]+[KMGT]i?$"
+                    limits:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                          description: CPU limit
+                          pattern: "^[0-9]+m?$"
+                        memory:
+                          type: string
+                          description: Memory limit
+                          pattern: "^[0-9]+[KMGT]i?$"
+                onDemand:
+                  type: boolean
+                  description: Use on-demand instances
+                  default: false
+                runAsNonRoot:
+                  type: boolean
+                  description: Run container as non-root user
+                  default: true
+                spreadAcrossZones:
+                  type: boolean
+                  description: Spread pods across availability zones
+                  default: true
+                antiAffinityPreset:
+                  type: string
+                  description: Anti-affinity preset
+                  enum: ["soft", "hard"]
+                  default: "soft"
+                configs:
+                  type: object
+                  description: Configuration files to mount
+                  additionalProperties:
+                    type: object
+                    properties:
+                      path:
+                        type: string
+                        description: Path where config will be mounted in container
+                      content:
+                        type: string
+                        description: Configuration content
+                    required:
+                      - path
+                      - content
+                secrets:
+                  type: object
+                  description: Secrets to mount as environment variables
+                  additionalProperties:
+                    type: object
+                    properties:
+                      path:
+                        type: string
+                        description: Path to secret in AWS Secrets Manager
+                      keys:
+                        type: array
+                        description: Keys to fetch from the secret
+                        items:
+                          type: string
+                    required:
+                      - path
+                # Gateway and routing configuration
+                gateway:
+                  type: object
+                  description: Gateway configuration for dedicated gateway
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable dedicated gateway
+                      default: false
+                    gatewayClassName:
+                      type: string
+                      description: Gateway class name
+                    name:
+                      type: string
+                      description: Gateway name
+                    namespace:
+                      type: string
+                      description: Gateway namespace
+                route:
+                  type: object
+                  description: Routing configuration
+                  properties:
+                    port:
+                      type: integer
+                      description: Service port
+                      minimum: 1
+                      maximum: 65535
+                    internetFacing:
+                      type: boolean
+                      description: Whether the service is internet-facing
+                      default: false
+                    rules:
+                      type: array
+                      description: Routing rules
+                      items:
+                        type: object
+                        properties:
+                          backendPort:
+                            type: integer
+                            description: Backend service port
+                            minimum: 1
+                            maximum: 65535
+                          pathPrefix:
+                            type: string
+                            description: Path prefix for routing
+                            pattern: "^/.*"
+                            default: "/"
+                        required:
+                          - backendPort
+                networkPolicies:
+                  type: object
+                  description: Network policies configuration
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable network policies
+                      default: false
+                    policies:
+                      type: object
+                      properties:
+                        ingress:
+                          type: array
+                          description: Ingress network policies
+                          items:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                                description: Policy name
+                              from:
+                                type: array
+                                description: Source selectors
+                                items:
+                                  type: object
+                                  properties:
+                                    namespaceSelector:
+                                      type: object
+                                      description: Namespace selector
+                                      properties:
+                                        matchLabels:
+                                          type: object
+                                          additionalProperties:
+                                            type: string
+                              ports:
+                                type: array
+                                description: Allowed ports
+                                items:
+                                  type: object
+                                  properties:
+                                    protocol:
+                                      type: string
+                                      enum: ["TCP", "UDP", "SCTP"]
+                                      default: "TCP"
+                                    port:
+                                      type: integer
+                                      minimum: 1
+                                      maximum: 65535
+                            required:
+                              - name
+                        egress:
+                          type: array
+                          description: Egress network policies
+                          items:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                                description: Policy name
+                              to:
+                                type: array
+                                description: Destination selectors
+                                items:
+                                  type: object
+                                  properties:
+                                    namespaceSelector:
+                                      type: object
+                                      description: Namespace selector
+                                      properties:
+                                        matchLabels:
+                                          type: object
+                                          additionalProperties:
+                                            type: string
+                              ports:
+                                type: array
+                                description: Allowed ports
+                                items:
+                                  type: object
+                                  properties:
+                                    protocol:
+                                      type: string
+                                      enum: ["TCP", "UDP", "SCTP"]
+                                      default: "TCP"
+                                    port:
+                                      type: integer
+                                      minimum: 1
+                                      maximum: 65535
+                            required:
+                              - name
+                # Infrastructure components
+                kvStore:
+                  type: object
+                  description: Key-value store configuration
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable key-value store
+                      default: false
+                    size:
+                      type: string
+                      description: Store size
+                      enum: ["small", "medium", "large"]
+                      default: "small"
+                    type:
+                      type: string
+                      description: Store type
+                      enum: ["valkey", "redis"]
+                      default: "valkey"
+                sqlInstance:
+                  type: object
+                  description: SQL database instance configuration
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable SQL instance
+                      default: false
+                    size:
+                      type: string
+                      description: Instance size
+                      enum: ["small", "medium", "large"]
+                      default: "small"
+                    storageSize:
+                      type: string
+                      description: Storage size
+                      pattern: "^[0-9]+[KMGT]i$"
+                    backup:
+                      type: object
+                      description: Backup configuration
+                      properties:
+                        schedule:
+                          type: string
+                          description: Backup schedule in cron format
+                          pattern: "^[0-9*/ -]+$"
+                        retentionPolicy:
+                          type: string
+                          description: Backup retention policy
+                          pattern: "^[0-9]+[dmy]$"
+                          default: "15d"
+                        bucketName:
+                          type: string
+                          description: S3 bucket name for backups
+                s3Bucket:
+                  type: object
+                  description: S3 bucket configuration
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable S3 bucket
+                      default: false
+                    providerConfigRef:
+                      type: object
+                      description: Provider configuration reference
+                      properties:
+                        name:
+                          type: string
+                          description: Provider config name
+                        namespace:
+                          type: string
+                          description: Provider config namespace
+                      required:
+                        - name
+                        - namespace
+                    region:
+                      type: string
+                      description: AWS region
+                      pattern: "^[a-z]+-[a-z]+-[0-9]+$"
+                    permissions:
+                      type: string
+                      description: Bucket permissions
+                      enum: ["readwrite", "readonly", "custom"]
+                      default: "readwrite"
+                    customPolicy:
+                      type: string
+                      description: Custom IAM policy JSON (when permissions is custom)
+                    versioning:
+                      type: boolean
+                      description: Enable bucket versioning
+                      default: false
+                    retentionDays:
+                      type: integer
+                      description: Object retention days
+                      minimum: 1
+                      maximum: 365
+              required:
+                - image
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                observedGeneration:
+                  type: integer
+          required:
+            - spec
