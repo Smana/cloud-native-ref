@@ -367,6 +367,82 @@ spec:
                       type: string
                       description: Storage size
                       pattern: "^[0-9]+[KMGT]i$"
+                    instances:
+                      type: integer
+                      description: Number of database instances
+                      default: 3
+                    primaryUpdateStrategy:
+                      type: string
+                      description: Update strategy for the primary instance
+                      default: "unsupervised"
+                    createSuperuser:
+                      type: boolean
+                      description: Create a superuser for the Postgres cluster
+                      default: false
+                    databases:
+                      type: array
+                      description: Databases to create
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: Database name
+                          owner:
+                            type: string
+                            description: Database owner
+                        required:
+                          - name
+                          - owner
+                    roles:
+                      type: array
+                      description: Database roles to create
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: Role name
+                          comment:
+                            type: string
+                            description: Role comment
+                          superuser:
+                            type: boolean
+                            description: Is the role a superuser
+                          inRoles:
+                            type: array
+                            description: Roles this role is a member of
+                            items:
+                              type: string
+                        required:
+                          - name
+                          - superuser
+                    atlasSchema:
+                      type: object
+                      description: Atlas schema migration configuration
+                      properties:
+                        url:
+                          type: string
+                          description: Git repository URL
+                        ref:
+                          type: string
+                          description: Git reference (branch/tag)
+                        path:
+                          type: string
+                          description: Path to migrations in repository
+                    postgresql:
+                      type: object
+                      description: PostgreSQL configuration
+                      properties:
+                        parameters:
+                          type: object
+                          description: Custom Postgres parameters
+                          additionalProperties: true
+                        pg_hba:
+                          type: array
+                          description: Custom pg_hba.conf entries
+                          items:
+                            type: string
                     backup:
                       type: object
                       description: Backup configuration

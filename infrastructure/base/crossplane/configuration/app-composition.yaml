@@ -1,7 +1,7 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-    name: xsqlinstances.cloud.ogenki.io
+    name: xapps.cloud.ogenki.io
     labels:
         provider: aws
 spec:

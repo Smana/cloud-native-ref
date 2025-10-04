@@ -2,7 +2,7 @@ apiVersion: cloud.ogenki.io/v1alpha1
 kind: App
 metadata:
   name: podinfo
-  namespace: demo
+  namespace: apps
 spec:
   # Minimum required: container image
   image:
