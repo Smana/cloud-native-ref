@@ -139,6 +139,11 @@ _items = []
 _observedDeployment = ocds.get(_name + "-deployment", {})?.Resource
 _observedService = ocds.get(_name + "-service", {})?.Resource
 _observedHTTPRoute = ocds.get(_name + "-httproute", {})?.Resource
+_observedHPA = ocds.get(_name + "-hpa", {})?.Resource
+_observedPDB = ocds.get(_name + "-pdb", {})?.Resource
+_observedGateway = ocds.get(_name + "-gateway", {})?.Resource
+_observedNetworkPolicy = ocds.get(_name + "-cilium-netpol", {})?.Resource
+_observedKVStore = ocds.get(_name + "-kvstore", {})?.Resource
 
 # Check if Deployment is actually Available (not just created)
 # Looks for Deployment.status.conditions[type=Available, status=True]
@@ -157,6 +162,32 @@ _httpRouteConditions = _observedHTTPRoute?.status?.parents?[0]?.conditions or []
 _httpRouteReady = any_true([
     c.get("type") == "Accepted" and c.get("status") == "True"
     for c in _httpRouteConditions
+])
+
+# Check if HorizontalPodAutoscaler is functioning
+# HPAs are ready when they have started reporting current replicas
+_hpaReady = _observedHPA?.status?.currentReplicas != None
+
+# Check if PodDisruptionBudget has been observed by the controller
+# PDBs are ready when the controller has calculated allowed disruptions
+_pdbReady = _observedPDB?.status?.disruptionsAllowed != None
+
+# Check if Gateway is Programmed or Accepted
+# Looks for Gateway.status.conditions[type=Programmed|Accepted, status=True]
+_gatewayReady = any_true([
+    (c.get("type") == "Programmed" or c.get("type") == "Accepted") and c.get("status") == "True"
+    for c in _observedGateway?.status?.conditions or []
+])
+
+# Check if CiliumNetworkPolicy exists in the cluster
+# Network policies don't have status conditions, so we check if the resource exists
+_networkPolicyReady = _observedNetworkPolicy != None and _observedNetworkPolicy.get("metadata") != None
+
+# Check if HelmRelease is Ready
+# Looks for HelmRelease.status.conditions[type=Ready, status=True]
+_helmReleaseReady = any_true([
+    c.get("type") == "Ready" and c.get("status") == "True"
+    for c in _observedKVStore?.status?.conditions or []
 ])
 
 # Core Kubernetes resources
@@ -294,7 +325,8 @@ if oxr.spec.autoscaling?.enabled:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-hpa"
-                "krm.kcl.dev/ready" = "True"
+                if _hpaReady:
+                    "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
@@ -328,7 +360,8 @@ if oxr.spec.pdb?.enabled:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-pdb"
-                "krm.kcl.dev/ready" = "True"
+                if _pdbReady:
+                    "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
@@ -353,7 +386,8 @@ if oxr.spec.gateway?.enabled:
             namespace = _gatewayNamespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-gateway"
-                "krm.kcl.dev/ready" = "True"
+                if _gatewayReady:
+                    "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
@@ -449,7 +483,8 @@ if oxr.spec.networkPolicies?.enabled:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-cilium-netpol"
-                "krm.kcl.dev/ready" = "True"
+                if _networkPolicyReady:
+                    "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
@@ -474,7 +509,8 @@ if oxr.spec.kvStore?.enabled:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-kvstore"
-                "krm.kcl.dev/ready" = "True"
+                if _helmReleaseReady:
+                    "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
