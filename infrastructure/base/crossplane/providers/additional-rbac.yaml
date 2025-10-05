@@ -64,84 +64,36 @@ roleRef:
   name: crossplane:aws-upbound-provider
   apiGroup: rbac.authorization.k8s.io
 ---
-# Role for managing App composition resources in apps namespace
+# ClusterRole for aggregating App composition resource permissions to Crossplane
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  name: crossplane:app-composition-resources
-  namespace: apps
+  name: app-composition:aggregate-to-crossplane
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
 rules:
   # Core Kubernetes resources created by App composition
   - apiGroups: ["apps"]
-    resources: ["deployments"]
-    verbs: ["*"]
-  - apiGroups: ["apps"]
-    resources: ["deployments/status"]
+    resources: ["deployments", "deployments/status"]
     verbs: ["*"]
   - apiGroups: [""]
-    resources: ["services"]
-    verbs: ["*"]
-  - apiGroups: [""]
-    resources: ["services/status"]
+    resources: ["services", "services/status"]
     verbs: ["*"]
   - apiGroups: ["autoscaling"]
-    resources: ["horizontalpodautoscalers"]
-    verbs: ["*"]
-  - apiGroups: ["autoscaling"]
-    resources: ["horizontalpodautoscalers/status"]
+    resources: ["horizontalpodautoscalers", "horizontalpodautoscalers/status"]
     verbs: ["*"]
   - apiGroups: ["policy"]
-    resources: ["poddisruptionbudgets"]
-    verbs: ["*"]
-  - apiGroups: ["policy"]
-    resources: ["poddisruptionbudgets/status"]
+    resources: ["poddisruptionbudgets", "poddisruptionbudgets/status"]
     verbs: ["*"]
   # Gateway API resources
   - apiGroups: ["gateway.networking.k8s.io"]
-    resources: ["gateways", "httproutes"]
-    verbs: ["*"]
-  - apiGroups: ["gateway.networking.k8s.io"]
-    resources: ["gateways/status", "httproutes/status"]
+    resources: ["gateways", "gateways/status", "httproutes", "httproutes/status"]
     verbs: ["*"]
   # Cilium network policies
   - apiGroups: ["cilium.io"]
-    resources: ["ciliumnetworkpolicies"]
-    verbs: ["*"]
-  - apiGroups: ["cilium.io"]
-    resources: ["ciliumnetworkpolicies/status"]
+    resources: ["ciliumnetworkpolicies", "ciliumnetworkpolicies/status"]
     verbs: ["*"]
   # Flux HelmRelease for kvStore
   - apiGroups: ["helm.toolkit.fluxcd.io"]
-    resources: ["helmreleases"]
+    resources: ["helmreleases", "helmreleases/status"]
     verbs: ["*"]
-  - apiGroups: ["helm.toolkit.fluxcd.io"]
-    resources: ["helmreleases/status"]
-    verbs: ["*"]
-  # Custom resources (SQLInstance, EKSPodIdentity)
-  - apiGroups: ["cloud.ogenki.io"]
-    resources: ["sqlinstances", "ekspodidentities"]
-    verbs: ["*"]
-  - apiGroups: ["cloud.ogenki.io"]
-    resources: ["sqlinstances/status", "ekspodidentities/status"]
-    verbs: ["*"]
-  # AWS S3 Bucket
-  - apiGroups: ["s3.aws.upbound.io"]
-    resources: ["buckets"]
-    verbs: ["*"]
-  - apiGroups: ["s3.aws.upbound.io"]
-    resources: ["buckets/status"]
-    verbs: ["*"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: crossplane:app-composition-resources
-  namespace: apps
-subjects:
-  - kind: ServiceAccount
-    name: crossplane
-    namespace: crossplane-system
-roleRef:
-  kind: Role
-  name: crossplane:app-composition-resources
-  apiGroup: rbac.authorization.k8s.io
