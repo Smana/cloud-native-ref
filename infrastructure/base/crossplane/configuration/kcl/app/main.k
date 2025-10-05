@@ -183,19 +183,19 @@ _kubernetesResources = [
                         if oxr.spec.route?.port:
                             livenessProbe = {
                                 httpGet = {
-                                    path = "/health"
+                                    path = oxr.spec.healthProbes?.liveness?.path or "/health"
                                     port = "http"
                                 }
-                                initialDelaySeconds = _DEFAULTS.health_check_initial_delay
-                                periodSeconds = _DEFAULTS.health_check_period
+                                initialDelaySeconds = oxr.spec.healthProbes?.liveness?.initialDelaySeconds or _DEFAULTS.health_check_initial_delay
+                                periodSeconds = oxr.spec.healthProbes?.liveness?.periodSeconds or _DEFAULTS.health_check_period
                             }
                             readinessProbe = {
                                 httpGet = {
-                                    path = "/ready"
+                                    path = oxr.spec.healthProbes?.readiness?.path or "/ready"
                                     port = "http"
                                 }
-                                initialDelaySeconds = _DEFAULTS.readiness_initial_delay
-                                periodSeconds = _DEFAULTS.readiness_period
+                                initialDelaySeconds = oxr.spec.healthProbes?.readiness?.initialDelaySeconds or _DEFAULTS.readiness_initial_delay
+                                periodSeconds = oxr.spec.healthProbes?.readiness?.periodSeconds or _DEFAULTS.readiness_period
                             }
                     }]
                 }
@@ -281,39 +281,46 @@ if oxr.spec.pdb?.enabled:
         }
     }]
 
-# Gateway for ingress
+# Gateway for ingress (create new gateway if enabled)
 if oxr.spec.gateway?.enabled:
+    _gatewayName = oxr.spec.gateway.name or _name + "-gateway"
+    _gatewayNamespace = oxr.spec.gateway.namespace or _namespace
     _items += [{
         apiVersion = "gateway.networking.k8s.io/v1"
         kind = "Gateway"
         metadata = {
-            name = oxr.spec.gateway.name
-            namespace = oxr.spec.gateway.namespace
+            name = _gatewayName
+            namespace = _gatewayNamespace
             annotations = {
-                "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-gateway"
+                "krm.kcl.dev/composition-resource-name" = _name + "-gateway"
             }
         }
         spec = {
-            gatewayClassName = oxr.spec.gateway.class or "shared-gateway-class"
-            listeners = [{
-                name = "http"
-                protocol = "HTTP"
-                port = 80
-                if oxr.spec.gateway.tls?.enabled:
-                    tls = {
-                        mode = "Terminate"
-                        certificateRefs = [{
-                            name = oxr.spec.gateway.tls.certificateName
-                            kind = "Secret"
-                            group = "core"
-                        }]
+            gatewayClassName = oxr.spec.gateway.gatewayClassName or "cilium"
+            if oxr.spec.gateway.listeners:
+                listeners = [{
+                    name = listener.name
+                    protocol = listener.protocol
+                    port = listener.port
+                    if listener.hostname:
+                        hostname = listener.hostname
+                    allowedRoutes = {
+                        namespaces = {
+                            from = "Same"
+                        }
                     }
-                allowedRoutes = {
-                    namespaces = {
-                        from = "Same"
+                } for listener in oxr.spec.gateway.listeners]
+            else:
+                listeners = [{
+                    name = "http"
+                    protocol = "HTTP"
+                    port = 80
+                    allowedRoutes = {
+                        namespaces = {
+                            from = "Same"
+                        }
                     }
-                }
-            }]
+                }]
         }
     }]
 
@@ -330,15 +337,19 @@ if oxr.spec.route:
             }
         }
         spec = {
+            if oxr.spec.route.hostname:
+                hostnames = [oxr.spec.route.hostname]
             if oxr.spec.gateway?.enabled:
+                # Reference the custom gateway created above
                 parentRefs = [{
-                    name = oxr.spec.gateway.name
-                    namespace = oxr.spec.gateway.namespace
+                    name = oxr.spec.gateway.name or _name + "-gateway"
+                    namespace = oxr.spec.gateway.namespace or _namespace
                 }]
             else:
+                # Use platform gateways
                 parentRefs = [{
-                    name = "shared-gateway"
-                    namespace = "gateway-system"
+                    name = "platform-public" if oxr.spec.route.internetFacing else "platform-private"
+                    namespace = "infrastructure"
                 }]
             rules = [{
                 matches = [{

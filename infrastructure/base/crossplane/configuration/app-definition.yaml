@@ -190,6 +190,43 @@ spec:
                           type: string
                     required:
                       - path
+                # Health probe configuration
+                healthProbes:
+                  type: object
+                  description: Health check probe configuration
+                  properties:
+                    liveness:
+                      type: object
+                      description: Liveness probe configuration
+                      properties:
+                        path:
+                          type: string
+                          description: HTTP path for liveness probe
+                          default: "/health"
+                        initialDelaySeconds:
+                          type: integer
+                          description: Initial delay before liveness probe
+                          default: 30
+                        periodSeconds:
+                          type: integer
+                          description: How often to perform the probe
+                          default: 10
+                    readiness:
+                      type: object
+                      description: Readiness probe configuration
+                      properties:
+                        path:
+                          type: string
+                          description: HTTP path for readiness probe
+                          default: "/ready"
+                        initialDelaySeconds:
+                          type: integer
+                          description: Initial delay before readiness probe
+                          default: 5
+                        periodSeconds:
+                          type: integer
+                          description: How often to perform the probe
+                          default: 5
                 # Gateway and routing configuration
                 gateway:
                   type: object
@@ -197,7 +234,7 @@ spec:
                   properties:
                     enabled:
                       type: boolean
-                      description: Enable dedicated gateway
+                      description: Enable dedicated gateway creation
                       default: false
                     gatewayClassName:
                       type: string
@@ -208,6 +245,25 @@ spec:
                     namespace:
                       type: string
                       description: Gateway namespace
+                    listeners:
+                      type: array
+                      description: Gateway listeners configuration
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: Listener name
+                          port:
+                            type: integer
+                            description: Listener port
+                          protocol:
+                            type: string
+                            description: Protocol (HTTP or HTTPS)
+                            enum: ["HTTP", "HTTPS"]
+                          hostname:
+                            type: string
+                            description: Hostname for this listener
                 route:
                   type: object
                   description: Routing configuration
@@ -219,8 +275,11 @@ spec:
                       maximum: 65535
                     internetFacing:
                       type: boolean
-                      description: Whether the service is internet-facing
+                      description: Whether the service is internet-facing (uses public gateway when true, platform-private when false)
                       default: false
+                    hostname:
+                      type: string
+                      description: Hostname for HTTPRoute (e.g., app.priv.cloud.ogenki.io)
                     rules:
                       type: array
                       description: Routing rules
