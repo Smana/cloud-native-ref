@@ -42,7 +42,8 @@ spec:
 
   route:
     port: 8080
-    internetFacing: true
+    internetFacing: false
+    hostname: "image-gallery.priv.cloud.ogenki.io"
 
   networkPolicies:
     enabled: true

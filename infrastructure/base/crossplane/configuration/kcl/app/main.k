@@ -26,34 +26,32 @@ _metadata = lambda suffix: str -> any {
     }
 }
 
-# Build affinity configuration
-_buildAffinity = lambda onDemand: bool, antiAffinityPreset: str -> any {
-    _affinity = {}
-
-    # Node affinity for on-demand instances
-    if onDemand:
-        _affinity["nodeAffinity"] = {
-            requiredDuringSchedulingIgnoredDuringExecution = {
-                nodeSelectorTerms = [{
-                    matchExpressions = [{
-                        key = "karpenter.sh/capacity-type"
-                        operator = "In"
-                        values = ["on-demand"]
-                    }]
+# Build node affinity for on-demand instances
+_buildNodeAffinity = lambda onDemand: bool -> any {
+    {
+        requiredDuringSchedulingIgnoredDuringExecution = {
+            nodeSelectorTerms = [{
+                matchExpressions = [{
+                    key = "karpenter.sh/capacity-type"
+                    operator = "In"
+                    values = ["on-demand"]
                 }]
-            }
+            }]
         }
+    } if onDemand else None
+}
 
-    # Pod anti-affinity
-    if antiAffinityPreset == "hard":
-        _affinity["podAntiAffinity"] = {
+# Build pod anti-affinity based on preset (hard/soft)
+_buildPodAntiAffinity = lambda preset: str -> any {
+    if preset == "hard":
+        {
             requiredDuringSchedulingIgnoredDuringExecution = [{
                 labelSelector = _podSelector
                 topologyKey = "kubernetes.io/hostname"
             }]
         }
-    elif antiAffinityPreset == "soft":
-        _affinity["podAntiAffinity"] = {
+    elif preset == "soft":
+        {
             preferredDuringSchedulingIgnoredDuringExecution = [{
                 weight = 100
                 podAffinityTerm = {
@@ -62,8 +60,21 @@ _buildAffinity = lambda onDemand: bool, antiAffinityPreset: str -> any {
                 }
             }]
         }
+    else:
+        None
+}
 
-    _affinity if _affinity else None
+# Build complete affinity configuration
+_buildAffinity = lambda onDemand: bool, antiAffinityPreset: str -> any {
+    _nodeAff = _buildNodeAffinity(onDemand)
+    _podAff = _buildPodAntiAffinity(antiAffinityPreset)
+
+    {
+        if _nodeAff:
+            nodeAffinity = _nodeAff
+        if _podAff:
+            podAntiAffinity = _podAff
+    } if _nodeAff or _podAff else None
 }
 
 # Constants
@@ -282,6 +293,9 @@ if oxr.spec.pdb?.enabled:
     }]
 
 # Gateway for ingress (create new gateway if enabled)
+# When gateway.enabled=true, creates a dedicated Gateway resource
+# The HTTPRoute (created below) will reference this gateway instead of platform gateways
+# This allows for custom gateway configuration per application
 if oxr.spec.gateway?.enabled:
     _gatewayName = oxr.spec.gateway.name or _name + "-gateway"
     _gatewayNamespace = oxr.spec.gateway.namespace or _namespace

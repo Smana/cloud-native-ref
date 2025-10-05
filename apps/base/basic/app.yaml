@@ -9,6 +9,14 @@ spec:
     repository: stefanprodan/podinfo
     tag: "6.9.2"
 
+  # Health probes configured for podinfo's actual endpoints
+  healthProbes:
+    liveness:
+      path: "/healthz"
+    readiness:
+      path: "/readyz"
+
   # Simple HTTP service
   route:
     port: 9898
+    hostname: "podinfo.priv.cloud.ogenki.io"
