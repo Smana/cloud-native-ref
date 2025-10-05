@@ -43,25 +43,20 @@ _buildNodeAffinity = lambda onDemand: bool -> any {
 
 # Build pod anti-affinity based on preset (hard/soft)
 _buildPodAntiAffinity = lambda preset: str -> any {
-    if preset == "hard":
-        {
-            requiredDuringSchedulingIgnoredDuringExecution = [{
+    {
+        requiredDuringSchedulingIgnoredDuringExecution = [{
+            labelSelector = _podSelector
+            topologyKey = "kubernetes.io/hostname"
+        }]
+    } if preset == "hard" else {
+        preferredDuringSchedulingIgnoredDuringExecution = [{
+            weight = 100
+            podAffinityTerm = {
                 labelSelector = _podSelector
                 topologyKey = "kubernetes.io/hostname"
-            }]
-        }
-    elif preset == "soft":
-        {
-            preferredDuringSchedulingIgnoredDuringExecution = [{
-                weight = 100
-                podAffinityTerm = {
-                    labelSelector = _podSelector
-                    topologyKey = "kubernetes.io/hostname"
-                }
-            }]
-        }
-    else:
-        None
+            }
+        }]
+    } if preset == "soft" else None
 }
 
 # Build complete affinity configuration
