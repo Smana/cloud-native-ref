@@ -72,6 +72,11 @@ _buildAffinity = lambda onDemand: bool, antiAffinityPreset: str -> any {
     } if _nodeAff or _podAff else None
 }
 
+# Map KV store size to Helm chart resource preset
+_kvSizeToPreset = lambda size: str -> str {
+    "nano" if size == "small" else "small" if size == "medium" else "medium"
+}
+
 # Constants
 _DEFAULTS = {
     # Resource requirements
@@ -115,25 +120,44 @@ _setResourceRequirements = lambda resources: any -> any {
 
 _items = []
 
+# Readiness checking for native Kubernetes resources
+# ===================================================
+# Crossplane provides observed resources through ocds (Observed Composed Desired State)
+# which contains the current cluster state. Resources are keyed by their
+# composition-resource-name annotation value (e.g., "podinfo-deployment").
+#
+# We check actual Kubernetes status conditions before marking resources ready.
+# This ensures the App XR only shows Ready when resources are truly functional,
+# not just created. This is based on Upbound's best practice pattern from
+# project-template-k8s-webapp.
+#
+# References:
+# - https://github.com/upbound/project-template-k8s-webapp/blob/main/template/functions/webapps-kcl/main.k
+# - Kubernetes API conventions for status conditions
+
 # Get observed resources from cluster to check actual health
 _observedDeployment = ocds.get(_name + "-deployment", {})?.Resource
 _observedService = ocds.get(_name + "-service", {})?.Resource
 _observedHTTPRoute = ocds.get(_name + "-httproute", {})?.Resource
 
 # Check if Deployment is actually Available (not just created)
+# Looks for Deployment.status.conditions[type=Available, status=True]
 _deploymentReady = any_true([
     c.get("type") == "Available" and c.get("status") == "True"
     for c in _observedDeployment?.status?.conditions or []
 ])
 
 # Check if Service has ClusterIP assigned
+# Services are ready when they have a ClusterIP (can route traffic)
 _serviceReady = _observedService?.spec?.clusterIP != None
 
 # Check if HTTPRoute is Accepted by Gateway
+# Looks for HTTPRoute.status.parents[].conditions[type=Accepted, status=True]
+_httpRouteConditions = _observedHTTPRoute?.status?.parents?[0]?.conditions or []
 _httpRouteReady = any_true([
     c.get("type") == "Accepted" and c.get("status") == "True"
-    for c in _observedHTTPRoute?.status?.parents?[0]?.conditions or []
-]) if _observedHTTPRoute?.status?.parents else False
+    for c in _httpRouteConditions
+])
 
 # Core Kubernetes resources
 _kubernetesResources = [
@@ -363,6 +387,24 @@ if oxr.spec.gateway?.enabled:
 
 # HTTPRoute for routing
 if oxr.spec.route:
+    # Determine which gateway to reference based on configuration
+    # Priority: custom gateway > internet-facing > platform-private
+    _routeGatewayName = None
+    _routeGatewayNamespace = None
+
+    if oxr.spec.gateway?.enabled:
+        # Use custom gateway (created above or externally managed)
+        _routeGatewayName = oxr.spec.gateway.name or _name + "-gateway"
+        _routeGatewayNamespace = oxr.spec.gateway.namespace or _namespace
+    elif oxr.spec.route.internetFacing:
+        # Use platform public gateway
+        _routeGatewayName = "platform-public"
+        _routeGatewayNamespace = "infrastructure"
+    else:
+        # Use platform private gateway (default)
+        _routeGatewayName = "platform-private"
+        _routeGatewayNamespace = "infrastructure"
+
     _items += [{
         apiVersion = "gateway.networking.k8s.io/v1"
         kind = "HTTPRoute"
@@ -378,18 +420,10 @@ if oxr.spec.route:
         spec = {
             if oxr.spec.route.hostname:
                 hostnames = [oxr.spec.route.hostname]
-            if oxr.spec.gateway?.enabled:
-                # Reference the custom gateway created above
-                parentRefs = [{
-                    name = oxr.spec.gateway.name or _name + "-gateway"
-                    namespace = oxr.spec.gateway.namespace or _namespace
-                }]
-            else:
-                # Use platform gateways
-                parentRefs = [{
-                    name = "platform-public" if oxr.spec.route.internetFacing else "platform-private"
-                    namespace = "infrastructure"
-                }]
+            parentRefs = [{
+                name = _routeGatewayName
+                namespace = _routeGatewayNamespace
+            }]
             rules = [{
                 matches = [{
                     path = {
@@ -431,6 +465,7 @@ if oxr.spec.networkPolicies?.enabled:
 # Key-Value Store (Valkey/Redis)
 if oxr.spec.kvStore?.enabled:
     _kvType = oxr.spec.kvStore.type or "valkey"
+    _kvPreset = _kvSizeToPreset(oxr.spec.kvStore.size or "small")
     _items += [{
         apiVersion = "helm.toolkit.fluxcd.io/v2"
         kind = "HelmRelease"
@@ -469,23 +504,13 @@ if oxr.spec.kvStore?.enabled:
                     enabled = False
                 }
                 primary = {
-                    if oxr.spec.kvStore.size == "small":
-                        resourcesPreset = "nano"
-                    elif oxr.spec.kvStore.size == "medium":
-                        resourcesPreset = "small"
-                    elif oxr.spec.kvStore.size == "large":
-                        resourcesPreset = "medium"
+                    resourcesPreset = _kvPreset
                     persistence = {
                         size = "4Gi"
                     }
                 }
                 replica = {
-                    if oxr.spec.kvStore.size == "small":
-                        resourcesPreset = "nano"
-                    elif oxr.spec.kvStore.size == "medium":
-                        resourcesPreset = "small"
-                    elif oxr.spec.kvStore.size == "large":
-                        resourcesPreset = "medium"
+                    resourcesPreset = _kvPreset
                     persistence = {
                         size = "4Gi"
                     }
