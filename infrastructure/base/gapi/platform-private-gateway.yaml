@@ -24,6 +24,7 @@ spec:
               - key: kubernetes.io/metadata.name
                 operator: In
                 values:
+                  - apps
                   - kube-system
                   - observability
                   - tooling
