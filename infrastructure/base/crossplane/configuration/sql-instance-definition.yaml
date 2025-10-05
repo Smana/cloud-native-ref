@@ -109,6 +109,19 @@ spec:
                   description: SQL to run on the primary instance after creation.
                   type: string
                   nullable: true
+                atlasSchema:
+                  description: Atlas schema migration configuration for declarative database schema management.
+                  type: object
+                  properties:
+                    url:
+                      type: string
+                      description: Git repository URL containing the schema migrations
+                    ref:
+                      type: string
+                      description: Git reference (branch or tag) to use
+                    path:
+                      type: string
+                      description: Path to the migrations directory within the repository
                 postgresql:
                   type: object
                   properties:
