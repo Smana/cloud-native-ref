@@ -63,3 +63,58 @@ roleRef:
   kind: ClusterRole
   name: crossplane:aws-upbound-provider
   apiGroup: rbac.authorization.k8s.io
+---
+# Role for managing App composition resources in apps namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: crossplane:app-composition-resources
+  namespace: apps
+rules:
+  # Core Kubernetes resources created by App composition
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["*"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["*"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["*"]
+  # Gateway API resources
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways", "httproutes"]
+    verbs: ["*"]
+  # Cilium network policies
+  - apiGroups: ["cilium.io"]
+    resources: ["ciliumnetworkpolicies"]
+    verbs: ["*"]
+  # Flux HelmRelease for kvStore
+  - apiGroups: ["helm.toolkit.fluxcd.io"]
+    resources: ["helmreleases"]
+    verbs: ["*"]
+  # Custom resources (SQLInstance, EKSPodIdentity)
+  - apiGroups: ["cloud.ogenki.io"]
+    resources: ["sqlinstances", "ekspodidentities"]
+    verbs: ["*"]
+  # AWS S3 Bucket
+  - apiGroups: ["s3.aws.upbound.io"]
+    resources: ["buckets"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: crossplane:app-composition-resources
+  namespace: apps
+subjects:
+  - kind: ServiceAccount
+    name: crossplane
+    namespace: crossplane-system
+roleRef:
+  kind: Role
+  name: crossplane:app-composition-resources
+  apiGroup: rbac.authorization.k8s.io
