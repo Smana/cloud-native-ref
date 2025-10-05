@@ -186,6 +186,73 @@ Before committing Crossplane composition changes:
 - Pod security violations
 - Network policy gaps
 
+### Crossplane Known Limitations and Considerations
+
+#### Native Kubernetes Resource Readiness
+
+**Current Limitation**: When using function-kcl to create native Kubernetes resources (Deployment, Service, HTTPRoute, etc.) directly in compositions, readiness checking has important limitations:
+
+**How it works**:
+- Native Kubernetes resources are marked with `krm.kcl.dev/ready = "True"` annotation
+- This is a **static marker** - it tells Crossplane to consider the resource ready immediately
+- The function-auto-ready pipeline step uses this annotation to mark composed resources as ready
+
+**What this means**:
+- ❌ **No actual health checking**: Crossplane does NOT verify if Deployments have available replicas
+- ❌ **No status validation**: Does not check if HTTPRoutes are accepted by Gateways
+- ❌ **Immediate ready state**: Resources marked ready even if they fail to start
+- ✅ **Fast reconciliation**: Resources don't block composition from becoming ready
+
+**Example**:
+```yaml
+# App shows as Ready even if:
+# - Deployment pods are CrashLoopBackOff
+# - HTTPRoute is rejected by Gateway (NotAllowedByListeners)
+# - Service has no endpoints
+status:
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: ReconcileSuccess
+```
+
+**Why this approach**:
+- Simpler composition code (no provider-kubernetes wrapper required)
+- Faster reconciliation (no waiting for actual readiness)
+- Acceptable for reference implementation where monitoring/alerting handles failures
+
+**Alternative approach** (for production):
+Use `provider-kubernetes` with `readiness.policy: DeriveFromObject` to actually check resource status:
+```yaml
+apiVersion: kubernetes.crossplane.io/v1alpha2
+kind: Object
+spec:
+  forProvider:
+    manifest:
+      apiVersion: apps/v1
+      kind: Deployment
+      # ... spec
+  readiness:
+    policy: DeriveFromObject  # Actually checks Deployment.status.conditions[type=Available]
+```
+
+**Recommendation**: Monitor actual resource health using:
+- Kubernetes events (`kubectl get events`)
+- Application metrics and health endpoints
+- Crossplane trace command: `crossplane beta trace app <name> -n <namespace>`
+- External monitoring (VictoriaMetrics alerts, Grafana dashboards)
+
+**Affected resources** in App composition:
+- Deployment (doesn't check `.status.conditions[type=Available]`)
+- Service (doesn't check endpoints)
+- HTTPRoute (doesn't check `.status.parents[].conditions[type=Accepted]`)
+- HorizontalPodAutoscaler, PodDisruptionBudget, Gateway, CiliumNetworkPolicy, HelmRelease
+
+**NOT affected** (these use proper status conditions):
+- SQLInstance (Crossplane XR with actual status)
+- EKSPodIdentity (Crossplane XR with actual status)
+- S3 Bucket (Managed Resource with proper conditions)
+
 ## Security Considerations
 
 ### OpenBao PKI Structure

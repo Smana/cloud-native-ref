@@ -115,6 +115,10 @@ _setResourceRequirements = lambda resources: any -> any {
 
 _items = []
 # Core Kubernetes resources
+# NOTE: Native Kubernetes resources use krm.kcl.dev/ready = "True" annotation
+# This is a STATIC marker - Crossplane does NOT verify actual resource health
+# (e.g., Deployment availability, HTTPRoute acceptance, Service endpoints)
+# See CLAUDE.md "Crossplane Known Limitations" for details and alternatives
 _kubernetesResources = [
     # Deployment
     {
@@ -125,7 +129,7 @@ _kubernetesResources = [
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-deployment"
-                "krm.kcl.dev/ready" = "True"
+                "krm.kcl.dev/ready" = "True"  # Static ready marker - see NOTE above
             }
             labels = _appLabels
         }
