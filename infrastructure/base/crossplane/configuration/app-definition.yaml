@@ -202,7 +202,7 @@ spec:
                         path:
                           type: string
                           description: HTTP path for liveness probe
-                          default: "/health"
+                          default: "/healthz"
                         initialDelaySeconds:
                           type: integer
                           description: Initial delay before liveness probe
@@ -218,7 +218,7 @@ spec:
                         path:
                           type: string
                           description: HTTP path for readiness probe
-                          default: "/ready"
+                          default: "/readyz"
                         initialDelaySeconds:
                           type: integer
                           description: Initial delay before readiness probe

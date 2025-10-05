@@ -189,7 +189,7 @@ _kubernetesResources = [
                         if oxr.spec.route?.port:
                             livenessProbe = {
                                 httpGet = {
-                                    path = oxr.spec.healthProbes?.liveness?.path or "/health"
+                                    path = oxr.spec.healthProbes?.liveness?.path or "/healthz"
                                     port = "http"
                                 }
                                 initialDelaySeconds = oxr.spec.healthProbes?.liveness?.initialDelaySeconds or _DEFAULTS.health_check_initial_delay
@@ -197,7 +197,7 @@ _kubernetesResources = [
                             }
                             readinessProbe = {
                                 httpGet = {
-                                    path = oxr.spec.healthProbes?.readiness?.path or "/ready"
+                                    path = oxr.spec.healthProbes?.readiness?.path or "/readyz"
                                     port = "http"
                                 }
                                 initialDelaySeconds = oxr.spec.healthProbes?.readiness?.initialDelaySeconds or _DEFAULTS.readiness_initial_delay
