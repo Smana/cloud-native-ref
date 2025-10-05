@@ -125,6 +125,7 @@ _kubernetesResources = [
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-deployment"
+                "krm.kcl.dev/ready" = "True"
             }
             labels = _appLabels
         }
@@ -217,6 +218,7 @@ _kubernetesResources = [
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-service"
+                "krm.kcl.dev/ready" = "True"
             }
             labels = _appLabels
         }
@@ -245,6 +247,7 @@ if oxr.spec.autoscaling?.enabled:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-hpa"
+                "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
@@ -278,6 +281,7 @@ if oxr.spec.pdb?.enabled:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-pdb"
+                "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
@@ -302,6 +306,7 @@ if oxr.spec.gateway?.enabled:
             namespace = _gatewayNamespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-gateway"
+                "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
@@ -343,6 +348,7 @@ if oxr.spec.route:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-httproute"
+                "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
@@ -385,6 +391,7 @@ if oxr.spec.networkPolicies?.enabled:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-cilium-netpol"
+                "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
@@ -408,6 +415,7 @@ if oxr.spec.kvStore?.enabled:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-kvstore"
+                "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
