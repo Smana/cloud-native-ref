@@ -114,11 +114,28 @@ _setResourceRequirements = lambda resources: any -> any {
 }
 
 _items = []
+
+# Get observed resources from cluster to check actual health
+_observedDeployment = ocds.get(_name + "-deployment", {})?.Resource
+_observedService = ocds.get(_name + "-service", {})?.Resource
+_observedHTTPRoute = ocds.get(_name + "-httproute", {})?.Resource
+
+# Check if Deployment is actually Available (not just created)
+_deploymentReady = any_true([
+    c.get("type") == "Available" and c.get("status") == "True"
+    for c in _observedDeployment?.status?.conditions or []
+])
+
+# Check if Service has ClusterIP assigned
+_serviceReady = _observedService?.spec?.clusterIP != None
+
+# Check if HTTPRoute is Accepted by Gateway
+_httpRouteReady = any_true([
+    c.get("type") == "Accepted" and c.get("status") == "True"
+    for c in _observedHTTPRoute?.status?.parents?[0]?.conditions or []
+]) if _observedHTTPRoute?.status?.parents else False
+
 # Core Kubernetes resources
-# NOTE: Native Kubernetes resources use krm.kcl.dev/ready = "True" annotation
-# This is a STATIC marker - Crossplane does NOT verify actual resource health
-# (e.g., Deployment availability, HTTPRoute acceptance, Service endpoints)
-# See CLAUDE.md "Crossplane Known Limitations" for details and alternatives
 _kubernetesResources = [
     # Deployment
     {
@@ -129,7 +146,8 @@ _kubernetesResources = [
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-deployment"
-                "krm.kcl.dev/ready" = "True"  # Static ready marker - see NOTE above
+                if _deploymentReady:
+                    "krm.kcl.dev/ready" = "True"
             }
             labels = _appLabels
         }
@@ -222,7 +240,8 @@ _kubernetesResources = [
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-service"
-                "krm.kcl.dev/ready" = "True"
+                if _serviceReady:
+                    "krm.kcl.dev/ready" = "True"
             }
             labels = _appLabels
         }
@@ -352,7 +371,8 @@ if oxr.spec.route:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-httproute"
-                "krm.kcl.dev/ready" = "True"
+                if _httpRouteReady:
+                    "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {

@@ -190,36 +190,41 @@ Before committing Crossplane composition changes:
 
 #### Native Kubernetes Resource Readiness
 
-**Current Limitation**: When using function-kcl to create native Kubernetes resources (Deployment, Service, HTTPRoute, etc.) directly in compositions, readiness checking has important limitations:
+**Current Implementation**: When using function-kcl to create native Kubernetes resources (Deployment, Service, HTTPRoute, etc.) directly in compositions, readiness is determined by checking actual observed state from the cluster.
 
 **How it works**:
-- Native Kubernetes resources are marked with `krm.kcl.dev/ready = "True"` annotation
-- This is a **static marker** - it tells Crossplane to consider the resource ready immediately
-- The function-auto-ready pipeline step uses this annotation to mark composed resources as ready
+- Crossplane provides observed resources through `option("params").ocds`
+- KCL code checks actual status conditions from these observed resources
+- Only marks resources ready when specific health conditions are met:
+  - **Deployment**: Checks for `status.conditions[type=Available, status=True]`
+  - **Service**: Checks if `spec.clusterIP` is assigned
+  - **HTTPRoute**: Checks for `status.parents[].conditions[type=Accepted, status=True]`
+- The `krm.kcl.dev/ready = "True"` annotation is **conditionally set** based on these checks
 
 **What this means**:
-- ❌ **No actual health checking**: Crossplane does NOT verify if Deployments have available replicas
-- ❌ **No status validation**: Does not check if HTTPRoutes are accepted by Gateways
-- ❌ **Immediate ready state**: Resources marked ready even if they fail to start
-- ✅ **Fast reconciliation**: Resources don't block composition from becoming ready
+- ✅ **Actual health checking**: Verifies Deployments have available replicas
+- ✅ **Status validation**: Confirms HTTPRoutes are accepted by Gateways
+- ✅ **Conditional readiness**: Resources only marked ready when actually healthy
+- ✅ **No provider-kubernetes needed**: Direct resource creation with real health checks
 
 **Example**:
-```yaml
-# App shows as Ready even if:
-# - Deployment pods are CrashLoopBackOff
-# - HTTPRoute is rejected by Gateway (NotAllowedByListeners)
-# - Service has no endpoints
-status:
-  conditions:
-  - type: Ready
-    status: "True"
-    reason: ReconcileSuccess
+```kcl
+# Check observed Deployment status
+_observedDeployment = ocds.get(_name + "-deployment", {})?.Resource
+_deploymentReady = any_true([
+    c.get("type") == "Available" and c.get("status") == "True"
+    for c in _observedDeployment?.status?.conditions or []
+])
+
+# Only add ready annotation when actually available
+if _deploymentReady:
+    "krm.kcl.dev/ready" = "True"
 ```
 
 **Why this approach**:
-- Simpler composition code (no provider-kubernetes wrapper required)
-- Faster reconciliation (no waiting for actual readiness)
-- Acceptable for reference implementation where monitoring/alerting handles failures
+- Accurate health checking without provider-kubernetes complexity
+- Resources wait for actual readiness before marking composition ready
+- Based on Upbound best practices (project-template-k8s-webapp)
 
 **Alternative approach** (for production):
 Use `provider-kubernetes` with `readiness.policy: DeriveFromObject` to actually check resource status:
@@ -242,10 +247,12 @@ spec:
 - Crossplane trace command: `crossplane beta trace app <name> -n <namespace>`
 - External monitoring (VictoriaMetrics alerts, Grafana dashboards)
 
-**Affected resources** in App composition:
-- Deployment (doesn't check `.status.conditions[type=Available]`)
-- Service (doesn't check endpoints)
-- HTTPRoute (doesn't check `.status.parents[].conditions[type=Accepted]`)
+**Resources with health checks** in App composition:
+- Deployment ✅ (checks `.status.conditions[type=Available]`)
+- Service ✅ (checks `spec.clusterIP` assignment)
+- HTTPRoute ✅ (checks `.status.parents[].conditions[type=Accepted]`)
+
+**Resources with static readiness** (always marked ready when created):
 - HorizontalPodAutoscaler, PodDisruptionBudget, Gateway, CiliumNetworkPolicy, HelmRelease
 
 **NOT affected** (these use proper status conditions):
