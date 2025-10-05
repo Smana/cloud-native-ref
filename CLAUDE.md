@@ -121,6 +121,71 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 - **EPI (EKS Pod Identity)**: IAM roles for service accounts in `security/base/epis/`
 - **Resource naming**: All Crossplane-managed resources prefixed with `xplane-`
 
+### Crossplane Composition Validation
+
+**IMPORTANT**: Every change to Crossplane compositions MUST be validated before committing using the following process:
+
+#### 1. Render the Composition
+
+```bash
+cd infrastructure/base/crossplane/configuration
+crossplane render examples/app-basic.yaml app-composition.yaml functions.yaml \
+  --extra-resources examples/environmentconfig.yaml > /tmp/rendered.yaml
+```
+
+For complete examples:
+```bash
+crossplane render examples/app-complete.yaml app-composition.yaml functions.yaml \
+  --extra-resources examples/environmentconfig.yaml > /tmp/rendered.yaml
+```
+
+#### 2. Validate with Polaris (Security & Best Practices)
+
+```bash
+polaris audit --audit-path /tmp/rendered.yaml --format=pretty
+```
+
+**Target score**: 85+
+**Action**: Address any critical security issues before committing
+
+#### 3. Validate with kube-linter (Kubernetes Best Practices)
+
+```bash
+kube-linter lint /tmp/rendered.yaml
+```
+
+**Target**: No lint errors
+**Action**: Fix all errors before committing
+
+#### 4. Validate with Datree (Policy Enforcement)
+
+```bash
+datree test /tmp/rendered.yaml --ignore-missing-schemas
+```
+
+**Target**: No policy violations (warnings acceptable if documented)
+**Action**: Review and fix policy failures, document accepted warnings
+
+#### Validation Checklist
+
+Before committing Crossplane composition changes:
+
+- [ ] `crossplane render` executes successfully without errors
+- [ ] Polaris score is 85+ with no critical security issues
+- [ ] kube-linter passes with no errors
+- [ ] Datree policy check passes (or warnings are documented)
+- [ ] KCL syntax is valid (if using KCL compositions)
+- [ ] All composition functions are properly configured
+- [ ] Environment configs are included in render
+
+**Why this matters**: These validations catch:
+- Security misconfigurations
+- Resource limit issues
+- Missing health checks
+- RBAC problems
+- Pod security violations
+- Network policy gaps
+
 ## Security Considerations
 
 ### OpenBao PKI Structure
