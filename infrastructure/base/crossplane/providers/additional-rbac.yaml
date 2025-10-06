@@ -26,6 +26,20 @@ rules:
     resources: ["externalsecrets"]
     verbs: ["*"]
 ---
+# ClusterRole for aggregating permissions to Crossplane in order to manage Atlas migrations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: crossplane-system
+  name: atlas:aggregate-to-crossplane
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  # Manage Atlas schema migrations
+  - apiGroups: ["db.atlasgo.io"]
+    resources: ["atlasmigrations", "atlasmigrations/status"]
+    verbs: ["*"]
+---
 # Thats probably a workaround because it doesn't seem to work without it
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
