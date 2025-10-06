@@ -1,7 +1,7 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: App
 metadata:
-  name: image-gallery
+  name: xplane-image-gallery
   namespace: apps
 spec:
   image:
@@ -78,7 +78,7 @@ spec:
                 protocol: TCP
       - toEndpoints:
           - matchLabels:
-              "cnpg.io/cluster": "image-gallery-sqlinstance-cnpg-cluster"
+              "cnpg.io/cluster": "xplane-image-gallery-sqlinstance-cnpg-cluster"
         toPorts:
           - ports:
               - port: "5432"

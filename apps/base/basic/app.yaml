@@ -1,7 +1,7 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: App
 metadata:
-  name: podinfo
+  name: xplane-podinfo
   namespace: apps
 spec:
   # Minimum required: container image
