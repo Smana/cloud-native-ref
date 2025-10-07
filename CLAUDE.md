@@ -321,6 +321,97 @@ Use specialized Flux analysis from `.claude/config` for troubleshooting GitOps i
 - **Network**: Confirm Tailscale subnet router connectivity
 - **Resource Conflicts**: Review Crossplane composition functions and resource references
 
+## Database Migrations with Atlas Operator
+
+### Overview
+
+The SQLInstance composition supports declarative database schema migrations using Atlas Operator integrated with Flux GitOps workflow.
+
+### How It Works
+
+When `atlasSchema` is defined in SQLInstance spec, the composition automatically creates:
+
+1. **GitRepository** - Flux pulls migration files from Git repository
+2. **Kustomization** - Flux processes `kustomization.yaml` with `configMapGenerator`
+3. **ConfigMap** - Automatically generated with migration SQL files
+4. **AtlasMigration** - References ConfigMap to apply migrations
+
+### Migration Repository Requirements
+
+The migration repository must contain a `kustomization.yaml` with `configMapGenerator`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+configMapGenerator:
+  - name: atlas-db-migrations
+    files:
+      - ./001_initial_schema.sql
+      - ./002_add_users_table.sql
+      - atlas.sum
+    options:
+      disableNameSuffixHash: true
+```
+
+### SQLInstance Configuration Example
+
+```yaml
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: SQLInstance
+metadata:
+  name: xplane-myapp-sqlinstance
+  namespace: apps
+spec:
+  size: small
+  storageSize: 20Gi
+  instances: 2
+  databases:
+    - name: myapp
+      owner: myapp-user
+  roles:
+    - name: myapp-user
+      superuser: false
+      inRoles: [pg_monitor]
+  atlasSchema:
+    url: "https://github.com/your-org/your-app.git"
+    ref: "v1.1.0"  # Tag (v*) or branch (main, develop, etc.)
+    path: "internal/platform/database/migrations"
+  backup:
+    schedule: "0 2 * * *"
+    bucketName: myapp-db-backups
+```
+
+### Git Reference Handling
+
+- **Tags**: References starting with `v` (e.g., `v1.0.0`, `v2.1.3`) are treated as Git tags
+- **Branches**: Other references (e.g., `main`, `develop`, `feature-branch`) are treated as branches
+
+### Troubleshooting
+
+**ConfigMap not generated:**
+```bash
+# Check Kustomization status
+kubectl get kustomization <name>-atlas-migrations-configmap -n <namespace>
+
+# Check GitRepository sync
+kubectl get gitrepository <name>-atlas-migrations-repo -n <namespace>
+```
+
+**Migrations not applied:**
+```bash
+# Check AtlasMigration status
+kubectl get atlasmigration <name>-atlas-migration -n <namespace> -o yaml
+
+# Check migration logs
+kubectl logs -n infrastructure deployment/atlas-operator-controller-manager
+```
+
+**Important Notes:**
+- Atlas Operator v0.7.11 does NOT support `dir.remote.url/ref/path` for Git repos
+- `dir.remote` only works with Atlas Cloud (requires Atlas Cloud account)
+- The GitOps pattern via ConfigMap is the recommended approach for Git-based migrations
+
 ## Validation Commands
 
 ### Configuration Validation
