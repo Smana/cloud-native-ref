@@ -260,9 +260,61 @@ if oxr.spec.createSuperuser:
         }
     ]
 
-# Create AtlasMigration resource if atlasSchema is defined
+# Create Atlas migration resources if atlasSchema is defined
+# This creates: GitRepository -> Kustomization (with configMapGenerator) -> AtlasMigration
 if oxr.spec.atlasSchema:
     _items += [
+        # GitRepository pointing to the migrations repository
+        {
+            apiVersion = "source.toolkit.fluxcd.io/v1"
+            kind = "GitRepository"
+            metadata = {
+                name = oxr.metadata.name + "-atlas-migrations-repo"
+                namespace = oxr.metadata.namespace
+            }
+            spec = {
+                interval = "10m"
+                url = oxr.spec.atlasSchema.url
+                ref = {
+                    # Support both tag and branch references
+                    # If ref starts with 'v' assume it's a tag, otherwise branch
+                    if oxr.spec.atlasSchema.ref.startswith("v"):
+                        tag = oxr.spec.atlasSchema.ref
+                    else:
+                        branch = oxr.spec.atlasSchema.ref
+                }
+            }
+        }
+        # Kustomization that generates ConfigMap from migration files
+        # The migrations repository must contain a kustomization.yaml with configMapGenerator
+        {
+            apiVersion = "kustomize.toolkit.fluxcd.io/v1"
+            kind = "Kustomization"
+            metadata = {
+                name = oxr.metadata.name + "-atlas-migrations-configmap"
+                namespace = oxr.metadata.namespace
+            }
+            spec = {
+                interval = "10m"
+                sourceRef = {
+                    kind = "GitRepository"
+                    name = oxr.metadata.name + "-atlas-migrations-repo"
+                }
+                path = oxr.spec.atlasSchema.path
+                prune = True
+                targetNamespace = oxr.metadata.namespace
+                # Use postBuild to rename the generated ConfigMap to our expected name
+                postBuild = {
+                    substitute = {
+                        # This allows the repo's kustomization.yaml to use a generic name
+                        # which gets replaced with the SQLInstance-specific name
+                        CONFIGMAP_NAME = oxr.metadata.name + "-atlas-migrations"
+                    }
+                    substituteFrom = []
+                }
+            }
+        }
+        # AtlasMigration resource that applies migrations
         {
             apiVersion = "db.atlasgo.io/v1alpha1"
             kind = "AtlasMigration"
@@ -278,14 +330,12 @@ if oxr.spec.atlasSchema:
                     }
                 }
                 dir = {
-                    remote = {
-                        name = oxr.metadata.name + "-migrations"
-                        url = oxr.spec.atlasSchema.url
-                        ref = oxr.spec.atlasSchema.ref
-                        path = oxr.spec.atlasSchema.path
+                    configMapRef = {
+                        # Reference the ConfigMap name from the repo's kustomization.yaml
+                        # For image-gallery, this is "atlas-db-migrations"
+                        name = "atlas-db-migrations"
                     }
                 }
-                env = "k8s"
             }
         }
     ]
