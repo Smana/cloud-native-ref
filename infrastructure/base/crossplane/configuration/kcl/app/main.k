@@ -160,10 +160,7 @@ _observedKVStore = ocds.get(_name + "-kvstore", {})?.Resource
 
 # Check if Deployment is actually Available (not just created)
 # Looks for Deployment.status.conditions[type=Available, status=True]
-_deploymentReady = any_true([
-    c.get("type") == "Available" and c.get("status") == "True"
-    for c in _observedDeployment?.status?.conditions or []
-])
+_deploymentReady = any_true([c.get("type") == "Available" and c.get("status") == "True" for c in _observedDeployment?.status?.conditions or []])
 
 # Check if Service has ClusterIP assigned
 # Services are ready when they have a ClusterIP (can route traffic)
@@ -172,10 +169,7 @@ _serviceReady = _observedService?.spec?.clusterIP != None
 # Check if HTTPRoute is Accepted by Gateway
 # Looks for HTTPRoute.status.parents[].conditions[type=Accepted, status=True]
 _httpRouteConditions = _observedHTTPRoute?.status?.parents?[0]?.conditions or []
-_httpRouteReady = any_true([
-    c.get("type") == "Accepted" and c.get("status") == "True"
-    for c in _httpRouteConditions
-])
+_httpRouteReady = any_true([c.get("type") == "Accepted" and c.get("status") == "True" for c in _httpRouteConditions])
 
 # Check if HorizontalPodAutoscaler is functioning
 # HPAs are ready when they have started reporting current replicas
@@ -187,10 +181,7 @@ _pdbReady = _observedPDB?.status?.disruptionsAllowed != None
 
 # Check if Gateway is Programmed or Accepted
 # Looks for Gateway.status.conditions[type=Programmed|Accepted, status=True]
-_gatewayReady = any_true([
-    (c.get("type") == "Programmed" or c.get("type") == "Accepted") and c.get("status") == "True"
-    for c in _observedGateway?.status?.conditions or []
-])
+_gatewayReady = any_true([(c.get("type") == "Programmed" or c.get("type") == "Accepted") and c.get("status") == "True" for c in _observedGateway?.status?.conditions or []])
 
 # Check if CiliumNetworkPolicy exists in the cluster
 # Network policies don't have status conditions, so we check if the resource exists
@@ -198,10 +189,7 @@ _networkPolicyReady = _observedNetworkPolicy != None and _observedNetworkPolicy.
 
 # Check if HelmRelease is Ready
 # Looks for HelmRelease.status.conditions[type=Ready, status=True]
-_helmReleaseReady = any_true([
-    c.get("type") == "Ready" and c.get("status") == "True"
-    for c in _observedKVStore?.status?.conditions or []
-])
+_helmReleaseReady = any_true([c.get("type") == "Ready" and c.get("status") == "True" for c in _observedKVStore?.status?.conditions or []])
 
 # Core Kubernetes resources
 _kubernetesResources = [
@@ -451,7 +439,6 @@ if oxr.spec.route:
         # Use platform private gateway (default)
         _routeGatewayName = "platform-private"
         _routeGatewayNamespace = "infrastructure"
-
     _items += [{
         apiVersion = "gateway.networking.k8s.io/v1"
         kind = "HTTPRoute"
