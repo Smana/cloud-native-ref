@@ -153,32 +153,35 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 
 #### Pre-Commit Checklist for KCL Compositions
 
-Before committing KCL composition changes:
+**Quick validation script** (recommended):
+```bash
+# From repository root - formats and validates all KCL modules
+./scripts/validate-kcl-compositions.sh
+```
 
-1. **Format Code**:
+**Manual validation** (if you prefer step-by-step):
+
+1. **Format Code** (REQUIRED - CI will fail if skipped):
    ```bash
-   cd infrastructure/base/crossplane/configuration/kcl/app  # or cloudnativepg
+   cd infrastructure/base/crossplane/configuration/kcl/app  # or cloudnativepg, eks-pod-identity
    kcl fmt .
+   git diff --quiet . || git diff .  # Should show no diff
    ```
 
-2. **Verify Syntax**:
-   ```bash
-   kcl run . -D params='{"oxr": ..., "ocds": {}, "ctx": ...}'
-   ```
-
-3. **Test Rendering** (requires Docker):
+2. **Test Rendering** (optional, requires Docker):
    ```bash
    cd infrastructure/base/crossplane/configuration
    crossplane render examples/app-basic.yaml app-composition.yaml functions.yaml \
-     --extra-resources examples/environmentconfig.yaml
+     --extra-resources examples/environmentconfig.yaml > /tmp/rendered.yaml
    ```
 
-4. **Check Git Status**:
+3. **Run Validation Tools** (optional, catches issues early):
    ```bash
-   git diff --quiet . || git diff .  # Should show no diff after kcl fmt
+   polaris audit --audit-path /tmp/rendered.yaml --format=pretty
+   kube-linter lint /tmp/rendered.yaml
    ```
 
-**Always run these checks in order before committing KCL code to avoid CI failures.**
+**CRITICAL**: At minimum, always run `kcl fmt` before committing. The CI enforces this and will fail otherwise.
 
 ### Crossplane Composition Validation
 
