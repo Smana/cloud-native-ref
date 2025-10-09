@@ -260,9 +260,28 @@ if oxr.spec.createSuperuser:
         }
     ]
 
-# Create Atlas migration resources if atlasSchema is defined
-# This creates: GitRepository -> Kustomization (with configMapGenerator) -> AtlasMigration
+# Atlas Schema Migrations - GitOps Pattern
+#
+# When atlasSchema is defined, creates a complete migration pipeline:
+# 1. GitRepository - Flux pulls migration files from Git (url, ref, path)
+# 2. Kustomization - Generates ConfigMap from migrations using configMapGenerator
+# 3. AtlasMigration - Applies migrations using ConfigMap reference
+#
+# Requirements:
+# - Migration repo must contain kustomization.yaml with configMapGenerator
+# - ConfigMap name must be "atlas-db-migrations" (hardcoded in repo)
+# - Supports both tags (v*) and branches for ref field
+#
+# Example atlasSchema:
+#   url: "https://github.com/org/app.git"
+#   ref: "v1.0.0"  # Tag (v*) or branch (main, develop, etc.)
+#   path: "internal/platform/database/migrations"
 if oxr.spec.atlasSchema:
+    # Validate required atlasSchema fields
+    assert oxr.spec.atlasSchema.url, "atlasSchema.url is required when atlasSchema is enabled"
+    assert oxr.spec.atlasSchema.ref, "atlasSchema.ref is required when atlasSchema is enabled"
+    assert oxr.spec.atlasSchema.path, "atlasSchema.path is required when atlasSchema is enabled"
+
     _items += [
         # GitRepository pointing to the migrations repository
         {

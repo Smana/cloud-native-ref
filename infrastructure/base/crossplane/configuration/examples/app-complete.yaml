@@ -103,6 +103,7 @@ spec:
   route:
     port: 8080               # Container port to expose
     internetFacing: true     # Create public HTTPRoute
+    hostname: "image-gallery.demo.example.com"  # Public hostname
 
   # ============================================================================
   # Network Policies - Zero Trust Networking

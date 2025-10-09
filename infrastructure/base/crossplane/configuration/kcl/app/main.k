@@ -16,6 +16,9 @@ _podSelector = {
     matchLabels = _appLabels
 }
 
+# Metadata helper for native Kubernetes resources
+# Creates metadata with composition-resource-name annotation for Crossplane tracking
+# For AWS resources requiring xplane- prefix, see cloudnativepg composition's _awsMetadata helper
 _metadata = lambda suffix: str -> any {
     {
         name = _name + "-" + suffix
@@ -70,6 +73,16 @@ _buildAffinity = lambda onDemand: bool, antiAffinityPreset: str -> any {
         if _podAff:
             podAntiAffinity = _podAff
     } if _nodeAff or _podAff else None
+}
+
+# Build topology spread constraints for zone distribution
+_buildTopologySpreadConstraints = lambda enabled: bool -> any {
+    [{
+        maxSkew = 1
+        topologyKey = "topology.kubernetes.io/zone"
+        whenUnsatisfiable = "ScheduleAnyway"
+        labelSelector = _podSelector
+    }] if enabled else None
 }
 
 # Map KV store size to Helm chart resource preset
