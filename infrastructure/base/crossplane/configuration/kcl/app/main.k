@@ -316,9 +316,12 @@ _kubernetesResources = [
 ]
 
 _items += _kubernetesResources
+
 # HorizontalPodAutoscaler
+# NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
+# See: https://github.com/crossplane-contrib/function-kcl/issues/285
 if oxr.spec.autoscaling?.enabled:
-    _items += [{
+    _hpaResource = [{
         apiVersion = "autoscaling/v2"
         kind = "HorizontalPodAutoscaler"
         metadata = {
@@ -350,10 +353,13 @@ if oxr.spec.autoscaling?.enabled:
             }]
         }
     }]
+    _items += _hpaResource
 
 # PodDisruptionBudget
+# NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
+# See: https://github.com/crossplane-contrib/function-kcl/issues/285
 if oxr.spec.pdb?.enabled:
-    _items += [{
+    _pdbResource = [{
         apiVersion = "policy/v1"
         kind = "PodDisruptionBudget"
         metadata = {
@@ -371,15 +377,18 @@ if oxr.spec.pdb?.enabled:
             unhealthyPodEvictionPolicy = oxr.spec.pdb.unhealthyPodEvictionPolicy or _DEFAULTS.pdb_eviction_policy
         }
     }]
+    _items += _pdbResource
 
 # Gateway for ingress (create new gateway if enabled)
 # When gateway.enabled=true, creates a dedicated Gateway resource
 # The HTTPRoute (created below) will reference this gateway instead of platform gateways
 # This allows for custom gateway configuration per application
+# NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
+# See: https://github.com/crossplane-contrib/function-kcl/issues/285
 if oxr.spec.gateway?.enabled:
     _gatewayName = oxr.spec.gateway.name or _name + "-gateway"
     _gatewayNamespace = oxr.spec.gateway.namespace or _namespace
-    _items += [{
+    _gatewayResource = [{
         apiVersion = "gateway.networking.k8s.io/v1"
         kind = "Gateway"
         metadata = {
@@ -419,8 +428,11 @@ if oxr.spec.gateway?.enabled:
                 }]
         }
     }]
+    _items += _gatewayResource
 
 # HTTPRoute for routing
+# NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
+# See: https://github.com/crossplane-contrib/function-kcl/issues/285
 if oxr.spec.route:
     # Determine which gateway to reference based on configuration
     # Priority: custom gateway > internet-facing > platform-private
@@ -439,7 +451,7 @@ if oxr.spec.route:
         # Use platform private gateway (default)
         _routeGatewayName = "platform-private"
         _routeGatewayNamespace = "infrastructure"
-    _items += [{
+    _httpRouteResource = [{
         apiVersion = "gateway.networking.k8s.io/v1"
         kind = "HTTPRoute"
         metadata = {
@@ -472,10 +484,13 @@ if oxr.spec.route:
             }]
         }
     }]
+    _items += _httpRouteResource
 
 # CiliumNetworkPolicy
+# NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
+# See: https://github.com/crossplane-contrib/function-kcl/issues/285
 if oxr.spec.networkPolicies?.enabled:
-    _items += [{
+    _networkPolicyResource = [{
         apiVersion = "cilium.io/v2"
         kind = "CiliumNetworkPolicy"
         metadata = {
@@ -495,13 +510,16 @@ if oxr.spec.networkPolicies?.enabled:
                 egress = oxr.spec.networkPolicies.egress
         }
     }]
+    _items += _networkPolicyResource
 
 # Infrastructure resources
 # Key-Value Store (Valkey/Redis)
+# NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
+# See: https://github.com/crossplane-contrib/function-kcl/issues/285
 if oxr.spec.kvStore?.enabled:
     _kvType = oxr.spec.kvStore.type or "valkey"
     _kvPreset = _kvSizeToPreset(oxr.spec.kvStore.size or "small")
-    _items += [{
+    _kvStoreResource = [{
         apiVersion = "helm.toolkit.fluxcd.io/v2"
         kind = "HelmRelease"
         metadata = {
@@ -560,10 +578,13 @@ if oxr.spec.kvStore?.enabled:
             }
         }
     }]
+    _items += _kvStoreResource
 
 # SQL Instance
+# NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
+# See: https://github.com/crossplane-contrib/function-kcl/issues/285
 if oxr.spec.sqlInstance?.enabled:
-    _items += [{
+    _sqlInstanceResource = [{
         apiVersion = "cloud.ogenki.io/v1alpha1"
         kind = "SQLInstance"
         metadata = _metadata("sqlinstance")
@@ -596,60 +617,64 @@ if oxr.spec.sqlInstance?.enabled:
                 objectStoreRecovery = oxr.spec.sqlInstance.objectStoreRecovery
         }
     }]
+    _items += _sqlInstanceResource
 
 # S3 Bucket
+# NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
+# See: https://github.com/crossplane-contrib/function-kcl/issues/285
 if oxr.spec.s3Bucket?.enabled:
     _bucketName = _name + "-s3-bucket"
     _bucketArn = "arn:aws:s3:::" + _bucketName
 
-    _items += [{
-        apiVersion = "s3.aws.upbound.io/v1beta1"
-        kind = "Bucket"
-        metadata = _metadata("s3-bucket")
-        spec = {
-            providerConfigRef = oxr.spec.s3Bucket.providerConfigRef or {
-                name = "default"
-                namespace = "crossplane-system"
-            }
-            forProvider = {
-                region = oxr.spec.s3Bucket.region or "us-east-1"
-                if oxr.spec.s3Bucket.versioning:
-                    versioning = [{
-                        enabled = True
-                    }]
-                if oxr.spec.s3Bucket.retentionDays:
-                    lifecycleConfiguration = [{
-                        rule = [{
-                            id = "retention"
-                            status = "Enabled"
-                            expiration = [{
-                                days = oxr.spec.s3Bucket.retentionDays
+    _s3BucketResources = [
+        {
+            apiVersion = "s3.aws.upbound.io/v1beta1"
+            kind = "Bucket"
+            metadata = _metadata("s3-bucket")
+            spec = {
+                providerConfigRef = oxr.spec.s3Bucket.providerConfigRef or {
+                    name = "default"
+                    namespace = "crossplane-system"
+                }
+                forProvider = {
+                    region = oxr.spec.s3Bucket.region or "us-east-1"
+                    if oxr.spec.s3Bucket.versioning:
+                        versioning = [{
+                            enabled = True
+                        }]
+                    if oxr.spec.s3Bucket.retentionDays:
+                        lifecycleConfiguration = [{
+                            rule = [{
+                                id = "retention"
+                                status = "Enabled"
+                                expiration = [{
+                                    days = oxr.spec.s3Bucket.retentionDays
+                                }]
                             }]
                         }]
-                    }]
+                }
             }
         }
-    }]
-    # EKS Pod Identity for S3 access
-    _items += [{
-        apiVersion = "cloud.ogenki.io/v1alpha1"
-        kind = "EKSPodIdentity"
-        metadata = _metadata("s3-pod-identity")
-        spec = {
-            serviceAccount = {
-                name = _name
-                namespace = _namespace
-            }
-            clusters = [{
-                name = envConfig.clusterName
-                region = envConfig.region
-            }]
-            bucketName = _bucketName
-            bucketArn = _bucketArn
-            if oxr.spec.s3Bucket.permissions == "custom" and oxr.spec.s3Bucket.customPolicy:
-                policyDocument = oxr.spec.s3Bucket.customPolicy
-            elif oxr.spec.s3Bucket.permissions == "readwrite":
-                policyDocument = """{
+        # EKS Pod Identity for S3 access
+        {
+            apiVersion = "cloud.ogenki.io/v1alpha1"
+            kind = "EKSPodIdentity"
+            metadata = _metadata("s3-pod-identity")
+            spec = {
+                serviceAccount = {
+                    name = _name
+                    namespace = _namespace
+                }
+                clusters = [{
+                    name = envConfig.clusterName
+                    region = envConfig.region
+                }]
+                bucketName = _bucketName
+                bucketArn = _bucketArn
+                if oxr.spec.s3Bucket.permissions == "custom" and oxr.spec.s3Bucket.customPolicy:
+                    policyDocument = oxr.spec.s3Bucket.customPolicy
+                elif oxr.spec.s3Bucket.permissions == "readwrite":
+                    policyDocument = """{
     "Version": "2012-10-17",
     "Statement": [
         {
@@ -670,8 +695,8 @@ if oxr.spec.s3Bucket?.enabled:
         }
     ]
 }"""
-            elif oxr.spec.s3Bucket.permissions == "readonly":
-                policyDocument = """{
+                elif oxr.spec.s3Bucket.permissions == "readonly":
+                    policyDocument = """{
     "Version": "2012-10-17",
     "Statement": [
         {
@@ -690,7 +715,9 @@ if oxr.spec.s3Bucket?.enabled:
         }
     ]
 }"""
+            }
         }
-    }]
+    ]
+    _items += _s3BucketResources
 
 items = _items
