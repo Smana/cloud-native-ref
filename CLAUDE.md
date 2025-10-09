@@ -153,35 +153,60 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 
 #### Pre-Commit Checklist for KCL Compositions
 
-**Quick validation script** (recommended):
+**Comprehensive validation script** (REQUIRED before committing):
 ```bash
-# From repository root - formats and validates all KCL modules
+# From repository root - validates ALL compositions
 ./scripts/validate-kcl-compositions.sh
 ```
 
-**Manual validation** (if you prefer step-by-step):
+This script performs three validation stages for each composition:
 
-1. **Format Code** (REQUIRED - CI will fail if skipped):
-   ```bash
-   cd infrastructure/base/crossplane/configuration/kcl/app  # or cloudnativepg, eks-pod-identity
-   kcl fmt .
-   git diff --quiet . || git diff .  # Should show no diff
-   ```
+1. **KCL Formatting (`kcl fmt`)** - REQUIRED by CI
+   - Automatically formats all KCL code
+   - Detects formatting violations
+   - Shows what needs to be fixed
 
-2. **Test Rendering** (optional, requires Docker):
-   ```bash
-   cd infrastructure/base/crossplane/configuration
-   crossplane render examples/app-basic.yaml app-composition.yaml functions.yaml \
-     --extra-resources examples/environmentconfig.yaml > /tmp/rendered.yaml
-   ```
+2. **KCL Syntax Validation (`kcl run`)** - Catches logic errors early
+   - Tests KCL code with settings-example.yaml
+   - Validates function logic and conditionals
+   - Shows detailed error messages
 
-3. **Run Validation Tools** (optional, catches issues early):
-   ```bash
-   polaris audit --audit-path /tmp/rendered.yaml --format=pretty
-   kube-linter lint /tmp/rendered.yaml
-   ```
+3. **Crossplane Rendering (`crossplane render`)** - End-to-end validation
+   - Tests all example files (basic + complete)
+   - Validates full composition pipeline
+   - Requires Docker (gracefully skips if unavailable)
 
-**CRITICAL**: At minimum, always run `kcl fmt` before committing. The CI enforces this and will fail otherwise.
+**Tested Compositions**:
+- `app`: app-basic.yaml, app-complete.yaml
+- `cloudnativepg` (SQLInstance): sqlinstance-basic.yaml, sqlinstance-complete.yaml
+- `eks-pod-identity`: epi.yaml
+
+**Example Output**:
+```
+╔════════════════════════════════════════════════════════════════╗
+║  KCL Crossplane Composition Validation                        ║
+╚════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Validating: app
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 [1/3] Checking KCL formatting...
+   ✅ Formatting is correct
+
+🧪 [2/3] Validating KCL syntax and logic...
+   ✅ KCL syntax valid
+
+🎨 [3/3] Testing crossplane render...
+   Testing: app-basic.yaml
+   ✅ app-basic.yaml renders successfully
+   Testing: app-complete.yaml
+   ✅ app-complete.yaml renders successfully
+
+✅ All checks passed for app
+```
+
+**CRITICAL**: Always run `./scripts/validate-kcl-compositions.sh` before committing KCL changes. The CI enforces formatting and will fail otherwise.
 
 ### Crossplane Composition Validation
 
