@@ -121,6 +121,65 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 - **EPI (EKS Pod Identity)**: IAM roles for service accounts in `security/base/epis/`
 - **Resource naming**: All Crossplane-managed resources prefixed with `xplane-`
 
+### KCL Formatting Rules
+
+**CRITICAL**: Always run `kcl fmt` before committing KCL code. The CI enforces strict formatting.
+
+#### Formatting Standards
+
+1. **List Comprehensions**: Must be single-line (not multi-line)
+   ```kcl
+   # ✅ CORRECT (single line)
+   _ready = any_true([c.get("type") == "Available" and c.get("status") == "True" for c in conditions or []])
+
+   # ❌ WRONG (multi-line) - will fail CI
+   _ready = any_true([
+       c.get("type") == "Available" and c.get("status") == "True"
+       for c in conditions or []
+   ])
+   ```
+
+2. **No Trailing Blank Lines**: Remove extra blank lines between logical sections
+
+3. **Pre-Commit Formatting Check**:
+   ```bash
+   # Format all KCL files in a module
+   cd infrastructure/base/crossplane/configuration/kcl/<module>
+   kcl fmt .
+
+   # Verify no changes were made
+   git diff --quiet . || echo "Files were reformatted - review changes"
+   ```
+
+#### Pre-Commit Checklist for KCL Compositions
+
+Before committing KCL composition changes:
+
+1. **Format Code**:
+   ```bash
+   cd infrastructure/base/crossplane/configuration/kcl/app  # or cloudnativepg
+   kcl fmt .
+   ```
+
+2. **Verify Syntax**:
+   ```bash
+   kcl run . -D params='{"oxr": ..., "ocds": {}, "ctx": ...}'
+   ```
+
+3. **Test Rendering** (requires Docker):
+   ```bash
+   cd infrastructure/base/crossplane/configuration
+   crossplane render examples/app-basic.yaml app-composition.yaml functions.yaml \
+     --extra-resources examples/environmentconfig.yaml
+   ```
+
+4. **Check Git Status**:
+   ```bash
+   git diff --quiet . || git diff .  # Should show no diff after kcl fmt
+   ```
+
+**Always run these checks in order before committing KCL code to avoid CI failures.**
+
 ### Crossplane Composition Validation
 
 **IMPORTANT**: Every change to Crossplane compositions MUST be validated before committing using the following process:
@@ -211,10 +270,7 @@ Before committing Crossplane composition changes:
 ```kcl
 # Check observed Deployment status
 _observedDeployment = ocds.get(_name + "-deployment", {})?.Resource
-_deploymentReady = any_true([
-    c.get("type") == "Available" and c.get("status") == "True"
-    for c in _observedDeployment?.status?.conditions or []
-])
+_deploymentReady = any_true([c.get("type") == "Available" and c.get("status") == "True" for c in _observedDeployment?.status?.conditions or []])
 
 # Only add ready annotation when actually available
 if _deploymentReady:
