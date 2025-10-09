@@ -29,43 +29,17 @@ Creates a comprehensive PR with AI-generated description including:
 
 ---
 
-### 🔍 `/review-pr` - AI-Powered Code Review
-Performs comprehensive code review of an existing PR with:
-- ⭐ Overall quality assessment (1-5 stars)
-- ✅ Strengths and positive observations
-- 🔴 Critical issues that must be fixed
-- 🟡 Warnings and recommendations
-- 💡 Code improvement suggestions
-- 🧪 Testing coverage analysis
-- 🔒 Security checklist
-- 📚 Documentation review
+### 🚀 `/improve-pr` - Comprehensive PR Analysis & Improvements
+**NEW**: Combined security review + code improvements with auto-apply capability!
 
-**Usage**:
-```bash
-/review-pr 123          # Review PR #123
-/review-pr 456          # Review PR #456
-```
-
-**Review Categories**:
-- Security (auth, input validation, SQL injection, XSS)
-- Code quality (complexity, duplication, naming)
-- Performance (algorithms, queries, caching)
-- Testing (coverage, edge cases, error scenarios)
-- Documentation (comments, README, API docs)
-
-**Output Options**:
-- Post as PR comment
-- Request changes
-- Approve PR
-
----
-
-### 🚀 `/improve-pr` - AI Code Improvements
-Analyzes PR and provides specific, actionable improvements with optional auto-apply:
-- 🎨 Code quality improvements
-- ⚡ Performance optimizations
-- 📖 Readability enhancements
-- ✨ Best practices application
+Performs comprehensive analysis including:
+- 🔒 **Security Analysis**: SQL injection, XSS, secrets, auth issues
+- 🎨 **Code Quality**: Duplication, complexity, naming
+- ⚡ **Performance**: N+1 queries, caching, algorithms
+- 📖 **Readability**: Comments, organization, clarity
+- ✨ **Best Practices**: Idioms, patterns, conventions
+- 🧪 **Testing Coverage**: Missing tests, edge cases
+- 📚 **Documentation**: Missing docs, outdated info
 
 **Usage**:
 ```bash
@@ -74,19 +48,27 @@ Analyzes PR and provides specific, actionable improvements with optional auto-ap
 ```
 
 **What it provides**:
-1. File-by-file improvement suggestions
-2. Before/after code examples
-3. Priority-based recommendations (High/Medium/Low)
-4. Impact analysis (LOC reduction, complexity, etc.)
-5. Optional auto-apply of improvements
+1. **Security analysis** with vulnerability detection
+2. **Code quality improvements** with before/after examples
+3. **Performance optimizations** with impact metrics
+4. **Testing gaps** identified
+5. **Auto-apply options** for safe improvements
+6. **Priority-based recommendations** (Critical/High/Medium/Low)
 
-**Improvement Types**:
-- Extract duplicate code
-- Optimize database queries
-- Simplify complex logic
-- Improve naming
-- Add error handling
-- Apply design patterns
+**Key Features**:
+- ✅ Detects security vulnerabilities (SQL injection, XSS, etc.)
+- ✅ Identifies performance bottlenecks
+- ✅ Suggests code refactorings
+- ✅ Auto-applies safe improvements
+- ✅ **Flags critical security issues for manual review**
+- ✅ Impact analysis (LOC, complexity, query reduction)
+
+**Auto-Apply Options**:
+- **A)** Apply critical fixes + high priority improvements
+- **B)** Apply high priority only (safer)
+- **C)** Apply specific improvements (you choose)
+- **D)** Show changes first (don't apply)
+- **E)** Post as PR comment for team review
 
 ---
 
@@ -159,8 +141,10 @@ description: Brief description of what the command does
 |---------|----------|---------------------|-------|
 | PR Creation | ✅ /describe | ✅ /create-pr | With mermaid diagram |
 | Update PR Description | ✅ /describe | ✅ /update-pr | Styled mermaid + categorized walkthrough |
-| Code Review | ✅ /review | ✅ /review-pr | Security + best practices |
-| Code Improvements | ✅ /improve | ✅ /improve-pr | With auto-apply option |
+| Code Review | ✅ /review | ✅ /improve-pr | **Merged** into improve-pr |
+| Code Improvements | ✅ /improve | ✅ /improve-pr | Security + improvements combined |
+| Security Analysis | ✅ /review | ✅ /improve-pr | SQL injection, XSS, secrets |
+| Auto-Apply Fixes | ❌ | ✅ | Safe improvements applied automatically |
 | Context Awareness | ❌ | ✅ | Uses context7 for codebase understanding |
 | Custom Prompts | ✅ | ✅ | Edit .md files |
 | Mermaid Diagrams | ✅ | ✅ | Flowchart LR with color coding |
@@ -168,6 +152,8 @@ description: Brief description of what the command does
 | GitHub Integration | ✅ | ✅ | Uses `gh` CLI |
 | Local Execution | ❌ | ✅ | No external service needed |
 | Codebase Search | ❌ | ✅ | context7 integration |
+
+**Key Difference**: We merged `/review-pr` into `/improve-pr` for a streamlined workflow. One command now provides security analysis, code review, AND actionable improvements with auto-apply.
 
 ## Advanced Usage
 
