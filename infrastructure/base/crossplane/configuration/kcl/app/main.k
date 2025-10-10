@@ -149,18 +149,20 @@ _items = []
 # - Kubernetes API conventions for status conditions
 
 # Get observed resources from cluster to check actual health
-_observedDeployment = ocds.get(_name + "-deployment", {})?.Resource
-_observedService = ocds.get(_name + "-service", {})?.Resource
-_observedHTTPRoute = ocds.get(_name + "-httproute", {})?.Resource
-_observedHPA = ocds.get(_name + "-hpa", {})?.Resource
-_observedPDB = ocds.get(_name + "-pdb", {})?.Resource
-_observedGateway = ocds.get(_name + "-gateway", {})?.Resource
-_observedNetworkPolicy = ocds.get(_name + "-cilium-netpol", {})?.Resource
-_observedKVStore = ocds.get(_name + "-kvstore", {})?.Resource
+# Use direct accessor pattern to avoid UndefinedType issues with .get()
+_observedDeployment = ocds[_name + "-deployment"]?.Resource if _name + "-deployment" in ocds else None
+_observedService = ocds[_name + "-service"]?.Resource if _name + "-service" in ocds else None
+_observedHTTPRoute = ocds[_name + "-httproute"]?.Resource if _name + "-httproute" in ocds else None
+_observedHPA = ocds[_name + "-hpa"]?.Resource if _name + "-hpa" in ocds else None
+_observedPDB = ocds[_name + "-pdb"]?.Resource if _name + "-pdb" in ocds else None
+_observedGateway = ocds[_name + "-gateway"]?.Resource if _name + "-gateway" in ocds else None
+_observedNetworkPolicy = ocds[_name + "-cilium-netpol"]?.Resource if _name + "-cilium-netpol" in ocds else None
+_observedKVStore = ocds[_name + "-kvstore"]?.Resource if _name + "-kvstore" in ocds else None
 
 # Check if Deployment is actually Available (not just created)
 # Looks for Deployment.status.conditions[type=Available, status=True]
-_deploymentReady = any_true([c.get("type") == "Available" and c.get("status") == "True" for c in _observedDeployment?.status?.conditions or []])
+# Use direct field access (c?.type) instead of c.get() to avoid UndefinedType
+_deploymentReady = any_true([c?.type == "Available" and c?.status == "True" for c in _observedDeployment?.status?.conditions or []])
 
 # Check if Service has ClusterIP assigned
 # Services are ready when they have a ClusterIP (can route traffic)
@@ -169,7 +171,7 @@ _serviceReady = _observedService?.spec?.clusterIP != None
 # Check if HTTPRoute is Accepted by Gateway
 # Looks for HTTPRoute.status.parents[].conditions[type=Accepted, status=True]
 _httpRouteConditions = _observedHTTPRoute?.status?.parents?[0]?.conditions or []
-_httpRouteReady = any_true([c.get("type") == "Accepted" and c.get("status") == "True" for c in _httpRouteConditions])
+_httpRouteReady = any_true([c?.type == "Accepted" and c?.status == "True" for c in _httpRouteConditions])
 
 # Check if HorizontalPodAutoscaler is functioning
 # HPAs are ready when they have started reporting current replicas
@@ -181,15 +183,15 @@ _pdbReady = _observedPDB?.status?.disruptionsAllowed != None
 
 # Check if Gateway is Programmed or Accepted
 # Looks for Gateway.status.conditions[type=Programmed|Accepted, status=True]
-_gatewayReady = any_true([(c.get("type") == "Programmed" or c.get("type") == "Accepted") and c.get("status") == "True" for c in _observedGateway?.status?.conditions or []])
+_gatewayReady = any_true([(c?.type == "Programmed" or c?.type == "Accepted") and c?.status == "True" for c in _observedGateway?.status?.conditions or []])
 
 # Check if CiliumNetworkPolicy exists in the cluster
 # Network policies don't have status conditions, so we check if the resource exists
-_networkPolicyReady = _observedNetworkPolicy != None and _observedNetworkPolicy.get("metadata") != None
+_networkPolicyReady = _observedNetworkPolicy != None and _observedNetworkPolicy?.metadata != None
 
 # Check if HelmRelease is Ready
 # Looks for HelmRelease.status.conditions[type=Ready, status=True]
-_helmReleaseReady = any_true([c.get("type") == "Ready" and c.get("status") == "True" for c in _observedKVStore?.status?.conditions or []])
+_helmReleaseReady = any_true([c?.type == "Ready" and c?.status == "True" for c in _observedKVStore?.status?.conditions or []])
 
 # Core Kubernetes resources
 # Build Deployment with conditional readiness annotation
