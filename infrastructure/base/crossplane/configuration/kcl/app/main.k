@@ -192,16 +192,18 @@ _networkPolicyReady = _observedNetworkPolicy != None and _observedNetworkPolicy.
 _helmReleaseReady = any_true([c.get("type") == "Ready" and c.get("status") == "True" for c in _observedKVStore?.status?.conditions or []])
 
 # Core Kubernetes resources
-# Deployment - create base resource then conditionally add readiness annotation
+# Build Deployment with conditional readiness annotation
+_deploymentAnnotations = {
+    "krm.kcl.dev/composition-resource-name" = _name + "-deployment"
+} | ({"krm.kcl.dev/ready": "True"} if _deploymentReady else {})
+
 _deployment = {
     apiVersion = "apps/v1"
     kind = "Deployment"
     metadata = {
         name = _name
         namespace = _namespace
-        annotations = {
-            "krm.kcl.dev/composition-resource-name" = _name + "-deployment"
-        }
+        annotations = _deploymentAnnotations
         labels = _appLabels
     }
     spec = {
@@ -289,9 +291,10 @@ _deployment = {
     }
 }
 
-# Conditionally add readiness annotation to Deployment
-if _deploymentReady:
-    _deployment.metadata.annotations["krm.kcl.dev/ready"] = "True"
+# Service - build with conditional readiness annotation
+_serviceAnnotations = {
+    "krm.kcl.dev/composition-resource-name" = _name + "-service"
+} | ({"krm.kcl.dev/ready": "True"} if _serviceReady else {})
 
 # Service
 _service = {
@@ -300,9 +303,7 @@ _service = {
     metadata = {
         name = _name
         namespace = _namespace
-        annotations = {
-            "krm.kcl.dev/composition-resource-name" = _name + "-service"
-        }
+        annotations = _serviceAnnotations
         labels = _appLabels
     }
     spec = {
@@ -317,10 +318,6 @@ _service = {
         type = "ClusterIP"
     }
 }
-
-# Conditionally add readiness annotation to Service
-if _serviceReady:
-    _service.metadata.annotations["krm.kcl.dev/ready"] = "True"
 
 # Add core Kubernetes resources to items
 _items += [_deployment, _service]
@@ -459,15 +456,18 @@ if oxr.spec.route:
         # Use platform private gateway (default)
         _routeGatewayName = "platform-private"
         _routeGatewayNamespace = "infrastructure"
-    _httpRoute = {
+    # Build HTTPRoute with conditional readiness annotation
+    _httpRouteAnnotations = {
+        "krm.kcl.dev/composition-resource-name" = _name + "-httproute"
+    } | ({"krm.kcl.dev/ready": "True"} if _httpRouteReady else {})
+
+    _httpRouteResource = [{
         apiVersion = "gateway.networking.k8s.io/v1"
         kind = "HTTPRoute"
         metadata = {
             name = _name
             namespace = _namespace
-            annotations = {
-                "krm.kcl.dev/composition-resource-name" = _name + "-httproute"
-            }
+            annotations = _httpRouteAnnotations
         }
         spec = {
             if oxr.spec.route.hostname:
@@ -489,13 +489,8 @@ if oxr.spec.route:
                 } for rule in (oxr.spec.route.rules or [{backendPort: oxr.spec.route.port}])]
             }]
         }
-    }
-
-    # Conditionally add readiness annotation to HTTPRoute
-    if _httpRouteReady:
-        _httpRoute.metadata.annotations["krm.kcl.dev/ready"] = "True"
-
-    _items += [_httpRoute]
+    }]
+    _items += _httpRouteResource
 
 # CiliumNetworkPolicy
 # NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
