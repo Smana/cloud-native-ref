@@ -3,6 +3,7 @@
 #
 # This example demonstrates all available features of the App composition:
 # - Container configuration with autoscaling
+# - Environment variables (env and envFrom) from multiple sources
 # - Security hardening (read-only filesystem, non-root, dropped capabilities)
 # - High availability with pod disruption budgets and zone spreading
 # - Network policies for zero-trust micro-segmentation
@@ -86,6 +87,71 @@ spec:
     capabilities:
       drop: ["ALL"]                    # Drop all Linux capabilities
     enableWritableTmp: true            # Provide writable /tmp via emptyDir
+
+  # ============================================================================
+  # Environment Variables
+  # ============================================================================
+  # Define environment variables for the container using various sources
+
+  # env: Individual environment variables with static values or dynamic sources
+  env:
+    # Static environment variables with hardcoded values
+    - name: APP_ENV
+      value: "production"
+    - name: LOG_LEVEL
+      value: "info"
+    - name: PORT
+      value: "8080"
+
+    # Dynamic values from ConfigMap
+    - name: DATABASE_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: db_host
+
+    # Sensitive values from Secret
+    - name: API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: app-secrets
+          key: api_key
+
+    # Kubernetes downward API - inject pod metadata
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: POD_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+
+  # envFrom: Populate all environment variables from ConfigMaps or Secrets
+  # This is useful for importing many variables at once
+  envFrom:
+    # Import all keys from a ConfigMap as environment variables
+    # Each key in the ConfigMap becomes an environment variable
+    - configMapRef:
+        name: app-config-all
+        optional: false  # Fail if ConfigMap doesn't exist (default: false)
+
+    # Import all keys from a Secret as environment variables
+    # Each key in the Secret becomes an environment variable
+    - secretRef:
+        name: app-secrets-all
+        optional: false  # Fail if Secret doesn't exist (default: false)
+
+    # Import with a prefix to avoid naming conflicts
+    # If ConfigMap has key "HOST", it becomes "DB_HOST"
+    - prefix: "DB_"
+      configMapRef:
+        name: database-config
+        optional: true  # Don't fail if ConfigMap doesn't exist
 
   # ============================================================================
   # High Availability - Pod Disruption Budget

@@ -159,6 +159,94 @@ spec:
                       type: boolean
                       description: Enable writable /tmp directory via emptyDir volume
                       default: true
+                env:
+                  type: array
+                  description: Environment variables to set in the container
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Environment variable name
+                      value:
+                        type: string
+                        description: Environment variable value
+                      valueFrom:
+                        type: object
+                        description: Source for the environment variable value
+                        properties:
+                          configMapKeyRef:
+                            type: object
+                            description: Reference to a ConfigMap key
+                            properties:
+                              name:
+                                type: string
+                                description: Name of the ConfigMap
+                              key:
+                                type: string
+                                description: Key in the ConfigMap
+                            required:
+                              - name
+                              - key
+                          secretKeyRef:
+                            type: object
+                            description: Reference to a Secret key
+                            properties:
+                              name:
+                                type: string
+                                description: Name of the Secret
+                              key:
+                                type: string
+                                description: Key in the Secret
+                            required:
+                              - name
+                              - key
+                          fieldRef:
+                            type: object
+                            description: Reference to a field in the pod spec
+                            properties:
+                              fieldPath:
+                                type: string
+                                description: Path to the field
+                            required:
+                              - fieldPath
+                    required:
+                      - name
+                envFrom:
+                  type: array
+                  description: List of sources to populate environment variables
+                  items:
+                    type: object
+                    properties:
+                      configMapRef:
+                        type: object
+                        description: ConfigMap to populate environment variables from
+                        properties:
+                          name:
+                            type: string
+                            description: Name of the ConfigMap
+                          optional:
+                            type: boolean
+                            description: Whether the ConfigMap must exist
+                            default: false
+                        required:
+                          - name
+                      secretRef:
+                        type: object
+                        description: Secret to populate environment variables from
+                        properties:
+                          name:
+                            type: string
+                            description: Name of the Secret
+                          optional:
+                            type: boolean
+                            description: Whether the Secret must exist
+                            default: false
+                        required:
+                          - name
+                      prefix:
+                        type: string
+                        description: Prefix to add to all environment variables
                 configs:
                   type: object
                   description: Configuration files to mount

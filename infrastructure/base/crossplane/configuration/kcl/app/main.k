@@ -258,6 +258,10 @@ _kubernetesResources = [
                                 name = "tmp"
                                 mountPath = "/tmp"
                             }]
+                        if oxr.spec.envFrom:
+                            envFrom = oxr.spec.envFrom
+                        if oxr.spec.env:
+                            env = oxr.spec.env
                         if oxr.spec.route?.port:
                             ports = [{
                                 containerPort = oxr.spec.route.port
