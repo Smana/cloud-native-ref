@@ -203,6 +203,8 @@ _deployment = {
         namespace = _namespace
         annotations = {
             "krm.kcl.dev/composition-resource-name" = _name + "-deployment"
+            if _deploymentReady:
+                "krm.kcl.dev/ready" = "True"
         }
         labels = _appLabels
     }
@@ -291,10 +293,6 @@ _deployment = {
     }
 }
 
-# Add readiness annotation if Deployment is Available
-if any_true([c?.type == "Available" and c?.status == "True" for c in _observedDeployment?.status?.conditions or []]):
-    _deployment.metadata.annotations["krm.kcl.dev/ready"] = "True"
-
 # Service
 _service = {
     apiVersion = "v1"
@@ -304,6 +302,8 @@ _service = {
         namespace = _namespace
         annotations = {
             "krm.kcl.dev/composition-resource-name" = _name + "-service"
+            if _serviceReady:
+                "krm.kcl.dev/ready" = "True"
         }
         labels = _appLabels
     }
@@ -319,10 +319,6 @@ _service = {
         type = "ClusterIP"
     }
 }
-
-# Add readiness annotation if Service has ClusterIP
-if _observedService?.spec?.clusterIP != None:
-    _service.metadata.annotations["krm.kcl.dev/ready"] = "True"
 
 # Add core Kubernetes resources to items
 _items += [_deployment, _service]
@@ -461,8 +457,9 @@ if oxr.spec.route:
         # Use platform private gateway (default)
         _routeGatewayName = "platform-private"
         _routeGatewayNamespace = "infrastructure"
-    # HTTPRoute
-    _httpRoute = {
+    # HTTPRoute - wrapped in intermediate variable to avoid duplicate detection bug
+    # See: https://github.com/crossplane-contrib/function-kcl/issues/285
+    _httpRouteResource = [{
         apiVersion = "gateway.networking.k8s.io/v1"
         kind = "HTTPRoute"
         metadata = {
@@ -470,6 +467,8 @@ if oxr.spec.route:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-httproute"
+                if _httpRouteReady:
+                    "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
@@ -492,13 +491,8 @@ if oxr.spec.route:
                 } for rule in (oxr.spec.route.rules or [{backendPort: oxr.spec.route.port}])]
             }]
         }
-    }
-
-    # Add readiness annotation if HTTPRoute is Accepted
-    if any_true([c?.type == "Accepted" and c?.status == "True" for c in _observedHTTPRoute?.status?.parents?[0]?.conditions or []]):
-        _httpRoute.metadata.annotations["krm.kcl.dev/ready"] = "True"
-
-    _items += [_httpRoute]
+    }]
+    _items += _httpRouteResource
 
 # CiliumNetworkPolicy
 # NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
