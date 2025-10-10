@@ -562,6 +562,10 @@ if oxr.spec.kvStore?.enabled:
                 }
             }
             values = {
+                image = {
+                    registry = "docker.io"
+                    repository = "bitnamilegacy/valkey"
+                }
                 auth = {
                     enabled = False
                 }
@@ -579,6 +583,10 @@ if oxr.spec.kvStore?.enabled:
                 }
                 metrics = {
                     enabled = True
+                    image = {
+                        registry = "docker.io"
+                        repository = "bitnamilegacy/redis-exporter"
+                    }
                     serviceMonitor = {
                         enabled = True
                     }
