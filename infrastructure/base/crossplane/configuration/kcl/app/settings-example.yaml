@@ -1,7 +1,47 @@
 kcl_options:
   - key: params
     value:
-      ocds: {}
+      ocds:
+        myname-deployment:
+          Resource:
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: myname
+              namespace: myns
+            status:
+              conditions:
+                - type: Available
+                  status: "True"
+                  reason: MinimumReplicasAvailable
+              availableReplicas: 1
+              readyReplicas: 1
+              replicas: 1
+        myname-service:
+          Resource:
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: myname
+              namespace: myns
+            spec:
+              clusterIP: "172.20.138.185"
+        myname-httproute:
+          Resource:
+            apiVersion: gateway.networking.k8s.io/v1
+            kind: HTTPRoute
+            metadata:
+              name: myname
+              namespace: myns
+            status:
+              parents:
+                - conditions:
+                    - type: Accepted
+                      status: "True"
+                      reason: Accepted
+                    - type: ResolvedRefs
+                      status: "True"
+                      reason: ResolvedRefs
       ctx:
         "apiextensions.crossplane.io/environment":
           "clusterName": "mycluster-0"
