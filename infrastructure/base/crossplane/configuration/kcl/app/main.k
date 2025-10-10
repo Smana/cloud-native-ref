@@ -192,134 +192,138 @@ _networkPolicyReady = _observedNetworkPolicy != None and _observedNetworkPolicy.
 _helmReleaseReady = any_true([c.get("type") == "Ready" and c.get("status") == "True" for c in _observedKVStore?.status?.conditions or []])
 
 # Core Kubernetes resources
-_kubernetesResources = [
-    # Deployment
-    {
-        apiVersion = "apps/v1"
-        kind = "Deployment"
-        metadata = {
-            name = _name
-            namespace = _namespace
-            annotations = {
-                "krm.kcl.dev/composition-resource-name" = _name + "-deployment"
-                if _deploymentReady:
-                    "krm.kcl.dev/ready" = "True"
-            }
-            labels = _appLabels
+# Deployment - create base resource then conditionally add readiness annotation
+_deployment = {
+    apiVersion = "apps/v1"
+    kind = "Deployment"
+    metadata = {
+        name = _name
+        namespace = _namespace
+        annotations = {
+            "krm.kcl.dev/composition-resource-name" = _name + "-deployment"
         }
-        spec = {
-            if oxr.spec.autoscaling?.enabled != True:
-                replicas = oxr.spec.replicas or 1
-            selector = _podSelector
-            template = {
-                metadata = {
-                    labels = _appLabels
+        labels = _appLabels
+    }
+    spec = {
+        if oxr.spec.autoscaling?.enabled != True:
+            replicas = oxr.spec.replicas or 1
+        selector = _podSelector
+        template = {
+            metadata = {
+                labels = _appLabels
+            }
+            spec = {
+                automountServiceAccountToken = oxr.spec?.automountServiceAccountToken or False
+                securityContext = {
+                    seccompProfile = {
+                        type = "RuntimeDefault"
+                    }
+                    if oxr.spec.runAsNonRoot:
+                        runAsNonRoot = True
+                        runAsUser = 1001
+                        fsGroup = 1001
                 }
-                spec = {
-                    automountServiceAccountToken = oxr.spec?.automountServiceAccountToken or False
+                if oxr.spec.securityContext?.enableWritableTmp != False:
+                    volumes = [{
+                        name = "tmp"
+                        emptyDir = {}
+                    }]
+                if oxr.spec.spreadAcrossZones:
+                    topologySpreadConstraints = [{
+                        maxSkew = 1
+                        topologyKey = "topology.kubernetes.io/zone"
+                        whenUnsatisfiable = "ScheduleAnyway"
+                        labelSelector = _podSelector
+                    }]
+                # Build affinity configuration (node + pod affinity)
+                if oxr.spec.onDemand or oxr.spec.antiAffinityPreset:
+                    affinity = _buildAffinity(oxr.spec.onDemand or False, oxr.spec.antiAffinityPreset or "")
+                containers = [{
+                    name = _name
+                    image = oxr.spec.image.repository + ":" + (oxr.spec.image.tag or "latest")
+                    imagePullPolicy = oxr.spec.image.pullPolicy or "IfNotPresent"
                     securityContext = {
-                        seccompProfile = {
-                            type = "RuntimeDefault"
+                        allowPrivilegeEscalation = False if oxr.spec.securityContext?.allowPrivilegeEscalation == None else oxr.spec.securityContext.allowPrivilegeEscalation
+                        readOnlyRootFilesystem = True if oxr.spec.securityContext?.readOnlyRootFilesystem == None else oxr.spec.securityContext.readOnlyRootFilesystem
+                        runAsNonRoot = True if oxr.spec.securityContext?.runAsNonRoot == None else oxr.spec.securityContext.runAsNonRoot
+                        capabilities = {
+                            drop = oxr.spec.securityContext?.capabilities?.drop or ["ALL"]
                         }
-                        if oxr.spec.runAsNonRoot:
-                            runAsNonRoot = True
-                            runAsUser = 1001
-                            fsGroup = 1001
                     }
                     if oxr.spec.securityContext?.enableWritableTmp != False:
-                        volumes = [{
+                        volumeMounts = [{
                             name = "tmp"
-                            emptyDir = {}
+                            mountPath = "/tmp"
                         }]
-                    if oxr.spec.spreadAcrossZones:
-                        topologySpreadConstraints = [{
-                            maxSkew = 1
-                            topologyKey = "topology.kubernetes.io/zone"
-                            whenUnsatisfiable = "ScheduleAnyway"
-                            labelSelector = _podSelector
+                    if oxr.spec.envFrom:
+                        envFrom = oxr.spec.envFrom
+                    if oxr.spec.env:
+                        env = oxr.spec.env
+                    if oxr.spec.route?.port:
+                        ports = [{
+                            containerPort = oxr.spec.route.port
+                            name = "http"
+                            protocol = "TCP"
                         }]
-                    # Build affinity configuration (node + pod affinity)
-                    if oxr.spec.onDemand or oxr.spec.antiAffinityPreset:
-                        affinity = _buildAffinity(oxr.spec.onDemand or False, oxr.spec.antiAffinityPreset or "")
-                    containers = [{
-                        name = _name
-                        image = oxr.spec.image.repository + ":" + (oxr.spec.image.tag or "latest")
-                        imagePullPolicy = oxr.spec.image.pullPolicy or "IfNotPresent"
-                        securityContext = {
-                            allowPrivilegeEscalation = False if oxr.spec.securityContext?.allowPrivilegeEscalation == None else oxr.spec.securityContext.allowPrivilegeEscalation
-                            readOnlyRootFilesystem = True if oxr.spec.securityContext?.readOnlyRootFilesystem == None else oxr.spec.securityContext.readOnlyRootFilesystem
-                            runAsNonRoot = True if oxr.spec.securityContext?.runAsNonRoot == None else oxr.spec.securityContext.runAsNonRoot
-                            capabilities = {
-                                drop = oxr.spec.securityContext?.capabilities?.drop or ["ALL"]
+                    resources = _setResourceRequirements(oxr.spec.resources)
+                    if oxr.spec.route?.port:
+                        livenessProbe = {
+                            httpGet = {
+                                path = oxr.spec.healthProbes?.liveness?.path or "/healthz"
+                                port = "http"
                             }
+                            initialDelaySeconds = oxr.spec.healthProbes?.liveness?.initialDelaySeconds or _DEFAULTS.health_check_initial_delay
+                            periodSeconds = oxr.spec.healthProbes?.liveness?.periodSeconds or _DEFAULTS.health_check_period
                         }
-                        if oxr.spec.securityContext?.enableWritableTmp != False:
-                            volumeMounts = [{
-                                name = "tmp"
-                                mountPath = "/tmp"
-                            }]
-                        if oxr.spec.envFrom:
-                            envFrom = oxr.spec.envFrom
-                        if oxr.spec.env:
-                            env = oxr.spec.env
-                        if oxr.spec.route?.port:
-                            ports = [{
-                                containerPort = oxr.spec.route.port
-                                name = "http"
-                                protocol = "TCP"
-                            }]
-                        resources = _setResourceRequirements(oxr.spec.resources)
-                        if oxr.spec.route?.port:
-                            livenessProbe = {
-                                httpGet = {
-                                    path = oxr.spec.healthProbes?.liveness?.path or "/healthz"
-                                    port = "http"
-                                }
-                                initialDelaySeconds = oxr.spec.healthProbes?.liveness?.initialDelaySeconds or _DEFAULTS.health_check_initial_delay
-                                periodSeconds = oxr.spec.healthProbes?.liveness?.periodSeconds or _DEFAULTS.health_check_period
+                        readinessProbe = {
+                            httpGet = {
+                                path = oxr.spec.healthProbes?.readiness?.path or "/readyz"
+                                port = "http"
                             }
-                            readinessProbe = {
-                                httpGet = {
-                                    path = oxr.spec.healthProbes?.readiness?.path or "/readyz"
-                                    port = "http"
-                                }
-                                initialDelaySeconds = oxr.spec.healthProbes?.readiness?.initialDelaySeconds or _DEFAULTS.readiness_initial_delay
-                                periodSeconds = oxr.spec.healthProbes?.readiness?.periodSeconds or _DEFAULTS.readiness_period
-                            }
-                    }]
-                }
-            }
-        }
-    }
-    # Service
-    {
-        apiVersion = "v1"
-        kind = "Service"
-        metadata = {
-            name = _name
-            namespace = _namespace
-            annotations = {
-                "krm.kcl.dev/composition-resource-name" = _name + "-service"
-                if _serviceReady:
-                    "krm.kcl.dev/ready" = "True"
-            }
-            labels = _appLabels
-        }
-        spec = {
-            selector = _appLabels
-            if oxr.spec.route?.port:
-                ports = [{
-                    name = "http"
-                    port = oxr.spec.route.port
-                    targetPort = "http"
-                    protocol = "TCP"
+                            initialDelaySeconds = oxr.spec.healthProbes?.readiness?.initialDelaySeconds or _DEFAULTS.readiness_initial_delay
+                            periodSeconds = oxr.spec.healthProbes?.readiness?.periodSeconds or _DEFAULTS.readiness_period
+                        }
                 }]
-            type = "ClusterIP"
+            }
         }
     }
-]
+}
 
-_items += _kubernetesResources
+# Conditionally add readiness annotation to Deployment
+if _deploymentReady:
+    _deployment.metadata.annotations["krm.kcl.dev/ready"] = "True"
+
+# Service
+_service = {
+    apiVersion = "v1"
+    kind = "Service"
+    metadata = {
+        name = _name
+        namespace = _namespace
+        annotations = {
+            "krm.kcl.dev/composition-resource-name" = _name + "-service"
+        }
+        labels = _appLabels
+    }
+    spec = {
+        selector = _appLabels
+        if oxr.spec.route?.port:
+            ports = [{
+                name = "http"
+                port = oxr.spec.route.port
+                targetPort = "http"
+                protocol = "TCP"
+            }]
+        type = "ClusterIP"
+    }
+}
+
+# Conditionally add readiness annotation to Service
+if _serviceReady:
+    _service.metadata.annotations["krm.kcl.dev/ready"] = "True"
+
+# Add core Kubernetes resources to items
+_items += [_deployment, _service]
 
 # HorizontalPodAutoscaler
 # NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
@@ -455,7 +459,7 @@ if oxr.spec.route:
         # Use platform private gateway (default)
         _routeGatewayName = "platform-private"
         _routeGatewayNamespace = "infrastructure"
-    _httpRouteResource = [{
+    _httpRoute = {
         apiVersion = "gateway.networking.k8s.io/v1"
         kind = "HTTPRoute"
         metadata = {
@@ -463,8 +467,6 @@ if oxr.spec.route:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-httproute"
-                if _httpRouteReady:
-                    "krm.kcl.dev/ready" = "True"
             }
         }
         spec = {
@@ -487,8 +489,13 @@ if oxr.spec.route:
                 } for rule in (oxr.spec.route.rules or [{backendPort: oxr.spec.route.port}])]
             }]
         }
-    }]
-    _items += _httpRouteResource
+    }
+
+    # Conditionally add readiness annotation to HTTPRoute
+    if _httpRouteReady:
+        _httpRoute.metadata.annotations["krm.kcl.dev/ready"] = "True"
+
+    _items += [_httpRoute]
 
 # CiliumNetworkPolicy
 # NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
