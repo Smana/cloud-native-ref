@@ -641,26 +641,11 @@ if oxr.spec.s3Bucket?.enabled:
             kind = "Bucket"
             metadata = _metadata("s3-bucket")
             spec = {
-                providerConfigRef = oxr.spec.s3Bucket.providerConfigRef or {
-                    name = "default"
-                    namespace = "crossplane-system"
+                providerConfigRef = {
+                    name = oxr.spec.s3Bucket.providerConfigRef?.name or "default"
                 }
                 forProvider = {
                     region = oxr.spec.s3Bucket.region or envConfig.region
-                    if oxr.spec.s3Bucket.versioning:
-                        versioning = [{
-                            enabled = True
-                        }]
-                    if oxr.spec.s3Bucket.retentionDays:
-                        lifecycleConfiguration = [{
-                            rule = [{
-                                id = "retention"
-                                status = "Enabled"
-                                expiration = [{
-                                    days = oxr.spec.s3Bucket.retentionDays
-                                }]
-                            }]
-                        }]
                 }
             }
         }
