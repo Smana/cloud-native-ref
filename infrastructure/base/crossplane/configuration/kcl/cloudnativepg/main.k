@@ -347,7 +347,7 @@ elif oxr.spec.createSuperuser and oxr.spec.atlasSchema:
     # 1. GitRepository - Flux pulls migration files from Git
     # 2. Kustomization - Generates ConfigMap from migrations
     # 3. AtlasMigration - Applies migrations using superuser credentials
-
+    
     # Validate required atlasSchema fields
     assert oxr.spec.atlasSchema.url, "atlasSchema.url is required when atlasSchema is enabled"
     assert oxr.spec.atlasSchema.ref, "atlasSchema.ref is required when atlasSchema is enabled"

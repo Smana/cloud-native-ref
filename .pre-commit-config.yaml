@@ -4,6 +4,7 @@ repos:
     rev: v4.6.0
     hooks:
       - id: trailing-whitespace
+        exclude: '\.k$'  # Exclude KCL files - kcl fmt uses indented blank lines
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--allow-multiple-documents]
