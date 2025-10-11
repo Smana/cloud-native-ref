@@ -141,7 +141,69 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 
 2. **No Trailing Blank Lines**: Remove extra blank lines between logical sections
 
-3. **Pre-Commit Formatting Check**:
+3. **CRITICAL - Avoid Mutation Pattern (Issue #285)**: Do NOT mutate resource dictionaries after creation
+
+   **Background**: https://github.com/crossplane-contrib/function-kcl/issues/285
+
+   Mutating dictionaries/resources after creation causes function-kcl to create duplicate resources. This is a known bug in function-kcl's duplicate detection mechanism.
+
+   ```kcl
+   # ❌ WRONG - Mutation causes DUPLICATES (issue #285)
+   _deployment = {
+       apiVersion = "apps/v1"
+       kind = "Deployment"
+       metadata = {
+           name = _name
+           annotations = {
+               "base-annotation" = "value"
+           }
+       }
+   }
+   if _deploymentReady:
+       _deployment.metadata.annotations["krm.kcl.dev/ready"] = "True"  # ❌ MUTATION!
+   _items += [_deployment]
+
+   # ✅ CORRECT - Use inline conditionals
+   _deployment = {
+       apiVersion = "apps/v1"
+       kind = "Deployment"
+       metadata = {
+           name = _name
+           annotations = {
+               "base-annotation" = "value"
+               if _deploymentReady:
+                   "krm.kcl.dev/ready" = "True"  # ✅ Inline conditional
+           }
+       }
+   }
+   _items += [_deployment]
+
+   # ✅ CORRECT - List comprehensions (no mutation)
+   _items += [{
+       apiVersion = "apps/v1"
+       kind = "Deployment"
+       metadata = {
+           name = _name + "-" + db.name
+           annotations = {
+               "base-annotation" = "value"
+               if _ready:
+                   "krm.kcl.dev/ready" = "True"
+           }
+       }
+   } for db in databases]
+   ```
+
+   **Safe patterns:**
+   - Inline conditionals within dictionary literals
+   - List comprehensions with inline definitions
+   - Ternary operators returning complete dictionaries
+
+   **Unsafe patterns:**
+   - Post-creation field assignment: `resource.field = value`
+   - Post-creation nested field assignment: `resource.metadata.annotations["key"] = "value"`
+   - Any mutation of resource variables after initial creation
+
+4. **Pre-Commit Formatting Check**:
    ```bash
    # Format all KCL files in a module
    cd infrastructure/base/crossplane/configuration/kcl/<module>
