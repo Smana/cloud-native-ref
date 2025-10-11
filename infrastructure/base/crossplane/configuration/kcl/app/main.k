@@ -649,6 +649,32 @@ if oxr.spec.s3Bucket?.enabled:
                 }
             }
         }
+    ]
+
+    # Add BucketVersioning as separate resource if versioning is enabled
+    if oxr.spec.s3Bucket.versioning:
+        _s3BucketResources += [{
+            apiVersion = "s3.aws.upbound.io/v1beta1"
+            kind = "BucketVersioning"
+            metadata = _metadata("s3-bucket-versioning")
+            spec = {
+                providerConfigRef = {
+                    name = oxr.spec.s3Bucket.providerConfigRef?.name or "default"
+                }
+                forProvider = {
+                    region = oxr.spec.s3Bucket.region or envConfig.region
+                    bucketRef = {
+                        name = _bucketName
+                    }
+                    versioningConfiguration = [{
+                        status = "Enabled"
+                    }]
+                }
+            }
+        }]
+
+    # Add EKS Pod Identity for S3 access
+    _s3BucketResources += [
         # EKS Pod Identity for S3 access
         {
             apiVersion = "cloud.ogenki.io/v1alpha1"
