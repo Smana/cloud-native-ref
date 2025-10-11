@@ -1,3 +1,5 @@
+# source: https://github.com/Smana/image-gallery.git
+---
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: App
 metadata:
@@ -43,7 +45,7 @@ spec:
   route:
     port: 8080
     internetFacing: false
-    hostname: "image-gallery.priv.cloud.ogenki.io"
+    hostname: "image-gallery.priv.${domain_name}"
 
   networkPolicies:
     enabled: true
@@ -100,6 +102,15 @@ spec:
               - port: "443"
                 protocol: TCP
 
+  # Where the images are pulled from
+  s3Bucket:
+    enabled: true
+    region: ${region}
+    permissions: readonly
+    versioning: true
+    retentionDays: 90
+
+  # For caching
   kvStore:
     enabled: true
     size: small
@@ -125,13 +136,8 @@ spec:
       url: "https://github.com/Smana/image-gallery.git"
       ref: "main"
       path: "internal/platform/database/migrations"
-    postgresql:
-      parameters:
-        max_connections: 100
-        shared_buffers: "256MB"
-      pg_hba:
-        - "host all all 0.0.0.0/0 md5" # Allow password auth from all IPs (within cluster)
+
     backup:
       schedule: "0 2 * * *"
-      bucketName: image-gallery-db-backups
+      bucketName: "${region}-ogenki-cnpg-backups"
       retentionPolicy: "30d"

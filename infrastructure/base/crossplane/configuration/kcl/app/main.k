@@ -603,7 +603,13 @@ if oxr.spec.sqlInstance?.enabled:
     _sqlInstanceResource = [{
         apiVersion = "cloud.ogenki.io/v1alpha1"
         kind = "SQLInstance"
-        metadata = _metadata("sqlinstance")
+        metadata = {
+            name = _name
+            namespace = _namespace
+            annotations = {
+                "krm.kcl.dev/composition-resource-name" = _name + "-sqlinstance"
+            }
+        }
         spec = {
             size = oxr.spec.sqlInstance.size or "small"
             storageSize = oxr.spec.sqlInstance.storageSize
