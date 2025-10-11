@@ -121,6 +121,291 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 - **EPI (EKS Pod Identity)**: IAM roles for service accounts in `security/base/epis/`
 - **Resource naming**: All Crossplane-managed resources prefixed with `xplane-`
 
+### KCL Formatting Rules
+
+**CRITICAL**: Always run `kcl fmt` before committing KCL code. The CI enforces strict formatting.
+
+#### Formatting Standards
+
+1. **List Comprehensions**: Must be single-line (not multi-line)
+   ```kcl
+   # ✅ CORRECT (single line)
+   _ready = any_true([c.get("type") == "Available" and c.get("status") == "True" for c in conditions or []])
+
+   # ❌ WRONG (multi-line) - will fail CI
+   _ready = any_true([
+       c.get("type") == "Available" and c.get("status") == "True"
+       for c in conditions or []
+   ])
+   ```
+
+2. **No Trailing Blank Lines**: Remove extra blank lines between logical sections
+
+3. **CRITICAL - Avoid Mutation Pattern (Issue #285)**: Do NOT mutate resource dictionaries after creation
+
+   **Background**: https://github.com/crossplane-contrib/function-kcl/issues/285
+
+   Mutating dictionaries/resources after creation causes function-kcl to create duplicate resources. This is a known bug in function-kcl's duplicate detection mechanism.
+
+   ```kcl
+   # ❌ WRONG - Mutation causes DUPLICATES (issue #285)
+   _deployment = {
+       apiVersion = "apps/v1"
+       kind = "Deployment"
+       metadata = {
+           name = _name
+           annotations = {
+               "base-annotation" = "value"
+           }
+       }
+   }
+   if _deploymentReady:
+       _deployment.metadata.annotations["krm.kcl.dev/ready"] = "True"  # ❌ MUTATION!
+   _items += [_deployment]
+
+   # ✅ CORRECT - Use inline conditionals
+   _deployment = {
+       apiVersion = "apps/v1"
+       kind = "Deployment"
+       metadata = {
+           name = _name
+           annotations = {
+               "base-annotation" = "value"
+               if _deploymentReady:
+                   "krm.kcl.dev/ready" = "True"  # ✅ Inline conditional
+           }
+       }
+   }
+   _items += [_deployment]
+
+   # ✅ CORRECT - List comprehensions (no mutation)
+   _items += [{
+       apiVersion = "apps/v1"
+       kind = "Deployment"
+       metadata = {
+           name = _name + "-" + db.name
+           annotations = {
+               "base-annotation" = "value"
+               if _ready:
+                   "krm.kcl.dev/ready" = "True"
+           }
+       }
+   } for db in databases]
+   ```
+
+   **Safe patterns:**
+   - Inline conditionals within dictionary literals
+   - List comprehensions with inline definitions
+   - Ternary operators returning complete dictionaries
+
+   **Unsafe patterns:**
+   - Post-creation field assignment: `resource.field = value`
+   - Post-creation nested field assignment: `resource.metadata.annotations["key"] = "value"`
+   - Any mutation of resource variables after initial creation
+
+4. **Pre-Commit Formatting Check**:
+   ```bash
+   # Format all KCL files in a module
+   cd infrastructure/base/crossplane/configuration/kcl/<module>
+   kcl fmt .
+
+   # Verify no changes were made
+   git diff --quiet . || echo "Files were reformatted - review changes"
+   ```
+
+#### Pre-Commit Checklist for KCL Compositions
+
+**Comprehensive validation script** (REQUIRED before committing):
+```bash
+# From repository root - validates ALL compositions
+./scripts/validate-kcl-compositions.sh
+```
+
+This script performs three validation stages for each composition:
+
+1. **KCL Formatting (`kcl fmt`)** - REQUIRED by CI
+   - Automatically formats all KCL code
+   - Detects formatting violations
+   - Shows what needs to be fixed
+
+2. **KCL Syntax Validation (`kcl run`)** - Catches logic errors early
+   - Tests KCL code with settings-example.yaml
+   - Validates function logic and conditionals
+   - Shows detailed error messages
+
+3. **Crossplane Rendering (`crossplane render`)** - End-to-end validation
+   - Tests all example files (basic + complete)
+   - Validates full composition pipeline
+   - Requires Docker (gracefully skips if unavailable)
+
+**Tested Compositions**:
+- `app`: app-basic.yaml, app-complete.yaml
+- `cloudnativepg` (SQLInstance): sqlinstance-basic.yaml, sqlinstance-complete.yaml
+- `eks-pod-identity`: epi.yaml
+
+**Example Output**:
+```
+╔════════════════════════════════════════════════════════════════╗
+║  KCL Crossplane Composition Validation                        ║
+╚════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Validating: app
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 [1/3] Checking KCL formatting...
+   ✅ Formatting is correct
+
+🧪 [2/3] Validating KCL syntax and logic...
+   ✅ KCL syntax valid
+
+🎨 [3/3] Testing crossplane render...
+   Testing: app-basic.yaml
+   ✅ app-basic.yaml renders successfully
+   Testing: app-complete.yaml
+   ✅ app-complete.yaml renders successfully
+
+✅ All checks passed for app
+```
+
+**CRITICAL**: Always run `./scripts/validate-kcl-compositions.sh` before committing KCL changes. The CI enforces formatting and will fail otherwise.
+
+### Crossplane Composition Validation
+
+**IMPORTANT**: Every change to Crossplane compositions MUST be validated before committing using the following process:
+
+#### 1. Render the Composition
+
+```bash
+cd infrastructure/base/crossplane/configuration
+crossplane render examples/app-basic.yaml app-composition.yaml functions.yaml \
+  --extra-resources examples/environmentconfig.yaml > /tmp/rendered.yaml
+```
+
+For complete examples:
+```bash
+crossplane render examples/app-complete.yaml app-composition.yaml functions.yaml \
+  --extra-resources examples/environmentconfig.yaml > /tmp/rendered.yaml
+```
+
+#### 2. Validate with Polaris (Security & Best Practices)
+
+```bash
+polaris audit --audit-path /tmp/rendered.yaml --format=pretty
+```
+
+**Target score**: 85+
+**Action**: Address any critical security issues before committing
+
+#### 3. Validate with kube-linter (Kubernetes Best Practices)
+
+```bash
+kube-linter lint /tmp/rendered.yaml
+```
+
+**Target**: No lint errors
+**Action**: Fix all errors before committing
+
+#### 4. Validate with Datree (Policy Enforcement)
+
+```bash
+datree test /tmp/rendered.yaml --ignore-missing-schemas
+```
+
+**Target**: No policy violations (warnings acceptable if documented)
+**Action**: Review and fix policy failures, document accepted warnings
+
+#### Validation Checklist
+
+Before committing Crossplane composition changes:
+
+- [ ] `crossplane render` executes successfully without errors
+- [ ] Polaris score is 85+ with no critical security issues
+- [ ] kube-linter passes with no errors
+- [ ] Datree policy check passes (or warnings are documented)
+- [ ] KCL syntax is valid (if using KCL compositions)
+- [ ] All composition functions are properly configured
+- [ ] Environment configs are included in render
+
+**Why this matters**: These validations catch:
+- Security misconfigurations
+- Resource limit issues
+- Missing health checks
+- RBAC problems
+- Pod security violations
+- Network policy gaps
+
+### Crossplane Known Limitations and Considerations
+
+#### Native Kubernetes Resource Readiness
+
+**Current Implementation**: When using function-kcl to create native Kubernetes resources (Deployment, Service, HTTPRoute, etc.) directly in compositions, readiness is determined by checking actual observed state from the cluster.
+
+**How it works**:
+- Crossplane provides observed resources through `option("params").ocds`
+- KCL code checks actual status conditions from these observed resources
+- Only marks resources ready when specific health conditions are met:
+  - **Deployment**: Checks for `status.conditions[type=Available, status=True]`
+  - **Service**: Checks if `spec.clusterIP` is assigned
+  - **HTTPRoute**: Checks for `status.parents[].conditions[type=Accepted, status=True]`
+- The `krm.kcl.dev/ready = "True"` annotation is **conditionally set** based on these checks
+
+**What this means**:
+- ✅ **Actual health checking**: Verifies Deployments have available replicas
+- ✅ **Status validation**: Confirms HTTPRoutes are accepted by Gateways
+- ✅ **Conditional readiness**: Resources only marked ready when actually healthy
+- ✅ **No provider-kubernetes needed**: Direct resource creation with real health checks
+
+**Example**:
+```kcl
+# Check observed Deployment status
+_observedDeployment = ocds.get(_name + "-deployment", {})?.Resource
+_deploymentReady = any_true([c.get("type") == "Available" and c.get("status") == "True" for c in _observedDeployment?.status?.conditions or []])
+
+# Only add ready annotation when actually available
+if _deploymentReady:
+    "krm.kcl.dev/ready" = "True"
+```
+
+**Why this approach**:
+- Accurate health checking without provider-kubernetes complexity
+- Resources wait for actual readiness before marking composition ready
+- Based on Upbound best practices (project-template-k8s-webapp)
+
+**Alternative approach** (for production):
+Use `provider-kubernetes` with `readiness.policy: DeriveFromObject` to actually check resource status:
+```yaml
+apiVersion: kubernetes.crossplane.io/v1alpha2
+kind: Object
+spec:
+  forProvider:
+    manifest:
+      apiVersion: apps/v1
+      kind: Deployment
+      # ... spec
+  readiness:
+    policy: DeriveFromObject  # Actually checks Deployment.status.conditions[type=Available]
+```
+
+**Recommendation**: Monitor actual resource health using:
+- Kubernetes events (`kubectl get events`)
+- Application metrics and health endpoints
+- Crossplane trace command: `crossplane beta trace app <name> -n <namespace>`
+- External monitoring (VictoriaMetrics alerts, Grafana dashboards)
+
+**Resources with health checks** in App composition:
+- Deployment ✅ (checks `.status.conditions[type=Available]`)
+- Service ✅ (checks `spec.clusterIP` assignment)
+- HTTPRoute ✅ (checks `.status.parents[].conditions[type=Accepted]`)
+
+**Resources with static readiness** (always marked ready when created):
+- HorizontalPodAutoscaler, PodDisruptionBudget, Gateway, CiliumNetworkPolicy, HelmRelease
+
+**NOT affected** (these use proper status conditions):
+- SQLInstance (Crossplane XR with actual status)
+- EKSPodIdentity (Crossplane XR with actual status)
+- S3 Bucket (Managed Resource with proper conditions)
+
 ## Security Considerations
 
 ### OpenBao PKI Structure
@@ -181,6 +466,97 @@ Use specialized Flux analysis from `.claude/config` for troubleshooting GitOps i
 - **Certificates**: Check OpenBao CA chain and cert-manager logs
 - **Network**: Confirm Tailscale subnet router connectivity
 - **Resource Conflicts**: Review Crossplane composition functions and resource references
+
+## Database Migrations with Atlas Operator
+
+### Overview
+
+The SQLInstance composition supports declarative database schema migrations using Atlas Operator integrated with Flux GitOps workflow.
+
+### How It Works
+
+When `atlasSchema` is defined in SQLInstance spec, the composition automatically creates:
+
+1. **GitRepository** - Flux pulls migration files from Git repository
+2. **Kustomization** - Flux processes `kustomization.yaml` with `configMapGenerator`
+3. **ConfigMap** - Automatically generated with migration SQL files
+4. **AtlasMigration** - References ConfigMap to apply migrations
+
+### Migration Repository Requirements
+
+The migration repository must contain a `kustomization.yaml` with `configMapGenerator`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+configMapGenerator:
+  - name: atlas-db-migrations
+    files:
+      - ./001_initial_schema.sql
+      - ./002_add_users_table.sql
+      - atlas.sum
+    options:
+      disableNameSuffixHash: true
+```
+
+### SQLInstance Configuration Example
+
+```yaml
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: SQLInstance
+metadata:
+  name: xplane-myapp-sqlinstance
+  namespace: apps
+spec:
+  size: small
+  storageSize: 20Gi
+  instances: 2
+  databases:
+    - name: myapp
+      owner: myapp-user
+  roles:
+    - name: myapp-user
+      superuser: false
+      inRoles: [pg_monitor]
+  atlasSchema:
+    url: "https://github.com/your-org/your-app.git"
+    ref: "v1.1.0"  # Tag (v*) or branch (main, develop, etc.)
+    path: "internal/platform/database/migrations"
+  backup:
+    schedule: "0 2 * * *"
+    bucketName: myapp-db-backups
+```
+
+### Git Reference Handling
+
+- **Tags**: References starting with `v` (e.g., `v1.0.0`, `v2.1.3`) are treated as Git tags
+- **Branches**: Other references (e.g., `main`, `develop`, `feature-branch`) are treated as branches
+
+### Troubleshooting
+
+**ConfigMap not generated:**
+```bash
+# Check Kustomization status
+kubectl get kustomization <name>-atlas-migrations-configmap -n <namespace>
+
+# Check GitRepository sync
+kubectl get gitrepository <name>-atlas-migrations-repo -n <namespace>
+```
+
+**Migrations not applied:**
+```bash
+# Check AtlasMigration status
+kubectl get atlasmigration <name>-atlas-migration -n <namespace> -o yaml
+
+# Check migration logs
+kubectl logs -n infrastructure deployment/atlas-operator-controller-manager
+```
+
+**Important Notes:**
+- Atlas Operator v0.7.11 does NOT support `dir.remote.url/ref/path` for Git repos
+- `dir.remote` only works with Atlas Cloud (requires Atlas Cloud account)
+- The GitOps pattern via ConfigMap is the recommended approach for Git-based migrations
 
 ## Validation Commands
 

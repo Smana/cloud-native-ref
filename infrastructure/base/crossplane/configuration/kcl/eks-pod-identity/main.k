@@ -117,7 +117,7 @@ _items += [{
     }
 } for cluster in oxr.spec.clusters]
 
-if oxr.spec.parameters?.additionalPolicyArns:
+if oxr.spec.additionalPolicyArns:
     _items += [_attachPolicy(policy) for policy in oxr.spec.additionalPolicyArns]
 
 items = _items

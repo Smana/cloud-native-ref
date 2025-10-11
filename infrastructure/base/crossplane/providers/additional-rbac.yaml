@@ -26,6 +26,20 @@ rules:
     resources: ["externalsecrets"]
     verbs: ["*"]
 ---
+# ClusterRole for aggregating permissions to Crossplane in order to manage Atlas migrations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: crossplane-system
+  name: atlas:aggregate-to-crossplane
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  # Manage Atlas schema migrations
+  - apiGroups: ["db.atlasgo.io"]
+    resources: ["atlasmigrations", "atlasmigrations/status"]
+    verbs: ["*"]
+---
 # Thats probably a workaround because it doesn't seem to work without it
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -63,3 +77,44 @@ roleRef:
   kind: ClusterRole
   name: crossplane:aws-upbound-provider
   apiGroup: rbac.authorization.k8s.io
+---
+# ClusterRole for aggregating App composition resource permissions to Crossplane
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: app-composition:aggregate-to-crossplane
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  # Core Kubernetes resources created by App composition
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/status"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["services", "services/status"]
+    verbs: ["*"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers", "horizontalpodautoscalers/status"]
+    verbs: ["*"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets", "poddisruptionbudgets/status"]
+    verbs: ["*"]
+  # Gateway API resources
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways", "gateways/status", "httproutes", "httproutes/status"]
+    verbs: ["*"]
+  # Cilium network policies
+  - apiGroups: ["cilium.io"]
+    resources: ["ciliumnetworkpolicies", "ciliumnetworkpolicies/status"]
+    verbs: ["*"]
+  # Flux HelmRelease for kvStore
+  - apiGroups: ["helm.toolkit.fluxcd.io"]
+    resources: ["helmreleases", "helmreleases/status"]
+    verbs: ["*"]
+  # Flux GitRepository and Kustomization for Atlas migrations
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["gitrepositories", "gitrepositories/status"]
+    verbs: ["*"]
+  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
+    resources: ["kustomizations", "kustomizations/status"]
+    verbs: ["*"]

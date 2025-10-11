@@ -1,0 +1,15 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: xplane-podinfo
+  namespace: apps
+spec:
+  # Minimum required: container image
+  image:
+    repository: stefanprodan/podinfo
+    tag: "6.9.2"
+
+  # Simple HTTP service
+  route:
+    port: 9898
+    hostname: "podinfo.priv.cloud.ogenki.io"

@@ -1,0 +1,167 @@
+---
+# Complete SQLInstance Example
+#
+# This example demonstrates all available features of the SQLInstance composition:
+# - High availability with multiple instances
+# - Custom storage class and sizing
+# - Multiple databases and roles with granular permissions
+# - Atlas schema migrations from Git repository
+# - PostgreSQL extensions and initialization SQL
+# - Custom PostgreSQL parameters and authentication rules
+# - Automated backups to S3
+#
+# This is a production-ready configuration for critical database workloads.
+# For minimal configuration, see sqlinstance-basic.yaml
+
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: SQLInstance
+metadata:
+  name: production-database
+  namespace: production
+spec:
+  # ============================================================================
+  # Cluster Configuration
+  # ============================================================================
+  # Number of PostgreSQL instances for high availability (primary + replicas)
+  instances: 3
+
+  # Compute and storage sizing
+  size: medium              # Options: small, medium, large (defines CPU/RAM)
+  storageSize: 100Gi        # Persistent volume size for database storage
+  storageClass: gp3         # AWS EBS storage class (gp3, io2, etc.)
+
+  # ============================================================================
+  # Update Strategy
+  # ============================================================================
+  # Controls how the primary instance is updated during maintenance
+  # Options:
+  # - "supervised": Manual approval required for primary updates (safer)
+  # - "unsupervised": Automatic rolling updates (convenient)
+  primaryUpdateStrategy: unsupervised
+
+  # ============================================================================
+  # Superuser Configuration
+  # ============================================================================
+  # Create a PostgreSQL superuser account (stored in Kubernetes Secret)
+  # Set to false for security best practices - use role-based access instead
+  createSuperuser: false
+
+  # ============================================================================
+  # Database Roles (Users)
+  # ============================================================================
+  # Define PostgreSQL roles with specific privileges
+  roles:
+    # Application user with minimal privileges
+    - name: myapp-user
+      comment: "Application database user"
+      superuser: false
+      inRoles:
+        - pg_monitor        # Allow monitoring via pg_stat_* views
+
+    # Analytics user with read-only access
+    - name: analytics-user
+      comment: "Read-only user for analytics queries"
+      superuser: false
+      inRoles:
+        - pg_read_all_data  # PostgreSQL 14+ built-in read-only role
+
+    # Admin user with elevated privileges (use sparingly)
+    - name: db-admin
+      comment: "Database administrator"
+      superuser: true       # Full privileges (use with caution)
+
+  # ============================================================================
+  # Databases
+  # ============================================================================
+  # Create PostgreSQL databases with specific owners
+  databases:
+    - name: myapp
+      owner: myapp-user     # Grants all privileges on this database
+
+    - name: analytics
+      owner: analytics-user
+
+  # ============================================================================
+  # Atlas Schema Migrations
+  # ============================================================================
+  # Automated schema management from Git repository using Atlas Operator
+  # Atlas declaratively manages your database schema from migration files
+  atlasSchema:
+    url: "https://github.com/example/myapp.git"  # Git repository URL
+    ref: "main"                                  # Branch, tag, or commit
+    path: "db/migrations"                        # Path to migration files in repo
+
+  # ============================================================================
+  # PostgreSQL Initialization
+  # ============================================================================
+  # SQL commands executed when the cluster is first created
+  # Typically used for installing extensions
+  initSQL: |
+    -- Performance monitoring
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
+    -- Full-text search enhancements
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+    -- Cryptographic functions
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+    -- UUID generation
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+  # ============================================================================
+  # PostgreSQL Configuration
+  # ============================================================================
+  postgresql:
+    # Runtime parameters - customize based on workload
+    parameters:
+      # Connection settings
+      max_connections: 200              # Maximum concurrent connections
+
+      # Memory settings (adjust based on instance size)
+      shared_buffers: "512MB"           # Memory for caching data blocks
+      effective_cache_size: "2GB"       # Estimate of OS + PG cache
+      work_mem: "16MB"                  # Memory per query operation
+      maintenance_work_mem: "256MB"     # Memory for maintenance operations
+
+      # Write-ahead log (WAL) settings
+      wal_buffers: "16MB"               # WAL buffer size
+      checkpoint_completion_target: 0.9 # Spread checkpoints over time
+
+      # Query planner
+      random_page_cost: 1.1             # SSD-optimized (default 4.0 for HDD)
+      effective_io_concurrency: 200     # SSD concurrent I/O operations
+
+      # Performance monitoring
+      shared_preload_libraries: "pg_stat_statements"
+      track_activity_query_size: 2048   # Longer query text in pg_stat_activity
+
+    # Host-based authentication (pg_hba.conf)
+    # Controls how clients authenticate to the database
+    pg_hba:
+      # Allow password authentication from all IPs within the cluster network
+      # In Kubernetes, this is typically limited to the cluster's pod network
+      - "host all all 0.0.0.0/0 md5"
+
+      # More restrictive examples (uncomment as needed):
+      # - "host myapp myapp-user 10.0.0.0/8 md5"  # Specific DB/user from VPC
+      # - "hostssl all all 0.0.0.0/0 md5"         # Require SSL/TLS
+
+  # ============================================================================
+  # Backup Configuration
+  # ============================================================================
+  # Automated backups using Barman (PostgreSQL backup tool)
+  # Backups are stored in AWS S3 with the Crossplane-managed bucket
+  backup:
+    schedule: "0 2 * * *"                        # Cron: daily at 2 AM UTC
+    bucketName: production-database-backups      # S3 bucket name (auto-created)
+    retentionPolicy: "30d"                       # Keep backups for 30 days
+
+  # ============================================================================
+  # Claim Reference (Optional)
+  # ============================================================================
+  # Link this SQLInstance to a specific App or claim for resource management
+  # Typically used when SQLInstance is created standalone (not via App composition)
+  # claimRef:
+  #   name: my-app
+  #   namespace: production

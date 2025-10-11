@@ -18,6 +18,8 @@ spec:
     - vl.priv.${domain_name}
     - oncall.priv.${domain_name}
     - oncall-rabbitmq.priv.${domain_name}
+    - podinfo.priv.${domain_name}
+    - image-gallery.priv.${domain_name}
   issuerRef:
     name: openbao
     kind: ClusterIssuer

@@ -197,6 +197,88 @@ if oxr.spec.databases:
         }
     } for db in oxr.spec.databases]
 
+    # Atlas Schema Migrations per database - GitOps Pattern
+    # When atlasSchema is defined, creates a complete migration pipeline per database:
+    # 1. GitRepository - Flux pulls migration files from Git (url, ref, path)
+    # 2. Kustomization - Generates ConfigMap from migrations using configMapGenerator
+    # 3. AtlasMigration - Applies migrations using ConfigMap reference
+    if oxr.spec.atlasSchema:
+        # Validate required atlasSchema fields
+        assert oxr.spec.atlasSchema.url, "atlasSchema.url is required when atlasSchema is enabled"
+        assert oxr.spec.atlasSchema.ref, "atlasSchema.ref is required when atlasSchema is enabled"
+        assert oxr.spec.atlasSchema.path, "atlasSchema.path is required when atlasSchema is enabled"
+
+        # GitRepository per database
+        _items += [{
+            apiVersion = "source.toolkit.fluxcd.io/v1"
+            kind = "GitRepository"
+            metadata = {
+                name = oxr.metadata.name + "-" + db.name + "-atlas-migrations-repo"
+                namespace = oxr.metadata.namespace
+            }
+            spec = {
+                interval = "10m"
+                url = oxr.spec.atlasSchema.url
+                ref = {
+                    if oxr.spec.atlasSchema.ref.startswith("v"):
+                        tag = oxr.spec.atlasSchema.ref
+                    else:
+                        branch = oxr.spec.atlasSchema.ref
+                }
+            }
+        } for db in oxr.spec.databases]
+
+        # Kustomization per database
+        _items += [{
+            apiVersion = "kustomize.toolkit.fluxcd.io/v1"
+            kind = "Kustomization"
+            metadata = {
+                name = oxr.metadata.name + "-" + db.name + "-atlas-migrations-configmap"
+                namespace = oxr.metadata.namespace
+            }
+            spec = {
+                interval = "10m"
+                sourceRef = {
+                    kind = "GitRepository"
+                    name = oxr.metadata.name + "-" + db.name + "-atlas-migrations-repo"
+                }
+                path = oxr.spec.atlasSchema.path
+                prune = True
+                targetNamespace = oxr.metadata.namespace
+                postBuild = {
+                    substitute = {
+                        CONFIGMAP_NAME = oxr.metadata.name + "-" + db.name + "-atlas-migrations"
+                    }
+                    substituteFrom = []
+                }
+            }
+        } for db in oxr.spec.databases]
+
+        # AtlasMigration per database
+        _items += [{
+            apiVersion = "db.atlasgo.io/v1alpha1"
+            kind = "AtlasMigration"
+            metadata = {
+                name = oxr.metadata.name + "-" + db.name + "-atlas-migration"
+                namespace = oxr.metadata.namespace
+            }
+            spec = {
+                urlFrom = {
+                    secretKeyRef = {
+                        key = "uri"
+                        # Connect using the database owner's role secret
+                        name = oxr.metadata.name + "-cnpg-role-" + db.owner
+                    }
+                }
+                dir = {
+                    configMapRef = {
+                        name = "atlas-db-migrations"
+                    }
+                }
+            }
+        } for db in oxr.spec.databases]
+
+
 if oxr.spec.initSQL:
     _initSQL = oxr.spec.initSQL
 
@@ -254,6 +336,84 @@ if oxr.spec.createSuperuser:
                             username = '{{.username}}'
                             password = '{{.password}}'
                         }
+                    }
+                }
+            }
+        }
+    ]
+elif oxr.spec.createSuperuser and oxr.spec.atlasSchema:
+    # Atlas Schema Migrations for superuser mode (when no databases are defined) - GitOps Pattern
+    # When atlasSchema is defined with superuser only, creates a migration pipeline:
+    # 1. GitRepository - Flux pulls migration files from Git
+    # 2. Kustomization - Generates ConfigMap from migrations
+    # 3. AtlasMigration - Applies migrations using superuser credentials
+    
+    # Validate required atlasSchema fields
+    assert oxr.spec.atlasSchema.url, "atlasSchema.url is required when atlasSchema is enabled"
+    assert oxr.spec.atlasSchema.ref, "atlasSchema.ref is required when atlasSchema is enabled"
+    assert oxr.spec.atlasSchema.path, "atlasSchema.path is required when atlasSchema is enabled"
+
+    _items += [
+        {
+            apiVersion = "source.toolkit.fluxcd.io/v1"
+            kind = "GitRepository"
+            metadata = {
+                name = oxr.metadata.name + "-atlas-migrations-repo"
+                namespace = oxr.metadata.namespace
+            }
+            spec = {
+                interval = "10m"
+                url = oxr.spec.atlasSchema.url
+                ref = {
+                    if oxr.spec.atlasSchema.ref.startswith("v"):
+                        tag = oxr.spec.atlasSchema.ref
+                    else:
+                        branch = oxr.spec.atlasSchema.ref
+                }
+            }
+        }
+        {
+            apiVersion = "kustomize.toolkit.fluxcd.io/v1"
+            kind = "Kustomization"
+            metadata = {
+                name = oxr.metadata.name + "-atlas-migrations-configmap"
+                namespace = oxr.metadata.namespace
+            }
+            spec = {
+                interval = "10m"
+                sourceRef = {
+                    kind = "GitRepository"
+                    name = oxr.metadata.name + "-atlas-migrations-repo"
+                }
+                path = oxr.spec.atlasSchema.path
+                prune = True
+                targetNamespace = oxr.metadata.namespace
+                postBuild = {
+                    substitute = {
+                        CONFIGMAP_NAME = oxr.metadata.name + "-atlas-migrations"
+                    }
+                    substituteFrom = []
+                }
+            }
+        }
+        {
+            apiVersion = "db.atlasgo.io/v1alpha1"
+            kind = "AtlasMigration"
+            metadata = {
+                name = oxr.metadata.name + "-atlas-migration"
+                namespace = oxr.metadata.namespace
+            }
+            spec = {
+                urlFrom = {
+                    secretKeyRef = {
+                        key = "uri"
+                        # Use superuser secret for migrations
+                        name = oxr.metadata.name + "-cnpg-superuser"
+                    }
+                }
+                dir = {
+                    configMapRef = {
+                        name = "atlas-db-migrations"
                     }
                 }
             }

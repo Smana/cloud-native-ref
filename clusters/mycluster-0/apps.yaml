@@ -1,0 +1,21 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  path: ./apps/mycluster-0
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  postBuild:
+    substitute:
+      domain_name: "cloud.ogenki.io"
+      region: "eu-west-3"
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+  dependsOn:
+    - name: tooling
