@@ -10,5 +10,12 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  postBuild:
+    substitute:
+      domain_name: "cloud.ogenki.io"
+      region: "eu-west-3"
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
   dependsOn:
     - name: tooling
