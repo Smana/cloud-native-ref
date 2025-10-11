@@ -667,7 +667,7 @@ if oxr.spec.s3Bucket?.enabled:
         # EKS Pod Identity for S3 access
         {
             apiVersion = "cloud.ogenki.io/v1alpha1"
-            kind = "EKSPodIdentity"
+            kind = "EPI"
             metadata = _metadata("s3-pod-identity")
             spec = {
                 serviceAccount = {
