@@ -1,11 +1,9 @@
 oxr = option("params").oxr
 ocds = option("params").ocds
 envConfig = option("params").ctx["apiextensions.crossplane.io/environment"]
-
 # Cache frequently accessed values
 _name = oxr.metadata.name
 _namespace = oxr.metadata.namespace
-
 # Common labels
 _appLabels = {
     "app.kubernetes.io/name" = _name
@@ -28,7 +26,6 @@ _metadata = lambda suffix: str -> any {
         }
     }
 }
-
 # Build node affinity for on-demand instances
 _buildNodeAffinity = lambda onDemand: bool -> any {
     {
@@ -43,7 +40,6 @@ _buildNodeAffinity = lambda onDemand: bool -> any {
         }
     } if onDemand else None
 }
-
 # Build pod anti-affinity based on preset (hard/soft)
 _buildPodAntiAffinity = lambda preset: str -> any {
     {
@@ -61,7 +57,6 @@ _buildPodAntiAffinity = lambda preset: str -> any {
         }]
     } if preset == "soft" else None
 }
-
 # Build complete affinity configuration
 _buildAffinity = lambda onDemand: bool, antiAffinityPreset: str -> any {
     _nodeAff = _buildNodeAffinity(onDemand)
@@ -74,7 +69,6 @@ _buildAffinity = lambda onDemand: bool, antiAffinityPreset: str -> any {
             podAntiAffinity = _podAff
     } if _nodeAff or _podAff else None
 }
-
 # Build topology spread constraints for zone distribution
 _buildTopologySpreadConstraints = lambda enabled: bool -> any {
     [{
@@ -84,12 +78,10 @@ _buildTopologySpreadConstraints = lambda enabled: bool -> any {
         labelSelector = _podSelector
     }] if enabled else None
 }
-
 # Map KV store size to Helm chart resource preset
 _kvSizeToPreset = lambda size: str -> str {
     "nano" if size == "small" else "small" if size == "medium" else "medium"
 }
-
 # Constants
 _DEFAULTS = {
     # Resource requirements
@@ -112,7 +104,6 @@ _DEFAULTS = {
     # KV Store
     valkey_chart_version = "3.0.31"
 }
-
 # Default resource requirements
 _defaultRequests = {
     cpu: _DEFAULTS.cpu_request
@@ -122,7 +113,6 @@ _defaultLimits = {
     cpu: _DEFAULTS.cpu_limit
     memory: _DEFAULTS.memory_limit
 }
-
 # Set resource requirements based on size
 _setResourceRequirements = lambda resources: any -> any {
     {
@@ -147,7 +137,6 @@ _items = []
 # References:
 # - https://github.com/upbound/project-template-k8s-webapp/blob/main/template/functions/webapps-kcl/main.k
 # - Kubernetes API conventions for status conditions
-
 # Get observed resources from cluster to check actual health
 # Use direct accessor pattern to avoid UndefinedType issues with .get()
 _observedDeployment = ocds[_name + "-deployment"]?.Resource if _name + "-deployment" in ocds else None
@@ -292,7 +281,6 @@ _deployment = {
         }
     }
 }
-
 # Service
 _service = {
     apiVersion = "v1"
@@ -319,7 +307,6 @@ _service = {
         type = "ClusterIP"
     }
 }
-
 # Add core Kubernetes resources to items
 _items += [_deployment, _service]
 
@@ -659,7 +646,7 @@ if oxr.spec.s3Bucket?.enabled:
                     namespace = "crossplane-system"
                 }
                 forProvider = {
-                    region = oxr.spec.s3Bucket.region or "us-east-1"
+                    region = oxr.spec.s3Bucket.region or envConfig.region
                     if oxr.spec.s3Bucket.versioning:
                         versioning = [{
                             enabled = True
