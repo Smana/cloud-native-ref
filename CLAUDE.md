@@ -118,6 +118,7 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 ### Crossplane Resources
 
 - **Compositions**: Infrastructure templates in `infrastructure/base/crossplane/configuration/`
+- **App Composition**: Platform abstraction for application deployment supporting progressive complexity—from minimal configuration (image only) to production-ready workloads with managed PostgreSQL, Redis/Valkey, S3, autoscaling, high availability, and zero-trust networking. Provides secure defaults while allowing incremental feature adoption.
 - **EPI (EKS Pod Identity)**: IAM roles for service accounts in `security/base/epis/`
 - **Resource naming**: All Crossplane-managed resources prefixed with `xplane-`
 
