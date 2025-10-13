@@ -1,0 +1,210 @@
+# source: https://github.com/Smana/image-gallery.git
+---
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: xplane-image-gallery
+  namespace: apps
+spec:
+  image:
+    repository: ghcr.io/smana/image-gallery
+    tag: "1.3.0"
+    pullPolicy: IfNotPresent
+  replicas: 2
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+  onDemand: false
+  runAsNonRoot: true
+  spreadAcrossZones: true
+  antiAffinityPreset: soft
+  automountServiceAccountToken: false
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    capabilities:
+      drop: ["ALL"]
+    enableWritableTmp: true
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+  pdb:
+    enabled: true
+    minAvailable: 1
+    unhealthyPodEvictionPolicy: AlwaysAllow
+
+  service:
+    port: 8080
+
+  # Application configuration
+  env:
+    # Application settings
+    - name: GO_ENV
+      value: "production"
+    - name: PORT
+      value: "8080"
+    - name: LOG_LEVEL
+      value: "info"
+    - name: LOG_FORMAT
+      value: "json"
+
+    # Database connection (from CNPG secret)
+    - name: DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: xplane-image-gallery-cnpg-role-image-gallery-app
+          key: uri
+
+    # S3 Storage configuration
+    - name: STORAGE_ENDPOINT
+      value: "s3.eu-west-3.amazonaws.com"
+    - name: STORAGE_BUCKET
+      value: "eu-west-3-ogenki-xplane-image-gallery"
+    - name: STORAGE_REGION
+      value: "eu-west-3"
+    - name: STORAGE_USE_SSL
+      value: "true"
+
+    # Cache configuration (Valkey from kvStore)
+    - name: CACHE_ENABLED
+      value: "true"
+    - name: CACHE_ADDRESS
+      value: "xplane-image-gallery-valkey-primary:6379"
+    - name: CACHE_PASSWORD
+      value: ""
+
+  # Optional: Additional secrets from AWS Secrets Manager
+  # Currently only needed for non-infrastructure config (optional overrides)
+  externalSecrets:
+    - name: image-gallery-app-config
+      remoteRef: apps/image-gallery/config
+  envFrom:
+    - secretRef:
+        name: image-gallery-app-config
+        optional: true
+
+  # Default: private gateway (image-gallery.priv.cloud.ogenki.io)
+  route:
+    enabled: true
+    hostname: "image-gallery"
+
+  networkPolicies:
+    enabled: true
+    ingress:
+      - fromEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "gateway-system"
+              "app.kubernetes.io/name": "cilium-gateway"
+        toPorts:
+          - ports:
+              - port: "8080"
+                protocol: TCP
+
+      - fromEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "observability"
+              "app.kubernetes.io/name": "prometheus"
+        toPorts:
+          - ports:
+              - port: "8080"
+                protocol: TCP
+    egress:
+      # DNS resolution
+      - toEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "kube-system"
+              "k8s-app": "kube-dns"
+        toPorts:
+          - ports:
+              - port: "53"
+                protocol: UDP
+              - port: "53"
+                protocol: TCP
+
+      # Database access
+      - toEndpoints:
+          - matchLabels:
+              "cnpg.io/cluster": "xplane-image-gallery-cnpg-cluster"
+        toPorts:
+          - ports:
+              - port: "5432"
+                protocol: TCP
+
+      # Valkey cache access
+      - toEndpoints:
+          - matchLabels:
+              "app.kubernetes.io/instance": "xplane-image-gallery-valkey"
+              "app.kubernetes.io/name": "valkey"
+        toPorts:
+          - ports:
+              - port: "6379"
+                protocol: TCP
+
+      # EKS Pod Identity agent (link-local address)
+      - toCIDR:
+          - "169.254.170.23/32"
+        toPorts:
+          - ports:
+              - port: "80"
+                protocol: TCP
+              - port: "443"
+                protocol: TCP
+
+      # HTTP/HTTPS egress (covers S3 and external services)
+      - toEntities:
+          - world
+        toPorts:
+          - ports:
+              - port: "80"
+                protocol: TCP
+              - port: "443"
+                protocol: TCP
+
+  # Where the images are pulled from
+  s3Bucket:
+    enabled: true
+    region: ${region}
+    permissions: readwrite
+    versioning: true
+    retentionDays: 90
+
+  # For caching
+  kvStore:
+    enabled: true
+    size: small
+    type: valkey
+
+  sqlInstance:
+    enabled: true
+    size: small
+    storageSize: 20Gi
+    instances: 2
+    primaryUpdateStrategy: unsupervised
+    createSuperuser: false
+    roles:
+      - name: image-gallery-app
+        comment: "Application user for image-gallery"
+        superuser: false
+        inRoles:
+          - pg_monitor
+    databases:
+      - name: image-gallery
+        owner: image-gallery-app
+    atlasSchema:
+      url: "https://github.com/Smana/image-gallery.git"
+      ref: "v1.3.0"
+      path: "internal/platform/database/migrations"
+
+    backup:
+      schedule: "0 2 * * *"
+      bucketName: "${region}-ogenki-cnpg-backups"
+      retentionPolicy: "30d"

@@ -1,0 +1,341 @@
+---
+# Complete App Example
+#
+# This example demonstrates all available features of the App composition:
+# - Container configuration with autoscaling
+# - Environment variables (env and envFrom) from multiple sources
+# - Security hardening (read-only filesystem, non-root, dropped capabilities)
+# - High availability with pod disruption budgets and zone spreading
+# - Network policies for zero-trust micro-segmentation
+# - PostgreSQL database with CloudNativePG and Atlas migrations
+# - HTTP routing with Gateway API
+#
+# This is a production-ready configuration suitable for critical workloads.
+# For minimal configuration, see app-basic.yaml
+
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: image-gallery
+  namespace: demo
+spec:
+  # ============================================================================
+  # Container Configuration
+  # ============================================================================
+  # Define the container image to deploy. The tag should use semantic versioning
+  # and avoid 'latest' for production deployments.
+  image:
+    repository: ghcr.io/smana/image-gallery
+    tag: "v1.0.0"
+    pullPolicy: IfNotPresent  # Use Always for :latest, IfNotPresent for versioned tags
+
+  # ============================================================================
+  # Scaling Configuration
+  # ============================================================================
+  # Initial replica count when autoscaling is disabled or during startup
+  replicas: 2
+
+  # Horizontal Pod Autoscaler (HPA) - automatically scales based on CPU utilization
+  autoscaling:
+    enabled: true
+    minReplicas: 2              # Minimum pods for high availability
+    maxReplicas: 5              # Maximum pods to prevent runaway scaling
+    targetCPUUtilizationPercentage: 70  # Scale up when CPU exceeds 70%
+
+  # ============================================================================
+  # Resource Management
+  # ============================================================================
+  # Define compute resources for optimal scheduling and performance
+  # Requests: guaranteed resources, used for scheduling decisions
+  # Limits: maximum resources the container can consume
+  resources:
+    requests:
+      cpu: "100m"      # 0.1 CPU cores
+      memory: "128Mi"  # 128 MiB RAM
+    limits:
+      cpu: "200m"      # 0.2 CPU cores max
+      memory: "256Mi"  # 256 MiB RAM max
+
+  # ============================================================================
+  # Pod Scheduling and Topology
+  # ============================================================================
+  # Security: run as non-root user (UID 1001)
+  runAsNonRoot: true
+
+  # High Availability: distribute pods across availability zones
+  spreadAcrossZones: true
+
+  # Anti-affinity: prevent multiple pods from running on the same node
+  # Options: "soft" (preferred) or "hard" (required)
+  antiAffinityPreset: soft
+
+  # Karpenter instance type: use on-demand instances instead of spot
+  # Set to true for workloads requiring guaranteed availability (default: false)
+  # When true, pods will only run on on-demand EC2 instances
+  onDemand: false
+
+  # ============================================================================
+  # Security Context
+  # ============================================================================
+  # All settings below are secure defaults - only override if necessary
+  automountServiceAccountToken: false  # Don't mount SA token unless needed
+
+  securityContext:
+    allowPrivilegeEscalation: false    # Prevent privilege escalation
+    readOnlyRootFilesystem: true       # Immutable container filesystem
+    runAsNonRoot: true                 # Enforce non-root user
+    capabilities:
+      drop: ["ALL"]                    # Drop all Linux capabilities
+    enableWritableTmp: true            # Provide writable /tmp via emptyDir
+
+  # ============================================================================
+  # Environment Variables
+  # ============================================================================
+  # Define environment variables for the container using various sources
+
+  # env: Individual environment variables with static values or dynamic sources
+  env:
+    # Static environment variables with hardcoded values
+    - name: APP_ENV
+      value: "production"
+    - name: LOG_LEVEL
+      value: "info"
+    - name: PORT
+      value: "8080"
+
+    # Dynamic values from ConfigMap
+    - name: DATABASE_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: db_host
+
+    # Sensitive values from Secret
+    - name: API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: app-secrets
+          key: api_key
+
+    # Kubernetes downward API - inject pod metadata
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: POD_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+
+  # envFrom: Populate all environment variables from ConfigMaps or Secrets
+  # This is useful for importing many variables at once
+  envFrom:
+    # Import all keys from a ConfigMap as environment variables
+    # Each key in the ConfigMap becomes an environment variable
+    - configMapRef:
+        name: app-config-all
+        optional: false  # Fail if ConfigMap doesn't exist (default: false)
+
+    # Import all keys from a Secret as environment variables
+    # Each key in the Secret becomes an environment variable
+    - secretRef:
+        name: app-secrets-all
+        optional: false  # Fail if Secret doesn't exist (default: false)
+
+    # Import with a prefix to avoid naming conflicts
+    # If ConfigMap has key "HOST", it becomes "DB_HOST"
+    - prefix: "DB_"
+      configMapRef:
+        name: database-config
+        optional: true  # Don't fail if ConfigMap doesn't exist
+
+  # ============================================================================
+  # External Secrets - Automatic Secret Synchronization from AWS
+  # ============================================================================
+  # Automatically creates ExternalSecret resources that sync secrets from AWS Secrets Manager
+  # Uses the ClusterSecretStore backend configured for the cluster
+  # All keys from the remote secret are imported into the Kubernetes Secret (dataFrom pattern)
+  externalSecrets:
+    # Secret referenced by envFrom above (app-secrets-all)
+    - name: app-secrets-all
+      remoteRef: apps/image-gallery/secrets-all  # Path in AWS Secrets Manager
+      refreshInterval: 1h  # Sync every hour (default)
+
+    # Secret referenced by env[] secretKeyRef above (app-secrets)
+    - name: app-secrets
+      remoteRef: apps/image-gallery/secrets
+      refreshInterval: 30m  # Sync every 30 minutes
+
+    # Optional: Additional secrets for different purposes
+    # - name: database-credentials
+    #   remoteRef: apps/image-gallery/database-creds
+    #   refreshInterval: 1h
+
+  # ============================================================================
+  # High Availability - Pod Disruption Budget
+  # ============================================================================
+  # Ensures minimum availability during voluntary disruptions (node drains, updates)
+  pdb:
+    enabled: true
+    minAvailable: 1  # At least 1 pod must remain available
+    unhealthyPodEvictionPolicy: AlwaysAllow  # Allow eviction of unhealthy pods
+
+  # ============================================================================
+  # Service Configuration
+  # ============================================================================
+  # Kubernetes Service for internal communication
+  service:
+    port: 8080               # Container port to expose (default: 8080)
+
+  # ============================================================================
+  # HTTP Routing - External Access
+  # ============================================================================
+  # Configure HTTPRoute for external access via Gateway API
+  route:
+    enabled: true            # Enable HTTPRoute creation (default: false)
+    internetFacing: true     # Use public gateway (default: false for private)
+    hostname: "image-gallery"  # Hostname prefix - becomes image-gallery.cloud.ogenki.io
+
+  # ============================================================================
+  # Network Policies - Zero Trust Networking
+  # ============================================================================
+  # Cilium Network Policies implement micro-segmentation and defense in depth.
+  # By default, when enabled, all traffic is denied except what's explicitly allowed.
+  networkPolicies:
+    enabled: true
+
+    # Ingress Rules: control incoming traffic to the application
+    ingress:
+      # Allow HTTP traffic from Cilium Gateway (for internet-facing routes)
+      - fromEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "gateway-system"
+              "app.kubernetes.io/name": "cilium-gateway"
+        toPorts:
+          - ports:
+              - port: "8080"
+                protocol: TCP
+
+      # Allow health checks from Prometheus in observability namespace
+      - fromEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "observability"
+              "app.kubernetes.io/name": "prometheus"
+        toPorts:
+          - ports:
+              - port: "8080"
+                protocol: TCP
+
+    # Egress Rules: control outgoing traffic from the application
+    egress:
+      # DNS: required for service discovery and external name resolution
+      - toEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "kube-system"
+              "k8s-app": "kube-dns"
+        toPorts:
+          - ports:
+              - port: "53"
+                protocol: UDP
+              - port: "53"
+                protocol: TCP
+
+      # Database: allow connections to PostgreSQL CloudNativePG cluster
+      - toEndpoints:
+          - matchLabels:
+              "cnpg.io/cluster": "image-gallery-sqlinstance-cnpg-cluster"
+        toPorts:
+          - ports:
+              - port: "5432"
+                protocol: TCP
+
+      # External APIs: FQDN-based egress for external services
+      # Use matchPattern for wildcards or matchName for exact domains
+      - toFQDNs:
+          - matchPattern: "*.github.com"           # GitHub API (for Atlas migrations)
+          - matchName: "s3.eu-west-3.amazonaws.com"  # AWS S3 (for image storage)
+          - matchPattern: "*.amazonaws.com"        # Other AWS services
+        toPorts:
+          - ports:
+              - port: "443"
+                protocol: TCP
+
+      # Kubernetes API: allow pods to interact with k8s API if needed
+      - toEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "default"
+              component: "apiserver"
+        toPorts:
+          - ports:
+              - port: "443"
+                protocol: TCP
+
+  # ============================================================================
+  # Key-Value Store - Valkey/Redis for Caching and Sessions
+  # ============================================================================
+  # Deploys a Valkey (Redis-compatible) cluster for caching, sessions, or queues
+  kvStore:
+    enabled: true
+    type: valkey                       # Options: valkey (default), redis
+    size: small                        # Options: small, medium, large
+
+  # ============================================================================
+  # PostgreSQL Database - CloudNativePG with Atlas Migrations
+  # ============================================================================
+  # Deploys a highly-available PostgreSQL cluster with automated schema management
+  sqlInstance:
+    enabled: true
+    size: small                         # Options: small, medium, large
+    storageSize: 20Gi                   # Persistent volume size
+    instances: 2                        # Number of PostgreSQL replicas (HA)
+    primaryUpdateStrategy: unsupervised # Allow automated rolling updates
+    createSuperuser: false              # Don't create superuser (security best practice)
+
+    # Database Roles: define PostgreSQL users with specific privileges
+    roles:
+      - name: image-gallery-app
+        comment: "Application user for image-gallery"
+        superuser: false               # Application users should not be superusers
+        inRoles:
+          - pg_monitor                 # Allow monitoring via pg_stat_* views
+
+    # Databases: create PostgreSQL databases
+    databases:
+      - name: image-gallery
+        owner: image-gallery-app       # Database owner (grants full privileges)
+
+    # Atlas Schema Migrations: automated schema management from Git
+    # Atlas analyzes your schema files and applies migrations declaratively
+    atlasSchema:
+      url: "https://github.com/Smana/image-gallery.git"
+      ref: "main"
+      path: "internal/platform/database/migrations"
+
+    # PostgreSQL Configuration: fine-tune database parameters
+    postgresql:
+      parameters:
+        max_connections: 100           # Maximum concurrent connections
+        shared_buffers: "256MB"        # Memory for caching data
+      pg_hba:                          # Host-based authentication rules
+        - "host all all 0.0.0.0/0 md5" # Allow password auth from all IPs (within cluster)
+
+    # Backup Configuration: automated backups to S3
+    backup:
+      schedule: "0 2 * * *"            # Cron schedule: daily at 2 AM UTC
+      bucketName: image-gallery-db-backups  # S3 bucket for backups
+      retentionPolicy: "30d"           # Keep backups for 30 days
+
+  # ============================================================================
+  # S3 Bucket - Object Storage
+  # ============================================================================
+  # Creates an S3 bucket with IAM permissions scoped to this application
+  s3Bucket:
+    enabled: true
+    region: eu-west-3                  # AWS region for the bucket
+    permissions: readwrite             # Options: readwrite, readonly, custom
+    versioning: true                   # Enable object versioning
+    retentionDays: 90                  # Delete objects older than 90 days

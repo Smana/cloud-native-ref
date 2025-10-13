@@ -1,0 +1,706 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: apps.cloud.ogenki.io
+spec:
+  group: cloud.ogenki.io
+  scope: Namespaced
+  names:
+    kind: App
+    plural: apps
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # Deployment specific parameters
+                image:
+                  type: object
+                  properties:
+                    repository:
+                      type: string
+                      description: Container image repository
+                    tag:
+                      type: string
+                      description: Container image tag
+                      default: "latest"
+                    pullPolicy:
+                      type: string
+                      description: Image pull policy
+                      enum: ["Always", "Never", "IfNotPresent"]
+                      default: "IfNotPresent"
+                  required:
+                    - repository
+                autoscaling:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable horizontal pod autoscaling
+                      default: false
+                    minReplicas:
+                      type: integer
+                      description: Minimum number of replicas
+                      minimum: 1
+                      default: 1
+                    maxReplicas:
+                      type: integer
+                      description: Maximum number of replicas
+                      minimum: 1
+                      default: 5
+                    targetCPUUtilizationPercentage:
+                      type: integer
+                      description: Target CPU utilization percentage
+                      minimum: 1
+                      maximum: 100
+                      default: 70
+                replicas:
+                  type: integer
+                  description: Number of replicas when autoscaling is disabled
+                  minimum: 1
+                  default: 1
+                pdb:
+                  type: object
+                  description: Pod Disruption Budget configuration
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable Pod Disruption Budget
+                      default: false
+                    minAvailable:
+                      type: integer
+                      description: Minimum available pods
+                      minimum: 1
+                    unhealthyPodEvictionPolicy:
+                      type: string
+                      description: Unhealthy pod eviction policy
+                      enum: ["IfHealthyBudget", "AlwaysAllow"]
+                      default: "AlwaysAllow"
+                resources:
+                  type: object
+                  description: Resource requirements
+                  properties:
+                    requests:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                          description: CPU request
+                          pattern: "^[0-9]+m?$"
+                        memory:
+                          type: string
+                          description: Memory request
+                          pattern: "^[0-9]+[KMGT]i?$"
+                    limits:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                          description: CPU limit
+                          pattern: "^[0-9]+m?$"
+                        memory:
+                          type: string
+                          description: Memory limit
+                          pattern: "^[0-9]+[KMGT]i?$"
+                onDemand:
+                  type: boolean
+                  description: Use on-demand instances
+                  default: false
+                runAsNonRoot:
+                  type: boolean
+                  description: Run container as non-root user
+                  default: true
+                spreadAcrossZones:
+                  type: boolean
+                  description: Spread pods across availability zones
+                  default: true
+                antiAffinityPreset:
+                  type: string
+                  description: Anti-affinity preset
+                  enum: ["soft", "hard"]
+                  default: "soft"
+                automountServiceAccountToken:
+                  type: boolean
+                  description: Auto-mount service account token
+                  default: false
+                securityContext:
+                  type: object
+                  description: Container and pod security context settings
+                  properties:
+                    allowPrivilegeEscalation:
+                      type: boolean
+                      description: Allow privilege escalation
+                      default: false
+                    readOnlyRootFilesystem:
+                      type: boolean
+                      description: Mount root filesystem as read-only
+                      default: true
+                    runAsNonRoot:
+                      type: boolean
+                      description: Require container to run as non-root user
+                      default: true
+                    capabilities:
+                      type: object
+                      description: Linux capabilities
+                      properties:
+                        drop:
+                          type: array
+                          description: Capabilities to drop
+                          items:
+                            type: string
+                          default: ["ALL"]
+                    enableWritableTmp:
+                      type: boolean
+                      description: Enable writable /tmp directory via emptyDir volume
+                      default: true
+                env:
+                  type: array
+                  description: Environment variables to set in the container
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Environment variable name
+                      value:
+                        type: string
+                        description: Environment variable value
+                      valueFrom:
+                        type: object
+                        description: Source for the environment variable value
+                        properties:
+                          configMapKeyRef:
+                            type: object
+                            description: Reference to a ConfigMap key
+                            properties:
+                              name:
+                                type: string
+                                description: Name of the ConfigMap
+                              key:
+                                type: string
+                                description: Key in the ConfigMap
+                            required:
+                              - name
+                              - key
+                          secretKeyRef:
+                            type: object
+                            description: Reference to a Secret key
+                            properties:
+                              name:
+                                type: string
+                                description: Name of the Secret
+                              key:
+                                type: string
+                                description: Key in the Secret
+                            required:
+                              - name
+                              - key
+                          fieldRef:
+                            type: object
+                            description: Reference to a field in the pod spec
+                            properties:
+                              fieldPath:
+                                type: string
+                                description: Path to the field
+                            required:
+                              - fieldPath
+                    required:
+                      - name
+                envFrom:
+                  type: array
+                  description: List of sources to populate environment variables
+                  items:
+                    type: object
+                    properties:
+                      configMapRef:
+                        type: object
+                        description: ConfigMap to populate environment variables from
+                        properties:
+                          name:
+                            type: string
+                            description: Name of the ConfigMap
+                          optional:
+                            type: boolean
+                            description: Whether the ConfigMap must exist
+                            default: false
+                        required:
+                          - name
+                      secretRef:
+                        type: object
+                        description: Secret to populate environment variables from
+                        properties:
+                          name:
+                            type: string
+                            description: Name of the Secret
+                          optional:
+                            type: boolean
+                            description: Whether the Secret must exist
+                            default: false
+                        required:
+                          - name
+                      prefix:
+                        type: string
+                        description: Prefix to add to all environment variables
+                configs:
+                  type: object
+                  description: Configuration files to mount
+                  additionalProperties:
+                    type: object
+                    properties:
+                      path:
+                        type: string
+                        description: Path where config will be mounted in container
+                      content:
+                        type: string
+                        description: Configuration content
+                    required:
+                      - path
+                      - content
+                secrets:
+                  type: object
+                  description: Secrets to mount as environment variables
+                  additionalProperties:
+                    type: object
+                    properties:
+                      path:
+                        type: string
+                        description: Path to secret in AWS Secrets Manager
+                      keys:
+                        type: array
+                        description: Keys to fetch from the secret
+                        items:
+                          type: string
+                    required:
+                      - path
+                # Health probe configuration
+                healthProbes:
+                  type: object
+                  description: Health check probe configuration
+                  properties:
+                    liveness:
+                      type: object
+                      description: Liveness probe configuration
+                      properties:
+                        path:
+                          type: string
+                          description: HTTP path for liveness probe
+                          default: "/healthz"
+                        initialDelaySeconds:
+                          type: integer
+                          description: Initial delay before liveness probe
+                          default: 30
+                        periodSeconds:
+                          type: integer
+                          description: How often to perform the probe
+                          default: 10
+                    readiness:
+                      type: object
+                      description: Readiness probe configuration
+                      properties:
+                        path:
+                          type: string
+                          description: HTTP path for readiness probe
+                          default: "/readyz"
+                        initialDelaySeconds:
+                          type: integer
+                          description: Initial delay before readiness probe
+                          default: 5
+                        periodSeconds:
+                          type: integer
+                          description: How often to perform the probe
+                          default: 5
+                # Service configuration
+                service:
+                  type: object
+                  description: Kubernetes Service configuration
+                  properties:
+                    port:
+                      type: integer
+                      description: Service port (container port to expose)
+                      minimum: 1
+                      maximum: 65535
+                      default: 8080
+                # Gateway and routing configuration
+                gateway:
+                  type: object
+                  description: Gateway configuration for dedicated gateway
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable dedicated gateway creation
+                      default: false
+                    gatewayClassName:
+                      type: string
+                      description: Gateway class name
+                    name:
+                      type: string
+                      description: Gateway name
+                    namespace:
+                      type: string
+                      description: Gateway namespace
+                    listeners:
+                      type: array
+                      description: Gateway listeners configuration
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: Listener name
+                          port:
+                            type: integer
+                            description: Listener port
+                          protocol:
+                            type: string
+                            description: Protocol (HTTP or HTTPS)
+                            enum: ["HTTP", "HTTPS"]
+                          hostname:
+                            type: string
+                            description: Hostname for this listener
+                route:
+                  type: object
+                  description: HTTPRoute configuration for external access
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable HTTPRoute creation for external access
+                      default: false
+                    internetFacing:
+                      type: boolean
+                      description: Whether the service is internet-facing (uses public gateway when true, platform-private when false)
+                      default: false
+                    hostname:
+                      type: string
+                      description: Hostname without domain suffix (domain auto-determined by internetFacing). Example 'myapp' becomes 'myapp.priv.cloud.ogenki.io' (private) or 'myapp.cloud.ogenki.io' (public)
+                    rules:
+                      type: array
+                      description: Routing rules
+                      items:
+                        type: object
+                        properties:
+                          backendPort:
+                            type: integer
+                            description: Backend service port
+                            minimum: 1
+                            maximum: 65535
+                          pathPrefix:
+                            type: string
+                            description: Path prefix for routing
+                            pattern: "^/.*"
+                            default: "/"
+                        required:
+                          - backendPort
+                networkPolicies:
+                  type: object
+                  description: Cilium Network policies configuration
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable Cilium network policies
+                      default: false
+                    ingress:
+                      type: array
+                      description: Ingress rules
+                      items:
+                        type: object
+                        properties:
+                          fromEndpoints:
+                            type: array
+                            description: Source endpoint selectors
+                            items:
+                              type: object
+                              properties:
+                                matchLabels:
+                                  type: object
+                                  description: Label selectors for source endpoints
+                                  additionalProperties:
+                                    type: string
+                          toPorts:
+                            type: array
+                            description: Port and protocol restrictions
+                            items:
+                              type: object
+                              properties:
+                                ports:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      port:
+                                        type: string
+                                        description: Port number or name
+                                      protocol:
+                                        type: string
+                                        description: Protocol (TCP, UDP, ANY)
+                                        enum: ["TCP", "UDP", "ANY"]
+                                        default: "TCP"
+                    egress:
+                      type: array
+                      description: Egress rules
+                      items:
+                        type: object
+                        properties:
+                          toEndpoints:
+                            type: array
+                            description: Destination endpoint selectors
+                            items:
+                              type: object
+                              properties:
+                                matchLabels:
+                                  type: object
+                                  description: Label selectors for destination endpoints
+                                  additionalProperties:
+                                    type: string
+                          toEntities:
+                            type: array
+                            description: Special entities (world, cluster, host, remote-node, kube-apiserver, ingress, init, health, unmanaged, all)
+                            items:
+                              type: string
+                              enum: ["all", "world", "cluster", "host", "init", "ingress", "unmanaged", "remote-node", "health", "kube-apiserver"]
+                          toCIDR:
+                            type: array
+                            description: CIDR-based egress rules
+                            items:
+                              type: string
+                              pattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+                          toFQDNs:
+                            type: array
+                            description: DNS-based egress rules
+                            items:
+                              type: object
+                              properties:
+                                matchName:
+                                  type: string
+                                  description: Exact DNS name match
+                                matchPattern:
+                                  type: string
+                                  description: DNS pattern match with wildcards
+                          toPorts:
+                            type: array
+                            description: Port and protocol restrictions
+                            items:
+                              type: object
+                              properties:
+                                ports:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      port:
+                                        type: string
+                                        description: Port number or name
+                                      protocol:
+                                        type: string
+                                        description: Protocol (TCP, UDP, ANY)
+                                        enum: ["TCP", "UDP", "ANY"]
+                                        default: "TCP"
+                # Infrastructure components
+                kvStore:
+                  type: object
+                  description: Key-value store configuration
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable key-value store
+                      default: false
+                    size:
+                      type: string
+                      description: Store size
+                      enum: ["small", "medium", "large"]
+                      default: "small"
+                    type:
+                      type: string
+                      description: Store type
+                      enum: ["valkey", "redis"]
+                      default: "valkey"
+                sqlInstance:
+                  type: object
+                  description: SQL database instance configuration
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable SQL instance
+                      default: false
+                    size:
+                      type: string
+                      description: Instance size
+                      enum: ["small", "medium", "large"]
+                      default: "small"
+                    storageSize:
+                      type: string
+                      description: Storage size
+                      pattern: "^[0-9]+[KMGT]i$"
+                    instances:
+                      type: integer
+                      description: Number of database instances
+                      default: 3
+                    primaryUpdateStrategy:
+                      type: string
+                      description: Update strategy for the primary instance
+                      default: "unsupervised"
+                    createSuperuser:
+                      type: boolean
+                      description: Create a superuser for the Postgres cluster
+                      default: false
+                    databases:
+                      type: array
+                      description: Databases to create
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: Database name
+                          owner:
+                            type: string
+                            description: Database owner
+                        required:
+                          - name
+                          - owner
+                    roles:
+                      type: array
+                      description: Database roles to create
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: Role name
+                          comment:
+                            type: string
+                            description: Role comment
+                          superuser:
+                            type: boolean
+                            description: Is the role a superuser
+                          inRoles:
+                            type: array
+                            description: Roles this role is a member of
+                            items:
+                              type: string
+                        required:
+                          - name
+                          - superuser
+                    atlasSchema:
+                      type: object
+                      description: Atlas schema migration configuration
+                      properties:
+                        url:
+                          type: string
+                          description: Git repository URL
+                        ref:
+                          type: string
+                          description: Git reference (branch/tag)
+                        path:
+                          type: string
+                          description: Path to migrations in repository
+                    postgresql:
+                      type: object
+                      description: PostgreSQL configuration
+                      properties:
+                        parameters:
+                          type: object
+                          description: Custom Postgres parameters
+                          additionalProperties: true
+                        pg_hba:
+                          type: array
+                          description: Custom pg_hba.conf entries
+                          items:
+                            type: string
+                    backup:
+                      type: object
+                      description: Backup configuration
+                      properties:
+                        schedule:
+                          type: string
+                          description: Backup schedule in cron format
+                          pattern: "^[0-9*/ -]+$"
+                        retentionPolicy:
+                          type: string
+                          description: Backup retention policy
+                          pattern: "^[0-9]+[dmy]$"
+                          default: "15d"
+                        bucketName:
+                          type: string
+                          description: S3 bucket name for backups
+                s3Bucket:
+                  type: object
+                  description: S3 bucket configuration
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable S3 bucket
+                      default: false
+                    providerConfigRef:
+                      type: object
+                      description: Provider configuration reference
+                      properties:
+                        name:
+                          type: string
+                          description: Provider config name
+                        namespace:
+                          type: string
+                          description: Provider config namespace
+                      required:
+                        - name
+                        - namespace
+                    region:
+                      type: string
+                      description: AWS region
+                      pattern: "^[a-z]+-[a-z]+-[0-9]+$"
+                    permissions:
+                      type: string
+                      description: Bucket permissions
+                      enum: ["readwrite", "readonly", "custom"]
+                      default: "readwrite"
+                    customPolicy:
+                      type: string
+                      description: Custom IAM policy JSON (when permissions is custom)
+                    versioning:
+                      type: boolean
+                      description: Enable bucket versioning
+                      default: false
+                    retentionDays:
+                      type: integer
+                      description: Object retention days
+                      minimum: 1
+                      maximum: 365
+                # External Secrets configuration
+                externalSecrets:
+                  type: array
+                  description: Create ExternalSecrets from AWS Secrets Manager (imports all keys from each secret path using dataFrom)
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Kubernetes Secret name (should match what's referenced in env/envFrom)
+                      remoteRef:
+                        type: string
+                        description: Path to secret in AWS Secrets Manager (e.g., "apps/myapp/secrets")
+                      refreshInterval:
+                        type: string
+                        description: How often to refresh from AWS Secrets Manager
+                        pattern: "^[0-9]+(s|m|h)$"
+                        default: "1h"
+                    required:
+                      - name
+                      - remoteRef
+              required:
+                - image
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                observedGeneration:
+                  type: integer
+          required:
+            - spec

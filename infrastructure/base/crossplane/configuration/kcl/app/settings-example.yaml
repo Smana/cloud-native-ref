@@ -1,0 +1,212 @@
+kcl_options:
+  - key: params
+    value:
+      ocds:
+        myname-deployment:
+          Resource:
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: myname
+              namespace: myns
+            status:
+              conditions:
+                - type: Available
+                  status: "True"
+                  reason: MinimumReplicasAvailable
+              availableReplicas: 1
+              readyReplicas: 1
+              replicas: 1
+        myname-service:
+          Resource:
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: myname
+              namespace: myns
+            spec:
+              clusterIP: "172.20.138.185"
+        myname-httproute:
+          Resource:
+            apiVersion: gateway.networking.k8s.io/v1
+            kind: HTTPRoute
+            metadata:
+              name: myname
+              namespace: myns
+            status:
+              parents:
+                - conditions:
+                    - type: Accepted
+                      status: "True"
+                      reason: Accepted
+                    - type: ResolvedRefs
+                      status: "True"
+                      reason: ResolvedRefs
+      ctx:
+        "apiextensions.crossplane.io/environment":
+          "clusterName": "mycluster-0"
+          region: "eu-west-3"
+      oxr:
+        metadata:
+          name: "myname"
+          namespace: "myns"
+        spec:
+          # Deployment specific parameters. Should follow common Kubernetes best practices.
+          # See https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+          image:
+            repository: "myrepo/myapp"
+            tag: "latest"
+            pullPolicy: "IfNotPresent" # Always, Never, IfNotPresent
+          autoscaling:
+            enabled: true
+            minReplicas: 2
+            maxReplicas: 5
+            targetCPUUtilizationPercentage: 70
+          replicas: 2
+          pdb:
+            enabled: true
+            minAvailable: 1
+            unhealthyPodEvictionPolicy: "AlwaysAllow"
+          # Security settings (optional - secure defaults applied if omitted)
+          automountServiceAccountToken: false
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            enableWritableTmp: true
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          onDemand: false
+          runAsNonRoot: false
+          spreadAcrossZones: true
+          antiAffinityPreset: "soft"
+          configs:
+            main:
+              path: "/app/config.yaml" # Expected path in the container
+              content: |
+                key: value
+            otherConfig:
+              path: "/app/other-config.yaml" # Expected path in the container
+              content: |
+                key: value
+          secrets: # Secrets that will be mounted as envVars in the application container(s)
+            appSecret:
+              path: "/app/secret" # Name of the secret in AWS Secrets Manager
+              keys: ["username", "password"] # Keys to fetch from the secret
+            otherAppSecret:
+              path: "/app/other-secret" # Name of the secret in AWS Secrets Manager
+          # Parameters for exposing the service using Gateway API
+          service:
+            port: 8080
+          gateway: # Create a dedicated Gateway for this application otherwise using the shared one.
+            enabled: true
+            gatewayClassName: "my-gateway-class"
+            name: "myname-gateway"
+            namespace: "myns"
+          route:
+            enabled: true  # Enable HTTPRoute creation (default: false)
+            internetFacing: true
+            hostname: "myname"
+            rules:
+              - backendPort: 8080
+                pathPrefix: /
+          networkPolicies: # Create CiliumNetworkPolicy to restrict traffic
+            enabled: true
+            ingress:
+              - fromEndpoints:
+                - matchLabels:
+                    "io.kubernetes.pod.namespace": "gateway-system"
+                    "app.kubernetes.io/name": "cilium-gateway"
+                toPorts:
+                - ports:
+                  - port: "8080"
+                    protocol: TCP
+            egress:
+              # Allow DNS
+              - toEndpoints:
+                - matchLabels:
+                    "io.kubernetes.pod.namespace": "kube-system"
+                    "k8s-app": "kube-dns"
+                toPorts:
+                - ports:
+                  - port: "53"
+                    protocol: UDP
+              # Allow to database
+              - toEndpoints:
+                - matchLabels:
+                    "app.kubernetes.io/name": "myname-sqlinstance"
+                toPorts:
+                - ports:
+                  - port: "5432"
+                    protocol: TCP
+              # Allow external HTTPS
+              - toFQDNs:
+                - matchPattern: "*.github.com"
+                - matchName: "api.example.com"
+                toPorts:
+                - ports:
+                  - port: "443"
+                    protocol: TCP
+          # Parameters for the underlying infrastructure
+          kvStore: # By default it creates a Valkey Helmrelease
+            enabled: true
+            size: "small"
+            type: "valkey"
+          sqlInstance: # Refer to the SQLInstance composition for more details
+            enabled: true
+            size: "small"
+            storageSize: 20Gi
+            backup:
+              schedule: "0 0 * * *"
+              retentionPolicy: "10d"
+              bucketName: "myname-rds-instance-backups"
+            atlasSchema:
+              url: "https://github.com/Smana/image-gallery"
+              ref: "main"
+              path: "internal/platform/database/migrations"
+          s3Bucket: # This creates an S3 but also the lifecycle policies. The bucket encrytion is SSE-S3. the EKS pod identity using the composition  EPI.
+            enabled: true
+            providerConfigRef:
+              name: "aws-provider"
+              namespace: "crossplane-system"
+            region: "eu-west-3"
+            permissions: "custom" # readwrite, readonly, custom
+            customPolicy: | # if permissions is "custom", else ignored
+              [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:ListBucket"
+                  ],
+                  "Resource": [
+                    "arn:aws:s3:::myname-myns-*"
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:DeleteObject"
+                  ],
+                  "Resource": [
+                    "arn:aws:s3:::myname-myns-*/*"
+                  ]
+                }
+              ]
+            versioning: true
+            retentionDays: 30
+          externalSecrets:
+            - name: app-secrets-all
+              remoteRef: apps/myapp/secrets-all
+              refreshInterval: 1h
+            - name: app-secrets
+              remoteRef: apps/myapp/secrets
+              refreshInterval: 30m

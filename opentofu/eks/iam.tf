@@ -167,12 +167,8 @@ resource "aws_iam_policy" "crossplane_s3" {
             "Effect": "Allow",
             "Action": "s3:*",
             "Resource": [
-                "arn:aws:s3:::${var.region}-ogenki-harbor",
-                "arn:aws:s3:::${var.region}-ogenki-harbor/*",
-                "arn:aws:s3:::${var.region}-ogenki-openbao-snapshot",
-                "arn:aws:s3:::${var.region}-ogenki-openbao-snapshot/*",
-                "arn:aws:s3:::${var.region}-ogenki-cnpg-backups",
-                "arn:aws:s3:::${var.region}-ogenki-cnpg-backups/*"
+                "arn:aws:s3:::${var.region}-ogenki-*",
+                "arn:aws:s3:::${var.region}-ogenki-*/*"
             ]
         },
         {
