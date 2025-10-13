@@ -8,6 +8,7 @@ This directory contains KCL (Kusion Configuration Language) modules used by Cros
 |--------|---------|-------------|----------|
 | `cloudnativepg` | v0.2.1 | CloudNativePG PostgreSQL operator resources | `ghcr.io/smana/cloud-native-ref/crossplane-cloudnativepg` |
 | `eks-pod-identity` | v0.2.1 | EKS Pod Identity Association resources | `ghcr.io/smana/cloud-native-ref/crossplane-eks-pod-identity` |
+| `app` | v0.1.0 | Deploy a standard application | `ghcr.io/smana/cloud-native-ref/crossplane-app` |
 
 ## Development Workflow
 
@@ -141,3 +142,4 @@ The following Crossplane compositions in this repository reference these KCL mod
 
 - [`sql-instance-composition.yaml`](../sql-instance-composition.yaml) - References `cloudnativepg` module
 - [`epi-composition.yaml`](../epi-composition.yaml) - References `eks-pod-identity` module
+- [`app-composition.yaml`](../app-composition.yaml) - References `app` module

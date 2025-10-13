@@ -1,0 +1,20 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: xplane-podinfo
+  namespace: apps
+spec:
+  # Minimum required: container image
+  image:
+    repository: stefanprodan/podinfo
+    tag: "6.9.2"
+
+  # Service configuration
+  service:
+    port: 9898
+
+  # HTTP routing (enable external access)
+  # Default: private gateway (podinfo.priv.cloud.ogenki.io)
+  route:
+    enabled: true
+    hostname: "podinfo"

@@ -1,13 +1,13 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-    name: xsqlinstances.cloud.ogenki.io
+    name: xapps.cloud.ogenki.io
     labels:
         provider: aws
 spec:
     compositeTypeRef:
         apiVersion: cloud.ogenki.io/v1alpha1
-        kind: SQLInstance
+        kind: App
     mode: Pipeline
     pipeline:
         - step: environmentConfigs
@@ -22,7 +22,7 @@ spec:
                         ref:
                             name: eks-environment
 
-        - step: cloudnativepg
+        - step: app
           functionRef:
               name: function-kcl
           input:
@@ -30,7 +30,7 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-cloudnativepg:v0.2.2
+                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-app:v0.1.4
 
         - step: ready
           functionRef:

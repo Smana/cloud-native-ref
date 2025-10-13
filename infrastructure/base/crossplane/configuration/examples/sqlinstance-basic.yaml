@@ -1,0 +1,26 @@
+---
+# Basic SQLInstance Example
+#
+# Minimal PostgreSQL database configuration with CloudNativePG.
+# This creates a simple database cluster with sensible defaults.
+#
+# For a complete example with all features, see sqlinstance-complete.yaml
+
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: SQLInstance
+metadata:
+  name: my-database
+  namespace: demo
+spec:
+  # Minimum required configuration
+  size: small           # Options: small, medium, large
+  storageSize: 20Gi     # Persistent storage size
+
+  # Create a database and user
+  databases:
+    - name: myapp
+      owner: myapp-user
+
+  roles:
+    - name: myapp-user
+      comment: "Application database user"

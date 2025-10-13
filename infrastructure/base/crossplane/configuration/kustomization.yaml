@@ -3,6 +3,8 @@ kind: Kustomization
 namespace: crossplane-system
 
 resources:
+  - app-composition.yaml
+  - app-definition.yaml
   - cluster-providerconfig-aws.yaml
   - environmentconfig.yaml
   - epi-composition.yaml

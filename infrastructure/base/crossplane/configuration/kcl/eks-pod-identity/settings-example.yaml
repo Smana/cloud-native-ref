@@ -1,6 +1,7 @@
 kcl_options:
   - key: params
     value:
+      ocds: {}
       ctx:
         "apiextensions.crossplane.io/environment":
           region: "eu-west-3"

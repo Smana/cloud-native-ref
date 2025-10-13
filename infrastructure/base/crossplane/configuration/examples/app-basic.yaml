@@ -1,0 +1,32 @@
+---
+# Basic app example - minimal configuration with secure defaults
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: basic-app
+  namespace: demo
+spec:
+  # Minimum required: container image
+  image:
+    repository: ghcr.io/example/basic-app
+    tag: "v1.0.0"
+
+  # Optional: Service configuration (defaults to port 8080)
+  service:
+    port: 8080
+
+  # Optional: External access via HTTPRoute (disabled by default)
+  # To expose externally, set route.enabled: true and provide hostname
+  # Example:
+  #   route:
+  #     enabled: true
+  #     hostname: "basic-app"  # becomes basic-app.priv.cloud.ogenki.io
+  #     internetFacing: false  # or true for basic-app.cloud.ogenki.io
+
+  # Optional: Automatic ExternalSecret creation from AWS Secrets Manager
+  # Imports all keys from the remote secret path and creates a Kubernetes Secret
+  # Example:
+  #   externalSecrets:
+  #     - name: app-secrets              # Kubernetes Secret name (reference in envFrom)
+  #       remoteRef: apps/basic-app/secrets  # Path in AWS Secrets Manager
+  #       refreshInterval: 1h            # How often to sync (default: 1h)

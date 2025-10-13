@@ -200,6 +200,33 @@ Additionally, I have put a constraint on the resources the controllers can manag
 - [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/cilium-gateway-api/)
 - [My Kubernetes Cluster (GKE) with Crossplane](https://blog.ogenki.io/post/crossplane_k3d/)
 
+### The App Composition: Platform Abstraction for Application Deployment
+
+One of the most powerful compositions in this repository is the **App composition**, which provides a unified platform interface for deploying applications on Kubernetes. The core philosophy is to offer **the right level of abstraction** that grows with your application needs—from prototype to production—without changing platforms or rewriting configurations.
+
+**Why an App Composition?**
+
+Traditional Kubernetes deployments require developers to understand and manage numerous interconnected resources: Deployments, Services, ConfigMaps, Secrets, HPAs, PDBs, Network Policies, and more. As applications grow, they need databases, caching layers, object storage, and sophisticated networking. This complexity creates a steep learning curve and slows down development.
+
+The App composition solves this by providing a **single, declarative interface** that:
+
+- **Starts Simple**: Deploy with just a container image—everything else has secure defaults
+- **Grows with You**: Add features incrementally as your application matures (databases, caching, autoscaling, HA)
+- **Abstracts Complexity**: Handles the wiring between infrastructure components automatically
+- **Enforces Security**: Provides production-ready security defaults (non-root, read-only filesystem, network policies)
+- **Integrates Infrastructure**: Manages PostgreSQL, Redis/Valkey, S3 buckets, and IAM permissions as part of the application
+
+**Progressive Complexity in Action:**
+
+- **Day 1 - Prototype**: Just specify `image.repository` and deploy a working application
+- **Week 1 - Development**: Add external secrets, configure environment variables, expose via HTTPRoute
+- **Month 1 - Staging**: Enable autoscaling, add PostgreSQL with Atlas migrations, configure health checks
+- **Production**: Full HA with PDBs, zone spreading, network policies, S3 storage, monitoring integration
+
+This approach eliminates the need for "platform migrations"—your initial configuration evolves naturally into a production-ready deployment without architectural rewrites.
+
+📖 **Learn More**: [App Composition Documentation](infrastructure/base/crossplane/configuration/kcl/app/README.md)
+
 ## 📦 OCI Registry with Harbor
 
 The Harbor installation follows best practices for high availability. It leverages recent Crossplane features such as `Composition functions`:
