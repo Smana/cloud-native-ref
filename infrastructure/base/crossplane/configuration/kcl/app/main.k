@@ -147,6 +147,7 @@ _observedPDB = ocds[_name + "-pdb"]?.Resource if _name + "-pdb" in ocds else Non
 _observedGateway = ocds[_name + "-gateway"]?.Resource if _name + "-gateway" in ocds else None
 _observedNetworkPolicy = ocds[_name + "-cilium-netpol"]?.Resource if _name + "-cilium-netpol" in ocds else None
 _observedKVStore = ocds[_name + "-kvstore"]?.Resource if _name + "-kvstore" in ocds else None
+_observedServiceAccount = ocds[_name + "-serviceaccount"]?.Resource if _name + "-serviceaccount" in ocds else None
 
 # Check if Deployment is actually Available (not just created)
 # Looks for Deployment.status.conditions[type=Available, status=True]
@@ -181,6 +182,10 @@ _networkPolicyReady = _observedNetworkPolicy != None and _observedNetworkPolicy?
 # Check if HelmRelease is Ready
 # Looks for HelmRelease.status.conditions[type=Ready, status=True]
 _helmReleaseReady = any_true([c?.type == "Ready" and c?.status == "True" for c in _observedKVStore?.status?.conditions or []])
+
+# Check if ServiceAccount exists in the cluster
+# ServiceAccounts don't have status conditions, so we check if the resource exists
+_serviceAccountReady = _observedServiceAccount != None and _observedServiceAccount?.metadata != None
 
 # Core Kubernetes resources
 # Deployment
@@ -319,6 +324,8 @@ _serviceAccount = {
         namespace = _namespace
         annotations = {
             "krm.kcl.dev/composition-resource-name" = _name + "-serviceaccount"
+            if _serviceAccountReady:
+                "krm.kcl.dev/ready" = "True"
         }
     }
 }

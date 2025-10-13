@@ -100,19 +100,9 @@ spec:
   networkPolicies:
     enabled: true
     ingress:
-      - fromEndpoints:
-          - matchLabels:
-              "io.kubernetes.pod.namespace": "gateway-system"
-              "app.kubernetes.io/name": "cilium-gateway"
-        toPorts:
-          - ports:
-              - port: "8080"
-                protocol: TCP
-
-      - fromEndpoints:
-          - matchLabels:
-              "io.kubernetes.pod.namespace": "observability"
-              "app.kubernetes.io/name": "prometheus"
+      # Allow all ingress controller traffic
+      - fromEntities:
+          - ingress
         toPorts:
           - ports:
               - port: "8080"
@@ -149,14 +139,12 @@ spec:
               - port: "6379"
                 protocol: TCP
 
-      # EKS Pod Identity agent (link-local address)
-      - toCIDR:
-          - "169.254.170.23/32"
+      # EKS Pod Identity agent (runs on host network)
+      - toEntities:
+          - host
         toPorts:
           - ports:
               - port: "80"
-                protocol: TCP
-              - port: "443"
                 protocol: TCP
 
       # HTTP/HTTPS egress (covers S3 and external services)

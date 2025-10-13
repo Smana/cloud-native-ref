@@ -210,21 +210,10 @@ spec:
 
     # Ingress Rules: control incoming traffic to the application
     ingress:
-      # Allow HTTP traffic from Cilium Gateway (for internet-facing routes)
-      - fromEndpoints:
-          - matchLabels:
-              "io.kubernetes.pod.namespace": "gateway-system"
-              "app.kubernetes.io/name": "cilium-gateway"
-        toPorts:
-          - ports:
-              - port: "8080"
-                protocol: TCP
-
-      # Allow health checks from Prometheus in observability namespace
-      - fromEndpoints:
-          - matchLabels:
-              "io.kubernetes.pod.namespace": "observability"
-              "app.kubernetes.io/name": "prometheus"
+      # Allow all ingress controller traffic (gateways, load balancers, etc.)
+      # Uses Cilium reserved identity 'ingress' which covers all ingress sources
+      - fromEntities:
+          - ingress
         toPorts:
           - ports:
               - port: "8080"
@@ -253,24 +242,33 @@ spec:
               - port: "5432"
                 protocol: TCP
 
-      # External APIs: FQDN-based egress for external services
-      # Use matchPattern for wildcards or matchName for exact domains
-      - toFQDNs:
-          - matchPattern: "*.github.com"           # GitHub API (for Atlas migrations)
-          - matchName: "s3.eu-west-3.amazonaws.com"  # AWS S3 (for image storage)
-          - matchPattern: "*.amazonaws.com"        # Other AWS services
-        toPorts:
-          - ports:
-              - port: "443"
-                protocol: TCP
-
-      # Kubernetes API: allow pods to interact with k8s API if needed
+      # Key-Value Store: allow connections to Valkey/Redis
       - toEndpoints:
           - matchLabels:
-              "io.kubernetes.pod.namespace": "default"
-              component: "apiserver"
+              "app.kubernetes.io/instance": "image-gallery-valkey"
+              "app.kubernetes.io/name": "valkey"
         toPorts:
           - ports:
+              - port: "6379"
+                protocol: TCP
+
+      # EKS Pod Identity Agent: required for IAM role credentials (S3 access)
+      # The agent runs on hostNetwork at 169.254.170.23:80
+      # IMPORTANT: Use 'host' entity, not toCIDR, due to Cilium routing behavior
+      - toEntities:
+          - host
+        toPorts:
+          - ports:
+              - port: "80"
+                protocol: TCP
+
+      # External HTTPS: allow all HTTPS egress (S3, APIs, etc.)
+      - toEntities:
+          - world
+        toPorts:
+          - ports:
+              - port: "80"
+                protocol: TCP
               - port: "443"
                 protocol: TCP
 

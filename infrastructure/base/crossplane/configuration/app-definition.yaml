@@ -421,6 +421,12 @@ spec:
                                   description: Label selectors for source endpoints
                                   additionalProperties:
                                     type: string
+                          fromEntities:
+                            type: array
+                            description: Special entities (world, cluster, host, remote-node, kube-apiserver, ingress, init, health, unmanaged, all)
+                            items:
+                              type: string
+                              enum: ["all", "world", "cluster", "host", "init", "ingress", "unmanaged", "remote-node", "health", "kube-apiserver"]
                           toPorts:
                             type: array
                             description: Port and protocol restrictions
