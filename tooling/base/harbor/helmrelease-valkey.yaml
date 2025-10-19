@@ -19,6 +19,9 @@ spec:
     remediation:
       retries: 3
   values:
+    image:
+      repository: bitnamilegacy/valkey
+      tag: 8.1.3
     auth:
       existingSecret: "harbor-valkey-password"
       existingSecretPasswordKey: "REDIS_PASSWORD"
@@ -41,6 +44,9 @@ spec:
 
     metrics:
       enabled: true
+      image:
+        repository: bitnamilegacy/redis-exporter
+        tag: 1.76.0
       serviceMonitor:
         enabled: true
 

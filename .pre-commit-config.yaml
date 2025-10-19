@@ -28,6 +28,7 @@ repos:
           - --args=-write=true
       - id: terraform_validate
         args:
+          - --hook-config=--retry-once-with-cleanup=true
           - --args=-json
       - id: terraform_tflint
         args:
