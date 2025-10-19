@@ -67,7 +67,7 @@ variable "cilium_version" {
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "1.7.1"
+  default     = "1.8.0"
   type        = string
 }
 
@@ -90,7 +90,7 @@ variable "ebs_csi_driver_chart_version" {
 
 variable "gateway_api_version" {
   description = "Gateway API CRDs version"
-  default     = "v1.3.0"
+  default     = "v1.4.0"
   type        = string
 }
 
@@ -111,7 +111,7 @@ variable "cert_manager_approle_secret_name" {
 
 variable "flux_operator_version" {
   description = "Flux Operator version"
-  default     = "0.30.0"
+  default     = "0.32.0"
   type        = string
 }
 

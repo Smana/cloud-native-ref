@@ -1,8 +1,10 @@
 # Install Gateway API CRD's. Requirement to be installed before Cilium is running
 resource "kubectl_manifest" "gateway_api_crds" {
-  count      = length(local.gateway_api_crds_urls)
-  yaml_body  = data.http.gateway_api_crds[count.index].body
-  depends_on = [module.eks.cluster_name]
+  count             = length(local.gateway_api_crds_urls)
+  yaml_body         = data.http.gateway_api_crds[count.index].body
+  server_side_apply = true
+  wait              = true
+  depends_on        = [module.eks.cluster_name]
 }
 
 
