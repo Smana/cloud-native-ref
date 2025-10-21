@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hubble-ui-ts
+  namespace: kube-system
+  annotations:
+    # Tailscale ingress configuration
+    tailscale.com/proxy-class: "admin" # Use admin ProxyClass for tag:admin and funnel settings
+    tailscale.com/hostname: "hubble-ui-mycluster-0" # Will be hubble-mycluster-0.tail-xxxxx.ts.net
+spec:
+  ingressClassName: tailscale
+  tls:
+    - hosts:
+        - "hubble-ui-mycluster-0"
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hubble-ui
+                port:
+                  number: 80

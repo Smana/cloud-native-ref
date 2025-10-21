@@ -1,0 +1,22 @@
+---
+apiVersion: tailscale.com/v1alpha1
+kind: ProxyClass
+metadata:
+  name: admin
+spec:
+  statefulSet:
+    labels:
+      app.kubernetes.io/component: tailscale-proxy
+      app.kubernetes.io/part-of: tailscale
+      access-level: admin
+    pod:
+      labels:
+        app.kubernetes.io/component: tailscale-proxy
+        app.kubernetes.io/part-of: tailscale
+        access-level: admin
+  tailscale:
+    # Tag admin services for ACL-based access control
+    tags:
+      - "tag:admin"
+    # Disable Tailscale Funnel (keep services private to tailnet)
+    funnel: false

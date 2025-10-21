@@ -1,0 +1,23 @@
+---
+apiVersion: tailscale.com/v1alpha1
+kind: ProxyClass
+metadata:
+  name: general
+spec:
+  statefulSet:
+    labels:
+      app.kubernetes.io/component: tailscale-proxy
+      app.kubernetes.io/part-of: tailscale
+      access-level: general
+    pod:
+      labels:
+        app.kubernetes.io/component: tailscale-proxy
+        app.kubernetes.io/part-of: tailscale
+        access-level: general
+  tailscale:
+    # Tag general services for ACL-based access control
+    # Accessible by all tailnet members (autogroup:member)
+    tags:
+      - "tag:k8s"
+    # Disable Tailscale Funnel (keep services private to tailnet)
+    funnel: false
