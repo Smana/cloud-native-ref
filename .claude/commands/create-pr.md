@@ -38,7 +38,7 @@ flowchart LR
     comp1["Component"]
     comp2["New Service"]:::new
     comp1 -- "action" --> comp2
-    classDef new fill:#90EE90,stroke:#228B22
+    classDef new fill:#1e3a8a,stroke:#3b82f6,stroke-width:3px,color:#fff
 ```
 
 ## Template

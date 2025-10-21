@@ -5,8 +5,10 @@ metadata:
   namespace: kube-system
   annotations:
     # Tailscale ingress configuration
-    tailscale.com/proxy-class: "admin" # Use admin ProxyClass for tag:admin and funnel settings
+    tailscale.com/proxy-class: "admin" # Use admin ProxyClass for consistent proxy configuration
     tailscale.com/hostname: "hubble-ui-mycluster-0" # Will be hubble-mycluster-0.tail-xxxxx.ts.net
+    tailscale.com/tags: "tag:admin" # Restrict access to admin group via ACL
+    tailscale.com/funnel: "false" # Keep private to tailnet
 spec:
   ingressClassName: tailscale
   tls:

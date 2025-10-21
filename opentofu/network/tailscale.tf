@@ -3,14 +3,50 @@ resource "tailscale_acl" "this" {
   overwrite_existing_content = lookup(var.tailscale_config, "overwrite_existing_content", false)
 
   acl = jsonencode({
+    // Define groups for access control
+    groups = {
+      "group:admin" = ["smainklh@gmail.com"]
+    }
+
     // Define access control lists for users, groups, autogroups, tags,
     // Tailscale IP addresses, and subnet ranges.
-    // This is an unrestricted rule made for a test environment, connections are allowed from all sources to any destination
+    // Note: Only explicitly allowed connections are permitted (default deny)
     acls = [
+      // Restrict admin-tagged services (like Hubble) to admin group only
       {
         action = "accept"
-        src    = ["*"]
-        dst    = ["*:*"]
+        src    = ["group:admin"]
+        dst    = ["tag:admin:*"]
+      },
+      // Allow all members to access CI tagged devices
+      {
+        action = "accept"
+        src    = ["autogroup:member"]
+        dst    = ["tag:ci:*"]
+      },
+      // Allow all members to access k8s general services
+      {
+        action = "accept"
+        src    = ["autogroup:member"]
+        dst    = ["tag:k8s:*"]
+      },
+      // Allow all members to access VPC resources through subnet router
+      {
+        action = "accept"
+        src    = ["autogroup:member"]
+        dst    = ["10.0.0.0/16:*"]
+      },
+      // Allow all members to access other member devices
+      {
+        action = "accept"
+        src    = ["autogroup:member"]
+        dst    = ["autogroup:member:*"]
+      },
+      // Allow k8s operator to manage its resources
+      {
+        action = "accept"
+        src    = ["tag:k8s-operator"]
+        dst    = ["tag:k8s:*", "tag:admin:*"]
       }
     ]
 
@@ -33,7 +69,10 @@ resource "tailscale_acl" "this" {
     }
 
     tagOwners = {
-      "tag:ci" = [var.tailscale_config.tailnet]
+      "tag:ci"           = [var.tailscale_config.tailnet]
+      "tag:k8s"          = ["tag:k8s-operator"]
+      "tag:k8s-operator" = [var.tailscale_config.tailnet]
+      "tag:admin"        = ["tag:k8s-operator"]
     }
   })
 }

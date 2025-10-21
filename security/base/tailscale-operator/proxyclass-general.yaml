@@ -9,15 +9,12 @@ spec:
       app.kubernetes.io/component: tailscale-proxy
       app.kubernetes.io/part-of: tailscale
       access-level: general
+    annotations:
+      # Tags must be configured via Ingress annotations (tailscale.com/tags)
+      # ProxyClass only supports statefulSet-level configuration
+      tailscale.com/tags: "tag:k8s"
     pod:
       labels:
         app.kubernetes.io/component: tailscale-proxy
         app.kubernetes.io/part-of: tailscale
         access-level: general
-  tailscale:
-    # Tag general services for ACL-based access control
-    # Accessible by all tailnet members (autogroup:member)
-    tags:
-      - "tag:k8s"
-    # Disable Tailscale Funnel (keep services private to tailnet)
-    funnel: false

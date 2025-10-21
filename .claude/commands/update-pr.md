@@ -42,8 +42,8 @@ flowchart LR
     comp2["New"]:::new
     comp3["Modified"]:::modified
     comp1 --> comp2 --> comp3
-    classDef new fill:#90EE90,stroke:#228B22
-    classDef modified fill:#FFD700,stroke:#FF8C00
+    classDef new fill:#1e3a8a,stroke:#3b82f6,stroke-width:3px,color:#fff
+    classDef modified fill:#c2410c,stroke:#f97316,stroke-width:3px,color:#fff
 ```
 ## 🗂️ Files
 | File | Type | Lines | Description |
@@ -58,6 +58,6 @@ flowchart LR
 ```
 
 ## Styling
-- Green (new): `fill:#90EE90,stroke:#228B22`
-- Yellow (modified): `fill:#FFD700,stroke:#FF8C00`
-- Red (removed): `fill:#FFB6C1,stroke:#DC143C,stroke-dasharray:5 5`
+- New (dark blue): `fill:#1e3a8a,stroke:#3b82f6,stroke-width:3px,color:#fff`
+- Modified (dark orange): `fill:#c2410c,stroke:#f97316,stroke-width:3px,color:#fff`
+- Removed (red): `fill:#991b1b,stroke:#dc2626,stroke-width:3px,color:#fff,stroke-dasharray:5 5`
