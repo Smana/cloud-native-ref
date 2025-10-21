@@ -6,4 +6,5 @@ resources:
   - ../base/cert-manager
   - ../base/openbao-snapshot
   - ../base/rbac
+  - ../base/tailscale-operator
   - external-secrets

@@ -8,4 +8,5 @@ resources:
   - infrastructure.yaml
   - observability.yaml
   - security.yaml
+  - tailscale.yaml
   - tooling.yaml

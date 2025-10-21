@@ -11,6 +11,8 @@ installNoConntrackIptablesRules: true
 ipam:
   mode: eni
 kubeProxyReplacement: true
+socketLB:
+  hostNamespaceOnly: true
 operator:
   resources:
     limits:

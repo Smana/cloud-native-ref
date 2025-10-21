@@ -1,0 +1,20 @@
+---
+apiVersion: tailscale.com/v1alpha1
+kind: ProxyClass
+metadata:
+  name: general
+spec:
+  statefulSet:
+    labels:
+      app.kubernetes.io/component: tailscale-proxy
+      app.kubernetes.io/part-of: tailscale
+      access-level: general
+    annotations:
+      # Tags must be configured via Ingress annotations (tailscale.com/tags)
+      # ProxyClass only supports statefulSet-level configuration
+      tailscale.com/tags: "tag:k8s"
+    pod:
+      labels:
+        app.kubernetes.io/component: tailscale-proxy
+        app.kubernetes.io/part-of: tailscale
+        access-level: general

@@ -1,0 +1,13 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crds-tailscale-operator
+  namespace: tailscale
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: tailscale
+  path: "cmd/k8s-operator/deploy/crds"
+  prune: true
+  timeout: 10m
