@@ -3,7 +3,7 @@
 # The EKS Pod Identity for the EBS-CSI-DRIVER is created here because we need to define the GP3 volume type as default
 module "identity_ebs_csi_driver" {
   source  = "terraform-aws-modules/eks-pod-identity/aws"
-  version = "2.2.0"
+  version = "2.2.1"
   name    = "${var.name}-ebs_csi_driver"
 
   attach_aws_ebs_csi_policy = true
@@ -24,7 +24,7 @@ module "identity_ebs_csi_driver" {
 # We only give the required permissions for Crossplane resources we want to manage
 module "identity_crossplane" {
   source  = "terraform-aws-modules/eks-pod-identity/aws"
-  version = "2.2.0"
+  version = "2.2.1"
   name    = "${var.name}-crossplane"
 
   additional_policy_arns = {
