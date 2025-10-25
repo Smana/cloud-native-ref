@@ -1,0 +1,225 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: homepage
+  namespace: tooling
+spec:
+  interval: 30m
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: homepage
+      version: "2.1.0"
+      sourceRef:
+        kind: HelmRepository
+        name: jameswynn
+      interval: 12h
+  values:
+    # Enable RBAC for Kubernetes integration
+    enableRbac: true
+
+    serviceAccount:
+      create: true
+      name: homepage
+
+    # Additional ClusterRole permissions for Flux and Crossplane
+    extraClusterRoles:
+      # Flux resources
+      - apiGroups:
+          - source.toolkit.fluxcd.io
+          - kustomize.toolkit.fluxcd.io
+          - helm.toolkit.fluxcd.io
+        resources:
+          - gitrepositories
+          - helmreleases
+          - kustomizations
+          - helmrepositories
+        verbs:
+          - get
+          - list
+      # Crossplane resources
+      - apiGroups:
+          - apiextensions.crossplane.io
+        resources:
+          - compositions
+          - compositeresourcedefinitions
+        verbs:
+          - get
+          - list
+      # Crossplane managed resources
+      - apiGroups:
+          - cloud.ogenki.io
+        resources:
+          - "*"
+        verbs:
+          - get
+          - list
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+    env:
+      - name: HOMEPAGE_ALLOWED_HOSTS
+        value: "home.priv.cloud.ogenki.io"
+
+    config:
+      bookmarks:
+        - Cloud Native:
+            - Kubernetes Docs:
+                - abbr: K8s
+                  href: https://kubernetes.io/docs/
+            - Crossplane Docs:
+                - abbr: XP
+                  href: https://docs.crossplane.io/
+            - Flux Docs:
+                - abbr: Flux
+                  href: https://fluxcd.io/flux/
+            - Gateway API:
+                - abbr: GW
+                  href: https://gateway-api.sigs.k8s.io/
+
+        - Observability:
+            - VictoriaMetrics:
+                - abbr: VM
+                  href: https://docs.victoriametrics.com/
+            - Cilium:
+                - abbr: Cilium
+                  href: https://docs.cilium.io/
+
+      services:
+        - Platform Tools:
+            - Headlamp:
+                href: https://headlamp.priv.cloud.ogenki.io
+                description: Kubernetes Web UI
+                icon: headlamp.png
+                namespace: tooling
+                app: headlamp
+
+            - Harbor:
+                href: https://harbor.priv.cloud.ogenki.io
+                description: Container & Helm Registry
+                icon: harbor.png
+                namespace: tooling
+                app: harbor
+
+        - Observability:
+            - Grafana:
+                href: https://grafana.priv.cloud.ogenki.io
+                description: Metrics & Dashboards
+                icon: grafana.png
+                namespace: observability
+                app: grafana
+
+            - Victoria Metrics:
+                href: https://vl.priv.cloud.ogenki.io/select/vmui/
+                description: Time Series Database
+                icon: victoriametrics.png
+                namespace: observability
+                app: vmsingle
+
+            - Victoria Logs:
+                href: https://vl.priv.cloud.ogenki.io/select/vmui
+                description: Log Management
+                icon: victoriametrics.png
+                namespace: observability
+                app: victoria-logs-single
+
+        - Security & Identity:
+            - Zitadel:
+                href: https://auth.cloud.ogenki.io
+                description: Identity & Access Management
+                icon: zitadel.png
+                namespace: security
+                app: zitadel
+
+            - OpenBao:
+                href: https://bao.priv.cloud.ogenki.io:8200
+                description: Secrets Management & PKI
+                icon: vault.png
+
+        - Demo Apps:
+            - Podinfo:
+                href: https://podinfo.priv.cloud.ogenki.io
+                description: Demo Application
+                icon: mdi-cube
+                namespace: apps
+                app: xplane-podinfo
+
+            - Image Gallery:
+                href: https://image-gallery.priv.cloud.ogenki.io
+                description: Demo Image Gallery
+                icon: mdi-image-multiple
+                namespace: apps
+                app: xplane-image-gallery
+
+        - Infrastructure:
+            - Hubble UI:
+                href: https://hubble-ui-mycluster-0.tail9c382.ts.net
+                description: Cilium Network Observability
+                icon: cilium.png
+                namespace: kube-system
+                app: hubble-ui
+
+      widgets:
+        - search:
+            provider: duckduckgo
+            target: _blank
+            showSearchSuggestions: true
+
+        - kubernetes:
+            cluster:
+              show: true
+              cpu: true
+              memory: true
+              showLabel: true
+              label: "mycluster-0"
+            nodes:
+              show: false
+
+        - resources:
+            backend: kubernetes
+            expanded: true
+            cpu: true
+            memory: true
+
+      kubernetes:
+        mode: cluster
+        # Enable Gateway API HttpRoute discovery
+        gateway: true
+        # Enable standard Ingress discovery
+        ingress: true
+
+      settings:
+        title: Cloud Native Platform
+        headerStyle: boxed
+        # Theme and color not set to allow UI switchers
+        # Users can change theme/color through the UI
+        target: _blank
+        language: en
+        hideVersion: false
+        statusStyle: dot
+        quicklaunch:
+          searchDescriptions: true
+          hideInternetSearch: false
+          showSearchSuggestions: true
+        layout:
+          Platform Tools:
+            style: row
+            columns: 2
+          Observability:
+            style: row
+            columns: 3
+          Security & Identity:
+            style: row
+            columns: 2
+          Demo Apps:
+            style: row
+            columns: 2
+          Infrastructure:
+            style: row
+            columns: 1

@@ -143,20 +143,26 @@ _items = [
                     superuser = role.superuser
                     inRoles = role.inRoles
                     passwordSecret = {
-                        name = oxr.metadata.name + "-cnpg-role-" + role.name
+                        # Use the database secret (same credentials, named after database not role)
+                        name = oxr.metadata.name + "-cnpg-" + [db.name for db in oxr.spec.databases if db.owner == role.name][0]
                     }
                 } for role in oxr.spec.roles]
         }
     }
 ]
-# Create ExternalSecrets for each role
-if oxr.spec.roles:
+
+# Create ExternalSecrets for database owners (used by initdb, roles, and applications)
+# Each database gets a secret named after the database (not the role) to support CNPG initdb bootstrap
+if oxr.spec.databases:
     _items += [{
         apiVersion = "external-secrets.io/v1"
         kind = "ExternalSecret"
         metadata = {
-            name = oxr.metadata.name + "-cnpg-role-" + role.name
+            name = oxr.metadata.name + "-cnpg-" + db.name
             namespace = oxr.metadata.namespace
+            annotations = {
+                "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-cnpg-externalsecret-" + db.name
+            }
         }
         spec = {
             refreshInterval = "30m"
@@ -168,14 +174,14 @@ if oxr.spec.roles:
                 {
                     secretKey = "username"
                     remoteRef = {
-                        key = "cnpg/" + oxr.metadata.name + "/roles/" + role.name
+                        key = "cnpg/" + oxr.metadata.name + "/roles/" + db.owner
                         property = "username"
                     }
                 }
                 {
                     secretKey = "password"
                     remoteRef = {
-                        key = "cnpg/" + oxr.metadata.name + "/roles/" + role.name
+                        key = "cnpg/" + oxr.metadata.name + "/roles/" + db.owner
                         property = "password"
                     }
                 }
@@ -183,19 +189,19 @@ if oxr.spec.roles:
             target = {
                 creationPolicy = "Owner"
                 deletionPolicy = "Retain"
-                name = oxr.metadata.name + "-cnpg-role-" + role.name
+                name = oxr.metadata.name + "-cnpg-" + db.name
                 if oxr.spec.atlasSchema:
                     template = {
                         engineVersion = "v2"
                         data = {
                             username = "{{ .username }}"
                             password = "{{ .password }}"
-                            uri = "postgresql://{{ .username | urlquery }}:{{ .password | urlquery }}@" + oxr.metadata.name + "-cnpg-cluster-rw." + oxr.metadata.namespace + ".svc:5432/" + [db.name for db in oxr.spec.databases if db.owner == role.name][0]
+                            uri = "postgresql://{{ .username | urlquery }}:{{ .password | urlquery }}@" + oxr.metadata.name + "-cnpg-cluster-rw." + oxr.metadata.namespace + ".svc:5432/" + db.name
                         }
                     }
             }
         }
-    } for role in oxr.spec.roles]
+    } for db in oxr.spec.databases]
 
 # Create databases
 if oxr.spec.databases:
@@ -290,8 +296,8 @@ if oxr.spec.databases:
                 urlFrom = {
                     secretKeyRef = {
                         key = "uri"
-                        # Connect using the database owner's role secret
-                        name = oxr.metadata.name + "-cnpg-role-" + db.owner
+                        # Connect using the database secret
+                        name = oxr.metadata.name + "-cnpg-" + db.name
                     }
                 }
                 dir = {
