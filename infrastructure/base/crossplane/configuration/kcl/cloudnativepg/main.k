@@ -50,6 +50,9 @@ elif oxr.spec.size == "large":
 
 _items = []
 
+_postgresVersion = oxr.spec.postgresVersion if oxr.spec.postgresVersion else "18"
+_imageName = "ghcr.io/cloudnative-pg/postgresql:" + _postgresVersion + "-system-trixie"
+
 _items = [
     {
         apiVersion = "postgresql.cnpg.io/v1"
@@ -60,6 +63,7 @@ _items = [
         }
         spec = {
             instances = oxr.spec.instances
+            imageName = _imageName
             primaryUpdateStrategy = oxr.spec.primaryUpdateStrategy
             if oxr.spec.createSuperuser:
                 enableSuperuserAccess = True

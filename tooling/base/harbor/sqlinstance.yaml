@@ -6,6 +6,7 @@ spec:
   instances: 1
   size: "small"
   storageSize: 20Gi
+  postgresVersion: "17"
   databases:
     - name: registry
       owner: harbor
