@@ -1,304 +1,319 @@
-# Reference Repository for Building a Cloud Native Platform
+# Cloud Native Platform Reference
 
-**_This is an opinionated set of configurations for managing a Cloud Native platform using GitOps principles._**
+**_An opinionated, production-ready Kubernetes platform using GitOps principles._**
 
-This repository provides a comprehensive guide and set of tools for building, managing, and maintaining a Cloud Native platform. It includes configurations for Kubernetes, Crossplane, Flux, OpenBao, and more, with a focus on security, scalability, and best practices.
+This repository demonstrates how to build and operate a secure, scalable cloud-native platform on AWS EKS. It showcases modern cloud-native technologies, GitOps workflows, and platform engineering best practices.
 
-## Table of Contents
+## What is This?
 
-- [Reference Repository for Building a Cloud Native Platform](#reference-repository-for-building-a-cloud-native-platform)
-  - [Table of Contents](#table-of-contents)
-  - [☑️ Curated Toolset and Use Cases](#️-curated-toolset-and-use-cases)
-  - [🚀 Getting started](#-getting-started)
-    - [Prerequisites](#prerequisites)
-    - [Deployment Steps](#deployment-steps)
-    - [Quick Deployment with Terramate](#quick-deployment-with-terramate)
-    - [Post-Deployment](#post-deployment)
-  - [🔄 Flux Dependencies Matter](#-flux-dependencies-matter)
-  - [🏗️ Crossplane Configuration](#️-crossplane-configuration)
-    - [Requirements and Security Concerns](#requirements-and-security-concerns)
-    - [How is Crossplane Deployed?](#how-is-crossplane-deployed)
-  - [📦 OCI Registry with Harbor](#-oci-registry-with-harbor)
-  - [🔗 VPN connection using Tailscale](#-vpn-connection-using-tailscale)
-  - [🔑 Private PKI with OpenBao](#-private-pki-with-openbao)
-  - [👁️ Observability](#️-observability)
-  - [🧪 CI](#-ci)
-    - [Overview](#overview)
-    - [🏠 Using Self-Hosted Runners](#-using-self-hosted-runners)
-  - [💬 Chating and contributing](#-chating-and-contributing)
+This is a **reference implementation** of a complete cloud-native platform that includes:
 
-## ☑️ Curated Toolset and Use Cases
+- 🔧 **Infrastructure as Code**: OpenTofu for AWS resources, Crossplane for application infrastructure
+- 🚀 **GitOps**: Flux for continuous delivery and reconciliation
+- 🔒 **Security-First**: Private PKI (OpenBao), zero-trust networking (Cilium), secrets management
+- 📊 **Observability**: Metrics (VictoriaMetrics), logs (VictoriaLogs), dashboards (Grafana)
+- 🎯 **Developer Experience**: Simple abstractions for complex infrastructure (Crossplane compositions)
+- 💰 **Cost-Optimized**: SPOT instances, efficient monitoring, right-sized resources
 
-![overview](.assets/cloud-native-ref.png)
+## Who Should Use This?
 
-| Technology                                                                                                           | Domain                 | What it is used for?                                                                                      |
-|----------------------------------------------------------------------------------------------------------------------|------------------------|----------------------------------------------------------------------------------------------------------|
-| ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)    | Infrastructure         | Container orchestration, core platform on which applications are deployed                                |
-| ![Crossplane](https://img.shields.io/badge/Crossplane-4D4D4D?style=for-the-badge&logo=crossplane&logoColor=white)    | Infrastructure         | Framework to compose application and infrastructure components, providing proper abstraction levels      |
-| ![OpenTofu](https://img.shields.io/badge/OpenTofu-24B8EB?style=for-the-badge&logo=open-tofu&logoColor=white)         | Infrastructure         | Open-source alternative to Terraform for provisioning and managing infrastructure                        |
-| ![Terramate](https://img.shields.io/badge/Terramate-4B7782?style=for-the-badge&logo=key&logoColor=white)             | Infrastructure         | Tool for managing and organizing OpenTofu code and configurations across multiple stacks      |
-| ![Harbor](https://img.shields.io/badge/Harbor-60B932?style=for-the-badge&logo=harbor&logoColor=white)                | Application            | Secure container image registry with scanning and signing capabilities                                   |
-| ![Headlamp](https://img.shields.io/badge/Headlamp-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)        | Application            | Web-based GUI for Kubernetes cluster management                                                          |
-| ![CloudNativePG](https://img.shields.io/badge/CloudNativePG-316192?style=for-the-badge&logo=postgresql&logoColor=white) | Data                   | Kubernetes operator managing PostgreSQL clusters with high availability and failover support             |
-| ![Atlas operator](https://img.shields.io/badge/Atlas-5a664c?style=for-the-badge&logo=postgresql&logoColor=white) | Data                   | Kubernetes operator managing databases schema migrations             |
-| ![Valkey](https://img.shields.io/badge/Valkey-4B0082?style=for-the-badge&logo=key&logoColor=white)                   | Data                   | Redis-like key-value data store                                                                          |
-| ![Dagger](https://img.shields.io/badge/Dagger-FF6666?style=for-the-badge&logo=dagger&logoColor=white)                | Continuous Integration    | CI/CD tool used to define and run pipelines as code                                                      |
-| ![Flux](https://img.shields.io/badge/Flux-006AFC?style=for-the-badge&logo=flux&logoColor=white)                      | Continuous Delivery    | GitOps engine ensuring that what is defined in the GitHub repository is deployed on Kubernetes           |
-| ![VictoriaMetrics](https://img.shields.io/badge/VictoriaMetrics-2A4666?style=for-the-badge&logo=prometheus&logoColor=white) | Observability          | High-performance monitoring solution for collecting and querying metrics                                 |
-| ![VictoriaLogs](https://img.shields.io/badge/VictoriaLogs-2A4666?style=for-the-badge&logo=victorialogs&logoColor=white) | Observability          | High-performance log management and analytics solution for collecting, storing and querying logs        |
-| ![Tailscale](https://img.shields.io/badge/Tailscale-006AFC?style=for-the-badge&logo=tailscale&logoColor=white)        | Networking             | VPN solution for secure connections between Kubernetes clusters and other resources                      |
-| ![Gateway API](https://img.shields.io/badge/Gateway--API-0088CE?style=for-the-badge&logo=kubernetes&logoColor=white) | Networking             | Defines standard APIs for configuring Kubernetes ingress and traffic routing                             |
-| ![Cilium](https://img.shields.io/badge/Cilium-4A90E2?style=for-the-badge&logo=cilium&logoColor=white)                | Networking             | Advanced networking, security, and observability for Kubernetes using eBPF                              |
-| ![External DNS](https://img.shields.io/badge/External--DNS-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white) | Networking             | Synchronizes Kubernetes resources with DNS providers like Route 53, Cloudflare, and others               |
-| ![OpenBao](https://img.shields.io/badge/OpenBao-232F3E?style=for-the-badge&logo=openbao&logoColor=white)             | Security               | Open-source fork of Vault for secure secret storage, encryption, and access management                   |
-| ![Cert-manager](https://img.shields.io/badge/Cert--manager-326CE5?style=for-the-badge&logo=cert-manager&logoColor=white) | Security               | Automates the creation and renewal of TLS certificates                                                   |
-| ![ZITADEL](https://img.shields.io/badge/ZITADEL-002B5C?style=for-the-badge&logo=zitadel&logoColor=white)             | Security               | Cloud-native identity and access management system                                                       |
-| ![ExternalSecrets Operator](https://img.shields.io/badge/ExternalSecrets_Operator-FF6C37?style=for-the-badge&logo=external-secrets&logoColor=white) | Security               | Synchronizes secrets from external secret managers (e.g., Vault, AWS Secrets Manager) into Kubernetes    |
-| ![Managed Services](https://img.shields.io/badge/Managed_Services-FF9900?style=for-the-badge&logo=amazon&logoColor=white)            | Managed Services       | Cloud Services such as DNS (Route53), IAM, Load Balancing, KMS (Encrypt sensitive data) and Storage (S3)                                            |
+- **Platform Engineers**: Building internal developer platforms
+- **DevOps Teams**: Seeking production-ready Kubernetes patterns
+- **Cloud Architects**: Evaluating modern cloud-native stacks
+- **Organizations**: Moving from manual infrastructure to GitOps
+- **Learners**: Understanding how production platforms are built
 
-## 🚀 Getting started
+## Architecture Overview
+
+![Platform Architecture](.assets/cloud-native-ref.png)
+
+The platform is organized in three layers:
+
+1. **AWS Managed Services** (left): Route53, ELB, KMS, IAM, S3
+2. **Platform Services** (center): EKS cluster with Flux, Crossplane, security, networking, observability
+3. **Applications** (right): Harbor, Grafana, VictoriaMetrics, demo apps
+
+**Private Access**: Tailscale VPN provides secure access to platform tools and Kubernetes API.
+
+**Secrets Management**: OpenBao (open-source Vault fork) provides PKI and secret storage.
+
+## Quickstart
+
+Get a complete platform running in under 30 minutes.
 
 ### Prerequisites
 
-Before you begin, ensure you have the following:
+Ensure you have these tools and accounts ready:
 
-1. **AWS Account** with appropriate permissions
-2. **Required Tools**:
-   - [OpenTofu](https://opentofu.org/) (v1.4 or later)
-   - [Terramate](https://terramate.io/) (latest version)
-   - [kubectl](https://kubernetes.io/docs/tasks/tools/)
-   - [bao](https://openbao.org/) CLI (for OpenBao operations)
-   - [jq](https://jqlang.github.io/jq/) (for JSON processing)
-3. **GitHub Account** (for Flux GitOps)
-4. **Tailscale Account** (for secure VPN access)
+- ✅ **AWS Account** with admin permissions
+- ✅ **Tools**: [OpenTofu](https://opentofu.org/), [Terramate](https://terramate.io/), kubectl, jq
+- ✅ **GitHub Account** for GitOps (personal access token or GitHub App)
+- ✅ **Tailscale Account** for VPN access
+- ✅ **Domain**: Registered domain for Route53 DNS
+
+**Detailed prerequisites**: [OpenTofu Deployment Guide](docs/opentofu.md#prerequisites)
 
 ### Deployment Steps
 
-The platform is deployed in three main stages:
+**1. Configure Global Variables**
 
-1. 📡 **Network Setup**
-   - Deploy VPC, subnets, and VPN access
-   - [Follow network setup guide](./opentofu/network/README.md)
+Edit `opentofu/config.tm.hcl` with your environment:
 
-2. 🔒 **OpenBao Deployment**
-   - Deploy and configure OpenBao for secrets management
-   - [Follow OpenBao setup guide](./opentofu/openbao/cluster/README.md)
-
-3. ☸️ **Kubernetes Cluster**
-   - Bootstrap EKS cluster with Flux for GitOps
-   - [Follow EKS setup guide](./opentofu/eks/README.md)
-
-### Quick Deployment with Terramate
-
-For a streamlined deployment experience, use [**Terramate**](https://terramate.io/) to orchestrate the entire process:
-
-1. **Set sensitive values** using environment variables.
-
-   ```
-   export TF_VAR_tailscale_api_key=<TS_API_KEY>
-   ```
-
-2. **Configure Global Variables**
-   - Review and update the variables in `opentofu/config.tm.hcl`:
-
-     ```hcl
-     globals {
-       provisioner                      = "tofu"
-       region                           = "eu-west-3"
-       profile                          = ""
-       eks_cluster_name                 = "mycluster-0"
-       openbao_url                      = "https://bao.priv.cloud.ogenki.io:8200"
-       root_token_secret_name           = "openbao/cloud-native-ref/tokens/root"
-       root_ca_secret_name              = "certificates/priv.cloud.ogenki.io/root-ca"
-       cert_manager_approle_secret_name = "openbao/cloud-native-ref/approles/cert-manager"
-       cert_manager_approle             = "cert-manager"
-     }
-     ```
-
-   - Adjust these values according to your environment
-
-3. **Deploy the Openbao and EKS clusters**
-
-   ```bash
-   terramate script run deploy
-   ```
-
-### Post-Deployment
-
-After deployment, verify your setup:
-
-1. **Check Network Access**
-
-   ```bash
-   tailscale status
-   ```
-
-2. **Verify OpenBao Status**
-
-   ```bash
-   export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
-   export VAULT_SKIP_VERIFY=true
-   bao status
-   ```
-
-3. **Confirm Kubernetes Access**
-
-   ```bash
-   kubectl get nodes
-   ```
-
-## 🔄 Flux Dependencies Matter
-
-[Flux](https://fluxcd.io/) is a foundational component responsible for deploying all resources as soon as the Kubernetes cluster becomes operational. Below is a diagram that highlights the key dependencies in our setup:
-
-```mermaid
-graph TD;
-    Namespaces-->CRDs;
-    CRDs-->Crossplane;
-    Crossplane-->EPIs["EKS Pod Identities"];
-    EPIs["EKS Pod Identities"]-->Security;
-    EPIs["EKS Pod Identities"]-->Infrastructure;
-    EPIs["EKS Pod Identities"]-->Observability;
-    Observability-->Apps["Other apps"];
-    Infrastructure-->Apps["Other apps"];
-    Security-->Infrastructure;
-    Security-->Observability
+```hcl
+globals {
+  region           = "eu-west-3"          # Your AWS region
+  eks_cluster_name = "mycluster-0"        # Your cluster name
+  openbao_url      = "https://bao.priv.cloud.example.com:8200"
+  # ... other configuration
+}
 ```
 
-This diagram can be hard to understand so these are the key information:
+**2. Set Secrets**
 
-- **Namespaces** - Namespaces are the foundational resources in Kubernetes. All subsequent resources can be scoped to namespaces.
+```bash
+export TF_VAR_tailscale_api_key=<YOUR_TAILSCALE_API_KEY>
+```
 
-- **Custom Resource Definitions (CRDs)** - CRDs extend Kubernetes' capabilities by defining new resource types. These must be established before they can be utilized in other applications.
+**3. Deploy Everything**
 
-- **Crossplane** - Used to provision the necessary infrastructure components from Kubernetes.
+```bash
+cd opentofu
+terramate script run deploy
+```
 
-- **EKS Pod Identities** - Created using Crossplane, these IAM roles are necessary to grant specific AWS API permissions to certain applications.
+This deploys in order:
+1. **Network**: VPC, subnets, Route53, Tailscale VPN (~5 min)
+2. **OpenBao**: 5-node HA cluster for secrets/PKI (~10 min)
+3. **EKS**: Kubernetes cluster with Flux (~15 min)
 
-- **Security** - Among other things, this step deploys `external-secrets` which is essential to use sensitive data into our applications
+**4. Verify Deployment**
 
-## 🏗️ Crossplane Configuration
+```bash
+# Network access
+tailscale status
 
-### Requirements and Security Concerns
+# OpenBao
+export VAULT_ADDR=https://bao.priv.cloud.example.com:8200
+export VAULT_SKIP_VERIFY=true
+bao status
 
-When the cluster is initialized, we define the permissions for the Crossplane controllers using Opentofu. This involves attaching a set of IAM policies to a role. This role is crucial for managing AWS resources.
+# Kubernetes
+aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
+kubectl get nodes
+flux get all
+```
 
-We prioritize security by adhering to the principle of **least privilege**. This means we only grant the necessary permissions, avoiding any excess. For instance, although Crossplane allows it, I have chosen not to give the controllers the ability to delete stateful services like S3, IAM or Route53. This decision is a deliberate step to minimize potential risks.
+**Flux automatically deploys**: Security (External Secrets, cert-manager), Infrastructure (Cilium, Gateway API), Observability (VictoriaMetrics, Grafana), and Tooling (Harbor, Headlamp, Homepage).
 
-Additionally, I have put a constraint on the resources the controllers can manage. Specifically, they are limited to managing only those resources which are prefixed with `xplane-`. This restriction helps in maintaining a more controlled and secure environment.
+**Full deployment guide**: [OpenTofu Documentation](docs/opentofu.md)
 
-### How is Crossplane Deployed?
+## Platform Dashboard
 
-[Crossplane](https://www.crossplane.io/) allows provisioning and managing Cloud Infrastructure (and even more) using native Kubernetes features. It needs to be installed and set up in three **successive steps**:
+Once deployed, access the **Homepage dashboard** for a unified view of all platform services:
 
-1. Installation of the Kubernetes operator.
-2. Deployment of the AWS provider, which provides custom resources, including AWS roles, policies, etc.
-3. Installation of compositions that will generate AWS resources.
+![Platform Architecture](.assets/homepage.png)
 
-🏷️ Related blog posts:
 
-- [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/cilium-gateway-api/)
-- [My Kubernetes Cluster (GKE) with Crossplane](https://blog.ogenki.io/post/crossplane_k3d/)
+Homepage provides:
+- Quick links to all platform tools (Grafana, Harbor, Headlamp)
+- Kubernetes cluster metrics
+- Service health status
+- Documentation bookmarks
 
-### The App Composition: Platform Abstraction for Application Deployment
+## Core Concepts
 
-One of the most powerful compositions in this repository is the **App composition**, which provides a unified platform interface for deploying applications on Kubernetes. The core philosophy is to offer **the right level of abstraction** that grows with your application needs—from prototype to production—without changing platforms or rewriting configurations.
+### Progressive Complexity
 
-**Why an App Composition?**
+This platform embraces **progressive complexity**: start simple, grow sophisticated without platform migrations.
 
-Traditional Kubernetes deployments require developers to understand and manage numerous interconnected resources: Deployments, Services, ConfigMaps, Secrets, HPAs, PDBs, Network Policies, and more. As applications grow, they need databases, caching layers, object storage, and sophisticated networking. This complexity creates a steep learning curve and slows down development.
+**Example**: Deploy an application with just a container image:
+```yaml
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: xplane-myapp
+  namespace: apps
+spec:
+  image:
+    repository: ghcr.io/myorg/myapp
+    tag: v1.0.0
+```
 
-The App composition solves this by providing a **single, declarative interface** that:
+As needs grow, add databases, caching, autoscaling, HA—all through the same interface. No rewriting, no migration.
 
-- **Starts Simple**: Deploy with just a container image—everything else has secure defaults
-- **Grows with You**: Add features incrementally as your application matures (databases, caching, autoscaling, HA)
-- **Abstracts Complexity**: Handles the wiring between infrastructure components automatically
-- **Enforces Security**: Provides production-ready security defaults (non-root, read-only filesystem, network policies)
-- **Integrates Infrastructure**: Manages PostgreSQL, Redis/Valkey, S3 buckets, and IAM permissions as part of the application
+**Learn more**: [Crossplane App Composition](docs/crossplane.md)
 
-**Progressive Complexity in Action:**
+### GitOps Everything
 
-- **Day 1 - Prototype**: Just specify `image.repository` and deploy a working application
-- **Week 1 - Development**: Add external secrets, configure environment variables, expose via HTTPRoute
-- **Month 1 - Staging**: Enable autoscaling, add PostgreSQL with Atlas migrations, configure health checks
-- **Production**: Full HA with PDBs, zone spreading, network policies, S3 storage, monitoring integration
+**Git is the source of truth** for infrastructure and applications:
 
-This approach eliminates the need for "platform migrations"—your initial configuration evolves naturally into a production-ready deployment without architectural rewrites.
+- Commit to Git → Flux detects change → Reconciles to cluster
+- No manual `kubectl apply`
+- Complete audit trail
+- Easy rollback (revert Git commit)
 
-📖 **Learn More**: [App Composition Documentation](infrastructure/base/crossplane/configuration/kcl/app/README.md)
+**Learn more**: [GitOps with Flux](docs/gitops.md)
 
-## 📦 OCI Registry with Harbor
+### Security by Design
 
-The Harbor installation follows best practices for high availability. It leverages recent Crossplane features such as `Composition functions`:
+Security is built-in, not bolted-on:
 
-- A [CloudNativePG](https://cloudnative-pg.io/) instance.
-- Valkey cluster using the Bitnami Helm chart
-- Storing artifacts in S3
+- 🔐 **Private PKI**: OpenBao three-tier CA for TLS certificates
+- 🛡️ **Zero-Trust**: Cilium Network Policies for micro-segmentation
+- 🔑 **Secrets Management**: External Secrets syncs from AWS Secrets Manager/OpenBao
+- 🚪 **Private Access**: Kubernetes API and platform tools only via Tailscale VPN
+- 👤 **Identity**: ZITADEL for authentication, EKS Pod Identity for AWS access
 
-🏷️ Related blog post: [Going Further with Crossplane: Compositions and Functions](https://blog.ogenki.io/post/crossplane_composition_functions/)
+**Learn more**: [Ingress and Network Access](docs/ingress.md)
 
-## 🔗 VPN connection using Tailscale
+## Documentation
 
-The VPN configuration is done within the `opentofu/network` directory.
-You can follow the steps described in this [README](/opentofu/network/README.md) in order to provision a server that allows to access to private resources within AWS.
+### Getting Started
 
-Most of the time we don't want to expose our resources publicly. For instance our platform tools such as `Grafana`, `Harbor` should be access through a secured wire.
-The risk becomes even more significant when dealing with Kubernetes' API. Indeed, one of the primary recommendations for securing a cluster is to limit access to the API.
+- 📖 [OpenTofu Deployment](docs/opentofu.md) - Infrastructure deployment guide
+- 🔄 [GitOps with Flux](docs/gitops.md) - How continuous delivery works
+- 🏗️ [Crossplane](docs/crossplane.md) - Infrastructure compositions
 
-Anyway, I intentionnaly created a distinct directory that allows to provision the network and a secured connection. So that there are no confusion with the EKS provisionning.
+### Platform Services
 
-🏷️ Related blog post: [Beyond Traditional VPNs: Simplifying Cloud Access with Tailscale](https://blog.ogenki.io/post/tailscale/)
+- 🔐 [Ingress and Network Access](docs/ingress.md) - Gateway API, TLS, Tailscale
+- 👁️ [Observability](docs/observability.md) - Metrics, logs, alerting, dashboards
 
-## 🔑 Private PKI with OpenBao
+### Development and Operations
 
-:information_source: OpenBao is an opensource fork of the Hashicorp Vault solution.
+- 🧪 [CI/CD Workflows](docs/ci-workflows.md) - GitHub Actions, security scanning, validation
+- 🛠️ [Technology Choices](docs/technology-choices.md) - Why we chose each technology
 
-The OpenBao instance creation is made in 2 steps:
+### Deep Dives
 
-1. Create the cluster as described [here](/opentofu/openbao/cluster/README.md)
-2. Then configure it using [this directory](/opentofu/openbao/management/README.md)
+- [App Composition Detailed Guide](infrastructure/base/crossplane/configuration/kcl/app/README.md) - Complete reference (507 lines!)
+- [OpenBao PKI Setup](opentofu/openbao/management/docs/getting_started.md) - Certificate authority configuration
+- [cert-manager Integration](opentofu/openbao/management/docs/cert-manager.md) - Automated TLS certificates
 
-The provided code outlines the setup and configuration of a **highly available, secure, and cost-efficient OpenBao cluster**. It describes the process of creating a OpenBao instance in either development or high availability mode, with detailed steps for initializing the OpenBao, managing security tokens, and configuring a robust **Public Key Infrastructure** (PKI) system. The focus is on balancing performance, security, and cost, using a multi-node cluster, ephemeral nodes with SPOT instances, and a tiered CA structure for digital security.
+## What Makes This Different?
 
-🏷️ Related blog post: [TLS with Gateway API: Efficient and Secure Management of Public and Private Certificates](https://blog.ogenki.io/post/pki-gapi/)
+### Real Production Patterns
 
-## 👁️ Observability
+- ✅ High availability (multi-AZ, HA databases, Raft consensus)
+- ✅ Disaster recovery (S3 backups, snapshot automation)
+- ✅ Security hardening (private endpoints, least privilege IAM)
+- ✅ Cost optimization (SPOT instances, efficient monitoring)
+- ✅ Operational excellence (alerting, runbooks, observability)
 
-To effectively **identify issues and optimize performance**, a comprehensive monitoring stack is essential. Several tools are available to provide detailed insights into system health, covering key areas such as metrics, logs, tracing, and profiling. Here's an overview of our current setup:
+### Modern Technology Choices
 
-- **Metrics**: We've implemented a combination of VictoriaMetrics and Grafana operators to collect, visualize, and analyze metrics. This stack enables real-time monitoring, custom dashboards, and the ability to configure alerts and notifications for proactive issue management.
+- **OpenTofu** over Terraform (open-source, community-driven)
+- **VictoriaMetrics** over Prometheus (10x storage efficiency)
+- **OpenBao** over Vault (open-source fork, no license concerns)
+- **Gateway API** over Ingress (modern standard, richer features)
+- **Cilium** over traditional CNI (eBPF-based, better performance)
 
-- **Logs**: We use VictoriaLogs for log collection and analysis, providing a high-performance, cost-effective solution that seamlessly integrates with our VictoriaMetrics stack for unified observability.
+**Detailed rationale**: [Technology Choices](docs/technology-choices.md)
 
-🏷️ Related blog posts:
+### Complete, Not Minimal
 
-- [Harness the Power of VictoriaMetrics and Grafana Operators for Metrics Management](https://blog.ogenki.io/post/series/observability/metrics)
-- [VictoriaMetrics : Effective alerts, from theory to practice](https://blog.ogenki.io/post/series/observability/alerts/)
+Unlike many "getting started" examples, this shows:
 
-## 🧪 CI
+- Real GitOps dependency management (not just "apply all YAMLs")
+- Actual PKI setup (not "TLS is left as an exercise")
+- Production databases (not "use hostPath volumes")
+- Meaningful monitoring (not "Prometheus is pre-installed")
+- Security depth (not "RBAC basics")
 
-### Overview
+## Repository Structure
 
-We leverage **[Dagger](https://dagger.io/)** for all our CI tasks. Here's what is currently run:
+```
+.
+├── docs/                          # 📚 Documentation (you are here)
+├── opentofu/                      # 🔧 Infrastructure as Code
+│   ├── network/                   # VPC, Tailscale VPN
+│   ├── openbao/                   # Secrets management
+│   └── eks/                       # Kubernetes cluster
+├── flux/                          # 🚀 Flux operator and configuration
+├── clusters/mycluster-0/          # Cluster-specific Kustomizations
+├── infrastructure/                # 🏗️ Platform infrastructure
+│   └── base/crossplane/           # Crossplane compositions
+├── security/                      # 🔒 Security components
+├── observability/                 # 👁️ Monitoring and logging
+├── tooling/                       # 🛠️ Platform tools
+├── crds/                          # Custom Resource Definitions
+└── scripts/                       # Automation scripts
+```
 
-- Validation of Kubernetes and Kustomize manifests using `kubeconform`
-- Validation of Terraform/Opentofu configurations using the [pre-commit-terraform](https://github.com/antonbabenko/pre-commit-terraform)
+## Technology Stack
 
-### 🏠 Using Self-Hosted Runners
+| Technology | Purpose |
+|------------|---------|
+| **Kubernetes (EKS)** | Container orchestration platform |
+| **Crossplane** | Infrastructure composition and abstraction |
+| **OpenTofu** | Infrastructure as Code (Terraform alternative) |
+| **Terramate** | OpenTofu orchestration and stack management |
+| **Flux** | GitOps continuous delivery |
+| **Cilium** | eBPF-based networking and security |
+| **Gateway API** | Modern ingress and traffic routing |
+| **OpenBao** | Secrets management and private PKI |
+| **VictoriaMetrics** | High-performance metrics and monitoring |
+| **VictoriaLogs** | Log aggregation and search |
+| **Grafana** | Dashboards and visualization |
+| **CloudNativePG** | PostgreSQL operator with HA |
+| **Harbor** | Container and Helm registry |
+| **Tailscale** | Zero-config VPN for private access |
+| **ZITADEL** | Identity and access management |
+| **Karpenter** | Kubernetes node autoscaling |
 
-Deploying
-This feature can be enabled within the `tooling` kustomization. By leveraging **Self-Hosted GitHub Runners**, we achieve:
+**Full stack with rationale**: [Technology Choices](docs/technology-choices.md)
 
-- **Access to Private Endpoints**: Directly interact with internal resources that are not publicly accessible.
-- **Increased Security**: Run CI tasks within our secure internal environment.
+## Learning Resources
 
-For detailed information on setting up and using GitHub Self-Hosted Runners, please refer to this [documentation](https://docs.github.com/en/actions/hosting-your-own-runners).
+### Blog Posts
 
-🏷️ Related blog post: Dagger: [The missing piece of the developer experience](https://blog.ogenki.io/post/dagger-intro/)
+This repository is documented through a series of blog posts:
 
-## 💬 Chating and contributing
+- [Crossplane: Compositions and Functions](https://blog.ogenki.io/post/crossplane_composition_functions/)
+- [TLS with Gateway API and Private PKI](https://blog.ogenki.io/post/pki-gapi/)
+- [Tailscale: Simplifying Cloud Access](https://blog.ogenki.io/post/tailscale/)
+- [VictoriaMetrics and Grafana Operators](https://blog.ogenki.io/post/series/observability/metrics)
+- [Effective Alerting with VictoriaMetrics](https://blog.ogenki.io/post/series/observability/alerts/)
+- [Dagger: The Missing Piece of Developer Experience](https://blog.ogenki.io/post/dagger-intro/)
 
-- 🗨️ [**Slack Channel**](https://ogenki.slack.com/): Feel free to come and chat with us if you have any issue, ideas or questions.
-- 💡 [**Discussions**](https://github.com/Smana/cloud-native-ref/discussions): Explore improvement areas, define the roadmap, and prioritize issues.
-- 🛠️ [**Issues**](https://github.com/Smana/cloud-native-ref/issues): Track tasks and report bugs to ensure prompt resolution.
-- 📅 [**Project**](https://github.com/users/Smana/projects/1): Detailed project planning and prioritization information.
+### External Resources
+
+- [Crossplane Documentation](https://docs.crossplane.io/)
+- [Flux Documentation](https://fluxcd.io/)
+- [Gateway API](https://gateway-api.sigs.k8s.io/)
+- [Cilium Documentation](https://docs.cilium.io/)
+- [VictoriaMetrics Documentation](https://docs.victoriametrics.com/)
+
+## Contributing and Community
+
+We welcome contributions, feedback, and questions!
+
+- 🗨️ **[Slack Channel](https://ogenki.slack.com/)**: Chat with the community
+- 💬 **[Discussions](https://github.com/Smana/cloud-native-ref/discussions)**: Ideas, questions, roadmap
+- 🐛 **[Issues](https://github.com/Smana/cloud-native-ref/issues)**: Bug reports and feature requests
+- 📅 **[Project Board](https://github.com/users/Smana/projects/1)**: Task tracking and priorities
+
+**Before contributing**: Review [SECURITY.md](SECURITY.md) for security policy and [CLAUDE.md](CLAUDE.md) for development guidelines.
+
+## License
+
+This project is provided as a reference implementation. Please review individual component licenses.
+
+## Acknowledgments
+
+This platform builds on the excellent work of many open-source projects:
+
+- [Crossplane](https://www.crossplane.io/) team and community
+- [Flux](https://fluxcd.io/) maintainers and CNCF
+- [Cilium](https://cilium.io/) and eBPF ecosystem
+- [VictoriaMetrics](https://victoriametrics.com/) developers
+- [OpenBao](https://openbao.org/) and Linux Foundation
+- All the maintainers of the tools in this stack
+
+---
+
+**Ready to get started?** → [OpenTofu Deployment Guide](docs/opentofu.md)
+
+**Questions?** → [Join our Slack](https://ogenki.slack.com/)
+
+**Exploring?** → [Technology Choices](docs/technology-choices.md)
