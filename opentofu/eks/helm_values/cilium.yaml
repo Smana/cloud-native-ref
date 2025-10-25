@@ -12,7 +12,8 @@ ipam:
   mode: eni
 kubeProxyReplacement: true
 socketLB:
-  hostNamespaceOnly: true
+  enabled: true
+  hostNamespaceOnly: false
 operator:
   resources:
     limits:
