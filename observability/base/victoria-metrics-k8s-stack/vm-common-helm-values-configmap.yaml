@@ -87,7 +87,21 @@ data:
               matchLabels:
                 dashboards: "grafana"
             allowCrossNamespaceImport: true
+            # Place VictoriaMetrics dashboards in "Observability" folder
+            folder: "Observability"
       dashboards:
+        # Disable duplicate Kubernetes dashboards (already managed manually in infrastructure namespace)
+        k8s-views-global:
+          enabled: false
+        k8s-views-namespaces:
+          enabled: false
+        k8s-views-nodes:
+          enabled: false
+        k8s-views-pods:
+          enabled: false
+        node-exporter-full:
+          enabled: false
+        # Enable VictoriaMetrics-specific dashboards
         victoriametrics-vmalert:
           enabled: true
         victoriametrics-operator:

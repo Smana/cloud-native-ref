@@ -57,6 +57,7 @@ metadata:
 spec:
   prune: true
   interval: 4m0s
+  timeout: 8m0s
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -93,6 +94,7 @@ metadata:
 spec:
   prune: true
   interval: 1m0s
+  timeout: 5m0s
   sourceRef:
     kind: GitRepository
     name: flux-system

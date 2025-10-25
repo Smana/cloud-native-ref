@@ -12,6 +12,7 @@ kcl_options:
         spec:
           instances: 3
           size: "small"
+          postgresVersion: "18"
           primaryUpdateStrategy: "unsupervised"
           createSuperuser: true
           backup:

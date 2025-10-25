@@ -6,7 +6,8 @@ metadata:
   namespace: flux-system
 spec:
   prune: true
-  interval: 2m0s
+  interval: 1m30s
+  timeout: 5m0s
   path: ./infrastructure/mycluster-0/crossplane/controller
   sourceRef:
     kind: GitRepository
@@ -30,7 +31,9 @@ metadata:
   namespace: flux-system
 spec:
   prune: true
-  interval: 2m0s
+  interval: 1m30s
+  timeout: 8m0s
+  wait: true
   path: ./infrastructure/mycluster-0/crossplane/providers
   sourceRef:
     kind: GitRepository
@@ -49,7 +52,8 @@ metadata:
   namespace: flux-system
 spec:
   prune: true
-  interval: 2m0s
+  interval: 1m0s
+  timeout: 3m0s
   path: ./infrastructure/mycluster-0/crossplane/configuration
   sourceRef:
     kind: GitRepository
@@ -70,6 +74,7 @@ metadata:
 spec:
   prune: true
   interval: 4m0s
+  timeout: 6m0s
   path: ./infrastructure/mycluster-0
   postBuild:
     substitute:

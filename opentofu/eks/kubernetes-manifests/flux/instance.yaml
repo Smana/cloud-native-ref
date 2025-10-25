@@ -37,3 +37,32 @@ spec:
             value: github
         target:
           kind: GitRepository
+      - patch: |
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --concurrent=10
+          - op: replace
+            path: /spec/template/spec/containers/0/resources/requests/cpu
+            value: 100m
+          - op: replace
+            path: /spec/template/spec/containers/0/resources/requests/memory
+            value: 128Mi
+        target:
+          kind: Deployment
+          name: source-controller
+      - patch: |
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --concurrent=6
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --requeue-dependency=10s
+          - op: replace
+            path: /spec/template/spec/containers/0/resources/requests/cpu
+            value: 200m
+          - op: replace
+            path: /spec/template/spec/containers/0/resources/requests/memory
+            value: 256Mi
+        target:
+          kind: Deployment
+          name: kustomize-controller

@@ -33,7 +33,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 3m0s
-  timeout: 30m0s
+  timeout: 5m0s
   path: ./observability/base/grafana-operator/folders
   prune: true
   sourceRef:

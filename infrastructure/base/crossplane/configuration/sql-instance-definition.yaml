@@ -127,6 +127,10 @@ spec:
                     - ref
                     - path
                   nullable: true
+                postgresVersion:
+                  description: The PostgreSQL major version to use (e.g., "17", "18"). Defaults to "18".
+                  type: string
+                  default: "18"
                 postgresql:
                   type: object
                   properties:

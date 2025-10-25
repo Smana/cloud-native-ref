@@ -66,6 +66,18 @@ module "eks" {
     }
   }
 
+  # Allow control plane to reach node/pod ports for API server service proxy feature
+  node_security_group_additional_rules = {
+    ingress_cluster_to_node_all_ports = {
+      description                   = "Cluster API to node groups (for API server service proxy)"
+      protocol                      = "tcp"
+      from_port                     = 1025
+      to_port                       = 65535
+      type                          = "ingress"
+      source_cluster_security_group = true
+    }
+  }
+
   eks_managed_node_groups = {
     main = {
       name        = "main"
