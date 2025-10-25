@@ -2,7 +2,7 @@
 
 **_An opinionated, production-ready Kubernetes platform using GitOps principles._**
 
-This repository demonstrates how to build and operate a secure, scalable cloud-native platform on AWS EKS. It showcases modern cloud-native technologies, GitOps workflows, and platform engineering best practices.
+This repository demonstrates how to build and operate a secure, scalable cloud-native platform. It showcases modern cloud-native technologies, GitOps workflows, and platform engineering best practices.
 
 ## What is This?
 
@@ -15,31 +15,23 @@ This is a **reference implementation** of a complete cloud-native platform that 
 - 🎯 **Developer Experience**: Simple abstractions for complex infrastructure (Crossplane compositions)
 - 💰 **Cost-Optimized**: SPOT instances, efficient monitoring, right-sized resources
 
-## Who Should Use This?
-
-- **Platform Engineers**: Building internal developer platforms
-- **DevOps Teams**: Seeking production-ready Kubernetes patterns
-- **Cloud Architects**: Evaluating modern cloud-native stacks
-- **Organizations**: Moving from manual infrastructure to GitOps
-- **Learners**: Understanding how production platforms are built
-
 ## Architecture Overview
 
 ![Platform Architecture](.assets/cloud-native-ref.png)
 
 The platform is organized in three layers:
 
-1. **AWS Managed Services** (left): Route53, ELB, KMS, IAM, S3
+1. **AWS Managed Services** (left): Route53, ELB, KMS, IAM, S3 (Could be any other cloud provider that has these basic managed services)
 2. **Platform Services** (center): EKS cluster with Flux, Crossplane, security, networking, observability
 3. **Applications** (right): Harbor, Grafana, VictoriaMetrics, demo apps
 
-**Private Access**: Tailscale VPN provides secure access to platform tools and Kubernetes API.
+**Private Access**: Tailscale VPN provides secure access to platform tools.
 
 **Secrets Management**: OpenBao (open-source Vault fork) provides PKI and secret storage.
 
 ## Quickstart
 
-Get a complete platform running in under 30 minutes.
+Get a complete platform running in **under 30 minutes**.
 
 ### Prerequisites
 
@@ -161,7 +153,7 @@ Security is built-in, not bolted-on:
 - 🔐 **Private PKI**: OpenBao three-tier CA for TLS certificates
 - 🛡️ **Zero-Trust**: Cilium Network Policies for micro-segmentation
 - 🔑 **Secrets Management**: External Secrets syncs from AWS Secrets Manager/OpenBao
-- 🚪 **Private Access**: Kubernetes API and platform tools only via Tailscale VPN
+- 🚪 **Private Access**: Platform tools only via Tailscale VPN
 - 👤 **Identity**: ZITADEL for authentication, EKS Pod Identity for AWS access
 
 **Learn more**: [Ingress and Network Access](docs/ingress.md)
@@ -190,35 +182,13 @@ Security is built-in, not bolted-on:
 - [OpenBao PKI Setup](opentofu/openbao/management/docs/getting_started.md) - Certificate authority configuration
 - [cert-manager Integration](opentofu/openbao/management/docs/cert-manager.md) - Automated TLS certificates
 
-## What Makes This Different?
-
-### Real Production Patterns
+## Real Production Patterns
 
 - ✅ High availability (multi-AZ, HA databases, Raft consensus)
 - ✅ Disaster recovery (S3 backups, snapshot automation)
 - ✅ Security hardening (private endpoints, least privilege IAM)
 - ✅ Cost optimization (SPOT instances, efficient monitoring)
 - ✅ Operational excellence (alerting, runbooks, observability)
-
-### Modern Technology Choices
-
-- **OpenTofu** over Terraform (open-source, community-driven)
-- **VictoriaMetrics** over Prometheus (10x storage efficiency)
-- **OpenBao** over Vault (open-source fork, no license concerns)
-- **Gateway API** over Ingress (modern standard, richer features)
-- **Cilium** over traditional CNI (eBPF-based, better performance)
-
-**Detailed rationale**: [Technology Choices](docs/technology-choices.md)
-
-### Complete, Not Minimal
-
-Unlike many "getting started" examples, this shows:
-
-- Real GitOps dependency management (not just "apply all YAMLs")
-- Actual PKI setup (not "TLS is left as an exercise")
-- Production databases (not "use hostPath volumes")
-- Meaningful monitoring (not "Prometheus is pre-installed")
-- Security depth (not "RBAC basics")
 
 ## Repository Structure
 
