@@ -8,6 +8,7 @@ spec:
   renewBefore: 360h # 15d
   commonName: private-gateway.priv.cloud.ogenki.io
   dnsNames:
+    - home.priv.cloud.ogenki.io
     - grafana.priv.${domain_name}
     - harbor.priv.${domain_name}
     - vm.priv.${domain_name}

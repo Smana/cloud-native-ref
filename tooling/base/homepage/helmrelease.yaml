@@ -157,7 +157,7 @@ spec:
                 namespace: apps
                 app: xplane-image-gallery
 
-        - Infrastructure:
+        - "Cluster: mycluster-0":
             - Hubble UI:
                 href: https://hubble-ui-mycluster-0.tail9c382.ts.net
                 description: Cilium Network Observability
@@ -220,6 +220,6 @@ spec:
           Demo Apps:
             style: row
             columns: 2
-          Infrastructure:
+          "Cluster: mycluster-0":
             style: row
-            columns: 1
+            columns: 2
