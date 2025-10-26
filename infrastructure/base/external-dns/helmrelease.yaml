@@ -30,7 +30,7 @@ spec:
 
     aws:
       region: ${region}
-      zoneType: "public"
+      zoneType: ""  # Manage both public and private zones
       batchChangeSize: 1000
 
     domainFilters: ["${domain_name}"]

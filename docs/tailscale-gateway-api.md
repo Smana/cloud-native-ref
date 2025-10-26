@@ -4,63 +4,65 @@ This platform uses Gateway API with Tailscale to provide secure, custom domain a
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Tailscale Network                     │
-│  ┌────────────┐                                         │
-│  │  User      │─────────┐                               │
-│  │  Device    │         │                               │
-│  └────────────┘         │                               │
-│                         │                               │
-│         *.priv.cloud.ogenki.io DNS queries             │
-│                         ▼                               │
-│              ┌────────────────────┐                     │
-│              │  Route53 Private   │                     │
-│              │  Hosted Zone       │                     │
-│              │  (AWS VPC DNS)     │                     │
-│              └──────────┬─────────┘                     │
-└─────────────────────────┼──────────────────────────────┘
-                          │ Points to
-                          │ gateway-priv.tail-xxxxx.ts.net
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│                    Kubernetes Cluster                    │
-│                                                          │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  ExternalDNS                                     │   │
-│  │  - Watches HTTPRoutes (gateway-httproute)        │   │
-│  │  - Creates Route53 records (private zone)        │   │
-│  │  - Points to Gateway Tailscale address           │   │
-│  └──────────────────────────────────────────────────┘   │
-│                                                          │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │  Cilium Gateway (Tailscale)                     │   │
-│  │  - gatewayClassName: cilium-tailscale           │   │
-│  │  - loadBalancerClass: tailscale                 │   │
-│  │  - Address: gateway-priv.tail-xxxxx.ts.net      │   │
-│  │  - Listener: *.priv.cloud.ogenki.io:443        │   │
-│  │  - TLS: cert-manager (OpenBao issuer)          │   │
-│  └─────────────────┬───────────────────────────────┘   │
-│                    │                                    │
-│  ┌─────────────────┴───────────────────────────────┐   │
-│  │           HTTPRoutes (per service)              │   │
-│  │  - harbor.priv.cloud.ogenki.io                  │   │
-│  │  - headlamp.priv.cloud.ogenki.io                │   │
-│  │  - hubble-ui-mycluster-0.priv.cloud.ogenki.io   │   │
-│  └─────────────────┬───────────────────────────────┘   │
-│                    │                                    │
-│  ┌─────────────────┴───────────────────────────────┐   │
-│  │           Backend Services                       │   │
-│  │  (Harbor, Headlamp, Hubble UI, etc.)            │   │
-│  └──────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph tailscale["🔒 Tailscale Network"]
+        user["👤 User Device"]
+    end
+
+    subgraph aws["☁️ AWS"]
+        route53["📝 Route53 Private Zone<br/>*.priv.cloud.ogenki.io"]
+    end
+
+    subgraph k8s["☸️ Kubernetes Cluster"]
+        externaldns["🔄 ExternalDNS<br/>Watches HTTPRoutes<br/>Creates Route53 records"]
+
+        subgraph gateway["🚪 Gateway"]
+            cilium["Cilium Gateway<br/>class: cilium-tailscale<br/>addr: gateway-priv.tail9c382.ts.net<br/>TLS: OpenBao wildcard cert"]
+        end
+
+        subgraph routes["🔀 HTTPRoutes"]
+            route1["harbor.priv.cloud.ogenki.io"]
+            route2["headlamp.priv.cloud.ogenki.io"]
+            route3["grafana.priv.cloud.ogenki.io"]
+            route4["hubble-ui.priv.cloud.ogenki.io"]
+        end
+
+        subgraph services["🎯 Services"]
+            svc1["Harbor"]
+            svc2["Headlamp"]
+            svc3["Grafana"]
+            svc4["Hubble UI"]
+        end
+    end
+
+    user -->|"1️⃣ DNS query:<br/>harbor.priv.cloud.ogenki.io"| route53
+    route53 -->|"2️⃣ Returns:<br/>gateway-priv.tail9c382.ts.net"| user
+    user -->|"3️⃣ Tailscale mesh<br/>HTTPS/443"| cilium
+
+    externaldns -.->|"Watches"| routes
+    externaldns -.->|"Creates A records"| route53
+
+    cilium --> route1 & route2 & route3 & route4
+    route1 --> svc1
+    route2 --> svc2
+    route3 --> svc3
+    route4 --> svc4
+
+    style tailscale fill:#e1f5fe
+    style aws fill:#fff3e0
+    style k8s fill:#f3e5f5
+    style gateway fill:#e8f5e9
+    style routes fill:#fff9c4
+    style services fill:#fce4ec
 ```
 
 **Flow**:
-1. User queries `harbor.priv.cloud.ogenki.io` from Tailscale device
-2. Route53 returns: `gateway-priv.tail9c382.ts.net`
-3. Tailscale MagicDNS resolves to IP: `100.103.159.24`
-4. Direct connection via Tailscale mesh → Gateway → Service
+1. 👤 User queries `harbor.priv.cloud.ogenki.io` from Tailscale device
+2. 📝 Route53 private zone returns CNAME: `gateway-priv.tail9c382.ts.net`
+3. 🔒 Tailscale MagicDNS resolves to IP: `100.103.159.24`
+4. 🚀 Direct encrypted connection via Tailscale mesh → Gateway → Service
+5. 🔄 ExternalDNS automatically creates/updates DNS records for all HTTPRoutes
 
 ## How to Add a New Service
 
