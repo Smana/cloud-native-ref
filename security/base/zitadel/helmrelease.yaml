@@ -25,10 +25,6 @@ spec:
       backoffLimit: 30 # Wait for the CNPG database instance to be ready
     login:
       enabled: true
-      customConfigmapConfig:
-        ZITADEL_SERVICE_USER_TOKEN_FILE: "/login-client/pat"
-        ZITADEL_API_URL: "http://zitadel:8080"
-        CUSTOM_REQUEST_HEADERS: "Host:auth.${domain_name}"
     zitadel:
       serverSslCrtSecret: "zitadel-certificate"  # pragma: allowlist secret
       masterkeySecretName: "zitadel-masterkey" # Populated from the zitadel-envvars secret
