@@ -33,7 +33,7 @@ spec:
       zoneType: ""  # Manage both public and private zones
       batchChangeSize: 1000
 
-    domainFilters: ["${domain_name}"]
+    domainFilters: ["${domain_name}", "priv.${domain_name}"]
     logFormat: json
     txtOwnerId: "${cluster_name}"
 
