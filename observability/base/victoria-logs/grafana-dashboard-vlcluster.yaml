@@ -5,7 +5,7 @@ metadata:
   namespace: observability
 spec:
   allowCrossNamespaceImport: true
-  folder: "Observability"
+  folderRef: "logs"
   datasources:
     - inputName: "DS_VICTORIALOGS"
       datasourceName: "VictoriaLogs"

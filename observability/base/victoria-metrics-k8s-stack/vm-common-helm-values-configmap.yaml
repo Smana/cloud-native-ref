@@ -87,25 +87,66 @@ data:
               matchLabels:
                 dashboards: "grafana"
             allowCrossNamespaceImport: true
-            # Place VictoriaMetrics dashboards in "Observability" folder
-            folder: "Observability"
       dashboards:
-        # Disable duplicate Kubernetes dashboards (already managed manually in infrastructure namespace)
+        # Kubernetes dashboards - assign to "kubernetes" folder
         k8s-views-global:
-          enabled: false
+          enabled: true
+          grafanaOperator:
+            spec:
+              folderRef: "kubernetes"
         k8s-views-namespaces:
-          enabled: false
+          enabled: true
+          grafanaOperator:
+            spec:
+              folderRef: "kubernetes"
         k8s-views-nodes:
-          enabled: false
+          enabled: true
+          grafanaOperator:
+            spec:
+              folderRef: "kubernetes"
         k8s-views-pods:
-          enabled: false
+          enabled: true
+          grafanaOperator:
+            spec:
+              folderRef: "kubernetes"
+        kubernetes-kubelet:
+          grafanaOperator:
+            spec:
+              folderRef: "kubernetes"
+        kubernetes-system-coredns:
+          grafanaOperator:
+            spec:
+              folderRef: "kubernetes"
         node-exporter-full:
           enabled: false
-        # Enable VictoriaMetrics-specific dashboards
+        # VictoriaMetrics-specific dashboards - assign to "victoriametrics" folder
         victoriametrics-vmalert:
           enabled: true
+          grafanaOperator:
+            spec:
+              folderRef: "victoriametrics"
         victoriametrics-operator:
           enabled: true
+          grafanaOperator:
+            spec:
+              folderRef: "victoriametrics"
+        victoriametrics-single-node:
+          grafanaOperator:
+            spec:
+              folderRef: "victoriametrics"
+        victoriametrics-vmagent:
+          grafanaOperator:
+            spec:
+              folderRef: "victoriametrics"
+        # Grafana and Alertmanager dashboards - assign to "victoriametrics" folder
+        grafana-overview:
+          grafanaOperator:
+            spec:
+              folderRef: "victoriametrics"
+        alertmanager-overview:
+          grafanaOperator:
+            spec:
+              folderRef: "victoriametrics"
 
     grafana:
       sidecar:
