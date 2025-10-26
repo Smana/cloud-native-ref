@@ -1,0 +1,35 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: platform-tailscale-admin
+  namespace: infrastructure
+  labels:
+    external-dns: enabled
+spec:
+  gatewayClassName: cilium-tailscale
+  infrastructure:
+    annotations:
+      # Tailscale-specific annotations for admin services
+      tailscale.com/hostname: "gateway-admin-priv"
+      tailscale.com/tags: "tag:admin"
+      tailscale.com/funnel: "false"
+  listeners:
+    - name: https
+      hostname: "*.priv.${domain_name}"
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - kube-system
+                  - observability
+      tls:
+        mode: Terminate
+        certificateRefs:
+          # Reuse existing wildcard certificate from OpenBao
+          - name: private-gateway-tls

@@ -1,7 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: platform-tailscale
+  name: platform-tailscale-general
   namespace: infrastructure
   labels:
     external-dns: enabled
@@ -9,8 +9,8 @@ spec:
   gatewayClassName: cilium-tailscale
   infrastructure:
     annotations:
-      # Tailscale-specific annotations
-      tailscale.com/hostname: "gateway-priv"
+      # Tailscale-specific annotations for general services
+      tailscale.com/hostname: "gateway-general-priv"
       tailscale.com/tags: "tag:k8s"
       tailscale.com/funnel: "false"
   listeners:
@@ -27,7 +27,6 @@ spec:
                 operator: In
                 values:
                   - apps
-                  - kube-system
                   - observability
                   - tooling
       tls:

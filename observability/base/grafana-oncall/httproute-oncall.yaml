@@ -5,7 +5,7 @@ metadata:
   namespace: observability
 spec:
   parentRefs:
-    - name: platform-tailscale
+    - name: platform-tailscale-admin
       namespace: infrastructure
   hostnames:
     - "oncall.priv.${domain_name}"

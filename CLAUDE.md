@@ -431,37 +431,49 @@ spec:
 
 ### Tailscale Gateway API Integration
 
-**Overview**: Private services are exposed via Tailscale using Gateway API with custom domains (`*.priv.cloud.ogenki.io`) instead of MagicDNS names.
+**Overview**: Private services are exposed via Tailscale using Gateway API with custom domains (`*.priv.cloud.ogenki.io`) instead of MagicDNS names. The platform uses **two separate Gateways** with different Tailscale tags to enforce access control via ACLs.
 
 **Architecture Components**:
-1. **Cilium Gateway (Tailscale)**: `infrastructure/base/gapi/platform-tailscale-gateway.yaml`
-   - Uses `loadBalancerClass: tailscale` via `CiliumGatewayClassConfig` (critical!)
-   - Single Gateway for all private services
+1. **Cilium Gateways (Tailscale)**:
+   - **General Gateway**: `infrastructure/base/gapi/platform-tailscale-general-gateway.yaml`
+     - Tag: `tag:k8s` - Accessible to all Tailscale members
+     - Services: Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics (8 services)
+   - **Admin Gateway**: `infrastructure/base/gapi/platform-tailscale-admin-gateway.yaml`
+     - Tag: `tag:admin` - Restricted to `group:admin` only
+     - Services: Hubble UI, VictoriaLogs, Grafana OnCall (5 services)
+   - Both use `loadBalancerClass: tailscale` via `CiliumGatewayClassConfig` (critical!)
    - Gateway-level TLS termination (OpenBao certificates)
-   - Exposed at `gateway-priv.tail-xxxxx.ts.net`
+   - Each exposed at separate Tailscale addresses
 
 2. **ExternalDNS**: `infrastructure/base/external-dns/helmrelease.yaml`
-   - Watches HTTPRoutes (via `gateway-httproute` source) referencing platform-tailscale Gateway
+   - Watches HTTPRoutes (via `gateway-httproute` source) referencing both Gateways
    - Creates DNS records in Route53 private zone (`priv.cloud.ogenki.io`)
-   - Points records to Gateway's Tailscale address
+   - Points records to appropriate Gateway's Tailscale address
 
-3. **HTTPRoutes**: Service-specific routing (Harbor, Headlamp, Hubble UI)
+3. **HTTPRoutes**: Service-specific routing referencing appropriate Gateway based on access requirements
+
+4. **Tailscale ACLs**: `opentofu/network/tailscale.tf`
+   - `tag:admin` → Only `group:admin` can access
+   - `tag:k8s` → All `autogroup:member` can access
 
 **Key Innovation**: Cilium Gateway supports `loadBalancerClass: tailscale` via `spec.infrastructure.annotations`, eliminating the need for separate Envoy Gateway installation.
 
 **Setup Requirements**:
 1. Deploy CiliumGatewayClassConfig with `service.loadBalancerClass: tailscale`
-2. Create platform-tailscale Gateway with label `external-dns: enabled`
+2. Create both Gateways (general and admin) with label `external-dns: enabled`
 3. Configure external-dns to watch `gateway-httproute` source
-4. Create HTTPRoutes for services
+4. Create HTTPRoutes referencing appropriate Gateway (`platform-tailscale-general` or `platform-tailscale-admin`)
+5. Configure Tailscale ACLs with `tag:k8s` and `tag:admin` rules
 
 **Benefits**:
 - Custom domains instead of MagicDNS hashes
-- One Tailscale device for all services (cost-effective)
+- Two Tailscale devices for all services (still cost-effective)
+- ACL-based access segregation (general vs admin services)
 - Advanced routing capabilities (headers, weights, etc.)
 - Consistent Gateway API pattern
 - Gateway-level TLS management
 - Leverages existing Route53 infrastructure
+- Zero-trust access control enforcement
 
 **Documentation**: See `docs/tailscale-gateway-api.md` for complete setup guide and troubleshooting.
 

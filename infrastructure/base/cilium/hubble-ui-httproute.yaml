@@ -7,7 +7,7 @@ spec:
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
-      name: platform-tailscale
+      name: platform-tailscale-admin
       namespace: infrastructure
   hostnames:
     - "hubble-ui-${cluster_name}.priv.${domain_name}"

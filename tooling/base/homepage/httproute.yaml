@@ -5,7 +5,7 @@ metadata:
   namespace: tooling
 spec:
   parentRefs:
-    - name: platform-tailscale
+    - name: platform-tailscale-general
       namespace: infrastructure
   hostnames:
     - "home.priv.${domain_name}"

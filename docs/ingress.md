@@ -56,10 +56,13 @@ Infrastructure-level resource defining listeners and TLS configuration (managed 
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: platform-tailscale
+  name: platform-tailscale-general
   namespace: infrastructure
 spec:
   gatewayClassName: cilium-tailscale
+  infrastructure:
+    annotations:
+      tailscale.com/tags: "tag:k8s"  # General member access
   listeners:
     - name: https
       hostname: "*.priv.cloud.ogenki.io"
@@ -73,12 +76,15 @@ spec:
 
 **Types of Gateways**:
 
-**Shared Platform Gateway**: Used by multiple applications
+**Shared Platform Gateways**: Used by multiple applications with access control
 ```yaml
-# infrastructure/base/gapi/platform-tailscale-gateway.yaml
-# *.priv.cloud.ogenki.io
-# Exposed via Tailscale VPN with custom domains
-# Shared by Grafana, Harbor, Headlamp, etc.
+# General Gateway (infrastructure/base/gapi/platform-tailscale-general-gateway.yaml)
+# tag:k8s - Accessible to all Tailscale members
+# Shared by Grafana, Harbor, Headlamp, VictoriaMetrics, etc.
+
+# Admin Gateway (infrastructure/base/gapi/platform-tailscale-admin-gateway.yaml)
+# tag:admin - Restricted to admin group only
+# Shared by Hubble UI, VictoriaLogs, Grafana OnCall
 ```
 
 **Dedicated Gateway**: One application gets its own Gateway
@@ -99,7 +105,7 @@ metadata:
   namespace: observability
 spec:
   parentRefs:
-    - name: platform-tailscale
+    - name: platform-tailscale-general  # Use 'platform-tailscale-admin' for admin-only services
       namespace: infrastructure
   hostnames:
     - "grafana.priv.cloud.ogenki.io"
@@ -112,6 +118,8 @@ spec:
         - name: grafana
           port: 3000
 ```
+
+**Gateway Selection**: Choose between `platform-tailscale-general` (accessible to all Tailscale members) or `platform-tailscale-admin` (restricted to admin group only) based on service sensitivity. See [Tailscale Gateway API Integration](./tailscale-gateway-api.md#access-control) for details.
 
 **Advanced Routing Examples**:
 
@@ -308,7 +316,7 @@ Reference the Secret created by cert-manager:
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: platform-tailscale
+  name: platform-tailscale-general  # Both general and admin Gateways use the same certificate
   namespace: infrastructure
 spec:
   gatewayClassName: cilium-tailscale
@@ -323,7 +331,7 @@ spec:
           - name: private-gateway-tls  # From Certificate resource
 ```
 
-**Gateway watches Secret**: When cert-manager renews the certificate, Gateway automatically picks up the new certificate.
+**Gateway watches Secret**: When cert-manager renews the certificate, both Gateways automatically pick up the new certificate.
 
 ## Certificate Lifecycle Flow
 
@@ -518,16 +526,19 @@ spec:
 
 ### Private Services
 
-**Example**: Grafana, Harbor, Headlamp
+**Example**: Grafana, Harbor, Headlamp (General) / Hubble UI, VictoriaLogs (Admin)
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: platform-tailscale
+  name: platform-tailscale-general  # Or platform-tailscale-admin for restricted services
   namespace: infrastructure
 spec:
   gatewayClassName: cilium-tailscale
+  infrastructure:
+    annotations:
+      tailscale.com/tags: "tag:k8s"  # Or tag:admin for restricted access
   listeners:
     - name: https
       hostname: "*.priv.cloud.ogenki.io"  # Private domain
@@ -538,8 +549,9 @@ spec:
           - name: private-gateway-tls  # OpenBao certificate
 ```
 
-- DNS points to Load Balancer with private IP
+- DNS points to Tailscale Gateway address
 - Only accessible via Tailscale VPN
+- Access controlled by Tailscale ACLs (general vs admin)
 - Certificate from OpenBao (private CA)
 - Additional application-level authentication (OAuth, basic auth)
 
@@ -609,13 +621,18 @@ spec:
 ### Gateway Not Ready
 
 ```bash
-# Check Gateway status
-kubectl get gateway platform-tailscale -n infrastructure
+# Check Gateway status (both gateways)
+kubectl get gateway -n infrastructure
+
+# Check specific Gateway
+kubectl get gateway platform-tailscale-general -n infrastructure
+kubectl get gateway platform-tailscale-admin -n infrastructure
 
 # Common issues:
 # 1. GatewayClass doesn't exist → Install Cilium
 # 2. Certificate not ready → Check cert-manager
 # 3. Listeners misconfigured → Check listener definition
+# 4. Tailscale operator not running → Check tailscale namespace
 ```
 
 ### Certificate Not Issued
@@ -642,13 +659,19 @@ kubectl get httproute grafana -n observability
 kubectl describe httproute grafana -n observability
 
 # Check if Gateway accepts the route
-kubectl get gateway platform-tailscale -n infrastructure -o yaml
+kubectl get gateway -n infrastructure -o yaml
+
+# List all HTTPRoutes by Gateway
+kubectl get httproute -A -o json | \
+  jq -r '.items[] | select(.spec.parentRefs[]? | select(.name == "platform-tailscale-general")) |
+  "\(.metadata.namespace)/\(.metadata.name): \(.spec.hostnames[])"'
 
 # Common issues:
 # 1. Hostname doesn't match Gateway listener
-# 2. ParentRef points to non-existent Gateway
+# 2. ParentRef points to non-existent Gateway (use platform-tailscale-general or platform-tailscale-admin)
 # 3. Backend Service doesn't exist
 # 4. DNS not resolving → Check External DNS
+# 5. HTTPRoute namespace not in Gateway's allowedRoutes
 ```
 
 ### Tailscale Access Issues

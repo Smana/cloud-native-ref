@@ -6,4 +6,5 @@ resources:
   - platform-private-gateway-certificate.yaml
   - tailscale-gatewayclass-config.yaml
   - tailscale-gatewayclass.yaml
-  - platform-tailscale-gateway.yaml
+  - platform-tailscale-general-gateway.yaml
+  - platform-tailscale-admin-gateway.yaml

@@ -2,12 +2,17 @@
 
 This platform uses Gateway API with Tailscale to provide secure, custom domain access to private services (`*.priv.cloud.ogenki.io`) without exposing them to the internet.
 
+**Access Segregation**: The platform uses **two separate Gateways** with different Tailscale tags to enforce access control via ACLs:
+- **General Gateway** (`tag:k8s`): Accessible to all Tailscale members
+- **Admin Gateway** (`tag:admin`): Restricted to `group:admin` only
+
 ## Architecture Overview
 
 ```mermaid
 flowchart TB
     subgraph tailscale["🔒 Tailscale Network"]
-        user["👤 User Device"]
+        admin["👤 Admin User"]
+        user["👤 General User"]
     end
 
     subgraph aws["☁️ AWS"]
@@ -17,41 +22,59 @@ flowchart TB
     subgraph k8s["☸️ Kubernetes Cluster"]
         externaldns["🔄 ExternalDNS<br/>Watches HTTPRoutes<br/>Creates Route53 records"]
 
-        subgraph gateway["🚪 Gateway"]
-            cilium["Cilium Gateway<br/>platform-tailscale<br/>TLS: OpenBao cert"]
+        subgraph gateways["🚪 Gateways"]
+            general["General Gateway<br/>tag:k8s<br/>8 services"]
+            adminGW["Admin Gateway<br/>tag:admin<br/>5 services"]
         end
 
-        httproute["🔀 HTTPRoute<br/>myapp.priv.cloud.ogenki.io"]
-        service["🎯 Service<br/>myapp"]
+        generalSvc["🎯 General Services<br/>Harbor, Grafana, etc"]
+        adminSvc["🔒 Admin Services<br/>Hubble UI, VictoriaLogs, OnCall"]
     end
 
-    user -->|"1️⃣ DNS query:<br/>myapp.priv.cloud.ogenki.io"| route53
-    route53 -->|"2️⃣ Returns:<br/>gateway-priv.tail9c382.ts.net"| user
-    user -->|"3️⃣ Tailscale mesh<br/>HTTPS/443"| cilium
+    admin -->|"✅ Full Access"| route53
+    user -->|"✅ General Only"| route53
+    route53 --> general
+    route53 --> adminGW
 
-    externaldns -.->|"Watches"| httproute
-    externaldns -.->|"Creates A record"| route53
+    externaldns -.->|"Creates Records"| route53
 
-    cilium --> httproute
-    httproute --> service
+    general --> generalSvc
+    adminGW --> adminSvc
+
+    admin -.->|"ACL: Allow"| adminGW
+    user -.->|"ACL: Deny"| adminGW
 
     style tailscale fill:#e1f5fe
     style aws fill:#fff3e0
     style k8s fill:#f3e5f5
-    style gateway fill:#e8f5e9
+    style gateways fill:#e8f5e9
 ```
 
 **Flow**:
-1. 👤 User queries `myapp.priv.cloud.ogenki.io` from Tailscale device
-2. 📝 Route53 private zone returns CNAME: `gateway-priv.tail9c382.ts.net`
-3. 🔒 Tailscale MagicDNS resolves to IP: `100.103.159.24`
+1. 👤 User/Admin queries service hostname from Tailscale device
+2. 📝 Route53 returns appropriate gateway address (general or admin)
+3. 🔒 Tailscale ACLs enforce access based on tags (`tag:k8s` or `tag:admin`)
 4. 🚀 Direct encrypted connection via Tailscale mesh → Gateway → HTTPRoute → Service
 5. 🔄 ExternalDNS automatically creates/updates DNS records for all HTTPRoutes
 
 ## How to Add a New Service
 
-**For standard services**, create an HTTPRoute:
+### Choose the Right Gateway
 
+**General Gateway** (`platform-tailscale-general`) - Use for:
+- Public-facing platform tools (Harbor, Headlamp, Homepage)
+- Monitoring dashboards (Grafana, VictoriaMetrics)
+- Services accessible to all team members
+
+**Admin Gateway** (`platform-tailscale-admin`) - Use for:
+- Infrastructure observability (Hubble UI)
+- Log aggregation (VictoriaLogs)
+- Incident management (Grafana OnCall)
+- Sensitive operational services
+
+### Create HTTPRoute
+
+**For general services**:
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -60,7 +83,7 @@ metadata:
   namespace: apps
 spec:
   parentRefs:
-    - name: platform-tailscale
+    - name: platform-tailscale-general
       namespace: infrastructure
   hostnames:
     - "myapp.priv.cloud.ogenki.io"
@@ -70,21 +93,23 @@ spec:
           port: 8080
 ```
 
-**For Crossplane-managed apps**, set `route.enabled: true`:
-
+**For admin-only services**:
 ```yaml
-apiVersion: cloud.ogenki.io/v1alpha1
-kind: App
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: xplane-myapp
+  name: myapp
   namespace: apps
 spec:
-  image:
-    repository: ghcr.io/myorg/myapp
-    tag: v1.0.0
-  route:
-    enabled: true
-    hostname: "myapp"  # Creates myapp.priv.cloud.ogenki.io
+  parentRefs:
+    - name: platform-tailscale-admin
+      namespace: infrastructure
+  hostnames:
+    - "myapp.priv.cloud.ogenki.io"
+  rules:
+    - backendRefs:
+        - name: myapp-service
+          port: 8080
 ```
 
 **DNS is automatic**: ExternalDNS watches HTTPRoutes and creates Route53 records within 30-60 seconds.
@@ -100,10 +125,12 @@ curl -v https://myapp.priv.cloud.ogenki.io
 ### Cost Savings
 - **$0** - Tailscale free tier (up to 100 devices)
 - **No AWS NLB** - Saves ~$20-30/month
-- **Unlimited services** - One Tailscale device, infinite HTTPRoutes
+- **2 Tailscale devices** - One for general services, one for admin services
+- **Unlimited HTTPRoutes** - Infinite routes per Gateway
 
 ### Security
 - ✅ **Zero trust** - Only Tailscale-connected devices can access
+- ✅ **ACL-based segregation** - Admin services restricted to admin group
 - ✅ **Private PKI** - TLS certificates from OpenBao (internal CA)
 - ✅ **No internet exposure** - Services never leave private network
 - ✅ **Mesh networking** - Direct peer-to-peer connections
@@ -121,11 +148,37 @@ curl -v https://myapp.priv.cloud.ogenki.io
 - ❌ Expensive (Tailscale charges per device beyond free tier)
 - ❌ TLS certificates managed per Ingress
 
-**Gateway API approach** (shared Gateway):
-- ✅ One Tailscale device for all services
+**Gateway API approach** (shared Gateways with access control):
+- ✅ Two Tailscale devices (general + admin)
 - ✅ Cost-effective (free tier covers all services)
 - ✅ Centralized TLS management
 - ✅ Consistent routing pattern
+- ✅ ACL-enforced access segregation
+
+## Access Control
+
+The platform enforces access control using Tailscale ACLs configured in `opentofu/network/tailscale.tf`:
+
+```hcl
+acls = [
+  // Admin-only access
+  {
+    action = "accept"
+    src    = ["group:admin"]
+    dst    = ["tag:admin:*"]
+  },
+  // General member access
+  {
+    action = "accept"
+    src    = ["autogroup:member"]
+    dst    = ["tag:k8s:*"]
+  }
+]
+```
+
+**Service Distribution**:
+- **General Gateway** (8 services): Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics (vmagent, vmalertmanager, vmsingle, vmcluster)
+- **Admin Gateway** (5 services): Hubble UI, VictoriaLogs (vlsingle, vlcluster), Grafana OnCall, OnCall RabbitMQ
 
 ## How It Works
 
@@ -139,14 +192,14 @@ The platform provides these resources (already configured):
 2. **GatewayClass** (`infrastructure/base/gapi/tailscale-gatewayclass.yaml`)
    - Links Cilium controller to Tailscale config
 
-3. **Gateway** (`infrastructure/base/gapi/platform-tailscale-gateway.yaml`)
-   - Listens on `*.priv.cloud.ogenki.io:443`
-   - Exposed via Tailscale at `gateway-priv.tail-xxxxx.ts.net`
-   - TLS termination with OpenBao certificates
+3. **Gateways**:
+   - **General**: `platform-tailscale-general-gateway.yaml` - `tag:k8s`, accessible to all members
+   - **Admin**: `platform-tailscale-admin-gateway.yaml` - `tag:admin`, restricted to admin group
+   - Both listen on `*.priv.cloud.ogenki.io:443` with TLS termination
 
 4. **ExternalDNS** (`infrastructure/base/external-dns/helmrelease.yaml`)
-   - Watches HTTPRoutes referencing `platform-tailscale`
-   - Creates Route53 A records pointing to Tailscale IP
+   - Watches HTTPRoutes referencing both Gateways
+   - Creates Route53 A records pointing to respective Tailscale IPs
 
 ### What You Create
 
@@ -154,16 +207,22 @@ You only need to create HTTPRoutes for your services. ExternalDNS handles DNS au
 
 ## Verification
 
-### Check Gateway
+### Check Gateways
 ```bash
-kubectl get gateway platform-tailscale -n infrastructure
-# Expected: ADDRESS = gateway-priv.tail9c382.ts.net, PROGRAMMED = True
+kubectl get gateway -n infrastructure
+# Expected: Both gateways with Tailscale addresses, PROGRAMMED = True
 ```
 
 ### Check HTTPRoutes
 ```bash
+# General Gateway routes
 kubectl get httproute -A -o json | \
-  jq -r '.items[] | select(.spec.parentRefs[]? | select(.name == "platform-tailscale")) |
+  jq -r '.items[] | select(.spec.parentRefs[]? | select(.name == "platform-tailscale-general")) |
+  "\(.metadata.namespace)/\(.metadata.name): \(.spec.hostnames[])"'
+
+# Admin Gateway routes
+kubectl get httproute -A -o json | \
+  jq -r '.items[] | select(.spec.parentRefs[]? | select(.name == "platform-tailscale-admin")) |
   "\(.metadata.namespace)/\(.metadata.name): \(.spec.hostnames[])"'
 ```
 
@@ -179,9 +238,9 @@ aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" \
 
 ### Gateway Not Getting Tailscale IP
 
-**Check**:
+**Check both Gateways**:
 ```bash
-kubectl get gateway platform-tailscale -n infrastructure -o jsonpath='{.status.addresses}'
+kubectl get gateway -n infrastructure -o jsonpath='{range .items[*]}{.metadata.name}: {.status.addresses}{"\n"}{end}'
 ```
 
 **Fix**:
@@ -198,6 +257,8 @@ kubectl logs -n kube-system -l app.kubernetes.io/name=external-dns --tail=50
 **Common issues**:
 - Gateway missing `external-dns: enabled` label
 - HTTPRoute namespace not allowed in Gateway's `allowedRoutes`
+  - General Gateway allows: `apps`, `observability`, `tooling`
+  - Admin Gateway allows: `kube-system`, `observability`
 
 ### HTTPRoute Not Attached
 

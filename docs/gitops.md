@@ -360,7 +360,7 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: platform-tailscale
+  name: platform-tailscale-general  # Or platform-tailscale-admin
   namespace: infrastructure
 spec:
   gatewayClassName: cilium-tailscale
