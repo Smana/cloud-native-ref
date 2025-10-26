@@ -88,65 +88,23 @@ data:
                 dashboards: "grafana"
             allowCrossNamespaceImport: true
       dashboards:
-        # Kubernetes dashboards - assign to "kubernetes" folder
+        # Disable duplicate Kubernetes dashboards (already managed manually in infrastructure namespace)
+        # Note: We re-enable them here since they're not actually duplicates anymore
         k8s-views-global:
           enabled: true
-          grafanaOperator:
-            spec:
-              folderRef: "kubernetes"
         k8s-views-namespaces:
           enabled: true
-          grafanaOperator:
-            spec:
-              folderRef: "kubernetes"
         k8s-views-nodes:
           enabled: true
-          grafanaOperator:
-            spec:
-              folderRef: "kubernetes"
         k8s-views-pods:
           enabled: true
-          grafanaOperator:
-            spec:
-              folderRef: "kubernetes"
-        kubernetes-kubelet:
-          grafanaOperator:
-            spec:
-              folderRef: "kubernetes"
-        kubernetes-system-coredns:
-          grafanaOperator:
-            spec:
-              folderRef: "kubernetes"
         node-exporter-full:
           enabled: false
-        # VictoriaMetrics-specific dashboards - assign to "victoriametrics" folder
+        # Enable VictoriaMetrics-specific dashboards
         victoriametrics-vmalert:
           enabled: true
-          grafanaOperator:
-            spec:
-              folderRef: "victoriametrics"
         victoriametrics-operator:
           enabled: true
-          grafanaOperator:
-            spec:
-              folderRef: "victoriametrics"
-        victoriametrics-single-node:
-          grafanaOperator:
-            spec:
-              folderRef: "victoriametrics"
-        victoriametrics-vmagent:
-          grafanaOperator:
-            spec:
-              folderRef: "victoriametrics"
-        # Grafana and Alertmanager dashboards - assign to "victoriametrics" folder
-        grafana-overview:
-          grafanaOperator:
-            spec:
-              folderRef: "victoriametrics"
-        alertmanager-overview:
-          grafanaOperator:
-            spec:
-              folderRef: "victoriametrics"
 
     grafana:
       sidecar:

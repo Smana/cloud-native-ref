@@ -1,0 +1,97 @@
+# Patch kubernetes dashboards to use "kubernetes" folder
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-kubernetes-views-global
+  namespace: observability
+spec:
+  folderRef: "kubernetes"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-kubernetes-views-namespaces
+  namespace: observability
+spec:
+  folderRef: "kubernetes"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-kubernetes-views-nodes
+  namespace: observability
+spec:
+  folderRef: "kubernetes"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-kubernetes-views-pods
+  namespace: observability
+spec:
+  folderRef: "kubernetes"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-kubernetes-kubelet
+  namespace: observability
+spec:
+  folderRef: "kubernetes"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-kubernetes-system-coredns
+  namespace: observability
+spec:
+  folderRef: "kubernetes"
+---
+# Patch victoriametrics dashboards to use "victoriametrics" folder
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-victoriametrics-operator
+  namespace: observability
+spec:
+  folderRef: "victoriametrics"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-victoriametrics-single-node
+  namespace: observability
+spec:
+  folderRef: "victoriametrics"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-victoriametrics-vmagent
+  namespace: observability
+spec:
+  folderRef: "victoriametrics"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-victoriametrics-vmalert
+  namespace: observability
+spec:
+  folderRef: "victoriametrics"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-grafana-overview
+  namespace: observability
+spec:
+  folderRef: "victoriametrics"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: victoria-metrics-k8s-stack-alertmanager-overview
+  namespace: observability
+spec:
+  folderRef: "victoriametrics"
