@@ -10,4 +10,4 @@ spec:
   rules:
     - backendRefs:
         - name: zitadel
-          port: 8443
+          port: 8080
