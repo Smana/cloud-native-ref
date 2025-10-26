@@ -7,6 +7,3 @@ resources:
   # Log generator for demo purposes
   - ../base/loggen
   - ../base/metrics-server
-
-patchesStrategicMerge:
-  - victoria-metrics-k8s-stack-dashboard-folders-patch.yaml
