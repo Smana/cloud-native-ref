@@ -17,14 +17,16 @@ spec:
       interval: 12h
   values:
     replicaCount: 1
-    serverSslCrtSecret: "zitadel-certificate"  # pragma: allowlist secret
     service:
       type: ClusterIP
-      port: 8443
+      port: 8080
       protocol: http2
     initJob:
       backoffLimit: 30 # Wait for the CNPG database instance to be ready
+    login:
+      enabled: true
     zitadel:
+      serverSslCrtSecret: "zitadel-certificate"  # pragma: allowlist secret
       masterkeySecretName: "zitadel-masterkey" # Populated from the zitadel-envvars secret
       configmapConfig:
         Log:
