@@ -17,6 +17,11 @@ spec:
       interval: 12h
   values:
     replicaCount: 1
+    serverSslCrtSecret: "zitadel-certificate"  # pragma: allowlist secret
+    service:
+      type: ClusterIP
+      port: 8443
+      protocol: http2
     initJob:
       backoffLimit: 30 # Wait for the CNPG database instance to be ready
     zitadel:
@@ -30,8 +35,6 @@ spec:
         ExternalDomain: "auth.${domain_name}"
         TLS:
           Enabled: true
-          Cert: /tls/tls.crt
-          Key: /tls/tls.key
         Database:
           Postgres:
             Host: xplane-zitadel-cnpg-cluster-rw
@@ -72,13 +75,3 @@ spec:
     # ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME
     # ZITADEL_MASTERKEY
     envVarsSecret: "zitadel-envvars"
-
-    extraVolumes:
-      - name: zitadel-tls
-        secret:
-          secretName: zitadel-certificate  # pragma: allowlist secret
-
-    extraVolumeMounts:
-      - name: zitadel-tls
-        mountPath: /tls
-        readOnly: true
