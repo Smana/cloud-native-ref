@@ -6,21 +6,9 @@ spec:
   secretName: private-gateway-tls
   duration: 2160h # 90d
   renewBefore: 360h # 15d
-  commonName: private-gateway.priv.cloud.ogenki.io
+  commonName: "*.priv.${domain_name}"
   dnsNames:
-    - home.priv.cloud.ogenki.io
-    - grafana.priv.${domain_name}
-    - harbor.priv.${domain_name}
-    - vm.priv.${domain_name}
-    - headlamp.priv.${domain_name}
-    - hubble-${cluster_name}.priv.${domain_name}
-    - vmalertmanager-${cluster_name}.priv.${domain_name}
-    - vmagent-${cluster_name}.priv.${domain_name}
-    - vl.priv.${domain_name}
-    - oncall.priv.${domain_name}
-    - oncall-rabbitmq.priv.${domain_name}
-    - podinfo.priv.${domain_name}
-    - image-gallery.priv.${domain_name}
+    - "*.priv.${domain_name}"
   issuerRef:
     name: openbao
     kind: ClusterIssuer

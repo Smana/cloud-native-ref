@@ -360,10 +360,10 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: platform-private
+  name: platform-tailscale
   namespace: infrastructure
 spec:
-  gatewayClassName: cilium
+  gatewayClassName: cilium-tailscale
   listeners:
     - name: https
       hostname: "*.${domain}"  # Substituted to "*.priv.cloud.ogenki.io"

@@ -3,5 +3,5 @@ kind: Kustomization
 namespace: tooling
 resources:
   - externalsecret-headlamp-envvars.yaml
-  - httproute.yaml
   - helmrelease.yaml
+  - httproute.yaml

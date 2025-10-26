@@ -4,3 +4,4 @@ kind: Kustomization
 resources:
   - databases.yaml
   - kubernetes.yaml
+  - logs.yaml

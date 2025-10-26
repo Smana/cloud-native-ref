@@ -5,7 +5,7 @@ metadata:
   namespace: observability
 spec:
   parentRefs:
-    - name: platform-private
+    - name: platform-tailscale
       namespace: infrastructure
   hostnames:
     - "vmagent-${cluster_name}.priv.${domain_name}"

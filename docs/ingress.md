@@ -56,10 +56,10 @@ Infrastructure-level resource defining listeners and TLS configuration (managed 
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: platform-private
+  name: platform-tailscale
   namespace: infrastructure
 spec:
-  gatewayClassName: cilium
+  gatewayClassName: cilium-tailscale
   listeners:
     - name: https
       hostname: "*.priv.cloud.ogenki.io"
@@ -68,15 +68,16 @@ spec:
       tls:
         mode: Terminate
         certificateRefs:
-          - name: wildcard-priv-cloud-ogenki-io  # From cert-manager
+          - name: private-gateway-tls  # From cert-manager/OpenBao
 ```
 
 **Types of Gateways**:
 
 **Shared Platform Gateway**: Used by multiple applications
 ```yaml
-# infrastructure/base/gapi/platform-private-gateway.yaml
+# infrastructure/base/gapi/platform-tailscale-gateway.yaml
 # *.priv.cloud.ogenki.io
+# Exposed via Tailscale VPN with custom domains
 # Shared by Grafana, Harbor, Headlamp, etc.
 ```
 
@@ -98,7 +99,7 @@ metadata:
   namespace: observability
 spec:
   parentRefs:
-    - name: platform-private
+    - name: platform-tailscale
       namespace: infrastructure
   hostnames:
     - "grafana.priv.cloud.ogenki.io"
@@ -307,10 +308,10 @@ Reference the Secret created by cert-manager:
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: platform-private
+  name: platform-tailscale
   namespace: infrastructure
 spec:
-  gatewayClassName: cilium
+  gatewayClassName: cilium-tailscale
   listeners:
     - name: https
       hostname: "*.priv.cloud.ogenki.io"
@@ -319,7 +320,7 @@ spec:
       tls:
         mode: Terminate
         certificateRefs:
-          - name: wildcard-priv-cloud-ogenki-io  # From Certificate resource
+          - name: private-gateway-tls  # From Certificate resource
 ```
 
 **Gateway watches Secret**: When cert-manager renews the certificate, Gateway automatically picks up the new certificate.
@@ -523,9 +524,10 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: platform-private
+  name: platform-tailscale
   namespace: infrastructure
 spec:
+  gatewayClassName: cilium-tailscale
   listeners:
     - name: https
       hostname: "*.priv.cloud.ogenki.io"  # Private domain
@@ -533,7 +535,7 @@ spec:
       protocol: HTTPS
       tls:
         certificateRefs:
-          - name: wildcard-priv-cloud-ogenki-io  # OpenBao certificate
+          - name: private-gateway-tls  # OpenBao certificate
 ```
 
 - DNS points to Load Balancer with private IP
@@ -608,7 +610,7 @@ spec:
 
 ```bash
 # Check Gateway status
-kubectl get gateway platform-private -n infrastructure
+kubectl get gateway platform-tailscale -n infrastructure
 
 # Common issues:
 # 1. GatewayClass doesn't exist → Install Cilium
@@ -640,7 +642,7 @@ kubectl get httproute grafana -n observability
 kubectl describe httproute grafana -n observability
 
 # Check if Gateway accepts the route
-kubectl get gateway platform-private -n infrastructure -o yaml
+kubectl get gateway platform-tailscale -n infrastructure -o yaml
 
 # Common issues:
 # 1. Hostname doesn't match Gateway listener

@@ -42,3 +42,4 @@ spec:
         enabled: true
         spec:
           allowCrossNamespaceImport: true
+          folderRef: "logs"

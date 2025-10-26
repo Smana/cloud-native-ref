@@ -5,6 +5,6 @@ namespace: kube-system
 resources:
   - grafana-dashboards.yaml
   - grafana-folder.yaml
-  - hubble-ui-ingress.yaml
+  - hubble-ui-httproute.yaml
   - vmrules.yaml
   - vmservicescrapes.yaml

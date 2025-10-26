@@ -87,8 +87,8 @@ data:
               matchLabels:
                 dashboards: "grafana"
             allowCrossNamespaceImport: true
-            # Place VictoriaMetrics dashboards in "Observability" folder
-            folder: "Observability"
+            # Place VictoriaMetrics dashboards in "observability" folder
+            folder: "observability"
       dashboards:
         # Disable duplicate Kubernetes dashboards (already managed manually in infrastructure namespace)
         k8s-views-global:

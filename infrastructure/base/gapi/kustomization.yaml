@@ -3,5 +3,7 @@ kind: Kustomization
 namespace: infrastructure
 
 resources:
-  - platform-private-gateway.yaml
   - platform-private-gateway-certificate.yaml
+  - tailscale-gatewayclass-config.yaml
+  - tailscale-gatewayclass.yaml
+  - platform-tailscale-gateway.yaml

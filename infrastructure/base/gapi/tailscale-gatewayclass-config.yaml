@@ -1,0 +1,11 @@
+apiVersion: cilium.io/v2alpha1
+kind: CiliumGatewayClassConfig
+metadata:
+  name: tailscale-config
+  namespace: infrastructure
+spec:
+  description: "Tailscale LoadBalancer configuration"
+  service:
+    type: LoadBalancer
+    loadBalancerClass: tailscale
+    externalTrafficPolicy: Cluster

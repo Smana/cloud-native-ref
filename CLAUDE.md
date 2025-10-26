@@ -429,6 +429,42 @@ spec:
 - Cilium Network Policies for pod-to-pod communication
 - Gateway API for ingress with TLS termination
 
+### Tailscale Gateway API Integration
+
+**Overview**: Private services are exposed via Tailscale using Gateway API with custom domains (`*.priv.cloud.ogenki.io`) instead of MagicDNS names.
+
+**Architecture Components**:
+1. **Cilium Gateway (Tailscale)**: `infrastructure/base/gapi/platform-tailscale-gateway.yaml`
+   - Uses `loadBalancerClass: tailscale` via `CiliumGatewayClassConfig` (critical!)
+   - Single Gateway for all private services
+   - Gateway-level TLS termination (OpenBao certificates)
+   - Exposed at `gateway-priv.tail-xxxxx.ts.net`
+
+2. **ExternalDNS**: `infrastructure/base/external-dns/helmrelease.yaml`
+   - Watches HTTPRoutes (via `gateway-httproute` source) referencing platform-tailscale Gateway
+   - Creates DNS records in Route53 private zone (`priv.cloud.ogenki.io`)
+   - Points records to Gateway's Tailscale address
+
+3. **HTTPRoutes**: Service-specific routing (Harbor, Headlamp, Hubble UI)
+
+**Key Innovation**: Cilium Gateway supports `loadBalancerClass: tailscale` via `spec.infrastructure.annotations`, eliminating the need for separate Envoy Gateway installation.
+
+**Setup Requirements**:
+1. Deploy CiliumGatewayClassConfig with `service.loadBalancerClass: tailscale`
+2. Create platform-tailscale Gateway with label `external-dns: enabled`
+3. Configure external-dns to watch `gateway-httproute` source
+4. Create HTTPRoutes for services
+
+**Benefits**:
+- Custom domains instead of MagicDNS hashes
+- One Tailscale device for all services (cost-effective)
+- Advanced routing capabilities (headers, weights, etc.)
+- Consistent Gateway API pattern
+- Gateway-level TLS management
+- Leverages existing Route53 infrastructure
+
+**Documentation**: See `docs/tailscale-gateway-api.md` for complete setup guide and troubleshooting.
+
 ## Key File Locations
 
 ### Infrastructure
