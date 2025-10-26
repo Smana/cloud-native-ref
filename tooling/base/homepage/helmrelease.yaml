@@ -159,7 +159,7 @@ spec:
 
         - "Cluster: mycluster-0":
             - Hubble UI:
-                href: https://hubble-ui-mycluster-0.tail9c382.ts.net
+                href: https://hubble-ui-mycluster-0.priv.cloud.ogenki.io
                 description: Cilium Network Observability
                 icon: cilium.png
                 namespace: kube-system

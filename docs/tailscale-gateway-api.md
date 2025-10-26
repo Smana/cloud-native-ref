@@ -1,6 +1,6 @@
 # Tailscale Gateway API Integration
 
-This document describes how to use Gateway API with Tailscale for custom domain access to private services using Route53 DNS.
+This platform uses Gateway API with Tailscale to provide secure, custom domain access to private services (`*.priv.cloud.ogenki.io`) without exposing them to the internet.
 
 ## Architecture Overview
 
@@ -56,400 +56,184 @@ This document describes how to use Gateway API with Tailscale for custom domain 
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Components
+**Flow**:
+1. User queries `harbor.priv.cloud.ogenki.io` from Tailscale device
+2. Route53 returns: `gateway-priv.tail9c382.ts.net`
+3. Tailscale MagicDNS resolves to IP: `100.103.159.24`
+4. Direct connection via Tailscale mesh → Gateway → Service
 
-### 1. CiliumGatewayClassConfig
+## How to Add a New Service
 
-**Location**: `infrastructure/base/gapi/tailscale-gatewayclass-config.yaml`
+**For standard services**, create an HTTPRoute:
 
-Configures the Gateway Service to use Tailscale LoadBalancer instead of AWS NLB.
-
-**Key Configuration:**
-```yaml
-apiVersion: cilium.io/v2alpha1
-kind: CiliumGatewayClassConfig
-metadata:
-  name: tailscale-config
-  namespace: infrastructure
-spec:
-  description: "Tailscale LoadBalancer configuration"
-  service:
-    type: LoadBalancer
-    loadBalancerClass: tailscale  # Critical: use Tailscale operator
-    externalTrafficPolicy: Cluster
-```
-
-**Important**: The `loadBalancerClass` must be under `spec.service`, not directly in `spec`.
-
-### 2. GatewayClass
-
-**Location**: `infrastructure/base/gapi/tailscale-gatewayclass.yaml`
-
-Links the Cilium Gateway controller to the Tailscale configuration.
-
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: GatewayClass
-metadata:
-  name: cilium-tailscale
-spec:
-  controllerName: io.cilium/gateway-controller
-  parametersRef:
-    group: cilium.io
-    kind: CiliumGatewayClassConfig
-    name: tailscale-config
-    namespace: infrastructure
-```
-
-### 3. Platform Tailscale Gateway
-
-**Location**: `infrastructure/base/gapi/platform-tailscale-gateway.yaml`
-
-The main Gateway resource that gets exposed via Tailscale.
-
-**Key Features:**
-- Uses `cilium-tailscale` GatewayClass
-- Labeled with `external-dns: enabled` for ExternalDNS discovery
-- Tailscale hostname: `gateway-priv`
-- TLS termination with OpenBao certificates
-
-**Configuration:**
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: platform-tailscale
-  namespace: infrastructure
-  labels:
-    external-dns: enabled  # Required for ExternalDNS filtering
-spec:
-  gatewayClassName: cilium-tailscale
-  infrastructure:
-    annotations:
-      tailscale.com/hostname: "gateway-priv"
-      tailscale.com/tags: "tag:k8s"
-      tailscale.com/funnel: "false"
-  listeners:
-    - name: https
-      hostname: "*.priv.${domain_name}"
-      port: 443
-      protocol: HTTPS
-      allowedRoutes:
-        namespaces:
-          from: Selector
-          selector:
-            matchExpressions:
-              - key: kubernetes.io/metadata.name
-                operator: In
-                values:
-                  - apps
-                  - kube-system
-                  - observability
-                  - tooling
-      tls:
-        mode: Terminate
-        certificateRefs:
-          - name: private-gateway-tls  # Certificate from cert-manager/OpenBao
-```
-
-### 4. ExternalDNS Configuration
-
-**Location**: `infrastructure/base/external-dns/helmrelease.yaml`
-
-The existing ExternalDNS instance is configured to watch Gateway HTTPRoutes.
-
-**Added Configuration:**
-```yaml
-values:
-  # Watch sources
-  sources:
-    - service
-    - ingress
-    - gateway-httproute  # NEW: Watch HTTPRoutes
-
-  # Extra arguments for Gateway filtering
-  extraArgs:
-    # Only watch HTTPRoutes from platform-tailscale Gateway
-    - --gateway-namespace=infrastructure
-    - --gateway-label-filter=external-dns=enabled
-```
-
-**How it works:**
-1. ExternalDNS watches HTTPRoutes that reference Gateways with label `external-dns: enabled`
-2. Extracts hostname from HTTPRoute spec (`harbor.priv.cloud.ogenki.io`)
-3. Looks up Gateway's address (`gateway-priv.tail9c382.ts.net`)
-4. Creates CNAME record in Route53 private zone pointing hostname → Gateway address
-
-### 5. HTTPRoutes
-
-**Locations**:
-- `tooling/base/harbor/httproute.yaml`
-- `tooling/base/headlamp/httproute.yaml`
-- `infrastructure/base/cilium/hubble-ui-httproute.yaml`
-
-Each service has an HTTPRoute that references the `platform-tailscale` Gateway.
-
-**Example (Harbor):**
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: harbor
-  namespace: tooling
+  name: myapp
+  namespace: apps
 spec:
   parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: platform-tailscale
+    - name: platform-tailscale
       namespace: infrastructure
   hostnames:
-    - "harbor.priv.${domain_name}"
+    - "myapp.priv.cloud.ogenki.io"
   rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /v2/
-      backendRefs:
-        - name: harbor-core
-          port: 80
-    # Additional path-based routing...
+    - backendRefs:
+        - name: myapp-service
+          port: 8080
 ```
+
+**For Crossplane-managed apps**, set `route.enabled: true`:
+
+```yaml
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: xplane-myapp
+  namespace: apps
+spec:
+  image:
+    repository: ghcr.io/myorg/myapp
+    tag: v1.0.0
+  route:
+    enabled: true
+    hostname: "myapp"  # Creates myapp.priv.cloud.ogenki.io
+```
+
+**DNS is automatic**: ExternalDNS watches HTTPRoutes and creates Route53 records within 30-60 seconds.
+
+**Test access**:
+```bash
+# From Tailscale-connected device
+curl -v https://myapp.priv.cloud.ogenki.io
+```
+
+## Benefits
+
+### Cost Savings
+- **$0** - Tailscale free tier (up to 100 devices)
+- **No AWS NLB** - Saves ~$20-30/month
+- **Unlimited services** - One Tailscale device, infinite HTTPRoutes
+
+### Security
+- ✅ **Zero trust** - Only Tailscale-connected devices can access
+- ✅ **Private PKI** - TLS certificates from OpenBao (internal CA)
+- ✅ **No internet exposure** - Services never leave private network
+- ✅ **Mesh networking** - Direct peer-to-peer connections
+
+### Developer Experience
+- ✅ **Custom domains** - `harbor.priv.cloud.ogenki.io` instead of `gateway-priv.tail9c382.ts.net`
+- ✅ **Automatic DNS** - ExternalDNS creates records from HTTPRoutes
+- ✅ **Standard Gateway API** - Kubernetes-native, portable
+- ✅ **Advanced routing** - Path-based, header-based, weighted traffic
+
+### Comparison to Individual Ingress
+
+**Traditional approach** (Ingress per service):
+- ❌ Each service = separate Tailscale device
+- ❌ Expensive (Tailscale charges per device beyond free tier)
+- ❌ TLS certificates managed per Ingress
+
+**Gateway API approach** (shared Gateway):
+- ✅ One Tailscale device for all services
+- ✅ Cost-effective (free tier covers all services)
+- ✅ Centralized TLS management
+- ✅ Consistent routing pattern
 
 ## How It Works
 
-### DNS Resolution Flow
+### Platform Components
 
-1. **User queries** `harbor.priv.cloud.ogenki.io` from Tailscale device
-2. **Route53 Private Zone** responds with CNAME: `gateway-priv.tail9c382.ts.net`
-3. **Tailscale MagicDNS** resolves `gateway-priv.tail9c382.ts.net` to Tailscale IP (e.g., `100.103.159.24`)
-4. **Direct connection** established via Tailscale mesh to Gateway
-5. **Cilium Gateway** terminates TLS, matches HTTPRoute, forwards to backend service
+The platform provides these resources (already configured):
 
-### DNS Record Creation Flow
+1. **CiliumGatewayClassConfig** (`infrastructure/base/gapi/tailscale-gatewayclass-config.yaml`)
+   - Configures `loadBalancerClass: tailscale`
 
-1. **HTTPRoute created** (e.g., Harbor) with hostname `harbor.priv.cloud.ogenki.io`
-2. **HTTPRoute references** `platform-tailscale` Gateway
-3. **ExternalDNS watches** HTTPRoute (filtered by Gateway label `external-dns: enabled`)
-4. **ExternalDNS queries** Gateway status for address → `gateway-priv.tail9c382.ts.net`
-5. **ExternalDNS creates** CNAME record in Route53:
-   ```
-   harbor.priv.cloud.ogenki.io → gateway-priv.tail9c382.ts.net
-   ```
+2. **GatewayClass** (`infrastructure/base/gapi/tailscale-gatewayclass.yaml`)
+   - Links Cilium controller to Tailscale config
+
+3. **Gateway** (`infrastructure/base/gapi/platform-tailscale-gateway.yaml`)
+   - Listens on `*.priv.cloud.ogenki.io:443`
+   - Exposed via Tailscale at `gateway-priv.tail-xxxxx.ts.net`
+   - TLS termination with OpenBao certificates
+
+4. **ExternalDNS** (`infrastructure/base/external-dns/helmrelease.yaml`)
+   - Watches HTTPRoutes referencing `platform-tailscale`
+   - Creates Route53 A records pointing to Tailscale IP
+
+### What You Create
+
+You only need to create HTTPRoutes for your services. ExternalDNS handles DNS automatically.
 
 ## Verification
 
-### 1. Check Gateway Status
-
+### Check Gateway
 ```bash
-# Verify Gateway has Tailscale address
 kubectl get gateway platform-tailscale -n infrastructure
-
-# Expected output:
-# NAME                 CLASS              ADDRESS                         PROGRAMMED   AGE
-# platform-tailscale   cilium-tailscale   gateway-priv.tail9c382.ts.net   True         10m
+# Expected: ADDRESS = gateway-priv.tail9c382.ts.net, PROGRAMMED = True
 ```
 
-### 2. Check HTTPRoute Attachment
-
+### Check HTTPRoutes
 ```bash
-# List HTTPRoutes attached to platform-tailscale Gateway
 kubectl get httproute -A -o json | \
-  jq -r '.items[] | select(.spec.parentRefs[]? | select(.name == "platform-tailscale")) | "\(.metadata.namespace)/\(.metadata.name): \(.spec.hostnames[])"'
-
-# Expected output:
-# kube-system/hubble-ui: hubble-ui-mycluster-0.priv.cloud.ogenki.io
-# tooling/harbor: harbor.priv.cloud.ogenki.io
-# tooling/headlamp: headlamp.priv.cloud.ogenki.io
+  jq -r '.items[] | select(.spec.parentRefs[]? | select(.name == "platform-tailscale")) |
+  "\(.metadata.namespace)/\(.metadata.name): \(.spec.hostnames[])"'
 ```
 
-### 3. Check DNS Records in Route53
-
+### Check DNS Records
 ```bash
-# Get private zone ID
 ZONE_ID=$(aws route53 list-hosted-zones --query 'HostedZones[?Name==`priv.cloud.ogenki.io.`].Id' --output text)
-
-# List DNS records
 aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" \
-  --query 'ResourceRecordSets[?Type==`CNAME`]' \
+  --query 'ResourceRecordSets[?Type==`A` && contains(Name, `priv`)]' \
   --output table
-
-# Expected records:
-# harbor.priv.cloud.ogenki.io → gateway-priv.tail9c382.ts.net
-# headlamp.priv.cloud.ogenki.io → gateway-priv.tail9c382.ts.net
-# hubble-ui-mycluster-0.priv.cloud.ogenki.io → gateway-priv.tail9c382.ts.net
-```
-
-### 4. Test DNS Resolution
-
-```bash
-# From a Tailscale-connected device
-dig harbor.priv.cloud.ogenki.io
-
-# Should resolve to gateway-priv.tail9c382.ts.net (CNAME)
-# Then to Tailscale IP (A record via MagicDNS)
-```
-
-### 5. Test HTTPS Access
-
-```bash
-# From a Tailscale-connected device
-curl -v https://harbor.priv.cloud.ogenki.io
-
-# Should:
-# 1. Resolve DNS via Route53 + MagicDNS
-# 2. Connect to Gateway via Tailscale mesh
-# 3. TLS handshake with OpenBao certificate
-# 4. Route to Harbor backend
-# 5. Return HTTP 200
 ```
 
 ## Troubleshooting
 
 ### Gateway Not Getting Tailscale IP
 
-**Symptom**: Gateway shows AWS NLB address instead of Tailscale
-
-**Check:**
+**Check**:
 ```bash
 kubectl get gateway platform-tailscale -n infrastructure -o jsonpath='{.status.addresses}'
 ```
 
-**Solutions:**
-1. Verify CiliumGatewayClassConfig has `service.loadBalancerClass: tailscale`
-2. Check Gateway uses correct GatewayClass: `cilium-tailscale`
-3. Verify Tailscale operator is running: `kubectl get pods -n tailscale`
+**Fix**:
+- Verify Tailscale operator is running: `kubectl get pods -n tailscale`
+- Check GatewayClass: `kubectl get gatewayclass cilium-tailscale -o yaml`
 
 ### DNS Records Not Created
 
-**Symptom**: No records in Route53 for HTTPRoute hostnames
-
-**Check ExternalDNS logs:**
+**Check ExternalDNS logs**:
 ```bash
-kubectl logs -n kube-system -l app.kubernetes.io/name=external-dns
+kubectl logs -n kube-system -l app.kubernetes.io/name=external-dns --tail=50
 ```
 
-**Common issues:**
-1. **Gateway label missing**: Add `external-dns: enabled` label to Gateway
-2. **Source not configured**: Verify `gateway-httproute` in sources list
-3. **Filter not matching**: Check `--gateway-label-filter=external-dns=enabled` arg
+**Common issues**:
+- Gateway missing `external-dns: enabled` label
+- HTTPRoute namespace not allowed in Gateway's `allowedRoutes`
 
 ### HTTPRoute Not Attached
 
-**Symptom**: HTTPRoute shows `Accepted: False`
-
-**Check HTTPRoute status:**
+**Check status**:
 ```bash
-kubectl get httproute harbor -n tooling -o yaml
+kubectl get httproute <name> -n <namespace> -o yaml | grep -A 20 "status:"
 ```
 
-**Solutions:**
-1. Verify namespace is allowed in Gateway's `allowedRoutes.namespaces`
-2. Check hostname matches Gateway listener pattern (`*.priv.cloud.ogenki.io`)
-3. Verify Gateway is in `Programmed: True` state
+**Fix**:
+- Ensure hostname matches `*.priv.cloud.ogenki.io`
+- Verify namespace is in Gateway's allowed list (apps, kube-system, observability, tooling)
 
-### TLS Certificate Issues
+### TLS Certificate Errors
 
-**Symptom**: Certificate errors when accessing services
-
-**Check certificate:**
+**Check certificate**:
 ```bash
 kubectl get certificate private-gateway-tls -n infrastructure
 ```
 
-**Solutions:**
-1. Verify cert-manager is running
-2. Check OpenBao issuer configuration
-3. Review cert-manager logs for errors
-
-## Benefits vs Traditional Approaches
-
-### Compared to Subnet Router
-
-**Traditional Subnet Router approach:**
-- ❌ Single point of failure (one Tailscale device)
-- ❌ All traffic goes through one device
-- ❌ Bandwidth limited per device
-- ❌ No advanced routing (path-based, headers, weights)
-
-**Gateway API approach:**
-- ✅ Each Gateway is a separate Tailscale device
-- ✅ Direct peer-to-peer connections
-- ✅ Better failure isolation
-- ✅ Advanced routing via Gateway API
-- ✅ Gateway-level TLS management
-
-### Compared to Individual Ingress Resources
-
-**Traditional Ingress per service:**
-- ❌ Each service = separate Tailscale device
-- ❌ Expensive (cost per device)
-- ❌ TLS certificates managed per Ingress
-
-**Single Gateway approach:**
-- ✅ One Tailscale device for all services
-- ✅ Cost-effective
-- ✅ Centralized TLS management
-- ✅ Consistent routing pattern
-
-## Cost Analysis
-
-**Platform-Tailscale Gateway:**
-- 1 Tailscale device (free tier or $6/month Personal)
-- Unlimited services via HTTPRoutes
-- No AWS NLB costs
-
-**Platform-Private Gateway (AWS NLB):**
-- ~$20-30/month for NLB
-- Additional data transfer costs
-- Required VPN or bastion for access
-
-**Potential savings**: ~$20-30/month if platform-tailscale replaces platform-private
-
-## Adding New Services
-
-To expose a new service via Tailscale Gateway:
-
-1. **Create HTTPRoute** in service namespace:
-   ```yaml
-   apiVersion: gateway.networking.k8s.io/v1
-   kind: HTTPRoute
-   metadata:
-     name: myapp
-     namespace: apps
-   spec:
-     parentRefs:
-       - name: platform-tailscale
-         namespace: infrastructure
-     hostnames:
-       - "myapp.priv.cloud.ogenki.io"
-     rules:
-       - backendRefs:
-           - name: myapp-service
-             port: 80
-   ```
-
-2. **Wait for DNS propagation** (30-60 seconds):
-   ```bash
-   # Watch ExternalDNS logs
-   kubectl logs -n kube-system -l app.kubernetes.io/name=external-dns -f
-
-   # Verify DNS record created
-   aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" \
-     --query 'ResourceRecordSets[?Name==`myapp.priv.cloud.ogenki.io.`]'
-   ```
-
-3. **Test access** from Tailscale device:
-   ```bash
-   curl -v https://myapp.priv.cloud.ogenki.io
-   ```
-
-## Future Enhancements
-
-1. **Replace platform-private Gateway**: Migrate all private services to platform-tailscale to eliminate AWS NLB costs
-2. **mTLS**: Add mutual TLS authentication for enhanced security
-3. **Rate limiting**: Use Gateway API rate limit policies
-4. **Traffic splitting**: A/B testing and canary deployments via HTTPRoute weights
-5. **Header-based routing**: Route to different backends based on HTTP headers
+**Fix**:
+- Verify cert-manager is running: `kubectl get pods -n cert-manager`
+- Check OpenBao issuer: `kubectl get clusterissuer -o wide`
 
 ## References
 

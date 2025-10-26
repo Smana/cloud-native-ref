@@ -450,9 +450,9 @@ if oxr.spec.gateway?.enabled:
 # See: https://github.com/crossplane-contrib/function-kcl/issues/285
 if oxr.spec.route?.enabled == True:
     # Determine which gateway to reference and domain suffix based on configuration
-    # Priority: custom gateway > internet-facing > platform-private
+    # Priority: custom gateway > internet-facing > platform-tailscale (private via Tailscale)
     # IMPORTANT: Calculate all values inline to avoid mutation (issue #285)
-    _routeGatewayName = oxr.spec.gateway.name or _name + "-gateway" if oxr.spec.gateway?.enabled else "platform-public" if oxr.spec.route?.internetFacing else "platform-private"
+    _routeGatewayName = oxr.spec.gateway.name or _name + "-gateway" if oxr.spec.gateway?.enabled else "platform-public" if oxr.spec.route?.internetFacing else "platform-tailscale"
     _routeGatewayNamespace = oxr.spec.gateway.namespace or _namespace if oxr.spec.gateway?.enabled else "infrastructure"
     _routeDomainSuffix = "" if oxr.spec.gateway?.enabled else ".cloud.ogenki.io" if oxr.spec.route?.internetFacing else ".priv.cloud.ogenki.io"
     # Construct full hostname if hostname is provided
