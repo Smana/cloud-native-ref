@@ -6,7 +6,5 @@ resources:
   - grafana-dashboards.yaml
   - grafana-folder.yaml
   - hubble-ui-httproute.yaml
-  # Deprecated: using HTTPRoute with Gateway API
-  # - hubble-ui-ingress.yaml
   - vmrules.yaml
   - vmservicescrapes.yaml

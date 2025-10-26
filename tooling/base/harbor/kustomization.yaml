@@ -9,8 +9,6 @@ resources:
   - serviceaccount-harbor.yaml
   - iam-user.yaml
   - httproute.yaml
-  # Deprecated: using HTTPRoute with Gateway API
-  # - ingress.yaml
   - helmrelease-valkey.yaml
   - s3-bucket.yaml
   - sqlinstance.yaml

@@ -5,5 +5,3 @@ resources:
   - externalsecret-headlamp-envvars.yaml
   - helmrelease.yaml
   - httproute.yaml
-  # Deprecated: using HTTPRoute with Gateway API
-  # - ingress.yaml
