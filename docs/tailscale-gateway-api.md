@@ -3,8 +3,8 @@
 This platform uses Gateway API with Tailscale to provide secure, custom domain access to private services (`*.priv.cloud.ogenki.io`) without exposing them to the internet.
 
 **Access Segregation**: The platform uses **two separate Gateways** with different Tailscale tags to enforce access control via ACLs:
-- **General Gateway** (`tag:k8s`): Accessible to all Tailscale members
-- **Admin Gateway** (`tag:admin`): Restricted to `group:admin` only
+- **General Gateway** (`tag:k8s`): Accessible to all users in the tailnet (not public)
+- **Admin Gateway** (`tag:admin`): Restricted to specific allowed people in `group:admin`
 
 ## Architecture Overview
 
@@ -23,12 +23,12 @@ flowchart TB
         externaldns["🔄 ExternalDNS<br/>Watches HTTPRoutes<br/>Creates Route53 records"]
 
         subgraph gateways["🚪 Gateways"]
-            general["General Gateway<br/>tag:k8s<br/>8 services"]
-            adminGW["Admin Gateway<br/>tag:admin<br/>5 services"]
+            general["General Gateway<br/>tag:k8s<br/>10 services"]
+            adminGW["Admin Gateway<br/>tag:admin<br/>3 services"]
         end
 
-        generalSvc["🎯 General Services<br/>Harbor, Grafana, etc"]
-        adminSvc["🔒 Admin Services<br/>Hubble UI, VictoriaLogs, OnCall"]
+        generalSvc["🎯 General Services<br/>Harbor, Grafana, VictoriaLogs, etc"]
+        adminSvc["🔒 Admin Services<br/>Hubble UI, Grafana OnCall"]
     end
 
     admin -->|"✅ Full Access"| route53
@@ -62,15 +62,15 @@ flowchart TB
 ### Choose the Right Gateway
 
 **General Gateway** (`platform-tailscale-general`) - Use for:
-- Public-facing platform tools (Harbor, Headlamp, Homepage)
+- Platform tools (Harbor, Headlamp, Homepage)
 - Monitoring dashboards (Grafana, VictoriaMetrics)
-- Services accessible to all team members
+- Log aggregation (VictoriaLogs)
+- Services accessible to all users in the tailnet
 
 **Admin Gateway** (`platform-tailscale-admin`) - Use for:
 - Infrastructure observability (Hubble UI)
-- Log aggregation (VictoriaLogs)
 - Incident management (Grafana OnCall)
-- Sensitive operational services
+- Highly sensitive operational services
 
 ### Create HTTPRoute
 
@@ -177,8 +177,8 @@ acls = [
 ```
 
 **Service Distribution**:
-- **General Gateway** (8 services): Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics (vmagent, vmalertmanager, vmsingle, vmcluster)
-- **Admin Gateway** (5 services): Hubble UI, VictoriaLogs (vlsingle, vlcluster), Grafana OnCall, OnCall RabbitMQ
+- **General Gateway** (10 services): Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics (vmagent, vmalertmanager, vmsingle, vmcluster), VictoriaLogs (vlsingle, vlcluster)
+- **Admin Gateway** (3 services): Hubble UI, Grafana OnCall, OnCall RabbitMQ
 
 ## How It Works
 
