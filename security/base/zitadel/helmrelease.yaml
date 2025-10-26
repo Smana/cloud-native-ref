@@ -10,7 +10,7 @@ spec:
   chart:
     spec:
       chart: zitadel
-      version: "8.13.4"
+      version: "9.12.2"
       sourceRef:
         kind: HelmRepository
         name: zitadel
@@ -41,6 +41,23 @@ spec:
             MaxIdleConns: 10
             MaxConnLifetime: 30m
             MaxConnIdleTime: 5m
+        FirstInstance:
+          Org:
+            Machine:
+              Machine:
+                Username: 'iam-admin'
+                Name: 'Automatically Initialized IAM Admin'
+              MachineKey:
+                ExpirationDate: '2029-01-01T00:00:00Z'
+                Type: 1
+              Pat:
+                ExpirationDate: '2029-01-01T00:00:00Z'
+            LoginClient:
+              Machine:
+                Username: 'login-client'
+                Name: 'Automatically Initialized IAM Login Client'
+              Pat:
+                ExpirationDate: '2029-01-01T00:00:00Z'
 
     # reference: https://zitadel.com/docs/self-hosting/manage/configure
     # All configuration items are loaded from a secret
