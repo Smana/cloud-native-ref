@@ -7,6 +7,6 @@ resources:
   - certificate.yaml
   - gateway.yaml
   - helmrelease.yaml
-  - httproute.yaml
+  - tlsroute.yaml
   - network-policy.yaml
   - sqlinstance.yaml

@@ -15,11 +15,9 @@ spec:
     - name: auth
       hostname: "auth.${domain_name}"
       port: 443
-      protocol: HTTPS
+      protocol: TLS
       allowedRoutes:
         namespaces:
           from: Same
       tls:
-        mode: Terminate
-        certificateRefs:
-          - name: zitadel-certificate
+        mode: Passthrough

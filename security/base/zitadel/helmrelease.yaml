@@ -29,7 +29,9 @@ spec:
         ExternalSecure: true
         ExternalDomain: "auth.${domain_name}"
         TLS:
-          Enabled: false
+          Enabled: true
+          Cert: /tls/tls.crt
+          Key: /tls/tls.key
         Database:
           Postgres:
             Host: xplane-zitadel-cnpg-cluster-rw
@@ -70,3 +72,13 @@ spec:
     # ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME
     # ZITADEL_MASTERKEY
     envVarsSecret: "zitadel-envvars"
+
+    extraVolumes:
+      - name: zitadel-tls
+        secret:
+          secretName: zitadel-certificate  # pragma: allowlist secret
+
+    extraVolumeMounts:
+      - name: zitadel-tls
+        mountPath: /tls
+        readOnly: true
