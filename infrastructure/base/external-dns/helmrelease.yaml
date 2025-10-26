@@ -37,11 +37,16 @@ spec:
     logFormat: json
     txtOwnerId: "${cluster_name}"
 
+    # Sync mode: automatically cleanup stale DNS records
+    policy: sync
+
     # Extra arguments for Gateway filtering
     extraArgs:
       # Watch HTTPRoutes from platform-tailscale Gateway
       - --gateway-namespace=infrastructure
       - --gateway-label-filter=external-dns=enabled
+      # Prevent rapid deletions during temporary issues
+      - --min-event-sync-interval=30s
     resources:
       limits:
         memory: 100Mi
