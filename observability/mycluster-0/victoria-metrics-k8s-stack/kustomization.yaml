@@ -3,6 +3,3 @@ kind: Kustomization
 
 resources:
   - ../../base/victoria-metrics-k8s-stack
-
-patchesStrategicMerge:
-  - victoria-metrics-k8s-stack-dashboard-folders-patch.yaml

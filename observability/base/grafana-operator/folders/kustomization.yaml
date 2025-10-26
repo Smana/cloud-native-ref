@@ -4,6 +4,4 @@ kind: Kustomization
 resources:
   - databases.yaml
   - kubernetes.yaml
-  - observability-kubernetes.yaml
-  - victoriametrics.yaml
   - logs.yaml
