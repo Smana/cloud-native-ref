@@ -308,10 +308,10 @@ Reference the Secret created by cert-manager:
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: platform-private
+  name: platform-tailscale
   namespace: infrastructure
 spec:
-  gatewayClassName: cilium
+  gatewayClassName: cilium-tailscale
   listeners:
     - name: https
       hostname: "*.priv.cloud.ogenki.io"
@@ -320,7 +320,7 @@ spec:
       tls:
         mode: Terminate
         certificateRefs:
-          - name: wildcard-priv-cloud-ogenki-io  # From Certificate resource
+          - name: private-gateway-tls  # From Certificate resource
 ```
 
 **Gateway watches Secret**: When cert-manager renews the certificate, Gateway automatically picks up the new certificate.
@@ -524,9 +524,10 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: platform-private
+  name: platform-tailscale
   namespace: infrastructure
 spec:
+  gatewayClassName: cilium-tailscale
   listeners:
     - name: https
       hostname: "*.priv.cloud.ogenki.io"  # Private domain
@@ -534,7 +535,7 @@ spec:
       protocol: HTTPS
       tls:
         certificateRefs:
-          - name: wildcard-priv-cloud-ogenki-io  # OpenBao certificate
+          - name: private-gateway-tls  # OpenBao certificate
 ```
 
 - DNS points to Load Balancer with private IP

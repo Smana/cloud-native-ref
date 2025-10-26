@@ -373,7 +373,7 @@ spec:
                       default: false
                     internetFacing:
                       type: boolean
-                      description: Whether the service is internet-facing (uses public gateway when true, platform-private when false)
+                      description: Whether the service is internet-facing (uses public gateway when true, platform-tailscale when false)
                       default: false
                     hostname:
                       type: string
