@@ -22,6 +22,12 @@ spec:
     global:
       imageRegistry: public.ecr.aws
 
+    # Watch sources
+    sources:
+      - service
+      - ingress
+      - gateway-httproute
+
     aws:
       region: ${region}
       zoneType: "public"
@@ -30,6 +36,12 @@ spec:
     domainFilters: ["${domain_name}"]
     logFormat: json
     txtOwnerId: "${cluster_name}"
+
+    # Extra arguments for Gateway filtering
+    extraArgs:
+      # Watch HTTPRoutes from platform-tailscale Gateway
+      - --gateway-namespace=infrastructure
+      - --gateway-label-filter=external-dns=enabled
     resources:
       limits:
         memory: 100Mi

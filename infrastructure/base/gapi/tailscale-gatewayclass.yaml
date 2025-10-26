@@ -1,0 +1,12 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: cilium-tailscale
+spec:
+  controllerName: io.cilium/gateway-controller
+  description: Cilium GatewayClass with Tailscale LoadBalancer
+  parametersRef:
+    group: cilium.io
+    kind: CiliumGatewayClassConfig
+    name: tailscale-config
+    namespace: infrastructure

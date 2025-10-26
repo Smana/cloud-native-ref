@@ -1,0 +1,58 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: harbor-ts
+  annotations:
+    tailscale.com/proxy-class: "k8s"
+    tailscale.com/hostname: "harbor"
+    tailscale.com/tags: "tag:k8s"
+spec:
+  ingressClassName: tailscale
+  tls:
+    - hosts:
+        - "harbor"
+  rules:
+    - http:
+        paths:
+          - path: /chartrepo/
+            pathType: Prefix
+            backend:
+              service:
+                name: harbor-core
+                port:
+                  number: 80
+          - path: /c/
+            pathType: Prefix
+            backend:
+              service:
+                name: harbor-core
+                port:
+                  number: 80
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: harbor-core
+                port:
+                  number: 80
+          - path: /service/
+            pathType: Prefix
+            backend:
+              service:
+                name: harbor-core
+                port:
+                  number: 80
+          - path: /v2/
+            pathType: Prefix
+            backend:
+              service:
+                name: harbor-core
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: harbor-portal
+                port:
+                  number: 80
