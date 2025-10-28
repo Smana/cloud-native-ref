@@ -14,6 +14,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: zitadel
+        namespace: security
       interval: 12h
   values:
     replicaCount: 1
