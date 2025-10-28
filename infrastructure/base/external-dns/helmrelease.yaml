@@ -47,6 +47,8 @@ spec:
       - --gateway-label-filter=external-dns=enabled
       # Prevent rapid deletions during temporary issues
       - --min-event-sync-interval=30s
+      # Prefer A records over CNAME when Gateway has both Hostname and IPAddress
+      - --prefer-cname=false
     resources:
       limits:
         memory: 100Mi
