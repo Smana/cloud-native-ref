@@ -20,16 +20,11 @@ spec:
     initJob:
       backoffLimit: 30 # Wait for the CNPG database instance to be ready
 
-    # Enable Login v2 deployment (required for Zitadel v4+)
+    # Login v2 disabled due to Helm chart bug with pod-level TLS
+    # Bug: Init container uses HTTPS for internal connections when TLS.Enabled=true
+    # Using embedded login UI instead (same features, simpler architecture)
     login:
-      enabled: true
-      # Uses the login-client secret created with PAT from login-client service user
-      # Workaround for Helm chart bug: Force HTTP for internal connections
-      # Bug: Chart incorrectly uses HTTPS when TLS.Enabled=true, but pod-to-pod should use HTTP
-      customConfigmapConfig: |
-        ZITADEL_SERVICE_USER_TOKEN_FILE="/login-client/pat"
-        ZITADEL_API_URL="http://zitadel:8080"
-        CUSTOM_REQUEST_HEADERS="Host:auth.cloud.ogenki.io"
+      enabled: false
     zitadel:
       serverSslCrtSecret: "zitadel-certificate"
       masterkeySecretName: "zitadel-masterkey" # Populated from the zitadel-envvars secret
