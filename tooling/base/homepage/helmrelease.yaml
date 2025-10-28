@@ -116,7 +116,7 @@ spec:
                 app: grafana
 
             - Victoria Metrics:
-                href: https://vl.priv.cloud.ogenki.io/select/vmui/
+                href: https://vm.priv.cloud.ogenki.io/vmui
                 description: Time Series Database
                 icon: victoriametrics.png
                 namespace: observability

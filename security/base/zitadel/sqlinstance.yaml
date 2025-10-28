@@ -6,11 +6,11 @@ spec:
   instances: 2
   size: "small"
   storageSize: "20Gi"
-  postgresVersion: "17"
+  postgresVersion: "18"
   createSuperuser: true
   objectStoreRecovery:
     bucketName: "eu-west-3-ogenki-cnpg-backups"
-    path: "zitadel-20241202"
+    path: "zitadel-20251028"
   backup:
     schedule: "0 0 * * *"
     bucketName: "eu-west-3-ogenki-cnpg-backups"

@@ -4,22 +4,30 @@ metadata:
   name: zitadel
 spec:
   interval: 30m
-  timeout: 30m
+  timeout: 45m
   driftDetection:
     mode: enabled
   chart:
     spec:
       chart: zitadel
-      version: "8.13.4"
+      version: "9.12.2"
       sourceRef:
         kind: HelmRepository
         name: zitadel
+        namespace: security
       interval: 12h
   values:
     replicaCount: 1
     initJob:
       backoffLimit: 30 # Wait for the CNPG database instance to be ready
+
+    # Login v2 disabled due to Helm chart bug with pod-level TLS
+    # Bug: Init container uses HTTPS for internal connections when TLS.Enabled=true
+    # Using embedded login UI instead (same features, simpler architecture)
+    login:
+      enabled: false
     zitadel:
+      serverSslCrtSecret: "zitadel-certificate"
       masterkeySecretName: "zitadel-masterkey" # Populated from the zitadel-envvars secret
       configmapConfig:
         Log:
@@ -41,6 +49,19 @@ spec:
             MaxIdleConns: 10
             MaxConnLifetime: 30m
             MaxConnIdleTime: 5m
+
+        # FirstInstance configuration for v9 (initializes service accounts)
+        FirstInstance:
+          Org:
+            Machine:
+              Machine:
+                Username: 'iam-admin'
+                Name: 'IAM Admin Service Account'
+              MachineKey:
+                ExpirationDate: '2029-01-01T00:00:00Z'
+                Type: 1
+              Pat:
+                ExpirationDate: '2029-01-01T00:00:00Z'
 
     # reference: https://zitadel.com/docs/self-hosting/manage/configure
     # All configuration items are loaded from a secret

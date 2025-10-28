@@ -34,5 +34,8 @@
             "clusters",
             "opentofu"
         ]
+    },
+    "registryAliases": {
+        "zitadel": "https://charts.zitadel.com"
     }
 }
