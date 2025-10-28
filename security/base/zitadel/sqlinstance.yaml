@@ -6,7 +6,7 @@ spec:
   instances: 2
   size: "small"
   storageSize: "20Gi"
-  postgresVersion: "17"
+  postgresVersion: "18"
   createSuperuser: true
   objectStoreRecovery:
     bucketName: "eu-west-3-ogenki-cnpg-backups"

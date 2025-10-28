@@ -4,13 +4,13 @@ metadata:
   name: zitadel
 spec:
   interval: 30m
-  timeout: 30m
+  timeout: 45m
   driftDetection:
     mode: enabled
   chart:
     spec:
       chart: zitadel
-      version: "8.13.4"
+      version: "9.12.2"
       sourceRef:
         kind: HelmRepository
         name: zitadel
@@ -19,7 +19,13 @@ spec:
     replicaCount: 1
     initJob:
       backoffLimit: 30 # Wait for the CNPG database instance to be ready
+
+    # Enable Login v2 deployment (required for Zitadel v4+)
+    login:
+      enabled: true
+      # Uses the login-client secret created with PAT from login-client service user
     zitadel:
+      serverSslCrtSecret: "zitadel-certificate"
       masterkeySecretName: "zitadel-masterkey" # Populated from the zitadel-envvars secret
       configmapConfig:
         Log:
@@ -42,6 +48,25 @@ spec:
             MaxConnLifetime: 30m
             MaxConnIdleTime: 5m
 
+        # FirstInstance configuration for v9 (initializes service accounts)
+        FirstInstance:
+          Org:
+            Machine:
+              Machine:
+                Username: 'iam-admin'
+                Name: 'IAM Admin Service Account'
+              MachineKey:
+                ExpirationDate: '2029-01-01T00:00:00Z'
+                Type: 1
+              Pat:
+                ExpirationDate: '2029-01-01T00:00:00Z'
+            LoginClient:
+              Machine:
+                Username: 'login-client'
+                Name: 'Login V2 Service Account'
+              Pat:
+                ExpirationDate: '2029-01-01T00:00:00Z'
+
     # reference: https://zitadel.com/docs/self-hosting/manage/configure
     # All configuration items are loaded from a secret
     # These are the keys that are expected in the secret
@@ -53,6 +78,7 @@ spec:
     # ZITADEL_DATABASE_POSTGRES_USER_USERNAME
     # ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD
     # ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME
+    # ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT (v9+)
     # ZITADEL_MASTERKEY
     envVarsSecret: "zitadel-envvars"
 
