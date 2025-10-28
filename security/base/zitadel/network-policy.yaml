@@ -38,11 +38,3 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
-    - fromEndpoints:
-        - matchLabels:
-            k8s:app.kubernetes.io/component: login
-            k8s:app.kubernetes.io/name: zitadel-login
-      toPorts:
-        - ports:
-            - port: "8080"
-              protocol: TCP

@@ -62,12 +62,6 @@ spec:
                 Type: 1
               Pat:
                 ExpirationDate: '2029-01-01T00:00:00Z'
-            LoginClient:
-              Machine:
-                Username: 'login-client'
-                Name: 'Login V2 Service Account'
-              Pat:
-                ExpirationDate: '2029-01-01T00:00:00Z'
 
     # reference: https://zitadel.com/docs/self-hosting/manage/configure
     # All configuration items are loaded from a secret
@@ -80,7 +74,6 @@ spec:
     # ZITADEL_DATABASE_POSTGRES_USER_USERNAME
     # ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD
     # ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME
-    # ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT (v9+)
     # ZITADEL_MASTERKEY
     envVarsSecret: "zitadel-envvars"
 
