@@ -24,6 +24,12 @@ spec:
     login:
       enabled: true
       # Uses the login-client secret created with PAT from login-client service user
+      # Workaround for Helm chart bug: Force HTTP for internal connections
+      # Bug: Chart incorrectly uses HTTPS when TLS.Enabled=true, but pod-to-pod should use HTTP
+      customConfigmapConfig: |
+        ZITADEL_SERVICE_USER_TOKEN_FILE="/login-client/pat"
+        ZITADEL_API_URL="http://zitadel:8080"
+        CUSTOM_REQUEST_HEADERS="Host:auth.cloud.ogenki.io"
     zitadel:
       serverSslCrtSecret: "zitadel-certificate"
       masterkeySecretName: "zitadel-masterkey" # Populated from the zitadel-envvars secret
