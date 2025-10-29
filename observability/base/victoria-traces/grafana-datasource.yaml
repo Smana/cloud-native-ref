@@ -7,11 +7,10 @@ spec:
   allowCrossNamespaceImport: true
   datasource:
     access: proxy
-    type: tempo
+    type: jaeger
     name: VictoriaTraces
-    url: http://victoria-traces-vt-single-server.observability:10428
+    url: http://victoria-traces-vt-single-server.observability:10428/select/jaeger
     jsonData:
-      httpMethod: GET
       tracesToLogs:
         datasourceName: VictoriaLogs
         tags: ['trace_id', 'traceId', 'traceID']
@@ -34,8 +33,6 @@ spec:
         datasourceName: VictoriaMetrics
       nodeGraph:
         enabled: true
-      search:
-        hide: false
   instanceSelector:
     matchLabels:
       dashboards: grafana

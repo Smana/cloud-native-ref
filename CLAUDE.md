@@ -635,3 +635,4 @@ flux get all
 bao status
 bao auth list
 ```
+- always check the network policies when there are timeouts
