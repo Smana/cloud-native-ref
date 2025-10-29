@@ -220,6 +220,24 @@ spec:
               - port: "80"
                 protocol: TCP
 
+      # Observability services (VictoriaMetrics and VictoriaTraces)
+      - toEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "observability"
+              "app.kubernetes.io/name": "vmsingle"
+        toPorts:
+          - ports:
+              - port: "8428"
+                protocol: TCP
+      - toEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "observability"
+              "app.kubernetes.io/name": "victoria-traces"
+        toPorts:
+          - ports:
+              - port: "10428"
+                protocol: TCP
+
       # HTTP/HTTPS egress (covers S3 and external services)
       - toEntities:
           - world
