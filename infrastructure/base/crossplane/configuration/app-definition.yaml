@@ -712,7 +712,7 @@ spec:
                           default: false
                         endpoint:
                           type: string
-                          description: OTLP traces endpoint (optional, defaults to VictoriaTraces in observability namespace)
+                          description: "OTLP traces endpoint with full path including protocol (e.g., 'http://host:port/path'). Defaults to VictoriaTraces in observability namespace."
                         samplingRate:
                           type: number
                           description: Trace sampling rate (0.0 to 1.0, where 1.0 = 100% of traces)
@@ -729,7 +729,7 @@ spec:
                           default: false
                         endpoint:
                           type: string
-                          description: OTLP metrics endpoint (optional, defaults to vmagent in observability namespace)
+                          description: "OTLP metrics endpoint without protocol (e.g., 'host:port/path'). The OTLP exporter will add http:// and append /v1/metrics automatically. Defaults to vmagent in observability namespace."
                         path:
                           type: string
                           description: Metrics scrape path
