@@ -232,7 +232,7 @@ spec:
       - toEndpoints:
           - matchLabels:
               "io.kubernetes.pod.namespace": "observability"
-              "app.kubernetes.io/name": "victoria-traces"
+              "app.kubernetes.io/name": "vt-single"
         toPorts:
           - ports:
               - port: "10428"
