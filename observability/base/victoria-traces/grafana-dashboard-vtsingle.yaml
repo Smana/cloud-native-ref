@@ -9,6 +9,8 @@ spec:
   datasources:
     - inputName: "DS_PROMETHEUS"
       datasourceName: "VictoriaMetrics"
+    - inputName: "DS_VICTORIAMETRICS"
+      datasourceName: "VictoriaMetrics"
   instanceSelector:
     matchLabels:
       dashboards: "grafana"
