@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - grafana-dashboard-vtsingle.yaml
+  - grafana-dashboard-observability-demo.yaml
   - grafana-datasource.yaml
   - helmrelease-vtsingle.yaml
   - httproute-vtsingle.yaml

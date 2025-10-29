@@ -129,6 +129,13 @@ spec:
                 namespace: observability
                 app: victoria-logs-single
 
+            - Victoria Traces:
+                href: https://vt.priv.cloud.ogenki.io/select/jaeger
+                description: Distributed Tracing
+                icon: victoriametrics.png
+                namespace: observability
+                app: victoria-traces-single
+
         - Security & Identity:
             - Zitadel:
                 href: https://auth.cloud.ogenki.io

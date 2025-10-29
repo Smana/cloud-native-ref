@@ -11,5 +11,5 @@ spec:
     - "vt.priv.${domain_name}"
   rules:
     - backendRefs:
-        - name: victoria-traces-victoria-traces-single-server
+        - name: victoria-traces-vt-single-server
           port: 10428

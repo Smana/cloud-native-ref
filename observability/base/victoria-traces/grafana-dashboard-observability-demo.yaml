@@ -1,0 +1,368 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: observability-demo-correlation
+  namespace: observability
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "traces"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "title": "Observability Demo - Metrics to Traces Correlation",
+      "description": "RED metrics with trace correlation for xplane-image-gallery",
+      "tags": ["observability", "traces", "metrics", "demo"],
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-30m",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {
+              "text": "VictoriaMetrics",
+              "value": "VictoriaMetrics"
+            },
+            "hide": 0
+          },
+          {
+            "name": "namespace",
+            "type": "constant",
+            "query": "apps",
+            "current": {
+              "text": "apps",
+              "value": "apps"
+            },
+            "hide": 2
+          },
+          {
+            "name": "service",
+            "type": "constant",
+            "query": "xplane-image-gallery",
+            "current": {
+              "text": "xplane-image-gallery",
+              "value": "xplane-image-gallery"
+            },
+            "hide": 2
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "📊 METRICS: Service Health",
+          "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "HTTP Request Rate (requests/sec)",
+          "gridPos": {"x": 0, "y": 1, "w": 8, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\"}[1m]))",
+              "legendFormat": "Total requests/sec",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (status) (rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\"}[1m]))",
+              "legendFormat": "{{status}}",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisCenteredZero": false,
+                "axisLabel": "requests/sec",
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 2,
+                "showPoints": "never"
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Error Rate %",
+          "gridPos": {"x": 8, "y": 1, "w": 4, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\",status=~\"5..\"}[1m])) / sum(rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\"}[1m])) * 100",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 1},
+                  {"color": "orange", "value": 5},
+                  {"color": "red", "value": 10}
+                ]
+              },
+              "unit": "percent",
+              "decimals": 2
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "value_and_name"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Request Rate",
+          "gridPos": {"x": 12, "y": 1, "w": 4, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\"}[1m]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "unit": "reqps",
+              "decimals": 1
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "value_and_name"
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Response Time (P95 latency)",
+          "gridPos": {"x": 16, "y": 1, "w": 8, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_bucket{namespace=\"$namespace\",service=\"$service\"}[1m])) by (le, route))",
+              "legendFormat": "P95 - {{route}}",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(http_server_request_duration_bucket{namespace=\"$namespace\",service=\"$service\"}[1m])) by (le))",
+              "legendFormat": "P50 (median)",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisCenteredZero": false,
+                "axisLabel": "seconds",
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 2
+              },
+              "unit": "s"
+            }
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "stat",
+          "title": "P95 Latency",
+          "gridPos": {"x": 8, "y": 5, "w": 4, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_bucket{namespace=\"$namespace\",service=\"$service\"}[1m])) by (le))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 0.5},
+                  {"color": "orange", "value": 1},
+                  {"color": "red", "value": 5}
+                ]
+              },
+              "unit": "s",
+              "decimals": 3
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "value_and_name"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Total 5xx Errors",
+          "gridPos": {"x": 12, "y": 5, "w": 4, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(increase(http_server_request_count{namespace=\"$namespace\",service=\"$service\",status=~\"5..\"}[5m]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "red", "value": 1}
+                ]
+              },
+              "unit": "short",
+              "decimals": 0
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value_and_name"
+          }
+        },
+        {
+          "type": "row",
+          "title": "🔍 TRACES: Error Investigation",
+          "gridPos": {"x": 0, "y": 9, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "text",
+          "title": "📝 How to Investigate",
+          "gridPos": {"x": 0, "y": 10, "w": 8, "h": 6},
+          "options": {
+            "mode": "markdown",
+            "content": "## Investigate Errors with Traces\n\n**When you see errors above:**\n\n1. Click **\"Explore Traces\"** button below\n2. Service will be pre-filtered to `xplane-image-gallery`\n3. Add tag filter: `error=true`\n4. Click on any trace to see:\n   - Span timeline and duration\n   - Error messages and stack traces\n   - Database query failures\n   - Network timeouts\n\n**Trace Correlation:**\n- Click \"Logs\" tab in trace view → Auto-filtered logs by trace_id\n- Click \"Metrics\" tab → See error rate for this service\n- Node Graph shows service dependencies\n\n**Common Issues to Look For:**\n- Database connection timeouts (5-30s spans)\n- HTTP 500 status codes\n- Timeout errors in logs: `dial tcp: i/o timeout`"
+          }
+        },
+        {
+          "type": "text",
+          "title": "🔗 Quick Links",
+          "gridPos": {"x": 8, "y": 10, "w": 8, "h": 6},
+          "options": {
+            "mode": "markdown",
+            "content": "## Quick Access\n\n### Explore Traces\n[🔍 Open VictoriaTraces](https://grafana.priv.cloud.ogenki.io/explore?left=%7B%22datasource%22:%2214934b07-2860-48aa-900b-034ecca80e7d%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22datasource%22:%7B%22type%22:%22jaeger%22,%22uid%22:%2214934b07-2860-48aa-900b-034ecca80e7d%22%7D%7D%5D,%22range%22:%7B%22from%22:%22now-30m%22,%22to%22:%22now%22%7D%7D)\n- Select Service: `xplane-image-gallery`\n- Add Tags: `error=true` for errors only\n- View trace spans and timing\n\n### Explore Logs\n[📋 Open VictoriaLogs](https://grafana.priv.cloud.ogenki.io/explore?left=%7B%22datasource%22:%228400ce28-e2d9-429d-a040-58ca115195dd%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22%7Bnamespace%3D%5C%22apps%5C%22,%20service_name%3D%5C%22xplane-image-gallery%5C%22%7D%20%7C%20json%20%7C%20level%3D%5C%22error%5C%22%22%7D%5D,%22range%22:%7B%22from%22:%22now-30m%22,%22to%22:%22now%22%7D%7D)\n- Pre-filtered to error logs\n- Shows trace_id for correlation\n\n### VictoriaTraces Dashboard\n[📊 VictoriaTraces Metrics](https://grafana.priv.cloud.ogenki.io/d/10dbc46d-e6fe-46c9-8ee2-57783dd70695/victoriatraces-single-node?var-ds=P4169E866C3094E38&var-job=victoria-traces-vt-single-server)\n- Internal VictoriaTraces metrics\n- Ingestion rate, storage\n"
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Request Count by Status Code",
+          "gridPos": {"x": 16, "y": 10, "w": 8, "h": 6},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {
+              "expr": "sum by (status) (rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\"}[1m]))",
+              "legendFormat": "HTTP {{status}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineWidth": 2,
+                "stacking": {"mode": "normal"}
+              },
+              "unit": "reqps"
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byRegexp", "options": ".*5.*"},
+                "properties": [
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}
+                ]
+              },
+              {
+                "matcher": {"id": "byRegexp", "options": ".*200.*"},
+                "properties": [
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}
+                ]
+              }
+            ]
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "row",
+          "title": "📋 LOGS: Detailed Context",
+          "gridPos": {"x": 0, "y": 16, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "logs",
+          "title": "Recent Error Logs",
+          "gridPos": {"x": 0, "y": 17, "w": 24, "h": 8},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "8400ce28-e2d9-429d-a040-58ca115195dd"},
+          "targets": [
+            {
+              "expr": "{namespace=\"$namespace\", service_name=\"$service\"} | json | level=\"error\"",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          }
+        },
+        {
+          "type": "row",
+          "title": "🌐 SERVICE GRAPH: Dependencies",
+          "gridPos": {"x": 0, "y": 25, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "text",
+          "title": "Service Dependencies",
+          "gridPos": {"x": 0, "y": 26, "w": 24, "h": 4},
+          "options": {
+            "mode": "markdown",
+            "content": "## 🔗 Service Dependencies\n\n```\n┌─────────────────┐\n│  Load Balancer  │\n└────────┬────────┘\n         │\n         ▼\n┌───────────────────────┐\n│  xplane-image-gallery │\n└──────┬───────┬────────┘\n       │       │\n       │       └──────────────┐\n       │                      │\n       ▼                      ▼\n┌─────────────┐        ┌──────────┐\n│  PostgreSQL │        │  Valkey  │\n│  (CloudNativePG)     │  (Redis) │\n└─────────────┘        └──────────┘\n       │\n       ▼\n┌─────────────┐\n│  S3 Bucket  │\n│  (AWS)      │\n└─────────────┘\n```\n\n**Error Flow Analysis:**\n1. When PostgreSQL connection fails → HTTP 500 errors\n2. Check traces for database spans with high duration\n3. Check logs for \"dial tcp\" timeout errors\n4. Verify network policies allow egress to database"
+          }
+        }
+      ]
+    }
