@@ -1,0 +1,41 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: vt-datasource
+  namespace: observability
+spec:
+  allowCrossNamespaceImport: true
+  datasource:
+    access: proxy
+    type: tempo
+    name: VictoriaTraces
+    url: http://victoria-traces-victoria-traces-single-server.observability:10428
+    jsonData:
+      httpMethod: GET
+      tracesToLogs:
+        datasourceName: VictoriaLogs
+        tags: ['trace_id', 'traceId', 'traceID']
+        mappedTags:
+          - key: service.name
+            value: service_name
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
+        filterByTraceID: true
+        filterBySpanID: false
+      tracesToMetrics:
+        datasourceName: VictoriaMetrics
+        tags: ['service.name', 'http.method', 'http.status_code']
+        queries:
+          - name: 'Request rate'
+            query: 'rate(http_server_requests_total{$$__tags}[5m])'
+          - name: 'Request duration'
+            query: 'histogram_quantile(0.95, rate(http_server_duration_seconds_bucket{$$__tags}[5m]))'
+      serviceMap:
+        datasourceName: VictoriaMetrics
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana

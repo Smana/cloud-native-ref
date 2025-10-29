@@ -111,7 +111,7 @@ variable "cert_manager_approle_secret_name" {
 
 variable "flux_operator_version" {
   description = "Flux Operator version"
-  default     = "0.32.0"
+  default     = "0.33.0"
   type        = string
 }
 

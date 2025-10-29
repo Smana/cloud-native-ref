@@ -1,0 +1,15 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: victoria-traces
+  namespace: observability
+spec:
+  parentRefs:
+    - name: platform-tailscale-general
+      namespace: infrastructure
+  hostnames:
+    - "vt.priv.${domain_name}"
+  rules:
+    - backendRefs:
+        - name: victoria-traces-victoria-traces-single-server
+          port: 10428
