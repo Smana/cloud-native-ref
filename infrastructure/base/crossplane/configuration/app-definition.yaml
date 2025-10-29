@@ -729,7 +729,7 @@ spec:
                           default: false
                         endpoint:
                           type: string
-                          description: "OTLP metrics endpoint without protocol (e.g., 'host:port/path'). The OTLP exporter will add http:// and append /v1/metrics automatically. Defaults to vmagent in observability namespace."
+                          description: "OTLP metrics endpoint with full path (e.g., 'http://host:port/basepath/v1/metrics'). Per OTLP spec, this is used as-is without modification. Defaults to vmagent in observability namespace."
                         path:
                           type: string
                           description: Metrics scrape path
