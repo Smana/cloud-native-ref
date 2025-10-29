@@ -9,7 +9,7 @@ spec:
     access: proxy
     type: tempo
     name: VictoriaTraces
-    url: http://victoria-traces-victoria-traces-single-server.observability:10428
+    url: http://victoria-traces-vt-single-server.observability:10428
     jsonData:
       httpMethod: GET
       tracesToLogs:
