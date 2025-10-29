@@ -30,7 +30,7 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-app:v0.1.6
+                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-app:v0.1.6-pr1144
 
         - step: ready
           functionRef:
