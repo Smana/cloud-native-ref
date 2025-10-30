@@ -130,7 +130,7 @@ spec:
                 app: victoria-logs-single
 
             - Victoria Traces:
-                href: https://vt.priv.cloud.ogenki.io/select/jaeger
+                href: https://vt.priv.cloud.ogenki.io/select/vmui
                 description: Distributed Tracing
                 icon: victoriametrics.png
                 namespace: observability
