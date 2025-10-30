@@ -32,10 +32,14 @@ spec:
       region: ${region}
       zoneType: ""  # Manage both public and private zones
       batchChangeSize: 1000
+      # Prefer more specific zones over parent zones
+      # Prevents home.priv.cloud.ogenki.io from being created in cloud.ogenki.io (public)
+      # when priv.cloud.ogenki.io (private) is more specific
+      zoneMatchParent: false
 
     domainFilters: ["${domain_name}", "priv.${domain_name}"]
     logFormat: json
-    logLevel: debug
+    logLevel: info
     txtOwnerId: "${cluster_name}"
 
     # Sync mode: automatically cleanup stale DNS records
