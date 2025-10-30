@@ -111,7 +111,14 @@ spec:
                 "lineWidth": 2,
                 "showPoints": "never"
               },
-              "unit": "reqps"
+              "unit": "reqps",
+              "links": [
+                {
+                  "title": "View Traces",
+                  "url": "/explore?left={\"datasource\":\"VictoriaTraces\",\"queries\":[{\"refId\":\"A\",\"datasource\":{\"type\":\"jaeger\",\"uid\":\"VictoriaTraces\"},\"queryType\":\"search\",\"service\":\"${service}\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+                  "targetBlank": false
+                }
+              ]
             }
           },
           "options": {
@@ -352,10 +359,10 @@ spec:
           "type": "logs",
           "title": "Recent Error Logs",
           "gridPos": {"x": 0, "y": 17, "w": 24, "h": 8},
-          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "8400ce28-e2d9-429d-a040-58ca115195dd"},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "VictoriaLogs"},
           "targets": [
             {
-              "expr": "{service_name=\"$service\"} | json | level=\"error\"",
+              "expr": "{service.name=\"$service\"} | json | level=\"error\"",
               "refId": "A"
             }
           ],
