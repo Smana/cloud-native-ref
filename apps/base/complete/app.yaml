@@ -132,9 +132,9 @@ spec:
             # Alert on failed image uploads
             - alert: HighImageUploadFailureRate
               expr: |
-                sum(rate(image_uploads_total{namespace="apps",service="xplane-image-gallery",status="error"}[5m]))
+                sum(rate(image_uploads_total{service.name="xplane-image-gallery",status="error"}[5m]))
                 /
-                sum(rate(image_uploads_total{namespace="apps",service="xplane-image-gallery"}[5m]))
+                sum(rate(image_uploads_total{service.name="xplane-image-gallery"}[5m]))
                 > 0.1
               for: 3m
               labels:
@@ -150,10 +150,10 @@ spec:
             # Recording rule for cache hit rate
             - record: image_gallery:cache_hit_rate:5m
               expr: |
-                sum(rate(image_cache_hits{namespace="apps",service="xplane-image-gallery"}[5m]))
+                sum(rate(image_cache_hits{service.name="xplane-image-gallery"}[5m]))
                 /
-                (sum(rate(image_cache_hits{namespace="apps",service="xplane-image-gallery"}[5m]))
-                 + sum(rate(image_cache_misses{namespace="apps",service="xplane-image-gallery"}[5m])))
+                (sum(rate(image_cache_hits{service.name="xplane-image-gallery"}[5m]))
+                 + sum(rate(image_cache_misses{service.name="xplane-image-gallery"}[5m])))
 
   # Optional: Additional secrets from AWS Secrets Manager
   # Currently only needed for non-infrastructure config (optional overrides)
