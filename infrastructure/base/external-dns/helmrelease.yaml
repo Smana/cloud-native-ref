@@ -24,7 +24,6 @@ spec:
 
     # Watch sources
     sources:
-      - service
       - ingress
       - gateway-httproute
 
