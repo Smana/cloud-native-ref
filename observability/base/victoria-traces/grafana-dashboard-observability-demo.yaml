@@ -53,32 +53,26 @@ spec:
           },
           {
             "name": "service",
-            "type": "query",
-            "datasource": {
-              "type": "prometheus",
-              "uid": "${datasource}"
-            },
-            "query": "label_values({__name__=\"http.server.request.count\"}, service.name)",
+            "type": "constant",
+            "query": "xplane-image-gallery",
             "current": {
               "selected": true,
               "text": "xplane-image-gallery",
               "value": "xplane-image-gallery"
             },
-            "definition": "label_values({__name__=\"http.server.request.count\"}, service.name)",
             "hide": 0,
             "includeAll": false,
             "multi": false,
             "name": "service",
-            "options": [],
-            "query": {
-              "query": "label_values({__name__=\"http.server.request.count\"}, service.name)",
-              "refId": "StandardVariableQuery"
-            },
-            "refresh": 2,
-            "regex": "",
+            "options": [
+              {
+                "selected": true,
+                "text": "xplane-image-gallery",
+                "value": "xplane-image-gallery"
+              }
+            ],
             "skipUrlSync": false,
-            "sort": 1,
-            "type": "query"
+            "type": "constant"
           }
         ]
       },
