@@ -47,8 +47,6 @@ spec:
       - --gateway-label-filter=external-dns=enabled
       # Prevent rapid deletions during temporary issues
       - --min-event-sync-interval=30s
-      # Only manage A/AAAA records, ignore CNAME (fixes Gateway Hostname/IPAddress conflict)
-      - --managed-record-types=A,AAAA
     resources:
       limits:
         memory: 100Mi
