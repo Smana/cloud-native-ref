@@ -136,10 +136,6 @@ _buildObservabilityEnv = lambda obs: any -> [any] {
             value = obs?.traces?.endpoint or _DEFAULTS.traces_endpoint
         }
         {
-            name = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"
-            value = "http/protobuf"
-        }
-        {
             name = "OTEL_TRACES_SAMPLER"
             value = "parentbased_traceidratio"
         }
@@ -157,10 +153,6 @@ _buildObservabilityEnv = lambda obs: any -> [any] {
         {
             name = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"
             value = obs?.metrics?.endpoint or _DEFAULTS.metrics_endpoint
-        }
-        {
-            name = "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"
-            value = "http/protobuf"
         }
     ] if obs?.metrics?.enabled else []
 

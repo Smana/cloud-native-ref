@@ -251,6 +251,21 @@ When troubleshooting a Crossplane Composition or Composite Resource (XR), follow
 ## Cilium (CNI & Network Policies)
 - For network connectivity issues, check Cilium pod logs and CiliumNetworkPolicy resources.
 - Use Cilium Hubble (if enabled) for advanced network observability and troubleshooting.
+- **Network Policy Debugging**: When debugging network policies and identifying blocked traffic, you can exec into a Cilium pod and run Hubble commands directly:
+  ```bash
+  # Get Cilium pod name
+  CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+
+  # Observe dropped traffic from specific pod
+  kubectl exec -n kube-system $CILIUM_POD -- hubble observe --verdict DROPPED --from-pod <namespace>/<pod-name> --last 100
+
+  # Observe all traffic from pod
+  kubectl exec -n kube-system $CILIUM_POD -- hubble observe --from-pod <namespace>/<pod-name> --last 50
+
+  # Filter by label
+  kubectl exec -n kube-system $CILIUM_POD -- hubble observe --from-label app.kubernetes.io/name=<app-name> --verdict DROPPED --last 100
+  ```
+  This is more reliable than using the Hubble UI for identifying exact dropped packets and their reasons.
 
 ## Gateway API
 - For ingress and traffic routing, prefer Gateway API resources (`Gateway`, `HTTPRoute`, `GatewayClass`) over legacy `Ingress` resources.

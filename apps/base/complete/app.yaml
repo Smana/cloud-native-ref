@@ -171,7 +171,7 @@ spec:
     hostname: "image-gallery"
 
   networkPolicies:
-    enabled: true
+    enabled: false
     ingress:
       # Allow all ingress controller traffic
       - fromEntities:
