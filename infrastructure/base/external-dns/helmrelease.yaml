@@ -35,6 +35,7 @@ spec:
 
     domainFilters: ["${domain_name}", "priv.${domain_name}"]
     logFormat: json
+    logLevel: debug
     txtOwnerId: "${cluster_name}"
 
     # Sync mode: automatically cleanup stale DNS records
@@ -47,8 +48,6 @@ spec:
       - --gateway-label-filter=external-dns=enabled
       # Prevent rapid deletions during temporary issues
       - --min-event-sync-interval=30s
-      # Enable debug logging to troubleshoot
-      - --log-level=debug
     resources:
       limits:
         memory: 100Mi
