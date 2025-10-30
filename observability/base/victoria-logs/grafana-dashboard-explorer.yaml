@@ -12,10 +12,4 @@ spec:
   instanceSelector:
     matchLabels:
       dashboards: "grafana"
-  # Using local fixed version instead of Grafana.com to fix template variable double-quoting
-  # Original: https://grafana.com/grafana/dashboards/22759/revisions/6/
-  # Issue: Queries had quotes around variables like kubernetes.pod_namespace="$namespace"
-  # Fix: Removed quotes to become kubernetes.pod_namespace=$namespace
-  configMapRef:
-    name: victorialogs-explorer-dashboard
-    key: grafana-dashboard-explorer.json
+  url: "https://grafana.com/api/dashboards/22759/revisions/6/download"
