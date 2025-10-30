@@ -28,10 +28,18 @@ spec:
             "type": "datasource",
             "query": "prometheus",
             "current": {
+              "selected": false,
               "text": "VictoriaMetrics",
               "value": "VictoriaMetrics"
             },
-            "hide": 0
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "options": [],
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "type": "datasource"
           },
           {
             "name": "namespace",
@@ -52,12 +60,25 @@ spec:
             },
             "query": "label_values(http.server.request.count, service.name)",
             "current": {
+              "selected": true,
               "text": "xplane-image-gallery",
               "value": "xplane-image-gallery"
             },
-            "refresh": 1,
+            "definition": "label_values(http.server.request.count, service.name)",
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "name": "service",
+            "options": [],
+            "query": {
+              "query": "label_values(http.server.request.count, service.name)",
+              "refId": "StandardVariableQuery"
+            },
+            "refresh": 2,
+            "regex": "",
+            "skipUrlSync": false,
             "sort": 1,
-            "hide": 0
+            "type": "query"
           }
         ]
       },
