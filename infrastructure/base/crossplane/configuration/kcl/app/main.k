@@ -104,8 +104,8 @@ _DEFAULTS = {
     # KV Store
     valkey_chart_version = "3.0.31"
     # Observability endpoints
-    traces_endpoint = "http://victoria-traces-vt-single-server.observability.svc:10428/insert/opentelemetry/v1/traces"
-    metrics_endpoint = "http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428/opentelemetry/v1/metrics"
+    traces_endpoint = "http://victoria-traces-vt-single-server.observability.svc.cluster.local:10428/insert/opentelemetry/v1/traces"
+    metrics_endpoint = "http://vmsingle-victoria-metrics-k8s-stack.observability.svc.cluster.local:8428/opentelemetry/v1/metrics"
 }
 
 # Build OpenTelemetry environment variables for observability
