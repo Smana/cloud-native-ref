@@ -45,13 +45,19 @@ spec:
           },
           {
             "name": "service",
-            "type": "constant",
-            "query": "xplane-image-gallery",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${datasource}"
+            },
+            "query": "label_values(http.server.request.count, service.name)",
             "current": {
               "text": "xplane-image-gallery",
               "value": "xplane-image-gallery"
             },
-            "hide": 2
+            "refresh": 1,
+            "sort": 1,
+            "hide": 0
           }
         ]
       },
@@ -69,13 +75,13 @@ spec:
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {
-              "expr": "sum(rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\"}[1m]))",
+              "expr": "sum(rate(http.server.request.count{service.name=\"$service\"}[1m]))",
               "legendFormat": "Total requests/sec",
               "refId": "A"
             },
             {
-              "expr": "sum by (status) (rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\"}[1m]))",
-              "legendFormat": "{{status}}",
+              "expr": "sum by (http.response.status_code) (rate(http.server.request.count{service.name=\"$service\"}[1m]))",
+              "legendFormat": "{{http.response.status_code}}",
               "refId": "B"
             }
           ],
@@ -105,7 +111,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {
-              "expr": "sum(rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\",status=~\"5..\"}[1m])) / sum(rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\"}[1m])) * 100",
+              "expr": "sum(rate(http.server.request.count{service.name=\"$service\",http.response.status_code=~\"5..\"}[1m])) / sum(rate(http.server.request.count{service.name=\"$service\"}[1m])) * 100",
               "refId": "A"
             }
           ],
@@ -138,7 +144,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {
-              "expr": "sum(rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\"}[1m]))",
+              "expr": "sum(rate(http.server.request.count{service.name=\"$service\"}[1m]))",
               "refId": "A"
             }
           ],
@@ -162,12 +168,12 @@ spec:
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {
-              "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_bucket{namespace=\"$namespace\",service=\"$service\"}[1m])) by (le, route))",
-              "legendFormat": "P95 - {{route}}",
+              "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\"}[1m])) by (le, http.route))",
+              "legendFormat": "P95 - {{http.route}}",
               "refId": "A"
             },
             {
-              "expr": "histogram_quantile(0.50, sum(rate(http_server_request_duration_bucket{namespace=\"$namespace\",service=\"$service\"}[1m])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(http.server.request.duration_bucket{service.name=\"$service\"}[1m])) by (le))",
               "legendFormat": "P50 (median)",
               "refId": "B"
             }
@@ -197,7 +203,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {
-              "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_bucket{namespace=\"$namespace\",service=\"$service\"}[1m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\"}[1m])) by (le))",
               "refId": "A"
             }
           ],
@@ -230,7 +236,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {
-              "expr": "sum(increase(http_server_request_count{namespace=\"$namespace\",service=\"$service\",status=~\"5..\"}[5m]))",
+              "expr": "sum(increase(http.server.request.count{service.name=\"$service\",http.response.status_code=~\"5..\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -285,8 +291,8 @@ spec:
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "targets": [
             {
-              "expr": "sum by (status) (rate(http_server_request_count{namespace=\"$namespace\",service=\"$service\"}[1m]))",
-              "legendFormat": "HTTP {{status}}",
+              "expr": "sum by (http.response.status_code) (rate(http.server.request.count{service.name=\"$service\"}[1m]))",
+              "legendFormat": "HTTP {{http.response.status_code}}",
               "refId": "A"
             }
           ],
@@ -334,7 +340,7 @@ spec:
           "datasource": {"type": "victoriametrics-logs-datasource", "uid": "8400ce28-e2d9-429d-a040-58ca115195dd"},
           "targets": [
             {
-              "expr": "{namespace=\"$namespace\", service_name=\"$service\"} | json | level=\"error\"",
+              "expr": "{service_name=\"$service\"} | json | level=\"error\"",
               "refId": "A"
             }
           ],

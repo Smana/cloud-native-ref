@@ -96,9 +96,9 @@ spec:
             # Alert on high HTTP 5xx error rate
             - alert: HighHTTPErrorRate
               expr: |
-                sum(rate(http_server_request_count{namespace="apps",service="xplane-image-gallery",status=~"5.."}[5m]))
+                sum(rate(http.server.request.count{service.name="xplane-image-gallery",http.response.status_code=~"5.."}[5m]))
                 /
-                sum(rate(http_server_request_count{namespace="apps",service="xplane-image-gallery"}[5m]))
+                sum(rate(http.server.request.count{service.name="xplane-image-gallery"}[5m]))
                 > 0.05
               for: 2m
               labels:
@@ -114,16 +114,16 @@ spec:
             - alert: HighHTTPLatency
               expr: |
                 histogram_quantile(0.95,
-                  sum(rate(http_server_request_duration_bucket{namespace="apps",service="xplane-image-gallery"}[5m])) by (le, route)
+                  sum(rate(http.server.request.duration_bucket{service.name="xplane-image-gallery"}[5m])) by (le, http.route)
                 ) > 1.0
               for: 5m
               labels:
                 severity: warning
                 service: image-gallery
               annotations:
-                summary: "High HTTP latency on route {{ $labels.route }}"
+                summary: "High HTTP latency on route {{ $labels.http_route }}"
                 description: |
-                  95th percentile latency is {{ $value }}s on route {{ $labels.route }}.
+                  95th percentile latency is {{ $value }}s on route {{ $labels.http_route }}.
                   Expected latency is below 1 second.
 
         - name: image_uploads
