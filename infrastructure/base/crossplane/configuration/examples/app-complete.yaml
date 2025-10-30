@@ -27,7 +27,7 @@ spec:
   image:
     repository: ghcr.io/smana/image-gallery
     tag: "1.5.0"
-    pullPolicy: IfNotPresent  # Use Always for :latest, IfNotPresent for versioned tags
+    pullPolicy: IfNotPresent # Use Always for :latest, IfNotPresent for versioned tags
 
   # ============================================================================
   # Scaling Configuration
@@ -38,9 +38,9 @@ spec:
   # Horizontal Pod Autoscaler (HPA) - automatically scales based on CPU utilization
   autoscaling:
     enabled: true
-    minReplicas: 2              # Minimum pods for high availability
-    maxReplicas: 5              # Maximum pods to prevent runaway scaling
-    targetCPUUtilizationPercentage: 70  # Scale up when CPU exceeds 70%
+    minReplicas: 2 # Minimum pods for high availability
+    maxReplicas: 5 # Maximum pods to prevent runaway scaling
+    targetCPUUtilizationPercentage: 70 # Scale up when CPU exceeds 70%
 
   # ============================================================================
   # Resource Management
@@ -50,11 +50,11 @@ spec:
   # Limits: maximum resources the container can consume
   resources:
     requests:
-      cpu: "100m"      # 0.1 CPU cores
-      memory: "128Mi"  # 128 MiB RAM
+      cpu: "100m" # 0.1 CPU cores
+      memory: "128Mi" # 128 MiB RAM
     limits:
-      cpu: "200m"      # 0.2 CPU cores max
-      memory: "256Mi"  # 256 MiB RAM max
+      cpu: "200m" # 0.2 CPU cores max
+      memory: "256Mi" # 256 MiB RAM max
 
   # ============================================================================
   # Pod Scheduling and Topology
@@ -78,15 +78,15 @@ spec:
   # Security Context
   # ============================================================================
   # All settings below are secure defaults - only override if necessary
-  automountServiceAccountToken: false  # Don't mount SA token unless needed
+  automountServiceAccountToken: false # Don't mount SA token unless needed
 
   securityContext:
-    allowPrivilegeEscalation: false    # Prevent privilege escalation
-    readOnlyRootFilesystem: true       # Immutable container filesystem
-    runAsNonRoot: true                 # Enforce non-root user
+    allowPrivilegeEscalation: false # Prevent privilege escalation
+    readOnlyRootFilesystem: true # Immutable container filesystem
+    runAsNonRoot: true # Enforce non-root user
     capabilities:
-      drop: ["ALL"]                    # Drop all Linux capabilities
-    enableWritableTmp: true            # Provide writable /tmp via emptyDir
+      drop: ["ALL"] # Drop all Linux capabilities
+    enableWritableTmp: true # Provide writable /tmp via emptyDir
 
   # ============================================================================
   # Environment Variables
@@ -138,20 +138,20 @@ spec:
     # Each key in the ConfigMap becomes an environment variable
     - configMapRef:
         name: app-config-all
-        optional: false  # Fail if ConfigMap doesn't exist (default: false)
+        optional: false # Fail if ConfigMap doesn't exist (default: false)
 
     # Import all keys from a Secret as environment variables
     # Each key in the Secret becomes an environment variable
     - secretRef:
         name: app-secrets-all
-        optional: false  # Fail if Secret doesn't exist (default: false)
+        optional: false # Fail if Secret doesn't exist (default: false)
 
     # Import with a prefix to avoid naming conflicts
     # If ConfigMap has key "HOST", it becomes "DB_HOST"
     - prefix: "DB_"
       configMapRef:
         name: database-config
-        optional: true  # Don't fail if ConfigMap doesn't exist
+        optional: true # Don't fail if ConfigMap doesn't exist
 
   # ============================================================================
   # External Secrets - Automatic Secret Synchronization from AWS
@@ -162,13 +162,13 @@ spec:
   externalSecrets:
     # Secret referenced by envFrom above (app-secrets-all)
     - name: app-secrets-all
-      remoteRef: apps/image-gallery/secrets-all  # Path in AWS Secrets Manager
-      refreshInterval: 1h  # Sync every hour (default)
+      remoteRef: apps/image-gallery/secrets-all # Path in AWS Secrets Manager
+      refreshInterval: 1h # Sync every hour (default)
 
     # Secret referenced by env[] secretKeyRef above (app-secrets)
     - name: app-secrets
       remoteRef: apps/image-gallery/secrets
-      refreshInterval: 30m  # Sync every 30 minutes
+      refreshInterval: 30m # Sync every 30 minutes
 
     # Optional: Additional secrets for different purposes
     # - name: database-credentials
@@ -181,24 +181,24 @@ spec:
   # Ensures minimum availability during voluntary disruptions (node drains, updates)
   pdb:
     enabled: true
-    minAvailable: 1  # At least 1 pod must remain available
-    unhealthyPodEvictionPolicy: AlwaysAllow  # Allow eviction of unhealthy pods
+    minAvailable: 1 # At least 1 pod must remain available
+    unhealthyPodEvictionPolicy: AlwaysAllow # Allow eviction of unhealthy pods
 
   # ============================================================================
   # Service Configuration
   # ============================================================================
   # Kubernetes Service for internal communication
   service:
-    port: 8080               # Container port to expose (default: 8080)
+    port: 8080 # Container port to expose (default: 8080)
 
   # ============================================================================
   # HTTP Routing - External Access
   # ============================================================================
   # Configure HTTPRoute for external access via Gateway API
   route:
-    enabled: true            # Enable HTTPRoute creation (default: false)
-    internetFacing: true     # Use public gateway (default: false for private)
-    hostname: "image-gallery"  # Hostname prefix - becomes image-gallery.cloud.ogenki.io
+    enabled: true # Enable HTTPRoute creation (default: false)
+    internetFacing: true # Use public gateway (default: false for private)
+    hostname: "image-gallery" # Hostname prefix - becomes image-gallery.cloud.ogenki.io
 
   # ============================================================================
   # Network Policies - Zero Trust Networking
@@ -278,8 +278,8 @@ spec:
   # Deploys a Valkey (Redis-compatible) cluster for caching, sessions, or queues
   kvStore:
     enabled: true
-    type: valkey                       # Options: valkey (default), redis
-    size: small                        # Options: small, medium, large
+    type: valkey # Options: valkey (default), redis
+    size: small # Options: small, medium, large
 
   # ============================================================================
   # PostgreSQL Database - CloudNativePG with Atlas Migrations
@@ -287,24 +287,24 @@ spec:
   # Deploys a highly-available PostgreSQL cluster with automated schema management
   sqlInstance:
     enabled: true
-    size: small                         # Options: small, medium, large
-    storageSize: 20Gi                   # Persistent volume size
-    instances: 2                        # Number of PostgreSQL replicas (HA)
+    size: small # Options: small, medium, large
+    storageSize: 20Gi # Persistent volume size
+    instances: 2 # Number of PostgreSQL replicas (HA)
     primaryUpdateStrategy: unsupervised # Allow automated rolling updates
-    createSuperuser: false              # Don't create superuser (security best practice)
+    createSuperuser: false # Don't create superuser (security best practice)
 
     # Database Roles: define PostgreSQL users with specific privileges
     roles:
       - name: image-gallery-app
         comment: "Application user for image-gallery"
-        superuser: false               # Application users should not be superusers
+        superuser: false # Application users should not be superusers
         inRoles:
-          - pg_monitor                 # Allow monitoring via pg_stat_* views
+          - pg_monitor # Allow monitoring via pg_stat_* views
 
     # Databases: create PostgreSQL databases
     databases:
       - name: image-gallery
-        owner: image-gallery-app       # Database owner (grants full privileges)
+        owner: image-gallery-app # Database owner (grants full privileges)
 
     # Atlas Schema Migrations: automated schema management from Git
     # Atlas analyzes your schema files and applies migrations declaratively
@@ -316,16 +316,16 @@ spec:
     # PostgreSQL Configuration: fine-tune database parameters
     postgresql:
       parameters:
-        max_connections: 100           # Maximum concurrent connections
-        shared_buffers: "256MB"        # Memory for caching data
-      pg_hba:                          # Host-based authentication rules
+        max_connections: 100 # Maximum concurrent connections
+        shared_buffers: "256MB" # Memory for caching data
+      pg_hba: # Host-based authentication rules
         - "host all all 0.0.0.0/0 md5" # Allow password auth from all IPs (within cluster)
 
     # Backup Configuration: automated backups to S3
     backup:
-      schedule: "0 2 * * *"            # Cron schedule: daily at 2 AM UTC
-      bucketName: image-gallery-db-backups  # S3 bucket for backups
-      retentionPolicy: "30d"           # Keep backups for 30 days
+      schedule: "0 2 * * *" # Cron schedule: daily at 2 AM UTC
+      bucketName: image-gallery-db-backups # S3 bucket for backups
+      retentionPolicy: "30d" # Keep backups for 30 days
 
   # ============================================================================
   # S3 Bucket - Object Storage
@@ -333,7 +333,7 @@ spec:
   # Creates an S3 bucket with IAM permissions scoped to this application
   s3Bucket:
     enabled: true
-    region: eu-west-3                  # AWS region for the bucket
-    permissions: readwrite             # Options: readwrite, readonly, custom
-    versioning: true                   # Enable object versioning
-    retentionDays: 90                  # Delete objects older than 90 days
+    region: eu-west-3 # AWS region for the bucket
+    permissions: readwrite # Options: readwrite, readonly, custom
+    versioning: true # Enable object versioning
+    retentionDays: 90 # Delete objects older than 90 days
