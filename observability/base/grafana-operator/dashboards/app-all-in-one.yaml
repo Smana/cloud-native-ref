@@ -1,7 +1,7 @@
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
-  name: observability-demo-correlation
+  name: app-all-in-one
   namespace: observability
 spec:
   allowCrossNamespaceImport: true
