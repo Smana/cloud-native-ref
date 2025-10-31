@@ -151,7 +151,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | $filter | stats count()",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | stats count()",
               "legendFormat": "${namespace} ${container}",
               "queryType": "statsRange",
               "refId": "A"
@@ -215,7 +215,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | $filter | stats by ($count_by) count() c | sort by (c desc) | limit 50",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | stats by ($count_by) count() c | sort by (c desc) | limit 50",
               "legendFormat": "{{$count_by}}",
               "queryType": "stats",
               "refId": "A"
@@ -253,7 +253,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | $filter",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json",
               "queryType": "range",
               "refId": "A"
             }
@@ -409,28 +409,7 @@ spec:
             "query": "",
             "skipUrlSync": false,
             "type": "textbox",
-            "description": "Search for text in log messages. Use *wildcards* for pattern matching (e.g., '*database*', 'error*', '*timeout')"
-          },
-          {
-            "current": {
-              "selected": false,
-              "text": "*",
-              "value": "*"
-            },
-            "hide": 0,
-            "label": "Advanced filter",
-            "name": "filter",
-            "options": [
-              {
-                "selected": true,
-                "text": "*",
-                "value": "*"
-              }
-            ],
-            "query": "*",
-            "skipUrlSync": false,
-            "type": "textbox",
-            "description": "LogsQL filter expression. Use '*' for all logs (default), or specific filters like 'log.level:error', 'log.trace_id:*'"
+            "description": "Search for text in log messages. Use *wildcards* for pattern matching (e.g., '*database*', 'error*', '*timeout'). For advanced filtering, use Grafana Explore."
           }
         ]
       },
