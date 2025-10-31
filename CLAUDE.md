@@ -556,31 +556,20 @@ echo '{kubernetes.pod_namespace="apps"} | limit 10' | vlogscli -datasource.url='
 {kubernetes.container_name=$service} | unpack_json | log.level:error
 ```
 
-**VictoriaLogs Explorer Dashboard**: The dashboard has two search fields optimized for different use cases:
+**VictoriaLogs Explorer Dashboard**: Simple text search interface for log exploration.
 
-1. **Message search** (`msg` variable): Simple full-text search in log messages
-   - Searches in `_msg` field (no `unpack_json` required)
-   - Examples: `*database*`, `error*`, `*timeout`
-   - Add wildcards (`*`) yourself for pattern matching
-
-2. **Advanced filter** (`filter` variable): LogsQL expressions on unpacked JSON fields
-   - Requires `| unpack_json` to access `log.*` fields
-   - Default value: `*` (shows all logs)
-   - Examples: `log.level:error`, `log.level:*`, `log.trace_id:*`
-   - Can combine multiple filters: `log.level:error log.service:xplane-image-gallery`
+**Message search** (`msg` variable): Full-text search in log messages
+- Searches in `_msg` field
+- Examples: `*database*`, `error*`, `*timeout`
+- Add wildcards (`*`) for pattern matching
+- Leave empty to show all logs
 
 **Query Structure** in dashboard:
 ```
-_stream: {filters} field_filters $msg | unpack_json | $filter | operations
+_stream: {filters} field_filters $msg | unpack_json | operations
 ```
 
-**How the fields work together**:
-- Both fields are optional
-- `msg` filters messages before JSON unpacking (faster for text search)
-- `filter` defaults to `*` (match all) after JSON unpacking - change to specific expressions to filter
-- The `filter` keyword is added automatically by VictoriaLogs datasource
-- Can use both together: msg=`*database*` + filter=`log.level:error` finds error logs mentioning "database"
-- Use filter=`*` (default) to show all logs, or specific expressions to filter
+**For advanced filtering**: Use Grafana's Explore view for complex LogsQL queries with field-level filters like `log.level:error` or `log.trace_id:*`
 
 ## Database Migrations with Atlas Operator
 
