@@ -20,6 +20,10 @@ resource "aws_security_group" "nlb" {
     protocol    = "-1"
     cidr_blocks = [data.aws_vpc.selected.cidr_block]
   }
+
+  lifecycle {
+    ignore_changes = [ingress]
+  }
 }
 
 resource "aws_security_group_rule" "allow_8200" {
