@@ -47,7 +47,7 @@ spec:
           "title": "View In Explore",
           "tooltip": "",
           "type": "link",
-          "url": "/explore?orgId=1&left={\"datasource\":\"$DS_VICTORIALOGS\",\"queries\":[{\"expr\":\"_stream: {kubernetes.container_name=~$container} kubernetes.pod_labels.app.kubernetes.io/name:=$app $query\"}]}"
+          "url": "/explore?orgId=1&left={\"datasource\":\"$DS_VICTORIALOGS\",\"queries\":[{\"expr\":\"_stream: {kubernetes.container_name=~$container} kubernetes.pod_labels.app.kubernetes.io/name:=$app *$msg* $filter\"}]}"
         },
         {
           "asDropdown": false,
@@ -151,7 +151,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $query | stats count()",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app *$msg* $filter | stats count()",
               "legendFormat": "${namespace} ${container}",
               "queryType": "statsRange",
               "refId": "A"
@@ -215,7 +215,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $query | stats by ($count_by) count() c | sort by (c desc) | limit 50",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app *$msg* $filter | stats by ($count_by) count() c | sort by (c desc) | limit 50",
               "legendFormat": "{{$count_by}}",
               "queryType": "stats",
               "refId": "A"
@@ -253,7 +253,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $query",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app *$msg* $filter",
               "queryType": "range",
               "refId": "A"
             }
@@ -397,7 +397,8 @@ spec:
               "value": ""
             },
             "hide": 0,
-            "name": "query",
+            "label": "Message search",
+            "name": "msg",
             "options": [
               {
                 "selected": true,
@@ -407,7 +408,29 @@ spec:
             ],
             "query": "",
             "skipUrlSync": false,
-            "type": "textbox"
+            "type": "textbox",
+            "description": "Search for text in log messages (e.g., 'database', 'error', 'timeout')"
+          },
+          {
+            "current": {
+              "selected": false,
+              "text": "",
+              "value": ""
+            },
+            "hide": 0,
+            "label": "Advanced filter",
+            "name": "filter",
+            "options": [
+              {
+                "selected": true,
+                "text": "",
+                "value": ""
+              }
+            ],
+            "query": "",
+            "skipUrlSync": false,
+            "type": "textbox",
+            "description": "LogsQL filter expression (e.g., 'log.level:error', 'log.trace_id:*')"
           }
         ]
       },
