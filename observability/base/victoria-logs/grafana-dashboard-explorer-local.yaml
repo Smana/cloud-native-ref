@@ -215,7 +215,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $query | stats by (\"$count_by\") count() c | sort by (c desc) | limit 50",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $query | stats by ($count_by) count() c | sort by (c desc) | limit 50",
               "legendFormat": "{{$count_by}}",
               "queryType": "stats",
               "refId": "A"
