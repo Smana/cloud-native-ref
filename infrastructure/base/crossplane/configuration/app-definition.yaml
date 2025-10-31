@@ -697,6 +697,74 @@ spec:
                     required:
                       - name
                       - remoteRef
+                # Observability configuration
+                observability:
+                  type: object
+                  description: Observability configuration (metrics, logs, traces)
+                  properties:
+                    traces:
+                      type: object
+                      description: Distributed tracing configuration
+                      properties:
+                        enabled:
+                          type: boolean
+                          description: Enable distributed tracing with OpenTelemetry
+                          default: false
+                        endpoint:
+                          type: string
+                          description: "OTLP traces endpoint with full path including protocol (e.g., 'http://host:port/path'). Defaults to VictoriaTraces in observability namespace."
+                        samplingRate:
+                          type: number
+                          description: Trace sampling rate (0.0 to 1.0, where 1.0 = 100% of traces)
+                          minimum: 0.0
+                          maximum: 1.0
+                          default: 1.0
+                    metrics:
+                      type: object
+                      description: Metrics export configuration
+                      properties:
+                        enabled:
+                          type: boolean
+                          description: Enable metrics export with OpenTelemetry
+                          default: false
+                        endpoint:
+                          type: string
+                          description: "OTLP metrics endpoint with full path (e.g., 'http://host:port/basepath/v1/metrics'). Per OTLP spec, this is used as-is without modification. Defaults to vmagent in observability namespace."
+                        path:
+                          type: string
+                          description: Metrics scrape path
+                          default: "/metrics"
+                        interval:
+                          type: string
+                          description: Metrics scrape interval
+                          pattern: "^[0-9]+(s|m|h)$"
+                          default: "30s"
+                    alertingRules:
+                      type: object
+                      description: VictoriaMetrics alerting rules (creates VMRule resource)
+                      properties:
+                        groups:
+                          type: array
+                          description: Alert rule groups
+                          items:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                                description: Group name
+                              interval:
+                                type: string
+                                description: Evaluation interval
+                                pattern: "^[0-9]+(s|m|h)$"
+                              rules:
+                                type: array
+                                description: List of alerting and recording rules
+                                items:
+                                  type: object
+                                  x-kubernetes-preserve-unknown-fields: true
+                            required:
+                              - name
+                              - rules
               required:
                 - image
             status:

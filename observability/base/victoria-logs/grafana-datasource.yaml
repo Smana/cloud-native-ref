@@ -13,6 +13,13 @@ spec:
     url: http://victoria-logs-victoria-logs-single-server.observability:9428
     # Cluster
     # url: http://victoria-logs-victoria-logs-cluster-vlselect.observability:9471
+    jsonData:
+      derivedFields:
+        - name: "TraceID"
+          matcherRegex: "\"log\\.trace_id\":\"([0-9a-f]+)\""
+          url: "$${__value.raw}"
+          datasourceName: "VictoriaTraces"
+          urlDisplayLabel: "View Trace"
   instanceSelector:
     matchLabels:
       dashboards: grafana

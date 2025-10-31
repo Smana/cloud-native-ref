@@ -1,0 +1,419 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: app-all-in-one
+  namespace: apps
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "apps"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "title": "Observability Demo - All in One",
+      "description": "RED metrics with exemplar-based trace correlation and log context",
+      "tags": ["observability", "traces", "metrics", "exemplars", "demo"],
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-30m",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {
+              "selected": false,
+              "text": "VictoriaMetrics",
+              "value": "VictoriaMetrics"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "options": [],
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "type": "datasource"
+          },
+          {
+            "name": "trace_datasource",
+            "label": "Trace Datasource",
+            "type": "datasource",
+            "query": "jaeger",
+            "current": {
+              "selected": false,
+              "text": "VictoriaTraces",
+              "value": "VictoriaTraces"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "options": [],
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "type": "datasource"
+          },
+          {
+            "name": "logs_datasource",
+            "label": "Logs Datasource",
+            "type": "datasource",
+            "query": "victoriametrics-logs-datasource",
+            "current": {
+              "selected": false,
+              "text": "VictoriaLogs",
+              "value": "VictoriaLogs"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "options": [],
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "type": "datasource"
+          },
+          {
+            "name": "namespace",
+            "type": "constant",
+            "query": "apps",
+            "current": {
+              "text": "apps",
+              "value": "apps"
+            },
+            "hide": 2
+          },
+          {
+            "name": "service",
+            "type": "constant",
+            "query": "xplane-image-gallery",
+            "current": {
+              "selected": true,
+              "text": "xplane-image-gallery",
+              "value": "xplane-image-gallery"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "name": "service",
+            "options": [
+              {
+                "selected": true,
+                "text": "xplane-image-gallery",
+                "value": "xplane-image-gallery"
+              }
+            ],
+            "skipUrlSync": false,
+            "type": "constant"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "📊 METRICS: Service Health",
+          "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "HTTP Request Rate (requests/sec) [Click exemplar dots to view traces]",
+          "gridPos": {"x": 0, "y": 1, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
+              "legendFormat": "Total requests/sec",
+              "refId": "A",
+              "exemplar": true
+            },
+            {
+              "expr": "sum by (http.response.status_code) (rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
+              "legendFormat": "{{http.response.status_code}}",
+              "refId": "B",
+              "exemplar": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisCenteredZero": false,
+                "axisLabel": "requests/sec",
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 2,
+                "showPoints": "auto"
+              },
+              "unit": "reqps",
+              "links": [
+                {
+                  "title": "View trace for this exemplar",
+                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.labels.trace_id}\",\"refId\":\"A\"}]}"
+                }
+              ]
+            }
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Response Time (P95 latency) [Click exemplar dots to view traces]",
+          "gridPos": {"x": 12, "y": 1, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) by (vmrange, http.route))",
+              "legendFormat": "P95 - {{http.route}}",
+              "refId": "A",
+              "exemplar": true
+            },
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(http.server.request.duration_bucket{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) by (vmrange))",
+              "legendFormat": "P50 (median)",
+              "refId": "B",
+              "exemplar": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisCenteredZero": false,
+                "axisLabel": "seconds",
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 2
+              },
+              "unit": "s",
+              "links": [
+                {
+                  "title": "View trace for this exemplar",
+                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.labels.trace_id}\",\"refId\":\"A\"}]}"
+                }
+              ]
+            }
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Error Rate %",
+          "gridPos": {"x": 0, "y": 9, "w": 6, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[1m])) / sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) * 100",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 1},
+                  {"color": "orange", "value": 5},
+                  {"color": "red", "value": 10}
+                ]
+              },
+              "unit": "percent",
+              "decimals": 2
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "value_and_name"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Request Rate",
+          "gridPos": {"x": 6, "y": 9, "w": 6, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "unit": "reqps",
+              "decimals": 1
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "textMode": "value_and_name"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "P95 Latency",
+          "gridPos": {"x": 12, "y": 9, "w": 6, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) by (vmrange))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 0.5},
+                  {"color": "orange", "value": 1},
+                  {"color": "red", "value": 5}
+                ]
+              },
+              "unit": "s",
+              "decimals": 3
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "value_and_name"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Total 5xx Errors (last 5m)",
+          "gridPos": {"x": 18, "y": 9, "w": 6, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(increase(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[5m]))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "red", "value": 1}
+                ]
+              },
+              "unit": "short",
+              "decimals": 0
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value_and_name"
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Request Count by Status Code [Click exemplar dots to view traces]",
+          "gridPos": {"x": 0, "y": 13, "w": 24, "h": 6},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum by (http.response.status_code) (rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
+              "legendFormat": "HTTP {{http.response.status_code}}",
+              "refId": "A",
+              "exemplar": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineWidth": 2,
+                "stacking": {"mode": "normal"}
+              },
+              "unit": "reqps",
+              "links": [
+                {
+                  "title": "View trace for this exemplar",
+                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.labels.trace_id}\",\"refId\":\"A\"}]}"
+                }
+              ]
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byRegexp", "options": ".*5.*"},
+                "properties": [
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}
+                ]
+              },
+              {
+                "matcher": {"id": "byRegexp", "options": ".*200.*"},
+                "properties": [
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}
+                ]
+              }
+            ]
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "row",
+          "title": "📋 Error Logs with Context",
+          "gridPos": {"x": 0, "y": 19, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "logs",
+          "title": "Application Error Logs (Click on log line to see ±7 lines of context)",
+          "description": "Shows error-level logs from the application. Click any log line to view surrounding context (±7 lines before/after).",
+          "gridPos": {"x": 0, "y": 20, "w": 24, "h": 10},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
+          "targets": [
+            {
+              "expr": "{kubernetes.container_name=$$service} | unpack_json | log.level:error",
+              "refId": "A",
+              "queryType": "raw"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": true,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending",
+            "enableContext": true
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {}
+            }
+          }
+        }
+      ]
+    }

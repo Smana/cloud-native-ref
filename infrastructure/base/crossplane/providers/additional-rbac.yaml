@@ -118,3 +118,7 @@ rules:
   - apiGroups: ["kustomize.toolkit.fluxcd.io"]
     resources: ["kustomizations", "kustomizations/status"]
     verbs: ["*"]
+  # VictoriaMetrics operator resources for observability
+  - apiGroups: ["operator.victoriametrics.com"]
+    resources: ["vmservicescrapes", "vmservicescrapes/status", "vmrules", "vmrules/status"]
+    verbs: ["*"]

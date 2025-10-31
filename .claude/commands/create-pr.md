@@ -17,11 +17,11 @@ Generate and create a comprehensive PR with description, diagram, and file walkt
 
 2. **Generate description** with:
    - Type: feat/fix/docs/refactor/perf/test/chore/ci/security
-   - 2-3 sentence summary
-   - 5 key changes (bullet points)
-   - Mermaid flowchart (LR format, 8-10 nodes max, show component flow)
-   - File table with change types
-   - Detailed changes in collapsible section
+   - 1-2 sentence summary
+   - 3 key changes (bullet points, max 10 words each)
+   - Mermaid flowchart (LR format, 5-7 nodes max, show main flow only)
+   - File table (max 10 files, group similar changes)
+   - Detailed changes in collapsible section (concise bullet points)
    - Suggested labels
 
 3. **Create PR**:
@@ -36,28 +36,29 @@ Generate and create a comprehensive PR with description, diagram, and file walkt
 ```mermaid
 flowchart LR
     comp1["Component"]
-    comp2["New Service"]:::new
-    comp1 -- "action" --> comp2
+    comp2["Service"]:::new
+    comp1 --> comp2
     classDef new fill:#1e3a8a,stroke:#3b82f6,stroke-width:3px,color:#fff
 ```
 
 ## Template
 ```markdown
-## 🔍 Type: [type]
+## 🔍 [type]
 ## 📝 Summary
-[2-3 sentences]
+[1-2 sentences max]
 ## 🎯 Changes
-- Change 1
-- Change 2
-## 📊 Diagram
-[mermaid flowchart]
+- Change 1 (concise)
+- Change 2 (concise)
+- Change 3 (concise)
+## 📊 Flow
+[mermaid flowchart - simple]
 ## 🗂️ Files
-| File | Type | Description |
-|------|------|-------------|
-[table rows]
+| File | Type | Summary |
+|------|------|---------|
+[max 10 rows]
 <details><summary>Details</summary>
 ### file
-- changes
+- brief changes
 </details>
 ## 🏷️ Labels
 [labels]
