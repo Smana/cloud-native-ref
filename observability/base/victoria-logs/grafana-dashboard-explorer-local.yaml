@@ -418,7 +418,7 @@ spec:
       "timepicker": {},
       "timezone": "browser",
       "title": "VictoriaLogs Explorer",
-      "uid": "bdpzp3w3jkt8ga",
-      "version": 2,
+      "uid": "victorialogs-explorer-v2",
+      "version": 1,
       "weekStart": ""
     }
