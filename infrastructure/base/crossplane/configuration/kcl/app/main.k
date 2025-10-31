@@ -103,6 +103,61 @@ _DEFAULTS = {
     pdb_eviction_policy = "AlwaysAllow"
     # KV Store
     valkey_chart_version = "3.0.31"
+    # Observability endpoints
+    traces_endpoint = "http://victoria-traces-vt-single-server.observability.svc.cluster.local:10428/insert/opentelemetry/v1/traces"
+    metrics_endpoint = "http://vmsingle-victoria-metrics-k8s-stack.observability.svc.cluster.local:8428/opentelemetry/v1/metrics"
+}
+
+# Build OpenTelemetry environment variables for observability
+# Returns a list of env vars based on observability configuration
+_buildObservabilityEnv = lambda obs: any -> [any] {
+    _baseEnv = [
+        {
+            name = "OTEL_SERVICE_NAME"
+            value = _name
+        }
+        {
+            name = "OTEL_SERVICE_VERSION"
+            value = oxr.spec.image.tag or "latest"
+        }
+        {
+            name = "OTEL_DEPLOYMENT_ENVIRONMENT"
+            value = envConfig.environment or "production"
+        }
+    ]
+
+    _tracesEnv = [
+        {
+            name = "OTEL_TRACES_ENABLED"
+            value = "true"
+        }
+        {
+            name = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+            value = obs?.traces?.endpoint or _DEFAULTS.traces_endpoint
+        }
+        {
+            name = "OTEL_TRACES_SAMPLER"
+            value = "parentbased_traceidratio"
+        }
+        {
+            name = "OTEL_TRACES_SAMPLER_ARG"
+            value = str(obs?.traces?.samplingRate or 1)
+        }
+    ] if obs?.traces?.enabled else []
+
+    _metricsEnv = [
+        {
+            name = "OTEL_METRICS_ENABLED"
+            value = "true"
+        }
+        {
+            name = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"
+            value = obs?.metrics?.endpoint or _DEFAULTS.metrics_endpoint
+        }
+    ] if obs?.metrics?.enabled else []
+
+    # Return combined env vars only if traces or metrics are enabled
+    _baseEnv + _tracesEnv + _metricsEnv if (obs?.traces?.enabled or obs?.metrics?.enabled) else []
 }
 # Default resource requirements
 _defaultRequests = {
@@ -256,8 +311,43 @@ _deployment = {
                         }]
                     if oxr.spec.envFrom:
                         envFrom = oxr.spec.envFrom
-                    if oxr.spec.env:
-                        env = oxr.spec.env
+                    # Build environment variables in order: defaults -> observability -> user
+                    # Later vars can override earlier ones with the same name
+                    _defaultEnv = [
+                        {
+                            name = "USER"
+                            value = "app"
+                        }
+                        {
+                            name = "POD_NAME"
+                            valueFrom = {
+                                fieldRef = {
+                                    fieldPath = "metadata.name"
+                                }
+                            }
+                        }
+                        {
+                            name = "POD_NAMESPACE"
+                            valueFrom = {
+                                fieldRef = {
+                                    fieldPath = "metadata.namespace"
+                                }
+                            }
+                        }
+                        {
+                            name = "POD_IP"
+                            valueFrom = {
+                                fieldRef = {
+                                    fieldPath = "status.podIP"
+                                }
+                            }
+                        }
+                    ]
+                    _otelEnv = _buildObservabilityEnv(oxr.spec.observability)
+                    _userEnv = oxr.spec.env or []
+                    _combinedEnv = _defaultEnv + _otelEnv + _userEnv
+                    if _combinedEnv:
+                        env = _combinedEnv
                     if oxr.spec.service?.port:
                         ports = [{
                             containerPort = oxr.spec.service.port
@@ -450,9 +540,9 @@ if oxr.spec.gateway?.enabled:
 # See: https://github.com/crossplane-contrib/function-kcl/issues/285
 if oxr.spec.route?.enabled == True:
     # Determine which gateway to reference and domain suffix based on configuration
-    # Priority: custom gateway > internet-facing > platform-tailscale (private via Tailscale)
+    # Priority: custom gateway > internet-facing > platform-tailscale-general (private via Tailscale)
     # IMPORTANT: Calculate all values inline to avoid mutation (issue #285)
-    _routeGatewayName = oxr.spec.gateway.name or _name + "-gateway" if oxr.spec.gateway?.enabled else "platform-public" if oxr.spec.route?.internetFacing else "platform-tailscale"
+    _routeGatewayName = oxr.spec.gateway.name or _name + "-gateway" if oxr.spec.gateway?.enabled else "platform-public" if oxr.spec.route?.internetFacing else "platform-tailscale-general"
     _routeGatewayNamespace = oxr.spec.gateway.namespace or _namespace if oxr.spec.gateway?.enabled else "infrastructure"
     _routeDomainSuffix = "" if oxr.spec.gateway?.enabled else ".cloud.ogenki.io" if oxr.spec.route?.internetFacing else ".priv.cloud.ogenki.io"
     # Construct full hostname if hostname is provided
@@ -797,5 +887,56 @@ if oxr.spec.externalSecrets:
         }
     } for secret in oxr.spec.externalSecrets]
     _items += _externalSecretResources
+
+# Observability Resources
+# VMServiceScrape for automatic metrics discovery
+# NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
+# See: https://github.com/crossplane-contrib/function-kcl/issues/285
+if oxr.spec.observability?.metrics?.enabled:
+    _vmServiceScrapeResource = [{
+        apiVersion = "operator.victoriametrics.com/v1beta1"
+        kind = "VMServiceScrape"
+        metadata = {
+            name = _name
+            namespace = _namespace
+            annotations = {
+                "krm.kcl.dev/composition-resource-name" = _name + "-vmservicescrape"
+            }
+            labels = _appLabels
+        }
+        spec = {
+            selector = {
+                matchLabels = _appLabels
+            }
+            endpoints = [{
+                port = "http"
+                path = oxr.spec.observability.metrics?.path or "/metrics"
+                interval = oxr.spec.observability.metrics?.interval or "30s"
+                scrapeTimeout = "10s"
+            }]
+        }
+    }]
+    _items += _vmServiceScrapeResource
+
+# VMRule for alerting and recording rules
+# NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
+# See: https://github.com/crossplane-contrib/function-kcl/issues/285
+if oxr.spec.observability?.alertingRules?.groups:
+    _vmRuleResource = [{
+        apiVersion = "operator.victoriametrics.com/v1beta1"
+        kind = "VMRule"
+        metadata = {
+            name = _name
+            namespace = _namespace
+            annotations = {
+                "krm.kcl.dev/composition-resource-name" = _name + "-vmrule"
+            }
+            labels = _appLabels
+        }
+        spec = {
+            groups = oxr.spec.observability.alertingRules.groups
+        }
+    }]
+    _items += _vmRuleResource
 
 items = _items
