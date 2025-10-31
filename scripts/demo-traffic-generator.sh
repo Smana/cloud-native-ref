@@ -157,7 +157,8 @@ make_request() {
     local description="$4"
 
     local url="${BASE_URL}${endpoint}"
-    local start_time=$(date +%s%N)
+    local start_time
+    start_time=$(date +%s%N)
 
     # Make request and capture response
     local response
@@ -167,8 +168,10 @@ make_request() {
         http_code=$(echo "$response" | tail -n 1)
 
         # Calculate duration in milliseconds
-        local end_time=$(date +%s%N)
-        local duration=$(( (end_time - start_time) / 1000000 ))
+        local end_time
+        end_time=$(date +%s%N)
+        local duration
+        duration=$(( (end_time - start_time) / 1000000 ))
 
         # Log request details
         if [[ "$http_code" == "$expected_code" ]]; then
