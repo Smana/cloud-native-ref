@@ -308,10 +308,26 @@ generate_mixed_traffic() {
         sleep 0.3
     done
 
-    # Some errors from users
+    # Some errors from users (404s)
     log_info "Simulating user errors..."
     make_request GET "/api/images/typo-in-name.jpg" 404 "[User Typo]"
     make_request GET "/api/images/deleted-image.png" 404 "[Deleted Image]"
+
+    # Database queries with errors (10% failure rate)
+    log_info "Simulating database queries (10% errors)..."
+    db_query_count=$((NUM_REQUESTS / 5))  # 20% of total requests will be DB queries
+    if [ "$db_query_count" -lt 10 ]; then
+        db_query_count=10  # Minimum 10 queries to ensure at least 1 error
+    fi
+    for i in $(seq 1 "$db_query_count"); do
+        # 10% error rate: every 10th request is an error
+        if [ $((i % 10)) -eq 0 ]; then
+            make_request GET "/api/test-db?scenario=error" 500 "[Database Error - generates error logs]"
+        else
+            make_request GET "/api/test-db" 200 "[Database Query - normal]"
+        fi
+        sleep 0.3
+    done
 
     # Burst of traffic
     log_info "Simulating traffic spike..."
