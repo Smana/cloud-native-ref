@@ -4,7 +4,7 @@ kind: Kustomization
 namespace: observability
 
 resources:
-  - grafana-dashboard-explorer.yaml
+  - grafana-dashboard-explorer-local.yaml
   - grafana-datasource.yaml
 
   # Choose between single or cluster helm release
