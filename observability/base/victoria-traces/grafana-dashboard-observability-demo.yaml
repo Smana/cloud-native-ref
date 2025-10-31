@@ -393,7 +393,7 @@ spec:
           "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
           "targets": [
             {
-              "expr": "{kubernetes_container_name=$$service} | unpack_json | level:error",
+              "expr": "{kubernetes.container_name=$$service} | unpack_json | log.level:error",
               "refId": "A",
               "queryType": "raw"
             }
