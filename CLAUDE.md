@@ -565,20 +565,22 @@ echo '{kubernetes.pod_namespace="apps"} | limit 10' | vlogscli -datasource.url='
 
 2. **Advanced filter** (`filter` variable): LogsQL expressions on unpacked JSON fields
    - Requires `| unpack_json` to access `log.*` fields
+   - Default value: `*` (shows all logs)
    - Examples: `log.level:error`, `log.level:*`, `log.trace_id:*`
    - Can combine multiple filters: `log.level:error log.service:xplane-image-gallery`
 
 **Query Structure** in dashboard:
 ```
-_stream: {filters} field_filters $msg | unpack_json | filter $filter | operations
+_stream: {filters} field_filters $msg | unpack_json | $filter | operations
 ```
 
 **How the fields work together**:
 - Both fields are optional
 - `msg` filters messages before JSON unpacking (faster for text search)
-- `filter` filters on structured fields after JSON unpacking (requires `filter` keyword)
+- `filter` defaults to `*` (match all) after JSON unpacking - change to specific expressions to filter
+- The `filter` keyword is added automatically by VictoriaLogs datasource
 - Can use both together: msg=`*database*` + filter=`log.level:error` finds error logs mentioning "database"
-- When empty, the filter variable adds nothing (no parse errors)
+- Use filter=`*` (default) to show all logs, or specific expressions to filter
 
 ## Database Migrations with Atlas Operator
 
