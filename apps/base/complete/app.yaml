@@ -8,7 +8,7 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/image-gallery
-    tag: "1.5.0"
+    tag: "1.5.1"
     pullPolicy: IfNotPresent
   replicas: 2
   resources:
