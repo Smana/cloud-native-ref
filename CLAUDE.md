@@ -516,6 +516,46 @@ Use specialized Flux analysis from `.claude/config` for troubleshooting GitOps i
 - **Network**: Confirm Tailscale subnet router connectivity
 - **Resource Conflicts**: Review Crossplane composition functions and resource references
 
+### VictoriaLogs Querying
+
+**CLI Tool**: Use `vlogscli` to test queries directly:
+
+```bash
+vlogscli -datasource.url='https://vl.priv.cloud.ogenki.io/select/logsql/query'
+```
+
+**Important LogsQL Syntax Rules**:
+
+1. **Kubernetes Labels**: Use dot notation (`kubernetes.container_name`), not underscores
+2. **JSON Log Fields**: After `unpack_json`, fields are prefixed with `log.`
+   - Correct: `{kubernetes.container_name="xplane-image-gallery"} | unpack_json | log.level:error`
+   - Wrong: `{kubernetes_container_name="xplane-image-gallery"} | unpack_json | level:error`
+
+3. **Field Structure After unpack_json**:
+   - `log.level` - Log severity (info, warn, error)
+   - `log.service` - Service name from application logs
+   - `log.trace_id` - OpenTelemetry trace ID
+   - `log.span_id` - OpenTelemetry span ID
+   - `log.error` - Error message content
+
+**Example Queries**:
+
+```bash
+# Error logs for a specific container
+echo '{kubernetes.container_name="xplane-image-gallery"} | unpack_json | log.level:error | limit 10' | vlogscli -datasource.url='https://vl.priv.cloud.ogenki.io/select/logsql/query'
+
+# Logs with trace context
+echo '{kubernetes.container_name="xplane-image-gallery"} | unpack_json | log.trace_id:* | limit 10' | vlogscli -datasource.url='https://vl.priv.cloud.ogenki.io/select/logsql/query'
+
+# All logs for a namespace
+echo '{kubernetes.pod_namespace="apps"} | limit 10' | vlogscli -datasource.url='https://vl.priv.cloud.ogenki.io/select/logsql/query'
+```
+
+**Grafana Dashboard Queries**: Use same syntax with Grafana variables (no quotes around variables):
+```
+{kubernetes.container_name=$service} | unpack_json | log.level:error
+```
+
 ## Database Migrations with Atlas Operator
 
 ### Overview
