@@ -151,7 +151,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | filter $filter | stats count()",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | $filter | stats count()",
               "legendFormat": "${namespace} ${container}",
               "queryType": "statsRange",
               "refId": "A"
@@ -215,7 +215,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | filter $filter | stats by ($count_by) count() c | sort by (c desc) | limit 50",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | $filter | stats by ($count_by) count() c | sort by (c desc) | limit 50",
               "legendFormat": "{{$count_by}}",
               "queryType": "stats",
               "refId": "A"
@@ -253,7 +253,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | filter $filter",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | $filter",
               "queryType": "range",
               "refId": "A"
             }
@@ -414,8 +414,8 @@ spec:
           {
             "current": {
               "selected": false,
-              "text": "",
-              "value": ""
+              "text": "*",
+              "value": "*"
             },
             "hide": 0,
             "label": "Advanced filter",
@@ -423,14 +423,14 @@ spec:
             "options": [
               {
                 "selected": true,
-                "text": "",
-                "value": ""
+                "text": "*",
+                "value": "*"
               }
             ],
-            "query": "",
+            "query": "*",
             "skipUrlSync": false,
             "type": "textbox",
-            "description": "LogsQL filter expression (e.g., 'log.level:error', 'log.trace_id:*')"
+            "description": "LogsQL filter expression. Use '*' for all logs (default), or specific filters like 'log.level:error', 'log.trace_id:*'"
           }
         ]
       },
