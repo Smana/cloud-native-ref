@@ -155,7 +155,7 @@ spec:
               "links": [
                 {
                   "title": "View trace for this exemplar",
-                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.raw}\",\"refId\":\"A\"}]}"
+                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.labels.trace_id}\",\"refId\":\"A\"}]}"
                 }
               ]
             }
@@ -198,7 +198,7 @@ spec:
               "links": [
                 {
                   "title": "View trace for this exemplar",
-                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.raw}\",\"refId\":\"A\"}]}"
+                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.labels.trace_id}\",\"refId\":\"A\"}]}"
                 }
               ]
             }
@@ -355,7 +355,7 @@ spec:
               "links": [
                 {
                   "title": "View trace for this exemplar",
-                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.raw}\",\"refId\":\"A\"}]}"
+                  "url": "/explore?left={\"datasource\":\"$${trace_datasource}\",\"queries\":[{\"query\":\"$${__value.labels.trace_id}\",\"refId\":\"A\"}]}"
                 }
               ]
             },
