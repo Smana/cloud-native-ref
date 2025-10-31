@@ -570,14 +570,15 @@ echo '{kubernetes.pod_namespace="apps"} | limit 10' | vlogscli -datasource.url='
 
 **Query Structure** in dashboard:
 ```
-_stream: {filters} field_filters $msg | unpack_json $filter | operations
+_stream: {filters} field_filters $msg | unpack_json | filter $filter | operations
 ```
 
 **How the fields work together**:
 - Both fields are optional
 - `msg` filters messages before JSON unpacking (faster for text search)
-- `filter` filters on structured fields after JSON unpacking (powerful for log.* fields)
+- `filter` filters on structured fields after JSON unpacking (requires `filter` keyword)
 - Can use both together: msg=`*database*` + filter=`log.level:error` finds error logs mentioning "database"
+- When empty, the filter variable adds nothing (no parse errors)
 
 ## Database Migrations with Atlas Operator
 
