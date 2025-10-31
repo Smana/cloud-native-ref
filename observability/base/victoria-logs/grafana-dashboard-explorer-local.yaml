@@ -151,7 +151,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json $filter | stats count()",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | filter $filter | stats count()",
               "legendFormat": "${namespace} ${container}",
               "queryType": "statsRange",
               "refId": "A"
@@ -215,7 +215,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json $filter | stats by ($count_by) count() c | sort by (c desc) | limit 50",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | filter $filter | stats by ($count_by) count() c | sort by (c desc) | limit 50",
               "legendFormat": "{{$count_by}}",
               "queryType": "stats",
               "refId": "A"
@@ -253,7 +253,7 @@ spec:
                 "uid": "${DS_VICTORIALOGS}"
               },
               "editorMode": "code",
-              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json $filter",
+              "expr": "_stream: {kubernetes.container_name=~$container, kubernetes.pod_namespace=$namespace} kubernetes.pod_labels.app.kubernetes.io/name:=$app $msg | unpack_json | filter $filter",
               "queryType": "range",
               "refId": "A"
             }
