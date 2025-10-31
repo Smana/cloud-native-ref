@@ -8,7 +8,7 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/image-gallery
-    tag: "1.5.0"
+    tag: "1.5.3"
     pullPolicy: IfNotPresent
   replicas: 2
   resources:
@@ -82,6 +82,79 @@ spec:
     - name: CACHE_PASSWORD
       value: ""
 
+  # Observability configuration
+  observability:
+    traces:
+      enabled: true
+    metrics:
+      enabled: true
+    alertingRules:
+      groups:
+        - name: http_errors
+          interval: 30s
+          rules:
+            # Alert on high HTTP 5xx error rate
+            - alert: HighHTTPErrorRate
+              expr: |
+                sum(rate(http.server.request.count{service.name="xplane-image-gallery",http.response.status_code=~"5.."}[5m]))
+                /
+                sum(rate(http.server.request.count{service.name="xplane-image-gallery"}[5m]))
+                > 0.05
+              for: 2m
+              labels:
+                severity: warning
+                service: image-gallery
+              annotations:
+                summary: "High HTTP 5xx error rate on image-gallery"
+                description: |
+                  HTTP 5xx error rate is {{ $value | humanizePercentage }} on image-gallery.
+                  This indicates server-side errors are affecting more than 5% of requests.
+
+            # Alert on high HTTP latency
+            - alert: HighHTTPLatency
+              expr: |
+                histogram_quantile(0.95,
+                  sum(rate(http.server.request.duration_bucket{service.name="xplane-image-gallery"}[5m])) by (vmrange, http.route)
+                ) > 1.0
+              for: 5m
+              labels:
+                severity: warning
+                service: image-gallery
+              annotations:
+                summary: "High HTTP latency on route {{ $labels.http_route }}"
+                description: |
+                  95th percentile latency is {{ $value }}s on route {{ $labels.http_route }}.
+                  Expected latency is below 1 second.
+
+        - name: image_uploads
+          interval: 30s
+          rules:
+            # Alert on failed image uploads
+            - alert: HighImageUploadFailureRate
+              expr: |
+                sum(rate(image_uploads_total{service.name="xplane-image-gallery",status="error"}[5m]))
+                /
+                sum(rate(image_uploads_total{service.name="xplane-image-gallery"}[5m]))
+                > 0.1
+              for: 3m
+              labels:
+                severity: critical
+                service: image-gallery
+                category: business
+              annotations:
+                summary: "High image upload failure rate"
+                description: |
+                  {{ $value | humanizePercentage }} of image uploads are failing.
+                  Check storage connectivity and permissions.
+
+            # Recording rule for cache hit rate
+            - record: image_gallery:cache_hit_rate:5m
+              expr: |
+                sum(rate(image_cache_hits{service.name="xplane-image-gallery"}[5m]))
+                /
+                (sum(rate(image_cache_hits{service.name="xplane-image-gallery"}[5m]))
+                 + sum(rate(image_cache_misses{service.name="xplane-image-gallery"}[5m])))
+
   # Optional: Additional secrets from AWS Secrets Manager
   # Currently only needed for non-infrastructure config (optional overrides)
   externalSecrets:
@@ -98,7 +171,7 @@ spec:
     hostname: "image-gallery"
 
   networkPolicies:
-    enabled: true
+    enabled: false
     ingress:
       # Allow all ingress controller traffic
       - fromEntities:
@@ -145,6 +218,24 @@ spec:
         toPorts:
           - ports:
               - port: "80"
+                protocol: TCP
+
+      # Observability services (VictoriaMetrics and VictoriaTraces)
+      - toEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "observability"
+              "app.kubernetes.io/name": "vmsingle"
+        toPorts:
+          - ports:
+              - port: "8428"
+                protocol: TCP
+      - toEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "observability"
+              "app.kubernetes.io/name": "vt-single"
+        toPorts:
+          - ports:
+              - port: "10428"
                 protocol: TCP
 
       # HTTP/HTTPS egress (covers S3 and external services)
