@@ -556,6 +556,29 @@ echo '{kubernetes.pod_namespace="apps"} | limit 10' | vlogscli -datasource.url='
 {kubernetes.container_name=$service} | unpack_json | log.level:error
 ```
 
+**VictoriaLogs Explorer Dashboard**: The dashboard has two search fields optimized for different use cases:
+
+1. **Message search** (`msg` variable): Simple full-text search in log messages
+   - Searches in `_msg` field (no `unpack_json` required)
+   - Examples: `*database*`, `error*`, `*timeout`
+   - Add wildcards (`*`) yourself for pattern matching
+
+2. **Advanced filter** (`filter` variable): LogsQL expressions on unpacked JSON fields
+   - Requires `| unpack_json` to access `log.*` fields
+   - Examples: `log.level:error`, `log.level:*`, `log.trace_id:*`
+   - Can combine multiple filters: `log.level:error log.service:xplane-image-gallery`
+
+**Query Structure** in dashboard:
+```
+_stream: {filters} field_filters $msg | unpack_json $filter | operations
+```
+
+**How the fields work together**:
+- Both fields are optional
+- `msg` filters messages before JSON unpacking (faster for text search)
+- `filter` filters on structured fields after JSON unpacking (powerful for log.* fields)
+- Can use both together: msg=`*database*` + filter=`log.level:error` finds error logs mentioning "database"
+
 ## Database Migrations with Atlas Operator
 
 ### Overview
