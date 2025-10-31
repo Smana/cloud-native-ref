@@ -128,13 +128,13 @@ spec:
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "sum(rate(http.server.request.count{service.name=\"$service\"}[1m]))",
+              "expr": "sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
               "legendFormat": "Total requests/sec",
               "refId": "A",
               "exemplar": true
             },
             {
-              "expr": "sum by (http.response.status_code) (rate(http.server.request.count{service.name=\"$service\"}[1m]))",
+              "expr": "sum by (http.response.status_code) (rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
               "legendFormat": "{{http.response.status_code}}",
               "refId": "B",
               "exemplar": true
@@ -172,13 +172,13 @@ spec:
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\"}[1m])) by (le, http.route))",
+              "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) by (vmrange, http.route))",
               "legendFormat": "P95 - {{http.route}}",
               "refId": "A",
               "exemplar": true
             },
             {
-              "expr": "histogram_quantile(0.50, sum(rate(http.server.request.duration_bucket{service.name=\"$service\"}[1m])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(http.server.request.duration_bucket{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) by (vmrange))",
               "legendFormat": "P50 (median)",
               "refId": "B",
               "exemplar": true
@@ -215,7 +215,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "sum(rate(http.server.request.count{service.name=\"$service\",http.response.status_code=~\"5..\"}[1m])) / sum(rate(http.server.request.count{service.name=\"$service\"}[1m])) * 100",
+              "expr": "sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[1m])) / sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) * 100",
               "refId": "A"
             }
           ],
@@ -248,7 +248,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "sum(rate(http.server.request.count{service.name=\"$service\"}[1m]))",
+              "expr": "sum(rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
               "refId": "A"
             }
           ],
@@ -272,7 +272,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\"}[1m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m])) by (vmrange))",
               "refId": "A"
             }
           ],
@@ -305,7 +305,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "sum(increase(http.server.request.count{service.name=\"$service\",http.response.status_code=~\"5..\"}[5m]))",
+              "expr": "sum(increase(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\",http.response.status_code=~\"5..\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -336,7 +336,7 @@ spec:
           "datasource": {"type": "prometheus", "uid": "$${datasource}"},
           "targets": [
             {
-              "expr": "sum by (http.response.status_code) (rate(http.server.request.count{service.name=\"$service\"}[1m]))",
+              "expr": "sum by (http.response.status_code) (rate(http.server.request.count{service.name=\"$service\",http.route!~\"/healthz|/readyz\"}[1m]))",
               "legendFormat": "HTTP {{http.response.status_code}}",
               "refId": "A",
               "exemplar": true
@@ -393,37 +393,7 @@ spec:
           "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
           "targets": [
             {
-              "expr": "{kubernetes_pod_name=~\"$$service-.*\"} | unpack_json | level:error",
-              "refId": "A",
-              "queryType": "raw"
-            }
-          ],
-          "options": {
-            "showTime": true,
-            "showLabels": false,
-            "showCommonLabels": false,
-            "wrapLogMessage": true,
-            "prettifyLogMessage": true,
-            "enableLogDetails": true,
-            "dedupStrategy": "none",
-            "sortOrder": "Descending",
-            "enableContext": true
-          },
-          "fieldConfig": {
-            "defaults": {
-              "custom": {}
-            }
-          }
-        },
-        {
-          "type": "logs",
-          "title": "All Application Logs (info, error, etc.) with Context",
-          "description": "Shows all logs from the application. Click any log line to view surrounding context (±7 lines before/after).",
-          "gridPos": {"x": 0, "y": 30, "w": 24, "h": 10},
-          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
-          "targets": [
-            {
-              "expr": "{kubernetes_pod_name=~\"$$service-.*\"} | unpack_json",
+              "expr": "{kubernetes_container_name=\"$$service\"} | unpack_json | level:error",
               "refId": "A",
               "queryType": "raw"
             }
