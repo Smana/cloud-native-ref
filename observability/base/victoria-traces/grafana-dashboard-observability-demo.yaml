@@ -11,8 +11,8 @@ spec:
       dashboards: "grafana"
   json: |
     {
-      "title": "Observability Demo - Metrics to Traces Correlation",
-      "description": "RED metrics with exemplar-based trace correlation and log context for xplane-image-gallery",
+      "title": "Observability Demo - All in One",
+      "description": "RED metrics with exemplar-based trace correlation and log context",
       "tags": ["observability", "traces", "metrics", "exemplars", "demo"],
       "timezone": "browser",
       "editable": true,
@@ -117,7 +117,7 @@ spec:
       "panels": [
         {
           "type": "row",
-          "title": "📊 METRICS: Service Health (with Exemplars)",
+          "title": "📊 METRICS: Service Health",
           "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1},
           "collapsed": false
         },
@@ -381,7 +381,7 @@ spec:
         },
         {
           "type": "row",
-          "title": "📋 LOGS: Error Logs with Context",
+          "title": "📋 Error Logs with Context",
           "gridPos": {"x": 0, "y": 19, "w": 24, "h": 1},
           "collapsed": false
         },
@@ -393,7 +393,7 @@ spec:
           "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
           "targets": [
             {
-              "expr": "{kubernetes.container_name=\\\"$$service\\\"} | unpack_json | log.level:error",
+              "expr": "{kubernetes.container_name=$$service} | unpack_json | log.level:error",
               "refId": "A",
               "queryType": "raw"
             }
