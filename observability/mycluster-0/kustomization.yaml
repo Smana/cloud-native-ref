@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - ../base/kubernetes-event-exporter
   - ../base/victoria-logs
+  - ../base/victoria-traces
   # Log generator for demo purposes
   - ../base/loggen
   - ../base/metrics-server

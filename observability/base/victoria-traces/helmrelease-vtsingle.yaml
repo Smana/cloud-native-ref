@@ -1,0 +1,51 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: victoria-traces
+  namespace: observability
+spec:
+  releaseName: victoria-traces
+  chart:
+    spec:
+      chart: victoria-traces-single
+      sourceRef:
+        kind: HelmRepository
+        name: victoria-metrics
+        namespace: observability
+      version: "0.0.2"
+  interval: 4m0s
+  timeout: 30m
+  install:
+    remediation:
+      retries: 3
+  values:
+    printNotes: false
+
+    server:
+      retentionPeriod: 3  # 3 days retention for traces
+
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 500m
+          memory: 512Mi
+
+      persistentVolume:
+        enabled: true
+        size: 10Gi
+        storageClassName: gp3
+        accessModes:
+          - ReadWriteOnce
+
+      vmServiceScrape:
+        enabled: true
+
+    dashboards:
+      enabled: true
+      grafanaOperator:
+        enabled: true
+        spec:
+          allowCrossNamespaceImport: true
+          folderRef: "traces"
