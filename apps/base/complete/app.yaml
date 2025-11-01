@@ -14,10 +14,10 @@ spec:
   resources:
     requests:
       cpu: "100m"
-      memory: "128Mi"
+      memory: "500Mi"
     limits:
       cpu: "200m"
-      memory: "256Mi"
+      memory: "500mi"
   onDemand: false
   runAsNonRoot: true
   spreadAcrossZones: true
