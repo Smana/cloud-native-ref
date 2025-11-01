@@ -92,8 +92,12 @@ _DEFAULTS = {
     # Health checks
     health_check_initial_delay = 30
     health_check_period = 10
+    liveness_timeout = 3
+    liveness_failure_threshold = 3
     readiness_initial_delay = 5
     readiness_period = 5
+    readiness_timeout = 3
+    readiness_failure_threshold = 3
     # Autoscaling
     hpa_min_replicas = 1
     hpa_max_replicas = 5
@@ -363,6 +367,8 @@ _deployment = {
                             }
                             initialDelaySeconds = oxr.spec.healthProbes?.liveness?.initialDelaySeconds or _DEFAULTS.health_check_initial_delay
                             periodSeconds = oxr.spec.healthProbes?.liveness?.periodSeconds or _DEFAULTS.health_check_period
+                            timeoutSeconds = oxr.spec.healthProbes?.liveness?.timeoutSeconds or _DEFAULTS.liveness_timeout
+                            failureThreshold = oxr.spec.healthProbes?.liveness?.failureThreshold or _DEFAULTS.liveness_failure_threshold
                         }
                         readinessProbe = {
                             httpGet = {
@@ -371,6 +377,8 @@ _deployment = {
                             }
                             initialDelaySeconds = oxr.spec.healthProbes?.readiness?.initialDelaySeconds or _DEFAULTS.readiness_initial_delay
                             periodSeconds = oxr.spec.healthProbes?.readiness?.periodSeconds or _DEFAULTS.readiness_period
+                            timeoutSeconds = oxr.spec.healthProbes?.readiness?.timeoutSeconds or _DEFAULTS.readiness_timeout
+                            failureThreshold = oxr.spec.healthProbes?.readiness?.failureThreshold or _DEFAULTS.readiness_failure_threshold
                         }
                 }]
             }
