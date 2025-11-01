@@ -13,11 +13,11 @@ spec:
   replicas: 2
   resources:
     requests:
-      cpu: "100m"
-      memory: "500Mi"
+      cpu: "500m"
+      memory: "512Mi"
     limits:
-      cpu: "200m"
-      memory: "500Mi"
+      cpu: "1000m"
+      memory: "1Gi"
   onDemand: false
   runAsNonRoot: true
   spreadAcrossZones: true
@@ -34,8 +34,8 @@ spec:
   autoscaling:
     enabled: true
     minReplicas: 2
-    maxReplicas: 5
-    targetCPUUtilizationPercentage: 70
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 60
 
   pdb:
     enabled: true
@@ -47,6 +47,15 @@ spec:
 
   # Application configuration
   env:
+    # Go runtime memory management
+    # GOMEMLIMIT set to 90% of memory limit (1Gi = 1024Mi) to prevent OOMKills
+    # Leaves 102Mi (10%) headroom for non-heap allocations (stacks, GC metadata)
+    # Enables aggressive GC before hitting Kubernetes limit
+    - name: GOMEMLIMIT
+      value: "922MiB"
+    # GOGC=100 (default) - let memory limit drive GC frequency
+    # Alternative: "off" to maximize memory utilization (2-3% GC CPU cost)
+
     # Application settings
     - name: GO_ENV
       value: "production"
