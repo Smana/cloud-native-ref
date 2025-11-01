@@ -135,6 +135,7 @@ spec:
                 icon: victoriametrics.png
                 namespace: observability
                 app: victoria-traces-single
+                ping: https://vt.priv.cloud.ogenki.io/health
 
         - Security & Identity:
             - Zitadel:
