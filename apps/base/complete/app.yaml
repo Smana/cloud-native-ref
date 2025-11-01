@@ -17,7 +17,7 @@ spec:
       memory: "500Mi"
     limits:
       cpu: "200m"
-      memory: "500mi"
+      memory: "500Mi"
   onDemand: false
   runAsNonRoot: true
   spreadAcrossZones: true
