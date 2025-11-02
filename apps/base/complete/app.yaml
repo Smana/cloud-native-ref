@@ -8,7 +8,7 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/image-gallery
-    tag: "1.6.1"
+    tag: "1.7.0"
     pullPolicy: IfNotPresent
   replicas: 2
   resources:
@@ -16,8 +16,7 @@ spec:
       cpu: "500m"
       memory: "512Mi"
     limits:
-      cpu: "1000m"
-      memory: "1Gi"
+      memory: "512Mi"
   onDemand: false
   runAsNonRoot: true
   spreadAcrossZones: true
@@ -47,15 +46,6 @@ spec:
 
   # Application configuration
   env:
-    # Go runtime memory management
-    # GOMEMLIMIT set to 90% of memory limit (1Gi = 1024Mi) to prevent OOMKills
-    # Leaves 102Mi (10%) headroom for non-heap allocations (stacks, GC metadata)
-    # Enables aggressive GC before hitting Kubernetes limit
-    - name: GOMEMLIMIT
-      value: "922MiB"
-    # GOGC=100 (default) - let memory limit drive GC frequency
-    # Alternative: "off" to maximize memory utilization (2-3% GC CPU cost)
-
     # Application settings
     - name: GO_ENV
       value: "production"
@@ -289,7 +279,7 @@ spec:
         owner: image-gallery-app
     atlasSchema:
       url: "https://github.com/Smana/image-gallery.git"
-      ref: "v1.6.1"
+      ref: "v1.7.0"
       path: "internal/platform/database/migrations"
 
     backup:
