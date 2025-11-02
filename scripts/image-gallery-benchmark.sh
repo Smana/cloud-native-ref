@@ -141,7 +141,8 @@ execute_request() {
     local extra_args="${3:-}"
     local worker_id="${4:-0}"
 
-    local start_time=$(date +%s%3N)
+    local start_time
+    start_time=$(date +%s%3N)
     local http_code
     local response_file="$RESULTS_DIR/worker_${worker_id}_response.txt"
 
@@ -153,7 +154,8 @@ execute_request() {
         $extra_args \
         2>/dev/null || echo "000")
 
-    local end_time=$(date +%s%3N)
+    local end_time
+    end_time=$(date +%s%3N)
     local latency=$((end_time - start_time))
 
     # Record result
@@ -164,7 +166,8 @@ execute_request() {
     # Extract uploaded image ID if this was a successful upload
     if [ "$http_code" = "201" ] && [ "$endpoint" = "/api/images" ]; then
         # Try to extract ID from response JSON
-        local image_id=$(grep -oP '"id"\s*:\s*"\K[^"]+' "$response_file" 2>/dev/null | head -1 || true)
+        local image_id
+        image_id=$(grep -oP '"id"\s*:\s*"\K[^"]+' "$response_file" 2>/dev/null | head -1 || true)
         if [ -n "$image_id" ]; then
             echo "$image_id" >> "$RESULTS_DIR/uploaded_ids.txt"
         fi
@@ -203,14 +206,16 @@ request_list_images_filtered() {
 request_get_image() {
     local worker_id="$1"
     local force_error="${2:-false}"
-    local image_id=$(random_image_id "$force_error")
+    local image_id
+    image_id=$(random_image_id "$force_error")
     execute_request "GET" "/api/images/$image_id" "" "$worker_id"
 }
 
 request_view_image() {
     local worker_id="$1"
     local force_error="${2:-false}"
-    local image_id=$(random_image_id "$force_error")
+    local image_id
+    image_id=$(random_image_id "$force_error")
     execute_request "GET" "/api/images/$image_id/view" "" "$worker_id"
 }
 
@@ -268,7 +273,8 @@ request_reset_settings() {
 request_delete_image() {
     local worker_id="$1"
     local force_error="${2:-false}"
-    local image_id=$(random_image_id "$force_error")
+    local image_id
+    image_id=$(random_image_id "$force_error")
     execute_request "DELETE" "/api/images/$image_id" "" "$worker_id"
 }
 
@@ -458,9 +464,10 @@ worker_client() {
 
     log "Worker $worker_id started"
 
-    while [ $(date +%s) -lt "$end_time" ]; do
+    while [ "$(date +%s)" -lt "$end_time" ]; do
         # Select endpoint based on pattern
-        local endpoint_spec=$(select_endpoint_for_pattern "$PATTERN")
+        local endpoint_spec
+        endpoint_spec=$(select_endpoint_for_pattern "$PATTERN")
 
         # Check if this is an error-injected request (prefixed with ERROR:)
         if [[ "$endpoint_spec" == ERROR:* ]]; then
@@ -491,7 +498,8 @@ monitor_pod_health() {
         sleep "$check_interval"
 
         # Get current restart count
-        local current_restart_count=$(kubectl get pods -n "$NAMESPACE" -l "$APP_LABEL" \
+        local current_restart_count
+        current_restart_count=$(kubectl get pods -n "$NAMESPACE" -l "$APP_LABEL" \
             -o jsonpath='{.items[*].status.containerStatuses[0].restartCount}' 2>/dev/null | \
             awk '{sum=0; for(i=1; i<=NF; i++) sum+=$i; print sum}')
 
@@ -510,7 +518,8 @@ monitor_pod_health() {
             kubectl get pods -n "$NAMESPACE" -l "$APP_LABEL" >> "$RESULTS_DIR/pod_status.txt" 2>&1
 
             # Check for OOMKills
-            local oom_kills=$(kubectl get pods -n "$NAMESPACE" -l "$APP_LABEL" \
+            local oom_kills
+            oom_kills=$(kubectl get pods -n "$NAMESPACE" -l "$APP_LABEL" \
                 -o jsonpath='{.items[*].status.containerStatuses[*].lastState.terminated.reason}' 2>/dev/null | \
                 grep -c "OOMKilled" || true)
 
@@ -538,7 +547,8 @@ calculate_statistics() {
     # Combine all worker results
     cat "$RESULTS_DIR"/worker_*_results.txt > "$RESULTS_DIR/all_results.txt" 2>/dev/null || true
 
-    local total_requests=$(wc -l < "$RESULTS_DIR/all_results.txt")
+    local total_requests
+    total_requests=$(wc -l < "$RESULTS_DIR/all_results.txt")
 
     if [ "$total_requests" -eq 0 ]; then
         log "No requests completed"
@@ -546,34 +556,50 @@ calculate_statistics() {
     fi
 
     # Count by status code
-    local success_2xx=$(grep -c "^2" "$RESULTS_DIR/all_results.txt" || true)
-    local error_4xx=$(grep -c "^4" "$RESULTS_DIR/all_results.txt" || true)
-    local error_5xx=$(grep -c "^5" "$RESULTS_DIR/all_results.txt" || true)
-    local error_000=$(grep -c "^000" "$RESULTS_DIR/all_results.txt" || true)
+    local success_2xx
+    success_2xx=$(grep -c "^2" "$RESULTS_DIR/all_results.txt" || true)
+    local error_4xx
+    error_4xx=$(grep -c "^4" "$RESULTS_DIR/all_results.txt" || true)
+    local error_5xx
+    error_5xx=$(grep -c "^5" "$RESULTS_DIR/all_results.txt" || true)
+    local error_000
+    error_000=$(grep -c "^000" "$RESULTS_DIR/all_results.txt" || true)
 
     # Extract latencies and sort
     awk -F'|' '{print $2}' "$RESULTS_DIR/all_results.txt" | sort -n > "$RESULTS_DIR/latencies.txt"
 
-    local min_latency=$(head -1 "$RESULTS_DIR/latencies.txt")
-    local max_latency=$(tail -1 "$RESULTS_DIR/latencies.txt")
+    local min_latency
+    min_latency=$(head -1 "$RESULTS_DIR/latencies.txt")
+    local max_latency
+    max_latency=$(tail -1 "$RESULTS_DIR/latencies.txt")
 
     # Calculate percentiles
-    local p50_line=$(awk "BEGIN {print int($total_requests * 0.50)}")
-    local p90_line=$(awk "BEGIN {print int($total_requests * 0.90)}")
-    local p95_line=$(awk "BEGIN {print int($total_requests * 0.95)}")
-    local p99_line=$(awk "BEGIN {print int($total_requests * 0.99)}")
+    local p50_line
+    p50_line=$(awk "BEGIN {print int($total_requests * 0.50)}")
+    local p90_line
+    p90_line=$(awk "BEGIN {print int($total_requests * 0.90)}")
+    local p95_line
+    p95_line=$(awk "BEGIN {print int($total_requests * 0.95)}")
+    local p99_line
+    p99_line=$(awk "BEGIN {print int($total_requests * 0.99)}")
 
-    local p50=$(sed -n "${p50_line}p" "$RESULTS_DIR/latencies.txt")
-    local p90=$(sed -n "${p90_line}p" "$RESULTS_DIR/latencies.txt")
-    local p95=$(sed -n "${p95_line}p" "$RESULTS_DIR/latencies.txt")
-    local p99=$(sed -n "${p99_line}p" "$RESULTS_DIR/latencies.txt")
+    local p50
+    p50=$(sed -n "${p50_line}p" "$RESULTS_DIR/latencies.txt")
+    local p90
+    p90=$(sed -n "${p90_line}p" "$RESULTS_DIR/latencies.txt")
+    local p95
+    p95=$(sed -n "${p95_line}p" "$RESULTS_DIR/latencies.txt")
+    local p99
+    p99=$(sed -n "${p99_line}p" "$RESULTS_DIR/latencies.txt")
 
     # Calculate average latency
-    local avg_latency=$(awk '{sum+=$1; count++} END {if(count>0) print int(sum/count); else print 0}' "$RESULTS_DIR/latencies.txt")
+    local avg_latency
+    avg_latency=$(awk '{sum+=$1; count++} END {if(count>0) print int(sum/count); else print 0}' "$RESULTS_DIR/latencies.txt")
 
     # Calculate throughput
     local elapsed_time=$(($(date +%s) - START_TIME))
-    local req_per_sec=$(awk "BEGIN {printf \"%.2f\", $total_requests / $elapsed_time}")
+    local req_per_sec
+    req_per_sec=$(awk "BEGIN {printf \"%.2f\", $total_requests / $elapsed_time}")
 
     # Check for pod events
     local restart_count=0
@@ -759,6 +785,7 @@ main() {
 # Trap cleanup
 cleanup() {
     log "Cleaning up..."
+    # shellcheck disable=SC2046
     kill $(jobs -p) 2>/dev/null || true
 
     # Keep results directory for analysis
