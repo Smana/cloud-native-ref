@@ -8,7 +8,7 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/image-gallery
-    tag: "1.7.0"
+    tag: "1.7.4"
     pullPolicy: IfNotPresent
   replicas: 2
   resources:
@@ -16,7 +16,8 @@ spec:
       cpu: "500m"
       memory: "512Mi"
     limits:
-      memory: "512Mi"
+      cpu: "1000m"
+      memory: "1Gi"
   onDemand: false
   runAsNonRoot: true
   spreadAcrossZones: true
@@ -279,7 +280,7 @@ spec:
         owner: image-gallery-app
     atlasSchema:
       url: "https://github.com/Smana/image-gallery.git"
-      ref: "v1.7.0"
+      ref: "v1.7.4"
       path: "internal/platform/database/migrations"
 
     backup:
