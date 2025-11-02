@@ -5,7 +5,7 @@
 # =============================================================================
 #
 # Removes benchmark-generated images from both database and S3 storage.
-# Identifies images by filename patterns: 'bench-image-*' or 'mixed-*'
+# Identifies images by filename patterns: 'bench-image-*', 'mixed-*', 'worker_*', 'test-upload-*'
 #
 # IMPORTANT: The image-gallery application does NOT implement cascade deletion
 # from S3 when database records are removed. This script handles cleanup of
@@ -95,7 +95,10 @@ STATS=$(kubectl exec -n "$NAMESPACE" "$DB_POD" -- psql -U postgres -d image-gall
         COUNT(*) as count,
         pg_size_pretty(SUM(file_size)::bigint) as total_size
     FROM images
-    WHERE original_filename LIKE '%bench%' OR original_filename LIKE '%mixed%';
+    WHERE original_filename LIKE '%bench%'
+       OR original_filename LIKE '%mixed%'
+       OR original_filename LIKE '%worker%'
+       OR original_filename LIKE '%test%upload%';
 " 2>/dev/null | grep -v "^Defaulted" | xargs)
 
 COUNT=$(echo "$STATS" | awk '{print $1}')
@@ -114,7 +117,10 @@ if [[ "$DRY_RUN" == "true" ]]; then
     kubectl exec -n "$NAMESPACE" "$DB_POD" -- psql -U postgres -d image-gallery -c "
         SELECT id, filename, original_filename, pg_size_pretty(file_size::bigint) as size
         FROM images
-        WHERE original_filename LIKE '%bench%' OR original_filename LIKE '%mixed%'
+        WHERE original_filename LIKE '%bench%'
+           OR original_filename LIKE '%mixed%'
+           OR original_filename LIKE '%worker%'
+           OR original_filename LIKE '%test%upload%'
         ORDER BY id;
     " 2>/dev/null | grep -v "^Defaulted"
     echo
@@ -138,7 +144,10 @@ echo -e "${BLUE}[INFO] Deleting benchmark images...${NC}"
 # Otherwise, images will remain in S3 but won't be accessible from API
 kubectl exec -n "$NAMESPACE" "$DB_POD" -- psql -U postgres -d image-gallery -c "
     DELETE FROM images
-    WHERE original_filename LIKE '%bench%' OR original_filename LIKE '%mixed%';
+    WHERE original_filename LIKE '%bench%'
+       OR original_filename LIKE '%mixed%'
+       OR original_filename LIKE '%worker%'
+       OR original_filename LIKE '%test%upload%';
 " 2>/dev/null | grep -v "^Defaulted"
 
 echo
@@ -159,7 +168,7 @@ fi
 
 echo -e "${BLUE}[INFO] S3 Bucket: $BUCKET_NAME${NC}"
 
-S3_DELETE_OUTPUT=$(aws s3 rm "s3://${BUCKET_NAME}/" --recursive --exclude "*" --include "*bench-image*" --include "*mixed-*" 2>&1)
+S3_DELETE_OUTPUT=$(aws s3 rm "s3://${BUCKET_NAME}/" --recursive --exclude "*" --include "*bench-image*" --include "*mixed-*" --include "*worker_*" --include "*test-upload*" 2>&1)
 S3_DELETE_COUNT=$(echo "$S3_DELETE_OUTPUT" | grep -c "^delete:" || echo "0")
 
 if [[ "$S3_DELETE_COUNT" -gt 0 ]]; then
