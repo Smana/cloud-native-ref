@@ -8,7 +8,7 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/image-gallery
-    tag: "1.7.5"
+    tag: "1.7.7"
     pullPolicy: IfNotPresent
   replicas: 2
   resources:
@@ -86,7 +86,7 @@ spec:
   observability:
     traces:
       enabled: true
-      samplingRate: 0.1 # 10% sampling to reduce memory pressure from span accumulation
+      samplingRate: 0.2 # 20% sampling to reduce memory pressure from span accumulation
     metrics:
       enabled: true
     alertingRules:
@@ -281,7 +281,7 @@ spec:
         owner: image-gallery-app
     atlasSchema:
       url: "https://github.com/Smana/image-gallery.git"
-      ref: "v1.7.5"
+      ref: "v1.7.7"
       path: "internal/platform/database/migrations"
 
     backup:

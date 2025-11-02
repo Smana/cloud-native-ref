@@ -134,8 +134,7 @@ spec:
                 description: Distributed Tracing
                 icon: victoriametrics.png
                 namespace: observability
-                app: victoria-traces-single
-                ping: https://vt.priv.cloud.ogenki.io/health
+                app: vt-single
 
         - Security & Identity:
             - Zitadel:
