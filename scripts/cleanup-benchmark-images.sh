@@ -7,6 +7,12 @@
 # Removes benchmark-generated images from both database and S3 storage.
 # Identifies images by filename patterns: 'bench-image-*' or 'mixed-*'
 #
+# IMPORTANT: The image-gallery application does NOT implement cascade deletion
+# from S3 when database records are removed. This script handles cleanup of
+# both database records AND orphaned S3 files.
+#
+# Run this script after benchmark sessions to prevent S3 storage accumulation.
+#
 # Usage:
 #   ./cleanup-benchmark-images.sh [OPTIONS]
 #
@@ -15,6 +21,16 @@
 #   --app NAME        App name (default: xplane-image-gallery)
 #   --dry-run         Show what would be deleted without deleting
 #   -h, --help        Show this help message
+#
+# Examples:
+#   # Preview what will be deleted
+#   ./cleanup-benchmark-images.sh --dry-run
+#
+#   # Clean up benchmark images
+#   ./cleanup-benchmark-images.sh
+#
+#   # Clean up in different namespace
+#   ./cleanup-benchmark-images.sh --namespace production
 #
 
 set -euo pipefail
