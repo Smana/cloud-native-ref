@@ -8,16 +8,16 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/image-gallery
-    tag: "1.5.3"
+    tag: "1.7.7"
     pullPolicy: IfNotPresent
   replicas: 2
   resources:
     requests:
-      cpu: "100m"
-      memory: "128Mi"
+      cpu: "500m"
+      memory: "512Mi"
     limits:
-      cpu: "200m"
-      memory: "256Mi"
+      cpu: "1000m"
+      memory: "1Gi"
   onDemand: false
   runAsNonRoot: true
   spreadAcrossZones: true
@@ -34,8 +34,8 @@ spec:
   autoscaling:
     enabled: true
     minReplicas: 2
-    maxReplicas: 5
-    targetCPUUtilizationPercentage: 70
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 60
 
   pdb:
     enabled: true
@@ -86,6 +86,7 @@ spec:
   observability:
     traces:
       enabled: true
+      samplingRate: 0.2 # 20% sampling to reduce memory pressure from span accumulation
     metrics:
       enabled: true
     alertingRules:
@@ -280,7 +281,7 @@ spec:
         owner: image-gallery-app
     atlasSchema:
       url: "https://github.com/Smana/image-gallery.git"
-      ref: "v1.3.0"
+      ref: "v1.7.7"
       path: "internal/platform/database/migrations"
 
     backup:

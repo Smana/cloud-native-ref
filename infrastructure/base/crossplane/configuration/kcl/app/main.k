@@ -92,8 +92,12 @@ _DEFAULTS = {
     # Health checks
     health_check_initial_delay = 30
     health_check_period = 10
+    liveness_timeout = 3
+    liveness_failure_threshold = 3
     readiness_initial_delay = 5
     readiness_period = 5
+    readiness_timeout = 3
+    readiness_failure_threshold = 3
     # Autoscaling
     hpa_min_replicas = 1
     hpa_max_replicas = 5
@@ -242,6 +246,16 @@ _helmReleaseReady = any_true([c?.type == "Ready" and c?.status == "True" for c i
 # ServiceAccounts don't have status conditions, so we check if the resource exists
 _serviceAccountReady = _observedServiceAccount != None and _observedServiceAccount?.metadata != None
 
+# Check if VMServiceScrape is Ready
+# Looks for VMServiceScrape.status.conditions[status=True] with type ending in "/Applied"
+_observedVMServiceScrape = ocds.get(_name + "-vmservicescrape", {})?.Resource
+_vmServiceScrapeReady = any_true([c?.status == "True" and (c?.type or "").endswith("/Applied") for c in _observedVMServiceScrape?.status?.conditions or []])
+
+# Check if VMRule is Ready
+# Looks for VMRule.status.conditions[status=True] with type ending in "/Applied"
+_observedVMRule = ocds.get(_name + "-vmrule", {})?.Resource
+_vmRuleReady = any_true([c?.status == "True" and (c?.type or "").endswith("/Applied") for c in _observedVMRule?.status?.conditions or []])
+
 # Core Kubernetes resources
 # Deployment
 _deployment = {
@@ -363,6 +377,8 @@ _deployment = {
                             }
                             initialDelaySeconds = oxr.spec.healthProbes?.liveness?.initialDelaySeconds or _DEFAULTS.health_check_initial_delay
                             periodSeconds = oxr.spec.healthProbes?.liveness?.periodSeconds or _DEFAULTS.health_check_period
+                            timeoutSeconds = oxr.spec.healthProbes?.liveness?.timeoutSeconds or _DEFAULTS.liveness_timeout
+                            failureThreshold = oxr.spec.healthProbes?.liveness?.failureThreshold or _DEFAULTS.liveness_failure_threshold
                         }
                         readinessProbe = {
                             httpGet = {
@@ -371,6 +387,8 @@ _deployment = {
                             }
                             initialDelaySeconds = oxr.spec.healthProbes?.readiness?.initialDelaySeconds or _DEFAULTS.readiness_initial_delay
                             periodSeconds = oxr.spec.healthProbes?.readiness?.periodSeconds or _DEFAULTS.readiness_period
+                            timeoutSeconds = oxr.spec.healthProbes?.readiness?.timeoutSeconds or _DEFAULTS.readiness_timeout
+                            failureThreshold = oxr.spec.healthProbes?.readiness?.failureThreshold or _DEFAULTS.readiness_failure_threshold
                         }
                 }]
             }
@@ -901,6 +919,8 @@ if oxr.spec.observability?.metrics?.enabled:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-vmservicescrape"
+                if _vmServiceScrapeReady:
+                    "krm.kcl.dev/ready" = "True"
             }
             labels = _appLabels
         }
@@ -930,6 +950,8 @@ if oxr.spec.observability?.alertingRules?.groups:
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-vmrule"
+                if _vmRuleReady:
+                    "krm.kcl.dev/ready" = "True"
             }
             labels = _appLabels
         }

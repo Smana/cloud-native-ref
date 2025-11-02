@@ -134,7 +134,7 @@ spec:
                 description: Distributed Tracing
                 icon: victoriametrics.png
                 namespace: observability
-                app: victoria-traces-single
+                app: vt-single
 
         - Security & Identity:
             - Zitadel:
