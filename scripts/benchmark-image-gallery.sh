@@ -20,7 +20,7 @@
 # Options:
 #   -u, --url URL           Base URL (default: http://xplane-image-gallery.apps:8080)
 #   -s, --scenario NAME     Scenario: quick|standard|trace|stress|custom|all (default: standard)
-#   -i, --intensity LEVEL   Intensity: light|moderate|aggressive|extreme (default: moderate)
+#   -i, --intensity LEVEL   Intensity: minimal|light|moderate|aggressive|extreme (default: moderate)
 #   -c, --connections NUM   Concurrent connections (overrides intensity default)
 #   -d, --duration TIME     Duration (e.g., 30s, 2m, 1h) (overrides intensity default)
 #   -t, --threads NUM       Worker threads (overrides intensity default)
@@ -29,6 +29,7 @@
 #   -h, --help              Show this help message
 #
 # Intensity Levels:
+#   minimal     - Ultra-light: 2 connections, 1 thread, shortest durations (for OOM-prone scenarios)
 #   light       - Demo-friendly: 5 connections, 2 threads, shorter durations
 #   moderate    - Standard testing: 20 connections, 4 threads (default)
 #   aggressive  - Stress testing: 50 connections, 8 threads, longer durations
@@ -189,6 +190,11 @@ parse_args() {
 # Configure intensity levels
 configure_intensity() {
     case "$INTENSITY" in
+        minimal)
+            INTENSITY_CONNECTIONS=2
+            INTENSITY_THREADS=1
+            INTENSITY_DURATION_MULTIPLIER=0.3
+            ;;
         light)
             INTENSITY_CONNECTIONS=5
             INTENSITY_THREADS=2
@@ -211,7 +217,7 @@ configure_intensity() {
             ;;
         *)
             log_error "Unknown intensity level: ${INTENSITY}"
-            echo "Valid intensity levels: light, moderate, aggressive, extreme"
+            echo "Valid intensity levels: minimal, light, moderate, aggressive, extreme"
             exit 1
             ;;
     esac
@@ -341,9 +347,21 @@ run_trace_scenario() {
     print_header "Trace-Focused Scenario (90s)"
     log_info "Optimized for generating rich trace data"
 
+    # Scale connection increments based on intensity to avoid OOMKills
+    # minimal: keep connections flat (2/2/2) to prevent memory spikes
+    # light+: add incremental load per phase
+    local db_conn_increment=10
+    local mixed_conn_increment=5
+
+    if [[ "$INTENSITY" == "minimal" ]]; then
+        db_conn_increment=0
+        mixed_conn_increment=0
+        log_info "Minimal intensity: using flat $CONNECTIONS connections across all phases to prevent OOMKills"
+    fi
+
     run_wrk "Upload Tracing" "upload.lua" $CONNECTIONS 30s $THREADS "Multi-span traces with file processing"
-    run_wrk "Database Tracing" "db-tracing.lua" $((CONNECTIONS + 10)) 40s $THREADS "DB spans with error and slow scenarios"
-    run_wrk "Mixed Tracing" "mixed-workload.lua" $((CONNECTIONS + 5)) 20s $THREADS "End-to-end request traces"
+    run_wrk "Database Tracing" "db-tracing.lua" $((CONNECTIONS + db_conn_increment)) 40s $THREADS "DB spans with error and slow scenarios"
+    run_wrk "Mixed Tracing" "mixed-workload.lua" $((CONNECTIONS + mixed_conn_increment)) 20s $THREADS "End-to-end request traces"
 }
 
 run_stress_scenario() {
