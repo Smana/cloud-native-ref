@@ -169,7 +169,7 @@ Security is built-in, not bolted-on:
 ### Platform Services
 
 - 🔐 [Ingress and Network Access](docs/ingress.md) - Gateway API, TLS, Tailscale
-- 👁️ [Observability](docs/observability.md) - Metrics, logs, alerting, dashboards
+- 👁️ [Observability](docs/observability.md) - Metrics, logs, tracing, alerting, dashboards
 
 ### Development and Operations
 
