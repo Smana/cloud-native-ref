@@ -8,8 +8,41 @@ Effective observability is essential for maintaining system health, diagnosing i
 
 - **Metrics**: VictoriaMetrics for time-series data
 - **Logs**: VictoriaLogs for log aggregation and search
+- **Traces**: VictoriaTraces for distributed tracing
 - **Dashboards**: Grafana for visualization
 - **Alerting**: VMRules and VMAlertmanager for notifications
+
+```mermaid
+graph TB
+    apps["Applications<br/>& Kubernetes"] -->|metrics| vmagent[VMAgent]
+    apps -->|logs| vector[Vector]
+    apps -->|traces| vtsingle[VTSingle]
+
+    vmagent --> vmsingle[VMSingle]
+    vector --> vlsingle[VLSingle]
+
+    vmsingle --> grafana[Grafana]
+    vlsingle --> grafana
+    vtsingle --> grafana
+
+    vmsingle --> vmui[vmui]
+    vlsingle --> vmui
+    vtsingle --> vmui
+
+    vmsingle --> vmalert[VMAlert]
+    vmalert --> alertmgr[AlertManager]
+
+    style apps fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    style vmagent fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    style vector fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    style vmsingle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    style vlsingle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    style vtsingle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    style grafana fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style vmui fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style vmalert fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style alertmgr fill:#fff3e0,stroke:#e65100,stroke-width:2px
+```
 
 ## Why VictoriaMetrics?
 
@@ -386,6 +419,56 @@ data:
 - Scheduling failures
 - Resource quota exceeded
 - Image pull errors
+
+## Tracing Stack
+
+### VictoriaTraces
+
+Distributed tracing for request flow visualization and performance analysis.
+
+**Why VictoriaTraces?**
+- ✅ Integrated with VictoriaMetrics stack
+- ✅ OpenTelemetry Protocol (OTLP) compatible
+- ✅ Efficient storage with compression
+- ✅ Traces-to-logs-to-metrics correlation in Grafana
+- ✅ Cost-effective at scale
+
+#### Application Instrumentation
+
+Applications using the App composition get automatic OpenTelemetry configuration:
+
+```yaml
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+spec:
+  observability:
+    traces:
+      enabled: true
+      samplingRate: 0.2  # 20% sampling (adjust based on traffic)
+```
+
+**Auto-injected Environment Variables**:
+```yaml
+OTEL_SERVICE_NAME: <app-name>
+OTEL_TRACES_ENABLED: "true"
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://victoria-traces-vt-single-server.observability:10428/insert/opentelemetry/v1/traces
+OTEL_TRACES_SAMPLER: traceidratio
+OTEL_TRACES_SAMPLER_ARG: "0.2"  # Based on samplingRate
+```
+
+**Sampling Strategy**:
+- Production: 10-20% sampling (balance cost vs visibility)
+- Development: 100% sampling (full debugging)
+- High-traffic: 1-5% sampling (prevent resource exhaustion)
+
+#### Accessing VictoriaTraces
+
+**vmui** (VictoriaTraces UI):
+```
+https://vt.priv.cloud.ogenki.io/select/vmui
+```
+
+**Grafana Integration**: VictoriaTraces is also available as a Jaeger-compatible datasource in Grafana with full correlation to logs and metrics.
 
 ## Dashboards with Grafana
 
