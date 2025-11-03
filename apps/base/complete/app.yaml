@@ -86,7 +86,7 @@ spec:
   observability:
     traces:
       enabled: true
-      samplingRate: 0.2 # 20% sampling to reduce memory pressure from span accumulation
+      samplingRate: 1
     metrics:
       enabled: true
     alertingRules:
