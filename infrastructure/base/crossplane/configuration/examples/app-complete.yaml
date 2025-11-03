@@ -26,7 +26,7 @@ spec:
   # and avoid 'latest' for production deployments.
   image:
     repository: ghcr.io/smana/image-gallery
-    tag: "1.7.6"
+    tag: "1.7.7"
     pullPolicy: IfNotPresent # Use Always for :latest, IfNotPresent for versioned tags
 
   # ============================================================================
