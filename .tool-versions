@@ -1,4 +1,4 @@
 terramate 0.14.7
 pre-commit 4.3.0
-opentofu 1.10.6
+opentofu 1.10.7
 trivy 0.67.2
