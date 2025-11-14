@@ -131,6 +131,62 @@ spec:
                   description: The PostgreSQL major version to use (e.g., "17", "18"). Defaults to "18".
                   type: string
                   default: "18"
+                performanceInsights:
+                  description: |
+                    PostgreSQL performance insights and query plan history configuration.
+                    Configures pg_stat_statements, auto_explain, and compute_query_id
+                    for comprehensive query performance monitoring with execution plan capture.
+                  type: object
+                  properties:
+                    enabled:
+                      description: Enable performance insights monitoring (pg_stat_statements).
+                      type: boolean
+                      default: false
+                    explain:
+                      description: |
+                        Auto-explain configuration for capturing query execution plans.
+                        When enabled, automatically logs execution plans for slow queries.
+                      type: object
+                      properties:
+                        sampleRate:
+                          description: |
+                            Sample rate for auto_explain query plan capture (0.0 to 1.0).
+                            - 1.0 (default): Capture all slow queries for complete visibility
+                            - 0.2: Capture 20% of slow queries to minimize overhead in high-traffic production
+                            - 0.0: Disable query plan capture (only collect pg_stat_statements metrics)
+                          type: number
+                          default: 1.0
+                          minimum: 0.0
+                          maximum: 1.0
+                        minDuration:
+                          description: |
+                            Minimum query duration (in milliseconds) to trigger auto_explain logging.
+                            - 1000 (default): Log queries taking longer than 1 second
+                            - 100: More aggressive logging for performance debugging
+                            - 0: Log ALL queries (warning: high overhead, use only for debugging)
+                            - -1: Disable auto_explain completely (only use pg_stat_statements)
+                          type: integer
+                          default: 1000
+                          minimum: -1
+                      nullable: true
+                    logStatement:
+                      description: |
+                        Controls which SQL statements are logged (log_statement parameter).
+                        - none (default): No statement logging, rely on auto_explain for slow queries
+                        - ddl: Log DDL statements (CREATE, ALTER, DROP) for schema change auditing
+                        - mod: Log DDL + data modifications (INSERT, UPDATE, DELETE) for data change auditing
+                        - all: Log ALL SQL statements (WARNING: 10-30% overhead, use only for debugging)
+
+                        Note: This is independent of auto_explain. auto_explain captures execution plans for
+                        slow queries, while log_statement logs the SQL text of all matching statements.
+                      type: string
+                      enum:
+                        - none
+                        - ddl
+                        - mod
+                        - all
+                      default: none
+                  nullable: true
                 postgresql:
                   type: object
                   properties:
