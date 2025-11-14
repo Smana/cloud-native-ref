@@ -554,6 +554,43 @@ spec:
                       type: boolean
                       description: Create a superuser for the Postgres cluster
                       default: false
+                    performanceInsights:
+                      type: object
+                      description: |
+                        PostgreSQL performance insights and query plan history configuration.
+                        Configures pg_stat_statements, auto_explain, and compute_query_id
+                        for comprehensive query performance monitoring with execution plan capture.
+                      properties:
+                        enabled:
+                          type: boolean
+                          description: Enable performance insights monitoring (pg_stat_statements).
+                          default: false
+                        explain:
+                          type: object
+                          description: |
+                            Auto-explain configuration for capturing query execution plans.
+                            When enabled, automatically logs execution plans for slow queries.
+                          properties:
+                            sampleRate:
+                              type: number
+                              description: |
+                                Sample rate for auto_explain query plan capture (0.0 to 1.0).
+                                - 0.2 (default): Capture 20% of slow queries to minimize overhead
+                                - 1.0: Capture all slow queries (recommended for testing/debugging)
+                                - 0.0: Disable query plan capture (only collect pg_stat_statements metrics)
+                              default: 0.2
+                              minimum: 0.0
+                              maximum: 1.0
+                            minDuration:
+                              type: integer
+                              description: |
+                                Minimum query duration (in milliseconds) to trigger auto_explain logging.
+                                - 1000 (default): Log queries taking longer than 1 second
+                                - 100: More aggressive logging for performance debugging
+                                - 0: Log ALL queries (warning: high overhead, use only for debugging)
+                                - -1: Disable auto_explain completely (only use pg_stat_statements)
+                              default: 1000
+                              minimum: -1
                     databases:
                       type: array
                       description: Databases to create

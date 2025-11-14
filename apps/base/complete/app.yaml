@@ -270,6 +270,17 @@ spec:
     instances: 2
     primaryUpdateStrategy: unsupervised
     createSuperuser: false
+
+    # Enable comprehensive query performance monitoring and plan history
+    # Configures: pg_stat_statements, auto_explain, compute_query_id
+    # Overhead: ~5-7% CPU (acceptable for production)
+    performanceInsights:
+      enabled: true
+      explain:
+        sampleRate: 1.0 # 100% sampling for testing (use 0.2 for production)
+        minDuration: 0 # Log all queries for testing (use 1000 for production)
+        # minDuration: 100  # Log queries > 100ms for testing (use 1000 for production)
+
     roles:
       - name: image-gallery-app
         comment: "Application user for image-gallery"

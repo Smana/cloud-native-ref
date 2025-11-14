@@ -730,6 +730,8 @@ if oxr.spec.sqlInstance?.enabled:
                 primaryUpdateStrategy = oxr.spec.sqlInstance.primaryUpdateStrategy
             if oxr.spec.sqlInstance.createSuperuser:
                 createSuperuser = oxr.spec.sqlInstance.createSuperuser
+            if oxr.spec.sqlInstance.performanceInsights:
+                performanceInsights = oxr.spec.sqlInstance.performanceInsights
             if oxr.spec.sqlInstance.initSQL:
                 initSQL = oxr.spec.sqlInstance.initSQL
             if oxr.spec.sqlInstance.atlasSchema:
