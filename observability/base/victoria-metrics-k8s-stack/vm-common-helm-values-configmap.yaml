@@ -134,6 +134,7 @@ data:
       dashboards: {}
       plugins:
         - "grafana-oncall-app"
+        - "marcusolsson-dynamictext-panel"
       "grafana.ini":
         feature_toggles:
           enable: externalServiceAccounts
