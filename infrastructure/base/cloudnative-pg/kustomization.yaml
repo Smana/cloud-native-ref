@@ -4,5 +4,7 @@ namespace: infrastructure
 
 resources:
   - grafana-dashboard.yaml
+  - grafana-dashboard-query-performance.yaml
+  - grafana-dashboard-query-plan-correlation.yaml
   - helmrelease.yaml
   - s3-bucket.yaml

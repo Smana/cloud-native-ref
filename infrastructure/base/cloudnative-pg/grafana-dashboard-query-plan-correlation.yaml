@@ -1,0 +1,213 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: databases-cnpg-query-plan-correlation
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "databases"
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "VictoriaMetrics"
+    - inputName: "DS_VICTORIALOGS"
+      datasourceName: "VictoriaLogs"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "annotations": {
+        "list": [{
+          "builtIn": 1,
+          "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "type": "dashboard"
+        }]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "panels": [{
+        "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+        "description": "Query execution statistics from pg_stat_statements correlated with query_id",
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "lineWidth": 1,
+              "showPoints": "never"
+            },
+            "unit": "s"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "id": 1,
+        "options": {
+          "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right"}
+        },
+        "targets": [{
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "expr": "cnpg_pg_stat_statements_mean_exec_time{query_id=\"$query_id\"} / 1000",
+          "legendFormat": "Mean Exec Time",
+          "refId": "A"
+        }, {
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "expr": "cnpg_pg_stat_statements_max_exec_time{query_id=\"$query_id\"} / 1000",
+          "legendFormat": "Max Exec Time",
+          "refId": "B"
+        }],
+        "title": "Query Execution Time Trend",
+        "type": "timeseries"
+      }, {
+        "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+        "description": "Query execution rate",
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "lineWidth": 1,
+              "showPoints": "never"
+            },
+            "unit": "reqps"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "id": 2,
+        "options": {
+          "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right"}
+        },
+        "targets": [{
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "expr": "rate(cnpg_pg_stat_statements_calls{query_id=\"$query_id\"}[5m])",
+          "legendFormat": "Calls per second",
+          "refId": "A"
+        }],
+        "title": "Query Execution Rate",
+        "type": "timeseries"
+      }, {
+        "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+        "description": "Key statistics for the selected query",
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {"mode": "absolute", "steps": [{"color": "green"}]}
+          }
+        },
+        "gridPos": {"h": 6, "w": 18, "x": 0, "y": 8},
+        "id": 3,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "none",
+          "justifyMode": "auto",
+          "orientation": "horizontal",
+          "textMode": "auto"
+        },
+        "targets": [{
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "expr": "cnpg_pg_stat_statements_calls{query_id=\"$query_id\"}",
+          "legendFormat": "Total Calls",
+          "refId": "A"
+        }, {
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "expr": "cnpg_pg_stat_statements_mean_exec_time{query_id=\"$query_id\"} / 1000",
+          "legendFormat": "Mean Time (s)",
+          "refId": "B"
+        }, {
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "expr": "cnpg_pg_stat_statements_rows{query_id=\"$query_id\"}",
+          "legendFormat": "Total Rows",
+          "refId": "C"
+        }, {
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "expr": "cnpg_pg_stat_statements_shared_blks_hit{query_id=\"$query_id\"} / (cnpg_pg_stat_statements_shared_blks_hit{query_id=\"$query_id\"} + cnpg_pg_stat_statements_shared_blks_read{query_id=\"$query_id\"}) * 100",
+          "legendFormat": "Cache Hit Ratio (%)",
+          "refId": "D"
+        }],
+        "title": "Query Statistics",
+        "type": "stat"
+      }, {
+        "type": "marcusolsson-dynamictext-panel",
+        "title": "Visualize Plan in PEV2",
+        "description": "Click to copy the latest execution plan to clipboard, then paste in PEV2",
+        "gridPos": {"h": 6, "w": 6, "x": 18, "y": 8},
+        "id": 5,
+        "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
+        "targets": [{
+          "refId": "A",
+          "expr": "_stream: {query_id=$query_id} | sort by (_time) desc | limit 1",
+          "queryType": "range"
+        }],
+        "options": {
+          "content": "<div style='padding: 10px; text-align: center;'>\n  <button id='pev2-btn' style='\n    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n    color: white;\n    border: none;\n    padding: 12px 24px;\n    font-size: 14px;\n    font-weight: 600;\n    border-radius: 6px;\n    cursor: pointer;\n    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.4);\n    transition: all 0.3s ease;\n    width: 100%;\n  '>\n    📋 Copy Plan & Open PEV2\n  </button>\n  <div id='status' style='margin-top: 10px; font-size: 11px; color: #666; max-height: 100px; overflow-y: auto; text-align: left; padding: 5px;'></div>\n</div>",
+          "defaultContent": "Enter a Query ID to visualize execution plan",
+          "editor": {
+            "format": "auto",
+            "language": "html"
+          },
+          "editors": ["default"],
+          "renderMode": "allData",
+          "afterRender": "const btn = document.getElementById('pev2-btn');\nconst statusDiv = document.getElementById('status');\n\nif (!btn) return;\n\nfunction getFieldValue(fields, fieldName) {\n  const field = fields.find(f => f.name === fieldName);\n  return field && field.values && field.values.length > 0 ? field.values[0] : null;\n}\n\nfunction getPlanData() {\n  const panelData = context.panelData;\n  if (!panelData || !panelData.series || panelData.series.length === 0) {\n    return { error: 'No data available' };\n  }\n  \n  const fields = panelData.series[0].fields;\n  \n  const lineField = fields.find(f => f.name === 'Line' || f.name === '_msg');\n  if (!lineField || !lineField.values || lineField.values.length === 0) {\n    return { error: 'No execution plans found for this query_id' };\n  }\n  \n  let planNode;\n  try {\n    planNode = JSON.parse(lineField.values[0]);\n  } catch (e) {\n    return { error: 'Invalid plan data: ' + e.message };\n  }\n  \n  const queryText = getFieldValue(fields, 'query_text');\n  const planningTime = getFieldValue(fields, 'planning_time_ms');\n  const executionTime = getFieldValue(fields, 'execution_time_ms');\n  const timestamp = getFieldValue(fields, '_time');\n  \n  const fullExplain = [{\n    'Plan': planNode\n  }];\n  \n  if (queryText) fullExplain[0]['Query Text'] = queryText;\n  if (planningTime !== null) fullExplain[0]['Planning Time'] = planningTime;\n  if (executionTime !== null) fullExplain[0]['Execution Time'] = executionTime;\n  \n  return { data: fullExplain, timestamp: timestamp };\n}\n\nbtn.addEventListener('mouseenter', function() {\n  this.style.transform = 'translateY(-2px)';\n  this.style.boxShadow = '0 5px 15px rgba(102, 126, 234, 0.6)';\n});\n\nbtn.addEventListener('mouseleave', function() {\n  this.style.transform = 'translateY(0)';\n  this.style.boxShadow = '0 3px 10px rgba(102, 126, 234, 0.4)';\n});\n\nbtn.addEventListener('click', async function() {\n  const result = getPlanData();\n  \n  if (result.error) {\n    statusDiv.innerHTML = '<span style=\"color: red;\">❌ ' + result.error + '</span>';\n    return;\n  }\n  \n  statusDiv.innerHTML = '<span style=\"color: orange;\">⏳ Copying plan to clipboard...</span>';\n  btn.disabled = true;\n  \n  const planJson = JSON.stringify(result.data, null, 2);\n  \n  try {\n    await navigator.clipboard.writeText(planJson);\n    \n    let timestampText = '';\n    if (result.timestamp) {\n      const date = new Date(result.timestamp);\n      timestampText = '<br><small>Plan from: ' + date.toLocaleString() + '</small>';\n    }\n    \n    statusDiv.innerHTML = '<span style=\"color: green;\">✅ Plan copied!</span>' + timestampText + '<br><br><small style=\"color: #888;\">Opening PEV2. Paste with Ctrl+V</small>';\n    \n    window.open('https://pev2.priv.cloud.ogenki.io/', '_blank');\n    \n    setTimeout(() => {\n      btn.disabled = false;\n    }, 3000);\n  } catch (err) {\n    statusDiv.innerHTML = '<span style=\"color: red;\">❌ Failed to copy: ' + err.message + '</span>';\n    btn.disabled = false;\n  }\n});"
+        }
+      }, {
+        "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
+        "description": "All execution plans from auto_explain for this query_id, sorted by time (latest first). Expand entries to view full details including plan nodes, execution time, and query text.",
+        "gridPos": {"h": 18, "w": 24, "x": 0, "y": 14},
+        "id": 4,
+        "options": {
+          "showTime": true,
+          "showLabels": false,
+          "showCommonLabels": false,
+          "wrapLogMessage": true,
+          "prettifyLogMessage": true,
+          "enableLogDetails": true,
+          "dedupStrategy": "none",
+          "sortOrder": "Descending"
+        },
+        "targets": [{
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
+          "expr": "_stream: {query_id=$query_id} | sort by (_time) desc",
+          "queryType": "range",
+          "refId": "A"
+        }],
+        "title": "Query Execution Plans (Auto Explain) - All Executions",
+        "type": "logs"
+      }],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "tags": ["postgresql", "cnpg", "query-analysis", "performance"],
+      "templating": {
+        "list": [{
+          "hide": 0,
+          "label": "Datasource",
+          "name": "datasource",
+          "query": "prometheus",
+          "refresh": 1,
+          "type": "datasource"
+        }, {
+          "hide": 0,
+          "label": "Logs Datasource",
+          "name": "logs_datasource",
+          "query": "victoriametrics-logs-datasource",
+          "refresh": 1,
+          "type": "datasource"
+        }, {
+          "description": "Query Identifier from pg_stat_statements. Get this from the Query Performance Analysis dashboard.",
+          "hide": 0,
+          "label": "Query ID",
+          "name": "query_id",
+          "query": "",
+          "type": "textbox"
+        }]
+      },
+      "time": {"from": "now-6h", "to": "now"},
+      "title": "PostgreSQL Query Plan Correlation",
+      "uid": "cnpg-query-plan-correlation"
+    }
