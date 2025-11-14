@@ -60,10 +60,11 @@ _imageName = "ghcr.io/cloudnative-pg/postgresql:" + _postgresVersion + "-system-
 #   - Query plan capture with correlation via compute_query_id
 
 # Helper variables for defaults (handles None/0/0.0 correctly using typeof)
+# Production-safe defaults: 20% sampling, 1s threshold, no statement logging
 _minDuration = oxr.spec.performanceInsights?.explain?.minDuration
 _minDurationValue = _minDuration if typeof(_minDuration) == "int" else 1000
 _sampleRate = oxr.spec.performanceInsights?.explain?.sampleRate
-_sampleRateValue = _sampleRate if typeof(_sampleRate) == "float" or typeof(_sampleRate) == "int" else 1
+_sampleRateValue = _sampleRate if typeof(_sampleRate) == "float" or typeof(_sampleRate) == "int" else 0.2
 _logStatement = oxr.spec.performanceInsights?.logStatement
 _logStatementValue = _logStatement if typeof(_logStatement) == "str" else "none"
 

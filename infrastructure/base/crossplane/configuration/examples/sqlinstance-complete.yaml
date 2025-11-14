@@ -167,19 +167,22 @@ spec:
 
     # Auto-explain: Capture execution plans for slow queries
     explain:
-      sampleRate: 1.0     # Capture 100% of slow queries (default when enabled)
-                          # Set to 0.2 for high-traffic production (20% sampling)
-      minDuration: 1000   # Log queries > 1 second (0 = all queries, -1 = disabled)
+      sampleRate: 0.2     # 20% sampling (default: production-safe)
+                          # Set to 1.0 for debugging (100% = capture all slow queries)
+                          # Set to 0.1 for high-traffic production (10% sampling)
+      minDuration: 1000   # Log queries > 1 second (default: production-safe)
+                          # Set to 0 for debugging (log all queries)
+                          # Set to 3000+ for high-traffic production
 
     # Statement logging: Log SQL statements (independent of auto_explain)
     logStatement: none    # Options: none (default), ddl, mod, all
-                          # - none: No statement logging, rely on auto_explain
+                          # - none: No statement logging, rely on auto_explain (default)
                           # - ddl: Log schema changes (CREATE, ALTER, DROP)
                           # - mod: Log ddl + data changes (INSERT, UPDATE, DELETE)
                           # - all: Log ALL statements (WARNING: 10-30% overhead!)
 
-  # Note: Performance overhead with defaults (sampleRate: 1.0, logStatement: none)
-  # is approximately 5-7% CPU, acceptable for production.
+  # Note: Performance overhead with defaults (sampleRate: 0.2, minDuration: 1000, logStatement: none)
+  # is approximately 5-7% CPU, safe for production.
   # Query plans are sent to VictoriaLogs for analysis via Grafana dashboards.
 
   # ============================================================================

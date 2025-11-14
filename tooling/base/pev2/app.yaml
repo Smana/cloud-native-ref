@@ -12,9 +12,7 @@ spec:
   # Source: https://github.com/dalibo/pev2 (v1.17.0)
   image:
     repository: ghcr.io/smana/pev2
-    # tag: "v1.17.0"
-    tag: "latest" # Using latest for demo purposes
-    pullPolicy: Always
+    tag: "v1.17.0"
 
   # ============================================================================
   # Scaling Configuration
@@ -54,11 +52,3 @@ spec:
   route:
     enabled: true
     hostname: "pev2" # Results in: pev2.priv.cloud.ogenki.io
-
-  # ============================================================================
-  # Network Policies - Zero Trust
-  # ============================================================================
-  # Disabled for now - Tailscale Gateway traffic not matching ingress entity
-  # TODO: Investigate proper network policy configuration for Tailscale Gateway
-  networkPolicies:
-    enabled: false

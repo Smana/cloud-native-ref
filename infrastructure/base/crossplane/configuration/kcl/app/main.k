@@ -248,12 +248,12 @@ _serviceAccountReady = _observedServiceAccount != None and _observedServiceAccou
 
 # Check if VMServiceScrape is Ready
 # Looks for VMServiceScrape.status.conditions[status=True] with type ending in "/Applied"
-_observedVMServiceScrape = ocds.get(_name + "-vmservicescrape", {})?.Resource
+_observedVMServiceScrape = ocds[_name + "-vmservicescrape"]?.Resource if _name + "-vmservicescrape" in ocds else None
 _vmServiceScrapeReady = any_true([c?.status == "True" and (c?.type or "").endswith("/Applied") for c in _observedVMServiceScrape?.status?.conditions or []])
 
 # Check if VMRule is Ready
 # Looks for VMRule.status.conditions[status=True] with type ending in "/Applied"
-_observedVMRule = ocds.get(_name + "-vmrule", {})?.Resource
+_observedVMRule = ocds[_name + "-vmrule"]?.Resource if _name + "-vmrule" in ocds else None
 _vmRuleReady = any_true([c?.status == "True" and (c?.type or "").endswith("/Applied") for c in _observedVMRule?.status?.conditions or []])
 
 # Core Kubernetes resources

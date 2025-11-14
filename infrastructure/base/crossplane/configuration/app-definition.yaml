@@ -591,6 +591,20 @@ spec:
                                 - -1: Disable auto_explain completely (only use pg_stat_statements)
                               default: 1000
                               minimum: -1
+                        logStatement:
+                          type: string
+                          description: |
+                            Controls which SQL statements are logged (log_statement parameter).
+                            - none (default): No statement logging, rely on auto_explain for slow queries
+                            - ddl: Log DDL statements (CREATE, ALTER, DROP) for schema change auditing
+                            - mod: Log DDL + data modifications (INSERT, UPDATE, DELETE)
+                            - all: Log ALL SQL statements (WARNING: 10-30% overhead)
+                          enum:
+                            - none
+                            - ddl
+                            - mod
+                            - all
+                          default: none
                     databases:
                       type: array
                       description: Databases to create

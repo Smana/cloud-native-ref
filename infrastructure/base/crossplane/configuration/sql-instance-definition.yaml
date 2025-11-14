@@ -151,11 +151,12 @@ spec:
                         sampleRate:
                           description: |
                             Sample rate for auto_explain query plan capture (0.0 to 1.0).
-                            - 1.0 (default): Capture all slow queries for complete visibility
-                            - 0.2: Capture 20% of slow queries to minimize overhead in high-traffic production
+                            - 0.2 (default): Capture 20% of slow queries (production-safe, balanced visibility)
+                            - 1.0: Capture all slow queries for debugging (higher overhead)
+                            - 0.1: Capture 10% for high-traffic production (minimal overhead)
                             - 0.0: Disable query plan capture (only collect pg_stat_statements metrics)
                           type: number
-                          default: 1.0
+                          default: 0.2
                           minimum: 0.0
                           maximum: 1.0
                         minDuration:
