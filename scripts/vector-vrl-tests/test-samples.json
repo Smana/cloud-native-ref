@@ -1,0 +1,107 @@
+{
+  "test_cases": [
+    {
+      "name": "seq_scan_with_duration",
+      "description": "Sequential scan query with all fields",
+      "input": {
+        "message": "2024-01-09 10:30:45.123 UTC [12345] app@app LOG: duration: 1234.56 ms  plan: {\"Query Text\": \"SELECT * FROM images WHERE user_id = 123\", \"Plan\": {\"Node Type\": \"Seq Scan\", \"Relation Name\": \"images\", \"Alias\": \"images\", \"Startup Cost\": 0.00, \"Total Cost\": 1500.50, \"Plan Rows\": 1000, \"Plan Width\": 256}, \"Planning Time\": 0.123, \"Execution Time\": 1234.437, \"Query Identifier\": 3456789012345}",
+        "kubernetes": {
+          "pod_labels": {
+            "cnpg.io/cluster": "xplane-image-gallery-cnpg-cluster"
+          },
+          "namespace_name": "apps",
+          "pod_name": "xplane-image-gallery-cnpg-cluster-1",
+          "container_name": "postgres"
+        }
+      },
+      "expected": {
+        "query_id": "3456789012345",
+        "cluster_name": "xplane-image-gallery-cnpg-cluster",
+        "namespace": "apps",
+        "database": "app",
+        "user": "app",
+        "duration_ms": 1234.56,
+        "planning_time_ms": 0.123,
+        "execution_time_ms": 1234.437,
+        "query_text": "SELECT * FROM images WHERE user_id = 123"
+      }
+    },
+    {
+      "name": "index_scan_no_duration",
+      "description": "Index scan without duration field",
+      "input": {
+        "message": "2024-01-09 10:31:00.000 UTC [12346] postgres@postgres LOG: plan: {\"Query Text\": \"SELECT id FROM users WHERE email = 'test@example.com'\", \"Plan\": {\"Node Type\": \"Index Scan\", \"Index Name\": \"users_email_idx\", \"Relation Name\": \"users\", \"Startup Cost\": 0.42, \"Total Cost\": 8.44, \"Plan Rows\": 1, \"Plan Width\": 4}, \"Planning Time\": 0.089, \"Execution Time\": 0.234, \"Query Identifier\": 7890123456789}",
+        "kubernetes": {
+          "pod_labels": {
+            "cnpg.io/cluster": "test-cluster"
+          },
+          "namespace_name": "database",
+          "pod_name": "test-cluster-2",
+          "container_name": "postgres"
+        }
+      },
+      "expected": {
+        "query_id": "7890123456789",
+        "cluster_name": "test-cluster",
+        "namespace": "database",
+        "database": "postgres",
+        "user": "postgres",
+        "planning_time_ms": 0.089,
+        "execution_time_ms": 0.234,
+        "query_text": "SELECT id FROM users WHERE email = 'test@example.com'"
+      }
+    },
+    {
+      "name": "aggregate_query",
+      "description": "Aggregate query with GROUP BY",
+      "input": {
+        "message": "2024-01-09 10:32:15.500 UTC [12347] analytics@analytics LOG: duration: 5678.90 ms  plan: {\"Query Text\": \"SELECT user_id, COUNT(*) FROM images GROUP BY user_id\", \"Plan\": {\"Node Type\": \"HashAggregate\", \"Startup Cost\": 100.00, \"Total Cost\": 250.00, \"Plan Rows\": 50, \"Plan Width\": 12, \"Plans\": [{\"Node Type\": \"Seq Scan\", \"Parent Relationship\": \"Outer\", \"Relation Name\": \"images\"}]}, \"Planning Time\": 0.456, \"Execution Time\": 5678.444, \"Query Identifier\": 1111222233334444}",
+        "kubernetes": {
+          "pod_labels": {
+            "cnpg.io/cluster": "analytics-cnpg"
+          },
+          "namespace_name": "analytics",
+          "pod_name": "analytics-cnpg-1",
+          "container_name": "postgres"
+        }
+      },
+      "expected": {
+        "query_id": "1111222233334444",
+        "cluster_name": "analytics-cnpg",
+        "namespace": "analytics",
+        "database": "analytics",
+        "user": "analytics",
+        "duration_ms": 5678.90,
+        "planning_time_ms": 0.456,
+        "execution_time_ms": 5678.444,
+        "query_text": "SELECT user_id, COUNT(*) FROM images GROUP BY user_id"
+      }
+    },
+    {
+      "name": "join_query",
+      "description": "Complex join query",
+      "input": {
+        "message": "2024-01-09 10:33:30.750 UTC [12348] app@app LOG: duration: 234.50 ms  plan: {\"Query Text\": \"SELECT u.name, COUNT(i.id) FROM users u LEFT JOIN images i ON u.id = i.user_id GROUP BY u.name\", \"Plan\": {\"Node Type\": \"Hash Join\", \"Join Type\": \"Left\", \"Startup Cost\": 50.00, \"Total Cost\": 500.00, \"Plan Rows\": 100, \"Plan Width\": 20}, \"Planning Time\": 1.234, \"Execution Time\": 233.266, \"Query Identifier\": 9999888877776666}",
+        "kubernetes": {
+          "pod_labels": {
+            "cnpg.io/cluster": "xplane-image-gallery-cnpg-cluster"
+          },
+          "namespace_name": "apps",
+          "pod_name": "xplane-image-gallery-cnpg-cluster-2",
+          "container_name": "postgres"
+        }
+      },
+      "expected": {
+        "query_id": "9999888877776666",
+        "cluster_name": "xplane-image-gallery-cnpg-cluster",
+        "namespace": "apps",
+        "database": "app",
+        "user": "app",
+        "duration_ms": 234.50,
+        "planning_time_ms": 1.234,
+        "execution_time_ms": 233.266,
+        "query_text": "SELECT u.name, COUNT(i.id) FROM users u LEFT JOIN images i ON u.id = i.user_id GROUP BY u.name"
+      }
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+# VRL transformation for CNPG auto_explain log parsing
+# Extracts query plans from PostgreSQL auto_explain JSON logs
+# Correlates with pg_stat_statements using Query Identifier
+
+# Parse CNPG JSON log structure first
+log_message = ""
+cnpg_log, err = parse_json(.message)
+if err != null {
+  # Not JSON, try direct parsing (fallback for non-JSON logs)
+  log_message = string!(.message)
+} else {
+  # Extract message from CNPG JSON structure
+  msg_val, err = get(cnpg_log, ["record", "message"])
+  if err != null {
+    log("CNPG log missing record.message field", level: "warn")
+    abort
+  }
+  log_message = string!(msg_val)
+}
+
+# Extract JSON plan from log message
+if !contains(log_message, "plan:") {
+  abort
+}
+
+parts = split!(log_message, "plan:", limit: 2)
+if length(parts) != 2 {
+  log("Failed to split at 'plan:'", level: "error")
+  abort
+}
+
+json_string = strip_whitespace!(string!(parts[1]))
+
+# Parse JSON
+parsed_plan, err = parse_json(json_string)
+if err != null {
+  log("Failed to parse JSON: " + string!(err), level: "error")
+  abort
+}
+
+# CRITICAL: Extract correlation key (Query Identifier)
+query_id_val, err = get(parsed_plan, ["Query Identifier"])
+if err == null && query_id_val != null {
+  .query_id = to_string!(query_id_val)
+} else {
+  log("Missing Query Identifier", level: "warn")
+  abort
+}
+
+# Promote fields for VictoriaLogs stream indexing
+.cluster_name = .kubernetes.pod_labels."cnpg.io/cluster" || "unknown"
+.namespace = .kubernetes.namespace_name
+.pod_name = .kubernetes.pod_name
+
+# Extract database and user from log prefix
+if match!(log_message, r'\] (\w+)@(\w+)') {
+  matches = parse_regex!(log_message, r'\] (?P<user>\w+)@(?P<database>\w+)')
+  .database = matches.database
+  .user = matches.user
+}
+
+# Extract duration
+if match!(log_message, r'duration: ([\d.]+) ms') {
+  duration_match = parse_regex!(log_message, r'duration: (?P<duration>[\d.]+) ms')
+  .duration_ms = to_float!(duration_match.duration)
+}
+
+# Store full plan and metadata
+.plan = get!(parsed_plan, ["Plan"])
+.query_text = get!(parsed_plan, ["Query Text"]) || ""
+
+# Extract planning and execution times
+planning_time, err = get(parsed_plan, ["Planning Time"])
+if err == null && planning_time != null {
+  .planning_time_ms = planning_time
+}
+
+execution_time, err = get(parsed_plan, ["Execution Time"])
+if err == null && execution_time != null {
+  .execution_time_ms = execution_time
+}
+
+# Set display message (handle missing duration_ms safely)
+if exists(.duration_ms) {
+  .message = "Query plan for queryid=" + string!(.query_id) + " (duration=" + to_string!(.duration_ms) + "ms)"
+} else {
+  .message = "Query plan for queryid=" + string!(.query_id) + " (duration=unknown)"
+}
+
+# Cleanup
+del(.kubernetes)
+
+.
