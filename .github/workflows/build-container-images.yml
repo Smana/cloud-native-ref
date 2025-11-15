@@ -127,6 +127,19 @@ jobs:
           username: ${{ env.REGISTRY_USER }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract application version from Dockerfile
+        id: app-version
+        run: |
+          # Extract version from Dockerfile ARG (e.g., ARG PEV2_VERSION=v1.17.0)
+          VERSION=$(grep -oP 'ARG \w*VERSION=\K[^\s]+' ${{ matrix.dockerfile }} || echo "")
+          if [[ -n "$VERSION" ]]; then
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "Found application version: ${VERSION}"
+          else
+            echo "version=" >> $GITHUB_OUTPUT
+            echo "No application version found in Dockerfile"
+          fi
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -140,6 +153,7 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=${{ steps.app-version.outputs.version }},enable=${{ steps.app-version.outputs.version != '' }}
 
       - name: Build and push Docker image
         id: build
