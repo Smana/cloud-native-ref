@@ -1,0 +1,118 @@
+name: Vector Configuration Validation
+
+on:
+  pull_request:
+    paths:
+      - 'observability/base/victoria-logs/helmrelease-*.yaml'
+      - '.github/workflows/vector-config-validation.yml'
+  push:
+    branches:
+      - main
+      - feat_*
+    paths:
+      - 'observability/base/victoria-logs/helmrelease-*.yaml'
+
+jobs:
+  validate-vector-config:
+    name: Validate Vector Log Parsing Configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up yq
+        uses: mikefarah/yq@v4
+
+      - name: Extract Vector configuration
+        id: extract
+        run: |
+          echo "Extracting Vector customConfig from HelmRelease..."
+
+          # Extract the Vector customConfig section from HelmRelease YAML
+          # Creates a standalone Vector configuration file
+          cat > /tmp/vector-extract.yaml << 'EXTRACT_SCRIPT'
+          {
+            "sources": .spec.values.vector.customConfig.sources,
+            "transforms": .spec.values.vector.customConfig.transforms,
+            "sinks": .spec.values.vector.customConfig.sinks,
+            "tests": .spec.values.vector.customConfig.tests
+          }
+          EXTRACT_SCRIPT
+
+          yq eval-all \
+            --from-file /tmp/vector-extract.yaml \
+            observability/base/victoria-logs/helmrelease-vlsingle.yaml \
+            > /tmp/vector-config.yaml
+
+          echo "Vector config extracted to /tmp/vector-config.yaml"
+
+          # Show configuration summary
+          echo "Sources:"
+          yq eval '.sources | keys' /tmp/vector-config.yaml
+          echo "Transforms:"
+          yq eval '.transforms | keys' /tmp/vector-config.yaml
+          echo "Sinks:"
+          yq eval '.sinks | keys' /tmp/vector-config.yaml
+          echo "Tests:"
+          yq eval '.tests | length' /tmp/vector-config.yaml
+
+      - name: Validate Vector configuration syntax
+        run: |
+          echo "Validating Vector configuration with 'vector validate'..."
+
+          docker run --rm \
+            -v /tmp/vector-config.yaml:/etc/vector/vector.yaml:ro \
+            timberio/vector:latest-alpine \
+            validate /etc/vector/vector.yaml --no-environment
+
+          echo "✅ Configuration syntax is valid"
+
+      - name: Run Vector unit tests
+        id: test
+        run: |
+          echo "Running Vector unit tests..."
+
+          docker run --rm \
+            -v /tmp/vector-config.yaml:/etc/vector/vector.yaml:ro \
+            timberio/vector:latest-alpine \
+            test /etc/vector/vector.yaml
+
+          echo "✅ All unit tests passed"
+
+      - name: Test coverage summary
+        if: success()
+        run: |
+          echo "## Vector Configuration Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Validation Status**: PASSED" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Sources**: $(yq eval '.sources | keys | join(", ")' /tmp/vector-config.yaml)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Transforms**: $(yq eval '.transforms | keys | join(", ")' /tmp/vector-config.yaml)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Sinks**: $(yq eval '.sinks | keys | join(", ")' /tmp/vector-config.yaml)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests**: $(yq eval '.tests | length' /tmp/vector-config.yaml) test cases" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "- Valid PostgreSQL auto_explain parsing" >> $GITHUB_STEP_SUMMARY
+          echo "- Missing duration field handling" >> $GITHUB_STEP_SUMMARY
+          echo "- Optional timing fields" >> $GITHUB_STEP_SUMMARY
+          echo "- Malformed JSON error routing" >> $GITHUB_STEP_SUMMARY
+          echo "- Non-PostgreSQL log filtering" >> $GITHUB_STEP_SUMMARY
+          echo "- PostgreSQL logs without plans" >> $GITHUB_STEP_SUMMARY
+
+      - name: Report failure
+        if: failure()
+        run: |
+          echo "## Vector Configuration Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "❌ **Validation Status**: FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Please review the error messages above and fix the Vector configuration." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Common Issues" >> $GITHUB_STEP_SUMMARY
+          echo "- VRL syntax errors in transform source code" >> $GITHUB_STEP_SUMMARY
+          echo "- Invalid field references" >> $GITHUB_STEP_SUMMARY
+          echo "- Type mismatches in assertions" >> $GITHUB_STEP_SUMMARY
+          echo "- Missing or incorrect test data structure" >> $GITHUB_STEP_SUMMARY
+          exit 1

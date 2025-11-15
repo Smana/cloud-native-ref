@@ -270,6 +270,17 @@ spec:
     instances: 2
     primaryUpdateStrategy: unsupervised
     createSuperuser: false
+
+    # Enable comprehensive query performance monitoring and plan history
+    # Configures: pg_stat_statements, auto_explain, compute_query_id
+    # MAX VALUES FOR DEBUGGING (defaults are production-safe: sampleRate: 0.2, minDuration: 1000)
+    performanceInsights:
+      enabled: true
+      explain:
+        sampleRate: 1.0 # 100% sampling for debugging (default: 0.2 = 20%)
+        minDuration: 0 # Log ALL queries for debugging (default: 1000ms)
+      logStatement: all # Log all SQL statements for debugging (default: none)
+
     roles:
       - name: image-gallery-app
         comment: "Application user for image-gallery"

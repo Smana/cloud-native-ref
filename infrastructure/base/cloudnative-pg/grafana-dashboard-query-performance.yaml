@@ -1,0 +1,370 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: databases-cnpg-query-performance
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "databases"
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "VictoriaMetrics"
+    - inputName: "DS_VICTORIALOGS"
+      datasourceName: "VictoriaLogs"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "annotations": {
+        "list": [{
+          "builtIn": 1,
+          "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "type": "dashboard"
+        }]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "links": [{
+        "asDropdown": false,
+        "icon": "external link",
+        "includeVars": true,
+        "keepTime": true,
+        "tags": [],
+        "targetBlank": true,
+        "title": "Query Plan Correlation",
+        "tooltip": "View execution plans for selected query",
+        "type": "link",
+        "url": "/d/cnpg-query-plan-correlation?var-query_id=$query_id"
+      }],
+      "panels": [{
+        "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+        "description": "Top 20 slowest queries by mean execution time. Click query_id to view execution plans.",
+        "fieldConfig": {
+          "defaults": {
+            "custom": {"align": "auto", "cellOptions": {"type": "auto"}},
+            "mappings": [],
+            "thresholds": {"mode": "absolute", "steps": [{"color": "green"}]}
+          },
+          "overrides": [{
+            "matcher": {"id": "byName", "options": "query_id"},
+            "properties": [{
+              "id": "links",
+              "value": [{
+                "targetBlank": true,
+                "title": "View Execution Plans",
+                "url": "/d/cnpg-query-plan-correlation?var-query_id=$${__value.text}"
+              }]
+            }, {
+              "id": "custom.cellOptions",
+              "value": {"type": "color-text"}
+            }, {
+              "id": "color",
+              "value": {"mode": "fixed", "fixedColor": "blue"}
+            }]
+          }, {
+            "matcher": {"id": "byName", "options": "Mean Time (s)"},
+            "properties": [{
+              "id": "unit",
+              "value": "s"
+            }, {
+              "id": "custom.cellOptions",
+              "value": {"type": "color-background"}
+            }, {
+              "id": "thresholds",
+              "value": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green"},
+                  {"color": "yellow", "value": 0.1},
+                  {"color": "orange", "value": 0.5},
+                  {"color": "red", "value": 1}
+                ]
+              }
+            }]
+          }]
+        },
+        "gridPos": {"h": 12, "w": 24, "x": 0, "y": 0},
+        "id": 1,
+        "options": {
+          "cellHeight": "sm",
+          "footer": {"countRows": false, "show": false},
+          "showHeader": true
+        },
+        "targets": [{
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "expr": "topk(20, avg by (pod, database, query_id, query) (cnpg_pg_stat_statements_mean_exec_time{database=~\"$database\", query=~\".*$query_filter.*\"} / 1000))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }, {
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "expr": "sum by (pod, database, query_id) (cnpg_pg_stat_statements_calls{database=~\"$database\", query=~\".*$query_filter.*\"})",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
+        }],
+        "title": "Top 20 Slowest Queries (click query_id for plans)",
+        "transformations": [{
+          "id": "joinByField",
+          "options": {"byField": "query_id", "mode": "inner"}
+        }, {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true, "Time 1": true, "Time 2": true, "pod 2": true, "database 2": true},
+            "renameByName": {
+              "Value #A": "Mean Time (s)",
+              "Value #B": "Total Calls",
+              "pod 1": "Pod",
+              "database 1": "Database",
+              "query": "Query (normalized)",
+              "query_id": "Query ID"
+            }
+          }
+        }],
+        "type": "table"
+      }, {
+        "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
+        "description": "Recent slow query executions sorted by time. Shows key information at a glance. Click query_id to view execution plans.",
+        "gridPos": {"h": 12, "w": 24, "x": 0, "y": 12},
+        "id": 4,
+        "fieldConfig": {
+          "defaults": {
+            "custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false},
+            "mappings": [],
+            "thresholds": {"mode": "absolute", "steps": [{"color": "green"}]}
+          },
+          "overrides": [{
+            "matcher": {"id": "byName", "options": "Duration (ms)"},
+            "properties": [{
+              "id": "unit",
+              "value": "ms"
+            }, {
+              "id": "custom.cellOptions",
+              "value": {"type": "color-background"}
+            }, {
+              "id": "thresholds",
+              "value": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green"},
+                  {"color": "yellow", "value": 500},
+                  {"color": "orange", "value": 1000},
+                  {"color": "red", "value": 2000}
+                ]
+              }
+            }, {
+              "id": "custom.width",
+              "value": 100
+            }]
+          }, {
+            "matcher": {"id": "byName", "options": "Query ID"},
+            "properties": [{
+              "id": "links",
+              "value": [{
+                "targetBlank": true,
+                "title": "View Execution Plans",
+                "url": "/d/cnpg-query-plan-correlation?var-query_id=$${__value.text}"
+              }]
+            }, {
+              "id": "custom.cellOptions",
+              "value": {"type": "color-text"}
+            }, {
+              "id": "color",
+              "value": {"mode": "fixed", "fixedColor": "blue"}
+            }, {
+              "id": "custom.width",
+              "value": 180
+            }]
+          }, {
+            "matcher": {"id": "byName", "options": "Query Text"},
+            "properties": [{
+              "id": "custom.width",
+              "value": 600
+            }]
+          }, {
+            "matcher": {"id": "byName", "options": "Timestamp"},
+            "properties": [{
+              "id": "custom.width",
+              "value": 180
+            }]
+          }, {
+            "matcher": {"id": "byName", "options": "Database"},
+            "properties": [{
+              "id": "custom.width",
+              "value": 120
+            }]
+          }]
+        },
+        "options": {
+          "cellHeight": "sm",
+          "footer": {"countRows": false, "enablePagination": true, "show": true},
+          "showHeader": true,
+          "sortBy": [{"desc": true, "displayName": "Timestamp"}]
+        },
+        "targets": [{
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
+          "expr": "_stream: {query_id=~\".+\", database=~\"$database\"} | fields _time, duration_ms, database, query_text, query_id | sort by (_time) desc | limit 100",
+          "queryType": "range",
+          "refId": "A"
+        }],
+        "title": "Recent Query Executions (click query_id for plans)",
+        "transformations": [{
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "json",
+            "keepTime": true
+          }
+        }, {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Line": true,
+              "labels": true,
+              "tsNs": true,
+              "TraceID": true,
+              "_stream": true,
+              "_stream_id": true,
+              "cluster_name": true,
+              "namespace": true,
+              "detected_level": true
+            },
+            "renameByName": {
+              "Time": "Timestamp",
+              "_time": "Timestamp",
+              "duration_ms": "Duration (ms)",
+              "database": "Database",
+              "query_text": "Query Text",
+              "query_id": "Query ID"
+            },
+            "indexByName": {
+              "Time": 0,
+              "duration_ms": 1,
+              "database": 2,
+              "query_text": 3,
+              "query_id": 4
+            }
+          }
+        }],
+        "type": "table"
+      }, {
+        "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+        "description": "Query execution rate across all databases",
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "lineWidth": 1,
+              "showPoints": "never",
+              "stacking": {"mode": "normal"}
+            },
+            "unit": "reqps"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "id": 2,
+        "options": {
+          "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right"}
+        },
+        "targets": [{
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "expr": "sum by (database) (rate(cnpg_pg_stat_statements_calls{database=~\"$database\"}[5m]))",
+          "legendFormat": "{{database}}",
+          "refId": "A"
+        }],
+        "title": "Query Execution Rate by Database",
+        "type": "timeseries"
+      }, {
+        "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+        "description": "Cache efficiency per query (top 10)",
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {
+              "axisPlacement": "auto",
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "lineWidth": 1,
+              "showPoints": "never"
+            },
+            "max": 100,
+            "min": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [{"color": "green"}, {"color": "red", "value": 90}]
+            },
+            "unit": "percent"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "id": 3,
+        "options": {
+          "legend": {"calcs": ["mean"], "displayMode": "table", "placement": "right"}
+        },
+        "targets": [{
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "expr": "topk(10, cnpg_pg_stat_statements_shared_blks_hit{database=~\"$database\", query=~\".*$query_filter.*\"} / (cnpg_pg_stat_statements_shared_blks_hit{database=~\"$database\", query=~\".*$query_filter.*\"} + cnpg_pg_stat_statements_shared_blks_read{database=~\"$database\", query=~\".*$query_filter.*\"}) * 100)",
+          "legendFormat": "{{query_id}}",
+          "refId": "A"
+        }],
+        "title": "Top 10 Queries by Cache Hit Ratio",
+        "type": "timeseries"
+      }],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "tags": ["postgresql", "cnpg", "performance", "queries"],
+      "templating": {
+        "list": [{
+          "hide": 0,
+          "label": "Datasource",
+          "name": "datasource",
+          "query": "prometheus",
+          "refresh": 1,
+          "type": "datasource"
+        }, {
+          "hide": 0,
+          "label": "Logs Datasource",
+          "name": "logs_datasource",
+          "query": "victoriametrics-logs-datasource",
+          "refresh": 1,
+          "type": "datasource"
+        }, {
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "definition": "label_values(cnpg_pg_stat_statements_calls, database)",
+          "hide": 0,
+          "includeAll": true,
+          "label": "Database",
+          "multi": true,
+          "name": "database",
+          "query": "label_values(cnpg_pg_stat_statements_calls, database)",
+          "refresh": 1,
+          "sort": 1,
+          "type": "query"
+        }, {
+          "description": "Filter queries by SQL text (case-insensitive regex). Examples: SELECT, UPDATE, table_name, JOIN.*WHERE",
+          "hide": 0,
+          "label": "Query Filter",
+          "name": "query_filter",
+          "query": ".*",
+          "type": "textbox"
+        }, {
+          "description": "Minimum query duration (ms) for timeline panel. Set to 0 to show all queries.",
+          "hide": 0,
+          "label": "Min Duration (ms)",
+          "name": "min_duration",
+          "query": "0",
+          "type": "textbox"
+        }]
+      },
+      "time": {"from": "now-6h", "to": "now"},
+      "title": "PostgreSQL Query Performance Analysis",
+      "uid": "cnpg-query-performance"
+    }

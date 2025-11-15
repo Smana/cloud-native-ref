@@ -53,7 +53,185 @@ _items = []
 _postgresVersion = oxr.spec.postgresVersion if oxr.spec.postgresVersion else "18"
 _imageName = "ghcr.io/cloudnative-pg/postgresql:" + _postgresVersion + "-system-trixie"
 
-_items = [
+# Performance Insights: Auto-managed monitoring configuration
+# When performanceInsights is enabled, CloudNativePG automatically manages:
+#   - pg_stat_statements (adds to shared_preload_libraries + CREATE EXTENSION)
+#   - auto_explain (adds to shared_preload_libraries)
+#   - Query plan capture with correlation via compute_query_id
+
+# Helper variables for defaults (handles None/0/0.0 correctly using typeof)
+# Production-safe defaults: 20% sampling, 1s threshold, no statement logging
+_minDuration = oxr.spec.performanceInsights?.explain?.minDuration
+_minDurationValue = _minDuration if typeof(_minDuration) == "int" else 1000
+_sampleRate = oxr.spec.performanceInsights?.explain?.sampleRate
+_sampleRateValue = _sampleRate if typeof(_sampleRate) == "float" or typeof(_sampleRate) == "int" else 0.2
+_logStatement = oxr.spec.performanceInsights?.logStatement
+_logStatementValue = _logStatement if typeof(_logStatement) == "str" else "none"
+
+_performanceInsightsParams = {
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # pg_stat_statements - AUTO-MANAGED by CloudNativePG
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    "pg_stat_statements.max": "10000"
+    "pg_stat_statements.track": "all"
+    "pg_stat_statements.track_utility": "on"
+    "pg_stat_statements.track_planning": "on"
+    "pg_stat_statements.save": "on"
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # auto_explain - AUTO-MANAGED by CloudNativePG
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # CRITICAL: JSON format for parsing
+    "auto_explain.log_format": "json"
+    # Minimum duration threshold (configurable: -1=disabled, 0=all, >0=threshold in ms)
+    "auto_explain.log_min_duration": str(_minDurationValue)
+    # Include actual runtime statistics
+    "auto_explain.log_analyze": "on"
+    # Include buffer I/O statistics
+    "auto_explain.log_buffers": "on"
+    # Reduce overhead (no per-node timing)
+    "auto_explain.log_timing": "off"
+    # Include trigger execution time
+    "auto_explain.log_triggers": "on"
+    # Maximum detail in plan output
+    "auto_explain.log_verbose": "on"
+    # Include nested statements
+    "auto_explain.log_nested_statements": "on"
+    # Sample rate for query plan capture (configurable)
+    "auto_explain.sample_rate": str(_sampleRateValue)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # CORRELATION KEY: compute_query_id (PostgreSQL 14+)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Enables "Query Identifier" in EXPLAIN JSON output
+    # This is the pivot key between pg_stat_statements and auto_explain logs
+    "compute_query_id": "on"
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Statement Logging: Log SQL statements (configurable)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Controls which SQL statements are logged
+    # - none (default): No statement logging, rely on auto_explain
+    # - ddl: Log DDL statements (CREATE, ALTER, DROP)
+    # - mod: Log DDL + data modifications (INSERT, UPDATE, DELETE)
+    # - all: Log ALL statements (WARNING: high overhead, 10-30%)
+    "log_statement": _logStatementValue
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Additional monitoring parameters
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Capture longer query text
+    "track_activity_query_size": "2048"
+    # Enable I/O timing statistics
+    "track_io_timing": "on"
+    # NOTE: shared_preload_libraries is AUTO-MANAGED by CloudNativePG operator
+    # The operator automatically adds auto_explain and pg_stat_statements when it detects their parameters
+    # Log slow queries (ms)
+    "log_min_duration_statement": "1000"
+    # Consistent log format
+    "log_line_prefix": "%m [%p] %u@%d "
+    # Log connections (debugging)
+    "log_connections": "on"
+    # Log disconnections (debugging)
+    "log_disconnections": "on"
+}
+
+_items = []
+
+# Create ConfigMap with pg_stat_statements custom queries when performanceInsights is enabled
+if oxr.spec.performanceInsights?.enabled:
+    _items += [{
+        apiVersion = "v1"
+        kind = "ConfigMap"
+        metadata = {
+            name = oxr.metadata.name + "-cnpg-monitoring"
+            namespace = oxr.metadata.namespace
+            annotations = {
+                "krm.kcl.dev/composition-resource-name" = oxr.metadata.name + "-cnpg-monitoring-configmap"
+                "krm.kcl.dev/ready" = "True"
+            }
+        }
+        data = {
+            queries = """pg_stat_statements:
+  query: |
+    SELECT
+      d.datname as database,
+      r.rolname as user,
+      s.queryid::text as query_id,
+      LEFT(s.query, 200) as query,
+      s.calls,
+      s.total_exec_time,
+      s.mean_exec_time,
+      s.min_exec_time,
+      s.max_exec_time,
+      s.stddev_exec_time,
+      s.rows,
+      s.shared_blks_hit,
+      s.shared_blks_read,
+      s.local_blks_read,
+      s.temp_blks_read,
+      s.shared_blk_read_time as blk_read_time,
+      s.shared_blk_write_time as blk_write_time
+    FROM pg_stat_statements s
+    JOIN pg_database d ON s.dbid = d.oid
+    JOIN pg_roles r ON s.userid = r.oid
+    WHERE d.datname NOT IN ('template0', 'template1', 'postgres')
+    AND s.queryid IS NOT NULL
+    ORDER BY s.mean_exec_time DESC
+    LIMIT 100
+  metrics:
+    - database:
+        usage: "LABEL"
+        description: "Database name"
+    - user:
+        usage: "LABEL"
+        description: "User name"
+    - query_id:
+        usage: "LABEL"
+        description: "Query identifier (compute_query_id) for correlation with auto_explain"
+    - query:
+        usage: "LABEL"
+        description: "Query text (truncated)"
+    - calls:
+        usage: "COUNTER"
+        description: "Number of times executed"
+    - total_exec_time:
+        usage: "COUNTER"
+        description: "Total execution time in milliseconds"
+    - mean_exec_time:
+        usage: "GAUGE"
+        description: "Mean execution time in milliseconds"
+    - min_exec_time:
+        usage: "GAUGE"
+        description: "Minimum execution time in milliseconds"
+    - max_exec_time:
+        usage: "GAUGE"
+        description: "Maximum execution time in milliseconds"
+    - stddev_exec_time:
+        usage: "GAUGE"
+        description: "Standard deviation of execution time"
+    - rows:
+        usage: "COUNTER"
+        description: "Total rows retrieved or affected"
+    - shared_blks_hit:
+        usage: "COUNTER"
+        description: "Shared blocks cache hits"
+    - shared_blks_read:
+        usage: "COUNTER"
+        description: "Shared blocks read from disk"
+    - local_blks_read:
+        usage: "COUNTER"
+        description: "Local blocks read from disk"
+    - temp_blks_read:
+        usage: "COUNTER"
+        description: "Temp blocks read"
+    - blk_read_time:
+        usage: "COUNTER"
+        description: "Time reading blocks (ms)"
+    - blk_write_time:
+        usage: "COUNTER"
+        description: "Time writing blocks (ms)"
+"""
+        }
+    }]
+
+_items += [
     {
         apiVersion = "postgresql.cnpg.io/v1"
         kind = "Cluster"
@@ -118,8 +296,32 @@ _items = [
             }
             monitoring = {
                 enablePodMonitor = True
+                if oxr.spec.performanceInsights?.enabled:
+                    customQueriesConfigMap = [
+                        {
+                            name = oxr.metadata.name + "-cnpg-monitoring"
+                            key = "queries"
+                        }
+                    ]
+                    disableDefaultQueries = False
             }
             resources = _instanceResources
+            # Merge PostgreSQL configuration
+            # Priority: performanceInsights params < user-provided parameters
+            if oxr.spec.performanceInsights?.enabled or oxr.spec.postgresql:
+                postgresql = {
+                    if oxr.spec.performanceInsights?.enabled or oxr.spec.postgresql?.parameters:
+                        parameters = {
+                            # Apply performance insights params if enabled
+                            if oxr.spec.performanceInsights?.enabled:
+                                **_performanceInsightsParams
+                            # User parameters override performance insights
+                            if oxr.spec.postgresql?.parameters:
+                                **oxr.spec.postgresql.parameters
+                        }
+                    if oxr.spec.postgresql?.pg_hba:
+                        pg_hba = oxr.spec.postgresql.pg_hba
+                }
             if oxr.spec.objectStoreRecovery:
                 externalClusters = [
                     {

@@ -1,0 +1,54 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: xplane-pev2
+  namespace: tooling
+spec:
+  # ============================================================================
+  # Container Configuration
+  # ============================================================================
+  # Self-hosted PostgreSQL Explain Visualizer 2 (PEV2) - standalone static version
+  # Container built from: container-images/pev2/
+  # Source: https://github.com/dalibo/pev2 (v1.17.0)
+  image:
+    repository: ghcr.io/smana/pev2
+    tag: "v1.17.0"
+
+  # ============================================================================
+  # Scaling Configuration
+  # ============================================================================
+  # Start with 1 replica, scale up to 3 under load
+  autoscaling:
+    enabled: true
+    maxReplicas: 3 # Maximum for availability during spikes
+
+  # ============================================================================
+  # Resource Management
+  # ============================================================================
+  # Very lightweight - static content served by nginx
+  resources:
+    requests:
+      cpu: "10m" # Minimal CPU for static content
+      memory: "32Mi" # Small memory footprint
+    limits:
+      cpu: "300m" # Cap to prevent runaway
+      memory: "128Mi" # Limit memory usage
+
+  # Disabling Pod Disruption Budget for this demo cluster, for production consider enabling
+  pdb:
+    enabled: false
+
+  # ============================================================================
+  # Service Configuration
+  # ============================================================================
+  # Container listens on port 8080 (non-privileged port for security)
+  service:
+    port: 8080
+
+  # ============================================================================
+  # HTTP Routing - Tailscale Gateway (Private Access)
+  # ============================================================================
+  # Accessible only via Tailscale VPN at: https://pev2.priv.cloud.ogenki.io
+  route:
+    enabled: true
+    hostname: "pev2" # Results in: pev2.priv.cloud.ogenki.io

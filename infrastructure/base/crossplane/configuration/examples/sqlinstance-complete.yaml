@@ -65,10 +65,8 @@ spec:
       inRoles:
         - pg_read_all_data  # PostgreSQL 14+ built-in read-only role
 
-    # Admin user with elevated privileges (use sparingly)
-    - name: db-admin
-      comment: "Database administrator"
-      superuser: true       # Full privileges (use with caution)
+    # Note: For superuser access, use spec.createSuperuser: true instead of
+    # defining superuser roles here. Each role must own at least one database.
 
   # ============================================================================
   # Databases
@@ -134,7 +132,7 @@ spec:
 
       # Performance monitoring
       shared_preload_libraries: "pg_stat_statements"
-      track_activity_query_size: 2048   # Longer query text in pg_stat_activity
+      track_activity_query_size: "2048"   # Longer query text in pg_stat_activity
 
     # Host-based authentication (pg_hba.conf)
     # Controls how clients authenticate to the database
@@ -156,6 +154,36 @@ spec:
     schedule: "0 2 * * *"                        # Cron: daily at 2 AM UTC
     bucketName: production-database-backups      # S3 bucket name (auto-created)
     retentionPolicy: "30d"                       # Keep backups for 30 days
+
+  # ============================================================================
+  # Performance Insights (Optional)
+  # ============================================================================
+  # Enable comprehensive query performance monitoring and execution plan capture
+  # Configures: pg_stat_statements, auto_explain, compute_query_id, log_statement
+  # Allows correlation of metrics (pg_stat_statements) with logs (auto_explain)
+  # via query identifier for deep query performance analysis
+  performanceInsights:
+    enabled: true         # Enable performance monitoring (pg_stat_statements)
+
+    # Auto-explain: Capture execution plans for slow queries
+    explain:
+      sampleRate: 0.2     # 20% sampling (default: production-safe)
+                          # Set to 1.0 for debugging (100% = capture all slow queries)
+                          # Set to 0.1 for high-traffic production (10% sampling)
+      minDuration: 1000   # Log queries > 1 second (default: production-safe)
+                          # Set to 0 for debugging (log all queries)
+                          # Set to 3000+ for high-traffic production
+
+    # Statement logging: Log SQL statements (independent of auto_explain)
+    logStatement: none    # Options: none (default), ddl, mod, all
+                          # - none: No statement logging, rely on auto_explain (default)
+                          # - ddl: Log schema changes (CREATE, ALTER, DROP)
+                          # - mod: Log ddl + data changes (INSERT, UPDATE, DELETE)
+                          # - all: Log ALL statements (WARNING: 10-30% overhead!)
+
+  # Note: Performance overhead with defaults (sampleRate: 0.2, minDuration: 1000, logStatement: none)
+  # is approximately 5-7% CPU, safe for production.
+  # Query plans are sent to VictoriaLogs for analysis via Grafana dashboards.
 
   # ============================================================================
   # Claim Reference (Optional)

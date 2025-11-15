@@ -11,6 +11,7 @@ This module creates a complete PostgreSQL cluster deployment with:
 - Integration with External Secrets for credential management
 - EKS Pod Identity for secure AWS access
 - Optional superuser access and custom initialization SQL
+- Performance insights (pg_stat_statements + auto_explain for query plan history)
 
 ## Features
 
@@ -20,6 +21,7 @@ This module creates a complete PostgreSQL cluster deployment with:
 - **Database Management**: Automatic database and role creation
 - **Recovery**: Support for object store recovery from existing backups
 - **Monitoring**: Built-in monitoring with PodMonitor for Prometheus
+- **Performance Insights**: Optional query performance monitoring with execution plan history
 
 ## Resource Sizes
 
@@ -121,6 +123,32 @@ spec:
     - Delete
 ```
 
+### PostgreSQL Cluster with Performance Insights
+
+Enable query performance monitoring and execution plan history:
+
+```yaml
+apiVersion: postgresql.example.com/v1alpha1
+kind: PostgreSQLCluster
+metadata:
+  name: monitored-postgres
+  namespace: production
+spec:
+  instances: 3
+  size: medium
+  storageSize: 100Gi
+  storageClassName: gp3
+
+  # Enable performance insights with production-safe defaults
+  # Default values: sampleRate: 0.2 (20%), minDuration: 1000ms, logStatement: none
+  performanceInsights:
+    enabled: true
+
+  backup:
+    schedule: "0 2 * * *"
+    bucketName: postgres-backups
+```
+
 ## Configuration Reference
 
 ### Required Fields
@@ -158,6 +186,17 @@ spec:
 - `objectStoreRecovery`: Recovery from existing backups
   - `path`: Recovery source path (string)
   - `bucketName`: S3 bucket containing backups (string)
+
+#### Performance Insights
+- `performanceInsights`: Enable query performance monitoring (object)
+  - `enabled`: Enable performance insights (boolean, default: false)
+  - `explain.sampleRate`: Sample rate for slow queries (float, default: 0.2 = 20%)
+  - `explain.minDuration`: Minimum query duration to log in ms (int, default: 1000)
+  - `logStatement`: SQL statement logging level (string, default: "none", options: none/ddl/mod/all)
+  - Configures `pg_stat_statements` and `auto_explain` extensions (auto-managed by CloudNativePG v1.23+)
+  - Enables `compute_query_id` for correlation with execution plans
+  - Plans logged to VictoriaLogs with query_id for correlation
+  - Performance overhead with defaults: ~5-7% CPU, ~280MB memory (production-safe)
 
 ## Prerequisites
 
