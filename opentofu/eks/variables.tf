@@ -84,7 +84,7 @@ variable "karpenter_limits" {
 
 variable "ebs_csi_driver_chart_version" {
   description = "EBS CSI Driver Helm chart version"
-  default     = "2.39.0"
+  default     = "2.53.0"
   type        = string
 }
 
