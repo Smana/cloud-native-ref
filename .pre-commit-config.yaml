@@ -24,14 +24,17 @@ repos:
     hooks:
       - id: terraform_fmt
         args:
+          - --hook-config=--tf-path=tofu
           - --args=-diff
           - --args=-write=true
       - id: terraform_validate
         args:
+          - --hook-config=--tf-path=tofu
           - --hook-config=--retry-once-with-cleanup=true
           - --args=-json
       - id: terraform_tflint
         args:
+          - --hook-config=--tf-path=tofu
           - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
 
   # Security scanning
