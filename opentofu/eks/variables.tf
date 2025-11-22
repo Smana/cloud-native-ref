@@ -61,13 +61,13 @@ variable "identity_providers" {
 
 variable "cilium_version" {
   description = "Cilium cluster version"
-  default     = "1.18.3"
+  default     = "1.18.4"
   type        = string
 }
 
 variable "karpenter_version" {
   description = "Karpenter version"
-  default     = "1.8.1"
+  default     = "1.8.2"
   type        = string
 }
 
@@ -84,7 +84,7 @@ variable "karpenter_limits" {
 
 variable "ebs_csi_driver_chart_version" {
   description = "EBS CSI Driver Helm chart version"
-  default     = "2.39.0"
+  default     = "2.53.0"
   type        = string
 }
 
