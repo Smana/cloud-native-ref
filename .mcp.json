@@ -1,0 +1,59 @@
+{
+  "mcpServers": {
+    "git": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-git"
+      ],
+      "env": {}
+    },
+    "flux-operator-mcp": {
+      "command": "/usr/local/bin/flux-operator-mcp",
+      "args": [
+        "serve"
+      ],
+      "env": {
+        "KUBECONFIG": "~/.kube/config"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "env": {}
+    },
+    "kubernetes": {
+      "command": "/usr/local/bin/kubernetes-mcp-server",
+      "args": [],
+      "env": {
+        "KUBECONFIG": "~/.kube/config"
+      }
+    },
+    "exa": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "exa-mcp-server"
+      ],
+      "env": {
+        "EXA_API_KEY": "${EXA_API_KEY}"
+      }
+    },
+    "victorialogs": {
+      "command": "/usr/local/bin/mcp-victorialogs",
+      "env": {
+        "VL_INSTANCE_ENTRYPOINT": "https://vl.priv.cloud.ogenki.io"
+      }
+    },
+    "victoriametrics": {
+      "command": "/usr/local/bin/mcp-victoriametrics",
+      "env": {
+        "VM_INSTANCE_ENTRYPOINT": "https://vm.priv.cloud.ogenki.io",
+        "VM_INSTANCE_TYPE": "single"
+      }
+    }
+  }
+}
