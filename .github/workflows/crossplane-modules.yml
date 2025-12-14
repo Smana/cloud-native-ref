@@ -96,7 +96,7 @@ jobs:
           kcl --version
 
       - name: Cache KCL modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.kcl
           key: ${{ runner.os }}-kcl-${{ hashFiles(format('{0}/{1}/kcl.mod.lock', env.KCL_MODULES_PATH, matrix.module)) }}
