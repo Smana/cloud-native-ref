@@ -3,3 +3,5 @@ kind: Kustomization
 resources:
   - helmrelease.yaml
   - httproute.yaml
+  - externalsecret-flux-ui-oidc.yaml
+  - rbac.yaml

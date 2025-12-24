@@ -16,3 +16,37 @@ spec:
       # The allow-egress NetworkPolicy in FluxInstance is already patched to allow ingress
       networkPolicy:
         create: false
+      config:
+        # Public URL for OAuth2 redirects
+        baseURL: "https://flux-ui-${cluster_name}.priv.${domain_name}"
+        authentication:
+          type: OAuth2
+          sessionDuration: 24h
+          oauth2:
+            provider: OIDC
+            issuerURL: "https://auth.${domain_name}"
+            # clientID and clientSecret injected from secret via valuesFrom
+            scopes:
+              - openid
+              - profile
+              - email
+              - groups
+            # Map Zitadel claims to Kubernetes identity
+            impersonation:
+              username: "claims.email"
+              # Zitadel provides roles in 'urn:zitadel:iam:org:project:roles' claim
+              groups: "claims['urn:zitadel:iam:org:project:roles'].keys()"
+            # Restrict access to @ogenki.io email domain
+            validations:
+              - expression: "claims.email.endsWith('@ogenki.io')"
+                message: "Access denied: must use @ogenki.io email"
+  # Inject OIDC credentials from ExternalSecret
+  valuesFrom:
+    - kind: Secret
+      name: flux-ui-oidc
+      valuesKey: clientID
+      targetPath: web.config.authentication.oauth2.clientID
+    - kind: Secret
+      name: flux-ui-oidc
+      valuesKey: clientSecret
+      targetPath: web.config.authentication.oauth2.clientSecret
