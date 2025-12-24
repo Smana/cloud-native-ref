@@ -30,11 +30,13 @@ spec:
               - openid
               - profile
               - email
-            # Map Zitadel claims to Kubernetes identity (same as Grafana)
-            # Note: Enable "User Info inside ID Token" in Zitadel for email claim
+              - groups
+            # Map Zitadel claims to Kubernetes identity
+            # Note: Enable "User Info inside ID Token" in Zitadel for email/name claims
             impersonation:
-              username: "claims.preferred_username"
-              # Zitadel provides roles in 'roles' claim
+              # Using 'sub' (subject) which is always present in OIDC tokens
+              username: "claims.sub"
+              # Zitadel provides roles in 'roles' claim (requires project role assertion)
               groups: "claims.roles"
             # Restrict access to @ogenki.io email domain
             # Note: Requires "User Info inside ID Token" enabled in Zitadel
