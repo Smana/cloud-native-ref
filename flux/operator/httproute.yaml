@@ -10,7 +10,7 @@ spec:
       name: platform-tailscale-admin
       namespace: infrastructure
   hostnames:
-    - "flux-ui-${cluster_name}.priv.${domain_name}"
+    - "flux-ui-${cluster_name}.${domain_name}"
   rules:
     - matches:
         - path:

@@ -1,16 +1,15 @@
 # Flux UI RBAC - Maps Zitadel roles to Kubernetes permissions
-# Users are impersonated based on their Zitadel groups
+# Uses the same roles as Grafana: admin, backend, frontend, data
 
 ---
 # Admin access - full Flux resource management
-# Members of the 'flux-admins' Zitadel role get cluster-admin access
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: flux-ui-admins
 subjects:
   - kind: Group
-    name: flux-admins
+    name: admin
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
@@ -18,17 +17,46 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 
 ---
-# Read-only access for viewers
-# Members of the 'flux-viewers' Zitadel role get view-only access
+# Editor access for backend team
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: flux-ui-viewers
+  name: flux-ui-backend
 subjects:
   - kind: Group
-    name: flux-viewers
+    name: backend
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
-  name: view
+  name: edit
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Editor access for frontend team
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flux-ui-frontend
+subjects:
+  - kind: Group
+    name: frontend
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: edit
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Editor access for data team
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flux-ui-data
+subjects:
+  - kind: Group
+    name: data
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: edit
   apiGroup: rbac.authorization.k8s.io

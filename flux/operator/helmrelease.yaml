@@ -18,7 +18,7 @@ spec:
         create: false
       config:
         # Public URL for OAuth2 redirects
-        baseURL: "https://flux-ui-${cluster_name}.priv.${domain_name}"
+        baseURL: "https://flux-ui-${cluster_name}.${domain_name}"
         authentication:
           type: OAuth2
           sessionDuration: 24h
@@ -30,12 +30,11 @@ spec:
               - openid
               - profile
               - email
-              - groups
-            # Map Zitadel claims to Kubernetes identity
+            # Map Zitadel claims to Kubernetes identity (same as Grafana)
             impersonation:
               username: "claims.email"
-              # Zitadel provides roles in 'urn:zitadel:iam:org:project:roles' claim
-              groups: "claims['urn:zitadel:iam:org:project:roles'].keys()"
+              # Zitadel provides roles in 'roles' claim
+              groups: "claims.roles"
             # Restrict access to @ogenki.io email domain
             validations:
               - expression: "claims.email.endsWith('@ogenki.io')"
