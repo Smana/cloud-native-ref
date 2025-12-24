@@ -1,6 +1,7 @@
 #!/bin/bash
 
-set -e
+# Don't use set -e globally - we want to handle errors gracefully during cleanup
+# set -e
 
 # Define error message variable
 err="ERROR"
@@ -65,33 +66,62 @@ fi
 # EKS get credentials
 ${AWS_CMD} eks update-kubeconfig --name "${CLUSTER_NAME}" --alias "${CLUSTER_NAME}"
 
-# Suspend all Flux reconciliations
-if kubectl get ns flux-system &>/dev/null; then
-	flux suspend kustomization --all
+# Suspend all Flux reconciliations (only if Flux CRDs are available)
+echo "Checking for Flux resources..."
+if kubectl api-resources --api-group=kustomize.toolkit.fluxcd.io &>/dev/null; then
+	echo "Suspending Flux kustomizations..."
+	flux suspend kustomization --all 2>/dev/null || echo "No Flux kustomizations to suspend"
+else
+	echo "Flux CRDs not available, skipping Flux suspension"
 fi
 
-# Use mapfile to properly handle array creation
-mapfile -t NODEPOOLS < <(kubectl get nodepools -o json | jq -r '.items[].metadata.name')
-if [ -n "${NODEPOOLS[*]}" ]; then
-  kubectl delete nodepools --all
+# Delete Karpenter NodePools (only if CRD exists)
+echo "Checking for Karpenter NodePools..."
+if kubectl api-resources --api-group=karpenter.sh 2>/dev/null | grep -q nodepools; then
+	mapfile -t NODEPOOLS < <(kubectl get nodepools -o json 2>/dev/null | jq -r '.items[].metadata.name' 2>/dev/null || echo "")
+	if [ -n "${NODEPOOLS[*]}" ]; then
+		echo "Deleting NodePools: ${NODEPOOLS[*]}"
+		kubectl delete nodepools --all 2>/dev/null || echo "Failed to delete some NodePools"
+	else
+		echo "No NodePools found"
+	fi
+else
+	echo "Karpenter CRDs not available, skipping NodePool deletion"
 fi
 
-# Use mapfile for arrays
-mapfile -t GATEWAYS < <(kubectl get gateways --all-namespaces -o json | jq -r '.items[].metadata.name')
-mapfile -t GAPI_SVC < <(kubectl get svc --all-namespaces -l gateway.networking.k8s.io/gateway-name -o json | jq -r '.items[].metadata.name')
-if [ -n "${GATEWAYS[*]}" ] || [ -n "${GAPI_SVC[*]}" ]; then
-  kubectl delete gateways --all --all-namespaces
-  kubectl delete svc -l gateway.networking.k8s.io/gateway-name --all-namespaces
+# Delete Gateway API resources (only if CRD exists)
+echo "Checking for Gateway API resources..."
+if kubectl api-resources --api-group=gateway.networking.k8s.io 2>/dev/null | grep -q gateways; then
+	mapfile -t GATEWAYS < <(kubectl get gateways --all-namespaces -o json 2>/dev/null | jq -r '.items[].metadata.name' 2>/dev/null || echo "")
+	if [ -n "${GATEWAYS[*]}" ]; then
+		echo "Deleting Gateways: ${GATEWAYS[*]}"
+		kubectl delete gateways --all --all-namespaces 2>/dev/null || echo "Failed to delete some Gateways"
+		kubectl delete svc -l gateway.networking.k8s.io/gateway-name --all-namespaces 2>/dev/null || true
+		# Wait for gateways to be deleted
+		echo "Waiting for Gateways to be deleted..."
+		sleep 30
+	else
+		echo "No Gateways found"
+	fi
+else
+	echo "Gateway API CRDs not available, skipping Gateway deletion"
 fi
 
-# Wait for gateways to be deleted
-sleep 30
-
-# Use mapfile for array
-mapfile -t EPIS < <(kubectl get epis -o json | jq -r '.items[].metadata.name')
-if [ -n "${EPIS[*]}" ]; then
-	kubectl delete epis --all --all-namespaces
+# Delete EKS Pod Identity associations (only if CRD exists)
+echo "Checking for EKS Pod Identity resources..."
+if kubectl api-resources 2>/dev/null | grep -q "ekspodidentities\|epis"; then
+	mapfile -t EPIS < <(kubectl get epis --all-namespaces -o json 2>/dev/null | jq -r '.items[].metadata.name' 2>/dev/null || echo "")
+	if [ -n "${EPIS[*]}" ]; then
+		echo "Deleting EKS Pod Identities: ${EPIS[*]}"
+		kubectl delete epis --all --all-namespaces 2>/dev/null || echo "Failed to delete some EPIs"
+		# Wait for epis to be deleted
+		echo "Waiting for EPIs to be deleted..."
+		sleep 30
+	else
+		echo "No EKS Pod Identities found"
+	fi
+else
+	echo "EKS Pod Identity CRDs not available, skipping EPI deletion"
 fi
 
-# Wait for epis to be deleted
-sleep 30
+echo "Cluster cleanup completed successfully"

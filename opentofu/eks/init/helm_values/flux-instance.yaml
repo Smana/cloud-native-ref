@@ -1,9 +1,8 @@
-apiVersion: fluxcd.controlplane.io/v1
-kind: FluxInstance
-metadata:
-  name: flux
-  namespace: flux-system
-spec:
+# Flux Instance Helm values
+# Dynamic values (sync.url, sync.ref, sync.path) are passed via --set in the Terramate script
+# See: opentofu/eks/workflows.tm.hcl
+
+instance:
   distribution:
     version: "2.x"
     registry: "ghcr.io/fluxcd"
@@ -13,10 +12,9 @@ spec:
     - kustomize-controller
     - helm-controller
     - notification-controller
-%{ if enable_flux_image_update_automation ~}
-    - image-reflector-controller
-    - image-automation-controller
-%{ endif ~}
+    # Uncomment for image automation:
+    # - image-reflector-controller
+    # - image-automation-controller
   cluster:
     type: kubernetes
     networkPolicy: true
@@ -25,18 +23,17 @@ spec:
     size: "5Gi"
   sync:
     kind: GitRepository
-    url: ${repository_sync_url}
-    ref: ${git_ref}
-    path: "clusters/${cluster_name}"
     pullSecret: "flux-system"
   kustomize:
     patches:
+      # Add GitHub provider to GitRepository
       - patch: |
           - op: add
             path: /spec/provider
             value: github
         target:
           kind: GitRepository
+      # Tune source-controller resources
       - patch: |
           - op: add
             path: /spec/template/spec/containers/0/args/-
@@ -50,6 +47,7 @@ spec:
         target:
           kind: Deployment
           name: source-controller
+      # Tune kustomize-controller resources
       - patch: |
           - op: add
             path: /spec/template/spec/containers/0/args/-
@@ -66,3 +64,15 @@ spec:
         target:
           kind: Deployment
           name: kustomize-controller
+      # Allow ingress from all namespaces for Gateway API L7 proxy
+      # The default allow-egress policy only allows ingress from same namespace,
+      # which blocks Cilium Gateway API L7 proxy traffic
+      - patch: |
+          - op: replace
+            path: /spec/ingress/0/from
+            value:
+              - podSelector: {}
+              - namespaceSelector: {}
+        target:
+          kind: NetworkPolicy
+          name: allow-egress

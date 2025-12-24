@@ -59,39 +59,20 @@ variable "identity_providers" {
   default     = {}
 }
 
-variable "cilium_version" {
-  description = "Cilium cluster version"
-  default     = "1.18.4"
-  type        = string
-}
-
-variable "karpenter_version" {
-  description = "Karpenter version"
-  default     = "1.8.2"
-  type        = string
-}
-
-variable "karpenter_limits" {
-  description = "Define limits for Karpenter per node pool."
-  type = map(object(
-    {
-      cpu    = optional(number, 50),
-      memory = optional(string, "50Gi")
-    }
-    )
-  )
-}
-
-variable "ebs_csi_driver_chart_version" {
-  description = "EBS CSI Driver Helm chart version"
-  default     = "2.53.0"
-  type        = string
-}
-
 variable "gateway_api_version" {
   description = "Gateway API CRDs version"
-  default     = "v1.4.0"
+  default     = "v1.4.1"
   type        = string
+}
+
+variable "domain_name" {
+  description = "Private domain name for services (e.g., priv.cloud.ogenki.io)"
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$", var.domain_name))
+    error_message = "Domain name must be a valid DNS domain name."
+  }
 }
 
 # Flux
@@ -109,38 +90,8 @@ variable "cert_manager_approle_secret_name" {
   sensitive   = true
 }
 
-variable "flux_operator_version" {
-  description = "Flux Operator version"
-  default     = "0.33.0"
-  type        = string
-}
-
-variable "enable_flux_image_update_automation" {
-  description = "Enable Flux image update automation"
-  default     = false
-  type        = bool
-}
-
-variable "flux_sync_repository_url" {
-  description = "The repository URL to sync with Flux"
-  type        = string
-
-  validation {
-    condition     = can(regex("^https://github\\.com/.+/.+\\.git$", var.flux_sync_repository_url))
-    error_message = "Repository URL must be a valid GitHub HTTPS URL ending with .git."
-  }
-}
-
-variable "flux_git_ref" {
-  description = "Git branch or tag in the format refs/heads/main or refs/tags/v1.0.0"
-  type        = string
-  default     = "refs/heads/main"
-
-  validation {
-    condition     = can(regex("^refs/(heads|tags)/.+$", var.flux_git_ref))
-    error_message = "Git ref must be in format refs/heads/branch-name or refs/tags/tag-name."
-  }
-}
+# Note: Flux configuration (version, sync URL, git ref) is now managed via Terramate globals
+# in opentofu/config.tm.hcl and Helm values in opentofu/eks/helm_values/flux-instance.yaml
 
 variable "tags" {
   description = "A map of tags to add to all resources"

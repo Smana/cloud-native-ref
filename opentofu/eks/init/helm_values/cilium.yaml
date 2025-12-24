@@ -1,0 +1,106 @@
+# k8sServiceHost/Port: Auto-detected by Cilium in EKS with ENI mode
+# Can be set explicitly via helm --set if needed
+bandwidthManager:
+  enabled: true
+bpf:
+  preallocateMaps: true
+# Explicitly specify devices to prevent Cilium from using tailscale0 MTU
+# See: https://tailscale.com/kb/1236/kubernetes-operator#cilium
+devices: "eth+ pod-id-link+"
+egressMasqueradeInterfaces: eth0
+eni:
+  enabled: true
+  # ==========================================================================
+  # DISABLED: Prefix delegation causes Gateway API L7 proxy cross-node failures
+  # Issue: https://github.com/cilium/cilium/issues/43493
+  #
+  # When Cilium fixes #43493, uncomment the following AND:
+  # - cilium_cni_config resource in cilium-cni-config.tf
+  # - dependency in main.tf helm_release.cilium
+  # - cni.customConf and cni.configMap below
+  # --------------------------------------------------------------------------
+  # awsEnablePrefixDelegation: true
+  # # Restrict operator to secondary CIDR subnets only (prevents mixed IPs):
+  # subnetTagsFilter:
+  #   cilium.io/pod-subnet: "true"
+  # ==========================================================================
+
+# ==========================================================================
+# DISABLED: Custom CNI configuration for secondary CIDR (100.64.0.0/16)
+# Issue: https://github.com/cilium/cilium/issues/43493
+#
+# When Cilium fixes #43493, uncomment the following:
+# --------------------------------------------------------------------------
+# cni:
+#   customConf: true
+#   configMap: cilium-cni-configuration
+# ==========================================================================
+installNoConntrackIptablesRules: true
+ipam:
+  mode: eni
+kubeProxyReplacement: true
+loadBalancer:
+  enabled: true
+  mode: hybrid
+socketLB:
+  enabled: true
+  # IMPORTANT: Must be true for Tailscale pods to work properly
+  # When false, Cilium's socket LB intercepts DNS in pod namespaces,
+  # breaking pods that modify their own networking (like Tailscale)
+  # See: https://github.com/tailscale/tailscale/issues/15478
+  hostNamespaceOnly: true
+operator:
+  resources:
+    limits:
+      cpu: 100m
+      memory: 100Mi
+  rollOutPods: true # Reload pods when the configmap is updated
+  # Automatically restart pods not managed by Cilium (replaces manual restart script)
+  # Default podRestartSelector is "k8s-app=kube-dns" which only restarts CoreDNS
+  # Setting to empty restarts ALL unmanaged pods (EBS CSI, etc.)
+  # See: https://docs.cilium.io/en/stable/cmdref/cilium-operator/
+  extraArgs:
+    - --pod-restart-selector=
+  unmanagedPodWatcher:
+    intervalSeconds: 15
+    restart: true
+# Can't enable servicemonitor as the CRD is not yet installed
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+resources:
+  limits:
+    cpu: 300m
+    memory: 256Mi
+routingMode: native
+# Note: tunnelProtocol defaults to vxlan in Helm chart but is ignored in native routing mode.
+# ENI mode uses direct routing, no tunnel encapsulation is used regardless of this setting.
+
+envoy:
+  # Explicitly enable Envoy DaemonSet for Gateway API L7 proxy
+  enabled: true
+  resources:
+    limits:
+      memory: 300Mi
+    requests:
+      cpu: 200m
+      memory: 300Mi
+
+hubble:
+  metrics:
+    enabled:
+      - dns:query;ignoreAAAA
+      - drop
+      - tcp
+      - flow
+      - icmp
+      - http
+    enableOpenMetrics: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+gatewayAPI:
+  enabled: true

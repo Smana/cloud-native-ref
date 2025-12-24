@@ -5,6 +5,10 @@ module "karpenter" {
 
   cluster_name = module.eks.cluster_name
 
+  # Disable name prefix to have a predictable role name (Karpenter-<cluster_name>)
+  # This allows hardcoding the role name in EC2NodeClass manifests
+  node_iam_role_use_name_prefix = false
+
   node_iam_role_additional_policies = merge(
     var.enable_ssm ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
     var.iam_role_additional_policies

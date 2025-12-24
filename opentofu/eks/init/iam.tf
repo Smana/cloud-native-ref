@@ -1,22 +1,14 @@
 # Note: The EKS Pod identities are created as part of this EKS module but in a production context we would have multiple clusters and we would have to create the EKS Pod identities in a separate module because they can be shared across clusters.
 
-# The EKS Pod Identity for the EBS-CSI-DRIVER is created here because we need to define the GP3 volume type as default
+# The IAM role for EBS CSI Driver (managed add-on)
+# Role created here, association done via addon's pod_identity_association in main.tf
+# This avoids circular dependency: addon needs role ARN at plan time
 module "identity_ebs_csi_driver" {
   source  = "terraform-aws-modules/eks-pod-identity/aws"
-  version = "2.4.2"
-  name    = "${var.name}-ebs_csi_driver"
+  version = "2.5.0"
+  name    = "${var.name}-ebs-csi-driver"
 
   attach_aws_ebs_csi_policy = true
-
-  associations = {
-    (var.name) = {
-      cluster_name    = var.name
-      namespace       = "kube-system"
-      service_account = "ebs-csi-controller-sa"
-    }
-  }
-
-  depends_on = [module.eks]
 }
 
 
@@ -24,7 +16,7 @@ module "identity_ebs_csi_driver" {
 # We only give the required permissions for Crossplane resources we want to manage
 module "identity_crossplane" {
   source  = "terraform-aws-modules/eks-pod-identity/aws"
-  version = "2.4.2"
+  version = "2.5.0"
   name    = "${var.name}-crossplane"
 
   additional_policy_arns = {

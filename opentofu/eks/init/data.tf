@@ -77,15 +77,4 @@ data "http" "gateway_api_crds" {
   url   = local.gateway_api_crds_urls[count.index]
 }
 
-# Kubernetes manifests
-data "kubectl_filename_list" "flux" {
-  pattern = "${path.module}/kubernetes-manifests/flux/*.yaml"
-}
-
-data "kubectl_filename_list" "karpenter_default" {
-  pattern = "${path.module}/kubernetes-manifests/karpenter/default-*.yaml"
-}
-
-data "kubectl_filename_list" "karpenter_io" {
-  pattern = "${path.module}/kubernetes-manifests/karpenter/io-*.yaml"
-}
+# Karpenter manifests moved to Flux GitOps (infrastructure/base/karpenter/)

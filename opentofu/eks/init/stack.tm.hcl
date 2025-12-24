@@ -1,7 +1,7 @@
 stack {
-  name        = "EKS cluster"
-  description = "EKS cluster"
-  id          = "51322224-ac05-497c-bbaf-e2a821a9b2d8"
+  name        = "EKS Cluster - Init"
+  description = "EKS cluster infrastructure, bootstrap addons, IAM, secrets"
+  id          = "eks-init"
 
   after = [
     "/opentofu/network",
@@ -14,5 +14,4 @@ stack {
     "kubernetes",
     "infrastructure"
   ]
-
 }

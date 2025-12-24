@@ -15,28 +15,48 @@ module "eks" {
     "scheduler"
   ]
 
+  # Bootstrap addons: VPC CNI + kube-proxy make nodes Ready
+  # Stage 2 (opentofu/eks/configure/) replaces them with Cilium
   addons = {
+    # VPC CNI: makes nodes Ready quickly (replaced by Cilium in stage 2)
+    vpc-cni = {
+      before_compute = true
+      most_recent    = true
+    }
+    # kube-proxy: provides ClusterIP routing until Cilium takes over (deleted in stage 2)
+    kube-proxy = {
+      before_compute = true
+      most_recent    = true
+    }
+    # Pod Identity Agent: uses hostNetwork, talks to AWS directly (always needed)
+    eks-pod-identity-agent = {
+      before_compute = true
+      most_recent    = true
+    }
+    # CoreDNS: can reach Kubernetes API via ClusterIP
     coredns = {
       most_recent = true
-      configuration_values = jsonencode(
-        {
-          "autoScaling" : {
-            "enabled" : true,
-            "minReplicas" : 2,
-            "maxReplicas" : 4
-          }
-          tolerations = [
-            {
-              operator = "Exists"
-            }
-          ]
+      configuration_values = jsonencode({
+        autoScaling = {
+          enabled     = true
+          minReplicas = 2
+          maxReplicas = 4
         }
-      )
+        tolerations = [{
+          operator = "Exists"
+        }]
+      })
     }
-    eks-pod-identity-agent = {
+    # EBS CSI Driver: can resolve AWS hostnames via CoreDNS
+    aws-ebs-csi-driver = {
       most_recent = true
+      pod_identity_association = [{
+        role_arn        = module.identity_ebs_csi_driver.iam_role_arn
+        service_account = "ebs-csi-controller-sa"
+      }]
     }
   }
+  # Stage 2 (opentofu/eks/configure/): Disable VPC CNI + kube-proxy → Install Cilium → Flux
 
   enable_cluster_creator_admin_permissions = true
 
@@ -76,6 +96,16 @@ module "eks" {
       type                          = "ingress"
       source_cluster_security_group = true
     }
+    # Allow all traffic from pod CIDR (secondary CIDR 100.64.0.0/16)
+    # Required for Cilium ENI mode with prefix delegation
+    ingress_pod_cidr = {
+      description = "Allow traffic from pod CIDR for pod-to-pod communication"
+      protocol    = "-1"
+      from_port   = 0
+      to_port     = 0
+      type        = "ingress"
+      cidr_blocks = ["100.64.0.0/16"]
+    }
   }
 
   eks_managed_node_groups = {
@@ -97,6 +127,9 @@ module "eks" {
         http_tokens   = "required"
       }
 
+      # Attach EKS cluster primary security group for communication with Karpenter nodes
+      attach_cluster_primary_security_group = true
+
       iam_role_additional_policies = merge(
         var.enable_ssm ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
         var.iam_role_additional_policies
@@ -110,13 +143,6 @@ module "eks" {
       #   [settings.host-containers.admin]
       #   enabled = true
       # EOT
-      taints = {
-        "cilium" = {
-          key    = "node.cilium.io/agent-not-ready"
-          value  = "true"
-          effect = "NO_EXECUTE"
-        }
-      }
     }
   }
 
