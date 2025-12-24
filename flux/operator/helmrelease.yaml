@@ -31,14 +31,16 @@ spec:
               - profile
               - email
             # Map Zitadel claims to Kubernetes identity (same as Grafana)
+            # Note: Enable "User Info inside ID Token" in Zitadel for email claim
             impersonation:
-              username: "claims.email"
+              username: "claims.preferred_username"
               # Zitadel provides roles in 'roles' claim
               groups: "claims.roles"
             # Restrict access to @ogenki.io email domain
-            validations:
-              - expression: "claims.email.endsWith('@ogenki.io')"
-                message: "Access denied: must use @ogenki.io email"
+            # Note: Requires "User Info inside ID Token" enabled in Zitadel
+            # validations:
+            #   - expression: "claims.email.endsWith('@ogenki.io')"
+            #     message: "Access denied: must use @ogenki.io email"
   # Inject OIDC credentials from ExternalSecret
   valuesFrom:
     - kind: Secret
