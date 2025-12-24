@@ -1,0 +1,34 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: karpenter
+spec:
+  releaseName: karpenter
+  driftDetection:
+    mode: enabled
+  chartRef:
+    kind: OCIRepository
+    name: karpenter
+    namespace: kube-system
+  interval: 3m0s
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  values:
+    settings:
+      clusterName: ${cluster_name}
+      clusterEndpoint: ${cluster_endpoint_full}
+      interruptionQueue: ${karpenter_queue_name}
+    tolerations:
+      - key: "node.cilium.io/agent-not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+    controller:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi

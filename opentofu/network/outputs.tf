@@ -22,3 +22,13 @@ output "tailscale_security_group_id" {
   description = "value"
   value       = module.tailscale_subnet_router.security_group_id
 }
+
+output "pod_subnet_ids" {
+  description = "List of pod subnet IDs (secondary CIDR for Cilium ENI)"
+  value       = aws_subnet.pods[*].id
+}
+
+output "pod_cidr_block" {
+  description = "Secondary CIDR block for pods"
+  value       = var.pod_cidr
+}

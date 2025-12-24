@@ -1,0 +1,21 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: flux-operator-ui
+  namespace: flux-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform-tailscale-admin
+      namespace: infrastructure
+  hostnames:
+    - "flux-ui-${cluster_name}.${domain_name}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: flux-operator
+          port: 9080

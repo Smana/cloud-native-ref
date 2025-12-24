@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: infrastructure
 
 resources:
+  - allow-gateway-l7-proxy.yaml
   - platform-private-gateway-certificate.yaml
   - tailscale-gatewayclass-config.yaml
   - tailscale-gatewayclass.yaml

@@ -12,7 +12,7 @@ The platform is deployed in three sequential stages:
 
 1. **Network Layer** (`opentofu/network/`): VPC, subnets, Route53, and Tailscale VPN
 2. **Security Layer** (`opentofu/openbao/`): OpenBao cluster for secrets management and PKI
-3. **Kubernetes Layer** (`opentofu/eks/`): EKS cluster with Flux, Cilium, and Karpenter
+3. **Kubernetes Layer** (`opentofu/eks/init/` + `opentofu/eks/configure/`): EKS cluster with Flux, Cilium, and Karpenter
 
 ### Key Components
 
@@ -24,6 +24,42 @@ The platform is deployed in three sequential stages:
 - **Cilium**: Advanced networking and security with eBPF
 - **Gateway API**: Modern ingress and traffic routing
 - **VictoriaMetrics**: High-performance observability stack
+
+### EKS Bootstrap Architecture
+
+Two-stage OpenTofu deployment: Stage 1 creates the EKS cluster with temporary CNI, Stage 2 replaces it with Cilium and installs Flux.
+
+**Why two stages?** Helm provider needs cluster endpoint at plan time, so Stage 2 runs after the cluster exists.
+
+**Deployment:**
+```bash
+cd opentofu/eks/init && terramate script run deploy
+```
+
+**Stage 1 (`opentofu/eks/init/`):** EKS cluster, managed node groups, bootstrap addons (vpc-cni, kube-proxy, coredns, ebs-csi), Gateway API CRDs, IAM roles, flux-system namespace + secrets/ConfigMap.
+
+**Stage 2 (`opentofu/eks/configure/`):**
+1. Disable VPC CNI (patch nodeSelector)
+2. Install Cilium (replaces CNI + kube-proxy)
+3. Disable kube-proxy (patch nodeSelector)
+4. Install Flux Operator + Instance
+
+**Upgrading versions:**
+```bash
+# Edit opentofu/config.tm.hcl: cilium_version, flux_operator_version, flux_instance_version
+cd opentofu/eks/init && terramate script run deploy
+```
+
+**Key Files:**
+- `opentofu/config.tm.hcl` - Cilium/Flux versions
+- `opentofu/eks/init/main.tf` - EKS module with bootstrap addons
+- `opentofu/eks/configure/main.tf` - Cilium and Flux helm_releases
+- `opentofu/eks/init/helm_values/cilium.yaml` - Cilium Helm values
+
+**Cilium Prefix Delegation (DISABLED):**
+Secondary CIDR (100.64.0.0/16) is disabled due to Cilium bug #43493 causing Gateway API L7 proxy failures on cross-node traffic. When fixed, uncomment `cilium-cni-config.tf` and related settings in `cilium.yaml`.
+
+**IAM:** EBS CSI and Crossplane use EKS Pod Identity (`xplane-*` resource scope for Crossplane).
 
 ## Common Commands
 
@@ -39,6 +75,19 @@ terramate script run preview
 # Deploy entire platform
 terramate script run deploy
 
+# Deploy EKS cluster (both stages in one command)
+cd opentofu/eks/init && terramate script run deploy
+
+# Deploy EKS with a feature branch (for testing)
+TF_VAR_flux_git_ref='refs/heads/my-feature-branch' terramate script run deploy
+
+# Deploy Stage 1 only (infrastructure without Cilium/Flux)
+cd opentofu/eks/init && terramate script run deploy-stage1
+
+# Preview EKS deployment changes
+cd opentofu/eks/init
+terramate script run preview
+
 # Check for configuration drift
 terramate script run drift detect
 
@@ -50,7 +99,7 @@ terramate script run destroy
 
 ```bash
 # Individual stack operations
-cd opentofu/network  # or eks, openbao/cluster, openbao/management
+cd opentofu/network  # or eks/init, eks/configure, openbao/cluster, openbao/management
 tofu init
 tofu plan -var-file=variables.tfvars
 tofu apply -var-file=variables.tfvars
@@ -68,13 +117,13 @@ flux get all
 flux suspend kustomization --all
 flux resume kustomization --all
 
-# Safe cluster cleanup (required order)
-flux suspend kustomization --all
-kubectl delete gateways --all-namespaces --all
-sleep 60
-kubectl delete epi --all-namespaces --all
-sleep 30
-tofu destroy --var-file variables.tfvars
+# Safe cluster cleanup (uses two-stage destroy workflow)
+cd opentofu/eks/init && terramate script run destroy
+
+# The destroy workflow automatically:
+# 1. Runs eks-prepare-destroy.sh (suspend Flux, delete Gateways, NodePools, EPIs)
+# 2. Destroys configure stack (Cilium, Flux)
+# 3. Destroys init stack (EKS cluster, IAM, secrets)
 ```
 
 ### OpenBao Operations
@@ -92,8 +141,9 @@ bao auth -method=userpass username=admin
 ### Prerequisites
 
 - AWS CLI configured with appropriate permissions
-- OpenTofu (v1.4+)
+- OpenTofu (v1.5+)
 - Terramate (latest)
+- Helm CLI (v3.12+)
 - kubectl
 - bao CLI
 - jq
@@ -101,8 +151,10 @@ bao auth -method=userpass username=admin
 
 ### Configuration Files
 
-- `opentofu/config.tm.hcl`: Global Terramate configuration
-- `opentofu/workflows.tm.hcl`: Terramate scripts and workflows
+- `opentofu/config.tm.hcl`: Global Terramate configuration (includes Cilium/Flux versions)
+- `opentofu/workflows.tm.hcl`: Terramate scripts and workflows (init, preview, deploy, destroy)
+- `opentofu/eks/init/workflows.tm.hcl`: EKS-specific two-stage deployment scripts
+- `opentofu/eks/init/helm_values/cilium.yaml`: Cilium Helm values for EKS bootstrap
 - `variables.tfvars`: Environment-specific variables (create per stack)
 
 ### GitOps with Flux
@@ -481,7 +533,7 @@ spec:
 
 ### Infrastructure
 
-- OpenTofu stacks: `opentofu/{network,eks,openbao}`
+- OpenTofu stacks: `opentofu/{network,eks/init,eks/configure,openbao}`
 - Kubernetes manifests: `{infrastructure,security,observability,tooling}/base/`
 - Cluster-specific overrides: `{infrastructure,security,observability,tooling}/mycluster-0/`
 
@@ -496,6 +548,7 @@ spec:
 - EKS cleanup: `scripts/eks-prepare-destroy.sh`
 - OpenBao configuration: `scripts/openbao-config.sh`
 - OpenBao snapshots: `scripts/openbao-snapshot.sh`
+- KCL composition validation: `scripts/validate-kcl-compositions.sh`
 
 ## Troubleshooting
 

@@ -9,3 +9,47 @@ spec:
   chartRef:
     kind: OCIRepository
     name: flux-operator
+  values:
+    web:
+      enabled: true
+      # Disable the default NetworkPolicy that blocks Gateway API L7 proxy traffic
+      # The allow-egress NetworkPolicy in FluxInstance is already patched to allow ingress
+      networkPolicy:
+        create: false
+      config:
+        # Public URL for OAuth2 redirects
+        baseURL: "https://flux-ui-${cluster_name}.${domain_name}"
+        authentication:
+          type: OAuth2
+          sessionDuration: 24h
+          oauth2:
+            provider: OIDC
+            issuerURL: "https://auth.cloud.ogenki.io"
+            # clientID and clientSecret injected from secret via valuesFrom
+            scopes:
+              - openid
+              - profile
+              - email
+              - groups
+            # Map Zitadel claims to Kubernetes identity
+            # Note: Enable "User Info inside ID Token" in Zitadel for email/name claims
+            impersonation:
+              # Using 'sub' (subject) which is always present in OIDC tokens
+              username: "claims.sub"
+              # Zitadel provides roles in 'roles' claim (requires project role assertion)
+              groups: "claims.roles"
+            # Restrict access to @ogenki.io email domain
+            # Note: Requires "User Info inside ID Token" enabled in Zitadel
+            # validations:
+            #   - expression: "claims.email.endsWith('@ogenki.io')"
+            #     message: "Access denied: must use @ogenki.io email"
+  # Inject OIDC credentials from ExternalSecret
+  valuesFrom:
+    - kind: Secret
+      name: flux-ui-oidc
+      valuesKey: clientID
+      targetPath: web.config.authentication.oauth2.clientID
+    - kind: Secret
+      name: flux-ui-oidc
+      valuesKey: clientSecret
+      targetPath: web.config.authentication.oauth2.clientSecret

@@ -28,6 +28,7 @@ spec:
                 values:
                   - kube-system
                   - observability
+                  - flux-system
       tls:
         mode: Terminate
         certificateRefs:

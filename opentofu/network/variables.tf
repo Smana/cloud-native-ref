@@ -36,6 +36,22 @@ variable "vpc_cidr" {
   }
 }
 
+variable "pod_cidr" {
+  description = "Secondary CIDR block for pod IPs (CG-NAT space 100.64.0.0/10 recommended)"
+  default     = "100.64.0.0/16"
+  type        = string
+
+  validation {
+    condition     = can(cidrhost(var.pod_cidr, 0))
+    error_message = "Pod CIDR must be a valid IPv4 CIDR block."
+  }
+
+  validation {
+    condition     = split("/", var.pod_cidr)[1] >= 10 && split("/", var.pod_cidr)[1] <= 20
+    error_message = "Pod CIDR block must have a subnet mask between /10 and /20."
+  }
+}
+
 variable "private_domain_name" {
   description = "Route53 domain name for private records"
   type        = string

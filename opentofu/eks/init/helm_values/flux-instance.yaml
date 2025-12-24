@@ -1,0 +1,78 @@
+# Flux Instance Helm values
+# Dynamic values (sync.url, sync.ref, sync.path) are passed via --set in the Terramate script
+# See: opentofu/eks/workflows.tm.hcl
+
+instance:
+  distribution:
+    version: "2.x"
+    registry: "ghcr.io/fluxcd"
+    artifact: "oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests"
+  components:
+    - source-controller
+    - kustomize-controller
+    - helm-controller
+    - notification-controller
+    # Uncomment for image automation:
+    # - image-reflector-controller
+    # - image-automation-controller
+  cluster:
+    type: kubernetes
+    networkPolicy: true
+  storage:
+    class: "gp3"
+    size: "5Gi"
+  sync:
+    kind: GitRepository
+    pullSecret: "flux-system"
+  kustomize:
+    patches:
+      # Add GitHub provider to GitRepository
+      - patch: |
+          - op: add
+            path: /spec/provider
+            value: github
+        target:
+          kind: GitRepository
+      # Tune source-controller resources
+      - patch: |
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --concurrent=10
+          - op: replace
+            path: /spec/template/spec/containers/0/resources/requests/cpu
+            value: 100m
+          - op: replace
+            path: /spec/template/spec/containers/0/resources/requests/memory
+            value: 128Mi
+        target:
+          kind: Deployment
+          name: source-controller
+      # Tune kustomize-controller resources
+      - patch: |
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --concurrent=6
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --requeue-dependency=10s
+          - op: replace
+            path: /spec/template/spec/containers/0/resources/requests/cpu
+            value: 200m
+          - op: replace
+            path: /spec/template/spec/containers/0/resources/requests/memory
+            value: 256Mi
+        target:
+          kind: Deployment
+          name: kustomize-controller
+      # Allow ingress from all namespaces for Gateway API L7 proxy
+      # The default allow-egress policy only allows ingress from same namespace,
+      # which blocks Cilium Gateway API L7 proxy traffic
+      - patch: |
+          - op: replace
+            path: /spec/ingress/0/from
+            value:
+              - podSelector: {}
+              - namespaceSelector: {}
+        target:
+          kind: NetworkPolicy
+          name: allow-egress

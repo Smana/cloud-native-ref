@@ -1,0 +1,10 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: karpenter
+  namespace: kube-system
+spec:
+  interval: 10m
+  url: oci://public.ecr.aws/karpenter/karpenter
+  ref:
+    semver: "1.8.2"

@@ -53,10 +53,17 @@ Edit `opentofu/config.tm.hcl` with your environment:
 
 ```hcl
 globals {
-  region           = "eu-west-3"          # Your AWS region
-  eks_cluster_name = "mycluster-0"        # Your cluster name
-  openbao_url      = "https://bao.priv.cloud.example.com:8200"
-  # ... other configuration
+  region           = "eu-west-3"
+  eks_cluster_name = "mycluster-0"
+
+  # Helm versions for EKS bootstrap
+  cilium_version        = "1.18.5"
+  flux_operator_version = "0.38.1"
+  flux_instance_version = "0.38.1"
+
+  # Flux sync and OpenBao configuration
+  flux_sync_repository_url = "https://github.com/YOUR_ORG/cloud-native-ref.git"
+  openbao_url              = "https://bao.priv.cloud.example.com:8200"
 }
 ```
 
@@ -66,17 +73,21 @@ globals {
 export TF_VAR_tailscale_api_key=<YOUR_TAILSCALE_API_KEY>
 ```
 
-**3. Deploy Everything**
+**3. Deploy Infrastructure**
 
 ```bash
+# Deploy network and OpenBao
 cd opentofu
 terramate script run deploy
+
+# Deploy EKS (two-stage: cluster + Cilium/Flux)
+cd eks/init && terramate script run deploy
 ```
 
 This deploys in order:
 1. **Network**: VPC, subnets, Route53, Tailscale VPN (~5 min)
 2. **OpenBao**: 5-node HA cluster for secrets/PKI (~10 min)
-3. **EKS**: Kubernetes cluster with Flux (~15 min)
+3. **EKS**: Kubernetes with Cilium CNI and Flux (~15 min)
 
 **4. Verify Deployment**
 
@@ -198,7 +209,9 @@ Security is built-in, not bolted-on:
 ├── opentofu/                      # 🔧 Infrastructure as Code
 │   ├── network/                   # VPC, Tailscale VPN
 │   ├── openbao/                   # Secrets management
-│   └── eks/                       # Kubernetes cluster
+│   └── eks/                       # Kubernetes cluster (two-stage)
+│       ├── init/                  # Stage 1: EKS + bootstrap addons
+│       └── configure/             # Stage 2: Cilium + Flux
 ├── flux/                          # 🚀 Flux operator and configuration
 ├── clusters/mycluster-0/          # Cluster-specific Kustomizations
 ├── infrastructure/                # 🏗️ Platform infrastructure

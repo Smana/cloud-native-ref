@@ -1,0 +1,10 @@
+# Trivy configuration for EKS OpenTofu module
+
+scan:
+  skip-dirs:
+    # Downloaded Terraform modules
+    - .terraform
+
+misconfiguration:
+  # Use the repository's trivyignore file
+  ignorefile: "../../.trivyignore.yaml"

@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - helmrelease.yaml
+  - httproute.yaml
+  - externalsecret-flux-ui-oidc.yaml
+  - rbac.yaml

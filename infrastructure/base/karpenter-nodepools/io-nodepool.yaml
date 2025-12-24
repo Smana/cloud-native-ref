@@ -1,0 +1,44 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: io
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: io
+      startupTaints:
+        - key: node.cilium.io/agent-not-ready
+          value: "true"
+          effect: NoExecute
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: karpenter.k8s.aws/instance-cpu
+          operator: Lt
+          values: ["26"]
+        - key: karpenter.k8s.aws/instance-memory
+          operator: Lt
+          values: ["50001"]
+        - key: karpenter.k8s.aws/instance-local-nvme
+          operator: Gt
+          values: ["100"]
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: ["c", "i", "m", "r"]
+      taints:
+        - key: ogenki/io
+          value: "true"
+          effect: NoSchedule
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 30s
+  limits:
+    cpu: "20"
+    memory: 64Gi

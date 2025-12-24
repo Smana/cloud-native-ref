@@ -103,7 +103,7 @@ jobs:
           version: "latest"
           verb: call
           module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.1.3
-          args: validate --manifests "." --exclude ".github/*,opentofu/*" --env "domain_name:cluster.local,cluster_name:foobar,region:eu-west-3,cert_manager_approle_id:random" --kustomize --flux --catalog
+          args: validate --manifests "." --exclude ".github/*,opentofu/*" --env "domain_name:cluster.local,cluster_name:foobar,region:eu-west-3,environment:dev,cert_manager_approle_id:random" --kustomize --flux --catalog
 
       - name: Run Polaris configuration validation
         uses: fairwindsops/polaris/.github/actions/setup-polaris@master
@@ -123,10 +123,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@master
-        with:
-          severity: warning
-          scandir: "./scripts"
-        env:
-          SHELLCHECK_OPTS: -x
+        run: |
+          find ./scripts -name "*.sh" -type f -print0 | xargs -0 shellcheck -x -S warning
