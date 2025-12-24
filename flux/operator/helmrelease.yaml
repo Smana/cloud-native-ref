@@ -24,7 +24,7 @@ spec:
           sessionDuration: 24h
           oauth2:
             provider: OIDC
-            issuerURL: "https://auth.${domain_name}"
+            issuerURL: "https://auth.cloud.ogenki.io"
             # clientID and clientSecret injected from secret via valuesFrom
             scopes:
               - openid
