@@ -7,7 +7,7 @@ spec:
     - alias: bottlerocket@1.49.0
   # Configure ephemeral storage for pods, creating a RAID0 volume from nvme devices for the containers filesystem
   instanceStorePolicy: "RAID0"
-  role: Karpenter-mycluster-0
+  role: Karpenter-${cluster_name}
   subnetSelectorTerms:
     - tags:
         karpenter.sh/discovery: ${environment}

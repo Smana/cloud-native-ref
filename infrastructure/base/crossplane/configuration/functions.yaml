@@ -15,8 +15,6 @@ metadata:
     # render.crossplane.io/runtime: Development
 spec:
   package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.12.0
-  # package: ghcr.io/smana/cloud-native-ref/function-kcl:test-ready-fix-v2
-  # Using custom image - official versions don't properly handle krm.kcl.dev/ready for native K8s resources
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Function

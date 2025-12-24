@@ -6,7 +6,7 @@
 # Usage:
 #   cd opentofu/eks/init
 #   terramate script run deploy                                        # Full deployment (both stages)
-#   FLUX_GIT_REF='refs/heads/feature-branch' terramate script run deploy  # With custom ref
+#   TF_VAR_flux_git_ref='refs/heads/feature-branch' terramate script run deploy  # With custom ref
 #   terramate script run deploy-stage1                                 # Stage 1 only (infrastructure)
 
 script "deploy" {
@@ -29,7 +29,7 @@ script "deploy" {
     description = "Disable VPC CNI/kube-proxy, install Cilium and Flux"
     commands = [
       ["bash", "-c", "cd ../configure && ${global.provisioner} init"],
-      ["bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var='cluster_name=${global.eks_cluster_name}' -var='region=${global.region}' -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='flux_sync_url=${global.flux_sync_repository_url}' -var=\"flux_git_ref=$${FLUX_GIT_REF:-${global.flux_git_ref}}\""],
+      ["bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var='cluster_name=${global.eks_cluster_name}' -var='region=${global.region}' -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='flux_sync_url=${global.flux_sync_repository_url}'"],
     ]
   }
 }

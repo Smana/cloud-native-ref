@@ -67,13 +67,17 @@ opentofu/
 │       ├── README.md
 │       └── docs/             # AppRole, cert-manager, backup
 │
-└── eks/                      # Stage 3: Kubernetes cluster
-    ├── stack.tm.hcl
-    ├── main.tf               # EKS cluster, node groups
-    ├── flux.tf               # Flux GitOps bootstrap
-    ├── crossplane.tf         # Crossplane IAM policies
-    ├── variables.tfvars      # (create this)
-    └── README.md             # Detailed EKS setup
+└── eks/                      # Stage 3: Kubernetes cluster (two-stage)
+    ├── init/                 # Stage 3a: EKS cluster infrastructure
+    │   ├── stack.tm.hcl
+    │   ├── main.tf           # EKS cluster, node groups, bootstrap addons
+    │   ├── kubernetes.tf     # Namespace, secrets, Gateway API CRDs
+    │   ├── karpenter.tf      # Karpenter IAM
+    │   └── variables.tfvars  # (create this)
+    │
+    └── configure/            # Stage 3b: CNI and GitOps
+        ├── main.tf           # Cilium + Flux helm_releases
+        └── variables.tf      # Versions with defaults
 ```
 
 ## Prerequisites
@@ -133,23 +137,24 @@ Edit `opentofu/config.tm.hcl` with your environment values:
 
 ```hcl
 globals {
-  provisioner                      = "tofu"
-  region                           = "eu-west-3"           # Your AWS region
-  profile                          = ""                    # AWS profile name
-  eks_cluster_name                 = "mycluster-0"         # Your cluster name
+  provisioner        = "tofu"
+  region             = "eu-west-3"
+  eks_cluster_name   = "mycluster-0"
+
+  # Helm chart versions for EKS bootstrap
+  cilium_version        = "1.18.5"
+  flux_operator_version = "0.38.1"
+  flux_instance_version = "0.38.1"
+
+  # Flux sync configuration
+  flux_sync_repository_url = "https://github.com/YOUR_ORG/cloud-native-ref.git"
+
+  # OpenBao configuration
   openbao_url                      = "https://bao.priv.cloud.example.com:8200"
   root_token_secret_name           = "openbao/ref/tokens/root"
-  root_ca_secret_name              = "certificates/priv.cloud.example.com/root-ca"
   cert_manager_approle_secret_name = "openbao/ref/approles/cert-manager"
-  cert_manager_approle             = "cert-manager"
 }
 ```
-
-**Key Variables**:
-- `region`: AWS region for deployment
-- `eks_cluster_name`: Unique name for EKS cluster
-- `openbao_url`: OpenBao endpoint (adjust domain)
-- Secret names in AWS Secrets Manager for OpenBao tokens, certificates, AppRoles
 
 ### Stack-Specific Variables
 
@@ -321,80 +326,40 @@ tofu apply -var-file=variables.tfvars
 
 #### Stage 3: EKS Cluster
 
+Two-stage deployment: Stage 1 creates infrastructure, Stage 2 replaces CNI and installs Flux.
+
 ```bash
-cd opentofu/eks
-
-# Initialize
-tofu init
-
-# Plan
-tofu plan -var-file=variables.tfvars
-
-# Apply (single command creates cluster + CNI + storage + GitOps)
-tofu apply -var-file=variables.tfvars
+# Full deployment (both stages)
+cd opentofu/eks/init && terramate script run deploy
 
 # Update kubeconfig
 aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
 
 # Verify
 kubectl get nodes
-kubectl get namespaces
 flux get all
 ```
 
-**Bootstrap Architecture**:
+**Stage 1 (`opentofu/eks/init/`)**: EKS cluster, managed node groups, bootstrap addons (vpc-cni, kube-proxy, coredns, ebs-csi), Gateway API CRDs, IAM roles, flux-system namespace + secrets/ConfigMap.
 
-The EKS cluster uses a **two-stage deployment** via Terramate scripts. This avoids Helm provider v3 plan-time validation issues (EKS endpoint unknown until cluster creation).
+**Stage 2 (`opentofu/eks/configure/`)**:
 
-**Stage 1 - Infrastructure (`tofu apply`)**:
-- EKS Cluster + Managed Node Groups
-- Bootstrap addons: VPC CNI, kube-proxy, eks-pod-identity-agent (before compute)
-- Runtime addons: CoreDNS (with autoscaling), aws-ebs-csi-driver (with Pod Identity)
-- Gateway API CRDs, gp3 StorageClass
-- Karpenter IAM resources (SQS, IAM role, instance profile)
-- flux-system namespace, secrets, ConfigMap with cluster variables
+1. Disable VPC CNI (patch nodeSelector)
+2. Install Cilium (replaces CNI + kube-proxy)
+3. Disable kube-proxy (patch nodeSelector)
+4. Install Flux Operator + Instance
 
-**Stage 2 - CNI and GitOps (`scripts/eks-post-install.sh`)**:
-- Delete VPC CNI addon → remove from Terraform state
-- Install Cilium CNI via Helm (replaces VPC CNI + kube-proxy)
-- Delete kube-proxy addon → remove from Terraform state
-- Restart pods not yet managed by Cilium
-- Wait for CoreDNS and EBS CSI controller
-- Install Flux Operator + Flux Instance via Helm
+**Upgrading versions**:
 
-**Post-bootstrap (Flux manages)**:
-- Karpenter HelmRelease + NodePools/EC2NodeClasses
-- AWS Load Balancer Controller
-- External DNS
-- Crossplane + providers
-- All other infrastructure
-
-**Deployment**:
 ```bash
-cd opentofu/eks
-terramate script run deploy  # Runs both stages automatically
+# Edit opentofu/config.tm.hcl: cilium_version, flux_operator_version, flux_instance_version
+cd opentofu/eks/init && terramate script run deploy
+
+# Or override Flux branch for testing
+TF_VAR_flux_git_ref='refs/heads/feature-branch' terramate script run deploy
 ```
 
-**Upgrading Bootstrap Components**:
-```bash
-# Update versions in opentofu/config.tm.hcl:
-# cilium_version, flux_operator_version, flux_instance_version
-
-# Re-run deployment (idempotent)
-cd opentofu/eks && terramate script run deploy
-```
-
-**What's Created**:
-- EKS cluster (control plane)
-- Managed node group with mixed instances (Bottlerocket)
-- Cilium CNI with eBPF kube-proxy replacement
-- gp3 StorageClass (default) with EBS CSI driver
-- Karpenter IAM for autoscaling
-- Flux Operator + FluxInstance for GitOps
-- Crossplane IAM roles and policies (scoped to `xplane-*` resources)
-- EKS Pod Identity associations
-
-**Post-Deployment**: Flux automatically deploys all Kubernetes resources from Git.
+**Post-bootstrap (Flux manages)**: Karpenter, AWS Load Balancer Controller, External DNS, Crossplane, and all other infrastructure.
 
 ## Terramate Scripts
 
@@ -446,30 +411,20 @@ terramate script run drift detect
 
 Destroy resources in reverse order.
 
-```bash
-terramate script run destroy
-```
-
-**DANGER**: This will delete all infrastructure!
-
 **Safe Destroy Order**:
-1. EKS cluster (**requires special preparation**)
+
+1. EKS cluster (has built-in cleanup)
 2. OpenBao management
 3. OpenBao cluster
 4. Network
 
-**For EKS**: Must run cleanup script first!
+**For EKS**: The destroy script handles cleanup automatically:
+
 ```bash
-./scripts/eks-prepare-destroy.sh
+cd opentofu/eks/init && terramate script run destroy
 ```
 
-This script:
-- Suspends Flux
-- Deletes Gateway resources
-- Deletes EKS Pod Identities
-- Waits for AWS resources to be deleted
-
-**Why?** Terraform can't delete VPC if ENIs/Load Balancers still exist.
+This runs `scripts/eks-prepare-destroy.sh` first, which suspends Flux, deletes Gateways, NodePools, and EPIs before destroying infrastructure.
 
 ## Post-Deployment
 
@@ -624,21 +579,16 @@ tofu apply -var-file=variables.tfvars
 
 **Problem**: VPC has dependent resources (ENIs, Load Balancers).
 
-**Solution**:
+**Solution**: Use the terramate destroy script which handles cleanup automatically:
+
 ```bash
-# Run cleanup script
-./scripts/eks-prepare-destroy.sh
-
-# This script:
-# 1. Suspends Flux
-# 2. Deletes Gateways (removes load balancers)
-# 3. Deletes EKS Pod Identities
-# 4. Waits for resources to be deleted
-# 5. Then safe to destroy
-
-cd opentofu/eks
-tofu destroy -var-file=variables.tfvars
+cd opentofu/eks/init && terramate script run destroy
 ```
+
+This script:
+1. Runs `scripts/eks-prepare-destroy.sh` (suspends Flux, deletes Gateways, NodePools, EPIs)
+2. Destroys Stage 2 (Cilium, Flux)
+3. Destroys Stage 1 (EKS cluster)
 
 ### OpenBao Sealed After SPOT Replacement
 

@@ -27,98 +27,39 @@ The platform is deployed in three sequential stages:
 
 ### EKS Bootstrap Architecture
 
-The EKS cluster is bootstrapped using a **two-stage OpenTofu deployment**. This approach uses separate stacks for infrastructure (stage 1) and addons (stage 2), replacing the temporary CNI/kube-proxy with Cilium.
+Two-stage OpenTofu deployment: Stage 1 creates the EKS cluster with temporary CNI, Stage 2 replaces it with Cilium and installs Flux.
 
-**Why two-stage deployment?**
-- Helm provider requires cluster endpoint known at plan time
-- Stage 2 uses AWS data sources (cluster must exist before planning)
-- VPC CNI + kube-proxy bootstrap nodes and provide ClusterIP routing for CoreDNS/EBS CSI
-- Cilium replaces both VPC CNI (CNI) and kube-proxy (eBPF kube-proxy replacement)
-- Cilium's unmanagedPodWatcher automatically restarts pods to use Cilium networking
-- Clean separation: Stage 1 = infrastructure, Stage 2 = CNI replacement + GitOps
+**Why two stages?** Helm provider needs cluster endpoint at plan time, so Stage 2 runs after the cluster exists.
 
 **Deployment:**
 ```bash
-# Full deployment (both stages)
 cd opentofu/eks/init && terramate script run deploy
-
-# With custom Flux git ref (for testing feature branches)
-cd opentofu/eks/init && FLUX_GIT_REF='refs/heads/my-feature-branch' terramate script run deploy
 ```
 
-**Stage 1 - Infrastructure (`opentofu/eks/init/`):**
-```
-- EKS Cluster + Managed Node Groups
-- Bootstrap addons (before_compute): vpc-cni, kube-proxy, eks-pod-identity-agent
-- Runtime addons: coredns, aws-ebs-csi-driver (with Pod Identity)
-- Gateway API CRDs, Karpenter IAM, Crossplane IAM, StorageClasses
-- flux-system Namespace
-- Secrets (GitHub App, cert-manager AppRole)
-- ConfigMap with cluster variables for Flux substitution
-```
+**Stage 1 (`opentofu/eks/init/`):** EKS cluster, managed node groups, bootstrap addons (vpc-cni, kube-proxy, coredns, ebs-csi), Gateway API CRDs, IAM roles, flux-system namespace + secrets/ConfigMap.
 
-**Stage 2 - Cilium and Flux (`opentofu/eks/configure/`):**
-```
-- Create Cilium CNI ConfigMap (for prefix delegation with secondary CIDR)
-- Disable VPC CNI via kubectl_manifest patch (nodeSelector to non-existent label)
-- Install Cilium CNI with kube-proxy replacement (Helm provider)
-- Cilium's unmanagedPodWatcher restarts pods not managed by Cilium
-- Disable kube-proxy via kubectl_manifest patch (nodeSelector to non-existent label)
-- Install Flux Operator (Helm provider)
-- Install Flux Instance (Helm provider)
-```
+**Stage 2 (`opentofu/eks/configure/`):**
+1. Disable VPC CNI (patch nodeSelector)
+2. Install Cilium (replaces CNI + kube-proxy)
+3. Disable kube-proxy (patch nodeSelector)
+4. Install Flux Operator + Instance
 
-**Idempotency**: Both stages are fully idempotent. Stage 2 uses `kubectl_manifest` with server-side apply to patch DaemonSets (idempotent), and `helm_release` for Cilium/Flux (upgrade is no-op if version unchanged). No `local-exec` provisioners are used.
-
-**Post-bootstrap (Flux manages):**
-```
-- Karpenter HelmRelease + NodePools/EC2NodeClasses
-- AWS Load Balancer Controller
-- External DNS
-- Crossplane + providers
-- All other infrastructure
-```
-
-**Upgrading Bootstrap Components:**
+**Upgrading versions:**
 ```bash
-# Update versions in opentofu/eks/configure/variables.tfvars:
-# - cilium_version, flux_operator_version, flux_instance_version
-
-# Re-run Stage 2 deployment
-cd opentofu/eks/configure && terramate script run deploy
+# Edit opentofu/config.tm.hcl: cilium_version, flux_operator_version, flux_instance_version
+cd opentofu/eks/init && terramate script run deploy
 ```
 
 **Key Files:**
+- `opentofu/config.tm.hcl` - Cilium/Flux versions
 - `opentofu/eks/init/main.tf` - EKS module with bootstrap addons
-- `opentofu/eks/init/kubernetes.tf` - Namespace, secrets, Gateway API CRDs
-- `opentofu/eks/configure/main.tf` - Cilium and Flux helm_releases, addon cleanup
-- `opentofu/eks/configure/cilium-cni-config.tf` - Cilium CNI ConfigMap
-- `opentofu/eks/configure/variables.tfvars` - Cilium/Flux versions and Flux sync config
-- `opentofu/eks/init/helm_values/cilium.yaml` - Cilium Helm values (ENI mode, prefix delegation)
-- `opentofu/eks/init/helm_values/flux-instance.yaml` - Flux Instance Helm values
+- `opentofu/eks/configure/main.tf` - Cilium and Flux helm_releases
+- `opentofu/eks/init/helm_values/cilium.yaml` - Cilium Helm values
 
-**Cilium ENI Prefix Delegation (CURRENTLY DISABLED):**
-Secondary CIDR (100.64.0.0/16) with prefix delegation is **temporarily disabled** due to a Cilium bug
-that causes Gateway API L7 proxy to fail on cross-node traffic.
+**Cilium Prefix Delegation (DISABLED):**
+Secondary CIDR (100.64.0.0/16) is disabled due to Cilium bug #43493 causing Gateway API L7 proxy failures on cross-node traffic. When fixed, uncomment `cilium-cni-config.tf` and related settings in `cilium.yaml`.
 
-Issue: https://github.com/cilium/cilium/issues/43493
-Symptoms:
-- L7 proxy returns 503 "upstream connect error...connection timeout" for cross-node traffic
-- Same-node traffic works fine
-- Direct pod-to-pod/service traffic works fine (issue is specific to L7 proxy)
-- ipcache shows "hastunnel" flags for remote pods despite native routing mode
-
-When Cilium fixes #43493, re-enable by uncommenting:
-- `opentofu/eks/configure/cilium-cni-config.tf` - CNI ConfigMap with `first-interface-index: 1` and `subnet-tags`
-- `opentofu/eks/init/helm_values/cilium.yaml` - `cni.customConf`, `cni.configMap`, `awsEnablePrefixDelegation`
-- `opentofu/eks/configure/main.tf` - dependency on `cilium_cni_config`
-
-Infrastructure still in place:
-- `opentofu/network/network.tf` creates pod subnets tagged with `cilium.io/pod-subnet=true`
-
-**IAM Configuration:**
-- EBS CSI Driver uses EKS Pod Identity (associations defined via addon's `pod_identity_association` in main.tf)
-- Crossplane uses EKS Pod Identity with scoped policies (`xplane-*` resources only)
+**IAM:** EBS CSI and Crossplane use EKS Pod Identity (`xplane-*` resource scope for Crossplane).
 
 ## Common Commands
 
@@ -138,7 +79,7 @@ terramate script run deploy
 cd opentofu/eks/init && terramate script run deploy
 
 # Deploy EKS with a feature branch (for testing)
-cd opentofu/eks/init && FLUX_GIT_REF='refs/heads/my-feature-branch' terramate script run deploy
+TF_VAR_flux_git_ref='refs/heads/my-feature-branch' terramate script run deploy
 
 # Deploy Stage 1 only (infrastructure without Cilium/Flux)
 cd opentofu/eks/init && terramate script run deploy-stage1
