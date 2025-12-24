@@ -123,10 +123,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@master
-        with:
-          severity: warning
-          scandir: "./scripts"
-        env:
-          SHELLCHECK_OPTS: -x
+        run: |
+          find ./scripts -name "*.sh" -type f -print0 | xargs -0 shellcheck -x -S warning
