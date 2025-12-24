@@ -21,6 +21,12 @@ spec:
     initJob:
       backoffLimit: 30 # Wait for the CNPG database instance to be ready
 
+    # Fix for missing alpine/k8s:1.34.2 image (chart default doesn't exist)
+    setupJob:
+      machinekeyWriter:
+        image:
+          tag: "1.35.0"
+
     # Login v2 disabled due to Helm chart bug with pod-level TLS
     # Bug: Init container uses HTTPS for internal connections when TLS.Enabled=true
     # Using embedded login UI instead (same features, simpler architecture)
