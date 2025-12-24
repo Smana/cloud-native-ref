@@ -38,6 +38,14 @@ spec:
         verbs:
           - get
           - list
+      # Flux Operator resources
+      - apiGroups:
+          - fluxcd.controlplane.io
+        resources:
+          - fluxinstances
+        verbs:
+          - get
+          - list
       # Crossplane resources
       - apiGroups:
           - apiextensions.crossplane.io
@@ -165,8 +173,15 @@ spec:
                 app: xplane-image-gallery
 
         - "Cluster: mycluster-0":
+            - Flux UI:
+                href: https://flux-ui-${cluster_name}.priv.${domain_name}
+                description: Flux GitOps Dashboard
+                icon: flux-cd.png
+                namespace: flux-system
+                app: flux-operator
+
             - Hubble UI:
-                href: https://hubble-ui-mycluster-0.priv.cloud.ogenki.io
+                href: https://hubble-ui-${cluster_name}.priv.${domain_name}
                 description: Cilium Network Observability
                 icon: cilium.png
                 namespace: kube-system
@@ -229,4 +244,4 @@ spec:
             columns: 2
           "Cluster: mycluster-0":
             style: row
-            columns: 2
+            columns: 3

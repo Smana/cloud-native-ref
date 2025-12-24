@@ -9,3 +9,10 @@ spec:
   chartRef:
     kind: OCIRepository
     name: flux-operator
+  values:
+    web:
+      enabled: true
+      # Disable the default NetworkPolicy that blocks Gateway API L7 proxy traffic
+      # The allow-egress NetworkPolicy in FluxInstance is already patched to allow ingress
+      networkPolicy:
+        create: false
