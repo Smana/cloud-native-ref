@@ -1,0 +1,34 @@
+# CiliumClusterwideNetworkPolicy to allow Gateway API L7 proxy traffic
+#
+# The Cilium Gateway API L7 proxy (Envoy) uses the reserved:ingress identity
+# when connecting to backend pods. Standard Kubernetes NetworkPolicies cannot
+# match this identity - they can only match pods via podSelector/namespaceSelector.
+#
+# This policy allows traffic from the ingress identity to pods in specific
+# namespaces that have services exposed via Gateway API HTTPRoutes.
+#
+# Without this policy, services in namespaces with NetworkPolicies that don't
+# explicitly allow ingress from all pods (like flux-system's allow-egress policy)
+# will return 503 errors with "upstream connect error...connection timeout".
+#
+# NOTE: This policy uses matchExpressions to target specific namespaces rather
+# than endpointSelector: {} which would affect ALL pods (including Kyverno
+# admission webhooks, breaking kube-apiserver -> webhook communication).
+#
+# Reference: https://docs.cilium.io/en/stable/security/policy/language/#entities-based
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: allow-gateway-l7-proxy
+spec:
+  description: "Allow Gateway API L7 proxy (reserved:ingress) to backend pods"
+  endpointSelector:
+    matchExpressions:
+      - key: io.kubernetes.pod.namespace
+        operator: In
+        values:
+          # Namespaces with services exposed via Gateway API that have NetworkPolicies
+          - flux-system
+  ingress:
+    - fromEntities:
+        - ingress
