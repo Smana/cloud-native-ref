@@ -68,6 +68,7 @@ flowchart TB
 - Services accessible to all users in the tailnet
 
 **Admin Gateway** (`platform-tailscale-admin`) - Use for:
+- GitOps operations (Flux UI)
 - Infrastructure observability (Hubble UI)
 - Incident management (Grafana OnCall)
 - Highly sensitive operational services
@@ -178,7 +179,7 @@ acls = [
 
 **Service Distribution**:
 - **General Gateway** (10 services): Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics (vmagent, vmalertmanager, vmsingle, vmcluster), VictoriaLogs (vlsingle, vlcluster)
-- **Admin Gateway** (3 services): Hubble UI, Grafana OnCall, OnCall RabbitMQ
+- **Admin Gateway** (4 services): Flux UI, Hubble UI, Grafana OnCall, OnCall RabbitMQ
 
 ## How It Works
 
@@ -258,7 +259,7 @@ kubectl logs -n kube-system -l app.kubernetes.io/name=external-dns --tail=50
 - Gateway missing `external-dns: enabled` label
 - HTTPRoute namespace not allowed in Gateway's `allowedRoutes`
   - General Gateway allows: `apps`, `observability`, `tooling`
-  - Admin Gateway allows: `kube-system`, `observability`
+  - Admin Gateway allows: `kube-system`, `observability`, `flux-system`
 
 ### HTTPRoute Not Attached
 

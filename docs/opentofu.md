@@ -330,7 +330,7 @@ tofu init
 # Plan
 tofu plan -var-file=variables.tfvars
 
-# Apply
+# Apply (single command creates cluster + CNI + storage + GitOps)
 tofu apply -var-file=variables.tfvars
 
 # Update kubeconfig
@@ -342,18 +342,59 @@ kubectl get namespaces
 flux get all
 ```
 
+**Bootstrap Architecture**:
+
+The EKS cluster uses a **two-stage deployment** via Terramate scripts. This avoids Helm provider v3 plan-time validation issues (EKS endpoint unknown until cluster creation).
+
+**Stage 1 - Infrastructure (`tofu apply`)**:
+- EKS Cluster + Managed Node Groups
+- Bootstrap addons: VPC CNI, kube-proxy, eks-pod-identity-agent (before compute)
+- Runtime addons: CoreDNS (with autoscaling), aws-ebs-csi-driver (with Pod Identity)
+- Gateway API CRDs, gp3 StorageClass
+- Karpenter IAM resources (SQS, IAM role, instance profile)
+- flux-system namespace, secrets, ConfigMap with cluster variables
+
+**Stage 2 - CNI and GitOps (`scripts/eks-post-install.sh`)**:
+- Delete VPC CNI addon → remove from Terraform state
+- Install Cilium CNI via Helm (replaces VPC CNI + kube-proxy)
+- Delete kube-proxy addon → remove from Terraform state
+- Restart pods not yet managed by Cilium
+- Wait for CoreDNS and EBS CSI controller
+- Install Flux Operator + Flux Instance via Helm
+
+**Post-bootstrap (Flux manages)**:
+- Karpenter HelmRelease + NodePools/EC2NodeClasses
+- AWS Load Balancer Controller
+- External DNS
+- Crossplane + providers
+- All other infrastructure
+
+**Deployment**:
+```bash
+cd opentofu/eks
+terramate script run deploy  # Runs both stages automatically
+```
+
+**Upgrading Bootstrap Components**:
+```bash
+# Update versions in opentofu/config.tm.hcl:
+# cilium_version, flux_operator_version, flux_instance_version
+
+# Re-run deployment (idempotent)
+cd opentofu/eks && terramate script run deploy
+```
+
 **What's Created**:
 - EKS cluster (control plane)
-- Managed node group with mixed instances
-- Karpenter for autoscaling
-- Flux GitOps installation
-- Crossplane IAM roles and policies
-- EKS Pod Identity setup
-- AWS Load Balancer Controller
+- Managed node group with mixed instances (Bottlerocket)
+- Cilium CNI with eBPF kube-proxy replacement
+- gp3 StorageClass (default) with EBS CSI driver
+- Karpenter IAM for autoscaling
+- Flux Operator + FluxInstance for GitOps
+- Crossplane IAM roles and policies (scoped to `xplane-*` resources)
+- EKS Pod Identity associations
 
 **Post-Deployment**: Flux automatically deploys all Kubernetes resources from Git.
-
-**Detailed Guide**: [EKS Setup](../opentofu/eks/README.md)
 
 ## Terramate Scripts
 
@@ -738,7 +779,6 @@ tofu apply -var-file=variables.tfvars
 - [Network Setup](../opentofu/network/README.md)
 - [OpenBao Cluster](../opentofu/openbao/cluster/README.md)
 - [OpenBao Management](../opentofu/openbao/management/README.md)
-- [EKS Setup](../opentofu/eks/README.md)
 - [Technology Choices](./technology-choices.md) - Why OpenTofu, Terramate
 - [GitOps](./gitops.md) - What happens after Flux bootstraps
 - [Ingress](./ingress.md) - Tailscale VPN access
