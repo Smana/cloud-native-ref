@@ -3,8 +3,28 @@
 This module deploys several things:
 
 * Base network resources: VPC, subnets
-* A route53 private zone
-* A Tailscale [Subnet Router](https://tailscale.com/kb/1019/subnets) in order to access to securely access to private resources
+* **Pod subnets** with secondary CIDR (100.64.0.0/16) for Cilium ENI prefix delegation
+* A Route53 private zone
+* A Tailscale [Subnet Router](https://tailscale.com/kb/1019/subnets) for secure access to private resources
+
+## Network Architecture
+
+```
+VPC: 10.0.0.0/16 (primary CIDR)
+├── Private Subnets (nodes): 10.0.0.0/20, 10.0.16.0/20, 10.0.32.0/20
+├── Public Subnets: 10.0.48.0/24, 10.0.49.0/24, 10.0.50.0/24
+└── Intra Subnets (control plane): 10.0.52.0/24, 10.0.53.0/24, 10.0.54.0/24
+
+Secondary CIDR: 100.64.0.0/16 (CG-NAT space for pods)
+└── Pod Subnets: 100.64.0.0/18, 100.64.64.0/18, 100.64.128.0/18
+    (16,384 IPs per AZ with prefix delegation)
+```
+
+**Why Secondary CIDR for Pods?**
+- Separates node IPs from pod IPs for clearer network management
+- Uses CG-NAT space (100.64.0.0/10) to avoid conflicts
+- Enables Cilium ENI prefix delegation (/28 = 16 IPs per allocation)
+- Provides massive pod density without IP exhaustion
 
 ## Prerequisites
 

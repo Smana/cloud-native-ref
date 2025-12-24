@@ -10,6 +10,11 @@ pki_domains = [
   "cluster.local",
   "priv.cloud.ogenki.io"
 ]
+# Include both VPC CIDR and Pod CIDR (secondary CIDR for Cilium ENI prefix delegation)
+allowed_cidr_blocks = [
+  "10.0.0.0/16",  # VPC CIDR
+  "100.64.0.0/16" # Pod CIDR (secondary CIDR)
+]
 tags = {
   project = "cloud-native-ref"
   owner   = "Smana"
