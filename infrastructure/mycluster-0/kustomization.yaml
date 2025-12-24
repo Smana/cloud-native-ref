@@ -8,3 +8,4 @@ resources:
   - ../base/cloudnative-pg
   - ../base/external-dns
   - ../base/gapi
+  # Karpenter is deployed via separate Flux Kustomization (see clusters/mycluster-0/infrastructure.yaml)

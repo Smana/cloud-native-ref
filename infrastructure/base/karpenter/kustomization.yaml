@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: karpenter
+
+# NodePools and EC2NodeClasses are in infrastructure/base/karpenter-nodepools
+# with a separate Flux Kustomization that depends on this one (CRDs must be installed first)
+resources:
+  - namespace.yaml
+  - helmrelease.yaml
