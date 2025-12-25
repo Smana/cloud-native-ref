@@ -29,7 +29,7 @@ script "deploy" {
     description = "Disable VPC CNI/kube-proxy, install Cilium and Flux"
     commands = [
       ["bash", "-c", "cd ../configure && ${global.provisioner} init"],
-      ["bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var='cluster_name=${global.eks_cluster_name}' -var='region=${global.region}' -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='flux_sync_url=${global.flux_sync_repository_url}'"],
+      ["bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var=\"flux_git_ref=$${TF_VAR_flux_git_ref}\"}"],
     ]
   }
 }
