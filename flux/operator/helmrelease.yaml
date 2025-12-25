@@ -10,6 +10,8 @@ spec:
     kind: OCIRepository
     name: flux-operator
   values:
+    # Enable debug logging to see impersonated identity
+    logLevel: "debug"
     web:
       enabled: true
       # Disable the default NetworkPolicy that blocks Gateway API L7 proxy traffic
@@ -30,14 +32,14 @@ spec:
               - openid
               - profile
               - email
-              - groups
             # Map Zitadel claims to Kubernetes identity
-            # Note: Enable "User Info inside ID Token" in Zitadel for email/name claims
+            # Zitadel Action sets both 'roles' and 'groups' claims
+            # Using 'groups' to match Flux Operator's standard expectation
             impersonation:
-              # Using 'sub' (subject) which is always present in OIDC tokens
-              username: "claims.sub"
-              # Zitadel provides roles in 'roles' claim (requires project role assertion)
-              groups: "claims.roles"
+              # Use email for human-readable usernames in audit logs
+              username: "claims.email"
+              # Zitadel Action: api.v1.claims.setClaim('groups', grants)
+              groups: "claims.groups"
             # Restrict access to @ogenki.io email domain
             # Note: Requires "User Info inside ID Token" enabled in Zitadel
             # validations:
