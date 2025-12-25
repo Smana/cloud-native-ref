@@ -62,20 +62,20 @@ resource "helm_release" "cilium" {
 
   values = [file("${path.module}/../init/helm_values/cilium.yaml")]
 
-  set {
-    name  = "cluster.name"
-    value = var.cluster_name
-  }
-
-  set {
-    name  = "k8sServiceHost"
-    value = local.api_endpoint
-  }
-
-  set {
-    name  = "k8sServicePort"
-    value = "443"
-  }
+  set = [
+    {
+      name  = "cluster.name"
+      value = var.cluster_name
+    },
+    {
+      name  = "k8sServiceHost"
+      value = local.api_endpoint
+    },
+    {
+      name  = "k8sServicePort"
+      value = "443"
+    }
+  ]
 
   wait    = true
   timeout = 600
@@ -150,20 +150,20 @@ resource "helm_release" "flux_instance" {
 
   values = [file("${path.module}/../init/helm_values/flux-instance.yaml")]
 
-  set {
-    name  = "instance.sync.url"
-    value = var.flux_sync_url
-  }
-
-  set {
-    name  = "instance.sync.ref"
-    value = var.flux_git_ref
-  }
-
-  set {
-    name  = "instance.sync.path"
-    value = "clusters/${var.cluster_name}"
-  }
+  set = [
+    {
+      name  = "instance.sync.url"
+      value = var.flux_sync_url
+    },
+    {
+      name  = "instance.sync.ref"
+      value = var.flux_git_ref
+    },
+    {
+      name  = "instance.sync.path"
+      value = "clusters/${var.cluster_name}"
+    }
+  ]
 
   wait    = true
   timeout = 300
