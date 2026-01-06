@@ -459,6 +459,75 @@ spec:
 - EKSPodIdentity (Crossplane XR with actual status)
 - S3 Bucket (Managed Resource with proper conditions)
 
+## Spec-Driven Development (SDD)
+
+This repository uses lightweight SDD for non-trivial changes. Based on GitHub Spec Kit, the workflow follows a 4-stage approach: **Specify → Plan → Tasks → Implement**.
+
+### When Specs Are Required
+
+| Change Type | Examples | Command |
+|-------------|----------|---------|
+| New Crossplane Composition | New KCL module, new XRD | `/specify composition` |
+| Major Infrastructure | New OpenTofu stack, VPC changes, EKS upgrades | `/specify infrastructure` |
+| Security Changes | Network policies, RBAC, PKI, secrets | `/specify security` |
+| Platform Capabilities | Multi-component features, observability | `/specify platform` |
+
+### When to Skip Specs
+
+- Version bumps and Renovate PRs
+- Documentation-only changes
+- Single-file bug fixes
+- Minor configuration changes
+- HelmRelease value tweaks
+
+### SDD Workflow
+
+```bash
+# 1. Create specification
+/specify composition "Add Valkey caching composition"
+
+# 2. Fill in the generated spec template
+# Edit docs/specs/active/XXXX-name.md
+# - Complete user stories with Given/When/Then acceptance scenarios
+# - Define functional requirements (FR-001, FR-002...)
+# - Set success criteria (SC-001, SC-002...)
+# - Resolve [NEEDS CLARIFICATION: ...] markers
+
+# 3. Self-review using persona checklists in the template
+
+# 4. Implement changes following the spec
+
+# 5. Create PR (auto-references spec)
+/create-pr
+
+# 6. After merge, archive the spec
+mv docs/specs/active/XXXX-*.md docs/specs/completed/
+```
+
+### Review Personas
+
+Each spec template includes a self-review checklist for 4 personas:
+
+- **Project Manager (PM)**: Problem statement, user stories, acceptance criteria, scope
+- **Platform Engineer**: Design patterns, API consistency, KCL patterns, naming conventions
+- **Security & Compliance**: Zero-trust, least privilege, secrets management, network policies
+- **SRE**: Observability, HA requirements, failure modes, disaster recovery
+
+### Spec Templates
+
+Templates are in `docs/specs/templates/`:
+- `spec-crossplane-composition.md` - For new Crossplane compositions
+- `spec-infrastructure.md` - For OpenTofu/Terramate changes
+- `spec-security.md` - For security-impacting changes
+- `spec-platform-capability.md` - For multi-component features
+
+### Architecture Decision Records (ADRs)
+
+Significant architectural decisions are recorded in `docs/decisions/`:
+- Use ADRs for technology choices affecting multiple components
+- Reference ADRs from specs when relevant
+- ADRs capture the "why" behind decisions (see ADR-0001 for KCL decision)
+
 ## Security Considerations
 
 ### OpenBao PKI Structure

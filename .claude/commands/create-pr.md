@@ -63,3 +63,56 @@ flowchart LR
 ## 🏷️ Labels
 [labels]
 ```
+
+## Spec Detection (SDD Integration)
+
+Before generating the PR, check if a spec exists or is recommended:
+
+### Step 1.5: Detect Spec-Requiring Changes
+
+```bash
+CHANGED_PATHS=$(git diff origin/$BASE...HEAD --name-only)
+```
+
+Check for patterns that typically require specs:
+
+| Pattern | Spec Type |
+|---------|-----------|
+| `kcl/**/*.k`, `*-composition.yaml` | composition |
+| `opentofu/**/*.tf`, `terramate.tm.hcl` | infrastructure |
+| `*networkpolicy*`, `*rbac*`, `openbao/**` | security |
+| Multiple directories + HelmRelease | platform |
+
+### Step 1.6: Search for Existing Spec
+
+```bash
+SPEC_FILE=$(ls -1 docs/specs/active/*.md 2>/dev/null | head -1)
+```
+
+### If Spec Exists
+
+Add to PR body after Summary:
+
+```markdown
+## 📋 Specification
+
+This PR implements: [docs/specs/active/XXXX-name.md](link)
+
+**Spec Status**: [Draft|In Review|Approved]
+```
+
+### If No Spec But Recommended
+
+Add warning after Summary:
+
+```markdown
+## ⚠️ Spec Recommendation
+
+This PR contains changes that may benefit from a formal specification:
+- **Detected type**: [composition|infrastructure|security|platform]
+- **Affected paths**: [key paths]
+
+Consider running `/specify [type]` before implementation to ensure thorough planning.
+```
+
+Skip warning for trivial changes (docs only, single config file, version bumps).
