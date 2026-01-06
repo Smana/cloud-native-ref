@@ -6,6 +6,7 @@
 **Author**: [Name]
 **Created**: YYYY-MM-DD
 **Last Updated**: YYYY-MM-DD
+**Constitution**: [Platform Constitution](../constitution.md) - All specs MUST comply
 
 ---
 
@@ -104,6 +105,83 @@ spec:
 - [ ] Existing composition: `SQLInstance` (if database needed)
 - [ ] Existing composition: `EKSPodIdentity` (if AWS access needed)
 - [ ] External operator: [operator/controller required]
+
+### AWS Service Integration (if applicable)
+
+<!-- DELETE THIS SECTION if the composition does not use AWS services -->
+
+When a composition manages AWS resources, two things are required:
+
+1. **Crossplane IAM permissions** - Crossplane needs IAM permissions to create/manage the AWS resources
+2. **AWS Provider** - The appropriate `provider-aws-*` package must be installed
+
+#### OpenTofu Changes Required
+
+**File**: `opentofu/eks/init/iam.tf`
+
+Add IAM policy for Crossplane to manage the new AWS service:
+
+```hcl
+# [SERVICE] Policy - Allow Crossplane to manage xplane-* resources
+resource "aws_iam_policy" "crossplane_[service]" {
+  name        = "${var.name}-crossplane-[service]"
+  description = "Policy for Crossplane to manage [SERVICE] resources"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          # Add required actions for resource lifecycle
+          "[service]:Create*",
+          "[service]:Delete*",
+          "[service]:Describe*",
+          "[service]:Update*",
+          "[service]:Tag*",
+          "[service]:Untag*"
+        ]
+        # IMPORTANT: Restrict to xplane-* prefix for security
+        Resource = "arn:aws:[service]:*:${data.aws_caller_identity.this.account_id}:xplane-*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "[service]:List*"  # List actions often require "*" resource
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "crossplane_[service]" {
+  role       = module.crossplane_pod_identity.iam_role_name
+  policy_arn = aws_iam_policy.crossplane_[service].arn
+}
+```
+
+**Security Checklist**:
+- [ ] Resource ARN restricted to `xplane-*` prefix
+- [ ] Only necessary actions included (principle of least privilege)
+- [ ] Delete actions reviewed (consider removing for stateful resources)
+- [ ] List actions use `*` only when AWS requires it
+
+#### Crossplane Provider Installation
+
+**File**: `infrastructure/base/crossplane/providers/provider-aws-[service].yaml`
+
+```yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-[service]
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-[service]:v1.x.x
+  runtimeConfigRef:
+    name: default
+```
+
+**Note**: Check [Upbound Marketplace](https://marketplace.upbound.io/providers) for the latest provider version.
 
 ---
 
@@ -218,6 +296,8 @@ Run `./scripts/validate-kcl-compositions.sh` which performs:
 - [ ] Secrets via External Secrets (no hardcoded)
 - [ ] Network policies defined
 - [ ] Security context enforced (non-root, read-only FS)
+- [ ] IAM policies scoped to `xplane-*` resources (if AWS services used)
+- [ ] Delete permissions reviewed for stateful resources
 
 ### SRE
 
@@ -231,12 +311,32 @@ Run `./scripts/validate-kcl-compositions.sh` which performs:
 
 ## Rollout Plan
 
-1. [ ] Merge composition to main branch
-2. [ ] CI publishes KCL module to GHCR (`ghcr.io/smana/cloud-native-ref/crossplane-[name]:<version>`)
-3. [ ] Update composition reference in cluster
-4. [ ] Test with example claim in staging
-5. [ ] Document in `docs/crossplane.md`
-6. [ ] Announce to users (if applicable)
+### Phase 1: Infrastructure Prerequisites (if AWS services used)
+
+<!-- DELETE THIS PHASE if no AWS services are used -->
+
+1. [ ] **OpenTofu**: Add IAM policy to `opentofu/eks/init/iam.tf`
+2. [ ] **OpenTofu**: Apply changes via `cd opentofu/eks/init && terramate script run deploy`
+3. [ ] **Crossplane**: Add AWS provider to `infrastructure/base/crossplane/providers/`
+
+### Phase 2: Composition Deployment
+
+4. [ ] Merge composition to main branch
+5. [ ] CI publishes KCL module to GHCR (`ghcr.io/smana/cloud-native-ref/crossplane-[name]:<version>`)
+6. [ ] Flux deploys composition and XRD to cluster
+
+### Phase 3: Validation
+
+7. [ ] Test basic example claim in staging
+8. [ ] Test complete example claim with all options
+9. [ ] Verify generated resources are correct
+10. [ ] Verify connection secrets (if applicable)
+
+### Phase 4: Documentation & Release
+
+11. [ ] Document in `docs/crossplane.md`
+12. [ ] Add usage examples to composition README
+13. [ ] Announce to users (if applicable)
 
 ---
 

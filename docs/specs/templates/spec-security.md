@@ -7,6 +7,7 @@
 **Created**: YYYY-MM-DD
 **Last Updated**: YYYY-MM-DD
 **Security Review Required**: Yes
+**Constitution**: [Platform Constitution](../constitution.md) - All specs MUST comply
 
 ---
 

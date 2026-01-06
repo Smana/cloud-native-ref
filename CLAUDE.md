@@ -461,7 +461,12 @@ spec:
 
 ## Spec-Driven Development (SDD)
 
-This repository uses lightweight SDD for non-trivial changes. Based on GitHub Spec Kit, the workflow follows a 4-stage approach: **Specify → Plan → Tasks → Implement**.
+This repository uses lightweight SDD for non-trivial changes. Based on GitHub Spec Kit, the workflow follows: **Specify → Clarify → Plan → Tasks → Implement → Validate**.
+
+**Key Documents**:
+- [Platform Constitution](docs/specs/constitution.md) - Non-negotiable principles all specs must follow
+- [Architecture Decision Records](docs/decisions/) - Cross-cutting technology choices
+- [SDD Workflow](docs/specs/README.md) - Complete documentation
 
 ### When Specs Are Required
 
@@ -483,26 +488,45 @@ This repository uses lightweight SDD for non-trivial changes. Based on GitHub Sp
 ### SDD Workflow
 
 ```bash
-# 1. Create specification
+# 1. Create specification (creates GitHub issue + spec file)
 /specify composition "Add Valkey caching composition"
 
 # 2. Fill in the generated spec template
-# Edit docs/specs/active/XXXX-name.md
+# Edit docs/specs/active/XXXX-#XXX-name.md
 # - Complete user stories with Given/When/Then acceptance scenarios
 # - Define functional requirements (FR-001, FR-002...)
 # - Set success criteria (SC-001, SC-002...)
-# - Resolve [NEEDS CLARIFICATION: ...] markers
+# - Add [NEEDS CLARIFICATION: ...] markers for uncertain items
 
-# 3. Self-review using persona checklists in the template
+# 3. Resolve clarifications interactively
+/clarify
 
-# 4. Implement changes following the spec
+# 4. Generate task breakdown (optional)
+/tasks
 
-# 5. Create PR (auto-references spec)
+# 5. Validate spec is complete
+./scripts/validate-spec.sh
+
+# 6. Self-review using persona checklists in the template
+
+# 7. Implement changes following the spec
+
+# 8. Create PR (auto-references spec)
 /create-pr
 
-# 6. After merge, archive the spec
+# 9. After merge, archive the spec
 mv docs/specs/active/XXXX-*.md docs/specs/completed/
+gh issue close XXX
 ```
+
+### SDD Commands
+
+| Command | Description |
+|---------|-------------|
+| `/specify [type]` | Creates GitHub issue + spec file from template |
+| `/clarify [file]` | Resolves `[NEEDS CLARIFICATION]` markers interactively |
+| `/tasks [file]` | Generates task breakdown from spec's Rollout Plan |
+| `./scripts/validate-spec.sh` | Validates spec completeness and constitution compliance |
 
 ### Review Personas
 

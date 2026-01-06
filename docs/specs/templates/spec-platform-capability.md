@@ -6,6 +6,7 @@
 **Author**: [Name]
 **Created**: YYYY-MM-DD
 **Last Updated**: YYYY-MM-DD
+**Constitution**: [Platform Constitution](../constitution.md) - All specs MUST comply
 
 ---
 

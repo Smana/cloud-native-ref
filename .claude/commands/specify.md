@@ -51,11 +51,11 @@ From description, create a slug:
 Create a GitHub issue as the immutable anchor for discussion and tracking:
 
 ```bash
-# Create issue using the spec template
-gh issue create \
+# Create issue and capture the issue number directly from the output
+# This avoids race conditions in multi-user repos
+ISSUE_URL=$(gh issue create \
   --title "[SPEC] ${TITLE}" \
   --label "spec,${TYPE}" \
-  --template "spec.md" \
   --body "## Summary
 ${DESCRIPTION}
 
@@ -66,10 +66,10 @@ ${TYPE}
 Will be created at: \`docs/specs/active/XXXX-#ISSUE-${SLUG}.md\`
 
 ---
-_This issue tracks a formal specification. See the linked spec file for full details._"
+_This issue tracks a formal specification. See the linked spec file for full details._")
 
-# Capture the issue number
-ISSUE_NUM=$(gh issue list --limit 1 --json number --jq '.[0].number')
+# Extract issue number from the returned URL
+ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oP 'issues/\K\d+$')
 ```
 
 **Why GitHub Issue first?**
@@ -81,9 +81,14 @@ ISSUE_NUM=$(gh issue list --limit 1 --json number --jq '.[0].number')
 ### Step 4: Generate Spec Number
 
 ```bash
-# Find next spec number
-EXISTING=$(ls -1 docs/specs/active/*.md docs/specs/completed/*.md 2>/dev/null | wc -l)
-SPEC_NUM=$(printf "%04d" $((EXISTING + 1)))
+# Find next spec number by extracting the highest existing number
+# This prevents collisions if specs are deleted (counting files would reuse numbers)
+MAX_NUM=$(ls -1 docs/specs/active/*.md docs/specs/completed/*.md 2>/dev/null | \
+  sed 's|.*/||' | \
+  grep -oP '^\d{4}(?=-)' | \
+  sort -rn | \
+  head -1)
+SPEC_NUM=$(printf "%04d" $((10#${MAX_NUM:-0} + 1)))
 ```
 
 ### Step 5: Create Spec File
@@ -116,11 +121,33 @@ gh issue comment ${ISSUE_NUM} --body "Spec file created: [\`${SPEC_FILE}\`](${SP
 
 ### Step 8: Read Related Context
 
-To help fill in the template, scan relevant files:
-- `CLAUDE.md` for project patterns and validation requirements
-- `docs/crossplane.md` for composition patterns (if composition type)
-- `docs/technology-choices.md` for architectural context
-- Existing similar specs in `docs/specs/completed/`
+To help fill in the template, scan relevant files (only if they exist):
+
+```bash
+# Always read these core files
+[ -f "CLAUDE.md" ] && echo "Read: CLAUDE.md"
+[ -f "docs/specs/constitution.md" ] && echo "Read: constitution.md (platform principles)"
+
+# Type-specific context (only if files exist)
+if [ "$TYPE" = "composition" ]; then
+  [ -f "docs/crossplane.md" ] && echo "Read: docs/crossplane.md"
+fi
+
+# Optional architectural context
+[ -f "docs/technology-choices.md" ] && echo "Read: docs/technology-choices.md"
+
+# Always scan similar completed specs for patterns
+ls docs/specs/completed/*.md 2>/dev/null | head -3
+```
+
+**Required context files**:
+- `CLAUDE.md` - Project patterns and validation requirements
+- `docs/specs/constitution.md` - Platform-wide non-negotiable principles
+
+**Optional context files** (read if they exist):
+- `docs/crossplane.md` - Composition patterns (for composition type)
+- `docs/technology-choices.md` - Architectural context
+- `docs/specs/completed/*.md` - Similar completed specs for reference
 
 ### Step 9: Output
 

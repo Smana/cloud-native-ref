@@ -4,11 +4,15 @@ This directory contains formal specifications for non-trivial changes to the clo
 
 ## Overview
 
-SDD ensures thorough planning before implementation, reducing rework and catching issues early. Based on [GitHub Spec Kit](https://github.com/github/spec-kit), our lightweight workflow follows 4 stages:
+SDD ensures thorough planning before implementation, reducing rework and catching issues early. Based on [GitHub Spec Kit](https://github.com/github/spec-kit), our workflow follows these stages:
 
 ```
-Specify → Plan → Tasks → Implement
+Specify → Clarify → Plan → Tasks → Implement → Validate
 ```
+
+**Key Documents**:
+- [Platform Constitution](./constitution.md) - Non-negotiable principles all specs must follow
+- [Architecture Decision Records](../decisions/) - Cross-cutting technology decisions
 
 ## When to Create a Spec
 
@@ -40,16 +44,28 @@ Run `/specify [type]` when making:
 #    - User stories with Given/When/Then acceptance scenarios
 #    - Functional requirements (FR-001, FR-002...)
 #    - Success criteria (SC-001, SC-002...)
-#    - Resolve [NEEDS CLARIFICATION: ...] markers
+#    - Add [NEEDS CLARIFICATION: ...] markers for uncertain items
 
-# 3. Self-review using the persona checklists
+# 3. Resolve clarifications interactively
+/clarify
+# Walks through each [NEEDS CLARIFICATION] marker and updates the spec
 
-# 4. Implement changes following the spec
+# 4. Generate task breakdown (optional)
+/tasks
+# Creates dependency-ordered tasks from the spec's Rollout Plan
 
-# 5. Create PR (auto-references issue: "Implements #XXX")
+# 5. Validate spec is complete
+./scripts/validate-spec.sh
+# Checks: required sections, no unresolved markers, constitution compliance
+
+# 6. Self-review using the 4-persona checklists
+
+# 7. Implement changes following the spec
+
+# 8. Create PR (auto-references issue: "Implements #XXX")
 /create-pr
 
-# 6. After merge, archive the spec and close the issue
+# 9. After merge, archive the spec and close the issue
 mv docs/specs/active/XXXX-*.md docs/specs/completed/
 gh issue close XXX
 ```
@@ -70,6 +86,7 @@ The issue provides discoverability and discussion; the spec file contains implem
 ```
 docs/specs/
 ├── README.md           # This file
+├── constitution.md     # Platform-wide non-negotiable principles
 ├── templates/          # Spec templates (do not edit directly)
 │   ├── spec-crossplane-composition.md
 │   ├── spec-infrastructure.md
@@ -170,12 +187,22 @@ Use `[NEEDS CLARIFICATION: ...]` for unresolved questions:
 
 ## Integration with Claude Code
 
-- `/specify [type]` - Generates spec from template
-- `/create-pr` - Auto-detects specs in `active/` and links them in PR description
-- `/commit` - Standard commit workflow (unchanged)
+| Command | Description |
+|---------|-------------|
+| `/specify [type]` | Creates GitHub issue + spec file from template |
+| `/clarify [file]` | Resolves `[NEEDS CLARIFICATION]` markers interactively |
+| `/tasks [file]` | Generates task breakdown from spec's Rollout Plan |
+| `/create-pr` | Auto-detects specs in `active/` and links them in PR |
+| `/commit` | Standard commit workflow (unchanged) |
+
+**Validation Script**:
+```bash
+./scripts/validate-spec.sh [spec-file]
+```
+Validates: required sections, no unresolved markers, constitution compliance, no placeholders.
 
 ## Related
 
-- [Architecture Decision Records](../decisions/) - For significant technology choices
+- [Platform Constitution](./constitution.md) - Non-negotiable platform principles
+- [Architecture Decision Records](../decisions/) - Cross-cutting technology choices
 - [Crossplane Documentation](../crossplane.md) - Composition patterns
-- [Technology Choices](../technology-choices.md) - Platform decisions

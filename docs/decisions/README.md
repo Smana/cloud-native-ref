@@ -100,18 +100,26 @@ ADRs are numbered sequentially:
 - `0002-adopt-gateway-api.md`
 - etc.
 
-## Relationship to Specs
+## Relationship to Specs and Constitution
 
-ADRs and Specs serve different purposes:
+ADRs, Specs, and Constitution serve different purposes:
 
-| Aspect | ADR | Spec |
-|--------|-----|------|
-| **Focus** | Technology/architectural choices | Feature implementation details |
-| **Scope** | Cross-cutting decisions | Single feature/change |
-| **Lifespan** | Long-term reference | Active during implementation |
-| **Question** | "Why did we choose X?" | "How do we build Y?" |
+| Document | Focus | Scope | Question Answered |
+|----------|-------|-------|-------------------|
+| **ADR** | Technology/architectural choices | Cross-cutting, affects multiple specs | "Why did we choose X?" |
+| **Spec** | Feature implementation details | Single feature/composition | "How do we build Y?" |
+| **Constitution** | Non-negotiable principles | Platform-wide governance | "What rules must all specs follow?" |
 
-A Spec may reference ADRs for context, and implementing a Spec may result in new ADRs.
+**When to use each**:
+- **ADR**: Choosing between technologies that affect multiple features (e.g., KCL vs Go templates)
+- **Spec**: Implementing a specific feature (e.g., Valkey caching composition)
+- **Constitution**: Defining rules that apply to ALL specs (e.g., `xplane-*` naming, security defaults)
+
+**Relationships**:
+- Specs MUST comply with the [Constitution](../specs/constitution.md)
+- Specs MAY reference ADRs for context on technology choices
+- Implementing a Spec MAY result in new ADRs if cross-cutting decisions emerge
+- Constitution amendments require an ADR to document the change
 
 ## Existing ADRs
 
