@@ -5,7 +5,7 @@
 # This avoids circular dependency: addon needs role ARN at plan time
 module "identity_ebs_csi_driver" {
   source  = "terraform-aws-modules/eks-pod-identity/aws"
-  version = "2.6.0"
+  version = "2.7.0"
   name    = "${var.name}-ebs-csi-driver"
 
   attach_aws_ebs_csi_policy = true
@@ -16,7 +16,7 @@ module "identity_ebs_csi_driver" {
 # We only give the required permissions for Crossplane resources we want to manage
 module "identity_crossplane" {
   source  = "terraform-aws-modules/eks-pod-identity/aws"
-  version = "2.6.0"
+  version = "2.7.0"
   name    = "${var.name}-crossplane"
 
   additional_policy_arns = {
