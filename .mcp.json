@@ -1,13 +1,5 @@
 {
   "mcpServers": {
-    "git": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-git"
-      ],
-      "env": {}
-    },
     "flux-operator-mcp": {
       "command": "/usr/local/bin/flux-operator-mcp",
       "args": [
@@ -32,16 +24,6 @@
         "KUBECONFIG": "~/.kube/config"
       }
     },
-    "exa": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "exa-mcp-server"
-      ],
-      "env": {
-        "EXA_API_KEY": "${EXA_API_KEY}"
-      }
-    },
     "victorialogs": {
       "command": "/usr/local/bin/mcp-victorialogs",
       "env": {
@@ -53,6 +35,16 @@
       "env": {
         "VM_INSTANCE_ENTRYPOINT": "https://vm.priv.cloud.ogenki.io",
         "VM_INSTANCE_TYPE": "single"
+      }
+    },
+    "turbot-steampipe": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@turbot/steampipe-mcp"
+      ],
+      "env": {
+        "STEAMPIPE_MCP_WORKSPACE_DATABASE": "${STEAMPIPE_DATABASE_URL}"
       }
     }
   }
