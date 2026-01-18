@@ -472,8 +472,8 @@ This repository uses lightweight SDD for non-trivial changes. Based on GitHub Sp
 
 ### When Specs Are Required
 
-| Change Type | Examples | Command |
-|-------------|----------|---------|
+| Change Type | Examples | Skill |
+|-------------|----------|-------|
 | New Crossplane Composition | New KCL module, new XRD | `/specify composition` |
 | Major Infrastructure | New OpenTofu stack, VPC changes, EKS upgrades | `/specify infrastructure` |
 | Security Changes | Network policies, RBAC, PKI, secrets | `/specify security` |
@@ -521,10 +521,10 @@ mv docs/specs/active/XXXX-*.md docs/specs/completed/
 gh issue close XXX
 ```
 
-### SDD Commands
+### SDD Skills
 
-| Command | Description |
-|---------|-------------|
+| Skill | Description |
+|-------|-------------|
 | `/specify [type]` | Creates GitHub issue + spec file from template |
 | `/clarify [file]` | Resolves `[NEEDS CLARIFICATION]` markers interactively |
 | `/tasks [file]` | Generates task breakdown from spec's Rollout Plan |
