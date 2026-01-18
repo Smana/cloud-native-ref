@@ -11,18 +11,23 @@ egressMasqueradeInterfaces: eth0
 eni:
   enabled: true
   # ==========================================================================
-  # DISABLED: Prefix delegation causes Gateway API L7 proxy cross-node failures
+  # WORKAROUND: Restrict to primary CIDR subnets only
   # Issue: https://github.com/cilium/cilium/issues/43493
   #
-  # When Cilium fixes #43493, uncomment the following AND:
-  # - cilium_cni_config resource in cilium-cni-config.tf
-  # - dependency in main.tf helm_release.cilium
-  # - cni.customConf and cni.configMap below
+  # The secondary CIDR (100.64.0.0/16) causes Gateway API L7 proxy to fail on
+  # cross-node traffic. This filter restricts Cilium to only use primary private
+  # subnets (10.0.0.0/16) which have the internal-elb tag.
+  #
+  # When Cilium fixes #43493, this filter can be changed to use the secondary
+  # CIDR with prefix delegation for higher pod density:
+  # - Change subnetTagsFilter to: cilium.io/pod-subnet: "true"
+  # - Uncomment awsEnablePrefixDelegation: true
+  # - Uncomment cilium_cni_config resource in cilium-cni-config.tf
+  # - Uncomment cni.customConf and cni.configMap below
   # --------------------------------------------------------------------------
+  subnetTagsFilter:
+    - "kubernetes.io/role/internal-elb=1"
   # awsEnablePrefixDelegation: true
-  # # Restrict operator to secondary CIDR subnets only (prevents mixed IPs):
-  # subnetTagsFilter:
-  #   cilium.io/pod-subnet: "true"
   # ==========================================================================
 
 # ==========================================================================
