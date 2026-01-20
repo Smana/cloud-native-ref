@@ -7,4 +7,4 @@ spec:
   interval: 10m
   url: oci://public.ecr.aws/karpenter/karpenter
   ref:
-    semver: "1.8.5"
+    semver: "1.8.6"

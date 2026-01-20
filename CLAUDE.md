@@ -59,6 +59,9 @@ cd opentofu/eks/init && terramate script run deploy
 **Cilium Prefix Delegation (DISABLED):**
 Secondary CIDR (100.64.0.0/16) is disabled due to Cilium bug #43493 causing Gateway API L7 proxy failures on cross-node traffic. When fixed, uncomment `cilium-cni-config.tf` and related settings in `cilium.yaml`.
 
+**Pod Subnet Tagging (IMPORTANT):**
+The pod subnets (100.64.x.x) must NOT have the `kubernetes.io/role/cni` tag. VPC-CNI uses this tag to discover subnets during Stage 1 bootstrap, which creates orphan ENIs when Cilium takes over in Stage 2. Only use `cilium.io/pod-subnet=true` for these subnets. Cilium uses `subnetTagsFilter: kubernetes.io/role/internal-elb=1` which targets the primary CIDR subnets (10.0.x.x).
+
 **IAM:** EBS CSI and Crossplane use EKS Pod Identity (`xplane-*` resource scope for Crossplane).
 
 ## Common Commands

@@ -49,9 +49,12 @@ resource "aws_subnet" "pods" {
   tags = merge(
     local.tags,
     {
-      Name                     = "vpc-${var.region}-${var.env}-pods-${local.azs[count.index]}"
-      "kubernetes.io/role/cni" = 1
-      "cilium.io/pod-subnet"   = "true"
+      Name = "vpc-${var.region}-${var.env}-pods-${local.azs[count.index]}"
+      # NOTE: Do NOT add "kubernetes.io/role/cni" tag here!
+      # VPC-CNI uses that tag to discover subnets during EKS bootstrap (Stage 1).
+      # This causes orphan ENIs when Cilium takes over in Stage 2.
+      # Cilium uses subnetTagsFilter (kubernetes.io/role/internal-elb=1) instead.
+      "cilium.io/pod-subnet" = "true" # For future use when Cilium bug #43493 is fixed
     }
   )
 

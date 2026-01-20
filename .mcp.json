@@ -9,21 +9,6 @@
         "KUBECONFIG": "~/.kube/config"
       }
     },
-    "context7": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@upstash/context7-mcp"
-      ],
-      "env": {}
-    },
-    "kubernetes": {
-      "command": "/usr/local/bin/kubernetes-mcp-server",
-      "args": [],
-      "env": {
-        "KUBECONFIG": "~/.kube/config"
-      }
-    },
     "victorialogs": {
       "command": "/usr/local/bin/mcp-victorialogs",
       "env": {
@@ -46,6 +31,15 @@
       "env": {
         "STEAMPIPE_MCP_WORKSPACE_DATABASE": "${STEAMPIPE_DATABASE_URL}"
       }
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--executablePath",
+        "/usr/bin/chromium"
+      ]
     }
   }
 }
