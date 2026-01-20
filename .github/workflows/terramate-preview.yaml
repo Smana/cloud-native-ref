@@ -32,20 +32,11 @@ jobs:
       - name: Install Terramate
         uses: terramate-io/terramate-action@v3
 
-      - name: Install asdf
-        uses: asdf-vm/actions/setup@v4
+      - name: Install mise
+        uses: jdx/mise-action@v3
         with:
-          asdf_branch: v0.15.0
-
-      - name: Install OpenTofu with asdf
-        run: |
-          asdf plugin add opentofu
-          asdf install opentofu
-
-      - name: Install Trivy with asdf
-        run: |
-          asdf plugin add trivy
-          asdf install trivy
+          install: true
+          cache: true
 
       ### Linting
       - name: Check Terramate formatting

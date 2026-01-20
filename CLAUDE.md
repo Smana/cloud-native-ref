@@ -140,17 +140,19 @@ bao auth -method=userpass username=admin
 
 ### Prerequisites
 
+- [mise](https://mise.jdx.dev/) - Polyglot tool version manager (manages OpenTofu, Terramate, Trivy, pre-commit)
 - AWS CLI configured with appropriate permissions
-- OpenTofu (v1.5+)
-- Terramate (latest)
 - Helm CLI (v3.12+)
 - kubectl
 - bao CLI
 - jq
 - Tailscale account and API key
 
+**Tool versions are managed via `mise.toml`**. Run `mise install` to install all required tools.
+
 ### Configuration Files
 
+- `mise.toml`: Tool version management (OpenTofu, Terramate, Trivy, pre-commit)
 - `opentofu/config.tm.hcl`: Global Terramate configuration (includes Cilium/Flux versions)
 - `opentofu/workflows.tm.hcl`: Terramate scripts and workflows (init, preview, deploy, destroy)
 - `opentofu/eks/init/workflows.tm.hcl`: EKS-specific two-stage deployment scripts
