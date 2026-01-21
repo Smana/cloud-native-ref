@@ -8,5 +8,5 @@ min_version = "2024.11.1"
 [tools]
 "ubi:terramate-io/terramate" = "0.15.5"
 pre-commit = "4.5.1"
-opentofu = "1.11.3"
+opentofu = "1.11.4"
 trivy = "0.68.2"
