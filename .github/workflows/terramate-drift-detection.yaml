@@ -1,85 +1,96 @@
-name: Scheduled OpenTofu Drift Detection
+# This workflow is disabled for now as the infrastructure is destroyed on a regular basis.
 
-on:
-  schedule:
-    - cron: "0 12 * * *"
+# name: Scheduled OpenTofu Drift Detection
 
-env:
-  AWS_REGION: eu-west-3
+# on:
+#   schedule:
+#     - cron: "0 12 * * *"
 
-jobs:
-  drift-detection:
-    name: Plan Opentofu Drift Detection
-    runs-on: ubuntu-latest
+# env:
+#   AWS_REGION: eu-west-3
 
-    permissions:
-      id-token: write
-      contents: read
-      pull-requests: read
-      checks: read
+# jobs:
+#   drift-detection:
+#     name: Plan Opentofu Drift Detection
+#     runs-on: ubuntu-latest
 
-    steps:
-      ### Check out the code
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
+#     permissions:
+#       id-token: write
+#       contents: read
+#       pull-requests: read
+#       checks: read
 
-      ### Install tooling
-      - name: Install Terramate
-        uses: terramate-io/terramate-action@v3
+#     steps:
+#       ### Check out the code
+#       - name: Checkout
+#         uses: actions/checkout@v6
+#         with:
+#           ref: ${{ github.head_ref }}
+#           fetch-depth: 0
 
-      - name: Install mise
-        uses: jdx/mise-action@v3
-        with:
-          install: true
-          cache: true
+#       ### Install tooling
+#       - name: Install Terramate
+#         uses: terramate-io/terramate-action@v3
 
-      ### Linting
-      - name: Check Terramate formatting
-        run: terramate fmt --check
+#       - name: Install asdf
+#         uses: asdf-vm/actions/setup@v4
+#         with:
+#           asdf_branch: v0.15.0
 
-      - name: Check Terraform formatting
-        run: tofu fmt -recursive -check -diff
+#       - name: Install OpenTofu with asdf
+#         run: |
+#           asdf plugin add opentofu
+#           asdf install opentofu
 
-      ### Configure cloud credentials
-      # We should assume an IAM role for production cases
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+#       - name: Install Trivy with asdf
+#         run: |
+#           asdf plugin add trivy
+#           asdf install trivy
 
-      - name: Verify AWS credentials
-        run: aws sts get-caller-identity
+#       ### Linting
+#       - name: Check Terramate formatting
+#         run: terramate fmt --check
 
-      # We should use an Oauth key
-      - name: Install Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-          hostname: gh-runner-${{ github.run_id }}
-          tags: tag:ci
+#       - name: Check Terraform formatting
+#         run: tofu fmt -recursive -check -diff
 
-      ### Run the Terraform preview via Terramate in each changed stack
-      - name: Run Terraform init in all changed stacks
-        run: |
-          terramate script run \
-            --parallel 1 \
-            init
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+#       ### Configure cloud credentials
+#       # We should assume an IAM role for production cases
+#       - name: Configure AWS credentials
+#         uses: aws-actions/configure-aws-credentials@v5
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Run drift detection
-        id: drift
-        run: |
-          terramate script run \
-            --parallel 2 \
-            --continue-on-error \
-            drift detect
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          TF_VAR_tailscale_api_key: ${{ secrets.TAILSCALE_API_KEY }}
-          TF_VAR_flux_git_ref: "refs/heads/${{ github.head_ref }}"
+#       - name: Verify AWS credentials
+#         run: aws sts get-caller-identity
+
+#       # We should use an Oauth key
+#       - name: Install Tailscale
+#         uses: tailscale/github-action@v4
+#         with:
+#           authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+#           hostname: gh-runner-${{ github.run_id }}
+#           tags: tag:ci
+
+#       ### Run the Terraform preview via Terramate in each changed stack
+#       - name: Run Terraform init in all changed stacks
+#         run: |
+#           terramate script run \
+#             --parallel 1 \
+#             init
+#         env:
+#           GITHUB_TOKEN: ${{ github.token }}
+
+#       - name: Run drift detection
+#         id: drift
+#         run: |
+#           terramate script run \
+#             --parallel 2 \
+#             --continue-on-error \
+#             drift detect
+#         env:
+#           GITHUB_TOKEN: ${{ github.token }}
+#           TF_VAR_tailscale_api_key: ${{ secrets.TAILSCALE_API_KEY }}
+#           TF_VAR_flux_git_ref: "refs/heads/${{ github.head_ref }}"

@@ -1,15 +1,23 @@
 ---
+name: specify
+description: Generate a specification template for non-trivial changes using Spec-Driven Development. Creates GitHub issue + spec file following the 4-stage workflow (Specify → Clarify → Tasks → Implement).
 allowed-tools: Read, Write, Bash(git:*), Bash(gh:*), Glob, Grep
-argument-hint: <type> (composition|infrastructure|security|platform) [description]
-description: Generate a specification template for non-trivial changes using Spec-Driven Development
 ---
 
-# Specify Command
+# Specify Skill
 
 Generate specification templates for changes that require formal design documentation before implementation.
-Follows GitHub Spec Kit 4-stage workflow: Specify → Plan → Tasks → Implement.
+Follows GitHub Spec Kit 4-stage workflow: **Specify → Clarify → Tasks → Implement**.
 
-## When to Use This Command
+## Usage
+
+```
+/specify <type> [description]
+```
+
+**Types**: `composition` | `infrastructure` | `security` | `platform`
+
+## When to Use
 
 Run `/specify` when making:
 - **composition**: New Crossplane compositions (KCL modules, XRDs)
@@ -52,7 +60,6 @@ Create a GitHub issue as the immutable anchor for discussion and tracking:
 
 ```bash
 # Create issue and capture the issue number directly from the output
-# This avoids race conditions in multi-user repos
 ISSUE_URL=$(gh issue create \
   --title "[SPEC] ${TITLE}" \
   --label "spec,${TYPE}" \
@@ -82,7 +89,6 @@ ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oP 'issues/\K\d+$')
 
 ```bash
 # Find next spec number by extracting the highest existing number
-# This prevents collisions if specs are deleted (counting files would reuse numbers)
 MAX_NUM=$(ls -1 docs/specs/active/*.md docs/specs/completed/*.md 2>/dev/null | \
   sed 's|.*/||' | \
   grep -oP '^\d{4}(?=-)' | \
@@ -115,7 +121,6 @@ Replace placeholders in the template:
 ### Step 7: Update GitHub Issue with Spec Link
 
 ```bash
-# Add comment linking to the spec file
 gh issue comment ${ISSUE_NUM} --body "Spec file created: [\`${SPEC_FILE}\`](${SPEC_FILE})"
 ```
 
@@ -176,11 +181,12 @@ Before implementation, self-review as:
 
 ## Next Steps
 1. Fill in the spec template (especially [NEEDS CLARIFICATION] sections)
-2. Complete the review checklist
-3. Implement the changes
-4. Reference issue in PR: `Implements #XXX`
-5. After merge: `mv docs/specs/active/XXXX-*.md docs/specs/completed/`
-6. Close the GitHub issue
+2. Run /clarify to resolve clarifications interactively
+3. Run /tasks to generate task breakdown
+4. Implement the changes
+5. Reference issue in PR: `Implements #XXX`
+6. After merge: `mv docs/specs/active/XXXX-*.md docs/specs/completed/`
+7. Close the GitHub issue
 ```
 
 ## Examples
@@ -199,11 +205,12 @@ Before implementation, self-review as:
 /specify platform Add distributed tracing with Tempo
 ```
 
-## Integration with Other Commands
+## Integration with Other Skills
 
-- `/specify` → Creates GitHub issue + spec file
+- `/specify` → Creates GitHub issue + spec file (this skill)
+- `/clarify` → Resolves `[NEEDS CLARIFICATION]` markers interactively
+- `/tasks` → Generates task breakdown from spec's Rollout Plan
 - `/create-pr` → Auto-detects spec and references issue (`Implements #XXX`)
-- `/commit` → Standard commit (unchanged)
 
 ## Spec Lifecycle
 
@@ -222,7 +229,7 @@ Before implementation, self-review as:
    Reactions                       Merge
 ```
 
-## Two-Document Model (inspired by dot-ai)
+## Two-Document Model
 
 | Document | Purpose | Location |
 |----------|---------|----------|

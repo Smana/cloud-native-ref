@@ -1,98 +1,98 @@
-name: Opentofu Preview
+# name: Opentofu Preview
 
-on:
-  pull_request:
-    branches:
-      - main
+# on:
+#   pull_request:
+#     branches:
+#       - main
 
-env:
-  AWS_REGION: eu-west-3
+# env:
+#   AWS_REGION: eu-west-3
 
-jobs:
-  preview:
-    name: Plan Opentofu changes in changed stacks
-    runs-on: ubuntu-latest
+# jobs:
+#   preview:
+#     name: Plan Opentofu changes in changed stacks
+#     runs-on: ubuntu-latest
 
-    permissions:
-      id-token: write
-      contents: read
-      pull-requests: write
-      checks: read
+#     permissions:
+#       id-token: write
+#       contents: read
+#       pull-requests: write
+#       checks: read
 
-    steps:
-      ### Check out the code
+#     steps:
+#       ### Check out the code
 
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
+#       - name: Checkout
+#         uses: actions/checkout@v6
+#         with:
+#           ref: ${{ github.head_ref }}
+#           fetch-depth: 0
 
-      ### Install tooling
-      - name: Install Terramate
-        uses: terramate-io/terramate-action@v3
+#       ### Install tooling
+#       - name: Install Terramate
+#         uses: terramate-io/terramate-action@v3
 
-      - name: Install mise
-        uses: jdx/mise-action@v3
-        with:
-          install: true
-          cache: true
+#       - name: Install mise
+#         uses: jdx/mise-action@v3
+#         with:
+#           install: true
+#           cache: true
 
-      ### Linting
-      - name: Check Terramate formatting
-        run: terramate fmt --check
+#       ### Linting
+#       - name: Check Terramate formatting
+#         run: terramate fmt --check
 
-      - name: Check Terraform formatting
-        run: tofu fmt -recursive -check -diff
+#       - name: Check Terraform formatting
+#         run: tofu fmt -recursive -check -diff
 
-      ### Check for changed stacks
+#       ### Check for changed stacks
 
-      - name: List changed stacks
-        id: list-changed
-        run: terramate list --changed
+#       - name: List changed stacks
+#         id: list-changed
+#         run: terramate list --changed
 
-      ### Configure cloud credentials
-      # We should assume an IAM role for production cases
-      - name: Configure AWS credentials
-        if: steps.list-changed.outputs.stdout
-        uses: aws-actions/configure-aws-credentials@v5
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+#       ### Configure cloud credentials
+#       # We should assume an IAM role for production cases
+#       - name: Configure AWS credentials
+#         if: steps.list-changed.outputs.stdout
+#         uses: aws-actions/configure-aws-credentials@v5
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Verify AWS credentials
-        if: steps.list-changed.outputs.stdout
-        run: aws sts get-caller-identity
+#       - name: Verify AWS credentials
+#         if: steps.list-changed.outputs.stdout
+#         run: aws sts get-caller-identity
 
-      # We should use an Oauth key
-      - name: Install Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-          hostname: gh-runner-${{ github.run_id }}
-          tags: tag:ci
+#       # We should use an Oauth key
+#       - name: Install Tailscale
+#         uses: tailscale/github-action@v4
+#         with:
+#           authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+#           hostname: gh-runner-${{ github.run_id }}
+#           tags: tag:ci
 
-      ### Run the Terraform preview via Terramate in each changed stack
-      - name: Run Terraform init in all changed stacks
-        if: steps.list-changed.outputs.stdout
-        run: |
-          terramate script run \
-            --changed \
-            --parallel 1 \
-            init
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+#       ### Run the Terraform preview via Terramate in each changed stack
+#       - name: Run Terraform init in all changed stacks
+#         if: steps.list-changed.outputs.stdout
+#         run: |
+#           terramate script run \
+#             --changed \
+#             --parallel 1 \
+#             init
+#         env:
+#           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Plan Terraform changes in changed stacks
-        if: steps.list-changed.outputs.stdout
-        run: |
-          terramate script run \
-            --changed \
-            --parallel 2 \
-            --continue-on-error \
-            preview
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          TF_VAR_tailscale_api_key: ${{ secrets.TAILSCALE_API_KEY }}
-          TF_VAR_flux_git_ref: "refs/heads/${{ github.head_ref }}"
+#       - name: Plan Terraform changes in changed stacks
+#         if: steps.list-changed.outputs.stdout
+#         run: |
+#           terramate script run \
+#             --changed \
+#             --parallel 2 \
+#             --continue-on-error \
+#             preview
+#         env:
+#           GITHUB_TOKEN: ${{ github.token }}
+#           TF_VAR_tailscale_api_key: ${{ secrets.TAILSCALE_API_KEY }}
+#           TF_VAR_flux_git_ref: "refs/heads/${{ github.head_ref }}"

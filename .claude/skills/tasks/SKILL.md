@@ -1,12 +1,21 @@
 ---
+name: tasks
+description: Generate a dependency-ordered task breakdown from a specification. Part of the SDD workflow after /clarify.
 allowed-tools: Read, Write, Glob, Grep, Bash(gh:*)
-argument-hint: [spec-file] [--issues]
-description: Generate a dependency-ordered task breakdown from a specification
 ---
 
-# Tasks Command
+# Tasks Skill
 
 Generate a structured task breakdown from a specification file. Tasks are organized by phase with dependency tracking and parallel execution opportunities marked.
+
+## Usage
+
+```
+/tasks [spec-file] [--issues]
+```
+
+- If no file specified, uses the most recently modified spec in `docs/specs/active/`
+- `--issues` flag creates GitHub issues for each task
 
 ## When to Use
 
@@ -191,7 +200,7 @@ Given a spec with:
 6. Test complete example
 ```
 
-The `/tasks` command generates:
+The `/tasks` skill generates:
 
 ```markdown
 ## Phase 1: Infrastructure Prerequisites (2 tasks)
@@ -216,11 +225,11 @@ The `/tasks` command generates:
 | T006 | Test complete example | US2 | T004 | [P] |
 ```
 
-## Integration with Other Commands
+## Integration with Other Skills
 
 - `/specify` → Creates spec with Rollout Plan section
 - `/clarify` → Ensures no unresolved markers before task generation
-- `/tasks` → Generates task breakdown (this command)
+- `/tasks` → Generates task breakdown (this skill)
 - `/create-pr` → References tasks in PR description
 
 ## Error Handling

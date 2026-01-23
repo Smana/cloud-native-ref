@@ -57,7 +57,7 @@ globals {
   eks_cluster_name = "mycluster-0"
 
   # Helm versions for EKS bootstrap
-  cilium_version        = "1.18.5"
+  cilium_version        = "1.18.6"
   flux_operator_version = "0.38.1"
   flux_instance_version = "0.38.1"
 

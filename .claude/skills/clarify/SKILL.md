@@ -1,12 +1,20 @@
 ---
+name: clarify
+description: Resolve [NEEDS CLARIFICATION] markers in a specification file through structured questioning. Part of the SDD workflow after /specify.
 allowed-tools: Read, Edit, Glob, Grep, AskUserQuestion
-argument-hint: [spec-file]
-description: Resolve [NEEDS CLARIFICATION] markers in a specification file through structured questioning
 ---
 
-# Clarify Command
+# Clarify Skill
 
 Interactively resolve `[NEEDS CLARIFICATION: ...]` markers in a specification file. This ensures all ambiguities are addressed before implementation begins.
+
+## Usage
+
+```
+/clarify [spec-file]
+```
+
+If no file specified, uses the most recently modified spec in `docs/specs/active/`.
 
 ## When to Use
 
@@ -86,7 +94,8 @@ fi
 ## Next Steps:
 1. Review the updated spec
 2. Complete the review checklist
-3. Begin implementation
+3. Run /tasks to generate task breakdown
+4. Begin implementation
 ```
 
 ## Example Session
@@ -127,10 +136,10 @@ Question: Should the cache support cross-namespace access, or should it be scope
 [CLARIFIED: Answer provided by the user or determined through discussion.]
 ```
 
-## Integration with Other Commands
+## Integration with Other Skills
 
 - `/specify` → Creates spec with `[NEEDS CLARIFICATION]` markers
-- `/clarify` → Resolves markers interactively (this command)
+- `/clarify` → Resolves markers interactively (this skill)
 - `/tasks` → Should check that no unresolved markers exist
 - `/create-pr` → Warns if spec has unresolved markers
 
