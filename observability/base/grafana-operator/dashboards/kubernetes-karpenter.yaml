@@ -13,13 +13,13 @@ spec:
     {
       "uid": "karpenter-unified",
       "title": "Karpenter Unified Observability",
-      "description": "Comprehensive Karpenter dashboard with metrics, logs, and node events",
+      "description": "Comprehensive Karpenter dashboard with metrics, logs, and node events. Logs appear during scaling activity (node provisioning, consolidation). Default time range is 6h to capture recent activity.",
       "tags": ["karpenter", "kubernetes", "autoscaling", "aws", "observability"],
       "timezone": "browser",
       "editable": true,
       "graphTooltip": 1,
       "time": {
-        "from": "now-1h",
+        "from": "now-6h",
         "to": "now"
       },
       "refresh": "30s",
