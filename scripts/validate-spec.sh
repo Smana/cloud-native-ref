@@ -86,12 +86,13 @@ done
 # CHECK 2: Unresolved Clarifications
 print_header "2. Clarification Markers"
 
-UNRESOLVED=$(grep -c '\[NEEDS CLARIFICATION:' "$SPEC_FILE" 2>/dev/null || echo "0")
+# Count only actual markers (starting with -), not HTML comments
+UNRESOLVED=$(grep -cP '^\s*-\s*\[NEEDS CLARIFICATION:' "$SPEC_FILE" 2>/dev/null || echo "0")
 UNRESOLVED=${UNRESOLVED:-0}
 if [ "$UNRESOLVED" -gt 0 ] 2>/dev/null; then
     print_error "Found $UNRESOLVED unresolved [NEEDS CLARIFICATION] marker(s)"
     # Show the clarifications that need resolving
-    grep -n '\[NEEDS CLARIFICATION:' "$SPEC_FILE" 2>/dev/null | while read -r line; do
+    grep -nP '^\s*-\s*\[NEEDS CLARIFICATION:' "$SPEC_FILE" 2>/dev/null | while read -r line; do
         echo -e "      ${YELLOW}→ $line${NC}"
     done
 else
@@ -142,13 +143,16 @@ if [ "$CHECKLIST_START" -gt 0 ]; then
     NEXT_SECTION=$(tail -n +"$((CHECKLIST_START + 1))" "$SPEC_FILE" | grep -n "^## " | head -1 | cut -d: -f1 || echo "")
     if [ -n "$NEXT_SECTION" ]; then
         END_LINE=$((CHECKLIST_START + NEXT_SECTION - 1))
-        CHECKLIST_CONTENT=$(sed -n "${CHECKLIST_START},${END_LINE}p" "$SPEC_FILE")
     else
-        CHECKLIST_CONTENT=$(tail -n +"$CHECKLIST_START" "$SPEC_FILE")
+        END_LINE=$(wc -l < "$SPEC_FILE")
     fi
 
-    CHECKED=$(echo "$CHECKLIST_CONTENT" | grep -c '\[x\]' 2>/dev/null || echo "0")
-    UNCHECKED=$(echo "$CHECKLIST_CONTENT" | grep -c '\[ \]' 2>/dev/null || echo "0")
+    # Count checkboxes in the review checklist section
+    CHECKED=$(awk "NR>=${CHECKLIST_START} && NR<=${END_LINE}" "$SPEC_FILE" | grep -c '\[x\]' || true)
+    UNCHECKED=$(awk "NR>=${CHECKLIST_START} && NR<=${END_LINE}" "$SPEC_FILE" | grep -c '\[ \]' || true)
+    # Default to 0 if empty
+    : "${CHECKED:=0}"
+    : "${UNCHECKED:=0}"
     TOTAL=$((CHECKED + UNCHECKED))
 
     if [ "$TOTAL" -gt 0 ]; then
@@ -188,8 +192,11 @@ fi
 # CHECK 8: Tasks Defined
 print_header "8. Task Tracking"
 
-TASK_COUNT=$(grep -cP '^\s*-\s*\[[ x]\]\s*T\d{3}:' "$SPEC_FILE" 2>/dev/null || echo "0")
-COMPLETED_TASKS=$(grep -cP '^\s*-\s*\[x\]\s*T\d{3}:' "$SPEC_FILE" 2>/dev/null || echo "0")
+TASK_COUNT=$(grep -cP '^\s*-\s*\[[ x]\]\s*T\d{3}:' "$SPEC_FILE" 2>/dev/null || true)
+COMPLETED_TASKS=$(grep -cP '^\s*-\s*\[x\]\s*T\d{3}:' "$SPEC_FILE" 2>/dev/null || true)
+# Default to 0 if empty
+: "${TASK_COUNT:=0}"
+: "${COMPLETED_TASKS:=0}"
 
 if [ "$TASK_COUNT" -gt 0 ]; then
     print_success "Found $TASK_COUNT tasks ($COMPLETED_TASKS completed)"

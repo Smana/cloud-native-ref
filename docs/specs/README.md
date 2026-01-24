@@ -7,7 +7,7 @@ Specifications for non-trivial changes to the cloud-native-ref platform.
 SDD ensures thoughtful planning before implementation, reducing rework and catching design issues early. Inspired by [GitHub Spec Kit](https://github.com/github/spec-kit), our workflow balances rigor with simplicity:
 
 ```
-/spec → Fill spec → Review (4 personas) → Implement → /create-pr → Archive
+/spec → /spec-status → /clarify → /validate → Implement → /create-pr → Archive
 ```
 
 **Key Documents**:
@@ -229,6 +229,7 @@ After discussing with Claude or stakeholders:
 | `/spec [type] "description"` | Creates GitHub issue + spec directory with `spec:draft` label |
 | `/spec-status` | Shows pipeline overview (Draft/Implementing/Done counts, stale specs) |
 | `/clarify` | Resolves `[NEEDS CLARIFICATION]` markers with structured options |
+| `/validate` | Validates spec completeness with actionable suggestions |
 | `/create-pr` | Auto-detects specs and references issue |
 | `/commit` | Commit workflow with pre-commit validation |
 

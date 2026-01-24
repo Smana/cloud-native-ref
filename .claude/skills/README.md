@@ -17,6 +17,7 @@ Since Claude Code v2.1.3, **Skills and Slash Commands are unified**. Each skill 
 | **spec** | Never (requires explicit user intent) | `/spec` |
 | **spec-status** | Never (requires explicit user intent) | `/spec-status` |
 | **clarify** | Never (requires explicit user intent) | `/clarify` |
+| **validate** | Never (requires explicit user intent) | `/validate` |
 | **commit** | Never (user decides when to commit) | `/commit` |
 | **create-pr** | Never (user decides when to create PR) | `/create-pr` |
 | **improve-pr** | Never (user decides when to review) | `/improve-pr` |
@@ -30,8 +31,9 @@ Since Claude Code v2.1.3, **Skills and Slash Commands are unified**. Each skill 
 | **spec** | `/spec [type] "description"` | Create GitHub issue + spec directory with `spec:draft` label |
 | **spec-status** | `/spec-status` | Show pipeline overview (Draft/Implementing/Done counts) |
 | **clarify** | `/clarify [spec-file]` | Resolve `[NEEDS CLARIFICATION]` markers with structured options |
+| **validate** | `/validate [spec-file]` | Validate spec completeness with actionable suggestions |
 
-**Workflow**: `/spec` → Fill spec → `/clarify` → Implement → `/create-pr` → Auto-archive
+**Workflow**: `/spec` → `/spec-status` → `/clarify` → `/validate` → Implement → `/create-pr` → Auto-archive
 
 For complete SDD documentation, see [`docs/specs/README.md`](../../docs/specs/README.md).
 
@@ -61,6 +63,8 @@ For complete SDD documentation, see [`docs/specs/README.md`](../../docs/specs/RE
 │   └── SKILL.md                       # SDD: Pipeline overview
 ├── clarify/
 │   └── SKILL.md                       # SDD: Resolve clarification markers
+├── validate/
+│   └── SKILL.md                       # SDD: Validate spec completeness
 ├── commit/
 │   ├── SKILL.md                       # Git commits with pre-commit
 │   └── references/
@@ -144,20 +148,25 @@ Claude loads the main SKILL.md first, then references only when needed. This opt
 # → Presents options for each [NEEDS CLARIFICATION] marker
 # → Updates spec with [CLARIFIED: answer]
 
-# 5. Start implementation (update issue label)
+# 5. Validate spec completeness
+/validate
+# → Runs 8 validation checks
+# → Provides actionable suggestions for any issues
+
+# 6. Start implementation (update issue label)
 gh issue edit 100 --remove-label "spec:draft" --add-label "spec:implementing"
 
-# 6. Implement by working through tasks
+# 7. Implement by working through tasks
 # - Check off tasks in spec.md as completed
 
-# 7. Commit changes with pre-commit validation
+# 8. Commit changes with pre-commit validation
 /commit
 
-# 8. Create pull request (auto-links to spec)
+# 9. Create pull request (auto-links to spec)
 /create-pr
 # → PR body references: "Implements #100" and includes spec path
 
-# 9. After merge, spec is auto-archived by GitHub Action
+# 10. After merge, spec is auto-archived by GitHub Action
 # → Spec moved to docs/specs/done/001-valkey-caching/
 # → Issue #100 closed with spec:done label
 ```
