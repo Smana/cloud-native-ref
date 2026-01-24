@@ -1,164 +1,183 @@
 ---
 name: clarify
-description: Resolve [NEEDS CLARIFICATION] markers in a specification file through structured questioning. Part of the SDD workflow after /specify.
-allowed-tools: Read, Edit, Glob, Grep, AskUserQuestion
+description: Resolve [NEEDS CLARIFICATION] markers in specs with structured options
+allowed-tools: Read, Edit, Glob
 ---
 
 # Clarify Skill
 
-Interactively resolve `[NEEDS CLARIFICATION: ...]` markers in a specification file. This ensures all ambiguities are addressed before implementation begins.
+Resolve `[NEEDS CLARIFICATION: ...]` markers in specification files with structured decision options.
 
 ## Usage
 
 ```
-/clarify [spec-file]
+/clarify                    # Clarify most recent active spec
+/clarify docs/specs/001-valkey/spec.md  # Clarify specific spec
 ```
 
-If no file specified, uses the most recently modified spec in `docs/specs/active/`.
+## Purpose
 
-## When to Use
+When filling out a spec, mark uncertain decisions with `[NEEDS CLARIFICATION: question?]`. This skill:
 
-Run `/clarify` after creating a spec with `/specify` to:
-- Identify unresolved questions in the spec
-- Get structured answers from the user
-- Update the spec with clarifications
-- Validate that all markers are resolved before implementation
+1. Finds all clarification markers in the spec
+2. Presents structured options for each question
+3. Updates the spec with `[CLARIFIED: answer]` after user decision
 
 ## Workflow
 
-### Step 1: Find the Active Spec
+### 1. Find Spec File
 
-If no argument provided, find the most recently modified spec in `docs/specs/active/`:
-
-```bash
-SPEC_FILE=$(ls -t docs/specs/active/*.md 2>/dev/null | head -1)
-```
-
-If argument provided, use it directly:
-```bash
-SPEC_FILE="docs/specs/active/$1"
-```
-
-### Step 2: Extract Clarification Markers
-
-Scan the spec file for `[NEEDS CLARIFICATION: ...]` patterns:
+If no file specified, find the most recently modified active spec:
 
 ```bash
-grep -oP '\[NEEDS CLARIFICATION: [^\]]+\]' "$SPEC_FILE"
+find docs/specs -name "spec.md" \
+  -not -path "*/done/*" \
+  -not -path "*/templates/*" \
+  -type f 2>/dev/null | \
+  xargs ls -t 2>/dev/null | head -1
 ```
 
-### Step 3: Present Each Marker as a Question
+### 2. Extract Clarification Markers
 
-For each marker found:
-1. Extract the question text
-2. Show the surrounding context (2-3 lines before/after)
-3. Use `AskUserQuestion` to get the answer
-4. Record the response
+Find all `[NEEDS CLARIFICATION: ...]` patterns:
 
-### Step 4: Update the Spec
+```bash
+grep -n '\[NEEDS CLARIFICATION:' "$SPEC_FILE"
+```
 
-Replace each marker with the clarified version:
+Pattern: `\[NEEDS CLARIFICATION: ([^\]]+)\]`
 
+### 3. Present Structured Options
+
+For each clarification marker, generate 2-3 options based on:
+- Platform patterns (existing compositions, conventions)
+- Security implications
+- Operational considerations
+- Common industry practices
+
+**Format for each question**:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Q1: [Question from marker]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Context: [Brief analysis of the decision]
+
+  | Option | Answer | Implications |
+  |--------|--------|--------------|
+  | A | [Suggestion 1] | [Trade-off/consideration] |
+  | B | [Suggestion 2] | [Trade-off/consideration] |
+  | C | Custom | User provides own answer |
+
+  Recommendation: [A/B] - [Brief rationale]
+```
+
+### 4. Update Spec After User Decision
+
+Replace the marker with the clarified answer:
+
+**Before**:
 ```markdown
-# Before
 - [NEEDS CLARIFICATION: Should cache support cross-namespace access?]
-
-# After
-- [CLARIFIED: No, cache is namespace-scoped for security isolation. Cross-namespace access would require explicit network policies.]
 ```
 
-### Step 5: Verify No Markers Remain
-
-After processing all markers:
-```bash
-REMAINING=$(grep -c '\[NEEDS CLARIFICATION:' "$SPEC_FILE" || echo "0")
-if [ "$REMAINING" -gt 0 ]; then
-    echo "WARNING: $REMAINING unresolved markers remain"
-fi
+**After**:
+```markdown
+- [CLARIFIED: No, cache is namespace-scoped for security isolation per zero-trust principles]
 ```
 
-### Step 6: Output Summary
+Use the Edit tool to make this replacement.
 
-```
-✅ Clarifications complete!
+## Option Generation Guidelines
 
-📄 Spec File: docs/specs/active/0001-#123-valkey-caching.md
-📋 Markers Resolved: 3/3
-⚠️ Remaining: 0
+When generating options, consider:
 
-## Clarifications Made:
-1. Cache scope → Namespace-scoped for security
-2. Eviction policy → LRU with 1GB max memory
-3. TLS requirement → Required for production, optional for dev
+### Security Perspective
+- Zero-trust networking (default deny, explicit allow)
+- Least privilege (minimal permissions)
+- Secrets management (External Secrets, not hardcoded)
+- Network policies (CiliumNetworkPolicy)
 
-## Next Steps:
-1. Review the updated spec
-2. Complete the review checklist
-3. Run /tasks to generate task breakdown
-4. Begin implementation
-```
+### Platform Engineering Perspective
+- Consistency with existing compositions (App, SQLInstance)
+- Resource naming conventions (`xplane-*` prefix)
+- API design patterns
+- KCL best practices (no mutation pattern)
+
+### SRE Perspective
+- Health checks and observability
+- Resource limits and scaling
+- Failure modes and recovery
+- Operational complexity
+
+### PM Perspective
+- User experience simplicity
+- Progressive disclosure (simple defaults, advanced options)
+- Scope management
 
 ## Example Session
 
-```
-/clarify 0001-#123-valkey-caching.md
-
-📋 Found 3 clarification markers in spec:
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[1/3] NEEDS CLARIFICATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Context:
-> ### Non-Goals
-> - [NEEDS CLARIFICATION: Should cache support cross-namespace access?]
-
-Question: Should the cache support cross-namespace access, or should it be scoped to a single namespace?
-
-[User provides answer via AskUserQuestion]
-
-✅ Updated to: [CLARIFIED: No, cache is namespace-scoped...]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[2/3] NEEDS CLARIFICATION
-...
-```
-
-## Marker Format
-
-**Input markers** (in spec):
+**Input spec has**:
 ```markdown
-[NEEDS CLARIFICATION: Question about the design or requirement?]
+- [NEEDS CLARIFICATION: What should be the default eviction policy for cache?]
+- [NEEDS CLARIFICATION: Should high availability be mandatory or optional?]
 ```
 
-**Output markers** (after clarification):
+**Skill presents**:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Q1: What should be the default eviction policy for cache?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Context: Eviction policy determines what happens when cache
+  memory is full. Common policies: LRU (Least Recently Used),
+  LFU (Least Frequently Used), TTL-based.
+
+  | Option | Answer | Implications |
+  |--------|--------|--------------|
+  | A | LRU (allkeys-lru) | Best for general use, predictable behavior |
+  | B | volatile-lru | Only evicts keys with TTL set, safer for persistent data |
+  | C | Custom | Specify your own policy |
+
+  Recommendation: A - LRU is the most common default, works well
+  for caching scenarios, and is well-understood by operators.
+
+Your choice (A/B/C or custom answer): _
+```
+
+**User responds**: "A"
+
+**Skill updates spec**:
 ```markdown
-[CLARIFIED: Answer provided by the user or determined through discussion.]
+- [CLARIFIED: LRU (allkeys-lru) - Best for general use, predictable eviction behavior]
 ```
 
-## Integration with Other Skills
+## Handling Multiple Clarifications
 
-- `/specify` → Creates spec with `[NEEDS CLARIFICATION]` markers
-- `/clarify` → Resolves markers interactively (this skill)
-- `/tasks` → Should check that no unresolved markers exist
-- `/create-pr` → Warns if spec has unresolved markers
+Process clarifications one at a time to maintain focus. After each:
+1. Update the spec file
+2. Move to next clarification
+3. Report progress: "Resolved 2/3 clarifications"
 
-## Validation
+## When All Resolved
 
-Before implementation, ensure:
-- [ ] No `[NEEDS CLARIFICATION:]` markers remain
-- [ ] All `[CLARIFIED:]` markers have meaningful answers
-- [ ] Review checklist is complete
+```
+All clarifications resolved in docs/specs/001-valkey/spec.md
 
-## Tips
+Summary of decisions:
+  1. Eviction policy: LRU (allkeys-lru)
+  2. High availability: Optional, enabled via ha: true
 
-1. **Add markers liberally**: When creating specs, add `[NEEDS CLARIFICATION]` markers for anything uncertain
-2. **Run early**: Clarify specs before starting implementation
-3. **Be specific**: Clarifications should be actionable, not vague
-4. **Update related sections**: When clarifying, also update related parts of the spec
+Next steps:
+  - Run ./scripts/validate-spec.sh to verify spec completeness
+  - Complete Review Checklist (4 personas)
+  - Begin implementation
+```
 
-## Error Handling
+## Related Skills
 
-- If no spec file found: Prompt user to specify file or run `/specify` first
-- If no markers found: Report "No clarifications needed" and exit
-- If user skips a question: Keep the original marker and continue
+- `/spec` - Create new specification
+- `/spec-status` - View pipeline overview
+- `/create-pr` - Create PR when implementation complete

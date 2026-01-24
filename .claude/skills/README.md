@@ -14,7 +14,10 @@ Since Claude Code v2.1.3, **Skills and Slash Commands are unified**. Each skill 
 |-------|---------------------|--------------|
 | **kcl-composition-validator** | Working with `.k` files or Crossplane compositions | `/kcl-composition-validator` |
 | **crossplane-renderer** | Testing compositions, rendering examples | `/crossplane-renderer` |
-| **specify/clarify/tasks** | Never (requires explicit user intent) | `/specify`, `/clarify`, `/tasks` |
+| **spec** | Never (requires explicit user intent) | `/spec` |
+| **spec-status** | Never (requires explicit user intent) | `/spec-status` |
+| **clarify** | Never (requires explicit user intent) | `/clarify` |
+| **validate** | Never (requires explicit user intent) | `/validate` |
 | **commit** | Never (user decides when to commit) | `/commit` |
 | **create-pr** | Never (user decides when to create PR) | `/create-pr` |
 | **improve-pr** | Never (user decides when to review) | `/improve-pr` |
@@ -25,11 +28,12 @@ Since Claude Code v2.1.3, **Skills and Slash Commands are unified**. Each skill 
 
 | Skill | Usage | Description |
 |-------|-------|-------------|
-| **specify** | `/specify <type> [description]` | Create GitHub issue + spec template |
-| **clarify** | `/clarify [spec-file]` | Resolve `[NEEDS CLARIFICATION]` markers |
-| **tasks** | `/tasks [spec-file] [--issues]` | Generate task breakdown from spec |
+| **spec** | `/spec [type] "description"` | Create GitHub issue + spec directory with `spec:draft` label |
+| **spec-status** | `/spec-status` | Show pipeline overview (Draft/Implementing/Done counts) |
+| **clarify** | `/clarify [spec-file]` | Resolve `[NEEDS CLARIFICATION]` markers with structured options |
+| **validate** | `/validate [spec-file]` | Validate spec completeness with actionable suggestions |
 
-**SDD Workflow**: `Specify → Clarify → Tasks → Implement → Validate`
+**Workflow**: `/spec` → `/spec-status` → `/clarify` → `/validate` → Implement → `/create-pr` → Auto-archive
 
 For complete SDD documentation, see [`docs/specs/README.md`](../../docs/specs/README.md).
 
@@ -53,12 +57,14 @@ For complete SDD documentation, see [`docs/specs/README.md`](../../docs/specs/RE
 ```
 .claude/skills/
 ├── README.md                          # This file
-├── specify/
+├── spec/
 │   └── SKILL.md                       # SDD: Create specifications
+├── spec-status/
+│   └── SKILL.md                       # SDD: Pipeline overview
 ├── clarify/
-│   └── SKILL.md                       # SDD: Resolve clarifications
-├── tasks/
-│   └── SKILL.md                       # SDD: Generate task breakdown
+│   └── SKILL.md                       # SDD: Resolve clarification markers
+├── validate/
+│   └── SKILL.md                       # SDD: Validate spec completeness
 ├── commit/
 │   ├── SKILL.md                       # Git commits with pre-commit
 │   └── references/
@@ -124,27 +130,45 @@ Claude loads the main SKILL.md first, then references only when needed. This opt
 
 ```bash
 # 1. Create specification for new feature
-/specify composition Create a Valkey caching composition
+/spec composition "Create a Valkey caching composition"
+# → Creates: GitHub Issue #100 (label: spec:draft) + docs/specs/001-valkey-caching/spec.md
 
-# 2. Resolve any clarifications needed
+# 2. Fill in the spec
+# - Problem statement
+# - Requirements (FR-001, FR-002...)
+# - Design (API, resources)
+# - Tasks checklist
+
+# 3. Check pipeline status
+/spec-status
+# → Shows: Draft: 1 (001-valkey-caching), Implementing: 0, Done: 15
+
+# 4. Resolve clarifications with structured options
 /clarify
+# → Presents options for each [NEEDS CLARIFICATION] marker
+# → Updates spec with [CLARIFIED: answer]
 
-# 3. Generate task breakdown
-/tasks
+# 5. Validate spec completeness
+/validate
+# → Runs 8 validation checks
+# → Provides actionable suggestions for any issues
 
-# 4. Implement the feature...
+# 6. Start implementation (update issue label)
+gh issue edit 100 --remove-label "spec:draft" --add-label "spec:implementing"
 
-# 5. Commit changes with pre-commit validation
+# 7. Implement by working through tasks
+# - Check off tasks in spec.md as completed
+
+# 8. Commit changes with pre-commit validation
 /commit
 
-# 6. Create pull request
-/create-pr main
+# 9. Create pull request (auto-links to spec)
+/create-pr
+# → PR body references: "Implements #100" and includes spec path
 
-# 7. Later, update the PR description
-/create-pr --update 123
-
-# 8. Analyze and improve the PR
-/improve-pr 123
+# 10. After merge, spec is auto-archived by GitHub Action
+# → Spec moved to docs/specs/done/001-valkey-caching/
+# → Issue #100 closed with spec:done label
 ```
 
 ## Adding New Skills

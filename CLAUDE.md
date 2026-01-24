@@ -466,7 +466,11 @@ spec:
 
 ## Spec-Driven Development (SDD)
 
-This repository uses lightweight SDD for non-trivial changes. Based on GitHub Spec Kit, the workflow follows: **Specify → Clarify → Plan → Tasks → Implement → Validate**.
+This repository uses SDD for non-trivial changes. Inspired by [GitHub Spec Kit](https://github.com/github/spec-kit), the workflow balances rigor with simplicity:
+
+```
+/spec → /spec-status → /clarify → /validate → Implement → /create-pr → Auto-archive
+```
 
 **Key Documents**:
 - [Platform Constitution](docs/specs/constitution.md) - Non-negotiable principles all specs must follow
@@ -475,12 +479,12 @@ This repository uses lightweight SDD for non-trivial changes. Based on GitHub Sp
 
 ### When Specs Are Required
 
-| Change Type | Examples | Skill |
-|-------------|----------|-------|
-| New Crossplane Composition | New KCL module, new XRD | `/specify composition` |
-| Major Infrastructure | New OpenTofu stack, VPC changes, EKS upgrades | `/specify infrastructure` |
-| Security Changes | Network policies, RBAC, PKI, secrets | `/specify security` |
-| Platform Capabilities | Multi-component features, observability | `/specify platform` |
+| Change Type | Examples |
+|-------------|----------|
+| New Crossplane Composition | New KCL module, new XRD |
+| Major Infrastructure | New OpenTofu stack, VPC changes, EKS upgrades |
+| Security Changes | Network policies, RBAC, PKI, secrets |
+| Platform Capabilities | Multi-component features, observability |
 
 ### When to Skip Specs
 
@@ -493,66 +497,91 @@ This repository uses lightweight SDD for non-trivial changes. Based on GitHub Sp
 ### SDD Workflow
 
 ```bash
-# 1. Create specification (creates GitHub issue + spec file)
-/specify composition "Add Valkey caching composition"
+# 1. Create specification (creates GitHub issue + spec directory with spec:draft label)
+/spec composition "Add Valkey caching composition"
+# → Creates: GitHub Issue #XXX (label: spec:draft) + docs/specs/001-valkey-caching/spec.md
 
-# 2. Fill in the generated spec template
-# Edit docs/specs/active/XXXX-#XXX-name.md
-# - Complete user stories with Given/When/Then acceptance scenarios
-# - Define functional requirements (FR-001, FR-002...)
-# - Set success criteria (SC-001, SC-002...)
-# - Add [NEEDS CLARIFICATION: ...] markers for uncertain items
+# 2. Fill in the spec
+# - User stories with Gherkin acceptance scenarios
+# - Requirements (FR-001, FR-002...)
+# - Success criteria (SC-001, SC-002...)
+# - Design (API, resources created)
+# - Phased tasks checklist
 
-# 3. Resolve clarifications interactively
+# 3. Check pipeline status
+/spec-status
+# → Shows: Draft: 1, Implementing: 0, Done: 15 (with stale detection)
+
+# 4. Resolve clarifications with structured options
 /clarify
+# → Presents options for each [NEEDS CLARIFICATION] marker from 4 perspectives
+# → Updates spec with [CLARIFIED: answer]
 
-# 4. Generate task breakdown (optional)
-/tasks
+# 5. Validate spec completeness
+/validate
+# → Runs 8 validation checks with actionable suggestions
 
-# 5. Validate spec is complete
-./scripts/validate-spec.sh
+# 6. Start implementation (update issue label)
+gh issue edit XXX --remove-label "spec:draft" --add-label "spec:implementing"
 
-# 6. Self-review using persona checklists in the template
-
-# 7. Implement changes following the spec
+# 7. Implement by working through phased tasks
+# Check off tasks in spec.md, verify success criteria
 
 # 8. Create PR (auto-references spec)
 /create-pr
+# → PR body includes: "Implements #XXX" and spec directory path
 
-# 9. After merge, archive the spec
-mv docs/specs/active/XXXX-*.md docs/specs/completed/
-gh issue close XXX
+# 9. After merge, spec is auto-archived by GitHub Action
+# → Spec moved to docs/specs/done/
+# → Issue closed with spec:done label
 ```
 
 ### SDD Skills
 
-These skills require explicit invocation (never auto-activated). See [`.claude/skills/README.md`](.claude/skills/README.md) for details.
-
 | Skill | Description |
 |-------|-------------|
-| `/specify [type]` | Creates GitHub issue + spec file from template |
-| `/clarify [file]` | Resolves `[NEEDS CLARIFICATION]` markers interactively |
-| `/tasks [file]` | Generates task breakdown from spec's Rollout Plan |
-| `/create-pr` | Creates PR with spec reference and mermaid diagram |
+| `/spec [type] "description"` | Creates GitHub issue + spec directory with `spec:draft` label |
+| `/spec-status` | Shows pipeline overview (Draft/Implementing/Done counts, stale detection) |
+| `/clarify [spec-file]` | Resolves `[NEEDS CLARIFICATION]` markers with structured options |
+| `/validate [spec-file]` | Validates spec completeness with actionable suggestions |
 
-**Validation Script**: `./scripts/validate-spec.sh` - Validates spec completeness and constitution compliance
+Types for `/spec` (optional): `composition` | `infrastructure` | `security` | `platform`
+
+See [`.claude/skills/README.md`](.claude/skills/README.md) for details.
+
+### Spec Structure (~170 lines)
+
+Single template at `docs/specs/templates/spec.md`:
+
+**Core**: Metadata, Summary, Problem, User Stories (Gherkin), Requirements (FR-XXX), Success Criteria (SC-XXX)
+
+**Design**: API/Interface, Resources Created, Dependencies
+
+**Execution**: Phased Tasks, Validation, Review Checklist (4 personas)
+
+**Resolution**: Clarifications, References
 
 ### Review Personas
 
-Each spec template includes a self-review checklist for 4 personas:
+Before implementation, self-review from each perspective:
 
-- **Project Manager (PM)**: Problem statement, user stories, acceptance criteria, scope
-- **Platform Engineer**: Design patterns, API consistency, KCL patterns, naming conventions
-- **Security & Compliance**: Zero-trust, least privilege, secrets management, network policies
-- **SRE**: Observability, HA requirements, failure modes, disaster recovery
+| Persona | Focus |
+|---------|-------|
+| **PM** | Problem clarity, user stories, acceptance criteria, scope |
+| **Platform Engineer** | Design patterns, API consistency, KCL patterns, examples |
+| **Security** | Zero-trust, least privilege, secrets, network policies |
+| **SRE** | Health checks, observability, resource limits, failure modes |
 
-### Spec Templates
+### Directory Structure
 
-Templates are in `docs/specs/templates/`:
-- `spec-crossplane-composition.md` - For new Crossplane compositions
-- `spec-infrastructure.md` - For OpenTofu/Terramate changes
-- `spec-security.md` - For security-impacting changes
-- `spec-platform-capability.md` - For multi-component features
+```
+docs/specs/
+├── templates/spec.md      # Template (~170 lines)
+├── 001-feature-name/      # Active specs (directory per spec)
+│   └── spec.md
+└── done/                  # Archived specs
+    └── 001-feature-name/
+```
 
 ### Architecture Decision Records (ADRs)
 
