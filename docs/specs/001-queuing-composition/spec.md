@@ -199,30 +199,30 @@ spec:
 Complete this checklist before implementation. Each persona represents a different perspective.
 
 ### Project Manager
-- [ ] Problem statement is clear and specific
-- [ ] User stories capture real user needs
-- [ ] Acceptance scenarios are testable
-- [ ] Scope is well-defined (goals AND non-goals)
-- [ ] Success criteria are measurable
+- [x] Problem statement is clear and specific
+- [x] User stories capture real user needs
+- [x] Acceptance scenarios are testable
+- [x] Scope is well-defined (goals AND non-goals)
+- [x] Success criteria are measurable
 
 ### Platform Engineer
-- [ ] Design follows existing patterns (App, SQLInstance as references)
-- [ ] API is consistent with other compositions
-- [ ] Resource naming follows `xplane-*` convention
-- [ ] KCL avoids mutation pattern (issue #285)
-- [ ] Examples provided (basic + complete)
+- [x] Design follows existing patterns (App, SQLInstance as references)
+- [x] API is consistent with other compositions
+- [x] Resource naming follows `xplane-*` convention
+- [x] KCL avoids mutation pattern (issue #285)
+- [x] Examples provided (basic + complete)
 
 ### Security & Compliance
-- [ ] Zero-trust networking (CiliumNetworkPolicy defined)
-- [ ] Least-privilege RBAC
-- [ ] Secrets via External Secrets (no hardcoded credentials)
-- [ ] Security context enforced (non-root, read-only FS where possible)
-- [ ] IAM policies scoped to `xplane-*` resources (if AWS)
+- [x] Zero-trust networking (CiliumNetworkPolicy defined)
+- [x] Least-privilege RBAC (Strimzi RBAC added for Crossplane)
+- [x] Secrets via External Secrets (no hardcoded credentials)
+- [ ] Security context enforced (non-root, read-only FS where possible) - N/A: no Deployments created
+- [x] IAM policies scoped to `xplane-*` resources (if AWS)
 
 ### SRE
-- [ ] Health checks defined (liveness, readiness probes)
-- [ ] Observability configured (metrics, logs)
-- [ ] Resource limits appropriate
+- [ ] Health checks defined (liveness, readiness probes) - N/A: no Deployments created
+- [x] Observability configured (metrics, logs) - VMServiceScrape for Kafka
+- [ ] Resource limits appropriate - N/A: no Deployments created
 - [ ] Failure modes documented
 - [ ] Recovery/rollback path clear
 
