@@ -42,6 +42,7 @@ print_warning() {
     ((WARNINGS++))
 }
 
+# shellcheck disable=SC2329
 print_info() {
     echo -e "   ${BLUE}ℹ️  $1${NC}"
 }
@@ -58,8 +59,8 @@ else
     SPEC_FILE=$(find docs/specs -name "spec.md" \
         -not -path "*/done/*" \
         -not -path "*/templates/*" \
-        -type f 2>/dev/null | \
-        xargs ls -t 2>/dev/null | head -1)
+        -type f -print0 2>/dev/null | \
+        xargs -0 ls -t 2>/dev/null | head -1)
     if [ -z "$SPEC_FILE" ]; then
         echo -e "${RED}ERROR: No active spec files found in docs/specs/${NC}"
         exit 1
