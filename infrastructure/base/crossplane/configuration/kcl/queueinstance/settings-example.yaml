@@ -1,0 +1,33 @@
+kcl_options:
+  - key: params
+    value:
+      ctx:
+        "apiextensions.crossplane.io/environment":
+          "clusterName": "mycluster-0"
+          region: "eu-west-3"
+      oxr:
+        metadata:
+          name: "xplane-orders-queue"
+          namespace: "apps"
+        spec:
+          type: "kafka"
+          kafka:
+            clusterRef: "my-kafka-cluster"
+            clusterNamespace: "kafka"
+            partitions: 6
+            replicationFactor: 3
+            retentionMs: 604800000
+            config:
+              "cleanup.policy": "delete"
+              "compression.type": "lz4"
+          deadLetterQueue:
+            enabled: true
+            maxReceiveCount: 5
+          connectionSecret:
+            name: "orders-queue-credentials"
+            namespace: "apps"
+          networkPolicies:
+            enabled: true
+          monitoring:
+            enabled: true
+      ocds: {}

@@ -122,3 +122,17 @@ rules:
   - apiGroups: ["operator.victoriametrics.com"]
     resources: ["vmservicescrapes", "vmservicescrapes/status", "vmrules", "vmrules/status"]
     verbs: ["*"]
+---
+# ClusterRole for aggregating permissions to Crossplane in order to manage Strimzi resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: crossplane-system
+  name: strimzi:aggregate-to-crossplane
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  # Manage Strimzi Kafka topics and users
+  - apiGroups: ["kafka.strimzi.io"]
+    resources: ["kafkatopics", "kafkatopics/status", "kafkausers", "kafkausers/status"]
+    verbs: ["*"]

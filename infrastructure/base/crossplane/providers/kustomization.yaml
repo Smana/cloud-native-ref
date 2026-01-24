@@ -9,3 +9,4 @@ resources:
   - provider-iam.yaml
   - provider-kms.yaml
   - provider-s3.yaml
+  - provider-sqs.yaml

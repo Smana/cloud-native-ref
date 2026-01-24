@@ -1,0 +1,120 @@
+---
+# Complete QueueInstance Examples
+#
+# Demonstrates all configuration options for both Kafka and SQS backends.
+
+# =============================================================================
+# KAFKA COMPLETE EXAMPLE
+# =============================================================================
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: QueueInstance
+metadata:
+  name: xplane-events-kafka
+  namespace: apps
+spec:
+  type: kafka
+
+  # Kafka-specific configuration
+  kafka:
+    clusterRef: production-kafka-cluster
+    clusterNamespace: kafka-system
+    partitions: 12
+    replicationFactor: 3
+    retentionMs: 2592000000  # 30 days
+    config:
+      "cleanup.policy": "delete"
+      "compression.type": "lz4"
+      "max.message.bytes": "10485760"  # 10MB
+
+  # Dead-letter queue configuration
+  deadLetterQueue:
+    enabled: true
+    maxReceiveCount: 5
+
+  # Connection credentials (ExternalSecret)
+  connectionSecret:
+    name: events-kafka-credentials
+    namespace: apps
+
+  # Network policies
+  networkPolicies:
+    enabled: true
+
+  # Monitoring
+  monitoring:
+    enabled: true
+
+---
+# =============================================================================
+# SQS COMPLETE EXAMPLE - Standard Queue
+# =============================================================================
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: QueueInstance
+metadata:
+  name: xplane-tasks-sqs
+  namespace: apps
+spec:
+  type: sqs
+
+  # SQS-specific configuration
+  sqs:
+    fifo: false
+    visibilityTimeoutSeconds: 60
+    messageRetentionSeconds: 1209600  # 14 days
+    maxMessageSize: 262144  # 256KB
+    delaySeconds: 0
+    receiveWaitTimeSeconds: 20  # Long polling
+
+  # Dead-letter queue configuration
+  deadLetterQueue:
+    enabled: true
+    maxReceiveCount: 3
+
+  # EKS Pod Identity for access
+  podIdentity:
+    serviceAccountName: task-processor
+    serviceAccountNamespace: apps
+
+  # Connection details (ConfigMap)
+  connectionSecret:
+    name: tasks-queue-config
+
+  # Network policies
+  networkPolicies:
+    enabled: true
+
+---
+# =============================================================================
+# SQS COMPLETE EXAMPLE - FIFO Queue
+# =============================================================================
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: QueueInstance
+metadata:
+  name: xplane-orders-fifo-sqs
+  namespace: apps
+spec:
+  type: sqs
+
+  # SQS FIFO configuration
+  sqs:
+    fifo: true  # Creates queue with .fifo suffix
+    visibilityTimeoutSeconds: 30
+    messageRetentionSeconds: 345600  # 4 days
+
+  # Dead-letter queue configuration
+  deadLetterQueue:
+    enabled: true
+    maxReceiveCount: 5
+
+  # EKS Pod Identity for access
+  podIdentity:
+    serviceAccountName: order-processor
+    serviceAccountNamespace: apps
+
+  # Connection details (ConfigMap)
+  connectionSecret:
+    name: orders-fifo-queue-config
+
+  # Network policies
+  networkPolicies:
+    enabled: true

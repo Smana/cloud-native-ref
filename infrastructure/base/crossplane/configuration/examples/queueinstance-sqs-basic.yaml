@@ -1,0 +1,25 @@
+---
+# Basic QueueInstance Example - SQS
+#
+# Minimal SQS queue configuration with AWS provider.
+# This creates a simple queue with sensible defaults.
+#
+# For a complete example with all features, see queueinstance-complete.yaml
+
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: QueueInstance
+metadata:
+  name: xplane-notifications-queue
+  namespace: apps
+spec:
+  # Backend type
+  type: sqs
+
+  # Pod Identity for accessing the queue
+  podIdentity:
+    serviceAccountName: notification-service
+    serviceAccountNamespace: apps
+
+  # Connection details (ConfigMap)
+  connectionSecret:
+    name: notifications-queue-config

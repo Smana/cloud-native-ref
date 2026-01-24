@@ -1,0 +1,172 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: queueinstances.cloud.ogenki.io
+spec:
+  group: cloud.ogenki.io
+  scope: Namespaced
+  names:
+    kind: QueueInstance
+    plural: queueinstances
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                managementPolicies:
+                  description: The management policy for the QueueInstance.
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - "Delete"
+                      - "Create"
+                      - "Update"
+                      - "LateInitialize"
+                      - "Observe"
+
+                type:
+                  description: Backend type for the queue (kafka or sqs).
+                  type: string
+                  enum:
+                    - kafka
+                    - sqs
+
+                kafka:
+                  description: Kafka-specific configuration (when type is kafka).
+                  type: object
+                  properties:
+                    clusterRef:
+                      description: Reference to an existing Kafka cluster name.
+                      type: string
+                    clusterNamespace:
+                      description: Namespace of the Kafka cluster. Defaults to CR namespace.
+                      type: string
+                    partitions:
+                      description: Number of partitions for the topic.
+                      type: integer
+                      default: 3
+                    replicationFactor:
+                      description: Replication factor for the topic.
+                      type: integer
+                      default: 2
+                    retentionMs:
+                      description: Message retention period in milliseconds.
+                      type: integer
+                      default: 604800000
+                    config:
+                      description: Additional Kafka topic configuration.
+                      type: object
+                      additionalProperties:
+                        type: string
+
+                sqs:
+                  description: SQS-specific configuration (when type is sqs).
+                  type: object
+                  properties:
+                    fifo:
+                      description: Whether to create a FIFO queue.
+                      type: boolean
+                      default: false
+                    visibilityTimeoutSeconds:
+                      description: The visibility timeout for messages in the queue.
+                      type: integer
+                      default: 30
+                    messageRetentionSeconds:
+                      description: The message retention period in seconds.
+                      type: integer
+                      default: 345600
+                    maxMessageSize:
+                      description: Maximum message size in bytes.
+                      type: integer
+                      default: 262144
+                    delaySeconds:
+                      description: The delay in seconds for messages in the queue.
+                      type: integer
+                      default: 0
+                    receiveWaitTimeSeconds:
+                      description: Wait time for ReceiveMessage calls (long polling).
+                      type: integer
+                      default: 0
+
+                deadLetterQueue:
+                  description: Dead-letter queue configuration.
+                  type: object
+                  properties:
+                    enabled:
+                      description: Whether to enable dead-letter queue.
+                      type: boolean
+                      default: true
+                    maxReceiveCount:
+                      description: Number of receive attempts before sending to DLQ.
+                      type: integer
+                      default: 3
+
+                connectionSecret:
+                  description: Secret configuration for connection credentials.
+                  type: object
+                  properties:
+                    name:
+                      description: Name of the secret to create with connection details.
+                      type: string
+                    namespace:
+                      description: Namespace for the secret. Defaults to CR namespace.
+                      type: string
+
+                podIdentity:
+                  description: EKS Pod Identity configuration (SQS only).
+                  type: object
+                  properties:
+                    serviceAccountName:
+                      description: Name of the service account to grant access.
+                      type: string
+                    serviceAccountNamespace:
+                      description: Namespace of the service account.
+                      type: string
+                  required:
+                    - serviceAccountName
+                    - serviceAccountNamespace
+
+                networkPolicies:
+                  description: Network policy configuration.
+                  type: object
+                  properties:
+                    enabled:
+                      description: Whether to create CiliumNetworkPolicy for queue access.
+                      type: boolean
+                      default: true
+                    additionalEgress:
+                      description: Additional egress rules for network policy.
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+
+                monitoring:
+                  description: Monitoring configuration.
+                  type: object
+                  properties:
+                    enabled:
+                      description: Whether to enable monitoring (VMServiceScrape for Kafka).
+                      type: boolean
+                      default: false
+
+              required:
+                - type
+            status:
+              type: object
+              properties:
+                queueUrl:
+                  description: URL of the SQS queue (SQS only).
+                  type: string
+                topicName:
+                  description: Name of the Kafka topic (Kafka only).
+                  type: string
+          required:
+            - spec

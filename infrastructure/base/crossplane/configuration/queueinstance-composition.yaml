@@ -1,0 +1,37 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xqueueinstances.cloud.ogenki.io
+  labels:
+    provider: aws
+spec:
+  compositeTypeRef:
+    apiVersion: cloud.ogenki.io/v1alpha1
+    kind: QueueInstance
+  mode: Pipeline
+  pipeline:
+    - step: environmentConfigs
+      functionRef:
+        name: function-environment-configs
+      input:
+        apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+        kind: Input
+        spec:
+          environmentConfigs:
+            - type: Reference
+              ref:
+                name: eks-environment
+
+    - step: queueinstance
+      functionRef:
+        name: function-kcl
+      input:
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLRun
+        spec:
+          target: Resources
+          source: oci://ghcr.io/smana/cloud-native-ref/crossplane-queueinstance:0.1.0
+
+    - step: ready
+      functionRef:
+        name: function-auto-ready

@@ -10,5 +10,7 @@ resources:
   - epi-composition.yaml
   - epi-definition.yaml
   - functions.yaml
+  - queueinstance-composition.yaml
+  - queueinstance-definition.yaml
   - sql-instance-composition.yaml
   - sql-instance-definition.yaml

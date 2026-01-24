@@ -1,0 +1,24 @@
+---
+# Basic QueueInstance Example - Kafka
+#
+# Minimal Kafka topic configuration with Strimzi.
+# This creates a simple topic with sensible defaults.
+#
+# For a complete example with all features, see queueinstance-complete.yaml
+
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: QueueInstance
+metadata:
+  name: xplane-orders-queue
+  namespace: apps
+spec:
+  # Backend type
+  type: kafka
+
+  # Kafka configuration
+  kafka:
+    clusterRef: my-kafka-cluster  # Reference to existing Kafka cluster
+
+  # Connection credentials
+  connectionSecret:
+    name: orders-queue-credentials
