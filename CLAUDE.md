@@ -469,7 +469,7 @@ spec:
 This repository uses SDD for non-trivial changes. Inspired by [GitHub Spec Kit](https://github.com/github/spec-kit), the workflow balances rigor with simplicity:
 
 ```
-/spec → Fill spec → Review (4 personas) → Implement → /create-pr → Archive
+/spec → /spec-status → /clarify → /validate → Implement → /create-pr → Auto-archive
 ```
 
 **Key Documents**:
@@ -497,9 +497,9 @@ This repository uses SDD for non-trivial changes. Inspired by [GitHub Spec Kit](
 ### SDD Workflow
 
 ```bash
-# 1. Create specification (creates GitHub issue + spec directory)
+# 1. Create specification (creates GitHub issue + spec directory with spec:draft label)
 /spec composition "Add Valkey caching composition"
-# → Creates: GitHub Issue #XXX + docs/specs/001-valkey-caching/spec.md
+# → Creates: GitHub Issue #XXX (label: spec:draft) + docs/specs/001-valkey-caching/spec.md
 
 # 2. Fill in the spec
 # - User stories with Gherkin acceptance scenarios
@@ -508,34 +508,44 @@ This repository uses SDD for non-trivial changes. Inspired by [GitHub Spec Kit](
 # - Design (API, resources created)
 # - Phased tasks checklist
 
-# 3. Review with 4 personas (checklist in spec)
-# - PM: Problem clarity, user stories, scope
-# - Platform Engineer: Patterns, API consistency
-# - Security: Zero-trust, least privilege
-# - SRE: Health checks, observability
+# 3. Check pipeline status
+/spec-status
+# → Shows: Draft: 1, Implementing: 0, Done: 15 (with stale detection)
 
-# 4. Resolve clarifications conversationally
-# Ask Claude: "What should be the default eviction policy?"
-# Update spec with [CLARIFIED: answer]
+# 4. Resolve clarifications with structured options
+/clarify
+# → Presents options for each [NEEDS CLARIFICATION] marker from 4 perspectives
+# → Updates spec with [CLARIFIED: answer]
 
-# 5. Implement by working through phased tasks
-# Check off tasks, verify success criteria
+# 5. Validate spec completeness
+/validate
+# → Runs 8 validation checks with actionable suggestions
 
-# 6. Create PR (auto-references spec)
+# 6. Start implementation (update issue label)
+gh issue edit XXX --remove-label "spec:draft" --add-label "spec:implementing"
+
+# 7. Implement by working through phased tasks
+# Check off tasks in spec.md, verify success criteria
+
+# 8. Create PR (auto-references spec)
 /create-pr
+# → PR body includes: "Implements #XXX" and spec directory path
 
-# 7. After merge, archive the spec
-mv docs/specs/001-valkey-caching docs/specs/done/
-gh issue close XXX
+# 9. After merge, spec is auto-archived by GitHub Action
+# → Spec moved to docs/specs/done/
+# → Issue closed with spec:done label
 ```
 
-### SDD Skill
+### SDD Skills
 
 | Skill | Description |
 |-------|-------------|
-| `/spec [type] "description"` | Creates GitHub issue + spec directory |
+| `/spec [type] "description"` | Creates GitHub issue + spec directory with `spec:draft` label |
+| `/spec-status` | Shows pipeline overview (Draft/Implementing/Done counts, stale detection) |
+| `/clarify [spec-file]` | Resolves `[NEEDS CLARIFICATION]` markers with structured options |
+| `/validate [spec-file]` | Validates spec completeness with actionable suggestions |
 
-Types (optional): `composition` | `infrastructure` | `security` | `platform`
+Types for `/spec` (optional): `composition` | `infrastructure` | `security` | `platform`
 
 See [`.claude/skills/README.md`](.claude/skills/README.md) for details.
 
