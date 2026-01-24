@@ -183,21 +183,24 @@ if oxr.spec.type == "kafka":
             # pragma: allowlist secret
             data = [
                 {
-                    secretKey = "bootstrapServers"  # pragma: allowlist secret
+                    # pragma: allowlist secret
+                    secretKey = "bootstrapServers"
                     remoteRef = {
                         key = "kafka/" + _kafkaClusterRef + "/bootstrap-servers"
                         property = "bootstrap.servers"
                     }
                 }
                 {
-                    secretKey = "username"  # pragma: allowlist secret
+                    # pragma: allowlist secret
+                    secretKey = "username"
                     remoteRef = {
                         key = "kafka/" + _kafkaClusterRef + "/users/" + oxr.metadata.name
                         property = "username"
                     }
                 }
                 {
-                    secretKey = "password"  # pragma: allowlist secret
+                    # pragma: allowlist secret
+                    secretKey = "password"
                     remoteRef = {
                         key = "kafka/" + _kafkaClusterRef + "/users/" + oxr.metadata.name
                         property = "password"
