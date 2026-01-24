@@ -185,15 +185,19 @@ Use `[NEEDS CLARIFICATION: ...]` for unresolved questions:
 - [NEEDS CLARIFICATION: What eviction policy should be default?]
 ```
 
-## Integration with Claude Code
+## Integration with Claude Code Skills
 
-| Command | Description |
-|---------|-------------|
+Since Claude Code v2.1.3+, Skills and Slash Commands are unified. These SDD skills are **explicitly invoked** (never auto-activated) as they require user intent.
+
+| Skill | Description |
+|-------|-------------|
 | `/specify [type]` | Creates GitHub issue + spec file from template |
 | `/clarify [file]` | Resolves `[NEEDS CLARIFICATION]` markers interactively |
 | `/tasks [file]` | Generates task breakdown from spec's Rollout Plan |
 | `/create-pr` | Auto-detects specs in `active/` and links them in PR |
-| `/commit` | Standard commit workflow (unchanged) |
+| `/commit` | Commit workflow with pre-commit validation |
+
+See [`.claude/skills/README.md`](../../.claude/skills/README.md) for the complete skills reference.
 
 **Validation Script**:
 ```bash

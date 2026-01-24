@@ -37,7 +37,21 @@ Skip specs for:
 
 ### Step 1: Determine Spec Type
 
-If type argument provided, use it. Otherwise, detect from context:
+**If type argument provided**, use it directly.
+
+**If type NOT provided**, use AskUserQuestion to prompt:
+
+```
+Question: "What type of specification do you want to create?"
+Header: "Spec type"
+Options:
+  - composition: "New Crossplane KCL composition, XRD, or managed resource pattern"
+  - infrastructure: "OpenTofu/Terramate changes (VPC, EKS, IAM, network)"
+  - security: "Network policies, RBAC, secrets management, PKI changes"
+  - platform: "Multi-component features spanning multiple subsystems"
+```
+
+**Context hints** (use to suggest a default, but always confirm with user):
 
 | Type | Trigger Patterns |
 |------|-----------------|
@@ -46,7 +60,14 @@ If type argument provided, use it. Otherwise, detect from context:
 | `security` | `*networkpolicy*`, `*rbac*`, `openbao/**`, secrets |
 | `platform` | Multi-directory changes, new HelmReleases, observability |
 
-### Step 2: Generate Semantic Slug
+### Step 2: Get Description
+
+**If description provided**, use it directly.
+
+**If description NOT provided**, ask the user:
+- "Briefly describe what you want to specify (e.g., 'Add Valkey caching composition for Redis workloads')"
+
+### Step 3: Generate Semantic Slug
 
 From description, create a slug:
 - Filter out stop words (I, want, to, the, for, a, an, etc.)
@@ -54,7 +75,7 @@ From description, create a slug:
 - Join with hyphens, lowercase
 - Example: "Create a Valkey caching composition" → "valkey-caching-composition"
 
-### Step 3: Create GitHub Issue (Anchor)
+### Step 4: Create GitHub Issue (Anchor)
 
 Create a GitHub issue as the immutable anchor for discussion and tracking:
 
@@ -85,7 +106,7 @@ ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oP 'issues/\K\d+$')
 - Creates linkable anchor for PRs (`Implements #123`)
 - Separates "what/why" (issue) from "how" (spec file)
 
-### Step 4: Generate Spec Number
+### Step 5: Generate Spec Number
 
 ```bash
 # Find next spec number by extracting the highest existing number
@@ -97,7 +118,7 @@ MAX_NUM=$(ls -1 docs/specs/active/*.md docs/specs/completed/*.md 2>/dev/null | \
 SPEC_NUM=$(printf "%04d" $((10#${MAX_NUM:-0} + 1)))
 ```
 
-### Step 5: Create Spec File
+### Step 6: Create Spec File
 
 ```bash
 # Include issue number in filename for traceability
@@ -110,7 +131,7 @@ Copy the appropriate template:
 - `security` → `docs/specs/templates/spec-security.md`
 - `platform` → `docs/specs/templates/spec-platform-capability.md`
 
-### Step 6: Pre-fill Context
+### Step 7: Pre-fill Context
 
 Replace placeholders in the template:
 - `SPEC-XXXX` → `SPEC-${SPEC_NUM}`
@@ -118,13 +139,13 @@ Replace placeholders in the template:
 - `[Composition Name]` / `[Title]` → derived from description
 - `GitHub Issue: #XXX` → `GitHub Issue: #${ISSUE_NUM}`
 
-### Step 7: Update GitHub Issue with Spec Link
+### Step 8: Update GitHub Issue with Spec Link
 
 ```bash
 gh issue comment ${ISSUE_NUM} --body "Spec file created: [\`${SPEC_FILE}\`](${SPEC_FILE})"
 ```
 
-### Step 8: Read Related Context
+### Step 9: Read Related Context
 
 To help fill in the template, scan relevant files (only if they exist):
 
@@ -154,7 +175,7 @@ ls docs/specs/completed/*.md 2>/dev/null | head -3
 - `docs/technology-choices.md` - Architectural context
 - `docs/specs/completed/*.md` - Similar completed specs for reference
 
-### Step 9: Output
+### Step 10: Output
 
 Display:
 1. GitHub issue URL
