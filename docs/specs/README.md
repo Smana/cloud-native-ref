@@ -1,13 +1,13 @@
 # Spec-Driven Development (SDD)
 
-This directory contains formal specifications for non-trivial changes to the cloud-native-ref platform.
+Specifications for non-trivial changes to the cloud-native-ref platform.
 
 ## Overview
 
-SDD ensures thorough planning before implementation, reducing rework and catching issues early. Based on [GitHub Spec Kit](https://github.com/github/spec-kit), our workflow follows these stages:
+SDD ensures thoughtful planning before implementation, reducing rework and catching design issues early. Inspired by [GitHub Spec Kit](https://github.com/github/spec-kit), our workflow balances rigor with simplicity:
 
 ```
-Specify → Clarify → Plan → Tasks → Implement → Validate
+/spec → Fill spec → Review (4 personas) → Implement → /create-pr → Archive
 ```
 
 **Key Documents**:
@@ -16,14 +16,14 @@ Specify → Clarify → Plan → Tasks → Implement → Validate
 
 ## When to Create a Spec
 
-Run `/specify [type]` when making:
+Run `/spec` when making:
 
-| Change Type | Examples | Template |
-|-------------|----------|----------|
-| **composition** | New KCL module, new XRD, Crossplane patterns | `spec-crossplane-composition.md` |
-| **infrastructure** | New OpenTofu stack, VPC changes, EKS upgrades | `spec-infrastructure.md` |
-| **security** | Network policies, RBAC, PKI, secrets management | `spec-security.md` |
-| **platform** | Multi-component features, observability, GitOps changes | `spec-platform-capability.md` |
+| Change Type | Examples |
+|-------------|----------|
+| **composition** | New KCL module, new XRD, Crossplane patterns |
+| **infrastructure** | New OpenTofu stack, VPC changes, EKS upgrades |
+| **security** | Network policies, RBAC, PKI, secrets management |
+| **platform** | Multi-component features, observability, GitOps changes |
 
 ## When to Skip Specs
 
@@ -35,119 +35,132 @@ Run `/specify [type]` when making:
 
 ## Workflow
 
-```bash
-# 1. Create specification (creates GitHub issue + spec file)
-/specify composition "Add Valkey caching composition"
-# Creates: GitHub Issue #XXX + docs/specs/active/0001-#XXX-valkey-caching.md
-
-# 2. Fill in the spec template
-#    - User stories with Given/When/Then acceptance scenarios
-#    - Functional requirements (FR-001, FR-002...)
-#    - Success criteria (SC-001, SC-002...)
-#    - Add [NEEDS CLARIFICATION: ...] markers for uncertain items
-
-# 3. Resolve clarifications interactively
-/clarify
-# Walks through each [NEEDS CLARIFICATION] marker and updates the spec
-
-# 4. Generate task breakdown (optional)
-/tasks
-# Creates dependency-ordered tasks from the spec's Rollout Plan
-
-# 5. Validate spec is complete
-./scripts/validate-spec.sh
-# Checks: required sections, no unresolved markers, constitution compliance
-
-# 6. Self-review using the 4-persona checklists
-
-# 7. Implement changes following the spec
-
-# 8. Create PR (auto-references issue: "Implements #XXX")
-/create-pr
-
-# 9. After merge, archive the spec and close the issue
-mv docs/specs/active/XXXX-*.md docs/specs/completed/
-gh issue close XXX
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   /spec     │───▶│  Fill spec  │───▶│   Review    │───▶│  Implement  │───▶│ /create-pr  │
+│             │    │             │    │             │    │             │    │             │
+│ Creates:    │    │ Complete:   │    │ 4 personas: │    │ Check off   │    │ References  │
+│ - GH Issue  │    │ - Stories   │    │ - PM        │    │ tasks as    │    │ spec issue  │
+│ - spec.md   │    │ - Design    │    │ - Platform  │    │ you go      │    │             │
+│             │    │ - Tasks     │    │ - Security  │    │             │    │             │
+│             │    │             │    │ - SRE       │    │             │    │             │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
 ```
 
-## Two-Document Model
+### Step 1: Create Specification
 
-Inspired by [vfarcic/dot-ai](https://github.com/vfarcic/dot-ai), specs use a two-document model:
+```bash
+/spec "Add Valkey caching composition"
+/spec composition "Add queue composition for Kafka/SQS"
+```
 
-| Document | Purpose | Location |
-|----------|---------|----------|
-| **GitHub Issue** | Immutable anchor, discussion, "what/why" | GitHub Issues |
-| **Spec File** | Detailed design, checklists, "how" | `docs/specs/active/` |
+**Creates**:
+- GitHub Issue `#XXX` (anchor for discussion)
+- `docs/specs/001-valkey-caching/spec.md` (the spec)
 
-The issue provides discoverability and discussion; the spec file contains implementation details.
+### Step 2: Fill in the Spec
+
+Edit the generated `spec.md`:
+
+1. **Summary**: 1-2 sentences
+2. **Problem**: Who has this problem? Why now?
+3. **User Stories**: With Gherkin acceptance scenarios
+4. **Requirements**: FR-001 (MUST), FR-002 (SHOULD)
+5. **Success Criteria**: Measurable outcomes
+6. **Design**: API, resources created, dependencies
+7. **Tasks**: Phased checklist
+8. **Clarifications**: Mark unclear items with `[NEEDS CLARIFICATION: ...]`
+
+### Step 3: Review with 4 Personas
+
+Before implementation, self-review the spec from each perspective:
+
+| Persona | Focus Areas |
+|---------|-------------|
+| **Project Manager** | Problem clarity, user stories, acceptance criteria, scope |
+| **Platform Engineer** | Design patterns, API consistency, KCL patterns, examples |
+| **Security & Compliance** | Zero-trust, least privilege, secrets, network policies |
+| **SRE** | Health checks, observability, resource limits, failure modes |
+
+### Step 4: Resolve Clarifications
+
+Discuss `[NEEDS CLARIFICATION]` markers conversationally with Claude:
+- "What should be the default eviction policy?"
+- Claude helps analyze options
+- Update spec with `[CLARIFIED: answer]`
+
+### Step 5: Implement
+
+Work through the phased tasks in `spec.md`:
+- Check off tasks as completed
+- Verify success criteria are met
+
+### Step 6: Create PR
+
+```bash
+/create-pr
+```
+
+Auto-references the spec: "Implements #XXX"
+
+### Step 7: Archive
+
+After merge:
+
+```bash
+mv docs/specs/001-valkey-caching docs/specs/done/
+gh issue close XXX --comment "Implemented in PR #YYY"
+```
 
 ## Directory Structure
 
 ```
 docs/specs/
-├── README.md           # This file
-├── constitution.md     # Platform-wide non-negotiable principles
-├── templates/          # Spec templates (do not edit directly)
-│   ├── spec-crossplane-composition.md
-│   ├── spec-infrastructure.md
-│   ├── spec-security.md
-│   └── spec-platform-capability.md
-├── active/             # Specs currently in progress
-│   └── 0001-#42-valkey-caching.md   # Linked to GitHub issue #42
-└── completed/          # Archived specs (for reference)
-    └── 0001-#42-valkey-caching.md
+├── README.md              # This file
+├── constitution.md        # Platform-wide principles
+├── templates/
+│   └── spec.md            # Template (~170 lines)
+├── 001-feature-name/      # Active specs (directory per spec)
+│   └── spec.md
+└── done/                  # Archived specs
+    └── 001-feature-name/
+        └── spec.md
 ```
 
-**Filename format**: `XXXX-#ISSUE-slug.md` where:
-- `XXXX` = Sequential spec number (0001, 0002, ...)
-- `#ISSUE` = GitHub issue number for traceability
+**Directory format**: `NNN-slug/` where:
+- `NNN` = Sequential spec number (001, 002, ...)
 - `slug` = Semantic description (kebab-case)
 
 ## Spec Structure
 
 Every spec includes:
 
-1. **Summary**: 1-2 sentence description
-2. **Motivation**: Problem statement, user stories (P1/P2/P3 priority), functional requirements (FR-XXX), success criteria (SC-XXX)
-3. **Design**: Architecture, API/schema design, key entities
-4. **Implementation**: Phases, tasks, validation checklist
-5. **Review Checklist**: 4-persona self-review
+### Core Sections
+1. **Metadata**: ID, issue link, status, type, date
+2. **Summary**: 1-2 sentences
+3. **Problem**: Who, what, why now
+4. **User Stories**: Role, capability, benefit + Gherkin acceptance scenarios
+5. **Requirements**: FR-XXX (MUST/SHOULD) + Non-goals
+6. **Success Criteria**: SC-XXX measurable outcomes
 
-## Review Personas
+### Design Sections
+7. **API/Interface**: Example YAML
+8. **Resources Created**: Table with conditions
+9. **Dependencies**: Prerequisites checklist
 
-Each spec template includes a self-review checklist covering these perspectives:
+### Execution Sections
+10. **Tasks**: Phased checklist (Prerequisites → Implementation → Validation)
+11. **Validation**: Verification steps
+12. **Review Checklist**: 4 persona checklists
 
-### Project Manager (PM)
-- Problem statement is clear and specific
-- User stories capture real needs
-- Acceptance criteria are measurable
-- Scope is well-defined (goals AND non-goals)
-- Success metrics defined
+### Resolution Sections
+13. **Clarifications**: `[NEEDS CLARIFICATION]` / `[CLARIFIED]` markers
+14. **References**: Constitution, similar specs, ADRs
 
-### Platform Engineer
-- Design follows existing patterns (App, SQLInstance as references)
-- Resource naming follows `xplane-*` convention
-- KCL avoids mutation pattern (issue #285)
-- Examples (basic + complete) are provided
-
-### Security & Compliance
-- Zero-trust networking considered
-- Least-privilege RBAC
-- Secrets via External Secrets (no hardcoded)
-- Network policies defined
-
-### SRE
-- Observability configured (metrics, logs, traces)
-- HA requirements documented
-- Failure modes and recovery documented
-- Backup/DR strategy defined (if applicable)
-
-## Spec Key Elements
-
-### User Stories (Gherkin-style)
+## User Stories (Gherkin-style)
 
 ```markdown
-#### User Story 1 - Deploy Cached Application (Priority: P1)
+### US-1: Deploy Cached Application (Priority: P1)
 
 As a **developer**, I want to deploy an app with managed caching,
 so that I can improve response times without managing Redis myself.
@@ -161,49 +174,69 @@ so that I can improve response times without managing Redis myself.
    **Then** the CACHE_URL environment variable is injected
 ```
 
-### Functional Requirements
+## Review Personas
 
-```markdown
-- **FR-001**: System MUST create Valkey instance when `cache.enabled: true`
-- **FR-002**: System MUST inject CACHE_URL into application pods
-- **FR-003**: System SHOULD support TLS encryption for cache connections
-```
+### Project Manager (PM)
+- Problem statement is clear and specific
+- User stories capture real user needs
+- Acceptance scenarios are testable
+- Scope is well-defined (goals AND non-goals)
+- Success criteria are measurable
 
-### Success Criteria
+### Platform Engineer
+- Design follows existing patterns (App, SQLInstance as references)
+- API is consistent with other compositions
+- Resource naming follows `xplane-*` convention
+- KCL avoids mutation pattern (issue #285)
+- Examples provided (basic + complete)
 
-```markdown
-- **SC-001**: Cache hit rate > 80% for repeated queries
-- **SC-002**: Connection latency < 5ms within cluster
-```
+### Security & Compliance
+- Zero-trust networking (CiliumNetworkPolicy defined)
+- Least-privilege RBAC
+- Secrets via External Secrets (no hardcoded credentials)
+- Security context enforced (non-root, read-only FS where possible)
+- IAM policies scoped to `xplane-*` resources (if AWS)
 
-### Clarification Markers
+### SRE
+- Health checks defined (liveness, readiness probes)
+- Observability configured (metrics, logs)
+- Resource limits appropriate
+- Failure modes documented
+- Recovery/rollback path clear
+
+## Clarification Markers
 
 Use `[NEEDS CLARIFICATION: ...]` for unresolved questions:
 
 ```markdown
 - [NEEDS CLARIFICATION: Should cache support cross-namespace access?]
-- [NEEDS CLARIFICATION: What eviction policy should be default?]
+```
+
+After discussing with Claude or stakeholders:
+
+```markdown
+- [CLARIFIED: No, cache is namespace-scoped for security isolation]
 ```
 
 ## Integration with Claude Code Skills
 
-Since Claude Code v2.1.3+, Skills and Slash Commands are unified. These SDD skills are **explicitly invoked** (never auto-activated) as they require user intent.
-
 | Skill | Description |
 |-------|-------------|
-| `/specify [type]` | Creates GitHub issue + spec file from template |
-| `/clarify [file]` | Resolves `[NEEDS CLARIFICATION]` markers interactively |
-| `/tasks [file]` | Generates task breakdown from spec's Rollout Plan |
-| `/create-pr` | Auto-detects specs in `active/` and links them in PR |
+| `/spec [type] "description"` | Creates GitHub issue + spec directory |
+| `/create-pr` | Auto-detects specs and references issue |
 | `/commit` | Commit workflow with pre-commit validation |
 
 See [`.claude/skills/README.md`](../../.claude/skills/README.md) for the complete skills reference.
 
-**Validation Script**:
-```bash
-./scripts/validate-spec.sh [spec-file]
-```
-Validates: required sections, no unresolved markers, constitution compliance, no placeholders.
+## Platform Constitution
+
+All specs must comply with the [Platform Constitution](./constitution.md). Key principles:
+
+- Resource naming: `xplane-*` prefix
+- KCL: No mutation after creation (issue #285)
+- Security: Zero-trust, least privilege, External Secrets
+- IAM: EKS Pod Identity, scoped to `xplane-*` resources
+- Validation: Polaris 85+, kube-linter, Datree
 
 ## Related
 

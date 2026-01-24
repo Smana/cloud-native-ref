@@ -14,7 +14,7 @@ Since Claude Code v2.1.3, **Skills and Slash Commands are unified**. Each skill 
 |-------|---------------------|--------------|
 | **kcl-composition-validator** | Working with `.k` files or Crossplane compositions | `/kcl-composition-validator` |
 | **crossplane-renderer** | Testing compositions, rendering examples | `/crossplane-renderer` |
-| **specify/clarify/tasks** | Never (requires explicit user intent) | `/specify`, `/clarify`, `/tasks` |
+| **spec** | Never (requires explicit user intent) | `/spec` |
 | **commit** | Never (user decides when to commit) | `/commit` |
 | **create-pr** | Never (user decides when to create PR) | `/create-pr` |
 | **improve-pr** | Never (user decides when to review) | `/improve-pr` |
@@ -25,11 +25,9 @@ Since Claude Code v2.1.3, **Skills and Slash Commands are unified**. Each skill 
 
 | Skill | Usage | Description |
 |-------|-------|-------------|
-| **specify** | `/specify <type> [description]` | Create GitHub issue + spec template |
-| **clarify** | `/clarify [spec-file]` | Resolve `[NEEDS CLARIFICATION]` markers |
-| **tasks** | `/tasks [spec-file] [--issues]` | Generate task breakdown from spec |
+| **spec** | `/spec [type] "description"` | Create GitHub issue + spec directory |
 
-**SDD Workflow**: `Specify → Clarify → Tasks → Implement → Validate`
+**Simplified Workflow**: `/spec` → Fill spec → Implement → `/create-pr` → Archive
 
 For complete SDD documentation, see [`docs/specs/README.md`](../../docs/specs/README.md).
 
@@ -53,12 +51,8 @@ For complete SDD documentation, see [`docs/specs/README.md`](../../docs/specs/RE
 ```
 .claude/skills/
 ├── README.md                          # This file
-├── specify/
+├── spec/
 │   └── SKILL.md                       # SDD: Create specifications
-├── clarify/
-│   └── SKILL.md                       # SDD: Resolve clarifications
-├── tasks/
-│   └── SKILL.md                       # SDD: Generate task breakdown
 ├── commit/
 │   ├── SKILL.md                       # Git commits with pre-commit
 │   └── references/
@@ -124,27 +118,33 @@ Claude loads the main SKILL.md first, then references only when needed. This opt
 
 ```bash
 # 1. Create specification for new feature
-/specify composition Create a Valkey caching composition
+/spec composition "Create a Valkey caching composition"
+# → Creates: GitHub Issue #100 + docs/specs/001-valkey-caching/spec.md
 
-# 2. Resolve any clarifications needed
-/clarify
+# 2. Fill in the spec
+# - Problem statement
+# - Requirements (FR-001, FR-002...)
+# - Design (API, resources)
+# - Tasks checklist
 
-# 3. Generate task breakdown
-/tasks
+# 3. Resolve clarifications conversationally
+# "What should be the default eviction policy?"
+# → Update spec with [CLARIFIED: LRU with 1GB max]
 
-# 4. Implement the feature...
+# 4. Implement by working through tasks
+# - Check off tasks in spec.md as completed
+# - Claude uses TaskCreate internally for session tracking
 
 # 5. Commit changes with pre-commit validation
 /commit
 
-# 6. Create pull request
-/create-pr main
+# 6. Create pull request (auto-links to spec)
+/create-pr
+# → PR body references: "Implements #100"
 
-# 7. Later, update the PR description
-/create-pr --update 123
-
-# 8. Analyze and improve the PR
-/improve-pr 123
+# 7. After merge, archive the spec
+mv docs/specs/001-valkey-caching docs/specs/done/
+gh issue close 100 --comment "Implemented in PR #XXX"
 ```
 
 ## Adding New Skills
