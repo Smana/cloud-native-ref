@@ -722,6 +722,36 @@ _stream: {filters} field_filters $msg | unpack_json | operations
 
 **For advanced filtering**: Use Grafana's Explore view for complex LogsQL queries with field-level filters like `log.level:error` or `log.trace_id:*`
 
+### Grafana Dashboard Best Practices
+
+#### Datasource Configuration
+- **Logs panels MUST use logs datasource**: Always use `victoriametrics-logs-datasource` type for logs panels, NEVER prometheus/metrics datasource
+- **Flux variable substitution**: Use `$${variable}` (double dollar) in dashboard JSON to preserve Grafana variables after Flux postBuild processing. Single `${variable}` gets substituted by Flux.
+
+#### Troubleshooting "No Data" in Dashboard Panels
+
+**Before investigating infrastructure, always check these first:**
+
+1. **Verify data exists with wider time range**: Query VictoriaLogs/VictoriaMetrics directly using MCP tools with a broader time range (e.g., 6h or 24h instead of 1h)
+2. **Consider data generation patterns**:
+   - **Continuous logs**: Application servers, databases (data every second)
+   - **Event-driven logs**: Karpenter, controllers, operators (data only during activity)
+3. **Adjust default time range** based on component behavior
+
+**Common pitfalls:**
+- Assuming log collection is broken when data simply doesn't exist in the selected time range
+- Restarting Vector/log collectors unnecessarily
+- Investigating network policies before verifying data exists
+
+#### Component-Specific Time Ranges
+
+| Component | Log Pattern | Recommended Default |
+|-----------|-------------|---------------------|
+| Karpenter | Event-driven (scaling activity only) | 6h or 12h |
+| Application pods | Continuous | 1h |
+| Flux controllers | Event-driven (reconciliation) | 3h |
+| Cert-manager | Event-driven (certificate operations) | 6h |
+
 ## Database Migrations with Atlas Operator
 
 ### Overview
