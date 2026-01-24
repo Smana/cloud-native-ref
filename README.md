@@ -267,6 +267,10 @@ This repository is documented through a series of blog posts:
 - [Cilium Documentation](https://docs.cilium.io/)
 - [VictoriaMetrics Documentation](https://docs.victoriametrics.com/)
 
+## AI-Assisted Development
+
+This repository leverages a coding agent for various development tasks including code generation, troubleshooting, and documentation. The [CLAUDE.md](CLAUDE.md) file provides project context and platform-specific knowledge to help the agent understand the codebase. For non-trivial changes, we use a **Spec-Driven Development** workflow where specifications are created and validated before implementation (see [SDD documentation](docs/specs/README.md)). The agent also integrates with observability tools via MCP servers (VictoriaMetrics, VictoriaLogs, Flux) for real-time debugging directly from the development environment.
+
 ## Contributing and Community
 
 We welcome contributions, feedback, and questions!
