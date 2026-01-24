@@ -31,6 +31,8 @@ Since Claude Code v2.1.3, **Skills and Slash Commands are unified**. Each skill 
 
 **SDD Workflow**: `Specify → Clarify → Tasks → Implement → Validate`
 
+For complete SDD documentation, see [`docs/specs/README.md`](../../docs/specs/README.md).
+
 ### Git & PR Workflows
 
 | Skill | Usage | Description |

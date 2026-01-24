@@ -526,12 +526,16 @@ gh issue close XXX
 
 ### SDD Skills
 
+These skills require explicit invocation (never auto-activated). See [`.claude/skills/README.md`](.claude/skills/README.md) for details.
+
 | Skill | Description |
 |-------|-------------|
 | `/specify [type]` | Creates GitHub issue + spec file from template |
 | `/clarify [file]` | Resolves `[NEEDS CLARIFICATION]` markers interactively |
 | `/tasks [file]` | Generates task breakdown from spec's Rollout Plan |
-| `./scripts/validate-spec.sh` | Validates spec completeness and constitution compliance |
+| `/create-pr` | Creates PR with spec reference and mermaid diagram |
+
+**Validation Script**: `./scripts/validate-spec.sh` - Validates spec completeness and constitution compliance
 
 ### Review Personas
 
