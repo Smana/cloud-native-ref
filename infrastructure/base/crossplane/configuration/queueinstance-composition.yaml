@@ -30,7 +30,7 @@ spec:
         kind: KCLRun
         spec:
           target: Resources
-          source: oci://ghcr.io/smana/cloud-native-ref/crossplane-queueinstance:0.1.0
+          source: oci://ghcr.io/smana/cloud-native-ref/crossplane-queueinstance:v0.1.0
 
     - step: ready
       functionRef:
