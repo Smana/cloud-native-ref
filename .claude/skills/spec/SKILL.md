@@ -50,7 +50,7 @@ SPEC_NUM=$(printf "%03d" $((10#${MAX_NUM:-0} + 1)))
 ```bash
 ISSUE_URL=$(gh issue create \
   --title "[SPEC] ${TITLE}" \
-  --label "spec" \
+  --label "spec,spec:draft" \
   --body "## Summary
 ${DESCRIPTION}
 
@@ -62,6 +62,10 @@ _Lightweight spec. See spec file for details._")
 
 ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oP 'issues/\K\d+$')
 ```
+
+**Labels used**:
+- `spec` - All specification issues
+- `spec:draft` - Initial state (add manually: `spec:implementing` when work starts, `spec:done` when archived)
 
 ### 3. Create Spec Directory and File
 
@@ -87,14 +91,16 @@ gh issue comment ${ISSUE_NUM} --body "Spec created: [\`${SPEC_DIR}/spec.md\`](${
 ```
 Spec created:
 
-  Issue: https://github.com/Smana/cloud-native-ref/issues/XXX
+  Issue: https://github.com/Smana/cloud-native-ref/issues/XXX (label: spec:draft)
   Spec:  docs/specs/XXX-slug/spec.md
 
 Next:
-  1. Fill in the spec (especially [NEEDS CLARIFICATION] sections)
-  2. Implement the changes
-  3. Reference in PR: "Implements #XXX"
-  4. After merge: mv docs/specs/XXX-slug docs/specs/done/
+  1. Fill in the spec (use /clarify for [NEEDS CLARIFICATION] sections)
+  2. Run /spec-status to see pipeline overview
+  3. When starting work: gh issue edit XXX --remove-label "spec:draft" --add-label "spec:implementing"
+  4. Implement the changes
+  5. Reference in PR: "Implements #XXX"
+  6. After merge: spec is auto-archived by GitHub Action
 ```
 
 ## Template Location
@@ -103,10 +109,13 @@ Next:
 
 ## Clarifications
 
-Resolve `[NEEDS CLARIFICATION: ...]` markers conversationally during spec editing. No separate skill needed - just ask Claude to help clarify.
+Use `/clarify` to resolve `[NEEDS CLARIFICATION: ...]` markers with structured options, or discuss conversationally with Claude.
 
 ## Integration
 
-- `/spec` creates spec + issue (this skill)
+- `/spec` creates spec + issue with `spec:draft` label (this skill)
+- `/spec-status` shows pipeline overview (Draft/Implementing/Done counts)
+- `/clarify` resolves [NEEDS CLARIFICATION] markers with structured options
 - `/create-pr` auto-detects specs and references issue
 - `/commit` for commits
+- GitHub Action auto-archives specs on PR merge

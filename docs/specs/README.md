@@ -105,11 +105,15 @@ Auto-references the spec: "Implements #XXX"
 
 ### Step 7: Archive
 
-After merge:
+After PR merge, the spec is **automatically archived** by the GitHub Action:
+- Spec moved to `docs/specs/done/`
+- Issue closed with `spec:done` label
 
+**Manual archive** (if needed):
 ```bash
 mv docs/specs/001-valkey-caching docs/specs/done/
 gh issue close XXX --comment "Implemented in PR #YYY"
+gh issue edit XXX --add-label "spec:done"
 ```
 
 ## Directory Structure
@@ -222,11 +226,41 @@ After discussing with Claude or stakeholders:
 
 | Skill | Description |
 |-------|-------------|
-| `/spec [type] "description"` | Creates GitHub issue + spec directory |
+| `/spec [type] "description"` | Creates GitHub issue + spec directory with `spec:draft` label |
+| `/spec-status` | Shows pipeline overview (Draft/Implementing/Done counts, stale specs) |
+| `/clarify` | Resolves `[NEEDS CLARIFICATION]` markers with structured options |
 | `/create-pr` | Auto-detects specs and references issue |
 | `/commit` | Commit workflow with pre-commit validation |
 
 See [`.claude/skills/README.md`](../../.claude/skills/README.md) for the complete skills reference.
+
+## GitHub Issue Labels
+
+Spec issues use labels to track status through the pipeline:
+
+| Label | Description | Transition |
+|-------|-------------|------------|
+| `spec:draft` | Initial state, spec is being filled out | Auto-added by `/spec` |
+| `spec:implementing` | Work has started | Manual: `gh issue edit XXX --remove-label "spec:draft" --add-label "spec:implementing"` |
+| `spec:done` | Spec archived after PR merge | Auto-added by GitHub Action |
+
+**View specs by status**:
+```bash
+gh issue list --label "spec:draft"        # Specs needing work
+gh issue list --label "spec:implementing" # Specs in progress
+gh issue list --label "spec:done"         # Completed specs
+```
+
+## Auto-Archive on PR Merge
+
+When a PR referencing a spec is merged to `main`, the GitHub Action automatically:
+
+1. Detects spec directory in PR body (e.g., `docs/specs/001-feature-name`)
+2. Moves the spec to `docs/specs/done/`
+3. Closes the linked GitHub issue with `spec:done` label
+4. Commits the archive change
+
+**For this to work**, ensure your PR body contains the spec directory path. The `/create-pr` skill handles this automatically.
 
 ## Platform Constitution
 

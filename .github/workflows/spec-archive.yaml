@@ -1,0 +1,96 @@
+name: Archive Spec on Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  archive:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Find and archive spec
+        id: archive
+        run: |
+          # Extract spec directory path from PR body
+          # Matches patterns like: docs/specs/001-feature-name
+          SPEC_DIR=$(echo "${{ github.event.pull_request.body }}" | grep -oP 'docs/specs/\d+-[a-z0-9-]+' | head -1 || true)
+
+          if [ -z "$SPEC_DIR" ]; then
+            echo "No spec directory found in PR body"
+            echo "archived=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Found spec reference: $SPEC_DIR"
+
+          # Check if spec directory exists and is not already archived
+          if [ ! -d "$SPEC_DIR" ]; then
+            echo "Spec directory does not exist: $SPEC_DIR"
+            # Check if already in done/
+            DONE_DIR="docs/specs/done/$(basename "$SPEC_DIR")"
+            if [ -d "$DONE_DIR" ]; then
+              echo "Spec already archived at: $DONE_DIR"
+            fi
+            echo "archived=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Create done directory if it doesn't exist
+          mkdir -p docs/specs/done
+
+          # Move spec to done/
+          SPEC_NAME=$(basename "$SPEC_DIR")
+          mv "$SPEC_DIR" "docs/specs/done/$SPEC_NAME"
+
+          echo "Archived: $SPEC_DIR -> docs/specs/done/$SPEC_NAME"
+          echo "archived=true" >> $GITHUB_OUTPUT
+          echo "spec_name=$SPEC_NAME" >> $GITHUB_OUTPUT
+          echo "spec_dir=$SPEC_DIR" >> $GITHUB_OUTPUT
+
+      - name: Commit archive change
+        if: steps.archive.outputs.archived == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add docs/specs/
+          git commit -m "chore: archive ${{ steps.archive.outputs.spec_dir }} after PR merge
+
+          Automated archive triggered by PR #${{ github.event.pull_request.number }}"
+          git push
+
+      - name: Find and close linked issue
+        if: steps.archive.outputs.archived == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract issue number from PR body (patterns: #123, issues/123, Implements #123)
+          ISSUE_NUM=$(echo "${{ github.event.pull_request.body }}" | grep -oP '(?:Implements |Closes |Fixes |#)\K\d+' | head -1 || true)
+
+          if [ -z "$ISSUE_NUM" ]; then
+            # Try to find issue from spec directory name pattern in issues
+            SPEC_NAME="${{ steps.archive.outputs.spec_name }}"
+            ISSUE_NUM=$(gh issue list --label "spec" --json number,body --jq ".[] | select(.body | contains(\"$SPEC_NAME\")) | .number" | head -1 || true)
+          fi
+
+          if [ -n "$ISSUE_NUM" ]; then
+            echo "Closing issue #$ISSUE_NUM"
+            COMMENT="Implemented in PR #${{ github.event.pull_request.number }}. Spec archived to docs/specs/done/${{ steps.archive.outputs.spec_name }}/"
+            gh issue close "$ISSUE_NUM" --comment "$COMMENT" --reason "completed" || echo "Could not close issue (may already be closed)"
+            gh issue edit "$ISSUE_NUM" --remove-label "spec:draft" --remove-label "spec:implementing" --add-label "spec:done" 2>/dev/null || echo "Could not update labels"
+          else
+            echo "No linked issue found to close"
+          fi
