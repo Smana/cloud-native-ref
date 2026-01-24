@@ -1,0 +1,928 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: karpenter-unified
+  namespace: infrastructure
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "kubernetes"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "uid": "karpenter-unified",
+      "title": "Karpenter Unified",
+      "description": "Comprehensive Karpenter monitoring: metrics, logs, and events",
+      "tags": ["karpenter", "kubernetes", "autoscaling", "aws"],
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 1,
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "label": "Metrics",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {
+              "selected": false,
+              "text": "VictoriaMetrics",
+              "value": "VictoriaMetrics"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "refresh": 1
+          },
+          {
+            "name": "logs_datasource",
+            "label": "Logs",
+            "type": "datasource",
+            "query": "victoriametrics-logs-datasource",
+            "current": {
+              "selected": false,
+              "text": "VictoriaLogs",
+              "value": "VictoriaLogs"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "refresh": 1
+          },
+          {
+            "name": "nodepool",
+            "label": "NodePool",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+            "query": "label_values(karpenter_nodepools_usage, nodepool)",
+            "current": {
+              "selected": true,
+              "text": "All",
+              "value": "$__all"
+            },
+            "hide": 0,
+            "includeAll": true,
+            "multi": true,
+            "refresh": 2,
+            "sort": 1
+          }
+        ]
+      },
+      "annotations": {
+        "list": [
+          {
+            "name": "Karpenter Alerts",
+            "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+            "enable": true,
+            "hide": false,
+            "iconColor": "red",
+            "expr": "ALERTS{alertname=~\"Karpenter.*\", alertstate=\"firing\"}"
+          },
+          {
+            "name": "Node Created",
+            "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+            "enable": true,
+            "hide": false,
+            "iconColor": "green",
+            "expr": "increase(karpenter_nodes_created_total[1m]) > 0"
+          },
+          {
+            "name": "Node Terminated",
+            "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+            "enable": true,
+            "hide": false,
+            "iconColor": "orange",
+            "expr": "increase(karpenter_nodes_terminated_total[1m]) > 0"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "Overview",
+          "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "stat",
+          "title": "Total Nodes",
+          "gridPos": {"x": 0, "y": 1, "w": 4, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(karpenter_cluster_state_node_count)",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "yellow", "value": null},
+                  {"color": "green", "value": 1}
+                ]
+              },
+              "unit": "short",
+              "decimals": 0
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Cluster Utilization",
+          "gridPos": {"x": 4, "y": 1, "w": 4, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "avg(karpenter_cluster_utilization_percent)",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "red", "value": null},
+                  {"color": "yellow", "value": 30},
+                  {"color": "green", "value": 50},
+                  {"color": "yellow", "value": 85},
+                  {"color": "red", "value": 95}
+                ]
+              },
+              "unit": "percent",
+              "decimals": 1,
+              "max": 100
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Unschedulable Pods",
+          "gridPos": {"x": 8, "y": 1, "w": 4, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(karpenter_scheduler_unschedulable_pods_count) or vector(0)",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 1},
+                  {"color": "red", "value": 5}
+                ]
+              },
+              "unit": "short",
+              "decimals": 0
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "AWS API Errors (5m)",
+          "gridPos": {"x": 12, "y": 1, "w": 4, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(increase(karpenter_cloudprovider_errors_total[5m])) or vector(0)",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 1},
+                  {"color": "red", "value": 5}
+                ]
+              },
+              "unit": "short",
+              "decimals": 0
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "P95 Provisioning Time",
+          "gridPos": {"x": 16, "y": 1, "w": 4, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(karpenter_pods_provisioning_startup_duration_seconds_bucket[30m])) by (le))",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 120},
+                  {"color": "red", "value": 300}
+                ]
+              },
+              "unit": "s",
+              "decimals": 0
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "textMode": "value"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Spot Interruptions (1h)",
+          "gridPos": {"x": 20, "y": 1, "w": 4, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(increase(karpenter_interruption_received_messages_total[1h])) or vector(0)",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 1},
+                  {"color": "red", "value": 5}
+                ]
+              },
+              "unit": "short",
+              "decimals": 0
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          }
+        },
+        {
+          "type": "row",
+          "title": "NodePool Capacity & Usage",
+          "gridPos": {"x": 0, "y": 5, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "NodePool CPU Usage vs Limit",
+          "gridPos": {"x": 0, "y": 6, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum by (nodepool) (karpenter_nodepools_usage{resource_type=\"cpu\", nodepool=~\"$nodepool\"})",
+              "legendFormat": "{{nodepool}} - Used",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (nodepool) (karpenter_nodepools_limit{resource_type=\"cpu\", nodepool=~\"$nodepool\"})",
+              "legendFormat": "{{nodepool}} - Limit",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 2,
+                "showPoints": "never"
+              },
+              "unit": "short"
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byRegexp", "options": ".*Limit.*"},
+                "properties": [
+                  {"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}},
+                  {"id": "custom.fillOpacity", "value": 0}
+                ]
+              }
+            ]
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]}
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "NodePool Memory Usage vs Limit",
+          "gridPos": {"x": 12, "y": 6, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum by (nodepool) (karpenter_nodepools_usage{resource_type=\"memory\", nodepool=~\"$nodepool\"})",
+              "legendFormat": "{{nodepool}} - Used",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (nodepool) (karpenter_nodepools_limit{resource_type=\"memory\", nodepool=~\"$nodepool\"})",
+              "legendFormat": "{{nodepool}} - Limit",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 2,
+                "showPoints": "never"
+              },
+              "unit": "bytes"
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byRegexp", "options": ".*Limit.*"},
+                "properties": [
+                  {"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}},
+                  {"id": "custom.fillOpacity", "value": 0}
+                ]
+              }
+            ]
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]}
+          }
+        },
+        {
+          "type": "gauge",
+          "title": "NodePool Capacity Utilization",
+          "gridPos": {"x": 0, "y": 14, "w": 24, "h": 6},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "(sum by (nodepool, resource_type) (karpenter_nodepools_usage{nodepool=~\"$nodepool\"}) / sum by (nodepool, resource_type) (karpenter_nodepools_limit{nodepool=~\"$nodepool\"})) * 100",
+              "legendFormat": "{{nodepool}} - {{resource_type}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 70},
+                  {"color": "orange", "value": 85},
+                  {"color": "red", "value": 95}
+                ]
+              },
+              "unit": "percent",
+              "max": 100,
+              "min": 0
+            }
+          },
+          "options": {
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          }
+        },
+        {
+          "type": "row",
+          "title": "Provisioning & Scheduling",
+          "gridPos": {"x": 0, "y": 20, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "Pod Provisioning Duration (P50, P95, P99)",
+          "gridPos": {"x": 0, "y": 21, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(karpenter_pods_provisioning_startup_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "P50",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(karpenter_pods_provisioning_startup_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "P95",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(karpenter_pods_provisioning_startup_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "P99",
+              "refId": "C"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 2
+              },
+              "unit": "s"
+            }
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Scheduling Decision Duration",
+          "gridPos": {"x": 12, "y": 21, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(karpenter_scheduler_scheduling_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "P95 Scheduling",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(karpenter_pods_scheduling_decision_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "P95 Decision",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 2
+              },
+              "unit": "s"
+            }
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Node Lifecycle Events",
+          "gridPos": {"x": 0, "y": 29, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(increase(karpenter_nodes_created_total[5m]))",
+              "legendFormat": "Nodes Created",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(increase(karpenter_nodes_terminated_total[5m]))",
+              "legendFormat": "Nodes Terminated",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(increase(karpenter_nodeclaims_created_total[5m]))",
+              "legendFormat": "NodeClaims Created",
+              "refId": "C"
+            },
+            {
+              "expr": "sum(increase(karpenter_nodeclaims_disrupted_total[5m]))",
+              "legendFormat": "NodeClaims Disrupted",
+              "refId": "D"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 80,
+                "lineWidth": 1,
+                "stacking": {"mode": "none"}
+              },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Scheduler Queue & Unschedulable Pods",
+          "gridPos": {"x": 12, "y": 29, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(karpenter_scheduler_queue_depth)",
+              "legendFormat": "Queue Depth",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(karpenter_scheduler_unschedulable_pods_count)",
+              "legendFormat": "Unschedulable Pods",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(karpenter_scheduler_ignored_pods_count)",
+              "legendFormat": "Ignored Pods",
+              "refId": "C"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineWidth": 2
+              },
+              "unit": "short"
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "Unschedulable Pods"},
+                "properties": [
+                  {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}
+                ]
+              }
+            ]
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "row",
+          "title": "AWS Cloud Provider",
+          "gridPos": {"x": 0, "y": 37, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "AWS API Call Duration (P95)",
+          "gridPos": {"x": 0, "y": 38, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, method) (rate(karpenter_cloudprovider_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{method}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 2
+              },
+              "unit": "s"
+            }
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]}
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "AWS API Errors by Method",
+          "gridPos": {"x": 12, "y": 38, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum by (method) (increase(karpenter_cloudprovider_errors_total[5m]))",
+              "legendFormat": "{{method}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 80,
+                "lineWidth": 1,
+                "stacking": {"mode": "normal"}
+              },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "table", "placement": "right", "calcs": ["sum"]}
+          }
+        },
+        {
+          "type": "row",
+          "title": "Cost & Instance Types",
+          "gridPos": {"x": 0, "y": 46, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "table",
+          "title": "Instance Types in Use",
+          "gridPos": {"x": 0, "y": 47, "w": 12, "h": 10},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "count by (instance_type, capacity_type, zone) (karpenter_nodes_allocatable{resource_type=\"cpu\"})",
+              "format": "table",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "filterable": true
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "Time"},
+                "properties": [{"id": "custom.hidden", "value": true}]
+              },
+              {
+                "matcher": {"id": "byName", "options": "Value"},
+                "properties": [{"id": "displayName", "value": "Count"}]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": [{"desc": true, "displayName": "Count"}]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {"Time": true},
+                "renameByName": {
+                  "instance_type": "Instance Type",
+                  "capacity_type": "Capacity Type",
+                  "zone": "Zone",
+                  "Value": "Count"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "piechart",
+          "title": "Nodes by Capacity Type",
+          "gridPos": {"x": 12, "y": 47, "w": 6, "h": 10},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "count by (capacity_type) (karpenter_nodes_allocatable{resource_type=\"cpu\"})",
+              "legendFormat": "{{capacity_type}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"}
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "spot"},
+                "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}]
+              },
+              {
+                "matcher": {"id": "byName", "options": "on-demand"},
+                "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]
+              }
+            ]
+          },
+          "options": {
+            "legend": {"displayMode": "table", "placement": "right", "values": ["value", "percent"]},
+            "pieType": "donut",
+            "reduceOptions": {"calcs": ["lastNotNull"]}
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Estimated Hourly Cost by Instance Type",
+          "description": "Based on AWS pricing estimates from Karpenter",
+          "gridPos": {"x": 18, "y": 47, "w": 6, "h": 10},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum by (instance_type) (karpenter_cloudprovider_instance_type_offering_price_estimate{capacity_type=\"spot\"} * on(instance_type) group_left() count by (instance_type) (karpenter_nodes_allocatable{resource_type=\"cpu\", capacity_type=\"spot\"}))",
+              "legendFormat": "{{instance_type}} (spot)",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (instance_type) (karpenter_cloudprovider_instance_type_offering_price_estimate{capacity_type=\"on-demand\"} * on(instance_type) group_left() count by (instance_type) (karpenter_nodes_allocatable{resource_type=\"cpu\", capacity_type=\"on-demand\"}))",
+              "legendFormat": "{{instance_type}} (on-demand)",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineWidth": 2,
+                "stacking": {"mode": "normal"}
+              },
+              "unit": "currencyUSD"
+            }
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "row",
+          "title": "Disruption & Interruptions",
+          "gridPos": {"x": 0, "y": 57, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "Disruption Events",
+          "gridPos": {"x": 0, "y": 58, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum by (reason) (increase(karpenter_voluntary_disruption_decisions_total[5m]))",
+              "legendFormat": "{{reason}}",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(increase(karpenter_voluntary_disruption_consolidation_timeouts_total[5m]))",
+              "legendFormat": "Consolidation Timeouts",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 80,
+                "lineWidth": 1
+              },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Spot Interruption Handling",
+          "gridPos": {"x": 12, "y": 58, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "$${datasource}"},
+          "targets": [
+            {
+              "expr": "sum(increase(karpenter_interruption_received_messages_total[5m]))",
+              "legendFormat": "Received Interruptions",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(increase(karpenter_interruption_deleted_messages_total[5m]))",
+              "legendFormat": "Processed Interruptions",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineWidth": 2
+              },
+              "unit": "short"
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "Received Interruptions"},
+                "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]
+              }
+            ]
+          },
+          "options": {
+            "tooltip": {"mode": "multi"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          }
+        },
+        {
+          "type": "row",
+          "title": "Karpenter Logs",
+          "gridPos": {"x": 0, "y": 66, "w": 24, "h": 1},
+          "collapsed": false
+        },
+        {
+          "type": "logs",
+          "title": "Karpenter Controller Logs (Errors & Warnings)",
+          "description": "Shows error and warning logs from Karpenter controller. Click any log line to view context.",
+          "gridPos": {"x": 0, "y": 67, "w": 24, "h": 12},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
+          "targets": [
+            {
+              "expr": "{kubernetes.container_name=\"controller\"} kubernetes.pod_namespace:karpenter log.level:(ERROR OR WARN)",
+              "refId": "A",
+              "queryType": "raw"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": true,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": true,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending",
+            "enableContext": true
+          }
+        },
+        {
+          "type": "logs",
+          "title": "Node Provisioning Events",
+          "description": "Logs related to node creation and termination",
+          "gridPos": {"x": 0, "y": 79, "w": 24, "h": 10},
+          "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
+          "targets": [
+            {
+              "expr": "{kubernetes.container_name=\"controller\"} kubernetes.pod_namespace:karpenter (launched OR created OR terminated OR disrupted) nodeclaim",
+              "refId": "A",
+              "queryType": "raw"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": true,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending",
+            "enableContext": true
+          }
+        }
+      ]
+    }

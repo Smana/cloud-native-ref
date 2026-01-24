@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - app-all-in-one.yaml
-  - kubernetes-karpenter.yaml
+  - karpenter-unified.yaml
   - kubernetes-node-exporter-full.yaml
   - kubernetes-views-global.yaml
   - kubernetes-views-namespaces.yaml

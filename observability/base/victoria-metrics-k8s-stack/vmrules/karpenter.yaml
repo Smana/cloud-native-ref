@@ -7,40 +7,205 @@ metadata:
   namespace: karpenter
 spec:
   groups:
-    - name: karpenter
+    - name: karpenter-provisioning
       rules:
-        - alert: KarpenterCanNotRegisterNewNodes
-          expr: sum by (nodepool) (karpenter_nodeclaims_launched) - sum by (nodepool)(karpenter_nodeclaims_registered) != 0
-          for: 15m
+        - alert: KarpenterNodeRegistrationDelayed
+          expr: |
+            (
+              sum by (nodepool) (karpenter_nodeclaims_created_total)
+              - sum by (nodepool) (karpenter_nodes_created_total)
+            ) > 0
+          for: 10m
           labels:
             severity: warning
           annotations:
-            message: Problem with registering new nodes in the cluster.
+            message: Nodes failing to register in cluster.
             description: |
-              Karpenter in the nodepool {{ $labels.nodeppol }} launched new nodes, but some of the nodes did not register in the cluster during 15 minutes.
-            runbook_url: "https://karpenter.sh/docs/troubleshooting/"
-            dashboard: "https://grafana.priv.${domain_name}/dashboards"
+              Karpenter created nodeclaims in nodepool {{ $labels.nodepool }} but {{ $value }} node(s) have not registered in the cluster within 10 minutes. This may indicate issues with node bootstrap, network connectivity, or IAM permissions.
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/#nodes-not-joining-the-cluster"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
 
-        - alert: KarpenterNodepoolAlmostFull
-          expr: sum by (nodepool,resource_type) (karpenter_nodepool_usage) / sum by (nodepool,resource_type) (karpenter_nodepool_limit) * 100 > 80
-          for: 15m
+        - alert: KarpenterNodeRegistrationCritical
+          expr: |
+            (
+              sum by (nodepool) (karpenter_nodeclaims_created_total)
+              - sum by (nodepool) (karpenter_nodes_created_total)
+            ) > 0
+          for: 20m
+          labels:
+            severity: critical
+          annotations:
+            message: Critical node registration failure.
+            description: |
+              Karpenter created nodeclaims in nodepool {{ $labels.nodepool }} but {{ $value }} node(s) have not registered for over 20 minutes. Immediate investigation required.
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/#nodes-not-joining-the-cluster"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
+
+        - alert: KarpenterSlowProvisioning
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le, nodepool) (
+                rate(karpenter_pods_provisioning_startup_duration_seconds_bucket[10m])
+              )
+            ) > 300
+          for: 5m
           labels:
             severity: warning
           annotations:
-            message: Nodepool almost full, you should increase limits.
+            message: Pod provisioning taking too long.
             description: |
-              Nodepool {{ $labels.nodeppol }} has launched {{ $value }}% of {{ $labels.resource_type }} resources of the limit.
+              P95 provisioning startup duration for nodepool {{ $labels.nodepool }} is {{ $value | humanizeDuration }}, exceeding 5 minutes. This affects pod scheduling latency.
             runbook_url: "https://karpenter.sh/docs/troubleshooting/"
-            dashboard: "https://grafana.priv.${domain_name}/dashboards"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
 
-        - alert: KarpenterCloudproviderErrors
-          expr: increase(karpenter_cloudprovider_errors_total[10m]) > 0
+    - name: karpenter-cloudprovider
+      rules:
+        - alert: KarpenterAWSAPIErrors
+          expr: |
+            sum by (method, controller) (
+              increase(karpenter_cloudprovider_errors_total[5m])
+            ) > 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            message: AWS API errors detected.
+            description: |
+              Karpenter controller {{ $labels.controller }} received {{ $value | printf "%.0f" }} error(s) from AWS API method {{ $labels.method }} in the last 5 minutes.
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/#aws-api-errors"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
+
+        - alert: KarpenterAWSAPIErrorsHigh
+          expr: |
+            sum by (method, controller) (
+              increase(karpenter_cloudprovider_errors_total[10m])
+            ) > 10
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            message: High rate of AWS API errors.
+            description: |
+              Karpenter controller {{ $labels.controller }} received {{ $value | printf "%.0f" }} errors from AWS API method {{ $labels.method }} in the last 10 minutes. This may indicate AWS service issues, rate limiting, or quota problems.
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/#aws-api-errors"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
+
+        - alert: KarpenterAWSAPILatencyHigh
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le, method) (
+                rate(karpenter_cloudprovider_duration_seconds_bucket[5m])
+              )
+            ) > 10
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            message: AWS API latency is high.
+            description: |
+              P99 latency for AWS API method {{ $labels.method }} is {{ $value | humanizeDuration }}, exceeding 10 seconds. This may indicate AWS service degradation.
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
+
+    - name: karpenter-capacity
+      rules:
+        - alert: KarpenterNodepoolNearCapacity
+          expr: |
+            (
+              sum by (nodepool, resource_type) (karpenter_nodepools_usage)
+              / sum by (nodepool, resource_type) (karpenter_nodepools_limit)
+            ) * 100 > 80
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            message: Nodepool approaching capacity limit.
+            description: |
+              Nodepool {{ $labels.nodepool }} is using {{ $value | printf "%.1f" }}% of its {{ $labels.resource_type }} limit. Consider increasing limits or adding another nodepool.
+            runbook_url: "https://karpenter.sh/docs/concepts/nodepools/#resource-limits"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
+
+        - alert: KarpenterNodepoolAtCapacity
+          expr: |
+            (
+              sum by (nodepool, resource_type) (karpenter_nodepools_usage)
+              / sum by (nodepool, resource_type) (karpenter_nodepools_limit)
+            ) * 100 > 95
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            message: Nodepool at capacity limit.
+            description: |
+              Nodepool {{ $labels.nodepool }} is using {{ $value | printf "%.1f" }}% of its {{ $labels.resource_type }} limit. New pods may not be schedulable.
+            runbook_url: "https://karpenter.sh/docs/concepts/nodepools/#resource-limits"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
+
+        - alert: KarpenterUnschedulablePods
+          expr: |
+            sum(karpenter_scheduler_unschedulable_pods_count) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            message: Pods cannot be scheduled by Karpenter.
+            description: |
+              {{ $value }} pod(s) are unschedulable by Karpenter for more than 10 minutes. This may indicate resource constraints, node affinity issues, or missing instance types.
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/#pods-not-being-scheduled"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
+
+    - name: karpenter-interruption
+      rules:
+        - alert: KarpenterSpotInterruptionSpike
+          expr: |
+            sum(increase(karpenter_interruption_received_messages_total[30m])) > 5
           for: 1m
           labels:
             severity: warning
           annotations:
-            message: Cloud provider errors detected by Karpenter.
+            message: Spike in spot instance interruptions.
             description: |
-              Karpenter received an error during an API call to the cloud provider.
+              {{ $value | printf "%.0f" }} spot interruption events received in the last 30 minutes. Consider diversifying instance types or using on-demand capacity.
+            runbook_url: "https://karpenter.sh/docs/concepts/disruption/#interruption"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
+
+        - alert: KarpenterConsolidationTimeout
+          expr: |
+            sum(increase(karpenter_voluntary_disruption_consolidation_timeouts_total[1h])) > 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            message: Consolidation operations timing out.
+            description: |
+              {{ $value | printf "%.0f" }} consolidation timeout(s) in the last hour. Workloads may have PodDisruptionBudgets or other constraints preventing efficient consolidation.
+            runbook_url: "https://karpenter.sh/docs/concepts/disruption/#consolidation"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
+
+    - name: karpenter-health
+      rules:
+        - alert: KarpenterClusterStateUnsynced
+          expr: |
+            karpenter_cluster_state_synced == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            message: Karpenter cluster state not synced.
+            description: |
+              Karpenter's cluster state has been unsynced for more than 5 minutes. Provisioning decisions may be based on stale data.
             runbook_url: "https://karpenter.sh/docs/troubleshooting/"
-            dashboard: "https://grafana.priv.${domain_name}/dashboards"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
+
+        - alert: KarpenterNoNodes
+          expr: |
+            sum(karpenter_cluster_state_node_count) == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            message: No Karpenter-managed nodes in cluster.
+            description: |
+              There are no nodes managed by Karpenter in the cluster. This may be expected if using only managed node groups, or may indicate an issue with provisioning.
+            runbook_url: "https://karpenter.sh/docs/troubleshooting/"
+            dashboard: "https://grafana.priv.${domain_name}/d/karpenter-unified/karpenter-unified"
