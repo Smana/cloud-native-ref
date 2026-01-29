@@ -1,5 +1,8 @@
 # Cloud Native Platform Reference
 
+[![Run in Smithery](https://smithery.ai/badge/skills/smana)](https://smithery.ai/skills?ns=smana&utm_source=github&utm_medium=badge)
+
+
 **_An opinionated, production-ready Kubernetes platform using GitOps principles._**
 
 This repository demonstrates how to build and operate a secure, scalable cloud-native platform. It showcases modern cloud-native technologies, GitOps workflows, and platform engineering best practices.
