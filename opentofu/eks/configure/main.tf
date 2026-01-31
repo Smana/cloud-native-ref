@@ -68,6 +68,10 @@ resource "helm_release" "cilium" {
     {
       name  = "k8sServicePort"
       value = "443"
+    },
+    {
+      name  = "eni.securityGroupTags.karpenter\\.sh/discovery"
+      value = var.cluster_name
     }
   ]
 
