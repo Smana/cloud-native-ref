@@ -131,6 +131,7 @@ module "eks" {
       attach_cluster_primary_security_group = true
 
       iam_role_additional_policies = merge(
+        { cilium_eni = aws_iam_policy.cilium_eni.arn },
         var.enable_ssm ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
         var.iam_role_additional_policies
       )

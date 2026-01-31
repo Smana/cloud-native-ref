@@ -1,3 +1,26 @@
+# Cilium ENI mode requires ec2:DescribeSecurityGroups and ec2:DescribeVpcs
+# which are NOT included in the standard AmazonEKS_CNI_Policy.
+# This policy is attached to both managed node group and Karpenter node roles.
+resource "aws_iam_policy" "cilium_eni" {
+  name        = "cilium_eni_${var.name}"
+  path        = "/"
+  description = "Additional EC2 permissions for Cilium ENI mode (prefix delegation)"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeVpcs",
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # Note: The EKS Pod identities are created as part of this EKS module but in a production context we would have multiple clusters and we would have to create the EKS Pod identities in a separate module because they can be shared across clusters.
 
 # The IAM role for EBS CSI Driver (managed add-on)
