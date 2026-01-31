@@ -72,6 +72,10 @@ resource "helm_release" "cilium" {
     {
       name  = "eni.securityGroupTags.karpenter\\.sh/discovery"
       value = var.cluster_name
+    },
+    {
+      name  = "eni.instanceTagsFilter[0]"
+      value = "aws:eks:cluster-name=${var.cluster_name}"
     }
   ]
 

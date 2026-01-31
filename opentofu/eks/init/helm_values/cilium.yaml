@@ -15,11 +15,13 @@ eni:
   # Requires the cilium-cni-configuration ConfigMap (see cilium-cni-config.tf).
   subnetTagsFilter:
     - "cilium.io/pod-subnet=true"
-  # Explicit SG discovery needed because subnetTagsFilter restricts ENI cache
-  # to pod subnets (100.64.x.x), hiding primary ENIs (10.0.x.x). Without this,
-  # the operator can't determine which SGs to attach to new ENIs.
-  # The tag value is set dynamically via helm set in configure/main.tf.
+  # Explicit SG and instance discovery needed because subnetTagsFilter restricts
+  # ENI cache to pod subnets (100.64.x.x), hiding primary ENIs (10.0.x.x).
+  # Without securityGroupTags, the operator can't determine which SGs to attach.
+  # Without instanceTagsFilter, nodes without existing Cilium ENIs are invisible.
+  # Tag values are set dynamically via helm set in configure/main.tf.
   securityGroupTags: {}
+  instanceTagsFilter: []
   awsEnablePrefixDelegation: true
 
 cni:
