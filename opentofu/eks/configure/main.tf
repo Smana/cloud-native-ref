@@ -1,14 +1,9 @@
 # EKS Configure - Stage 2
 # Dependency chain:
-# disable_vpc_cni -> cilium -> disable_kube_proxy -> flux_operator -> flux_instance
+# disable_vpc_cni + cilium_cni_config -> cilium -> disable_kube_proxy -> flux_operator -> flux_instance
 #
 # Note: We PATCH the DaemonSets instead of deleting EKS addons to avoid local-exec.
 # Cilium's unmanagedPodWatcher automatically restarts pods not managed by Cilium.
-#
-# DISABLED: Secondary CIDR (100.64.0.0/16) with prefix delegation
-# This was causing Gateway API L7 proxy to fail on cross-node traffic.
-# See: https://github.com/cilium/cilium/issues/43493
-# When Cilium fixes #43493, re-enable cilium_cni_config dependency below.
 
 locals {
   api_endpoint = replace(data.aws_eks_cluster.this.endpoint, "https://", "")
@@ -49,8 +44,7 @@ resource "kubectl_manifest" "disable_vpc_cni" {
 resource "helm_release" "cilium" {
   depends_on = [
     kubectl_manifest.disable_vpc_cni,
-    # DISABLED: Secondary CIDR CNI config - see cilium-cni-config.tf for details
-    # kubectl_manifest.cilium_cni_config,
+    kubectl_manifest.cilium_cni_config,
   ]
 
   name             = "cilium"
@@ -74,6 +68,14 @@ resource "helm_release" "cilium" {
     {
       name  = "k8sServicePort"
       value = "443"
+    },
+    {
+      name  = "eni.securityGroupTags.karpenter\\.sh/discovery"
+      value = var.cluster_name
+    },
+    {
+      name  = "eni.instanceTagsFilter[0]"
+      value = "aws:eks:cluster-name=${var.cluster_name}"
     }
   ]
 

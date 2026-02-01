@@ -69,23 +69,23 @@ resource "aws_security_group_rule" "openbao_internal_raft" {
 }
 
 resource "aws_security_group_rule" "openbao_network_ingress" {
-  description       = "Allow specified CIDRs access to nodes on port 8200 and 8201"
+  description       = "Allow VPC CIDRs (primary + secondary) access to nodes on port 8200 and 8201"
   security_group_id = aws_security_group.openbao.id
   type              = "ingress"
   from_port         = 8200
   to_port           = 8201
   protocol          = "tcp"
-  cidr_blocks       = [data.aws_vpc.selected.cidr_block]
+  cidr_blocks       = [for assoc in data.aws_vpc.selected.cidr_block_associations : assoc.cidr_block]
 }
 
 resource "aws_security_group_rule" "openbao_node_exporter" {
-  description       = "Allow Prometheus to scrape the node exporter"
+  description       = "Allow Prometheus from VPC CIDRs (primary + secondary) to scrape the node exporter"
   security_group_id = aws_security_group.openbao.id
   type              = "ingress"
   from_port         = 9100
   to_port           = 9100
   protocol          = "tcp"
-  cidr_blocks       = [data.aws_vpc.selected.cidr_block]
+  cidr_blocks       = [for assoc in data.aws_vpc.selected.cidr_block_associations : assoc.cidr_block]
 }
 
 #trivy:ignore:AVD-AWS-0104

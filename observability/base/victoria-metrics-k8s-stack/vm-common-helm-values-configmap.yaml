@@ -111,7 +111,7 @@ data:
       sidecar:
         datasources:
           enabled: true
-          initDatasources: true
+          initDatasources: false
         dashboards:
           provider:
             name: default

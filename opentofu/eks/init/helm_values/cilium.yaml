@@ -10,36 +10,28 @@ devices: "eth+ pod-id-link+"
 egressMasqueradeInterfaces: eth0
 eni:
   enabled: true
-  # ==========================================================================
-  # WORKAROUND: Restrict to primary CIDR subnets only
-  # Issue: https://github.com/cilium/cilium/issues/43493
-  #
-  # The secondary CIDR (100.64.0.0/16) causes Gateway API L7 proxy to fail on
-  # cross-node traffic. This filter restricts Cilium to only use primary private
-  # subnets (10.0.0.0/16) which have the internal-elb tag.
-  #
-  # When Cilium fixes #43493, this filter can be changed to use the secondary
-  # CIDR with prefix delegation for higher pod density:
-  # - Change subnetTagsFilter to: cilium.io/pod-subnet: "true"
-  # - Uncomment awsEnablePrefixDelegation: true
-  # - Uncomment cilium_cni_config resource in cilium-cni-config.tf
-  # - Uncomment cni.customConf and cni.configMap below
-  # --------------------------------------------------------------------------
+  # Use secondary CIDR (100.64.0.0/16) subnets for pod IPs with prefix delegation.
+  # This provides higher pod density per node.
+  # Requires the cilium-cni-configuration ConfigMap (see cilium-cni-config.tf).
   subnetTagsFilter:
-    - "kubernetes.io/role/internal-elb=1"
-  # awsEnablePrefixDelegation: true
-  # ==========================================================================
+    - "cilium.io/pod-subnet=true"
+  # Explicit SG and instance discovery needed because subnetTagsFilter restricts
+  # ENI cache to pod subnets (100.64.x.x), hiding primary ENIs (10.0.x.x).
+  # Without securityGroupTags, the operator can't determine which SGs to attach.
+  # Without instanceTagsFilter, nodes without existing Cilium ENIs are invisible.
+  # Tag values are set dynamically via helm set in configure/main.tf.
+  securityGroupTags: {}
+  instanceTagsFilter: []
+  awsEnablePrefixDelegation: true
 
-# ==========================================================================
-# DISABLED: Custom CNI configuration for secondary CIDR (100.64.0.0/16)
-# Issue: https://github.com/cilium/cilium/issues/43493
-#
-# When Cilium fixes #43493, uncomment the following:
-# --------------------------------------------------------------------------
-# cni:
-#   customConf: true
-#   configMap: cilium-cni-configuration
-# ==========================================================================
+cni:
+  # configMap provides the custom CNI config with ENI settings (first-interface-index,
+  # subnet-tags, prefix delegation). Since Cilium v1.14, customConf is NOT needed
+  # with configMap — the agent reads the ConfigMap, writes it to the host, enables
+  # cni-exclusive mode, and processes ENI settings into CiliumNode CRDs.
+  # Using customConf: true is legacy and sets custom-cni-conf flag which can prevent
+  # the agent from populating FirstInterfaceIndex in CiliumNode (defaulting to eth0).
+  configMap: cilium-cni-configuration
 installNoConntrackIptablesRules: true
 ipam:
   mode: eni
@@ -81,6 +73,15 @@ resources:
 routingMode: native
 # Note: tunnelProtocol defaults to vxlan in Helm chart but is ignored in native routing mode.
 # ENI mode uses direct routing, no tunnel encapsulation is used regardless of this setting.
+
+# WireGuard encryption fixes cross-node L7 proxy with ENI mode.
+# Without this, the BPF ipcache incorrectly sets hastunnel flags for remote
+# pods in native routing mode, causing Gateway API envoy to fail on cross-node
+# backend connections (cilium/cilium#43493). WireGuard node-to-node tunnels
+# bypass the faulty hastunnel routing logic.
+encryption:
+  enabled: true
+  type: wireguard
 
 envoy:
   # Explicitly enable Envoy DaemonSet for Gateway API L7 proxy

@@ -19,9 +19,18 @@ module "eks" {
   # Stage 2 (opentofu/eks/configure/) replaces them with Cilium
   addons = {
     # VPC CNI: makes nodes Ready quickly (replaced by Cilium in stage 2)
+    # WARM_ENI_TARGET=0 prevents VPC-CNI from creating secondary ENIs.
+    # Without this, VPC-CNI pre-warms ENIs in 10.0.x.x subnets, and Cilium
+    # reuses them instead of creating new ENIs in the 100.64.x.x pod subnets.
     vpc-cni = {
       before_compute = true
       most_recent    = true
+      configuration_values = jsonencode({
+        env = {
+          WARM_ENI_TARGET = "0"
+          WARM_IP_TARGET  = "1"
+        }
+      })
     }
     # kube-proxy: provides ClusterIP routing until Cilium takes over (deleted in stage 2)
     kube-proxy = {
@@ -131,6 +140,7 @@ module "eks" {
       attach_cluster_primary_security_group = true
 
       iam_role_additional_policies = merge(
+        { cilium_eni = aws_iam_policy.cilium_eni.arn },
         var.enable_ssm ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
         var.iam_role_additional_policies
       )

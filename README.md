@@ -252,6 +252,7 @@ Security is built-in, not bolted-on:
 
 This repository is documented through a series of blog posts:
 
+- [Agentic Coding: concepts and hands-on Platform Engineering use cases](https://blog.ogenki.io/post/series/agentic_ai/ai-coding-agent/)
 - [Crossplane: Compositions and Functions](https://blog.ogenki.io/post/crossplane_composition_functions/)
 - [TLS with Gateway API and Private PKI](https://blog.ogenki.io/post/pki-gapi/)
 - [Tailscale: Simplifying Cloud Access](https://blog.ogenki.io/post/tailscale/)
