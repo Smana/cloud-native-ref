@@ -10,6 +10,7 @@ module "karpenter" {
   node_iam_role_use_name_prefix = false
 
   node_iam_role_additional_policies = merge(
+    { cilium_eni = aws_iam_policy.cilium_eni.arn },
     var.enable_ssm ? { ssm = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" } : {},
     var.iam_role_additional_policies
   )
