@@ -13,7 +13,7 @@ PRIVATE_IP=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/l
 # ---------------
 ## Set URLs for the binary, signature, and GPG key
 OPENBAO_VERSION="${openbao_version}"
-eval OPENBAO_BINARY="bao_$OPENBAO_VERSION""_linux_amd64.deb"
+eval OPENBAO_BINARY="openbao_$OPENBAO_VERSION""_linux_amd64.deb"
 BINARY_URL="https://github.com/openbao/openbao/releases/download/v$OPENBAO_VERSION/$OPENBAO_BINARY"
 SIGNATURE_URL="https://github.com/openbao/openbao/releases/download/v$OPENBAO_VERSION/$OPENBAO_BINARY.gpgsig"
 GPG_KEY_URL="https://openbao.org/assets/openbao-gpg-pub-20240618.asc"

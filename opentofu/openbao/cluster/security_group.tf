@@ -75,7 +75,7 @@ resource "aws_security_group_rule" "openbao_network_ingress" {
   from_port         = 8200
   to_port           = 8201
   protocol          = "tcp"
-  cidr_blocks       = [for assoc in data.aws_vpc.selected.cidr_block_associations : assoc.cidr_block]
+  cidr_blocks       = distinct([for assoc in data.aws_vpc.selected.cidr_block_associations : assoc.cidr_block if assoc.state == "associated"])
 }
 
 resource "aws_security_group_rule" "openbao_node_exporter" {
@@ -85,7 +85,7 @@ resource "aws_security_group_rule" "openbao_node_exporter" {
   from_port         = 9100
   to_port           = 9100
   protocol          = "tcp"
-  cidr_blocks       = [for assoc in data.aws_vpc.selected.cidr_block_associations : assoc.cidr_block]
+  cidr_blocks       = distinct([for assoc in data.aws_vpc.selected.cidr_block_associations : assoc.cidr_block if assoc.state == "associated"])
 }
 
 #trivy:ignore:AVD-AWS-0104
