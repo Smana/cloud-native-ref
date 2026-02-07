@@ -129,7 +129,7 @@ module "eks" {
       desired_size = 2
 
       ami_type            = "BOTTLEROCKET_x86_64"
-      ami_release_version = "1.49.0-713f44ce"
+      ami_release_version = "1.54.0-5043decc"
 
       metadata_options = {
         http_endpoint = "enabled"

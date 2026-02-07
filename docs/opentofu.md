@@ -142,9 +142,9 @@ globals {
   eks_cluster_name   = "mycluster-0"
 
   # Helm chart versions for EKS bootstrap
-  cilium_version        = "1.18.6"
-  flux_operator_version = "0.38.1"
-  flux_instance_version = "0.38.1"
+  cilium_version        = "1.19.0"
+  flux_operator_version = "0.40.0"
+  flux_instance_version = "0.40.0"
 
   # Flux sync configuration
   flux_sync_repository_url = "https://github.com/YOUR_ORG/cloud-native-ref.git"
