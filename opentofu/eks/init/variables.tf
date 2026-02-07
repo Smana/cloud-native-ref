@@ -32,7 +32,7 @@ variable "name" {
 
 variable "kubernetes_version" {
   description = "k8s cluster version"
-  default     = "1.34"
+  default     = "1.35"
   type        = string
 
   validation {

@@ -4,7 +4,7 @@ metadata:
   name: io
 spec:
   amiSelectorTerms:
-    - alias: bottlerocket@1.49.0
+    - alias: bottlerocket@1.54.0
   # Configure ephemeral storage for pods, creating a RAID0 volume from nvme devices for the containers filesystem
   instanceStorePolicy: "RAID0"
   role: Karpenter-${cluster_name}

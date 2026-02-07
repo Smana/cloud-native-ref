@@ -6,7 +6,7 @@
         "serve"
       ],
       "env": {
-        "KUBECONFIG": "~/.kube/config"
+        "KUBECONFIG": "/home/smana/.kube/config"
       }
     },
     "victorialogs": {

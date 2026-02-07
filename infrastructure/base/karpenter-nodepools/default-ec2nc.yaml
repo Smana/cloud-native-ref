@@ -4,7 +4,7 @@ metadata:
   name: default
 spec:
   amiSelectorTerms:
-    - alias: bottlerocket@1.49.0
+    - alias: bottlerocket@1.54.0
   role: Karpenter-${cluster_name}
   kubelet:
     maxPods: 100
