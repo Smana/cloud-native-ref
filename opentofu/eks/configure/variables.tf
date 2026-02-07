@@ -12,7 +12,7 @@ variable "region" {
 variable "cilium_version" {
   description = "Cilium Helm chart version"
   type        = string
-  default     = "1.18.6"
+  default     = "1.19.0"
 }
 
 variable "flux_operator_version" {
