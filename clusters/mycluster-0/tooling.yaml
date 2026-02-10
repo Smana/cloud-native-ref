@@ -11,8 +11,6 @@ spec:
     name: flux-system
   path: ./tooling/mycluster-0
   postBuild:
-    substitute:
-      domain_name: "cloud.ogenki.io"
     substituteFrom:
       - kind: ConfigMap
         name: eks-mycluster-0-vars

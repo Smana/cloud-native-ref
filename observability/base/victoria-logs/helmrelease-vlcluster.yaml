@@ -5,6 +5,8 @@ metadata:
   namespace: observability
 spec:
   releaseName: victoria-logs
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: victoria-logs-cluster

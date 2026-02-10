@@ -1,12 +1,14 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: apps
+  name: crossplane-providers
   namespace: flux-system
 spec:
   prune: true
-  interval: 1m0s
-  path: ./apps/mycluster-0
+  interval: 1m30s
+  timeout: 8m0s
+  wait: true
+  path: ./infrastructure/mycluster-0/crossplane/providers
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -15,4 +17,4 @@ spec:
       - kind: ConfigMap
         name: eks-mycluster-0-vars
   dependsOn:
-    - name: tooling
+    - name: crossplane-controller

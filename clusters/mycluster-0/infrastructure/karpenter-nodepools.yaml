@@ -1,12 +1,15 @@
+---
+# NodePools and EC2NodeClasses - deployed after Karpenter controller (CRDs must exist)
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: apps
+  name: karpenter-nodepools
   namespace: flux-system
 spec:
   prune: true
   interval: 1m0s
-  path: ./apps/mycluster-0
+  timeout: 2m0s
+  path: ./infrastructure/base/karpenter-nodepools
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -15,4 +18,4 @@ spec:
       - kind: ConfigMap
         name: eks-mycluster-0-vars
   dependsOn:
-    - name: tooling
+    - name: karpenter

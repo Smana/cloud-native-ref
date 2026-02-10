@@ -5,6 +5,8 @@ metadata:
   namespace: observability
 spec:
   releaseName: victoria-metrics-k8s-stack
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: victoria-metrics-k8s-stack

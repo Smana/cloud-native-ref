@@ -1,0 +1,48 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: eks-pod-identities
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./security/base/epis
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+  dependsOn:
+    - name: crossplane-configuration
+  healthChecks:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: EPI
+      name: xplane-cert-manager
+      namespace: security
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: EPI
+      name: xplane-default-actions-runner
+      namespace: tooling
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: EPI
+      name: xplane-external-dns
+      namespace: kube-system
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: EPI
+      name: xplane-harbor
+      namespace: tooling
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: EPI
+      name: xplane-loadbalancer-controller
+      namespace: kube-system
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: EPI
+      name: xplane-victoriametrics
+      namespace: observability
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: EPI
+      failed: status.conditions.filter(c, c.type == 'Synced' || c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Synced' || c.type == 'Ready').all(c, c.status == 'True')
