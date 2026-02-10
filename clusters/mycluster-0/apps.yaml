@@ -8,11 +8,16 @@ spec:
   interval: 1m0s
   path: ./apps/mycluster-0
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: ExternalArtifact
+    name: apps-artifact
   postBuild:
     substituteFrom:
       - kind: ConfigMap
         name: eks-mycluster-0-vars
   dependsOn:
     - name: tooling
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: App
+      failed: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'True')

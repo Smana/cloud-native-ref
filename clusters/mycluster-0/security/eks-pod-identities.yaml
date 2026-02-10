@@ -7,8 +7,8 @@ spec:
   prune: true
   interval: 1m0s
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: ExternalArtifact
+    name: security-artifact
   path: ./security/base/epis
   postBuild:
     substituteFrom:

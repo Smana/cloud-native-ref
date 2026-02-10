@@ -10,8 +10,8 @@ spec:
   wait: true
   path: ./infrastructure/mycluster-0/crossplane/providers
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: ExternalArtifact
+    name: infra-artifact
   postBuild:
     substituteFrom:
       - kind: ConfigMap

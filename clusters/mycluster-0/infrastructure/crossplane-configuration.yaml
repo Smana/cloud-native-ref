@@ -9,8 +9,8 @@ spec:
   timeout: 3m0s
   path: ./infrastructure/mycluster-0/crossplane/configuration
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: ExternalArtifact
+    name: infra-artifact
   postBuild:
     substituteFrom:
       - kind: ConfigMap

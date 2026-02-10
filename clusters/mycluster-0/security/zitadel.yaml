@@ -8,8 +8,8 @@ spec:
   interval: 1m0s
   timeout: 5m0s
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: ExternalArtifact
+    name: security-artifact
   path: ./security/mycluster-0/zitadel
   postBuild:
     substituteFrom:
@@ -23,3 +23,8 @@ spec:
       kind: HelmRelease
       name: zitadel
       namespace: security
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: SQLInstance
+      failed: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'True')

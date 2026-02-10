@@ -15,8 +15,8 @@ spec:
       - kind: ConfigMap
         name: eks-mycluster-0-vars
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: ExternalArtifact
+    name: infra-artifact
   dependsOn:
     - name: karpenter
     - name: eks-pod-identities

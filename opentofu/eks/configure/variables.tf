@@ -18,13 +18,13 @@ variable "cilium_version" {
 variable "flux_operator_version" {
   description = "Flux Operator Helm chart version"
   type        = string
-  default     = "0.40.0"
+  default     = "0.41.0"
 }
 
 variable "flux_instance_version" {
   description = "Flux Instance Helm chart version"
   type        = string
-  default     = "0.40.0"
+  default     = "0.41.0"
 }
 
 variable "flux_sync_url" {

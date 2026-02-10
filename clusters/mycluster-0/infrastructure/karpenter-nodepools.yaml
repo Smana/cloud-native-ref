@@ -11,8 +11,8 @@ spec:
   timeout: 2m0s
   path: ./infrastructure/base/karpenter-nodepools
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: ExternalArtifact
+    name: infra-artifact
   postBuild:
     substituteFrom:
       - kind: ConfigMap

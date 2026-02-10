@@ -1,14 +1,14 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: crds
+  name: flux-artifact-generators
   namespace: flux-system
 spec:
   prune: true
   interval: 1m0s
-  path: ./crds/base
+  path: ./flux/artifact-generators
   sourceRef:
-    kind: ExternalArtifact
-    name: crds-artifact
+    kind: GitRepository
+    name: flux-system
   dependsOn:
-    - name: namespaces
+    - name: flux-sources

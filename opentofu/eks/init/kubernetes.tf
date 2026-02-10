@@ -32,6 +32,9 @@ resource "kubectl_manifest" "flux_cluster_vars" {
     metadata = {
       name      = "eks-${var.name}-vars"
       namespace = "flux-system"
+      labels = {
+        "reconcile.fluxcd.io/watch" = "Enabled"
+      }
     }
     data = {
       cluster_name          = var.name

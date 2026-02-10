@@ -8,8 +8,8 @@ spec:
   interval: 4m0s
   timeout: 8m0s
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: ExternalArtifact
+    name: security-artifact
   path: ./security/mycluster-0
   postBuild:
     substituteFrom:

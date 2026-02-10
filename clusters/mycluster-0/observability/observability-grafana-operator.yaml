@@ -9,8 +9,8 @@ spec:
   path: ./observability/base/grafana-operator
   prune: true
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: ExternalArtifact
+    name: observability-artifact
   postBuild:
     substituteFrom:
       - kind: ConfigMap

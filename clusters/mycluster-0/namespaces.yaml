@@ -8,5 +8,5 @@ spec:
   interval: 1m0s
   path: ./namespaces/base
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: ExternalArtifact
+    name: namespaces-artifact

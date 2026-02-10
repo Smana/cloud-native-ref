@@ -1,0 +1,35 @@
+apiVersion: source.extensions.fluxcd.io/v1beta1
+kind: ArtifactGenerator
+metadata:
+  name: monorepo-split
+  namespace: flux-system
+spec:
+  sources:
+    - alias: repo
+      kind: GitRepository
+      name: flux-system
+  artifacts:
+    - name: infra-artifact
+      copy:
+        - "@repo/infrastructure/** @artifact/"
+    - name: security-artifact
+      copy:
+        - "@repo/security/** @artifact/"
+    - name: observability-artifact
+      copy:
+        - "@repo/observability/** @artifact/"
+    - name: tooling-artifact
+      copy:
+        - "@repo/tooling/** @artifact/"
+    - name: apps-artifact
+      copy:
+        - "@repo/apps/** @artifact/"
+    - name: flux-artifact
+      copy:
+        - "@repo/flux/** @artifact/"
+    - name: crds-artifact
+      copy:
+        - "@repo/crds/** @artifact/"
+    - name: namespaces-artifact
+      copy:
+        - "@repo/namespaces/** @artifact/"
