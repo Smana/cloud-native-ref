@@ -2,6 +2,14 @@
 
 This directory contains custom skills for Claude Code that extend AI capabilities for platform engineering workflows.
 
+## Quick Start
+
+```bash
+/spec composition "Add Redis caching"   # Create spec + GitHub issue
+/commit                                  # Validate + commit changes
+/create-pr                               # Create PR with description
+```
+
 ## Unified Skills System (v2.1.3+)
 
 Since Claude Code v2.1.3, **Skills and Slash Commands are unified**. Each skill can be:

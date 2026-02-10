@@ -31,24 +31,7 @@ Two-stage OpenTofu deployment: Stage 1 creates the EKS cluster with temporary CN
 
 **Why two stages?** Helm provider needs cluster endpoint at plan time, so Stage 2 runs after the cluster exists.
 
-**Deployment:**
-```bash
-cd opentofu/eks/init && terramate script run deploy
-```
-
-**Stage 1 (`opentofu/eks/init/`):** EKS cluster, managed node groups, bootstrap addons (vpc-cni, kube-proxy, coredns, ebs-csi), Gateway API CRDs, IAM roles, flux-system namespace + secrets/ConfigMap.
-
-**Stage 2 (`opentofu/eks/configure/`):**
-1. Disable VPC CNI (patch nodeSelector)
-2. Install Cilium (replaces CNI + kube-proxy)
-3. Disable kube-proxy (patch nodeSelector)
-4. Install Flux Operator + Instance
-
-**Upgrading versions:**
-```bash
-# Edit opentofu/config.tm.hcl: cilium_version, flux_operator_version, flux_instance_version
-cd opentofu/eks/init && terramate script run deploy
-```
+**Deploy**: `cd opentofu/eks/init && terramate script run deploy`
 
 **Key Files:**
 - `opentofu/config.tm.hcl` - Cilium/Flux versions
@@ -60,79 +43,42 @@ cd opentofu/eks/init && terramate script run deploy
 Secondary CIDR (100.64.0.0/16) is disabled due to Cilium bug #43493 causing Gateway API L7 proxy failures on cross-node traffic. When fixed, uncomment `cilium-cni-config.tf` and related settings in `cilium.yaml`.
 
 **Pod Subnet Tagging (IMPORTANT):**
-The pod subnets (100.64.x.x) must NOT have the `kubernetes.io/role/cni` tag. VPC-CNI uses this tag to discover subnets during Stage 1 bootstrap, which creates orphan ENIs when Cilium takes over in Stage 2. Only use `cilium.io/pod-subnet=true` for these subnets. Cilium uses `subnetTagsFilter: kubernetes.io/role/internal-elb=1` which targets the primary CIDR subnets (10.0.x.x).
+The pod subnets (100.64.x.x) must NOT have the `kubernetes.io/role/cni` tag. VPC-CNI uses this tag to discover subnets during Stage 1 bootstrap, which creates orphan ENIs when Cilium takes over in Stage 2. Only use `cilium.io/pod-subnet=true` for these subnets.
 
 **IAM:** EBS CSI and Crossplane use EKS Pod Identity (`xplane-*` resource scope for Crossplane).
 
 ## Common Commands
 
-### Terramate Operations
+### Terramate / OpenTofu
 
 ```bash
-# Initialize all stacks
-terramate script run init
+terramate script run init       # Initialize all stacks
+terramate script run preview    # Preview changes
+terramate script run deploy     # Deploy platform
+terramate script run drift detect  # Check drift
 
-# Preview changes across all stacks
-terramate script run preview
-
-# Deploy entire platform
-terramate script run deploy
-
-# Deploy EKS cluster (both stages in one command)
+# EKS deploy (both stages)
 cd opentofu/eks/init && terramate script run deploy
 
-# Deploy EKS with a feature branch (for testing)
-TF_VAR_flux_git_ref='refs/heads/my-feature-branch' terramate script run deploy
+# Feature branch testing
+TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy
 
-# Deploy Stage 1 only (infrastructure without Cilium/Flux)
-cd opentofu/eks/init && terramate script run deploy-stage1
-
-# Preview EKS deployment changes
-cd opentofu/eks/init
-terramate script run preview
-
-# Check for configuration drift
-terramate script run drift detect
-
-# Destroy resources (follow cleanup order)
-terramate script run destroy
+# Individual stack
+cd opentofu/<stack> && tofu plan -var-file=variables.tfvars
 ```
 
-### OpenTofu Operations
+### EKS Cluster
 
 ```bash
-# Individual stack operations
-cd opentofu/network  # or eks/init, eks/configure, openbao/cluster, openbao/management
-tofu init
-tofu plan -var-file=variables.tfvars
-tofu apply -var-file=variables.tfvars
-tofu destroy -var-file=variables.tfvars
-```
-
-### EKS Cluster Operations
-
-```bash
-# Update kubeconfig
 aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
-
-# Flux operations
 flux get all
 flux suspend kustomization --all
 flux resume kustomization --all
-
-# Safe cluster cleanup (uses two-stage destroy workflow)
-cd opentofu/eks/init && terramate script run destroy
-
-# The destroy workflow automatically:
-# 1. Runs eks-prepare-destroy.sh (suspend Flux, delete Gateways, NodePools, EPIs)
-# 2. Destroys configure stack (Cilium, Flux)
-# 3. Destroys init stack (EKS cluster, IAM, secrets)
 ```
 
-### OpenBao Operations
+### OpenBao
 
 ```bash
-# Connect to OpenBao
 export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
 export VAULT_SKIP_VERIFY=true
 bao status
@@ -145,28 +91,23 @@ bao auth -method=userpass username=admin
 
 - [mise](https://mise.jdx.dev/) - Polyglot tool version manager (manages OpenTofu, Terramate, Trivy, pre-commit)
 - AWS CLI configured with appropriate permissions
-- Helm CLI (v3.12+)
-- kubectl
-- bao CLI
-- jq
+- Helm CLI (v3.12+), kubectl, bao CLI, jq
 - Tailscale account and API key
 
-**Tool versions are managed via `mise.toml`**. Run `mise install` to install all required tools.
+**Tool versions managed via `mise.toml`**. Run `mise install` to install all required tools.
 
 ### Configuration Files
 
-- `mise.toml`: Tool version management (OpenTofu, Terramate, Trivy, pre-commit)
-- `opentofu/config.tm.hcl`: Global Terramate configuration (includes Cilium/Flux versions)
-- `opentofu/workflows.tm.hcl`: Terramate scripts and workflows (init, preview, deploy, destroy)
-- `opentofu/eks/init/workflows.tm.hcl`: EKS-specific two-stage deployment scripts
-- `opentofu/eks/init/helm_values/cilium.yaml`: Cilium Helm values for EKS bootstrap
-- `variables.tfvars`: Environment-specific variables (create per stack)
+- `mise.toml`: Tool versions
+- `opentofu/config.tm.hcl`: Global Terramate config (Cilium/Flux versions)
+- `opentofu/workflows.tm.hcl`: Terramate scripts and workflows
+- `opentofu/eks/init/workflows.tm.hcl`: EKS two-stage deployment scripts
 
 ### GitOps with Flux
 
 Flux manages all Kubernetes resources through a dependency hierarchy:
 
-1. **Namespaces** → **CRDs** → **Crossplane** → **EKS Pod Identities**
+1. **Namespaces** -> **CRDs** -> **Crossplane** -> **EKS Pod Identities**
 2. **Security** (External Secrets, Cert-Manager, Kyverno)
 3. **Infrastructure** (Cilium, DNS, Load Balancers)
 4. **Observability** (VictoriaMetrics, Grafana)
@@ -175,307 +116,23 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 ### Crossplane Resources
 
 - **Compositions**: Infrastructure templates in `infrastructure/base/crossplane/configuration/`
-- **App Composition**: Platform abstraction for application deployment supporting progressive complexity—from minimal configuration (image only) to production-ready workloads with managed PostgreSQL, Redis/Valkey, S3, autoscaling, high availability, and zero-trust networking. Provides secure defaults while allowing incremental feature adoption.
+- **App Composition**: Platform abstraction supporting progressive complexity (image-only to production-ready with managed PostgreSQL, Redis/Valkey, S3, autoscaling, HA, zero-trust networking)
 - **EPI (EKS Pod Identity)**: IAM roles for service accounts in `security/base/epis/`
 - **Resource naming**: All Crossplane-managed resources prefixed with `xplane-`
 
-### KCL Formatting Rules
-
-**CRITICAL**: Always run `kcl fmt` before committing KCL code. The CI enforces strict formatting.
-
-#### Formatting Standards
-
-1. **List Comprehensions**: Must be single-line (not multi-line)
-   ```kcl
-   # ✅ CORRECT (single line)
-   _ready = any_true([c.get("type") == "Available" and c.get("status") == "True" for c in conditions or []])
-
-   # ❌ WRONG (multi-line) - will fail CI
-   _ready = any_true([
-       c.get("type") == "Available" and c.get("status") == "True"
-       for c in conditions or []
-   ])
-   ```
-
-2. **No Trailing Blank Lines**: Remove extra blank lines between logical sections
-
-3. **CRITICAL - Avoid Mutation Pattern (Issue #285)**: Do NOT mutate resource dictionaries after creation
-
-   **Background**: https://github.com/crossplane-contrib/function-kcl/issues/285
-
-   Mutating dictionaries/resources after creation causes function-kcl to create duplicate resources. This is a known bug in function-kcl's duplicate detection mechanism.
-
-   ```kcl
-   # ❌ WRONG - Mutation causes DUPLICATES (issue #285)
-   _deployment = {
-       apiVersion = "apps/v1"
-       kind = "Deployment"
-       metadata = {
-           name = _name
-           annotations = {
-               "base-annotation" = "value"
-           }
-       }
-   }
-   if _deploymentReady:
-       _deployment.metadata.annotations["krm.kcl.dev/ready"] = "True"  # ❌ MUTATION!
-   _items += [_deployment]
-
-   # ✅ CORRECT - Use inline conditionals
-   _deployment = {
-       apiVersion = "apps/v1"
-       kind = "Deployment"
-       metadata = {
-           name = _name
-           annotations = {
-               "base-annotation" = "value"
-               if _deploymentReady:
-                   "krm.kcl.dev/ready" = "True"  # ✅ Inline conditional
-           }
-       }
-   }
-   _items += [_deployment]
-
-   # ✅ CORRECT - List comprehensions (no mutation)
-   _items += [{
-       apiVersion = "apps/v1"
-       kind = "Deployment"
-       metadata = {
-           name = _name + "-" + db.name
-           annotations = {
-               "base-annotation" = "value"
-               if _ready:
-                   "krm.kcl.dev/ready" = "True"
-           }
-       }
-   } for db in databases]
-   ```
-
-   **Safe patterns:**
-   - Inline conditionals within dictionary literals
-   - List comprehensions with inline definitions
-   - Ternary operators returning complete dictionaries
-
-   **Unsafe patterns:**
-   - Post-creation field assignment: `resource.field = value`
-   - Post-creation nested field assignment: `resource.metadata.annotations["key"] = "value"`
-   - Any mutation of resource variables after initial creation
-
-4. **Pre-Commit Formatting Check**:
-   ```bash
-   # Format all KCL files in a module
-   cd infrastructure/base/crossplane/configuration/kcl/<module>
-   kcl fmt .
-
-   # Verify no changes were made
-   git diff --quiet . || echo "Files were reformatted - review changes"
-   ```
-
-#### Pre-Commit Checklist for KCL Compositions
-
-**Comprehensive validation script** (REQUIRED before committing):
-```bash
-# From repository root - validates ALL compositions
-./scripts/validate-kcl-compositions.sh
-```
-
-This script performs three validation stages for each composition:
-
-1. **KCL Formatting (`kcl fmt`)** - REQUIRED by CI
-   - Automatically formats all KCL code
-   - Detects formatting violations
-   - Shows what needs to be fixed
-
-2. **KCL Syntax Validation (`kcl run`)** - Catches logic errors early
-   - Tests KCL code with settings-example.yaml
-   - Validates function logic and conditionals
-   - Shows detailed error messages
-
-3. **Crossplane Rendering (`crossplane render`)** - End-to-end validation
-   - Tests all example files (basic + complete)
-   - Validates full composition pipeline
-   - Requires Docker (gracefully skips if unavailable)
-
-**Tested Compositions**:
-- `app`: app-basic.yaml, app-complete.yaml
-- `cloudnativepg` (SQLInstance): sqlinstance-basic.yaml, sqlinstance-complete.yaml
-- `eks-pod-identity`: epi.yaml
-
-**Example Output**:
-```
-╔════════════════════════════════════════════════════════════════╗
-║  KCL Crossplane Composition Validation                        ║
-╚════════════════════════════════════════════════════════════════╝
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Validating: app
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📝 [1/3] Checking KCL formatting...
-   ✅ Formatting is correct
-
-🧪 [2/3] Validating KCL syntax and logic...
-   ✅ KCL syntax valid
-
-🎨 [3/3] Testing crossplane render...
-   Testing: app-basic.yaml
-   ✅ app-basic.yaml renders successfully
-   Testing: app-complete.yaml
-   ✅ app-complete.yaml renders successfully
-
-✅ All checks passed for app
-```
-
-**CRITICAL**: Always run `./scripts/validate-kcl-compositions.sh` before committing KCL changes. The CI enforces formatting and will fail otherwise.
-
-### Crossplane Composition Validation
-
-**IMPORTANT**: Every change to Crossplane compositions MUST be validated before committing using the following process:
-
-#### 1. Render the Composition
-
-```bash
-cd infrastructure/base/crossplane/configuration
-crossplane render examples/app-basic.yaml app-composition.yaml functions.yaml \
-  --extra-resources examples/environmentconfig.yaml > /tmp/rendered.yaml
-```
-
-For complete examples:
-```bash
-crossplane render examples/app-complete.yaml app-composition.yaml functions.yaml \
-  --extra-resources examples/environmentconfig.yaml > /tmp/rendered.yaml
-```
-
-#### 2. Validate with Polaris (Security & Best Practices)
-
-```bash
-polaris audit --audit-path /tmp/rendered.yaml --format=pretty
-```
-
-**Target score**: 85+
-**Action**: Address any critical security issues before committing
-
-#### 3. Validate with kube-linter (Kubernetes Best Practices)
-
-```bash
-kube-linter lint /tmp/rendered.yaml
-```
-
-**Target**: No lint errors
-**Action**: Fix all errors before committing
-
-#### 4. Validate with Datree (Policy Enforcement)
-
-```bash
-datree test /tmp/rendered.yaml --ignore-missing-schemas
-```
-
-**Target**: No policy violations (warnings acceptable if documented)
-**Action**: Review and fix policy failures, document accepted warnings
-
-#### Validation Checklist
-
-Before committing Crossplane composition changes:
-
-- [ ] `crossplane render` executes successfully without errors
-- [ ] Polaris score is 85+ with no critical security issues
-- [ ] kube-linter passes with no errors
-- [ ] Datree policy check passes (or warnings are documented)
-- [ ] KCL syntax is valid (if using KCL compositions)
-- [ ] All composition functions are properly configured
-- [ ] Environment configs are included in render
-
-**Why this matters**: These validations catch:
-- Security misconfigurations
-- Resource limit issues
-- Missing health checks
-- RBAC problems
-- Pod security violations
-- Network policy gaps
-
-### Crossplane Known Limitations and Considerations
-
-#### Native Kubernetes Resource Readiness
-
-**Current Implementation**: When using function-kcl to create native Kubernetes resources (Deployment, Service, HTTPRoute, etc.) directly in compositions, readiness is determined by checking actual observed state from the cluster.
-
-**How it works**:
-- Crossplane provides observed resources through `option("params").ocds`
-- KCL code checks actual status conditions from these observed resources
-- Only marks resources ready when specific health conditions are met:
-  - **Deployment**: Checks for `status.conditions[type=Available, status=True]`
-  - **Service**: Checks if `spec.clusterIP` is assigned
-  - **HTTPRoute**: Checks for `status.parents[].conditions[type=Accepted, status=True]`
-- The `krm.kcl.dev/ready = "True"` annotation is **conditionally set** based on these checks
-
-**What this means**:
-- ✅ **Actual health checking**: Verifies Deployments have available replicas
-- ✅ **Status validation**: Confirms HTTPRoutes are accepted by Gateways
-- ✅ **Conditional readiness**: Resources only marked ready when actually healthy
-- ✅ **No provider-kubernetes needed**: Direct resource creation with real health checks
-
-**Example**:
-```kcl
-# Check observed Deployment status
-_observedDeployment = ocds.get(_name + "-deployment", {})?.Resource
-_deploymentReady = any_true([c.get("type") == "Available" and c.get("status") == "True" for c in _observedDeployment?.status?.conditions or []])
-
-# Only add ready annotation when actually available
-if _deploymentReady:
-    "krm.kcl.dev/ready" = "True"
-```
-
-**Why this approach**:
-- Accurate health checking without provider-kubernetes complexity
-- Resources wait for actual readiness before marking composition ready
-- Based on Upbound best practices (project-template-k8s-webapp)
-
-**Alternative approach** (for production):
-Use `provider-kubernetes` with `readiness.policy: DeriveFromObject` to actually check resource status:
-```yaml
-apiVersion: kubernetes.crossplane.io/v1alpha2
-kind: Object
-spec:
-  forProvider:
-    manifest:
-      apiVersion: apps/v1
-      kind: Deployment
-      # ... spec
-  readiness:
-    policy: DeriveFromObject  # Actually checks Deployment.status.conditions[type=Available]
-```
-
-**Recommendation**: Monitor actual resource health using:
-- Kubernetes events (`kubectl get events`)
-- Application metrics and health endpoints
-- Crossplane trace command: `crossplane beta trace app <name> -n <namespace>`
-- External monitoring (VictoriaMetrics alerts, Grafana dashboards)
-
-**Resources with health checks** in App composition:
-- Deployment ✅ (checks `.status.conditions[type=Available]`)
-- Service ✅ (checks `spec.clusterIP` assignment)
-- HTTPRoute ✅ (checks `.status.parents[].conditions[type=Accepted]`)
-
-**Resources with static readiness** (always marked ready when created):
-- HorizontalPodAutoscaler, PodDisruptionBudget, Gateway, CiliumNetworkPolicy, HelmRelease
-
-**NOT affected** (these use proper status conditions):
-- SQLInstance (Crossplane XR with actual status)
-- EKSPodIdentity (Crossplane XR with actual status)
-- S3 Bucket (Managed Resource with proper conditions)
+> **KCL and Crossplane validation rules** are in `.claude/rules/kcl-crossplane.md` and `.claude/rules/crossplane-validation.md` (loaded automatically when editing those files).
 
 ## Spec-Driven Development (SDD)
 
-This repository uses SDD for non-trivial changes. Inspired by [GitHub Spec Kit](https://github.com/github/spec-kit), the workflow balances rigor with simplicity:
+This repository uses SDD for non-trivial changes. See [docs/specs/README.md](docs/specs/README.md) for complete documentation.
 
 ```
-/spec → /spec-status → /clarify → /validate → Implement → /create-pr → Auto-archive
+/spec -> /spec-status -> /clarify -> /validate -> Implement -> /create-pr -> Auto-archive
 ```
 
 **Key Documents**:
-- [Platform Constitution](docs/specs/constitution.md) - Non-negotiable principles all specs must follow
+- [Platform Constitution](docs/specs/constitution.md) - Non-negotiable principles
 - [Architecture Decision Records](docs/decisions/) - Cross-cutting technology choices
-- [SDD Workflow](docs/specs/README.md) - Complete documentation
 
 ### When Specs Are Required
 
@@ -488,113 +145,22 @@ This repository uses SDD for non-trivial changes. Inspired by [GitHub Spec Kit](
 
 ### When to Skip Specs
 
-- Version bumps and Renovate PRs
-- Documentation-only changes
-- Single-file bug fixes
-- Minor configuration changes
-- HelmRelease value tweaks
-
-### SDD Workflow
-
-```bash
-# 1. Create specification (creates GitHub issue + spec directory with spec:draft label)
-/spec composition "Add Valkey caching composition"
-# → Creates: GitHub Issue #XXX (label: spec:draft) + docs/specs/001-valkey-caching/spec.md
-
-# 2. Fill in the spec
-# - User stories with Gherkin acceptance scenarios
-# - Requirements (FR-001, FR-002...)
-# - Success criteria (SC-001, SC-002...)
-# - Design (API, resources created)
-# - Phased tasks checklist
-
-# 3. Check pipeline status
-/spec-status
-# → Shows: Draft: 1, Implementing: 0, Done: 15 (with stale detection)
-
-# 4. Resolve clarifications with structured options
-/clarify
-# → Presents options for each [NEEDS CLARIFICATION] marker from 4 perspectives
-# → Updates spec with [CLARIFIED: answer]
-
-# 5. Validate spec completeness
-/validate
-# → Runs 8 validation checks with actionable suggestions
-
-# 6. Start implementation (update issue label)
-gh issue edit XXX --remove-label "spec:draft" --add-label "spec:implementing"
-
-# 7. Implement by working through phased tasks
-# Check off tasks in spec.md, verify success criteria
-
-# 8. Create PR (auto-references spec)
-/create-pr
-# → PR body includes: "Implements #XXX" and spec directory path
-
-# 9. After merge, spec is auto-archived by GitHub Action
-# → Spec moved to docs/specs/done/
-# → Issue closed with spec:done label
-```
+Version bumps, documentation-only, single-file bug fixes, minor config changes, HelmRelease value tweaks.
 
 ### SDD Skills
 
 | Skill | Description |
 |-------|-------------|
-| `/spec [type] "description"` | Creates GitHub issue + spec directory with `spec:draft` label |
-| `/spec-status` | Shows pipeline overview (Draft/Implementing/Done counts, stale detection) |
-| `/clarify [spec-file]` | Resolves `[NEEDS CLARIFICATION]` markers with structured options |
-| `/validate [spec-file]` | Validates spec completeness with actionable suggestions |
-
-Types for `/spec` (optional): `composition` | `infrastructure` | `security` | `platform`
-
-See [`.claude/skills/README.md`](.claude/skills/README.md) for details.
-
-### Spec Structure (~170 lines)
-
-Single template at `docs/specs/templates/spec.md`:
-
-**Core**: Metadata, Summary, Problem, User Stories (Gherkin), Requirements (FR-XXX), Success Criteria (SC-XXX)
-
-**Design**: API/Interface, Resources Created, Dependencies
-
-**Execution**: Phased Tasks, Validation, Review Checklist (4 personas)
-
-**Resolution**: Clarifications, References
-
-### Review Personas
-
-Before implementation, self-review from each perspective:
-
-| Persona | Focus |
-|---------|-------|
-| **PM** | Problem clarity, user stories, acceptance criteria, scope |
-| **Platform Engineer** | Design patterns, API consistency, KCL patterns, examples |
-| **Security** | Zero-trust, least privilege, secrets, network policies |
-| **SRE** | Health checks, observability, resource limits, failure modes |
-
-### Directory Structure
-
-```
-docs/specs/
-├── templates/spec.md      # Template (~170 lines)
-├── 001-feature-name/      # Active specs (directory per spec)
-│   └── spec.md
-└── done/                  # Archived specs
-    └── 001-feature-name/
-```
-
-### Architecture Decision Records (ADRs)
-
-Significant architectural decisions are recorded in `docs/decisions/`:
-- Use ADRs for technology choices affecting multiple components
-- Reference ADRs from specs when relevant
-- ADRs capture the "why" behind decisions (see ADR-0001 for KCL decision)
+| `/spec [type] "description"` | Creates GitHub issue + spec directory |
+| `/spec-status` | Pipeline overview (Draft/Implementing/Done counts) |
+| `/clarify [spec-file]` | Resolves `[NEEDS CLARIFICATION]` markers |
+| `/validate [spec-file]` | Validates spec completeness |
 
 ## Security Considerations
 
 ### OpenBao PKI Structure
 
-- Root CA → Intermediate CA → Leaf certificates
+- Root CA -> Intermediate CA -> Leaf certificates
 - AppRole authentication for cert-manager
 - Automatic certificate rotation
 
@@ -614,294 +180,51 @@ Significant architectural decisions are recorded in `docs/decisions/`:
 
 ### Tailscale Gateway API Integration
 
-**Overview**: Private services are exposed via Tailscale using Gateway API with custom domains (`*.priv.cloud.ogenki.io`) instead of MagicDNS names. The platform uses **two separate Gateways** with different Tailscale tags to enforce access control via ACLs.
+Private services exposed via Tailscale using Gateway API with custom domains (`*.priv.cloud.ogenki.io`). Two separate Gateways enforce ACL-based access control:
 
-**Architecture Components**:
-1. **Cilium Gateways (Tailscale)**:
-   - **General Gateway**: `infrastructure/base/gapi/platform-tailscale-general-gateway.yaml`
-     - Tag: `tag:k8s` - Accessible to all Tailscale members
-     - Services: Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics (8 services)
-   - **Admin Gateway**: `infrastructure/base/gapi/platform-tailscale-admin-gateway.yaml`
-     - Tag: `tag:admin` - Restricted to `group:admin` only
-     - Services: Hubble UI, VictoriaLogs, Grafana OnCall (5 services)
-   - Both use `loadBalancerClass: tailscale` via `CiliumGatewayClassConfig` (critical!)
-   - Gateway-level TLS termination (OpenBao certificates)
-   - Each exposed at separate Tailscale addresses
+- **General Gateway** (`tag:k8s`): All Tailscale members. Services: Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics.
+- **Admin Gateway** (`tag:admin`): `group:admin` only. Services: Hubble UI, VictoriaLogs, Grafana OnCall.
 
-2. **ExternalDNS**: `infrastructure/base/external-dns/helmrelease.yaml`
-   - Watches HTTPRoutes (via `gateway-httproute` source) referencing both Gateways
-   - Creates DNS records in Route53 private zone (`priv.cloud.ogenki.io`)
-   - Points records to appropriate Gateway's Tailscale address
-
-3. **HTTPRoutes**: Service-specific routing referencing appropriate Gateway based on access requirements
-
-4. **Tailscale ACLs**: `opentofu/network/tailscale.tf`
-   - `tag:admin` → Only `group:admin` can access
-   - `tag:k8s` → All `autogroup:member` can access
-
-**Key Innovation**: Cilium Gateway supports `loadBalancerClass: tailscale` via `spec.infrastructure.annotations`, eliminating the need for separate Envoy Gateway installation.
-
-**Setup Requirements**:
-1. Deploy CiliumGatewayClassConfig with `service.loadBalancerClass: tailscale`
-2. Create both Gateways (general and admin) with label `external-dns: enabled`
-3. Configure external-dns to watch `gateway-httproute` source
-4. Create HTTPRoutes referencing appropriate Gateway (`platform-tailscale-general` or `platform-tailscale-admin`)
-5. Configure Tailscale ACLs with `tag:k8s` and `tag:admin` rules
-
-**Benefits**:
-- Custom domains instead of MagicDNS hashes
-- Two Tailscale devices for all services (still cost-effective)
-- ACL-based access segregation (general vs admin services)
-- Advanced routing capabilities (headers, weights, etc.)
-- Consistent Gateway API pattern
-- Gateway-level TLS management
-- Leverages existing Route53 infrastructure
-- Zero-trust access control enforcement
-
-**Documentation**: See `docs/tailscale-gateway-api.md` for complete setup guide and troubleshooting.
+Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDNS watches HTTPRoutes to create Route53 records. See `docs/tailscale-gateway-api.md` for setup details.
 
 ## Key File Locations
 
 ### Infrastructure
-
 - OpenTofu stacks: `opentofu/{network,eks/init,eks/configure,openbao}`
 - Kubernetes manifests: `{infrastructure,security,observability,tooling}/base/`
 - Cluster-specific overrides: `{infrastructure,security,observability,tooling}/mycluster-0/`
 
 ### GitOps
-
 - Flux configuration: `flux/`
 - Custom Resource Definitions: `crds/base/`
 - Cluster bootstrap: `clusters/mycluster-0/`
 
 ### Scripts
-
 - EKS cleanup: `scripts/eks-prepare-destroy.sh`
-- OpenBao configuration: `scripts/openbao-config.sh`
-- OpenBao snapshots: `scripts/openbao-snapshot.sh`
-- KCL composition validation: `scripts/validate-kcl-compositions.sh`
+- OpenBao config: `scripts/openbao-config.sh`
+- KCL validation: `scripts/validate-kcl-compositions.sh`
 
 ## Troubleshooting
 
-### Flux Resources
-
-Use specialized Flux analysis from `.claude/config` for troubleshooting GitOps issues:
-
-- Check FluxInstance status first
-- Analyze HelmRelease and Kustomization dependencies
-- Review source controller status (GitRepository, HelmRepository)
-- Examine managed resource inventory for failures
+Use `.claude/config` for systematic Flux and Crossplane troubleshooting procedures. Use `.claude/agents/flux-troubleshooter` for automated Flux diagnosis.
 
 ### Common Issues
-
 - **EKS Access**: Ensure proper IAM permissions and kubeconfig
 - **Flux Sync**: Verify GitHub App credentials in AWS Secrets Manager
 - **Certificates**: Check OpenBao CA chain and cert-manager logs
 - **Network**: Confirm Tailscale subnet router connectivity
 - **Resource Conflicts**: Review Crossplane composition functions and resource references
 
-### VictoriaLogs Querying
-
-**CLI Tool**: Use `vlogscli` to test queries directly:
-
-```bash
-vlogscli -datasource.url='https://vl.priv.cloud.ogenki.io/select/logsql/query'
-```
-
-**Important LogsQL Syntax Rules**:
-
-1. **Kubernetes Labels**: Use dot notation (`kubernetes.container_name`), not underscores
-2. **JSON Log Fields**: After `unpack_json`, fields are prefixed with `log.`
-   - Correct: `{kubernetes.container_name="xplane-image-gallery"} | unpack_json | log.level:error`
-   - Wrong: `{kubernetes_container_name="xplane-image-gallery"} | unpack_json | level:error`
-
-3. **Field Structure After unpack_json**:
-   - `log.level` - Log severity (info, warn, error)
-   - `log.service` - Service name from application logs
-   - `log.trace_id` - OpenTelemetry trace ID
-   - `log.span_id` - OpenTelemetry span ID
-   - `log.error` - Error message content
-
-**Example Queries**:
-
-```bash
-# Error logs for a specific container
-echo '{kubernetes.container_name="xplane-image-gallery"} | unpack_json | log.level:error | limit 10' | vlogscli -datasource.url='https://vl.priv.cloud.ogenki.io/select/logsql/query'
-
-# Logs with trace context
-echo '{kubernetes.container_name="xplane-image-gallery"} | unpack_json | log.trace_id:* | limit 10' | vlogscli -datasource.url='https://vl.priv.cloud.ogenki.io/select/logsql/query'
-
-# All logs for a namespace
-echo '{kubernetes.pod_namespace="apps"} | limit 10' | vlogscli -datasource.url='https://vl.priv.cloud.ogenki.io/select/logsql/query'
-```
-
-**Grafana Dashboard Queries**: Use same syntax with Grafana variables (no quotes around variables):
-```
-{kubernetes.container_name=$service} | unpack_json | log.level:error
-```
-
-**VictoriaLogs Explorer Dashboard**: Simple text search interface for log exploration.
-
-**Message search** (`msg` variable): Full-text search in log messages
-- Searches in `_msg` field
-- Examples: `*database*`, `error*`, `*timeout`
-- Add wildcards (`*`) for pattern matching
-- Leave empty to show all logs
-
-**Query Structure** in dashboard:
-```
-_stream: {filters} field_filters $msg | unpack_json | operations
-```
-
-**For advanced filtering**: Use Grafana's Explore view for complex LogsQL queries with field-level filters like `log.level:error` or `log.trace_id:*`
-
-### Grafana Dashboard Best Practices
-
-#### Datasource Configuration
-- **Logs panels MUST use logs datasource**: Always use `victoriametrics-logs-datasource` type for logs panels, NEVER prometheus/metrics datasource
-- **Flux variable substitution**: Use `$${variable}` (double dollar) in dashboard JSON to preserve Grafana variables after Flux postBuild processing. Single `${variable}` gets substituted by Flux.
-
-#### Troubleshooting "No Data" in Dashboard Panels
-
-**Before investigating infrastructure, always check these first:**
-
-1. **Verify data exists with wider time range**: Query VictoriaLogs/VictoriaMetrics directly using MCP tools with a broader time range (e.g., 6h or 24h instead of 1h)
-2. **Consider data generation patterns**:
-   - **Continuous logs**: Application servers, databases (data every second)
-   - **Event-driven logs**: Karpenter, controllers, operators (data only during activity)
-3. **Adjust default time range** based on component behavior
-
-**Common pitfalls:**
-- Assuming log collection is broken when data simply doesn't exist in the selected time range
-- Restarting Vector/log collectors unnecessarily
-- Investigating network policies before verifying data exists
-
-#### Component-Specific Time Ranges
-
-| Component | Log Pattern | Recommended Default |
-|-----------|-------------|---------------------|
-| Karpenter | Event-driven (scaling activity only) | 6h or 12h |
-| Application pods | Continuous | 1h |
-| Flux controllers | Event-driven (reconciliation) | 3h |
-| Cert-manager | Event-driven (certificate operations) | 6h |
-
-## Database Migrations with Atlas Operator
-
-### Overview
-
-The SQLInstance composition supports declarative database schema migrations using Atlas Operator integrated with Flux GitOps workflow.
-
-### How It Works
-
-When `atlasSchema` is defined in SQLInstance spec, the composition automatically creates:
-
-1. **GitRepository** - Flux pulls migration files from Git repository
-2. **Kustomization** - Flux processes `kustomization.yaml` with `configMapGenerator`
-3. **ConfigMap** - Automatically generated with migration SQL files
-4. **AtlasMigration** - References ConfigMap to apply migrations
-
-### Migration Repository Requirements
-
-The migration repository must contain a `kustomization.yaml` with `configMapGenerator`:
-
-```yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-configMapGenerator:
-  - name: atlas-db-migrations
-    files:
-      - ./001_initial_schema.sql
-      - ./002_add_users_table.sql
-      - atlas.sum
-    options:
-      disableNameSuffixHash: true
-```
-
-### SQLInstance Configuration Example
-
-```yaml
-apiVersion: cloud.ogenki.io/v1alpha1
-kind: SQLInstance
-metadata:
-  name: xplane-myapp-sqlinstance
-  namespace: apps
-spec:
-  size: small
-  storageSize: 20Gi
-  instances: 2
-  databases:
-    - name: myapp
-      owner: myapp-user
-  roles:
-    - name: myapp-user
-      superuser: false
-      inRoles: [pg_monitor]
-  atlasSchema:
-    url: "https://github.com/your-org/your-app.git"
-    ref: "v1.1.0"  # Tag (v*) or branch (main, develop, etc.)
-    path: "internal/platform/database/migrations"
-  backup:
-    schedule: "0 2 * * *"
-    bucketName: myapp-db-backups
-```
-
-### Git Reference Handling
-
-- **Tags**: References starting with `v` (e.g., `v1.0.0`, `v2.1.3`) are treated as Git tags
-- **Branches**: Other references (e.g., `main`, `develop`, `feature-branch`) are treated as branches
-
-### Troubleshooting
-
-**ConfigMap not generated:**
-```bash
-# Check Kustomization status
-kubectl get kustomization <name>-atlas-migrations-configmap -n <namespace>
-
-# Check GitRepository sync
-kubectl get gitrepository <name>-atlas-migrations-repo -n <namespace>
-```
-
-**Migrations not applied:**
-```bash
-# Check AtlasMigration status
-kubectl get atlasmigration <name>-atlas-migration -n <namespace> -o yaml
-
-# Check migration logs
-kubectl logs -n infrastructure deployment/atlas-operator-controller-manager
-```
-
-**Important Notes:**
-- Atlas Operator v0.7.11 does NOT support `dir.remote.url/ref/path` for Git repos
-- `dir.remote` only works with Atlas Cloud (requires Atlas Cloud account)
-- The GitOps pattern via ConfigMap is the recommended approach for Git-based migrations
+> **VictoriaLogs and Grafana rules** are in `.claude/rules/observability.md` (loaded automatically when editing observability files).
 
 ## Validation Commands
 
-### Configuration Validation
-
 ```bash
-# OpenTofu validation with security scanning
 tofu validate
 trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
-
-# Kubernetes manifest validation
 kubeconform -summary -output json <manifest>.yaml
-```
-
-### Health Checks
-
-```bash
-# Cluster health
-kubectl get nodes
-kubectl get pods --all-namespaces
-
-# Flux status
-kubectl get fluxinstance -n flux-operator
+kubectl get nodes && kubectl get pods --all-namespaces
 flux get all
-
-# OpenBao status
-bao status
-bao auth list
 ```
+
 - always check the network policies when there are timeouts
