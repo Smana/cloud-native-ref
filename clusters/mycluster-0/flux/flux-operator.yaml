@@ -10,6 +10,8 @@ spec:
   sourceRef:
     kind: ExternalArtifact
     name: flux-artifact
+  dependsOn:
+    - name: security
   postBuild:
     substituteFrom:
       - kind: ConfigMap
