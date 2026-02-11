@@ -11,33 +11,33 @@ spec:
   artifacts:
     - name: infra-artifact
       copy:
-        - from: "@repo/infrastructure/"
-          to: "@artifact/"
+        - from: "@repo/infrastructure/**"
+          to: "@artifact/infrastructure/"
     - name: security-artifact
       copy:
-        - from: "@repo/security/"
-          to: "@artifact/"
+        - from: "@repo/security/**"
+          to: "@artifact/security/"
     - name: observability-artifact
       copy:
-        - from: "@repo/observability/"
-          to: "@artifact/"
+        - from: "@repo/observability/**"
+          to: "@artifact/observability/"
     - name: tooling-artifact
       copy:
-        - from: "@repo/tooling/"
-          to: "@artifact/"
+        - from: "@repo/tooling/**"
+          to: "@artifact/tooling/"
     - name: apps-artifact
       copy:
-        - from: "@repo/apps/"
-          to: "@artifact/"
+        - from: "@repo/apps/**"
+          to: "@artifact/apps/"
     - name: flux-artifact
       copy:
-        - from: "@repo/flux/"
-          to: "@artifact/"
+        - from: "@repo/flux/**"
+          to: "@artifact/flux/"
     - name: crds-artifact
       copy:
-        - from: "@repo/crds/"
-          to: "@artifact/"
+        - from: "@repo/crds/**"
+          to: "@artifact/crds/"
     - name: namespaces-artifact
       copy:
-        - from: "@repo/namespaces/"
-          to: "@artifact/"
+        - from: "@repo/namespaces/**"
+          to: "@artifact/namespaces/"
