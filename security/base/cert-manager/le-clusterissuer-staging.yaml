@@ -15,3 +15,4 @@ spec:
         dns01:
           route53:
             region: ${region}
+            hostedZoneID: ${route53_public_zone_id}
