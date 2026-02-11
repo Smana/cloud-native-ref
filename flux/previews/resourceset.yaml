@@ -19,6 +19,18 @@ spec:
         labels:
           preview: "true"
           pr-id: "<< inputs.id >>"
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
+      metadata:
+        name: preview-pr-<< inputs.id >>
+        namespace: flux-system
+      spec:
+        interval: 5m
+        url: https://github.com/Smana/cloud-native-ref
+        ref:
+          commit: << inputs.sha >>
+        secretRef:
+          name: flux-system
     - apiVersion: kustomize.toolkit.fluxcd.io/v1
       kind: Kustomization
       metadata:
@@ -28,10 +40,10 @@ spec:
         prune: true
         interval: 2m0s
         timeout: 10m0s
-        path: ./clusters/<< inputs.cluster_name >>
+        path: ./apps/mycluster-0
         sourceRef:
           kind: GitRepository
-          name: flux-system
+          name: preview-pr-<< inputs.id >>
         targetNamespace: preview-pr-<< inputs.id >>
         postBuild:
           substituteFrom:

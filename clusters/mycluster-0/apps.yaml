@@ -3,7 +3,12 @@ kind: Kustomization
 metadata:
   name: apps
   namespace: flux-system
+  labels:
+    sharding.fluxcd.io/key: apps
 spec:
+  commonMetadata:
+    labels:
+      sharding.fluxcd.io/key: apps
   prune: true
   interval: 1m0s
   path: ./apps/mycluster-0

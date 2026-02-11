@@ -8,6 +8,7 @@ metadata:
 spec:
   prune: true
   interval: 4m0s
+  retryInterval: 30s
   timeout: 6m0s
   path: ./infrastructure/mycluster-0
   postBuild:

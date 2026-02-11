@@ -10,8 +10,7 @@ spec:
     kind: OCIRepository
     name: flux-operator
   values:
-    # Enable debug logging to see impersonated identity
-    logLevel: "debug"
+    logLevel: "info"
     web:
       enabled: true
       # Disable the default NetworkPolicy that blocks Gateway API L7 proxy traffic

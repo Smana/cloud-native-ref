@@ -4,7 +4,7 @@ metadata:
   name: crds
   namespace: flux-system
 spec:
-  prune: true
+  prune: false
   interval: 1m0s
   path: ./crds/base
   sourceRef:

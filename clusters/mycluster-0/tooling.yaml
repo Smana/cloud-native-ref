@@ -3,7 +3,12 @@ kind: Kustomization
 metadata:
   name: tooling
   namespace: flux-system
+  labels:
+    sharding.fluxcd.io/key: apps
 spec:
+  commonMetadata:
+    labels:
+      sharding.fluxcd.io/key: apps
   prune: true
   interval: 4m0s
   sourceRef:

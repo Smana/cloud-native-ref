@@ -6,6 +6,7 @@ metadata:
 spec:
   prune: true
   interval: 4m0s
+  retryInterval: 30s
   timeout: 8m0s
   sourceRef:
     kind: ExternalArtifact

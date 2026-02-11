@@ -8,3 +8,8 @@ spec:
   url: oci://public.ecr.aws/karpenter/karpenter
   ref:
     semver: "1.9.0"
+  verify:
+    provider: cosign
+    matchOIDCIdentity:
+      - issuer: "https://token.actions.githubusercontent.com"
+        subject: "https://github.com/aws/karpenter-provider-aws/*"

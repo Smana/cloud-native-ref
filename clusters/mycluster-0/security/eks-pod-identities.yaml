@@ -6,6 +6,7 @@ metadata:
 spec:
   prune: true
   interval: 1m0s
+  retryInterval: 30s
   sourceRef:
     kind: ExternalArtifact
     name: security-artifact
