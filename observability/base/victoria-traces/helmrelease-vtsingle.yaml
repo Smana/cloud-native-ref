@@ -18,6 +18,9 @@ spec:
   install:
     remediation:
       retries: 3
+  upgrade:
+    remediation:
+      retries: 3
   values:
     printNotes: false
 

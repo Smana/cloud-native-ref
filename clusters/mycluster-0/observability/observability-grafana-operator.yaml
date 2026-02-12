@@ -17,4 +17,3 @@ spec:
         name: eks-mycluster-0-vars
   dependsOn:
     - name: observability-victoria-metrics-k8s-stack
-    - name: observability-victoria-traces
