@@ -6,9 +6,9 @@ spec:
   secretName: private-gateway-tls
   duration: 2160h # 90d
   renewBefore: 360h # 15d
-  commonName: "*.priv.${domain_name}"
+  commonName: "*.${private_domain_name}"
   dnsNames:
-    - "*.priv.${domain_name}"
+    - "*.${private_domain_name}"
   issuerRef:
     name: openbao
     kind: ClusterIssuer

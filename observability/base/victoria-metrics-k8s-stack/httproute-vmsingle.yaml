@@ -8,7 +8,7 @@ spec:
     - name: platform-tailscale-general
       namespace: infrastructure
   hostnames:
-    - "vm.priv.${domain_name}"
+    - "vm.${private_domain_name}"
   rules:
     - backendRefs:
         - name: vmsingle-victoria-metrics-k8s-stack

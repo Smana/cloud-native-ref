@@ -19,7 +19,7 @@ spec:
         create: false
       config:
         # Public URL for OAuth2 redirects
-        baseURL: "https://flux-ui-${cluster_name}.${domain_name}"
+        baseURL: "https://flux-ui-${cluster_name}.${private_domain_name}"
         authentication:
           type: OAuth2
           sessionDuration: 24h

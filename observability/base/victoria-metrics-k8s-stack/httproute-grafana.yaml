@@ -8,7 +8,7 @@ spec:
     - name: platform-tailscale-general
       namespace: infrastructure
   hostnames:
-    - "grafana.priv.${domain_name}"
+    - "grafana.${private_domain_name}"
   rules:
     - backendRefs:
         - name: victoria-metrics-k8s-stack-grafana

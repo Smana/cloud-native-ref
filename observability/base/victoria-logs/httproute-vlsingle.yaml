@@ -8,7 +8,7 @@ spec:
     - name: platform-tailscale-general
       namespace: infrastructure
   hostnames:
-    - "vl.priv.${domain_name}"
+    - "vl.${private_domain_name}"
   rules:
     - backendRefs:
         - name: victoria-logs-victoria-logs-single-server

@@ -46,6 +46,6 @@ spec:
 
     useExternalDNS:
       enabled: true
-      suffix: "priv.${domain_name}"
+      suffix: "${private_domain_name}"
       additionalAnnotations:
         ttl: 10

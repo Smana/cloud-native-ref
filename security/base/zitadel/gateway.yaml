@@ -10,10 +10,10 @@ spec:
       service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
       service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
       service.beta.kubernetes.io/aws-load-balancer-type: "external"
-      external-dns.alpha.kubernetes.io/hostname: "auth.${domain_name}"
+      external-dns.alpha.kubernetes.io/hostname: "auth.${public_domain_name}"
   listeners:
     - name: auth
-      hostname: "auth.${domain_name}"
+      hostname: "auth.${public_domain_name}"
       port: 443
       protocol: TLS
       allowedRoutes:

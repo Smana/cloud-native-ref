@@ -78,7 +78,7 @@ data "http" "gateway_api_crds" {
 }
 
 data "aws_route53_zone" "public" {
-  name         = "cloud.ogenki.io"
+  name         = var.public_domain_name
   private_zone = false
 }
 

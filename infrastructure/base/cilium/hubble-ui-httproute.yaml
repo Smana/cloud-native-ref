@@ -10,7 +10,7 @@ spec:
       name: platform-tailscale-admin
       namespace: infrastructure
   hostnames:
-    - "hubble-ui-${cluster_name}.priv.${domain_name}"
+    - "hubble-ui-${cluster_name}.${private_domain_name}"
   rules:
     - matches:
         - path:

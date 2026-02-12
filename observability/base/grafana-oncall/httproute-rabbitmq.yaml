@@ -8,7 +8,7 @@ spec:
     - name: platform-tailscale-admin
       namespace: infrastructure
   hostnames:
-    - "oncall-rabbitmq.priv.${domain_name}"
+    - "oncall-rabbitmq.${private_domain_name}"
   rules:
     - backendRefs:
         - name: oncall-rabbitmq

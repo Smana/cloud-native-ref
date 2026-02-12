@@ -15,7 +15,7 @@ spec:
       tailscale.com/funnel: "false"
   listeners:
     - name: https
-      hostname: "*.priv.${domain_name}"
+      hostname: "*.${private_domain_name}"
       port: 443
       protocol: HTTPS
       allowedRoutes:

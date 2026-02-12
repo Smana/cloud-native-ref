@@ -46,7 +46,9 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       aws_account_id         = data.aws_caller_identity.this.account_id
       region                 = var.region
       environment            = var.env
-      domain_name            = var.domain_name
+      domain_name            = var.public_domain_name
+      private_domain_name    = var.private_domain_name
+      public_domain_name     = var.public_domain_name
       vpc_id                 = data.aws_vpc.selected.id
       vpc_cidr_block         = data.aws_vpc.selected.cidr_block
       karpenter_queue_name   = module.karpenter.queue_name
