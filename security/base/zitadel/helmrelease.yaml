@@ -5,6 +5,12 @@ metadata:
 spec:
   interval: 30m
   timeout: 45m
+  install:
+    remediation:
+      retries: 5
+  upgrade:
+    remediation:
+      retries: 3
   driftDetection:
     mode: enabled
   chart:
