@@ -16,7 +16,7 @@ spec:
       - kind: ConfigMap
         name: eks-mycluster-0-vars
   dependsOn:
-    - name: security
+    - name: observability-victoria-metrics-k8s-stack
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
