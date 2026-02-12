@@ -12,4 +12,4 @@ spec:
     provider: cosign
     matchOIDCIdentity:
       - issuer: "https://token.actions.githubusercontent.com"
-        subject: "https://github.com/controlplaneio-fluxcd/flux-operator/*"
+        subject: "https://github.com/controlplaneio-fluxcd/charts/*"
