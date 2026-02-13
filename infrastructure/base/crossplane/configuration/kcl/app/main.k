@@ -563,8 +563,10 @@ if oxr.spec.route?.enabled == True:
     _routeGatewayName = oxr.spec.gateway.name or _name + "-gateway" if oxr.spec.gateway?.enabled else "platform-public" if oxr.spec.route?.internetFacing else "platform-tailscale-general"
     _routeGatewayNamespace = oxr.spec.gateway.namespace or _namespace if oxr.spec.gateway?.enabled else "infrastructure"
     _routeDomainSuffix = "" if oxr.spec.gateway?.enabled else ".cloud.ogenki.io" if oxr.spec.route?.internetFacing else ".priv.cloud.ogenki.io"
-    # Construct full hostname if hostname is provided
-    _fullHostname = oxr.spec.route.hostname + _routeDomainSuffix if oxr.spec.route?.hostname else None
+    # Detect preview environment from namespace naming convention (preview-pr-<id>)
+    _isPreview = _namespace.startswith("preview-")
+    _previewSuffix = "-" + _namespace[8::] if _isPreview else ""
+    _fullHostname = oxr.spec.route.hostname + _previewSuffix + _routeDomainSuffix if oxr.spec.route?.hostname else None
 
     # HTTPRoute - wrapped in intermediate variable to avoid duplicate detection bug
     # See: https://github.com/crossplane-contrib/function-kcl/issues/285
