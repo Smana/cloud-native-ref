@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-previews
+  namespace: flux-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flux-previews
+rules:
+  # Manage preview namespaces
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Manage GitRepository sources for PR branches
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["gitrepositories"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Manage Kustomizations for preview deployments
+  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
+    resources: ["kustomizations"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flux-previews
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flux-previews
+subjects:
+  - kind: ServiceAccount
+    name: flux-previews
+    namespace: flux-system

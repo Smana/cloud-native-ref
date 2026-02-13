@@ -4,11 +4,11 @@ metadata:
   name: crds
   namespace: flux-system
 spec:
-  prune: true
+  prune: false
   interval: 1m0s
   path: ./crds/base
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: ExternalArtifact
+    name: crds-artifact
   dependsOn:
     - name: namespaces

@@ -5,6 +5,8 @@ metadata:
   namespace: observability
 spec:
   releaseName: victoria-metrics-k8s-stack
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: victoria-metrics-k8s-stack
@@ -39,8 +41,8 @@ spec:
     # grafana:
     #   grafana.ini:
     #     server:
-    #       root_url: "https://grafana.priv.${domain_name}"
-    #       domain: "grafana.priv.${domain_name}"
+    #       root_url: "https://grafana.${private_domain_name}"
+    #       domain: "grafana.${private_domain_name}"
     #     auth.generic_auth:
     #       enabled: true
     #       name: "Zitadel"
@@ -48,7 +50,7 @@ spec:
     #       client_id: "293437355073802541"
     #       client_secret: "3XPQdOtQedxEnAjaTbxsnQ2Fc0WT15rKU5nsgSWYzgktdPHm82whbzfu01J0c0ba"
     #       scopes: "openid profile email"
-    #       auth_url: "https://auth.${domain_name}/oauth/v2/authorize"
-    #       token_url: "https://auth.${domain_name}/oauth/v2/token"
-    #       api_url: "https://auth.${domain_name}/oidc/v1/userinfo"
+    #       auth_url: "https://auth.${public_domain_name}/oauth/v2/authorize"
+    #       token_url: "https://auth.${public_domain_name}/oauth/v2/token"
+    #       api_url: "https://auth.${public_domain_name}/oidc/v1/userinfo"
     #       # role_attribute_path: "contains(groups[*], 'admin-group') && 'Admin' || 'Viewer'"

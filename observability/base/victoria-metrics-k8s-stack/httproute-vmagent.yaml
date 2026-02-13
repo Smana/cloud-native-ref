@@ -8,7 +8,7 @@ spec:
     - name: platform-tailscale-general
       namespace: infrastructure
   hostnames:
-    - "vmagent-${cluster_name}.priv.${domain_name}"
+    - "vmagent-${cluster_name}.${private_domain_name}"
   rules:
     - backendRefs:
         - name: vmagent-victoria-metrics-k8s-stack

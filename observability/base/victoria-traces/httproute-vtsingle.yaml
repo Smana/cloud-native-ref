@@ -8,7 +8,7 @@ spec:
     - name: platform-tailscale-general
       namespace: infrastructure
   hostnames:
-    - "vt.priv.${domain_name}"
+    - "vt.${private_domain_name}"
   rules:
     - backendRefs:
         - name: victoria-traces-vt-single-server

@@ -77,4 +77,9 @@ data "http" "gateway_api_crds" {
   url   = local.gateway_api_crds_urls[count.index]
 }
 
+data "aws_route53_zone" "public" {
+  name         = var.public_domain_name
+  private_zone = false
+}
+
 # Karpenter manifests moved to Flux GitOps (infrastructure/base/karpenter/)

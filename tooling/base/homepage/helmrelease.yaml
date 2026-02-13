@@ -174,14 +174,14 @@ spec:
 
         - "Cluster: mycluster-0":
             - Flux UI:
-                href: https://flux-ui-${cluster_name}.priv.${domain_name}
+                href: https://flux-ui-${cluster_name}.${private_domain_name}
                 description: Flux GitOps Dashboard
                 icon: flux-cd.png
                 namespace: flux-system
                 app: flux-operator
 
             - Hubble UI:
-                href: https://hubble-ui-${cluster_name}.priv.${domain_name}
+                href: https://hubble-ui-${cluster_name}.${private_domain_name}
                 description: Cilium Network Observability
                 icon: cilium.png
                 namespace: kube-system

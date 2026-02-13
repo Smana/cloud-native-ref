@@ -1,0 +1,18 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-operator
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  path: ./flux/operator
+  sourceRef:
+    kind: ExternalArtifact
+    name: flux-artifact
+  dependsOn:
+    - name: security
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars

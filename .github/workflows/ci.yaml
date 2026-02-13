@@ -103,7 +103,7 @@ jobs:
           version: "latest"
           verb: call
           module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.1.3
-          args: validate --manifests "." --exclude ".github/*,opentofu/*" --env "domain_name:cluster.local,cluster_name:foobar,region:eu-west-3,environment:dev,cert_manager_approle_id:random" --kustomize --flux --catalog
+          args: validate --manifests "." --exclude ".github/*,opentofu/*" --env "domain_name:cluster.local,private_domain_name:priv.cluster.local,public_domain_name:cluster.local,cluster_name:foobar,region:eu-west-3,environment:dev,cert_manager_approle_id:random,route53_public_zone_id:Z0123456789" --kustomize --flux --catalog
 
       - name: Run Polaris configuration validation
         uses: fairwindsops/polaris/.github/actions/setup-polaris@master

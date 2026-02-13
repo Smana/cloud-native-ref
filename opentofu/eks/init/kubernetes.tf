@@ -32,21 +32,27 @@ resource "kubectl_manifest" "flux_cluster_vars" {
     metadata = {
       name      = "eks-${var.name}-vars"
       namespace = "flux-system"
+      labels = {
+        "reconcile.fluxcd.io/watch" = "Enabled"
+      }
     }
     data = {
-      cluster_name          = var.name
-      cluster_endpoint      = replace(module.eks.cluster_endpoint, "https://", "")
-      cluster_endpoint_full = module.eks.cluster_endpoint
-      oidc_provider_arn     = module.eks.oidc_provider_arn
-      oidc_issuer_url       = module.eks.cluster_oidc_issuer_url
-      oidc_issuer_host      = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
-      aws_account_id        = data.aws_caller_identity.this.account_id
-      region                = var.region
-      environment           = var.env
-      domain_name           = var.domain_name
-      vpc_id                = data.aws_vpc.selected.id
-      vpc_cidr_block        = data.aws_vpc.selected.cidr_block
-      karpenter_queue_name  = module.karpenter.queue_name
+      cluster_name           = var.name
+      cluster_endpoint       = replace(module.eks.cluster_endpoint, "https://", "")
+      cluster_endpoint_full  = module.eks.cluster_endpoint
+      oidc_provider_arn      = module.eks.oidc_provider_arn
+      oidc_issuer_url        = module.eks.cluster_oidc_issuer_url
+      oidc_issuer_host       = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
+      aws_account_id         = data.aws_caller_identity.this.account_id
+      region                 = var.region
+      environment            = var.env
+      domain_name            = var.public_domain_name
+      private_domain_name    = var.private_domain_name
+      public_domain_name     = var.public_domain_name
+      vpc_id                 = data.aws_vpc.selected.id
+      vpc_cidr_block         = data.aws_vpc.selected.cidr_block
+      karpenter_queue_name   = module.karpenter.queue_name
+      route53_public_zone_id = data.aws_route53_zone.public.zone_id
     }
   })
   server_side_apply = true

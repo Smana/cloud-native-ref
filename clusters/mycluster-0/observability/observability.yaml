@@ -1,0 +1,24 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: observability
+  namespace: flux-system
+spec:
+  interval: 3m0s
+  timeout: 10m0s
+  path: ./observability/mycluster-0
+  prune: true
+  sourceRef:
+    kind: ExternalArtifact
+    name: observability-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+  dependsOn:
+    - name: observability-grafana-operator
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: SQLInstance
+      failed: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'True')

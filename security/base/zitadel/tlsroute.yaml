@@ -6,7 +6,7 @@ spec:
   parentRefs:
     - name: zitadel
   hostnames:
-    - "auth.${domain_name}"
+    - "auth.${public_domain_name}"
   rules:
     - backendRefs:
         - name: zitadel

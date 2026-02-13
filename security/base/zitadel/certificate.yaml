@@ -6,9 +6,9 @@ spec:
   secretName: zitadel-certificate
   duration: 2160h # 90d
   renewBefore: 360h # 15d
-  commonName: auth.${domain_name}
+  commonName: auth.${public_domain_name}
   dnsNames:
-    - auth.${domain_name}
+    - auth.${public_domain_name}
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer

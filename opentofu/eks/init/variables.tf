@@ -65,12 +65,22 @@ variable "gateway_api_version" {
   type        = string
 }
 
-variable "domain_name" {
-  description = "Private domain name for services (e.g., priv.cloud.ogenki.io)"
+variable "private_domain_name" {
+  description = "Private domain name for internal services (e.g., priv.cloud.ogenki.io)"
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$", var.domain_name))
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$", var.private_domain_name))
+    error_message = "Domain name must be a valid DNS domain name."
+  }
+}
+
+variable "public_domain_name" {
+  description = "Public domain name for internet-facing services (e.g., cloud.ogenki.io)"
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$", var.public_domain_name))
     error_message = "Domain name must be a valid DNS domain name."
   }
 }

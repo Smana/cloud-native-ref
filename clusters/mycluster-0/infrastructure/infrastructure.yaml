@@ -1,0 +1,32 @@
+---
+# The infrastructure components are deployed when Crossplane is available in order to creates irsa resources
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 4m0s
+  retryInterval: 30s
+  timeout: 6m0s
+  path: ./infrastructure/mycluster-0
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  dependsOn:
+    - name: karpenter
+    - name: eks-pod-identities
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: aws-load-balancer-controller
+      namespace: kube-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: external-dns
+      namespace: kube-system

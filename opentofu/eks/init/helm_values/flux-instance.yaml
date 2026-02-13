@@ -12,12 +12,17 @@ instance:
     - kustomize-controller
     - helm-controller
     - notification-controller
+    - source-watcher
     # Uncomment for image automation:
     # - image-reflector-controller
     # - image-automation-controller
   cluster:
     type: kubernetes
     networkPolicy: true
+  sharding:
+    key: "sharding.fluxcd.io/key"
+    shards:
+      - "apps"
   storage:
     class: "gp3"
     size: "5Gi"

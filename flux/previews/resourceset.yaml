@@ -1,0 +1,52 @@
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  name: pr-previews
+  namespace: flux-system
+  annotations:
+    fluxcd.controlplane.io/reconcileEvery: "5m"
+spec:
+  serviceAccountName: flux-previews
+  inputsFrom:
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSetInputProvider
+      name: github-previews
+  resources:
+    - apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: preview-pr-<< inputs.id >>
+        labels:
+          preview: "true"
+          pr-id: "<< inputs.id >>"
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
+      metadata:
+        name: preview-pr-<< inputs.id >>
+        namespace: flux-system
+      spec:
+        interval: 5m
+        url: https://github.com/Smana/cloud-native-ref
+        ref:
+          commit: << inputs.sha >>
+        secretRef:
+          name: flux-system
+    - apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
+      metadata:
+        name: preview-pr-<< inputs.id >>
+        namespace: flux-system
+      spec:
+        prune: true
+        interval: 2m0s
+        timeout: 10m0s
+        path: ./apps/mycluster-0
+        sourceRef:
+          kind: GitRepository
+          name: preview-pr-<< inputs.id >>
+        targetNamespace: preview-pr-<< inputs.id >>
+        postBuild:
+          substituteFrom:
+            - kind: ConfigMap
+              name: eks-<< inputs.cluster_name >>-vars
+        wait: false

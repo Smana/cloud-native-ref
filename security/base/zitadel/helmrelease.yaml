@@ -5,6 +5,12 @@ metadata:
 spec:
   interval: 30m
   timeout: 45m
+  install:
+    remediation:
+      retries: 5
+  upgrade:
+    remediation:
+      retries: 3
   driftDetection:
     mode: enabled
   chart:
@@ -41,7 +47,7 @@ spec:
             Format: json
         ExternalPort: 443
         ExternalSecure: true
-        ExternalDomain: "auth.${domain_name}"
+        ExternalDomain: "auth.${public_domain_name}"
         TLS:
           Enabled: true
           KeyPath: /tls/tls.key

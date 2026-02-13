@@ -8,7 +8,7 @@ spec:
     - name: platform-tailscale-general
       namespace: infrastructure
   hostnames:
-    - "vmalertmanager-${cluster_name}.priv.${domain_name}"
+    - "vmalertmanager-${cluster_name}.${private_domain_name}"
   rules:
     - backendRefs:
         - name: vmalertmanager-victoria-metrics-k8s-stack

@@ -37,7 +37,7 @@ spec:
       # when priv.cloud.ogenki.io (private) is more specific
       zoneMatchParent: false
 
-    domainFilters: ["${domain_name}", "priv.${domain_name}"]
+    domainFilters: ["${public_domain_name}", "${private_domain_name}"]
     logFormat: json
     logLevel: info
     txtOwnerId: "${cluster_name}"

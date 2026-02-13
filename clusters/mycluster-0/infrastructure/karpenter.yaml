@@ -1,0 +1,27 @@
+---
+# Karpenter controller is deployed early (after crds) so it can scale nodes for other workloads
+# IAM Pod Identity is created in Terraform, so no dependency on Crossplane EPI
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: karpenter
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  timeout: 5m0s
+  path: ./infrastructure/base/karpenter
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+  dependsOn:
+    - name: crds
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: karpenter
+      namespace: karpenter

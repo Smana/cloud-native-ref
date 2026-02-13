@@ -1,0 +1,16 @@
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: github-previews
+  namespace: flux-system
+spec:
+  type: GitHubPullRequest
+  url: https://github.com/Smana/cloud-native-ref
+  secretRef:
+    name: flux-system
+  filter:
+    labels:
+      - preview
+    limit: 5
+  defaultValues:
+    cluster_name: mycluster-0

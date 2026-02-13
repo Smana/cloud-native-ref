@@ -12,7 +12,7 @@ data:
       rule:
         spec:
           annotations:
-            dashboard: "https://grafana.priv.${domain_name}/dashboards"
+            dashboard: "https://grafana.${private_domain_name}/dashboards"
 
     grafanaOperatorDashboardsFormat:
       enabled: true
@@ -28,7 +28,7 @@ data:
     alertmanager:
       enabled: true
       spec:
-        externalURL: "https://vmalertmanager-${cluster_name}.priv.${domain_name}"
+        externalURL: "https://vmalertmanager-${cluster_name}.${private_domain_name}"
         secrets:
           - "victoria-metrics-k8s-stack-alertmanager-slack-app"
       config:
@@ -140,16 +140,16 @@ data:
           enable: externalServiceAccounts
           accessControlOnCall: 'false'
         server:
-          root_url: "https://grafana.priv.${domain_name}"
-          domain: "grafana.priv.${domain_name}"
+          root_url: "https://grafana.${private_domain_name}"
+          domain: "grafana.${private_domain_name}"
         auth.generic_oauth:
           enabled: true
           name: "SSO"
           allow_sign_up: true
           scopes: "openid profile email"
-          auth_url: "https://auth.${domain_name}/oauth/v2/authorize"
-          token_url: "https://auth.${domain_name}/oauth/v2/token"
-          api_url: "https://auth.${domain_name}/oidc/v1/userinfo"
+          auth_url: "https://auth.${public_domain_name}/oauth/v2/authorize"
+          token_url: "https://auth.${public_domain_name}/oauth/v2/token"
+          api_url: "https://auth.${public_domain_name}/oidc/v1/userinfo"
           role_attribute_path: >
             contains(roles[*], 'admin') && 'Admin' ||
             contains(roles[*], 'backend') && 'Editor' ||

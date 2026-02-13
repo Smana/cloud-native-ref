@@ -21,7 +21,7 @@ spec:
     remediation:
       retries: 3
   values:
-    base_url: oncall.priv.${domain_name}
+    base_url: oncall.${private_domain_name}
     base_url_protocol: https
 
     engine:
@@ -94,7 +94,7 @@ spec:
       passwordKey: password
 
     externalGrafana:
-      url: https://grafana.priv.${domain_name}
+      url: https://grafana.${private_domain_name}
 
     networkPolicy:
       enabled: false
