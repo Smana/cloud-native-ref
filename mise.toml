@@ -7,7 +7,7 @@ min_version = "2024.11.1"
 
 [tools]
 nodejs = "22.22.0"
-opentofu = "1.11.3"
+opentofu = "1.11.5"
 pre-commit = "4.5.1"
 trivy = "0.69.1"
 "ubi:terramate-io/terramate" = "0.15.5"
