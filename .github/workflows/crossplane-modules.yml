@@ -250,27 +250,27 @@ jobs:
 
           kcl mod download || true
 
-          echo "Attempting to publish oci://${FULL_MODULE_NAME}:v${PUBLISH_VERSION}"
+          echo "Attempting to publish oci://${FULL_MODULE_NAME}:${PUBLISH_VERSION}"
           if [ "$IS_PR" = "true" ]; then
             # Use --force for PR versions to allow overwriting
-            PUSH_CMD="kcl mod push --force oci://${FULL_MODULE_NAME}:v${PUBLISH_VERSION}"
+            PUSH_CMD="kcl mod push --force oci://${FULL_MODULE_NAME}:${PUBLISH_VERSION}"
             echo "Using --force flag for PR version (allows overwrite)"
           else
             # Use normal push for release versions
-            PUSH_CMD="kcl mod push oci://${FULL_MODULE_NAME}:v${PUBLISH_VERSION}"
+            PUSH_CMD="kcl mod push oci://${FULL_MODULE_NAME}:${PUBLISH_VERSION}"
           fi
 
           if ! $PUSH_CMD; then
             if [ "$IS_PR" = "true" ]; then
               echo "❌ Failed to publish PR module"
             else
-              echo "❌ Failed to publish module - version v${PUBLISH_VERSION} may already exist"
+              echo "❌ Failed to publish module - version ${PUBLISH_VERSION} may already exist"
               echo "💡 Tip: Increment the version in kcl.mod or delete the existing package version"
             fi
             exit 1
           fi
 
-          echo "✅ Successfully published ${MODULE_NAME}:v${PUBLISH_VERSION}"
+          echo "✅ Successfully published ${MODULE_NAME}:${PUBLISH_VERSION}"
 
           if [ "$IS_PR" = "false" ]; then
             echo "🚀 Publishing 'latest' tag for release version"
@@ -290,27 +290,27 @@ jobs:
             echo "## 🧪 Published KCL Module (PR Preview): $MODULE_NAME" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "- **Module Name**: \`$MODULE_NAME\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Original Version**: \`v$MODULE_VERSION\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **PR Version**: \`v$PUBLISH_VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Original Version**: \`$MODULE_VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **PR Version**: \`$PUBLISH_VERSION\`" >> $GITHUB_STEP_SUMMARY
             echo "- **Registry**: \`${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-$MODULE_NAME\`" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "⚠️ **Note**: This is a PR preview version that can be overwritten on subsequent pushes." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Test Usage" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-            echo "kcl mod add ${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-$MODULE_NAME:v$PUBLISH_VERSION" >> $GITHUB_STEP_SUMMARY
+            echo "kcl mod add ${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-$MODULE_NAME:$PUBLISH_VERSION" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           else
             echo "## 📦 Published KCL Module: $MODULE_NAME" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "- **Module Name**: \`$MODULE_NAME\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Version**: \`v$PUBLISH_VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Version**: \`$PUBLISH_VERSION\`" >> $GITHUB_STEP_SUMMARY
             echo "- **Registry**: \`${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-$MODULE_NAME\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Tags**: \`v$PUBLISH_VERSION\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Tags**: \`$PUBLISH_VERSION\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Usage" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-            echo "kcl mod add ${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-$MODULE_NAME:v$PUBLISH_VERSION" >> $GITHUB_STEP_SUMMARY
+            echo "kcl mod add ${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-$MODULE_NAME:$PUBLISH_VERSION" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi
 
@@ -344,11 +344,11 @@ jobs:
           MODULE_NAME="${{ steps.module-info.outputs.name }}"
           MODULE_VERSION="${{ steps.module-info.outputs.version }}"
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          EXPECTED_REGISTRY_URL="oci://${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-${MODULE_NAME}:v${MODULE_VERSION}"
+          EXPECTED_REGISTRY_URL="oci://${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-${MODULE_NAME}:${MODULE_VERSION}"
           MODULE_SEARCH_STRING="crossplane-${MODULE_NAME}:"
 
           echo "🔍 Checking Crossplane compositions for module: $MODULE_NAME"
-          echo "📦 Expected final version: v$MODULE_VERSION"
+          echo "📦 Expected final version: $MODULE_VERSION"
           echo "🗃️ Expected final registry URL: $EXPECTED_REGISTRY_URL"
           echo
 
@@ -422,7 +422,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "All Crossplane compositions are using the correct version:" >> $GITHUB_STEP_SUMMARY
             echo "- **Module**: \`$MODULE_NAME\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Version**: \`v$MODULE_VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Version**: \`$MODULE_VERSION\`" >> $GITHUB_STEP_SUMMARY
           else
             echo "## ❌ Composition Validation Failed" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
