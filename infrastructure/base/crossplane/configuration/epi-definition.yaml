@@ -17,9 +17,15 @@ spec:
       schema:
         openAPIV3Schema:
           type: object
+          x-kubernetes-validations:
+            - rule: "self.metadata.name.startsWith('xplane-')"
+              message: "EPI name must be prefixed with 'xplane-' per platform convention"
           properties:
             spec:
               type: object
+              x-kubernetes-validations:
+                - rule: "has(self.policyDocument) || (has(self.additionalPolicyArns) && size(self.additionalPolicyArns) > 0)"
+                  message: "At least one of policyDocument or additionalPolicyArns is required"
               properties:
                 managementPolicies:
                   description: The management policy for the Pod Identity.
