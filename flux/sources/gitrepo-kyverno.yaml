@@ -7,4 +7,4 @@ spec:
   interval: 5m0s
   url: https://github.com/kyverno/kyverno
   ref:
-    tag: v1.17.0
+    tag: v1.17.1
