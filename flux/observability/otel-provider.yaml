@@ -5,4 +5,4 @@ metadata:
   namespace: flux-system
 spec:
   type: otel
-  address: http://victoria-traces-victoria-traces-single-server.observability:4318
+  address: http://victoria-traces-vt-single-server.observability:10428
