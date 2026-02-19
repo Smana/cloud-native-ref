@@ -18,6 +18,13 @@ spec:
           properties:
             spec:
               type: object
+              x-kubernetes-validations:
+                - rule: "!has(self.autoscaling) || !self.autoscaling.enabled || self.autoscaling.minReplicas <= self.autoscaling.maxReplicas"
+                  message: "autoscaling.minReplicas must be <= maxReplicas"
+                - rule: "!has(self.route) || !self.route.enabled || has(self.route.hostname)"
+                  message: "route.hostname is required when route is enabled"
+                - rule: "!has(self.sqlInstance) || !self.sqlInstance.enabled || !has(self.sqlInstance.backup) || !has(self.sqlInstance.backup.schedule) || has(self.sqlInstance.backup.bucketName)"
+                  message: "sqlInstance.backup.bucketName is required when backup schedule is set"
               properties:
                 # Deployment specific parameters
                 image:

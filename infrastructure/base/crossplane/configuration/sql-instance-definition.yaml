@@ -18,6 +18,9 @@ spec:
           properties:
             spec:
               type: object
+              x-kubernetes-validations:
+                - rule: "self.instances <= 1 || (has(self.backup) && has(self.backup.schedule))"
+                  message: "backup.schedule is required for multi-instance clusters"
               properties:
                 managementPolicies:
                   description: The management policy for the Pod Identity.

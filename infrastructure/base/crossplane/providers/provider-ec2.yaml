@@ -3,6 +3,6 @@ kind: Provider
 metadata:
   name: provider-aws-ec2
 spec:
-  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-ec2:v2.0.0
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-ec2:v2.4.0
   runtimeConfigRef:
     name: aws-config

@@ -694,7 +694,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"  # Allow minor version upgrades
+      version = "~> 6.0"  # Allow minor version upgrades
     }
   }
 }
