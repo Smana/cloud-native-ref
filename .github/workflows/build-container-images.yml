@@ -170,7 +170,7 @@ jobs:
           provenance: false
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.34.0
+        uses: aquasecurity/trivy-action@0.34.1
         if: github.event_name != 'pull_request'
         with:
           image-ref: '${{ fromJSON(steps.meta.outputs.json).tags[0] }}'
