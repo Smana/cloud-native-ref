@@ -165,18 +165,13 @@ data:
         - name: "plugin-provisioning-oncall"
           configMap:
             name: "grafana-provisioning"
-            key: "plugin-oncall.yaml"
-        - name: "rbac-provisioning"
-          configMap:
-            name: "grafana-provisioning"
-            key: "rbac.yaml"
+            items:
+              - key: "plugin-oncall.yaml"
+                path: "plugin-oncall.yaml"
       extraVolumeMounts:
         - name: "plugin-provisioning-oncall"
           mountPath: "/etc/grafana/provisioning/plugins/oncall.yaml"
           subPath: "plugin-oncall.yaml"
-        - name: "rbac-provisioning"
-          mountPath: "/etc/grafana/provisioning/access-control/rbac.yaml"
-          subPath: "rbac.yaml"
       extraInitContainers:
         - name: "load-vm-ds-plugin"
           image: "curlimages/curl:8.18.0"

@@ -1,0 +1,10 @@
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: github-commit-status
+  namespace: flux-system
+spec:
+  type: github
+  address: https://github.com/Smana/cloud-native-ref
+  secretRef:
+    name: flux-system
