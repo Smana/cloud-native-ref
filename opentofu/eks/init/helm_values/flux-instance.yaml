@@ -43,6 +43,9 @@ instance:
           - op: add
             path: /spec/template/spec/containers/0/args/-
             value: --concurrent=10
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --feature-gates=DirectSourceFetch=true
           - op: replace
             path: /spec/template/spec/containers/0/resources/requests/cpu
             value: 100m
@@ -60,6 +63,9 @@ instance:
           - op: add
             path: /spec/template/spec/containers/0/args/-
             value: --requeue-dependency=10s
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --feature-gates=CancelHealthCheckOnNewRevision=true
           - op: replace
             path: /spec/template/spec/containers/0/resources/requests/cpu
             value: 200m
@@ -69,6 +75,15 @@ instance:
         target:
           kind: Deployment
           name: kustomize-controller
+      # Enable CancelHealthCheckOnNewRevision for helm-controller
+      # Cancels stale health checks when a new revision arrives, reducing MTTR
+      - patch: |
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --feature-gates=CancelHealthCheckOnNewRevision=true
+        target:
+          kind: Deployment
+          name: helm-controller
       # Allow ingress from all namespaces for Gateway API L7 proxy
       # The default allow-egress policy only allows ingress from same namespace,
       # which blocks Cilium Gateway API L7 proxy traffic
