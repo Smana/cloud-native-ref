@@ -8,4 +8,6 @@ spec:
     name: github-commit-status
   eventSources:
     - kind: Kustomization
-      name: "*"
+      name: "flux-system"
+    - kind: Kustomization
+      name: "flux-artifact-generators"
