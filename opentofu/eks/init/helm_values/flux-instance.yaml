@@ -43,9 +43,6 @@ instance:
           - op: add
             path: /spec/template/spec/containers/0/args/-
             value: --concurrent=10
-          - op: add
-            path: /spec/template/spec/containers/0/args/-
-            value: --feature-gates=DirectSourceFetch=true
           - op: replace
             path: /spec/template/spec/containers/0/resources/requests/cpu
             value: 100m
