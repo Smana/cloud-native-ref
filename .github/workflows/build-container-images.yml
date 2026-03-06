@@ -187,7 +187,7 @@ jobs:
           category: 'trivy-${{ matrix.name }}'
 
       - name: Upload security scan results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always() && github.event_name != 'pull_request'
         with:
           name: security-scan-${{ matrix.name }}
