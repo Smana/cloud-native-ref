@@ -149,7 +149,7 @@ jobs:
         run: |
           echo "Running tests for module: ${{ matrix.module }}"
           if find . -name "*_test.k" | grep -q .; then
-            kcl test . --fail-fast
+            kcl test . -Y settings-example.yaml --fail-fast
             echo "✅ All tests passed"
           else
             echo "ℹ️ No test files found (*_test.k)"
