@@ -1,0 +1,12 @@
+apiVersion: apiextensions.crossplane.io/v1alpha1
+kind: ManagedResourceActivationPolicy
+metadata:
+  name: aws-resources
+spec:
+  activate:
+    - roles.iam.aws.m.upbound.io
+    - policies.iam.aws.m.upbound.io
+    - rolepolicyattachments.iam.aws.m.upbound.io
+    - podidentityassociations.eks.aws.m.upbound.io
+    - buckets.s3.aws.m.upbound.io
+    - bucketversionings.s3.aws.m.upbound.io

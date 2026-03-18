@@ -1,4 +1,4 @@
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: Composition
 metadata:
     name: xsqlinstances.cloud.ogenki.io
