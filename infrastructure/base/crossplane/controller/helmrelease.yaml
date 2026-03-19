@@ -19,6 +19,9 @@ spec:
     remediation:
       retries: 3
   values:
+    provider:
+      defaultActivations: {}
+
     replicas: 1
 
     resourcesCrossplane:

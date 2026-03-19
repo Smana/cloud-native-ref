@@ -232,3 +232,8 @@ data:
     # Deployed with all the other CRDs, flux kustomization
     crds:
       enabled: false
+
+    # Avoid webhook chicken-and-egg: operator pod may not be ready when CRs are created
+    victoria-metrics-operator:
+      admissionWebhooks:
+        policy: Ignore
