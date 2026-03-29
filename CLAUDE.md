@@ -206,7 +206,7 @@ Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDN
 
 ## Troubleshooting
 
-Use `.claude/config` for systematic Flux and Crossplane troubleshooting procedures. Use `.claude/agents/flux-troubleshooter` for automated Flux diagnosis.
+Use the FluxCD agent-skills plugin for Flux troubleshooting (`/gitops-cluster-debug`, `/gitops-knowledge`, `/gitops-repo-audit`). Use `.claude/config` for Crossplane troubleshooting and platform-specific guidelines.
 
 ### Common Issues
 - **EKS Access**: Ensure proper IAM permissions and kubeconfig

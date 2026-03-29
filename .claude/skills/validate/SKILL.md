@@ -1,6 +1,9 @@
 ---
 name: validate
 description: Validate a specification file and provide actionable suggestions for issues
+disable-model-invocation: true
+argument-hint: "[spec-file] - path to spec.md, or omit for most recent"
+paths: "docs/specs/**"
 allowed-tools: Bash(./scripts/validate-spec.sh:*), Read, Glob
 ---
 

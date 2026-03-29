@@ -1,6 +1,8 @@
 ---
 name: spec
 description: Create a specification for non-trivial changes. Creates GitHub issue + spec file in a dedicated directory.
+disable-model-invocation: true
+argument-hint: '[type] "description" - types: composition, infrastructure, security, platform'
 allowed-tools: Read, Write, Bash(gh:*), Glob
 ---
 

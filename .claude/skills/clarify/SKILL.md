@@ -1,6 +1,9 @@
 ---
 name: clarify
 description: Resolve [NEEDS CLARIFICATION] markers in specs with structured options
+disable-model-invocation: true
+argument-hint: "[spec-file] - path to spec.md, or omit for most recent"
+paths: "docs/specs/**"
 allowed-tools: Read, Edit, Glob
 ---
 

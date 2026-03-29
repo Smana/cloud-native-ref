@@ -1,6 +1,8 @@
 ---
 name: improve-pr
 description: Comprehensive PR analysis with security review, code quality assessment, and automatic improvements. Use when reviewing PRs for security issues, performance optimizations, or best practices violations. Provides multi-dimensional analysis with safe auto-apply options.
+disable-model-invocation: true
+argument-hint: "<pr-number>"
 allowed-tools: Bash(gh:*), Bash(git:*), Edit, Write, Read
 ---
 

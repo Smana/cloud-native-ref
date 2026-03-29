@@ -1,6 +1,7 @@
 ---
 name: spec-status
 description: Show pipeline overview of all specifications with status counts and stale detection
+disable-model-invocation: true
 allowed-tools: Bash(find:*), Bash(grep:*), Bash(stat:*), Read, Glob
 ---
 

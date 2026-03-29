@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "gitops-skills@fluxcd": true
+  }
+}

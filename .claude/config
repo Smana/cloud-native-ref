@@ -1,84 +1,8 @@
-# Flux Custom Resources Overview
-
-Flux consists of the following controllers and CRDs:
-
-- Flux Operator
-  - **FluxInstance**: Manages Flux controllers installation and configuration
-  - **FluxReport**: Reflects state of a Flux installation
-  - **ResourceSet**: Manages groups of Kubernetes resources based on input matrices
-  - **ResourceSetInputProvider**: Fetches input values from external services (GitHub, GitLab)
-- Source Controller
-  - **GitRepository**: Git repo containing manifests or Helm charts
-  - **OCIRepository**: Container registry containing OCI artifacts
-  - **Bucket**: S3-compatible bucket containing manifests
-  - **HelmRepository**: Helm chart repository
-  - **HelmChart**: References a chart from HelmRepository or GitRepository
-- Kustomize Controller
-  - **Kustomization**: Builds and applies manifests from sources
-- Helm Controller
-  - **HelmRelease**: Manages Helm chart releases from sources
-- Notification Controller
-  - **Provider**: Notification service (Slack, MS Teams, etc.)
-  - **Alert**: Configures events to forward to providers
-  - **Receiver**: Webhooks for triggering reconciliations
-- Image Automation Controllers
-  - **ImageRepository**: Scans container registries for new tags
-  - **ImagePolicy**: Selects latest image tag based on policy
-  - **ImageUpdateAutomation**: Updates Git repository with new image tags
-
-For deep understanding, call `search_flux_docs` for each resource kind.
-
-# Flux GitOps Troubleshooting
-
-## General Kubernetes Rules
-
-- When asked about Kubernetes resources, call the `get_kubernetes_resources` tool.
-- Don't assume `apiVersion` - call `get_kubernetes_api_versions` to find the correct one.
-- When asked to use a specific cluster, call `get_kubernetes_contexts` then `set_kubernetes_context`.
-- When asked to create/update resources, generate YAML and call `apply_kubernetes_resource`.
-
-## Kubernetes Logs Analysis
-
-1. Get the Deployment via `get_kubernetes_resources`
-2. Find `matchLabels` and container name from the deployment spec
-3. List pods with those labels
-4. Get logs via `get_kubernetes_logs` using pod name and container name
-
-## Flux-Specific Rules
-
-- Check Flux installation: call `get_flux_instance`
-- After switching context: call `get_flux_instance` for Flux Operator status
-- To check if a resource is Flux-managed: look for `fluxcd` labels in metadata
-- Avoid modifying Flux-managed resources unless explicitly requested
-- For Flux CRD docs: call `search_flux_docs`
-
-## HelmRelease Analysis
-
-1. Check helm-controller status and HelmRelease apiVersion via `get_flux_instance`
-2. Get the HelmRelease, analyze spec/status/inventory/events
-3. Check managing object (Kustomization or ResourceSet) via annotations
-4. If `valuesFrom` present, get referenced ConfigMaps/Secrets
-5. Identify source via `chartRef` or `sourceRef`, check source status
-6. If failed, check inventory managed resources and their logs
-7. Create root cause analysis or status report
-
-## Kustomization Analysis
-
-1. Check kustomize-controller status and Kustomization apiVersion via `get_flux_instance`
-2. Get the Kustomization, analyze spec/status/inventory/events
-3. Check managing object via annotations
-4. If `substituteFrom` present, get referenced ConfigMaps/Secrets
-5. Identify source via `sourceRef`, check source status
-6. If failed, check inventory managed resources and their logs
-7. Create root cause analysis or status report
-
-## Flux Comparison Analysis
-
-1. Get cluster contexts via `get_kubernetes_contexts`
-2. Switch context, check `get_flux_instance`, get the resource
-3. If `valuesFrom`/`substituteFrom`, get referenced ConfigMaps/Secrets
-4. Repeat for each cluster
-5. Compare `spec` (desired state), `status`, and `events` including referenced resources
+# Flux GitOps
+# For Flux CRD knowledge, troubleshooting, and cluster debugging, use the FluxCD agent-skills plugin:
+# - /gitops-knowledge - Flux concepts, YAML generation, validation
+# - /gitops-repo-audit - 6-phase repo audit
+# - /gitops-cluster-debug - Live cluster troubleshooting via flux-operator-mcp
 
 # Crossplane Troubleshooting
 
@@ -104,10 +28,19 @@ For deep understanding, call `search_flux_docs` for each resource kind.
 - If failing, fetch controller pod logs
 - Verify ProviderConfig authentication
 
-## Advanced CLI Diagnostics
-- `crossplane beta trace <xr-name> --show-connection-secrets` for dependency graph
-- `crossplane beta top -s` for controller resource usage
-- `crossplane render <xr> <composition> | crossplane beta validate -` for validation
+## Advanced CLI Diagnostics (v2.2)
+- `crossplane beta trace <xr-name> --show-connection-secrets` for full dependency graph
+- `crossplane beta trace <xr-name> --output dot` for Graphviz visualization
+- `crossplane beta top -s` for controller resource usage monitoring
+- `crossplane render <xr> <composition> functions.yaml --include-function-results` for pipeline debugging
+- `crossplane render ... | crossplane beta validate -` for offline schema validation (supports CEL rules)
+- `crossplane beta validate` caches schemas in `.crossplane/cache` directory
+
+## Circuit Breaker (v2.2)
+- Check the `Responsive` condition on resources for reconciliation thrashing
+- Token bucket logic: burst=100 events, refill=1/sec, cooldown=5min
+- If triggered, condition shows: "Too many watch events from <resource>"
+- Common cause: circular update logic in composition patches or external controller conflicts
 
 ## Common Issue Resolution
 - **IAM**: Check EKS Pod Identity associations and AWS IAM policies
