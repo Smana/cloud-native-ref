@@ -1,6 +1,8 @@
 ---
 name: commit
 description: Run pre-commit validation before committing. Use for automated hooks, Terraform cleanup, or emoji reference. For simple commits, Claude's native capability suffices.
+disable-model-invocation: true
+argument-hint: "[--no-verify] - skip pre-commit hooks"
 allowed-tools: Read, Bash(git:*), Bash(pre-commit:*), Bash(uv:*), Bash(pip:*), Bash(find:*), Bash(source:*), Bash(SKIP=*:*)
 ---
 

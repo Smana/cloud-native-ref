@@ -1,6 +1,8 @@
 ---
 name: create-pr
 description: Create or update Pull Requests with AI-generated descriptions, mermaid diagrams, and file walkthroughs. Integrates with SDD specs. Use --update flag to modify existing PRs.
+disable-model-invocation: true
+argument-hint: "[base-branch] or --update <pr-number>"
 allowed-tools: Bash(git:*), Bash(gh:*)
 ---
 
