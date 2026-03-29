@@ -160,19 +160,6 @@ Readiness checks use observed cluster state via `option("params").ocds`:
 | Duplicate resources | Search for mutation patterns (`grep -r "\.field = " kcl/`), refactor to inline conditionals |
 | Schema validation fails | Run `crossplane beta validate` to identify unknown fields |
 
-## Advanced CLI (v2.2)
-
-```bash
-# Visualize resource dependency graph
-crossplane beta trace <xr-name> --output dot | dot -Tpng > trace.png
-
-# Controller resource usage
-crossplane beta top -s
-
-# Check for reconciliation thrashing (circuit breaker)
-# Look for Responsive condition on resources
-```
-
 ## Success Criteria
 
 1. `kcl fmt` makes no changes

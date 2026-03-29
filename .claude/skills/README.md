@@ -48,69 +48,8 @@ For complete SDD documentation, see [`docs/specs/README.md`](../../docs/specs/RE
 | **gitops-repo-audit** | `/gitops-repo-audit` | 6-phase GitOps repo audit (discovery, validation, security) |
 | **gitops-cluster-debug** | `/gitops-cluster-debug` | Live cluster troubleshooting via `flux-operator-mcp` |
 
-## Skill Directory Structure
-
-```
-.claude/skills/
-├── README.md                          # This file
-├── spec/
-│   └── SKILL.md                       # SDD: Create specifications
-├── spec-status/
-│   └── SKILL.md                       # SDD: Pipeline overview
-├── clarify/
-│   └── SKILL.md                       # SDD: Resolve clarification markers
-├── validate/
-│   └── SKILL.md                       # SDD: Validate spec completeness
-├── commit/
-│   ├── SKILL.md                       # Git commits with pre-commit
-│   └── references/
-│       └── emoji-guide.md             # Full emoji reference
-├── create-pr/
-│   └── SKILL.md                       # Create/update pull requests
-├── improve-pr/
-│   ├── SKILL.md                       # PR analysis & improvements
-│   └── references/
-│       └── report-template.md         # Full report template
-└── crossplane-validator/
-    ├── SKILL.md                       # Crossplane composition validation
-    └── references/
-        └── kcl-patterns.md            # KCL patterns & security recipes
-```
-
-## SKILL.md Format
-
-Skills use Markdown with YAML frontmatter:
-
-```markdown
----
-name: skill-name
-description: Brief description of what this skill does
-disable-model-invocation: true
-argument-hint: "[arg1] [arg2]"
-paths: "src/**/*.ts"
-allowed-tools: Read, Write, Bash(git:*)
----
-
-# Skill Title
-
-## Usage
-/skill-name [arguments]
-```
-
-### Frontmatter Fields
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | No | Skill identifier (defaults to directory name) |
-| `description` | Yes | Brief description (shown in `/help`, max 250 chars) |
-| `disable-model-invocation` | No | `true` to prevent auto-invocation (use for side-effect operations) |
-| `argument-hint` | No | Hint shown in autocomplete |
-| `paths` | No | Glob patterns for auto-activation when editing matching files |
-| `allowed-tools` | No | Restrict which tools the skill can use |
-
 ## Prerequisites
 
-- Git installed and configured
-- GitHub CLI (`gh`) authenticated: `gh auth login`
-- For Crossplane: Docker running, `crossplane` CLI, `polaris`, `kube-linter`, `datree`
-- For FluxCD skills: `fluxcd/agent-skills` plugin installed
+- Git and GitHub CLI (`gh`) authenticated
+- For Crossplane: Docker, `crossplane` CLI, `polaris`, `kube-linter`, `datree`
+- For FluxCD: `fluxcd/agent-skills` plugin installed

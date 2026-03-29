@@ -72,23 +72,6 @@ for item in items:
     resource.items += [item]              # Loop mutation
 ```
 
-### Migration: Refactoring Mutations
-
-```kcl
-# BEFORE (mutation)
-resource = {annotations = {}}
-if ready:
-    resource.annotations["ready"] = "True"
-
-# AFTER (inline conditional)
-resource = {
-    annotations = {
-        if ready:
-            "ready" = "True"
-    }
-}
-```
-
 ## Readiness Check Patterns
 
 ### Deployment
@@ -128,39 +111,6 @@ _ready = any_true([c.get("type") == "Accepted" and c.get("status") == "True" for
 ### Datree (Target: No violations, warnings OK)
 
 **Common issues**: Missing `app.kubernetes.io/*` labels, using `latest` tag, missing owner references, network policy gaps.
-
-## Quick Command Reference
-
-```bash
-# Validate all compositions (from repo root)
-./scripts/validate-kcl-compositions.sh
-
-# Format single module
-cd infrastructure/base/crossplane/configuration/kcl/<module> && kcl fmt .
-
-# Validate syntax
-cd infrastructure/base/crossplane/configuration/kcl/<module> && kcl run . -Y settings-example.yaml
-
-# Render specific composition
-cd infrastructure/base/crossplane/configuration
-crossplane render examples/app-complete.yaml app-composition.yaml functions.yaml \
-  --extra-resources examples/environmentconfig.yaml > /tmp/rendered.yaml
-
-# Debug function pipeline (v2.2)
-crossplane render examples/app-complete.yaml app-composition.yaml functions.yaml \
-  --include-function-results --extra-resources examples/environmentconfig.yaml
-
-# Offline schema validation (v2.2)
-crossplane render ... | crossplane beta validate -
-
-# Security validation
-polaris audit --audit-path /tmp/rendered.yaml --format=pretty
-kube-linter lint /tmp/rendered.yaml
-datree test /tmp/rendered.yaml --ignore-missing-schemas
-
-# Compare minimal vs complete
-diff -u /tmp/minimal.yaml /tmp/complete.yaml | less
-```
 
 ## Optional: function-unit-test (Experimental)
 
