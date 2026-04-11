@@ -8,6 +8,7 @@ metadata:
 spec:
   external:
     url: http://victoria-metrics-k8s-stack-grafana
+    tenantNamespace: observability
     adminPassword:
       name: victoria-metrics-k8s-stack-grafana-envvars
       key: GF_SECURITY_ADMIN_PASSWORD
