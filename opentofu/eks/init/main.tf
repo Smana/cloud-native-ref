@@ -119,8 +119,7 @@ module "eks" {
 
   eks_managed_node_groups = {
     main = {
-      name        = "main"
-      description = "EKS managed node group used to bootstrap Karpenter"
+      name = "main"
       # Use a single subnet for costs reasons
       subnet_ids = [element(data.aws_subnets.private.ids, 0)]
 

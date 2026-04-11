@@ -7,7 +7,7 @@ spec:
   interval: 10m
   url: oci://public.ecr.aws/karpenter/karpenter
   ref:
-    semver: "1.9.0"
+    semver: "1.11.1"
   verify:
     provider: cosign
     matchOIDCIdentity:

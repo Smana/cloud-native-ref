@@ -12,7 +12,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: harbor
-      version: "1.17.1"
+      version: "1.18.3"
   interval: 10m0s
   install:
     remediation:
@@ -71,7 +71,7 @@ spec:
         port: "5432"
         username: "harbor"
         coreDatabase: "registry"
-        existingSecret: "xplane-harbor-cnpg-registry"  # pragma: allowlist secret
+        existingSecret: "xplane-harbor-cnpg-registry" # pragma: allowlist secret
         sslmode: "require"
 
     redis:

@@ -12,19 +12,19 @@ variable "region" {
 variable "cilium_version" {
   description = "Cilium Helm chart version"
   type        = string
-  default     = "1.19.0"
+  default     = "1.19.2"
 }
 
 variable "flux_operator_version" {
   description = "Flux Operator Helm chart version"
   type        = string
-  default     = "0.45.0"
+  default     = "0.46.0"
 }
 
 variable "flux_instance_version" {
   description = "Flux Instance Helm chart version"
   type        = string
-  default     = "0.45.0"
+  default     = "0.46.0"
 }
 
 variable "flux_sync_url" {

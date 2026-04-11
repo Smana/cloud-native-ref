@@ -4,9 +4,20 @@ metadata:
   name: aws-resources
 spec:
   activate:
+    # IAM
     - roles.iam.aws.m.upbound.io
     - policies.iam.aws.m.upbound.io
     - rolepolicyattachments.iam.aws.m.upbound.io
+    - users.iam.aws.m.upbound.io
+    - accesskeys.iam.aws.m.upbound.io
+    - userpolicyattachments.iam.aws.m.upbound.io
+    # EKS
     - podidentityassociations.eks.aws.m.upbound.io
+    # S3
     - buckets.s3.aws.m.upbound.io
     - bucketversionings.s3.aws.m.upbound.io
+    - bucketlifecycleconfigurations.s3.aws.m.upbound.io
+    - bucketserversideencryptionconfigurations.s3.aws.m.upbound.io
+    # KMS
+    - keys.kms.aws.m.upbound.io
+    - aliases.kms.aws.m.upbound.io

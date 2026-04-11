@@ -14,11 +14,11 @@ metadata:
     # Can be useful for local debugging
     # render.crossplane.io/runtime: Development
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.12.0
+  package: xpkg.upbound.io/crossplane-contrib/function-kcl:v0.12.1
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
   name: function-auto-ready
 spec:
-  package: xpkg.crossplane.io/crossplane-contrib/function-auto-ready:v0.6.0
+  package: xpkg.crossplane.io/crossplane-contrib/function-auto-ready:v0.6.3
