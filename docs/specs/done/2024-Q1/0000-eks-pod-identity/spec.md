@@ -7,7 +7,7 @@
 **Created**: 2024-01-15
 **Last updated**: 2026-04-18 (migrated to 4-artifact structure)
 
-> Migrated from a single-file legacy spec at `docs/specs/done/0000-#0-eks-pod-identity-composition.md`. Original content split into spec.md / plan.md / clarifications.md / SUMMARY.md without alteration of meaning.
+> Migrated from a single-file legacy spec at `docs/specs/done/0000-#0-eks-pod-identity-composition.md`. Original content split into spec.md / plan.md / clarifications.md / SUMMARY.md without alteration of meaning. Tasks live inside `plan.md`.
 
 ---
 

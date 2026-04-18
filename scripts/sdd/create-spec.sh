@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create a new SDD spec: GitHub issue + spec directory with 4 artifact files.
+# Create a new SDD spec: GitHub issue + spec directory with 3 artifact files.
 #
 # Usage: scripts/sdd/create-spec.sh <type> "<description>"
 #   <type>        composition | infrastructure | security | platform
@@ -7,11 +7,10 @@
 #
 # Creates:
 #   docs/specs/NNN-slug/spec.md            — WHAT (contract; freeze after approval)
-#   docs/specs/NNN-slug/plan.md            — HOW (design + 4-persona checklist; may evolve)
-#   docs/specs/NNN-slug/tasks.md           — WHEN/WHO (T001 checklist; ephemeral)
+#   docs/specs/NNN-slug/plan.md            — HOW + Tasks + Review Checklist (may evolve)
 #   docs/specs/NNN-slug/clarifications.md  — append-only decisions log
 #
-# Outputs to stdout (one key=value per line for easy parsing):
+# Outputs to stdout (one key=value per line):
 #   spec_num=003
 #   slug=valkey-caching
 #   spec_dir=docs/specs/003-valkey-caching
@@ -37,7 +36,6 @@ cd "$(git rev-parse --show-toplevel)"
 MAX_NUM=$(find docs/specs -name "spec.md" -path "*/[0-9]*" 2>/dev/null \
   | sed 's|.*/\([0-9][0-9]*\)-.*|\1|' \
   | sort -rn | head -1)
-# Also check legacy flat-file done/ layout (e.g., done/0000-#0-name.md)
 LEGACY_MAX=$(find docs/specs/done -maxdepth 2 -name '[0-9]*-*.md' -type f 2>/dev/null \
   | sed 's|.*/\([0-9][0-9]*\)-.*|\1|' \
   | sort -rn | head -1)
@@ -60,7 +58,7 @@ SPEC_DIR="docs/specs/${SPEC_NUM}-${SLUG}"
 TITLE=$(echo "$DESCRIPTION" | sed 's/^./\U&/')
 
 TEMPLATES_DIR="docs/specs/templates"
-for tpl in spec.md plan.md tasks.md clarifications.md; do
+for tpl in spec.md plan.md clarifications.md; do
   if [ ! -f "$TEMPLATES_DIR/$tpl" ]; then
     echo "error: template not found at $TEMPLATES_DIR/$tpl" >&2
     exit 3
@@ -80,10 +78,9 @@ ${TYPE}
 ## Spec Directory
 \`${SPEC_DIR}/\`
 
-The spec is a 4-file directory:
+The spec is a 3-file directory:
 - \`spec.md\` — contract (WHAT + why)
-- \`plan.md\` — design (HOW + 4-persona review)
-- \`tasks.md\` — execution checklist (T001, T002, …)
+- \`plan.md\` — design, tasks, 4-persona review checklist
 - \`clarifications.md\` — append-only decisions log
 
 ---
@@ -92,7 +89,7 @@ _Spec anchor for discussion. See \`${SPEC_DIR}/\` for the full specification._")
 ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oE '[0-9]+$')
 TODAY=$(date +%Y-%m-%d)
 
-# Create directory and instantiate all 4 artifacts
+# Create directory and instantiate the 3 artifacts
 mkdir -p "$SPEC_DIR"
 
 instantiate() {
@@ -112,16 +109,14 @@ instantiate() {
 
 instantiate spec.md            spec.md
 instantiate plan.md            plan.md
-instantiate tasks.md           tasks.md
 instantiate clarifications.md  clarifications.md
 
 # Link spec back to issue
 gh issue comment "$ISSUE_NUM" \
-  --body "Spec created — 4 artifacts under [\`${SPEC_DIR}/\`](../blob/main/${SPEC_DIR}/):
-- [\`spec.md\`](../blob/main/${SPEC_DIR}/spec.md) — contract
-- [\`plan.md\`](../blob/main/${SPEC_DIR}/plan.md) — design & review checklist
-- [\`tasks.md\`](../blob/main/${SPEC_DIR}/tasks.md) — execution checklist
-- [\`clarifications.md\`](../blob/main/${SPEC_DIR}/clarifications.md) — decisions log" >/dev/null
+  --body "Spec created — 3 artifacts under [\`${SPEC_DIR}/\`](../blob/main/${SPEC_DIR}/):
+- [\`spec.md\`](../blob/main/${SPEC_DIR}/spec.md) — contract (WHAT)
+- [\`plan.md\`](../blob/main/${SPEC_DIR}/plan.md) — design + tasks + review checklist (HOW)
+- [\`clarifications.md\`](../blob/main/${SPEC_DIR}/clarifications.md) — append-only decisions log" >/dev/null
 
 # Machine-parseable output
 cat <<EOF

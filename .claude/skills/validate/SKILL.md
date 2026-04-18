@@ -1,81 +1,88 @@
 ---
 name: validate
-description: Validate a spec file for completeness (required sections, resolved clarifications, issue link, constitution reference, review checklist ≥75%, requirements/SC counts, structured tasks) and suggest fixes.
+description: Validate a spec directory end-to-end — structural completeness, FR/SC counts, falsifiable success criteria, FR coverage in plan tasks, no stale CL-N references, and constitution compliance. Single gate before implementation.
 when_to_use: |
   When the user says "validate my spec", "is the spec ready",
   "check if this spec is complete", "pre-flight the spec",
-  "spec quality check", or wants confidence a spec is ready for implementation.
+  "spec quality check", "analyze the spec", or wants confidence
+  before implementation begins.
 disable-model-invocation: true
-argument-hint: "[spec-file] — path to spec.md, or omit for most-recently-modified active spec"
+argument-hint: "[spec-dir|spec-file] — directory or any artifact path; omit for most-recent active spec"
 paths: "docs/specs/**"
-allowed-tools: Bash(./scripts/validate-spec.sh:*), Read, Glob
+allowed-tools: Bash(./scripts/validate-spec.sh:*), Read, Grep, Glob
 ---
 
 # Validate Skill
 
-Run the spec validator and present results with actionable remediation suggestions.
+Single quality gate that runs the spec validator and surfaces both structural and cross-artifact issues.
 
 ## Workflow
 
-### 1. Find the target spec
-
-If the user named a file, use it. Otherwise pick the most-recently-modified active spec:
+### 1. Find the target spec directory
 
 ```bash
 find docs/specs -name spec.md -not -path '*/done/*' -not -path '*/templates/*' -type f \
-  | xargs ls -t 2>/dev/null | head -1
+  | xargs ls -t 2>/dev/null | head -1 | xargs dirname
 ```
 
-### 2. Run the validator
+### 2. Run the validator script
 
 ```bash
-./scripts/validate-spec.sh "$SPEC_FILE"
+./scripts/validate-spec.sh "$SPEC_DIR"
 ```
 
-The script checks:
-1. Required sections (Summary / Problem / User Stories / Requirements / Success Criteria / Design / Tasks)
-2. No unresolved `[NEEDS CLARIFICATION: ...]` markers
-3. GitHub issue link present
-4. Constitution reference present
-5. No unfilled placeholders (`SPEC-XXX`, `YYYY-MM-DD`, `[Title]`, ...)
-6. Review checklist ≥75% complete (error if <75%)
-7. ≥2 `FR-XXX` entries (warning if fewer)
-8. ≥2 `SC-XXX` entries (warning if fewer)
-9. Tasks use structured IDs (`T001`, `T002`, ...)
+The script handles structural + grep-detectable checks:
+- All 3 artifacts present (`spec.md`, `plan.md`, `clarifications.md`)
+- `spec.md`: required sections, GitHub issue link, FR-XXX / SC-XXX counts ≥ 2, vague-adjective detection
+- `plan.md`: Design + Tasks + Review Checklist sections; checklist ≥ 75%; T001-style task IDs
+- `clarifications.md`: append-only `## CL-N` format, no duplicate IDs
+- **Cross-artifact**: every FR-XXX referenced in plan.md tasks (coverage gap detection); CL-N references in spec/plan resolve to entries in clarifications.md
+- No unresolved `[NEEDS CLARIFICATION:]` or forbidden inline `[CLARIFIED:]` (decisions must live in clarifications.md)
 
-### 3. Present results
+### 3. Apply semantic cross-artifact rules
 
-Use this layout:
+After the script reports, apply the rules in [`references/cross-artifact-rules.md`](references/cross-artifact-rules.md) — these are deeper checks Claude reasons about (not greppable):
+
+- **Constitution violations** (CRITICAL): `xplane-*` prefix, KCL mutation pattern, missing `CiliumNetworkPolicy`, missing security context, hardcoded credentials, IRSA mention, missing resource limits
+- **Drift**: terminology mismatch between `spec.md` and `plan.md`; resources in plan that aren't traced to an FR
+- **Duplication**: similar FRs / SCs that should be merged
+- **Ambiguity**: vague enumerations (`etc.`), SCs without measurable verification path
+
+### 4. Present results
 
 ```
 ╔════════════════════════════════════════════════════════════════╗
 ║  Spec Validation: <path>                                       ║
 ╚════════════════════════════════════════════════════════════════╝
 
-✅ <passed check>
-⚠️  <warning>
-❌ <error>
-   → <one-line fix>
+[script output: structural + coverage checks]
+
+Cross-artifact findings (semantic):
+| ID  | Category      | Severity | Location              | Recommendation |
+|-----|---------------|----------|-----------------------|----------------|
+| C1  | Constitution  | CRITICAL | plan.md L42           | Rename to xplane-* |
+| D1  | Drift         | MEDIUM   | spec.md / plan.md     | Standardize term |
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Result: PASSED | PASSED with N warnings | FAILED with N errors
+Verdict: BLOCK | PASS WITH WARNINGS | PASS
 ```
 
-For each failure or warning, cite the canonical remediation from [`references/error-suggestions.md`](references/error-suggestions.md). Load it on invocation.
+For structural failures, cite the canonical remediation from [`references/error-suggestions.md`](references/error-suggestions.md).
 
-### 4. Suggest next step
+### 5. Suggest next step
 
-- If errors remain → block with the most impactful fix.
-- If only warnings → recommend addressing before implementation, but allow proceeding.
-- If all green → suggest `/create-pr` (or `/analyze` once that skill exists).
+- **BLOCK** (any CRITICAL constitution violation or script error) → fix the most impactful issue, re-run.
+- **PASS WITH WARNINGS** → either fix or document the trade-off as a new `CL-N` in `clarifications.md`.
+- **PASS** → proceed with implementation, then `/create-pr`.
 
 ## Integration
 
 - `/spec` — creates the spec this validates
 - `/clarify` — resolves marker errors
-- `/create-pr` — requires validate to pass
+- `/create-pr` — requires `/validate` to pass
 
 ## Related
 
 - Validator script: [`scripts/validate-spec.sh`](../../../scripts/validate-spec.sh)
 - Error templates: [`references/error-suggestions.md`](references/error-suggestions.md)
+- Cross-artifact rules: [`references/cross-artifact-rules.md`](references/cross-artifact-rules.md)

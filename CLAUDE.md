@@ -126,16 +126,18 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 
 This repository uses SDD for non-trivial changes. See [docs/specs/README.md](docs/specs/README.md) for complete documentation.
 
+**Core workflow — 4 commands**:
+
 ```
-/spec  →  /spec-research (optional)  →  /clarify  →  /validate  →  /analyze  →
-Implement  →  /create-pr  →  Auto-archive (with SUMMARY.md)  →  /verify-spec  →  /debug-spec (if needed)
+/spec  →  /clarify  →  /validate  →  /create-pr
 ```
 
-Each spec lives in a 4-artifact directory (`spec.md` = WHAT, `plan.md` = HOW, `tasks.md` = execution, `clarifications.md` = append-only decision log). On merge it is moved to `docs/specs/done/YYYY-Qn/NNN-slug/` with an auto-generated `SUMMARY.md`.
+Each spec lives in a **3-artifact directory** (`spec.md` = WHAT, `plan.md` = HOW + tasks + review checklist, `clarifications.md` = append-only decision log). Auto-archive on merge moves it to `docs/specs/done/YYYY-Qn/NNN-slug/` with an auto-generated `SUMMARY.md`.
 
-**Key Documents**:
-- [Platform Constitution](docs/specs/constitution.md) — non-negotiable principles (also surfaced by the `platform-constitution` reference-skill)
+**Key documents**:
+- [Platform Constitution](docs/specs/constitution.md) — non-negotiable principles (auto-loaded via `.claude/rules/spec-constitution.md`)
 - [Architecture Decision Records](docs/decisions/) — cross-cutting technology choices
+- [Phased specs](docs/specs/PHASED.md) — for features that span multiple PRs
 
 ### When Specs Are Required
 
@@ -154,19 +156,14 @@ Version bumps, documentation-only, single-file bug fixes, minor config changes, 
 
 | Skill | Description |
 |-------|-------------|
-| `/spec [type] "description"` | Create GitHub issue + 4-artifact spec directory (via `scripts/sdd/create-spec.sh`) |
-| `/spec-research <slug> "<q>"` | Forked Explore subagent: Context7 + repo scan → writes `research.md` |
+| `/spec [type] "description"` | Create GitHub issue + 3-artifact spec directory (via `scripts/sdd/create-spec.sh`) |
 | `/spec-status` | Pipeline overview (counts pre-computed via `!\`cmd\`` context injection) |
 | `/clarify [spec-dir]` | Append-only: replace `[NEEDS CLARIFICATION]` markers with `CL-N` references in `clarifications.md` |
-| `/validate [spec-dir]` | Multi-artifact completeness check (spec + plan + tasks + clarifications) |
-| `/analyze [spec-dir]` | Cross-artifact consistency: coverage gaps, ambiguity, constitution violations, drift |
-| `/verify-spec <spec-dir>` | Post-merge: verify SC-XXX against live cluster, write `VERIFICATION.md` |
-| `/debug-spec <spec-dir> <slug>` | Persistent debug session at `<spec-dir>/debug/<slug>.md` |
-| `platform-constitution` | Auto-loading reference-skill surfacing non-negotiable platform rules |
+| `/validate [spec-dir]` | Single quality gate — structural + cross-artifact + constitution compliance checks |
+| `/verify-spec <spec-dir>` | (Power tool) Post-merge: verify SC-XXX against live cluster, write `VERIFICATION.md` |
+| `/spec-research <slug> "<q>"` | (Power tool) Forked Explore subagent: Context7 + repo scan → writes `research.md` |
 
-### Phased Specs (Large Features)
-
-For features that need to ship across multiple PRs (prereqs → composition → packaging → validation → docs), put phase-local `tasks.md` and `SUMMARY.md` under `docs/specs/NNN-slug/phases/<N>-<phase-name>/` and file one GitHub issue per phase that `Depends on #<parent-issue>`. Use sparingly — most specs fit in one PR.
+For phased specs (multi-PR features), see [`docs/specs/PHASED.md`](docs/specs/PHASED.md). Use sparingly.
 
 ## Security Considerations
 

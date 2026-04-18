@@ -197,13 +197,12 @@ Every KCL composition MUST include:
 
 Non-trivial changes require specs per [SDD workflow](./README.md).
 
-Each spec lives in its own directory `docs/specs/NNN-slug/` and consists of **4 mandatory artifacts**:
+Each spec lives in its own directory `docs/specs/NNN-slug/` and consists of **3 mandatory artifacts**:
 
 | File | Purpose | Cadence |
 |------|---------|---------|
 | `spec.md` | Contract — WHAT and WHY (FR-XXX, SC-XXX, user stories) | **Frozen after approval** |
-| `plan.md` | Design — HOW (resources, alternatives, 4-persona review checklist) | May evolve during implementation |
-| `tasks.md` | Execution — `T001+` checklist | Updated commit-by-commit |
+| `plan.md` | Design + tasks (T001+) + 4-persona review checklist | May evolve during implementation |
 | `clarifications.md` | **Append-only** decision log: each `## CL-N` entry captures options considered + decision + rationale + references | Append-only — never overwrite |
 
 **Decisions are durable**: never inline `[CLARIFIED: ...]` in `spec.md`. Run `/clarify` to append a `CL-N` entry to `clarifications.md` and replace the marker in `spec.md` with `CL-N — <one-line summary>`. Future readers can always reconstruct *why* the decision was made.
@@ -227,9 +226,9 @@ Use this checklist when reviewing specs and implementations:
 - [ ] Observability configured (metrics, logs)
 - [ ] Validation tools pass (Polaris 85+, kube-linter, Datree)
 - [ ] Examples provided (basic + complete)
-- [ ] Spec directory has all 4 artifacts (spec.md / plan.md / tasks.md / clarifications.md)
+- [ ] Spec directory has all 3 artifacts (spec.md / plan.md / clarifications.md)
 - [ ] No inline `[CLARIFIED: ...]` in spec.md — decisions are CL-N entries in clarifications.md
-- [ ] `/validate` and `/analyze` both pass before implementation
+- [ ] `/validate` passes before implementation
 
 ---
 

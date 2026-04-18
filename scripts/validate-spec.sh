@@ -1,17 +1,20 @@
 #!/bin/bash
 #
-# validate-spec.sh — Validate SDD spec directory (4-artifact structure).
+# validate-spec.sh — Validate SDD spec directory (3-artifact structure).
 #
 # Usage:
 #   ./scripts/validate-spec.sh                        # most-recent active spec
 #   ./scripts/validate-spec.sh <spec-dir>             # explicit directory
-#   ./scripts/validate-spec.sh <path/to/spec.md>      # legacy: also accepts spec.md path
+#   ./scripts/validate-spec.sh <path/to/spec.md>      # also accepts spec.md path
 #
 # Validates:
 #   spec.md            — WHAT: required sections, issue link, SC-XXX / FR-XXX counts, falsifiable SCs
-#   plan.md            — HOW: Design + Review Checklist ≥ 75%
-#   tasks.md           — structured T001+ tasks
+#   plan.md            — HOW: Design + Tasks (T001+) + Review Checklist ≥ 75%
 #   clarifications.md  — append-only log (no forbidden CLARIFIED-inline pattern in spec.md)
+#
+# Cross-artifact checks:
+#   - FR-XXX should appear in plan.md tasks (coverage gap detection)
+#   - clarifications.md CL-N entries should be referenced from spec/plan
 #
 # Exit:
 #   0 = pass (maybe with warnings)
@@ -64,7 +67,6 @@ fi
 
 SPEC_FILE="$SPEC_DIR/spec.md"
 PLAN_FILE="$SPEC_DIR/plan.md"
-TASKS_FILE="$SPEC_DIR/tasks.md"
 CLARIFS_FILE="$SPEC_DIR/clarifications.md"
 
 echo -e "\n╔════════════════════════════════════════════════════════════════╗"
@@ -74,7 +76,7 @@ echo -e "\n📂 Directory: ${BLUE}$SPEC_DIR${NC}"
 
 # ---------- artifact presence ----------
 print_header "0. Artifact presence"
-for f in spec.md plan.md tasks.md clarifications.md; do
+for f in spec.md plan.md clarifications.md; do
     if [ -f "$SPEC_DIR/$f" ]; then
         print_success "$f exists"
     else
@@ -146,10 +148,10 @@ else
     print_success "No vague adjectives detected in SC-XXX"
 fi
 
-# ---------- plan.md: design + review checklist ----------
+# ---------- plan.md: design + tasks + review checklist ----------
 if [ -f "$PLAN_FILE" ]; then
-    print_header "6. plan.md — design + review checklist"
-    for section in "## Design" "## Review Checklist"; do
+    print_header "6. plan.md — design, tasks, review checklist"
+    for section in "## Design" "## Tasks" "## Review Checklist"; do
         if grep -q "^$section" "$PLAN_FILE"; then
             print_success "Found in plan.md: $section"
         else
@@ -182,21 +184,15 @@ if [ -f "$PLAN_FILE" ]; then
             print_warning "plan.md Review Checklist has no checkboxes"
         fi
     fi
-fi
 
-# ---------- tasks.md: structured IDs ----------
-if [ -f "$TASKS_FILE" ]; then
-    print_header "7. tasks.md — structured task IDs"
-    TASK_COUNT=$(grep -cP '^\s*-\s*\[[ x]\]\s*\*\*T\d{3}\*\*' "$TASKS_FILE" 2>/dev/null || echo "0")
-    TASK_DONE=$(grep -cP '^\s*-\s*\[x\]\s*\*\*T\d{3}\*\*' "$TASKS_FILE" 2>/dev/null || echo "0")
-    # Fallback: also count the `- [ ] T001:` form for backward compat
-    [ "${TASK_COUNT:-0}" -eq 0 ] && TASK_COUNT=$(grep -cP '^\s*-\s*\[[ x]\]\s*T\d{3}:' "$TASKS_FILE" 2>/dev/null || echo "0")
-    [ "${TASK_DONE:-0}" -eq 0 ] && TASK_DONE=$(grep -cP '^\s*-\s*\[x\]\s*T\d{3}:' "$TASKS_FILE" 2>/dev/null || echo "0")
+    # Tasks — count T001+ entries inside plan.md (Tasks section moved here from tasks.md).
+    TASK_COUNT=$(grep -cP '^\s*-\s*\[[ x]\]\s*\*\*T\d{3}\*\*' "$PLAN_FILE" 2>/dev/null || echo "0")
+    TASK_DONE=$(grep -cP '^\s*-\s*\[x\]\s*\*\*T\d{3}\*\*' "$PLAN_FILE" 2>/dev/null || echo "0")
     : "${TASK_COUNT:=0}"; : "${TASK_DONE:=0}"
     if [ "$TASK_COUNT" -gt 0 ]; then
-        print_success "tasks.md: $TASK_COUNT tasks ($TASK_DONE complete)"
+        print_success "plan.md tasks: $TASK_COUNT ($TASK_DONE complete)"
     else
-        print_warning "tasks.md has no T001-style task IDs"
+        print_warning "plan.md has no T001-style task IDs in Tasks section"
     fi
 fi
 
@@ -217,10 +213,58 @@ if [ -f "$CLARIFS_FILE" ]; then
     fi
 fi
 
+# ---------- cross-artifact: FR coverage ----------
+if [ -f "$PLAN_FILE" ]; then
+    print_header "9. Cross-artifact — FR-XXX → task coverage"
+    UNCOVERED=""
+    while IFS= read -r FR; do
+        FR_ID=$(echo "$FR" | grep -oP 'FR-\d{3}')
+        # Skip if FR ID is referenced in plan.md (case-insensitive task description)
+        if ! grep -qP "$FR_ID" "$PLAN_FILE" 2>/dev/null; then
+            UNCOVERED+="$FR_ID "
+        fi
+    done < <(grep -oP '\*\*FR-\d{3}\*\*' "$SPEC_FILE" 2>/dev/null | sort -u)
+    if [ -n "$UNCOVERED" ]; then
+        print_warning "FRs not referenced in plan.md (coverage gap): $UNCOVERED"
+        echo -e "      ${YELLOW}→ Mention each FR-XXX in a task or design note in plan.md${NC}"
+    else
+        print_success "All FR-XXX referenced in plan.md"
+    fi
+fi
+
+# ---------- cross-artifact: stale CL-N references ----------
+if [ -f "$CLARIFS_FILE" ]; then
+    print_header "10. Cross-artifact — CL-N references"
+    DEFINED_CL=$(grep -oP '^## CL-\K\d+' "$CLARIFS_FILE" 2>/dev/null | sort -u | tr '\n' ' ')
+    REFERENCED_CL=$(grep -ohP 'CL-\K\d+' "$SPEC_FILE" "$PLAN_FILE" 2>/dev/null | sort -u | tr '\n' ' ')
+    STALE=""
+    for n in $REFERENCED_CL; do
+        case " $DEFINED_CL " in *" $n "*) ;; *) STALE+="CL-$n " ;; esac
+    done
+    if [ -n "$STALE" ]; then
+        print_warning "Stale CL-N references (mentioned but not defined): $STALE"
+    else
+        [ -n "$REFERENCED_CL" ] && print_success "All CL-N references resolve to clarifications.md entries" \
+            || print_success "No CL-N cross-references yet"
+    fi
+fi
+
+# ---------- ambiguity: vague adjectives in plan too ----------
+if [ -f "$PLAN_FILE" ]; then
+    print_header "11. plan.md — vague adjectives in design"
+    VAGUE_PLAN=$(grep -EniP '\b(fast|scalable|secure|robust|flexible|simple|efficient|reliable)\b' "$PLAN_FILE" 2>/dev/null | grep -vP '(<!--|^\s*//)' | head -5 || true)
+    if [ -n "$VAGUE_PLAN" ]; then
+        print_warning "plan.md uses vague terms — quantify or remove:"
+        echo "$VAGUE_PLAN" | while read -r line; do echo -e "      ${YELLOW}→ $line${NC}"; done
+    else
+        print_success "No vague adjectives in plan.md"
+    fi
+fi
+
 # ---------- placeholders across all files ----------
-print_header "9. Placeholder detection (all artifacts)"
+print_header "12. Placeholder detection (all artifacts)"
 PLACEHOLDER_FOUND=0
-for f in "$SPEC_FILE" "$PLAN_FILE" "$TASKS_FILE" "$CLARIFS_FILE"; do
+for f in "$SPEC_FILE" "$PLAN_FILE" "$CLARIFS_FILE"; do
     [ -f "$f" ] || continue
     for placeholder in '\[Title\]' 'YYYY-MM-DD' 'SPEC-XXX' 'pull/YYY'; do
         if grep -qP "$placeholder" "$f"; then
@@ -232,7 +276,7 @@ done
 [ "$PLACEHOLDER_FOUND" -eq 0 ] && print_success "No unfilled placeholders"
 
 # ---------- constitution reference ----------
-print_header "10. Constitution reference"
+print_header "13. Constitution reference"
 if grep -q 'constitution.md' "$SPEC_FILE" || grep -q 'constitution.md' "$PLAN_FILE" 2>/dev/null; then
     print_success "Constitution reference present in spec or plan"
 else

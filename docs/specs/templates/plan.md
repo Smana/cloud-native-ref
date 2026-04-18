@@ -4,7 +4,7 @@
 **Status**: draft | in-review | approved | implementing | done
 **Last updated**: YYYY-MM-DD
 
-> The **plan** covers *HOW* to deliver the spec. It may evolve during implementation (unlike `spec.md`, which freezes after approval). Every material change should be committed with a rationale; the append-only `clarifications.md` is where decisions are durable.
+> The **plan** covers *HOW* to deliver the spec. It may evolve during implementation (unlike `spec.md`, which freezes after approval). Append-only `clarifications.md` is where decisions are durable.
 
 ---
 
@@ -76,6 +76,36 @@ infrastructure/base/crossplane/configuration/kcl/<module>/
 
 ---
 
+## Tasks
+
+> Each task has a stable ID (`T001`, `T002`, …) so PRs and `/verify-spec` can reference them. Update commit-by-commit.
+
+### Phase 1: Prerequisites
+
+- [ ] **T001**: <task description>
+- [ ] **T002**: <task description>
+
+### Phase 2: Implementation
+
+- [ ] **T003**: <task description>
+- [ ] **T004**: <task description>
+
+### Phase 3: Validation & Documentation
+
+- [ ] **T005**: Basic example renders with `crossplane render`
+- [ ] **T006**: Complete example renders
+- [ ] **T007**: Polaris score ≥ 85
+- [ ] **T008**: `main_test.k` covers resource counts / naming / security context
+- [ ] **T009**: README.md, `settings-example.yaml`, `examples/` populated
+
+### Deviations from plan
+
+<!-- Append as implementation surprises show up. Format:
+- <YYYY-MM-DD> T00N was [dropped|replaced|split]: <why>
+Keep short — detailed rationale goes in clarifications.md if it is a decision. -->
+
+---
+
 ## Review Checklist
 
 Complete this before implementation begins. Each persona enforces non-negotiable rules — do not skip.
@@ -114,24 +144,11 @@ Complete this before implementation begins. Each persona enforces non-negotiable
 
 ---
 
-## Phases (optional — for large features only)
-
-<!-- Omit this section unless the feature truly needs multiple PRs.
-For phased specs, each phase has its own tasks.md and SUMMARY.md under
-phases/N-phase-name/. See docs/specs/README.md "Phased specs" for details. -->
-
-| Phase | Scope | Depends on | Issue | Status |
-|-------|-------|------------|-------|--------|
-| 1-prereqs | <scope> | — | #XXX | [ ] not started |
-| 2-core | <scope> | 1-prereqs | #XXX | [ ] not started |
-
----
-
 ## References
 
 - Spec: [spec.md](spec.md)
-- Tasks: [tasks.md](tasks.md)
 - Clarifications log: [clarifications.md](clarifications.md)
 - Constitution: [docs/specs/constitution.md](../constitution.md)
+- Phased specs: [docs/specs/PHASED.md](../PHASED.md)
 - Similar composition: <path>
 - Related ADR: <link>
