@@ -127,12 +127,15 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 This repository uses SDD for non-trivial changes. See [docs/specs/README.md](docs/specs/README.md) for complete documentation.
 
 ```
-/spec -> /spec-status -> /clarify -> /validate -> Implement -> /create-pr -> Auto-archive
+/spec  →  /spec-research (optional)  →  /clarify  →  /validate  →  /analyze  →
+Implement  →  /create-pr  →  Auto-archive (with SUMMARY.md)  →  /verify-spec  →  /debug-spec (if needed)
 ```
 
+Each spec lives in a 4-artifact directory (`spec.md` = WHAT, `plan.md` = HOW, `tasks.md` = execution, `clarifications.md` = append-only decision log). On merge it is moved to `docs/specs/done/YYYY-Qn/NNN-slug/` with an auto-generated `SUMMARY.md`.
+
 **Key Documents**:
-- [Platform Constitution](docs/specs/constitution.md) - Non-negotiable principles
-- [Architecture Decision Records](docs/decisions/) - Cross-cutting technology choices
+- [Platform Constitution](docs/specs/constitution.md) — non-negotiable principles (also surfaced by the `platform-constitution` reference-skill)
+- [Architecture Decision Records](docs/decisions/) — cross-cutting technology choices
 
 ### When Specs Are Required
 
@@ -151,10 +154,19 @@ Version bumps, documentation-only, single-file bug fixes, minor config changes, 
 
 | Skill | Description |
 |-------|-------------|
-| `/spec [type] "description"` | Creates GitHub issue + spec directory |
-| `/spec-status` | Pipeline overview (Draft/Implementing/Done counts) |
-| `/clarify [spec-file]` | Resolves `[NEEDS CLARIFICATION]` markers |
-| `/validate [spec-file]` | Validates spec completeness |
+| `/spec [type] "description"` | Create GitHub issue + 4-artifact spec directory (via `scripts/sdd/create-spec.sh`) |
+| `/spec-research <slug> "<q>"` | Forked Explore subagent: Context7 + repo scan → writes `research.md` |
+| `/spec-status` | Pipeline overview (counts pre-computed via `!\`cmd\`` context injection) |
+| `/clarify [spec-dir]` | Append-only: replace `[NEEDS CLARIFICATION]` markers with `CL-N` references in `clarifications.md` |
+| `/validate [spec-dir]` | Multi-artifact completeness check (spec + plan + tasks + clarifications) |
+| `/analyze [spec-dir]` | Cross-artifact consistency: coverage gaps, ambiguity, constitution violations, drift |
+| `/verify-spec <spec-dir>` | Post-merge: verify SC-XXX against live cluster, write `VERIFICATION.md` |
+| `/debug-spec <spec-dir> <slug>` | Persistent debug session at `<spec-dir>/debug/<slug>.md` |
+| `platform-constitution` | Auto-loading reference-skill surfacing non-negotiable platform rules |
+
+### Phased Specs (Large Features)
+
+For features that need to ship across multiple PRs (prereqs → composition → packaging → validation → docs), put phase-local `tasks.md` and `SUMMARY.md` under `docs/specs/NNN-slug/phases/<N>-<phase-name>/` and file one GitHub issue per phase that `Depends on #<parent-issue>`. Use sparingly — most specs fit in one PR.
 
 ## Security Considerations
 

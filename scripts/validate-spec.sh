@@ -1,219 +1,253 @@
 #!/bin/bash
 #
-# validate-spec.sh - Validate specification files before implementation
+# validate-spec.sh — Validate SDD spec directory (4-artifact structure).
 #
-# Usage: ./scripts/validate-spec.sh [spec-file]
+# Usage:
+#   ./scripts/validate-spec.sh                        # most-recent active spec
+#   ./scripts/validate-spec.sh <spec-dir>             # explicit directory
+#   ./scripts/validate-spec.sh <path/to/spec.md>      # legacy: also accepts spec.md path
 #
-# If no file specified, validates the most recently modified spec in docs/specs/
-# (excluding done/ and templates/)
+# Validates:
+#   spec.md            — WHAT: required sections, issue link, SC-XXX / FR-XXX counts, falsifiable SCs
+#   plan.md            — HOW: Design + Review Checklist ≥ 75%
+#   tasks.md           — structured T001+ tasks
+#   clarifications.md  — append-only log (no forbidden CLARIFIED-inline pattern in spec.md)
+#
+# Exit:
+#   0 = pass (maybe with warnings)
+#   1 = errors present (do not implement)
 #
 
 set -euo pipefail
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Counters
 ERRORS=0
 WARNINGS=0
 
-# Print functions
 print_header() {
     echo -e "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${BLUE}  $1${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
+print_success() { echo -e "   ${GREEN}✅ $1${NC}"; }
+print_error()   { echo -e "   ${RED}❌ $1${NC}"; ERRORS=$((ERRORS+1)); }
+print_warning() { echo -e "   ${YELLOW}⚠️  $1${NC}"; WARNINGS=$((WARNINGS+1)); }
 
-print_success() {
-    echo -e "   ${GREEN}✅ $1${NC}"
-}
-
-print_error() {
-    echo -e "   ${RED}❌ $1${NC}"
-    ((ERRORS++))
-}
-
-print_warning() {
-    echo -e "   ${YELLOW}⚠️  $1${NC}"
-    ((WARNINGS++))
-}
-
-# shellcheck disable=SC2329
-print_info() {
-    echo -e "   ${BLUE}ℹ️  $1${NC}"
-}
-
-# Find spec file
+# ---------- locate spec directory ----------
 if [ $# -ge 1 ]; then
-    SPEC_FILE="$1"
-    if [ ! -f "$SPEC_FILE" ]; then
-        echo -e "${RED}ERROR: Spec file not found: $SPEC_FILE${NC}"
+    arg="$1"
+    if [ -d "$arg" ]; then
+        SPEC_DIR="$arg"
+    elif [ -f "$arg" ]; then
+        SPEC_DIR="$(dirname "$arg")"
+    else
+        echo -e "${RED}ERROR: path not found: $arg${NC}" >&2
         exit 1
     fi
 else
-    # Find most recently modified spec, excluding done/ and templates/
-    SPEC_FILE=$(find docs/specs -name "spec.md" \
+    # Most-recently-modified active spec directory (contains a spec.md)
+    SPEC_DIR=$(find docs/specs -name "spec.md" \
         -not -path "*/done/*" \
         -not -path "*/templates/*" \
         -type f -print0 2>/dev/null | \
-        xargs -0 ls -t 2>/dev/null | head -1)
-    if [ -z "$SPEC_FILE" ]; then
-        echo -e "${RED}ERROR: No active spec files found in docs/specs/${NC}"
+        xargs -0 ls -t 2>/dev/null | head -1 | xargs -I{} dirname {})
+    if [ -z "${SPEC_DIR:-}" ]; then
+        echo -e "${RED}ERROR: no active spec directory found under docs/specs/${NC}" >&2
         exit 1
     fi
 fi
 
+SPEC_FILE="$SPEC_DIR/spec.md"
+PLAN_FILE="$SPEC_DIR/plan.md"
+TASKS_FILE="$SPEC_DIR/tasks.md"
+CLARIFS_FILE="$SPEC_DIR/clarifications.md"
+
 echo -e "\n╔════════════════════════════════════════════════════════════════╗"
-echo -e "║  ${BLUE}Spec Validation${NC}                                               ║"
+echo -e "║  ${BLUE}SDD Spec Validation${NC}                                          ║"
 echo -e "╚════════════════════════════════════════════════════════════════╝"
-echo -e "\n📄 Validating: ${BLUE}$SPEC_FILE${NC}"
+echo -e "\n📂 Directory: ${BLUE}$SPEC_DIR${NC}"
 
-# CHECK 1: Required Sections (matching actual template)
-print_header "1. Required Sections"
+# ---------- artifact presence ----------
+print_header "0. Artifact presence"
+for f in spec.md plan.md tasks.md clarifications.md; do
+    if [ -f "$SPEC_DIR/$f" ]; then
+        print_success "$f exists"
+    else
+        print_error "$f missing — run create-spec.sh to scaffold, or copy from docs/specs/templates/"
+    fi
+done
+# If spec.md is missing, everything else is moot
+[ -f "$SPEC_FILE" ] || { echo -e "\n${RED}Cannot continue without spec.md${NC}"; exit 1; }
 
-for section in "## Summary" "## Problem" "## User Stories" "## Requirements" "## Success Criteria" "## Design" "## Tasks"; do
+# ---------- spec.md: required sections ----------
+print_header "1. spec.md — required sections"
+for section in "## Summary" "## Problem" "## User Stories" "## Requirements" "## Success Criteria"; do
     if grep -q "^$section" "$SPEC_FILE"; then
         print_success "Found: $section"
     else
-        print_error "Missing: $section"
+        print_error "Missing in spec.md: $section"
     fi
 done
 
-# CHECK 2: Unresolved Clarifications
-print_header "2. Clarification Markers"
+# ---------- spec.md: issue link ----------
+print_header "2. spec.md — GitHub issue link"
+if grep -qP 'Issue.*#\d+' "$SPEC_FILE"; then
+    ISSUE_NUM=$(grep -oP 'Issue.*#\K\d+' "$SPEC_FILE" | head -1)
+    print_success "GitHub issue linked: #$ISSUE_NUM"
+elif grep -qP '^\s*\*\*Issue\*\*:\s*N/A' "$SPEC_FILE"; then
+    print_warning "Issue marked N/A (acceptable for foundational/legacy specs)"
+else
+    print_error "No GitHub issue link (expected '**Issue**: #XXX' or 'N/A' in metadata header)"
+fi
 
-# Count only actual markers (starting with -), not HTML comments
-UNRESOLVED=$(grep -cP '^\s*-\s*\[NEEDS CLARIFICATION:' "$SPEC_FILE" 2>/dev/null || echo "0")
+# ---------- spec.md: unresolved markers ----------
+print_header "3. spec.md — clarification markers"
+UNRESOLVED=$(grep -cP '^\s*-\s*\[[ x]\]\s*\[NEEDS CLARIFICATION:' "$SPEC_FILE" 2>/dev/null || echo "0")
 UNRESOLVED=${UNRESOLVED:-0}
 if [ "$UNRESOLVED" -gt 0 ] 2>/dev/null; then
-    print_error "Found $UNRESOLVED unresolved [NEEDS CLARIFICATION] marker(s)"
-    # Show the clarifications that need resolving
-    grep -nP '^\s*-\s*\[NEEDS CLARIFICATION:' "$SPEC_FILE" 2>/dev/null | while read -r line; do
+    print_warning "$UNRESOLVED unresolved [NEEDS CLARIFICATION] marker(s) — run /clarify"
+    grep -nP '\[NEEDS CLARIFICATION:' "$SPEC_FILE" | while read -r line; do
         echo -e "      ${YELLOW}→ $line${NC}"
     done
 else
     print_success "No unresolved clarification markers"
 fi
 
-# CHECK 3: GitHub Issue Link
-print_header "3. GitHub Issue Link"
-
-if grep -qP 'Issue.*#\d+' "$SPEC_FILE"; then
-    ISSUE_NUM=$(grep -oP 'Issue.*#\K\d+' "$SPEC_FILE" | head -1)
-    print_success "GitHub Issue linked: #$ISSUE_NUM"
-else
-    print_error "No GitHub Issue link found"
+# Forbid the legacy in-place CLARIFIED pattern — decisions must live in clarifications.md
+INLINE_CLARIFIED=$(grep -cP '\[CLARIFIED:' "$SPEC_FILE" 2>/dev/null || echo "0")
+INLINE_CLARIFIED=${INLINE_CLARIFIED:-0}
+if [ "$INLINE_CLARIFIED" -gt 0 ] 2>/dev/null; then
+    print_warning "Found $INLINE_CLARIFIED inline [CLARIFIED: ...] marker(s) in spec.md"
+    echo -e "      ${YELLOW}→ Decisions must live in clarifications.md as CL-N entries; spec.md references them by ID${NC}"
 fi
 
-# CHECK 4: Constitution Reference
-print_header "4. Constitution Compliance"
-
-if grep -q 'constitution.md' "$SPEC_FILE"; then
-    print_success "Constitution reference found"
-else
-    print_warning "No constitution reference in spec"
-fi
-
-# CHECK 5: Placeholder Detection
-print_header "5. Placeholder Detection"
-
-PLACEHOLDER_FOUND=0
-for placeholder in '\[Name\]' '\[Title\]' 'YYYY-MM-DD' 'SPEC-XXX' '\[role\]' '\[capability\]' '\[benefit\]'; do
-    if grep -qP "$placeholder" "$SPEC_FILE"; then
-        print_warning "Found placeholder: $placeholder"
-        ((PLACEHOLDER_FOUND++))
-    fi
-done
-
-if [ "$PLACEHOLDER_FOUND" -eq 0 ]; then
-    print_success "No unfilled placeholders found"
-fi
-
-# CHECK 6: Review Checklist Completion
-print_header "6. Review Checklist"
-
-# Extract Review Checklist section and count checkboxes
-CHECKLIST_START=$(grep -n "^## Review Checklist" "$SPEC_FILE" | cut -d: -f1 || echo "0")
-if [ "$CHECKLIST_START" -gt 0 ]; then
-    # Get content from Review Checklist to next section or end
-    NEXT_SECTION=$(tail -n +"$((CHECKLIST_START + 1))" "$SPEC_FILE" | grep -n "^## " | head -1 | cut -d: -f1 || echo "")
-    if [ -n "$NEXT_SECTION" ]; then
-        END_LINE=$((CHECKLIST_START + NEXT_SECTION - 1))
-    else
-        END_LINE=$(wc -l < "$SPEC_FILE")
-    fi
-
-    # Count checkboxes in the review checklist section
-    CHECKED=$(awk "NR>=${CHECKLIST_START} && NR<=${END_LINE}" "$SPEC_FILE" | grep -c '\[x\]' || true)
-    UNCHECKED=$(awk "NR>=${CHECKLIST_START} && NR<=${END_LINE}" "$SPEC_FILE" | grep -c '\[ \]' || true)
-    # Default to 0 if empty
-    : "${CHECKED:=0}"
-    : "${UNCHECKED:=0}"
-    TOTAL=$((CHECKED + UNCHECKED))
-
-    if [ "$TOTAL" -gt 0 ]; then
-        PERCENT=$((100 * CHECKED / TOTAL))
-        if [ "$PERCENT" -eq 100 ]; then
-            print_success "Review checklist: $CHECKED/$TOTAL items complete (100%)"
-        elif [ "$PERCENT" -ge 75 ]; then
-            print_warning "Review checklist: $CHECKED/$TOTAL items complete ($PERCENT%)"
-        else
-            print_error "Review checklist: $CHECKED/$TOTAL items complete ($PERCENT%) - review before implementing"
-        fi
-    else
-        print_warning "No checklist items found in Review Checklist section"
-    fi
-else
-    print_error "Missing: ## Review Checklist section"
-fi
-
-# CHECK 7: Requirements & Success Criteria Count
-print_header "7. Requirements & Success Criteria"
-
+# ---------- spec.md: counts ----------
+print_header "4. spec.md — FR / SC counts"
 FR_COUNT=$(grep -cP 'FR-\d{3}' "$SPEC_FILE" 2>/dev/null || echo "0")
 SC_COUNT=$(grep -cP 'SC-\d{3}' "$SPEC_FILE" 2>/dev/null || echo "0")
+FR_COUNT=${FR_COUNT:-0}; SC_COUNT=${SC_COUNT:-0}
+[ "$FR_COUNT" -ge 2 ] && print_success "Found $FR_COUNT FR-XXX requirements" \
+    || print_warning "Only $FR_COUNT FR-XXX (recommend ≥ 2)"
+[ "$SC_COUNT" -ge 2 ] && print_success "Found $SC_COUNT SC-XXX success criteria" \
+    || print_warning "Only $SC_COUNT SC-XXX (recommend ≥ 2)"
 
-if [ "$FR_COUNT" -ge 2 ]; then
-    print_success "Found $FR_COUNT functional requirements (FR-XXX)"
+# ---------- spec.md: falsifiability heuristic ----------
+print_header "5. spec.md — falsifiable success criteria"
+AMBIGUOUS=$(grep -EniP '\*\*SC-\d{3}\*\*.*\b(fast|scalable|secure|robust|flexible|user-friendly|simple|efficient|reliable)\b' "$SPEC_FILE" 2>/dev/null || true)
+if [ -n "$AMBIGUOUS" ]; then
+    print_warning "SC entries contain vague adjectives (no measurable threshold). Add a metric:"
+    echo "$AMBIGUOUS" | while read -r line; do echo -e "      ${YELLOW}→ $line${NC}"; done
 else
-    print_warning "Only $FR_COUNT functional requirements found (recommend at least 2)"
+    print_success "No vague adjectives detected in SC-XXX"
 fi
 
-if [ "$SC_COUNT" -ge 2 ]; then
-    print_success "Found $SC_COUNT success criteria (SC-XXX)"
-else
-    print_warning "Only $SC_COUNT success criteria found (recommend at least 2)"
+# ---------- plan.md: design + review checklist ----------
+if [ -f "$PLAN_FILE" ]; then
+    print_header "6. plan.md — design + review checklist"
+    for section in "## Design" "## Review Checklist"; do
+        if grep -q "^$section" "$PLAN_FILE"; then
+            print_success "Found in plan.md: $section"
+        else
+            print_error "Missing in plan.md: $section"
+        fi
+    done
+
+    CHECKLIST_START=$(grep -n "^## Review Checklist" "$PLAN_FILE" | cut -d: -f1 | head -1 || echo "0")
+    if [ "${CHECKLIST_START:-0}" -gt 0 ]; then
+        NEXT_HEADING=$(tail -n +"$((CHECKLIST_START + 1))" "$PLAN_FILE" | grep -n "^## " | head -1 | cut -d: -f1 || echo "")
+        if [ -n "$NEXT_HEADING" ]; then
+            END_LINE=$((CHECKLIST_START + NEXT_HEADING - 1))
+        else
+            END_LINE=$(wc -l < "$PLAN_FILE")
+        fi
+        CHECKED=$(awk "NR>=${CHECKLIST_START} && NR<=${END_LINE}" "$PLAN_FILE" | grep -c '\[x\]' || true)
+        UNCHECKED=$(awk "NR>=${CHECKLIST_START} && NR<=${END_LINE}" "$PLAN_FILE" | grep -c '\[ \]' || true)
+        : "${CHECKED:=0}"; : "${UNCHECKED:=0}"
+        TOTAL=$((CHECKED + UNCHECKED))
+        if [ "$TOTAL" -gt 0 ]; then
+            PERCENT=$((100 * CHECKED / TOTAL))
+            if [ "$PERCENT" -ge 100 ]; then
+                print_success "Review checklist: $CHECKED/$TOTAL (100%)"
+            elif [ "$PERCENT" -ge 75 ]; then
+                print_warning "Review checklist: $CHECKED/$TOTAL ($PERCENT%)"
+            else
+                print_error "Review checklist: $CHECKED/$TOTAL ($PERCENT%) — complete ≥ 75% before implementing"
+            fi
+        else
+            print_warning "plan.md Review Checklist has no checkboxes"
+        fi
+    fi
 fi
 
-# CHECK 8: Tasks Defined
-print_header "8. Task Tracking"
-
-TASK_COUNT=$(grep -cP '^\s*-\s*\[[ x]\]\s*T\d{3}:' "$SPEC_FILE" 2>/dev/null || true)
-COMPLETED_TASKS=$(grep -cP '^\s*-\s*\[x\]\s*T\d{3}:' "$SPEC_FILE" 2>/dev/null || true)
-# Default to 0 if empty
-: "${TASK_COUNT:=0}"
-: "${COMPLETED_TASKS:=0}"
-
-if [ "$TASK_COUNT" -gt 0 ]; then
-    print_success "Found $TASK_COUNT tasks ($COMPLETED_TASKS completed)"
-else
-    print_warning "No structured tasks (T001:, T002:...) found"
+# ---------- tasks.md: structured IDs ----------
+if [ -f "$TASKS_FILE" ]; then
+    print_header "7. tasks.md — structured task IDs"
+    TASK_COUNT=$(grep -cP '^\s*-\s*\[[ x]\]\s*\*\*T\d{3}\*\*' "$TASKS_FILE" 2>/dev/null || echo "0")
+    TASK_DONE=$(grep -cP '^\s*-\s*\[x\]\s*\*\*T\d{3}\*\*' "$TASKS_FILE" 2>/dev/null || echo "0")
+    # Fallback: also count the `- [ ] T001:` form for backward compat
+    [ "${TASK_COUNT:-0}" -eq 0 ] && TASK_COUNT=$(grep -cP '^\s*-\s*\[[ x]\]\s*T\d{3}:' "$TASKS_FILE" 2>/dev/null || echo "0")
+    [ "${TASK_DONE:-0}" -eq 0 ] && TASK_DONE=$(grep -cP '^\s*-\s*\[x\]\s*T\d{3}:' "$TASKS_FILE" 2>/dev/null || echo "0")
+    : "${TASK_COUNT:=0}"; : "${TASK_DONE:=0}"
+    if [ "$TASK_COUNT" -gt 0 ]; then
+        print_success "tasks.md: $TASK_COUNT tasks ($TASK_DONE complete)"
+    else
+        print_warning "tasks.md has no T001-style task IDs"
+    fi
 fi
 
-# SUMMARY
+# ---------- clarifications.md: append-only format ----------
+if [ -f "$CLARIFS_FILE" ]; then
+    print_header "8. clarifications.md — append-only format"
+    CL_ENTRIES=$(grep -cP '^## CL-\d+' "$CLARIFS_FILE" 2>/dev/null || echo "0")
+    : "${CL_ENTRIES:=0}"
+    if [ "$CL_ENTRIES" -gt 0 ]; then
+        print_success "clarifications.md: $CL_ENTRIES CL-N entries"
+        # Check for duplicate IDs
+        DUP=$(grep -oP '^## CL-\K\d+' "$CLARIFS_FILE" | sort | uniq -d)
+        if [ -n "$DUP" ]; then
+            print_error "Duplicate CL IDs: $(echo "$DUP" | tr '\n' ' ')"
+        fi
+    else
+        print_warning "clarifications.md has no CL-N entries yet (OK for fresh specs)"
+    fi
+fi
+
+# ---------- placeholders across all files ----------
+print_header "9. Placeholder detection (all artifacts)"
+PLACEHOLDER_FOUND=0
+for f in "$SPEC_FILE" "$PLAN_FILE" "$TASKS_FILE" "$CLARIFS_FILE"; do
+    [ -f "$f" ] || continue
+    for placeholder in '\[Title\]' 'YYYY-MM-DD' 'SPEC-XXX' 'pull/YYY'; do
+        if grep -qP "$placeholder" "$f"; then
+            print_warning "Placeholder '$placeholder' in $(basename "$f")"
+            PLACEHOLDER_FOUND=$((PLACEHOLDER_FOUND+1))
+        fi
+    done
+done
+[ "$PLACEHOLDER_FOUND" -eq 0 ] && print_success "No unfilled placeholders"
+
+# ---------- constitution reference ----------
+print_header "10. Constitution reference"
+if grep -q 'constitution.md' "$SPEC_FILE" || grep -q 'constitution.md' "$PLAN_FILE" 2>/dev/null; then
+    print_success "Constitution reference present in spec or plan"
+else
+    print_warning "No constitution reference — add link to docs/specs/constitution.md"
+fi
+
+# ---------- summary ----------
 print_header "Summary"
-
 if [ "$ERRORS" -eq 0 ] && [ "$WARNINGS" -eq 0 ]; then
-    echo -e "\n   ${GREEN}✅ All checks passed! Spec is ready for implementation.${NC}"
+    echo -e "\n   ${GREEN}✅ All checks passed. Spec ready for implementation.${NC}"
     exit 0
 elif [ "$ERRORS" -eq 0 ]; then
-    echo -e "\n   ${YELLOW}⚠️  $WARNINGS warning(s), 0 errors - Review warnings before proceeding${NC}"
+    echo -e "\n   ${YELLOW}⚠️  $WARNINGS warning(s), 0 errors — review before proceeding.${NC}"
     exit 0
 else
-    echo -e "\n   ${RED}❌ $ERRORS error(s), $WARNINGS warning(s) - Fix errors before implementation${NC}"
+    echo -e "\n   ${RED}❌ $ERRORS error(s), $WARNINGS warning(s) — fix errors before implementation.${NC}"
     exit 1
 fi

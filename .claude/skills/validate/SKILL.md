@@ -1,149 +1,81 @@
 ---
 name: validate
-description: Validate a specification file and provide actionable suggestions for issues
+description: Validate a spec file for completeness (required sections, resolved clarifications, issue link, constitution reference, review checklist ≥75%, requirements/SC counts, structured tasks) and suggest fixes.
+when_to_use: |
+  When the user says "validate my spec", "is the spec ready",
+  "check if this spec is complete", "pre-flight the spec",
+  "spec quality check", or wants confidence a spec is ready for implementation.
 disable-model-invocation: true
-argument-hint: "[spec-file] - path to spec.md, or omit for most recent"
+argument-hint: "[spec-file] — path to spec.md, or omit for most-recently-modified active spec"
 paths: "docs/specs/**"
 allowed-tools: Bash(./scripts/validate-spec.sh:*), Read, Glob
 ---
 
 # Validate Skill
 
-Validate specification files and provide actionable suggestions for any issues found.
-
-## Usage
-
-```
-/validate                                    # Validate most recent active spec
-/validate docs/specs/001-feature/spec.md    # Validate specific spec
-```
-
-## Purpose
-
-Run comprehensive validation on a spec file and provide:
-1. Pass/fail status for each check
-2. Actionable suggestions for fixing issues
-3. Context-aware recommendations
+Run the spec validator and present results with actionable remediation suggestions.
 
 ## Workflow
 
-### 1. Find Spec File
+### 1. Find the target spec
 
-If no file specified, find the most recently modified active spec:
+If the user named a file, use it. Otherwise pick the most-recently-modified active spec:
 
 ```bash
-find docs/specs -name "spec.md" \
-  -not -path "*/done/*" \
-  -not -path "*/templates/*" \
-  -type f -print0 2>/dev/null | \
-  xargs -0 ls -t 2>/dev/null | head -1
+find docs/specs -name spec.md -not -path '*/done/*' -not -path '*/templates/*' -type f \
+  | xargs ls -t 2>/dev/null | head -1
 ```
 
-### 2. Run Validation Script
+### 2. Run the validator
 
 ```bash
 ./scripts/validate-spec.sh "$SPEC_FILE"
 ```
 
 The script checks:
-1. **Required Sections**: Summary, Problem, User Stories, Requirements, Success Criteria, Design, Tasks
-2. **Clarification Markers**: No unresolved `[NEEDS CLARIFICATION:]` markers
-3. **GitHub Issue Link**: Issue reference present
-4. **Constitution Reference**: Links to constitution.md
-5. **Placeholder Detection**: No unfilled template placeholders
-6. **Review Checklist**: Completion percentage (error if <75%)
-7. **Requirements Count**: At least 2 FR-XXX entries
-8. **Success Criteria Count**: At least 2 SC-XXX entries
-9. **Task Tracking**: Structured tasks (T001:, T002:...)
+1. Required sections (Summary / Problem / User Stories / Requirements / Success Criteria / Design / Tasks)
+2. No unresolved `[NEEDS CLARIFICATION: ...]` markers
+3. GitHub issue link present
+4. Constitution reference present
+5. No unfilled placeholders (`SPEC-XXX`, `YYYY-MM-DD`, `[Title]`, ...)
+6. Review checklist ≥75% complete (error if <75%)
+7. ≥2 `FR-XXX` entries (warning if fewer)
+8. ≥2 `SC-XXX` entries (warning if fewer)
+9. Tasks use structured IDs (`T001`, `T002`, ...)
 
-### 3. Analyze Results
+### 3. Present results
 
-Parse the script output and categorize:
-- **Errors** (must fix before implementation)
-- **Warnings** (should review)
-- **Passed** (all good)
-
-### 4. Provide Suggestions
-
-For each issue, provide actionable fix:
-
-| Issue | Suggestion |
-|-------|------------|
-| Missing section | Add the section header and fill content |
-| Unresolved clarification | Run `/clarify` to resolve |
-| Incomplete review checklist | Complete persona reviews before implementing |
-| Few requirements | Add more FR-XXX entries to Requirements section |
-| Few success criteria | Add measurable SC-XXX outcomes |
-
-## Output Format
+Use this layout:
 
 ```
 ╔════════════════════════════════════════════════════════════════╗
-║  Spec Validation: docs/specs/001-feature/spec.md               ║
+║  Spec Validation: <path>                                       ║
 ╚════════════════════════════════════════════════════════════════╝
 
-✅ Required Sections: All 7 sections present
-✅ Clarification Markers: All resolved
-✅ GitHub Issue: #1306 linked
-⚠️  Review Checklist: 15/20 complete (75%)
-   → Complete remaining items in Security & SRE sections
-✅ Requirements: 4 functional requirements (FR-001 to FR-004)
-✅ Success Criteria: 3 criteria (SC-001 to SC-003)
+✅ <passed check>
+⚠️  <warning>
+❌ <error>
+   → <one-line fix>
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Result: PASSED with 1 warning
-
-Next steps:
-  - Complete Review Checklist (currently 75%)
-  - Begin implementation when ready
+Result: PASSED | PASSED with N warnings | FAILED with N errors
 ```
 
-## Error Suggestions
+For each failure or warning, cite the canonical remediation from [`references/error-suggestions.md`](references/error-suggestions.md). Load it on invocation.
 
-### Missing Sections
-```
-❌ Missing: ## User Stories
+### 4. Suggest next step
 
-Suggestion: Add user stories with Gherkin acceptance scenarios:
-
-### US-1: [Story Title] (Priority: P1)
-As a **[role]**, I want **[capability]**, so that **[benefit]**.
-
-**Acceptance Scenarios**:
-1. **Given** [precondition], **When** [action], **Then** [result]
-```
-
-### Unresolved Clarifications
-```
-❌ Found 2 unresolved [NEEDS CLARIFICATION] markers
-
-Suggestion: Run /clarify to resolve these with structured options:
-  Line 163: [NEEDS CLARIFICATION: Should cache support cross-namespace?]
-  Line 164: [NEEDS CLARIFICATION: Default eviction policy?]
-```
-
-### Incomplete Review Checklist
-```
-⚠️  Review Checklist: 10/20 complete (50%)
-
-Suggestion: Review spec from each persona's perspective:
-  - [ ] Project Manager: 5/5 ✅
-  - [ ] Platform Engineer: 3/5 (missing: examples, KCL pattern check)
-  - [ ] Security: 2/5 (missing: network policy, RBAC, secrets)
-  - [ ] SRE: 0/5 (not started)
-```
+- If errors remain → block with the most impactful fix.
+- If only warnings → recommend addressing before implementation, but allow proceeding.
+- If all green → suggest `/create-pr` (or `/analyze` once that skill exists).
 
 ## Integration
 
-This skill fits in the SDD workflow:
+- `/spec` — creates the spec this validates
+- `/clarify` — resolves marker errors
+- `/create-pr` — requires validate to pass
 
-```
-/spec → /spec-status → /clarify → /validate → implement → /create-pr
-```
+## Related
 
-## Related Skills
-
-- `/spec` - Create new specification
-- `/spec-status` - View pipeline overview
-- `/clarify` - Resolve clarification markers
-- `/create-pr` - Create PR when implementation complete
+- Validator script: [`scripts/validate-spec.sh`](../../../scripts/validate-spec.sh)
+- Error templates: [`references/error-suggestions.md`](references/error-suggestions.md)
