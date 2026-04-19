@@ -7,7 +7,7 @@
 **Created**: YYYY-MM-DD
 **Last updated**: YYYY-MM-DD
 
-> The **spec** is the contract: *WHAT* we are delivering and *why*. Freeze it once approved. How we build it lives in [`plan.md`](plan.md); decisions made during filling live append-only in [`clarifications.md`](clarifications.md); execution state lives in [`tasks.md`](tasks.md).
+> The **spec** is the contract: *WHAT* we are delivering and *why*. Freeze it once approved. How we build it lives in [`plan.md`](plan.md) (which also tracks tasks and the review checklist); decisions made during filling live append-only in [`clarifications.md`](clarifications.md).
 
 ---
 
@@ -75,17 +75,13 @@ reference them by ID (CL-1, CL-2, ...) once resolved. -->
 
 - [ ] [NEEDS CLARIFICATION: Example question?]
 
-Resolved questions (for cross-reference only):
-
-- CL-1 — <one-line summary>
-- CL-2 — <one-line summary>
+<!-- Resolved questions appear below as `CL-N — <summary>` lines, appended by /clarify. -->
 
 ---
 
 ## References
 
-- Plan: [plan.md](plan.md)
-- Tasks: [tasks.md](tasks.md)
+- Plan: [plan.md](plan.md) — design, tasks, review checklist
 - Clarifications: [clarifications.md](clarifications.md)
 - Constitution: [docs/specs/constitution.md](../constitution.md)
 - Similar spec: <link>

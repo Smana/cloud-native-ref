@@ -25,9 +25,8 @@ Resolve `$ARGUMENTS` to a spec directory. Accept either active (`docs/specs/NNN-
 
 Read:
 - `<dir>/spec.md` — extract `SC-XXX` list.
-- `<dir>/plan.md` (if exists) — extract example manifest paths.
+- `<dir>/plan.md` (if exists) — extract example manifest paths and Tasks section.
 - `<dir>/examples/` (if exists).
-- `<dir>/tasks.md` (if exists).
 
 ### 2. Enumerate success criteria
 
@@ -132,5 +131,4 @@ If any SC failed, suggest opening a follow-up issue tagged `spec:regression` and
 
 - `/spec` — the upstream spec this verifies
 - `/validate` — spec completeness (different concern)
-- `/debug-spec` — persistent debug session if verification fails repeatedly
 - `/gitops-cluster-debug` (fluxcd plugin) — deep Flux troubleshooting

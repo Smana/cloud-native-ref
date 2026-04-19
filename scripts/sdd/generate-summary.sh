@@ -23,10 +23,6 @@ TEMPLATE="docs/specs/templates/SUMMARY.md"
 
 OUT="$SPEC_DIR/SUMMARY.md"
 
-# ----- gather PR metadata -----
-PR_JSON=$(gh pr view "$PR_NUM" --json title,body,mergeCommit,baseRefName,number,headRefName,author 2>/dev/null || echo '{}')
-PR_TITLE=$(echo "$PR_JSON" | jq -r '.title // ""')
-PR_BASE=$(echo "$PR_JSON" | jq -r '.baseRefName // "main"')
 ISSUE_NUM=$(grep -oP 'Issue.*#\K\d+' "$SPEC_DIR/spec.md" 2>/dev/null | head -1 || echo "")
 SHORT_SHA=$(git rev-parse --short "$MERGE_SHA")
 TODAY=$(date -u +%Y-%m-%d)
@@ -66,11 +62,10 @@ SC_TABLE=$(grep -oP '^- \*\*SC-\d{3}\*\*: .+' "$SPEC_DIR/spec.md" 2>/dev/null \
   | sed -E 's/- \*\*SC-([0-9]+)\*\*: (.*)/| SC-\1 | \2 | promised |/' || true)
 [ -z "$SC_TABLE" ] && SC_TABLE='| _none defined_ | | |'
 
-# ----- deviations (unchecked tasks at merge) -----
+# ----- deviations (unchecked tasks at merge, read from plan.md Tasks section) -----
 DEVIATIONS=""
-if [ -f "$SPEC_DIR/tasks.md" ]; then
-  UNCHECKED=$(grep -P '^\s*-\s*\[ \]\s*\*\*T\d{3}\*\*' "$SPEC_DIR/tasks.md" 2>/dev/null || true)
-  [ -z "$UNCHECKED" ] && UNCHECKED=$(grep -P '^\s*-\s*\[ \]\s*T\d{3}:' "$SPEC_DIR/tasks.md" 2>/dev/null || true)
+if [ -f "$SPEC_DIR/plan.md" ]; then
+  UNCHECKED=$(grep -P '^\s*-\s*\[ \]\s*\*\*T\d{3}\*\*' "$SPEC_DIR/plan.md" 2>/dev/null || true)
   if [ -n "$UNCHECKED" ]; then
     DEVIATIONS=$(echo "$UNCHECKED" | sed -E 's/^\s*-\s*\[ \]\s*\*?\*?(T[0-9]+)\*?\*?:?\s*(.*)/| \1 | \2 | not shipped | (fill in why) |/')
   fi
@@ -110,8 +105,8 @@ s = re.sub(
     s, flags=re.S)
 
 s = re.sub(
-    r"<!-- Auto-filled from \`tasks.md\`.*?\| T00N \| <planned> \| <actual> \| <why> \|",
-    "<!-- Auto-filled from tasks.md -->\n\n${DEVIATIONS//$'\n'/\\n}",
+    r"<!-- Auto-filled from \`plan\.md\`.*?\| T00N \| <planned> \| <actual> \| <why> \|",
+    "<!-- Auto-filled from plan.md Tasks section -->\n\n${DEVIATIONS//$'\n'/\\n}",
     s, flags=re.S)
 
 p.write_text(s)

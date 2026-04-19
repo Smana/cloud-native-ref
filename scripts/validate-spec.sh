@@ -185,7 +185,7 @@ if [ -f "$PLAN_FILE" ]; then
         fi
     fi
 
-    # Tasks — count T001+ entries inside plan.md (Tasks section moved here from tasks.md).
+    # Tasks — count T001+ entries inside plan.md.
     TASK_COUNT=$(grep -cP '^\s*-\s*\[[ x]\]\s*\*\*T\d{3}\*\*' "$PLAN_FILE" 2>/dev/null || echo "0")
     TASK_DONE=$(grep -cP '^\s*-\s*\[x\]\s*\*\*T\d{3}\*\*' "$PLAN_FILE" 2>/dev/null || echo "0")
     : "${TASK_COUNT:=0}"; : "${TASK_DONE:=0}"
@@ -198,7 +198,7 @@ fi
 
 # ---------- clarifications.md: append-only format ----------
 if [ -f "$CLARIFS_FILE" ]; then
-    print_header "8. clarifications.md — append-only format"
+    print_header "7. clarifications.md — append-only format"
     CL_ENTRIES=$(grep -cP '^## CL-\d+' "$CLARIFS_FILE" 2>/dev/null || echo "0")
     : "${CL_ENTRIES:=0}"
     if [ "$CL_ENTRIES" -gt 0 ]; then
@@ -215,7 +215,7 @@ fi
 
 # ---------- cross-artifact: FR coverage ----------
 if [ -f "$PLAN_FILE" ]; then
-    print_header "9. Cross-artifact — FR-XXX → task coverage"
+    print_header "8. Cross-artifact — FR-XXX → task coverage"
     UNCOVERED=""
     while IFS= read -r FR; do
         FR_ID=$(echo "$FR" | grep -oP 'FR-\d{3}')
@@ -234,7 +234,7 @@ fi
 
 # ---------- cross-artifact: stale CL-N references ----------
 if [ -f "$CLARIFS_FILE" ]; then
-    print_header "10. Cross-artifact — CL-N references"
+    print_header "9. Cross-artifact — CL-N references"
     DEFINED_CL=$(grep -oP '^## CL-\K\d+' "$CLARIFS_FILE" 2>/dev/null | sort -u | tr '\n' ' ')
     REFERENCED_CL=$(grep -ohP 'CL-\K\d+' "$SPEC_FILE" "$PLAN_FILE" 2>/dev/null | sort -u | tr '\n' ' ')
     STALE=""
@@ -251,7 +251,7 @@ fi
 
 # ---------- ambiguity: vague adjectives in plan too ----------
 if [ -f "$PLAN_FILE" ]; then
-    print_header "11. plan.md — vague adjectives in design"
+    print_header "10. plan.md — vague adjectives in design"
     VAGUE_PLAN=$(grep -EniP '\b(fast|scalable|secure|robust|flexible|simple|efficient|reliable)\b' "$PLAN_FILE" 2>/dev/null | grep -vP '(<!--|^\s*//)' | head -5 || true)
     if [ -n "$VAGUE_PLAN" ]; then
         print_warning "plan.md uses vague terms — quantify or remove:"
@@ -262,7 +262,7 @@ if [ -f "$PLAN_FILE" ]; then
 fi
 
 # ---------- placeholders across all files ----------
-print_header "12. Placeholder detection (all artifacts)"
+print_header "11. Placeholder detection (all artifacts)"
 PLACEHOLDER_FOUND=0
 for f in "$SPEC_FILE" "$PLAN_FILE" "$CLARIFS_FILE"; do
     [ -f "$f" ] || continue
@@ -276,7 +276,7 @@ done
 [ "$PLACEHOLDER_FOUND" -eq 0 ] && print_success "No unfilled placeholders"
 
 # ---------- constitution reference ----------
-print_header "13. Constitution reference"
+print_header "12. Constitution reference"
 if grep -q 'constitution.md' "$SPEC_FILE" || grep -q 'constitution.md' "$PLAN_FILE" 2>/dev/null; then
     print_success "Constitution reference present in spec or plan"
 else

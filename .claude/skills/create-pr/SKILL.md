@@ -41,14 +41,14 @@ Changed paths → spec type:
 | `*networkpolicy*`, `*rbac*`, `openbao/**`, `*cilium*policy*` | security |
 | Multiple top-level dirs + HelmRelease/Kustomization | platform |
 
-Find the spec directory for these changes (if one exists). The repo uses the 4-artifact structure (`spec.md`, `plan.md`, `tasks.md`, `clarifications.md`) so any of those files in the diff signals a spec:
+Find the spec directory for these changes (if one exists). The repo uses the 3-artifact structure (`spec.md`, `plan.md`, `clarifications.md`) so any of those files in the diff signals a spec:
 
 ```bash
 git diff origin/${BASE:-main}...HEAD --name-only \
   | grep -oE 'docs/specs/[0-9]+-[a-z0-9-]+' | sort -u | head -1
 ```
 
-For each detected spec directory, also note which artifacts changed (`spec.md` / `plan.md` / `tasks.md` / `clarifications.md`). Include them as bullet points under the **Specification** block:
+For each detected spec directory, also note which artifacts changed (`spec.md` / `plan.md` / `clarifications.md`). Include them as bullet points under the **Specification** block:
 
 ```
 ## 📋 Specification
@@ -57,8 +57,7 @@ Implements [#<issue>](../issues/<issue>) — see [`<spec-dir>/`](../blob/main/<s
 
 Artifacts touched in this PR:
 - `spec.md` (contract — should usually be unchanged after approval)
-- `plan.md` (design)
-- `tasks.md` (T00N progress)
+- `plan.md` (design + tasks + review checklist)
 - `clarifications.md` (CL-N entries appended)
 ```
 

@@ -48,7 +48,7 @@ once live-cluster evidence is collected in VERIFICATION.md. -->
 
 ## Deviations from plan
 
-<!-- Auto-filled from `tasks.md` — any T00N marked deferred, replaced, or dropped.
+<!-- Auto-filled from `plan.md` Tasks section — any T00N still unchecked at merge.
 If empty, write "None — all planned tasks completed." -->
 
 | Task | Planned | Actual | Why |
@@ -64,7 +64,6 @@ If empty, write "None — all planned tasks completed." -->
 ## References
 
 - Spec: [spec.md](spec.md)
-- Plan: [plan.md](plan.md)
-- Tasks: [tasks.md](tasks.md)
+- Plan: [plan.md](plan.md) — design, tasks, review checklist
 - Clarifications: [clarifications.md](clarifications.md)
 - Verification (post-deploy): `VERIFICATION.md` (created by `/verify-spec`)

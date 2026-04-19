@@ -54,7 +54,7 @@ Present in this fixed format:
   |--------|--------|------|------|
   | A      | <ans>  | <p>  | <c>  |
   | B      | <ans>  | <p>  | <c>  |
-  | C      | Custom | (user supplies)         |
+  | C      | Custom | (user supplies) | — |
 
   Recommendation: <A/B> — <one-line rationale>
 
@@ -110,8 +110,7 @@ Decisions logged:
 
 Next:
   - Complete the 4-persona review checklist in plan.md
-  - Run /validate to verify spec + plan + tasks completeness
-  - Run /analyze for cross-artifact consistency
+  - Run /validate (single quality gate — structural + cross-artifact + constitution)
 ```
 
 ## Anti-patterns
@@ -122,7 +121,6 @@ Next:
 
 ## Related skills
 
-- `/spec` — creates the directory + 4 artifacts including `clarifications.md`
+- `/spec` — creates the directory + 3 artifacts including `clarifications.md`
 - `/spec-research` — pre-deliberation research that might surface canonical answers
-- `/validate` — checks spec.md / plan.md / tasks.md / clarifications.md together
-- `/analyze` — cross-artifact consistency
+- `/validate` — checks spec.md / plan.md / clarifications.md together (structural + cross-artifact)

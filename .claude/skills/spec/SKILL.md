@@ -80,8 +80,7 @@ Next:
 
 - `/spec-research <topic>` — optional deep research subagent (writes `research.md` alongside spec)
 - `/clarify` — resolve `[NEEDS CLARIFICATION: ...]` markers
-- `/validate` — check spec completeness
-- `/analyze` (future) — cross-artifact consistency
+- `/validate` — single quality gate (structural + cross-artifact + constitution)
 - `/create-pr` — auto-detects spec directory and references issue
 - GitHub Action `spec-archive.yaml` — archives spec on merge
 

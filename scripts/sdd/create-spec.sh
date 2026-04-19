@@ -99,11 +99,10 @@ instantiate() {
     -e "s|SPEC-XXX|SPEC-${SPEC_NUM}|g" \
     -e "s|#XXX|#${ISSUE_NUM}|g" \
     -e "s|issues/XXX|issues/${ISSUE_NUM}|g" \
-    -e "s|pull/YYY|pull/YYY|g" \
     -e "s|YYYY-MM-DD|${TODAY}|g" \
     -e "s|\[Title\]|${TITLE}|g" \
-    -e "s|composition | infrastructure | security | platform|${TYPE}|" \
-    -e "s|draft | in-review | approved | implementing | done|draft|" \
+    -e "s|^\(\*\*Type\*\*:\).*|\1 ${TYPE}|" \
+    -e "s|^\(\*\*Status\*\*:\).*|\1 draft|" \
     "$TEMPLATES_DIR/${template}" > "${SPEC_DIR}/${output}"
 }
 
