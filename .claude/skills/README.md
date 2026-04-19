@@ -5,7 +5,7 @@ Custom skills for platform engineering workflows.
 ## Quick Start — core SDD flow (4 commands)
 
 ```bash
-/spec composition "Add Redis caching"    # Create spec + GitHub issue (3 artifacts)
+/spec "Add Redis caching"                # Create spec + GitHub issue (type inferred)
 /clarify                                 # Resolve [NEEDS CLARIFICATION] → CL-N entries
 /validate                                # Single quality gate (structural + cross-artifact)
 /create-pr                               # Open PR (auto-detects spec directory)
@@ -33,7 +33,7 @@ Other workflows:
 
 | Skill | Usage | Description |
 |-------|-------|-------------|
-| **spec** | `/spec [type] "description"` | Create GitHub issue + 3-artifact spec directory (`spec.md` + `plan.md` + `clarifications.md`) via `scripts/sdd/create-spec.sh` |
+| **spec** | `/spec "description"` (or `<type> "description"` to override) | Create GitHub issue + 3-artifact spec directory (`spec.md` + `plan.md` + `clarifications.md`) via `scripts/sdd/create-spec.sh`. Type is auto-inferred from the description |
 | **clarify** | `/clarify [spec-dir]` | Append-only: replace `[NEEDS CLARIFICATION]` with `CL-N` reference; full deliberation logged in `clarifications.md` |
 | **validate** | `/validate [spec-dir]` | Single quality gate — structural + FR coverage + CL-N references + constitution compliance |
 | **create-pr** | `/create-pr [base]` or `--update <num>` | Create/update PR with mermaid diagram; auto-detects spec directory |

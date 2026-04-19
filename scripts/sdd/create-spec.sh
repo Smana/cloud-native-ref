@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Create a new SDD spec: GitHub issue + spec directory with 3 artifact files.
 #
-# Usage: scripts/sdd/create-spec.sh <type> "<description>"
+# Usage:
+#   scripts/sdd/create-spec.sh "<description>"            # type inferred from description
+#   scripts/sdd/create-spec.sh <type> "<description>"     # explicit type override
+#
 #   <type>        composition | infrastructure | security | platform
-#   <description> Short feature description (used for title and slug)
+#                 Inferred when omitted; defaults to "platform" when no keywords match.
 #
 # Creates:
 #   docs/specs/NNN-slug/spec.md            — WHAT (contract; freeze after approval)
@@ -16,19 +19,40 @@
 #   spec_dir=docs/specs/003-valkey-caching
 #   issue_url=https://github.com/...
 #   issue_num=1312
+#   type=composition
+#   type_source=inferred|explicit
 
 set -euo pipefail
 
-TYPE="${1:?type required}"
-DESCRIPTION="${2:?description required}"
+# Infer type from description (security → composition → infrastructure → platform fallback).
+# Most-specific signals win: security beats composition because "Cilium policy for new
+# composition" is a security spec that happens to touch a composition.
+infer_type() {
+  local desc="$1"
+  if grep -qiE '\b(network[- ]?polic(y|ies)|rbac|pki|openbao|cert-manager|tls|certificate|cilium[- ]?polic(y|ies))\b' <<<"$desc"; then
+    echo security
+  elif grep -qiE '\b(kcl|composition|crossplane|xrd|epi)\b' <<<"$desc"; then
+    echo composition
+  elif grep -qiE '\b(terraform|opentofu|tofu|vpc|eks|tailscale|subnet|\.tf|node[- ]?(group|pool)|karpenter)\b' <<<"$desc"; then
+    echo infrastructure
+  else
+    echo platform
+  fi
+}
 
-case "$TYPE" in
-  composition|infrastructure|security|platform) ;;
-  *)
-    echo "error: invalid type '$TYPE' (must be composition|infrastructure|security|platform)" >&2
-    exit 2
-    ;;
-esac
+KNOWN_TYPES_RE='^(composition|infrastructure|security|platform)$'
+if [ $# -lt 1 ]; then
+  echo "error: usage: $0 [<type>] \"<description>\"" >&2
+  exit 2
+elif [[ "$1" =~ $KNOWN_TYPES_RE ]] && [ $# -ge 2 ]; then
+  TYPE="$1"
+  DESCRIPTION="$2"
+  TYPE_SOURCE="explicit"
+else
+  DESCRIPTION="$1"
+  TYPE=$(infer_type "$DESCRIPTION")
+  TYPE_SOURCE="inferred"
+fi
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -124,4 +148,6 @@ slug=${SLUG}
 spec_dir=${SPEC_DIR}
 issue_url=${ISSUE_URL}
 issue_num=${ISSUE_NUM}
+type=${TYPE}
+type_source=${TYPE_SOURCE}
 EOF

@@ -1,13 +1,13 @@
 ---
 name: spec
-description: Create a specification for non-trivial platform changes. Creates a GitHub issue anchored to a spec directory with the SDD template.
+description: Create a specification for non-trivial platform changes. Creates a GitHub issue anchored to a spec directory with the SDD template. Type is auto-inferred from the description; pass an explicit type to override.
 when_to_use: |
   When the user says "start a spec", "new spec", "design a composition",
   "new KCL module", "let's spec this out", "proposal for X",
   or asks for planning a new Crossplane composition, major infrastructure
   change, security policy change, or multi-component platform feature.
 disable-model-invocation: true
-argument-hint: '[type] "description" — types: composition | infrastructure | security | platform'
+argument-hint: '"<description>"  (or:  <type> "<description>" to override inferred type)'
 allowed-tools: Bash(./scripts/sdd/create-spec.sh:*), Bash(gh:*), Read
 ---
 
@@ -18,10 +18,10 @@ Create a lightweight specification for changes that benefit from upfront design 
 ## Usage
 
 ```
-/spec composition "Add Valkey caching"
-/spec infrastructure "Add GPU node pool"
-/spec security "Restrict egress from observability namespace"
-/spec "Description without type"   # infer type from description
+/spec "Add Valkey caching"                                    # type inferred → composition
+/spec "Restrict egress from observability namespace"          # type inferred → security
+/spec "Add GPU node pool"                                     # type inferred → infrastructure
+/spec security "Add OPA Gatekeeper for namespace isolation"   # explicit override
 ```
 
 ## When to Use
@@ -42,28 +42,35 @@ Run `/spec` for changes that warrant review *before* implementation:
 
 ## Workflow
 
-### 1. Determine type
+### 1. Run the creator script
 
-If the user omitted `<type>`, infer from the description (KCL/composition → `composition`; `.tf`/VPC/EKS → `infrastructure`; network policy/RBAC/PKI → `security`; anything cross-cutting → `platform`). Ask if genuinely ambiguous.
-
-### 2. Run the creator script
-
-The script handles numbering, slug generation, GitHub issue creation, and template instantiation:
+Pass the description as a single argument — the script infers the type. Only pass an explicit type if the user provided one, or if the inferred type is clearly wrong for the request:
 
 ```bash
-./scripts/sdd/create-spec.sh <type> "<description>"
+./scripts/sdd/create-spec.sh "<description>"            # inferred (default path)
+./scripts/sdd/create-spec.sh <type> "<description>"     # explicit override
 ```
 
-It writes a `key=value` report to stdout. Parse `spec_dir` and `issue_num` for the confirmation message.
+Inference rules (applied by the script — keep them in mind for borderline cases):
 
-### 3. Confirm to the user
+| Type | Triggers |
+|------|----------|
+| `security` | network policy, RBAC, PKI, OpenBao, cert-manager, TLS, certificate, Cilium policy |
+| `composition` | KCL, composition, Crossplane, XRD, EPI |
+| `infrastructure` | terraform, opentofu, VPC, EKS, Tailscale, subnet, `.tf`, node group, node pool, Karpenter |
+| `platform` | anything else (cross-cutting / multi-component) |
 
-Report the created artifacts and next steps:
+The script writes a `key=value` report to stdout. Parse `spec_dir`, `issue_num`, `type`, and `type_source` for the confirmation message.
+
+### 2. Confirm to the user
+
+Report the created artifacts and next steps. When `type_source=inferred`, surface the inferred type so the user can correct it if wrong:
 
 ```
 Spec created:
   Issue: <issue_url>  (label: spec:draft)
   Spec:  <spec_dir>/spec.md
+  Type:  <type>  (inferred — edit **Type**: in spec.md if wrong)
 
 Next:
   1. Fill in the spec (mark unknowns [NEEDS CLARIFICATION: ...])

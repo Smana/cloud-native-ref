@@ -21,7 +21,7 @@ Lightweight specs for non-trivial changes to the cloud-native-ref platform. Insp
 
 That's the whole user-facing contract. Auto-archive on merge takes care of the rest. Power tools (`/spec-research`, `/spec-status`, `/verify-spec`) are optional and surface when you need them — see [Power tools](#power-tools).
 
-### 1. `/spec [type] "description"`
+### 1. `/spec "description"`
 
 Creates a GitHub issue (`spec:draft` label) and a directory `docs/specs/NNN-slug/` containing **3 files**:
 
@@ -35,10 +35,13 @@ docs/specs/NNN-slug/
 **Why three files**: each artifact has a different edit cadence. The contract (`spec.md`) shouldn't move when implementation evolves; design and tasks (`plan.md`) do; deliberations (`clarifications.md`) are append-only forever.
 
 ```bash
-/spec composition "Add Valkey caching"
-/spec infrastructure "Add GPU node pool"
-/spec security "Restrict egress from observability namespace"
+/spec "Add Valkey caching"                                    # type inferred → composition
+/spec "Restrict egress from observability namespace"          # type inferred → security
+/spec "Add GPU node pool"                                     # type inferred → infrastructure
+/spec security "Add OPA Gatekeeper for namespace isolation"   # explicit override
 ```
+
+The script infers `type` from keywords (security: network policy / RBAC / PKI / OpenBao / cert-manager / TLS / Cilium policy; composition: KCL / Crossplane / XRD / EPI; infrastructure: terraform / opentofu / VPC / EKS / Tailscale / node pool / Karpenter; default: platform). The inferred type appears in the script's output as `type=...` and `type_source=inferred|explicit` — edit `**Type**:` in `spec.md` if it's wrong.
 
 ### 2. Fill the spec, mark unknowns
 

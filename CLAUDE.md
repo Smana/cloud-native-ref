@@ -156,7 +156,7 @@ Version bumps, documentation-only, single-file bug fixes, minor config changes, 
 
 | Skill | Description |
 |-------|-------------|
-| `/spec [type] "description"` | Create GitHub issue + 3-artifact spec directory (via `scripts/sdd/create-spec.sh`) |
+| `/spec "description"` | Create GitHub issue + 3-artifact spec directory (via `scripts/sdd/create-spec.sh`). Type auto-inferred; pass `<type>` before description to override |
 | `/spec-status` | Pipeline overview (counts pre-computed via `!\`cmd\`` context injection) |
 | `/clarify [spec-dir]` | Append-only: replace `[NEEDS CLARIFICATION]` markers with `CL-N` references in `clarifications.md` |
 | `/validate [spec-dir]` | Single quality gate — structural + cross-artifact + constitution compliance checks |
