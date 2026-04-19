@@ -21,76 +21,108 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Find and archive spec
-        id: archive
+      - name: Set up Python (for SUMMARY generator)
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Locate spec directory referenced by PR
+        id: locate
         run: |
-          # Extract spec directory path from PR body
-          # Matches patterns like: docs/specs/001-feature-name
-          SPEC_DIR=$(echo "${{ github.event.pull_request.body }}" | grep -oP 'docs/specs/\d+-[a-z0-9-]+' | head -1 || true)
+          # Match docs/specs/NNN-slug (case-insensitive). Skip if the PR doesn't reference one.
+          SPEC_DIR=$(echo "${{ github.event.pull_request.body }}" | grep -oE 'docs/specs/[0-9]+-[a-z0-9-]+' | head -1 || true)
 
           if [ -z "$SPEC_DIR" ]; then
-            echo "No spec directory found in PR body"
-            echo "archived=false" >> $GITHUB_OUTPUT
+            echo "No spec directory found in PR body — skipping archive."
+            echo "archive=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Found spec reference: $SPEC_DIR"
-
-          # Check if spec directory exists and is not already archived
           if [ ! -d "$SPEC_DIR" ]; then
-            echo "Spec directory does not exist: $SPEC_DIR"
-            # Check if already in done/
-            DONE_DIR="docs/specs/done/$(basename "$SPEC_DIR")"
-            if [ -d "$DONE_DIR" ]; then
-              echo "Spec already archived at: $DONE_DIR"
-            fi
-            echo "archived=false" >> $GITHUB_OUTPUT
+            echo "Spec directory $SPEC_DIR not present at HEAD — likely already archived. Skipping."
+            echo "archive=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Create done directory if it doesn't exist
-          mkdir -p docs/specs/done
-
-          # Move spec to done/
           SPEC_NAME=$(basename "$SPEC_DIR")
-          mv "$SPEC_DIR" "docs/specs/done/$SPEC_NAME"
+          # Quarterly bucket: YYYY-Qn (1..4) based on the merge timestamp.
+          MONTH=$(date -u +%-m)
+          QUARTER=$(( (MONTH - 1) / 3 + 1 ))
+          QUARTER_DIR="docs/specs/done/$(date -u +%Y)-Q${QUARTER}"
+          ARCHIVE_DIR="${QUARTER_DIR}/${SPEC_NAME}"
 
-          echo "Archived: $SPEC_DIR -> docs/specs/done/$SPEC_NAME"
-          echo "archived=true" >> $GITHUB_OUTPUT
-          echo "spec_name=$SPEC_NAME" >> $GITHUB_OUTPUT
-          echo "spec_dir=$SPEC_DIR" >> $GITHUB_OUTPUT
+          {
+            echo "archive=true"
+            echo "spec_dir=$SPEC_DIR"
+            echo "spec_name=$SPEC_NAME"
+            echo "quarter_dir=$QUARTER_DIR"
+            echo "archive_dir=$ARCHIVE_DIR"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Commit archive change
-        if: steps.archive.outputs.archived == 'true'
+      - name: Generate SUMMARY.md (in active spec, before move)
+        if: steps.locate.outputs.archive == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x scripts/sdd/generate-summary.sh
+          MERGE_SHA="${{ github.event.pull_request.merge_commit_sha }}"
+          PR_NUM="${{ github.event.pull_request.number }}"
+          BASE_SHA=$(git merge-base "$MERGE_SHA" "${{ github.event.pull_request.base.sha }}" || echo "${{ github.event.pull_request.base.sha }}")
+          ./scripts/sdd/generate-summary.sh "${{ steps.locate.outputs.spec_dir }}" "$PR_NUM" "$MERGE_SHA" "$BASE_SHA" || {
+            echo "::warning::SUMMARY generation failed; continuing without it"
+          }
+
+      - name: Move spec into quarterly archive bucket
+        if: steps.locate.outputs.archive == 'true'
+        run: |
+          mkdir -p "${{ steps.locate.outputs.quarter_dir }}"
+          # If a directory with the same slug already exists in the bucket, append the merge SHA to disambiguate.
+          if [ -d "${{ steps.locate.outputs.archive_dir }}" ]; then
+            ARCHIVE_DIR="${{ steps.locate.outputs.archive_dir }}-${{ github.event.pull_request.merge_commit_sha }}"
+            echo "Bucket already has ${{ steps.locate.outputs.spec_name }} — using $ARCHIVE_DIR"
+            git mv "${{ steps.locate.outputs.spec_dir }}" "$ARCHIVE_DIR"
+          else
+            git mv "${{ steps.locate.outputs.spec_dir }}" "${{ steps.locate.outputs.archive_dir }}"
+          fi
+
+      - name: Commit archive (SUMMARY + move)
+        if: steps.locate.outputs.archive == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add docs/specs/
-          git commit -m "chore: archive ${{ steps.archive.outputs.spec_dir }} after PR merge
+          if git diff --cached --quiet; then
+            echo "No changes to commit (already archived?)"
+            exit 0
+          fi
 
-          Automated archive triggered by PR #${{ github.event.pull_request.number }}"
+          git commit -m "chore(sdd): archive ${{ steps.locate.outputs.spec_dir }} → ${{ steps.locate.outputs.archive_dir }}
+
+          Auto-generated by spec-archive.yaml after PR #${{ github.event.pull_request.number }} merged.
+          Includes SUMMARY.md generated from PR + git metadata."
           git push
 
-      - name: Find and close linked issue
-        if: steps.archive.outputs.archived == 'true'
+      - name: Close linked issue
+        if: steps.locate.outputs.archive == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Extract issue number from PR body (patterns: #123, issues/123, Implements #123)
           ISSUE_NUM=$(echo "${{ github.event.pull_request.body }}" | grep -oP '(?:Implements |Closes |Fixes |#)\K\d+' | head -1 || true)
-
           if [ -z "$ISSUE_NUM" ]; then
-            # Try to find issue from spec directory name pattern in issues
-            SPEC_NAME="${{ steps.archive.outputs.spec_name }}"
-            ISSUE_NUM=$(gh issue list --label "spec" --json number,body --jq ".[] | select(.body | contains(\"$SPEC_NAME\")) | .number" | head -1 || true)
+            ISSUE_NUM=$(gh issue list --label "spec" --json number,body \
+              --jq ".[] | select(.body | contains(\"${{ steps.locate.outputs.spec_name }}\")) | .number" \
+              | head -1 || true)
           fi
 
           if [ -n "$ISSUE_NUM" ]; then
-            echo "Closing issue #$ISSUE_NUM"
-            COMMENT="Implemented in PR #${{ github.event.pull_request.number }}. Spec archived to docs/specs/done/${{ steps.archive.outputs.spec_name }}/"
-            gh issue close "$ISSUE_NUM" --comment "$COMMENT" --reason "completed" || echo "Could not close issue (may already be closed)"
-            gh issue edit "$ISSUE_NUM" --remove-label "spec:draft" --remove-label "spec:implementing" --add-label "spec:done" 2>/dev/null || echo "Could not update labels"
+            COMMENT="Implemented in PR #${{ github.event.pull_request.number }}. Spec archived to \`${{ steps.locate.outputs.archive_dir }}/\` (with auto-generated SUMMARY.md)."
+            gh issue close "$ISSUE_NUM" --comment "$COMMENT" --reason "completed" \
+              || echo "Could not close issue (may already be closed)"
+            gh issue edit "$ISSUE_NUM" \
+              --remove-label "spec:draft" --remove-label "spec:implementing" \
+              --add-label "spec:done" 2>/dev/null \
+              || echo "Could not update labels"
           else
             echo "No linked issue found to close"
           fi

@@ -1,123 +1,98 @@
 ---
 name: spec
-description: Create a specification for non-trivial changes. Creates GitHub issue + spec file in a dedicated directory.
+description: Create a specification for non-trivial platform changes. Creates a GitHub issue anchored to a spec directory with the SDD template. Type is auto-inferred from the description; pass an explicit type to override.
+when_to_use: |
+  When the user says "start a spec", "new spec", "design a composition",
+  "new KCL module", "let's spec this out", "proposal for X",
+  or asks for planning a new Crossplane composition, major infrastructure
+  change, security policy change, or multi-component platform feature.
 disable-model-invocation: true
-argument-hint: '[type] "description" - types: composition, infrastructure, security, platform'
-allowed-tools: Read, Write, Bash(gh:*), Glob
+argument-hint: '"<description>"  (or:  <type> "<description>" to override inferred type)'
+allowed-tools: Bash(./scripts/sdd/create-spec.sh:*), Bash(gh:*), Read
 ---
 
 # Spec Skill
 
-Create lightweight specifications for changes that benefit from upfront design.
+Create a lightweight specification for changes that benefit from upfront design review.
 
 ## Usage
 
 ```
-/spec "description"
-/spec composition "Add Valkey caching"
-/spec infrastructure "Add GPU node pool"
+/spec "Add Valkey caching"                                    # type inferred → composition
+/spec "Restrict egress from observability namespace"          # type inferred → security
+/spec "Add GPU node pool"                                     # type inferred → infrastructure
+/spec security "Add OPA Gatekeeper for namespace isolation"   # explicit override
 ```
-
-**Types** (optional): `composition` | `infrastructure` | `security` | `platform`
-
-If type is omitted, infer from description or ask.
 
 ## When to Use
 
-- New Crossplane compositions
-- Major infrastructure changes (VPC, EKS, IAM)
-- Security changes (network policies, RBAC, PKI)
+Run `/spec` for changes that warrant review *before* implementation:
+
+- New Crossplane composition (KCL module or XRD)
+- Major infrastructure (new OpenTofu stack, VPC/EKS upgrade)
+- Security changes (network policies, RBAC, PKI, secrets)
 - Multi-component platform features
 
 ## When NOT to Use
 
-- Version bumps, documentation-only, single-file bug fixes, minor config tweaks
+- Version bumps (Renovate PRs)
+- Documentation-only changes
+- Single-file bug fixes
+- HelmRelease value tweaks
 
 ## Workflow
 
-### 1. Generate Identifiers
+### 1. Run the creator script
+
+Pass the description as a single argument — the script infers the type. Only pass an explicit type if the user provided one, or if the inferred type is clearly wrong for the request:
 
 ```bash
-# Next spec number (3 digits)
-MAX_NUM=$(find docs/specs -name "spec.md" -path "*/[0-9]*" 2>/dev/null | \
-  sed 's|.*/\([0-9]*\)-.*|\1|' | sort -rn | head -1)
-SPEC_NUM=$(printf "%03d" $((10#${MAX_NUM:-0} + 1)))
-
-# Slug from description (3-4 meaningful words, kebab-case)
-# Filter stop words, take meaningful words, join with hyphens
+./scripts/sdd/create-spec.sh "<description>"            # inferred (default path)
+./scripts/sdd/create-spec.sh <type> "<description>"     # explicit override
 ```
 
-### 2. Create GitHub Issue
+Inference rules (applied by the script — keep them in mind for borderline cases):
 
-```bash
-ISSUE_URL=$(gh issue create \
-  --title "[SPEC] ${TITLE}" \
-  --label "spec,spec:draft" \
-  --body "## Summary
-${DESCRIPTION}
+| Type | Triggers |
+|------|----------|
+| `security` | network policy, RBAC, PKI, OpenBao, cert-manager, TLS, certificate, Cilium policy |
+| `composition` | KCL, composition, Crossplane, XRD, EPI |
+| `infrastructure` | terraform, opentofu, VPC, EKS, Tailscale, subnet, `.tf`, node group, node pool, Karpenter |
+| `platform` | anything else (cross-cutting / multi-component) |
 
-## Spec Directory
-\`docs/specs/${SPEC_NUM}-${SLUG}/\`
+The script writes a `key=value` report to stdout. Parse `spec_dir`, `issue_num`, `type`, and `type_source` for the confirmation message.
 
----
-_Lightweight spec. See spec file for details._")
+### 2. Confirm to the user
 
-ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oP 'issues/\K\d+$')
-```
-
-**Labels used**:
-- `spec` - All specification issues
-- `spec:draft` - Initial state (add manually: `spec:implementing` when work starts, `spec:done` when archived)
-
-### 3. Create Spec Directory and File
-
-```bash
-SPEC_DIR="docs/specs/${SPEC_NUM}-${SLUG}"
-mkdir -p "$SPEC_DIR"
-```
-
-Copy template from `docs/specs/templates/spec.md` and fill:
-- `SPEC-XXX` → `SPEC-${SPEC_NUM}`
-- `#XXX` → `#${ISSUE_NUM}`
-- `YYYY-MM-DD` → current date
-- `[Title]` → from description
-
-### 4. Link in Issue
-
-```bash
-gh issue comment ${ISSUE_NUM} --body "Spec created: [\`${SPEC_DIR}/spec.md\`](${SPEC_DIR}/spec.md)"
-```
-
-### 5. Output
+Report the created artifacts and next steps. When `type_source=inferred`, surface the inferred type so the user can correct it if wrong:
 
 ```
 Spec created:
-
-  Issue: https://github.com/Smana/cloud-native-ref/issues/XXX (label: spec:draft)
-  Spec:  docs/specs/XXX-slug/spec.md
+  Issue: <issue_url>  (label: spec:draft)
+  Spec:  <spec_dir>/spec.md
+  Type:  <type>  (inferred — edit **Type**: in spec.md if wrong)
 
 Next:
-  1. Fill in the spec (use /clarify for [NEEDS CLARIFICATION] sections)
-  2. Run /spec-status to see pipeline overview
-  3. When starting work: gh issue edit XXX --remove-label "spec:draft" --add-label "spec:implementing"
-  4. Implement the changes
-  5. Reference in PR: "Implements #XXX"
-  6. After merge: spec is auto-archived by GitHub Action
+  1. Fill in the spec (mark unknowns [NEEDS CLARIFICATION: ...])
+  2. /clarify to resolve unknowns
+  3. /validate to check completeness
+  4. Review 4-persona checklist
+  5. When starting work:
+     gh issue edit <issue_num> --remove-label spec:draft --add-label spec:implementing
+  6. Reference in PR: "Implements #<issue_num>"
+  7. Auto-archived on merge
 ```
-
-## Template Location
-
-`docs/specs/templates/spec.md` (~80 lines)
-
-## Clarifications
-
-Use `/clarify` to resolve `[NEEDS CLARIFICATION: ...]` markers with structured options, or discuss conversationally with Claude.
 
 ## Integration
 
-- `/spec` creates spec + issue with `spec:draft` label (this skill)
-- `/spec-status` shows pipeline overview (Draft/Implementing/Done counts)
-- `/clarify` resolves [NEEDS CLARIFICATION] markers with structured options
-- `/create-pr` auto-detects specs and references issue
-- `/commit` for commits
-- GitHub Action auto-archives specs on PR merge
+- `/spec-research <topic>` — optional deep research subagent (writes `research.md` alongside spec)
+- `/clarify` — resolve `[NEEDS CLARIFICATION: ...]` markers
+- `/validate` — single quality gate (structural + cross-artifact + constitution)
+- `/create-pr` — auto-detects spec directory and references issue
+- GitHub Action `spec-archive.yaml` — archives spec on merge
+
+## Files
+
+- **Script**: [`scripts/sdd/create-spec.sh`](../../../scripts/sdd/create-spec.sh)
+- **Template**: [`docs/specs/templates/spec.md`](../../../docs/specs/templates/spec.md)
+- **Constitution**: [`docs/specs/constitution.md`](../../../docs/specs/constitution.md)

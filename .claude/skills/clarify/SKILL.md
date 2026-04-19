@@ -1,186 +1,126 @@
 ---
 name: clarify
-description: Resolve [NEEDS CLARIFICATION] markers in specs with structured options
+description: Resolve [NEEDS CLARIFICATION] markers — present 2–3 structured options, append the chosen decision as a CL-N entry to clarifications.md, replace the marker in spec.md with the CL-N reference. Append-only — never overwrites prior deliberations.
+when_to_use: |
+  When the user says "clarify the spec", "resolve open questions",
+  "help me decide", "walk me through the unknowns", "let's fill in NEEDS CLARIFICATION",
+  or when a spec.md has one or more [NEEDS CLARIFICATION: ...] markers
+  the user is working through.
 disable-model-invocation: true
-argument-hint: "[spec-file] - path to spec.md, or omit for most recent"
+argument-hint: "[spec-dir|spec-file] — directory or spec.md path; omit for most-recent active spec"
 paths: "docs/specs/**"
 allowed-tools: Read, Edit, Glob
 ---
 
 # Clarify Skill
 
-Resolve `[NEEDS CLARIFICATION: ...]` markers in specification files with structured decision options.
-
-## Usage
-
-```
-/clarify                    # Clarify most recent active spec
-/clarify docs/specs/001-valkey/spec.md  # Clarify specific spec
-```
-
-## Purpose
-
-When filling out a spec, mark uncertain decisions with `[NEEDS CLARIFICATION: question?]`. This skill:
-
-1. Finds all clarification markers in the spec
-2. Presents structured options for each question
-3. Updates the spec with `[CLARIFIED: answer]` after user decision
+Walk through unresolved design questions one at a time. **Decisions are durable**: each one becomes an append-only `CL-N` entry in `clarifications.md`, and the marker in `spec.md` is replaced with a reference like `See CL-3` (never with the inline answer). Future readers can always reconstruct *why* the decision was made.
 
 ## Workflow
 
-### 1. Find Spec File
+### 1. Locate spec directory
 
-If no file specified, find the most recently modified active spec:
-
-```bash
-find docs/specs -name "spec.md" \
-  -not -path "*/done/*" \
-  -not -path "*/templates/*" \
-  -type f 2>/dev/null | \
-  xargs ls -t 2>/dev/null | head -1
-```
-
-### 2. Extract Clarification Markers
-
-Find all `[NEEDS CLARIFICATION: ...]` patterns:
+If the user gave a directory, use it. If a `spec.md` path, use its parent. Otherwise pick the most-recently-modified active spec directory:
 
 ```bash
-grep -n '\[NEEDS CLARIFICATION:' "$SPEC_FILE"
+find docs/specs -name spec.md -not -path '*/done/*' -not -path '*/templates/*' -type f \
+  | xargs ls -t 2>/dev/null | head -1 | xargs dirname
 ```
 
-Pattern: `\[NEEDS CLARIFICATION: ([^\]]+)\]`
+Required files: `spec.md`, `clarifications.md`. If `clarifications.md` is missing, copy `docs/specs/templates/clarifications.md` into the directory first.
 
-### 3. Present Structured Options
+### 2. Find the next unresolved marker
 
-For each clarification marker, generate 2-3 options based on:
-- Platform patterns (existing compositions, conventions)
-- Security implications
-- Operational considerations
-- Common industry practices
+Use Grep with `-n` for line numbers. Pattern: `\[NEEDS CLARIFICATION: ([^\]]+)\]` in `spec.md` (and optionally `plan.md`). If zero, report and exit.
 
-**Format for each question**:
+### 3. Determine the next CL-N
 
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Q1: [Question from marker]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Read existing `## CL-<N>` headings in `clarifications.md`. Next ID = max(N) + 1. If none exist yet, start at `CL-1`.
 
-  Context: [Brief analysis of the decision]
+### 4. Generate options (4-perspective framework)
 
-  | Option | Answer | Implications |
-  |--------|--------|--------------|
-  | A | [Suggestion 1] | [Trade-off/consideration] |
-  | B | [Suggestion 2] | [Trade-off/consideration] |
-  | C | Custom | User provides own answer |
+Apply the framework in [`references/decision-framework.md`](references/decision-framework.md) — security, platform engineering, SRE, product. Always 2–3 options + a recommendation tied back to the constitution / existing patterns / the relevant SC-XXX.
 
-  Recommendation: [A/B] - [Brief rationale]
-```
-
-### 4. Update Spec After User Decision
-
-Replace the marker with the clarified answer:
-
-**Before**:
-```markdown
-- [NEEDS CLARIFICATION: Should cache support cross-namespace access?]
-```
-
-**After**:
-```markdown
-- [CLARIFIED: No, cache is namespace-scoped for security isolation per zero-trust principles]
-```
-
-Use the Edit tool to make this replacement.
-
-## Option Generation Guidelines
-
-When generating options, consider:
-
-### Security Perspective
-- Zero-trust networking (default deny, explicit allow)
-- Least privilege (minimal permissions)
-- Secrets management (External Secrets, not hardcoded)
-- Network policies (CiliumNetworkPolicy)
-
-### Platform Engineering Perspective
-- Consistency with existing compositions (App, SQLInstance)
-- Resource naming conventions (`xplane-*` prefix)
-- API design patterns
-- KCL best practices (no mutation pattern)
-
-### SRE Perspective
-- Health checks and observability
-- Resource limits and scaling
-- Failure modes and recovery
-- Operational complexity
-
-### PM Perspective
-- User experience simplicity
-- Progressive disclosure (simple defaults, advanced options)
-- Scope management
-
-## Example Session
-
-**Input spec has**:
-```markdown
-- [NEEDS CLARIFICATION: What should be the default eviction policy for cache?]
-- [NEEDS CLARIFICATION: Should high availability be mandatory or optional?]
-```
-
-**Skill presents**:
+Present in this fixed format:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Q1: What should be the default eviction policy for cache?
+  CL-<N>: <verbatim question from marker>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Context: Eviction policy determines what happens when cache
-  memory is full. Common policies: LRU (Least Recently Used),
-  LFU (Least Frequently Used), TTL-based.
+  Context: <2–3 sentences>
 
-  | Option | Answer | Implications |
-  |--------|--------|--------------|
-  | A | LRU (allkeys-lru) | Best for general use, predictable behavior |
-  | B | volatile-lru | Only evicts keys with TTL set, safer for persistent data |
-  | C | Custom | Specify your own policy |
+  | Option | Answer | Pros | Cons |
+  |--------|--------|------|------|
+  | A      | <ans>  | <p>  | <c>  |
+  | B      | <ans>  | <p>  | <c>  |
+  | C      | Custom | (user supplies) | — |
 
-  Recommendation: A - LRU is the most common default, works well
-  for caching scenarios, and is well-understood by operators.
+  Recommendation: <A/B> — <one-line rationale>
 
 Your choice (A/B/C or custom answer): _
 ```
 
-**User responds**: "A"
+A worked example lives in [`examples/clarification-session.md`](examples/clarification-session.md).
 
-**Skill updates spec**:
+### 5. Persist the decision (two writes)
+
+**(a) Append to `clarifications.md`** — new section at end of file, never edit prior entries:
+
 ```markdown
-- [CLARIFIED: LRU (allkeys-lru) - Best for general use, predictable eviction behavior]
+## CL-<N> — <YYYY-MM-DD> — <one-line question>
+
+**Asked by**: <role / "Spec author">
+**Context**: <text from step 4>
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | <answer> | <pros> | <cons> |
+| B | <answer> | <pros> | <cons> |
+| C | <answer> | <pros> | <cons> |
+
+**Decision**: <Option letter + answer text>
+**Rationale**: <why — tie to constitution / existing pattern / SC-XXX>
+**Decided by**: <user input via /clarify, YYYY-MM-DD>
+**References**: <ADR / vendor doc / similar spec>
 ```
 
-## Handling Multiple Clarifications
-
-Process clarifications one at a time to maintain focus. After each:
-1. Update the spec file
-2. Move to next clarification
-3. Report progress: "Resolved 2/3 clarifications"
-
-## When All Resolved
+**(b) Replace the marker in `spec.md`** with a reference:
 
 ```
-All clarifications resolved in docs/specs/001-valkey/spec.md
-
-Summary of decisions:
-  1. Eviction policy: LRU (allkeys-lru)
-  2. High availability: Optional, enabled via ha: true
-
-Next steps:
-  - Run ./scripts/validate-spec.sh to verify spec completeness
-  - Complete Review Checklist (4 personas)
-  - Begin implementation
+Before: - [ ] [NEEDS CLARIFICATION: <question>]
+After:  - [x] CL-<N> — <one-line question>
 ```
 
-## Related Skills
+The "Resolved questions" list at the bottom of `spec.md` should also be updated to include the new `CL-<N> — <summary>` line.
 
-- `/spec` - Create new specification
-- `/spec-status` - View pipeline overview
-- `/create-pr` - Create PR when implementation complete
+### 6. Continue and report
+
+After each resolution, print `Resolved <N>/<M>`. When all done:
+
+```
+All clarifications resolved in <spec_dir>.
+
+Decisions logged:
+  CL-1: <topic> → <answer>
+  CL-2: <topic> → <answer>
+  ...
+
+Next:
+  - Complete the 4-persona review checklist in plan.md
+  - Run /validate (single quality gate — structural + cross-artifact + constitution)
+```
+
+## Anti-patterns
+
+- ❌ Inline `[CLARIFIED: ...]` in `spec.md`. Decisions belong in `clarifications.md`.
+- ❌ Overwriting an earlier `CL-N` entry. If the decision changed, append a new `CL-M` that references and supersedes it.
+- ❌ Recommending without applying the 4-perspective framework.
+
+## Related skills
+
+- `/spec` — creates the directory + 3 artifacts including `clarifications.md`
+- `/spec-research` — pre-deliberation research that might surface canonical answers
+- `/validate` — checks spec.md / plan.md / clarifications.md together (structural + cross-artifact)

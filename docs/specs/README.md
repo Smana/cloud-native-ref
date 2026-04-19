@@ -1,280 +1,166 @@
 # Spec-Driven Development (SDD)
 
-Specifications for non-trivial changes to the cloud-native-ref platform.
+Lightweight specs for non-trivial changes to the cloud-native-ref platform. Inspired by [GitHub Spec Kit](https://github.com/github/spec-kit).
 
-## Overview
+## When to write a spec
 
-SDD ensures thoughtful planning before implementation, reducing rework and catching design issues early. Inspired by [GitHub Spec Kit](https://github.com/github/spec-kit), our workflow balances rigor with simplicity:
-
-```
-/spec → /spec-status → /clarify → /validate → Implement → /create-pr → Archive
-```
-
-**Key Documents**:
-- [Platform Constitution](./constitution.md) - Non-negotiable principles all specs must follow
-- [Architecture Decision Records](../decisions/) - Cross-cutting technology decisions
-
-## When to Create a Spec
-
-Run `/spec` when making:
-
-| Change Type | Examples |
+| Change type | Examples |
 |-------------|----------|
 | **composition** | New KCL module, new XRD, Crossplane patterns |
 | **infrastructure** | New OpenTofu stack, VPC changes, EKS upgrades |
 | **security** | Network policies, RBAC, PKI, secrets management |
-| **platform** | Multi-component features, observability, GitOps changes |
+| **platform** | Multi-component features, observability, GitOps |
 
-## When to Skip Specs
+**Skip** for: version bumps, docs-only changes, single-file bug fixes, HelmRelease value tweaks.
 
-- Version bumps (Renovate PRs)
-- Documentation-only changes
-- Single-file bug fixes
-- Minor configuration tweaks
-- HelmRelease value changes
-
-## Workflow
+## Core workflow — 4 commands
 
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   /spec     │───▶│  Fill spec  │───▶│   Review    │───▶│  Implement  │───▶│ /create-pr  │
-│             │    │             │    │             │    │             │    │             │
-│ Creates:    │    │ Complete:   │    │ 4 personas: │    │ Check off   │    │ References  │
-│ - GH Issue  │    │ - Stories   │    │ - PM        │    │ tasks as    │    │ spec issue  │
-│ - spec.md   │    │ - Design    │    │ - Platform  │    │ you go      │    │             │
-│             │    │ - Tasks     │    │ - Security  │    │             │    │             │
-│             │    │             │    │ - SRE       │    │             │    │             │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+/spec  →  /clarify  →  /validate  →  /create-pr
 ```
 
-### Step 1: Create Specification
+That's the whole user-facing contract. Auto-archive on merge takes care of the rest. Power tools (`/spec-research`, `/spec-status`, `/verify-spec`) are optional and surface when you need them — see [Power tools](#power-tools).
+
+### 1. `/spec "description"`
+
+Creates a GitHub issue (`spec:draft` label) and a directory `docs/specs/NNN-slug/` containing **3 files**:
+
+```
+docs/specs/NNN-slug/
+├── spec.md            ← WHAT — requirements, user stories, FR-XXX, SC-XXX. Frozen after approval.
+├── plan.md            ← HOW — design, tasks (T001+), 4-persona review checklist. May evolve.
+└── clarifications.md  ← Append-only decision log (CL-1, CL-2, …). Never overwritten.
+```
+
+**Why three files**: each artifact has a different edit cadence. The contract (`spec.md`) shouldn't move when implementation evolves; design and tasks (`plan.md`) do; deliberations (`clarifications.md`) are append-only forever.
 
 ```bash
-/spec "Add Valkey caching composition"
-/spec composition "Add queue composition for Kafka/SQS"
+/spec "Add Valkey caching"                                    # type inferred → composition
+/spec "Restrict egress from observability namespace"          # type inferred → security
+/spec "Add GPU node pool"                                     # type inferred → infrastructure
+/spec security "Add OPA Gatekeeper for namespace isolation"   # explicit override
 ```
 
-**Creates**:
-- GitHub Issue `#XXX` (anchor for discussion)
-- `docs/specs/001-valkey-caching/spec.md` (the spec)
+The script infers `type` from keywords (security: network policy / RBAC / PKI / OpenBao / cert-manager / TLS / Cilium policy; composition: KCL / Crossplane / XRD / EPI; infrastructure: terraform / opentofu / VPC / EKS / Tailscale / node pool / Karpenter; default: platform). The inferred type appears in the script's output as `type=...` and `type_source=inferred|explicit` — edit `**Type**:` in `spec.md` if it's wrong.
 
-### Step 2: Fill in the Spec
+### 2. Fill the spec, mark unknowns
 
-Edit the generated `spec.md`:
+In `spec.md`: summary, problem, user stories with Gherkin scenarios, FR-XXX requirements, SC-XXX (falsifiable!) success criteria. Mark unknowns with `[NEEDS CLARIFICATION: ...]`.
 
-1. **Summary**: 1-2 sentences
-2. **Problem**: Who has this problem? Why now?
-3. **User Stories**: With Gherkin acceptance scenarios
-4. **Requirements**: FR-001 (MUST), FR-002 (SHOULD)
-5. **Success Criteria**: Measurable outcomes
-6. **Design**: API, resources created, dependencies
-7. **Tasks**: Phased checklist
-8. **Clarifications**: Mark unclear items with `[NEEDS CLARIFICATION: ...]`
+In `plan.md`: design (XRD, generated resources, dependencies), `T001+` tasks, 4-persona review checklist (PM / Platform / Security / SRE).
 
-### Step 3: Review with 4 Personas
+### 3. `/clarify`
 
-Before implementation, self-review the spec from each perspective:
+For each `[NEEDS CLARIFICATION: ...]` marker, presents 2–3 structured options. On answer:
+- Appends a `## CL-N` entry to `clarifications.md` (options + decision + rationale + references — durable forever)
+- Replaces the marker in `spec.md` with `CL-N — <one-line summary>` (a reference, not the answer)
 
-| Persona | Focus Areas |
-|---------|-------------|
-| **Project Manager** | Problem clarity, user stories, acceptance criteria, scope |
-| **Platform Engineer** | Design patterns, API consistency, KCL patterns, examples |
-| **Security & Compliance** | Zero-trust, least privilege, secrets, network policies |
-| **SRE** | Health checks, observability, resource limits, failure modes |
+Six months later, "why did we pick option A?" always has an answer.
 
-### Step 4: Resolve Clarifications
+### 4. `/validate`
 
-Discuss `[NEEDS CLARIFICATION]` markers conversationally with Claude:
-- "What should be the default eviction policy?"
-- Claude helps analyze options
-- Update spec with `[CLARIFIED: answer]`
+Single quality gate. Runs `scripts/validate-spec.sh` plus semantic cross-artifact rules. Catches:
 
-### Step 5: Implement
+- Missing sections, placeholders, FR/SC counts
+- FR-XXX with no implementing task (coverage gap)
+- Vague adjectives in success criteria (`fast`, `scalable`, ...)
+- Stale `CL-N` references
+- Constitution violations (resource naming, KCL mutation, missing security context, hardcoded credentials, IRSA mention)
 
-Work through the phased tasks in `spec.md`:
-- Check off tasks as completed
-- Verify success criteria are met
+**Verdict**: BLOCK / PASS WITH WARNINGS / PASS. Fix BLOCK-level findings before implementing.
 
-### Step 6: Create PR
+### 5. Implement
 
-```bash
-/create-pr
-```
+Work through the `T001+` tasks in `plan.md`. The `crossplane-validator` skill auto-runs for KCL changes. The `.claude/rules/spec-constitution.md` rules auto-load when editing infra / security / spec files.
 
-Auto-references the spec: "Implements #XXX"
+### 6. `/create-pr`
 
-### Step 7: Archive
+Auto-detects the spec directory in the diff, references the issue (`Implements #XXX`), generates a PR body with mermaid diagram and file table.
 
-After PR merge, the spec is **automatically archived** by the GitHub Action:
-- Spec moved to `docs/specs/done/`
-- Issue closed with `spec:done` label
+### Auto-archive on merge
 
-**Manual archive** (if needed):
-```bash
-mv docs/specs/001-valkey-caching docs/specs/done/
-gh issue close XXX --comment "Implemented in PR #YYY"
-gh issue edit XXX --add-label "spec:done"
-```
+`.github/workflows/spec-archive.yaml`:
+1. Generates `SUMMARY.md` (commits, file diffstat, SC snapshot, deviations).
+2. Moves the directory to `docs/specs/done/YYYY-Qn/NNN-slug/`.
+3. Closes the linked issue with `spec:done` label.
 
-## Directory Structure
+## Spec template structure
 
-```
-docs/specs/
-├── README.md              # This file
-├── constitution.md        # Platform-wide principles
-├── templates/
-│   └── spec.md            # Template (~170 lines)
-├── 001-feature-name/      # Active specs (directory per spec)
-│   └── spec.md
-└── done/                  # Archived specs
-    └── 001-feature-name/
-        └── spec.md
-```
+| File | Sections | Cadence |
+|------|----------|---------|
+| `spec.md` | Metadata, Summary, Problem, User Stories (Gherkin), Requirements (FR-XXX), Success Criteria (SC-XXX, falsifiable), Open questions, References | **Frozen after approval** |
+| `plan.md` | Design, Implementation Notes, **Tasks (T001+)**, **Review Checklist (4 personas)**, References | Evolves with implementation |
+| `clarifications.md` | Append-only `## CL-N` entries (options + decision + rationale + references) | Append-only — never edited |
+| `SUMMARY.md` (post-merge) | Auto-generated: commits, files, SC snapshot, deviations | Written once on merge |
 
-**Directory format**: `NNN-slug/` where:
-- `NNN` = Sequential spec number (001, 002, ...)
-- `slug` = Semantic description (kebab-case)
+Templates: [`docs/specs/templates/`](templates/).
 
-## Spec Structure
+### Falsifiable success criteria
 
-Every spec includes:
+Avoid vague: ❌ "fast", "scalable", "secure"
+Prefer measurable: ✅ "p95 latency < 100 ms", "sustains 10k req/s", "Polaris ≥ 85", "Crossplane XR Ready=True within 60s"
 
-### Core Sections
-1. **Metadata**: ID, issue link, status, type, date
-2. **Summary**: 1-2 sentences
-3. **Problem**: Who, what, why now
-4. **User Stories**: Role, capability, benefit + Gherkin acceptance scenarios
-5. **Requirements**: FR-XXX (MUST/SHOULD) + Non-goals
-6. **Success Criteria**: SC-XXX measurable outcomes
+### 4-persona review (in `plan.md`)
 
-### Design Sections
-7. **API/Interface**: Example YAML
-8. **Resources Created**: Table with conditions
-9. **Dependencies**: Prerequisites checklist
+| Persona | Focus |
+|---------|-------|
+| **PM** | Problem clarity, user-story testability, scope, measurable SCs |
+| **Platform Engineer** | Existing patterns (App, SQLInstance, EPI), `xplane-*` naming, KCL no-mutation, examples |
+| **Security & Compliance** | CiliumNetworkPolicy, least-privilege RBAC, External Secrets, security context, IAM scoping |
+| **SRE** | Health probes, observability (VictoriaMetrics/Logs), resource limits, failure modes |
 
-### Execution Sections
-10. **Tasks**: Phased checklist (Prerequisites → Implementation → Validation)
-11. **Validation**: Verification steps
-12. **Review Checklist**: 4 persona checklists
+### Clarifications — append-only
 
-### Resolution Sections
-13. **Clarifications**: `[NEEDS CLARIFICATION]` / `[CLARIFIED]` markers
-14. **References**: Constitution, similar specs, ADRs
-
-## User Stories (Gherkin-style)
+Marker → reference, full decision in `clarifications.md`:
 
 ```markdown
-### US-1: Deploy Cached Application (Priority: P1)
+# In spec.md, before /clarify:
+- [ ] [NEEDS CLARIFICATION: Should cache support cross-namespace access?]
 
-As a **developer**, I want to deploy an app with managed caching,
-so that I can improve response times without managing Redis myself.
+# After /clarify:
+- [x] CL-3 — Cross-namespace cache access?
 
-**Acceptance Scenarios**:
-1. **Given** an App claim with `cache.enabled: true`,
-   **When** the composition reconciles,
-   **Then** a Valkey instance is created in the same namespace
-2. **Given** a Valkey instance is ready,
-   **When** the app starts,
-   **Then** the CACHE_URL environment variable is injected
+# clarifications.md (the durable record):
+## CL-3 — 2026-04-18 — Should cache support cross-namespace access?
+**Options considered**: A) namespace-scoped only  B) explicit allow-list
+**Decision**: A — namespace-scoped only
+**Rationale**: matches zero-trust default; cross-ns can be added later without breaking existing consumers
+**References**: constitution.md → "zero-trust networking"
 ```
 
-## Review Personas
+## GitHub issue labels
 
-### Project Manager (PM)
-- Problem statement is clear and specific
-- User stories capture real user needs
-- Acceptance scenarios are testable
-- Scope is well-defined (goals AND non-goals)
-- Success criteria are measurable
+| Label | Transition |
+|-------|------------|
+| `spec:draft` | Auto-added by `/spec` |
+| `spec:implementing` | Manual: `gh issue edit XXX --remove-label spec:draft --add-label spec:implementing` |
+| `spec:done` | Auto-added by archive workflow on merge |
 
-### Platform Engineer
-- Design follows existing patterns (App, SQLInstance as references)
-- API is consistent with other compositions
-- Resource naming follows `xplane-*` convention
-- KCL avoids mutation pattern (issue #285)
-- Examples provided (basic + complete)
-
-### Security & Compliance
-- Zero-trust networking (CiliumNetworkPolicy defined)
-- Least-privilege RBAC
-- Secrets via External Secrets (no hardcoded credentials)
-- Security context enforced (non-root, read-only FS where possible)
-- IAM policies scoped to `xplane-*` resources (if AWS)
-
-### SRE
-- Health checks defined (liveness, readiness probes)
-- Observability configured (metrics, logs)
-- Resource limits appropriate
-- Failure modes documented
-- Recovery/rollback path clear
-
-## Clarification Markers
-
-Use `[NEEDS CLARIFICATION: ...]` for unresolved questions:
-
-```markdown
-- [NEEDS CLARIFICATION: Should cache support cross-namespace access?]
-```
-
-After discussing with Claude or stakeholders:
-
-```markdown
-- [CLARIFIED: No, cache is namespace-scoped for security isolation]
-```
-
-## Integration with Claude Code Skills
-
-| Skill | Description |
-|-------|-------------|
-| `/spec [type] "description"` | Creates GitHub issue + spec directory with `spec:draft` label |
-| `/spec-status` | Shows pipeline overview (Draft/Implementing/Done counts, stale specs) |
-| `/clarify` | Resolves `[NEEDS CLARIFICATION]` markers with structured options |
-| `/validate` | Validates spec completeness with actionable suggestions |
-| `/create-pr` | Auto-detects specs and references issue |
-| `/commit` | Commit workflow with pre-commit validation |
-
-See [`.claude/skills/README.md`](../../.claude/skills/README.md) for the complete skills reference.
-
-## GitHub Issue Labels
-
-Spec issues use labels to track status through the pipeline:
-
-| Label | Description | Transition |
-|-------|-------------|------------|
-| `spec:draft` | Initial state, spec is being filled out | Auto-added by `/spec` |
-| `spec:implementing` | Work has started | Manual: `gh issue edit XXX --remove-label "spec:draft" --add-label "spec:implementing"` |
-| `spec:done` | Spec archived after PR merge | Auto-added by GitHub Action |
-
-**View specs by status**:
 ```bash
 gh issue list --label "spec:draft"        # Specs needing work
 gh issue list --label "spec:implementing" # Specs in progress
 gh issue list --label "spec:done"         # Completed specs
 ```
 
-## Auto-Archive on PR Merge
+## Power tools (optional)
 
-When a PR referencing a spec is merged to `main`, the GitHub Action automatically:
+You don't need these for the common case. They're here when:
 
-1. Detects spec directory in PR body (e.g., `docs/specs/001-feature-name`)
-2. Moves the spec to `docs/specs/done/`
-3. Closes the linked GitHub issue with `spec:done` label
-4. Commits the archive change
+| Skill | When you reach for it |
+|-------|----------------------|
+| `/spec-research <slug> "<question>"` | Before filling a spec, you want a fresh ecosystem scan (Context7 + repo) without burning main context |
+| `/spec-status` | "Where are we with all the in-flight specs?" — pipeline overview with stale-detection |
+| `/verify-spec <spec-dir>` | Post-merge: prove every SC-XXX is met against the live cluster (uses Flux + VictoriaMetrics + VictoriaLogs MCPs); writes `VERIFICATION.md` |
 
-**For this to work**, ensure your PR body contains the spec directory path. The `/create-pr` skill handles this automatically.
+For features that span multiple PRs, see [`PHASED.md`](PHASED.md). Use sparingly.
 
-## Platform Constitution
+## Constitution
 
-All specs must comply with the [Platform Constitution](./constitution.md). Key principles:
-
-- Resource naming: `xplane-*` prefix
-- KCL: No mutation after creation (issue #285)
-- Security: Zero-trust, least privilege, External Secrets
-- IAM: EKS Pod Identity, scoped to `xplane-*` resources
-- Validation: Polaris 85+, kube-linter, Datree
+[`docs/specs/constitution.md`](constitution.md) defines non-negotiable platform rules (`xplane-*` naming, KCL no-mutation, zero-trust, EKS Pod Identity, etc.). The path-scoped [`.claude/rules/spec-constitution.md`](../../.claude/rules/spec-constitution.md) auto-loads these whenever Claude is editing infrastructure / security / spec files.
 
 ## Related
 
-- [Platform Constitution](./constitution.md) - Non-negotiable platform principles
-- [Architecture Decision Records](../decisions/) - Cross-cutting technology choices
-- [Crossplane Documentation](../crossplane.md) - Composition patterns
+- [Platform Constitution](constitution.md)
+- [Phased specs](PHASED.md)
+- [Architecture Decision Records](../decisions/)
+- [Skills reference](../../.claude/skills/README.md)

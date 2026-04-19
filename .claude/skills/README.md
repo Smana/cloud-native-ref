@@ -2,13 +2,29 @@
 
 Custom skills for platform engineering workflows.
 
-## Quick Start
+## Quick Start — core SDD flow (4 commands)
 
 ```bash
-/spec composition "Add Redis caching"   # Create spec + GitHub issue
-/commit                                  # Validate + commit changes
-/create-pr                               # Create PR with description
-/gitops-cluster-debug                    # Troubleshoot Flux issues
+/spec "Add Redis caching"                # Create spec + GitHub issue (type inferred)
+/clarify                                 # Resolve [NEEDS CLARIFICATION] → CL-N entries
+/validate                                # Single quality gate (structural + cross-artifact)
+/create-pr                               # Open PR (auto-detects spec directory)
+```
+
+Power tools (optional):
+
+```bash
+/spec-research <slug> "<question>"        # Deep ecosystem scan in forked subagent → research.md
+/spec-status                              # Pipeline overview with dynamic context
+/verify-spec <spec-dir>                   # Post-merge: prove SC-XXX against the live cluster
+```
+
+Other workflows:
+
+```bash
+/commit                                   # Pre-commit validate + conventional commit
+/improve-pr <pr-number>                   # Security review + code improvements
+/gitops-cluster-debug                     # Troubleshoot Flux issues
 ```
 
 ## Available Skills
@@ -17,14 +33,20 @@ Custom skills for platform engineering workflows.
 
 | Skill | Usage | Description |
 |-------|-------|-------------|
-| **spec** | `/spec [type] "description"` | Create GitHub issue + spec directory with `spec:draft` label |
-| **spec-status** | `/spec-status` | Show pipeline overview (Draft/Implementing/Done counts) |
-| **clarify** | `/clarify [spec-file]` | Resolve `[NEEDS CLARIFICATION]` markers with structured options |
-| **validate** | `/validate [spec-file]` | Validate spec completeness with actionable suggestions |
+| **spec** | `/spec "description"` (or `<type> "description"` to override) | Create GitHub issue + 3-artifact spec directory (`spec.md` + `plan.md` + `clarifications.md`) via `scripts/sdd/create-spec.sh`. Type is auto-inferred from the description |
+| **clarify** | `/clarify [spec-dir]` | Append-only: replace `[NEEDS CLARIFICATION]` with `CL-N` reference; full deliberation logged in `clarifications.md` |
+| **validate** | `/validate [spec-dir]` | Single quality gate — structural + FR coverage + CL-N references + constitution compliance |
+| **create-pr** | `/create-pr [base]` or `--update <num>` | Create/update PR with mermaid diagram; auto-detects spec directory |
 
-**Workflow**: `/spec` -> `/spec-status` -> `/clarify` -> `/validate` -> Implement -> `/create-pr` -> Auto-archive
+**Power tools** (optional, surface when needed):
 
-For complete SDD documentation, see [`docs/specs/README.md`](../../docs/specs/README.md).
+| Skill | Usage | Description |
+|-------|-------|-------------|
+| **spec-research** | `/spec-research <slug> "<question>"` | Forked Explore subagent: Context7 + repo scan → writes `research.md` (without burning main context) |
+| **spec-status** | `/spec-status` | Pipeline overview with `!\`cmd\`` dynamic context (counts computed before Claude reads) |
+| **verify-spec** | `/verify-spec <spec-dir>` | Post-merge: check SC-XXX against live cluster via Flux + VictoriaMetrics MCPs, write `VERIFICATION.md` |
+
+For complete SDD documentation see [`docs/specs/README.md`](../../docs/specs/README.md). The platform constitution is auto-loaded from [`.claude/rules/spec-constitution.md`](../rules/spec-constitution.md) when editing infra/security/spec files.
 
 ### Git & PR Workflows
 

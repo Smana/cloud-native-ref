@@ -1,201 +1,114 @@
 ---
 name: create-pr
-description: Create or update Pull Requests with AI-generated descriptions, mermaid diagrams, and file walkthroughs. Integrates with SDD specs. Use --update flag to modify existing PRs.
+description: Create or update a Pull Request with AI-generated description, mermaid diagram, file walkthrough, and automatic SDD spec detection. Uses templates/pr-body.md for structure.
+when_to_use: |
+  When the user says "open a PR", "create pull request", "push this as a PR",
+  "open PR against main", "update my PR description", "--update <number>",
+  or wants to ship a completed feature branch with a rich description.
 disable-model-invocation: true
-argument-hint: "[base-branch] or --update <pr-number>"
-allowed-tools: Bash(git:*), Bash(gh:*)
+argument-hint: "[base-branch] | --update <pr-number>"
+allowed-tools: Bash(git:*), Bash(gh:*), Read
 ---
 
 # Create PR Skill
 
-Generate and create/update a comprehensive PR with description, diagram, and file walkthrough.
+Generate and create/update a comprehensive PR using the shared body template.
 
-## Usage
+## Mode detection
 
-```
-/create-pr [base-branch]       # Create new PR (default: main)
-/create-pr --update <number>   # Update existing PR description
-```
+Parse `$ARGUMENTS`:
+- Starts with `--update` or `-u` followed by a number → **Update Mode** on that PR.
+- Anything else → **Create Mode** (argument is the base branch; default `main`).
 
-## Mode Detection
+## Create Mode
 
-Parse arguments to determine mode:
-- If `--update` or `-u` followed by a number → **Update Mode**
-- Otherwise → **Create Mode** (argument is base branch, default: main)
+### 1. Gather diff information (parallel)
 
-## Workflow
-
-### Create Mode
-
-#### Step 1: Gather Information
-
-Run in parallel:
 ```bash
-git log origin/$BASE..HEAD --oneline
-git diff origin/$BASE...HEAD --stat
-git diff origin/$BASE...HEAD
+git log origin/${BASE:-main}..HEAD --oneline
+git diff origin/${BASE:-main}...HEAD --stat
+git diff origin/${BASE:-main}...HEAD
 ```
 
-#### Step 2: Detect Spec (SDD Integration)
+### 2. Detect spec context
 
-Check for spec-requiring changes:
-```bash
-CHANGED_PATHS=$(git diff origin/$BASE...HEAD --name-only)
-```
+Changed paths → spec type:
 
-| Pattern | Spec Type |
-|---------|-----------|
-| `kcl/**/*.k`, `*-composition.yaml` | composition |
+| Path pattern | Spec type |
+|---|---|
+| `infrastructure/base/crossplane/configuration/kcl/**/*.k`, `*-composition.yaml` | composition |
 | `opentofu/**/*.tf`, `terramate.tm.hcl` | infrastructure |
-| `*networkpolicy*`, `*rbac*`, `openbao/**` | security |
-| Multiple directories + HelmRelease | platform |
+| `*networkpolicy*`, `*rbac*`, `openbao/**`, `*cilium*policy*` | security |
+| Multiple top-level dirs + HelmRelease/Kustomization | platform |
 
-Search for existing spec:
-```bash
-SPEC_FILE=$(ls -1 docs/specs/active/*.md 2>/dev/null | head -1)
-```
-
-#### Step 3: Generate Description
-
-Include:
-- **Type**: feat/fix/docs/refactor/perf/test/chore/ci/security
-- **Summary**: 1-2 sentences
-- **Key changes**: 3 bullet points (max 10 words each)
-- **Mermaid flowchart**: LR format, 5-7 nodes max
-- **File table**: Max 10 files, grouped
-- **Detailed changes**: Collapsible section
-- **Labels**: Suggested labels
-
-#### Step 4: Create PR
+Find the spec directory for these changes (if one exists). The repo uses the 3-artifact structure (`spec.md`, `plan.md`, `clarifications.md`) so any of those files in the diff signals a spec:
 
 ```bash
-git push -u origin $(git branch --show-current)
-gh pr create --base ${BASE:-main} --title "..." --body "..."
+git diff origin/${BASE:-main}...HEAD --name-only \
+  | grep -oE 'docs/specs/[0-9]+-[a-z0-9-]+' | sort -u | head -1
 ```
 
-#### Step 5: Output
+For each detected spec directory, also note which artifacts changed (`spec.md` / `plan.md` / `clarifications.md`). Include them as bullet points under the **Specification** block:
 
-Return PR URL only.
-
----
-
-### Update Mode
-
-#### Step 1: Fetch PR Information
-
-Run in parallel:
-```bash
-gh pr view $PR_NUMBER --json number,title,files,additions,deletions,baseRefName
-gh pr diff $PR_NUMBER
 ```
-
-#### Step 2: Generate Description
-
-Same format as create mode (see PR Template below).
-
-#### Step 3: Update PR
-
-```bash
-gh pr edit $PR_NUMBER --body "..."
-```
-
-#### Step 4: Output
-
-Return "Updated PR #X" with URL.
-
----
-
-## PR Template
-
-```markdown
-## 🔍 [type]
-
-## 📝 Summary
-[1-2 sentences max]
-
-## 📋 Specification
-[If spec exists: link to spec file and issue]
-[If no spec but recommended: warning with detected type]
-
-## 🎯 Changes
-- Change 1 (concise)
-- Change 2 (concise)
-- Change 3 (concise)
-
-## 📊 Flow
-```mermaid
-flowchart LR
-    comp1["Component"]
-    comp2["Service"]:::new
-    comp1 --> comp2
-    classDef new fill:#1e3a8a,stroke:#3b82f6,stroke-width:3px,color:#fff
-```
-
-## 🗂️ Files
-| File | Type | Summary |
-|------|------|---------|
-[max 10 rows]
-
-<details><summary>Details</summary>
-
-### file
-- brief changes
-
-</details>
-
-## 🏷️ Labels
-[labels]
-```
-
-## Spec Integration
-
-### If Spec Exists
-
-Add after Summary:
-```markdown
 ## 📋 Specification
 
-This PR implements: [docs/specs/active/XXXX-name.md](link)
+Implements [#<issue>](../issues/<issue>) — see [`<spec-dir>/`](../blob/main/<spec-dir>/).
 
-**Spec Status**: [Draft|In Review|Approved]
+Artifacts touched in this PR:
+- `spec.md` (contract — should usually be unchanged after approval)
+- `plan.md` (design + tasks + review checklist)
+- `clarifications.md` (CL-N entries appended)
 ```
 
-### If No Spec But Recommended
+If `spec.md` itself changed in a non-frozen way (i.e., this PR isn't the spec-creation PR), surface a warning — modifying the contract mid-implementation usually indicates scope creep that should be a follow-up spec.
 
-Add warning after Summary:
-```markdown
-## ⚠️ Spec Recommendation
+If changes look spec-worthy but no spec directory exists, include the **Spec Recommendation** warning block from the template.
 
-This PR contains changes that may benefit from a formal specification:
-- **Detected type**: [composition|infrastructure|security|platform]
-- **Affected paths**: [key paths]
+### 3. Render the PR body
 
-Consider running `/specify [type]` before implementation to ensure thorough planning.
+Fill the template in [`templates/pr-body.md`](templates/pr-body.md). Apply the mermaid styling from [`references/mermaid-styles.md`](references/mermaid-styles.md). Keep title < 70 chars. Drop sections that do not apply (no empty stubs).
+
+### 4. Create the PR
+
+```bash
+git push -u origin "$(git branch --show-current)"
+gh pr create --base "${BASE:-main}" --title "<title>" --body "$BODY"
 ```
 
-Skip warning for trivial changes (docs only, single config file, version bumps).
+### 5. Output
 
-## Mermaid Styling
+Return only the PR URL.
 
-```mermaid
-flowchart LR
-    comp1["Component"]
-    comp2["New"]:::new
-    comp3["Modified"]:::modified
-    comp1 --> comp2 --> comp3
-    classDef new fill:#1e3a8a,stroke:#3b82f6,stroke-width:3px,color:#fff
-    classDef modified fill:#c2410c,stroke:#f97316,stroke-width:3px,color:#fff
+## Update Mode
+
+```bash
+gh pr view "$PR_NUMBER" --json number,title,files,additions,deletions,baseRefName,body
+gh pr diff "$PR_NUMBER"
 ```
 
-- **New**: `fill:#1e3a8a,stroke:#3b82f6,stroke-width:3px,color:#fff`
-- **Modified**: `fill:#c2410c,stroke:#f97316,stroke-width:3px,color:#fff`
-- **Removed**: `fill:#991b1b,stroke:#dc2626,stroke-width:3px,color:#fff,stroke-dasharray:5 5`
+Generate a fresh body using the same template. Update:
 
-## Best Practices
+```bash
+gh pr edit "$PR_NUMBER" --body "$BODY"
+```
 
-- Keep diagrams simple (max 8-10 nodes)
-- Use descriptive node IDs (camelCase)
-- Always quote node descriptions
-- Show data flow or component interaction
-- Label all arrows clearly
-- Group similar file changes in the table
+Return `Updated PR #<N>: <url>`.
+
+## Content rules
+
+- Title: conventional prefix (`feat(crossplane): ...`), under 70 chars.
+- Summary: WHY, not WHAT. The file table shows WHAT.
+- Auto-detect spec directory by scanning `docs/specs/NNN-*` in the diff. Preserve existing references on update.
+- Never skip hooks, never force-push without explicit user direction.
+
+## Related skills
+
+- `/spec` — create the spec this PR references
+- `/commit` — commit with pre-commit validation before creating PR
+- `/improve-pr <number>` — security + quality review after PR exists
+
+## Supporting files
+
+- [`templates/pr-body.md`](templates/pr-body.md) — full body template with both spec-present and spec-recommendation variants
+- [`references/mermaid-styles.md`](references/mermaid-styles.md) — color classes and best practices for flow diagrams

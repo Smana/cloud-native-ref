@@ -1,126 +1,74 @@
 ---
 name: spec-status
-description: Show pipeline overview of all specifications with status counts and stale detection
+description: Show a pipeline overview of all specifications — counts of Draft / Implementing / Done, plus stale-spec detection.
+when_to_use: |
+  When the user says "spec status", "where are we on specs", "spec pipeline",
+  "what specs are in flight", "show SDD overview", "any stale specs",
+  "what's in progress", or asks for a summary of ongoing spec work.
 disable-model-invocation: true
-allowed-tools: Bash(find:*), Bash(grep:*), Bash(stat:*), Read, Glob
+allowed-tools: Bash(find:*), Bash(grep:*), Bash(gh:*), Read
 ---
 
 # Spec Status Skill
 
-Display a pipeline overview of all specifications in the repository.
+Display a pipeline overview of all specifications. Counts are pre-computed via dynamic context injection so Claude reasons on fresh state.
 
-## Usage
+## Live pipeline state
 
-```
-/spec-status
-```
+- **Active spec files**: !`find docs/specs -name spec.md -not -path '*/done/*' -not -path '*/templates/*' -type f 2>/dev/null | sort`
+- **Done specs (all)**: !`find docs/specs/done -name spec.md -type f 2>/dev/null | wc -l`
+- **Done this quarter**: !`Q=$(( ($(date +%m) - 1) / 3 + 1 )); find "docs/specs/done/$(date +%Y)-Q${Q}" -name spec.md -type f 2>/dev/null | wc -l`
+- **Stale active specs (>14 days unchanged)**: !`find docs/specs -name spec.md -not -path '*/done/*' -not -path '*/templates/*' -mtime +14 -type f 2>/dev/null`
+- **Issues by label**:
+  - Draft: !`gh issue list --label spec:draft --state open --json number,title --jq 'length' 2>/dev/null || echo "n/a"`
+  - Implementing: !`gh issue list --label spec:implementing --state open --json number,title --jq 'length' 2>/dev/null || echo "n/a"`
 
-## Output Format
+## Your task
 
-```
-Spec Pipeline:
-  Draft:        2  001-valkey, 002-gpu-nodes
-  Implementing: 1  003-queue
-  Done:        15  (in docs/specs/done/)
+Render the pipeline overview the user sees.
 
-Stale (>14 days unchanged):
-  001-valkey (last modified: 2025-01-05)
-```
+### 1. Parse each active spec file
 
-## Workflow
+For every file in the **Active spec files** list above, extract the `**Status**:` line (one of: `draft`, `in-review`, `approved`, `implementing`, `done`).
 
-### 1. Find Active Specs
+### 2. Group specs
 
-```bash
-# Find all spec.md files excluding done/ and templates/
-find docs/specs -name "spec.md" \
-  -not -path "*/done/*" \
-  -not -path "*/templates/*" \
-  -type f 2>/dev/null
-```
+| Category    | Spec statuses                  |
+|-------------|--------------------------------|
+| Draft       | `draft`, `in-review`           |
+| Implementing| `approved`, `implementing`     |
+| Done        | (count from pre-computed done) |
 
-### 2. Parse Status from Each Spec
-
-For each spec file found:
-
-```bash
-# Extract status field from spec header
-grep -oP '\*\*Status\*\*:\s*\K[^\s|]+' "$SPEC_FILE"
-```
-
-Valid statuses: `draft`, `in-review`, `approved`, `implementing`, `done`
-
-### 3. Count Done Specs
-
-```bash
-# Count specs in done/ directory
-find docs/specs/done -name "spec.md" -type f 2>/dev/null | wc -l
-```
-
-### 4. Detect Stale Specs
-
-```bash
-# Find specs not modified in 14+ days
-find docs/specs -name "spec.md" \
-  -not -path "*/done/*" \
-  -not -path "*/templates/*" \
-  -mtime +14 \
-  -type f 2>/dev/null
-```
-
-### 5. Format Output
-
-Group specs by status and display:
-- **Draft**: Specs with `draft` or `in-review` status
-- **Implementing**: Specs with `approved` or `implementing` status
-- **Done**: Count of specs in `docs/specs/done/`
-- **Stale**: Specs unchanged for 14+ days (needs attention)
-
-## Status Categories
-
-| Display | Spec Status Values |
-|---------|-------------------|
-| Draft | `draft`, `in-review` |
-| Implementing | `approved`, `implementing` |
-| Done | Located in `docs/specs/done/` |
-
-## GitHub Issue Labels
-
-This skill shows file-based status. For GitHub issue labels:
-
-```bash
-# List spec issues by label
-gh issue list --label "spec:draft"
-gh issue list --label "spec:implementing"
-gh issue list --label "spec:done"
-```
-
-## Example Output
-
-For a repository with:
-- 2 specs in draft status
-- 1 spec being implemented
-- 15 archived specs
-- 1 stale spec
+### 3. Render
 
 ```
-╔════════════════════════════════════════════════════════════════╗
+╔═══════════════════════════════════════════════════════════════╗
 ║  Spec Pipeline Status                                         ║
-╚════════════════════════════════════════════════════════════════╝
+╚═══════════════════════════════════════════════════════════════╝
 
   Stage          Count   Specs
-  ─────────────────────────────────────────────────────────────
-  Draft            2     001-valkey-caching, 002-gpu-node-pool
-  Implementing     1     003-queue-composition
-  Done            15     (archived in docs/specs/done/)
+  ────────────────────────────────────────────────────────────
+  Draft            N     <slug-list>
+  Implementing     N     <slug-list>
+  Done            NN     (archived in docs/specs/done/)
+                         (NN this quarter)
 
-⚠️  Stale Specs (>14 days without changes):
-  → 001-valkey-caching (last modified: 2025-01-05)
-    Consider: Resume work or archive if abandoned
+⚠️  Stale (>14 days unchanged):
+  → <slug>  (last modified: <date>)
 ```
 
-## Related Skills
+If the stale list is empty, omit that section.
+If GitHub issue counts differ from file counts, flag the drift (label desync).
 
-- `/spec` - Create new specification
-- `/clarify` - Resolve [NEEDS CLARIFICATION] markers
-- `/create-pr` - Create PR (auto-references spec)
+### 4. Suggest next action
+
+- If there are drafts with unresolved `[NEEDS CLARIFICATION]` markers → suggest `/clarify`.
+- If there are specs whose review checklist is incomplete → suggest `/validate`.
+- If there are stale specs → suggest closing or resuming.
+
+## Related skills
+
+- `/spec` — create a new specification
+- `/clarify` — resolve clarification markers
+- `/validate` — check spec completeness
+- `/create-pr` — create PR that auto-references spec

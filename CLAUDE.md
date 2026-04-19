@@ -126,13 +126,18 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 
 This repository uses SDD for non-trivial changes. See [docs/specs/README.md](docs/specs/README.md) for complete documentation.
 
+**Core workflow — 4 commands**:
+
 ```
-/spec -> /spec-status -> /clarify -> /validate -> Implement -> /create-pr -> Auto-archive
+/spec  →  /clarify  →  /validate  →  /create-pr
 ```
 
-**Key Documents**:
-- [Platform Constitution](docs/specs/constitution.md) - Non-negotiable principles
-- [Architecture Decision Records](docs/decisions/) - Cross-cutting technology choices
+Each spec lives in a **3-artifact directory** (`spec.md` = WHAT, `plan.md` = HOW + tasks + review checklist, `clarifications.md` = append-only decision log). Auto-archive on merge moves it to `docs/specs/done/YYYY-Qn/NNN-slug/` with an auto-generated `SUMMARY.md`.
+
+**Key documents**:
+- [Platform Constitution](docs/specs/constitution.md) — non-negotiable principles (auto-loaded via `.claude/rules/spec-constitution.md`)
+- [Architecture Decision Records](docs/decisions/) — cross-cutting technology choices
+- [Phased specs](docs/specs/PHASED.md) — for features that span multiple PRs
 
 ### When Specs Are Required
 
@@ -151,10 +156,14 @@ Version bumps, documentation-only, single-file bug fixes, minor config changes, 
 
 | Skill | Description |
 |-------|-------------|
-| `/spec [type] "description"` | Creates GitHub issue + spec directory |
-| `/spec-status` | Pipeline overview (Draft/Implementing/Done counts) |
-| `/clarify [spec-file]` | Resolves `[NEEDS CLARIFICATION]` markers |
-| `/validate [spec-file]` | Validates spec completeness |
+| `/spec "description"` | Create GitHub issue + 3-artifact spec directory (via `scripts/sdd/create-spec.sh`). Type auto-inferred; pass `<type>` before description to override |
+| `/spec-status` | Pipeline overview (counts pre-computed via `!\`cmd\`` context injection) |
+| `/clarify [spec-dir]` | Append-only: replace `[NEEDS CLARIFICATION]` markers with `CL-N` references in `clarifications.md` |
+| `/validate [spec-dir]` | Single quality gate — structural + cross-artifact + constitution compliance checks |
+| `/verify-spec <spec-dir>` | (Power tool) Post-merge: verify SC-XXX against live cluster, write `VERIFICATION.md` |
+| `/spec-research <slug> "<q>"` | (Power tool) Forked Explore subagent: Context7 + repo scan → writes `research.md` |
+
+For phased specs (multi-PR features), see [`docs/specs/PHASED.md`](docs/specs/PHASED.md). Use sparingly.
 
 ## Security Considerations
 
