@@ -78,7 +78,7 @@ infrastructure/base/crossplane/configuration/kcl/<module>/
 
 ## Tasks
 
-> Each task has a stable ID (`T001`, `T002`, …) so PRs and `/verify-spec` can reference them. Update commit-by-commit.
+> Each task has a stable ID (`T001`, `T002`, …) — committable unit, referenced by PRs and `/verify-spec`. Before marking `[x]`, cite fresh evidence (see [`.claude/rules/process.md`](../../../.claude/rules/process.md)).
 
 ### Phase 1: Prerequisites
 

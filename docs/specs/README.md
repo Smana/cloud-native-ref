@@ -1,6 +1,14 @@
 # Spec-Driven Development (SDD)
 
-Lightweight specs for non-trivial changes to the cloud-native-ref platform. Inspired by [GitHub Spec Kit](https://github.com/github/spec-kit).
+Lightweight specs for non-trivial changes to the cloud-native-ref platform. The workflow here is a synthesis of several spec/plan/agentic-development frameworks, adapted to a GitOps / Crossplane platform:
+
+| Framework | What we borrowed |
+|-----------|------------------|
+| [GitHub Spec Kit](https://github.com/github/spec-kit) | The *WHAT* → *HOW* split, falsifiable success criteria, `/spec` → `/clarify` → `/validate` flow |
+| [Obra Superpowers](https://github.com/obra/superpowers) | Verification-before-completion and 4-phase systematic debugging — repo-specific deltas in [`.claude/rules/process.md`](../../.claude/rules/process.md) |
+| [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) | Multi-persona review (PM / Platform / Security / SRE — see `plan.md`) |
+| Agentic-workflow patterns (GSD, Cline, etc.) | Artifact-cadence separation (`spec.md` frozen vs `plan.md` evolving vs `clarifications.md` append-only) |
+| This platform | Platform constitution (`xplane-*` naming, KCL no-mutation, EKS Pod Identity, zero-trust), live-cluster SC verification via `/verify-spec` + Flux / VictoriaMetrics MCPs |
 
 ## When to write a spec
 
@@ -64,6 +72,7 @@ Single quality gate. Runs `scripts/validate-spec.sh` plus semantic cross-artifac
 - Missing sections, placeholders, FR/SC counts
 - FR-XXX with no implementing task (coverage gap)
 - Vague adjectives in success criteria (`fast`, `scalable`, ...)
+- SC-XXX without a runnable verification command (**V1** — from the verification discipline)
 - Stale `CL-N` references
 - Constitution violations (resource naming, KCL mutation, missing security context, hardcoded credentials, IRSA mention)
 
@@ -71,7 +80,7 @@ Single quality gate. Runs `scripts/validate-spec.sh` plus semantic cross-artifac
 
 ### 5. Implement
 
-Work through the `T001+` tasks in `plan.md`. The `crossplane-validator` skill auto-runs for KCL changes. The `.claude/rules/spec-constitution.md` rules auto-load when editing infra / security / spec files.
+Work through the `T001+` tasks in `plan.md`. The `crossplane-validator` skill auto-runs for KCL changes. Path-scoped rules under [`.claude/rules/`](../../.claude/rules/) auto-load — most relevant here: `spec-constitution.md` (platform non-negotiables) and `process.md` (verification + debugging discipline).
 
 ### 6. `/create-pr`
 

@@ -46,7 +46,7 @@ Other workflows:
 | **spec-status** | `/spec-status` | Pipeline overview with `!\`cmd\`` dynamic context (counts computed before Claude reads) |
 | **verify-spec** | `/verify-spec <spec-dir>` | Post-merge: check SC-XXX against live cluster via Flux + VictoriaMetrics MCPs, write `VERIFICATION.md` |
 
-For complete SDD documentation see [`docs/specs/README.md`](../../docs/specs/README.md). The platform constitution is auto-loaded from [`.claude/rules/spec-constitution.md`](../rules/spec-constitution.md) when editing infra/security/spec files.
+For complete SDD documentation see [`docs/specs/README.md`](../../docs/specs/README.md). Path-scoped rules in [`../rules/`](../rules/) auto-load when editing matching files — notably `spec-constitution.md` (platform non-negotiables) and `process.md` (verification + debugging discipline).
 
 ### Git & PR Workflows
 
