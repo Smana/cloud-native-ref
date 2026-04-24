@@ -217,6 +217,8 @@ Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDN
 
 Use the FluxCD agent-skills plugin for Flux troubleshooting (`/gitops-cluster-debug`, `/gitops-knowledge`, `/gitops-repo-audit`). Use `.claude/config` for Crossplane troubleshooting and platform-specific guidelines.
 
+> **Systematic debugging** (4-phase method: investigate → pattern → hypothesis → fix) and **verification before completion** (evidence-before-claims gate) are in [`.claude/rules/debugging.md`](.claude/rules/debugging.md) and [`.claude/rules/verification.md`](.claude/rules/verification.md). Apply them for any bug, failing resource, or completion claim — regardless of which file you're editing.
+
 ### Common Issues
 - **EKS Access**: Ensure proper IAM permissions and kubeconfig
 - **Flux Sync**: Verify GitHub App credentials in AWS Secrets Manager

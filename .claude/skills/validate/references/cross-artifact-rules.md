@@ -64,6 +64,26 @@ FR text containing `etc.`, `and so on`, `among others`, `such as`. Recommendatio
 
 SC-XXX whose text contains no metric or observable condition. Recommendation: rephrase so a human or `/verify-spec` can answer pass/fail with cluster evidence.
 
+## Verification evidence
+
+### V1 — SC-XXX lacks a runnable verification command (HIGH)
+
+Every SC-XXX should be answerable with a command a reader can run (inspired by superpowers `verification-before-completion`). Check `spec.md` / `plan.md` for each SC: is there a clear command, query, or observable signal that produces pass/fail evidence?
+
+Examples of acceptable evidence paths:
+- `kubeconform -summary <manifest>` → 0 invalid
+- `./scripts/validate-kcl-compositions.sh` → exit 0
+- `flux get kustomization <name>` → `Ready=True`
+- `kubectl get <xr>` → `Synced=True, Ready=True`
+- VictoriaMetrics query `rate(<metric>[5m]) < 0.01`
+- Hubble verdict flow for a specific policy
+
+Recommendation: rephrase the SC so `/verify-spec` can answer pass/fail with cluster evidence; mention the verification command in `plan.md` under *Validation path*.
+
+### V2 — plan.md missing "Validation path" section (MEDIUM)
+
+`plan.md` should have a *Validation path* block listing the exact commands that prove each SC-XXX. If absent, add one (the template includes a starter block under *Implementation Notes*).
+
 ## Output discipline
 
 - Empty result is valid. Don't invent findings.

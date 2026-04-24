@@ -79,6 +79,10 @@ infrastructure/base/crossplane/configuration/kcl/<module>/
 ## Tasks
 
 > Each task has a stable ID (`T001`, `T002`, …) so PRs and `/verify-spec` can reference them. Update commit-by-commit.
+>
+> **Task granularity** — each T-id is a *committable unit*. For non-trivial tasks, break the work into 2–5 minute sub-steps with an explicit verification command per step. Trivial tasks (version bumps, single-file edits) stay one-liners.
+>
+> For every task, before marking `[x]`, apply the verification gate in [`.claude/rules/verification.md`](../../../.claude/rules/verification.md) — run the check, cite the evidence.
 
 ### Phase 1: Prerequisites
 
@@ -88,7 +92,13 @@ infrastructure/base/crossplane/configuration/kcl/<module>/
 ### Phase 2: Implementation
 
 - [ ] **T003**: <task description>
-- [ ] **T004**: <task description>
+- [ ] **T004**: <task description — example of an expanded task with bite-size steps>
+  - [ ] Write the failing test case / render expectation (e.g., extend `main_test.k`)
+  - [ ] Run it: `kcl test` / `crossplane render` — expect FAIL
+  - [ ] Implement the minimal KCL to make it pass
+  - [ ] Run it again — expect PASS
+  - [ ] `./scripts/validate-kcl-compositions.sh` — exit 0
+  - [ ] Commit
 
 ### Phase 3: Validation & Documentation
 

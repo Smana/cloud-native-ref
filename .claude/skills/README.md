@@ -46,7 +46,13 @@ Other workflows:
 | **spec-status** | `/spec-status` | Pipeline overview with `!\`cmd\`` dynamic context (counts computed before Claude reads) |
 | **verify-spec** | `/verify-spec <spec-dir>` | Post-merge: check SC-XXX against live cluster via Flux + VictoriaMetrics MCPs, write `VERIFICATION.md` |
 
-For complete SDD documentation see [`docs/specs/README.md`](../../docs/specs/README.md). The platform constitution is auto-loaded from [`.claude/rules/spec-constitution.md`](../rules/spec-constitution.md) when editing infra/security/spec files.
+For complete SDD documentation see [`docs/specs/README.md`](../../docs/specs/README.md). Three auto-loaded rule files back the SDD flow when editing infra / security / spec files:
+
+| Rule | Purpose |
+|------|---------|
+| [`spec-constitution.md`](../rules/spec-constitution.md) | Platform non-negotiables (`xplane-*`, KCL no-mutation, zero-trust, EKS Pod Identity) |
+| [`verification.md`](../rules/verification.md) | Evidence-before-claims gate for every completion claim |
+| [`debugging.md`](../rules/debugging.md) | 4-phase root-cause method for any failure mid-implementation |
 
 ### Git & PR Workflows
 
