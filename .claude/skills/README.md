@@ -46,13 +46,7 @@ Other workflows:
 | **spec-status** | `/spec-status` | Pipeline overview with `!\`cmd\`` dynamic context (counts computed before Claude reads) |
 | **verify-spec** | `/verify-spec <spec-dir>` | Post-merge: check SC-XXX against live cluster via Flux + VictoriaMetrics MCPs, write `VERIFICATION.md` |
 
-For complete SDD documentation see [`docs/specs/README.md`](../../docs/specs/README.md). Three auto-loaded rule files back the SDD flow when editing infra / security / spec files:
-
-| Rule | Purpose |
-|------|---------|
-| [`spec-constitution.md`](../rules/spec-constitution.md) | Platform non-negotiables (`xplane-*`, KCL no-mutation, zero-trust, EKS Pod Identity) |
-| [`verification.md`](../rules/verification.md) | Evidence-before-claims gate for every completion claim |
-| [`debugging.md`](../rules/debugging.md) | 4-phase root-cause method for any failure mid-implementation |
+For complete SDD documentation see [`docs/specs/README.md`](../../docs/specs/README.md). Path-scoped rules in [`../rules/`](../rules/) auto-load when editing matching files — notably `spec-constitution.md` (platform non-negotiables) and `process.md` (verification + debugging discipline).
 
 ### Git & PR Workflows
 
