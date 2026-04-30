@@ -26,7 +26,7 @@ jobs:
           echo 'keep' > opentofu/openbao/cluster/.tls/ca-chain.pem
 
       - name: Validate Opentofu configuration
-        uses: dagger/dagger-for-github@v7
+        uses: dagger/dagger-for-github@v8.4.1
         with:
           version: "latest"
           verb: call
@@ -90,7 +90,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Validate Flux clusters manifests
-        uses: dagger/dagger-for-github@v7
+        uses: dagger/dagger-for-github@v8.4.1
         with:
           version: "latest"
           verb: call
@@ -98,7 +98,7 @@ jobs:
           args: validate --manifests "./clusters" --exclude ".github/*,opentofu/*" --catalog
 
       - name: Validate Kubernetes manifests (Kustomize directories)
-        uses: dagger/dagger-for-github@v7
+        uses: dagger/dagger-for-github@v8.4.1
         with:
           version: "latest"
           verb: call
