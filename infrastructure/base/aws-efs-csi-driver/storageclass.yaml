@@ -1,0 +1,11 @@
+# StorageClass for static-provisioned S3 Files volumes. Each
+# InferenceService composition renders a PV with
+# `csi.volumeHandle: s3files:<fsId>::<accessPointId>` referencing this SC.
+# Reclaim Retain — the underlying S3 Files data outlives any single PVC.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: s3files-llm-models
+provisioner: efs.csi.aws.com
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
