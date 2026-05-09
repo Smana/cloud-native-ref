@@ -1,0 +1,369 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: inferenceservices.cloud.ogenki.io
+spec:
+  group: cloud.ogenki.io
+  scope: Namespaced
+  names:
+    kind: InferenceService
+    plural: inferenceservices
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              x-kubernetes-validations:
+                - rule: "!has(self.scaling) || !has(self.scaling.minReplicas) || !has(self.scaling.maxReplicas) || self.scaling.minReplicas <= self.scaling.maxReplicas"
+                  message: "scaling.minReplicas must be <= maxReplicas"
+                - rule: "!has(self.route) || !self.route.enabled || has(self.route.hostname)"
+                  message: "route.hostname is required when route is enabled"
+              properties:
+                model:
+                  type: object
+                  description: Model identity and load configuration
+                  properties:
+                    repository:
+                      type: string
+                      description: HuggingFace model repository (e.g., Qwen/Qwen3-8B)
+                    revision:
+                      type: string
+                      description: Model commit / tag for reproducibility
+                      default: main
+                    quantization:
+                      type: string
+                      description: Quantization scheme passed to vLLM
+                      enum: ["fp16", "fp8", "awq", "gptq", "bitsandbytes"]
+                      default: fp16
+                    contextWindow:
+                      type: integer
+                      description: Max context length (--max-model-len)
+                      minimum: 1024
+                      default: 4096
+                    maxNumSeqs:
+                      type: integer
+                      description: |
+                        vLLM `--max-num-seqs` — the maximum number of
+                        concurrent in-flight requests per replica
+                        (continuous-batching cap). Reasonable values
+                        scale with GPU VRAM: 32-64 on L4 (24GB), 128
+                        on A10G/A100. Used by the autoscaler to
+                        compute `num_requests_running / maxNumSeqs`
+                        as the leading scale-up signal.
+                      minimum: 1
+                      default: 64
+                    toolCallParser:
+                      type: string
+                      description: |
+                        vLLM tool-call parser name. Optional. When set,
+                        vLLM is started with `--enable-auto-tool-choice
+                        --tool-call-parser <value>`. Required for OpenAI
+                        function-calling clients (OpenCode, Continue
+                        agentic, OpenAI SDK with `tools[]`); without it
+                        vLLM 400s on those requests with "Bad Request:
+                        autotool".
+
+                        Common values:
+                        - `hermes` — Qwen2.5/Qwen3 family
+                        - `llama3_json` — Llama 3.x
+                        - `phi4_mini_json` — Phi-4-mini
+                        - `mistral` — Mistral / Mixtral
+                        Leave unset for FIM/Base models that don't do tools.
+                    preload:
+                      type: object
+                      description: |
+                        CL-3 (rec A): when enabled, the composition renders a
+                        Job that downloads weights from HuggingFace directly
+                        into the shared S3 Files mount at
+                        /models/<subPath>/<revision>/. Per ADR-0004 the FS is
+                        S3 Files (POSIX), so preload Job and serving
+                        Deployment share one persistent mount — no aws s3
+                        sync, no init-container.
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                  required:
+                    - repository
+                gpu:
+                  type: object
+                  description: GPU resource requirements
+                  properties:
+                    count:
+                      type: integer
+                      description: nvidia.com/gpu request per pod
+                      minimum: 1
+                      maximum: 8
+                      default: 1
+                    minVRAM:
+                      type: string
+                      description: Minimum VRAM hint for instance selection (informational)
+                      default: 16Gi
+                  required:
+                    - count
+                routing:
+                  type: object
+                  description: Metadata consumed by Semantic Router classifier configuration
+                  properties:
+                    tier:
+                      type: string
+                      enum: ["small", "medium", "large"]
+                      default: medium
+                    specialty:
+                      type: string
+                      enum: ["general", "code", "code-fim", "math", "guardrail", "multilingual"]
+                      default: general
+                scaling:
+                  type: object
+                  description: |
+                    KEDA `ScaledObject` parameters. Composition v0.5.0+
+                    scales each model on **leading** vLLM saturation
+                    metrics (running/maxNumSeqs ratio + KV-cache
+                    utilization) — both prometheus triggers, OR-combined.
+                    See SPEC-001 in docs/specs/.
+                  properties:
+                    minReplicas:
+                      type: integer
+                      description: |
+                        Production default is 1 — keeps the model warm
+                        and avoids the 'no pod, no metric, no signal'
+                        deadlock that plagued the prior design.
+                      minimum: 0
+                      default: 1
+                    maxReplicas:
+                      type: integer
+                      minimum: 1
+                      default: 3
+                    cooldownSeconds:
+                      type: integer
+                      description: |
+                        KEDA `cooldownPeriod` — minimum seconds before a
+                        scale-down once load drops. 5 min default
+                        (amortises ~30s CUDA-graph compile cost ~10×).
+                      minimum: 60
+                      default: 300
+                    pollingIntervalSeconds:
+                      type: integer
+                      description: |
+                        How often KEDA queries VictoriaMetrics for the
+                        trigger expressions. 15s = effective minimum
+                        scale-up reaction time of ~75-135s end-to-end.
+                      minimum: 5
+                      default: 15
+                    runningRatioThreshold:
+                      type: string
+                      description: |
+                        Trigger 1 threshold — scale up when
+                        `vllm:num_requests_running / maxNumSeqs` exceeds
+                        this. 0.7 means "70% of the batch slots are
+                        full"; gives ~30s of headroom before the queue
+                        forms, which is roughly the scale-up budget.
+                      default: "0.7"
+                    cacheUtilizationThreshold:
+                      type: string
+                      description: |
+                        Trigger 2 threshold — scale up when
+                        `vllm:gpu_cache_usage_perc` exceeds this. 0.6
+                        catches long-context bursts (a single 32k-context
+                        request can fill 30-50% of KV cache by itself,
+                        invisible to the running-count trigger).
+                      default: "0.6"
+                cache:
+                  type: object
+                  description: vLLM / LMCache toggles
+                  properties:
+                    kvOffload:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                        sizeGB:
+                          type: integer
+                          minimum: 1
+                          default: 16
+                    prefixCache:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                loraAdapters:
+                  type: array
+                  description: |
+                    Optional list of LoRA adapters mounted over the base model.
+                    Each adapter is downloaded by the preload Job into
+                    /models/loras/<name>/ on the shared S3 Files PVC and
+                    exposed to clients as a separate model name via the
+                    OpenAI /v1/chat/completions `model` field. Empty/absent
+                    list = no adapters (current behavior). Composition emits
+                    `--enable-lora --max-loras N --max-lora-rank 64
+                    --lora-modules <name>=<path> ...` into vLLM args when
+                    non-empty. See PR #1434 / spec
+                    docs/superpowers/specs/2026-05-09-llm-platform-paths-7-8-design.md.
+                  items:
+                    type: object
+                    required: [name, repository]
+                    properties:
+                      name:
+                        type: string
+                        description: |
+                          Adapter identifier (kebab-case). Becomes the model
+                          name clients send in the OpenAI request body.
+                      repository:
+                        type: string
+                        description: |
+                          HuggingFace repo id (e.g., `org/qwen-coder-sql-lora`).
+                      revision:
+                        type: string
+                        description: |
+                          HF revision (branch name, tag, or commit SHA).
+                          Defaults to "main" if omitted.
+                        default: main
+                route:
+                  type: object
+                  description: |
+                    Per-model HTTPRoute on the platform Tailscale gateway
+                    (platform-tailscale-general/infrastructure). Usually
+                    disabled — claims reach vLLM via the Semantic Router.
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    hostname:
+                      type: string
+                      description: Short hostname; .priv.cloud.ogenki.io appended
+                weightsFileSystem:
+                  type: object
+                  description: |
+                    Optional override for which subdirectory of the shared
+                    S3 Files mount this claim lives in. The PV+PVC
+                    `llm-models` is provisioned out-of-band in
+                    apps/base/ai/llm/models-pvc.yaml (Crossplane v2
+                    namespaced XRs cannot render cluster-scoped PVs).
+                  properties:
+                    subPath:
+                      type: string
+                      description: |
+                        Subdirectory under the access point root where this
+                        model's weights live. Defaults to the claim name
+                        (metadata.name).
+                resources:
+                  type: object
+                  description: CPU/memory requests + limits for the vLLM container (GPU is auto-injected)
+                  properties:
+                    requests:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    limits:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                healthProbes:
+                  type: object
+                  properties:
+                    liveness:
+                      type: object
+                      properties:
+                        initialDelaySeconds: {type: integer, default: 60}
+                        periodSeconds: {type: integer, default: 30}
+                        timeoutSeconds: {type: integer, default: 10}
+                        failureThreshold: {type: integer, default: 3}
+                    readiness:
+                      type: object
+                      properties:
+                        initialDelaySeconds: {type: integer, default: 30}
+                        periodSeconds: {type: integer, default: 10}
+                        timeoutSeconds: {type: integer, default: 5}
+                        failureThreshold: {type: integer, default: 3}
+                securityContext:
+                  type: object
+                  description: Container-level security overrides; defaults satisfy constitution
+                  properties:
+                    allowPrivilegeEscalation:
+                      type: boolean
+                      default: false
+                    readOnlyRootFilesystem:
+                      type: boolean
+                      default: true
+                    runAsNonRoot:
+                      type: boolean
+                      default: true
+                    capabilities:
+                      type: object
+                      properties:
+                        drop:
+                          type: array
+                          items: {type: string}
+                          default: ["ALL"]
+                externalSecrets:
+                  type: array
+                  description: ExternalSecret entries (one Kubernetes Secret per item)
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      remoteRef:
+                        type: string
+                      refreshInterval:
+                        type: string
+                        default: "1h"
+                    required:
+                      - name
+                      - remoteRef
+                envFromSecrets:
+                  type: array
+                  description: |
+                    Names of pre-existing Secrets in the same namespace to envFrom
+                    into the inference container and the preload Job. Use this for
+                    Secrets shared across claims (e.g. hf-token) — the composition
+                    will not create or manage these Secrets.
+                  items:
+                    type: string
+                networkPolicies:
+                  type: object
+                  description: Override default-deny CiliumNetworkPolicy ingress/egress
+                  properties:
+                    ingress:
+                      type: array
+                      items:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                    egress:
+                      type: array
+                      items:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                observability:
+                  type: object
+                  properties:
+                    metrics:
+                      type: object
+                      properties:
+                        interval:
+                          type: string
+                          default: "30s"
+                    alertingRules:
+                      type: object
+                      properties:
+                        groups:
+                          type: array
+                          items:
+                            type: object
+                            x-kubernetes-preserve-unknown-fields: true
+              required:
+                - model
+                - gpu
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                modelEndpoint:
+                  type: string
+                  description: In-cluster URL for the OpenAI-compatible vLLM endpoint

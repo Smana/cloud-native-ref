@@ -1,0 +1,122 @@
+kcl_options:
+  - key: params
+    value:
+      ocds:
+        xplane-qwen3-8b-deployment:
+          Resource:
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: xplane-qwen3-8b
+              namespace: llm
+            status:
+              conditions:
+                - type: Available
+                  status: "True"
+                  reason: MinimumReplicasAvailable
+              availableReplicas: 1
+              readyReplicas: 1
+              replicas: 1
+        xplane-qwen3-8b-service:
+          Resource:
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: xplane-qwen3-8b
+              namespace: llm
+            spec:
+              clusterIP: "172.20.42.10"
+        xplane-qwen3-8b-scaledobject:
+          Resource:
+            apiVersion: keda.sh/v1alpha1
+            kind: ScaledObject
+            metadata:
+              name: xplane-qwen3-8b
+              namespace: llm
+            status:
+              conditions:
+                - type: Ready
+                  status: "True"
+                  reason: ScaledObjectReady
+        xplane-qwen3-8b-httproute:
+          Resource:
+            apiVersion: gateway.networking.k8s.io/v1
+            kind: HTTPRoute
+            metadata:
+              name: xplane-qwen3-8b
+              namespace: llm
+            status:
+              parents:
+                - conditions:
+                    - type: Accepted
+                      status: "True"
+                      reason: Accepted
+        xplane-qwen3-8b-preload-job:
+          Resource:
+            apiVersion: batch/v1
+            kind: Job
+            metadata:
+              name: xplane-qwen3-8b-preload-main
+              namespace: llm
+            status:
+              succeeded: 1
+      ctx:
+        "apiextensions.crossplane.io/environment":
+          clusterName: "mycluster-0"
+          region: "eu-west-3"
+          environment: "production"
+      oxr:
+        metadata:
+          name: "xplane-qwen3-8b"
+          namespace: "llm"
+        spec:
+          model:
+            repository: "Qwen/Qwen3-8B"
+            revision: "main"
+            quantization: "fp8"
+            contextWindow: 32768
+            preload:
+              enabled: true
+          gpu:
+            count: 1
+            minVRAM: "16Gi"
+          routing:
+            tier: "medium"
+            specialty: "general"
+          scaling:
+            minReplicas: 0
+            maxReplicas: 3
+            scaleToZeroIdleSeconds: 600
+            scaleUpQueueDepthThreshold: 4
+          cache:
+            kvOffload:
+              enabled: true
+              sizeGB: 16
+            prefixCache:
+              enabled: true
+          route:
+            enabled: true
+            parentGateway: "platform-tailscale-general"
+            parentGatewayNamespace: "infrastructure"
+            hostname: "qwen3"
+          externalSecrets:
+            - name: hf-token
+              remoteRef: /platform/llm/hf_token
+              refreshInterval: 1h
+          observability:
+            metrics:
+              interval: "30s"
+          resources:
+            requests:
+              cpu: "2"
+              memory: "16Gi"
+            limits:
+              cpu: "8"
+              memory: "32Gi"
+          loraAdapters:
+            - name: test-adapter-a
+              repository: org/test-adapter-a
+              revision: main
+            - name: test-adapter-b
+              repository: org/test-adapter-b
+              revision: abc1234

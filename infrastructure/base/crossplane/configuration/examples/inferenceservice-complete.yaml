@@ -1,0 +1,66 @@
+---
+# Complete InferenceService — all features enabled
+# Production-grade: S3 Files weights mount, KEDA prometheus triggers on
+# leading saturation signals (SPEC-001), KV-offload + prefix-cache,
+# per-model HTTPRoute, ExternalSecret for HF token, custom resource limits.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: InferenceService
+metadata:
+  name: xplane-qwen3-8b
+  namespace: llm
+spec:
+  model:
+    repository: Qwen/Qwen3-8B
+    revision: main
+    quantization: fp8
+    contextWindow: 32768
+    # vLLM batch cap; the `running/max-num-seqs` ratio scaling
+    # trigger uses this as its denominator.
+    maxNumSeqs: 32
+    preload:
+      enabled: true   # CL-3 (rec A) — composition renders one-shot Job
+  gpu:
+    count: 1
+    minVRAM: 16Gi
+  routing:
+    tier: medium
+    specialty: general
+  # SPEC-001 default: min=1 (always warm). KEDA ScaledObject with
+  # prometheus triggers on running-ratio + gpu_cache_usage_perc reacts
+  # ahead of saturation. min=0 is still allowed per-claim but accepts
+  # first-request failure (no queueing layer).
+  scaling:
+    minReplicas: 1
+    maxReplicas: 3
+  cache:
+    kvOffload:
+      enabled: true
+      sizeGB: 16
+    prefixCache:
+      enabled: true
+  route:
+    enabled: true
+    parentGateway: platform-tailscale-general
+    parentGatewayNamespace: infrastructure
+    hostname: qwen3
+  # Shared S3 Files filesystem (provisioned out-of-band by
+  # opentofu/llm-platform/). subPath defaults to the claim name; set
+  # explicitly here if a custom directory layout is desired.
+  weightsFileSystem:
+    subPath: xplane-qwen3-8b
+  externalSecrets:
+    - name: hf-token
+      remoteRef: /platform/llm/hf_token
+      refreshInterval: 1h
+  envFromSecrets:
+    - hf-token
+  observability:
+    metrics:
+      interval: "30s"
+  resources:
+    requests:
+      cpu: "2"
+      memory: 16Gi
+    limits:
+      cpu: "8"
+      memory: 32Gi
