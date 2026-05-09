@@ -44,7 +44,11 @@ script "destroy" {
 
   job {
     commands = [
-      [global.provisioner, "destroy", "-var-file=variables.tfvars"],
+      # Single y/n prompt; cached for 10 min so `--reverse destroy` asks once.
+      # Bypass with TM_DESTROY_CONFIRMED=true for CI.
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
+      # `-auto-approve`: confirmation already handled by the helper above.
+      [global.provisioner, "destroy", "-auto-approve", "-var-file=variables.tfvars"],
     ]
   }
 }

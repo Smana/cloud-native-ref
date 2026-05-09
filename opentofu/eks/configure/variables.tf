@@ -12,19 +12,24 @@ variable "region" {
 variable "cilium_version" {
   description = "Cilium Helm chart version"
   type        = string
-  default     = "1.19.2"
+  # Default mirrors `cilium_version` in opentofu/config.tm.hcl. The
+  # global Terramate generator passes -var=cilium_version=... at run
+  # time, so the local default is only consulted when running
+  # `tofu plan` directly in this stack — keep the two in sync to
+  # avoid surprises in that path.
+  default = "1.19.0"
 }
 
 variable "flux_operator_version" {
   description = "Flux Operator Helm chart version"
   type        = string
-  default     = "0.46.0"
+  default     = "0.48.0"
 }
 
 variable "flux_instance_version" {
   description = "Flux Instance Helm chart version"
   type        = string
-  default     = "0.46.0"
+  default     = "0.48.0"
 }
 
 variable "flux_sync_url" {
