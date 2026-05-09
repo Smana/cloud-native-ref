@@ -1,0 +1,32 @@
+# Gateway — entry point for AI workloads. The Envoy Gateway controller
+# spawns a dedicated Envoy data-plane Deployment when this resource is
+# reconciled, configured per the EnvoyProxy parameters above.
+#
+# Listener is HTTP/8080 cluster-internal; external entry comes via the
+# existing Tailscale Gateway (HTTPRoute will be repointed at this
+# Gateway's data-plane Service in P5).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ai-gateway
+  namespace: envoy-ai-gateway-system
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 8080
+      allowedRoutes:
+        namespaces:
+          # Allow AIGatewayRoutes from the llm namespace (where the
+          # vLLM Services + per-model AIServiceBackends live) to bind
+          # to this Gateway's listener.
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: llm
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: ai-gateway-proxy

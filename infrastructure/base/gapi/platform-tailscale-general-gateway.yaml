@@ -27,6 +27,8 @@ spec:
                 operator: In
                 values:
                   - apps
+                  - envoy-ai-gateway-system
+                  - envoy-gateway-system
                   - observability
                   - tooling
       tls:

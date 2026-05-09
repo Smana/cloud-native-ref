@@ -1,0 +1,75 @@
+# CiliumNetworkPolicy for the AI Gateway controller namespace.
+#
+# Only the controller pod actually runs in this namespace. The Envoy
+# data-plane Deployment lives in `envoy-gateway-system` regardless of
+# which namespace the parent Gateway resource sits in (Envoy Gateway
+# architecture choice). The data-plane CNP is defined alongside the
+# Envoy Gateway controller at
+# `infrastructure/base/envoy-gateway/network-policy.yaml`.
+#
+# Default-deny + explicit allow per platform constitution.
+---
+# Controller — talks to apiserver, OCI registries, and serves the
+# Envoy Gateway Extension Server on TCP 1063 (xDS translation hooks for
+# AIGatewayRoute -> AIServiceBackend; see envoyproxy/ai-gateway control-plane).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: ai-gateway-controller
+  namespace: envoy-ai-gateway-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/instance: envoy-ai-gateway
+      app.kubernetes.io/name: ai-gateway-helm
+  ingress:
+    # Kubelet liveness/readiness probes from the node host network.
+    # AI Gateway controller listens on :8081 (kubebuilder default).
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    # MutatingWebhookConfiguration callback from kube-apiserver -> :9443.
+    # The chart registers `envoy-ai-gateway-gateway-pod-mutator` to
+    # inject the body-parser sidecar (UDS extProc) into every data-plane
+    # pod (label app.kubernetes.io/managed-by=envoy-gateway). Without
+    # this rule the webhook times out, replicaset-controller fails to
+    # create new pods, and the chain is broken.
+    - fromEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "9443"
+              protocol: TCP
+    # Extension Server gRPC from Envoy Gateway controller in
+    # envoy-gateway-system.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            control-plane: envoy-gateway
+      toPorts:
+        - ports:
+            - port: "1063"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

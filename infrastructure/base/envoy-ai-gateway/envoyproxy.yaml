@@ -1,0 +1,51 @@
+# EnvoyProxy — sets data-plane Deployment shape (resources, security
+# context). Referenced by the Gateway via infrastructure.parametersRef.
+#
+# Restricted PSS hardening on the data-plane container; modest
+# resources for an idle dev cluster. Bump on real load.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: ai-gateway-proxy
+  namespace: envoy-ai-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      # Pin the data-plane Service to a deterministic name so the
+      # Tailscale-fronted HTTPRoute (httproute.yaml in this directory)
+      # can backendRef it without chasing an auto-generated hash suffix.
+      # Supported on EnvoyProxy since v1.1.0.
+      #
+      # `type: ClusterIP` (vs the default LoadBalancer) for two reasons:
+      #
+      # 1. The Tailscale Cilium Gateway is the only intended entry
+      #    point — there's no need for an AWS NLB on the data-plane
+      #    Service. Removing it saves NLB cost + reduces attack surface.
+      # 2. The default LoadBalancer Service ships with
+      #    `externalTrafficPolicy: Local`, which makes Cilium-Envoy on
+      #    nodes WITHOUT a backend pod return "no healthy upstream"
+      #    when the Tailscale gateway tries to forward to it (Cilium's
+      #    BPF service translation classifies that path as external
+      #    even though it's in-cluster). ClusterIP sidesteps the issue
+      #    entirely.
+      envoyService:
+        name: ai-gateway
+        type: ClusterIP
+      envoyDeployment:
+        replicas: 1
+        container:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault

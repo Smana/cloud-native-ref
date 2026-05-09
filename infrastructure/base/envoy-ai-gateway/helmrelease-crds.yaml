@@ -1,0 +1,20 @@
+# Envoy AI Gateway CRDs — installed separately from the controller per
+# upstream guidance (https://github.com/envoyproxy/ai-gateway). Must
+# reconcile before the controller HelmRelease so the controller's
+# bootstrap doesn't crash trying to register watches against
+# missing CRDs.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: envoy-ai-gateway-crds
+  namespace: envoy-ai-gateway-system
+spec:
+  releaseName: envoy-ai-gateway-crds
+  chartRef:
+    kind: OCIRepository
+    name: envoy-ai-gateway-crds
+    namespace: envoy-ai-gateway-system
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3

@@ -1,0 +1,18 @@
+# Client buffer limit — Envoy's default 32KB receive buffer is too
+# tight for chat completion bodies with long system prompts. Upstream
+# recommends 50Mi for AI workloads in general; 8Mi is enough headroom
+# for OpenAI-compat chat completions on this fleet (typical bodies
+# are 4–32 KB; long context maxes out around 200–500 KB). Bump if
+# multimodal/file-attachment requests start landing here.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: ai-gateway-client-buffer
+  namespace: envoy-ai-gateway-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: ai-gateway
+  connection:
+    bufferLimit: 8Mi

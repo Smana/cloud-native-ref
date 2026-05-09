@@ -1,0 +1,42 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: envoy-ai-gateway
+  namespace: envoy-ai-gateway-system
+spec:
+  releaseName: envoy-ai-gateway
+  driftDetection:
+    mode: enabled
+  chartRef:
+    kind: OCIRepository
+    name: envoy-ai-gateway
+    namespace: envoy-ai-gateway-system
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  # CRDs from the sibling HelmRelease must reconcile first.
+  dependsOn:
+    - name: envoy-ai-gateway-crds
+      namespace: envoy-ai-gateway-system
+  values:
+    controller:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+      securityContext:
+        runAsNonRoot: true
+        # Image's USER directive is the alphanumeric `nonroot` (distroless),
+        # not a numeric UID, so kubelet can't verify non-root without an
+        # explicit runAsUser. 65532 is the conventional distroless nonroot UID.
+        runAsUser: 65532
+        runAsGroup: 65532
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
