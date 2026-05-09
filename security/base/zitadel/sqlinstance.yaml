@@ -8,9 +8,41 @@ spec:
   storageSize: "20Gi"
   postgresVersion: "18"
   createSuperuser: true
+  # Recovery source for the next bootstrap (only consulted during
+  # initial provisioning — `bootstrap` is immutable post-create).
+  #
+  # Frozen-dated-snapshot pattern (matches the prior zitadel-20241202
+  # / zitadel-20251028 / zitadel-20260201 history): `zitadel-20260505`
+  # is a one-time copy of the live prefix taken on 2026-05-05 after
+  # OAuth client config in AWS Secrets Manager
+  # (`apps/openwebui/oauth-zitadel`) was re-verified end-to-end. Two
+  # base backups are present (T102929 + T103616); CNPG picks the
+  # most recent. WAL chain present too (000000030000000100000063-64).
+  #
+  # The live prefix `xplane-zitadel-cnpg-cluster/` keeps accruing
+  # daily ScheduledBackups but is NOT used for recovery — that
+  # decoupling means a bad day on the live cluster (corruption,
+  # accidental DROP) doesn't cascade into recovery from a poisoned
+  # state.
+  #
+  # Promotion procedure (rotate the frozen snapshot when zitadel
+  # changes meaningfully — new OAuth apps, schema migration,
+  # significant user growth):
+  #   1. `kubectl create -f one-shot-backup.yaml -n security`
+  #      (Backup CR pointing at xplane-zitadel-cnpg-cluster).
+  #   2. Wait for phase=completed.
+  #   3. `aws s3 cp --recursive
+  #      s3://eu-west-3-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/
+  #      s3://eu-west-3-ogenki-cnpg-backups/zitadel-$(date +%Y%m%d)/`
+  #   4. Update this `path:` to the new dated prefix, commit, push.
+  #
+  # Follow-up: the original 2026-05-04 manual backup didn't write to
+  # S3 (root cause unknown — suspect cluster destroy raced backup
+  # finalize). Add a Flux pre-flight check that fails closed if the
+  # configured recovery prefix is empty.
   objectStoreRecovery:
     bucketName: "eu-west-3-ogenki-cnpg-backups"
-    path: "zitadel-20260201"
+    path: "zitadel-20260505"
   backup:
     schedule: "0 0 * * *"
     bucketName: "eu-west-3-ogenki-cnpg-backups"
