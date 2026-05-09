@@ -190,7 +190,7 @@ Security is built-in, not bolted-on:
 ### Deep Dives
 
 - [App Composition Detailed Guide](infrastructure/base/crossplane/configuration/kcl/app/README.md) - Complete reference (507 lines!)
-- [OpenBao PKI Setup](opentofu/openbao/management/docs/getting_started.md) - Certificate authority configuration
+- [OpenBao PKI Setup](opentofu/openbao/cluster/docs/getting_started.md) - Certificate authority configuration
 - [cert-manager Integration](opentofu/openbao/management/docs/cert-manager.md) - Automated TLS certificates
 
 ## Real Production Patterns
@@ -200,6 +200,32 @@ Security is built-in, not bolted-on:
 - ✅ Security hardening (private endpoints, least privilege IAM)
 - ✅ Cost optimization (SPOT instances, efficient monitoring)
 - ✅ Operational excellence (alerting, runbooks, observability)
+
+## Optional: Self-Hosted LLM Platform (foundation, not replacement)
+
+A reference deployment of self-hosted, open-weights LLM serving on EKS — GitOps-deployed, scale-to-zero by default, with semantic routing + jailbreak guardrails wired across an OSS model fleet.
+
+- 🧠 **Models**: Qwen2.5-Coder-7B, Qwen3-8B, LlamaGuard 3-1B, Qwen2.5-Coder-1.5B (FIM) — vLLM-served, fp8.
+- 🧩 **LoRA adapters**: `xplane-qwen-coder` (composition v0.6.0+) loads two HF-published adapters (`xplane-qwen-coder-sql-dpo`, `xplane-qwen-coder-securecode`) on the same L4 pod — N specializations, one base, one GPU. See [`clusters/mycluster-0-llm-platform/README.md`](clusters/mycluster-0-llm-platform/README.md#invoking-a-lora-adapter).
+- 🚪 **Gateway**: Envoy AI Gateway with header-match routing; API-key authentication (Envoy Gateway `SecurityPolicy`, keys sourced from AWS Secrets Manager).
+- 🎯 **Routing**: [Semantic Router](https://github.com/vllm-project/semantic-router) (Iris) classifies prompts and dispatches via a cascade (code → coder, math → reasoner, multilingual → general, jailbreak → guardrail).
+- 🔌 **Clients**: OpenAI-compatible at `https://llm.priv.cloud.ogenki.io/v1` (Bearer-token auth) — OpenWebUI for chat, OpenCode + Continue for IDE.
+- 💾 **Storage**: model weights on Amazon S3 Files (POSIX over S3), shared across pods.
+- ⚡ **Scaling**: GPU L4 spot NodePool via Karpenter; all 4 models default `min=1` (always warm). KEDA `ScaledObject` with leading vLLM saturation triggers (`running/max-num-seqs` ratio + `gpu_cache_usage_perc`) reacts ahead of queue formation. See [SPEC-001](docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md).
+
+**Honest framing**: the models shipped here are mid-tier open-weights — sufficient to demonstrate the architecture and exercise the cascade, **not a drop-in replacement for frontier proprietary coding tools** (Claude Code on Sonnet 4.6 / Opus 4.7, GitHub Copilot, Cursor). The composition (`InferenceService` Crossplane XR) is designed so swapping in any vLLM-compatible model is a one-claim change. As the open-weights ecosystem closes the gap with frontier APIs, the foundation is in place. Upgrade paths in [`docs/llm-platform-future-paths.md`](docs/llm-platform-future-paths.md).
+
+**Cost**: warm-fleet steady state is 4× L4 spot (one per model at `min=1`); ~$0.30–1.20/hr active demo on top. **Opt-in by default** (two gates):
+
+```bash
+# 1. AWS side (S3 Files + IAM)
+TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy
+
+# 2. Cluster side (Flux umbrella)
+flux resume kustomization llm-platform -n flux-system
+```
+
+**Learn more**: [AI/ML Platform](docs/ai.md) · [Coding Clients](docs/coding-clients.md) · [Future Paths](docs/llm-platform-future-paths.md) · [Architecture Diagrams](docs/architecture/)
 
 ## Repository Structure
 
@@ -243,6 +269,7 @@ Security is built-in, not bolted-on:
 | **Tailscale** | Zero-config VPN for private access |
 | **ZITADEL** | Identity and access management |
 | **Karpenter** | Kubernetes node autoscaling |
+| **KEDA** | Event-driven workload autoscaling on custom metrics (Prometheus, KEDA scalers) |
 
 **Full stack with rationale**: [Technology Choices](docs/technology-choices.md)
 
