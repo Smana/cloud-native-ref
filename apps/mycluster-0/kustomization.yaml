@@ -4,3 +4,7 @@ kind: Kustomization
 resources:
   - ../base/basic
   - ../base/complete
+  # LLM apps (../base/ai/llm + ../base/openwebui) are gated through
+  # the LLM umbrella Kustomization (clusters/mycluster-0/llm-platform.yaml).
+  # They live in apps/llm/kustomization.yaml so the umbrella's child
+  # apps Kustomization can target them independently.

@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # Storage + IAM (Phase 4)
+  - s3-bucket.yaml
+  - models-pvc.yaml
+  - preload-serviceaccount.yaml
+  - hf-token-externalsecret.yaml
+  # Model fleet (4 InferenceService claims; Phi-4-mini dropped in
+  # the foundation-showcase trim — Qwen3-8B covers the small-general
+  # role).
+  - qwen3-8b.yaml
+  - qwen-coder.yaml
+  - qwen-coder-fim.yaml
+  - llamaguard3-1b.yaml
+  # AI Gateway routes — AIGatewayRoute (header-match on x-ai-eg-model)
+  # dispatches each model directly to its per-claim AIServiceBackend →
+  # vLLM Service (SPEC-001 direct routing; no interceptor in the data
+  # path). LoRA adapter names route to the same xplane-qwen-coder
+  # backend; vLLM dispatches the adapter weights internally.
+  - ai-gateway-routes/
+  # Grafana folder + dashboard — fleet stats, replicas, throughput,
+  # latency, KV cache, AI Gateway response codes, vLLM error logs.
+  # GrafanaFolder is namespace-scoped: must live in the same namespace
+  # as the dashboard, otherwise folderRef fails to resolve.
+  - grafana-folder.yaml
+  - grafana-dashboard.yaml
+  # SLO breach alerts (LAGGING signals — explicitly NOT scale triggers).
+  # Per SPEC-001, autoscaling is driven by LEADING indicators in the
+  # composition's ScaledObject; these page when the autoscaler missed.
+  - vmrule-llm-slo.yaml

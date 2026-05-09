@@ -1,0 +1,329 @@
+# Comprehensive LLM platform dashboard.
+#
+# Panels are sourced from:
+# - vLLM Prometheus metrics (`vllm:*`) — exposed by every InferenceService
+#   on /metrics, scraped via VMServiceScrape in the inference-service
+#   composition.
+# - Kubernetes core metrics — kube_deployment_status_replicas for KEDA
+#   scale-from-zero visibility.
+# - VictoriaLogs — vLLM container error logs.
+#
+# Variable substitution: Grafana variables use $${var} (double dollar)
+# so Flux postBuild substitutions don't strip them.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: llm-platform
+  namespace: llm
+spec:
+  allowCrossNamespaceImport: true
+  folderRef: "llm"
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
+  json: |
+    {
+      "title": "LLM Platform — Self-hosted vLLM Fleet",
+      "description": "Comprehensive view of the self-hosted LLM platform: vLLM throughput/latency per model, KV cache utilisation, KEDA scale-from-zero visibility, and error logs.",
+      "tags": ["llm", "vllm", "ai", "inference"],
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 1,
+      "time": { "from": "now-1h", "to": "now" },
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": { "text": "VictoriaMetrics", "value": "VictoriaMetrics" },
+            "hide": 0
+          },
+          {
+            "name": "logs_datasource",
+            "type": "datasource",
+            "query": "victoriametrics-logs-datasource",
+            "current": { "text": "VictoriaLogs", "value": "VictoriaLogs" },
+            "hide": 0
+          },
+          {
+            "name": "model",
+            "label": "Model",
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+            "query": "label_values(vllm:num_requests_running, model_name)",
+            "refresh": 2,
+            "includeAll": true,
+            "multi": true,
+            "current": { "text": "All", "value": "$__all" }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "row",
+          "title": "Fleet at a glance",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Active models",
+          "description": "Models currently running at least one replica.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+          "targets": [
+            { "expr": "count(count by (model_name) (vllm:num_requests_running))", "refId": "A" }
+          ],
+          "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "center", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } } }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Active requests",
+          "description": "Sum of in-flight requests across all models.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+          "targets": [
+            { "expr": "sum(vllm:num_requests_running{model_name=~\"$${model}\"})", "refId": "A" }
+          ],
+          "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "fieldConfig": { "defaults": { "unit": "short" } }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Requests/sec (5m)",
+          "description": "Successfully completed requests per second, averaged over 5min.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+          "targets": [
+            { "expr": "sum(rate(vllm:request_success_total{model_name=~\"$${model}\"}[5m]))", "refId": "A" }
+          ],
+          "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Avg KV cache",
+          "description": "Average GPU KV-cache utilisation across active models.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+          "targets": [
+            { "expr": "avg(vllm:gpu_cache_usage_perc{model_name=~\"$${model}\"})", "refId": "A" }
+          ],
+          "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] } } }
+        },
+        {
+          "id": 10,
+          "type": "row",
+          "title": "Scale & queue",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "vLLM replicas per model",
+          "description": "Replicas of each xplane-* InferenceService Deployment. KEDA scale-from-zero pods toggle between 0 and N here.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "targets": [
+            { "expr": "kube_deployment_spec_replicas{namespace=\"llm\",deployment=~\"xplane-.*\"}", "legendFormat": "{{deployment}} (desired)", "refId": "A" },
+            { "expr": "kube_deployment_status_replicas_available{namespace=\"llm\",deployment=~\"xplane-.*\"}", "legendFormat": "{{deployment}} (ready)", "refId": "B" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10 }, "unit": "short", "decimals": 0 } },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Queue depth (waiting requests)",
+          "description": "Requests queued at vLLM (waiting for an engine slot). Sustained > 0 means saturation; consider scaling maxReplicas.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "targets": [
+            { "expr": "vllm:num_requests_waiting{model_name=~\"$${model}\"}", "legendFormat": "{{model_name}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15 }, "unit": "short" } },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 20,
+          "type": "row",
+          "title": "Throughput",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 21,
+          "type": "timeseries",
+          "title": "Prompt tokens/s by model",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+          "targets": [
+            { "expr": "sum by (model_name) (rate(vllm:prompt_tokens_total{model_name=~\"$${model}\"}[1m]))", "legendFormat": "{{model_name}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "tps" } },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean"] } }
+        },
+        {
+          "id": 22,
+          "type": "timeseries",
+          "title": "Generation tokens/s by model",
+          "description": "Output throughput. L4 typically delivers ~20-25 tok/s for an 8B fp16 model.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+          "targets": [
+            { "expr": "sum by (model_name) (rate(vllm:generation_tokens_total{model_name=~\"$${model}\"}[1m]))", "legendFormat": "{{model_name}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "tps" } },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean"] } }
+        },
+        {
+          "id": 30,
+          "type": "row",
+          "title": "Latency",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 31,
+          "type": "timeseries",
+          "title": "TTFT p95 (Time-To-First-Token)",
+          "description": "p95 latency from request acceptance to first generated token. Cold-start spikes indicate KEDA wake-up.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+          "targets": [
+            { "expr": "histogram_quantile(0.95, sum by (model_name, le) (rate(vllm:time_to_first_token_seconds_bucket{model_name=~\"$${model}\"}[5m])))", "legendFormat": "{{model_name}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "s" } },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 32,
+          "type": "timeseries",
+          "title": "E2E latency p95",
+          "description": "p95 end-to-end latency from request to last token.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
+          "targets": [
+            { "expr": "histogram_quantile(0.95, sum by (model_name, le) (rate(vllm:e2e_request_latency_seconds_bucket{model_name=~\"$${model}\"}[5m])))", "legendFormat": "{{model_name}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "s" } },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 33,
+          "type": "timeseries",
+          "title": "Per-output-token decode p95",
+          "description": "p95 time per output token after the first. Inverse of generation throughput.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+          "targets": [
+            { "expr": "histogram_quantile(0.95, sum by (model_name, le) (rate(vllm:time_per_output_token_seconds_bucket{model_name=~\"$${model}\"}[5m])))", "legendFormat": "{{model_name}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "s" } },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 40,
+          "type": "row",
+          "title": "Capacity & cache",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 41,
+          "type": "timeseries",
+          "title": "GPU KV-cache usage per model",
+          "description": "Fraction of the GPU KV-cache occupied. > 90% sustained = need to enlarge --gpu-memory-utilization or scale out.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+          "targets": [
+            { "expr": "vllm:gpu_cache_usage_perc{model_name=~\"$${model}\"}", "legendFormat": "{{model_name}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15 }, "unit": "percentunit", "decimals": 3, "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] } } },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 42,
+          "type": "timeseries",
+          "title": "Prefix-cache hit rate",
+          "description": "Fraction of prefix-cache queries hitting cache. High value = repeat-prompt traffic patterns (e.g. system prompts).",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+          "targets": [
+            { "expr": "sum by (model_name) (rate(vllm:gpu_prefix_cache_hits_total{model_name=~\"$${model}\"}[5m])) / clamp_min(sum by (model_name) (rate(vllm:gpu_prefix_cache_queries_total{model_name=~\"$${model}\"}[5m])), 1)", "legendFormat": "{{model_name}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "percentunit", "decimals": 3, "min": 0, "max": 1 } },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean"] } }
+        },
+        {
+          "id": 50,
+          "type": "row",
+          "title": "AI Gateway & routing",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 51,
+          "type": "timeseries",
+          "title": "AI Gateway request rate by response code",
+          "description": "Requests reaching the AI Gateway (`envoy-gateway-system`) listener, grouped by 2xx/4xx/5xx. 502s here typically mean upstream vLLM trouble.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+          "targets": [
+            { "expr": "sum by (response_code_class) (rate(envoy_cluster_upstream_rq_xx{namespace=\"envoy-gateway-system\"}[5m]))", "legendFormat": "{{response_code_class}}xx", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15 }, "unit": "reqps" } },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean"] } }
+        },
+        {
+          "id": 52,
+          "type": "timeseries",
+          "title": "Generation tokens delivered (cumulative, per model)",
+          "description": "Total output tokens served by each model since pod start. Useful to compare workload share across the fleet.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+          "targets": [
+            { "expr": "sum by (model_name) (vllm:generation_tokens_total{model_name=~\"$${model}\"})", "legendFormat": "{{model_name}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 5 }, "unit": "short" } },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } }
+        },
+        {
+          "id": 60,
+          "type": "row",
+          "title": "Logs",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 61,
+          "type": "logs",
+          "title": "vLLM error logs",
+          "description": "Errors and warnings from any xplane-* vLLM container (last hour).",
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}" },
+          "gridPos": { "h": 12, "w": 24, "x": 0, "y": 51 },
+          "targets": [
+            { "expr": "{kubernetes.pod_namespace=\"llm\", kubernetes.container_name=\"vllm\"} | _msg:~\"(?i)(error|warn|abort|exception|traceback|crash)\" | drop_field _time", "refId": "A" }
+          ],
+          "options": { "showLabels": false, "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "dedupStrategy": "none" }
+        }
+      ]
+    }

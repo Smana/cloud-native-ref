@@ -1,0 +1,66 @@
+---
+# Shared model-weights registry. One bucket for all InferenceService claims;
+# weights stored under <repo>/<revision>/ prefix per model.
+# Read access (per-claim, scoped to <repo>/<revision>/*) is granted by the
+# EPI rendered by the InferenceService composition.
+# Write access (one-shot upload) is granted by xplane-llm-models-preload.
+#
+# `managementPolicies` without `Delete` ONLY on the Bucket itself —
+# model weights are 10s of GB (re-downloading from HuggingFace is slow),
+# and the bucket is the persistence layer that outlives clusters and S3
+# Files filesystems rebuilt on top of it. The two sub-resources below
+# (Versioning, PublicAccessBlock) keep the default policy `["*"]`
+# (includes Delete) — pure configuration that re-applies cheaply
+# against the orphaned bucket on the next deploy. To intentionally
+# remove the bucket, delete it explicitly via aws CLI. (Crossplane v2
+# namespaced MRs do not expose `spec.deletionPolicy`;
+# `managementPolicies` is the v2 mechanism.)
+apiVersion: s3.aws.m.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: llm-models
+  namespace: llm
+  labels:
+    cloud.ogenki.io/name: llm-models
+  annotations:
+    crossplane.io/external-name: ${region}-ogenki-llm-models
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    region: ${region}
+---
+# Versioning protects against accidental weights deletion / corruption
+apiVersion: s3.aws.m.upbound.io/v1beta1
+kind: BucketVersioning
+metadata:
+  name: llm-models
+  namespace: llm
+  labels:
+    cloud.ogenki.io/name: llm-models
+spec:
+  forProvider:
+    region: ${region}
+    bucketSelector:
+      matchLabels:
+        cloud.ogenki.io/name: llm-models
+    versioningConfiguration:
+      status: Enabled
+---
+# Block all public access — model weights stay private to the cluster
+apiVersion: s3.aws.m.upbound.io/v1beta1
+kind: BucketPublicAccessBlock
+metadata:
+  name: llm-models
+  namespace: llm
+  labels:
+    cloud.ogenki.io/name: llm-models
+spec:
+  forProvider:
+    region: ${region}
+    bucketSelector:
+      matchLabels:
+        cloud.ogenki.io/name: llm-models
+    blockPublicAcls: true
+    blockPublicPolicy: true
+    ignorePublicAcls: true
+    restrictPublicBuckets: true

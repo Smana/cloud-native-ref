@@ -1,0 +1,78 @@
+---
+# FIM (Fill-in-the-Middle) tab-completion model — Continue VSCode
+# extension's autocomplete profile, plus any other IDE / editor that
+# wants inline keystroke-time suggestions.
+#
+# Why this exact model:
+# - **Base**, not Instruct. The FIM tokens are trained into the base
+#   model; the Instruct fine-tune dilutes them. Continue's autocomplete
+#   needs the base variant.
+# - 1.5B params at fp8 ~= 4Gi VRAM, fits comfortably on L4 alongside
+#   the always-warm LlamaGuard guardrail.
+# - Apache 2.0.
+# - Same Qwen tokenizer family as xplane-qwen-coder + xplane-qwen3-8b
+#   so KV cache stays warm across tab-complete + chat traffic.
+#
+# Design ref: docs/superpowers/specs/2026-05-04-coding-llm-fleet-design.md
+#
+# **ALWAYS WARM** (`scaling.minReplicas: 1`). Tab-complete must respond
+# in <200ms p95 — a cold start (model load + cudagraph compile) is
+# 30-90s and would break the UX on every keystroke after a quiet
+# minute.
+#
+# Karpenter consolidation defense: the InferenceService composition
+# v0.3.5 does NOT expose pod-template annotations, so we can't
+# tag the FIM pod with `karpenter.sh/do-not-disrupt: "true"` directly
+# (the SR pod gets that via its Helm chart's podAnnotations field —
+# different surface). Instead, the gpu-l4 NodePool's
+# `consolidationPolicy` is set to `WhenEmpty` (not the default
+# `WhenEmptyOrUnderutilized`) so a node hosting this pod is never
+# consolidated as long as the pod is on it.
+#
+# AWS spot reclaim can still trigger a multi-AZ PVC re-attach window
+# (30-90s) — acceptable for solo work, not for team-tier production.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: InferenceService
+metadata:
+  name: xplane-qwen-coder-fim
+  namespace: llm
+spec:
+  model:
+    # Base variant (FIM-tokens trained in; the Instruct fine-tune dilutes them).
+    # Qwen doesn't suffix base models with `-Base` — the unsuffixed repo IS the
+    # base. Verified via HF API: `-Base` 401s, the unsuffixed repo 200s.
+    repository: Qwen/Qwen2.5-Coder-1.5B
+    # Pinned commit SHA — see qwen-coder.yaml for rationale.
+    revision: df3ce67c0e24480f20468b6ef2894622d69eb73b  # pragma: allowlist secret
+    quantization: fp8
+    # FIM context windows are short (a single file's surrounding
+    # context, not whole-repo). 8k saves VRAM headroom for KV cache.
+    contextWindow: 8192
+    # 1.5B fp8 with short context — high concurrency on L4. Even though
+    # FIM is min=max=1 (always-warm, never scaled), maxNumSeqs is still
+    # the vLLM batch cap and informs the trigger query if a future
+    # change ever scales this model.
+    maxNumSeqs: 64
+    preload:
+      enabled: true
+  gpu:
+    count: 1
+    minVRAM: 8Gi
+  routing:
+    tier: small
+    specialty: code-fim
+  scaling:
+    # Always warm — see comment block above.
+    minReplicas: 1
+    maxReplicas: 1
+  cache:
+    # Critical for FIM: every keystroke shares the same prefix (the
+    # file content up to the cursor) — prefix cache turns each
+    # subsequent keystroke into an O(1) lookup of the cached KV.
+    prefixCache:
+      enabled: true
+  envFromSecrets:
+    - hf-token
+  observability:
+    metrics:
+      interval: "30s"

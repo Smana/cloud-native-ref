@@ -1,0 +1,74 @@
+# SLO breach alerts for the LLM platform.
+#
+# These are LAGGING signals — explicitly NOT used for autoscaling.
+# Per SPEC-001, scaling is driven by leading indicators
+# (vllm:num_requests_running / max-num-seqs ratio + KV-cache pressure).
+# When these alerts fire, the autoscaler has already failed to react
+# fast enough, so they should page the on-call rather than feed back
+# into a control loop.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: llm-platform-slo
+  namespace: llm
+  labels:
+    app.kubernetes.io/part-of: ai
+spec:
+  groups:
+    - name: llm-platform-slo
+      interval: 30s
+      rules:
+        - alert: LLMQueueDepthSustained
+          expr: max by (model_name, namespace) (vllm:num_requests_waiting) > 0
+          for: 1m
+          labels:
+            severity: warning
+            component: llm-platform
+          annotations:
+            summary: "vLLM queue depth > 0 for >1min on {{ $labels.model_name }}"
+            description: |
+              vLLM `{{ $labels.model_name }}` has had requests in its
+              waiting queue for more than 60s. By the time this fires,
+              users are already feeling slowness — this is a lagging
+              signal, NOT a scale trigger. The autoscaler should have
+              kicked in before we got here. If this fires repeatedly,
+              consider lowering `runningRatioThreshold` or
+              `cacheUtilizationThreshold` in the InferenceService claim.
+            runbook_url: https://github.com/Smana/cloud-native-ref/blob/main/docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md#fr-006
+
+        - alert: LLMTimeToFirstTokenBreached
+          expr: |
+            histogram_quantile(0.95,
+              sum by (model_name, namespace, le) (
+                rate(vllm:time_to_first_token_seconds_bucket[5m])
+              )
+            ) > 1
+          for: 5m
+          labels:
+            severity: warning
+            component: llm-platform
+          annotations:
+            summary: "TTFT p95 > 1s for {{ $labels.model_name }}"
+            description: |
+              p95 time-to-first-token on `{{ $labels.model_name }}` has
+              exceeded 1s for the last 5min. Users notice. Check vLLM
+              GPU KV-cache utilisation, batch saturation, and whether
+              KEDA recently failed to scale up.
+
+        - alert: LLMReplicaScaleDownToZero
+          expr: |
+            max by (deployment, namespace) (
+              kube_deployment_status_replicas_available{namespace="llm",deployment=~"xplane-.*"}
+            ) == 0
+          for: 5m
+          labels:
+            severity: info
+            component: llm-platform
+          annotations:
+            summary: "{{ $labels.deployment }} scaled to 0 replicas"
+            description: |
+              `{{ $labels.deployment }}` has had 0 ready replicas for
+              5+ minutes. Production default is `minReplicas=1`; if
+              this fires, either the model is in demo `min=0` mode
+              (intentional cold-start showcase) or KEDA dropped below
+              the configured minReplicaCount (investigate).
