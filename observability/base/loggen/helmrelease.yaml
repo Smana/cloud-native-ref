@@ -36,3 +36,19 @@ spec:
       limits:
         cpu: 400m
         memory: 100Mi
+  # Chart 0.1.4 hardcodes readOnlyRootFilesystem/allowPrivilegeEscalation/
+  # capabilities at .spec.template.spec.securityContext (pod-level), where
+  # K8s rejects them. Strip via postRenderers until upstream is fixed.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: loggen-loggen
+            patch: |
+              - op: remove
+                path: /spec/template/spec/securityContext/readOnlyRootFilesystem
+              - op: remove
+                path: /spec/template/spec/securityContext/allowPrivilegeEscalation
+              - op: remove
+                path: /spec/template/spec/securityContext/capabilities
