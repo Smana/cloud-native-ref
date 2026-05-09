@@ -1,0 +1,468 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: vllm-semantic-router
+  namespace: llm
+spec:
+  releaseName: vllm-semantic-router
+  driftDetection:
+    mode: enabled
+  chartRef:
+    kind: OCIRepository
+    name: vllm-semantic-router
+    namespace: llm
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    # Force the chart's Helm name template to render `vllm-semantic-router`
+    # (the release name) instead of `semantic-router` (the upstream chart
+    # `.Name`). Without this, all `app.kubernetes.io/name` labels rendered
+    # by the chart's pods + Service would be `semantic-router`, breaking:
+    #   * VMServiceScrape selector (observability/.../vmservicecrapes/vllm-semantic-router.yaml)
+    #   * CiliumNetworkPolicy endpointSelector (./network-policy.yaml)
+    #   * AIGatewayRoute backend selector
+    #   * InferenceService composition's _defaultIngress allow-list
+    # All of those reference `vllm-semantic-router` for clarity (it is
+    # the canonical product name); nameOverride keeps that consistent.
+    nameOverride: vllm-semantic-router
+    # Routing config follows the upstream vllm-project/semantic-router
+    # values.yaml schema. The chart's `config:` block is rendered into a
+    # ConfigMap and mounted as the router's runtime config. See
+    # https://github.com/vllm-project/semantic-router (deploy/helm and
+    # website/.../installation/configuration.md) for the field reference.
+    config:
+      # SR v0.2.0: when no `decisions[]` block is configured (we still
+      # use the legacy `categories + model_scores` schema below — full
+      # migration to v0.3 decisions is tracked separately), the router
+      # falls back to `default_model` for any incoming request whose
+      # `model:` field is `"auto"` (or matches `auto_model_name`). The
+      # default_model must equal one of the served_model_name values
+      # below so the AI gateway's CEC route table can match on the
+      # `x-vsr-selected-model` header SR sets.
+      # Source: src/semantic-router/pkg/extproc/req_filter_classification.go @ v0.2.0:
+      #   "if len(r.Config.Decisions) == 0 && r.Config.IsAutoModelName(originalModel)
+      #    => return r.Config.DefaultModel"
+      default_model: xplane-qwen3-8b
+
+      # SR exposes a single virtual model called "MoM" (Mixture-of-Models)
+      # in its /v1/models response — that's what OpenWebUI sees in its
+      # model picker and what it sends back as `model: MoM` on every
+      # chat completion. SR's IsAutoModelName helper treats both the
+      # literal "auto" and whatever is configured here as the auto-
+      # routing trigger; without this set, SR doesn't recognise
+      # `model: MoM` and the request falls through to vLLM unmodified
+      # → vLLM returns 404 "The model `MoM` does not exist".
+      # Defined as RouterOptions.AutoModelName in
+      # src/semantic-router/pkg/config/config.go @ v0.2.0.
+      #
+      # `include_config_models_in_list: true` exposes each entry in
+      # `vllm_endpoints[]` (and `model_config{}`) as its own model in
+      # /v1/models alongside `MoM`. Lets clients that already know
+      # the workload (OpenCode CLI, Continue VSCode) pick a specific
+      # model directly and bypass the SR cascade — saves the
+      # ~250-300ms classifier round-trip on every request.
+      # Defined in RouterOptions.IncludeConfigModelsInList @ v0.2.0.
+      router:
+        auto_model_name: MoM
+        include_config_models_in_list: true
+
+      # Backend vLLM endpoints. One entry per InferenceService claim.
+      # `address` matches the K8s Service rendered by the composition,
+      # which equals the InferenceService claim name; `port` is the
+      # vLLM HTTP server port (composition default is 8000).
+      vllm_endpoints:
+        - name: qwen3-8b
+          address: xplane-qwen3-8b.llm.svc.cluster.local
+          port: 8000
+          weight: 1
+        - name: qwen-coder
+          address: xplane-qwen-coder.llm.svc.cluster.local
+          port: 8000
+          weight: 1
+        - name: qwen-coder-fim
+          address: xplane-qwen-coder-fim.llm.svc.cluster.local
+          port: 8000
+          weight: 1
+        - name: llamaguard3-1b
+          address: xplane-llamaguard3-1b.llm.svc.cluster.local
+          port: 8000
+          weight: 1
+
+      # Per-served-model settings. served_model_name on each vLLM pod
+      # equals the InferenceService claim name (see composition main.k).
+      model_config:
+        "xplane-qwen3-8b":
+          pii_policy:
+            allow_by_default: true
+          preferred_endpoints: ["qwen3-8b"]
+        "xplane-qwen-coder":
+          pii_policy:
+            allow_by_default: true
+          preferred_endpoints: ["qwen-coder"]
+        "xplane-qwen-coder-fim":
+          pii_policy:
+            allow_by_default: true
+          preferred_endpoints: ["qwen-coder-fim"]
+        "xplane-llamaguard3-1b":
+          pii_policy:
+            allow_by_default: true
+          preferred_endpoints: ["llamaguard3-1b"]
+
+      # ─── v0.2 routing schema ─────────────────────────────────────
+      # `categories` define domain METADATA only — the LoRA MoM domain
+      # classifier maps prompts to one of these names (mmlu_categories
+      # is the MMLU-Pro labelset the classifier was trained on).
+      # `decisions[]` does the actual routing — the first decision
+      # whose rule matches wins; modelRefs[0].model is the served-name
+      # SR rewrites into the body's `model:` field (matched against
+      # vLLM's --served-model-name on each xplane-* InferenceService).
+      #
+      # Mapping rationale for the 4-model foundation-showcase fleet
+      # (design 2026-05-06; Phi-4-Mini dropped at that trim — Qwen3-8B
+      # absorbs the small-general / `other` slot and the no-decision
+      # fallback via `default_model` above):
+      #   - Qwen2.5-Coder-7B-Instruct    → code (computer science +
+      #     engineering MMLU buckets). Native function-calling, 32k
+      #     context. Primary upstream for OpenWebUI MoM cascade when
+      #     SR classifies a prompt as `code`. ALSO directly addressable
+      #     by clients (OpenCode CLI, Continue VSCode chat profile)
+      #     bypassing this cascade. Carries the LoRA adapters
+      #     (xplane-qwen-coder-sql-dpo, xplane-qwen-coder-securecode)
+      #     mounted on the same pod (composition v0.6.0+).
+      #   - Qwen2.5-Coder-1.5B-Base      → NOT category-routed. Reached
+      #     directly by Continue's autocomplete profile via the FIM
+      #     completion API; clients pick `model: xplane-qwen-coder-fim`
+      #     explicitly. Listed in vllm_endpoints[] so it shows up in
+      #     /v1/models for the picker.
+      #   - Qwen3-8B                     → math, physics, multilingual,
+      #     general fallback. Picks up DeepSeek-R1-Distill-Qwen-7B's
+      #     old reasoning slot AND Phi-4-Mini's old `other` slot.
+      #     Comparable math benchmarks plus 32k context for longer-form
+      #     Q&A. Also the `default_model` for unclassified / `auto`
+      #     requests.
+      #   - LlamaGuard 3-1B              → not category-routed; runs
+      #     as the input-side guardrail via the prompt_guard block.
+      # ─── Signal-fusion sources ───────────────────────────────────
+      # Two-axis routing requires more than the LoRA MoM domain
+      # classifier alone (Axis A — which model serves it). For Axis B
+      # — does that model engage chain-of-thought / longer-token
+      # spend? — we layer in keyword and context-length signals.
+      # Each rule defined here is referenced by `decisions[].rules`
+      # below via `{type: <signal>, name: <rule>}`.
+      #
+      # Signal types supported in v0.2.0:
+      #   keyword | embedding | domain | fact_check | user_feedback
+      #   preference | language | context | complexity | modality
+      #   authz | jailbreak | pii
+      # (validator: src/semantic-router/pkg/decision/engine.go @ v0.2.0,
+      # see the `case` arms in matchSignal). The chart exposes the
+      # struct verbatim under `config.signals`.
+      signals:
+        # Keyword fallbacks: if the LoRA classifier mis-categorizes a
+        # code-flavoured prompt as `other` (e.g., "calculate the budget
+        # for Q3" or "regex match this string"), these keyword rules
+        # let us route on lexical evidence alongside the BERT label.
+        keyword_rules:
+          - name: code_keywords
+            description: "Lexical signals that the prompt is code-flavoured"
+            operator: OR
+            case_sensitive: false
+            keywords:
+              - debug
+              - refactor
+              - stack trace
+              - traceback
+              - "compile"
+              - "syntax error"
+              - "function "
+              - "import "
+              - "regex"
+              - "unit test"
+              - "git "
+              - "kubectl"
+              - "terraform"
+              - "docker"
+              - "yaml"
+              - "json"
+
+          - name: reasoning_keywords
+            description: "Words that imply multi-step / chain-of-thought reasoning"
+            operator: OR
+            case_sensitive: false
+            keywords:
+              - "explain"
+              - "why"
+              - " how "
+              - "prove"
+              - "trade-off"
+              - "tradeoff"
+              - "compare"
+              - "analyse"
+              - "analyze"
+              - "design decision"
+              - "step by step"
+              - "step-by-step"
+
+        # Context-length signal: long prompts almost always benefit
+        # from reasoning (multi-file refactors, code review of a
+        # whole module, "explain this whole function"). The 500-token
+        # threshold is a starting heuristic; tune after we have real
+        # SR latency / quality telemetry.
+        context_rules:
+          - name: long_query
+            description: "Prompt > 500 tokens — likely multi-step / multi-file"
+            min_tokens: 500
+            max_tokens: 32000
+
+      categories:
+        - name: math
+          description: "Math + symbolic reasoning"
+          mmlu_categories: ["math"]
+        - name: physics
+          description: "Physics + applied science"
+          mmlu_categories: ["physics"]
+        - name: code
+          description: "Code generation, debugging, software engineering"
+          mmlu_categories: ["computer science", "engineering"]
+        - name: multilingual
+          description: "Non-English prompts and translation"
+          mmlu_categories: ["philosophy", "law"]
+        - name: other
+          description: "General knowledge fallback"
+          mmlu_categories: ["business", "psychology", "biology",
+            "chemistry", "history", "other", "health", "economics"]
+
+      # ─── Decision cascade ────────────────────────────────────────
+      # Highest priority that matches wins. Each decision picks BOTH
+      # the model (Axis A) AND its reasoning toggle (Axis B). Pairs
+      # are organised so the heavier-spend decision is checked first
+      # for each model, falling back to the lighter variant.
+      decisions:
+        # Code + reasoning trigger → qwen-coder with CoT enabled.
+        # Catches "refactor X and explain the trade-offs", "debug this
+        # and show me your reasoning", etc. Either signal is enough:
+        # domain alone wouldn't differentiate "fix this typo" from
+        # "design a state machine"; the reasoning_keywords / long_query
+        # signal does.
+        - name: code_with_reasoning
+          description: "Code prompts that imply multi-step thinking"
+          priority: 110
+          rules:
+            operator: AND
+            conditions:
+              - operator: OR
+                conditions:
+                  - {type: domain, name: code}
+                  - {type: keyword, name: code_keywords}
+              - operator: OR
+                conditions:
+                  - {type: keyword, name: reasoning_keywords}
+                  - {type: context, name: long_query}
+          modelRefs:
+            - model: xplane-qwen-coder
+              use_reasoning: true
+
+        # Code (Axis A only) → qwen-coder, lightweight path. Catches
+        # short snippets, single-line completions, and fast refactors
+        # where ChainOfThought adds latency without quality.
+        - name: code_decision
+          description: "Code generation / debugging / refactoring (light)"
+          priority: 100
+          rules:
+            operator: OR
+            conditions:
+              - {type: domain, name: code}
+              - {type: keyword, name: code_keywords}
+          modelRefs:
+            - model: xplane-qwen-coder
+              use_reasoning: false
+
+        # Reasoning-heavy non-code (math, physics) → Qwen3-8B with
+        # use_reasoning=true (CoT activated via Qwen3's thinking
+        # mode). Picks up DeepSeek-R1-Distill-Qwen-7B's old slot;
+        # Qwen3-8B has comparable math benchmarks and adds a 32k
+        # context window for longer-form Q&A.
+        - name: reasoning_decision
+          description: "Reasoning-heavy non-code queries (math/physics)"
+          priority: 90
+          rules:
+            operator: OR
+            conditions:
+              - {type: domain, name: math}
+              - {type: domain, name: physics}
+          modelRefs:
+            - model: xplane-qwen3-8b
+              use_reasoning: true
+
+        # Multilingual / longer-context Q&A → Qwen3 (32k context, KV
+        # offload enabled in the InferenceService claim).
+        - name: multilingual_decision
+          description: "Multilingual + longer-context queries"
+          priority: 80
+          rules:
+            operator: OR
+            conditions:
+              - {type: domain, name: multilingual}
+          modelRefs:
+            - model: xplane-qwen3-8b
+              use_reasoning: false
+
+        # Default for everything else → Qwen3-8B. Phi-4-Mini was the
+        # original target here; dropped in the foundation-showcase trim
+        # (see fleet mapping above). Qwen3-8B carries the small-general
+        # slot and the no-decision fallback.
+        - name: general_decision
+          description: "General knowledge, fast small-model path"
+          priority: 50
+          rules:
+            operator: OR
+            conditions:
+              - {type: domain, name: other}
+          modelRefs:
+            - model: xplane-qwen3-8b
+              use_reasoning: false
+
+      # Input-side guardrails (built-in Iris plugins). Output-side
+      # filtering (CL-2 rec A — LlamaGuard post-filter) does NOT have a
+      # first-class chart hook in the current upstream release; it is
+      # tracked as deferred work and would be wired either as a custom
+      # decisions[] plugin chain or as an application-layer middleware
+      # in front of OpenWebUI.
+      prompt_guard:
+        enabled: true
+        threshold: 0.7
+        use_cpu: true
+      classifier:
+        # Chart default downloads the PII *inference* model
+        # (pii_classifier_modernbert-base_presidio_token_model) which
+        # already contains pii_type_mapping.json — but the chart's
+        # default `pii_mapping_path` points at a non-existent
+        # `models/mom-pii-classifier/...` bundle the downloader never
+        # fetches. Override to the correct in-tree path so the binary
+        # finds the mapping it needs at startup. (`enabled: false`
+        # alone is NOT honored — the binary loads the mapping path
+        # unconditionally on startup.)
+        pii_model:
+          enabled: true
+          threshold: 0.7
+          # Chart's model_downloader renames the upstream
+          # `pii_type_mapping.json` to `label_mapping.json` on disk, so
+          # point the binary at that file (not the HF repo name).
+          pii_mapping_path: models/pii_classifier_modernbert-base_presidio_token_model/label_mapping.json
+      # BERT model for semantic_cache similarity scoring. Required when
+      # semantic_cache.enabled=true — without this top-level block the
+      # chart's downloader creates the dir but never fetches the weights,
+      # so BERT init fails with "No model weights found in
+      # models/mom-embedding-light". Schema: deploy/helm + v0.1 docs.
+      bert_model:
+        model_id: sentence-transformers/all-MiniLM-L12-v2
+        threshold: 0.6
+        use_cpu: true
+      # Semantic cache disabled — caches the FULL chat-completion response
+      # by similarity to the prompt embedding. Dangerous in two cases:
+      # (1) Tool-call clients (OpenCode/Continue) where every prompt looks
+      # similar (system prompt + tools[]) but the upstream model state, tool
+      # definitions, or available files differ — wrong cached answer feeds
+      # the agent. (2) Failed upstream responses (e.g. vLLM 400 from a missing
+      # --enable-auto-tool-choice flag) cache as `{"error":"Cached response
+      # has no content"}` and re-poison every retry until the cache TTL
+      # expires or the SR pod restarts. Re-enable once we have a TTL <
+      # tool-schema-change frequency, or scope to no-tool clients only.
+      semantic_cache:
+        enabled: false
+        similarity_threshold: 0.85
+
+    # Chart-level deployment settings (separate from the runtime config above).
+    replicaCount: 1
+
+    # Pin the pod against Karpenter consolidation. The SR pod owns a
+    # gp3 RWO PVC (vllm-semantic-router-models) that holds 600+ MB of
+    # downloaded BERT/LoRA classifier weights. Every consolidation
+    # eviction triggers a multi-AZ PVC detach/re-attach cycle that
+    # takes 30-90s; during that window the AI gateway's ext_proc gRPC
+    # stream fails ("upstream connect error … reset reason: protocol
+    # error") and chat-completion requests leak through to vLLM
+    # without SR's body-rewrite, surfacing as a user-visible
+    # `404: The model 'MoM' does not exist`. The do-not-disrupt
+    # annotation keeps the pod on its current node until manually
+    # rescheduled.
+    podAnnotations:
+      karpenter.sh/do-not-disrupt: "true"
+    # Memory needs to fit BERT (110M params, ~440MB FP32) + LoRA intent
+    # classifier (~180MB) + PII modernbert + jailbreak classifier all
+    # resident at once. 512Mi gets OOMKilled mid-classifier-init.
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        memory: 4Gi
+    # fsGroup grants write to the PVC-backed /app/models volume — the
+    # router's startup model-download (jailbreak/PII classifier) writes
+    # to models/, otherwise we get 'PermissionError: [Errno 13]'.
+    podSecurityContext:
+      fsGroup: 1000
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
+    metrics:
+      enabled: true
+      port: 9090
+
+    # Chart default storageClassName is "standard" which doesn't exist on
+    # AWS EKS. Use the cluster's default class explicitly.
+    persistence:
+      enabled: true
+      storageClassName: gp3
+
+    # Restrict-PSS hardening with `readOnlyRootFilesystem: true` blocks
+    # writes everywhere except mounted volumes. The Rust BERT init (via
+    # candle/burn) writes to $HOME/.cache and $TMPDIR; sentence-transformers
+    # writes to HF_HOME / TRANSFORMERS_CACHE. Without a writable target the
+    # pod CrashLoops with "Failed to initialize BERT: I/O error Read-only
+    # file system (os error 30)". Plumb the HF caches onto the existing
+    # /app/models PVC and add a dedicated /tmp emptyDir.
+    extraVolumes:
+      - name: tmp
+        emptyDir: {}
+    extraVolumeMounts:
+      - name: tmp
+        mountPath: /tmp
+    # `env` is replaced (not merged) — keep the chart defaults below and
+    # add HF_HOME / TRANSFORMERS_CACHE / XDG_CACHE_HOME so BERT writes
+    # under /app/models (the PVC).
+    env:
+      - name: LD_LIBRARY_PATH
+        value: "/app/lib"
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: hf-token
+            key: token
+            optional: true
+      - name: HUGGINGFACE_HUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: hf-token
+            key: token
+            optional: true
+      - name: HF_HOME
+        value: /app/models/.hf
+      - name: TRANSFORMERS_CACHE
+        value: /app/models/.hf/transformers
+      - name: XDG_CACHE_HOME
+        value: /app/models/.cache
+      - name: HOME
+        value: /app/models
