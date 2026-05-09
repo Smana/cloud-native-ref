@@ -82,7 +82,7 @@ Recommendation: rephrase the SC so `/verify-spec` can answer pass/fail with clus
 
 ### V2 — plan.md missing "Validation path" section (MEDIUM)
 
-`plan.md` should have a *Validation path* block listing the exact commands that prove each SC-XXX. If absent, add one (the template includes a starter block under *Implementation Notes*).
+`plan.md` should have a `### Validation path` sub-section under `## Implementation Notes` listing the exact commands that prove each SC-XXX. See the template for a starter block.
 
 ## Output discipline
 

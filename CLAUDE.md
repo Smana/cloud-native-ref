@@ -47,6 +47,21 @@ The pod subnets (100.64.x.x) must NOT have the `kubernetes.io/role/cni` tag. VPC
 
 **IAM:** EBS CSI and Crossplane use EKS Pod Identity (`xplane-*` resource scope for Crossplane).
 
+### Self-Hosted LLM Platform (opt-in)
+
+Two independent gates govern the self-hosted LLM platform; both must be released for an end-to-end deploy:
+
+| Layer | Gate | Default | Enable |
+|---|---|---|---|
+| AWS (S3 Files filesystem + IAM) | `opentofu/llm-platform/` Terramate stack tagged `opt-in`, `$TM_LLM_PLATFORM_ENABLED` env-var guard in `workflows.tm.hcl` | skipped | `TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy` |
+| Kubernetes (vLLM router, NVIDIA plugin, GPU NodePool, LLM apps, LLM EPI) | `clusters/mycluster-0/llm-platform.yaml` umbrella Flux Kustomization with `spec.suspend: true` | skipped | `flux resume kustomization llm-platform -n flux-system` |
+
+The umbrella Kustomization aggregates 5 children under `clusters/mycluster-0-llm-platform/` (kept a sibling of `clusters/mycluster-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/mycluster-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
+
+**Autoscaling design** (composition v0.5.0+, [SPEC-001](docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md)): every model defaults `min=1` with a KEDA `ScaledObject` driven by leading vLLM saturation metrics — `running/max-num-seqs` ratio + `gpu_cache_usage_perc`. The legacy KEDA HTTP add-on (proxy in the data path, lagging request-count trigger) is no longer used; AI Gateway routes directly to each vLLM Service.
+
+**Experimental TUI client:** OpenCode (used occasionally; Claude Code stays primary). Setup design lives in the standalone [`Smana/opencode-config`](https://github.com/Smana/opencode-config) repo at `docs/2026-05-05-opencode-migration-design.md`.
+
 ## Common Commands
 
 ### Terramate / OpenTofu
@@ -225,6 +240,8 @@ Use the FluxCD agent-skills plugin for Flux troubleshooting (`/gitops-cluster-de
 - **Resource Conflicts**: Review Crossplane composition functions and resource references
 
 > **VictoriaLogs and Grafana rules** are in `.claude/rules/observability.md` (loaded automatically when editing observability files).
+
+> **Verification and debugging discipline** (evidence-before-completion gate, 4-phase root-cause method) is in `.claude/rules/process.md` (loaded automatically when editing spec/infra/security/observability/tooling/opentofu/clusters/flux files).
 
 ## Validation Commands
 

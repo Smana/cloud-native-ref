@@ -29,7 +29,12 @@ All Crossplane-managed resources use the **`xplane-*`** prefix (e.g., `xplane-ha
     readOnlyRootFilesystem: true
     allowPrivilegeEscalation: false
     capabilities: { drop: [ALL] }
+    seccompProfile: { type: RuntimeDefault }   # mandatory under PSS=restricted
   ```
+- **Upstream Helm chart values plumbing** (every chart we install):
+  - `seccompProfile.type: RuntimeDefault` is mandatory under PSS=restricted on every container — most charts default to capabilities + non-priv but leave this commented out. Symptom: `must set securityContext.seccompProfile.type to "RuntimeDefault"`.
+  - **Per-component `securityContext` REPLACES the top-level default**, not deep-merge. If a chart segments by component (operator/scaler/interceptor/etc.), restate every restricted-compliant field per component, not just the missing `seccompProfile`.
+  - Many charts split `securityContext` (pod-level) vs `containerSecurityContext` (container-level). `allowPrivilegeEscalation` / `capabilities` / `readOnlyRootFilesystem` only belong at container level — putting them in the pod block fails with `field not declared in schema`.
 - **Resource requests + limits** mandatory.
 - **RBAC**: least privilege; never cluster-admin for workloads.
 

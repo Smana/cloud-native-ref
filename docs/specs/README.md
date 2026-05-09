@@ -73,6 +73,7 @@ Single quality gate. Runs `scripts/validate-spec.sh` plus semantic cross-artifac
 - FR-XXX with no implementing task (coverage gap)
 - Vague adjectives in success criteria (`fast`, `scalable`, ...)
 - SC-XXX without a runnable verification command (**V1** — from the verification discipline)
+- plan.md missing `### Validation path` sub-section (**V2**)
 - Stale `CL-N` references
 - Constitution violations (resource naming, KCL mutation, missing security context, hardcoded credentials, IRSA mention)
 

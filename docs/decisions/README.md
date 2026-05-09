@@ -127,6 +127,8 @@ ADRs, Specs, and Constitution serve different purposes:
 |----|-------|--------|------|
 | [0001](0001-use-kcl-for-crossplane-compositions.md) | Use KCL for Crossplane Compositions | Accepted | 2024-01-15 |
 | [0002](0002-eks-pod-identity-over-irsa.md) | Use EKS Pod Identity over IRSA | Accepted | 2024-01-15 |
+| [0003](0003-vllm-production-stack-over-kserve.md) | Use vLLM Production Stack over KServe + llm-d for v1 LLM Platform | Accepted | 2026-04-30 |
+| [0004](0004-amazon-s3-files-for-model-weights-storage.md) | Use Amazon S3 Files for LLM Model Weights Storage | Accepted | 2026-05-01 |
 
 ## Further Reading
 
