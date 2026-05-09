@@ -157,6 +157,14 @@ spec:
                 description: Secrets Management & PKI
                 icon: vault.png
 
+        - LLM Platform:
+            - Chatbot:
+                href: https://chat.priv.cloud.ogenki.io
+                description: Self-hosted Qwen models · OpenAI-compatible
+                icon: mdi-robot-happy
+                namespace: apps
+                app: xplane-openwebui
+
         - Demo Apps:
             - Podinfo:
                 href: https://podinfo.priv.cloud.ogenki.io
@@ -239,6 +247,9 @@ spec:
           Security & Identity:
             style: row
             columns: 2
+          LLM Platform:
+            style: row
+            columns: 4
           Demo Apps:
             style: row
             columns: 2
