@@ -1,0 +1,31 @@
+---
+# Promptfoo nightly eval CronJob — depends on the Semantic Router being
+# live (the eval queries SR's HTTP classifier as the routing target).
+# Lives under the LLM umbrella so the CronJob is only created when the
+# platform is enabled — otherwise the 02:00 Paris run would fire,
+# fail with connection-refused on a non-existent SR Service, and
+# trigger a false-positive `PromptfooStale` alert cascade.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: llm-platform-promptfoo
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  timeout: 5m0s
+  path: ./tooling/base/promptfoo
+  sourceRef:
+    kind: ExternalArtifact
+    name: tooling-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+  dependsOn:
+    - name: vllm-semantic-router
+  healthChecks:
+    - apiVersion: batch/v1
+      kind: CronJob
+      name: promptfoo
+      namespace: promptfoo

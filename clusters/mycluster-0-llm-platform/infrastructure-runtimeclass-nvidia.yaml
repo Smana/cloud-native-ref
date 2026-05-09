@@ -1,0 +1,24 @@
+---
+# RuntimeClass `nvidia` only — no nvidia-device-plugin DaemonSet.
+# Bottlerocket NVIDIA AMI variants advertise nvidia.com/gpu natively
+# through kubelet, so the upstream device plugin is redundant and
+# crashloops on Bottlerocket. The RuntimeClass is still required so the
+# scheduler can map InferenceService pods' `runtimeClassName: nvidia` to
+# the `nvidia` containerd handler that Bottlerocket pre-configures.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: runtimeclass-nvidia
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  timeout: 5m0s
+  path: ./infrastructure/base/runtimeclass-nvidia
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
