@@ -1,0 +1,18 @@
+# InferencePool Helm chart — deploys the InferencePool resource +
+# Endpoint Picker Plugin (EPP) Deployment + EPP Service in one shot,
+# parameterised by inferencePool.name + modelServers selector.
+#
+# Used by the AI gateway redesign P4 to give each model a vLLM-aware
+# endpoint picker. With a single replica per model today the picker
+# is functionally a no-op; the wiring delivers least-loaded selection
+# the moment any model scales to N>1 (KEDA HPA + GPU budget growth).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: inferencepool
+  namespace: llm
+spec:
+  interval: 24h
+  url: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
+  ref:
+    tag: "v1.0.0"

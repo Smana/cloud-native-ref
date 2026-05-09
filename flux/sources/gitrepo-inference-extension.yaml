@@ -1,0 +1,13 @@
+# Pinned to v1.0.0 — first GA cut of gateway-api-inference-extension.
+# Apply CRDs from this repo via the matching Flux Kustomization in
+# crds/base/kustomization-inference-extension.yaml.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: gateway-api-inference-extension
+  namespace: kube-system
+spec:
+  interval: 5m0s
+  url: https://github.com/kubernetes-sigs/gateway-api-inference-extension
+  ref:
+    tag: v1.0.0

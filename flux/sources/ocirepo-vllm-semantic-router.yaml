@@ -1,0 +1,13 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: vllm-semantic-router
+  namespace: llm
+spec:
+  interval: 24h
+  url: oci://ghcr.io/vllm-project/charts/semantic-router
+  # Pinned to 0.2.0 — the canonical-v0.3 schema migration (started ~late
+  # April 2026 in nightlies and v0.0.0-latest) breaks our values. Bump
+  # the pin only after migrating config to providers/routing/global.
+  ref:
+    tag: "0.2.0"
