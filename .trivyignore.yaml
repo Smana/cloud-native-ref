@@ -27,3 +27,7 @@ misconfigurations:
   - id: AVD-KSV-0035
   - id: AVD-KSV-0039
   - id: AVD-KSV-0040
+  # Promptfoo eval-suite ConfigMap — providers[].config.apiKey is a non-secret
+  # placeholder ("router-noauth"); the Semantic Router does not authenticate.
+  # Renaming the field would break the upstream Promptfoo config schema.
+  - id: AVD-KSV-01010

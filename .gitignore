@@ -1,5 +1,8 @@
 ## More on https://github.com/github/gitignore
 
+# Local Claude state (lock files, scheduled task metadata)
+.claude/scheduled_tasks.lock
+
 # Local .terraform directories
 **/.terraform/*
 
@@ -23,8 +26,9 @@ override.tf.json
 #
 # !example_override.tf
 
-# Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
-# example: *tfplan*
+# Plan output of `tofu plan -out=...` (binary, transient).
+*.tfplan
+out.tfplan
 
 # Ignore CLI configuration files
 .terraformrc

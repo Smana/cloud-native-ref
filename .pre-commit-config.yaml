@@ -11,6 +11,12 @@ repos:
       - id: check-json
       - id: check-added-large-files
         args: [--maxkb=1000]
+        # Upstream envoy-gateway CRDs render to ~2 MiB total; the
+        # `envoyproxies` schema alone is ~1.2 MiB. Committed because
+        # the chart can't be installed via HelmRelease (1 MiB Helm
+        # release Secret cap). Single-file release-asset form lives at
+        # `crds/base/crds-envoy-gateway.yaml`.
+        exclude: '^crds/base/crds-envoy-gateway\.yaml$'
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: check-symlinks
