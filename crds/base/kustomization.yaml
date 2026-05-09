@@ -3,11 +3,13 @@ kind: Kustomization
 
 resources:
   - crds-cert-manager.yaml # These CRDs have been installed from https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml
+  - crds-envoy-gateway.yaml # downloaded from https://github.com/envoyproxy/gateway/releases/download/${ENVOY_GATEWAY_VERSION}/envoy-gateway-crds.yaml
   - helmrelease-prometheus-operator.yaml
   - kustomization-actions-runner-controller.yaml
   - kustomization-external-secrets.yaml
   - kustomization-gateway-api.yaml
   - kustomization-grafana-operator.yaml
+  - kustomization-inference-extension.yaml
   - kustomization-kyverno.yaml
   - kustomization-cloudnative-pg.yaml
   - kustomization-tailscale-operator.yaml
