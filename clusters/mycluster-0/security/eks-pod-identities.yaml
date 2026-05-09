@@ -34,6 +34,8 @@ spec:
       kind: EPI
       name: xplane-harbor
       namespace: tooling
+    # xplane-llm-models-preload is gated by the LLM umbrella Kustomization;
+    # health-checked by clusters/mycluster-0/llm-platform/security-llm-epi.yaml instead.
     - apiVersion: cloud.ogenki.io/v1alpha1
       kind: EPI
       name: xplane-loadbalancer-controller

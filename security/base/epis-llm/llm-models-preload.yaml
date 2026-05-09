@@ -1,0 +1,79 @@
+---
+# Writable EPI used by composition-rendered preload Jobs (CL-3 rec A).
+# Inference pods use per-claim read-only EPIs rendered by the InferenceService
+# composition; this role is reserved for one-shot weights uploads from
+# HuggingFace to s3://${region}-ogenki-llm-models/models/<claim>/<revision>/
+# (kubelet subPath = claim name; S3 Files access point root = /models).
+# Bound to ServiceAccount apps/base/ai/preload-serviceaccount.yaml.
+#
+# IMPORTANT — Resource list is enumerated per claim, not bucket-wide.
+# A compromised preload Job can only overwrite weights for claims listed
+# here, not the LlamaGuard safety backstop or any future co-located
+# tenant. **When adding a new InferenceService claim, append its
+# `<bucket>/models/<claim_name>/*` and `<bucket>/models/<claim_name>` ARN
+# entries below.** Add a `ListBucket` Condition prefix as well so list
+# stays scoped. ListBucket of subprefixes still requires `*` at the
+# bucket level + a `s3:prefix` Condition; matched bucket ARN appears
+# once for that purpose.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: EPI
+metadata:
+  name: xplane-llm-models-preload
+  namespace: security
+spec:
+  clusters:
+    - name: "mycluster-0"
+      region: "eu-west-3"
+  serviceAccount:
+    name: xplane-llm-models-preload
+    namespace: llm
+  policyDocument: |
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "ListBucketScopedToClaims",
+                "Effect": "Allow",
+                "Action": [
+                    "s3:ListBucket"
+                ],
+                "Resource": "arn:aws:s3:::${region}-ogenki-llm-models",
+                "Condition": {
+                    "StringLike": {
+                        "s3:prefix": [
+                            "models/xplane-qwen-coder/*",
+                            "models/xplane-qwen-coder-fim/*",
+                            "models/xplane-qwen3-8b/*",
+                            "models/xplane-llamaguard3-1b/*"
+                        ]
+                    }
+                }
+            },
+            {
+                "Sid": "ReadObjects",
+                "Effect": "Allow",
+                "Action": [
+                    "s3:GetObject"
+                ],
+                "Resource": [
+                    "arn:aws:s3:::${region}-ogenki-llm-models/models/xplane-qwen-coder/*",
+                    "arn:aws:s3:::${region}-ogenki-llm-models/models/xplane-qwen-coder-fim/*",
+                    "arn:aws:s3:::${region}-ogenki-llm-models/models/xplane-qwen3-8b/*",
+                    "arn:aws:s3:::${region}-ogenki-llm-models/models/xplane-llamaguard3-1b/*"
+                ]
+            },
+            {
+                "Sid": "WriteObjects",
+                "Effect": "Allow",
+                "Action": [
+                    "s3:PutObject"
+                ],
+                "Resource": [
+                    "arn:aws:s3:::${region}-ogenki-llm-models/models/xplane-qwen-coder/*",
+                    "arn:aws:s3:::${region}-ogenki-llm-models/models/xplane-qwen-coder-fim/*",
+                    "arn:aws:s3:::${region}-ogenki-llm-models/models/xplane-qwen3-8b/*",
+                    "arn:aws:s3:::${region}-ogenki-llm-models/models/xplane-llamaguard3-1b/*"
+                ]
+            }
+        ]
+    }
