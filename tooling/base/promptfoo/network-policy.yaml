@@ -1,0 +1,46 @@
+---
+# Default-deny + explicit allow for Promptfoo eval CronJob pods.
+# Egress: DNS, vllm-semantic-router (eval target), vmsingle (metrics push).
+# No ingress (Pods are Job-driven and don't accept connections).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: promptfoo
+  namespace: promptfoo
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: promptfoo
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            "io.kubernetes.pod.namespace": "kube-system"
+            "k8s-app": "kube-dns"
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    - toEndpoints:
+        - matchLabels:
+            "io.kubernetes.pod.namespace": "llm"
+            "app.kubernetes.io/name": "vllm-semantic-router"
+      toPorts:
+        - ports:
+            - { port: "8080", protocol: TCP }
+    # AI Gateway (in-cluster service) — promptfoo's eval target until
+    # the SR cascade for /v1/chat/completions is implemented.
+    - toEndpoints:
+        - matchLabels:
+            "io.kubernetes.pod.namespace": "envoy-gateway-system"
+            "app.kubernetes.io/managed-by": "envoy-gateway"
+            "app.kubernetes.io/component": "proxy"
+      toPorts:
+        - ports:
+            - { port: "8080", protocol: TCP }
+    - toEndpoints:
+        - matchLabels:
+            "io.kubernetes.pod.namespace": "observability"
+            "app.kubernetes.io/name": "vmsingle"
+      toPorts:
+        - ports:
+            - { port: "8428", protocol: TCP }
