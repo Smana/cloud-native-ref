@@ -14,6 +14,14 @@ metadata:
   labels:
     app.kubernetes.io/name: promptfoo
     app.kubernetes.io/part-of: ai
+  annotations:
+    # Promptfoo's openai provider auto-discovers OPENAI_API_KEY from the
+    # process environment. Mounting the secret as a file would require an
+    # entrypoint wrapper to `source` it before exec, regressing the
+    # readOnlyRootFilesystem + minimal container surface area we already
+    # enforce. Secret is single-key, short-lived (CronJob, ttl=7d), and
+    # never logged.
+    checkov.io/skip1: CKV_K8S_35=Promptfoo openai provider requires OPENAI_API_KEY in env; mounting as file would need an entrypoint wrapper and break readOnlyRootFilesystem assumptions
 spec:
   schedule: "0 2 * * *"
   timeZone: "Europe/Paris"

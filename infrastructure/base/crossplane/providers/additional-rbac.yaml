@@ -132,6 +132,12 @@ metadata:
   name: inference-service:aggregate-to-crossplane
   labels:
     rbac.crossplane.io/aggregate-to-crossplane: "true"
+  annotations:
+    # Crossplane aggregated ClusterRoles need full lifecycle verbs on the
+    # CRDs the composition manages — same pattern as every sibling aggregate
+    # role in this file. Narrowing the verbs would break composition
+    # reconciliation (no create/update/patch/delete).
+    checkov.io/skip1: CKV_K8S_49=Aggregated ClusterRole for Crossplane composition; wildcard verbs match the established pattern across additional-rbac.yaml
 rules:
   - apiGroups: ["keda.sh"]
     resources: ["scaledobjects", "scaledobjects/status"]
