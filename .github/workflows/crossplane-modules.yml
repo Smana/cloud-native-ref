@@ -250,6 +250,17 @@ jobs:
 
           kcl mod download || true
 
+          # `kcl mod push` ignores the OCI tag in the URL and publishes
+          # under the version field in kcl.mod. For PR builds we need a
+          # distinct tag (so PRs don't clobber the release version), so
+          # rewrite kcl.mod's version field to PUBLISH_VERSION before push.
+          # Workspace is ephemeral; no need to restore.
+          if [ "$IS_PR" = "true" ]; then
+            sed -i "s/^version = \"${MODULE_VERSION}\"$/version = \"${PUBLISH_VERSION}\"/" kcl.mod
+            echo "Rewrote kcl.mod version: ${MODULE_VERSION} -> ${PUBLISH_VERSION}"
+            grep "^version" kcl.mod
+          fi
+
           echo "Attempting to publish oci://${FULL_MODULE_NAME}:${PUBLISH_VERSION}"
           if [ "$IS_PR" = "true" ]; then
             # Use --force for PR versions to allow overwriting
@@ -344,7 +355,16 @@ jobs:
           MODULE_NAME="${{ steps.module-info.outputs.name }}"
           MODULE_VERSION="${{ steps.module-info.outputs.version }}"
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          EXPECTED_REGISTRY_URL="oci://${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-${MODULE_NAME}:${MODULE_VERSION}"
+          # On PR runs, the publish step pushes to a PR-suffixed tag
+          # (`<version>-pr<num>`) — composition source: must match that
+          # tag, NOT the bare kcl.mod version. Mirror the publish step's
+          # logic here so audit doesn't false-fail on PR branches.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            EXPECTED_VERSION="${MODULE_VERSION}-pr${{ github.event.pull_request.number }}"
+          else
+            EXPECTED_VERSION="${MODULE_VERSION}"
+          fi
+          EXPECTED_REGISTRY_URL="oci://${{ env.REGISTRY }}/${REPO_LOWER}/crossplane-${MODULE_NAME}:${EXPECTED_VERSION}"
           MODULE_SEARCH_STRING="crossplane-${MODULE_NAME}:"
 
           echo "🔍 Checking Crossplane compositions for module: $MODULE_NAME"

@@ -1,0 +1,45 @@
+---
+# LLM Platform — opt-in Flux umbrella.
+#
+# Default: spec.suspend = true → none of the LLM-specific Flux
+# Kustomizations under clusters/mycluster-0-llm-platform/ are created,
+# so no LLM resources land in the cluster (no vllm-semantic-router,
+# no NVIDIA device plugin, no GPU NodePool, no LLM apps, no LLM EPI).
+#
+# Mirrors the OpenTofu opt-in (opentofu/llm-platform/workflows.tm.hcl,
+# gated by $TM_LLM_PLATFORM_ENABLED). Together they form the complete
+# opt-in surface for the self-hosted LLM platform.
+#
+# Enable on this cluster:
+#   flux resume kustomization llm-platform -n flux-system
+#
+# Disable again (children stay until you also remove them — `prune: true`
+# only applies to source removal, not suspend):
+#   flux suspend kustomization llm-platform -n flux-system
+#
+# Full teardown (suspend AND remove children + their resources):
+#   flux suspend kustomization llm-platform -n flux-system
+#   flux delete kustomization \
+#     llm-platform-apps llm-platform-gpu-nodepools \
+#     llm-platform-security-epi runtimeclass-nvidia vllm-semantic-router \
+#     -n flux-system --silent
+#   # Then delete the OpenTofu-side resources via:
+#   #   TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run destroy
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: llm-platform
+  namespace: flux-system
+spec:
+  suspend: true
+  prune: true
+  interval: 1m0s
+  timeout: 5m0s
+  # MUST be a sibling of clusters/mycluster-0/ (not a sub-path), otherwise the
+  # `flux-system` Kustomization that syncs `clusters/mycluster-0/` recursively
+  # would auto-discover the child Flux Kustomizations and apply them
+  # directly — bypassing the umbrella's `spec.suspend: true` gate.
+  path: ./clusters/mycluster-0-llm-platform
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Flat list of LLM-specific Flux Kustomizations. The umbrella
+# Kustomization at clusters/mycluster-0/llm-platform.yaml applies this
+# directory only when its `spec.suspend` is false.
+resources:
+  - infrastructure-vllm-semantic-router.yaml
+  - infrastructure-runtimeclass-nvidia.yaml
+  - infrastructure-gpu-nodepools.yaml
+  # AI gateway: Envoy Gateway → Envoy AI Gateway → vLLM Service
+  # (SPEC-001 direct routing per AIServiceBackend; no interceptor in
+  # the data path). Replaces the legacy CEC-on-cilium-envoy + custom
+  # Go llm-router-proxy stack (commit `a371010f`). See
+  # docs/superpowers/specs/2026-05-05-ai-gateway-redesign-design.md.
+  - infrastructure-envoy-gateway.yaml
+  - infrastructure-envoy-ai-gateway.yaml
+  - apps-llm.yaml
+  - security-llm-epi.yaml
+  - tooling-promptfoo.yaml

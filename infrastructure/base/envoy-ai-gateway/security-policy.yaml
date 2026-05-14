@@ -1,0 +1,35 @@
+---
+# API-key authentication on the AI Gateway. Targets the parent Gateway
+# (not the AIGatewayRoute, which is owned by Envoy AI Gateway and isn't
+# a SecurityPolicy targetRef option) — every route attached to this
+# listener inherits the policy.
+#
+# Authentication model: clients send `Authorization: Bearer <key>`.
+# When extracting from the Authorization header, Envoy Gateway strips
+# the auth scheme (`Bearer `) before comparing the remainder against
+# Secret values, so the ExternalSecret in this directory stores the
+# raw key without prefix. ForwardClientIDHeader propagates the matched
+# client identity (the Secret KEY, e.g. `openwebui`) to the upstream
+# vLLM Service via `x-ai-gateway-client-id` for audit logs / per-tenant
+# billing later.
+#
+# Sanitize=true strips the Authorization header before forwarding so
+# vLLM never sees client API keys (vLLM's own --api-key is unset; the
+# data-plane CNP is the only thing keeping vLLM private).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: ai-gateway-api-key
+  namespace: envoy-ai-gateway-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: ai-gateway
+  apiKeyAuth:
+    credentialRefs:
+      - name: ai-gateway-api-keys
+    extractFrom:
+      - headers: ["Authorization"]
+    forwardClientIDHeader: x-ai-gateway-client-id
+    sanitize: true

@@ -1,0 +1,75 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: aws-efs-csi-driver
+spec:
+  releaseName: aws-efs-csi-driver
+  interval: 10m0s
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: aws-efs-csi-driver
+      # Chart 4.x ships driver v3.x, the first line that supports S3 Files
+      # access points (registered under volumeHandle s3files:<fs>::<ap>).
+      # Pinned exactly — Renovate will surface chart-version bumps as PRs
+      # so changes are reviewed before they touch a CSI driver mounting
+      # model weights (a floating range silently re-mounts on reconcile).
+      version: "4.1.0"
+      sourceRef:
+        kind: HelmRepository
+        name: aws-efs-csi-driver
+        namespace: kube-system
+      interval: 12h
+  install:
+    remediation:
+      retries: 3
+  values:
+    # SA names match the AWS-published convention; the EKS Pod Identity
+    # association binds these SAs to the IAM role created by
+    # opentofu/llm-platform/iam.tf (csi_driver). The role attaches both
+    # AmazonEFSCSIDriverPolicy and AmazonS3FilesCSIDriverPolicy.
+    controller:
+      serviceAccount:
+        create: true
+        name: efs-csi-controller-sa
+      resources:
+        requests:
+          cpu: 50m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+      # CSI controllers run in kube-system (PSS=privileged). The
+      # `efs-plugin` container performs kernel-level mounts and MUST run
+      # privileged + as root, so we cannot set pod-level
+      # `runAsNonRoot: true` or container-level
+      # `allowPrivilegeEscalation: false` without conflicting with
+      # `privileged: true` (kubelet rejects the spec). Chart defaults
+      # already lock down the support containers (csi-provisioner,
+      # liveness-probe) with `allowPrivilegeEscalation: false` +
+      # `readOnlyRootFilesystem: true`. We only add the seccomp profile
+      # at pod level — RuntimeDefault propagates to every container and
+      # is compatible with `privileged: true`.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+    node:
+      serviceAccount:
+        create: true
+        name: efs-csi-node-sa
+      # 256Mi gets OOMKilled under heavy mount activity (multiple
+      # parallel preload Jobs all calling NodeStage/NodePublish on the
+      # same shared S3 Files mount). The OOM kills the efs-plugin
+      # container, which leaves the kernel mount alive but breaks the
+      # chart's nfs4 watchdog — new mount attempts then return EACCES.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          memory: 1Gi
+    # Default `Delete` reclaim is risky for shared models; nothing in this
+    # chart provisions volumes dynamically for our use case (we ship a
+    # static PV per InferenceService claim), but harden the default
+    # storageClass behaviour anyway.
+    storageClasses: []

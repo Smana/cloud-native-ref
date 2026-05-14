@@ -1,0 +1,28 @@
+---
+# Persistent storage for OpenWebUI's SQLite DB and chat history.
+# Without this the App composition mounts an emptyDir at
+# /app/backend/data and the admin row + chat history are wiped on
+# every pod restart (Helm upgrades, KEDA scale-down, node drain). The
+# user-facing symptom is the "Get started / Create Admin Account"
+# bootstrap screen reappearing every time.
+#
+# 5Gi is generous for the SQLite DB itself (~250 KB at 1 admin + few
+# chats) plus the embedded vector store / model-cache files OpenWebUI
+# downloads on startup. gp3 because the workload is small-IOPS read +
+# occasional write — RWO is fine since we only run a single replica.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openwebui-data
+  namespace: apps
+  labels:
+    app.kubernetes.io/name: xplane-openwebui
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: ai
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 5Gi

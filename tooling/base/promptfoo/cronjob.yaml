@@ -1,0 +1,151 @@
+---
+# T035 / CL-4 A — Nightly Promptfoo eval at 02:00 Europe/Paris.
+# Runs the eval suite (ConfigMap-mounted) against the Semantic Router via
+# its in-cluster Service, parses the JSON results into Prometheus text
+# format, and pushes to VictoriaMetrics' /api/v1/import/prometheus.
+# Metrics emitted: promptfoo_test_pass_rate{category="..."},
+# promptfoo_test_total{category="..."}, promptfoo_test_failed{category="..."},
+# promptfoo_run_duration_seconds.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: promptfoo
+  namespace: promptfoo
+  labels:
+    app.kubernetes.io/name: promptfoo
+    app.kubernetes.io/part-of: ai
+  annotations:
+    # Promptfoo's openai provider auto-discovers OPENAI_API_KEY from the
+    # process environment. Mounting the secret as a file would require an
+    # entrypoint wrapper to `source` it before exec, regressing the
+    # readOnlyRootFilesystem + minimal container surface area we already
+    # enforce. Secret is single-key, short-lived (CronJob, ttl=7d), and
+    # never logged.
+    checkov.io/skip1: CKV_K8S_35=Promptfoo openai provider requires OPENAI_API_KEY in env; mounting as file would need an entrypoint wrapper and break readOnlyRootFilesystem assumptions
+spec:
+  schedule: "0 2 * * *"
+  timeZone: "Europe/Paris"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # 7 days — long enough for `failedJobsHistoryLimit: 5` to retain
+      # 5 daily failures for inspection. A shorter TTL (e.g. 24h)
+      # would delete failed Jobs before the history window populated
+      # and silently defeat `failedJobsHistoryLimit`.
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: promptfoo
+            app.kubernetes.io/part-of: ai
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            seccompProfile: { type: RuntimeDefault }
+            runAsNonRoot: true
+            runAsUser: 10001
+            fsGroup: 10001
+          volumes:
+            - name: suite
+              configMap: { name: promptfoo-eval-suite }
+            - name: workdir
+              emptyDir: { sizeLimit: 256Mi }
+          containers:
+            - name: promptfoo
+              image: ghcr.io/promptfoo/promptfoo:0.106.0@sha256:e10e5e2d0ae9a73ec10883672448506c0bf11db443fcab1afb5f461968a5616e
+              imagePullPolicy: Always
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+
+                  cd /work
+                  cp /suite/promptfooconfig.yaml ./promptfooconfig.yaml
+
+                  START=$(date +%s)
+                  promptfoo eval --no-progress-bar --max-concurrency 4 --output /work/results.json || true
+                  END=$(date +%s)
+                  DURATION=$((END - START))
+
+                  # Per-category pass rates from JSON results. The promptfoo
+                  # image is node-based (no jq) so we parse with `node -e`
+                  # instead of jq. Promptfoo's JSON schema places per-test
+                  # metadata at one of several paths depending on version;
+                  # the chained '?? ??' alternation tries the documented
+                  # paths and falls back to "unknown" so a schema drift
+                  # doesn't silently drop metrics.
+                  # `$${...}` escapes — Flux postBuild substitution would
+                  # otherwise consume the JS template literal placeholders.
+                  node -e '
+                    const r = require("/work/results.json");
+                    const tests = (r.results && r.results.results) || [];
+                    const g = {};
+                    let schemaUnknown = 0;
+                    for (const t of tests) {
+                      const explicit = (t.testCase && t.testCase.metadata && t.testCase.metadata.category)
+                                    || (t.testCase && t.testCase.vars && t.testCase.vars.category)
+                                    || (t.vars && t.vars.category);
+                      const c = explicit || "unknown";
+                      if (!explicit) schemaUnknown++;
+                      if (!g[c]) g[c] = {total:0, failed:0};
+                      g[c].total++;
+                      if (!t.success) g[c].failed++;
+                    }
+                    const out = [];
+                    for (const [c, x] of Object.entries(g)) {
+                      out.push(`promptfoo_test_total{category="$${c}"} $${x.total}`);
+                      out.push(`promptfoo_test_failed{category="$${c}"} $${x.failed}`);
+                      out.push(`promptfoo_test_pass_rate{category="$${c}"} $${(x.total - x.failed) / x.total}`);
+                    }
+                    // Promptfoo schema drift signal: counts tests whose
+                    // category fell through every known JSON path. Non-zero
+                    // means our `||` chain needs a new branch — alert before
+                    // the "unknown" bucket starts hiding everything.
+                    out.push(`promptfoo_test_schema_unknown_total $${schemaUnknown}`);
+                    console.log(out.join("\n"));
+                  ' > /work/metrics.prom
+
+                  # Total run duration (overall health gauge).
+                  # `$${VAR}` escapes — Flux postBuild envsubst would
+                  # otherwise consume these bash vars as Flux substitutions.
+                  echo "promptfoo_run_duration_seconds $${DURATION}" >> /work/metrics.prom
+                  echo "promptfoo_run_timestamp_seconds $${END}" >> /work/metrics.prom
+
+                  echo "=== metrics.prom ==="
+                  cat /work/metrics.prom
+                  echo "==="
+
+                  # Push to VictoriaMetrics.
+                  curl --fail --silent --show-error \
+                    -X POST \
+                    -H 'Content-Type: text/plain' \
+                    --data-binary @/work/metrics.prom \
+                    'http://vmsingle-victoria-metrics-k8s-stack.observability.svc.cluster.local:8428/api/v1/import/prometheus'
+
+                  echo "Pushed metrics to VictoriaMetrics."
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities: { drop: ["ALL"] }
+                seccompProfile: { type: RuntimeDefault }
+              resources:
+                requests: { cpu: "200m", memory: "512Mi" }
+                limits:   { cpu: "1",    memory: "1Gi" }
+              env:
+                - name: HOME
+                  value: /work
+              # OPENAI_API_KEY for the AI Gateway SecurityPolicy (B-1).
+              # Promptfoo's openai provider auto-detects this env var
+              # and sends `Authorization: Bearer <value>`.
+              envFrom:
+                - secretRef:
+                    name: promptfoo-llm-api-key
+              volumeMounts:
+                - { name: suite,   mountPath: /suite,  readOnly: true }
+                - { name: workdir, mountPath: /work }

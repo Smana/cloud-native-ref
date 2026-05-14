@@ -1,0 +1,83 @@
+---
+# Platform-level alerts spanning all InferenceService claims and Promptfoo
+# eval results. Per-model SLO alerts (cold-start, error-rate) are rendered
+# by the InferenceService Crossplane composition and live alongside each
+# claim. Cardinality optimisation + recording rules deferred per CL-7
+# (waiting for VictoriaMetrics LLM observability lab patterns).
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: ai
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: ai
+spec:
+  groups:
+    - name: ai-fleet
+      rules:
+        - alert: LLMPlatformFleetAbortRateHigh
+          # vLLM has no dedicated request_failure_total. Failures are
+          # counted as request_success_total{finished_reason="abort"}.
+          expr: |
+            sum(rate(vllm:request_success_total{finished_reason="abort"}[10m]))
+              / sum(rate(vllm:request_success_total[10m])) > 0.05
+          for: 10m
+          labels:
+            severity: critical
+            component: ai
+          annotations:
+            summary: "LLM fleet abort rate > 5% (10m avg)"
+            description: |
+              Aggregate share of vllm:request_success_total{finished_reason="abort"}
+              exceeded 5% across the fleet for 10 minutes. Per-model breakdown
+              is in the ai-overview dashboard.
+            dashboard: "https://grafana.${private_domain_name}/d/ai-overview"
+
+        - alert: LLMPlatformSemanticRouterDown
+          expr: |
+            absent(up{job="vllm-semantic-router"}) == 1
+            or sum(up{job="vllm-semantic-router"}) == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: ai
+          annotations:
+            summary: "Semantic Router scraping target absent / all replicas down"
+            description: |
+              vmagent has no live up{} samples for vllm-semantic-router.
+              All inference traffic flows through this component — outage means
+              the public LLM endpoint is broken.
+
+    - name: ai-eval
+      rules:
+        - alert: PromptfooRegression
+          # Pass-rate dropped below 0.85 for any category in the latest run.
+          # Promptfoo run cadence is nightly (CL-4 A); the metric is a gauge.
+          expr: promptfoo_test_pass_rate < 0.85
+          for: 1h
+          labels:
+            severity: warning
+            component: ai
+            kind: regression
+          annotations:
+            summary: "Promptfoo {{ $labels.category }} pass rate below 0.85"
+            description: |
+              Last nightly Promptfoo run: pass rate for category
+              {{ $labels.category }} = {{ $value | humanizePercentage }}.
+              Investigate model swap / Semantic Router config changes since
+              the previous run.
+            dashboard: "https://grafana.${private_domain_name}/d/llm-routing"
+
+        - alert: PromptfooStale
+          # Last successful run >36h ago — CronJob is broken.
+          expr: time() - max(promptfoo_run_timestamp_seconds) > 36 * 3600
+          for: 1h
+          labels:
+            severity: warning
+            component: ai
+            kind: pipeline
+          annotations:
+            summary: "No Promptfoo eval push in the last 36h"
+            description: |
+              CronJob `promptfoo` in namespace `promptfoo` has not pushed
+              metrics for over 36h. Expected cadence: nightly at 02:00 Europe/Paris.

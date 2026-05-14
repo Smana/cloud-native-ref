@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kube-system
+
+# RuntimeClass `nvidia` only — no nvidia-device-plugin DaemonSet.
+# Bottlerocket NVIDIA AMI variants advertise nvidia.com/gpu natively
+# through kubelet (host-side service), so the upstream
+# nvidia/k8s-device-plugin is redundant and crashloops on Bottlerocket
+# (cannot find NVML in expected paths). The RuntimeClass below is still
+# required so the scheduler maps `runtimeClassName: nvidia` to the
+# `nvidia` containerd runtime handler that Bottlerocket pre-configures.
+resources:
+  - runtimeclass.yaml

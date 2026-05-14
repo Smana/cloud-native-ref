@@ -1,0 +1,350 @@
+<mxfile host="app.diagrams.net" agent="cloud-native-ref" version="24.7.0" type="device">
+  <diagram name="LLM Platform — current state" id="llm-platform-arch">
+    <mxGraphModel dx="2400" dy="1500" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============================================================ -->
+        <!-- Title + legend                                                -->
+        <!-- ============================================================ -->
+        <mxCell id="title" value="LLM Platform — current state on EKS &lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;cloud-native-ref &amp;mdash; branch wip/self-hosted-llm-platform-draft (PR #1434), 2026-05-03&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1200" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-box" value="Legend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="20" width="340" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-req" value="" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1340" y="62" as="sourcePoint" />
+            <mxPoint x="1400" y="62" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-req-lbl" value="request flow (OpenAI HTTP / classify)" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1410" y="50" width="240" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-stor" value="" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1340" y="92" as="sourcePoint" />
+            <mxPoint x="1400" y="92" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-stor-lbl" value="model-weights flow (NFS → S3)" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1410" y="80" width="240" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-gops" value="" style="endArrow=classic;html=1;strokeColor=#ff7f00;strokeWidth=2;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1340" y="122" as="sourcePoint" />
+            <mxPoint x="1400" y="122" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-gops-lbl" value="GitOps flow (Flux / Crossplane)" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1410" y="110" width="240" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-gap" value="" style="endArrow=classic;html=1;strokeColor=#e31a1c;strokeWidth=2;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1340" y="152" as="sourcePoint" />
+            <mxPoint x="1400" y="152" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-gap-lbl" value="planned / blocked (gap in current deploy)" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1410" y="140" width="240" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- External user                                                 -->
+        <!-- ============================================================ -->
+        <mxCell id="user" value="User&#xa;(laptop / phone)" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3E;strokeColor=#232F3E;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.user;" vertex="1" parent="1">
+          <mxGeometry x="80" y="120" width="60" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ts-tailnet" value="Tailscale tailnet&#xa;(WireGuard mesh)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="115" width="180" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- AWS region container                                          -->
+        <!-- ============================================================ -->
+        <mxCell id="aws-region" value="AWS — eu-west-3" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=14;fontStyle=1;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_region;strokeColor=#147EBA;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#147EBA;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="240" width="1580" height="1670" as="geometry" />
+        </mxCell>
+
+        <!-- VPC -->
+        <mxCell id="aws-vpc" value="VPC  10.0.0.0/16" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=1;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_vpc;strokeColor=#248814;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#248814;dashed=0;" vertex="1" parent="aws-region">
+          <mxGeometry x="40" y="50" width="1480" height="1130" as="geometry" />
+        </mxCell>
+
+        <!-- Tailscale subnet router pod (inside cluster) — represented at VPC entry -->
+        <mxCell id="ts-router" value="Tailscale&#xa;subnet router" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#9673a6;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.compute;" vertex="1" parent="aws-vpc">
+          <mxGeometry x="40" y="60" width="60" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- EKS cluster                                                   -->
+        <!-- ============================================================ -->
+        <mxCell id="eks-cluster" value="EKS cluster — mycluster-0&#xa;(Kubernetes 1.35, Bottlerocket nodes, Cilium CNI + kube-proxy replacement)" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=1;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_eks_cluster;strokeColor=#5294CF;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#5294CF;dashed=0;" vertex="1" parent="aws-vpc">
+          <mxGeometry x="160" y="60" width="1280" height="980" as="geometry" />
+        </mxCell>
+
+        <!-- infrastructure namespace -->
+        <mxCell id="ns-infra" value="ns: infrastructure" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;dashed=0;" vertex="1" parent="eks-cluster">
+          <mxGeometry x="40" y="60" width="220" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ts-gw" value="platform-tailscale-general&#xa;Cilium Gateway" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;align=center;" vertex="1" parent="ns-infra">
+          <mxGeometry x="20" y="40" width="180" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="httproute-ow" value="HTTPRoute&#xa;chat.priv.cloud.ogenki.io&#xa;→ openwebui:8080" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=9;align=center;" vertex="1" parent="ns-infra">
+          <mxGeometry x="20" y="105" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- apps namespace -->
+        <mxCell id="ns-apps" value="ns: apps" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="eks-cluster">
+          <mxGeometry x="290" y="60" width="240" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="openwebui" value="OpenWebUI Deployment&#xa;(uid 1001 / data emptyDir)&#xa;OPENAI_API_BASE_URL =&#xa;semantic-router:8080/v1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=10;align=center;" vertex="1" parent="ns-apps">
+          <mxGeometry x="20" y="40" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- llm namespace (largest) -->
+        <mxCell id="ns-llm" value="ns: llm" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="eks-cluster">
+          <mxGeometry x="40" y="270" width="1200" height="600" as="geometry" />
+        </mxCell>
+
+        <!-- semantic-router -->
+        <mxCell id="sr-pod" value="vllm-semantic-router (1/1 Running)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;:8080  Classification API (intent / PII / security)  ✓&#xa;:50051  Envoy ext_proc gRPC  (idle — needs Envoy in front)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;Loaded models:  BERT  +  LoRA intent  +  PII modernbert  +  jailbreak&#xa;Memory: 2Gi req / 4Gi limit  •  PVC vllm-semantic-router-models (gp3, 10Gi)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;" vertex="1" parent="ns-llm">
+          <mxGeometry x="20" y="40" width="560" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- gap: Envoy / CEC -->
+        <mxCell id="gap-envoy" value="GAP: Envoy / Cilium CEC&#xa;(ext_proc filter — required for /v1/chat/completions)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fadbd8;strokeColor=#e31a1c;fontSize=10;fontStyle=1;align=center;dashed=1;" vertex="1" parent="ns-llm">
+          <mxGeometry x="600" y="55" width="280" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- 4 InferenceServices -->
+        <mxCell id="is-grp" value="XInferenceService claims (Crossplane composition: xinferenceservices.cloud.ogenki.io v0.3.2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;dashed=1;" vertex="1" parent="ns-llm">
+          <mxGeometry x="20" y="200" width="1160" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="is-phi4" value="xplane-phi4-mini&#xa;━━━━━━━━━━━━&#xa;Deployment: 0/0&#xa;KEDA SO: prom&#xa;Service: 8000&#xa;subPath: phi4-mini" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e7;strokeColor=#d6b656;fontSize=9;align=left;verticalAlign=top;spacingLeft=6;spacingTop=4;" vertex="1" parent="is-grp">
+          <mxGeometry x="20" y="35" width="180" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="is-qwen" value="xplane-qwen3-8b&#xa;━━━━━━━━━━━━&#xa;Deployment: 0/0&#xa;KEDA SO: prom&#xa;Service: 8000&#xa;subPath: qwen3-8b" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e7;strokeColor=#d6b656;fontSize=9;align=left;verticalAlign=top;spacingLeft=6;spacingTop=4;" vertex="1" parent="is-grp">
+          <mxGeometry x="220" y="35" width="180" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="is-deep" value="xplane-deepseek-r1-distill-qwen3-8b&#xa;━━━━━━━━━━━━&#xa;Deployment: 0/0&#xa;KEDA SO: prom&#xa;Service: 8000&#xa;subPath: deepseek-…" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e7;strokeColor=#d6b656;fontSize=9;align=left;verticalAlign=top;spacingLeft=6;spacingTop=4;" vertex="1" parent="is-grp">
+          <mxGeometry x="420" y="35" width="180" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="is-llama" value="xplane-llamaguard3-1b&#xa;━━━━━━━━━━━━&#xa;Deployment: 0/0&#xa;KEDA SO: prom&#xa;Service: 8000&#xa;subPath: llamaguard3-1b" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e7;strokeColor=#d6b656;fontSize=9;align=left;verticalAlign=top;spacingLeft=6;spacingTop=4;" vertex="1" parent="is-grp">
+          <mxGeometry x="620" y="35" width="180" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gap-gpu" value="GAP: GPU NodePool&#xa;(Bottlerocket NVIDIA AMI&#xa;+ RuntimeClass nvidia)&#xa;Deploys today reject:&#xa;&quot;RuntimeClass nvidia not found&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fadbd8;strokeColor=#e31a1c;fontSize=9;fontStyle=1;align=center;dashed=1;" vertex="1" parent="is-grp">
+          <mxGeometry x="830" y="35" width="310" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- preload jobs row -->
+        <mxCell id="preload" value="Preload Jobs (Crossplane-rendered, one per claim)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;hf download &lt;repo&gt; --revision &lt;rev&gt; --local-dir /models/&lt;rev&gt; --max-workers 1&#xa;.preload-complete marker short-circuits the pip + hf cycle on retry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;" vertex="1" parent="ns-llm">
+          <mxGeometry x="20" y="380" width="850" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- shared PVC and PV -->
+        <mxCell id="pvc-llm" value="PVC  llm-models  (RWX, 100Gi)&#xa;StorageClass: s3files-llm-models" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" vertex="1" parent="ns-llm">
+          <mxGeometry x="900" y="385" width="280" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="pv-llm" value="PV  llm-models  (cluster-scoped, Retain)&#xa;csi.driver: efs.csi.aws.com&#xa;volumeHandle: s3files:fs-…::fsap-…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#6c8ebf;fontSize=10;align=center;dashed=1;" vertex="1" parent="ns-llm">
+          <mxGeometry x="900" y="445" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="pv-note" value="PV is cluster-scoped — provisioned outside the namespaced XR (Crossplane v2 limitation)" style="text;html=1;align=center;fontSize=9;fontColor=#6c8ebf;fontStyle=2;" vertex="1" parent="ns-llm">
+          <mxGeometry x="900" y="510" width="280" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- kube-system: EFS CSI -->
+        <mxCell id="ns-ks" value="ns: kube-system" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="eks-cluster">
+          <mxGeometry x="560" y="60" width="320" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="efs-csi" value="aws-efs-csi-driver  (chart 4.x / driver v3.x)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;controller (efs-csi-controller-sa) — volume lifecycle&#xa;node DS (efs-csi-node-sa) — actual NFS mount&#xa;Both SAs bound to IAM role (Pod Identity Association)&#xa;Memory: 1Gi node limit (256Mi OOMs under load)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=9;align=left;verticalAlign=top;spacingLeft=6;spacingTop=4;" vertex="1" parent="ns-ks">
+          <mxGeometry x="15" y="40" width="290" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- crossplane / flux subsystems (small boxes top right) -->
+        <mxCell id="ns-fs" value="ns: flux-system" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="eks-cluster">
+          <mxGeometry x="900" y="60" width="180" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="flux-ops" value="FluxInstance&#xa;source-controller&#xa;kustomize-controller&#xa;helm-controller&#xa;notification-controller" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=10;align=center;" vertex="1" parent="ns-fs">
+          <mxGeometry x="15" y="40" width="150" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ns-cp" value="ns: crossplane-system" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="eks-cluster">
+          <mxGeometry x="1100" y="60" width="160" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-ops" value="Crossplane v2&#xa;function-kcl&#xa;provider-aws v2.5&#xa;(m.upbound.io)&#xa;ManagedResource&#xa;ActivationPolicy" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=9;align=center;" vertex="1" parent="ns-cp">
+          <mxGeometry x="10" y="40" width="140" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- karpenter / nodes -->
+        <mxCell id="karpenter" value="Karpenter NodePool: default&#xa;(Bottlerocket, c8i-flex.2xlarge spot)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef5e7;strokeColor=#b8860b;fontSize=10;align=center;fontStyle=1;" vertex="1" parent="eks-cluster">
+          <mxGeometry x="40" y="900" width="340" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="karpenter-gpu" value="Karpenter NodePool: gpu&#xa;(Bottlerocket NVIDIA AMI variant — planned next session)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef5e7;strokeColor=#e31a1c;fontSize=10;align=center;fontStyle=1;dashed=1;" vertex="1" parent="eks-cluster">
+          <mxGeometry x="400" y="900" width="380" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="cilium-mod" value="Cilium  (CNI + kube-proxy replacement&#xa;+ Gateway API + L7 / FQDN policy)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef5e7;strokeColor=#b8860b;fontSize=10;align=center;fontStyle=1;" vertex="1" parent="eks-cluster">
+          <mxGeometry x="800" y="900" width="280" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- AWS storage — S3 Files + S3                                   -->
+        <!-- ============================================================ -->
+        <mxCell id="storage-grp" value="Model-weights storage (provisioned by opentofu/llm-platform)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf7e9;strokeColor=#33a02c;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="aws-vpc">
+          <mxGeometry x="160" y="1080" width="1280" height="240" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s3files-fs" value="S3 Files  •  filesystem  fs-05109ae1cd368e6de&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;Access Point  fsap-06bf88ade200621dd&#xa;posix_user  uid=1001  gid=1001&#xa;root_directory  /models   creation_permissions 0775&#xa;file_system_policy  →  csi_driver IAM role  (ClientMount, ClientWrite)" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#7AA116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=middle;verticalAlign=middle;align=center;html=1;fontSize=10;fontStyle=0;shape=rectangle;rounded=1;" vertex="1" parent="storage-grp">
+          <mxGeometry x="40" y="50" width="560" height="170" as="geometry" />
+        </mxCell>
+
+        <!-- 3 mount targets per AZ -->
+        <mxCell id="mt-az1" value="MT  euw3-az1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#33a02c;strokeColor=#ffffff;fontColor=#ffffff;fontSize=10;fontStyle=1;align=center;" vertex="1" parent="storage-grp">
+          <mxGeometry x="640" y="55" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mt-az2" value="MT  euw3-az2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#33a02c;strokeColor=#ffffff;fontColor=#ffffff;fontSize=10;fontStyle=1;align=center;" vertex="1" parent="storage-grp">
+          <mxGeometry x="640" y="105" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mt-az3" value="MT  euw3-az3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#33a02c;strokeColor=#ffffff;fontColor=#ffffff;fontSize=10;fontStyle=1;align=center;" vertex="1" parent="storage-grp">
+          <mxGeometry x="640" y="155" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mt-note" value="NFS 4.1 / 4.2 over TCP 2049&#xa;(mount-target SG: ingress from EKS node SG)" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#33a02c;" vertex="1" parent="storage-grp">
+          <mxGeometry x="640" y="200" width="220" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- S3 bucket -->
+        <mxCell id="s3-bucket" value="S3 bucket&#xa;eu-west-3-ogenki-llm-models&#xa;(versioning ON,&#xa;EventBridge sync)" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#7AA116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" vertex="1" parent="storage-grp">
+          <mxGeometry x="900" y="60" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="s3-iam" value="IAM&#xa;s3files_service role&#xa;(trust: elasticfilesystem.amazonaws.com)" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#DD344C;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.identity_and_access_management_iam;" vertex="1" parent="storage-grp">
+          <mxGeometry x="1080" y="60" width="78" height="78" as="geometry" />
+        </mxCell>
+
+        <mxCell id="storage-eb" value="EventBridge  •  Pod Identity Associations bind csi-controller-sa AND csi-node-sa to csi_driver IAM role (AmazonEFSCSIDriverPolicy + AmazonS3FilesCSIDriverPolicy)" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#33a02c;" vertex="1" parent="storage-grp">
+          <mxGeometry x="900" y="170" width="340" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- GitOps strip                                                  -->
+        <!-- ============================================================ -->
+        <mxCell id="gitops-grp" value="GitOps source of truth (drives every K8s resource above)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2dd;strokeColor=#ff7f00;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;dashed=1;" vertex="1" parent="aws-vpc">
+          <mxGeometry x="160" y="1340" width="1280" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="git-repo" value="GitHub  •  Smana/cloud-native-ref&#xa;branch wip/self-hosted-llm-platform-draft" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff7f00;fontSize=10;align=center;" vertex="1" parent="gitops-grp">
+          <mxGeometry x="40" y="40" width="280" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ghcr" value="ghcr.io/smana/cloud-native-ref&#xa;OCI: KCL composition modules&#xa;(crossplane-app, crossplane-inference-service)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff7f00;fontSize=9;align=center;" vertex="1" parent="gitops-grp">
+          <mxGeometry x="360" y="40" width="280" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="gops-flow" value="Flux pulls Git → Kustomize / HelmRelease → applies&#xa;Crossplane reconciles XR claims → renders K8s + AWS managed resources" style="text;html=1;align=center;fontSize=10;fontColor=#ff7f00;fontStyle=2;" vertex="1" parent="gitops-grp">
+          <mxGeometry x="680" y="45" width="540" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- Bottom: opentofu / openbao stripe                              -->
+        <!-- ============================================================ -->
+        <mxCell id="tofu-grp" value="Out-of-band (provisioned by Terramate / OpenTofu before EKS / Flux)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="aws-region">
+          <mxGeometry x="40" y="1500" width="1500" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tofu-net" value="opentofu/network&#xa;━━━━━━━━&#xa;VPC, subnets,&#xa;Tailscale, Route53" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;align=center;" vertex="1" parent="tofu-grp">
+          <mxGeometry x="40" y="40" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="tofu-bao" value="opentofu/openbao&#xa;━━━━━━━━&#xa;OpenBao cluster&#xa;PKI, secrets" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;align=center;" vertex="1" parent="tofu-grp">
+          <mxGeometry x="280" y="40" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="tofu-eks" value="opentofu/eks/init + configure&#xa;━━━━━━━━━━━━━━━&#xa;EKS cluster, Cilium,&#xa;Flux Operator + Instance" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;align=center;" vertex="1" parent="tofu-grp">
+          <mxGeometry x="520" y="40" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="tofu-llm" value="opentofu/llm-platform&#xa;━━━━━━━━━━━━━━━&#xa;S3 Files filesystem + AP&#xa;EFS CSI IAM + Pod Identities" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;align=center;" vertex="1" parent="tofu-grp">
+          <mxGeometry x="780" y="40" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="tofu-note" value="Terramate orchestrates these in sequence.  After all four are applied, Flux takes over." style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#666666;" vertex="1" parent="tofu-grp">
+          <mxGeometry x="1040" y="55" width="440" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- EDGES                                                         -->
+        <!-- ============================================================ -->
+
+        <!-- request flow: user → tailnet → router → gateway → openwebui → semantic-router -->
+        <mxCell id="e-user-tn" value="" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;" edge="1" parent="1" source="user" target="ts-tailnet">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-tn-tsr" value="" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;" edge="1" parent="1" source="ts-tailnet" target="ts-router">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-tsr-gw" value="" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;" edge="1" parent="1" source="ts-router" target="ts-gw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-gw-ow" value="" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;" edge="1" parent="1" source="httproute-ow" target="openwebui">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-ow-sr" value="POST /v1/chat/completions" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="openwebui" target="sr-pod">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-sr-envoy" value="ext_proc gRPC" style="endArrow=classic;html=1;strokeColor=#e31a1c;strokeWidth=2;dashed=1;fontSize=9;" edge="1" parent="1" source="sr-pod" target="gap-envoy">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-envoy-is" value="forward to vLLM&#xa;backend (X-VSR-Model)" style="endArrow=classic;html=1;strokeColor=#e31a1c;strokeWidth=2;dashed=1;fontSize=9;" edge="1" parent="1" source="gap-envoy" target="is-grp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-is-gpu" value="schedule on GPU node" style="endArrow=classic;html=1;strokeColor=#e31a1c;strokeWidth=2;dashed=1;fontSize=9;" edge="1" parent="1" source="is-grp" target="karpenter-gpu">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- model-weights flow: preload → PVC → PV → CSI → S3 Files → S3 -->
+        <mxCell id="e-preload-pvc" value="mount with subPath" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="preload" target="pvc-llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-is-pvc" value="mount with subPath&#xa;(load model from local NFS)" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="is-grp" target="pvc-llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-pvc-pv" value="" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;" edge="1" parent="1" source="pvc-llm" target="pv-llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-pv-csi" value="NodeStage / NodePublish" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="pv-llm" target="efs-csi">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-csi-fs" value="mount.nfs4 (TCP 2049)" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="efs-csi" target="s3files-fs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-fs-mt1" value="" style="endArrow=none;html=1;strokeColor=#33a02c;strokeWidth=1;" edge="1" parent="1" source="s3files-fs" target="mt-az1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-fs-mt2" value="" style="endArrow=none;html=1;strokeColor=#33a02c;strokeWidth=1;" edge="1" parent="1" source="s3files-fs" target="mt-az2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-fs-mt3" value="" style="endArrow=none;html=1;strokeColor=#33a02c;strokeWidth=1;" edge="1" parent="1" source="s3files-fs" target="mt-az3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-fs-s3" value="write-through" style="endArrow=classic;startArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="s3files-fs" target="s3-bucket">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-s3-iam" value="assumed by" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=1;dashed=1;fontSize=9;" edge="1" parent="1" source="s3files-fs" target="s3-iam">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- gitops flow -->
+        <mxCell id="e-git-flux" value="" style="endArrow=classic;html=1;strokeColor=#ff7f00;strokeWidth=2;dashed=1;" edge="1" parent="1" source="git-repo" target="flux-ops">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-ghcr-cp" value="" style="endArrow=classic;html=1;strokeColor=#ff7f00;strokeWidth=2;dashed=1;" edge="1" parent="1" source="ghcr" target="cp-ops">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

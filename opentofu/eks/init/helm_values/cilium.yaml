@@ -93,6 +93,14 @@ envoy:
       cpu: 200m
       memory: 300Mi
 
+# Enable the CiliumEnvoyConfig (CEC) controller — reconciles `CiliumEnvoyConfig`
+# CRs into the Envoy DaemonSet's runtime config (used by the AI-gateway path
+# to wire ext_proc filters that call vllm-semantic-router on :50051).
+# CEC is restricted to cluster-admin authoring per Cilium docs (no validation,
+# no defined conflict resolution between overlapping CECs).
+envoyConfig:
+  enabled: true
+
 hubble:
   metrics:
     enabled:

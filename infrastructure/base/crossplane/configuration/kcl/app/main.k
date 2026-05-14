@@ -274,6 +274,14 @@ _deployment = {
     spec = {
         if oxr.spec.autoscaling?.enabled != True:
             replicas = oxr.spec.replicas or 1
+        # `Recreate` for apps with RWO PVCs (default gp3) so the old pod
+        # fully releases the volume before the new one starts; otherwise
+        # RollingUpdate's maxSurge spins up a parallel pod that hits a
+        # `Multi-Attach error` and the rollout stalls. Default
+        # RollingUpdate keeps stateless workloads zero-downtime.
+        # K8s validation rejects setting `rollingUpdate` when type is
+        # `Recreate`, so emit only the matching block per type.
+        strategy = {type = "Recreate"} if oxr.spec?.deploymentStrategy == "Recreate" else {type = "RollingUpdate", rollingUpdate = {maxSurge = "25%", maxUnavailable = "25%"}}
         selector = _podSelector
         template = {
             metadata = {
@@ -291,11 +299,14 @@ _deployment = {
                         runAsUser = 1001
                         fsGroup = 1001
                 }
-                if oxr.spec.securityContext?.enableWritableTmp != False:
-                    volumes = [{
-                        name = "tmp"
-                        emptyDir = {}
-                    }]
+                # Build the pod volume list once (KCL forbids post-creation
+                # dict mutation — issue #285 — so the conditional `tmp`
+                # volume and any user-supplied `extraVolumes` get combined
+                # in a single assignment.)
+                volumes = ([{
+                    name = "tmp"
+                    emptyDir = {}
+                }] if oxr.spec.securityContext?.enableWritableTmp != False else []) + (oxr.spec.extraVolumes or [])
                 if oxr.spec.spreadAcrossZones:
                     topologySpreadConstraints = [{
                         maxSkew = 1
@@ -318,11 +329,11 @@ _deployment = {
                             drop = oxr.spec.securityContext?.capabilities?.drop or ["ALL"]
                         }
                     }
-                    if oxr.spec.securityContext?.enableWritableTmp != False:
-                        volumeMounts = [{
-                            name = "tmp"
-                            mountPath = "/tmp"
-                        }]
+                    # Same one-shot assignment pattern as `volumes` above.
+                    volumeMounts = ([{
+                        name = "tmp"
+                        mountPath = "/tmp"
+                    }] if oxr.spec.securityContext?.enableWritableTmp != False else []) + (oxr.spec.extraVolumeMounts or [])
                     if oxr.spec.envFrom:
                         envFrom = oxr.spec.envFrom
                     # Build environment variables in order: defaults -> observability -> user

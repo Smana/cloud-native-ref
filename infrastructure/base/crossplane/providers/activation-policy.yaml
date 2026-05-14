@@ -18,6 +18,7 @@ spec:
     - bucketversionings.s3.aws.m.upbound.io
     - bucketlifecycleconfigurations.s3.aws.m.upbound.io
     - bucketserversideencryptionconfigurations.s3.aws.m.upbound.io
+    - bucketpublicaccessblocks.s3.aws.m.upbound.io
     # KMS
     - keys.kms.aws.m.upbound.io
     - aliases.kms.aws.m.upbound.io

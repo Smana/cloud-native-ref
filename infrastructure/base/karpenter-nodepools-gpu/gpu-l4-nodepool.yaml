@@ -1,0 +1,55 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: gpu-l4
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: gpu-l4
+      startupTaints:
+        - key: node.cilium.io/agent-not-ready
+          value: "true"
+          effect: NoExecute
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+        - key: karpenter.k8s.aws/instance-family
+          operator: In
+          values: ["g6"]
+        # Bias toward single-L4 nodes (g6.xlarge–g6.16xlarge); excludes
+        # multi-GPU SKUs (g6.12xlarge, g6.48xlarge) that would let one
+        # node silently consume the whole NodePool GPU cap.
+        - key: karpenter.k8s.aws/instance-gpu-count
+          operator: In
+          values: ["1"]
+      taints:
+        - key: nvidia.com/gpu
+          value: "true"
+          effect: NoSchedule
+  disruption:
+    # `WhenEmpty` (not `WhenEmptyOrUnderutilized`) — keeps a node alive
+    # as long as ANY pod is scheduled on it, even if the node is
+    # underutilized. This protects the always-warm FIM tab-completion
+    # claim (xplane-qwen-coder-fim, minReplicas=1) from Karpenter
+    # consolidation eviction; the InferenceService composition
+    # v0.3.5 doesn't yet expose pod-template annotations so we
+    # can't tag the pod with `karpenter.sh/do-not-disrupt: "true"`
+    # directly (see qwen-coder-fim.yaml comment block). Trade-off: less
+    # efficient packing — when chat coder spins up while FIM is on
+    # another node, we'll have 2 GPU nodes instead of 1 if both have
+    # spare capacity. For solo workload the cost delta is small and
+    # short-lived (chat scales back to zero).
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30s
+  limits:
+    # CL-6 decision A — safer cost ceiling. Steady-state fleet
+    # (4 models × 1 replica) matches the cap exactly; revisit to 8 on
+    # first KEDA scale-up that fails to schedule due to this cap.
+    nvidia.com/gpu: "4"

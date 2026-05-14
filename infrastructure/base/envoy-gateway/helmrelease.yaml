@@ -1,0 +1,72 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: envoy-gateway
+  namespace: envoy-gateway-system
+spec:
+  releaseName: envoy-gateway
+  driftDetection:
+    mode: enabled
+  chartRef:
+    kind: OCIRepository
+    name: envoy-gateway
+    namespace: envoy-gateway-system
+  interval: 10m0s
+  install:
+    # CRDs come from the dedicated `crds-envoy-gateway` kustomize
+    # bundle under `crds/base/envoy-gateway/` (see commit history).
+    # The chart's bundled gateway-api CRDs are at v1.4.1 and conflict
+    # with the cluster-wide v1.5.1 install (its `safe-upgrades`
+    # ValidatingAdmissionPolicy refuses CRD downgrades), and a
+    # gateway-crds-helm release would exceed the 1 MiB Helm release
+    # Secret limit.
+    crds: Skip
+    remediation:
+      retries: 3
+  upgrade:
+    crds: Skip
+  values:
+    # AI Gateway integration — Envoy Gateway calls out to the AI Gateway
+    # controller as an Extension Server to fine-tune xDS for AIGatewayRoute
+    # → AIServiceBackend → vLLM Service translation. Values mirror the
+    # upstream `manifests/envoy-gateway-values.yaml` from
+    # envoyproxy/ai-gateway@v0.5.0; see design §3.
+    config:
+      envoyGateway:
+        extensionApis:
+          # Required: AIServiceBackend.backendRef → gateway.envoyproxy.io Backend.
+          enableBackend: true
+          # Recommended for forward-compat (xDS patching).
+          enableEnvoyPatchPolicy: true
+        extensionManager:
+          hooks:
+            xdsTranslator:
+              translation:
+                listener: {includeAll: true}
+                route: {includeAll: true}
+                cluster: {includeAll: true}
+                secret: {includeAll: true}
+              post:
+                - Translation
+                - Cluster
+                - Route
+          service:
+            fqdn:
+              hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
+              port: 1063
+    deployment:
+      envoyGateway:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 512Mi
+        securityContext:
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault

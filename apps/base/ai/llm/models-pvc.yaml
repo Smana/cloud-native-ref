@@ -1,0 +1,50 @@
+# Shared S3 Files mount for ALL InferenceService claims (per ADR-0004).
+# A single PV+PVC pair (RWM) lives in the `llm` namespace; each
+# InferenceService composition mounts this PVC with a per-claim subPath
+# under /models in its serving Deployment + preload Job.
+#
+# Provisioned out-of-band (not via Crossplane composition) because v2
+# namespaced XRs cannot render cluster-scoped resources (PV is cluster-
+# scoped). When Upbound provider-upjet-aws v2.6+ ships s3files CRDs (#1452)
+# we may revisit composing this from the parent llm-platform stack.
+#
+# The volumeHandle format is `s3files:<filesystem_id>::<access_point_id>`.
+# After `tofu apply` in opentofu/llm-platform/, copy the value of
+# `tofu output volume_handle` and update the volumeHandle below.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: llm-models
+  labels:
+    app.kubernetes.io/part-of: ai
+    app.kubernetes.io/component: storage
+spec:
+  # Capacity is nominal — S3 Files is unmetered at the PV level.
+  capacity:
+    storage: 100Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  # Retain — the underlying S3 Files data outlives any single PVC delete.
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: s3files-llm-models
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: s3files:fs-0edefba395793082e::fsap-01b3ec13f0e38ab03
+  claimRef:
+    namespace: llm
+    name: llm-models
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llm-models
+  namespace: llm
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: s3files-llm-models
+  resources:
+    requests:
+      storage: 100Gi
+  volumeName: llm-models

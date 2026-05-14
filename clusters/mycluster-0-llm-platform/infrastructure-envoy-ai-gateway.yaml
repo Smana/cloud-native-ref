@@ -1,0 +1,34 @@
+---
+# Envoy AI Gateway controller + dedicated Envoy data-plane Gateway.
+# Depends on envoy-gateway (the prerequisite that ships the GatewayClass).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: envoy-ai-gateway
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  timeout: 5m0s
+  path: ./infrastructure/base/envoy-ai-gateway
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+  dependsOn:
+    - name: crds
+    - name: envoy-gateway
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: envoy-ai-gateway
+      namespace: envoy-ai-gateway-system
+  # Gateway readiness is checked via CEL — Flux v2's built-in healthChecks
+  # set does not include gateway.networking.k8s.io/v1 Gateway, so a literal
+  # entry there is silently ignored. The HelmRelease healthCheck above
+  # already gates on the controller's readiness; the AIGatewayRoute child
+  # Kustomization (apps-llm) gates on the Gateway being Accepted via its
+  # own dependsOn chain.

@@ -1,0 +1,32 @@
+---
+# Writable EPI for the LLM model-weights preload Job (one-shot HuggingFace
+# → S3 transfer). Separate from the general epis Kustomization so it can
+# be gated independently.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: llm-platform-security-epi
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  retryInterval: 30s
+  sourceRef:
+    kind: ExternalArtifact
+    name: security-artifact
+  path: ./security/base/epis-llm
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+  dependsOn:
+    - name: eks-pod-identities
+  # CEL-based readiness — checks the Crossplane XR conditions properly.
+  # The literal `healthChecks` form is redundant with `healthCheckExprs`
+  # for XRs since the latter is more expressive (waits for both Synced
+  # AND Ready, not just resource existence).
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: EPI
+      failed: status.conditions.filter(c, c.type == 'Synced' || c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Synced' || c.type == 'Ready').all(c, c.status == 'True')

@@ -1,0 +1,16 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: vllm-semantic-router
+  namespace: llm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vllm-semantic-router
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - llm

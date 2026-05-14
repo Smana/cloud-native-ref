@@ -1,0 +1,32 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: gpu-l4
+spec:
+  # Karpenter v1 alias does not support the Bottlerocket NVIDIA variant;
+  # SSM parameter is the supported selector. Pinned to EKS 1.35 (see
+  # opentofu/eks/init/variables.tf default). amiFamily is required when
+  # not using alias.
+  amiFamily: Bottlerocket
+  amiSelectorTerms:
+    - ssmParameter: /aws/service/bottlerocket/aws-k8s-1.35-nvidia/x86_64/latest/image_id
+  role: Karpenter-${cluster_name}
+  # Container data uses RAID0 NVMe instance store on g6 GPU nodes — fast
+  # ephemeral storage with no extra EBS cost. Trades cold-start (no warmup)
+  # for simplicity. EBS snapshot pre-warm (T004) deferred — see docs/ai.md.
+  instanceStorePolicy: "RAID0"
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeType: gp3
+        volumeSize: 4Gi
+        encrypted: true
+        deleteOnTermination: true
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${environment}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${cluster_name}
+  tags:
+    karpenter.sh/discovery: ${cluster_name}

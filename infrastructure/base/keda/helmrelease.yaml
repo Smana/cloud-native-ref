@@ -1,0 +1,91 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: keda
+  namespace: keda
+spec:
+  releaseName: keda
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: keda
+      sourceRef:
+        kind: HelmRepository
+        name: kedacore
+        namespace: infrastructure
+      version: "2.18.0"
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values:
+    # CRDs bundled in chart — repo convention separates them but KEDA
+    # CRD schema is tightly coupled to controller version, so let chart
+    # own CRD lifecycle to avoid version drift.
+    crds:
+      install: true
+    operator:
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 100Mi
+        limits:
+          memory: 500Mi
+    metricsServer:
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 100Mi
+        limits:
+          memory: 500Mi
+    # PSS=restricted (keda namespace) requires runAsNonRoot +
+    # seccompProfile on every container. The keda chart's per-component
+    # securityContext fully replaces top-level defaults — every field
+    # has to be re-stated per workload (operator + metricsServer +
+    # webhooks).
+    podSecurityContext:
+      operator:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      metricServer:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      webhooks:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+    securityContext:
+      operator:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
+      metricServer:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
+      webhooks:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
+    prometheus:
+      metricServer:
+        enabled: true
+      operator:
+        enabled: true

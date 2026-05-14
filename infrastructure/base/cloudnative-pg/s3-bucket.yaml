@@ -1,3 +1,11 @@
+# `managementPolicies` without `Delete` — postgres backups outlive any
+# individual cluster (point-in-time recovery may need to span a cluster
+# rebuild). Without this, Crossplane keeps trying `s3:DeleteBucket` on
+# prune, AWS denies it (no DeleteBucket permission per CLAUDE.md "no
+# deletion permissions for stateful services"), and the MR finalizer
+# hangs the parent namespace's teardown. To intentionally remove, do it
+# via aws CLI. (Crossplane v2 namespaced MRs do not expose
+# `spec.deletionPolicy`; `managementPolicies` is the v2 mechanism.)
 apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
@@ -5,5 +13,6 @@ metadata:
   annotations:
     crossplane.io/external-name: ${region}-ogenki-cnpg-backups
 spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
     region: ${region}

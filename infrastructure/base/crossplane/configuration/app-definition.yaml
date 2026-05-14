@@ -72,6 +72,16 @@ spec:
                   description: Number of replicas when autoscaling is disabled
                   minimum: 1
                   default: 1
+                deploymentStrategy:
+                  type: string
+                  description: |
+                    Deployment update strategy. Use `Recreate` for apps with
+                    RWO PVCs (gp3 default StorageClass) — RollingUpdate would
+                    spin up the new pod alongside the old, which can't attach
+                    a single-attach volume and stalls with `Multi-Attach error
+                    for volume`. Use `RollingUpdate` for stateless apps.
+                  enum: [RollingUpdate, Recreate]
+                  default: RollingUpdate
                 pdb:
                   type: object
                   description: Pod Disruption Budget configuration
@@ -254,6 +264,18 @@ spec:
                       prefix:
                         type: string
                         description: Prefix to add to all environment variables
+                extraVolumes:
+                  type: array
+                  description: Extra volumes to add to the pod (passthrough to PodSpec.volumes). Combined with the default `tmp` emptyDir.
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                extraVolumeMounts:
+                  type: array
+                  description: Extra container volume mounts (passthrough to Container.volumeMounts). Combined with the default `/tmp` mount.
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
                 configs:
                   type: object
                   description: Configuration files to mount

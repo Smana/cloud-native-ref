@@ -1,0 +1,247 @@
+---
+# T031-T033 — OpenWebUI: Tailscale-fronted chat UI for the LLM platform.
+# Talks OpenAI-compatible HTTP to the Semantic Router service inside the
+# cluster (no Tailscale loopback for internal traffic).
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: xplane-openwebui
+  namespace: apps
+spec:
+  image:
+    repository: ghcr.io/open-webui/open-webui
+    tag: "v0.5.20"
+    pullPolicy: IfNotPresent
+
+  # Single replica — SQLite data dir on emptyDir; sessions reset on restart.
+  # If durability is needed later, swap to App XR's sqlInstance.enabled.
+  replicas: 1
+
+  # The openwebui-data PVC below is RWO (default gp3 StorageClass).
+  # RollingUpdate's maxSurge would spin up the new pod before the old
+  # one releases the volume → `Multi-Attach error for volume` and the
+  # rollout stalls. Recreate fully terminates the old pod first.
+  deploymentStrategy: Recreate
+
+  # OpenWebUI writes to /app/backend/data (SQLite, uploaded files, vector
+  # cache) and to /app/backend/static — must allow writes on root FS.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    capabilities:
+      drop: ["ALL"]
+    enableWritableTmp: true
+  runAsNonRoot: true
+  automountServiceAccountToken: false
+
+  # Pod runs as uid 1001 (App composition default) but the upstream
+  # OpenWebUI image's /app/backend/data dir is owned by `app` (uid 1000)
+  # — sqlite then fails with `unable to open database file`. Mount the
+  # `openwebui-data` PVC there so it picks up the pod's fsGroup (1001)
+  # AND survives pod restarts (the SQLite DB at /app/backend/data/webui.db
+  # holds the admin user row + chat history). PVC manifest lives in
+  # pvc.yaml in this kustomize tree.
+  extraVolumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: openwebui-data
+  extraVolumeMounts:
+    - name: data
+      mountPath: /app/backend/data
+
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+  service:
+    port: 8080
+
+  # Probes — OpenWebUI's HTTP server is up well before the model list is
+  # populated, so readiness/liveness on /health is fine.
+  healthProbes:
+    liveness:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 30
+    readiness:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+
+  env:
+    # Envoy AI Gateway data-plane Service is the OpenAI-compatible
+    # entry point. The Service name is pinned via
+    # EnvoyProxy.spec.provider.kubernetes.envoyService.name=ai-gateway
+    # in infrastructure/base/envoy-ai-gateway/envoyproxy.yaml. The
+    # AIGatewayRoute body parser sets x-ai-eg-model from body.model;
+    # the route dispatches directly to each model's per-claim
+    # AIServiceBackend → vLLM Service (SPEC-001 direct routing). For
+    # `model: MoM` requests, the AIGatewayRoute extension consults
+    # Iris's HTTP classifier first, which sets x-ai-eg-model.
+    - name: OPENAI_API_BASE_URL
+      value: "http://ai-gateway.envoy-gateway-system.svc.cluster.local:8080/v1"
+    # Gateway requires `Authorization: Bearer <key>` (B-1 SecurityPolicy
+    # in infrastructure/base/envoy-ai-gateway/). The OpenAI client in
+    # OpenWebUI prepends `Bearer ` to OPENAI_API_KEY automatically.
+    - name: OPENAI_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: openwebui-llm-api-key
+          key: OPENAI_API_KEY
+    - name: WEBUI_NAME
+      value: "Cloud Native Ref LLM"
+    # Default model selection on first chat — pick the always-warm
+    # general-purpose chat model. SR's transparent cascade still kicks
+    # in based on prompt content (code → qwen-coder, etc.) so users
+    # don't need to switch models manually.
+    - name: DEFAULT_MODELS
+      value: "xplane-qwen3-8b"
+
+    # Local signup is left ENABLED on purpose. The Zitadel OIDC SSO
+    # below is the primary login path; the local user/password form
+    # remains as a break-glass admin entry if Zitadel is down. The
+    # admin row created via the signup form persists on the
+    # openwebui-data PVC across pod restarts.
+    - name: ENABLE_SIGNUP
+      value: "true"
+
+    # First user (whether local signup or first OIDC login) becomes
+    # admin. Subsequent users default to `pending` and need an admin
+    # to promote them from the OpenWebUI settings panel. Tighten via
+    # Zitadel role/group claim mapping later if needed.
+    - name: DEFAULT_USER_ROLE
+      value: "admin"
+    - name: ENV
+      value: "prod"
+
+    # ─── Zitadel OIDC SSO ───────────────────────────────────────────
+    # Discovery URL: Zitadel exposes /.well-known/openid-configuration
+    # at its public hostname. Auth flow is Authorization Code + PKCE
+    # (configured in the Zitadel application registration); OpenWebUI
+    # handles the redirect callback at /oauth/zitadel/callback and
+    # the Tailscale-fronted HTTPRoute at chat.priv.cloud.ogenki.io
+    # exposes both the chat UI and the callback path.
+    - name: ENABLE_OAUTH_SIGNUP
+      value: "true"
+    # Bridge local admin (created via the signup form) and OIDC user
+    # (logged in via Zitadel) when the email claim matches. Without
+    # this, OpenWebUI rejects the OIDC login with "This email is
+    # already registered" because the same email exists as a local
+    # row. Off-by-default upstream because the merge is only safe
+    # when you trust the OIDC IdP not to forge `email` claims —
+    # acceptable here because Zitadel verifies emails on signup.
+    - name: OAUTH_MERGE_ACCOUNTS_BY_EMAIL
+      value: "true"
+    - name: OAUTH_PROVIDER_NAME
+      value: "zitadel"
+    - name: OPENID_PROVIDER_URL
+      value: "https://auth.cloud.ogenki.io/.well-known/openid-configuration"
+    # Maps Zitadel claim -> OpenWebUI display name. preferred_username
+    # avoids dotted-email usernames (e.g. `firstname.lastname`); flip
+    # to `email` if you want the email visible in the user picker.
+    - name: OAUTH_USERNAME_CLAIM
+      value: "preferred_username"
+    - name: OAUTH_EMAIL_CLAIM
+      value: "email"
+    - name: OAUTH_PICTURE_CLAIM
+      value: "picture"
+    # Standard OIDC scopes; Zitadel returns email + profile claims
+    # under these. Add `urn:zitadel:iam:org:project:roles` later when
+    # role-based mapping is wired.
+    - name: OAUTH_SCOPES
+      value: "openid email profile"
+    # Client credentials from Zitadel application registration. Stored
+    # in AWS Secrets Manager at apps/openwebui/oauth-zitadel; pulled
+    # by the openwebui-oauth-zitadel ExternalSecret in this kustomize
+    # tree (separate from openwebui-secrets so the WEBUI_SECRET_KEY
+    # rotation cycle is decoupled from the OAuth client rotation).
+    - name: OAUTH_CLIENT_ID
+      valueFrom:
+        secretKeyRef:
+          name: openwebui-oauth-zitadel
+          key: client_id
+    - name: OAUTH_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: openwebui-oauth-zitadel
+          key: client_secret
+
+    # Disable telemetry, model downloads, and external service hits we don't need
+    - name: ENABLE_OPENAI_API
+      value: "true"
+    - name: ENABLE_OLLAMA_API
+      value: "false"
+    - name: ENABLE_WEB_SEARCH
+      value: "false"
+
+  # WEBUI_SECRET_KEY signs cookies/sessions. Pulled from AWS Secrets Manager
+  # at apps/openwebui/secrets (envFrom adds all keys to the container env).
+  externalSecrets:
+    - name: openwebui-secrets
+      remoteRef: apps/openwebui/secrets
+      refreshInterval: 1h
+  envFrom:
+    - secretRef:
+        name: openwebui-secrets
+        optional: true
+
+  # Default: private gateway (chat.priv.cloud.ogenki.io)
+  route:
+    enabled: true
+    hostname: "chat"
+
+  networkPolicies:
+    enabled: true
+    ingress:
+      # Tailscale gateway → OpenWebUI
+      - fromEntities:
+          - ingress
+        toPorts:
+          - ports:
+              - port: "8080"
+                protocol: TCP
+    egress:
+      # DNS resolution
+      - toEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "kube-system"
+              "k8s-app": "kube-dns"
+        toPorts:
+          - ports:
+              - port: "53"
+                protocol: UDP
+              - port: "53"
+                protocol: TCP
+      # OpenWebUI → AI Gateway data plane. The gateway terminates the
+      # OpenAI-compatible call, the AIGatewayRoute extension consults
+      # SR's HTTP classifier (`/api/v1/classify/intent`) for `model: MoM`
+      # cascade routing, then dispatches directly to the selected
+      # model's vLLM Service via its AIServiceBackend (SPEC-001 direct
+      # routing). OpenWebUI itself talks only to the gateway. Data-plane
+      # proxy pods live in envoy-gateway-system (the controller's
+      # namespace), not the parent Gateway's namespace.
+      - toEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "envoy-gateway-system"
+              "gateway.envoyproxy.io/owning-gateway-name": "ai-gateway"
+              "gateway.envoyproxy.io/owning-gateway-namespace": "envoy-ai-gateway-system"
+        toPorts:
+          - ports:
+              - port: "8080"
+                protocol: TCP
+      # External Secrets Operator → AWS Secrets Manager (via NAT/Tailscale)
+      - toEntities:
+          - world
+        toPorts:
+          - ports:
+              - port: "443"
+                protocol: TCP
+
+  observability:
+    metrics:
+      enabled: false  # OpenWebUI exposes no native /metrics endpoint

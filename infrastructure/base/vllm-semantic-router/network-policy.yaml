@@ -1,0 +1,94 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: vllm-semantic-router
+  namespace: llm
+spec:
+  description: "Default-deny + explicit allow for vLLM Semantic Router (user-facing entry)"
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: vllm-semantic-router
+  egress:
+    # kube-dns — DNS L7 inspection mandatory for any toFQDNs to work.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # Semantic Router → vLLM PS router
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: vllm-router
+      toPorts:
+        - ports:
+            - port: "8001"
+              protocol: TCP
+    # Semantic Router → HuggingFace (BERT weights for semantic_cache).
+    # The chart's downloader fetches sentence-transformers/all-MiniLM-L12-v2
+    # at startup; the HF Xet CDN topology fans out (see
+    # .claude/rules/cilium-network-policies.md #2), so toFQDNs is a
+    # maintenance chase. world:443 acceptable here under PSS=restricted,
+    # non-root, HTTPS-only, scoped IAM — and after first download the
+    # weights are cached on the PVC so this rule is exercised once per
+    # PVC lifecycle. Revisit if the v0.3 chart exposes initContainers we
+    # could split this onto.
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+  ingress:
+    # Tailscale Gateway → Semantic Router (entry point for /v1/chat/completions)
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # VictoriaMetrics scraper → /metrics. Service port is 9190 on the
+    # `vllm-semantic-router-metrics` Service (the chart exposes :9190 for
+    # the SR's own metrics endpoint, separate from the upstream router's
+    # :9090). Verified 2026-05-07 via hubble: vmagent → :9190 was being
+    # silently dropped by the previous (incorrect) :9090 rule.
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports:
+            - port: "9190"
+              protocol: TCP
+    # promptfoo CronJob → SR HTTP entry point (eval suite probes
+    # /v1/chat/completions through the SR cascade as one of its tests).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: promptfoo
+            app.kubernetes.io/name: promptfoo
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # AI Gateway → SR HTTP classifier endpoint
+    # (`POST /api/v1/classify/intent` on the chart's :8080 service port).
+    # The 2026-05-06 foundation-showcase design replaces the legacy
+    # ext_proc gRPC path on :50051 with an AIGatewayRoute extension
+    # call to this HTTP endpoint for `model: MoM` requests. Direct
+    # `model: xplane-<name>` requests skip Iris entirely (the AI
+    # Gateway's body parser sets x-ai-eg-model directly), so this
+    # rule fires only on cascade-routed traffic.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-ai-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: ai-gateway
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

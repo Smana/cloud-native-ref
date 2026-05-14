@@ -3,3 +3,4 @@ kind: Kustomization
 
 resources:
   - karpenter.yaml
+  - ai.yaml

@@ -1,0 +1,195 @@
+# CiliumNetworkPolicy — Envoy Gateway controller
+#
+# Default-deny + explicit allow per platform constitution. The Envoy
+# Gateway controller reconciles Gateway/HTTPRoute/Backend CRDs and
+# spawns Envoy data-plane Deployments; it talks to the Kubernetes API
+# server, kube-dns, and the Helm chart artifact source.
+#
+# The data-plane Envoy Deployments themselves are managed by the
+# controller and live in this same namespace (envoy-gateway-system),
+# even when their parent Gateway resource lives in another namespace
+# (e.g. envoy-ai-gateway-system). That's why this file owns the
+# data-plane CNP — putting it next to the controller's namespace is
+# the only place Cilium will actually match the proxy pods.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: envoy-gateway-controller
+  namespace: envoy-gateway-system
+spec:
+  endpointSelector:
+    matchLabels:
+      control-plane: envoy-gateway
+  ingress:
+    # Kubelet liveness/readiness probes hit :8081 from the node host
+    # network. Without this rule kube-proxy probes time out, the pod
+    # gets killed, and the HelmRelease fails on Deployment status.
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    # Metrics scrape from VictoriaMetrics agents (envoy-gateway exposes
+    # metrics on TCP 19001 by default).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports:
+            - port: "19001"
+              protocol: TCP
+    # xDS gRPC stream from data-plane Envoy proxy pods (in this namespace).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            app.kubernetes.io/managed-by: envoy-gateway
+            app.kubernetes.io/component: proxy
+      toPorts:
+        - ports:
+            - port: "18000"
+              protocol: TCP
+  egress:
+    # kube-dns — DNS L7 inspection mandatory for any toFQDNs to work.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # Kubernetes API server (controller talks to apiserver continuously).
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # AI Gateway controller's Extension Server (xDS translation hooks for
+    # AIGatewayRoute -> AIServiceBackend). Required when extensionManager is set.
+    # Pod label is `ai-gateway-helm` (chart name), not `ai-gateway-controller`
+    # (deployment name) — chart sets `app.kubernetes.io/name` from chart.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-ai-gateway-system
+            app.kubernetes.io/instance: envoy-ai-gateway
+            app.kubernetes.io/name: ai-gateway-helm
+      toPorts:
+        - ports:
+            - port: "1063"
+              protocol: TCP
+---
+# CiliumNetworkPolicy — Envoy data-plane proxy pods (spawned by the
+# controller into THIS namespace, not the namespace of the parent
+# Gateway resource — see envoyproxy/gateway architecture). This is
+# the load-bearing data-plane CNP; previous experiments placed it in
+# `envoy-ai-gateway-system` but Cilium matched zero endpoints there.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: envoy-data-plane
+  namespace: envoy-gateway-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: envoy-gateway
+      app.kubernetes.io/component: proxy
+  ingress:
+    # AI Gateway data-plane is now ClusterIP; the only entry point is
+    # the Tailscale Cilium Gateway. Traffic enters from Cilium's
+    # managed Envoy data plane and is identity-tagged as `ingress`.
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # Kubelet/cluster health checks (ClusterIP Services still get
+    # readiness probed from the host network).
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # In-cluster consumers, scoped per-pod (not per-namespace) — pairs
+    # with the API-key SecurityPolicy on the AIGatewayRoute so any new
+    # ingress source must be both whitelisted here AND hold a valid
+    # `Authorization: Bearer …` header. Tailscale traffic enters via
+    # `fromEntities: ingress` above; smoke-test / one-off pods should
+    # use Tailscale rather than a namespace-wide hole.
+    - fromEndpoints:
+        # OpenWebUI → AI Gateway (chat UI's OPENAI_API_BASE_URL).
+        - matchLabels:
+            io.kubernetes.pod.namespace: apps
+            app.kubernetes.io/name: xplane-openwebui
+        # Promptfoo nightly eval CronJob — until SR cascade is wired,
+        # the suite hits the AI Gateway directly with model: xplane-qwen3-8b.
+        - matchLabels:
+            io.kubernetes.pod.namespace: promptfoo
+            app.kubernetes.io/name: promptfoo
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # Metrics scrape from VictoriaMetrics agents (Envoy admin :19001).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports:
+            - port: "19001"
+              protocol: TCP
+  egress:
+    # kube-dns — DNS L7 inspection mandatory for any toFQDNs to work.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # xDS gRPC stream from the Envoy Gateway controller.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            control-plane: envoy-gateway
+      toPorts:
+        - ports:
+            - port: "18000"
+              protocol: TCP
+    # Iris HTTP classifier (vLLM Semantic Router) — called by the
+    # AIGatewayRoute extension for `model: MoM` requests to classify
+    # the prompt and rewrite x-ai-eg-model. Replaces the legacy
+    # ext_proc gRPC :50051 path that was dropped in the
+    # foundation-showcase trim.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: llm
+            app.kubernetes.io/name: vllm-semantic-router
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # vLLM model Services in the llm namespace (HTTP 8000 — vLLM
+    # container port). Reached directly by the AI Gateway data plane
+    # for every model (SPEC-001 direct routing per AIServiceBackend).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: llm
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP

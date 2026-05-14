@@ -1,0 +1,52 @@
+---
+# LLM apps: InferenceService claims (qwen-coder, qwen-coder-fim,
+# qwen3-8b, llamaguard3-1b) + OpenWebUI frontend. Sharded under the
+# apps key like the main apps Kustomization so the apps shard's Helm
+# controller renders LLM workloads alongside the rest.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: llm-platform-apps
+  namespace: flux-system
+  labels:
+    sharding.fluxcd.io/key: apps
+spec:
+  commonMetadata:
+    labels:
+      sharding.fluxcd.io/key: apps
+  prune: true
+  interval: 1m0s
+  # Preload Jobs download multi-GB checkpoints from HuggingFace on first
+  # deploy (10–30 min). Default Flux Kustomization timeout (5 min) would
+  # abort the apply mid-Job and create partial-preload retry cycles.
+  timeout: 30m0s
+  path: ./apps/llm
+  sourceRef:
+    kind: ExternalArtifact
+    name: apps-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+  dependsOn:
+    - name: apps
+    - name: llm-platform-security-epi
+    # InferenceService XR claims need the composition registered first
+    # (its `_defaultIngress` allows the AI Gateway data plane → vLLM;
+    # without it, traffic is silently dropped by the default-deny CNP).
+    - name: crossplane-configuration
+    # AIGatewayRoute claims need the Gateway to exist before they can
+    # bind their parentRef.
+    - name: envoy-ai-gateway
+    # InferenceService composition renders KEDA ScaledObjects (SPEC-001
+    # prometheus triggers on leading vLLM saturation signals); KEDA's
+    # CRDs + operator must be Ready before the composition can render
+    # them. KEDA now ships in the base `infrastructure` umbrella, so
+    # depend on that aggregate (its healthChecks include the keda
+    # HelmRelease).
+    - name: infrastructure
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: App
+      failed: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'True')

@@ -1,0 +1,65 @@
+---
+# Code-tier model — primary upstream for OpenCode CLI, Continue chat
+# profile, and the SR `code` cascade decision. Picked for its native
+# function-calling support (required for agentic IDE tools), top-tier
+# 7B code benchmarks, and 32k context (extendable to 128k via YaRN
+# if whole-file refactors prove necessary). Apache 2.0.
+#
+# Replaces deepseek-ai/DeepSeek-R1-Distill-Qwen-7B (which was a
+# reasoning distill — strong at debugging logic, weaker at code
+# generation, and unreliable function-calling). Math/reasoning role
+# moves to xplane-qwen3-8b in the SR cascade; code role moves here.
+#
+# Design ref: docs/superpowers/specs/2026-05-04-coding-llm-fleet-design.md
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: InferenceService
+metadata:
+  name: xplane-qwen-coder
+  namespace: llm
+spec:
+  model:
+    repository: Qwen/Qwen2.5-Coder-7B-Instruct
+    # Pinned to a HuggingFace commit SHA for reproducible preload Jobs.
+    # `revision: main` would re-pull on every reconcile and drift if
+    # upstream silently updated weights/tokenizer/config.
+    revision: c03e6d358207e414f1eca0bb1891e29f1db0e242  # pragma: allowlist secret
+    quantization: fp8
+    contextWindow: 32768
+    # L4 (24Gi) with 32k context + KV-offload sustains ~32-48
+    # concurrent fp8 sequences. Conservative value matches the
+    # autoscaler's running-ratio threshold.
+    maxNumSeqs: 32
+    toolCallParser: hermes
+    preload:
+      enabled: true
+  loraAdapters:
+    - name: xplane-qwen-coder-sql-dpo
+      repository: jk200201/qwen2.5-coder-7b-sql-dpo
+      # Pinned to a HuggingFace commit SHA for reproducible preload Jobs.
+      revision: 54344a00bd90d153fe8710abb8d600ceb4ed8458  # pragma: allowlist secret
+    - name: xplane-qwen-coder-securecode
+      repository: scthornton/qwen2.5-coder-7b-securecode
+      revision: 5745f9faa14d75f84de606ab234615ed36b656f2  # pragma: allowlist secret
+  gpu:
+    count: 1
+    minVRAM: 16Gi
+  routing:
+    tier: medium
+    specialty: code
+  # Production-realistic scaling (composition v0.5.0+, SPEC-001).
+  # min=1 keeps the model warm; KEDA scales 1→2 on running-ratio +
+  # KV-cache leading triggers (~75-135s end-to-end reaction).
+  scaling:
+    minReplicas: 1
+    maxReplicas: 2
+  cache:
+    kvOffload:
+      enabled: true
+      sizeGB: 16
+    prefixCache:
+      enabled: true
+  envFromSecrets:
+    - hf-token
+  observability:
+    metrics:
+      interval: "30s"

@@ -1,4 +1,15 @@
 ---
+# `managementPolicies` without `Delete` — OpenBao raft snapshots are
+# the disaster-recovery payload (KMS-encrypted, lifecycled to Glacier
+# after 30d). Without this, Crossplane keeps trying `s3:DeleteBucket`
+# on prune, AWS denies it (no DeleteBucket permission per CLAUDE.md "no
+# deletion permissions for stateful services"), and the MR finalizer
+# hangs the parent namespace's teardown. The encryption + lifecycle
+# subresources below keep the default policy `["*"]` (includes Delete) —
+# pure configuration that re-applies cheaply against the orphaned
+# bucket on the next deploy. To intentionally remove the bucket, do it
+# via aws CLI. (Crossplane v2 namespaced MRs do not expose
+# `spec.deletionPolicy`; `managementPolicies` is the v2 mechanism.)
 apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
@@ -8,6 +19,7 @@ metadata:
   annotations:
     crossplane.io/external-name: ${region}-ogenki-openbao-snapshot
 spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
     region: ${region}
 ---

@@ -1,0 +1,176 @@
+# AI Gateway routing for the model fleet — direct routing only.
+#
+# v0.5.0 (SPEC-001): the KEDA HTTP add-on is no longer in the data path.
+# Each AIServiceBackend points at a per-model Backend (FQDN of the
+# corresponding vLLM Service). Envoy AI Gateway's auto-generated host
+# rewrite is now correct (Backend FQDN = vLLM Service hostname). No
+# plain HTTPRoute hack needed; no keda-interceptor Backend.
+#
+# All 4 models default `minReplicas=1` per the production-realistic
+# scaling design (SPEC-001 §FR-002). For demo cold-start showcases,
+# override per-model via `spec.scaling.minReplicas: 0` on the claim
+# (with the understanding that the first request to a scaled-to-0
+# model fails until a replica becomes Ready).
+#
+# Header dispatch: matched on `x-ai-eg-model`, which the AI Gateway
+# body parser populates from `body.model`. For `model: MoM` requests,
+# an AIGatewayRoute extension server (Iris HTTP sidecar at
+# vllm-semantic-router.llm:8080) classifies the prompt and rewrites
+# x-ai-eg-model before this route matches.
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: xplane-qwen-coder-fim-direct
+  namespace: llm
+spec:
+  endpoints:
+    - fqdn:
+        hostname: xplane-qwen-coder-fim.llm.svc.cluster.local
+        port: 8000
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: xplane-qwen-coder-direct
+  namespace: llm
+spec:
+  endpoints:
+    - fqdn:
+        hostname: xplane-qwen-coder.llm.svc.cluster.local
+        port: 8000
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: xplane-qwen3-8b-direct
+  namespace: llm
+spec:
+  endpoints:
+    - fqdn:
+        hostname: xplane-qwen3-8b.llm.svc.cluster.local
+        port: 8000
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: xplane-llamaguard3-1b-direct
+  namespace: llm
+spec:
+  endpoints:
+    - fqdn:
+        hostname: xplane-llamaguard3-1b.llm.svc.cluster.local
+        port: 8000
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: xplane-qwen-coder-fim
+  namespace: llm
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    group: gateway.envoyproxy.io
+    kind: Backend
+    name: xplane-qwen-coder-fim-direct
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: xplane-qwen-coder
+  namespace: llm
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    group: gateway.envoyproxy.io
+    kind: Backend
+    name: xplane-qwen-coder-direct
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: xplane-qwen3-8b
+  namespace: llm
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    group: gateway.envoyproxy.io
+    kind: Backend
+    name: xplane-qwen3-8b-direct
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: xplane-llamaguard3-1b
+  namespace: llm
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    group: gateway.envoyproxy.io
+    kind: Backend
+    name: xplane-llamaguard3-1b-direct
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: llm-fleet
+  namespace: llm
+spec:
+  parentRefs:
+    - name: ai-gateway
+      namespace: envoy-ai-gateway-system
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: xplane-qwen-coder-fim
+      backendRefs:
+        - name: xplane-qwen-coder-fim
+          weight: 100
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: xplane-qwen-coder
+      backendRefs:
+        - name: xplane-qwen-coder
+          weight: 100
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: xplane-qwen3-8b
+      backendRefs:
+        - name: xplane-qwen3-8b
+          weight: 100
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: xplane-llamaguard3-1b
+      backendRefs:
+        - name: xplane-llamaguard3-1b
+          weight: 100
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: xplane-qwen-coder-sql-dpo
+      backendRefs:
+        - name: xplane-qwen-coder
+          weight: 100
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: xplane-qwen-coder-securecode
+      backendRefs:
+        - name: xplane-qwen-coder
+          weight: 100

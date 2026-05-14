@@ -45,7 +45,7 @@ After three failed fixes, stop — the pattern is probably wrong, not fix #4. Ra
 | "Quick fix first, investigate later" | The first fix sets the pattern |
 | "Multiple fixes at once saves time" | Can't isolate what worked; creates new bugs |
 | "Issue is simple, skip the process" | Simple bugs have root causes too, and the process is fast for them |
-| "One more attempt" (after 2+) | Three failed fixes ⇒ wrong architecture, not fix #4 |
+| "One more attempt" (after three) | Three failed fixes ⇒ wrong architecture, not fix #4 |
 
 ## When to apply
 

@@ -1,0 +1,47 @@
+---
+# Medium-tier general-purpose model. Default OpenWebUI chat target,
+# `general_decision` / `multilingual_decision` / `reasoning_decision`
+# cascade target. 32k context window with KV-offload on a single L4.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: InferenceService
+metadata:
+  name: xplane-qwen3-8b
+  namespace: llm
+spec:
+  model:
+    repository: Qwen/Qwen3-8B
+    # Pinned commit SHA — see qwen-coder.yaml for rationale.
+    revision: b968826d9c46dd6066d109eabc6255188de91218  # pragma: allowlist secret
+    quantization: fp8
+    contextWindow: 32768
+    # L4 (24Gi) with 32k context + KV-offload sustains ~32-48
+    # concurrent fp8 sequences. Set conservatively to match the
+    # autoscaler's running-ratio threshold.
+    maxNumSeqs: 32
+    toolCallParser: hermes
+    preload:
+      enabled: true
+  gpu:
+    count: 1
+    minVRAM: 16Gi
+  routing:
+    tier: medium
+    specialty: general
+  # Production-realistic scaling (composition v0.5.0+, SPEC-001):
+  # KEDA ScaledObject with two leading prometheus triggers
+  # (running/max-num-seqs ratio + KV-cache utilisation). Default min=1
+  # to keep the model warm; KEDA scales 1→max under sustained load.
+  scaling:
+    minReplicas: 1
+    maxReplicas: 2
+  cache:
+    kvOffload:
+      enabled: true
+      sizeGB: 16
+    prefixCache:
+      enabled: true
+  envFromSecrets:
+    - hf-token
+  observability:
+    metrics:
+      interval: "30s"

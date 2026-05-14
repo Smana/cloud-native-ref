@@ -1,0 +1,52 @@
+---
+# Guardrail model. CL-2 rec A wired LlamaGuard as the post-filter on
+# every response, but the upstream Semantic Router chart has no
+# first-class output-side hook (tracked in docs/ai.md "Open work").
+# Until that lands — either via an upstream feature or an app-layer
+# middleware — LlamaGuard runs cold and is reachable only via the
+# `guardrail` category route. Switch to minReplicas: 1 the day the
+# post-filter is actually inline.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: InferenceService
+metadata:
+  name: xplane-llamaguard3-1b
+  namespace: llm
+spec:
+  model:
+    repository: meta-llama/Llama-Guard-3-1B
+    # Pinned commit SHA — see qwen-coder.yaml for rationale.
+    revision: acf7aafa60f0410f8f42b1fa35e077d705892029  # pragma: allowlist secret
+    quantization: fp16
+    contextWindow: 8192
+    # 1B fp16 leaves plenty of L4 headroom for high concurrency.
+    maxNumSeqs: 64
+    preload:
+      enabled: true
+  gpu:
+    count: 1
+    minVRAM: 4Gi
+  routing:
+    tier: small
+    specialty: guardrail
+  # Production-realistic scaling (composition v0.5.0+, SPEC-001).
+  # min=1 even though guardrail traffic is bursty: keeps the
+  # post-filter ready when it's invoked and avoids the 0→1 cold start
+  # on the (cheap) 1B model.
+  scaling:
+    minReplicas: 1
+    maxReplicas: 3
+  cache:
+    prefixCache:
+      enabled: true
+  envFromSecrets:
+    - hf-token
+  observability:
+    metrics:
+      interval: "30s"
+  resources:
+    requests:
+      cpu: "1"
+      memory: "8Gi"
+    limits:
+      cpu: "4"
+      memory: "16Gi"

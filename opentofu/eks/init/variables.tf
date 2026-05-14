@@ -60,8 +60,8 @@ variable "identity_providers" {
 }
 
 variable "gateway_api_version" {
-  description = "Gateway API CRDs version"
-  default     = "v1.4.1"
+  description = "Gateway API CRDs version — must match flux/sources/gitrepo-gateway-api.yaml ref"
+  default     = "v1.5.1"
   type        = string
 }
 

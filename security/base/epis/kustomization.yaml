@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Explicit list (was previously auto-discovered). Adding this kustomization
+# lets us keep llm-models-preload.yaml out of the general epis/ tree without
+# Flux's auto-kustomization picking it up. LLM EPIs live in epis-llm/ and
+# are gated through the LLM umbrella Kustomization.
+resources:
+  - cert-manager.yaml
+  - default-gha-runner-scale-set.yaml
+  - external-dns.yaml
+  - external-secrets.yaml
+  - harbor.yaml
+  - load-balancer-controller.yaml
+  - openbao-snapshot.yaml
+  - victoriametrics.yaml

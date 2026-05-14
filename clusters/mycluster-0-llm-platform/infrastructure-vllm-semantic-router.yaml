@@ -1,0 +1,26 @@
+---
+# vLLM Semantic Router (Iris v0.1) — multi-signal classifier + jailbreak/PII/
+# semantic-cache plugins. The entry point for inbound LLM traffic; routes
+# to the per-claim XInferenceService backends.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: vllm-semantic-router
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 5m0s
+  timeout: 10m0s
+  path: ./infrastructure/base/vllm-semantic-router
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: vllm-semantic-router
+      namespace: llm

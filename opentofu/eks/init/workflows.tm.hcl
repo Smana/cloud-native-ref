@@ -75,6 +75,9 @@ script "destroy" {
     name        = "prepare-destroy"
     description = "Suspend Flux and clean up Kubernetes resources (Gateways, NodePools, EPIs)"
     commands = [
+      # Single y/n prompt; cached for 10 min so `--reverse destroy` asks once.
+      # Bypass with TM_DESTROY_CONFIRMED=true for CI.
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
       [
         "bash",
         "../../../scripts/eks-prepare-destroy.sh",

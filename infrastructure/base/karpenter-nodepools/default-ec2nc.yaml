@@ -8,6 +8,22 @@ spec:
   role: Karpenter-${cluster_name}
   kubelet:
     maxPods: 100
+  # Default 4Gi OS + 20Gi data isn't enough for the LLM platform's preload
+  # Jobs (model weights up to ~16GB into emptyDir before S3 upload).
+  # 80Gi gives ~60Gi free after kubelet/system overhead.
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeType: gp3
+        volumeSize: 4Gi
+        encrypted: true
+        deleteOnTermination: true
+    - deviceName: /dev/xvdb
+      ebs:
+        volumeType: gp3
+        volumeSize: 80Gi
+        encrypted: true
+        deleteOnTermination: true
   subnetSelectorTerms:
     - tags:
         karpenter.sh/discovery: ${environment}

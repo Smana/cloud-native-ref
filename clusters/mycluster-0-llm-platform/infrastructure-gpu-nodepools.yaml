@@ -1,0 +1,23 @@
+---
+# GPU NodePool + EC2NodeClass for the gpu-l4 pool. Lives under the LLM
+# umbrella because GPU capacity is only consumed by the LLM platform on
+# this cluster (g6 single-GPU nodes).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: llm-platform-gpu-nodepools
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  timeout: 2m0s
+  path: ./infrastructure/base/karpenter-nodepools-gpu
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-mycluster-0-vars
+  dependsOn:
+    - name: karpenter-nodepools

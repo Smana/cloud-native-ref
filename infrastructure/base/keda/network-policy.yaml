@@ -1,0 +1,179 @@
+# Default-deny + explicit allow for the keda namespace per platform
+# constitution. KEDA core (operator + metrics-server + webhooks) runs
+# here under PSS=restricted; this file is the network half of the
+# zero-trust posture.
+#
+# The KEDA HTTP add-on was removed once SPEC-001 switched all autoscaling
+# decisions onto leading vLLM saturation signals via prometheus triggers.
+# No HTTPScaledObject consumer remains in the platform, so the chart, its
+# pods, and their CNP entries are gone too.
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: keda-operator
+  namespace: keda
+spec:
+  description: "KEDA core operator — watches ScaledObjects, manages HPAs"
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: keda-operator
+  ingress:
+    # Kubelet liveness/readiness probes from the host network.
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    # Metrics scrape from VictoriaMetrics agents (operator exposes /metrics on :8080).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # Kubernetes API server (operator reconciles ScaledObjects, creates HPAs).
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Activation polling for prometheus triggers — the operator evaluates
+    # `activationThreshold` against vmsingle directly when a ScaledObject's
+    # current replicas is 0. Without this rule, scale-from-zero claims
+    # (`scaling.minReplicas: 0`) silently never wake. Inert for the default
+    # `min=1` claims but required for the demo overrides documented in
+    # InferenceService XRD `scaling.minReplicas`.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmsingle
+      toPorts:
+        - ports:
+            - port: "8428"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: keda-metrics-server
+  namespace: keda
+spec:
+  description: "KEDA core metrics-server — backs HPA's external metrics API"
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: keda-operator-metrics-apiserver
+  ingress:
+    # kube-apiserver calls the aggregated external.metrics.k8s.io API.
+    - fromEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+    # Metrics scrape from VictoriaMetrics agents.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Prometheus trigger queries hit vmsingle on its single ingest/query
+    # port 8428 (chart default — verify with
+    # `kubectl get svc vmsingle-victoria-metrics-k8s-stack -n observability`).
+    # 8429 is vmagent (push), not vmsingle. Composition driver:
+    # `infrastructure/base/crossplane/configuration/kcl/inference-service/main.k`
+    # `_DEFAULTS.prometheus_server_address`.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmsingle
+      toPorts:
+        - ports:
+            - port: "8428"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: keda-admission-webhooks
+  namespace: keda
+spec:
+  description: "KEDA admission webhooks — validate ScaledObject mutations"
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: keda-admission-webhooks
+  ingress:
+    # kube-apiserver calls the validating webhook (default port :9443).
+    - fromEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "9443"
+              protocol: TCP
+    # Metrics scrape.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

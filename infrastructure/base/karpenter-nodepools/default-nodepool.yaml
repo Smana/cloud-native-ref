@@ -35,5 +35,5 @@ spec:
     consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 30s
   limits:
-    cpu: "20"
-    memory: 64Gi
+    cpu: "60"
+    memory: 192Gi

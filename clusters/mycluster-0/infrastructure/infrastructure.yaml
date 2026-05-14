@@ -30,3 +30,11 @@ spec:
       kind: HelmRelease
       name: external-dns
       namespace: kube-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: aws-efs-csi-driver
+      namespace: kube-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: keda
+      namespace: keda

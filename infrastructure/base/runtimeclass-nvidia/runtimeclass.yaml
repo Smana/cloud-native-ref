@@ -1,0 +1,17 @@
+---
+# Bottlerocket NVIDIA AMI configures containerd with the "nvidia" runtime
+# handler (see /etc/containerd/config.toml on the node). This RuntimeClass
+# exposes that handler to the scheduler so InferenceService pods can request
+# `runtimeClassName: nvidia` and get GPU access via nvidia-container-runtime.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: nvidia
+handler: nvidia
+scheduling:
+  nodeSelector:
+    karpenter.sh/nodepool: gpu-l4
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
