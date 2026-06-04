@@ -13,7 +13,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: external-secrets
-      version: "2.4.1"
+      version: "2.5.0"
   interval: 10m0s
   install:
     createNamespace: true
