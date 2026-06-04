@@ -15,4 +15,4 @@ spec:
   interval: 24h
   url: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
   ref:
-    tag: "v1.0.0"
+    tag: "v1.5.0"
