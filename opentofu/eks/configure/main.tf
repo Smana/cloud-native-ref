@@ -45,6 +45,7 @@ resource "helm_release" "cilium" {
   depends_on = [
     kubectl_manifest.disable_vpc_cni,
     kubectl_manifest.cilium_cni_config,
+    kubectl_manifest.gateway_api_crds, # Gateway API CRDs must exist before Cilium
   ]
 
   name             = "cilium"
@@ -124,14 +125,17 @@ resource "kubectl_manifest" "disable_kube_proxy" {
 # Step 5: Install Flux Operator
 # =============================================================================
 resource "helm_release" "flux_operator" {
-  depends_on = [kubectl_manifest.disable_kube_proxy]
+  depends_on = [
+    kubectl_manifest.disable_kube_proxy,
+    kubectl_manifest.flux_system_namespace, # flux-system namespace must exist first
+  ]
 
   name             = "flux-operator"
   repository       = "oci://ghcr.io/controlplaneio-fluxcd/charts"
   chart            = "flux-operator"
   version          = var.flux_operator_version
   namespace        = "flux-system"
-  create_namespace = false # Created by Stage 1
+  create_namespace = false # Created by kubectl_manifest.flux_system_namespace
 
   wait    = true
   timeout = 300
@@ -141,7 +145,14 @@ resource "helm_release" "flux_operator" {
 # Step 6: Install Flux Instance
 # =============================================================================
 resource "helm_release" "flux_instance" {
-  depends_on = [helm_release.flux_operator]
+  depends_on = [
+    helm_release.flux_operator,
+    # Git auth + cert-manager AppRole secrets and the substitution-vars
+    # ConfigMap must exist before Flux starts reconciling the repo.
+    kubectl_manifest.flux_system_secret,
+    kubectl_manifest.flux_cert_manager_approle,
+    kubectl_manifest.flux_cluster_vars,
+  ]
 
   name             = "flux"
   repository       = "oci://ghcr.io/controlplaneio-fluxcd/charts"

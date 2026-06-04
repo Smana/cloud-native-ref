@@ -7,16 +7,8 @@ provider "aws" {
   alias  = "virginia"
 }
 
-provider "kubectl" {
-  apply_retry_count      = 15
-  host                   = module.eks.cluster_endpoint
-  token                  = data.aws_eks_cluster_auth.cluster_auth.token
-  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-  load_config_file       = false
-}
-
-provider "kubernetes" {
-  host                   = module.eks.cluster_endpoint
-  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-  token                  = data.aws_eks_cluster_auth.cluster_auth.token
-}
+# No kubectl/kubernetes provider here on purpose: this stage only creates the
+# EKS cluster. A provider configured from module.eks.* outputs would depend on
+# resources created in this same apply, which alekc/kubectl cannot defer
+# (fails with "no configuration has been provided"). Cluster-internal resources
+# live in eks/configure, which runs against the already-created cluster.
