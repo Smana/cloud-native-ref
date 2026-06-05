@@ -1,4 +1,15 @@
-# Install Gateway API CRD's. Requirement to be installed before Cilium is running.
+# Cluster-internal bootstrap resources.
+#
+# These were moved here from eks/init. They must NOT live in the cluster-creating
+# stage: there the kubectl/kubernetes providers would be configured from
+# module.eks.* outputs that don't exist until the same apply runs, and
+# alekc/kubectl cannot defer provider configuration with unknown values
+# (fails with "no configuration has been provided, try setting KUBERNETES_MASTER").
+# This is the same reason terraform-aws-modules/eks removed the Kubernetes
+# provider from the module in v20. Here the cluster already exists
+# (data.aws_eks_cluster.this + exec auth), so the providers configure cleanly.
+
+# Install Gateway API CRDs. Requirement to be installed before Cilium is running.
 # `force_conflicts = true` because Flux's `crds-gateway-api` Kustomization
 # (kube-system) takes over field-managership after the cluster is up — on
 # subsequent re-deploys Tofu would otherwise fail with SSA conflicts on
@@ -11,12 +22,7 @@ resource "kubectl_manifest" "gateway_api_crds" {
   server_side_apply = true
   force_conflicts   = true
   wait              = true
-  depends_on        = [module.eks.cluster_name]
 }
-
-# Cilium CNI ConfigMap is created in Stage 2 (opentofu/eks/configure/)
-# Cilium and Flux are deployed via Stage 2
-# See: cd opentofu/eks/configure && terramate script run deploy
 
 # Create flux-system namespace first (required for secrets and ConfigMap)
 resource "kubectl_manifest" "flux_system_namespace" {
@@ -28,7 +34,6 @@ resource "kubectl_manifest" "flux_system_namespace" {
     }
   })
   server_side_apply = true
-  depends_on        = [module.eks]
 }
 
 # ConfigMap with cluster variables for Flux substitution
@@ -37,19 +42,19 @@ resource "kubectl_manifest" "flux_cluster_vars" {
     apiVersion = "v1"
     kind       = "ConfigMap"
     metadata = {
-      name      = "eks-${var.name}-vars"
+      name      = "eks-${var.cluster_name}-vars"
       namespace = "flux-system"
       labels = {
         "reconcile.fluxcd.io/watch" = "Enabled"
       }
     }
     data = {
-      cluster_name           = var.name
-      cluster_endpoint       = replace(module.eks.cluster_endpoint, "https://", "")
-      cluster_endpoint_full  = module.eks.cluster_endpoint
-      oidc_provider_arn      = module.eks.oidc_provider_arn
-      oidc_issuer_url        = module.eks.cluster_oidc_issuer_url
-      oidc_issuer_host       = replace(module.eks.cluster_oidc_issuer_url, "https://", "")
+      cluster_name           = var.cluster_name
+      cluster_endpoint       = replace(data.aws_eks_cluster.this.endpoint, "https://", "")
+      cluster_endpoint_full  = data.aws_eks_cluster.this.endpoint
+      oidc_provider_arn      = data.aws_iam_openid_connect_provider.this.arn
+      oidc_issuer_url        = local.oidc_issuer_url
+      oidc_issuer_host       = local.oidc_issuer_host
       aws_account_id         = data.aws_caller_identity.this.account_id
       region                 = var.region
       environment            = var.env
@@ -58,7 +63,7 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       public_domain_name     = var.public_domain_name
       vpc_id                 = data.aws_vpc.selected.id
       vpc_cidr_block         = data.aws_vpc.selected.cidr_block
-      karpenter_queue_name   = module.karpenter.queue_name
+      karpenter_queue_name   = local.karpenter_queue_name
       route53_public_zone_id = data.aws_route53_zone.public.zone_id
     }
   })
@@ -68,11 +73,6 @@ resource "kubectl_manifest" "flux_cluster_vars" {
 
 # Create secrets using kubectl_manifest instead of kubernetes_secret
 # to avoid plan-time validation issues with the kubernetes provider
-locals {
-  cert_manager_approle = jsondecode(data.aws_secretsmanager_secret_version.cert_manager_approle.secret_string)
-  github_app_secret    = jsondecode(data.aws_secretsmanager_secret_version.github_app.secret_string)
-}
-
 resource "kubectl_manifest" "flux_cert_manager_approle" {
   yaml_body = yamlencode({
     apiVersion = "v1"
@@ -128,8 +128,6 @@ resource "kubectl_manifest" "gp3_storageclass" {
       type: gp3
   YAML
   server_side_apply = true
-
-  depends_on = [module.eks]
 }
 
 # Remove gp2 as default StorageClass
@@ -148,6 +146,4 @@ resource "kubectl_manifest" "gp2_not_default" {
     volumeBindingMode: WaitForFirstConsumer
   YAML
   server_side_apply = true
-
-  depends_on = [module.eks]
 }

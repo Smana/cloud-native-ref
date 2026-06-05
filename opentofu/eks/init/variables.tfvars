@@ -1,7 +1,5 @@
-env                 = "dev"
-name                = "mycluster-0" # Generated with petname
-private_domain_name = "priv.cloud.ogenki.io"
-public_domain_name  = "cloud.ogenki.io"
+env  = "dev"
+name = "mycluster-0" # Generated with petname
 
 tags = {
   GithubRepo = "cloud-native-ref"
@@ -9,8 +7,6 @@ tags = {
 }
 
 enable_ssm = true
-
-cert_manager_approle_secret_name = "openbao/cloud-native-ref/approles/cert-manager"
 
 identity_providers = {
   zitadel = {

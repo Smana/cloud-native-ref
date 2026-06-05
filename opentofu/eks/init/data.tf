@@ -1,4 +1,3 @@
-data "aws_caller_identity" "this" {}
 data "aws_vpc" "selected" {
   filter {
     name   = "tag:project"
@@ -60,26 +59,10 @@ data "aws_ecrpublic_authorization_token" "token" {
   provider = aws.virginia
 }
 
-data "aws_eks_cluster_auth" "cluster_auth" {
-  name = module.eks.cluster_name
-}
-
-data "aws_secretsmanager_secret_version" "github_app" {
-  secret_id = var.github_app_secret_name
-}
-
-data "aws_secretsmanager_secret_version" "cert_manager_approle" {
-  secret_id = var.cert_manager_approle_secret_name
-}
-
-data "http" "gateway_api_crds" {
-  count = length(local.gateway_api_crds_urls)
-  url   = local.gateway_api_crds_urls[count.index]
-}
-
-data "aws_route53_zone" "public" {
-  name         = var.public_domain_name
-  private_zone = false
-}
+# Cluster-internal bootstrap resources and the data sources that feed them
+# (aws_eks_cluster_auth, secretsmanager approle/github-app, gateway-API CRDs,
+# route53 zone) were moved to eks/configure. They require a live cluster, which
+# does not exist during this cluster-creating apply — keeping a kubectl provider
+# configured from module.eks.* outputs here broke fresh applies.
 
 # Karpenter manifests moved to Flux GitOps (infrastructure/base/karpenter/)
