@@ -14,7 +14,7 @@ spec:
         kind: HelmRepository
         name: kedacore
         namespace: infrastructure
-      version: "2.20.0"
+      version: "2.20.1"
   interval: 10m0s
   install:
     remediation:
