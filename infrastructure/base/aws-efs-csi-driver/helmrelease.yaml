@@ -15,7 +15,7 @@ spec:
       # Pinned exactly — Renovate will surface chart-version bumps as PRs
       # so changes are reviewed before they touch a CSI driver mounting
       # model weights (a floating range silently re-mounts on reconcile).
-      version: "4.2.0"
+      version: "4.3.0"
       sourceRef:
         kind: HelmRepository
         name: aws-efs-csi-driver
