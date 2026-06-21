@@ -1,0 +1,43 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: EPI
+metadata:
+    name: xplane-runlore
+    namespace: runlore
+spec:
+    clusters:
+        - name: "mycluster-0"
+          region: "eu-west-3"
+    serviceAccount:
+        name: runlore
+        namespace: runlore
+    # Read-only AWS access for the RunLore SRE agent's cloud provider:
+    # CloudTrail "what changed" + EC2/ASG/EKS resource health. No mutating actions.
+    policyDocument: |
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "CloudTrailWhatChanged",
+                    "Effect": "Allow",
+                    "Action": [
+                        "cloudtrail:LookupEvents"
+                    ],
+                    "Resource": "*"
+                },
+                {
+                    "Sid": "NodeAndCapacityHealth",
+                    "Effect": "Allow",
+                    "Action": [
+                        "ec2:DescribeInstances",
+                        "ec2:DescribeInstanceStatus",
+                        "ec2:DescribeTags",
+                        "autoscaling:DescribeAutoScalingGroups",
+                        "autoscaling:DescribeScalingActivities",
+                        "eks:DescribeCluster",
+                        "eks:DescribeNodegroup",
+                        "eks:ListNodegroups"
+                    ],
+                    "Resource": "*"
+                }
+            ]
+        }
