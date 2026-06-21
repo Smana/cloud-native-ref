@@ -51,8 +51,20 @@ data:
             - matchers:
                 - alertname =~ "InfoInhibitor|Watchdog|KubeCPUOvercommit"
               receiver: "blackhole"
+            # Send a copy of every non-blackholed alert to the RunLore SRE agent,
+            # then continue so Slack still receives it. RunLore's own trigger policy
+            # decides which alerts it actually investigates.
+            - receiver: "runlore"
+              continue: true
+            # Explicit Slack catch-all (required because the route above matches all
+            # with continue: true, so the root receiver no longer fires on its own).
+            - receiver: "slack-monitoring"
         receivers:
           - name: "blackhole"
+          - name: "runlore"
+            webhook_configs:
+              - url: "http://runlore.runlore.svc:8080/webhook/alertmanager"
+                send_resolved: true
           - name: "slack-monitoring"
             slack_configs:
               - channel: "#alerts"
