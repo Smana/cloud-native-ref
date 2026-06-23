@@ -7,4 +7,4 @@ spec:
   interval: 24h
   url: oci://docker.io/envoyproxy/ai-gateway-helm
   ref:
-    tag: "0.7.0"
+    tag: "1.0.0"
