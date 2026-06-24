@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: runlore
+
+resources:
+  - gitrepository.yaml
+  - externalsecret-credentials.yaml
+  - helmrelease.yaml

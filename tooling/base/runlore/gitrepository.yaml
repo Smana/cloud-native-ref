@@ -1,0 +1,14 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: runlore
+spec:
+  interval: 1h
+  url: https://github.com/Smana/runlore.git
+  # Pinned to the latest commit that produced a container image (PR #96 — the
+  # observability release). The chart at deploy/helm/runlore is unchanged on the
+  # docs-only HEAD (#97), so chart + image (ghcr.io/smana/runlore:sha-9b9195b)
+  # stay in lockstep. Bump both together when upgrading RunLore.
+  ref:
+    branch: main
+    commit: 9b9195b72d31632079f6e472f2448d708c6ffa38  # pragma: allowlist secret

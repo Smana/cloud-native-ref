@@ -6,6 +6,7 @@ resources:
   - ../base/harbor
   - ../base/homepage
   - ../base/pev2
+  - ../base/runlore
   # Promptfoo nightly eval CronJob is gated behind the LLM platform
   # umbrella (its eval target is the Semantic Router, which only exists
   # when the LLM stack is enabled). Wired via
