@@ -7,6 +7,12 @@ spec:
   chart:
     spec:
       chart: deploy/helm/runlore
+      # The GitRepository source is defined in flux/sources/gitrepo-runlore.yaml
+      # (flux-sources Kustomization), NOT here under tooling. tooling stamps
+      # sharding.fluxcd.io/key=apps via commonMetadata; the HelmChart the
+      # helm-controller derives carries no shard label and is reconciled by the
+      # default source-controller, which only caches non-apps-sharded sources.
+      # An apps-sharded GitRepository would be invisible to it -> "source not found".
       sourceRef:
         kind: GitRepository
         name: runlore
