@@ -125,14 +125,21 @@ spec:
         # actions.mode=auto (poison-safety); harmless here (mode=off).
         instant_recall:
           enabled: true
-          # Tuned for the current small corpus (~9 entries -> low BM25 scores):
-          # solo_floor 4.0 rejected an exact-title match scoring in (0,5]. These
-          # are deliberately low; RAISE them (driven by recall_score /
-          # recall_rejections) as the catalog grows. The margin gate is the
-          # corpus-portable part; the absolute floors are corpus-size-dependent.
-          min_score: 0.1
-          margin_gap: 0.1
-          solo_floor: 0.1
+          # Finalized starting point. Recall's precision comes primarily from the
+          # structural resource-match gate (only entries whose `resource` agrees
+          # with the alert's workload are candidates) and the adversarial verify
+          # pass (a recalled cause is re-checked against live state and downgraded/
+          # rejected if wrong). The BM25 floors below only reject near-zero/garbage
+          # lexical matches: Alertmanager queries are label-derived (alertname), so
+          # real scores are low (~0.3 observed for an exact-title match). solo_floor
+          # is the bar for the common single-candidate case; margin_gap separates
+          # winners when a workload has several entries. TUNE from
+          # recall_hits{result} / recall_rejections / recall_score; raise as the
+          # catalog grows or if downgraded/false recalls appear (and consider
+          # require_workload_match: true for exact ns/name matching then).
+          min_score: 0.15
+          margin_gap: 0.2
+          solo_floor: 0.2
           outcome_prior: 2.0
           outcome_floor: 0.5
       outcome:
