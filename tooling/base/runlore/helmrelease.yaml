@@ -118,6 +118,18 @@ spec:
           url: https://github.com/Smana/runlore-kb
           branch: main
           interval: 5m
+        # Instant recall: short-circuit the investigation loop when the catalog
+        # has a high-confidence match (the learning payoff). Off by default — must
+        # be enabled. Thresholds are BM25-corpus-dependent; tune from the
+        # recall_score / recall_rejections metrics. Recall is auto-disabled under
+        # actions.mode=auto (poison-safety); harmless here (mode=off).
+        instant_recall:
+          enabled: true
+          min_score: 1.5
+          margin_gap: 1.0
+          solo_floor: 4.0
+          outcome_prior: 2.0
+          outcome_floor: 0.5
       outcome:
         ledger_path: /var/lib/runlore/catalog/outcomes.jsonl
       forge:
