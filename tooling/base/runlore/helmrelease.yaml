@@ -125,9 +125,14 @@ spec:
         # actions.mode=auto (poison-safety); harmless here (mode=off).
         instant_recall:
           enabled: true
-          min_score: 1.5
-          margin_gap: 1.0
-          solo_floor: 4.0
+          # Tuned for the current small corpus (~9 entries -> low BM25 scores):
+          # solo_floor 4.0 rejected an exact-title match scoring in (0,5]. These
+          # are deliberately low; RAISE them (driven by recall_score /
+          # recall_rejections) as the catalog grows. The margin gate is the
+          # corpus-portable part; the absolute floors are corpus-size-dependent.
+          min_score: 0.5
+          margin_gap: 0.5
+          solo_floor: 1.0
           outcome_prior: 2.0
           outcome_floor: 0.5
       outcome:
