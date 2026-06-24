@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faulttest
+  labels:
+    app: faulttest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: faulttest
+  template:
+    metadata:
+      labels:
+        app: faulttest
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          # Deliberately non-existent image: the manifest APPLIES cleanly (so the
+          # Kustomization records lastAppliedRevision = this commit), but the pod
+          # never becomes Ready, so `wait: true` flips the Kustomization Ready=False
+          # -> RunLore's gitops-failure watch auto-investigates and what_changed
+          # diffs THIS commit. (Phase-B gitops-failure-watch + what_changed test.)
+          image: ghcr.io/smana/runlore-faulttest-doesnotexist:v0.0.0  # pragma: allowlist secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
