@@ -25,7 +25,7 @@ spec:
           # and records lastAppliedRevision. COMMIT B flips this to a bad image so
           # what_changed has a real before->after git diff to attribute the break.
           # (Phase-B what_changed diff demo — TEMPORARY, reverted after.)
-          image: registry.k8s.io/pause:3.9
+          image: ghcr.io/smana/runlore-faulttest-doesnotexist:v0.0.0  # pragma: allowlist secret  COMMIT B: break it
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
