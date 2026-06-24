@@ -1,0 +1,194 @@
+# RunLore alerting rules — VictoriaMetrics Operator (VMRule) flavor.
+#
+# This is the VMRule variant. The alert logic here is IDENTICAL to the
+# PrometheusRule variant in ./prometheusrule.yaml — only apiVersion/kind differ.
+# RunLore is metrics-backend-agnostic, so we ship both and you apply whichever
+# your cluster uses. Do not let the two drift: change one, change the other.
+#
+# DISCOVERY NOTE — the VictoriaMetrics Operator discovers VMRule objects via the
+# `ruleSelector` / `ruleNamespaceSelector` on the VMAlert CR. By default many
+# VMAlert deployments select all VMRule in watched namespaces, so no extra label
+# is usually required. If this rule is not loaded, check your VMAlert selector:
+#   kubectl get vmalert -A -o jsonpath='{.items[*].spec.ruleSelector}'
+# and add a matching label under metadata.labels below if needed.
+#
+# All thresholds below are STARTING POINTS. Tune them to your traffic, model,
+# and SLOs before treating them as production-grade.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: runlore
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: runlore
+    app.kubernetes.io/part-of: runlore
+    role: alert-rules
+spec:
+  groups:
+    - name: runlore.rules
+      rules:
+        # 1. Agent is down or not being scraped.
+        # absent() fires when the series vanishes entirely from the TSDB, which
+        # means either the RunLore process is gone or the scrape target broke.
+        # Threshold/for is a starting point — tune to your scrape interval.
+        - alert: RunloreAgentDown
+          expr: absent(runlore_build_info)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "RunLore agent is down or not scraped"
+            description: "No runlore_build_info series for 5m — the RunLore agent is down or its /metrics endpoint is not being scraped."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runloreagentdown"
+
+        # 2. No active leader (HA): nobody is investigating.
+        # In a multi-replica HA deployment exactly one replica should hold the
+        # lease (runlore_leader == 1). If the max across replicas is 0, no one is
+        # driving investigations. Starting point — tune `for` to lease churn.
+        - alert: RunloreNoActiveLeader
+          expr: max(runlore_leader) == 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "RunLore has no active leader"
+            description: "No RunLore replica holds leadership for 10m (max(runlore_leader) == 0) — no investigations are being processed."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runlorenoactiveleader"
+
+        # 3. Split-brain: more than one leader at once.
+        # Two replicas both believing they are leader can double-process and
+        # double-spend on the model. Should be transient at most. Tune `for`.
+        - alert: RunloreMultipleLeaders
+          expr: sum(runlore_leader) > 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "RunLore has multiple leaders (split-brain)"
+            description: "{{ $value | humanize }} RunLore replicas report leadership simultaneously — possible split-brain; investigations may be duplicated."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runloremultipleleaders"
+
+        # 4. Investigations are being dropped.
+        # Dropped means an alert was discarded without investigation (e.g. queue
+        # overflow). Any drop in 15m is worth a look. for:0m = fire immediately;
+        # raise the increase() threshold if low-volume drops are acceptable.
+        - alert: RunloreInvestigationsDropped
+          expr: increase(runlore_investigations_dropped_total[15m]) > 0
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "RunLore is dropping investigations"
+            description: "{{ $value | humanize }} investigations dropped in the last 15m — alerts are being discarded without investigation (likely queue overflow or backpressure)."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runloreinvestigationsdropped"
+
+        # 5. Sustained throttling.
+        # Brief throttling under a burst is normal; 30m of continuous throttling
+        # means RunLore is structurally under-provisioned for its load. Tune the
+        # `for` window and rate window to your expected burstiness.
+        - alert: RunloreInvestigationThrottlingSustained
+          expr: rate(runlore_investigations_throttled_total[10m]) > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "RunLore investigations throttled for a sustained period"
+            description: "RunLore has been throttling investigations continuously for 30m (rate {{ $value | humanize }}/s) — capacity may be insufficient for the incoming alert volume."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runloreinvestigationthrottlingsustained"
+
+        # 6. Pipeline stalled: alerts arrive but nothing starts.
+        # Alerts are landing (received increases) yet zero investigations start —
+        # the intake-to-investigation handoff is broken. Critical. Tune windows.
+        - alert: RunlorePipelineStalled
+          expr: (increase(runlore_alerts_received_total[15m]) > 0) and (increase(runlore_investigations_started_total[15m]) == 0)
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: "RunLore pipeline stalled — alerts received but no investigations started"
+            description: "{{ $value | humanize }} alerts received in the last 15m but zero investigations were started — the intake-to-investigation pipeline appears stalled."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runlorepipelinestalled"
+
+        # 7. Investigations completing with an error result.
+        # Investigations that finish in `result="error"` indicate the agent loop
+        # is failing mid-run. for:0m surfaces it promptly; raise the increase()
+        # threshold if a low error background rate is tolerable.
+        - alert: RunloreInvestigationErrors
+          expr: increase(runlore_investigations_completed_total{result="error"}[15m]) > 0
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "RunLore investigations are completing with errors"
+            description: "{{ $value | humanize }} investigations completed with result=error in the last 15m — the investigation loop is failing for some incidents."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runloreinvestigationerrors"
+
+        # 8. Tool-call error rate is high.
+        # Error fraction across all tool calls > 20%, gated on a minimum call
+        # rate (>0.01/s) so the ratio is not noisy at near-zero traffic.
+        # clamp_min avoids divide-by-zero. 0.2 is a starting point.
+        - alert: RunloreToolErrorRateHigh
+          expr: sum(rate(runlore_tool_calls_total{result="error"}[15m])) / clamp_min(sum(rate(runlore_tool_calls_total[15m])), 0.001) > 0.2 and sum(rate(runlore_tool_calls_total[15m])) > 0.01
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "RunLore tool-call error rate is high"
+            description: "Tool-call error fraction is {{ $value | humanizePercentage }} over the last 15m (>20%) — investigation tools are failing frequently; check {{ $labels.tool }} integrations."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runloretoolerrorratehigh"
+
+        # 9. Model-request error rate is high.
+        # Same shape as the tool-error rule but for the LLM provider, with a
+        # tighter 10% threshold — model errors stop investigations cold, so
+        # critical. Tune threshold to the provider's expected reliability.
+        - alert: RunloreModelErrorRateHigh
+          expr: sum(rate(runlore_model_requests_total{result="error"}[15m])) / clamp_min(sum(rate(runlore_model_requests_total[15m])), 0.001) > 0.1 and sum(rate(runlore_model_requests_total[15m])) > 0.01
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: "RunLore model-request error rate is high"
+            description: "Model-request error fraction is {{ $value | humanizePercentage }} over the last 15m (>10%) — the LLM provider {{ $labels.provider }} is failing; investigations cannot complete."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runloremodelerrorratehigh"
+
+        # 10. Model p95 latency high.
+        # p95 of model_request_duration over 15m exceeds 30s. Slow model calls
+        # drag out every investigation. 30s is a starting point — set it from
+        # your provider/model's observed latency profile.
+        - alert: RunloreModelLatencyHigh
+          expr: histogram_quantile(0.95, sum(rate(runlore_model_request_duration_seconds_bucket[15m])) by (le)) > 30
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "RunLore model p95 latency is high"
+            description: "p95 model-request latency is {{ $value | humanizeDuration }} over the last 15m (>30s) — investigations are slowed by model response time."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runloremodellatencyhigh"
+
+        # 11. Slow incident resolution.
+        # p95 open->resolve time over 1h exceeds 1h. Informational SLO signal,
+        # not a paging condition. 3600s is a starting point — align with your
+        # incident-resolution SLO.
+        - alert: RunloreSlowResolution
+          expr: histogram_quantile(0.95, sum(rate(runlore_incident_resolution_seconds_bucket[1h])) by (le)) > 3600
+          for: 1h
+          labels:
+            severity: info
+          annotations:
+            summary: "RunLore incident resolution is slow"
+            description: "p95 incident resolution time (open -> resolved) is {{ $value | humanizeDuration }} over the last hour (>1h) — incidents are taking long to resolve."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runloreslowresolution"
+
+        # 12. Investigation token cost is high.
+        # p95 estimated tokens per investigation over 30m exceeds 100k — a cost
+        # guardrail. 100000 is a starting point; set it from your token budget
+        # and the model's pricing.
+        - alert: RunloreInvestigationCostHigh
+          expr: histogram_quantile(0.95, sum(rate(runlore_investigation_tokens_estimated_bucket[30m])) by (le)) > 100000
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "RunLore investigation token cost is high"
+            description: "p95 estimated tokens per investigation is {{ $value | humanize }} over the last 30m (>100k) — investigations are consuming an unusually large token budget; review cost."
+            runbook_url: "https://github.com/Smana/runlore/blob/main/docs/observability.md#runloreinvestigationcosthigh"

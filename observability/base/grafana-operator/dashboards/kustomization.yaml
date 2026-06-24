@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - app-all-in-one.yaml
+  - runlore.yaml
   - kubernetes-karpenter.yaml
   - kubernetes-node-exporter-full.yaml
   - kubernetes-views-global.yaml
