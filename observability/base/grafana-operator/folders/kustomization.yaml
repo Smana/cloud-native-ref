@@ -6,4 +6,5 @@ resources:
   - databases.yaml
   - kubernetes.yaml
   - logs.yaml
+  - runlore.yaml
   - traces.yaml

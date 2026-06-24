@@ -1,0 +1,162 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: runlore
+spec:
+  interval: 30m
+  # First start is slow: the catalog git-sync warms the readyz gate, and on a
+  # cold PVC two sync loops briefly race (one retries on the next interval), so
+  # readiness can take up to ~one catalog.git.interval. Give Helm headroom and
+  # retry instead of going terminally Stalled on a single timeout.
+  timeout: 10m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  chart:
+    spec:
+      chart: deploy/helm/runlore
+      # The GitRepository source is defined in flux/sources/gitrepo-runlore.yaml
+      # (flux-sources Kustomization), NOT here under tooling. tooling stamps
+      # sharding.fluxcd.io/key=apps via commonMetadata; the HelmChart the
+      # helm-controller derives carries no shard label and is reconciled by the
+      # default source-controller, which only caches non-apps-sharded sources.
+      # An apps-sharded GitRepository would be invisible to it -> "source not found".
+      sourceRef:
+        kind: GitRepository
+        name: runlore
+      interval: 12h
+  driftDetection:
+    mode: enabled
+  values:
+    # Single replica + RWO EBS: the outcome ledger and hash-chained audit log
+    # survive pod restart/upgrade on the persistent volume. HA (2 replicas) would
+    # require an RWX volume (EFS) so the standby can mount the same data — deferred.
+    replicaCount: 1
+    image:
+      tag: sha-9b9195b
+    serviceAccount:
+      create: true
+      # Must match the SA bound by the xplane-runlore EKS Pod Identity (security/base/epis/runlore.yaml).
+      name: runlore
+    # fsGroup is required so the nonroot container (UID 65532, distroless) can
+    # write the catalog git-sync mirror + outcome ledger on the EBS (ext4) PVC.
+    # The chart's default podSecurityContext omits it (harmless on its default
+    # RWX/EFS, but EBS RWO mounts root-owned -> "mkdir .git: permission denied").
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      fsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+    # Writable git-sync mirror of the KB repo at the persistent mount, so the
+    # read/write learning loop is closed (recall reads it; curation pushes PRs).
+    catalog:
+      gitSync: true
+      mountPath: /var/lib/runlore/catalog
+    persistence:
+      enabled: true
+      storageClass: gp3
+      accessModes: ["ReadWriteOnce"]
+      size: 1Gi
+    rbac:
+      create: true
+      # Read-only: no patch rights on Flux resources. actions.mode stays off.
+      allowActions: false
+      actionNamespaces: []
+    networkPolicy:
+      enabled: true
+      # Renders a CiliumNetworkPolicy allowing egress to the EKS Pod Identity
+      # credential endpoint (169.254.170.23:80, host entity) — required on Cilium.
+      awsPodIdentity: true
+    vmServiceScrape:
+      enabled: true
+      interval: 30s
+      path: /metrics
+    # Secret-backed env (GEMINI_API_KEY, GITHUB_APP_PRIVATE_KEY) from the
+    # runlore-credentials ExternalSecret. RunLore never inlines credentials.
+    envFrom:
+      - secretRef:
+          name: runlore-credentials
+      - secretRef:
+          name: runlore-slack
+    # Rendered verbatim into /etc/runlore/runlore.yaml (strict-parsed by the agent).
+    config:
+      gitops:
+        engine: flux
+      triggers:
+        incidents:
+          enabled: true
+          match:
+            severity: [critical]
+          dedup:
+            window: 30m
+        gitops_failures:
+          enabled: true
+      leader_election:
+        enabled: true
+        name: runlore-leader
+      logging:
+        format: json
+        level: info
+      notify:
+        slack:
+          bot_token_env: SLACK_BOT_TOKEN  # pragma: allowlist secret
+          channel: "#alerts"
+      telemetry:
+        metrics_enabled: true
+      model:
+        provider: gemini
+        model: gemini-2.5-flash
+        api_key_env: GEMINI_API_KEY  # pragma: allowlist secret
+      catalog:
+        dir: /var/lib/runlore/catalog
+        git:
+          url: https://github.com/Smana/runlore-kb
+          branch: main
+          interval: 5m
+        # Instant recall: short-circuit the investigation loop when the catalog
+        # has a high-confidence match (the learning payoff). Off by default — must
+        # be enabled. Thresholds are BM25-corpus-dependent; tune from the
+        # recall_score / recall_rejections metrics. Recall is auto-disabled under
+        # actions.mode=auto (poison-safety); harmless here (mode=off).
+        instant_recall:
+          enabled: true
+          # Finalized starting point. Recall's precision comes primarily from the
+          # structural resource-match gate (only entries whose `resource` agrees
+          # with the alert's workload are candidates) and the adversarial verify
+          # pass (a recalled cause is re-checked against live state and downgraded/
+          # rejected if wrong). The BM25 floors below only reject near-zero/garbage
+          # lexical matches: Alertmanager queries are label-derived (alertname), so
+          # real scores are low (~0.3 observed for an exact-title match). solo_floor
+          # is the bar for the common single-candidate case; margin_gap separates
+          # winners when a workload has several entries. TUNE from
+          # recall_hits{result} / recall_rejections / recall_score; raise as the
+          # catalog grows or if downgraded/false recalls appear (and consider
+          # require_workload_match: true for exact ns/name matching then).
+          min_score: 0.15
+          margin_gap: 0.2
+          solo_floor: 0.2
+          outcome_prior: 2.0
+          outcome_floor: 0.5
+      outcome:
+        ledger_path: /var/lib/runlore/catalog/outcomes.jsonl
+      forge:
+        kb_repo: Smana/runlore-kb
+        base_branch: main
+        github_app:
+          app_id: 4106804
+          installation_id: 141652301
+          private_key_env: GITHUB_APP_PRIVATE_KEY  # pragma: allowlist secret
+      cloud:
+        provider: aws
+        region: eu-west-3
+        cluster_name: mycluster-0
+      # actions: omitted -> mode "off" (fully read-only on the cluster; only
+      # writes are KB PRs/issues on Smana/runlore-kb via the GitHub App).
+      # server.webhook_token_env: omitted — the Alertmanager runlore receiver
+      # posts unauthenticated in-cluster (observability/.../vm-common-helm-values-configmap.yaml).
+      # network / metrics.url / logs.url: deferred to a fast-follow once the base deploy is green.

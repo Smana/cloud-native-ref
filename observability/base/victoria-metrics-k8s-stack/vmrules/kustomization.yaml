@@ -4,3 +4,4 @@ kind: Kustomization
 resources:
   - karpenter.yaml
   - ai.yaml
+  - runlore.yaml

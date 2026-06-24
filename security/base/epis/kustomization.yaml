@@ -13,4 +13,5 @@ resources:
   - harbor.yaml
   - load-balancer-controller.yaml
   - openbao-snapshot.yaml
+  - runlore.yaml
   - victoriametrics.yaml
