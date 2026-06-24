@@ -8,3 +8,6 @@ resources:
   # Log generator for demo purposes
   - ../base/loggen
   - ../base/metrics-server
+  # RunLore SRE agent — consumes Alertmanager + the observability stack
+  # (sibling of grafana-oncall); its dashboard + alerts already live here.
+  - ../base/runlore
