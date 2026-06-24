@@ -30,6 +30,17 @@ spec:
       create: true
       # Must match the SA bound by the xplane-runlore EKS Pod Identity (security/base/epis/runlore.yaml).
       name: runlore
+    # fsGroup is required so the nonroot container (UID 65532, distroless) can
+    # write the catalog git-sync mirror + outcome ledger on the EBS (ext4) PVC.
+    # The chart's default podSecurityContext omits it (harmless on its default
+    # RWX/EFS, but EBS RWO mounts root-owned -> "mkdir .git: permission denied").
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      fsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
     # Writable git-sync mirror of the KB repo at the persistent mount, so the
     # read/write learning loop is closed (recall reads it; curation pushes PRs).
     catalog:
