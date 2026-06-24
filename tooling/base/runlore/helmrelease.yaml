@@ -4,6 +4,17 @@ metadata:
   name: runlore
 spec:
   interval: 30m
+  # First start is slow: the catalog git-sync warms the readyz gate, and on a
+  # cold PVC two sync loops briefly race (one retries on the next interval), so
+  # readiness can take up to ~one catalog.git.interval. Give Helm headroom and
+  # retry instead of going terminally Stalled on a single timeout.
+  timeout: 10m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
   chart:
     spec:
       chart: deploy/helm/runlore
