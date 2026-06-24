@@ -81,6 +81,8 @@ spec:
     envFrom:
       - secretRef:
           name: runlore-credentials
+      - secretRef:
+          name: runlore-slack
     # Rendered verbatim into /etc/runlore/runlore.yaml (strict-parsed by the agent).
     config:
       gitops:
@@ -100,6 +102,10 @@ spec:
       logging:
         format: json
         level: info
+      notify:
+        slack:
+          bot_token_env: SLACK_BOT_TOKEN  # pragma: allowlist secret
+          channel: "#alerts"
       telemetry:
         metrics_enabled: true
       model:
