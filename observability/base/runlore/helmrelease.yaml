@@ -72,6 +72,33 @@ spec:
       # Renders a CiliumNetworkPolicy allowing egress to the EKS Pod Identity
       # credential endpoint (169.254.170.23:80, host entity) — required on Cilium.
       awsPodIdentity: true
+      # Integration egress (v0.2.0 data sources). The baseline policy only opens
+      # DNS + 443 + 6443; the in-cluster observability backends listen on
+      # non-standard ports, so the investigation tools need explicit allow rules
+      # or every query silently times out (default-deny).
+      extraEgress:
+        # VictoriaMetrics :8428 (query_metrics / query_metrics_range) and
+        # VictoriaLogs :9428 (query_logs) — both in the observability namespace.
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: observability
+          ports:
+            - port: 8428
+              protocol: TCP
+            - port: 9428
+              protocol: TCP
+        # Hubble Relay gRPC :80 (network-flow tool) in kube-system.
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+              podSelector:
+                matchLabels:
+                  k8s-app: hubble-relay
+          ports:
+            - port: 80
+              protocol: TCP
     vmServiceScrape:
       enabled: true
       interval: 30s
@@ -161,6 +188,20 @@ spec:
           app_id: 4106804
           installation_id: 141652301
           private_key_env: GITHUB_APP_PRIVATE_KEY  # pragma: allowlist secret
+      # Investigation data sources (v0.2.0). Each tool dials the base URL and
+      # appends its own API path: metrics -> /api/v1/query[_range] (PromQL),
+      # logs -> /select/logsql/query (LogsQL). Hubble Relay has server TLS
+      # disabled in this cluster, and the agent's hubble client dials plaintext,
+      # so the relay is reached on :80. Egress for all three is opened in
+      # networkPolicy.extraEgress above.
+      metrics:
+        url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
+      logs:
+        url: http://victoria-logs-victoria-logs-single-server.observability.svc:9428
+      network:
+        provider: hubble
+        hubble:
+          url: hubble-relay.kube-system:80
       cloud:
         provider: aws
         region: eu-west-3
