@@ -31,6 +31,7 @@ data:
         externalURL: "https://vmalertmanager-${cluster_name}.${private_domain_name}"
         secrets:
           - "victoria-metrics-k8s-stack-alertmanager-slack-app"
+          - "runlore-webhook-token"
       config:
         global:
           slack_api_url: "https://slack.com/api/chat.postMessage"
@@ -65,6 +66,13 @@ data:
             webhook_configs:
               - url: "http://runlore.runlore.svc:8080/webhook/alertmanager"
                 send_resolved: true
+                # v0.2.0 fails closed: the runlore agent requires a bearer token on
+                # /webhook/alertmanager once a model is configured. Per-receiver
+                # http_config overrides the global (Slack) one; the token is mounted
+                # from the runlore-webhook-token secret (spec.secrets above).
+                http_config:
+                  authorization:
+                    credentials_file: /etc/vm/secrets/runlore-webhook-token/token
           - name: "slack-monitoring"
             slack_configs:
               - channel: "#alerts"

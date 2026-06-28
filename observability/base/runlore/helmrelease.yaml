@@ -83,6 +83,8 @@ spec:
           name: runlore-credentials
       - secretRef:
           name: runlore-slack
+      - secretRef:
+          name: runlore-webhook
     # Rendered verbatim into /etc/runlore/runlore.yaml (strict-parsed by the agent).
     config:
       gitops:
@@ -165,6 +167,12 @@ spec:
         cluster_name: mycluster-0
       # actions: omitted -> mode "off" (fully read-only on the cluster; only
       # writes are KB PRs/issues on Smana/runlore-kb via the GitHub App).
-      # server.webhook_token_env: omitted — the Alertmanager runlore receiver
-      # posts unauthenticated in-cluster (observability/.../vm-common-helm-values-configmap.yaml).
+      # v0.2.0 fails closed (RequireWebhookAuth): with a model configured the
+      # alert webhook MUST be authenticated, since alert labels/annotations flow
+      # into the LLM prompt and bill the model. The bearer token comes from the
+      # runlore-webhook ExternalSecret (envFrom above); the Alertmanager runlore
+      # receiver posts it via authorization.credentials_file
+      # (observability/.../vm-common-helm-values-configmap.yaml).
+      server:
+        webhook_token_env: WEBHOOK_TOKEN  # pragma: allowlist secret
       # network / metrics.url / logs.url: deferred to a fast-follow once the base deploy is green.
