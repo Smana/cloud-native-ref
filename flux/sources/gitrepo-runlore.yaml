@@ -11,4 +11,4 @@ spec:
   # deploy/helm/runlore; the docs-only HEAD (#97) leaves it unchanged.
   ref:
     branch: main
-    commit: 9b9195b72d31632079f6e472f2448d708c6ffa38  # pragma: allowlist secret
+    commit: 2519d2b10732999d699233d69ab139f754fe761b  # pragma: allowlist secret
