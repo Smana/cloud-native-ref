@@ -88,7 +88,10 @@ spec:
               protocol: TCP
             - port: 9428
               protocol: TCP
-        # Hubble Relay gRPC :80 (network-flow tool) in kube-system.
+        # Hubble Relay (network-flow tool) in kube-system. runlore dials the
+        # Service on :80, but with a podSelector the policy is enforced on the
+        # post-DNAT backend port — the relay container's gRPC port 4245 (the
+        # Service's targetPort), NOT 80. Using 80 here silently times out.
         - to:
             - namespaceSelector:
                 matchLabels:
@@ -97,7 +100,7 @@ spec:
                 matchLabels:
                   k8s-app: hubble-relay
           ports:
-            - port: 80
+            - port: 4245
               protocol: TCP
     vmServiceScrape:
       enabled: true
