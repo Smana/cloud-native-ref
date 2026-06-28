@@ -150,7 +150,11 @@ spec:
         metrics_enabled: true
       model:
         provider: gemini
-        model: gemini-2.5-flash
+        # gemini-2.5-pro: flash was inconsistent on real investigations (went
+        # inconclusive on an obvious IAM-quota case, low-confidence on a subtle
+        # Pod-Identity race). pro's stronger reasoning yields confident, correct
+        # RCAs — worth the per-investigation cost for an SRE agent.
+        model: gemini-2.5-pro
         api_key_env: GEMINI_API_KEY  # pragma: allowlist secret
       catalog:
         dir: /var/lib/runlore/catalog
