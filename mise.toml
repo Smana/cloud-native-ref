@@ -6,7 +6,7 @@
 min_version = "2024.11.1"
 
 [tools]
-nodejs = "22.22.1"
+nodejs = "24.18.0"
 opentofu = "1.12.3"
 pre-commit = "4.6.0"
 trivy = "0.71.2"
