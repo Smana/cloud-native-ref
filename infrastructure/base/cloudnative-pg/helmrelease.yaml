@@ -13,7 +13,7 @@ spec:
         kind: HelmRepository
         name: cloudnative-pg
         namespace: infrastructure
-      version: "0.28.3"
+      version: "0.29.0"
   interval: 10m0s
   install:
     remediation:
