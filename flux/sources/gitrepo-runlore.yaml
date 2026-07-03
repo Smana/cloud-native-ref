@@ -6,10 +6,10 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to the v0.5.0 release commit (main HEAD), in lockstep with the
-  # multi-arch release image ghcr.io/smana/runlore:0.5.0. runlore now ships
+  # Pinned to the v0.6.0 release commit (main HEAD), in lockstep with the
+  # multi-arch release image ghcr.io/smana/runlore:0.6.0. runlore now ships
   # semver release images (release-please + goreleaser) instead of per-commit
   # sha-<short> tags. The chart lives at deploy/helm/runlore.
   ref:
     branch: main
-    commit: f57ce7ce311cc8066c766986329e8556d2668bf3  # pragma: allowlist secret
+    commit: b2f43040a7138783ad25a4c1eb2740bc96e4a085  # pragma: allowlist secret
