@@ -120,7 +120,7 @@ spec:
         metrics_enabled: true
       model:
         provider: gemini
-        model: gemini-2.5-flash
+        model: gemini-2.5-pro
         api_key_env: GEMINI_API_KEY  # pragma: allowlist secret
       catalog:
         dir: /var/lib/runlore/catalog
