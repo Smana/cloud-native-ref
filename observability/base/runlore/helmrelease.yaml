@@ -36,7 +36,7 @@ spec:
     # require an RWX volume (EFS) so the standby can mount the same data — deferred.
     replicaCount: 1
     image:
-      tag: "0.6.0"
+      tag: "0.6.1"
     serviceAccount:
       create: true
       # Must match the SA bound by the xplane-runlore EKS Pod Identity (security/base/epis/runlore.yaml).
