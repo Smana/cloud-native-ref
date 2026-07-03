@@ -20,7 +20,7 @@ spec:
       containers:
         - name: payment-api
           # podinfo — a small, well-known demo microservice.
-          image: ghcr.io/stefanprodan/podinfo:6.7.1
+          image: ghcr.io/stefanprodan/podinfo:6.9.9-hotfix
           ports:
             - name: http
               containerPort: 9898
