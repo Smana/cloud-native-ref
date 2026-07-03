@@ -29,27 +29,17 @@ spec:
               kind: Deployment
               name: harbor-jobservice
             patch: |
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: harbor-jobservice
-              spec:
-                strategy:
-                  $retainKeys:
-                    - type
+              - op: replace
+                path: /spec/strategy
+                value:
                   type: Recreate
           - target:
               kind: Deployment
               name: harbor-registry
             patch: |
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: harbor-registry
-              spec:
-                strategy:
-                  $retainKeys:
-                    - type
+              - op: replace
+                path: /spec/strategy
+                value:
                   type: Recreate
   values:
     fullnameOverride: "harbor"
