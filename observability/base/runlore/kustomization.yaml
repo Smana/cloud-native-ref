@@ -6,4 +6,5 @@ namespace: runlore
 resources:
   - externalsecret-credentials.yaml
   - externalsecret-slack.yaml
+  - externalsecret-webhook.yaml
   - helmrelease.yaml
