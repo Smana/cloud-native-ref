@@ -21,6 +21,12 @@ spec:
         - name: payment-api
           # podinfo — a small, well-known demo microservice.
           image: ghcr.io/stefanprodan/podinfo:6.7.1
+          # Database credentials, synced from AWS Secrets Manager by the
+          # payment-api-db ExternalSecret. The container cannot start until this
+          # Secret exists (CreateContainerConfigError while it is missing).
+          envFrom:
+            - secretRef:
+                name: payment-api-db
           ports:
             - name: http
               containerPort: 9898
