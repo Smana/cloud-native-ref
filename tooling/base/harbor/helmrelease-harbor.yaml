@@ -17,6 +17,40 @@ spec:
   install:
     remediation:
       retries: 3
+  # The harbor chart renders `strategy.rollingUpdate: null` on every Deployment
+  # even when updateStrategy.type=Recreate, which the API server rejects
+  # ("rollingUpdate may not be specified when type is Recreate") on the RWO
+  # jobservice/registry Deployments. Strip the stray key with $retainKeys so only
+  # `type: Recreate` remains.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: harbor-jobservice
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: harbor-jobservice
+              spec:
+                strategy:
+                  $retainKeys:
+                    - type
+                  type: Recreate
+          - target:
+              kind: Deployment
+              name: harbor-registry
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: harbor-registry
+              spec:
+                strategy:
+                  $retainKeys:
+                    - type
+                  type: Recreate
   values:
     fullnameOverride: "harbor"
     expose:
