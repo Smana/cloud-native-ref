@@ -27,6 +27,14 @@ spec:
 
     externalURL: https://harbor.${private_domain_name}
 
+    # jobservice (job-logs) and registry use RWO EBS PVCs. The chart's default
+    # RollingUpdate strategy starts a new pod before terminating the old one, so
+    # the new pod Multi-Attach-deadlocks on the single-attach volume and every
+    # `helm upgrade` times out waiting for the rollout. Recreate terminates the
+    # old pod first (brief upgrade downtime, acceptable for an internal registry).
+    updateStrategy:
+      type: Recreate
+
     persistence:
       enabled: true
       imageChartStorage:
