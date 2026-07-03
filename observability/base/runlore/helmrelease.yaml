@@ -36,7 +36,7 @@ spec:
     # require an RWX volume (EFS) so the standby can mount the same data — deferred.
     replicaCount: 1
     image:
-      tag: sha-9b9195b
+      tag: "0.5.0"
     serviceAccount:
       create: true
       # Must match the SA bound by the xplane-runlore EKS Pod Identity (security/base/epis/runlore.yaml).
@@ -87,15 +87,23 @@ spec:
     config:
       gitops:
         engine: flux
+      # Source enablement (runlore v0.5.0+): presence of a key under `sources`
+      # turns that source on; its value is the source's own config. Enablement
+      # moved here out of the old `triggers.<name>.enabled: true` flags.
+      sources:
+        alertmanager: {}      # Alertmanager/VMAlert webhook source
+        gitops:
+          enabled: true       # also react to Flux Ready=False
       triggers:
+        # `triggers.<name>` now holds match/dedup/debounce POLICY only; enablement
+        # lives under `sources` above.
         incidents:
-          enabled: true
           match:
             severity: [critical]
           dedup:
             window: 30m
-        gitops_failures:
-          enabled: true
+        # gitops_failures policy left at defaults (debounce 60s); enablement is
+        # via sources.gitops above.
       leader_election:
         enabled: true
         name: runlore-leader
