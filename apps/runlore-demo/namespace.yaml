@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: runlore-demo
-  labels:
-    app.kubernetes.io/managed-by: flux
-    # Throwaway namespace for a RunLore incident-investigation demo. Safe to delete.
-    runlore.io/demo: "true"
