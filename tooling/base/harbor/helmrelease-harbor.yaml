@@ -17,6 +17,30 @@ spec:
   install:
     remediation:
       retries: 3
+  # The harbor chart renders `strategy.rollingUpdate: null` on every Deployment
+  # even when updateStrategy.type=Recreate, which the API server rejects
+  # ("rollingUpdate may not be specified when type is Recreate") on the RWO
+  # jobservice/registry Deployments. Strip the stray key with $retainKeys so only
+  # `type: Recreate` remains.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: harbor-jobservice
+            patch: |
+              - op: replace
+                path: /spec/strategy
+                value:
+                  type: Recreate
+          - target:
+              kind: Deployment
+              name: harbor-registry
+            patch: |
+              - op: replace
+                path: /spec/strategy
+                value:
+                  type: Recreate
   values:
     fullnameOverride: "harbor"
     expose:
@@ -26,6 +50,14 @@ spec:
           commonName: "ogenki"
 
     externalURL: https://harbor.${private_domain_name}
+
+    # jobservice (job-logs) and registry use RWO EBS PVCs. The chart's default
+    # RollingUpdate strategy starts a new pod before terminating the old one, so
+    # the new pod Multi-Attach-deadlocks on the single-attach volume and every
+    # `helm upgrade` times out waiting for the rollout. Recreate terminates the
+    # old pod first (brief upgrade downtime, acceptable for an internal registry).
+    updateStrategy:
+      type: Recreate
 
     persistence:
       enabled: true

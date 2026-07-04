@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - externalsecret-alertmanager-slack-app.yaml
+  - externalsecret-runlore-webhook-token.yaml
   - externalsecret-grafana-envvars.yaml
 
   # HttpRoutes

@@ -36,7 +36,7 @@ spec:
     # require an RWX volume (EFS) so the standby can mount the same data — deferred.
     replicaCount: 1
     image:
-      tag: sha-9b9195b
+      tag: "0.6.1"
     serviceAccount:
       create: true
       # Must match the SA bound by the xplane-runlore EKS Pod Identity (security/base/epis/runlore.yaml).
@@ -83,19 +83,29 @@ spec:
           name: runlore-credentials
       - secretRef:
           name: runlore-slack
+      - secretRef:
+          name: runlore-webhook
     # Rendered verbatim into /etc/runlore/runlore.yaml (strict-parsed by the agent).
     config:
       gitops:
         engine: flux
+      # Source enablement (runlore v0.5.0+): presence of a key under `sources`
+      # turns that source on; its value is the source's own config. Enablement
+      # moved here out of the old `triggers.<name>.enabled: true` flags.
+      sources:
+        alertmanager: {}      # Alertmanager/VMAlert webhook source
+        gitops:
+          enabled: true       # also react to Flux Ready=False
       triggers:
+        # `triggers.<name>` now holds match/dedup/debounce POLICY only; enablement
+        # lives under `sources` above.
         incidents:
-          enabled: true
           match:
             severity: [critical]
           dedup:
             window: 30m
-        gitops_failures:
-          enabled: true
+        # gitops_failures policy left at defaults (debounce 60s); enablement is
+        # via sources.gitops above.
       leader_election:
         enabled: true
         name: runlore-leader
@@ -110,7 +120,7 @@ spec:
         metrics_enabled: true
       model:
         provider: gemini
-        model: gemini-2.5-flash
+        model: gemini-2.5-pro
         api_key_env: GEMINI_API_KEY  # pragma: allowlist secret
       catalog:
         dir: /var/lib/runlore/catalog
@@ -157,6 +167,12 @@ spec:
         cluster_name: mycluster-0
       # actions: omitted -> mode "off" (fully read-only on the cluster; only
       # writes are KB PRs/issues on Smana/runlore-kb via the GitHub App).
-      # server.webhook_token_env: omitted — the Alertmanager runlore receiver
-      # posts unauthenticated in-cluster (observability/.../vm-common-helm-values-configmap.yaml).
+      # v0.2.0 fails closed (RequireWebhookAuth): with a model configured the
+      # alert webhook MUST be authenticated, since alert labels/annotations flow
+      # into the LLM prompt and bill the model. The bearer token comes from the
+      # runlore-webhook ExternalSecret (envFrom above); the Alertmanager runlore
+      # receiver posts it via authorization.credentials_file
+      # (observability/.../vm-common-helm-values-configmap.yaml).
+      server:
+        webhook_token_env: WEBHOOK_TOKEN  # pragma: allowlist secret
       # network / metrics.url / logs.url: deferred to a fast-follow once the base deploy is green.
