@@ -47,12 +47,16 @@ spec:
   values:
     # StatefulSet (chart feature from runlore#263, unmerged — see
     # flux/sources/gitrepo-runlore.yaml) gives each replica its OWN RWO EBS volume
-    # via volumeClaimTemplates, so 2 replicas + leader election provide real HA
-    # without needing an RWX StorageClass. Trade-off: a new leader taking over on
-    # a DIFFERENT replica's volume starts with an empty local outcome ledger (the
-    # catalog is unaffected — it re-clones from git).
+    # via volumeClaimTemplates — validated live (2 independently-Bound PVCs,
+    # correct leader election/failover). Held at replicaCount: 1 for now: readyz
+    # deliberately gates on leadership (only the leader should receive webhooks —
+    # see the disableWait comment above), so a real 2-replica rollout needs
+    # leader-request-forwarding first (non-leader replicas proxy to the current
+    # leader via the Lease) so every replica can report Ready and Flux's wait
+    # isn't fighting the app's own design. Tracked: github.com/Smana/runlore/issues/264.
+    # Bump back to 2 once that ships.
     workloadKind: StatefulSet
-    replicaCount: 2
+    replicaCount: 1
     image:
       # Rolling validation image (see flux/sources/gitrepo-runlore.yaml) — matches
       # the pinned main commit until the next release-please tag ships. Always
