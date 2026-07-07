@@ -125,7 +125,9 @@ rules:
 ---
 # ClusterRole for aggregating InferenceService composition resource permissions
 # to Crossplane. Adds the kinds the App composition aggregate doesn't cover —
-# KEDA ScaledObject and batch/Job (one-shot weights preload).
+# KEDA ScaledObject, batch/Job (one-shot weights preload), and the Envoy
+# AI Gateway routing kinds (SPEC-002: Backend, AIServiceBackend,
+# AIGatewayRoute rendered per claim when spec.gateway.enabled).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -144,4 +146,10 @@ rules:
     verbs: ["*"]
   - apiGroups: ["batch"]
     resources: ["jobs", "jobs/status"]
+    verbs: ["*"]
+  - apiGroups: ["gateway.envoyproxy.io"]
+    resources: ["backends", "backends/status"]
+    verbs: ["*"]
+  - apiGroups: ["aigateway.envoyproxy.io"]
+    resources: ["aigatewayroutes", "aigatewayroutes/status", "aiservicebackends", "aiservicebackends/status"]
     verbs: ["*"]

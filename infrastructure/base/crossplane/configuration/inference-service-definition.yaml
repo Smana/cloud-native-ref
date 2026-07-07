@@ -23,6 +23,10 @@ spec:
                   message: "scaling.minReplicas must be <= maxReplicas"
                 - rule: "!has(self.route) || !self.route.enabled || has(self.route.hostname)"
                   message: "route.hostname is required when route is enabled"
+                - rule: "!has(self.gateway) || !has(self.gateway.canary) || self.gateway.enabled"
+                  message: "gateway.canary requires gateway.enabled to be true"
+                - rule: "!has(self.gateway) || !has(self.gateway.canary) || (has(self.loraAdapters) && self.loraAdapters.exists(a, a.name == self.gateway.canary.adapter))"
+                  message: "gateway.canary.adapter must match a loraAdapters[].name entry"
               properties:
                 model:
                   type: object
@@ -225,6 +229,41 @@ spec:
                           HF revision (branch name, tag, or commit SHA).
                           Defaults to "main" if omitted.
                         default: main
+                gateway:
+                  type: object
+                  description: |
+                    SPEC-002: composition-owned Envoy AI Gateway routing.
+                    When enabled, the composition renders the claim's
+                    Backend (FQDN of its Service), AIServiceBackend
+                    (OpenAI schema) and AIGatewayRoute (parentRef
+                    ai-gateway/envoy-ai-gateway-system) — replacing the
+                    hand-written entries in
+                    apps/base/ai/llm/ai-gateway-routes/route.yaml. The
+                    AIGatewayRoute is withheld until the Deployment
+                    reports Available=True, then latched (never withdrawn
+                    on transient unavailability). Opt-in, default off.
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    canary:
+                      type: object
+                      description: |
+                        Weighted canary between the base model and one of
+                        its LoRA adapters (same pod — zero extra GPU).
+                        weightPercent of base-model traffic is rewritten
+                        (modelNameOverride) to <claim>-<adapter>; explicit
+                        requests for the adapter name stay pinned at 100%.
+                      required: [adapter, weightPercent]
+                      properties:
+                        adapter:
+                          type: string
+                          description: Must match a loraAdapters[].name entry (CEL-enforced).
+                        weightPercent:
+                          type: integer
+                          description: Percent of base-model traffic sent to the adapter.
+                          minimum: 1
+                          maximum: 99
                 route:
                   type: object
                   description: |
