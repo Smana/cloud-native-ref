@@ -28,6 +28,12 @@ spec:
         kind: GitRepository
         name: runlore
       interval: 12h
+      # Default reconcileStrategy (ChartVersion) only repackages when Chart.yaml's
+      # version bumps — irrelevant here since we're pinned to an unreleased PR
+      # branch commit (flux/sources/gitrepo-runlore.yaml) with no version bump.
+      # Revision repackages whenever the GitRepository's observed commit changes,
+      # which is what tracking an in-review branch actually needs.
+      reconcileStrategy: Revision
   driftDetection:
     mode: enabled
   values:
