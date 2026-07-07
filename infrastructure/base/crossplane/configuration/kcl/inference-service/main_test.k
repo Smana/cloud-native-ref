@@ -330,8 +330,8 @@ test_preload_lora_downloads_conditional = lambda {
 # ---- Test (a/b): AI Gateway trio rendered iff gateway.enabled ----
 # Backend <claim>-direct, AIServiceBackend(s), AIGatewayRoute <claim>.
 # Conditional pattern mirrors test_httproute — assertions adapt to the
-# fixture. The fixture's Deployment is Available=True, so the latched
-# AIGatewayRoute renders.
+# fixture. The fixture's Deployment is NOT Available but the route is present
+# in ocds, so the latched AIGatewayRoute still renders (see settings-example).
 test_gateway_resources = lambda {
     _oxr = option("params").oxr
     _name = _oxr.metadata.name
@@ -357,15 +357,57 @@ test_gateway_resources = lambda {
     assert True
 }
 
-# ---- Test (c/d): AIGatewayRoute readiness latch (FR-002) ----
-# Pure decision function so both latch states are exercised without a
-# fixture-per-scenario: withhold when Deployment not Available AND route
-# absent; render (latched) once observed even if the Deployment flaps.
+# ---- Test (c/d): AIGatewayRoute readiness latch decision (FR-002) ----
+# Drives the ACTUAL decision function main.k calls (`_aiGatewayRouteShouldRender`)
+# with synthetic ocds keyed under the REAL composition-resource-name — so the
+# in-ocds branch exercises the exact `<claim>-gateway-airoute` key construction,
+# not a re-implementation. KCL's single global fixture can only encode one ocds
+# state through `items`, so the withheld case (c) is covered here via the real
+# lambda; the render-when-latched case (b/d) is ALSO covered end-to-end through
+# `items` by test_gateway_route_latch_integration below.
 test_gateway_route_latch = lambda {
-    assert _gatewayRouteShouldRender(False, False) == False, "route withheld until Deployment Available or route observed"
-    assert _gatewayRouteShouldRender(False, True) == True, "observed route latches — never withdrawn on a Deployment blip"
-    assert _gatewayRouteShouldRender(True, False) == True, "route renders when Deployment Available"
-    assert _gatewayRouteShouldRender(True, True) == True, "route renders when both true"
+    _name = option("params").oxr.metadata.name
+    _routeKey = _name + "-gateway-airoute"
+    _emptyOcds = {}
+    _ocdsWithRoute = {k: {
+        Resource = {kind = "AIGatewayRoute"}
+    } for k in [_routeKey]}
+    # (c) withhold: Deployment not Available AND route absent from ocds.
+    assert _aiGatewayRouteShouldRender(_name, _emptyOcds, False) == False, "route withheld until Deployment Available or route observed"
+    # (d) latch: route observed under its real key ⇒ render even if Deployment down.
+    assert _aiGatewayRouteShouldRender(_name, _ocdsWithRoute, False) == True, "observed route latches — never withdrawn on a Deployment blip"
+    # Deployment Available renders regardless of ocds.
+    assert _aiGatewayRouteShouldRender(_name, _emptyOcds, True) == True, "route renders when Deployment Available"
+    assert _aiGatewayRouteShouldRender(_name, _ocdsWithRoute, True) == True, "route renders when both true"
+    # Guard: a WRONG key must NOT satisfy the latch (proves the suffix is load-bearing).
+    _wrongKeyOcds = {k: {} for k in [_name + "-httproute"]}
+    assert _aiGatewayRouteShouldRender(_name, _wrongKeyOcds, False) == False, "an unrelated observed resource must not latch the AIGatewayRoute"
+}
+
+# ---- Test (b/d) integration: latch renders through the full pipeline ----
+# End-to-end proof that the ocds observed-state lookup is wired to the render
+# suffix. The settings-example fixture puts the Deployment in Available=False
+# AND the AIGatewayRoute (Accepted=True) in ocds under `<claim>-gateway-airoute`.
+# The route must therefore (1) still appear in `items` (latch, not deployment
+# readiness) and (2) carry krm.kcl.dev/ready="True" (derived from the observed
+# Accepted condition). If the observed-lookup suffix ever drifts from the render
+# suffix, the route would vanish or lose its ready annotation and this fails —
+# the exact regression the pure decision test cannot see.
+test_gateway_route_latch_integration = lambda {
+    _oxr = option("params").oxr
+    _name = _oxr.metadata.name
+    if _oxr.spec.gateway?.enabled:
+        # Fixture precondition: Deployment is NOT Available.
+        _dep = option("params").ocds[_name + "-deployment"]?.Resource
+        _depAvailable = any_true([c?.type == "Available" and c?.status == "True" for c in _dep?.status?.conditions or []])
+        assert not _depAvailable, "fixture precondition: Deployment must NOT be Available for the latch integration test"
+        # Fixture precondition: the route IS already observed.
+        assert (_name + "-gateway-airoute") in option("params").ocds, "fixture precondition: AIGatewayRoute must be present in ocds"
+        routes = [r for r in items if r.kind == "AIGatewayRoute"]
+        assert len(routes) == 1, "AIGatewayRoute must still render via the ocds latch when Deployment is not Available, got {}".format(len(routes))
+        assert routes[0].metadata.annotations["krm.kcl.dev/ready"] == "True", "rendered route must carry ready annotation from observed Accepted=True — proves ocds key matches render suffix"
+
+    assert True
 }
 
 # ---- Test (e): canary weights sum to 100 + modelNameOverride + -canary AISB ----

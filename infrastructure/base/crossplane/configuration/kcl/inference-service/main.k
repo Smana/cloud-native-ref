@@ -168,10 +168,12 @@ _observedVMServiceScrape = _observed("vmservicescrape")
 _observedVMRule = _observed("vmrule")
 _observedPreloadJob = _observed("preload-job")
 
-# SPEC-002: latch key must match the AIGatewayRoute's
-# composition-resource-name suffix ("gateway-airoute") so the observed
-# lookup and the rendered resource agree.
-_observedAIGatewayRoute = _observed("gateway-airoute")
+# SPEC-002: single source of truth for the AIGatewayRoute resource suffix.
+# Used for BOTH the observed-state ocds lookup and the rendered resource's
+# composition-resource-name, so the latch key cannot drift between read and
+# write — a rename touches exactly one line.
+_gatewayRouteSuffix = "gateway-airoute"
+_observedAIGatewayRoute = _observed(_gatewayRouteSuffix)
 
 _readyByCondition = lambda obj: any, ctype: str -> bool {
     any_true([c?.type == ctype and c?.status == "True" for c in obj?.status?.conditions or []])
@@ -185,11 +187,12 @@ _appliedReady = lambda obj: any -> bool {
 
 # SPEC-002 FR-002: the AIGatewayRoute is gated on Deployment readiness with
 # a latch — render only once the Deployment is Available OR the route is
-# already observed in cluster state. A transient Deployment blip never
-# withdraws a live route (no flapping). Pure lambda so the latch decision is
-# unit-testable without a fixture-per-scenario.
-_gatewayRouteShouldRender = lambda deploymentReady: bool, routePresent: bool -> bool {
-    deploymentReady or routePresent
+# already observed in ocds (keyed by the SAME _gatewayRouteSuffix the render
+# uses). A transient Deployment blip never withdraws a live route (no
+# flapping). Takes the raw ocds so tests exercise the exact key-construction
+# main.k relies on, not a re-implementation of it.
+_aiGatewayRouteShouldRender = lambda name: str, ocdsState: any, deploymentReady: bool -> bool {
+    deploymentReady or (name + "-" + _gatewayRouteSuffix) in ocdsState
 }
 
 _deploymentReady = _readyByCondition(_observedDeployment, "Available")
@@ -209,7 +212,6 @@ _gatewayCanary = oxr.spec.gateway?.canary
 # is "ready" once Accepted=True (mirror of the HTTPRoute check). Absent
 # status ⇒ not ready (defensive: _readyByCondition returns False on []).
 _aiRouteReady = _readyByCondition(_observedAIGatewayRoute, "Accepted")
-_aiRoutePresent = _observedAIGatewayRoute != None
 
 _items = []
 
@@ -475,11 +477,11 @@ if _gatewayEnabled:
 
     # Readiness latch (FR-002): render only when the Deployment is Available
     # OR the route is already observed. Never withhold a live route.
-    if _gatewayRouteShouldRender(_deploymentReady, _aiRoutePresent):
+    if _aiGatewayRouteShouldRender(_name, ocds, _deploymentReady):
         _aiGatewayRoute = [{
             apiVersion = "aigateway.envoyproxy.io/v1alpha1"
             kind = "AIGatewayRoute"
-            metadata = _metadata("gateway-airoute", _aiRouteReady)
+            metadata = _metadata(_gatewayRouteSuffix, _aiRouteReady)
             spec = {
                 parentRefs = [{name = "ai-gateway", namespace = "envoy-ai-gateway-system", kind = "Gateway", group = "gateway.networking.k8s.io"}]
                 rules = [_baseRule] + _pinRules
