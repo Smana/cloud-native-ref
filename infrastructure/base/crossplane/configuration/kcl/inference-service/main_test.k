@@ -23,12 +23,15 @@ test_core_resources = lambda {
 }
 
 # ---- Test: Resource count for full settings-example claim ----
-# settings-example exercises: KEDA ScaledObject, HTTPRoute, ExternalSecret, preload Job
+# settings-example exercises: KEDA ScaledObject, HTTPRoute, ExternalSecret,
+# preload Job, and (SPEC-002) the AI Gateway trio + canary + XR status patch.
 test_resource_count_full = lambda {
-    # Full claim (settings-example) renders 11 resources:
+    # Full claim (settings-example) renders 11 base resources:
     # ServiceAccount, Deployment, Service, ScaledObject, HTTPRoute,
     # CiliumNetworkPolicy (serving), CiliumNetworkPolicy (preload),
-    # ExternalSecret, VMServiceScrape, VMRule, Job = 11
+    # ExternalSecret, VMServiceScrape, VMRule, Job = 11 — plus, with
+    # gateway.enabled + canary: Backend, AIServiceBackend,
+    # AIServiceBackend-canary, AIGatewayRoute, and the dxr status patch.
     assert len(items) >= 11, "expected ≥11 resources for full claim, got {}".format(len(items))
 }
 
@@ -182,8 +185,11 @@ test_xplane_naming = lambda {
 }
 
 # ---- Test: composition-resource-name annotations on every resource ----
+# The composite XR itself (kind InferenceService, returned to patch
+# status.modelEndpoint per SPEC-002) is not a composed resource and carries
+# no composition-resource-name — excluded here.
 test_composition_annotations = lambda {
-    _bad = [r.kind + "/" + r.metadata.name for r in items if not r.metadata?.annotations?["krm.kcl.dev/composition-resource-name"]]
+    _bad = [r.kind + "/" + r.metadata.name for r in items if r.kind != "InferenceService" and not r.metadata?.annotations?["krm.kcl.dev/composition-resource-name"]]
     assert len(_bad) == 0, "resources missing composition-resource-name annotation: {}".format(_bad)
 }
 
@@ -318,5 +324,102 @@ test_preload_lora_downloads_conditional = lambda {
             assert len(_missing) == 0, "preload command missing entries (name|repo|rev): {}".format(_missing)
         else:
             assert "/models/loras" not in cmd, "must not reference /models/loras when loraAdapters absent"
+    assert True
+}
+
+# ---- Test (a/b): AI Gateway trio rendered iff gateway.enabled ----
+# Backend <claim>-direct, AIServiceBackend(s), AIGatewayRoute <claim>.
+# Conditional pattern mirrors test_httproute — assertions adapt to the
+# fixture. The fixture's Deployment is Available=True, so the latched
+# AIGatewayRoute renders.
+test_gateway_resources = lambda {
+    _oxr = option("params").oxr
+    _name = _oxr.metadata.name
+    _ns = _oxr.metadata.namespace
+    backends = [r for r in items if r.kind == "Backend"]
+    aisbs = [r for r in items if r.kind == "AIServiceBackend"]
+    routes = [r for r in items if r.kind == "AIGatewayRoute"]
+    if _oxr.spec.gateway?.enabled:
+        assert len(backends) == 1, "expected 1 Backend, got {}".format(len(backends))
+        assert backends[0].metadata.name == _name + "-direct", "Backend name must be <claim>-direct"
+        assert backends[0].apiVersion == "gateway.envoyproxy.io/v1alpha1", "Backend apiVersion mismatch"
+        assert backends[0].spec.endpoints[0].fqdn.hostname == _name + "." + _ns + ".svc.cluster.local", "Backend FQDN mismatch"
+        assert len(aisbs) >= 1, "expected ≥1 AIServiceBackend, got {}".format(len(aisbs))
+        assert aisbs[0].spec.schema.name == "OpenAI", "AIServiceBackend schema must be OpenAI"
+        assert len(routes) == 1, "expected 1 AIGatewayRoute (fixture Deployment Available), got {}".format(len(routes))
+        assert routes[0].metadata.name == _name, "AIGatewayRoute name must be the claim name"
+        assert routes[0].spec.parentRefs[0].name == "ai-gateway", "parentRef must be ai-gateway"
+        assert routes[0].spec.parentRefs[0].namespace == "envoy-ai-gateway-system", "parentRef namespace mismatch"
+    else:
+        assert len(backends) == 0, "no Backend when gateway disabled"
+        assert len(aisbs) == 0, "no AIServiceBackend when gateway disabled"
+        assert len(routes) == 0, "no AIGatewayRoute when gateway disabled"
+    assert True
+}
+
+# ---- Test (c/d): AIGatewayRoute readiness latch (FR-002) ----
+# Pure decision function so both latch states are exercised without a
+# fixture-per-scenario: withhold when Deployment not Available AND route
+# absent; render (latched) once observed even if the Deployment flaps.
+test_gateway_route_latch = lambda {
+    assert _gatewayRouteShouldRender(False, False) == False, "route withheld until Deployment Available or route observed"
+    assert _gatewayRouteShouldRender(False, True) == True, "observed route latches — never withdrawn on a Deployment blip"
+    assert _gatewayRouteShouldRender(True, False) == True, "route renders when Deployment Available"
+    assert _gatewayRouteShouldRender(True, True) == True, "route renders when both true"
+}
+
+# ---- Test (e): canary weights sum to 100 + modelNameOverride + -canary AISB ----
+test_gateway_canary = lambda {
+    _oxr = option("params").oxr
+    _name = _oxr.metadata.name
+    _canary = _oxr.spec.gateway?.canary
+    if _canary:
+        routes = [r for r in items if r.kind == "AIGatewayRoute"]
+        assert len(routes) == 1, "expected 1 AIGatewayRoute"
+        _refs = routes[0].spec.rules[0].backendRefs
+        assert len(_refs) == 2, "canary base rule must have 2 backendRefs, got {}".format(len(_refs))
+        _total = sum([ref.weight for ref in _refs], 0)
+        assert _total == 100, "canary weights must sum to 100, got {}".format(_total)
+        _canaryRefs = [ref for ref in _refs if ref.name == _name + "-canary"]
+        assert len(_canaryRefs) == 1, "expected 1 canary backendRef"
+        assert _canaryRefs[0].modelNameOverride == _name + "-" + _canary.adapter, "modelNameOverride must be <claim>-<adapter>"
+        assert _canaryRefs[0].weight == _canary.weightPercent, "canary weight must equal weightPercent"
+        _canaryAisb = [r for r in items if r.kind == "AIServiceBackend" and r.metadata.name == _name + "-canary"]
+        assert len(_canaryAisb) == 1, "expected 1 -canary AIServiceBackend"
+
+    assert True
+}
+
+# ---- Test (f): one pin rule per loraAdapters entry ----
+# Every adapter (regardless of canary) gets a pin rule matching
+# x-ai-eg-model == <claim>-<adapter> → base pod at weight 100.
+test_gateway_pin_rules = lambda {
+    _oxr = option("params").oxr
+    _name = _oxr.metadata.name
+    _adapters = _oxr.spec?.loraAdapters or []
+    if _oxr.spec.gateway?.enabled:
+        routes = [r for r in items if r.kind == "AIGatewayRoute"]
+        assert len(routes) == 1, "expected 1 AIGatewayRoute"
+        _rules = routes[0].spec.rules
+        assert len(_rules) == 1 + len(_adapters), "expected {} rules (1 base + {} pins), got {}".format(1 + len(_adapters), len(_adapters), len(_rules))
+        _pinValues = [rule.matches[0].headers[0].value for rule in _rules[1::]]
+        _missing = [a.name for a in _adapters if (_name + "-" + a.name) not in _pinValues]
+        assert len(_missing) == 0, "missing pin rules for adapters: {}".format(_missing)
+        _pinBackends = [rule.backendRefs[0].name for rule in _rules[1::]]
+        _badBackends = [n for n in _pinBackends if n != _name]
+        assert len(_badBackends) == 0, "pin rules must target the base pod ({}), got {}".format(_name, _badBackends)
+
+    assert True
+}
+
+# ---- Test: XR status.modelEndpoint patched when gateway.enabled ----
+test_gateway_status_endpoint = lambda {
+    _oxr = option("params").oxr
+    _composites = [r for r in items if r.kind == "InferenceService"]
+    if _oxr.spec.gateway?.enabled:
+        assert len(_composites) == 1, "expected the XR status patch when gateway enabled, got {}".format(len(_composites))
+        assert _composites[0].status.modelEndpoint == "https://llm.priv.cloud.ogenki.io/v1", "modelEndpoint mismatch"
+    else:
+        assert len(_composites) == 0, "no XR status patch when gateway disabled"
     assert True
 }

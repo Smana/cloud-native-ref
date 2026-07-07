@@ -65,6 +65,15 @@ kcl_options:
           clusterName: "mycluster-0"
           region: "eu-west-3"
           environment: "production"
+      # Desired composite — function-kcl exposes this so the composition can
+      # patch XR status (SPEC-002 status.modelEndpoint). Crossplane supplies it
+      # at runtime; here it is a minimal stand-in for local `kcl run`/`kcl test`.
+      dxr:
+        apiVersion: cloud.ogenki.io/v1alpha1
+        kind: InferenceService
+        metadata:
+          name: "xplane-qwen3-8b"
+          namespace: "llm"
       oxr:
         metadata:
           name: "xplane-qwen3-8b"
@@ -99,6 +108,15 @@ kcl_options:
             parentGateway: "platform-tailscale-general"
             parentGatewayNamespace: "infrastructure"
             hostname: "qwen3"
+          # SPEC-002: composition-owned AI Gateway routing with a weighted
+          # LoRA canary. 20% of base-model traffic is rewritten to
+          # xplane-qwen3-8b-test-adapter-a; explicit adapter requests stay
+          # pinned 100% on the base pod.
+          gateway:
+            enabled: true
+            canary:
+              adapter: test-adapter-a
+              weightPercent: 20
           externalSecrets:
             - name: hf-token
               remoteRef: /platform/llm/hf_token

@@ -42,6 +42,11 @@ spec:
     - name: <client-facing-model-id>            # kebab-case, e.g. xplane-qwen-coder-sql
       repository: <hf-org>/<hf-repo>
       revision: <sha-or-tag>                    # defaults to "main"
+  gateway:                         # optional; v0.7.0+ (SPEC-002) — see "AI Gateway routing" section
+    enabled: false                 # composition renders Backend + AIServiceBackend + AIGatewayRoute
+    canary:                        # optional; weighted LoRA canary (requires a loraAdapters match)
+      adapter: <lora-name>         # must equal a loraAdapters[].name (CEL-enforced at the XRD)
+      weightPercent: 15            # 1–99; percent of base-model traffic sent to the adapter
   route:
     enabled: false                 # usually false — traffic flows through the AI Gateway / SR
     parentGateway: platform-tailscale-general
@@ -82,6 +87,55 @@ spec:
 LoRA support requires vLLM ≥ 0.7 (current pinned `v0.8.5` satisfies this).
 Empty/absent list = no LoRA enabled (regression-safe).
 
+## AI Gateway routing
+
+`gateway` (v0.7.0+, [SPEC-002](../../../../../../docs/specs/002-composition-owned-gateway-routing/spec.md))
+makes the composition own the claim's Envoy AI Gateway wiring instead of the
+hand-written entries in `apps/base/ai/llm/ai-gateway-routes/route.yaml`. When
+`gateway.enabled`, the module renders:
+
+- a `Backend` named `<claim>-direct` pointing at the vLLM Service FQDN
+  (`<claim>.<namespace>.svc.cluster.local:8000`),
+- an `AIServiceBackend` `<claim>` (`schema: OpenAI`, referencing the Backend),
+- an `AIGatewayRoute` `<claim>` bound to the shared `ai-gateway` Gateway in
+  `envoy-ai-gateway-system`.
+
+The route carries a **base rule** (header `x-ai-eg-model == <claim>`) plus **one
+pin rule per `loraAdapters[]` entry** (header `x-ai-eg-model == <claim>-<adapter>`),
+all served by the same base pod — vLLM dispatches on the request-body `model`
+field.
+
+### Readiness latch (FR-002)
+
+The `AIGatewayRoute` is **withheld** until the claim's Deployment reports
+`Available=True`, so the gateway never routes to a pod that cannot serve. Once
+the route has been created it is **latched** — a subsequent transient Deployment
+unavailability never withdraws it (the composition observes the route in cluster
+state and keeps rendering it). This avoids route flapping under rolling restarts
+or brief pod churn. The `Backend` and `AIServiceBackend`(s) are static-ready
+(always applied when `gateway.enabled`).
+
+### Weighted LoRA canary
+
+Setting `gateway.canary` splits the base rule's traffic between the base model
+and one of its LoRA adapters (same pod, zero extra GPU). It renders a second
+`AIServiceBackend` `<claim>-canary` (same Backend) so the rule has two named
+backendRefs:
+
+- `<claim>` at `weight: 100 - weightPercent`,
+- `<claim>-canary` at `weight: weightPercent`, with
+  `modelNameOverride: <claim>-<adapter>` (rewrites the upstream model name so
+  vLLM serves the adapter).
+
+Explicit `x-ai-eg-model == <claim>-<adapter>` requests stay pinned 100% on the
+base pod via the adapter's pin rule — the canary only rebalances the base-model
+model name. `gateway.canary.adapter` must match a `loraAdapters[].name`
+(CEL-enforced at the XRD) and `weightPercent` is bounded 1–99.
+
+When `gateway.enabled`, `status.modelEndpoint` is set to
+`https://llm.priv.cloud.ogenki.io/v1` (the platform's external OpenAI-compatible
+entry point).
+
 ## Resources rendered
 
 | Resource | Condition | Notes |
@@ -91,6 +145,11 @@ Empty/absent list = no LoRA enabled (regression-safe).
 | `ServiceAccount` | always | Token mounted; no IAM binding (weights via CSI mount per ADR-0004) |
 | `ScaledObject` (KEDA core) | always | Prometheus triggers on **leading** vLLM saturation metrics: `running/max-num-seqs` ratio + `gpu_cache_usage_perc`. Replaces the legacy `HTTPScaledObject` + `HPA` rendering (composition v0.5.0+, [SPEC-001](../../../../../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md)). |
 | `HTTPRoute` | `route.enabled` | Per-model HTTPRoute on the platform Tailscale gateway (otherwise reach via the AI Gateway / SR) |
+| `Backend` (`<claim>-direct`) | `gateway.enabled` | Envoy Gateway `Backend` → vLLM Service FQDN `:8000`. Static-ready |
+| `AIServiceBackend` (`<claim>`) | `gateway.enabled` | OpenAI-schema AI backend referencing the `Backend`. Static-ready |
+| `AIServiceBackend` (`<claim>-canary`) | `gateway.canary` set | Second AI backend (same `Backend`) so the route rule can carry two named backendRefs. Static-ready |
+| `AIGatewayRoute` (`<claim>`) | `gateway.enabled` **and** Deployment `Available` (latched) | Base rule (`x-ai-eg-model == <claim>`) + one pin rule per LoRA adapter. Withheld until the Deployment is ready, then latched (never withdrawn on transient unavailability). Ready when `status.conditions[Accepted]=True` |
+| XR `status.modelEndpoint` | `gateway.enabled` | XR status patched to `https://llm.priv.cloud.ogenki.io/v1` via the desired-composite (dxr) |
 | `CiliumNetworkPolicy` (serving) | always | Default-deny + explicit allow on the long-lived serving pod (DNS only egress + ingress from AI Gateway data-plane, SR, vmagent) |
 | `CiliumNetworkPolicy` (preload) | `model.preload.enabled` | Separate policy on the one-shot Job pod (DNS, AWS API, world:443 for HF, host:80 for EKS Pod Identity Agent) |
 | `ExternalSecret(s)` | per `externalSecrets` entry | AWS Secrets Manager → Kubernetes Secret |
@@ -106,7 +165,7 @@ PVC at `/models` with `subPath = <claim-name>` for filesystem isolation.
 ## Examples
 
 - [`infrastructure/base/crossplane/configuration/examples/inferenceservice-basic.yaml`](../../examples/inferenceservice-basic.yaml) — minimal claim, single GPU, defaults applied (always-warm, no preload).
-- [`infrastructure/base/crossplane/configuration/examples/inferenceservice-complete.yaml`](../../examples/inferenceservice-complete.yaml) — full feature set: preload Job, HTTPRoute, KV offload + prefix cache, ExternalSecret.
+- [`infrastructure/base/crossplane/configuration/examples/inferenceservice-complete.yaml`](../../examples/inferenceservice-complete.yaml) — full feature set: preload Job, HTTPRoute, KV offload + prefix cache, ExternalSecret, LoRA adapter, and composition-owned AI Gateway routing with a weighted canary.
 
 ## Validation
 

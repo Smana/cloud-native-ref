@@ -168,6 +168,11 @@ _observedVMServiceScrape = _observed("vmservicescrape")
 _observedVMRule = _observed("vmrule")
 _observedPreloadJob = _observed("preload-job")
 
+# SPEC-002: latch key must match the AIGatewayRoute's
+# composition-resource-name suffix ("gateway-airoute") so the observed
+# lookup and the rendered resource agree.
+_observedAIGatewayRoute = _observed("gateway-airoute")
+
 _readyByCondition = lambda obj: any, ctype: str -> bool {
     any_true([c?.type == ctype and c?.status == "True" for c in obj?.status?.conditions or []])
 }
@@ -178,6 +183,15 @@ _appliedReady = lambda obj: any -> bool {
     any_true([c?.status == "True" and (c?.type or "").endswith("/Applied") for c in obj?.status?.conditions or []])
 }
 
+# SPEC-002 FR-002: the AIGatewayRoute is gated on Deployment readiness with
+# a latch — render only once the Deployment is Available OR the route is
+# already observed in cluster state. A transient Deployment blip never
+# withdraws a live route (no flapping). Pure lambda so the latch decision is
+# unit-testable without a fixture-per-scenario.
+_gatewayRouteShouldRender = lambda deploymentReady: bool, routePresent: bool -> bool {
+    deploymentReady or routePresent
+}
+
 _deploymentReady = _readyByCondition(_observedDeployment, "Available")
 _serviceReady = _observedService?.spec?.clusterIP != None
 _httpRouteReady = any_true([c?.type == "Accepted" and c?.status == "True" for c in _observedHTTPRoute?.status?.parents?[0]?.conditions or []])
@@ -186,6 +200,16 @@ _serviceAccountReady = _existsReady(_observedServiceAccount)
 _vmServiceScrapeReady = _appliedReady(_observedVMServiceScrape)
 _vmRuleReady = _appliedReady(_observedVMRule)
 _preloadJobReady = (_observedPreloadJob?.status?.succeeded or 0) > 0
+
+# SPEC-002 gateway wiring.
+_gatewayEnabled = oxr.spec.gateway?.enabled or False
+_gatewayCanary = oxr.spec.gateway?.canary
+
+# AIGatewayRoute v1alpha1 publishes top-level status.conditions; the route
+# is "ready" once Accepted=True (mirror of the HTTPRoute check). Absent
+# status ⇒ not ready (defensive: _readyByCondition returns False on []).
+_aiRouteReady = _readyByCondition(_observedAIGatewayRoute, "Accepted")
+_aiRoutePresent = _observedAIGatewayRoute != None
 
 _items = []
 
@@ -393,6 +417,87 @@ if _routeEnabled:
         }
     }]
     _items += _httpRoute
+
+# SPEC-002: composition-owned Envoy AI Gateway routing. When gateway.enabled,
+# this module renders the claim's Backend (its Service FQDN), AIServiceBackend
+# (OpenAI schema) and AIGatewayRoute — replacing the hand-written entries in
+# apps/base/ai/llm/ai-gateway-routes/route.yaml (do NOT also hand-maintain
+# them there once a claim opts in). Backend + AIServiceBackend(s) are
+# static-ready; the AIGatewayRoute is latched on Deployment readiness (FR-002).
+if _gatewayEnabled:
+    _gatewayBackend = [{
+        apiVersion = "gateway.envoyproxy.io/v1alpha1"
+        kind = "Backend"
+        metadata = _metadata("gateway-backend", True) | {name = _name + "-direct"}
+        spec = {
+            endpoints = [{
+                fqdn = {hostname = _name + "." + _namespace + ".svc.cluster.local", port = _DEFAULTS.vllm_port}
+            }]
+        }
+    }]
+    _items += _gatewayBackend
+
+    _aiServiceBackend = [{
+        apiVersion = "aigateway.envoyproxy.io/v1alpha1"
+        kind = "AIServiceBackend"
+        metadata = _metadata("gateway-aiservicebackend", True)
+        spec = {
+            schema = {name = "OpenAI"}
+            backendRef = {group = "gateway.envoyproxy.io", kind = "Backend", name = _name + "-direct"}
+        }
+    }]
+    _items += _aiServiceBackend
+
+    # Canary AIServiceBackend — same Backend, distinct name so the route rule
+    # can carry two named backendRefs. Only when gateway.canary is set.
+    if _gatewayCanary:
+        _aiServiceBackendCanary = [{
+            apiVersion = "aigateway.envoyproxy.io/v1alpha1"
+            kind = "AIServiceBackend"
+            metadata = _metadata("gateway-aiservicebackend-canary", True) | {name = _name + "-canary"}
+            spec = {
+                schema = {name = "OpenAI"}
+                backendRef = {group = "gateway.envoyproxy.io", kind = "Backend", name = _name + "-direct"}
+            }
+        }]
+        _items += _aiServiceBackendCanary
+
+    # Base rule: header x-ai-eg-model == <claim>. With canary, split weight
+    # between the base model and the adapter (served by the same pod;
+    # modelNameOverride rewrites the upstream model to <claim>-<adapter>).
+    _baseRuleBackendRefs = [{name = _name, weight = 100 - _gatewayCanary.weightPercent}, {name = _name + "-canary", modelNameOverride = _name + "-" + _gatewayCanary.adapter, weight = _gatewayCanary.weightPercent}] if _gatewayCanary else [{name = _name, weight = 100}]
+    _baseRule = {matches = [{headers = [{type = "Exact", name = "x-ai-eg-model", value = _name}]}], backendRefs = _baseRuleBackendRefs}
+
+    # One pin rule per LoRA adapter (all adapters, canary or not): an explicit
+    # <claim>-<adapter> request stays 100% on the base pod — vLLM dispatches
+    # on the request-body model field.
+    _pinRules = [{matches = [{headers = [{type = "Exact", name = "x-ai-eg-model", value = _name + "-" + a.name}]}], backendRefs = [{name = _name, weight = 100}]} for a in _loraAdapters]
+
+    # Readiness latch (FR-002): render only when the Deployment is Available
+    # OR the route is already observed. Never withhold a live route.
+    if _gatewayRouteShouldRender(_deploymentReady, _aiRoutePresent):
+        _aiGatewayRoute = [{
+            apiVersion = "aigateway.envoyproxy.io/v1alpha1"
+            kind = "AIGatewayRoute"
+            metadata = _metadata("gateway-airoute", _aiRouteReady)
+            spec = {
+                parentRefs = [{name = "ai-gateway", namespace = "envoy-ai-gateway-system", kind = "Gateway", group = "gateway.networking.k8s.io"}]
+                rules = [_baseRule] + _pinRules
+            }
+        }]
+        _items += _aiGatewayRoute
+
+    # status.modelEndpoint — external OpenAI-compatible URL. The environment
+    # ctx exposes no domain variable (only clusterName/region/environment), so
+    # this is the literal platform hostname. The ai-gateway Gateway listener is
+    # cluster-internal HTTP/8080 today; external entry via the Tailscale gateway
+    # resolves to llm.priv.cloud.ogenki.io (SPEC-002 P5). Patched onto the XR
+    # via the desired-composite (dxr) per the function-kcl status convention.
+    _dxrStatus = [{
+        **option("params").dxr
+        status.modelEndpoint = "https://llm.priv.cloud.ogenki.io/v1"
+    }]
+    _items += _dxrStatus
 
 # CiliumNetworkPolicy — default-deny + explicit allow (constitution mandate).
 # Two policies render: a tight one for the long-lived serving Deployment
