@@ -6,11 +6,11 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to main HEAD, 24 commits ahead of the v0.6.1 release, tracking the
+  # Pinned to main HEAD, 25 commits ahead of the v0.6.1 release, tracking the
   # rolling single-arch validation image ghcr.io/smana/runlore:main
   # (build-image.yml pushes :main amd64 on every push to main). Once
   # release-please cuts the next semver tag, switch back to the multi-arch
   # release image + matching tag commit. The chart lives at deploy/helm/runlore.
   ref:
     branch: main
-    commit: 8da0e192d383bfa2a989250f75e510732bf135f2  # pragma: allowlist secret
+    commit: 02be1c9737e1044bdf3bec63dea2bfc18129b3ad  # pragma: allowlist secret
