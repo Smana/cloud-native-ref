@@ -10,9 +10,17 @@ spec:
   # retry instead of going terminally Stalled on a single timeout.
   timeout: 10m
   install:
+    disableWait: true
     remediation:
       retries: 3
   upgrade:
+    # Helm's --wait requires ALL replicas Ready before considering the release
+    # successful — but with replicaCount>1, standby replicas are permanently
+    # NotReady by design (readyz gates on leadership, not just process health).
+    # Without this, every upgrade/install times out at `timeout` above and
+    # rolls back, even though the StatefulSet/Deployment is genuinely healthy
+    # (exactly 1 Ready leader + N-1 hot standbys).
+    disableWait: true
     remediation:
       retries: 3
   chart:
@@ -28,15 +36,34 @@ spec:
         kind: GitRepository
         name: runlore
       interval: 12h
+      # Default reconcileStrategy (ChartVersion) only repackages when Chart.yaml's
+      # version bumps — irrelevant here since we're pinned to an unreleased PR
+      # branch commit (flux/sources/gitrepo-runlore.yaml) with no version bump.
+      # Revision repackages whenever the GitRepository's observed commit changes,
+      # which is what tracking an in-review branch actually needs.
+      reconcileStrategy: Revision
   driftDetection:
     mode: enabled
   values:
-    # Single replica + RWO EBS: the outcome ledger and hash-chained audit log
-    # survive pod restart/upgrade on the persistent volume. HA (2 replicas) would
-    # require an RWX volume (EFS) so the standby can mount the same data — deferred.
+    # StatefulSet (chart feature from runlore#263, merged into main) gives each
+    # replica its OWN RWO EBS volume
+    # via volumeClaimTemplates — validated live (2 independently-Bound PVCs,
+    # correct leader election/failover). Held at replicaCount: 1 for now: readyz
+    # deliberately gates on leadership (only the leader should receive webhooks —
+    # see the disableWait comment above), so a real 2-replica rollout needs
+    # leader-request-forwarding first (non-leader replicas proxy to the current
+    # leader via the Lease) so every replica can report Ready and Flux's wait
+    # isn't fighting the app's own design. Tracked: github.com/Smana/runlore/issues/264.
+    # Bump back to 2 once that ships.
+    workloadKind: StatefulSet
     replicaCount: 1
     image:
-      tag: "0.6.1"
+      # Rolling validation image (see flux/sources/gitrepo-runlore.yaml) — matches
+      # the pinned main commit until the next release-please tag ships. Always
+      # pull: the :main tag is mutable, chart default (IfNotPresent) would keep
+      # serving whatever digest first landed on the node.
+      tag: "main"
+      pullPolicy: Always
     serviceAccount:
       create: true
       # Must match the SA bound by the xplane-runlore EKS Pod Identity (security/base/epis/runlore.yaml).
@@ -119,9 +146,13 @@ spec:
       telemetry:
         metrics_enabled: true
       model:
-        provider: gemini
-        model: gemini-2.5-pro
-        api_key_env: GEMINI_API_KEY  # pragma: allowlist secret
+        # GLM 5.2 via Z.ai's OpenAI-compatible API. Any provider name other than
+        # anthropic/gemini falls back to the OpenAI wire protocol (NewModelClient),
+        # so provider: openai + base_url is the correct way to point at it.
+        provider: openai
+        model: glm-5.2
+        base_url: https://api.z.ai/api/paas/v4/
+        api_key_env: GLM_API_KEY  # pragma: allowlist secret
       catalog:
         dir: /var/lib/runlore/catalog
         git:
@@ -157,6 +188,11 @@ spec:
       forge:
         kb_repo: Smana/runlore-kb
         base_branch: main
+        # Don't draft a KB PR for a benign "no action needed" conclusion — the finding
+        # still delivers to Slack, only the repo artifact is suppressed. Shipped in
+        # #256 specifically because pilot data showed 72% of drafted PRs over 6 days
+        # were closed as noise (benign infra churn, synthetic canaries, near-dupes).
+        skip_verdicts: [no_action]
         github_app:
           app_id: 4106804
           installation_id: 141652301

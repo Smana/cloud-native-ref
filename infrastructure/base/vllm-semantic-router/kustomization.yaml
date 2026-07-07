@@ -4,3 +4,4 @@ kind: Kustomization
 resources:
   - helmrelease.yaml
   - network-policy.yaml
+  - vmservicescrape.yaml

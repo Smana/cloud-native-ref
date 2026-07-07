@@ -6,10 +6,10 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to the v0.6.1 release commit (main HEAD), in lockstep with the
-  # multi-arch release image ghcr.io/smana/runlore:0.6.1. runlore now ships
-  # semver release images (release-please + goreleaser) instead of per-commit
-  # sha-<short> tags. The chart lives at deploy/helm/runlore.
+  # Pinned to main HEAD, which now includes runlore#263 (StatefulSet chart
+  # support, squash-merged — feat/statefulset-ha branch is deleted). The rolling
+  # image ghcr.io/smana/runlore:main still applies unchanged; only the chart at
+  # deploy/helm/runlore differs from the previous pin.
   ref:
     branch: main
-    commit: 9f5f75edd862b9fc2e32e76dbde55a45e2cecd36  # pragma: allowlist secret
+    commit: f180fd06fda2e2e0a7eb556121b3b7660997a5ed  # pragma: allowlist secret
