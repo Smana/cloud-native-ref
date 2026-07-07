@@ -45,8 +45,8 @@ spec:
   driftDetection:
     mode: enabled
   values:
-    # StatefulSet (chart feature from runlore#263, unmerged — see
-    # flux/sources/gitrepo-runlore.yaml) gives each replica its OWN RWO EBS volume
+    # StatefulSet (chart feature from runlore#263, merged into main) gives each
+    # replica its OWN RWO EBS volume
     # via volumeClaimTemplates — validated live (2 independently-Bound PVCs,
     # correct leader election/failover). Held at replicaCount: 1 for now: readyz
     # deliberately gates on leadership (only the leader should receive webhooks —

@@ -6,11 +6,10 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to the runlore#263 PR branch (feat/statefulset-ha, not yet merged) — its
-  # only change is the Helm chart's new workloadKind: StatefulSet support, so the
-  # existing rolling image ghcr.io/smana/runlore:main (main HEAD @ 02be1c97) still
-  # applies unchanged; only the chart at deploy/helm/runlore differs. Switch back
-  # to `branch: main` once #263 merges (re-pin to the merge commit).
+  # Pinned to main HEAD, which now includes runlore#263 (StatefulSet chart
+  # support, squash-merged — feat/statefulset-ha branch is deleted). The rolling
+  # image ghcr.io/smana/runlore:main still applies unchanged; only the chart at
+  # deploy/helm/runlore differs from the previous pin.
   ref:
-    branch: feat/statefulset-ha
-    commit: 043731084100026fef3271441656d3f0107e285b  # pragma: allowlist secret
+    branch: main
+    commit: f180fd06fda2e2e0a7eb556121b3b7660997a5ed  # pragma: allowlist secret
