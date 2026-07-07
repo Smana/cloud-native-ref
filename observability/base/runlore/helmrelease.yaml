@@ -166,6 +166,11 @@ spec:
       forge:
         kb_repo: Smana/runlore-kb
         base_branch: main
+        # Don't draft a KB PR for a benign "no action needed" conclusion — the finding
+        # still delivers to Slack, only the repo artifact is suppressed. Shipped in
+        # #256 specifically because pilot data showed 72% of drafted PRs over 6 days
+        # were closed as noise (benign infra churn, synthetic canaries, near-dupes).
+        skip_verdicts: [no_action]
         github_app:
           app_id: 4106804
           installation_id: 141652301
