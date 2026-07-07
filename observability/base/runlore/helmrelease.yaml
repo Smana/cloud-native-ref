@@ -31,10 +31,14 @@ spec:
   driftDetection:
     mode: enabled
   values:
-    # Single replica + RWO EBS: the outcome ledger and hash-chained audit log
-    # survive pod restart/upgrade on the persistent volume. HA (2 replicas) would
-    # require an RWX volume (EFS) so the standby can mount the same data — deferred.
-    replicaCount: 1
+    # StatefulSet (chart feature from runlore#263, unmerged — see
+    # flux/sources/gitrepo-runlore.yaml) gives each replica its OWN RWO EBS volume
+    # via volumeClaimTemplates, so 2 replicas + leader election provide real HA
+    # without needing an RWX StorageClass. Trade-off: a new leader taking over on
+    # a DIFFERENT replica's volume starts with an empty local outcome ledger (the
+    # catalog is unaffected — it re-clones from git).
+    workloadKind: StatefulSet
+    replicaCount: 2
     image:
       # Rolling validation image (see flux/sources/gitrepo-runlore.yaml) — matches
       # the pinned main commit until the next release-please tag ships. Always

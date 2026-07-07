@@ -6,11 +6,11 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to main HEAD, 25 commits ahead of the v0.6.1 release, tracking the
-  # rolling single-arch validation image ghcr.io/smana/runlore:main
-  # (build-image.yml pushes :main amd64 on every push to main). Once
-  # release-please cuts the next semver tag, switch back to the multi-arch
-  # release image + matching tag commit. The chart lives at deploy/helm/runlore.
+  # Pinned to the runlore#263 PR branch (feat/statefulset-ha, not yet merged) — its
+  # only change is the Helm chart's new workloadKind: StatefulSet support, so the
+  # existing rolling image ghcr.io/smana/runlore:main (main HEAD @ 02be1c97) still
+  # applies unchanged; only the chart at deploy/helm/runlore differs. Switch back
+  # to `branch: main` once #263 merges (re-pin to the merge commit).
   ref:
-    branch: main
-    commit: 02be1c9737e1044bdf3bec63dea2bfc18129b3ad  # pragma: allowlist secret
+    branch: feat/statefulset-ha
+    commit: 043731084100026fef3271441656d3f0107e285b  # pragma: allowlist secret
