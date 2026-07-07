@@ -10,9 +10,17 @@ spec:
   # retry instead of going terminally Stalled on a single timeout.
   timeout: 10m
   install:
+    disableWait: true
     remediation:
       retries: 3
   upgrade:
+    # Helm's --wait requires ALL replicas Ready before considering the release
+    # successful — but with replicaCount>1, standby replicas are permanently
+    # NotReady by design (readyz gates on leadership, not just process health).
+    # Without this, every upgrade/install times out at `timeout` above and
+    # rolls back, even though the StatefulSet/Deployment is genuinely healthy
+    # (exactly 1 Ready leader + N-1 hot standbys).
+    disableWait: true
     remediation:
       retries: 3
   chart:
