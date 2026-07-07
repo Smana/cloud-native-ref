@@ -252,7 +252,9 @@ spec:
                         Weighted canary between the base model and one of
                         its LoRA adapters (same pod — zero extra GPU).
                         weightPercent of base-model traffic is rewritten
-                        (modelNameOverride) to <claim>-<adapter>; explicit
+                        (modelNameOverride) to the adapter's
+                        loraAdapters[].name verbatim (names are
+                        fully-qualified by convention — CL-5); explicit
                         requests for the adapter name stay pinned at 100%.
                       required: [adapter, weightPercent]
                       properties:
