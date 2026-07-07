@@ -405,4 +405,7 @@ spec:
                   type: string
                 modelEndpoint:
                   type: string
-                  description: In-cluster URL for the OpenAI-compatible vLLM endpoint
+                  description: |
+                    OpenAI-compatible endpoint URL for this model. When
+                    spec.gateway.enabled, the external Envoy AI Gateway URL
+                    (https://llm.<domain>/v1); otherwise unset.
