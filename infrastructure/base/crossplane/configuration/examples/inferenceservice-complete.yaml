@@ -44,22 +44,24 @@ spec:
     parentGatewayNamespace: infrastructure
     hostname: qwen3
   # LoRA adapter served over the base model (same pod, zero extra GPU).
-  # Downloaded by the preload Job into /models/loras/<name>/ and exposed
-  # as model name xplane-qwen3-8b-sql-expert.
+  # Downloaded by the preload Job into /models/loras/<name>/ and served by
+  # vLLM under this name verbatim. Adapter names are fully-qualified by
+  # convention (claim-name-prefixed), matching the real fleet claims.
   loraAdapters:
-    - name: sql-expert
+    - name: xplane-qwen3-8b-sql-expert
       repository: org/qwen3-sql-lora
       revision: main
   # SPEC-002: composition-owned Envoy AI Gateway routing with a weighted
   # LoRA canary. The composition renders Backend + AIServiceBackend(s) +
   # AIGatewayRoute (parentRef ai-gateway/envoy-ai-gateway-system). 15% of
-  # base-model (xplane-qwen3-8b) traffic is rewritten to the sql-expert
-  # adapter; explicit xplane-qwen3-8b-sql-expert requests stay pinned 100%
-  # on the base pod. The AIGatewayRoute is latched on Deployment readiness.
+  # base-model (xplane-qwen3-8b) traffic is rewritten to the adapter
+  # xplane-qwen3-8b-sql-expert (verbatim modelNameOverride); explicit requests
+  # for that adapter name stay pinned 100% on the base pod. The AIGatewayRoute
+  # is latched on Deployment readiness.
   gateway:
     enabled: true
     canary:
-      adapter: sql-expert
+      adapter: xplane-qwen3-8b-sql-expert
       weightPercent: 15
   # Shared S3 Files filesystem (provisioned out-of-band by
   # opentofu/llm-platform/). subPath defaults to the claim name; set

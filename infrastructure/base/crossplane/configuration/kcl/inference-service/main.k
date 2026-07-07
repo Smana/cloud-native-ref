@@ -465,15 +465,20 @@ if _gatewayEnabled:
         _items += _aiServiceBackendCanary
 
     # Base rule: header x-ai-eg-model == <claim>. With canary, split weight
-    # between the base model and the adapter (served by the same pod;
-    # modelNameOverride rewrites the upstream model to <claim>-<adapter>).
-    _baseRuleBackendRefs = [{name = _name, weight = 100 - _gatewayCanary.weightPercent}, {name = _name + "-canary", modelNameOverride = _name + "-" + _gatewayCanary.adapter, weight = _gatewayCanary.weightPercent}] if _gatewayCanary else [{name = _name, weight = 100}]
+    # between the base model and the adapter (served by the same pod).
+    # modelNameOverride rewrites the upstream model name to the adapter's OWN
+    # name — vLLM serves each LoRA under loraAdapters[].name VERBATIM (main.k
+    # emits `--lora-modules <name>=/models/loras/<name>`), and claims already
+    # use fully-qualified adapter names (e.g. xplane-qwen-coder-sql-dpo). NO
+    # claim prefix here — prefixing would double it to <claim>-<adapter>.
+    _baseRuleBackendRefs = [{name = _name, weight = 100 - _gatewayCanary.weightPercent}, {name = _name + "-canary", modelNameOverride = _gatewayCanary.adapter, weight = _gatewayCanary.weightPercent}] if _gatewayCanary else [{name = _name, weight = 100}]
     _baseRule = {matches = [{headers = [{type = "Exact", name = "x-ai-eg-model", value = _name}]}], backendRefs = _baseRuleBackendRefs}
 
     # One pin rule per LoRA adapter (all adapters, canary or not): an explicit
-    # <claim>-<adapter> request stays 100% on the base pod — vLLM dispatches
-    # on the request-body model field.
-    _pinRules = [{matches = [{headers = [{type = "Exact", name = "x-ai-eg-model", value = _name + "-" + a.name}]}], backendRefs = [{name = _name, weight = 100}]} for a in _loraAdapters]
+    # request for the adapter's own name stays 100% on the base pod — vLLM
+    # dispatches on the request-body model field. Match value = a.name verbatim
+    # (adapter names are already fully-qualified; see comment above).
+    _pinRules = [{matches = [{headers = [{type = "Exact", name = "x-ai-eg-model", value = a.name}]}], backendRefs = [{name = _name, weight = 100}]} for a in _loraAdapters]
 
     # Readiness latch (FR-002): render only when the Deployment is Available
     # OR the route is already observed. Never withhold a live route.

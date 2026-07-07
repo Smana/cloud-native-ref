@@ -130,13 +130,13 @@ kcl_options:
             parentGatewayNamespace: "infrastructure"
             hostname: "qwen3"
           # SPEC-002: composition-owned AI Gateway routing with a weighted
-          # LoRA canary. 20% of base-model traffic is rewritten to
-          # xplane-qwen3-8b-test-adapter-a; explicit adapter requests stay
-          # pinned 100% on the base pod.
+          # LoRA canary. 20% of base-model traffic is rewritten to the adapter
+          # xplane-qwen3-8b-adapter-a (verbatim modelNameOverride); explicit
+          # requests for that adapter name stay pinned 100% on the base pod.
           gateway:
             enabled: true
             canary:
-              adapter: test-adapter-a
+              adapter: xplane-qwen3-8b-adapter-a
               weightPercent: 20
           externalSecrets:
             - name: hf-token
@@ -152,10 +152,14 @@ kcl_options:
             limits:
               cpu: "8"
               memory: "32Gi"
+          # Adapter names are fully-qualified (claim-name-prefixed by
+          # convention, as on the real claims — e.g. xplane-qwen-coder-sql-dpo).
+          # vLLM serves each under this name verbatim; the AI Gateway pin rules
+          # and canary modelNameOverride use it as-is (no extra prefixing).
           loraAdapters:
-            - name: test-adapter-a
+            - name: xplane-qwen3-8b-adapter-a
               repository: org/test-adapter-a
               revision: main
-            - name: test-adapter-b
+            - name: xplane-qwen3-8b-adapter-b
               repository: org/test-adapter-b
               revision: abc1234

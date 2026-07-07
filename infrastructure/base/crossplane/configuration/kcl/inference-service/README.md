@@ -101,9 +101,10 @@ hand-written entries in `apps/base/ai/llm/ai-gateway-routes/route.yaml`. When
   `envoy-ai-gateway-system`.
 
 The route carries a **base rule** (header `x-ai-eg-model == <claim>`) plus **one
-pin rule per `loraAdapters[]` entry** (header `x-ai-eg-model == <claim>-<adapter>`),
-all served by the same base pod — vLLM dispatches on the request-body `model`
-field.
+pin rule per `loraAdapters[]` entry** (header `x-ai-eg-model == <adapter-name>`,
+matched verbatim — adapter names are fully-qualified, e.g.
+`xplane-qwen-coder-sql-dpo`), all served by the same base pod — vLLM dispatches on
+the request-body `model` field.
 
 ### Readiness latch (FR-002)
 
@@ -124,13 +125,13 @@ backendRefs:
 
 - `<claim>` at `weight: 100 - weightPercent`,
 - `<claim>-canary` at `weight: weightPercent`, with
-  `modelNameOverride: <claim>-<adapter>` (rewrites the upstream model name so
-  vLLM serves the adapter).
+  `modelNameOverride: <adapter-name>` (the adapter's own name, verbatim —
+  rewrites the upstream model name so vLLM serves the adapter).
 
-Explicit `x-ai-eg-model == <claim>-<adapter>` requests stay pinned 100% on the
-base pod via the adapter's pin rule — the canary only rebalances the base-model
-model name. `gateway.canary.adapter` must match a `loraAdapters[].name`
-(CEL-enforced at the XRD) and `weightPercent` is bounded 1–99.
+Explicit `x-ai-eg-model == <adapter-name>` requests stay pinned 100% on the base
+pod via the adapter's pin rule — the canary only rebalances the base-model model
+name. `gateway.canary.adapter` must match a `loraAdapters[].name` (CEL-enforced
+at the XRD) and `weightPercent` is bounded 1–99.
 
 When `gateway.enabled`, `status.modelEndpoint` is set to
 `https://llm.priv.cloud.ogenki.io/v1` (the platform's external OpenAI-compatible

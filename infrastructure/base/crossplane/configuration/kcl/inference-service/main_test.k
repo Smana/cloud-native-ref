@@ -424,7 +424,7 @@ test_gateway_canary = lambda {
         assert _total == 100, "canary weights must sum to 100, got {}".format(_total)
         _canaryRefs = [ref for ref in _refs if ref.name == _name + "-canary"]
         assert len(_canaryRefs) == 1, "expected 1 canary backendRef"
-        assert _canaryRefs[0].modelNameOverride == _name + "-" + _canary.adapter, "modelNameOverride must be <claim>-<adapter>"
+        assert _canaryRefs[0].modelNameOverride == _canary.adapter, "modelNameOverride must be the adapter name VERBATIM (no claim prefix)"
         assert _canaryRefs[0].weight == _canary.weightPercent, "canary weight must equal weightPercent"
         _canaryAisb = [r for r in items if r.kind == "AIServiceBackend" and r.metadata.name == _name + "-canary"]
         assert len(_canaryAisb) == 1, "expected 1 -canary AIServiceBackend"
@@ -444,9 +444,14 @@ test_gateway_pin_rules = lambda {
         assert len(routes) == 1, "expected 1 AIGatewayRoute"
         _rules = routes[0].spec.rules
         assert len(_rules) == 1 + len(_adapters), "expected {} rules (1 base + {} pins), got {}".format(1 + len(_adapters), len(_adapters), len(_rules))
+
+        # Pin match value must equal the adapter name VERBATIM (no claim
+        # prefix). Fixtures use fully-qualified adapter names so a reintroduced
+        # `<claim>-<adapter>` concat would produce a clearly-wrong doubled value
+        # and fail here.
         _pinValues = [rule.matches[0].headers[0].value for rule in _rules[1::]]
-        _missing = [a.name for a in _adapters if (_name + "-" + a.name) not in _pinValues]
-        assert len(_missing) == 0, "missing pin rules for adapters: {}".format(_missing)
+        _missing = [a.name for a in _adapters if a.name not in _pinValues]
+        assert len(_missing) == 0, "missing pin rules (adapter name verbatim) for adapters: {}".format(_missing)
         _pinBackends = [rule.backendRefs[0].name for rule in _rules[1::]]
         _badBackends = [n for n in _pinBackends if n != _name]
         assert len(_badBackends) == 0, "pin rules must target the base pod ({}), got {}".format(_name, _badBackends)
