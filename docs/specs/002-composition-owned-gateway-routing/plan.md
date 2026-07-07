@@ -52,14 +52,14 @@ Root-level XRD CEL validations (all reject at admission, FR-005):
 `AIGatewayRoute` rules:
 1. Base rule — match `x-ai-eg-model: <name>`:
    - no canary: `[{name: <name>, weight: 100}]`
-   - canary: `[{name: <name>, weight: 100-w}, {name: <name>-canary, modelNameOverride: <name>-<adapter>, weight: w}]`
-2. Per `loraAdapters[]` entry — match `x-ai-eg-model: <name>-<adapter>` → `[{name: <name>, weight: 100}]` (pin, FR-004). Rendered for ALL adapters whenever `gateway.enabled`, independent of canary.
+   - canary: `[{name: <name>, weight: 100-w}, {name: <name>-canary, modelNameOverride: <adapter-name-verbatim>, weight: w}]` (CL-5)
+2. Per `loraAdapters[]` entry — match `x-ai-eg-model: <loraAdapters[].name>` (verbatim, CL-5) → `[{name: <name>, weight: 100}]` (pin, FR-004). Rendered for ALL adapters whenever `gateway.enabled`, independent of canary.
 
 ### Key Entities
 
 - **Readiness latch**: `_route_live = "aigatewayroute" in option("params").ocds`; `_deploy_available` from the existing Deployment readiness helper. Render route iff `_deploy_available or _route_live`. Create-time gate only — never withdraws a live route (CL-4).
 - **Canary backendRef**: separate `AIServiceBackend` per CL-4 note — one rule must not repeat the same backendRef name twice.
-- **modelNameOverride**: rewrites `body.model` at the gateway so vLLM serves the adapter; clients keep sending the base name. Confirmed present in Envoy AI Gateway v1.0.0 (`AIGatewayRouteRuleBackendRef`).
+- **modelNameOverride**: rewrites `body.model` at the gateway so vLLM serves the adapter; clients keep sending the base name. Value = the adapter's `loraAdapters[].name` verbatim — names are fully-qualified by convention (CL-5). Confirmed present in Envoy AI Gateway v1.0.0 (`AIGatewayRouteRuleBackendRef`).
 
 ### Dependencies
 
@@ -138,6 +138,8 @@ examples/
 - [ ] **T014**: README.md, `settings-example.yaml`, examples updated (incl. canary metrics-attribution finding)
 
 ### Deviations from plan
+
+- 2026-07-07 — FR-003/FR-004 corrected mid-implementation: adapter model names are `loraAdapters[].name` verbatim, not `<claim>-<adapter>` (CL-5). Composition + tests + examples re-done accordingly.
 
 <!-- Append as implementation surprises show up. Format:
 - <2026-07-07> T00N was [dropped|replaced|split]: <why>

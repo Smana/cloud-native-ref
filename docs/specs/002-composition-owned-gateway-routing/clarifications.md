@@ -100,6 +100,16 @@
 **Decided by**: User (brainstorming, 2026-07-07)
 **References**: Modelplane `design/design.md` (ModelService), `compose-model-deployment` endpoint withholding (their issue #102)
 
+## CL-5 — 2026-07-07 — Adapter model names: verbatim `loraAdapters[].name`, never claim-prefixed
+
+**Asked by**: Controller (implementation phase — defect found while migrating the real claim)
+**Context**: Spec/plan/brief originally wrote adapter model names as `<claim>-<adapter>` (concatenated). Reality: `main.k` registers each adapter with vLLM as `--lora-modules <name>=/models/loras/<name>` — the served model name IS `loraAdapters[].name` verbatim — and live claims already use fully-qualified names (`xplane-qwen-coder-sql-dpo`). The concatenated form would render `xplane-qwen-coder-xplane-qwen-coder-sql-dpo` and break both pin rules and canary `modelNameOverride`. Hidden by short adapter names in test fixtures.
+
+**Decision**: Pin-rule match values and canary `modelNameOverride` use `loraAdapters[].name` verbatim. `gateway.canary.adapter` references that same name (CEL already enforces membership). Test fixtures must use realistic fully-qualified adapter names.
+**Rationale**: Matches vLLM's actual served-model registry and the pre-existing fleet-route convention (route.yaml lines 161–176). FR-003/FR-004 amended in place with CL-5 references — factual correction, not a scope change.
+**Decided by**: Controller, verified against main.k:154 + route.yaml
+**References**: `docs/superpowers/specs/2026-05-09-llm-platform-paths-7-8-design.md` (LoRA naming), XRD `loraAdapters[].name` description ("Becomes the model name clients send")
+
 ---
 
 ## Related
