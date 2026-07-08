@@ -19,10 +19,11 @@ Readiness checks use observed cluster state via `option("params").ocds`:
 - **Deployment**: `status.conditions[type=Available, status=True]`
 - **Service**: `spec.clusterIP` assigned
 - **HTTPRoute**: `status.parents[].conditions[type=Accepted, status=True]`
+- **AIGatewayRoute** (aigateway.envoyproxy.io): top-level `status.conditions[type=Accepted, status=True]`; its *rendering* is additionally latched on Deployment readiness (SPEC-002 FR-002)
 
 The `krm.kcl.dev/ready = "True"` annotation is set conditionally based on these checks.
 
-**Static readiness** (always ready when created): HPA, PDB, Gateway, CiliumNetworkPolicy, HelmRelease.
+**Static readiness** (always ready when created): HPA, PDB, Gateway, CiliumNetworkPolicy, HelmRelease, Backend + AIServiceBackend (Envoy AI Gateway).
 **XR status** (proper conditions): SQLInstance, EKSPodIdentity, S3 Bucket.
 
 ## Crossplane v2 traps (provider-aws v2.x, `m.upbound.io` group)

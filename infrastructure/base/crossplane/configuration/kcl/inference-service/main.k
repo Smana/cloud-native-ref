@@ -88,6 +88,9 @@ _DEFAULTS = {
     nodepool = "gpu-l4"
     parent_gateway = "platform-tailscale-general"
     parent_gateway_namespace = "infrastructure"
+    # SPEC-002: the Envoy AI Gateway the per-claim AIGatewayRoute attaches to.
+    ai_gateway = "ai-gateway"
+    ai_gateway_namespace = "envoy-ai-gateway-system"
     preload_sa = "xplane-llm-models-preload"
     # Volume sizing — pod_models stays under EC2NodeClass /dev/xvdb (100Gi)
     # given the gpu-l4 NodePool's 4-pod cap (CL-6 A: nvidia.com/gpu = 4)
@@ -207,6 +210,12 @@ _preloadJobReady = (_observedPreloadJob?.status?.succeeded or 0) > 0
 # SPEC-002 gateway wiring.
 _gatewayEnabled = oxr.spec.gateway?.enabled or False
 _gatewayCanary = oxr.spec.gateway?.canary
+
+# Single source of truth for the gateway backend names (same discipline as
+# _gatewayRouteSuffix): the Backend's own name and the two AIServiceBackend
+# backendRef linkages must never drift apart.
+_gatewayBackendName = _name + "-direct"
+_gatewayCanaryBackendName = _name + "-canary"
 
 # AIGatewayRoute v1alpha1 publishes top-level status.conditions; the route
 # is "ready" once Accepted=True (mirror of the HTTPRoute check). Absent
@@ -430,7 +439,7 @@ if _gatewayEnabled:
     _gatewayBackend = [{
         apiVersion = "gateway.envoyproxy.io/v1alpha1"
         kind = "Backend"
-        metadata = _metadata("gateway-backend", True) | {name = _name + "-direct"}
+        metadata = _metadata("gateway-backend", True) | {name = _gatewayBackendName}
         spec = {
             endpoints = [{
                 fqdn = {hostname = _name + "." + _namespace + ".svc.cluster.local", port = _DEFAULTS.vllm_port}
@@ -439,30 +448,13 @@ if _gatewayEnabled:
     }]
     _items += _gatewayBackend
 
-    _aiServiceBackend = [{
-        apiVersion = "aigateway.envoyproxy.io/v1alpha1"
-        kind = "AIServiceBackend"
-        metadata = _metadata("gateway-aiservicebackend", True)
-        spec = {
-            schema = {name = "OpenAI"}
-            backendRef = {group = "gateway.envoyproxy.io", kind = "Backend", name = _name + "-direct"}
-        }
-    }]
-    _items += _aiServiceBackend
-
-    # Canary AIServiceBackend — same Backend, distinct name so the route rule
-    # can carry two named backendRefs. Only when gateway.canary is set.
-    if _gatewayCanary:
-        _aiServiceBackendCanary = [{
-            apiVersion = "aigateway.envoyproxy.io/v1alpha1"
-            kind = "AIServiceBackend"
-            metadata = _metadata("gateway-aiservicebackend-canary", True) | {name = _name + "-canary"}
-            spec = {
-                schema = {name = "OpenAI"}
-                backendRef = {group = "gateway.envoyproxy.io", kind = "Backend", name = _name + "-direct"}
-            }
-        }]
-        _items += _aiServiceBackendCanary
+    # AIServiceBackend(s) — identical bodies pointing at the same Backend; the
+    # canary variant (only when gateway.canary is set) differs solely by name,
+    # so the route rule can carry two named backendRefs. One target list, one
+    # builder — a spec change applies to both.
+    _aisbTargets = [{nm = _name, sfx = "gateway-aiservicebackend"}] + ([{nm = _gatewayCanaryBackendName, sfx = "gateway-aiservicebackend-canary"}] if _gatewayCanary else [])
+    _aiServiceBackends = [{apiVersion = "aigateway.envoyproxy.io/v1alpha1", kind = "AIServiceBackend", metadata = _metadata(t.sfx, True) | {name = t.nm}, spec = {schema = {name = "OpenAI"}, backendRef = {group = "gateway.envoyproxy.io", kind = "Backend", name = _gatewayBackendName}}} for t in _aisbTargets]
+    _items += _aiServiceBackends
 
     # Base rule: header x-ai-eg-model == <claim>. With canary, split weight
     # between the base model and the adapter (served by the same pod).
@@ -471,7 +463,7 @@ if _gatewayEnabled:
     # emits `--lora-modules <name>=/models/loras/<name>`), and claims already
     # use fully-qualified adapter names (e.g. xplane-qwen-coder-sql-dpo). NO
     # claim prefix here — prefixing would double it to <claim>-<adapter>.
-    _baseRuleBackendRefs = [{name = _name, weight = 100 - _gatewayCanary.weightPercent}, {name = _name + "-canary", modelNameOverride = _gatewayCanary.adapter, weight = _gatewayCanary.weightPercent}] if _gatewayCanary else [{name = _name, weight = 100}]
+    _baseRuleBackendRefs = [{name = _name, weight = 100 - _gatewayCanary.weightPercent}, {name = _gatewayCanaryBackendName, modelNameOverride = _gatewayCanary.adapter, weight = _gatewayCanary.weightPercent}] if _gatewayCanary else [{name = _name, weight = 100}]
     _baseRule = {matches = [{headers = [{type = "Exact", name = "x-ai-eg-model", value = _name}]}], backendRefs = _baseRuleBackendRefs}
 
     # One pin rule per LoRA adapter (all adapters, canary or not): an explicit
@@ -488,21 +480,23 @@ if _gatewayEnabled:
             kind = "AIGatewayRoute"
             metadata = _metadata(_gatewayRouteSuffix, _aiRouteReady)
             spec = {
-                parentRefs = [{name = "ai-gateway", namespace = "envoy-ai-gateway-system", kind = "Gateway", group = "gateway.networking.k8s.io"}]
+                parentRefs = [{name = _DEFAULTS.ai_gateway, namespace = _DEFAULTS.ai_gateway_namespace, kind = "Gateway", group = "gateway.networking.k8s.io"}]
                 rules = [_baseRule] + _pinRules
             }
         }]
         _items += _aiGatewayRoute
 
-    # status.modelEndpoint — external OpenAI-compatible URL. The environment
-    # ctx exposes no domain variable (only clusterName/region/environment), so
-    # this is the literal platform hostname. The ai-gateway Gateway listener is
-    # cluster-internal HTTP/8080 today; external entry via the Tailscale gateway
-    # resolves to llm.priv.cloud.ogenki.io (SPEC-002 P5). Patched onto the XR
-    # via the desired-composite (dxr) per the function-kcl status convention.
+    # status.modelEndpoint — external OpenAI-compatible URL. Domain comes from
+    # the eks-environment EnvironmentConfig (privateDomainName, populated via
+    # Flux ${private_domain_name} substitution) so the composition stays
+    # environment-agnostic; the literal fallback covers clusters whose
+    # EnvironmentConfig predates the field. External entry via the Tailscale
+    # gateway resolves to llm.<domain> (SPEC-002 P5). Patched onto the XR via
+    # the desired-composite (dxr) per the function-kcl status convention.
+    _privateDomain = envConfig?.privateDomainName or "priv.cloud.ogenki.io"
     _dxrStatus = [{
         **option("params").dxr
-        status.modelEndpoint = "https://llm.priv.cloud.ogenki.io/v1"
+        status.modelEndpoint = "https://llm." + _privateDomain + "/v1"
     }]
     _items += _dxrStatus
 

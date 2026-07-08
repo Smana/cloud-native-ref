@@ -367,7 +367,7 @@ test_gateway_resources = lambda {
 # `items` by test_gateway_route_latch_integration below.
 test_gateway_route_latch = lambda {
     _name = option("params").oxr.metadata.name
-    _routeKey = _name + "-gateway-airoute"
+    _routeKey = _name + "-" + _gatewayRouteSuffix
     _emptyOcds = {}
     _ocdsWithRoute = {k: {
         Resource = {kind = "AIGatewayRoute"}
@@ -397,12 +397,11 @@ test_gateway_route_latch_integration = lambda {
     _oxr = option("params").oxr
     _name = _oxr.metadata.name
     if _oxr.spec.gateway?.enabled:
-        # Fixture precondition: Deployment is NOT Available.
-        _dep = option("params").ocds[_name + "-deployment"]?.Resource
-        _depAvailable = any_true([c?.type == "Available" and c?.status == "True" for c in _dep?.status?.conditions or []])
-        assert not _depAvailable, "fixture precondition: Deployment must NOT be Available for the latch integration test"
-        # Fixture precondition: the route IS already observed.
-        assert (_name + "-gateway-airoute") in option("params").ocds, "fixture precondition: AIGatewayRoute must be present in ocds"
+        # Fixture precondition: Deployment is NOT Available — assert via the
+        # module's own readiness variable, not a re-implementation of it.
+        assert not _deploymentReady, "fixture precondition: Deployment must NOT be Available for the latch integration test"
+        # Fixture precondition: the route IS already observed (real suffix constant).
+        assert (_name + "-" + _gatewayRouteSuffix) in option("params").ocds, "fixture precondition: AIGatewayRoute must be present in ocds"
         routes = [r for r in items if r.kind == "AIGatewayRoute"]
         assert len(routes) == 1, "AIGatewayRoute must still render via the ocds latch when Deployment is not Available, got {}".format(len(routes))
         assert routes[0].metadata.annotations["krm.kcl.dev/ready"] == "True", "rendered route must carry ready annotation from observed Accepted=True — proves ocds key matches render suffix"
