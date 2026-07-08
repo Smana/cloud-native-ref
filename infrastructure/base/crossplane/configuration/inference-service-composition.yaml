@@ -30,7 +30,9 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-inference-service:0.6.0-pr1434
+                  # PR-preview tag (0.7.0-pr1559) — strip the -pr suffix post-merge
+                  # once the release tag is published from main.
+                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-inference-service:0.7.0-pr1559
 
         - step: ready
           functionRef:
