@@ -383,7 +383,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(increase(runlore_catalog_invalid_entries_total[6m]))",
+              "expr": "sum(increase(runlore_catalog_invalid_entries_total[6m])) or vector(0)",
               "legendFormat": "invalid",
               "refId": "A",
               "instant": true
