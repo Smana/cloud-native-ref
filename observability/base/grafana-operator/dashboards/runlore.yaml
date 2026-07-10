@@ -182,7 +182,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(increase(runlore_recall_hits_total{result=\"verified\"}[$__range])) / clamp_min(sum(increase(runlore_recall_hits_total[$__range])), 1)",
+              "expr": "(sum(increase(runlore_recall_hits_total{result=\"verified\"}[$__range])) or vector(0)) / clamp_min(sum(increase(runlore_recall_hits_total[$__range])), 1)",
               "legendFormat": "verified",
               "refId": "A",
               "instant": true
@@ -330,7 +330,7 @@ spec:
             "type": "prometheus",
             "uid": "$${datasource}"
           },
-          "description": "Structurally-invalid catalog entries seen at index time (missing resource, sections\u2026). >0 means entries are silently dropped from recall \u2014 fix them (see `lore validate-kb`).",
+          "description": "Structurally-invalid entries at the MOST RECENT catalog index (6m window \u2248 one git-sync). >0 means entries are silently dropped from recall \u2014 fix them (see `lore validate-kb`).",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -383,7 +383,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(increase(runlore_catalog_invalid_entries_total[$__range]))",
+              "expr": "sum(increase(runlore_catalog_invalid_entries_total[6m]))",
               "legendFormat": "invalid",
               "refId": "A",
               "instant": true
