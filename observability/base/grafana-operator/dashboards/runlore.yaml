@@ -52,7 +52,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Share of incidents answered INSTANTLY from the knowledge base (recall) vs a full investigation. The headline learning-loop KPI \u2014 it should climb as the catalog compounds.",
           "fieldConfig": {
@@ -108,7 +108,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(increase(runlore_outcomes_opened_total{kind=\"recall\"}[$__range])) / clamp_min(sum(increase(runlore_outcomes_opened_total[$__range])), 1)",
@@ -123,7 +123,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Of the recalls that fired, the share the adversarial verify pass kept at full confidence (vs downgraded/rejected). A low value means recalls fire but don't hold up \u2014 check confirm evidence / entry quality.",
           "fieldConfig": {
@@ -179,7 +179,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(increase(runlore_recall_hits_total{result=\"verified\"}[$__range])) / clamp_min(sum(increase(runlore_recall_hits_total[$__range])), 1)",
@@ -194,7 +194,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Recalls that were followed by the incident actually resolving. This is the ground-truth trust signal that drives outcome decay.",
           "fieldConfig": {
@@ -250,7 +250,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(increase(runlore_recall_outcome_total{result=\"resolved\"}[$__range])) / clamp_min(sum(increase(runlore_outcomes_opened_total{kind=\"recall\"}[$__range])), 1)",
@@ -265,7 +265,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Estimated model tokens NOT spent because a recall short-circuited a full investigation \u2014 the compounding payoff of the catalog.",
           "fieldConfig": {
@@ -313,7 +313,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(increase(runlore_recall_tokens_saved_total[$__range]))",
@@ -328,7 +328,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Structurally-invalid catalog entries seen at index time (missing resource, sections\u2026). >0 means entries are silently dropped from recall \u2014 fix them (see `lore validate-kb`).",
           "fieldConfig": {
@@ -380,7 +380,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(increase(runlore_catalog_invalid_entries_total[$__range]))",
@@ -408,7 +408,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Every fired recall by the verify pass's verdict: verified (kept), downgraded (confidence lowered), rejected (withdrawn \u2192 fell through to a full investigation). Watch the downgraded share.",
           "fieldConfig": {
@@ -489,7 +489,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum by (result) (rate(runlore_recall_hits_total[$__rate_interval]))",
@@ -504,7 +504,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Why a candidate did NOT short-circuit: low_outcome (trust decayed), rerank_low_confidence / rerank_no_signal (reranker), low_margin (BM25). The diagnostic for 'recall never fires'.",
           "fieldConfig": {
@@ -585,7 +585,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum by (reason) (rate(runlore_recall_rejections_total[$__rate_interval]))",
@@ -600,7 +600,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Answer source over time: recall (instant) vs fresh (full investigation).",
           "fieldConfig": {
@@ -681,7 +681,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum by (kind) (rate(runlore_outcomes_opened_total[$__rate_interval]))",
@@ -696,7 +696,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Distribution of BM25 recall scores at the decision point. Use this to tune min_score.",
           "fieldConfig": {
@@ -761,7 +761,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_recall_score_bucket[$__rate_interval])) by (le)",
@@ -789,7 +789,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Investigations recorded in the outcome ledger (by kind) and incidents later resolved.",
           "fieldConfig": {
@@ -868,7 +868,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum by (kind) (rate(runlore_outcomes_opened_total[$__rate_interval]))",
@@ -878,7 +878,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_incidents_resolved_total[$__rate_interval]))",
@@ -892,7 +892,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Open to resolve duration percentiles.",
           "fieldConfig": {
@@ -971,7 +971,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(runlore_incident_resolution_seconds_bucket[$__rate_interval])) by (le))",
@@ -981,7 +981,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(runlore_incident_resolution_seconds_bucket[$__rate_interval])) by (le))",
@@ -995,7 +995,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Outcome of resolved incidents whose original answer was a recall short-circuit.",
           "fieldConfig": {
@@ -1052,7 +1052,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum by (result) (increase(runlore_recall_outcome_total[$__range]))",
@@ -1080,7 +1080,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Curation pass outcomes (catalog writes / dedup skips) by kind and result.",
           "fieldConfig": {
@@ -1159,7 +1159,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum by (kind, result) (rate(runlore_curations_total[$__rate_interval]))",
@@ -1173,7 +1173,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Catalog top-hit BM25 score at the curation dedup decision. Use this to tune the dedup threshold: high scores mean a near-duplicate entry already exists.",
           "fieldConfig": {
@@ -1238,7 +1238,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_curation_dedup_score_bucket[$__rate_interval])) by (le)",
@@ -1266,7 +1266,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Per-investigation token estimate (p50 / p95) and estimated tokens saved per second via recall.",
           "fieldConfig": {
@@ -1358,7 +1358,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(runlore_investigation_tokens_estimated_bucket[$__rate_interval])) by (le))",
@@ -1368,7 +1368,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(runlore_investigation_tokens_estimated_bucket[$__rate_interval])) by (le))",
@@ -1378,7 +1378,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_recall_tokens_saved_total[$__rate_interval]))",
@@ -1392,7 +1392,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Estimated USD per investigation (only populated when model.pricing is set). Recalls cost a fraction of a full loop.",
           "fieldConfig": {
@@ -1473,7 +1473,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.5, sum by (le) (rate(runlore_investigation_cost_usd_bucket[$__rate_interval])))",
@@ -1484,7 +1484,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum by (le) (rate(runlore_investigation_cost_usd_bucket[$__rate_interval])))",
@@ -1499,7 +1499,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Share of input tokens served from the provider prompt cache \u2014 higher is cheaper/faster.",
           "fieldConfig": {
@@ -1580,7 +1580,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_model_cached_input_tokens_total[$__rate_interval])) / clamp_min(sum(rate(runlore_model_input_tokens_total[$__rate_interval])), 1)",
@@ -1608,7 +1608,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Investigations started, requeued by the rate limiter, and dropped (max requeues / budget kill).",
           "fieldConfig": {
@@ -1687,7 +1687,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_investigations_started_total[$__rate_interval]))",
@@ -1697,7 +1697,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_investigations_throttled_total[$__rate_interval]))",
@@ -1707,7 +1707,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_investigations_dropped_total[$__rate_interval]))",
@@ -1721,7 +1721,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Investigation wall-clock duration percentiles.",
           "fieldConfig": {
@@ -1800,7 +1800,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(runlore_investigation_duration_seconds_bucket[$__rate_interval])) by (le))",
@@ -1810,7 +1810,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(runlore_investigation_duration_seconds_bucket[$__rate_interval])) by (le))",
@@ -1820,7 +1820,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(runlore_investigation_duration_seconds_bucket[$__rate_interval])) by (le))",
@@ -1834,7 +1834,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Completed investigations by result.",
           "fieldConfig": {
@@ -1913,7 +1913,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum by (result) (rate(runlore_investigations_completed_total[$__rate_interval]))",
@@ -1940,7 +1940,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Tool invocation rate by tool.",
           "fieldConfig": {
@@ -2019,7 +2019,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum by (tool) (rate(runlore_tool_calls_total[$__rate_interval]))",
@@ -2033,7 +2033,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Fraction of tool calls returning result=error.",
           "fieldConfig": {
@@ -2122,7 +2122,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_tool_calls_total{result=\"error\"}[$__rate_interval])) / clamp_min(sum(rate(runlore_tool_calls_total[$__rate_interval])), 0.0001)",
@@ -2136,7 +2136,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "p95 tool call latency by tool.",
           "fieldConfig": {
@@ -2215,7 +2215,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(runlore_tool_call_duration_seconds_bucket[$__rate_interval])) by (le, tool))",
@@ -2229,7 +2229,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Model request rate by provider.",
           "fieldConfig": {
@@ -2308,7 +2308,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum by (provider) (rate(runlore_model_requests_total[$__rate_interval]))",
@@ -2322,7 +2322,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Fraction of model requests returning result=error.",
           "fieldConfig": {
@@ -2411,7 +2411,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_model_requests_total{result=\"error\"}[$__rate_interval])) / clamp_min(sum(rate(runlore_model_requests_total[$__rate_interval])), 0.0001)",
@@ -2425,7 +2425,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "p95 model request latency by provider.",
           "fieldConfig": {
@@ -2504,7 +2504,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(runlore_model_request_duration_seconds_bucket[$__rate_interval])) by (le, provider))",
@@ -2518,7 +2518,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Bytes elided per second by tool-output truncation. A sustained rate means tools are routinely exceeding the output cap; raise the cap or tighten the queries if context is being lost.",
           "fieldConfig": {
@@ -2597,7 +2597,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_tool_output_truncated_bytes_total[$__rate_interval]))",
@@ -2624,7 +2624,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Rate of alerts entering the coalescer, folded into existing batches, and suppressed by cooldown.",
           "fieldConfig": {
@@ -2703,7 +2703,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_alerts_received_total[$__rate_interval]))",
@@ -2713,7 +2713,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_alerts_coalesced_total[$__rate_interval]))",
@@ -2723,7 +2723,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_alerts_suppressed_total[$__rate_interval]))",
@@ -2737,7 +2737,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Distribution of incidents per flushed batch. A right-shifted distribution means the coalescer is folding many alerts together (good fan-in); a spike at 1 means little coalescing is happening.",
           "fieldConfig": {
@@ -2802,7 +2802,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(runlore_coalesce_batch_size_bucket[$__rate_interval])) by (le)",
@@ -2830,7 +2830,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Running image version (runlore_build_info). Deduplicated per distinct version, so a rollout shows old+new briefly, steady-state shows one.",
           "fieldConfig": {
@@ -2878,7 +2878,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "max by (version) (last_over_time(runlore_build_info[2m]))",
@@ -2893,7 +2893,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Elected leaders (healthy = 1). Bounded to a 1m window so a just-rolled replica's stale series doesn't linger; a transient 2 during a rollout is expected (yellow), 0 is a real problem (red).",
           "fieldConfig": {
@@ -2949,7 +2949,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(last_over_time(runlore_leader[1m]))",
@@ -2964,7 +2964,7 @@ spec:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "$${datasource}"
           },
           "description": "Replicas that reported in the last minute (1m window excludes recently-terminated pods, so it doesn't over-count during rollouts).",
           "fieldConfig": {
@@ -3016,7 +3016,7 @@ spec:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${datasource}"
+                "uid": "$${datasource}"
               },
               "editorMode": "code",
               "expr": "count(last_over_time(runlore_build_info[1m]))",
