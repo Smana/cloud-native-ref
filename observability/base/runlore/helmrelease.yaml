@@ -9,18 +9,16 @@ spec:
   # readiness can take up to ~one catalog.git.interval. Give Helm headroom and
   # retry instead of going terminally Stalled on a single timeout.
   timeout: 10m
+  # disableWait was required before runlore#264: /readyz gated on leadership, so
+  # standby replicas were permanently NotReady and Helm's --wait could never
+  # succeed with replicaCount>1. #264 shipped (readyz decoupled from leadership,
+  # followers forward work to the leader), so every replica reports Ready and
+  # Flux's full health verification is back on — this deployment is the live
+  # validation of exactly that.
   install:
-    disableWait: true
     remediation:
       retries: 3
   upgrade:
-    # Helm's --wait requires ALL replicas Ready before considering the release
-    # successful — but with replicaCount>1, standby replicas are permanently
-    # NotReady by design (readyz gates on leadership, not just process health).
-    # Without this, every upgrade/install times out at `timeout` above and
-    # rolls back, even though the StatefulSet/Deployment is genuinely healthy
-    # (exactly 1 Ready leader + N-1 hot standbys).
-    disableWait: true
     remediation:
       retries: 3
   chart:
@@ -45,18 +43,14 @@ spec:
   driftDetection:
     mode: enabled
   values:
-    # StatefulSet (chart feature from runlore#263, merged into main) gives each
-    # replica its OWN RWO EBS volume
-    # via volumeClaimTemplates — validated live (2 independently-Bound PVCs,
-    # correct leader election/failover). Held at replicaCount: 1 for now: readyz
-    # deliberately gates on leadership (only the leader should receive webhooks —
-    # see the disableWait comment above), so a real 2-replica rollout needs
-    # leader-request-forwarding first (non-leader replicas proxy to the current
-    # leader via the Lease) so every replica can report Ready and Flux's wait
-    # isn't fighting the app's own design. Tracked: github.com/Smana/runlore/issues/264.
-    # Bump back to 2 once that ships.
+    # StatefulSet (runlore#263) gives each replica its OWN RWO EBS volume via
+    # volumeClaimTemplates — validated live (2 independently-Bound PVCs, correct
+    # leader election/failover). replicaCount: 2 is live HA: BOTH replicas report
+    # Ready (runlore#264 — readyz decoupled from leadership), the Service
+    # round-robins, and a non-leader replica forwards work-bearing requests to
+    # the leader via its routable Lease identity (<pod>_<podIP>).
     workloadKind: StatefulSet
-    replicaCount: 1
+    replicaCount: 2
     image:
       # Rolling validation image (see flux/sources/gitrepo-runlore.yaml) — matches
       # the pinned main commit until the next release-please tag ships. Always
@@ -143,6 +137,14 @@ spec:
         slack:
           bot_token_env: SLACK_BOT_TOKEN  # pragma: allowlist secret
           channel: "#alerts"
+          # Interactivity: Slack posts button clicks to the public gateway route
+          # (httproute.yaml, POST /slack/interactions only) and every request is
+          # HMAC-verified with this secret. feedback_buttons is the opt-in human
+          # feedback loop (👍/👎 → outcome ledger → recall trust + recurrence
+          # cooldown re-arm). Slack-app side: set the Interactivity Request URL to
+          # https://runlore.<domain>/slack/interactions.
+          signing_secret_env: SLACK_SIGNING_SECRET  # pragma: allowlist secret
+          feedback_buttons: true
       telemetry:
         metrics_enabled: true
       model:
