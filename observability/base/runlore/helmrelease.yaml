@@ -125,6 +125,15 @@ spec:
             severity: [critical]
           dedup:
             window: 30m
+      investigation:
+        # Recurrence cooldown (runlore#270): a trigger answered CONCLUSIVELY less
+        # than this long ago is not re-investigated — no model call, no duplicate
+        # notification. Complements dedup above: dedup keys on the alert
+        # fingerprint (same firing series), this keys on the TriggerKey (same
+        # incident identity across re-fires/resolves). Human-deferential: an
+        # inconclusive verdict always retries, and a standing 👎 on the previous
+        # answer re-arms investigation immediately. Requires outcome.ledger_path.
+        recurrence_cooldown: 30m
         # gitops_failures policy left at defaults (debounce 60s); enablement is
         # via sources.gitops above.
       leader_election:
