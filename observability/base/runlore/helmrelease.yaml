@@ -93,6 +93,21 @@ spec:
       # Renders a CiliumNetworkPolicy allowing egress to the EKS Pod Identity
       # credential endpoint (169.254.170.23:80, host entity) — required on Cilium.
       awsPodIdentity: true
+      # The chart's non-strict egress only opens 443/6443 — but VictoriaMetrics
+      # (vmsingle :8428) and VictoriaLogs (:9428) listen on other ports, so without
+      # this the agent's metrics/logs tool calls hang until they time out, starving
+      # every investigation of those signals (and burning the per-investigation
+      # deadline half-blind). Open egress to the observability namespace on both.
+      extraEgress:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: observability
+          ports:
+            - port: 8428   # VictoriaMetrics (vmsingle) — metrics.url
+              protocol: TCP
+            - port: 9428   # VictoriaLogs — logs.url
+              protocol: TCP
     vmServiceScrape:
       enabled: true
       interval: 30s
