@@ -177,21 +177,15 @@ spec:
         # actions.mode=auto (poison-safety); harmless here (mode=off).
         instant_recall:
           enabled: true
-          # Finalized starting point. Recall's precision comes primarily from the
-          # structural resource-match gate (only entries whose `resource` agrees
-          # with the alert's workload are candidates) and the adversarial verify
-          # pass (a recalled cause is re-checked against live state and downgraded/
-          # rejected if wrong). The BM25 floors below only reject near-zero/garbage
-          # lexical matches: Alertmanager queries are label-derived (alertname), so
-          # real scores are low (~0.3 observed for an exact-title match). solo_floor
-          # is the bar for the common single-candidate case; margin_gap separates
-          # winners when a workload has several entries. TUNE from
-          # recall_hits{result} / recall_rejections / recall_score; raise as the
-          # catalog grows or if downgraded/false recalls appear (and consider
-          # require_workload_match: true for exact ns/name matching then).
-          min_score: 0.15
-          margin_gap: 0.2
-          solo_floor: 0.2
+          # The LLM reranker (ON by default, runlore#294) gates the short-circuit on a
+          # CALIBRATED 0-1 match confidence, not an absolute BM25 magnitude — so the
+          # BM25 solo_floor/min_score/margin_gap NO LONGER need per-corpus tuning and
+          # are left at their defaults. (Previously this cluster hand-tuned solo_floor
+          # to 0.2 because label-derived Alertmanager queries score ~0.1-0.3, an order
+          # of magnitude below the default 4.0 — the reranker removes that need.)
+          # The reranker routes to model.verify when set (here the main model), costs
+          # ~1-2k tokens, and fires on rerank_threshold 0.7. outcome_floor keeps the
+          # decay gate (a recall that never resolves is rejected).
           outcome_prior: 2.0
           outcome_floor: 0.5
       outcome:
