@@ -26,6 +26,9 @@ spec:
     toolCallParser: hermes         # optional; vLLM tool-call parser name
     preload:
       enabled: false               # CL-3 (rec A): composition-rendered Job
+  engineArgs:                      # optional; v0.8.0+ (SPEC-003) — see "Engine args" section
+    - --kv-cache-dtype=fp8         # verbatim vLLM CLI tokens, appended after managed flags
+    - --enforce-eager              # reserved flags (--model, --port, …) rejected at admission
   gpu:
     count: 1                       # nvidia.com/gpu request
     minVRAM: 16Gi                  # informational
@@ -61,6 +64,65 @@ spec:
   envFromSecrets:
     - hf-token                     # pre-existing Secrets shared across claims
 ```
+
+## Engine args
+
+`engineArgs` (v0.8.0+, [SPEC-003](../../../../../../docs/specs/003-inferenceservice-spec-engineargs-escape/spec.md))
+is an optional escape hatch for verbatim vLLM CLI flags that have no dedicated
+`spec` field. Each entry is a **single token** — either `--flag` or
+`--flag=value`, never `--flag value` split across two array items (the CEL
+denylist rejects any entry that does not start with `--`). The composition does
+**not** transform or re-validate these; the XRD admission CEL is the single
+enforcement point.
+
+**Ordering guarantee.** `engineArgs` are appended **last**, after every
+composition-managed flag. A user therefore cannot re-order or shadow a managed
+flag by supplying it again — and the reserved flags below are rejected at
+admission outright, so there is no last-writer-wins ambiguity.
+
+**Admission behavior.** Values are checked *structurally* (single `--` token)
+and *against the reserved denylist* below — nothing more. `engineArgs` are **not**
+validated against the vLLM CLI: an unknown or malformed flag (e.g. a typo, or a
+value vLLM rejects) is accepted at admission and **fails at container start**
+(the vLLM process exits, the pod crash-loops), not at `kubectl apply` time.
+
+```yaml
+spec:
+  engineArgs:
+    - --kv-cache-dtype=fp8
+    - --enforce-eager
+```
+
+### Reserved flags (rejected at admission)
+
+These 16 flags are composition-managed and rejected by the XRD CEL denylist —
+set them through the curated `spec` field instead. Keep this table in lockstep
+with the denylist in `inference-service-definition.yaml` and the managed flags
+in `main.k`.
+
+| Reserved flag | Use instead |
+|---|---|
+| `--model` | `spec.model.repository` (composition sets the local weights path) |
+| `--served-model-name` | none — the served model name is the claim name (`metadata.name`) |
+| `--max-model-len` | `spec.model.contextWindow` |
+| `--max-num-seqs` | `spec.model.maxNumSeqs` (it is the KEDA scaling denominator) |
+| `--gpu-memory-utilization` | none — fixed at `0.92` |
+| `--quantization` | `spec.model.quantization` |
+| `--enable-prefix-caching` | `spec.cache.prefixCache.enabled` |
+| `--cpu-offload-gb` | `spec.cache.kvOffload.{enabled,sizeGB}` |
+| `--enable-auto-tool-choice` | `spec.model.toolCallParser` |
+| `--tool-call-parser` | `spec.model.toolCallParser` |
+| `--enable-lora` | `spec.loraAdapters` |
+| `--max-loras` | `spec.loraAdapters` |
+| `--max-lora-rank` | `spec.loraAdapters` (rank fixed at 64) |
+| `--lora-modules` | `spec.loraAdapters` |
+| `--port` | none — **serving contract**: the vLLM port is fixed at 8000. The Service, liveness/readiness probes, and the gateway `Backend` all depend on it |
+| `--host` | none — **serving contract**: the listen address is fixed. The Service, probes, and gateway `Backend` all depend on it |
+
+> `--port` and `--host` are reserved even though the composition never emits
+> them explicitly (vLLM's defaults already match the serving contract). They are
+> denied because a user override would silently break the Service/probes/Backend
+> port-8000 assumption.
 
 ## LoRA adapters
 
@@ -139,6 +201,60 @@ each `weightPercent` is bounded 1–99.
 When `gateway.enabled`, `status.modelEndpoint` is set to
 `https://llm.priv.cloud.ogenki.io/v1` (the platform's external OpenAI-compatible
 entry point).
+
+## Status
+
+| Field | Condition | Notes |
+|---|---|---|
+| `status.modelEndpoint` | `gateway.enabled` | External OpenAI-compatible URL `https://llm.priv.cloud.ogenki.io/v1` |
+| `status.servedModels` | always | Topology projection (see below) |
+| `status.servedModelsSummary` | always | Comma-joined `servedModels` names; source for the `SERVED MODELS` printer column |
+
+### servedModels (topology projection)
+
+`status.servedModels` (v0.8.0+, [SPEC-003](../../../../../../docs/specs/003-inferenceservice-spec-engineargs-escape/spec.md))
+is the set of model names this claim serves — the base model plus one entry per
+LoRA adapter. It is a **routing/topology view, NOT a health signal**: an entry
+appearing here means the name *would* be served by this claim's vLLM pod, not
+that the pod is ready (readiness lives in `status.phase`). It is rendered
+unconditionally (independent of `gateway.enabled`).
+
+Each entry:
+
+- `name` — the served model name. Base = the claim name (`metadata.name`);
+  adapter = the `loraAdapters[].name` (verbatim).
+- `kind` — `base` or `adapter`.
+- `canaryWeightPercent` — present **only** on adapter entries that participate
+  in a `gateway.canaries[]` split; it echoes that canary's `weightPercent`
+  (1–99, percent of base-model traffic routed to the adapter). Absent on the
+  base entry and on adapters that are not canaried.
+
+Example (base model + three adapters, two of them canaried):
+
+```yaml
+status:
+  servedModels:
+    - name: xplane-qwen3-8b
+      kind: base
+    - name: xplane-qwen3-8b-adapter-a
+      kind: adapter
+      canaryWeightPercent: 10
+    - name: xplane-qwen3-8b-adapter-b
+      kind: adapter
+      canaryWeightPercent: 15
+    - name: xplane-qwen3-8b-adapter-c
+      kind: adapter
+  servedModelsSummary: xplane-qwen3-8b,xplane-qwen3-8b-adapter-a,xplane-qwen3-8b-adapter-b,xplane-qwen3-8b-adapter-c
+```
+
+### servedModelsSummary and the printer column
+
+`status.servedModelsSummary` is the comma-joined list of `servedModels[].name`,
+surfaced as the `SERVED MODELS` column in `kubectl get inferenceservices`. The
+summary field exists **because server-side printer columns render only the first
+match of a wildcard JSONPath** — a column sourced from `.status.servedModels[*].name`
+would show just the base model, so the composition pre-joins the names into a
+single scalar field the column can read directly.
 
 ## Resources rendered
 
