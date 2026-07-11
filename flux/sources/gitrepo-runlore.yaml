@@ -6,10 +6,13 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to main HEAD, which now includes runlore#263 (StatefulSet chart
-  # support, squash-merged — feat/statefulset-ha branch is deleted). The rolling
-  # image ghcr.io/smana/runlore:main still applies unchanged; only the chart at
-  # deploy/helm/runlore differs from the previous pin.
+  # Pinned to main HEAD 00e9b37 (#305) — the full v0.8.0 release plus the two
+  # post-tag commits. Bumped from 161e68c (#294, the LLM-reranker feat that was
+  # only a mid-v0.8.0 pin) to pick up the release tail: reranker topical-fit gate
+  # (#295), namespace-wide recall confirm (#299), instant-recall short-circuit in
+  # the notification (#297), backend-unreachable warnings + :main version stamp
+  # (#300), the redesigned learning-loop Grafana dashboard (#301), README-skip on
+  # catalog load (#296). The rolling image ghcr.io/smana/runlore:main is unchanged.
   ref:
     branch: main
-    commit: 161e68c5d720bc014f8cf8e29793565685796469  # pragma: allowlist secret
+    commit: 00e9b377a436e8ccfcd236dfadf361bf7523c300  # pragma: allowlist secret
