@@ -28,14 +28,16 @@ spec:
 
   gateway:
     enabled: true            # Optional, default: false (opt-in)
-    canary:                  # Optional; requires gateway.enabled
-      adapter: sql-dpo       # Must match a loraAdapters[].name (CEL)
-      weightPercent: 10      # 1–99; % of base-model traffic to the adapter
+    canaries:                # Optional array (maxItems: 4); requires gateway.enabled
+      - adapter: sql-dpo     # Must match a loraAdapters[].name (CEL)
+        weightPercent: 10    # 1–99; % of base-model traffic to the adapter
 ```
 
-Root-level XRD CEL validations (all reject at admission, FR-005):
-- `!has(self.gateway.canary) || self.gateway.enabled`
-- `!has(self.gateway) || !has(self.gateway.canary) || (has(self.loraAdapters) && self.loraAdapters.exists(a, a.name == self.gateway.canary.adapter))`
+Root-level XRD CEL validations (all reject at admission, FR-005 — CL-6):
+- `!has(self.gateway.canaries) || self.gateway.enabled`
+- `!has(self.gateway) || !has(self.gateway.canaries) || (has(self.loraAdapters) && self.gateway.canaries.all(c, self.loraAdapters.exists(a, a.name == c.adapter)))`
+- distinct adapter names: `self.gateway.canaries.all(c, self.gateway.canaries.filter(x, x.adapter == c.adapter).size() == 1)`
+- weight-sum guard: `self.gateway.canaries.map(c, c.weightPercent).sum() <= 99`
 - `weightPercent` schema bounds: `minimum: 1`, `maximum: 99`
 
 `status.modelEndpoint` = `https://llm.${private_domain_name}/v1` when `gateway.enabled` (FR-006).
@@ -46,19 +48,19 @@ Root-level XRD CEL validations (all reject at admission, FR-005):
 |----------|-----------|-------|
 | `Backend` `<name>-direct` (gateway.envoyproxy.io/v1alpha1) | `gateway.enabled` | `fqdn: <name>.<ns>.svc.cluster.local:8000`; static-ready |
 | `AIServiceBackend` `<name>` (aigateway.envoyproxy.io/v1alpha1) | `gateway.enabled` | `schema: OpenAI` → Backend; static-ready |
-| `AIServiceBackend` `<name>-canary` | `gateway.canary` set | Same Backend ref; exists to carry a distinct backendRef name in the rule |
+| `AIServiceBackend` `<name>-canary-<i>` | per `gateway.canaries[]` entry | Same Backend ref; one per canary to carry a distinct backendRef name in the rule |
 | `AIGatewayRoute` `<name>` | `gateway.enabled` AND (Deployment `Available=True` in `ocds` OR route already in `ocds`) | parentRef `ai-gateway/envoy-ai-gateway-system`; readiness from `status.conditions[Accepted]` (HTTPRoute-style check) |
 
 `AIGatewayRoute` rules:
 1. Base rule — match `x-ai-eg-model: <name>`:
-   - no canary: `[{name: <name>, weight: 100}]`
-   - canary: `[{name: <name>, weight: 100-w}, {name: <name>-canary, modelNameOverride: <adapter-name-verbatim>, weight: w}]` (CL-5)
+   - no canaries: `[{name: <name>, weight: 100}]`
+   - canaries: `[{name: <name>, weight: 100-sum(w)}]` + one `{name: <name>-canary-<i>, modelNameOverride: <adapter-name-verbatim>, weight: w_i}` per entry (CL-5, CL-6)
 2. Per `loraAdapters[]` entry — match `x-ai-eg-model: <loraAdapters[].name>` (verbatim, CL-5) → `[{name: <name>, weight: 100}]` (pin, FR-004). Rendered for ALL adapters whenever `gateway.enabled`, independent of canary.
 
 ### Key Entities
 
 - **Readiness latch**: `_route_live = "aigatewayroute" in option("params").ocds`; `_deploy_available` from the existing Deployment readiness helper. Render route iff `_deploy_available or _route_live`. Create-time gate only — never withdraws a live route (CL-4).
-- **Canary backendRef**: separate `AIServiceBackend` per CL-4 note — one rule must not repeat the same backendRef name twice.
+- **Canary backendRefs**: a separate `AIServiceBackend` per canary entry (`<name>-canary-<i>`) per CL-4 note — one rule must not repeat the same backendRef name twice (CL-6).
 - **modelNameOverride**: rewrites `body.model` at the gateway so vLLM serves the adapter; clients keep sending the base name. Value = the adapter's `loraAdapters[].name` verbatim — names are fully-qualified by convention (CL-5). Confirmed present in Envoy AI Gateway v1.0.0 (`AIGatewayRouteRuleBackendRef`).
 
 ### Dependencies
@@ -118,15 +120,15 @@ examples/
 
 ### Phase 2: Implementation
 
-- [ ] **T003**: KCL: render `Backend` + `AIServiceBackend` (+ `-canary` variant) under `gateway.enabled` (FR-001)
-- [ ] **T004**: KCL: render `AIGatewayRoute` with base rule, canary weights (FR-003), per-adapter pin rules (FR-004); readiness latch via `ocds` (FR-002); `Accepted`-condition readiness check
+- [ ] **T003**: KCL: render `Backend` + `AIServiceBackend` (+ one `-canary-<i>` variant per `canaries[]` entry) under `gateway.enabled` (FR-001)
+- [ ] **T004**: KCL: render `AIGatewayRoute` with base rule, per-canary weights summing with the base remainder (FR-003), per-adapter pin rules (FR-004); readiness latch via `ocds` (FR-002); `Accepted`-condition readiness check
 - [ ] **T005**: KCL: set `status.modelEndpoint` when enabled (FR-006)
-- [ ] **T006**: `main_test.k`: trio rendered when enabled; nothing rendered when disabled; route withheld (Deployment unavailable, absent from ocds); route latched (unavailable but present in ocds); canary weights sum 100; adapter pin rules present; naming `xplane-*`
+- [ ] **T006**: `main_test.k`: trio rendered when enabled; nothing rendered when disabled; route withheld (Deployment unavailable, absent from ocds); route latched (unavailable but present in ocds); single- and multi-canary weights sum to 100 with the base keeping the remainder; adapter pin rules present; naming `xplane-*`
 - [ ] **T007**: Bump `kcl.mod` → 0.7.0; publish module; point composition at the new tag (verify anonymous pull)
 
 ### Phase 3: Migration & e2e (feature-branch cluster)
 
-- [ ] **T008**: Enable `gateway: {enabled: true, canary: {adapter: sql-dpo, weightPercent: 10}}` on `xplane-qwen-coder`; remove its entries from `route.yaml` (same commit)
+- [ ] **T008**: Enable `gateway: {enabled: true, canaries: [{adapter: sql-dpo, weightPercent: 10}]}` on `xplane-qwen-coder`; remove its entries from `route.yaml` (same commit)
 - [ ] **T009**: e2e: SC-001 (route owned + 200 via gateway), SC-004 (gate + GC on a scratch claim), SC-005 (MoM unchanged)
 - [ ] **T010**: e2e: SC-002 — ≥50 requests, verify split via `vllm:lora_requests_info`; observe gateway metric attribution for canary tokens; `hubble observe --verdict DROPPED` clean
 - [ ] **T011**: SC-003 — apply claim with bogus adapter, capture CEL rejection

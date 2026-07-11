@@ -44,9 +44,9 @@ spec:
       revision: <sha-or-tag>                    # defaults to "main"
   gateway:                         # optional; v0.7.0+ (SPEC-002) — see "AI Gateway routing" section
     enabled: false                 # composition renders Backend + AIServiceBackend + AIGatewayRoute
-    canary:                        # optional; weighted LoRA canary (requires a loraAdapters match)
-      adapter: <lora-name>         # must equal a loraAdapters[].name (CEL-enforced at the XRD)
-      weightPercent: 15            # 1–99; percent of base-model traffic sent to the adapter
+    canaries:                      # optional; weighted LoRA canaries (max 4; each requires a loraAdapters match)
+      - adapter: <lora-name>       # must equal a loraAdapters[].name (CEL-enforced at the XRD)
+        weightPercent: 15          # 1–99; percent of base-model traffic sent to the adapter
   route:
     enabled: false                 # usually false — traffic flows through the AI Gateway / SR
     parentGateway: platform-tailscale-general
@@ -116,22 +116,25 @@ state and keeps rendering it). This avoids route flapping under rolling restarts
 or brief pod churn. The `Backend` and `AIServiceBackend`(s) are static-ready
 (always applied when `gateway.enabled`).
 
-### Weighted LoRA canary
+### Weighted LoRA canaries
 
-Setting `gateway.canary` splits the base rule's traffic between the base model
-and one of its LoRA adapters (same pod, zero extra GPU). It renders a second
-`AIServiceBackend` `<claim>-canary` (same Backend) so the rule has two named
-backendRefs:
+Setting `gateway.canaries` (an array, max 4) splits the base rule's traffic
+between the base model and one or more of its LoRA adapters (same pod, zero extra
+GPU). Each entry renders its own `AIServiceBackend` `<claim>-canary-<i>` (same
+Backend) so the base rule carries one named backendRef per canary alongside the
+base-model backendRef:
 
-- `<claim>` at `weight: 100 - weightPercent`,
-- `<claim>-canary` at `weight: weightPercent`, with
+- `<claim>` at `weight: 100 - sum(weightPercent)` (the base model always retains
+  traffic — the sum of all canary weights is CEL-bounded to ≤ 99),
+- `<claim>-canary-<i>` at `weight: weightPercent` for each entry `i`, with
   `modelNameOverride: <adapter-name>` (the adapter's own name, verbatim —
   rewrites the upstream model name so vLLM serves the adapter).
 
 Explicit `x-ai-eg-model == <adapter-name>` requests stay pinned 100% on the base
-pod via the adapter's pin rule — the canary only rebalances the base-model model
-name. `gateway.canary.adapter` must match a `loraAdapters[].name` (CEL-enforced
-at the XRD) and `weightPercent` is bounded 1–99.
+pod via the adapter's pin rule — the canaries only rebalance the base-model model
+name. Every `gateway.canaries[].adapter` must match a `loraAdapters[].name`
+(CEL-enforced at the XRD), adapter names must be distinct across entries, and
+each `weightPercent` is bounded 1–99.
 
 When `gateway.enabled`, `status.modelEndpoint` is set to
 `https://llm.priv.cloud.ogenki.io/v1` (the platform's external OpenAI-compatible
@@ -148,7 +151,7 @@ entry point).
 | `HTTPRoute` | `route.enabled` | Per-model HTTPRoute on the platform Tailscale gateway (otherwise reach via the AI Gateway / SR) |
 | `Backend` (`<claim>-direct`) | `gateway.enabled` | Envoy Gateway `Backend` → vLLM Service FQDN `:8000`. Static-ready |
 | `AIServiceBackend` (`<claim>`) | `gateway.enabled` | OpenAI-schema AI backend referencing the `Backend`. Static-ready |
-| `AIServiceBackend` (`<claim>-canary`) | `gateway.canary` set | Second AI backend (same `Backend`) so the route rule can carry two named backendRefs. Static-ready |
+| `AIServiceBackend` (`<claim>-canary-<i>`) | per `gateway.canaries[]` entry | One extra AI backend per canary (same `Backend`) so the route rule can carry a distinct named backendRef per canary. Static-ready |
 | `AIGatewayRoute` (`<claim>`) | `gateway.enabled` **and** Deployment `Available` (latched) | Base rule (`x-ai-eg-model == <claim>`) + one pin rule per LoRA adapter. Withheld until the Deployment is ready, then latched (never withdrawn on transient unavailability). Ready when `status.conditions[Accepted]=True` |
 | XR `status.modelEndpoint` | `gateway.enabled` | XR status patched to `https://llm.priv.cloud.ogenki.io/v1` via the desired-composite (dxr) |
 | `CiliumNetworkPolicy` (serving) | always | Default-deny + explicit allow on the long-lived serving pod (DNS only egress + ingress from AI Gateway data-plane, SR, vmagent) |

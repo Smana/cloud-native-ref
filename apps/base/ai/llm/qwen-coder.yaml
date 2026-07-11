@@ -49,9 +49,9 @@ spec:
   # pinned at 100%.
   gateway:
     enabled: true
-    canary:
-      adapter: xplane-qwen-coder-sql-dpo
-      weightPercent: 10
+    canaries:
+      - adapter: xplane-qwen-coder-sql-dpo
+        weightPercent: 10
   gpu:
     count: 1
     minVRAM: 16Gi

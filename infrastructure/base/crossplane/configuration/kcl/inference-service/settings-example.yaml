@@ -129,15 +129,18 @@ kcl_options:
             parentGateway: "platform-tailscale-general"
             parentGatewayNamespace: "infrastructure"
             hostname: "qwen3"
-          # SPEC-002: composition-owned AI Gateway routing with a weighted
-          # LoRA canary. 20% of base-model traffic is rewritten to the adapter
-          # xplane-qwen3-8b-adapter-a (verbatim modelNameOverride); explicit
-          # requests for that adapter name stay pinned 100% on the base pod.
+          # SPEC-002: composition-owned AI Gateway routing with weighted LoRA
+          # canaries. 10% + 15% of base-model traffic is rewritten to the two
+          # adapters (verbatim modelNameOverride), leaving the base model 75%;
+          # explicit requests for either adapter name stay pinned 100% on the
+          # base pod. Adapter names are distinct and the weights sum to <= 99.
           gateway:
             enabled: true
-            canary:
-              adapter: xplane-qwen3-8b-adapter-a
-              weightPercent: 20
+            canaries:
+              - adapter: xplane-qwen3-8b-adapter-a
+                weightPercent: 10
+              - adapter: xplane-qwen3-8b-adapter-b
+                weightPercent: 15
           externalSecrets:
             - name: hf-token
               remoteRef: /platform/llm/hf_token

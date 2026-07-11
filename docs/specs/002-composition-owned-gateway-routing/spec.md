@@ -39,9 +39,9 @@ As a **platform user deploying a model**, I want **a single InferenceService cla
 As a **model operator**, I want **a weighted split of base-model traffic to a LoRA adapter**, so that **I can validate a fine-tune on real traffic without clients changing model names and without extra GPU cost**.
 
 **Acceptance Scenarios**:
-1. **Given** `gateway.canary: {adapter: xplane-qwen-coder-sql-dpo, weightPercent: 10}` on `xplane-qwen-coder`, **When** clients send requests for model `xplane-qwen-coder`, **Then** ≈10% are served by the `xplane-qwen-coder-sql-dpo` adapter (verified via `vllm:lora_requests_info`) and ≈90% by the base model, with no client-visible change.
+1. **Given** `gateway.canaries: [{adapter: xplane-qwen-coder-sql-dpo, weightPercent: 10}]` on `xplane-qwen-coder`, **When** clients send requests for model `xplane-qwen-coder`, **Then** ≈10% are served by the `xplane-qwen-coder-sql-dpo` adapter (verified via `vllm:lora_requests_info`) and ≈90% by the base model, with no client-visible change.
 2. **Given** the same canary config, **When** a client explicitly requests `xplane-qwen-coder-sql-dpo`, **Then** the request is pinned to the adapter (100%), unaffected by the split.
-3. **Given** a canary referencing an adapter name not present in `loraAdapters`, **When** the claim is applied, **Then** the API server rejects it at admission (CEL validation).
+3. **Given** a `canaries[]` entry referencing an adapter name not present in `loraAdapters`, **When** the claim is applied, **Then** the API server rejects it at admission (CEL validation).
 
 ### US-3: Gradual migration (Priority: P2)
 
@@ -58,9 +58,9 @@ As the **platform maintainer**, I want **claims to opt in one at a time**, so th
 
 - **FR-001**: The composition MUST render `Backend` (FQDN of the claim's Service, port 8000), `AIServiceBackend` (OpenAI schema), and `AIGatewayRoute` (parentRef `ai-gateway/envoy-ai-gateway-system`) when `spec.gateway.enabled` is true. Default MUST be off (opt-in).
 - **FR-002**: The `AIGatewayRoute` MUST be withheld until the claim's Deployment reports `Available=True`, and MUST NOT be withdrawn on subsequent transient unavailability once it exists (create-time gate with latch via `ocds`).
-- **FR-003**: When `spec.gateway.canary` is set, the base-model rule MUST split traffic `100-weightPercent` / `weightPercent` between the base backend and a canary `AIServiceBackend` carrying `modelNameOverride` set to the canary adapter's `loraAdapters[].name` **verbatim** (adapter names are fully-qualified by repo convention, e.g. `xplane-qwen-coder-sql-dpo` — CL-5); both reference the same `Backend`.
+- **FR-003**: When `spec.gateway.canaries` (an array, max 4 entries) is set, the base-model rule MUST carry one backendRef per entry: the base-model backendRef keeps `100 - sum(weightPercent)` and each canary `AIServiceBackend` (`<claim>-canary-<i>`) takes its own `weightPercent`, carrying `modelNameOverride` set to that entry's adapter's `loraAdapters[].name` **verbatim** (adapter names are fully-qualified by repo convention, e.g. `xplane-qwen-coder-sql-dpo` — CL-5); all reference the same `Backend`. Adapter names MUST be distinct across entries and `sum(weightPercent)` MUST stay ≤ 99 so the base model always retains traffic (both CEL-enforced — CL-6).
 - **FR-004**: Each `loraAdapters[]` entry MUST get a pinned route rule (`x-ai-eg-model: <loraAdapters[].name>` verbatim → base backend, weight 100 — CL-5), preserving current explicit-adapter routing regardless of canary state.
-- **FR-005**: XRD CEL validation MUST reject: `canary` without `gateway.enabled`; `canary.adapter` not present in `loraAdapters[].name`; `weightPercent` outside 1–99.
+- **FR-005**: XRD CEL validation MUST reject: `canaries` without `gateway.enabled`; any `canaries[].adapter` not present in `loraAdapters[].name`; duplicate adapter names across `canaries[]`; any `weightPercent` outside 1–99; `sum(weightPercent) > 99` (CL-6).
 - **FR-006**: `status.modelEndpoint` MUST be set to the gateway URL when `gateway.enabled` is true.
 - **FR-007**: The Crossplane aggregate ClusterRole MUST grant the new kinds (`gateway.envoyproxy.io/backends`, `aigateway.envoyproxy.io/aigatewayroutes,aiservicebackends`).
 - **FR-008**: Routing for `model: MoM` (semantic router) MUST keep working unchanged for migrated and unmigrated models alike.
@@ -79,10 +79,10 @@ As the **platform maintainer**, I want **claims to opt in one at a time**, so th
 
 - **SC-001**: `xplane-qwen-coder` serves through a composition-rendered route: its `AIGatewayRoute` exists with `ownerReferences` to the XR, its entries are gone from `route.yaml`, and a chat completion for `xplane-qwen-coder` through the gateway returns 200.
 - **SC-002**: With `weightPercent: 10` and ≥50 base-model requests, `vllm:lora_requests_info` shows the sql-dpo adapter served between 2% and 25% of them (binomial tolerance), and explicit `xplane-qwen-coder-sql-dpo` requests hit the adapter 100%.
-- **SC-003**: A claim applied with a bogus `canary.adapter` is rejected at admission with a CEL message naming the field.
+- **SC-003**: A claim applied with a bogus `canaries[].adapter` is rejected at admission with a CEL message naming the field.
 - **SC-004**: On a fresh claim with `gateway.enabled: true`, the `AIGatewayRoute` is absent while the Deployment is unready and appears within one reconcile of `Available=True`; deleting the claim removes all three routing resources.
 - **SC-005**: `model: MoM` requests still classify and resolve to every fleet model (migrated and unmigrated) — no semantic-router config change.
-- **SC-006**: `./scripts/validate-kcl-compositions.sh` exits 0; `main_test.k` covers the new rendering paths (enabled/disabled, gated/latched, canary weights, adapter pin rules).
+- **SC-006**: `./scripts/validate-kcl-compositions.sh` exits 0; `main_test.k` covers the new rendering paths (enabled/disabled, gated/latched, single- and multi-canary weights summing with the base remainder, adapter pin rules).
 
 ---
 

@@ -110,6 +110,24 @@
 **Decided by**: Controller, verified against main.k:154 + route.yaml
 **References**: `docs/superpowers/specs/2026-05-09-llm-platform-paths-7-8-design.md` (LoRA naming), XRD `loraAdapters[].name` description ("Becomes the model name clients send")
 
+## CL-6 — 2026-07-11 — `gateway.canary` object replaced by `canaries[]` array
+
+**Asked by**: PR reviewer (Modelplane arrays-over-objects forward-compat review, PR #1559)
+**Context**: The initial API shipped `gateway.canary` as a single object (`{adapter, weightPercent}`). Before the first release, review flagged that a single-object field paints future multi-adapter splits into a corner — moving to an array later would be a breaking API change under an already-cut version. Modelplane's own routing design favours arrays over singleton objects for exactly this reason.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Keep `canary` object, add `canaries` later | Smallest diff now | Breaking change post-release; two ways to express one thing |
+| B | Replace with `canaries[]` array now (pre-release) | Forward-compatible; multi-adapter splits become additive; no post-release break | Slightly larger diff on an open branch |
+| C | Keep object, document "one canary only, ever" | No churn | Forecloses a realistic feature (progressive multi-adapter rollout) |
+
+**Decision**: B — `gateway.canary` object replaced by a `canaries[]` array (`maxItems: 4`) before first release. Each entry keeps `{adapter, weightPercent}`. A `sum(weights) <= 99` CEL guard was added so the base model always retains traffic, plus a distinct-adapter-names CEL rule. Multi-adapter splits are now additive: the base-model backendRef weight is `100 − sum(weights)` and each canary renders its own `<claim>-canary-<i>` AIServiceBackend + backendRef.
+**Rationale**: The API is not yet frozen (PR still open, no release cut), so this is a pre-release shape correction, not a break. Arrays-over-objects matches the Modelplane forward-compat review and the repo's own `loraAdapters[]` / `externalSecrets[]` idioms. FR-003/FR-005 amended in place with CL-6 references.
+**Decided by**: User + PR reviewer (2026-07-11)
+**References**: Modelplane routing design (arrays over singleton objects); XRD `loraAdapters[]` / `externalSecrets[]` array conventions; PR #1559
+
 ---
 
 ## Related

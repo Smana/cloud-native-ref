@@ -23,10 +23,14 @@ spec:
                   message: "scaling.minReplicas must be <= maxReplicas"
                 - rule: "!has(self.route) || !self.route.enabled || has(self.route.hostname)"
                   message: "route.hostname is required when route is enabled"
-                - rule: "!has(self.gateway) || !has(self.gateway.canary) || self.gateway.enabled"
-                  message: "gateway.canary requires gateway.enabled to be true"
-                - rule: "!has(self.gateway) || !has(self.gateway.canary) || (has(self.loraAdapters) && self.loraAdapters.exists(a, a.name == self.gateway.canary.adapter))"
-                  message: "gateway.canary.adapter must match a loraAdapters[].name entry"
+                - rule: "!has(self.gateway) || !has(self.gateway.canaries) || self.gateway.enabled"
+                  message: "gateway.canaries requires gateway.enabled to be true"
+                - rule: "!has(self.gateway) || !has(self.gateway.canaries) || (has(self.loraAdapters) && self.gateway.canaries.all(c, self.loraAdapters.exists(a, a.name == c.adapter)))"
+                  message: "every gateway.canaries[].adapter must match a loraAdapters[].name entry"
+                - rule: "!has(self.gateway) || !has(self.gateway.canaries) || self.gateway.canaries.all(c, self.gateway.canaries.filter(x, x.adapter == c.adapter).size() == 1)"
+                  message: "gateway.canaries[].adapter names must be distinct"
+                - rule: "!has(self.gateway) || !has(self.gateway.canaries) || self.gateway.canaries.map(c, c.weightPercent).sum() <= 99"
+                  message: "gateway.canaries[].weightPercent must sum to <= 99 (the base model always retains traffic)"
               properties:
                 model:
                   type: object
@@ -246,26 +250,31 @@ spec:
                     enabled:
                       type: boolean
                       default: false
-                    canary:
-                      type: object
+                    canaries:
+                      type: array
+                      maxItems: 4
                       description: |
-                        Weighted canary between the base model and one of
-                        its LoRA adapters (same pod — zero extra GPU).
-                        weightPercent of base-model traffic is rewritten
-                        (modelNameOverride) to the adapter's
-                        loraAdapters[].name verbatim (names are
-                        fully-qualified by convention — CL-5); explicit
-                        requests for the adapter name stay pinned at 100%.
-                      required: [adapter, weightPercent]
-                      properties:
-                        adapter:
-                          type: string
-                          description: Must match a loraAdapters[].name entry (CEL-enforced).
-                        weightPercent:
-                          type: integer
-                          description: Percent of base-model traffic sent to the adapter.
-                          minimum: 1
-                          maximum: 99
+                        Weighted canaries between the base model and one or
+                        more of its LoRA adapters (same pod — zero extra GPU).
+                        Each entry rewrites weightPercent of base-model traffic
+                        (modelNameOverride) to the adapter's loraAdapters[].name
+                        verbatim (names are fully-qualified by convention —
+                        CL-5); explicit requests for an adapter name stay pinned
+                        at 100%. Adapter names must be distinct across entries
+                        and the sum of all weightPercent must stay <= 99 so the
+                        base model always retains traffic (all CEL-enforced).
+                      items:
+                        type: object
+                        required: [adapter, weightPercent]
+                        properties:
+                          adapter:
+                            type: string
+                            description: Must match a loraAdapters[].name entry (CEL-enforced).
+                          weightPercent:
+                            type: integer
+                            description: Percent of base-model traffic sent to the adapter.
+                            minimum: 1
+                            maximum: 99
                 route:
                   type: object
                   description: |

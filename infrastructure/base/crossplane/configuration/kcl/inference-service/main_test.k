@@ -24,14 +24,15 @@ test_core_resources = lambda {
 
 # ---- Test: Resource count for full settings-example claim ----
 # settings-example exercises: KEDA ScaledObject, HTTPRoute, ExternalSecret,
-# preload Job, and (SPEC-002) the AI Gateway trio + canary + XR status patch.
+# preload Job, and (SPEC-002) the AI Gateway trio + canaries + XR status patch.
 test_resource_count_full = lambda {
     # Full claim (settings-example) renders 11 base resources:
     # ServiceAccount, Deployment, Service, ScaledObject, HTTPRoute,
     # CiliumNetworkPolicy (serving), CiliumNetworkPolicy (preload),
     # ExternalSecret, VMServiceScrape, VMRule, Job = 11 — plus, with
-    # gateway.enabled + canary: Backend, AIServiceBackend,
-    # AIServiceBackend-canary, AIGatewayRoute, and the dxr status patch.
+    # gateway.enabled + canaries: Backend, AIServiceBackend, one
+    # AIServiceBackend-canary-<i> per canary, AIGatewayRoute, and the dxr
+    # status patch.
     assert len(items) >= 11, "expected ≥11 resources for full claim, got {}".format(len(items))
 }
 
@@ -410,23 +411,60 @@ test_gateway_route_latch_integration = lambda {
 }
 
 # ---- Test (e): canary weights sum to 100 + modelNameOverride + -canary AISB ----
-test_gateway_canary = lambda {
+# Array form (canaries[]): the base rule carries one backendRef for the base
+# model (weight = 100 − sum(weights)) plus one per canary entry, each with
+# modelNameOverride = adapter name VERBATIM. Each canary also renders its own
+# `<claim>-canary-<i>` AIServiceBackend.
+test_gateway_canaries = lambda {
     _oxr = option("params").oxr
     _name = _oxr.metadata.name
-    _canary = _oxr.spec.gateway?.canary
-    if _canary:
+    _canaries = _oxr.spec.gateway?.canaries or []
+    if _canaries:
         routes = [r for r in items if r.kind == "AIGatewayRoute"]
         assert len(routes) == 1, "expected 1 AIGatewayRoute"
         _refs = routes[0].spec.rules[0].backendRefs
-        assert len(_refs) == 2, "canary base rule must have 2 backendRefs, got {}".format(len(_refs))
+        assert len(_refs) == 1 + len(_canaries), "base rule must have 1 base + {} canary backendRefs, got {}".format(len(_canaries), len(_refs))
         _total = sum([ref.weight for ref in _refs], 0)
-        assert _total == 100, "canary weights must sum to 100, got {}".format(_total)
-        _canaryRefs = [ref for ref in _refs if ref.name == _name + "-canary"]
-        assert len(_canaryRefs) == 1, "expected 1 canary backendRef"
-        assert _canaryRefs[0].modelNameOverride == _canary.adapter, "modelNameOverride must be the adapter name VERBATIM (no claim prefix)"
-        assert _canaryRefs[0].weight == _canary.weightPercent, "canary weight must equal weightPercent"
-        _canaryAisb = [r for r in items if r.kind == "AIServiceBackend" and r.metadata.name == _name + "-canary"]
-        assert len(_canaryAisb) == 1, "expected 1 -canary AIServiceBackend"
+        assert _total == 100, "canary weights must sum to 100 (base retains remainder), got {}".format(_total)
+        _baseRefs = [ref for ref in _refs if ref.name == _name]
+        assert len(_baseRefs) == 1, "expected exactly 1 base-model backendRef"
+        _expectedBaseWeight = 100 - sum([c.weightPercent for c in _canaries], 0)
+        assert _baseRefs[0].weight == _expectedBaseWeight, "base weight must be 100 − sum(weights) = {}, got {}".format(_expectedBaseWeight, _baseRefs[0].weight)
+
+        # Every canary entry maps to a distinct `-canary-<i>` backendRef + AISB,
+        # carrying its adapter name verbatim as modelNameOverride.
+        _i = [i for i in range(len(_canaries))]
+        _missingRefs = [i for i in _i if len([ref for ref in _refs if ref.name == _name + "-canary-" + str(i) and ref?.modelNameOverride == _canaries[i].adapter and ref.weight == _canaries[i].weightPercent]) != 1]
+        assert len(_missingRefs) == 0, "each canary must render a distinct backendRef with verbatim modelNameOverride + weight; missing/mismatched indices: {}".format(_missingRefs)
+        _missingAisb = [i for i in _i if len([r for r in items if r.kind == "AIServiceBackend" and r.metadata.name == _name + "-canary-" + str(i)]) != 1]
+        assert len(_missingAisb) == 0, "each canary must render a distinct -canary-<i> AIServiceBackend; missing indices: {}".format(_missingAisb)
+
+    assert True
+}
+
+# ---- Test (e2): multi-canary split — 2 adapters (10 + 15) → base 75 ----
+# The settings-example fixture carries two canaries; this test pins the exact
+# arithmetic (base = 100 − 10 − 15 = 75) and asserts BOTH adapters land as
+# distinct backendRefs with their adapter name VERBATIM as modelNameOverride.
+test_gateway_multi_canary = lambda {
+    _oxr = option("params").oxr
+    _name = _oxr.metadata.name
+    _canaries = _oxr.spec.gateway?.canaries or []
+    if len(_canaries) >= 2:
+        routes = [r for r in items if r.kind == "AIGatewayRoute"]
+        assert len(routes) == 1, "expected 1 AIGatewayRoute"
+        _refs = routes[0].spec.rules[0].backendRefs
+        assert len(_refs) == 1 + len(_canaries), "base rule must carry base + one ref per canary"
+        _baseRef = [ref for ref in _refs if ref.name == _name][0]
+        _expectedBaseWeight = 100 - sum([c.weightPercent for c in _canaries], 0)
+        assert _baseRef.weight == _expectedBaseWeight, "base weight must equal 100 − sum(weights)"
+        # Adapter names appear VERBATIM as modelNameOverride (no prefix/transform).
+        _overrides = [ref.modelNameOverride for ref in _refs if ref?.modelNameOverride]
+        _missing = [c.adapter for c in _canaries if c.adapter not in _overrides]
+        assert len(_missing) == 0, "every canary adapter must appear verbatim as a modelNameOverride, missing: {}".format(_missing)
+        # Overridden names are the adapter names verbatim, never claim-prefixed.
+        _prefixed = [o for o in _overrides if o.startswith(_name + "-canary")]
+        assert len(_prefixed) == 0, "modelNameOverride must be the adapter name, never the -canary backend name: {}".format(_prefixed)
 
     assert True
 }

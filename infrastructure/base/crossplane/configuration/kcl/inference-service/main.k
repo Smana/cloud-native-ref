@@ -209,13 +209,21 @@ _preloadJobReady = (_observedPreloadJob?.status?.succeeded or 0) > 0
 
 # SPEC-002 gateway wiring.
 _gatewayEnabled = oxr.spec.gateway?.enabled or False
-_gatewayCanary = oxr.spec.gateway?.canary
+_gatewayCanaries = oxr.spec.gateway?.canaries or []
 
 # Single source of truth for the gateway backend names (same discipline as
-# _gatewayRouteSuffix): the Backend's own name and the two AIServiceBackend
-# backendRef linkages must never drift apart.
+# _gatewayRouteSuffix): the Backend's own name and the per-canary
+# AIServiceBackend backendRef linkages must never drift apart. Each canary
+# adapter gets its own `-canary-<i>` backend so multiple weighted splits can
+# coexist as distinct named backendRefs on the single base rule.
 _gatewayBackendName = _name + "-direct"
-_gatewayCanaryBackendName = _name + "-canary"
+_gatewayCanaryBackendName = lambda i: int -> str {
+    _name + "-canary-" + str(i)
+}
+
+# Total canary weight; the base-model backendRef keeps the remainder. CEL at
+# the XRD guarantees this stays <= 99 so the base model always retains traffic.
+_gatewayCanaryWeightTotal = sum([c.weightPercent for c in _gatewayCanaries], 0)
 
 # AIGatewayRoute v1alpha1 publishes top-level status.conditions; the route
 # is "ready" once Accepted=True (mirror of the HTTPRoute check). Absent
@@ -448,22 +456,24 @@ if _gatewayEnabled:
     }]
     _items += _gatewayBackend
 
-    # AIServiceBackend(s) — identical bodies pointing at the same Backend; the
-    # canary variant (only when gateway.canary is set) differs solely by name,
-    # so the route rule can carry two named backendRefs. One target list, one
-    # builder — a spec change applies to both.
-    _aisbTargets = [{nm = _name, sfx = "gateway-aiservicebackend"}] + ([{nm = _gatewayCanaryBackendName, sfx = "gateway-aiservicebackend-canary"}] if _gatewayCanary else [])
+    # AIServiceBackend(s) — identical bodies pointing at the same Backend; each
+    # canary variant (one per gateway.canaries[] entry) differs solely by name,
+    # so the base route rule can carry one named backendRef per canary. One
+    # target list, one builder — a spec change applies to all.
+    _aisbTargets = [{nm = _name, sfx = "gateway-aiservicebackend"}] + [{nm = _gatewayCanaryBackendName(i), sfx = "gateway-aiservicebackend-canary-" + str(i)} for i in range(len(_gatewayCanaries))]
     _aiServiceBackends = [{apiVersion = "aigateway.envoyproxy.io/v1alpha1", kind = "AIServiceBackend", metadata = _metadata(t.sfx, True) | {name = t.nm}, spec = {schema = {name = "OpenAI"}, backendRef = {group = "gateway.envoyproxy.io", kind = "Backend", name = _gatewayBackendName}}} for t in _aisbTargets]
     _items += _aiServiceBackends
 
-    # Base rule: header x-ai-eg-model == <claim>. With canary, split weight
-    # between the base model and the adapter (served by the same pod).
-    # modelNameOverride rewrites the upstream model name to the adapter's OWN
-    # name — vLLM serves each LoRA under loraAdapters[].name VERBATIM (main.k
-    # emits `--lora-modules <name>=/models/loras/<name>`), and claims already
-    # use fully-qualified adapter names (e.g. xplane-qwen-coder-sql-dpo). NO
-    # claim prefix here — prefixing would double it to <claim>-<adapter>.
-    _baseRuleBackendRefs = [{name = _name, weight = 100 - _gatewayCanary.weightPercent}, {name = _gatewayCanaryBackendName, modelNameOverride = _gatewayCanary.adapter, weight = _gatewayCanary.weightPercent}] if _gatewayCanary else [{name = _name, weight = 100}]
+    # Base rule: header x-ai-eg-model == <claim>. With canaries, split weight
+    # between the base model and each adapter (all served by the same pod). The
+    # base-model backendRef keeps 100 − sum(weights). modelNameOverride rewrites
+    # the upstream model name to the adapter's OWN name — vLLM serves each LoRA
+    # under loraAdapters[].name VERBATIM (main.k emits `--lora-modules
+    # <name>=/models/loras/<name>`), and claims already use fully-qualified
+    # adapter names (e.g. xplane-qwen-coder-sql-dpo). NO claim prefix here —
+    # prefixing would double it to <claim>-<adapter>.
+    _canaryBackendRefs = [{name = _gatewayCanaryBackendName(i), modelNameOverride = _gatewayCanaries[i].adapter, weight = _gatewayCanaries[i].weightPercent} for i in range(len(_gatewayCanaries))]
+    _baseRuleBackendRefs = [{name = _name, weight = 100 - _gatewayCanaryWeightTotal}] + _canaryBackendRefs
     _baseRule = {matches = [{headers = [{type = "Exact", name = "x-ai-eg-model", value = _name}]}], backendRefs = _baseRuleBackendRefs}
 
     # One pin rule per LoRA adapter (all adapters, canary or not): an explicit
