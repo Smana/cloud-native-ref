@@ -6,11 +6,12 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # TEMPORARY: pinned to the runlore#308 fix branch (main 00e9b37 + one chart
-  # commit) to pick up fix(chart): scope VMServiceScrape to the metrics Service —
-  # the StatefulSet headless Service was being scraped too, double-counting every
-  # counter metric. The rolling image ghcr.io/smana/runlore:main is unchanged
-  # (chart-only change). RE-PIN to main HEAD once #308 merges.
+  # Pinned to main HEAD 1b3e8c4 — now includes #307 (feat: watch HelmReleases for
+  # autonomous failure detection, closes #306) and #308 (fix: scope VMServiceScrape
+  # to the metrics Service, ending the StatefulSet headless-Service double-scrape).
+  # The rolling image ghcr.io/smana/runlore:main now carries the #307 watcher; it
+  # goes live on the next pod restart (this chart-only re-pin doesn't restart the
+  # StatefulSet). Chart is identical to the previous fix-branch pin, so no drift.
   ref:
-    branch: fix/vmservicescrape-headless-dedup
-    commit: cdf122cfa5b9ad084667e3eae158e92ef7223475  # pragma: allowlist secret
+    branch: main
+    commit: 1b3e8c42ba5d523c8ff359813b229e3b049b14b2  # pragma: allowlist secret
