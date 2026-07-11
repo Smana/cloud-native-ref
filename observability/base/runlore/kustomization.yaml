@@ -8,3 +8,4 @@ resources:
   - externalsecret-slack.yaml
   - externalsecret-webhook.yaml
   - helmrelease.yaml
+  - httproute.yaml

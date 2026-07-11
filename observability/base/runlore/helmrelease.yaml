@@ -9,18 +9,16 @@ spec:
   # readiness can take up to ~one catalog.git.interval. Give Helm headroom and
   # retry instead of going terminally Stalled on a single timeout.
   timeout: 10m
+  # disableWait was required before runlore#264: /readyz gated on leadership, so
+  # standby replicas were permanently NotReady and Helm's --wait could never
+  # succeed with replicaCount>1. #264 shipped (readyz decoupled from leadership,
+  # followers forward work to the leader), so every replica reports Ready and
+  # Flux's full health verification is back on — this deployment is the live
+  # validation of exactly that.
   install:
-    disableWait: true
     remediation:
       retries: 3
   upgrade:
-    # Helm's --wait requires ALL replicas Ready before considering the release
-    # successful — but with replicaCount>1, standby replicas are permanently
-    # NotReady by design (readyz gates on leadership, not just process health).
-    # Without this, every upgrade/install times out at `timeout` above and
-    # rolls back, even though the StatefulSet/Deployment is genuinely healthy
-    # (exactly 1 Ready leader + N-1 hot standbys).
-    disableWait: true
     remediation:
       retries: 3
   chart:
@@ -45,18 +43,14 @@ spec:
   driftDetection:
     mode: enabled
   values:
-    # StatefulSet (chart feature from runlore#263, merged into main) gives each
-    # replica its OWN RWO EBS volume
-    # via volumeClaimTemplates — validated live (2 independently-Bound PVCs,
-    # correct leader election/failover). Held at replicaCount: 1 for now: readyz
-    # deliberately gates on leadership (only the leader should receive webhooks —
-    # see the disableWait comment above), so a real 2-replica rollout needs
-    # leader-request-forwarding first (non-leader replicas proxy to the current
-    # leader via the Lease) so every replica can report Ready and Flux's wait
-    # isn't fighting the app's own design. Tracked: github.com/Smana/runlore/issues/264.
-    # Bump back to 2 once that ships.
+    # StatefulSet (runlore#263) gives each replica its OWN RWO EBS volume via
+    # volumeClaimTemplates — validated live (2 independently-Bound PVCs, correct
+    # leader election/failover). replicaCount: 2 is live HA: BOTH replicas report
+    # Ready (runlore#264 — readyz decoupled from leadership), the Service
+    # round-robins, and a non-leader replica forwards work-bearing requests to
+    # the leader via its routable Lease identity (<pod>_<podIP>).
     workloadKind: StatefulSet
-    replicaCount: 1
+    replicaCount: 2
     image:
       # Rolling validation image (see flux/sources/gitrepo-runlore.yaml) — matches
       # the pinned main commit until the next release-please tag ships. Always
@@ -99,6 +93,21 @@ spec:
       # Renders a CiliumNetworkPolicy allowing egress to the EKS Pod Identity
       # credential endpoint (169.254.170.23:80, host entity) — required on Cilium.
       awsPodIdentity: true
+      # The chart's non-strict egress only opens 443/6443 — but VictoriaMetrics
+      # (vmsingle :8428) and VictoriaLogs (:9428) listen on other ports, so without
+      # this the agent's metrics/logs tool calls hang until they time out, starving
+      # every investigation of those signals (and burning the per-investigation
+      # deadline half-blind). Open egress to the observability namespace on both.
+      extraEgress:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: observability
+          ports:
+            - port: 8428   # VictoriaMetrics (vmsingle) — metrics.url
+              protocol: TCP
+            - port: 9428   # VictoriaLogs — logs.url
+              protocol: TCP
     vmServiceScrape:
       enabled: true
       interval: 30s
@@ -131,6 +140,15 @@ spec:
             severity: [critical]
           dedup:
             window: 30m
+      investigation:
+        # Recurrence cooldown (runlore#270): a trigger answered CONCLUSIVELY less
+        # than this long ago is not re-investigated — no model call, no duplicate
+        # notification. Complements dedup above: dedup keys on the alert
+        # fingerprint (same firing series), this keys on the TriggerKey (same
+        # incident identity across re-fires/resolves). Human-deferential: an
+        # inconclusive verdict always retries, and a standing 👎 on the previous
+        # answer re-arms investigation immediately. Requires outcome.ledger_path.
+        recurrence_cooldown: 30m
         # gitops_failures policy left at defaults (debounce 60s); enablement is
         # via sources.gitops above.
       leader_election:
@@ -143,6 +161,14 @@ spec:
         slack:
           bot_token_env: SLACK_BOT_TOKEN  # pragma: allowlist secret
           channel: "#alerts"
+          # Interactivity: Slack posts button clicks to the public gateway route
+          # (httproute.yaml, POST /slack/interactions only) and every request is
+          # HMAC-verified with this secret. feedback_buttons is the opt-in human
+          # feedback loop (👍/👎 → outcome ledger → recall trust + recurrence
+          # cooldown re-arm). Slack-app side: set the Interactivity Request URL to
+          # https://runlore.<domain>/slack/interactions.
+          signing_secret_env: SLACK_SIGNING_SECRET  # pragma: allowlist secret
+          feedback_buttons: true
       telemetry:
         metrics_enabled: true
       model:
@@ -166,21 +192,15 @@ spec:
         # actions.mode=auto (poison-safety); harmless here (mode=off).
         instant_recall:
           enabled: true
-          # Finalized starting point. Recall's precision comes primarily from the
-          # structural resource-match gate (only entries whose `resource` agrees
-          # with the alert's workload are candidates) and the adversarial verify
-          # pass (a recalled cause is re-checked against live state and downgraded/
-          # rejected if wrong). The BM25 floors below only reject near-zero/garbage
-          # lexical matches: Alertmanager queries are label-derived (alertname), so
-          # real scores are low (~0.3 observed for an exact-title match). solo_floor
-          # is the bar for the common single-candidate case; margin_gap separates
-          # winners when a workload has several entries. TUNE from
-          # recall_hits{result} / recall_rejections / recall_score; raise as the
-          # catalog grows or if downgraded/false recalls appear (and consider
-          # require_workload_match: true for exact ns/name matching then).
-          min_score: 0.15
-          margin_gap: 0.2
-          solo_floor: 0.2
+          # The LLM reranker (ON by default, runlore#294) gates the short-circuit on a
+          # CALIBRATED 0-1 match confidence, not an absolute BM25 magnitude — so the
+          # BM25 solo_floor/min_score/margin_gap NO LONGER need per-corpus tuning and
+          # are left at their defaults. (Previously this cluster hand-tuned solo_floor
+          # to 0.2 because label-derived Alertmanager queries score ~0.1-0.3, an order
+          # of magnitude below the default 4.0 — the reranker removes that need.)
+          # The reranker routes to model.verify when set (here the main model), costs
+          # ~1-2k tokens, and fires on rerank_threshold 0.7. outcome_floor keeps the
+          # decay gate (a recall that never resolves is rejected).
           outcome_prior: 2.0
           outcome_floor: 0.5
       outcome:
@@ -211,4 +231,11 @@ spec:
       # (observability/.../vm-common-helm-values-configmap.yaml).
       server:
         webhook_token_env: WEBHOOK_TOKEN  # pragma: allowlist secret
-      # network / metrics.url / logs.url: deferred to a fast-follow once the base deploy is green.
+      # Investigation signals — enable the query_metrics / query_metrics_range /
+      # query_logs tools so investigations correlate the GitOps change against live
+      # saturation + application logs (multi-source RCA), not just k8s object state.
+      metrics:
+        url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
+      logs:
+        url: http://victoria-logs-victoria-logs-single-server.observability.svc:9428
+      # network: deferred (needs a Hubble/flow-log provider choice).

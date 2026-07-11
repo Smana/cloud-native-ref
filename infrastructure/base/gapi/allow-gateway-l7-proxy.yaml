@@ -29,6 +29,9 @@ spec:
         values:
           # Namespaces with services exposed via Gateway API that have NetworkPolicies
           - flux-system
+          # runlore ships a default-deny-ish NetworkPolicy on its webhook port; the
+          # public gateway routes POST /slack/interactions to it (Slack interactivity).
+          - runlore
   ingress:
     - fromEntities:
         - ingress

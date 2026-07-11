@@ -44,9 +44,9 @@ spec:
             "x": 0,
             "y": 0
           },
-          "id": 1,
+          "id": 114,
           "panels": [],
-          "title": "Overview",
+          "title": "\ud83e\udde0 Learning loop \u2014 is it working?",
           "type": "row"
         },
         {
@@ -54,70 +54,7 @@ spec:
             "type": "prometheus",
             "uid": "$${datasource}"
           },
-          "description": "Build version reported by the running RunLore agent(s).",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "thresholds"
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "blue",
-                    "value": null
-                  }
-                ]
-              },
-              "unit": "none"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 5,
-            "w": 8,
-            "x": 0,
-            "y": 1
-          },
-          "id": 2,
-          "options": {
-            "colorMode": "none",
-            "graphMode": "none",
-            "justifyMode": "auto",
-            "orientation": "auto",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            },
-            "textMode": "name"
-          },
-          "pluginVersion": "11.0.0",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "$${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "runlore_build_info",
-              "instant": true,
-              "legendFormat": "{{version}}",
-              "refId": "A"
-            }
-          ],
-          "title": "Agent version",
-          "type": "stat"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "$${datasource}"
-          },
-          "description": "Number of leader replicas. Healthy = exactly 1.",
+          "description": "Share of incidents answered INSTANTLY from the knowledge base (recall) vs a full investigation. The headline learning-loop KPI \u2014 it should climb as the catalog compounds.",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -130,28 +67,28 @@ spec:
                   {
                     "color": "red",
                     "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.15
                   },
                   {
                     "color": "green",
-                    "value": 1
-                  },
-                  {
-                    "color": "red",
-                    "value": 2
+                    "value": 0.35
                   }
                 ]
               },
-              "unit": "none"
+              "unit": "percentunit"
             },
             "overrides": []
           },
           "gridPos": {
             "h": 5,
-            "w": 8,
-            "x": 8,
+            "w": 5,
+            "x": 0,
             "y": 1
           },
-          "id": 3,
+          "id": 101,
           "options": {
             "colorMode": "background",
             "graphMode": "none",
@@ -174,13 +111,13 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(runlore_leader)",
-              "instant": true,
-              "legendFormat": "leaders",
-              "refId": "A"
+              "expr": "sum(increase(runlore_outcomes_opened_total{kind=\"recall\"}[$__range])) / clamp_min(sum(increase(runlore_outcomes_opened_total[$__range])), 1)",
+              "legendFormat": "fire-rate",
+              "refId": "A",
+              "instant": true
             }
           ],
-          "title": "Active leaders",
+          "title": "Recall fire-rate",
           "type": "stat"
         },
         {
@@ -188,7 +125,7 @@ spec:
             "type": "prometheus",
             "uid": "$${datasource}"
           },
-          "description": "Replicas currently exporting build info (i.e. reporting to Prometheus).",
+          "description": "Of the recalls that fired, the share the adversarial verify pass kept at full confidence (vs downgraded/rejected). A low value means recalls fire but don't hold up \u2014 check confirm evidence / entry quality.",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -203,24 +140,28 @@ spec:
                     "value": null
                   },
                   {
+                    "color": "yellow",
+                    "value": 0.6
+                  },
+                  {
                     "color": "green",
-                    "value": 1
+                    "value": 0.85
                   }
                 ]
               },
-              "unit": "none"
+              "unit": "percentunit"
             },
             "overrides": []
           },
           "gridPos": {
             "h": 5,
-            "w": 8,
-            "x": 16,
+            "w": 5,
+            "x": 5,
             "y": 1
           },
-          "id": 4,
+          "id": 102,
           "options": {
-            "colorMode": "value",
+            "colorMode": "background",
             "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
@@ -241,13 +182,214 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "count(runlore_build_info)",
-              "instant": true,
-              "legendFormat": "replicas",
-              "refId": "A"
+              "expr": "(sum(increase(runlore_recall_hits_total{result=\"verified\"}[$__range])) or vector(0)) / clamp_min(sum(increase(runlore_recall_hits_total[$__range])), 1)",
+              "legendFormat": "verified",
+              "refId": "A",
+              "instant": true
             }
           ],
-          "title": "Replicas reporting",
+          "title": "Recall precision",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Recalls that were followed by the incident actually resolving. This is the ground-truth trust signal that drives outcome decay.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.5
+                  },
+                  {
+                    "color": "green",
+                    "value": 0.8
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 10,
+            "y": 1
+          },
+          "id": 103,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(increase(runlore_recall_outcome_total{result=\"resolved\"}[$__range])) / clamp_min(sum(increase(runlore_outcomes_opened_total{kind=\"recall\"}[$__range])), 1)",
+              "legendFormat": "resolved",
+              "refId": "A",
+              "instant": true
+            }
+          ],
+          "title": "Recall resolve-rate",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Estimated model tokens NOT spent because a recall short-circuited a full investigation \u2014 the compounding payoff of the catalog.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 15,
+            "y": 1
+          },
+          "id": 104,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(increase(runlore_recall_tokens_saved_total[$__range]))",
+              "legendFormat": "saved",
+              "refId": "A",
+              "instant": true
+            }
+          ],
+          "title": "Tokens saved by recall",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Structurally-invalid entries at the MOST RECENT catalog index (6m window \u2248 one git-sync). >0 means entries are silently dropped from recall \u2014 fix them (see `lore validate-kb`).",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 20,
+            "y": 1
+          },
+          "id": 105,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(increase(runlore_catalog_invalid_entries_total[6m])) or vector(0)",
+              "legendFormat": "invalid",
+              "refId": "A",
+              "instant": true
+            }
+          ],
+          "title": "Invalid KB entries",
           "type": "stat"
         },
         {
@@ -258,9 +400,9 @@ spec:
             "x": 0,
             "y": 6
           },
-          "id": 10,
+          "id": 115,
           "panels": [],
-          "title": "Alert intake",
+          "title": "\ud83d\udd0e Retrieve \u2014 instant recall",
           "type": "row"
         },
         {
@@ -268,7 +410,388 @@ spec:
             "type": "prometheus",
             "uid": "$${datasource}"
           },
-          "description": "Rate of alerts entering the coalescer, folded into existing batches, and suppressed by cooldown.",
+          "description": "Every fired recall by the verify pass's verdict: verified (kept), downgraded (confidence lowered), rejected (withdrawn \u2192 fell through to a full investigation). Watch the downgraded share.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 7
+          },
+          "id": 106,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (result) (rate(runlore_recall_hits_total[$__rate_interval]))",
+              "legendFormat": "{{result}}",
+              "refId": "A",
+              "instant": false
+            }
+          ],
+          "title": "Recall outcome by verify result",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Why a candidate did NOT short-circuit: low_outcome (trust decayed), rerank_low_confidence / rerank_no_signal (reranker), low_margin (BM25). The diagnostic for 'recall never fires'.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 7
+          },
+          "id": 107,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (reason) (rate(runlore_recall_rejections_total[$__rate_interval]))",
+              "legendFormat": "{{reason}}",
+              "refId": "A",
+              "instant": false
+            }
+          ],
+          "title": "Recall rejections by reason",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Answer source over time: recall (instant) vs fresh (full investigation).",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "normal"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 15
+          },
+          "id": 108,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (kind) (rate(runlore_outcomes_opened_total[$__rate_interval]))",
+              "legendFormat": "{{kind}}",
+              "refId": "A",
+              "instant": false
+            }
+          ],
+          "title": "Recall vs fresh (answer mix)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Distribution of BM25 recall scores at the decision point. Use this to tune min_score.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "scaleDistribution": {
+                  "type": "linear"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 15
+          },
+          "id": 42,
+          "options": {
+            "calculate": false,
+            "cellGap": 1,
+            "color": {
+              "exponent": 0.5,
+              "fill": "dark-orange",
+              "mode": "scheme",
+              "reverse": false,
+              "scale": "exponential",
+              "scheme": "Spectral",
+              "steps": 64
+            },
+            "exemplars": {
+              "color": "rgba(255,0,255,0.7)"
+            },
+            "filterValues": {
+              "le": 1e-09
+            },
+            "legend": {
+              "show": true
+            },
+            "rowsFrame": {
+              "layout": "auto"
+            },
+            "tooltip": {
+              "mode": "single",
+              "show": true,
+              "yHistogram": false
+            },
+            "yAxis": {
+              "axisPlacement": "left",
+              "reverse": false,
+              "unit": "short"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(runlore_recall_score_bucket[$__rate_interval])) by (le)",
+              "format": "heatmap",
+              "legendFormat": "{{le}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Recall score distribution (BM25)",
+          "type": "heatmap"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 23
+          },
+          "id": 116,
+          "panels": [],
+          "title": "\ud83e\uddea Capture & trust \u2014 outcome ledger",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Investigations recorded in the outcome ledger (by kind) and incidents later resolved.",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -320,11 +843,11 @@ spec:
           },
           "gridPos": {
             "h": 8,
-            "w": 24,
+            "w": 12,
             "x": 0,
-            "y": 7
+            "y": 24
           },
-          "id": 11,
+          "id": 51,
           "options": {
             "legend": {
               "calcs": [
@@ -348,8 +871,8 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(runlore_alerts_received_total[$$__rate_interval]))",
-              "legendFormat": "received",
+              "expr": "sum by (kind) (rate(runlore_outcomes_opened_total[$__rate_interval]))",
+              "legendFormat": "opened {{kind}}",
               "refId": "A"
             },
             {
@@ -358,8 +881,498 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(runlore_alerts_coalesced_total[$$__rate_interval]))",
-              "legendFormat": "coalesced",
+              "expr": "sum(rate(runlore_incidents_resolved_total[$__rate_interval]))",
+              "legendFormat": "resolved",
+              "refId": "B"
+            }
+          ],
+          "title": "Outcomes opened & incidents resolved",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Open to resolve duration percentiles.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 24
+          },
+          "id": 52,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.50, sum(rate(runlore_incident_resolution_seconds_bucket[$__rate_interval])) by (le))",
+              "legendFormat": "p50",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(runlore_incident_resolution_seconds_bucket[$__rate_interval])) by (le))",
+              "legendFormat": "p95",
+              "refId": "B"
+            }
+          ],
+          "title": "Incident resolution time (p50 / p95)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Outcome of resolved incidents whose original answer was a recall short-circuit.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                }
+              },
+              "mappings": [],
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 32
+          },
+          "id": 53,
+          "options": {
+            "displayLabels": [
+              "percent"
+            ],
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true,
+              "values": [
+                "value"
+              ]
+            },
+            "pieType": "pie",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (result) (increase(runlore_recall_outcome_total[$__range]))",
+              "instant": true,
+              "legendFormat": "{{result}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Recall outcome by result",
+          "type": "piechart"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 40
+          },
+          "id": 117,
+          "panels": [],
+          "title": "\ud83d\udcdd Curate \u2014 knowledge growth",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Curation pass outcomes (catalog writes / dedup skips) by kind and result.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 12,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 41
+          },
+          "id": 54,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (kind, result) (rate(runlore_curations_total[$__rate_interval]))",
+              "legendFormat": "{{kind}} / {{result}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Curation rate by kind & result",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Catalog top-hit BM25 score at the curation dedup decision. Use this to tune the dedup threshold: high scores mean a near-duplicate entry already exists.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "scaleDistribution": {
+                  "type": "linear"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 41
+          },
+          "id": 55,
+          "options": {
+            "calculate": false,
+            "cellGap": 1,
+            "color": {
+              "exponent": 0.5,
+              "fill": "dark-orange",
+              "mode": "scheme",
+              "reverse": false,
+              "scale": "exponential",
+              "scheme": "Spectral",
+              "steps": 64
+            },
+            "exemplars": {
+              "color": "rgba(255,0,255,0.7)"
+            },
+            "filterValues": {
+              "le": 1e-09
+            },
+            "legend": {
+              "show": true
+            },
+            "rowsFrame": {
+              "layout": "auto"
+            },
+            "tooltip": {
+              "mode": "single",
+              "show": true,
+              "yHistogram": false
+            },
+            "yAxis": {
+              "axisPlacement": "left",
+              "reverse": false,
+              "unit": "short"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(runlore_curation_dedup_score_bucket[$__rate_interval])) by (le)",
+              "format": "heatmap",
+              "legendFormat": "{{le}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Curation dedup score distribution (BM25)",
+          "type": "heatmap"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 49
+          },
+          "id": 118,
+          "panels": [],
+          "title": "\ud83d\udcb8 Cost & efficiency",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Per-investigation token estimate (p50 / p95) and estimated tokens saved per second via recall.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "tokens saved /s"
+                },
+                "properties": [
+                  {
+                    "id": "custom.axisPlacement",
+                    "value": "right"
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 50
+          },
+          "id": 61,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.50, sum(rate(runlore_investigation_tokens_estimated_bucket[$__rate_interval])) by (le))",
+              "legendFormat": "tokens/investigation p50",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(runlore_investigation_tokens_estimated_bucket[$__rate_interval])) by (le))",
+              "legendFormat": "tokens/investigation p95",
               "refId": "B"
             },
             {
@@ -368,12 +1381,215 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(runlore_alerts_suppressed_total[$$__rate_interval]))",
-              "legendFormat": "suppressed",
+              "expr": "sum(rate(runlore_recall_tokens_saved_total[$__rate_interval]))",
+              "legendFormat": "tokens saved /s",
               "refId": "C"
             }
           ],
-          "title": "Alert intake rate",
+          "title": "Token cost & savings",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Estimated USD per investigation (only populated when model.pricing is set). Recalls cost a fraction of a full loop.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "currencyUSD"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 50
+          },
+          "id": 109,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.5, sum by (le) (rate(runlore_investigation_cost_usd_bucket[$__rate_interval])))",
+              "legendFormat": "p50",
+              "refId": "A",
+              "instant": false
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(runlore_investigation_cost_usd_bucket[$__rate_interval])))",
+              "legendFormat": "p95",
+              "refId": "B",
+              "instant": false
+            }
+          ],
+          "title": "Per-investigation cost (USD)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Share of input tokens served from the provider prompt cache \u2014 higher is cheaper/faster.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 50
+          },
+          "id": 110,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(runlore_model_cached_input_tokens_total[$__rate_interval])) / clamp_min(sum(rate(runlore_model_input_tokens_total[$__rate_interval])), 1)",
+              "legendFormat": "cached / input",
+              "refId": "A",
+              "instant": false
+            }
+          ],
+          "title": "Model cache hit ratio",
           "type": "timeseries"
         },
         {
@@ -382,11 +1598,11 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 15
+            "y": 58
           },
-          "id": 20,
+          "id": 119,
           "panels": [],
-          "title": "Investigations",
+          "title": "\ud83d\udd2c Investigations",
           "type": "row"
         },
         {
@@ -446,9 +1662,9 @@ spec:
           },
           "gridPos": {
             "h": 8,
-            "w": 12,
+            "w": 8,
             "x": 0,
-            "y": 16
+            "y": 59
           },
           "id": 21,
           "options": {
@@ -474,7 +1690,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(runlore_investigations_started_total[$$__rate_interval]))",
+              "expr": "sum(rate(runlore_investigations_started_total[$__rate_interval]))",
               "legendFormat": "started",
               "refId": "A"
             },
@@ -484,7 +1700,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(runlore_investigations_throttled_total[$$__rate_interval]))",
+              "expr": "sum(rate(runlore_investigations_throttled_total[$__rate_interval]))",
               "legendFormat": "throttled",
               "refId": "B"
             },
@@ -494,7 +1710,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(runlore_investigations_dropped_total[$$__rate_interval]))",
+              "expr": "sum(rate(runlore_investigations_dropped_total[$__rate_interval]))",
               "legendFormat": "dropped",
               "refId": "C"
             }
@@ -559,9 +1775,9 @@ spec:
           },
           "gridPos": {
             "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 16
+            "w": 8,
+            "x": 8,
+            "y": 59
           },
           "id": 22,
           "options": {
@@ -587,7 +1803,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(runlore_investigation_duration_seconds_bucket[$$__rate_interval])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(runlore_investigation_duration_seconds_bucket[$__rate_interval])) by (le))",
               "legendFormat": "p50",
               "refId": "A"
             },
@@ -597,7 +1813,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(runlore_investigation_duration_seconds_bucket[$$__rate_interval])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(runlore_investigation_duration_seconds_bucket[$__rate_interval])) by (le))",
               "legendFormat": "p95",
               "refId": "B"
             },
@@ -607,7 +1823,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(runlore_investigation_duration_seconds_bucket[$$__rate_interval])) by (le))",
+              "expr": "histogram_quantile(0.99, sum(rate(runlore_investigation_duration_seconds_bucket[$__rate_interval])) by (le))",
               "legendFormat": "p99",
               "refId": "C"
             }
@@ -672,9 +1888,9 @@ spec:
           },
           "gridPos": {
             "h": 8,
-            "w": 24,
-            "x": 0,
-            "y": 24
+            "w": 8,
+            "x": 16,
+            "y": 59
           },
           "id": 23,
           "options": {
@@ -700,7 +1916,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (result) (rate(runlore_investigations_completed_total[$$__rate_interval]))",
+              "expr": "sum by (result) (rate(runlore_investigations_completed_total[$__rate_interval]))",
               "legendFormat": "{{result}}",
               "refId": "A"
             }
@@ -714,11 +1930,11 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 32
+            "y": 67
           },
-          "id": 30,
+          "id": 120,
           "panels": [],
-          "title": "Tools & model",
+          "title": "\ud83d\udee0 Tools & model",
           "type": "row"
         },
         {
@@ -778,9 +1994,9 @@ spec:
           },
           "gridPos": {
             "h": 8,
-            "w": 12,
+            "w": 8,
             "x": 0,
-            "y": 33
+            "y": 68
           },
           "id": 31,
           "options": {
@@ -806,7 +2022,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (tool) (rate(runlore_tool_calls_total[$$__rate_interval]))",
+              "expr": "sum by (tool) (rate(runlore_tool_calls_total[$__rate_interval]))",
               "legendFormat": "{{tool}}",
               "refId": "A"
             }
@@ -881,9 +2097,9 @@ spec:
           },
           "gridPos": {
             "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 33
+            "w": 8,
+            "x": 8,
+            "y": 68
           },
           "id": 32,
           "options": {
@@ -909,7 +2125,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(runlore_tool_calls_total{result=\"error\"}[$$__rate_interval])) / clamp_min(sum(rate(runlore_tool_calls_total[$$__rate_interval])), 0.0001)",
+              "expr": "sum(rate(runlore_tool_calls_total{result=\"error\"}[$__rate_interval])) / clamp_min(sum(rate(runlore_tool_calls_total[$__rate_interval])), 0.0001)",
               "legendFormat": "error ratio",
               "refId": "A"
             }
@@ -974,9 +2190,9 @@ spec:
           },
           "gridPos": {
             "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 41
+            "w": 8,
+            "x": 16,
+            "y": 68
           },
           "id": 33,
           "options": {
@@ -1002,7 +2218,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(runlore_tool_call_duration_seconds_bucket[$$__rate_interval])) by (le, tool))",
+              "expr": "histogram_quantile(0.95, sum(rate(runlore_tool_call_duration_seconds_bucket[$__rate_interval])) by (le, tool))",
               "legendFormat": "{{tool}}",
               "refId": "A"
             }
@@ -1067,9 +2283,9 @@ spec:
           },
           "gridPos": {
             "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 41
+            "w": 8,
+            "x": 0,
+            "y": 76
           },
           "id": 34,
           "options": {
@@ -1095,7 +2311,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (provider) (rate(runlore_model_requests_total[$$__rate_interval]))",
+              "expr": "sum by (provider) (rate(runlore_model_requests_total[$__rate_interval]))",
               "legendFormat": "{{provider}}",
               "refId": "A"
             }
@@ -1170,9 +2386,9 @@ spec:
           },
           "gridPos": {
             "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 49
+            "w": 8,
+            "x": 8,
+            "y": 76
           },
           "id": 35,
           "options": {
@@ -1198,7 +2414,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(runlore_model_requests_total{result=\"error\"}[$$__rate_interval])) / clamp_min(sum(rate(runlore_model_requests_total[$$__rate_interval])), 0.0001)",
+              "expr": "sum(rate(runlore_model_requests_total{result=\"error\"}[$__rate_interval])) / clamp_min(sum(rate(runlore_model_requests_total[$__rate_interval])), 0.0001)",
               "legendFormat": "error ratio",
               "refId": "A"
             }
@@ -1263,9 +2479,9 @@ spec:
           },
           "gridPos": {
             "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 49
+            "w": 8,
+            "x": 16,
+            "y": 76
           },
           "id": 36,
           "options": {
@@ -1291,7 +2507,7 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(runlore_model_request_duration_seconds_bucket[$$__rate_interval])) by (le, provider))",
+              "expr": "histogram_quantile(0.95, sum(rate(runlore_model_request_duration_seconds_bucket[$__rate_interval])) by (le, provider))",
               "legendFormat": "{{provider}}",
               "refId": "A"
             }
@@ -1300,16 +2516,109 @@ spec:
           "type": "timeseries"
         },
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$${datasource}"
+          },
+          "description": "Bytes elided per second by tool-output truncation. A sustained rate means tools are routinely exceeding the output cap; raise the cap or tighten the queries if context is being lost.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 12,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "Bps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 84
+          },
+          "id": 12,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "$${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(runlore_tool_output_truncated_bytes_total[$__rate_interval]))",
+              "legendFormat": "bytes elided /s",
+              "refId": "A"
+            }
+          ],
+          "title": "Output truncation rate (bytes elided)",
+          "type": "timeseries"
+        },
+        {
           "collapsed": false,
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 57
+            "y": 92
           },
-          "id": 40,
+          "id": 121,
           "panels": [],
-          "title": "Recall efficacy",
+          "title": "\ud83d\udce5 Alert intake",
           "type": "row"
         },
         {
@@ -1317,7 +2626,7 @@ spec:
             "type": "prometheus",
             "uid": "$${datasource}"
           },
-          "description": "Knowledge-base instant-recall short-circuit rate (by verify result) and estimated tokens saved per second.",
+          "description": "Rate of alerts entering the coalescer, folded into existing batches, and suppressed by cooldown.",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -1365,32 +2674,15 @@ spec:
               },
               "unit": "ops"
             },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "tokens saved /s"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "short"
-                  },
-                  {
-                    "id": "custom.axisPlacement",
-                    "value": "right"
-                  }
-                ]
-              }
-            ]
+            "overrides": []
           },
           "gridPos": {
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 58
+            "y": 93
           },
-          "id": 41,
+          "id": 11,
           "options": {
             "legend": {
               "calcs": [
@@ -1414,8 +2706,8 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (result) (rate(runlore_recall_hits_total[$$__rate_interval]))",
-              "legendFormat": "hits {{result}}",
+              "expr": "sum(rate(runlore_alerts_received_total[$__rate_interval]))",
+              "legendFormat": "received",
               "refId": "A"
             },
             {
@@ -1424,8 +2716,8 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (reason) (rate(runlore_recall_rejections_total[$$__rate_interval]))",
-              "legendFormat": "rejected {{reason}}",
+              "expr": "sum(rate(runlore_alerts_coalesced_total[$__rate_interval]))",
+              "legendFormat": "coalesced",
               "refId": "B"
             },
             {
@@ -1434,12 +2726,12 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(runlore_recall_tokens_saved_total[$$__rate_interval]))",
-              "legendFormat": "tokens saved /s",
+              "expr": "sum(rate(runlore_alerts_suppressed_total[$__rate_interval]))",
+              "legendFormat": "suppressed",
               "refId": "C"
             }
           ],
-          "title": "Recall hits & tokens saved",
+          "title": "Alert intake rate",
           "type": "timeseries"
         },
         {
@@ -1447,7 +2739,7 @@ spec:
             "type": "prometheus",
             "uid": "$${datasource}"
           },
-          "description": "Distribution of BM25 recall scores at the decision point. Use this to tune min_score.",
+          "description": "Distribution of incidents per flushed batch. A right-shifted distribution means the coalescer is folding many alerts together (good fan-in); a spike at 1 means little coalescing is happening.",
           "fieldConfig": {
             "defaults": {
               "custom": {
@@ -1467,9 +2759,9 @@ spec:
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 58
+            "y": 93
           },
-          "id": 42,
+          "id": 13,
           "options": {
             "calculate": false,
             "cellGap": 1,
@@ -1513,13 +2805,13 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(rate(runlore_recall_score_bucket[$$__rate_interval])) by (le)",
+              "expr": "sum(rate(runlore_coalesce_batch_size_bucket[$__rate_interval])) by (le)",
               "format": "heatmap",
               "legendFormat": "{{le}}",
               "refId": "A"
             }
           ],
-          "title": "Recall score distribution (BM25)",
+          "title": "Coalesced batch size distribution",
           "type": "heatmap"
         },
         {
@@ -1528,11 +2820,11 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 66
+            "y": 101
           },
-          "id": 50,
+          "id": 122,
           "panels": [],
-          "title": "Learning loop",
+          "title": "\ud83d\udda5 Fleet",
           "type": "row"
         },
         {
@@ -1540,250 +2832,38 @@ spec:
             "type": "prometheus",
             "uid": "$${datasource}"
           },
-          "description": "Investigations recorded in the outcome ledger (by kind) and incidents later resolved.",
+          "description": "Running image version (runlore_build_info). Deduplicated per distinct version, so a rollout shows old+new briefly, steady-state shows one.",
           "fieldConfig": {
             "defaults": {
               "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "drawStyle": "line",
-                "fillOpacity": 12,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "lineInterpolation": "linear",
-                "lineWidth": 2,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
+                "mode": "thresholds"
               },
               "mappings": [],
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
+                    "color": "text",
                     "value": null
                   }
                 ]
               },
-              "unit": "ops"
+              "unit": "none"
             },
             "overrides": []
           },
           "gridPos": {
-            "h": 8,
-            "w": 12,
+            "h": 5,
+            "w": 8,
             "x": 0,
-            "y": 67
+            "y": 102
           },
-          "id": 51,
+          "id": 111,
           "options": {
-            "legend": {
-              "calcs": [
-                "mean",
-                "lastNotNull"
-              ],
-              "displayMode": "table",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "pluginVersion": "11.0.0",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "$${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (kind) (rate(runlore_outcomes_opened_total[$$__rate_interval]))",
-              "legendFormat": "opened {{kind}}",
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "$${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(runlore_incidents_resolved_total[$$__rate_interval]))",
-              "legendFormat": "resolved",
-              "refId": "B"
-            }
-          ],
-          "title": "Outcomes opened & incidents resolved",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "$${datasource}"
-          },
-          "description": "Open to resolve duration percentiles.",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "lineInterpolation": "linear",
-                "lineWidth": 2,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "unit": "s"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 67
-          },
-          "id": 52,
-          "options": {
-            "legend": {
-              "calcs": [
-                "mean",
-                "lastNotNull"
-              ],
-              "displayMode": "table",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "pluginVersion": "11.0.0",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "$${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(runlore_incident_resolution_seconds_bucket[$$__rate_interval])) by (le))",
-              "legendFormat": "p50",
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "$${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(runlore_incident_resolution_seconds_bucket[$$__rate_interval])) by (le))",
-              "legendFormat": "p95",
-              "refId": "B"
-            }
-          ],
-          "title": "Incident resolution time (p50 / p95)",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "$${datasource}"
-          },
-          "description": "Outcome of resolved incidents whose original answer was a recall short-circuit.",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                }
-              },
-              "mappings": [],
-              "unit": "short"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 75
-          },
-          "id": 53,
-          "options": {
-            "displayLabels": [
-              "percent"
-            ],
-            "legend": {
-              "displayMode": "table",
-              "placement": "right",
-              "showLegend": true,
-              "values": [
-                "value"
-              ]
-            },
-            "pieType": "pie",
+            "colorMode": "none",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
             "reduceOptions": {
               "calcs": [
                 "lastNotNull"
@@ -1791,10 +2871,7 @@ spec:
               "fields": "",
               "values": false
             },
-            "tooltip": {
-              "mode": "single",
-              "sort": "none"
-            }
+            "textMode": "name"
           },
           "pluginVersion": "11.0.0",
           "targets": [
@@ -1804,91 +2881,68 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (result) (increase(runlore_recall_outcome_total[$$__range]))",
-              "instant": true,
-              "legendFormat": "{{result}}",
-              "refId": "A"
+              "expr": "max by (version) (last_over_time(runlore_build_info[2m]))",
+              "legendFormat": "{{version}}",
+              "refId": "A",
+              "instant": true
             }
           ],
-          "title": "Recall outcome by result",
-          "type": "piechart"
+          "title": "Agent version",
+          "type": "stat"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "$${datasource}"
           },
-          "description": "Curation pass outcomes (catalog writes / dedup skips) by kind and result.",
+          "description": "Elected leaders (healthy = 1). Bounded to a 1m window so a just-rolled replica's stale series doesn't linger; a transient 2 during a rollout is expected (yellow), 0 is a real problem (red).",
           "fieldConfig": {
             "defaults": {
               "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "drawStyle": "line",
-                "fillOpacity": 12,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "lineInterpolation": "linear",
-                "lineWidth": 2,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
+                "mode": "thresholds"
               },
               "mappings": [],
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
+                    "color": "red",
                     "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 2
                   }
                 ]
               },
-              "unit": "ops"
+              "unit": "none"
             },
             "overrides": []
           },
           "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 75
+            "h": 5,
+            "w": 8,
+            "x": 8,
+            "y": 102
           },
-          "id": 54,
+          "id": 112,
           "options": {
-            "legend": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
               "calcs": [
-                "mean",
                 "lastNotNull"
               ],
-              "displayMode": "table",
-              "placement": "bottom",
-              "showLegend": true
+              "fields": "",
+              "values": false
             },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
+            "textMode": "auto"
           },
           "pluginVersion": "11.0.0",
           "targets": [
@@ -1898,116 +2952,64 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (kind, result) (rate(runlore_curations_total[$$__rate_interval]))",
-              "legendFormat": "{{kind}} / {{result}}",
-              "refId": "A"
+              "expr": "sum(last_over_time(runlore_leader[1m]))",
+              "legendFormat": "leaders",
+              "refId": "A",
+              "instant": true
             }
           ],
-          "title": "Curation rate by kind & result",
-          "type": "timeseries"
-        },
-        {
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 83
-          },
-          "id": 60,
-          "panels": [],
-          "title": "Cost",
-          "type": "row"
+          "title": "Active leaders",
+          "type": "stat"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "$${datasource}"
           },
-          "description": "Per-investigation token estimate (p50 / p95) and estimated tokens saved per second via recall.",
+          "description": "Replicas that reported in the last minute (1m window excludes recently-terminated pods, so it doesn't over-count during rollouts).",
           "fieldConfig": {
             "defaults": {
               "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "lineInterpolation": "linear",
-                "lineWidth": 2,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
+                "mode": "thresholds"
               },
               "mappings": [],
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
+                    "color": "red",
                     "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
                   }
                 ]
               },
-              "unit": "short"
+              "unit": "none"
             },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "tokens saved /s"
-                },
-                "properties": [
-                  {
-                    "id": "custom.axisPlacement",
-                    "value": "right"
-                  }
-                ]
-              }
-            ]
+            "overrides": []
           },
           "gridPos": {
-            "h": 8,
-            "w": 24,
-            "x": 0,
-            "y": 84
+            "h": 5,
+            "w": 8,
+            "x": 16,
+            "y": 102
           },
-          "id": 61,
+          "id": 113,
           "options": {
-            "legend": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
               "calcs": [
-                "mean",
                 "lastNotNull"
               ],
-              "displayMode": "table",
-              "placement": "bottom",
-              "showLegend": true
+              "fields": "",
+              "values": false
             },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
+            "textMode": "auto"
           },
           "pluginVersion": "11.0.0",
           "targets": [
@@ -2017,33 +3019,14 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(runlore_investigation_tokens_estimated_bucket[$$__rate_interval])) by (le))",
-              "legendFormat": "tokens/investigation p50",
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "$${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(runlore_investigation_tokens_estimated_bucket[$$__rate_interval])) by (le))",
-              "legendFormat": "tokens/investigation p95",
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "$${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(runlore_recall_tokens_saved_total[$$__rate_interval]))",
-              "legendFormat": "tokens saved /s",
-              "refId": "C"
+              "expr": "count(last_over_time(runlore_build_info[1m]))",
+              "legendFormat": "replicas",
+              "refId": "A",
+              "instant": true
             }
           ],
-          "title": "Token cost & savings",
-          "type": "timeseries"
+          "title": "Replicas reporting",
+          "type": "stat"
         }
       ],
       "preload": false,
@@ -2051,15 +3034,16 @@ spec:
       "schemaVersion": 39,
       "tags": [
         "runlore",
-        "sre"
+        "sre",
+        "learning-loop"
       ],
       "templating": {
         "list": [
           {
             "current": {
               "selected": true,
-              "text": "VictoriaMetrics",
-              "value": "VictoriaMetrics"
+              "text": "default",
+              "value": "default"
             },
             "hide": 0,
             "includeAll": false,
@@ -2083,6 +3067,6 @@ spec:
       "timezone": "",
       "title": "RunLore \u2014 SRE Agent",
       "uid": "runlore-overview",
-      "version": 1,
+      "version": 2,
       "weekStart": ""
     }

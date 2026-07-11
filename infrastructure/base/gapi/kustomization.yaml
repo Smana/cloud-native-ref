@@ -9,3 +9,4 @@ resources:
   - tailscale-gatewayclass.yaml
   - platform-tailscale-general-gateway.yaml
   - platform-tailscale-admin-gateway.yaml
+  - platform-public-gateway.yaml
