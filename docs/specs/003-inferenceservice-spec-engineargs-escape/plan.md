@@ -141,24 +141,24 @@ examples/
 
 ### Phase 1: XRD schema + CEL
 
-- [ ] **T001**: XRD: add `spec.engineArgs` (`array` of `string`, `maxItems: 16`) with description; add the `--` prefix CEL rule (FR-004) and one reserved-flag CEL rule per flag in the Design table (FR-003), each message naming the curated field (CL-1, CL-4)
-- [ ] **T002**: XRD: add `status.servedModels` object-list schema `{name, kind (enum base|adapter), canaryWeightPercent (optional int)}` (FR-005); add the served-models `additionalPrinterColumns` entry (FR-006); leave `status.phase`/`status.modelEndpoint` untouched (FR-007)
+- [x] **T001**: XRD: add `spec.engineArgs` (`array` of `string`, `maxItems: 16`) with description; add the `--` prefix CEL rule (FR-004) and one reserved-flag CEL rule per flag in the Design table (FR-003), each message naming the curated field (CL-1, CL-4) — *evidence: 710a4f14 — 17 CEL rules (1 prefix + 16 reserved), spec x-kubernetes-validations 6→23*
+- [x] **T002**: XRD: add `status.servedModels` object-list schema `{name, kind (enum base|adapter), canaryWeightPercent (optional int)}` (FR-005); add the served-models `additionalPrinterColumns` entry (FR-006); leave `status.phase`/`status.modelEndpoint` untouched (FR-007) — *evidence: 710a4f14 — servedModels + servedModelsSummary schema, SERVED MODELS printer column (CL-5)*
 
 ### Phase 2: Composition (KCL)
 
-- [ ] **T003**: `main.k`: add `_engineArgs = oxr.spec.engineArgs or []`; append it as the last slice of `_vllmArgs` (FR-002) so managed flags always precede user flags
-- [ ] **T004**: `main.k`: build `_servedModels` (base + one per `loraAdapters[]`, `canaryWeightPercent` only for canary-targeted adapters — FR-005) via single-line comprehensions + inline-conditional dicts (no mutation, #285); move the dxr status patch out of the `if _gatewayEnabled` block so `servedModels` is always set and `modelEndpoint` is included only when `gateway.enabled` (FR-007)
+- [x] **T003**: `main.k`: add `_engineArgs = oxr.spec.engineArgs or []`; append it as the last slice of `_vllmArgs` (FR-002) so managed flags always precede user flags — *evidence: 3a4ef520 — _buildVllmArgs(managed, engineArgs), user args last; kcl test 35/35*
+- [x] **T004**: `main.k`: build `_servedModels` (base + one per `loraAdapters[]`, `canaryWeightPercent` only for canary-targeted adapters — FR-005) via single-line comprehensions + inline-conditional dicts (no mutation, #285); move the dxr status patch out of the `if _gatewayEnabled` block so `servedModels` is always set and `modelEndpoint` is included only when `gateway.enabled` (FR-007) — *evidence: 3a4ef520 — _servedModels/_servedModelsSummary, dxr status hoisted, modelEndpoint conditional*
 
 ### Phase 3: Tests
 
-- [ ] **T005**: `main_test.k`: engineArgs appended verbatim and LAST; explicit managed-flags-still-win ordering assertion; empty/absent engineArgs ⇒ args byte-identical to baseline (FR-001/FR-002; SC-001/SC-006)
-- [ ] **T006**: `main_test.k`: `servedModels` shapes — base-only; base+adapters (no canaryWeightPercent key present); base+adapter+canary (`canaryWeightPercent` set, matches the canary weight); names match the rendered `AIGatewayRoute` match/override values (FR-005; SC-004); confirm the existing 31 tests still pass (SC-006)
+- [x] **T005**: `main_test.k`: engineArgs appended verbatim and LAST; explicit managed-flags-still-win ordering assertion; empty/absent engineArgs ⇒ args byte-identical to baseline (FR-001/FR-002; SC-001/SC-006) — *evidence: 3a4ef520 — mutation-tested ordering + builder([])==managed baseline assertions*
+- [x] **T006**: `main_test.k`: `servedModels` shapes — base-only; base+adapters (no canaryWeightPercent key present); base+adapter+canary (`canaryWeightPercent` set, matches the canary weight); names match the rendered `AIGatewayRoute` match/override values (FR-005; SC-004); confirm the existing 31 tests still pass (SC-006) — *evidence: 3a4ef520 — servedModels shapes incl. live non-canaried adapter-c fixture; 35/35 PASS*
 
 ### Phase 4: Publish, examples, docs
 
-- [ ] **T007**: Bump `kcl.mod` → `0.8.0`; publish module via `crossplane-modules.yml` PR-tag flow; verify `0.8.0-pr<N>` anonymously pullable; point the composition `Function` pin at the new tag; re-render (Implementation Notes)
-- [ ] **T008**: `settings-example.yaml` + `examples/inferenceservice-complete.yaml`: add an `engineArgs` example (basic stays unset); README.md: document `engineArgs`, the reserved-flag table with curated-field pointers (incl. the `--port`/`--host` serving-contract note), and `status.servedModels`
-- [ ] **T009**: `./scripts/validate-kcl-compositions.sh` exit 0 (incl. Polaris ≥ 85, kube-linter); both examples render via `crossplane render`
+- [ ] **T007** *(partial: version bumped to 0.8.0 in c9f074c1; publish/pin/re-render pending PR CI)*: Bump `kcl.mod` → `0.8.0`; publish module via `crossplane-modules.yml` PR-tag flow; verify `0.8.0-pr<N>` anonymously pullable; point the composition `Function` pin at the new tag; re-render (Implementation Notes)
+- [x] **T008**: `settings-example.yaml` + `examples/inferenceservice-complete.yaml`: add an `engineArgs` example (basic stays unset); README.md: document `engineArgs`, the reserved-flag table with curated-field pointers (incl. the `--port`/`--host` serving-contract note), and `status.servedModels` — *evidence: c9f074c1 — README reserved-flag table (16 rows, XRD-faithful), example engineArgs block*
+- [x] **T009**: `./scripts/validate-kcl-compositions.sh` exit 0 (incl. Polaris ≥ 85, kube-linter); both examples render via `crossplane render` — *evidence: validate-kcl-compositions.sh exit 0 on 2026-07-12 (render still against 0.7.0-pr1559 pin; 0.8.0 render pending T007 publish)*
 
 ### Phase 5: Live verification (feature-branch cluster)
 
