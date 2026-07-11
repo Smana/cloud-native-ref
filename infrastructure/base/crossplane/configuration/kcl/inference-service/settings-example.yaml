@@ -107,9 +107,7 @@ kcl_options:
             contextWindow: 32768
             preload:
               enabled: true
-          # SPEC-003: user-supplied vLLM engine args, appended verbatim AFTER
-          # all composition-managed flags. Each entry is a single `--flag=value`
-          # token (admission CEL rejects bare `--flag value` + managed flags).
+          # SPEC-003 escape hatch — verbatim vLLM flags appended after managed args (see README.md "Engine args").
           engineArgs:
             - "--kv-cache-dtype=fp8"
             - "--swap-space=4"

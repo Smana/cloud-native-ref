@@ -163,12 +163,8 @@ _loraArgs = (["--enable-lora", "--max-loras", str(len(_loraAdapters)), "--max-lo
 # flags — a user cannot re-order or shadow a managed flag.
 _engineArgs = oxr.spec.engineArgs or []
 
-# Factored so tests can assert builder(managed, []) == managed (rationale in main_test.k).
-_buildVllmArgs = lambda managed: [str], extra: [str] -> [str] {
-    managed + extra
-}
 _managedVllmArgs = _baseVllmArgs + _quantArgs + _prefixCacheArgs + _kvOffloadArgs + _toolCallArgs + _loraArgs
-_vllmArgs = _buildVllmArgs(_managedVllmArgs, _engineArgs)
+_vllmArgs = _managedVllmArgs + _engineArgs
 
 # Observed resources from cluster state (drive readiness annotations).
 _observed = lambda suffix: str -> any {
@@ -240,13 +236,10 @@ _gatewayCanaryWeightTotal = sum([c.weightPercent for c in _gatewayCanaries], 0)
 # SPEC-003 FR-005: status.servedModels topology projection — the base model
 # plus one entry per LoRA adapter. `canaryWeightPercent` is included ONLY for
 # canary-targeted adapters (via `**` spread of an inline-conditional dict, so
-# the key is ABSENT — not null — otherwise). The lookup key `cv.adapter` is an
-# EXPRESSION, so KCL evaluates it as a computed key (the shadowing trap only
-# bites bare-identifier keys like `{name = name}`); the loop var is renamed to
-# `cv` for extra safety. No dict is mutated after creation (function-kcl #285).
+# the key is ABSENT — not null — otherwise). No dict is mutated after creation
+# (function-kcl #285).
 _canaryWeightByAdapter = {cv.adapter: cv.weightPercent for cv in _gatewayCanaries}
 _servedModels = [{name = _name, kind = "base"}] + [{name = a.name, kind = "adapter", **({canaryWeightPercent = _canaryWeightByAdapter[a.name]} if a.name in _canaryWeightByAdapter else {})} for a in _loraAdapters]
-_servedModelsSummary = ",".join([m.name for m in _servedModels])
 
 # AIGatewayRoute v1alpha1 publishes top-level status.conditions; the route
 # is "ready" once Accepted=True (mirror of the HTTPRoute check). Absent
@@ -536,7 +529,7 @@ _dxrStatus = [{
     **option("params").dxr
     status: {
         servedModels = _servedModels
-        servedModelsSummary = _servedModelsSummary
+        servedModelsSummary = ",".join([m.name for m in _servedModels])
         **({modelEndpoint = "https://llm." + _privateDomain + "/v1"} if _gatewayEnabled else {})
     }
 }]

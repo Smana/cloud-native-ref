@@ -198,15 +198,13 @@ name. Every `gateway.canaries[].adapter` must match a `loraAdapters[].name`
 (CEL-enforced at the XRD), adapter names must be distinct across entries, and
 each `weightPercent` is bounded 1–99.
 
-When `gateway.enabled`, `status.modelEndpoint` is set to
-`https://llm.priv.cloud.ogenki.io/v1` (the platform's external OpenAI-compatible
-entry point).
+When `gateway.enabled`, `status.modelEndpoint` is populated — see the [Status](#status) table.
 
 ## Status
 
 | Field | Condition | Notes |
 |---|---|---|
-| `status.modelEndpoint` | `gateway.enabled` | External OpenAI-compatible URL `https://llm.priv.cloud.ogenki.io/v1` |
+| `status.modelEndpoint` | `gateway.enabled` | External OpenAI-compatible URL `https://llm.<domain>/v1`. The domain comes from the `eks-environment` EnvironmentConfig (`privateDomainName`, populated via Flux `${private_domain_name}`), so the composition stays environment-agnostic; a literal `priv.cloud.ogenki.io` fallback covers clusters whose EnvironmentConfig predates the field |
 | `status.servedModels` | always | Topology projection (see below) |
 | `status.servedModelsSummary` | always | Comma-joined `servedModels` names; source for the `SERVED MODELS` printer column |
 
@@ -269,7 +267,7 @@ single scalar field the column can read directly.
 | `AIServiceBackend` (`<claim>`) | `gateway.enabled` | OpenAI-schema AI backend referencing the `Backend`. Static-ready |
 | `AIServiceBackend` (`<claim>-canary-<i>`) | per `gateway.canaries[]` entry | One extra AI backend per canary (same `Backend`) so the route rule can carry a distinct named backendRef per canary. Static-ready |
 | `AIGatewayRoute` (`<claim>`) | `gateway.enabled` **and** Deployment `Available` (latched) | Base rule (`x-ai-eg-model == <claim>`) + one pin rule per LoRA adapter. Withheld until the Deployment is ready, then latched (never withdrawn on transient unavailability). Ready when `status.conditions[Accepted]=True` |
-| XR `status.modelEndpoint` | `gateway.enabled` | XR status patched to `https://llm.priv.cloud.ogenki.io/v1` via the desired-composite (dxr) |
+| XR `status.modelEndpoint` | `gateway.enabled` | XR status patched via the desired-composite (dxr) — see [Status](#status) |
 | `CiliumNetworkPolicy` (serving) | always | Default-deny + explicit allow on the long-lived serving pod (DNS only egress + ingress from AI Gateway data-plane, SR, vmagent) |
 | `CiliumNetworkPolicy` (preload) | `model.preload.enabled` | Separate policy on the one-shot Job pod (DNS, AWS API, world:443 for HF, host:80 for EKS Pod Identity Agent) |
 | `ExternalSecret(s)` | per `externalSecrets` entry | AWS Secrets Manager → Kubernetes Secret |

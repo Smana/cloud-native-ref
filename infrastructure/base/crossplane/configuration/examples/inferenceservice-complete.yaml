@@ -19,13 +19,8 @@ spec:
     maxNumSeqs: 32
     preload:
       enabled: true   # CL-3 (rec A) — composition renders one-shot Job
-  # SPEC-003 escape hatch: verbatim vLLM CLI args, each a single token
-  # (--flag or --flag=value, never `--flag value` as two tokens). Appended
-  # AFTER all composition-managed flags, so they extend the engine but can
-  # never shadow the curated surface — reserved flags (--model, --max-model-len,
-  # --enable-lora, --port, …) are rejected at admission by the XRD CEL denylist;
-  # use their dedicated spec fields instead. Values are NOT validated against
-  # vLLM: an unknown or malformed flag fails at container start, not admission.
+  # SPEC-003 escape hatch — verbatim vLLM flags appended after composition-managed
+  # args; reserved flags rejected at admission (see kcl/inference-service/README.md "Engine args").
   engineArgs:
     - --kv-cache-dtype=fp8
     - --enforce-eager

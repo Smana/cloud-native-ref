@@ -35,9 +35,9 @@ spec:
                   message: "gateway.canaries[].adapter names must be distinct"
                 - rule: "!has(self.gateway) || !has(self.gateway.canaries) || self.gateway.canaries.map(c, c.weightPercent).sum() <= 99"
                   message: "gateway.canaries[].weightPercent must sum to <= 99 (the base model always retains traffic)"
-                # engineArgs reserved-flag denylist (SPEC-003) — keep in lockstep with
-                # the composition-managed flags in kcl/inference-service/main.k (one rule
-                # per flag; copy a rule pair to add one). The
+                # engineArgs reserved-flag denylist (SPEC-003) — one rule per
+                # composition-managed flag. Lockstep with kcl/inference-service/main.k
+                # is asserted by main_test.k:test_engine_args_denylist_lockstep. The
                 # 'a != "--X" && !a.startsWith("--X=")' form is used instead of
                 # split("=")[0] to avoid depending on the CEL strings extension.
                 - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a.startsWith("--"))'

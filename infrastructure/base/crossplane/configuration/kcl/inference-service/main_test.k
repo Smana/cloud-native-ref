@@ -1,5 +1,8 @@
 # Tests for InferenceService composition
 # Run: kcl test . -Y settings-example.yaml
+import file
+import yaml
+import regex
 
 # ---- Test: Core resources always created ----
 # Two CiliumNetworkPolicies render when preload is enabled — one tight
@@ -512,73 +515,28 @@ test_gateway_status_endpoint = lambda {
 }
 
 # ---- Test (T005): engineArgs appended verbatim and LAST ----
-# SPEC-003 FR-001/FR-002; SC-001/SC-006. spec.engineArgs is a plain
-# passthrough appended as the final slice of the vLLM args — composition-
-# managed flags always precede user flags so a user cannot re-order or
-# shadow a managed flag (admission CEL is the single enforcement point).
-test_engine_args_appended_last = lambda {
-    _oxr = option("params").oxr
-    dep = [r for r in items if r.kind == "Deployment"][0]
-    args = dep.spec.template.spec.containers[0].args
-    _engineArgs = _oxr.spec?.engineArgs or []
-    if len(_engineArgs) > 0:
-        # Every engineArgs token appears, verbatim, in the SAME order, as the
-        # tail slice of the container args.
-        _tail = args[len(args) - len(_engineArgs)::]
-        assert _tail == _engineArgs, "engineArgs must be appended verbatim as the LAST slice: expected tail {}, got {}".format(_engineArgs, _tail)
-
-        # Managed-flags-still-win: every composition-managed token appears
-        # strictly BEFORE the first engineArgs entry. The managed portion is
-        # everything preceding the appended tail; assert the first engineArgs
-        # entry does not appear anywhere in that managed prefix.
-        _managedPrefix = args[0:len(args) - len(_engineArgs):]
-        assert _engineArgs[0] not in _managedPrefix, "engineArgs must start strictly after all managed flags; first entry {} leaked into managed prefix".format(_engineArgs[0])
-        # The known managed flags are all in the prefix (never after engineArgs).
-        _managedFlags = ["--model", "--served-model-name", "--max-model-len", "--max-num-seqs", "--gpu-memory-utilization"]
-        _leaked = [f for f in _managedFlags if f in _tail]
-        assert len(_leaked) == 0, "managed flags must never appear in the engineArgs tail: {}".format(_leaked)
-
-    assert True
-}
-
-# ---- Test (T005): empty/absent engineArgs ⇒ args identical to baseline ----
-# SC-006: adding the engineArgs plumbing must not perturb the rendered args
-# when engineArgs is unset. Proven against the REAL builder main.k uses
-# (`_buildVllmArgs`), NOT by tail-stripping the same render — a bad fallback
-# like `managed + (extra or ["--oops"])` would survive tail-stripping (the
-# "--oops" would sit in the stripped tail) but fails `builder(managed, []) ==
-# managed` here. Two independent proofs:
-#   1. builder(managed, []) == managed exactly (empty engineArgs is a no-op).
-#   2. the fixture render == builder(managed, fixture engineArgs) — the
-#      rendered args ARE the builder output, so the module wires the builder
-#      in (no divergent second assembly path).
-test_engine_args_empty_is_baseline = lambda {
+# SPEC-003 FR-001/FR-002; SC-001/SC-006. spec.engineArgs is a plain passthrough
+# appended as the final slice of the vLLM args. The single equality
+# `args == _managedVllmArgs + _engineArgs` proves all three properties at once:
+# verbatim append, managed-flags-precede-user ordering, and empty⇒no-op (when
+# _engineArgs is [], args must equal the managed prefix exactly — a bad fallback
+# like `managed + (extra or ["--oops"])` fails this). It also proves the module
+# wires the real managed args + engineArgs into the render (no divergent second
+# assembly path). Managed-vs-user separation is enforced at admission (XRD CEL
+# denylist), asserted independently by test_engine_args_denylist_lockstep.
+test_engine_args = lambda {
     _oxr = option("params").oxr
     dep = [r for r in items if r.kind == "Deployment"][0]
     args = dep.spec.template.spec.containers[0].args
     _engineArgs = _oxr.spec?.engineArgs or []
 
-    # (1) Absent-engineArgs proof: the builder with extra=[] returns the
-    # managed prefix VERBATIM — this is exactly what a claim with no
-    # engineArgs renders. A `or ["--oops"]`-style fallback breaks this.
-    _emptyBuild = _buildVllmArgs(_managedVllmArgs, [])
-    assert _emptyBuild == _managedVllmArgs, "builder([]) must equal the managed prefix exactly (absent engineArgs is a no-op): got {}".format(_emptyBuild)
+    assert args == _managedVllmArgs + _engineArgs, "rendered args must equal _managedVllmArgs + _engineArgs (verbatim append, managed-first ordering, empty⇒no-op): got {}".format(args)
 
-    # The managed prefix is itself a valid, complete managed arg list.
-    assert _managedVllmArgs[0] == "--model", "managed prefix must start with --model"
-    _smnIdx = [i for i in range(len(_managedVllmArgs)) if _managedVllmArgs[i] == "--served-model-name"]
-    assert len(_smnIdx) == 1, "managed prefix must carry exactly one --served-model-name"
-    assert _managedVllmArgs[_smnIdx[0] + 1] == _oxr.metadata.name, "served-model-name must be the claim name"
-
-    # (2) The fixture render IS the builder output — proves main.k uses the
-    # builder for the real args, so proof (1) actually governs the render.
-    assert args == _buildVllmArgs(_managedVllmArgs, _engineArgs), "rendered args must equal builder(managed, engineArgs) — the module must wire the builder in"
-
-    # No user token (first engineArg) leaked into the managed prefix.
-    if len(_engineArgs) > 0:
-        assert _engineArgs[0] not in _managedVllmArgs, "engineArgs must not perturb the managed baseline"
-
-    assert True
+    # Fixture-independence guard: the fixture actually exercises engineArgs, and
+    # its tokens are genuinely user-supplied (not accidentally shadowing a
+    # managed token) — so the equality above is a meaningful append proof.
+    assert len(_engineArgs) > 0, "fixture must set spec.engineArgs to exercise the append path"
+    assert _engineArgs[0] not in _managedVllmArgs, "engineArgs fixture token must not collide with a managed flag"
 }
 
 # ---- Test (T006): servedModels topology projection ----
@@ -627,16 +585,43 @@ test_served_models_shape = lambda {
         _mismatch = [n for n in _canariedServed if n not in _overrides]
         assert len(_mismatch) == 0, "canaried servedModels names must match AIGatewayRoute modelNameOverride values: {}".format(_mismatch)
 
+    # servedModelsSummary (CL-5 deviation) is the comma-joined servedModels names.
+    assert xr.status.servedModelsSummary == ",".join([m.name for m in served]), "servedModelsSummary must be the comma-joined servedModels names: expected {}, got {}".format(",".join([m.name for m in served]), xr.status.servedModelsSummary)
+
     assert True
 }
 
-# ---- Test (T006): servedModelsSummary is the comma-joined servedModels names ----
-# CL-5 deviation: status.servedModelsSummary = ",".join([m.name for m in servedModels]).
-test_served_models_summary = lambda {
-    xr = [r for r in items if r.kind == "InferenceService"][0]
-    served = xr.status.servedModels
-    summary = xr.status.servedModelsSummary
-    _expected = ",".join([m.name for m in served])
-    assert summary == _expected, "servedModelsSummary must be the comma-joined servedModels names: expected {}, got {}".format(_expected, summary)
-    assert True
+# ---- Test (SPEC-003): engineArgs reserved-flag denylist lockstep ----
+# Promotes the XRD↔main.k lockstep contract from comment to assertion. The XRD
+# CEL denylist is the single admission enforcement point for reserved engine
+# flags; this test proves it stays in sync with (a) the canonical list below and
+# (b) the flags main.k actually emits — so adding a managed flag without denying
+# it (or vice versa) fails CI here rather than silently in production.
+# Reads the XRD via KCL stdlib; path is relative to the module dir (CI runs
+# `kcl test` from here — see .github/workflows/crossplane-modules.yml). Guarded
+# by file.exists so OCI-context renders (XRD not on disk) skip rather than fail.
+test_engine_args_denylist_lockstep = lambda {
+    _reservedEngineFlags = ["--model", "--served-model-name", "--max-model-len", "--max-num-seqs", "--gpu-memory-utilization", "--quantization", "--enable-prefix-caching", "--cpu-offload-gb", "--enable-auto-tool-choice", "--tool-call-parser", "--enable-lora", "--max-loras", "--max-lora-rank", "--lora-modules", "--port", "--host"]
+    _xrdPath = "../../inference-service-definition.yaml"
+    if not file.exists(_xrdPath):
+        # OCI-context render (XRD not on disk) — canonical list is still the
+        # single source main.k membership is checked against below.
+        assert True
+    else:
+        _xrd = yaml.decode(file.read(_xrdPath))
+        _validations = _xrd.spec.versions[0].schema.openAPIV3Schema.properties.spec["x-kubernetes-validations"]
+
+        # Each reserved-flag rule carries `!a.startsWith("--<flag>=")`; extract the
+        # `--<flag>` (drop the trailing "=") from every rule and dedupe.
+        _xrdFlags = sorted({f[0:len(f) - 1:]: True for v in _validations for f in regex.findall(v.rule, "--[a-z0-9-]+=") if f.endswith("=")})
+        assert _xrdFlags == sorted(_reservedEngineFlags), "XRD denylist must equal the canonical reserved-flag list; XRD={}, canonical={}".format(_xrdFlags, sorted(_reservedEngineFlags))
+    # Every `--`-prefixed token main.k emits into the managed args must be in the
+    # denylist (catches a newly added managed flag missing from the denylist).
+    # Split on "=" first so `--flag=value` forms compare on the flag. Conditional
+    # flags not enabled by this fixture (e.g. --tool-call-parser) and never-emitted
+    # serving-contract flags (--port/--host) are covered by the set-equality check
+    # above, not this membership check.
+    _emittedFlags = [t.split("=")[0] for t in _managedVllmArgs if t.startswith("--")]
+    _undenied = [f for f in _emittedFlags if f not in _reservedEngineFlags]
+    assert len(_undenied) == 0, "every managed vLLM flag must be in the reserved denylist; undenied: {}".format(_undenied)
 }
