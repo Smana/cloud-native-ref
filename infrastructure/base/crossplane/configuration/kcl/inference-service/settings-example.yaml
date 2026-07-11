@@ -107,6 +107,12 @@ kcl_options:
             contextWindow: 32768
             preload:
               enabled: true
+          # SPEC-003: user-supplied vLLM engine args, appended verbatim AFTER
+          # all composition-managed flags. Each entry is a single `--flag=value`
+          # token (admission CEL rejects bare `--flag value` + managed flags).
+          engineArgs:
+            - "--kv-cache-dtype=fp8"
+            - "--swap-space=4"
           gpu:
             count: 1
             minVRAM: "16Gi"
@@ -159,6 +165,10 @@ kcl_options:
           # convention, as on the real claims — e.g. xplane-qwen-coder-sql-dpo).
           # vLLM serves each under this name verbatim; the AI Gateway pin rules
           # and canary modelNameOverride use it as-is (no extra prefixing).
+          # adapter-c is deliberately NOT referenced by gateway.canaries[] —
+          # it exercises the non-canaried branch of servedModels (kind=adapter
+          # with NO canaryWeightPercent key) and the `else {}` spread arm in
+          # main.k's _servedModels comprehension. Keep it uncanaried.
           loraAdapters:
             - name: xplane-qwen3-8b-adapter-a
               repository: org/test-adapter-a
@@ -166,3 +176,6 @@ kcl_options:
             - name: xplane-qwen3-8b-adapter-b
               repository: org/test-adapter-b
               revision: abc1234
+            - name: xplane-qwen3-8b-adapter-c
+              repository: org/test-adapter-c
+              revision: def5678

@@ -156,7 +156,19 @@ _toolCallArgs = ["--enable-auto-tool-choice", "--tool-call-parser", oxr.spec.mod
 _loraAdapters = oxr.spec.loraAdapters or []
 _loraArgs = (["--enable-lora", "--max-loras", str(len(_loraAdapters)), "--max-lora-rank", "64", "--lora-modules"] + ["{}={}".format(a.name, "/models/loras/" + a.name) for a in _loraAdapters]) if _loraAdapters else []
 
-_vllmArgs = _baseVllmArgs + _quantArgs + _prefixCacheArgs + _kvOffloadArgs + _toolCallArgs + _loraArgs
+# SPEC-003 FR-001/FR-002: user-supplied vLLM engine args. Verbatim passthrough
+# — NO transform, NO re-validation here; the XRD admission CEL denylist is the
+# single enforcement point (rejects managed flags + bare `--flag value` form).
+# Appended as the LAST slice so composition-managed flags ALWAYS precede user
+# flags — a user cannot re-order or shadow a managed flag.
+_engineArgs = oxr.spec.engineArgs or []
+
+# Factored so tests can assert builder(managed, []) == managed (rationale in main_test.k).
+_buildVllmArgs = lambda managed: [str], extra: [str] -> [str] {
+    managed + extra
+}
+_managedVllmArgs = _baseVllmArgs + _quantArgs + _prefixCacheArgs + _kvOffloadArgs + _toolCallArgs + _loraArgs
+_vllmArgs = _buildVllmArgs(_managedVllmArgs, _engineArgs)
 
 # Observed resources from cluster state (drive readiness annotations).
 _observed = lambda suffix: str -> any {
@@ -224,6 +236,17 @@ _gatewayCanaryBackendName = lambda i: int -> str {
 # Total canary weight; the base-model backendRef keeps the remainder. CEL at
 # the XRD guarantees this stays <= 99 so the base model always retains traffic.
 _gatewayCanaryWeightTotal = sum([c.weightPercent for c in _gatewayCanaries], 0)
+
+# SPEC-003 FR-005: status.servedModels topology projection — the base model
+# plus one entry per LoRA adapter. `canaryWeightPercent` is included ONLY for
+# canary-targeted adapters (via `**` spread of an inline-conditional dict, so
+# the key is ABSENT — not null — otherwise). The lookup key `cv.adapter` is an
+# EXPRESSION, so KCL evaluates it as a computed key (the shadowing trap only
+# bites bare-identifier keys like `{name = name}`); the loop var is renamed to
+# `cv` for extra safety. No dict is mutated after creation (function-kcl #285).
+_canaryWeightByAdapter = {cv.adapter: cv.weightPercent for cv in _gatewayCanaries}
+_servedModels = [{name = _name, kind = "base"}] + [{name = a.name, kind = "adapter", **({canaryWeightPercent = _canaryWeightByAdapter[a.name]} if a.name in _canaryWeightByAdapter else {})} for a in _loraAdapters]
+_servedModelsSummary = ",".join([m.name for m in _servedModels])
 
 # AIGatewayRoute v1alpha1 publishes top-level status.conditions; the route
 # is "ready" once Accepted=True (mirror of the HTTPRoute check). Absent
@@ -496,19 +519,28 @@ if _gatewayEnabled:
         }]
         _items += _aiGatewayRoute
 
-    # status.modelEndpoint — external OpenAI-compatible URL. Domain comes from
-    # the eks-environment EnvironmentConfig (privateDomainName, populated via
-    # Flux ${private_domain_name} substitution) so the composition stays
-    # environment-agnostic; the literal fallback covers clusters whose
-    # EnvironmentConfig predates the field. External entry via the Tailscale
-    # gateway resolves to llm.<domain> (SPEC-002 P5). Patched onto the XR via
-    # the desired-composite (dxr) per the function-kcl status convention.
-    _privateDomain = envConfig?.privateDomainName or "priv.cloud.ogenki.io"
-    _dxrStatus = [{
-        **option("params").dxr
-        status.modelEndpoint = "https://llm." + _privateDomain + "/v1"
-    }]
-    _items += _dxrStatus
+
+# XR status patch (dxr) — ALWAYS rendered (SPEC-003 FR-007). servedModels +
+# servedModelsSummary are unconditional topology projections; modelEndpoint is
+# included ONLY when gateway.enabled (inline conditional via `**` spread of a
+# conditional dict — no dict mutation, function-kcl #285). status.modelEndpoint
+# is the external OpenAI-compatible URL: the domain comes from the
+# eks-environment EnvironmentConfig (privateDomainName, populated via Flux
+# ${private_domain_name} substitution) so the composition stays
+# environment-agnostic; the literal fallback covers clusters whose
+# EnvironmentConfig predates the field. External entry via the Tailscale gateway
+# resolves to llm.<domain> (SPEC-002 P5). Patched onto the XR via the
+# desired-composite (dxr) per the function-kcl status convention.
+_privateDomain = envConfig?.privateDomainName or "priv.cloud.ogenki.io"
+_dxrStatus = [{
+    **option("params").dxr
+    status: {
+        servedModels = _servedModels
+        servedModelsSummary = _servedModelsSummary
+        **({modelEndpoint = "https://llm." + _privateDomain + "/v1"} if _gatewayEnabled else {})
+    }
+}]
+_items += _dxrStatus
 
 # CiliumNetworkPolicy — default-deny + explicit allow (constitution mandate).
 # Two policies render: a tight one for the long-lived serving Deployment

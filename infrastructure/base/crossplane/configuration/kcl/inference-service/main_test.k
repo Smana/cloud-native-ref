@@ -497,13 +497,146 @@ test_gateway_pin_rules = lambda {
 }
 
 # ---- Test: XR status.modelEndpoint patched when gateway.enabled ----
+# SPEC-003 FR-007: the dxr status patch always renders (servedModels /
+# servedModelsSummary are unconditional). modelEndpoint is present ONLY when
+# gateway.enabled. So the XR status patch itself is always in `items`.
 test_gateway_status_endpoint = lambda {
     _oxr = option("params").oxr
     _composites = [r for r in items if r.kind == "InferenceService"]
+    assert len(_composites) == 1, "expected exactly 1 XR status patch (always rendered), got {}".format(len(_composites))
     if _oxr.spec.gateway?.enabled:
-        assert len(_composites) == 1, "expected the XR status patch when gateway enabled, got {}".format(len(_composites))
         assert _composites[0].status.modelEndpoint == "https://llm.priv.cloud.ogenki.io/v1", "modelEndpoint mismatch"
     else:
-        assert len(_composites) == 0, "no XR status patch when gateway disabled"
+        assert not _composites[0].status?.modelEndpoint, "modelEndpoint must be absent when gateway disabled"
+    assert True
+}
+
+# ---- Test (T005): engineArgs appended verbatim and LAST ----
+# SPEC-003 FR-001/FR-002; SC-001/SC-006. spec.engineArgs is a plain
+# passthrough appended as the final slice of the vLLM args — composition-
+# managed flags always precede user flags so a user cannot re-order or
+# shadow a managed flag (admission CEL is the single enforcement point).
+test_engine_args_appended_last = lambda {
+    _oxr = option("params").oxr
+    dep = [r for r in items if r.kind == "Deployment"][0]
+    args = dep.spec.template.spec.containers[0].args
+    _engineArgs = _oxr.spec?.engineArgs or []
+    if len(_engineArgs) > 0:
+        # Every engineArgs token appears, verbatim, in the SAME order, as the
+        # tail slice of the container args.
+        _tail = args[len(args) - len(_engineArgs)::]
+        assert _tail == _engineArgs, "engineArgs must be appended verbatim as the LAST slice: expected tail {}, got {}".format(_engineArgs, _tail)
+
+        # Managed-flags-still-win: every composition-managed token appears
+        # strictly BEFORE the first engineArgs entry. The managed portion is
+        # everything preceding the appended tail; assert the first engineArgs
+        # entry does not appear anywhere in that managed prefix.
+        _managedPrefix = args[0:len(args) - len(_engineArgs):]
+        assert _engineArgs[0] not in _managedPrefix, "engineArgs must start strictly after all managed flags; first entry {} leaked into managed prefix".format(_engineArgs[0])
+        # The known managed flags are all in the prefix (never after engineArgs).
+        _managedFlags = ["--model", "--served-model-name", "--max-model-len", "--max-num-seqs", "--gpu-memory-utilization"]
+        _leaked = [f for f in _managedFlags if f in _tail]
+        assert len(_leaked) == 0, "managed flags must never appear in the engineArgs tail: {}".format(_leaked)
+
+    assert True
+}
+
+# ---- Test (T005): empty/absent engineArgs ⇒ args identical to baseline ----
+# SC-006: adding the engineArgs plumbing must not perturb the rendered args
+# when engineArgs is unset. Proven against the REAL builder main.k uses
+# (`_buildVllmArgs`), NOT by tail-stripping the same render — a bad fallback
+# like `managed + (extra or ["--oops"])` would survive tail-stripping (the
+# "--oops" would sit in the stripped tail) but fails `builder(managed, []) ==
+# managed` here. Two independent proofs:
+#   1. builder(managed, []) == managed exactly (empty engineArgs is a no-op).
+#   2. the fixture render == builder(managed, fixture engineArgs) — the
+#      rendered args ARE the builder output, so the module wires the builder
+#      in (no divergent second assembly path).
+test_engine_args_empty_is_baseline = lambda {
+    _oxr = option("params").oxr
+    dep = [r for r in items if r.kind == "Deployment"][0]
+    args = dep.spec.template.spec.containers[0].args
+    _engineArgs = _oxr.spec?.engineArgs or []
+
+    # (1) Absent-engineArgs proof: the builder with extra=[] returns the
+    # managed prefix VERBATIM — this is exactly what a claim with no
+    # engineArgs renders. A `or ["--oops"]`-style fallback breaks this.
+    _emptyBuild = _buildVllmArgs(_managedVllmArgs, [])
+    assert _emptyBuild == _managedVllmArgs, "builder([]) must equal the managed prefix exactly (absent engineArgs is a no-op): got {}".format(_emptyBuild)
+
+    # The managed prefix is itself a valid, complete managed arg list.
+    assert _managedVllmArgs[0] == "--model", "managed prefix must start with --model"
+    _smnIdx = [i for i in range(len(_managedVllmArgs)) if _managedVllmArgs[i] == "--served-model-name"]
+    assert len(_smnIdx) == 1, "managed prefix must carry exactly one --served-model-name"
+    assert _managedVllmArgs[_smnIdx[0] + 1] == _oxr.metadata.name, "served-model-name must be the claim name"
+
+    # (2) The fixture render IS the builder output — proves main.k uses the
+    # builder for the real args, so proof (1) actually governs the render.
+    assert args == _buildVllmArgs(_managedVllmArgs, _engineArgs), "rendered args must equal builder(managed, engineArgs) — the module must wire the builder in"
+
+    # No user token (first engineArg) leaked into the managed prefix.
+    if len(_engineArgs) > 0:
+        assert _engineArgs[0] not in _managedVllmArgs, "engineArgs must not perturb the managed baseline"
+
+    assert True
+}
+
+# ---- Test (T006): servedModels topology projection ----
+# SPEC-003 FR-005; SC-004. status.servedModels = base entry (kind=base) +
+# one entry per loraAdapters[] (kind=adapter). canaryWeightPercent is present
+# ONLY on canary-targeted adapters and equals the canary weightPercent;
+# absent (key not present) on the base entry and on non-canaried adapters.
+test_served_models_shape = lambda {
+    _oxr = option("params").oxr
+    _name = _oxr.metadata.name
+    xr = [r for r in items if r.kind == "InferenceService"][0]
+    served = xr.status.servedModels
+    _adapters = _oxr.spec?.loraAdapters or []
+    _canaries = _oxr.spec.gateway?.canaries or []
+    _canaryWeightByAdapter = {c.adapter: c.weightPercent for c in _canaries}
+
+    # Count: base + one per adapter.
+    assert len(served) == 1 + len(_adapters), "servedModels must be base + one per adapter = {}, got {}".format(1 + len(_adapters), len(served))
+
+    # Base entry: kind=base, name=claim, NO canaryWeightPercent key.
+    _base = [m for m in served if m.kind == "base"]
+    assert len(_base) == 1, "exactly one base entry, got {}".format(len(_base))
+    assert _base[0].name == _name, "base name must be the claim name"
+    assert "canaryWeightPercent" not in _base[0], "base entry must NOT carry canaryWeightPercent"
+
+    # Membership: every loraAdapter name appears in servedModels.
+    _servedNames = [m.name for m in served]
+    _missingAdapters = [a.name for a in _adapters if a.name not in _servedNames]
+    assert len(_missingAdapters) == 0, "every loraAdapter must appear in servedModels: {}".format(_missingAdapters)
+
+    # Each adapter entry: kind=adapter, canaryWeightPercent present IFF the
+    # adapter is canary-targeted, and equal to the canary weight when present.
+    _adapterEntries = [m for m in served if m.kind == "adapter"]
+    # Canaried adapters must carry the key with the exact canary weight.
+    _badCanaried = [m.name for m in _adapterEntries if m.name in _canaryWeightByAdapter and ("canaryWeightPercent" not in m or m.canaryWeightPercent != _canaryWeightByAdapter[m.name])]
+    assert len(_badCanaried) == 0, "canaried adapters must carry canaryWeightPercent == canary weight; wrong: {}".format(_badCanaried)
+    # Non-canaried adapters must NOT carry the key at all (absent, not null).
+    _badPlain = [m.name for m in _adapterEntries if m.name not in _canaryWeightByAdapter and "canaryWeightPercent" in m]
+    assert len(_badPlain) == 0, "non-canaried adapters must NOT carry a canaryWeightPercent key: {}".format(_badPlain)
+
+    # Names match the rendered AIGatewayRoute canary modelNameOverride values.
+    if _oxr.spec.gateway?.enabled and _canaries:
+        routes = [r for r in items if r.kind == "AIGatewayRoute"]
+        _overrides = [ref.modelNameOverride for ref in routes[0].spec.rules[0].backendRefs if ref?.modelNameOverride]
+        _canariedServed = [m.name for m in served if "canaryWeightPercent" in m]
+        _mismatch = [n for n in _canariedServed if n not in _overrides]
+        assert len(_mismatch) == 0, "canaried servedModels names must match AIGatewayRoute modelNameOverride values: {}".format(_mismatch)
+
+    assert True
+}
+
+# ---- Test (T006): servedModelsSummary is the comma-joined servedModels names ----
+# CL-5 deviation: status.servedModelsSummary = ",".join([m.name for m in servedModels]).
+test_served_models_summary = lambda {
+    xr = [r for r in items if r.kind == "InferenceService"][0]
+    served = xr.status.servedModels
+    summary = xr.status.servedModelsSummary
+    _expected = ",".join([m.name for m in served])
+    assert summary == _expected, "servedModelsSummary must be the comma-joined servedModels names: expected {}, got {}".format(_expected, summary)
     assert True
 }
