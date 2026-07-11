@@ -6,12 +6,9 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to main HEAD 1b3e8c4 — now includes #307 (feat: watch HelmReleases for
-  # autonomous failure detection, closes #306) and #308 (fix: scope VMServiceScrape
-  # to the metrics Service, ending the StatefulSet headless-Service double-scrape).
-  # The rolling image ghcr.io/smana/runlore:main now carries the #307 watcher; it
-  # goes live on the next pod restart (this chart-only re-pin doesn't restart the
-  # StatefulSet). Chart is identical to the previous fix-branch pin, so no drift.
+  # Pinned to the v0.9.0 release tag — reproducible: chart 0.9.0 (includes #307 the
+  # HelmRelease watcher + #308 the VMServiceScrape dedup) paired with the released
+  # multi-arch image ghcr.io/smana/runlore:v0.9.0 (helmrelease.yaml image.tag).
+  # Switched off rolling main/:main now that release-please cut v0.9.0.
   ref:
-    branch: main
-    commit: 1b3e8c42ba5d523c8ff359813b229e3b049b14b2  # pragma: allowlist secret
+    tag: v0.9.0
