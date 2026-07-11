@@ -75,6 +75,24 @@
 **Decided by**: User (design session, 2026-07-11)
 **References**: `.claude/rules/crossplane-validation.md` (CEL); vLLM engine-args argparse (`--flag=value` accepted); `main.k:136-159` (reserved flags derived from actual emitted args)
 
+## CL-5 — 2026-07-11 — Printer-column source for the served-model names?
+
+**Asked by**: User (quality review, 2026-07-11)
+**Context**: FR-006 adds a `SERVED MODELS` printer column so `kubectl get inferenceservice` shows the served-model names at a glance. The column was pointed at the wildcard JSONPath `.status.servedModels[*].name`. Kubernetes' server-side `additionalPrinterColumns` table convertor renders only the FIRST match of a wildcard JSONPath, so the column would show just the base model — never the adapters.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Keep the wildcard JSONPath on `servedModels[*].name` | No schema addition | Broken: server-side rendering shows only the first match (the base model), never the adapters |
+| B | Add a scalar `status.servedModelsSummary` (comma-joined names) computed by the composition, point the column at it | Server-side-rendering-safe; shows all names at the CLI; structured `servedModels` stays the machine-readable API | One extra scalar status field to populate |
+| C | Drop the printer column | Nothing to render wrong | Loses the at-a-glance served-model view FR-006 asked for |
+
+**Decision**: B — add a composition-computed scalar `status.servedModelsSummary` and point the printer column at it.
+**Rationale**: FR-006's intent is at-a-glance served-model names in `kubectl get`; a composition-computed scalar is the only server-side-rendering-safe source (a wildcard JSONPath renders only its first match). The structured `status.servedModels` (CL-2) stays the machine-readable API for dashboards/UIs; `servedModelsSummary` is a pure projection over it for the CLI.
+**Decided by**: User (quality review, 2026-07-11)
+**References**: CL-2 (structured `servedModels`); FR-006; Kubernetes `additionalPrinterColumns` server-side table convertor (first-match-only wildcard)
+
 ---
 
 ## Related

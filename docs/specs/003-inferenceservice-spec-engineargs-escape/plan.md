@@ -83,6 +83,7 @@ No **new** managed resources. The feature is entirely: (a) two XRD schema additi
 - **`_engineArgs`**: `oxr.spec.engineArgs or []`. Appended once at the end of `_vllmArgs` assembly (currently `main.k:159`). Verbatim — no transform.
 - **Reserved-flag set**: lives in the XRD as CEL only (NOT duplicated in KCL). Admission is the single enforcement point (CL-1); the composition trusts that anything reaching it is already collision-free, so KCL stays a plain append with no re-validation.
 - **`_servedModels`**: single-line list comprehensions — `[{name = _name, kind = "base"}]` plus `[{name = a.name, kind = "adapter", **({canaryWeightPercent = w} if <a targeted by a canary> else {})} for a in _loraAdapters]`. Built with inline conditional dict construction (no post-creation mutation — function-kcl #285). A small canary-weight lookup (`{c.adapter: c.weightPercent for c in _gatewayCanaries}`) resolves the optional field per adapter.
+- **`_servedModelsSummary`**: comma-joined `[m.name for m in _servedModels]`, set on the dxr status alongside `servedModels` (the scalar printer-column source — CL-5; T004 will implement it).
 - **dxr status patch**: SPEC-002 already spreads `**option("params").dxr` and sets `status.modelEndpoint` inside the `_gatewayEnabled` block. `status.servedModels` MUST be set **unconditionally** (adapters/base exist regardless of gateway), so the status-patch construction moves out of the `if _gatewayEnabled` block into an always-run `_dxrStatus` that conditionally includes `modelEndpoint`.
 
 ### Dependencies
@@ -169,6 +170,8 @@ examples/
 <!-- Append as implementation surprises show up. Format:
 - <2026-07-11> T00N was [dropped|replaced|split]: <why>
 Keep short — detailed rationale goes in clarifications.md if it is a decision. -->
+
+- <2026-07-11> T002/FR-006 adjusted: the printer column reads a new scalar status.servedModelsSummary (comma-joined names, computed by the composition) because server-side additionalPrinterColumns render only the first wildcard JSONPath match; structured status.servedModels is unchanged (CL-5).
 
 ---
 

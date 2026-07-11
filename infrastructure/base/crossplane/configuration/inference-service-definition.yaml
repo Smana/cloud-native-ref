@@ -12,6 +12,10 @@ spec:
     - name: v1alpha1
       served: true
       referenceable: true
+      additionalPrinterColumns:
+        - name: SERVED MODELS
+          type: string
+          jsonPath: .status.servedModelsSummary
       schema:
         openAPIV3Schema:
           type: object
@@ -31,6 +35,45 @@ spec:
                   message: "gateway.canaries[].adapter names must be distinct"
                 - rule: "!has(self.gateway) || !has(self.gateway.canaries) || self.gateway.canaries.map(c, c.weightPercent).sum() <= 99"
                   message: "gateway.canaries[].weightPercent must sum to <= 99 (the base model always retains traffic)"
+                # engineArgs reserved-flag denylist (SPEC-003) — keep in lockstep with
+                # the composition-managed flags in kcl/inference-service/main.k (one rule
+                # per flag; copy a rule pair to add one). The
+                # 'a != "--X" && !a.startsWith("--X=")' form is used instead of
+                # split("=")[0] to avoid depending on the CEL strings extension.
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a.startsWith("--"))'
+                  message: "each spec.engineArgs entry must be a single token starting with '--' (use --flag=value, not --flag value)"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--model" && !a.startsWith("--model="))'
+                  message: "--model is composition-managed; use spec.model.repository (composition sets the local weights path)"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--served-model-name" && !a.startsWith("--served-model-name="))'
+                  message: "--served-model-name is composition-managed; the served model name is the claim name (metadata.name)"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--max-model-len" && !a.startsWith("--max-model-len="))'
+                  message: "--max-model-len is composition-managed; use spec.model.contextWindow"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--max-num-seqs" && !a.startsWith("--max-num-seqs="))'
+                  message: "--max-num-seqs is composition-managed; use spec.model.maxNumSeqs (it is the KEDA scaling denominator)"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--gpu-memory-utilization" && !a.startsWith("--gpu-memory-utilization="))'
+                  message: "--gpu-memory-utilization is composition-managed (fixed at 0.92)"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--quantization" && !a.startsWith("--quantization="))'
+                  message: "--quantization is composition-managed; use spec.model.quantization"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--enable-prefix-caching" && !a.startsWith("--enable-prefix-caching="))'
+                  message: "--enable-prefix-caching is composition-managed; use spec.cache.prefixCache.enabled"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--cpu-offload-gb" && !a.startsWith("--cpu-offload-gb="))'
+                  message: "--cpu-offload-gb is composition-managed; use spec.cache.kvOffload.{enabled,sizeGB}"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--enable-auto-tool-choice" && !a.startsWith("--enable-auto-tool-choice="))'
+                  message: "--enable-auto-tool-choice is composition-managed; use spec.model.toolCallParser"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--tool-call-parser" && !a.startsWith("--tool-call-parser="))'
+                  message: "--tool-call-parser is composition-managed; use spec.model.toolCallParser"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--enable-lora" && !a.startsWith("--enable-lora="))'
+                  message: "--enable-lora is composition-managed; use spec.loraAdapters"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--max-loras" && !a.startsWith("--max-loras="))'
+                  message: "--max-loras is composition-managed; use spec.loraAdapters"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--max-lora-rank" && !a.startsWith("--max-lora-rank="))'
+                  message: "--max-lora-rank is composition-managed; use spec.loraAdapters (rank fixed at 64)"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--lora-modules" && !a.startsWith("--lora-modules="))'
+                  message: "--lora-modules is composition-managed; use spec.loraAdapters"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--port" && !a.startsWith("--port="))'
+                  message: "--port is composition-managed; serving-contract flag; the vLLM port is fixed at 8000 (Service/probes/Backend depend on it)"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--host" && !a.startsWith("--host="))'
+                  message: "--host is composition-managed; serving-contract flag — the listen address is fixed (Service, probes and gateway Backend depend on it)"
               properties:
                 model:
                   type: object
@@ -98,6 +141,23 @@ spec:
                           default: false
                   required:
                     - repository
+                engineArgs:
+                  type: array
+                  maxItems: 16
+                  description: |
+                    Escape hatch for verbatim vLLM CLI args. Each item is a
+                    single token — either `--flag` or `--flag=value` (NOT
+                    `--flag value` as two tokens). These are appended AFTER
+                    all composition-managed flags, so they can extend the
+                    engine but never override the curated surface: reserved
+                    flags (--model, --max-model-len, --enable-lora, --port,
+                    etc.) are rejected at admission by CEL and must be set
+                    through their dedicated spec fields instead. Values are
+                    NOT validated against vLLM — an unknown or malformed flag
+                    fails at container start, not at admission.
+                  items:
+                    type: string
+                    maxLength: 256
                 gpu:
                   type: object
                   description: GPU resource requirements
@@ -420,3 +480,35 @@ spec:
                     OpenAI-compatible endpoint URL for this model. When
                     spec.gateway.enabled, the external Envoy AI Gateway URL
                     (https://llm.<domain>/v1); otherwise unset.
+                servedModels:
+                  type: array
+                  description: |
+                    Topology projection — the set of model names this claim
+                    serves (the base model plus any LoRA adapters) and any
+                    active canary split. This is a routing/topology view, NOT
+                    a health signal; readiness lives in status.phase.
+                  items:
+                    type: object
+                    required: [name, kind]
+                    properties:
+                      name:
+                        type: string
+                        description: Served model name (base = claim name; adapter = loraAdapters[].name).
+                      kind:
+                        type: string
+                        description: Whether this served name is the base model or a LoRA adapter.
+                        enum: ["base", "adapter"]
+                      canaryWeightPercent:
+                        type: integer
+                        description: |
+                          Percent of base-model traffic routed to this entry
+                          when it participates in a gateway canary split.
+                          Absent when the entry is not part of a canary.
+                        minimum: 1
+                        maximum: 99
+                servedModelsSummary:
+                  type: string
+                  description: |
+                    Comma-joined servedModels names — printer-column source
+                    (server-side printer columns render only the first wildcard
+                    JSONPath match); see servedModels for the structured view.
