@@ -26,6 +26,9 @@ spec:
     toolCallParser: hermes         # optional; vLLM tool-call parser name
     preload:
       enabled: false               # CL-3 (rec A): composition-rendered Job
+    streaming:                     # optional; v0.8.0+ (SPEC-005) — see "Model Streamer (cold-start)" section
+      enabled: false               # --load-format runai_streamer (reads the existing PVC path)
+      concurrency: 16              # optional; --model-loader-extra-config '{"concurrency":16}'
   engineArgs:                      # optional; v0.8.0+ (SPEC-003) — see "Engine args" section
     - --kv-cache-dtype=fp8         # verbatim vLLM CLI tokens, appended after managed flags
     - --enforce-eager              # reserved flags (--model, --port, …) rejected at admission
@@ -95,7 +98,7 @@ spec:
 
 ### Reserved flags (rejected at admission)
 
-These 16 flags are composition-managed and rejected by the XRD CEL denylist —
+These 18 flags are composition-managed and rejected by the XRD CEL denylist —
 set them through the curated `spec` field instead. Keep this table in lockstep
 with the denylist in `inference-service-definition.yaml` and the managed flags
 in `main.k`.
@@ -118,6 +121,8 @@ in `main.k`.
 | `--lora-modules` | `spec.loraAdapters` |
 | `--port` | none — **serving contract**: the vLLM port is fixed at 8000. The Service, liveness/readiness probes, and the gateway `Backend` all depend on it |
 | `--host` | none — **serving contract**: the listen address is fixed. The Service, probes, and gateway `Backend` all depend on it |
+| `--load-format` | `spec.model.streaming.enabled` |
+| `--model-loader-extra-config` | `spec.model.streaming.concurrency` |
 
 > `--port` and `--host` are reserved even though the composition never emits
 > them explicitly (vLLM's defaults already match the serving contract). They are
@@ -148,6 +153,62 @@ spec:
 
 LoRA support requires vLLM ≥ 0.7 (current pinned `v0.8.5` satisfies this).
 Empty/absent list = no LoRA enabled (regression-safe).
+
+## Model Streamer (cold-start)
+
+`model.streaming` (v0.8.0+, [SPEC-005](../../../../../../docs/specs/005-vllm-cold-start-run/spec.md))
+is an optional, opt-in block that switches vLLM's weight loader to NVIDIA's
+[Run:ai Model Streamer](https://docs.vllm.ai/en/stable/models/extensions/runai_model_streamer/).
+When `enabled`, the composition adds `--load-format runai_streamer` to the vLLM
+container args. The streamer reads the **same** PVC-mounted safetensors at
+`/models/<revision>` (no `s3://` URL, no storage change) but reads shards
+**concurrently** and streams tensors straight to GPU — cutting the
+pod-ready → first-token cold-start window that the KEDA autoscaler
+([SPEC-001](../../../../../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md))
+trades against cost on every scale-from-zero.
+
+```yaml
+spec:
+  model:
+    streaming:
+      enabled: true       # → --load-format runai_streamer
+      concurrency: 16      # optional → --model-loader-extra-config '{"concurrency":16}'
+```
+
+- **Off by default (opt-in).** An unset block renders **no** streamer flags —
+  byte-identical to the default loader (no reordering, no whitespace change).
+- **`concurrency`** (optional, 1–64) sets the number of concurrent read
+  workers. When set, the composition adds `--model-loader-extra-config` with a
+  compact JSON object `{"concurrency": N}`. When unset, no extra-config arg is
+  rendered (the composition never emits `--model-loader-extra-config '{}'`).
+- **No new resources.** The streamer binary is already bundled in
+  `vllm/vllm-openai:v0.8.5` — enabling this is an **args-only** diff on the
+  serving Deployment. It adds no pod, init container, IAM role, S3 bucket, PVC,
+  or Secret, and does not touch the preload Job, KEDA `ScaledObject`, HPA, or
+  gateway routing.
+- **Rollback** = set `streaming.enabled: false` (or drop the block) — reverts
+  to the default loader with an args-only diff; no data migration.
+- `--load-format` and `--model-loader-extra-config` are on the reserved
+  [engine-args denylist](#reserved-flags-rejected-at-admission) — pass them via
+  this block, not `spec.engineArgs`.
+
+**Phase 1 scope.** This is the load-time win over the existing local PVC path.
+Direct `s3://` streaming (which would eliminate the preload Job) and the dynamic
+S3/filesystem LoRA resolver (vLLM v0.9.0) are explicit non-goals — see the spec
+Non-Goals and CL-2/CL-4.
+
+**Measured cold-start (pod-ready → first-token, scaled-from-zero).**
+
+| Loader | pod-ready → first-token | Notes |
+|---|---|---|
+| default (safetensors) | _TBD — record during T009 e2e_ | baseline on one fleet model |
+| `runai_streamer` (this feature) | _TBD — record during T009 e2e_ | same model, streaming enabled |
+
+> The before/after numbers are captured against a live feature-branch cluster
+> (SC-005 / plan T009) and filled in here on the implementation PR. NVIDIA's
+> ~23 s figure is an S3 benchmark; the local-PVC-path gain may be smaller —
+> if it is negligible, a CL is logged steering effort to the phase-2
+> `s3://`-direct follow-up.
 
 ## AI Gateway routing
 
@@ -283,7 +344,7 @@ PVC at `/models` with `subPath = <claim-name>` for filesystem isolation.
 ## Examples
 
 - [`infrastructure/base/crossplane/configuration/examples/inferenceservice-basic.yaml`](../../examples/inferenceservice-basic.yaml) — minimal claim, single GPU, defaults applied (always-warm, no preload).
-- [`infrastructure/base/crossplane/configuration/examples/inferenceservice-complete.yaml`](../../examples/inferenceservice-complete.yaml) — full feature set: preload Job, HTTPRoute, KV offload + prefix cache, ExternalSecret, LoRA adapter, and composition-owned AI Gateway routing with a weighted canary.
+- [`infrastructure/base/crossplane/configuration/examples/inferenceservice-complete.yaml`](../../examples/inferenceservice-complete.yaml) — full feature set: preload Job, Model Streamer cold-start, HTTPRoute, KV offload + prefix cache, ExternalSecret, LoRA adapter, and composition-owned AI Gateway routing with a weighted canary.
 
 ## Validation
 

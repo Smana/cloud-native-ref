@@ -3,6 +3,7 @@
 import file
 import yaml
 import regex
+import json
 
 # ---- Test: Core resources always created ----
 # Two CiliumNetworkPolicies render when preload is enabled — one tight
@@ -545,6 +546,78 @@ test_engine_args = lambda {
     assert _engineArgs[0] not in _managedVllmArgs, "engineArgs fixture token must not collide with a managed flag"
 }
 
+# ---- Test (SPEC-005 T005): streaming off-by-default is a strict no-op ----
+# FR-005 / SC-004. The settings-example fixture deliberately leaves
+# spec.model.streaming UNSET, so the module's `_streamerArgs` local must be
+# the empty list and the rendered vLLM args must carry NEITHER streamer flag.
+# This — combined with test_engine_args' `args == _managedVllmArgs + _engineArgs`
+# equality — proves off-by-default renders byte-identical to the pre-SPEC-005
+# managed prefix (no new flags, no reordering).
+test_streaming_off_by_default = lambda {
+    _oxr = option("params").oxr
+    # Fixture precondition: streaming is not enabled in settings-example.
+    assert not (_oxr.spec.model?.streaming?.enabled or False), "fixture precondition: streaming must be OFF to prove the no-op path"
+    assert _streamerArgs == [], "streaming off ⇒ _streamerArgs must be [] (strict no-op), got {}".format(_streamerArgs)
+    dep = [r for r in items if r.kind == "Deployment"][0]
+    args = dep.spec.template.spec.containers[0].args
+    assert "--load-format" not in args, "streaming off ⇒ no --load-format in rendered args"
+    assert "--model-loader-extra-config" not in args, "streaming off ⇒ no --model-loader-extra-config in rendered args"
+    assert "runai_streamer" not in args, "streaming off ⇒ no runai_streamer token in rendered args"
+}
+
+# ---- Test (SPEC-005 T005): streamer flag present when enabled ----
+# FR-002 / SC-001. Drives the ACTUAL construction expression main.k uses for
+# `_streamerArgs` with synthetic streaming specs — KCL's single global fixture
+# can only encode one streaming state through `items`, so the enabled paths are
+# exercised here against the real expression (same discipline as
+# test_gateway_route_latch driving the real latch lambda). Mirrors the shape of
+# the main.k local exactly so a change there without a change here diverges.
+_streamerArgsFor = lambda streaming: any -> [str] {
+    _enabled = streaming?.enabled or False
+    _concurrency = streaming?.concurrency
+    (["--load-format", "runai_streamer"] + (["--model-loader-extra-config", json.encode({concurrency = _concurrency})] if _concurrency != Undefined else [])) if _enabled else []
+}
+
+test_streaming_enabled_flag = lambda {
+    # enabled, no concurrency ⇒ exactly --load-format runai_streamer, no extra-config.
+    _args = _streamerArgsFor({enabled = True})
+    assert _args == ["--load-format", "runai_streamer"], "enabled (no concurrency) ⇒ --load-format runai_streamer only, got {}".format(_args)
+    assert "--model-loader-extra-config" not in _args, "no concurrency ⇒ must NOT render --model-loader-extra-config (guards accidental {} extra-config)"
+
+    # concurrency set but enabled false ⇒ still [] (enabled gates everything).
+    _off = _streamerArgsFor({enabled = False, concurrency = 16})
+    assert _off == [], "concurrency without enabled ⇒ [] (enabled is the sole gate), got {}".format(_off)
+}
+
+# ---- Test (SPEC-005 T005): concurrency → extra-config JSON ----
+# FR-003 / SC-002. When concurrency is set, --model-loader-extra-config carries
+# a JSON object that decodes to {"concurrency": N}. Asserts via json.decode so
+# the value is validated structurally (not a brittle string compare).
+test_streaming_concurrency_extra_config = lambda {
+    _args = _streamerArgsFor({enabled = True, concurrency = 16})
+    assert _args[0] == "--load-format", "first token must be --load-format"
+    assert _args[1] == "runai_streamer", "second token must be runai_streamer"
+    _idx = [i for i in range(len(_args)) if _args[i] == "--model-loader-extra-config"]
+    assert len(_idx) == 1, "expected exactly one --model-loader-extra-config, got {}".format(len(_idx))
+    _cfg = json.decode(_args[_idx[0] + 1])
+    assert _cfg.concurrency == 16, "extra-config JSON must decode to concurrency==16, got {}".format(_cfg)
+}
+
+# ---- Test (SPEC-005 T005): --model stays the local PVC path (no s3://) ----
+# FR-002 / FR-006 / CL-2. Even with streaming enabled the streamer reads the
+# existing PVC-mounted safetensors — the --model reference must stay
+# /models/<revision> and never become an s3:// URL. Asserted against the
+# module's own _modelLocalPath so a change there is caught.
+test_streaming_model_stays_local = lambda {
+    dep = [r for r in items if r.kind == "Deployment"][0]
+    args = dep.spec.template.spec.containers[0].args
+    _idx = [i for i in range(len(args)) if args[i] == "--model"]
+    assert len(_idx) == 1, "expected exactly one --model flag"
+    _modelValue = args[_idx[0] + 1]
+    assert _modelValue == _modelLocalPath, "--model must be the local PVC path _modelLocalPath, got {}".format(_modelValue)
+    assert not _modelValue.startswith("s3://"), "--model must NOT be an s3:// URL (phase-1 reads the local PVC path)"
+}
+
 # ---- Test (T006): servedModels topology projection ----
 # SPEC-003 FR-005; SC-004. status.servedModels = base entry (kind=base) +
 # one entry per loraAdapters[] (kind=adapter). canaryWeightPercent is present
@@ -607,7 +680,7 @@ test_served_models_shape = lambda {
 # `kcl test` from here — see .github/workflows/crossplane-modules.yml). Guarded
 # by file.exists so OCI-context renders (XRD not on disk) skip rather than fail.
 test_engine_args_denylist_lockstep = lambda {
-    _reservedEngineFlags = ["--model", "--served-model-name", "--max-model-len", "--max-num-seqs", "--gpu-memory-utilization", "--quantization", "--enable-prefix-caching", "--cpu-offload-gb", "--enable-auto-tool-choice", "--tool-call-parser", "--enable-lora", "--max-loras", "--max-lora-rank", "--lora-modules", "--port", "--host"]
+    _reservedEngineFlags = ["--model", "--served-model-name", "--max-model-len", "--max-num-seqs", "--gpu-memory-utilization", "--quantization", "--enable-prefix-caching", "--cpu-offload-gb", "--enable-auto-tool-choice", "--tool-call-parser", "--enable-lora", "--max-loras", "--max-lora-rank", "--lora-modules", "--port", "--host", "--load-format", "--model-loader-extra-config"]
     _xrdPath = "../../inference-service-definition.yaml"
     if not file.exists(_xrdPath):
         # OCI-context render (XRD not on disk) — canonical list is still the

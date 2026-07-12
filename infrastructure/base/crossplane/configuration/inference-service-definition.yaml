@@ -74,6 +74,10 @@ spec:
                   message: "--port is composition-managed; serving-contract flag; the vLLM port is fixed at 8000 (Service/probes/Backend depend on it)"
                 - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--host" && !a.startsWith("--host="))'
                   message: "--host is composition-managed; serving-contract flag — the listen address is fixed (Service, probes and gateway Backend depend on it)"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--load-format" && !a.startsWith("--load-format="))'
+                  message: "--load-format is composition-managed; use spec.model.streaming.enabled"
+                - rule: '!has(self.engineArgs) || self.engineArgs.all(a, a != "--model-loader-extra-config" && !a.startsWith("--model-loader-extra-config="))'
+                  message: "--model-loader-extra-config is composition-managed; use spec.model.streaming.concurrency"
               properties:
                 model:
                   type: object
@@ -139,6 +143,41 @@ spec:
                         enabled:
                           type: boolean
                           default: false
+                    streaming:
+                      type: object
+                      description: |
+                        SPEC-005 (phase 1): opt-in Run:ai Model Streamer
+                        load-format. When enabled, vLLM loads weights with
+                        `--load-format runai_streamer`, reading the existing
+                        PVC-mounted safetensors at /models/<revision>
+                        concurrently and streaming tensors straight to GPU —
+                        cutting the pod-ready → first-token cold-start window.
+                        No storage change: the streamer reads the same local
+                        path the default loader uses, adds no pod / init
+                        container / IAM role / S3 bucket / PVC / Secret, and
+                        does not touch the preload Job, autoscaling, or gateway
+                        routing. The streamer binary is already bundled in
+                        vllm/vllm-openai:v0.8.5 (no image bump). Off by default;
+                        an unset block renders no streamer flags (byte-identical
+                        to the default loader).
+                      properties:
+                        enabled:
+                          type: boolean
+                          description: |
+                            Switch weight loading to `--load-format
+                            runai_streamer`. Default false (opt-in).
+                          default: false
+                        concurrency:
+                          type: integer
+                          description: |
+                            Number of concurrent read workers the streamer uses
+                            to read safetensors chunks. Optional. When set, the
+                            composition adds `--model-loader-extra-config` with a
+                            JSON object carrying `{"concurrency": N}`. When
+                            unset, no extra-config arg is rendered. Higher values
+                            trade CPU + memory for load throughput.
+                          minimum: 1
+                          maximum: 64
                   required:
                     - repository
                 engineArgs:

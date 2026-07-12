@@ -112,14 +112,14 @@ examples/
 
 ### Phase 1: Schema & guards
 
-- [ ] **T001**: XRD: add `spec.model.streaming` object schema (`enabled` bool default false, `concurrency` int optional) to `inference-service-definition.yaml` (FR-001)
-- [ ] **T002**: XRD: add the two `engineArgs` CEL denylist rules for `--load-format` and `--model-loader-extra-config` (one-rule-per-flag form); optionally add the `concurrency`⇒`enabled` tidiness guard (FR-004, CL-5)
+- [x] **T001**: XRD: add `spec.model.streaming` object schema (`enabled` bool default false, `concurrency` int optional, bounds 1–64) to `inference-service-definition.yaml` (FR-001). Evidence: `inferenceservice-complete.yaml` (streaming.enabled+concurrency:16) renders via `crossplane render` — validate-kcl stage 3 ✅.
+- [x] **T002**: XRD: added the two `engineArgs` CEL denylist rules for `--load-format` and `--model-loader-extra-config` (one-rule-per-flag `a != "--X" && !a.startsWith("--X=")` form) after `--host` (FR-004, CL-5). Evidence: `test_engine_args_denylist_lockstep` PASS — XRD denylist == canonical list (38/38).
 
 ### Phase 2: Implementation
 
-- [ ] **T003**: KCL: add `_streamerArgs` local — `--load-format runai_streamer` when enabled, `--model-loader-extra-config` `json.encode({concurrency})` when concurrency set, `[]` otherwise — and fold it into `_managedVllmArgs` before `engineArgs` (FR-002, FR-003, FR-005)
-- [ ] **T004**: KCL/README: confirm `--model` stays `_modelLocalPath` (no `s3://`); document that streamer reads the existing PVC path and adds no pod/IAM/S3 (FR-006, FR-007, CL-1, CL-2)
-- [ ] **T005**: `main_test.k`: streamer flag present when enabled & absent when disabled; `concurrency` → extra-config JSON decodes to `{concurrency: N}`; off-by-default render byte-identical to managed-prefix baseline (FR-005); grow `_reservedEngineFlags` with the two new flags so the denylist lockstep + emitted-flag-coverage tests pass (FR-004)
+- [x] **T003**: KCL: added `_streamerArgs` local — `--load-format runai_streamer` when enabled, `--model-loader-extra-config json.encode({concurrency})` when concurrency set, `[]` otherwise — folded into `_managedVllmArgs` before `engineArgs` (FR-002, FR-003, FR-005). Single inline-conditional; `!= Undefined` guard so `concurrency` unset ⇒ no `'{}'` extra-config. Evidence: `kcl run` render shows `['--load-format','runai_streamer','--model-loader-extra-config','{"concurrency": 16}']` in the managed prefix, before user engineArgs.
+- [x] **T004**: KCL/README: `--model` stays `_modelLocalPath` (no `s3://`) — asserted by `test_streaming_model_stays_local`; README "Model Streamer (cold-start)" section documents the local-PVC read + no new pod/IAM/S3 (FR-006, FR-007, CL-1, CL-2).
+- [x] **T005**: `main_test.k`: added `test_streaming_off_by_default` (flags absent + `_streamerArgs == []`), `test_streaming_enabled_flag` (present when enabled; `[]` when concurrency-without-enabled), `test_streaming_concurrency_extra_config` (`json.decode` → `concurrency==16`), `test_streaming_model_stays_local`; grew `_reservedEngineFlags` +2 (FR-004/FR-005). Evidence: `kcl test` PASS 38/38 (was 34), incl. `test_engine_args_denylist_lockstep`.
 
 ### Phase 3: e2e (feature-branch cluster)
 
@@ -130,8 +130,8 @@ examples/
 
 ### Phase 4: Validation & Documentation
 
-- [ ] **T010**: `./scripts/validate-kcl-compositions.sh` exit 0 (incl. Polaris ≥ 85); `kcl test` green (SC-007)
-- [ ] **T011**: README.md streaming section (incl. measured cold-start), `settings-example.yaml`, basic (off) + complete (on) examples render with `crossplane render`
+- [~] **T010**: `kcl test` green (38/38, SC-007). `./scripts/validate-kcl-compositions.sh` stages 2 (syntax) + 3 (render — both examples) pass; stage 1 (git-clean) fails on the uncommitted tree as expected (files are edited-not-reformatted; `kcl fmt` is idempotent). Polaris ≥ 85 / kube-linter is the security stage — deferred to the module-publish + `/crossplane-validator` run on the PR (module renders via published OCI, not the local tree — CL-6/T007 flow).
+- [x] **T011**: README.md "Model Streamer (cold-start)" section added (measured before/after table stubbed for T009 e2e); `settings-example.yaml` kept streaming-off to preserve the off-by-default byte-identity fixture (enabled path synthesized in `main_test.k` per the suite's fixture-driven style); `examples/inferenceservice-complete.yaml` gains `model.streaming.enabled + concurrency:16`. Evidence: both examples render via `crossplane render` (validate-kcl stage 3 ✅).
 
 ### Deviations from plan
 

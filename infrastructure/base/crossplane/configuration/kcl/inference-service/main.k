@@ -1,5 +1,7 @@
 # inference-service composition.
 #
+import json
+
 # Conditionally-rendered resources are wrapped in a single-element list
 # `_x = [{...}]` then appended to `_items` to avoid function-kcl issue
 # #285 (duplicate-detection bug on direct dict mutation). The pattern
@@ -157,6 +159,25 @@ _toolCallArgs = ["--enable-auto-tool-choice", "--tool-call-parser", oxr.spec.mod
 _loraAdapters = oxr.spec.loraAdapters or []
 _loraArgs = (["--enable-lora", "--max-loras", str(len(_loraAdapters)), "--max-lora-rank", "64", "--lora-modules"] + ["{}={}".format(a.name, "/models/loras/" + a.name) for a in _loraAdapters]) if _loraAdapters else []
 
+# SPEC-005 (phase 1): Run:ai Model Streamer load-format. When
+# spec.model.streaming.enabled, vLLM loads weights with
+# `--load-format runai_streamer`, reading the SAME local PVC-mounted
+# safetensors at _modelLocalPath (/models/<revision>) concurrently and
+# streaming tensors to GPU — no `s3://` URL, no storage change (CL-2). The
+# streamer binary is bundled in vllm/vllm-openai:v0.8.5 (CL-1) so this is a
+# flag-only diff (no new pod / IAM / S3 / PVC / Secret — FR-006). When
+# streaming.concurrency is set, `--model-loader-extra-config` carries a
+# compact JSON object `{"concurrency": N}` (json.encode → canonical, testable
+# with json.decode in main_test.k). concurrency without enabled renders no
+# streamer flags at all — the outer `if enabled` gates everything. Single
+# inline-conditional expression, no post-creation dict mutation (function-kcl
+# #285). Off/unset ⇒ [] ⇒ _managedVllmArgs byte-identical to pre-SPEC-005
+# (FR-005, SC-004). Ordered before user engineArgs so it is covered by the
+# `args == _managedVllmArgs + _engineArgs` invariant.
+_streamingEnabled = oxr.spec.model?.streaming?.enabled or False
+_streamingConcurrency = oxr.spec.model?.streaming?.concurrency
+_streamerArgs = (["--load-format", "runai_streamer"] + (["--model-loader-extra-config", json.encode({concurrency = _streamingConcurrency})] if _streamingConcurrency != Undefined else [])) if _streamingEnabled else []
+
 # SPEC-003 FR-001/FR-002: user-supplied vLLM engine args. Verbatim passthrough
 # — NO transform, NO re-validation here; the XRD admission CEL denylist is the
 # single enforcement point (rejects managed flags + bare `--flag value` form).
@@ -164,7 +185,7 @@ _loraArgs = (["--enable-lora", "--max-loras", str(len(_loraAdapters)), "--max-lo
 # flags — a user cannot re-order or shadow a managed flag.
 _engineArgs = oxr.spec.engineArgs or []
 
-_managedVllmArgs = _baseVllmArgs + _quantArgs + _prefixCacheArgs + _kvOffloadArgs + _toolCallArgs + _loraArgs
+_managedVllmArgs = _baseVllmArgs + _quantArgs + _prefixCacheArgs + _kvOffloadArgs + _toolCallArgs + _loraArgs + _streamerArgs
 _vllmArgs = _managedVllmArgs + _engineArgs
 
 # Observed resources from cluster state (drive readiness annotations).
