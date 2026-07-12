@@ -52,12 +52,11 @@ spec:
     workloadKind: StatefulSet
     replicaCount: 2
     image:
-      # Rolling validation image (see flux/sources/gitrepo-runlore.yaml) — matches
-      # the pinned main commit until the next release-please tag ships. Always
-      # pull: the :main tag is mutable, chart default (IfNotPresent) would keep
-      # serving whatever digest first landed on the node.
-      tag: "main"
-      pullPolicy: Always
+      # Pinned to the v0.9.0 release image (multi-arch, immutable) — switched off
+      # the rolling :main tag now that release-please cut v0.9.0. Immutable tag, so
+      # the default IfNotPresent pull policy is correct (no forced re-pull needed).
+      tag: "v0.9.0"
+      pullPolicy: IfNotPresent
     serviceAccount:
       create: true
       # Must match the SA bound by the xplane-runlore EKS Pod Identity (security/base/epis/runlore.yaml).

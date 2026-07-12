@@ -6,10 +6,9 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to main HEAD, which now includes runlore#263 (StatefulSet chart
-  # support, squash-merged — feat/statefulset-ha branch is deleted). The rolling
-  # image ghcr.io/smana/runlore:main still applies unchanged; only the chart at
-  # deploy/helm/runlore differs from the previous pin.
+  # Pinned to the v0.9.0 release tag — reproducible: chart 0.9.0 (includes #307 the
+  # HelmRelease watcher + #308 the VMServiceScrape dedup) paired with the released
+  # multi-arch image ghcr.io/smana/runlore:v0.9.0 (helmrelease.yaml image.tag).
+  # Switched off rolling main/:main now that release-please cut v0.9.0.
   ref:
-    branch: main
-    commit: 161e68c5d720bc014f8cf8e29793565685796469  # pragma: allowlist secret
+    tag: v0.9.0
