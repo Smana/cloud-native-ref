@@ -96,7 +96,7 @@
 | C | Per-claim route, no readiness gate | Smaller KCL diff | 404/503 window on brand-new claims |
 
 **Decision**: A — per-claim route rendered by the existing composition; `AIGatewayRoute` withheld until Deployment `Available=True` OR already present in `ocds` (create-time gate, latched thereafter).
-**Rationale**: Expresses Modelplane's readiness-withheld-endpoint idea in the composition's existing single-module idiom; the latch prevents route deletion on transient unavailability (Envoy's 503-on-empty-endpoints is the correct signal then).
+**Rationale**: Expresses the readiness-withheld-endpoint pattern (which Modelplane's parallel design also arrived at) in the composition's existing single-module idiom; the latch prevents route deletion on transient unavailability (Envoy's 503-on-empty-endpoints is the correct signal then).
 **Decided by**: User (brainstorming, 2026-07-07)
 **References**: Modelplane `design/design.md` (ModelService), `compose-model-deployment` endpoint withholding (their issue #102)
 

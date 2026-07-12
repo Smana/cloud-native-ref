@@ -13,7 +13,7 @@
 
 ## Summary
 
-Move Envoy AI Gateway route rendering (`Backend`, `AIServiceBackend`, `AIGatewayRoute`) into the InferenceService composition behind an opt-in `gateway` block, and add weighted canary routing between a base model and one of its LoRA adapters. Inspired by Modelplane's `ModelService`/`ModelEndpoint` design (routing owned by the platform, endpoints withheld until the workload is ready) — including the weighted routing Modelplane designed but has not implemented.
+Move Envoy AI Gateway route rendering (`Backend`, `AIServiceBackend`, `AIGatewayRoute`) into the InferenceService composition behind an opt-in `gateway` block, and add weighted canary routing between a base model and one of its LoRA adapters. Convergent with Modelplane's `ModelService`/`ModelEndpoint` design (routing owned by the platform, endpoints withheld until the workload is ready): the InferenceService abstraction predates Modelplane's publication (v0.6.0 committed 2026-05-09; their blog post is 2026-06-23), and their design docs were used here as a comparative review lens — this spec implements the weighted routing their design describes but has not implemented.
 
 ---
 
@@ -109,5 +109,5 @@ reference them by ID (CL-1, CL-2, ...) once resolved. -->
 - Clarifications: [clarifications.md](clarifications.md)
 - Constitution: [docs/specs/constitution.md](../constitution.md)
 - Similar spec: [SPEC-001 — LLM platform prometheus autoscaling](../0001-llm-platform-prometheus-autoscaling/spec.md)
-- Inspiration: [Modelplane design docs](https://github.com/modelplaneai/modelplane) — `design/design.md` (ModelService/ModelEndpoint), readiness-withheld endpoints; their weighted routing is designed but unimplemented (modelplane#90)
+- Comparison (parallel effort, used as review lens): [Modelplane design docs](https://github.com/modelplaneai/modelplane) — `design/design.md` (ModelService/ModelEndpoint), readiness-withheld endpoints; their weighted routing is designed but unimplemented (modelplane#90). The InferenceService abstraction predates Modelplane's publication.
 - Envoy AI Gateway v1.0.0 `AIGatewayRouteRuleBackendRef`: `weight`, `modelNameOverride`, `priority`
