@@ -87,9 +87,11 @@ test_no_replicas_field = lambda {
 
 # ---- Test: KEDA ScaledObject with prometheus-leading triggers ----
 # v0.5.0 SPEC-001: replaces HTTPScaledObject + HPA-on-CPU with a single
-# ScaledObject. Two prometheus triggers, OR-combined: running/max-num-seqs
-# ratio (leading: scale before batch saturates) and gpu_cache_usage_perc
-# (leading: catches long-context bursts that running-count misses).
+# ScaledObject. Three prometheus triggers, OR-combined: running/max-num-seqs
+# ratio (leading: scale before batch saturates), gpu_cache_usage_perc
+# (leading: catches long-context bursts that running-count misses) and
+# num_requests_waiting (earliest pressure signal: requests queue before the
+# running ratio saturates).
 test_scaledobject_prometheus_triggers = lambda {
     _oxr = option("params").oxr
     sos = [r for r in items if r.kind == "ScaledObject"]
@@ -101,13 +103,17 @@ test_scaledobject_prometheus_triggers = lambda {
     assert so.spec.pollingInterval == (_oxr.spec.scaling?.pollingIntervalSeconds or 15), "pollingInterval mismatch"
     assert so.spec.cooldownPeriod == (_oxr.spec.scaling?.cooldownSeconds or 300), "cooldownPeriod mismatch"
     triggers = so.spec.triggers
-    assert len(triggers) == 2, "expected exactly 2 prometheus triggers (running ratio + cache util), got {}".format(len(triggers))
+    assert len(triggers) == 3, "expected exactly 3 prometheus triggers (running ratio + cache util + queue depth), got {}".format(len(triggers))
     _runningTriggers = [t for t in triggers if "num_requests_running" in (t?.metadata?.query or "")]
     _cacheTriggers = [t for t in triggers if "gpu_cache_usage_perc" in (t?.metadata?.query or "")]
+    _queueTriggers = [t for t in triggers if "num_requests_waiting" in (t?.metadata?.query or "")]
     assert len(_runningTriggers) == 1, "expected exactly 1 running-ratio trigger, got {}".format(len(_runningTriggers))
     assert len(_cacheTriggers) == 1, "expected exactly 1 cache-util trigger, got {}".format(len(_cacheTriggers))
+    assert len(_queueTriggers) == 1, "expected exactly 1 queue-depth trigger, got {}".format(len(_queueTriggers))
     assert _runningTriggers[0].metadata.threshold == (_oxr.spec.scaling?.runningRatioThreshold or "0.7"), "running ratio threshold mismatch"
     assert _cacheTriggers[0].metadata.threshold == (_oxr.spec.scaling?.cacheUtilizationThreshold or "0.6"), "cache util threshold mismatch"
+    assert _queueTriggers[0].metadata.query == "max(vllm:num_requests_waiting{model_name=\"" + _oxr.metadata.name + "\"})", "queue-depth query mismatch"
+    assert _queueTriggers[0].metadata.threshold == str(_oxr.spec.scaling?.queueLengthThreshold or 8), "queue length threshold mismatch"
 }
 
 # ---- Test: vLLM container args carry --max-num-seqs ----

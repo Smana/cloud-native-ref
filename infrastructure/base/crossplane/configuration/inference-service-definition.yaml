@@ -192,8 +192,8 @@ spec:
                     KEDA `ScaledObject` parameters. Composition v0.5.0+
                     scales each model on **leading** vLLM saturation
                     metrics (running/maxNumSeqs ratio + KV-cache
-                    utilization) — both prometheus triggers, OR-combined.
-                    See SPEC-001 in docs/specs/.
+                    utilization + waiting-queue depth) — three prometheus
+                    triggers, OR-combined. See SPEC-001 in docs/specs/.
                   properties:
                     minReplicas:
                       type: integer
@@ -241,6 +241,18 @@ spec:
                         request can fill 30-50% of KV cache by itself,
                         invisible to the running-count trigger).
                       default: "0.6"
+                    queueLengthThreshold:
+                      type: integer
+                      description: |
+                        Trigger 3 threshold — scale up when
+                        `vllm:num_requests_waiting` exceeds this. The
+                        waiting queue is the earliest pressure signal:
+                        requests queue before the running ratio saturates.
+                        Default 8 tolerates a short burst; a sustained
+                        queue drives scale-up. OR-combined with the
+                        running-ratio and KV-cache triggers.
+                      minimum: 1
+                      default: 8
                 cache:
                   type: object
                   description: vLLM / LMCache toggles

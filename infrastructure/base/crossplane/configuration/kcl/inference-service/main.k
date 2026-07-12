@@ -39,6 +39,7 @@ _cooldownSeconds = oxr.spec.scaling?.cooldownSeconds or 300
 _pollingIntervalSeconds = oxr.spec.scaling?.pollingIntervalSeconds or 15
 _runningRatioThreshold = oxr.spec.scaling?.runningRatioThreshold or "0.7"
 _cacheUtilizationThreshold = oxr.spec.scaling?.cacheUtilizationThreshold or "0.6"
+_queueLengthThreshold = oxr.spec.scaling?.queueLengthThreshold or 8
 _maxNumSeqs = oxr.spec.model?.maxNumSeqs or 64
 _routeEnabled = oxr.spec.route?.enabled or False
 
@@ -382,8 +383,13 @@ _items += [_serviceAccount, _deployment, _service]
 #   1. running / max-num-seqs ratio  — leading: scale before batch saturates
 #   2. gpu_cache_usage_perc          — leading: catches long-context bursts
 #                                      that running-count misses
+#   3. num_requests_waiting          — earliest pressure signal: requests
+#                                      queue before the running ratio
+#                                      saturates. threshold 8 ≈ tolerate a
+#                                      short burst; a sustained queue drives
+#                                      scale-up.
 #
-# Both triggers OR-combined; either one >= threshold drives a scale-up
+# All three triggers OR-combined; any one >= threshold drives a scale-up
 # decision at `pollingIntervalSeconds` cadence. `cooldownSeconds` is the
 # minimum hold time before scale-down (amortises CUDA-graph compile cost).
 #
@@ -425,6 +431,15 @@ _scaledObject = [{
                     query = "max(vllm:gpu_cache_usage_perc{model_name=\"" + _name + "\"})"
                     threshold = _cacheUtilizationThreshold
                     activationThreshold = "0.05"
+                }
+            }
+            {
+                type = "prometheus"
+                metadata = {
+                    serverAddress = _DEFAULTS.prometheus_server_address
+                    query = "max(vllm:num_requests_waiting{model_name=\"" + _name + "\"})"
+                    threshold = str(_queueLengthThreshold)
+                    activationThreshold = "1"
                 }
             }
         ]

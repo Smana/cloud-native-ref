@@ -261,7 +261,7 @@ single scalar field the column can read directly.
 | `Deployment` | always | vLLM container, GPU request, toleration, `gpu-l4` nodeSelector, Recreate strategy |
 | `Service` | always | ClusterIP `:8000` (vLLM OpenAI server) |
 | `ServiceAccount` | always | Token mounted; no IAM binding (weights via CSI mount per ADR-0004) |
-| `ScaledObject` (KEDA core) | always | Prometheus triggers on **leading** vLLM saturation metrics: `running/max-num-seqs` ratio + `gpu_cache_usage_perc`. Replaces the legacy `HTTPScaledObject` + `HPA` rendering (composition v0.5.0+, [SPEC-001](../../../../../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md)). |
+| `ScaledObject` (KEDA core) | always | Prometheus triggers on **leading** vLLM saturation metrics: `running/max-num-seqs` ratio + `gpu_cache_usage_perc` + `num_requests_waiting` (waiting-queue depth, earliest pressure signal). Replaces the legacy `HTTPScaledObject` + `HPA` rendering (composition v0.5.0+, [SPEC-001](../../../../../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md)). |
 | `HTTPRoute` | `route.enabled` | Per-model HTTPRoute on the platform Tailscale gateway (otherwise reach via the AI Gateway / SR) |
 | `Backend` (`<claim>-direct`) | `gateway.enabled` | Envoy Gateway `Backend` → vLLM Service FQDN `:8000`. Static-ready |
 | `AIServiceBackend` (`<claim>`) | `gateway.enabled` | OpenAI-schema AI backend referencing the `Backend`. Static-ready |
@@ -308,7 +308,7 @@ on PR (preview tag `0.4.0-pr<N>`) and on merge to main (`0.4.0` + `latest`).
 
 - **GPU request + toleration + nodeSelector** — pods land on the `gpu-l4` Karpenter NodePool only.
 - **`Recreate` strategy** — GPUs are scarce; rolling-update surge would block scheduling.
-- **KEDA `ScaledObject` on leading saturation signals** ([SPEC-001](../../../../../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md)) — `minReplicas: 1` is the default (always warm). KEDA scales 1→max on `running/max-num-seqs` ratio + `gpu_cache_usage_perc`, reacting *before* the queue forms. `minReplicas: 0` is allowed for demo cold-start showcases but accepts first-request failure (no queueing layer; client must retry).
+- **KEDA `ScaledObject` on leading saturation signals** ([SPEC-001](../../../../../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md)) — `minReplicas: 1` is the default (always warm). KEDA scales 1→max on `running/max-num-seqs` ratio + `gpu_cache_usage_perc` + `num_requests_waiting` (waiting-queue depth, threshold 8), reacting *before* the queue forms. `minReplicas: 0` is allowed for demo cold-start showcases but accepts first-request failure (no queueing layer; client must retry).
 - **Default-deny network policies are split per workload** — serving Deployment gets a tight CNP (DNS only egress); preload Job gets a broader CNP (HF/world:443, AWS API, EKS Pod Identity Agent). Each pod template carries `app.kubernetes.io/component=inference` or `=preload` so Cilium scopes the right policy.
 - **Weights via CSI mount, not S3 API** (ADR-0004) — serving pods reach weights through the shared S3 Files PV/PVC, no per-claim EPI. Preload Job uses the shared writable `xplane-llm-models-preload` EPI.
 - **CL-3 model preload Job** — composition-rendered, two-tier idempotency (marker file + `config.json` short-circuit). Default off (`model.preload.enabled: false`).
