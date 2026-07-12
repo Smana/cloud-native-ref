@@ -12,4 +12,4 @@ spec:
   # deploy/helm/runlore differs from the previous pin.
   ref:
     branch: main
-    commit: 161e68c5d720bc014f8cf8e29793565685796469  # pragma: allowlist secret
+    commit: 4e8bb0f627be4e751486023d6265f9f665e59f72  # pragma: allowlist secret
