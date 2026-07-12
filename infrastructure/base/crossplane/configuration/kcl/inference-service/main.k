@@ -260,8 +260,32 @@ _eppName = _name + "-epp"
 _eppExtProcPort = 9002
 
 # Chart Service exposes the metrics endpoint on `http-metrics`/9090 (chart
-# `inferenceExtension.metricsPort` default). The VMServiceScrape targets it.
+# `inferenceExtension.metricsPort` default). The VMServiceScrape targets it by
+# port NAME; the EPP CNP allows vmagent to reach it by NUMBER (_eppIngressRules).
 _eppMetricsPort = 9090
+
+# EPP CiliumNetworkPolicy ingress, as a module-level value the test suite drives
+# DIRECTLY (same discipline as `_baseRuleBackendRefsFor`) rather than through a
+# mirror copy — a mirror would keep passing if these rules were deleted here.
+# Two peers, both mandatory:
+#   * ext-proc :9002 from the Envoy AI Gateway data plane — the routing path.
+#   * metrics :9090 from vmagent — without it the `<name>-epp` VMServiceScrape is
+#     inert: the EPP CNP is default-deny, so the scrape is silently DROPPED with
+#     no error surfaced anywhere (.claude/rules/cilium-network-policies.md).
+_eppIngressRules = [
+    {
+        fromEndpoints = [{
+            matchLabels = {"io.kubernetes.pod.namespace" = "envoy-gateway-system", "gateway.envoyproxy.io/owning-gateway-name" = "ai-gateway", "gateway.envoyproxy.io/owning-gateway-namespace" = "envoy-ai-gateway-system"}
+        }]
+        toPorts = [{ports = [{port = str(_eppExtProcPort), protocol = "TCP"}]}]
+    }
+    {
+        fromEndpoints = [{
+            matchLabels = {"io.kubernetes.pod.namespace" = "observability", "app.kubernetes.io/name" = "vmagent"}
+        }]
+        toPorts = [{ports = [{port = str(_eppMetricsPort), protocol = "TCP"}]}]
+    }
+]
 
 # Single source of truth for the gateway backend names (same discipline as
 # _gatewayRouteSuffix): the Backend's own name and the per-canary
@@ -629,6 +653,22 @@ if _gatewayEnabled:
                     inferenceExtension = {
                         replicas = 1
                         image = {registry = "registry.k8s.io", repository = "gateway-api-inference-extension/epp", tag = "v1.5.0"}
+                        # The chart defaults `monitoring.prometheus.auth.enabled: true`,
+                        # and epplib's _deployment.yaml only passes
+                        # `--metrics-endpoint-auth=false` when that value is FALSE.
+                        # Left at the default, the EPP demands a bearer token on
+                        # :9090/metrics and every credential-less scrape gets 401 —
+                        # our VMServiceScrape sends none. Disable the auth filter and
+                        # let the EPP CNP be the access control instead: only vmagent
+                        # may reach :9090 (_eppIngressRules), everything else is
+                        # default-denied. `prometheus.enabled` stays false (chart
+                        # default) so the chart renders neither its own ServiceMonitor
+                        # (we own a VMServiceScrape) nor the SA-token Secret.
+                        monitoring = {
+                            prometheus = {
+                                auth = {enabled = False}
+                            }
+                        }
                     }
                     provider = {name = "none"}
                 }
@@ -808,12 +848,6 @@ if _endpointPickerEnabled:
     _eppApiServerEgress = [{
         toEntities = ["kube-apiserver"]
     }]
-    _eppExtProcIngress = [{
-        fromEndpoints = [{
-            matchLabels = {"io.kubernetes.pod.namespace" = "envoy-gateway-system", "gateway.envoyproxy.io/owning-gateway-name" = "ai-gateway", "gateway.envoyproxy.io/owning-gateway-namespace" = "envoy-ai-gateway-system"}
-        }]
-        toPorts = [{ports = [{port = str(_eppExtProcPort), protocol = "TCP"}]}]
-    }]
     _eppNetworkPolicy = [{
         apiVersion = "cilium.io/v2"
         kind = "CiliumNetworkPolicy"
@@ -822,7 +856,7 @@ if _endpointPickerEnabled:
             endpointSelector = {
                 matchLabels = {"app.kubernetes.io/name" = _eppName}
             }
-            ingress = _eppExtProcIngress
+            ingress = _eppIngressRules
             egress = _eppVllmScrapeEgress + _eppApiServerEgress + _dnsEgress
         }
     }]

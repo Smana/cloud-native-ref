@@ -72,3 +72,177 @@ spec:
               this fires, either the model is in demo `min=0` mode
               (intentional cold-start showcase) or KEDA dropped below
               the configured minReplicaCount (investigate).
+
+    # ---------------------------------------------------------------------
+    # Envoy AI Gateway front-door alerts (SPEC-006).
+    #
+    # These watch the `gen_ai.*` extproc telemetry, not the vLLM engine —
+    # they catch things the engine cannot see: the gateway erroring before it
+    # ever reaches a model, a LoRA canary quietly serving worse than its base,
+    # and the telemetry pipeline itself going dark.
+    #
+    # Label semantics (settled from ai-gateway v1.0.0 source, SPEC-006 CL-6):
+    #   gen_ai_original_model = what the CLIENT asked for
+    #   gen_ai_request_model  = what was SERVED (post-modelNameOverride → the
+    #                           canary adapter on the canary slice)
+    # ---------------------------------------------------------------------
+    - name: llm-gateway-slo
+      interval: 30s
+      rules:
+        - alert: AIGatewayGenAITelemetryMissing
+          # The guard against silently-empty dashboards: the engine is demonstrably
+          # serving traffic, yet the gateway's gen_ai series does not exist at all.
+          # That means a broken scrape, a dropped CNP, or a renamed metric — the
+          # exact failure class that shipped an all-No-Data dashboard once already.
+          # `and on()` both sides are label-less, so this cannot fire on an idle
+          # cluster where the extproc has simply never created the series.
+          expr: |
+            absent(gen_ai_client_token_usage_sum)
+            and on() (sum(rate(vllm:request_success_total[15m])) > 0)
+          for: 15m
+          labels:
+            severity: warning
+            component: llm-platform
+          annotations:
+            summary: "AI Gateway GenAI telemetry is absent while vLLM is serving traffic"
+            description: |
+              vLLM is completing requests but `gen_ai_client_token_usage_sum`
+              does not exist in VictoriaMetrics. The gateway dashboards are
+              blind. Check, in order: the VMPodScrape target is up
+              (`up{namespace="envoy-gateway-system"}`), the extproc sidecar is
+              injected into the data-plane pods, the CiliumNetworkPolicy allows
+              observability → TCP 1064 (infrastructure/base/envoy-gateway/network-policy.yaml),
+              and that the exported series name still matches what the
+              dashboards query (upstream may add a unit suffix on upgrade).
+
+        - alert: AIGatewayScrapeDown
+          expr: up{namespace="envoy-gateway-system"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: llm-platform
+          annotations:
+            summary: "AI Gateway metrics scrape target down ({{ $labels.pod }})"
+            description: |
+              vmagent cannot scrape `{{ $labels.pod }}` in envoy-gateway-system.
+              Gateway token/latency/error telemetry is stale or missing for the
+              duration. Usual suspects: the aigw-admin port (1064) allow rule,
+              or a data-plane pod rollout that left the sidecar unhealthy.
+
+        - alert: AIGatewayHighErrorRate
+          expr: |
+            (
+              sum by (gen_ai_original_model) (
+                rate(gen_ai_server_request_duration_seconds_count{error_type=~".+"}[10m])
+              )
+              /
+              sum by (gen_ai_original_model) (
+                rate(gen_ai_server_request_duration_seconds_count[10m])
+              )
+            ) > 0.05
+          for: 10m
+          labels:
+            severity: critical
+            component: llm-platform
+          annotations:
+            summary: "Gateway error rate > 5% for {{ $labels.gen_ai_original_model }}"
+            description: |
+              More than 5% of gateway requests for
+              `{{ $labels.gen_ai_original_model }}` failed over the last 10min
+              (current: {{ $value | humanizePercentage }}). Note v1.0.0 only
+              ever sets error.type=_OTHER, so this tells you THAT requests fail,
+              not why — correlate with the vLLM engine dashboard and the
+              extproc logs. No denominator clamp here: an idle model yields no
+              series rather than a diluted ratio.
+
+        - alert: AIGatewayCanaryErrorRateRegression
+          # The guardrail SPEC-002's weighted LoRA canaries shipped without.
+          # Compares each SERVED model's error ratio against the blended ratio of
+          # the model the client actually asked for. With a canary at ≤10% weight
+          # the blended ratio ≈ the base ratio, so a canary adapter erroring at
+          # 2x the base (plus a 2pp absolute floor, so tiny ratios don't trip it)
+          # is exactly what this catches. The base slice cannot fire against
+          # itself — it dominates the blend it is compared to.
+          # Traffic guard: ≥0.01 req/s over 15min ≈ 9 requests, so a handful of
+          # unlucky requests on a fresh canary cannot page anyone.
+          expr: |
+            (
+              (
+                sum by (gen_ai_original_model, gen_ai_request_model) (
+                  rate(gen_ai_server_request_duration_seconds_count{error_type=~".+"}[15m])
+                )
+                /
+                sum by (gen_ai_original_model, gen_ai_request_model) (
+                  rate(gen_ai_server_request_duration_seconds_count[15m])
+                )
+              )
+              > on (gen_ai_original_model) group_left ()
+              (
+                2 * (
+                  sum by (gen_ai_original_model) (
+                    rate(gen_ai_server_request_duration_seconds_count{error_type=~".+"}[15m])
+                  )
+                  /
+                  sum by (gen_ai_original_model) (
+                    rate(gen_ai_server_request_duration_seconds_count[15m])
+                  )
+                ) + 0.02
+              )
+            )
+            and on (gen_ai_original_model, gen_ai_request_model) (
+              sum by (gen_ai_original_model, gen_ai_request_model) (
+                rate(gen_ai_server_request_duration_seconds_count[15m])
+              ) > 0.01
+            )
+          for: 15m
+          labels:
+            severity: warning
+            component: llm-platform
+          annotations:
+            summary: "Canary {{ $labels.gen_ai_request_model }} erroring above its base model"
+            description: |
+              Served model `{{ $labels.gen_ai_request_model }}` (requested as
+              `{{ $labels.gen_ai_original_model }}`) has an error ratio of
+              {{ $value | humanizePercentage }} — more than 2x the blended rate
+              for that model. If this is a LoRA canary, roll its
+              `gateway.canaries[].weightPercent` back to 0 in the
+              InferenceService claim before promoting it further.
+
+        - alert: AIGatewayCanaryLatencyRegression
+          # Same comparison on inter-token latency. TPOT rather than TTFT on
+          # purpose: base and canary share a pod, so TTFT is dominated by queueing
+          # they both experience, while time-per-output-token actually reflects
+          # the adapter doing the generating.
+          expr: |
+            (
+              histogram_quantile(0.95,
+                sum by (gen_ai_original_model, gen_ai_request_model, le) (
+                  rate(gen_ai_server_time_per_output_token_seconds_bucket[15m])
+                )
+              )
+              > on (gen_ai_original_model) group_left ()
+              (
+                1.5 * histogram_quantile(0.95,
+                  sum by (gen_ai_original_model, le) (
+                    rate(gen_ai_server_time_per_output_token_seconds_bucket[15m])
+                  )
+                )
+              )
+            )
+            and on (gen_ai_original_model, gen_ai_request_model) (
+              sum by (gen_ai_original_model, gen_ai_request_model) (
+                rate(gen_ai_server_request_duration_seconds_count[15m])
+              ) > 0.01
+            )
+          for: 15m
+          labels:
+            severity: warning
+            component: llm-platform
+          annotations:
+            summary: "Canary {{ $labels.gen_ai_request_model }} slower than its base model"
+            description: |
+              p95 time-per-output-token for served model
+              `{{ $labels.gen_ai_request_model }}` is {{ $value }}s — over 1.5x
+              the blended p95 for `{{ $labels.gen_ai_original_model }}`. A LoRA
+              adapter should not materially change generation speed on the same
+              pod; investigate before increasing its canary weight.

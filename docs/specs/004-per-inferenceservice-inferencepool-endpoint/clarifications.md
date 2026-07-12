@@ -173,6 +173,24 @@
 **Decided by**: SRE + constitution §5.1, 2026-07-12
 **References**: chart `inferenceExtension.monitoring` values; `main.k` `_vmServiceScrape`; constitution §5.1; `.claude/rules/observability.md`
 
+## CL-9 — 2026-07-12 — The EPP `/metrics` endpoint is authenticated by default
+
+**Asked by**: PR #1559 review (2026-07-12)
+**Context**: CL-8 chose a composition-owned `VMServiceScrape` and deliberately left the chart's own ServiceMonitor path disabled. What CL-8 missed: the chart value that gates the ServiceMonitor is **not** the only thing `monitoring.prometheus.*` controls. `inferenceExtension.monitoring.prometheus.auth.enabled` defaults to **true**, and epplib's deployment template passes `--metrics-endpoint-auth=false` **only when that value is false**. Left at the default, the EPP enforces bearer-token authn on `:9090/metrics` and 401s our credential-less `VMServiceScrape` — the scrape is rendered, healthy-looking, and returns nothing. Separately, the EPP's own default-deny CiliumNetworkPolicy had no allow for the metrics port, so the scrape was being DROPPED before it could even 401.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Set `inferenceExtension.monitoring.prometheus.auth.enabled: false`; let the EPP CNP be the access control (only vmagent may reach `:9090`) | One value; no token plumbing; the CNP already scopes the port to a single peer; consistent with how every other scrape in the repo works | Metrics endpoint is unauthenticated *within* the allowed peer set |
+| B | Keep auth on; add `authorization.credentials` to the `VMServiceScrape` pointing at the chart's SA-token Secret | Defence in depth | The chart only creates that Secret when `monitoring.prometheus.enabled: true`, which also emits a ServiceMonitor we explicitly do not want (CL-8); vmagent then needs cross-namespace Secret read; two mechanisms guarding one port |
+| C | Leave as-is | — | The EPP scrape simply does not work; SC-006 unmeasurable |
+
+**Decision**: A — disable the EPP's metrics-endpoint auth filter, and add the missing vmagent→`:9090` ingress rule to the EPP CiliumNetworkPolicy.
+**Rationale**: The port is not reachable by anything except vmagent (default-deny + one explicit allow), so the token adds a second lock on a door only one process can reach — at the cost of dragging in the chart's ServiceMonitor and a cross-namespace Secret. Network policy is the access control the platform already relies on for every other metrics port, including vLLM's. The CNP allow is the load-bearing half: without it the scrape is DROPPED silently, which is precisely trap #1 in `.claude/rules/cilium-network-policies.md`.
+**Decided by**: PR #1559 review, verified against the v1.5.0 chart
+**References**: `kubernetes-sigs/gateway-api-inference-extension` v1.5.0 `config/charts/inferencepool/values.yaml` (`monitoring.prometheus.auth.enabled: true`), `config/charts/epplib/templates/_deployment.yaml` (`{{- if not ...auth.enabled }} - --metrics-endpoint-auth=false`), `_servicemonitor.yaml`, `_sa-token-secret.yaml`; `main.k` `_eppIngressRules` / `_metricsIngress`; CL-8  <!-- pragma: allowlist secret -->
+
 ---
 
 ## Related

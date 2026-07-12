@@ -7,24 +7,48 @@
 # scraped via infrastructure/base/envoy-ai-gateway/vmscrape.yaml — NOT the
 # `vllm:*` engine metrics.
 #
-# Metric names (verified from envoyproxy/ai-gateway v1.0.0
-# internal/metrics/genai.go + the default otelprom exporter, which appends
-# the OTel unit as a suffix — no WithoutUnits() in cmd/extproc/mainlib):
-#   gen_ai.client.token.usage        (unit "token") -> gen_ai_client_token_usage_tokens_{sum,count,bucket}
-#   gen_ai.server.request.duration   (unit "s")     -> gen_ai_server_request_duration_seconds_{sum,count,bucket}
-#   gen_ai.server.time_to_first_token(unit "s")     -> gen_ai_server_time_to_first_token_seconds_bucket
-#   gen_ai.server.time_per_output_token (unit "s")  -> gen_ai_server_time_per_output_token_seconds_bucket
-# Attribute labels (dots -> underscores in Prometheus):
-#   gen_ai_request_model  = client-requested model name (e.g. xplane-qwen-coder)
-#   gen_ai_response_model = served model name (modelNameOverride rewrite target — the canary seam)
-#   gen_ai_original_model, gen_ai_token_type (input|output), gen_ai_operation_name
+# ---------------------------------------------------------------------------
+# Exported series names (CL-5 — settled from source, not guessed)
+# ---------------------------------------------------------------------------
+# The extproc builds a plain `otelprom.New(WithRegisterer(...))` reader
+# (ai-gateway v1.0.0 cmd/extproc/mainlib/main.go), so naming goes through
+# otel exporters/prometheus v0.66.0 → prometheus/otlptranslator v1.0.0 with
+# `UnderscoreEscapingWithSuffixes`. That translator appends the unit as a name
+# suffix ONLY when the unit is not already one of the name's tokens
+# (`addUnitTokens()` → `slices.Contains(nameTokens, mainUnitSuffix)`):
 #
-#   NOTE (verify per T001/T007 e2e): the exact exported series name is
-#   confirmable only once traffic flows — SPEC-006 SC-001 quotes the literal
-#   `gen_ai_client_token_usage_sum` (without the `_tokens` unit segment). If
-#   the live exporter omits the unit suffix, drop `_tokens` from the exprs
-#   below. The canary-carrying label (gen_ai_response_model vs
-#   gen_ai_original_model) is also T007-confirmed.
+#   gen_ai.client.token.usage  unit "token" → name tokens contain "token"
+#                              ⇒ NO unit suffix
+#                              ⇒ gen_ai_client_token_usage_{sum,count,bucket}
+#   gen_ai.server.request.duration      unit "s" → "seconds" is not a name token
+#                              ⇒ gen_ai_server_request_duration_seconds_{count,bucket}
+#   gen_ai.server.time_to_first_token   ⇒ gen_ai_server_time_to_first_token_seconds_bucket
+#   gen_ai.server.time_per_output_token ⇒ gen_ai_server_time_per_output_token_seconds_bucket
+#
+# ---------------------------------------------------------------------------
+# Model labels — which one carries the canary override (CL-6, closes FR-003)
+# ---------------------------------------------------------------------------
+# ai-gateway rewrites the model header when a route rule carries
+# `modelNameOverride`, and only THEN reads the request-model attribute from it
+# (internal/extproc/processor_impl.go: the override is written into
+# requestHeaders, and `SetRequestModel(cmp.Or(requestHeaders[model], originalModel))`
+# runs after). So, for a canaried claim:
+#
+#   gen_ai_original_model = what the CLIENT asked for      (xplane-qwen-coder)
+#   gen_ai_request_model  = what was SERVED after override (xplane-qwen-coder-sql-dpo
+#                                                           on the canary slice,
+#                                                           xplane-qwen-coder on the base)
+#   gen_ai_response_model = what the engine echoed back    (tracks request_model)
+#
+# ⇒ group/filter by `gen_ai_original_model` for the "requested model" dimension,
+#   and by `gen_ai_request_model` for the served/canary dimension. Filtering the
+#   canary panels on gen_ai_request_model would EXCLUDE the canary slice and
+#   report 0% forever.
+#
+# Other labels: gen_ai_token_type (input|output|cached_input|reasoning),
+# gen_ai_operation_name, gen_ai_provider_name, and `error_type` — present only on
+# failed requests, and v1.0.0 only ever sets the fallback value `_OTHER`
+# (internal/metrics/genai.go), so it answers "did it fail", not "how".
 #
 # Variable substitution: Grafana variables use $${var} (double dollar) so
 # Flux postBuild substitutions don't strip them (.claude/rules/observability.md).
@@ -50,6 +74,17 @@ spec:
       "time": { "from": "now-6h", "to": "now" },
       "refresh": "30s",
       "schemaVersion": 39,
+      "links": [
+        {
+          "title": "vLLM engine view",
+          "type": "dashboards",
+          "tags": ["vllm"],
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": true,
+          "tooltip": "Gateway shows you WHAT broke; the engine dashboard shows you WHY"
+        }
+      ],
       "templating": {
         "list": [
           {
@@ -64,10 +99,11 @@ spec:
             "label": "Requested model",
             "type": "query",
             "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-            "query": "label_values(gen_ai_client_token_usage_tokens_sum, gen_ai_request_model)",
+            "query": "label_values(gen_ai_client_token_usage_sum, gen_ai_original_model)",
             "refresh": 2,
             "includeAll": true,
             "multi": true,
+            "allValue": ".*",
             "current": { "text": "All", "value": "$__all" }
           }
         ]
@@ -85,13 +121,13 @@ spec:
           "id": 2,
           "type": "timeseries",
           "title": "Input tokens/s per model",
-          "description": "Prompt (input) token throughput per client-requested model, at the gateway. Independent of which engine pod served the request.",
+          "description": "Prompt (input) token throughput per client-requested model, at the gateway. Independent of which engine pod — or which LoRA adapter — served the request.",
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
           "targets": [
-            { "expr": "sum by (gen_ai_request_model) (rate(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type=\"input\", gen_ai_request_model=~\"$${model}\"}[5m]))", "legendFormat": "{{gen_ai_request_model}}", "refId": "A" }
+            { "expr": "sum by (gen_ai_original_model) (rate(gen_ai_client_token_usage_sum{gen_ai_token_type=\"input\", gen_ai_original_model=~\"$${model}\"}[5m]))", "legendFormat": "{{gen_ai_original_model}}", "refId": "A" }
           ],
-          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "tps" } },
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "axisLabel": "tokens/s" }, "unit": "short" } },
           "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean"] } }
         },
         {
@@ -102,23 +138,23 @@ spec:
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
           "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
           "targets": [
-            { "expr": "sum by (gen_ai_request_model) (rate(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type=\"output\", gen_ai_request_model=~\"$${model}\"}[5m]))", "legendFormat": "{{gen_ai_request_model}}", "refId": "A" }
+            { "expr": "sum by (gen_ai_original_model) (rate(gen_ai_client_token_usage_sum{gen_ai_token_type=\"output\", gen_ai_original_model=~\"$${model}\"}[5m]))", "legendFormat": "{{gen_ai_original_model}}", "refId": "A" }
           ],
-          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "tps" } },
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "axisLabel": "tokens/s" }, "unit": "short" } },
           "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean"] } }
         },
         {
           "id": 4,
-          "type": "timeseries",
-          "title": "Total tokens (input+output) cumulative per model",
-          "description": "Cumulative token spend per model since scrape start — the raw signal a cost layer would later map to $ (cost mapping itself is out of scope, SPEC-006 Non-Goals).",
+          "type": "barchart",
+          "title": "Token spend over the selected range (input vs output)",
+          "description": "Token spend per model over the dashboard time range — the raw signal a cost layer would later map to $ (cost mapping itself is out of scope, SPEC-006 Non-Goals). Uses increase() rather than the raw counter: the extproc is a sidecar in the Envoy data-plane pods, which roll on every Gateway/route change, so a raw counter graph saws downward on each rollout and undercounts.",
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
           "gridPos": { "h": 8, "w": 24, "x": 0, "y": 9 },
           "targets": [
-            { "expr": "sum by (gen_ai_request_model) (gen_ai_client_token_usage_tokens_sum{gen_ai_request_model=~\"$${model}\"})", "legendFormat": "{{gen_ai_request_model}}", "refId": "A" }
+            { "expr": "sum by (gen_ai_original_model, gen_ai_token_type) (increase(gen_ai_client_token_usage_sum{gen_ai_original_model=~\"$${model}\"}[$__range]))", "legendFormat": "{{gen_ai_original_model}} — {{gen_ai_token_type}}", "refId": "A", "instant": true }
           ],
-          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 5 }, "unit": "short" } },
-          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } }
+          "fieldConfig": { "defaults": { "custom": { "axisLabel": "tokens" }, "unit": "short", "decimals": 0 } },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "orientation": "horizontal" }
         },
         {
           "id": 10,
@@ -136,7 +172,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
           "targets": [
-            { "expr": "sum by (gen_ai_request_model) (rate(gen_ai_server_request_duration_seconds_count{gen_ai_request_model=~\"$${model}\"}[5m]))", "legendFormat": "{{gen_ai_request_model}}", "refId": "A" }
+            { "expr": "sum by (gen_ai_original_model) (rate(gen_ai_server_request_duration_seconds_count{gen_ai_original_model=~\"$${model}\"}[5m]))", "legendFormat": "{{gen_ai_original_model}}", "refId": "A" }
           ],
           "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "reqps" } },
           "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean"] } }
@@ -145,11 +181,11 @@ spec:
           "id": 12,
           "type": "timeseries",
           "title": "Error rate per model",
-          "description": "Fraction of gateway requests per model that carry an error attribute (error.type present). Falls back to 0 when no errors are recorded.",
+          "description": "Fraction of gateway requests per model that carry an error attribute (error.type present — v1.0.0 sets only the fallback value _OTHER, so this says THAT a request failed, not why). No denominator clamp: at low traffic a clamp floors the ratio and hides a 100%-failure model behind a small number, so an idle model simply renders as no-data instead.",
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
           "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
           "targets": [
-            { "expr": "sum by (gen_ai_request_model) (rate(gen_ai_server_request_duration_seconds_count{gen_ai_request_model=~\"$${model}\", error_type=~\".+\"}[5m])) / clamp_min(sum by (gen_ai_request_model) (rate(gen_ai_server_request_duration_seconds_count{gen_ai_request_model=~\"$${model}\"}[5m])), 1)", "legendFormat": "{{gen_ai_request_model}}", "refId": "A" }
+            { "expr": "sum by (gen_ai_original_model) (rate(gen_ai_server_request_duration_seconds_count{gen_ai_original_model=~\"$${model}\", error_type=~\".+\"}[5m])) / sum by (gen_ai_original_model) (rate(gen_ai_server_request_duration_seconds_count{gen_ai_original_model=~\"$${model}\"}[5m]))", "legendFormat": "{{gen_ai_original_model}}", "refId": "A" }
           ],
           "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15 }, "unit": "percentunit", "decimals": 3, "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] } } },
           "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
@@ -157,7 +193,7 @@ spec:
         {
           "id": 20,
           "type": "row",
-          "title": "Canary attribution (qwen-coder split)",
+          "title": "Canary attribution (base vs LoRA adapter)",
           "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
           "collapsed": false,
           "panels": []
@@ -165,34 +201,47 @@ spec:
         {
           "id": 21,
           "type": "timeseries",
-          "title": "xplane-qwen-coder: base vs canary token share (served model)",
-          "description": "SPEC-002 canary attribution (US-2/SC-004). For requests the client sent as xplane-qwen-coder, split output-token spend by the SERVED model name (gen_ai_response_model) — modelNameOverride rewrites body.model, so the canary adapter (e.g. xplane-qwen-coder-sql-dpo) shows here vs the base. VERIFY per T007 which label carries the override (gen_ai_response_model vs gen_ai_original_model); swap the by()-label if T007 says otherwise.",
+          "title": "Base vs canary token share (served model)",
+          "description": "SPEC-002 canary attribution (US-2/SC-004). For requests the client sent as $model (gen_ai_original_model), split output-token spend by the SERVED model (gen_ai_request_model) — modelNameOverride rewrites the model before the request-model attribute is recorded, so a canary LoRA adapter (e.g. xplane-qwen-coder-sql-dpo) appears as its own series next to the base. Stacked: the ratio between the bands IS the traffic split.",
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
           "targets": [
-            { "expr": "sum by (gen_ai_response_model) (rate(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type=\"output\", gen_ai_request_model=\"xplane-qwen-coder\"}[5m]))", "legendFormat": "{{gen_ai_response_model}}", "refId": "A" }
+            { "expr": "sum by (gen_ai_request_model) (rate(gen_ai_client_token_usage_sum{gen_ai_token_type=\"output\", gen_ai_original_model=~\"$${model}\"}[5m]))", "legendFormat": "{{gen_ai_request_model}}", "refId": "A" }
           ],
-          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal", "group": "A" } }, "unit": "tps" } },
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal", "group": "A" }, "axisLabel": "tokens/s" }, "unit": "short" } },
           "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean"] } }
         },
         {
           "id": 22,
           "type": "piechart",
-          "title": "xplane-qwen-coder: canary token fraction",
-          "description": "Share of xplane-qwen-coder output tokens served by each backing model (base vs canary adapter) over the dashboard window — the pie form of the SC-004 attribution.",
+          "title": "Canary token fraction",
+          "description": "Share of output tokens served by each backing model (base vs canary adapter) over the dashboard window — the pie form of the SC-004 attribution. Compare against the configured gateway.canaries[].weightPercent: a persistent gap means the split is not landing.",
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
           "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
           "targets": [
-            { "expr": "sum by (gen_ai_response_model) (increase(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type=\"output\", gen_ai_request_model=\"xplane-qwen-coder\"}[$__range]))", "legendFormat": "{{gen_ai_response_model}}", "refId": "A" }
+            { "expr": "sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_token_type=\"output\", gen_ai_original_model=~\"$${model}\"}[$__range]))", "legendFormat": "{{gen_ai_request_model}}", "refId": "A", "instant": true }
           ],
           "options": { "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }, "reduceOptions": { "calcs": ["lastNotNull"] }, "pieType": "donut" },
           "fieldConfig": { "defaults": { "unit": "short" } }
         },
         {
+          "id": 23,
+          "type": "timeseries",
+          "title": "Error rate: base vs canary (served model)",
+          "description": "The canary guardrail. Same error ratio as above but split by SERVED model, so a bad LoRA adapter shows up as its own line diverging from the base. This is the panel to watch when raising a canary's weightPercent — and it is the signal behind the AIGatewayCanaryErrorRateRegression alert in vmrule-llm-slo.yaml.",
+          "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 35 },
+          "targets": [
+            { "expr": "sum by (gen_ai_request_model) (rate(gen_ai_server_request_duration_seconds_count{gen_ai_original_model=~\"$${model}\", error_type=~\".+\"}[5m])) / sum by (gen_ai_request_model) (rate(gen_ai_server_request_duration_seconds_count{gen_ai_original_model=~\"$${model}\"}[5m]))", "legendFormat": "{{gen_ai_request_model}}", "refId": "A" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15 }, "unit": "percentunit", "decimals": 3, "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] } } },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
           "id": 30,
           "type": "row",
           "title": "Gateway latency",
-          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 },
           "collapsed": false,
           "panels": []
         },
@@ -202,9 +251,9 @@ spec:
           "title": "Gateway TTFT p95 (time-to-first-token)",
           "description": "p95 gateway-observed time to first token per model, from gen_ai.server.time_to_first_token. Front-door view — includes gateway routing + upstream engine TTFT.",
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 36 },
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 44 },
           "targets": [
-            { "expr": "histogram_quantile(0.95, sum by (gen_ai_request_model, le) (rate(gen_ai_server_time_to_first_token_seconds_bucket{gen_ai_request_model=~\"$${model}\"}[5m])))", "legendFormat": "{{gen_ai_request_model}}", "refId": "A" }
+            { "expr": "histogram_quantile(0.95, sum by (gen_ai_original_model, le) (rate(gen_ai_server_time_to_first_token_seconds_bucket{gen_ai_original_model=~\"$${model}\"}[5m])))", "legendFormat": "{{gen_ai_original_model}}", "refId": "A" }
           ],
           "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "s" } },
           "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
@@ -215,9 +264,9 @@ spec:
           "title": "Gateway request duration p95",
           "description": "p95 end-to-end request duration at the gateway per model, from gen_ai.server.request.duration.",
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 36 },
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 44 },
           "targets": [
-            { "expr": "histogram_quantile(0.95, sum by (gen_ai_request_model, le) (rate(gen_ai_server_request_duration_seconds_bucket{gen_ai_request_model=~\"$${model}\"}[5m])))", "legendFormat": "{{gen_ai_request_model}}", "refId": "A" }
+            { "expr": "histogram_quantile(0.95, sum by (gen_ai_original_model, le) (rate(gen_ai_server_request_duration_seconds_bucket{gen_ai_original_model=~\"$${model}\"}[5m])))", "legendFormat": "{{gen_ai_original_model}}", "refId": "A" }
           ],
           "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "s" } },
           "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
@@ -226,14 +275,76 @@ spec:
           "id": 33,
           "type": "timeseries",
           "title": "Gateway time-per-output-token p95",
-          "description": "p95 inter-token latency at the gateway per model, from gen_ai.server.time_per_output_token.",
+          "description": "p95 inter-token latency at the gateway per model, from gen_ai.server.time_per_output_token. Split by SERVED model so a slower canary adapter is visible.",
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 36 },
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 44 },
           "targets": [
-            { "expr": "histogram_quantile(0.95, sum by (gen_ai_request_model, le) (rate(gen_ai_server_time_per_output_token_seconds_bucket{gen_ai_request_model=~\"$${model}\"}[5m])))", "legendFormat": "{{gen_ai_request_model}}", "refId": "A" }
+            { "expr": "histogram_quantile(0.95, sum by (gen_ai_request_model, le) (rate(gen_ai_server_time_per_output_token_seconds_bucket{gen_ai_original_model=~\"$${model}\"}[5m])))", "legendFormat": "{{gen_ai_request_model}}", "refId": "A" }
           ],
           "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "s" } },
           "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 40,
+          "type": "row",
+          "title": "Endpoint picker (InferencePool) — only populated when gateway.endpointPicker.enabled",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 52 },
+          "collapsed": true,
+          "panels": [
+            {
+              "id": 41,
+              "type": "timeseries",
+              "title": "Average KV-cache utilization per pool",
+              "description": "EPP's view of KV-cache pressure across the pool's vLLM replicas — the signal it scores endpoints on. Metric vocabulary mirrors the upstream GAIE dashboard (kubernetes-sigs/gateway-api-inference-extension tools/dashboards/inference_gateway.json).",
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "gridPos": { "h": 8, "w": 8, "x": 0, "y": 53 },
+              "targets": [
+                { "expr": "sum by (name) (inference_pool_average_kv_cache_utilization)", "legendFormat": "{{name}}", "refId": "A" }
+              ],
+              "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "percentunit", "min": 0, "max": 1 } },
+              "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+            },
+            {
+              "id": 42,
+              "type": "timeseries",
+              "title": "Average queue size per pool",
+              "description": "Mean number of queued requests across the pool — EPP's queue-aware picking signal. Rising here before vllm:num_requests_waiting means the picker is spreading load but the fleet is saturating.",
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "gridPos": { "h": 8, "w": 8, "x": 8, "y": 53 },
+              "targets": [
+                { "expr": "sum by (name) (inference_pool_average_queue_size)", "legendFormat": "{{name}}", "refId": "A" }
+              ],
+              "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "short" } },
+              "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+            },
+            {
+              "id": 43,
+              "type": "timeseries",
+              "title": "Queue size per pod",
+              "description": "Per-replica queue depth as the picker sees it. A persistent imbalance across pods means the picking policy is not doing its job (or one pod is stuck).",
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "gridPos": { "h": 8, "w": 8, "x": 16, "y": 53 },
+              "targets": [
+                { "expr": "sum by (name, model_server_pod) (inference_pool_per_pod_queue_size)", "legendFormat": "{{name}} / {{model_server_pod}}", "refId": "A" }
+              ],
+              "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "short" } },
+              "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
+            },
+            {
+              "id": 44,
+              "type": "timeseries",
+              "title": "EPP request rate / error rate",
+              "description": "Requests the endpoint picker routed, and the share that errored, from inference_objective_request_total / inference_objective_request_error_total.",
+              "datasource": { "type": "prometheus", "uid": "$${datasource}" },
+              "gridPos": { "h": 8, "w": 24, "x": 0, "y": 61 },
+              "targets": [
+                { "expr": "sum by (model_name) (rate(inference_objective_request_total[5m]))", "legendFormat": "{{model_name}} — requests", "refId": "A" },
+                { "expr": "sum by (model_name) (rate(inference_objective_request_error_total[5m]))", "legendFormat": "{{model_name}} — errors", "refId": "B" }
+              ],
+              "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "reqps" } },
+              "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean"] } }
+            }
+          ]
         }
       ]
     }

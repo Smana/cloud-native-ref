@@ -89,7 +89,7 @@ test_no_replicas_field = lambda {
 # ---- Test: KEDA ScaledObject with prometheus-leading triggers ----
 # v0.5.0 SPEC-001: replaces HTTPScaledObject + HPA-on-CPU with a single
 # ScaledObject. Three prometheus triggers, OR-combined: running/max-num-seqs
-# ratio (leading: scale before batch saturates), gpu_cache_usage_perc
+# ratio (leading: scale before batch saturates), kv_cache_usage_perc
 # (leading: catches long-context bursts that running-count misses) and
 # num_requests_waiting (earliest pressure signal: requests queue before the
 # running ratio saturates).
@@ -811,7 +811,11 @@ _eppHelmReleaseFor = lambda name: str, namespace: str -> any {
                     modelServerType = "vllm"
                     apiVersion = "inference.networking.k8s.io/v1"
                 }
-                inferenceExtension = {replicas = 1, image = {registry = "registry.k8s.io", repository = "gateway-api-inference-extension/epp", tag = "v1.5.0"}}
+                inferenceExtension = {replicas = 1, image = {registry = "registry.k8s.io", repository = "gateway-api-inference-extension/epp", tag = "v1.5.0"}, monitoring = {
+                    prometheus = {
+                        auth = {enabled = False}
+                    }
+                }}
                 provider = {name = "none"}
             }
         }
@@ -840,6 +844,12 @@ test_endpointpicker_helmrelease_shape = lambda {
     assert hr.spec.values.provider.name == "none", "provider.name must be none"
     assert hr.spec.values.inferenceExtension.image.tag == "v1.5.0", "EPP image tag must be pinned to v1.5.0"
 
+    # Metrics-auth OFF (FR-010): the chart defaults auth.enabled=true, which makes
+    # the EPP demand a bearer token on :9090/metrics and 401s our credential-less
+    # VMServiceScrape. epplib passes --metrics-endpoint-auth=false ONLY when this
+    # is false, so the value is load-bearing for the scrape working at all.
+    assert not hr.spec.values.inferenceExtension.monitoring.prometheus.auth.enabled, "EPP metrics auth must be disabled or the VMServiceScrape 401s (chart default is true)"
+
     # Lockstep guard: the mirror must equal what main.k actually renders on the
     # EPP-on path. main.k builds the HelmRelease from _name/_namespace and the
     # _DEFAULTS.vllm_port; assert the mirror agrees with those module values so a
@@ -855,8 +865,15 @@ test_endpointpicker_helmrelease_shape = lambda {
 #   * egress to kube-apiserver via toEntities (NOT toCIDR — trap #3)
 #   * egress to kube-dns:53 UDP+TCP WITH rules.dns.matchPattern "*" (trap #1)
 #   * ingress on ext-proc 9002 from the Envoy data plane (owning-gateway selector)
+#   * ingress on metrics 9090 from vmagent — without it the EPP VMServiceScrape is
+#     inert (default-deny DROPs the scrape silently)
 #   * serving-CNP extension: an EPP :8000 ingress peer.
-_eppCnpFor = lambda name: str, appLabels: any, extProcPort: int, vllmPort: int, dnsEgress: [any] -> any {
+#
+# `ingress` is NOT mirrored: it is the module's real `_eppIngressRules`, so
+# deleting an ingress rule from main.k fails this test rather than silently
+# diverging from a copy. (Egress stays mirrored — main.k builds it inline inside
+# the `if _endpointPickerEnabled` block, which the canary fixture cannot enter.)
+_eppCnpFor = lambda name: str, appLabels: any, vllmPort: int, dnsEgress: [any] -> any {
     _eppLabels = appLabels | {"app.kubernetes.io/component" = "inference"}
     {
         apiVersion = "cilium.io/v2"
@@ -866,12 +883,7 @@ _eppCnpFor = lambda name: str, appLabels: any, extProcPort: int, vllmPort: int, 
             endpointSelector = {
                 matchLabels = {"app.kubernetes.io/name" = name + "-epp"}
             }
-            ingress = [{
-                fromEndpoints = [{
-                    matchLabels = {"io.kubernetes.pod.namespace" = "envoy-gateway-system", "gateway.envoyproxy.io/owning-gateway-name" = "ai-gateway", "gateway.envoyproxy.io/owning-gateway-namespace" = "envoy-ai-gateway-system"}
-                }]
-                toPorts = [{ports = [{port = str(extProcPort), protocol = "TCP"}]}]
-            }]
+            ingress = _eppIngressRules
             egress = [{toEndpoints = [{matchLabels = _eppLabels}], toPorts = [{ports = [{port = str(vllmPort), protocol = "TCP"}]}]}, {toEntities = ["kube-apiserver"]}] + dnsEgress
         }
     }
@@ -879,7 +891,7 @@ _eppCnpFor = lambda name: str, appLabels: any, extProcPort: int, vllmPort: int, 
 
 test_endpointpicker_cnp_shape = lambda {
     _name = option("params").oxr.metadata.name
-    cnp = _eppCnpFor(_name, _appLabels, _eppExtProcPort, _DEFAULTS.vllm_port, _dnsEgress)
+    cnp = _eppCnpFor(_name, _appLabels, _DEFAULTS.vllm_port, _dnsEgress)
 
     # Default-deny: endpointSelector scopes only to the EPP pod.
     assert cnp.spec.endpointSelector.matchLabels["app.kubernetes.io/name"] == _name + "-epp", "EPP CNP endpointSelector must target the EPP pod"
@@ -889,6 +901,13 @@ test_endpointpicker_cnp_shape = lambda {
     assert len([p for p in _ingressPorts if p.port == "9002"]) == 1, "EPP CNP must allow ext-proc ingress on 9002"
     _ingressFroms = sum([rule.fromEndpoints for rule in cnp.spec.ingress], [])
     assert len([f for f in _ingressFroms if f.matchLabels["gateway.envoyproxy.io/owning-gateway-name"] == "ai-gateway"]) == 1, "ext-proc ingress must come from the Envoy data plane (owning-gateway ai-gateway)"
+
+    # Ingress: metrics 9090 from vmagent. The EPP VMServiceScrape cannot work
+    # without this allow — default-deny drops the scrape with no error anywhere.
+    assert len([p for p in _ingressPorts if p.port == str(_eppMetricsPort)]) == 1, "EPP CNP must allow vmagent ingress on the metrics port {} (else the VMServiceScrape is silently DROPPED)".format(_eppMetricsPort)
+    _vmagentPeers = [f for f in _ingressFroms if f.matchLabels?["app.kubernetes.io/name"] == "vmagent"]
+    assert len(_vmagentPeers) == 1, "metrics ingress must come from vmagent in the observability namespace"
+    assert _vmagentPeers[0].matchLabels["io.kubernetes.pod.namespace"] == "observability", "vmagent peer must be scoped to the observability namespace"
 
     # Egress: vLLM :8000 (toEndpoints), kube-apiserver (toEntities), kube-dns:53
     # WITH rules.dns (trap #1).

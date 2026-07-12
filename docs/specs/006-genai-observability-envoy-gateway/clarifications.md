@@ -78,6 +78,42 @@
 **Decided by**: User (adopt-recos, 2026-07-12)
 **References**: Envoy AI Gateway tracing docs (`extProc.extraEnvVars`, OTLP direct export); VictoriaTraces OTLP ingest docs (`/insert/opentelemetry/v1/traces` HTTP; `:4317` gRPC via `-otlpGRPCListenAddr`); CL-1 (no collector)
 
+## CL-5 — 2026-07-12 — Does the exported token metric carry a `_tokens` unit suffix?
+
+**Asked by**: PR #1559 review (2026-07-12)
+**Context**: The first cut of `grafana-dashboard-gateway.yaml` queried `gen_ai_client_token_usage_tokens_sum`, on the reasoning that the extproc uses the default `otelprom` exporter with no `WithoutUnits()`, so the OTel unit (`token`) becomes a name suffix. SC-001, meanwhile, quotes the un-suffixed `gen_ai_client_token_usage_sum`. Both cannot be right, and the two were left to be reconciled at T001/T007 on-cluster. They can in fact be settled from source.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | `gen_ai_client_token_usage_sum` — no unit suffix | Matches what the translator actually does (below) | Contradicts the "exporter always appends units" intuition |
+| B | `gen_ai_client_token_usage_tokens_sum` — unit suffix appended | Matches the naive reading of the exporter docs | Produces a series that does not exist ⇒ every token panel and the dashboard's `model` variable return No Data |
+| C | Query both forms with an `or` | Survives either reality | Hides the bug; doubles every expr; still wrong after the next upgrade |
+
+**Decision**: A — **`gen_ai_client_token_usage_{sum,count,bucket}`, with NO unit segment.** The three latency histograms DO carry `_seconds` (`gen_ai_server_request_duration_seconds_*` etc.).
+**Rationale**: Settled from source, not from the cluster. ai-gateway v1.0.0 declares the histogram `metric.WithUnit("token")` (`internal/metrics/genai.go`), and `cmd/extproc/mainlib/main.go` builds a plain `otelprom.New(WithRegisterer(...))` — so naming runs through otel `exporters/prometheus` v0.66.0 → `prometheus/otlptranslator` v1.0.0 with the default `UnderscoreEscapingWithSuffixes`. That translator's `addUnitTokens()` appends the unit **only if it is not already one of the metric name's tokens**: `gen_ai.client.token.usage` splits to `[gen, ai, client, token, usage]`, which contains `token`, so the suffix is dropped. `s` → `seconds` is not a name token on the latency metrics, so those keep their suffix. SC-001 was right; the dashboard was wrong.
+**Decided by**: PR #1559 review, verified against upstream source
+**References**: `envoyproxy/ai-gateway` v1.0.0 `internal/metrics/genai.go`, `cmd/extproc/mainlib/main.go`; `open-telemetry/opentelemetry-go` v1.44.0 `exporters/prometheus/{config,exporter}.go`; `prometheus/otlptranslator` v1.0.0 `metric_namer.go` (`normalizeName` / `addUnitTokens`)
+
+## CL-6 — 2026-07-12 — Which label carries the `modelNameOverride` (the canary seam)?
+
+**Asked by**: PR #1559 review (2026-07-12)
+**Context**: FR-003 / SC-004 require the spec to *document* which label holds the client-requested model vs the `modelNameOverride`-rewritten served model — SPEC-002 left this as its open question. The first dashboard cut assumed `gen_ai_request_model` = the client-requested name and split the canary panels by `gen_ai_response_model`, filtering on `gen_ai_request_model="xplane-qwen-coder"`.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | `gen_ai_original_model` = client-requested; `gen_ai_request_model` = served (post-override) | What the code actually does | Inverts the intuitive reading of "request" |
+| B | `gen_ai_request_model` = client-requested; `gen_ai_response_model` = served | The intuitive reading | Wrong: filtering canary panels on `gen_ai_request_model=<base>` **excludes the entire canary slice**, so a canary reports 0% forever — the one number the feature exists to show |
+
+**Decision**: A. **`gen_ai_original_model` = what the client asked for; `gen_ai_request_model` = what was served after `modelNameOverride`** (the canary adapter on the canary slice, the base model on the base slice); `gen_ai_response_model` = what the engine echoed, which tracks `gen_ai_request_model`.
+⇒ Group/filter the "requested model" dimension by `gen_ai_original_model`; group the served/canary dimension by `gen_ai_request_model`. **This closes the SPEC-002 open question and satisfies FR-003.**
+**Rationale**: In `internal/extproc/processor_impl.go`, when the selected route rule carries a `modelNameOverride` the extproc writes the override **into the model request header**, and only afterwards records the metric attribute from that header (`SetRequestModel(cmp.Or(requestHeaders[model], originalModel))`). `SetOriginalModel(parent.originalModel)` is set from the request body *before* any override — the setter's own doc comment says "before any virtualization applies". So the override lands on `request_model`, not `response_model`.
+**Decided by**: PR #1559 review, verified against upstream source
+**References**: `envoyproxy/ai-gateway` v1.0.0 `internal/extproc/processor_impl.go` (override → `requestHeaders[ModelNameHeaderKeyDefault]`, then `SetRequestModel`), `internal/metrics/metrics_impl.go` (`SetOriginalModel` / `SetRequestModel` / `SetResponseModel` doc comments, `buildBaseAttributes`)
+
 ---
 
 ## Related
