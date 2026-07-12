@@ -20,6 +20,36 @@ spec:
     - name: envoy-ai-gateway-crds
       namespace: envoy-ai-gateway-system
   values:
+    # -------------------------------------------------------------------------
+    # GenAI request traces (SPEC-006 FR-006, US-3) — CONDITIONAL, DISABLED.
+    #
+    # The extproc emits OpenInference GenAI spans when OTLP export env-vars are
+    # set on the sidecar via `extProc.extraEnvVars`. Metrics stay Prometheus-
+    # scraped (see vmscrape.yaml) — `OTEL_METRICS_EXPORTER=none` avoids a
+    # double-export.
+    #
+    # Left DISABLED pending CL-4 / T005 on-cluster verification: the extproc
+    # OTel SDK autoexport appends the STANDARD OTLP path (`/v1/traces`) to
+    # OTEL_EXPORTER_OTLP_ENDPOINT, but VictoriaTraces' OTLP/HTTP ingest is the
+    # NON-standard `/insert/opentelemetry/v1/traces` on :10428, and its
+    # OTLP/gRPC :4317 listener requires `-otlpGRPCListenAddr` to be enabled
+    # (not currently enabled in observability/base/victoria-traces/). Whether
+    # the SDK accepts the full non-standard path without a collector can only
+    # be settled on the cluster (T005). Do NOT uncomment until T005 confirms
+    # IN-scope; if OUT, FR-006/US-3/SC-005 descope to a follow-up spec (record
+    # in plan Deviations + a CL). No OTel collector may be introduced (CL-1).
+    #
+    # extProc:
+    #   extraEnvVars:
+    #     - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    #       # verify per T005 e2e — standard SDK path would resolve to
+    #       # <endpoint>/v1/traces; VictoriaTraces needs /insert/opentelemetry/v1/traces
+    #       value: "http://victoria-traces-vt-single-server.observability:10428/insert/opentelemetry"
+    #     - name: OTEL_METRICS_EXPORTER
+    #       value: "none"
+    #     - name: OTEL_SERVICE_NAME
+    #       value: "ai-gateway"
+    # -------------------------------------------------------------------------
     controller:
       resources:
         requests:

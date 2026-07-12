@@ -1,0 +1,45 @@
+# VMPodScrape for the Envoy AI Gateway GenAI telemetry (SPEC-006).
+#
+# The `gen_ai.*` OpenTelemetry-semconv metrics
+# (gen_ai_client_token_usage_sum, gen_ai_server_request_duration_*,
+# gen_ai_server_time_to_first_token_*, gen_ai_server_time_per_output_token_*)
+# are emitted by the AI Gateway **extproc** (external processor), which the
+# pod-mutator webhook injects as a sidecar into every Envoy data-plane pod.
+#
+# Those data-plane pods live in `envoy-gateway-system` (NOT
+# `envoy-ai-gateway-system`, which only runs the controller) — the same pods
+# the `envoy-data-plane` CiliumNetworkPolicy selects in
+# infrastructure/base/envoy-gateway/network-policy.yaml. So this is a
+# VMPodScrape targeting those pods, not a VMServiceScrape (the extproc admin
+# port is not Service-fronted).
+#
+# Port / path (verified against envoyproxy/ai-gateway v1.0.0 source —
+# internal/controller/gateway_mutator.go): the mutator hardcodes the extproc
+# sidecar admin server on `-adminPort 1064`, registered as the named container
+# port `aigw-admin` (ContainerPort 1064), serving `/metrics` and `/health`.
+#   verify per T001 e2e: `kubectl get pods -n envoy-gateway-system \
+#     -l app.kubernetes.io/component=proxy -o json | jq '.items[].spec.containers[]
+#     | select(.name=="ai-gateway-extproc") | .ports'` then
+#     `curl <pod-ip>:1064/metrics | grep gen_ai`.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: envoy-ai-gateway-genai
+  namespace: envoy-gateway-system
+spec:
+  # The extproc sidecar rides in the Envoy data-plane pods spawned by the
+  # Envoy Gateway controller. Select them by the managed-by + component
+  # labels (same selector the data-plane CNP uses).
+  selector:
+    matchLabels:
+      app.kubernetes.io/managed-by: envoy-gateway
+      app.kubernetes.io/component: proxy
+  namespaceSelector:
+    matchNames:
+      - envoy-gateway-system
+  podMetricsEndpoints:
+    # `aigw-admin` is the named container port (1064) the mutator registers on
+    # the extproc sidecar; matching by name is robust to a port renumber.
+    - port: aigw-admin
+      path: /metrics
+      interval: 30s

@@ -13,3 +13,6 @@ resources:
   # API-key authentication on the Gateway listener (B-1).
   - api-keys-externalsecret.yaml
   - security-policy.yaml
+  # GenAI telemetry scrape — VMPodScrape for the extproc `gen_ai.*` metrics
+  # emitted on the data-plane pods' aigw-admin sidecar port (SPEC-006).
+  - vmscrape.yaml

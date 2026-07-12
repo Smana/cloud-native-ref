@@ -26,6 +26,10 @@ resources:
   # as the dashboard, otherwise folderRef fails to resolve.
   - grafana-folder.yaml
   - grafana-dashboard.yaml
+  # Gateway GenAI front-door dashboard — per-model token spend, request/error
+  # rate, canary-vs-base attribution, gateway latency (SPEC-006, CL-3). Sibling
+  # of grafana-dashboard.yaml; sourced from gen_ai.* metrics, not vllm:*.
+  - grafana-dashboard-gateway.yaml
   # SLO breach alerts (LAGGING signals — explicitly NOT scale triggers).
   # Per SPEC-001, autoscaling is driven by LEADING indicators in the
   # composition's ScaledObject; these page when the autoscaler missed.

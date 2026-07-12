@@ -146,6 +146,21 @@ spec:
         - ports:
             - port: "19001"
               protocol: TCP
+    # GenAI telemetry scrape from VictoriaMetrics agents (SPEC-006) — the
+    # AI Gateway extproc sidecar injected into every data-plane pod exposes
+    # its `gen_ai.*` OpenTelemetry metrics on the aigw-admin server, TCP 1064
+    # (verified in envoyproxy/ai-gateway v1.0.0 gateway_mutator.go:
+    # `-adminPort 1064`). Under default-deny this scrape is silently DROPPED
+    # without an explicit allow (see .claude/rules/cilium-network-policies.md).
+    # Paired with the VMPodScrape at
+    # infrastructure/base/envoy-ai-gateway/vmscrape.yaml.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports:
+            - port: "1064"
+              protocol: TCP
   egress:
     # kube-dns — DNS L7 inspection mandatory for any toFQDNs to work.
     - toEndpoints:
