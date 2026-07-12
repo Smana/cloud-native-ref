@@ -156,7 +156,7 @@ examples/
 
 ### Phase 4: Publish, examples, docs
 
-- [ ] **T007** *(partial: version bumped to 0.8.0 in c9f074c1; publish/pin/re-render pending PR CI)*: Bump `kcl.mod` → `0.8.0`; publish module via `crossplane-modules.yml` PR-tag flow; verify `0.8.0-pr<N>` anonymously pullable; point the composition `Function` pin at the new tag; re-render (Implementation Notes)
+- [x] **T007** *(evidence: 0.8.0-pr1559 published by CI run 29186289461, verified anonymously pullable; pin bumped; crossplane render against the real tag shows engineArgs appended last + servedModels/servedModelsSummary in status — 2026-07-12)*: Bump `kcl.mod` → `0.8.0`; publish module via `crossplane-modules.yml` PR-tag flow; verify `0.8.0-pr<N>` anonymously pullable; point the composition `Function` pin at the new tag; re-render (Implementation Notes)
 - [x] **T008**: `settings-example.yaml` + `examples/inferenceservice-complete.yaml`: add an `engineArgs` example (basic stays unset); README.md: document `engineArgs`, the reserved-flag table with curated-field pointers (incl. the `--port`/`--host` serving-contract note), and `status.servedModels` — *evidence: c9f074c1 — README reserved-flag table (16 rows, XRD-faithful), example engineArgs block*
 - [x] **T009**: `./scripts/validate-kcl-compositions.sh` exit 0 (incl. Polaris ≥ 85, kube-linter); both examples render via `crossplane render` — *evidence: validate-kcl-compositions.sh exit 0 on 2026-07-12 (render still against 0.7.0-pr1559 pin; 0.8.0 render pending T007 publish)*
 
