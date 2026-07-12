@@ -50,6 +50,8 @@ spec:
       revision: <sha-or-tag>                    # defaults to "main"
   gateway:                         # optional; v0.8.0+ (SPEC-002) — see "AI Gateway routing" section
     enabled: false                 # composition renders Backend + AIServiceBackend + AIGatewayRoute
+    endpointPicker:                # optional; v0.8.0+ (SPEC-004) — GAIE InferencePool + Endpoint Picker
+      enabled: false               # opt-in; requires gateway.enabled; MUTUALLY EXCLUSIVE with canaries[] (CEL)
     canaries:                      # optional; weighted LoRA canaries (max 4; each requires a loraAdapters match)
       - adapter: <lora-name>       # must equal a loraAdapters[].name (CEL-enforced at the XRD)
         weightPercent: 15          # 1–99; percent of base-model traffic sent to the adapter
@@ -261,6 +263,74 @@ each `weightPercent` is bounded 1–99.
 
 When `gateway.enabled`, `status.modelEndpoint` is populated — see the [Status](#status) table.
 
+### Endpoint Picker (smart routing)
+
+`gateway.endpointPicker.enabled` (v0.8.0+, [SPEC-004](../../../../../../docs/specs/004-per-inferenceservice-inferencepool-endpoint/spec.md))
+turns on **vLLM-aware routing** via the Gateway API Inference Extension (GAIE
+v1.5.0). A Kubernetes `Service` load-balances **round-robin across replicas**,
+which is adversarial to vLLM: it scatters requests that share a prompt prefix
+across different pods, destroying each pod's prefix-cache locality, and is blind
+to per-pod load. The Endpoint Picker (EPP) closes this gap — it scrapes the same
+vLLM `/metrics` the platform already collects and, per request, scores every
+candidate replica on queue depth + KV-cache utilization + prefix affinity +
+LoRA-awareness, then routes to the best endpoint.
+
+When `endpointPicker.enabled` (opt-in, default off), the composition renders, in
+addition to the SPEC-002 wiring:
+
+- a Flux `HelmRelease` `<claim>-epp` (chart `inferencepool` v1.5.0) referencing
+  the shared static `llm`-namespace `OCIRepository` `inferencepool`
+  (`flux/sources/ocirepo-inferencepool.yaml`) via same-namespace `chartRef`. The
+  chart installs the `InferencePool` CR (named `<claim>` — the release name) and
+  the EPP `Deployment`/`Service` `<claim>-epp`. The pool selects **only this
+  claim's** replicas (`modelServers.matchLabels: {app.kubernetes.io/name:
+  <claim>}`), never cross-model.
+- a `CiliumNetworkPolicy` `<claim>-epp` (default-deny + explicit allow): egress to
+  the claim's vLLM pods `:8000`, to the `kube-apiserver` entity (the EPP watches
+  Pods + the InferencePool CR), and to kube-dns `:53` with `rules.dns` L7
+  inspection; ingress on the ext-proc port `9002` from the Envoy AI Gateway data
+  plane. The claim's serving CNP additionally allows the EPP `:8000` ingress.
+- a `VMServiceScrape` `<claim>-epp` scraping the EPP's `http-metrics` port.
+
+The **base rule** (`x-ai-eg-model: <claim>`) `backendRefs` switches to a single
+`InferencePool` ref (`group: inference.networking.k8s.io`, `kind: InferencePool`,
+`name: <claim>` — no `weight`, no `modelNameOverride`, unsupported on InferencePool
+backendRefs). The per-`loraAdapters[]` **pin rules** are unchanged (they still
+route to the base pod via the `AIServiceBackend` chain, so the `Backend` + base
+`AIServiceBackend` are still rendered for them). The [readiness latch](#readiness-latch-fr-002)
+still gates the `AIGatewayRoute` — the backendRef swap changes the route body, not
+the gate.
+
+**When to enable.** The EPP only alters routing at **N>1 replicas** (it is a
+functional no-op with one endpoint), but it wires cleanly at **N=1** today —
+enabling smart routing the moment KEDA scales the model out. It complements the
+SPEC-001 KEDA autoscaler: KEDA reacts on the scale of tens of seconds (add/remove
+replicas), the EPP reacts per-request in milliseconds (which existing replica).
+
+**Mutual exclusivity.** `endpointPicker.enabled` requires `gateway.enabled` and is
+**mutually exclusive** with `gateway.canaries[]` (both XRD-CEL-enforced) — an
+InferencePool backendRef carries neither `weight` nor `modelNameOverride`, so
+weighted LoRA canaries and InferencePool routing cannot coexist on one rule.
+Canary claims keep the SPEC-002 `AIServiceBackend` routing. Rollback is a
+single-field revert (`endpointPicker.enabled: false` reverts the base rule to the
+AIServiceBackend chain and GCs the EPP `HelmRelease`/CNP/VMServiceScrape).
+
+**EPP pod security (PSS=restricted).** The GAIE v1.5.0 `inferencepool` chart
+exposes **no** `securityContext` value key (the EPP Deployment comes from a shared
+library helper), so the composition cannot plumb one through. The `llm` namespace
+is PSS=restricted; the primary posture is to trust the upstream EPP image's
+baked-in context (GAIE targets restricted clusters, e.g. GKE Autopilot) and verify
+admission on-cluster (SPEC-004 CL-7 / e2e task T010). If admission fails on
+securityContext, the pre-authored fallback is a narrowly-scoped Kyverno **mutate**
+policy selecting the EPP pod labels — not a chart fork. This finding is confirmed
+during the feature-branch deploy, not assumed here.
+
+**Resources.** The chart's EPP defaults request cpu `4` / mem `8Gi` (limit mem
+`16Gi`); size GPU-node headroom accordingly. `failureMode: FailOpen` (chart
+default) keeps traffic flowing if the EPP is unavailable.
+
+See `examples/inferenceservice-endpointpicker.yaml` for a full claim.
+
 ## Status
 
 | Field | Condition | Notes |
@@ -327,9 +397,12 @@ single scalar field the column can read directly.
 | `Backend` (`<claim>-direct`) | `gateway.enabled` | Envoy Gateway `Backend` → vLLM Service FQDN `:8000`. Static-ready |
 | `AIServiceBackend` (`<claim>`) | `gateway.enabled` | OpenAI-schema AI backend referencing the `Backend`. Static-ready |
 | `AIServiceBackend` (`<claim>-canary-<i>`) | per `gateway.canaries[]` entry | One extra AI backend per canary (same `Backend`) so the route rule can carry a distinct named backendRef per canary. Static-ready |
-| `AIGatewayRoute` (`<claim>`) | `gateway.enabled` **and** Deployment `Available` (latched) | Base rule (`x-ai-eg-model == <claim>`) + one pin rule per LoRA adapter. Withheld until the Deployment is ready, then latched (never withdrawn on transient unavailability). Ready when `status.conditions[Accepted]=True` |
+| `AIGatewayRoute` (`<claim>`) | `gateway.enabled` **and** Deployment `Available` (latched) | Base rule (`x-ai-eg-model == <claim>`) + one pin rule per LoRA adapter. Withheld until the Deployment is ready, then latched (never withdrawn on transient unavailability). Ready when `status.conditions[Accepted]=True`. With `endpointPicker.enabled`, the base rule's backendRef switches to the `InferencePool` `<claim>` (group `inference.networking.k8s.io`) — pin rules unchanged |
+| `HelmRelease` (`<claim>-epp`) | `gateway.endpointPicker.enabled` | GAIE `inferencepool` chart v1.5.0 via `chartRef` → shared `llm`/`inferencepool` OCIRepository. Installs the InferencePool CR (`<claim>`) + EPP Deployment/Service (`<claim>-epp`). Static-ready ([SPEC-004](../../../../../../docs/specs/004-per-inferenceservice-inferencepool-endpoint/spec.md)) |
+| `CiliumNetworkPolicy` (`<claim>-epp`) | `gateway.endpointPicker.enabled` | Default-deny EPP policy: egress vLLM `:8000` + kube-apiserver entity + kube-dns (with `rules.dns`); ingress ext-proc `:9002` from the Envoy data plane. Static-ready |
+| `VMServiceScrape` (`<claim>-epp`) | `gateway.endpointPicker.enabled` | Scrapes the EPP Service `http-metrics` port |
 | XR `status.modelEndpoint` | `gateway.enabled` | XR status patched via the desired-composite (dxr) — see [Status](#status) |
-| `CiliumNetworkPolicy` (serving) | always | Default-deny + explicit allow on the long-lived serving pod (DNS only egress + ingress from AI Gateway data-plane, SR, vmagent) |
+| `CiliumNetworkPolicy` (serving) | always | Default-deny + explicit allow on the long-lived serving pod (DNS only egress + ingress from AI Gateway data-plane, SR, vmagent). With `endpointPicker.enabled`, also allows EPP `:8000` ingress |
 | `CiliumNetworkPolicy` (preload) | `model.preload.enabled` | Separate policy on the one-shot Job pod (DNS, AWS API, world:443 for HF, host:80 for EKS Pod Identity Agent) |
 | `ExternalSecret(s)` | per `externalSecrets` entry | AWS Secrets Manager → Kubernetes Secret |
 | `VMServiceScrape` | always | Scrapes `:8000/metrics` (vLLM Prometheus exposition) |
@@ -345,6 +418,7 @@ PVC at `/models` with `subPath = <claim-name>` for filesystem isolation.
 
 - [`infrastructure/base/crossplane/configuration/examples/inferenceservice-basic.yaml`](../../examples/inferenceservice-basic.yaml) — minimal claim, single GPU, defaults applied (always-warm, no preload).
 - [`infrastructure/base/crossplane/configuration/examples/inferenceservice-complete.yaml`](../../examples/inferenceservice-complete.yaml) — full feature set: preload Job, Model Streamer cold-start, HTTPRoute, KV offload + prefix cache, ExternalSecret, LoRA adapter, and composition-owned AI Gateway routing with a weighted canary.
+- [`infrastructure/base/crossplane/configuration/examples/inferenceservice-endpointpicker.yaml`](../../examples/inferenceservice-endpointpicker.yaml) — GAIE InferencePool + Endpoint Picker smart routing (SPEC-004): opt-in `gateway.endpointPicker.enabled`, mutually exclusive with canaries.
 
 ## Validation
 

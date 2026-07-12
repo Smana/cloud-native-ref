@@ -35,6 +35,16 @@ spec:
                   message: "gateway.canaries[].adapter names must be distinct"
                 - rule: "!has(self.gateway) || !has(self.gateway.canaries) || self.gateway.canaries.map(c, c.weightPercent).sum() <= 99"
                   message: "gateway.canaries[].weightPercent must sum to <= 99 (the base model always retains traffic)"
+                # SPEC-004 (FR-002, CL-1): endpointPicker only alters gateway
+                # routing, so it requires gateway.enabled.
+                - rule: "!has(self.gateway) || !has(self.gateway.endpointPicker) || !self.gateway.endpointPicker.enabled || self.gateway.enabled"
+                  message: "gateway.endpointPicker.enabled requires gateway.enabled to be true"
+                # SPEC-004 (FR-005, CL-4): an InferencePool backendRef carries
+                # neither weight nor modelNameOverride and only one InferencePool
+                # is allowed per rule, so weighted LoRA canaries and InferencePool
+                # routing are mutually exclusive per claim in this version.
+                - rule: "!has(self.gateway) || !has(self.gateway.endpointPicker) || !self.gateway.endpointPicker.enabled || !has(self.gateway.canaries) || self.gateway.canaries.size() == 0"
+                  message: "gateway.endpointPicker.enabled is mutually exclusive with gateway.canaries[] — InferencePool backendRefs support neither weight nor modelNameOverride; drop the canaries or disable endpointPicker"
                 # engineArgs reserved-flag denylist (SPEC-003) — one rule per
                 # composition-managed flag. Lockstep with kcl/inference-service/main.k
                 # is asserted by main_test.k:test_engine_args_denylist_lockstep. The
@@ -361,6 +371,32 @@ spec:
                     enabled:
                       type: boolean
                       default: false
+                    endpointPicker:
+                      type: object
+                      description: |
+                        SPEC-004: opt-in Gateway API Inference Extension
+                        (GAIE v1.5.0) smart routing. When enabled, the
+                        composition renders a per-claim Flux HelmRelease
+                        (chart `inferencepool`) that installs an InferencePool
+                        + Endpoint Picker (EPP), and re-points the
+                        AIGatewayRoute base rule at that InferencePool
+                        (backendRef group inference.networking.k8s.io, kind
+                        InferencePool) instead of the SPEC-002 AIServiceBackend
+                        chain. The EPP scores every candidate vLLM replica per
+                        request on queue depth + KV-cache utilization + prefix
+                        affinity + LoRA-awareness — replacing the Service's
+                        round-robin. Requires gateway.enabled and is mutually
+                        exclusive with gateway.canaries[] (both CEL-enforced).
+                        Opt-in, default off; only pays off at N>1 replicas but
+                        wires cleanly at N=1 (EPP is a no-op with one endpoint).
+                      properties:
+                        enabled:
+                          type: boolean
+                          description: |
+                            Render the InferencePool + EPP and switch the base
+                            rule's backendRef to the InferencePool. Default
+                            false (opt-in).
+                          default: false
                     canaries:
                       type: array
                       maxItems: 4

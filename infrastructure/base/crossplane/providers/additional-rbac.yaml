@@ -153,3 +153,15 @@ rules:
   - apiGroups: ["aigateway.envoyproxy.io"]
     resources: ["aigatewayroutes", "aigatewayroutes/status", "aiservicebackends", "aiservicebackends/status"]
     verbs: ["*"]
+  # SPEC-004: the endpointPicker path renders a per-claim Flux HelmRelease
+  # (chart `inferencepool`) plus its own CiliumNetworkPolicy + VMServiceScrape
+  # (both already covered by the cilium.io / operator.victoriametrics.com
+  # grants on app-composition:aggregate-to-crossplane, which aggregates into
+  # the same crossplane SA). The chart — NOT the composition directly —
+  # creates the InferencePool CR + EPP Deployment/Service, so `inferencepools`
+  # is deliberately NOT granted here (CL-2/FR-009: the chart's own
+  # namespace-scoped RBAC owns them). Only `helmreleases` is a new kind the
+  # composition renders itself, so it is the sole SPEC-004 delta.
+  - apiGroups: ["helm.toolkit.fluxcd.io"]
+    resources: ["helmreleases", "helmreleases/status"]
+    verbs: ["*"]

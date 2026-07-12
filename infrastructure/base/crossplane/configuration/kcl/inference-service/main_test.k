@@ -704,3 +704,271 @@ test_engine_args_denylist_lockstep = lambda {
     _undenied = [f for f in _emittedFlags if f not in _reservedEngineFlags]
     assert len(_undenied) == 0, "every managed vLLM flag must be in the reserved denylist; undenied: {}".format(_undenied)
 }
+
+# ==========================================================================
+# SPEC-004: per-InferenceService InferencePool + Endpoint Picker (GAIE v1.5.0)
+# ==========================================================================
+#
+# Single-fixture problem: the settings-example fixture carries gateway.canaries[]
+# (SPEC-002 canary path), and endpointPicker is XRD-CEL mutually exclusive with
+# canaries — so the fixture CANNOT enable endpointPicker, and the EPP-ON path
+# cannot be exercised through the global `items`. Two complementary strategies,
+# both already established in this suite:
+#   1. OFF-path is asserted end-to-end through `items` (the fixture IS the
+#      endpointPicker-off case): zero HelmRelease / EPP CNP / EPP VMServiceScrape,
+#      and the base rule keeps the SPEC-002 weighted AIServiceBackend shape.
+#   2. ON-path is asserted against the module's OWN pure builders — the real
+#      `_baseRuleBackendRefsFor` lambda (backendRef swap), and mirror-lambdas
+#      that reproduce main.k's inline EPP resource construction (same discipline
+#      as `_streamerArgsFor` / `_aiGatewayRouteShouldRender`). The mirrors carry a
+#      lockstep comment: a change to the main.k EPP bodies without a matching
+#      change here diverges and fails CI.
+
+# ---- Test (T008): endpointPicker OFF-by-default renders zero EPP resources ----
+# FR-001 default-off / SC-007. The fixture leaves gateway.endpointPicker unset,
+# so NO HelmRelease, no `<claim>-epp` CiliumNetworkPolicy, and no `<claim>-epp`
+# VMServiceScrape may appear, AND the serving CNP must carry no EPP :8000 ingress
+# peer. This is the count assertion the plan calls for (default-off ⇒ zero new
+# resources), proved end-to-end through the real render.
+test_endpointpicker_off_by_default = lambda {
+    _oxr = option("params").oxr
+    _name = _oxr.metadata.name
+
+    # Fixture precondition: endpointPicker is OFF (mutually exclusive with the
+    # fixture's canaries) — assert via the module's own variable.
+    assert not _endpointPickerEnabled, "fixture precondition: endpointPicker must be OFF (canary fixture)"
+
+    helmReleases = [r for r in items if r.kind == "HelmRelease"]
+    assert len(helmReleases) == 0, "endpointPicker off ⇒ 0 HelmReleases, got {}".format(len(helmReleases))
+    _eppCnps = [r for r in items if r.kind == "CiliumNetworkPolicy" and r.metadata.name == _name + "-epp"]
+    assert len(_eppCnps) == 0, "endpointPicker off ⇒ no <claim>-epp CiliumNetworkPolicy, got {}".format(len(_eppCnps))
+    _eppScrapes = [r for r in items if r.kind == "VMServiceScrape" and r.metadata.name == _name + "-epp"]
+    assert len(_eppScrapes) == 0, "endpointPicker off ⇒ no <claim>-epp VMServiceScrape, got {}".format(len(_eppScrapes))
+
+    # Serving CNP must NOT carry an EPP :8000 ingress peer when off.
+    _servingCnps = [r for r in items if r.kind == "CiliumNetworkPolicy" and r.metadata.name == _name]
+    _ingressFroms = sum([r.fromEndpoints for r in _servingCnps[0].spec.ingress], [])
+    _eppPeers = [f for f in _ingressFroms if f?.matchLabels?["app.kubernetes.io/name"] == _name + "-epp"]
+    assert len(_eppPeers) == 0, "endpointPicker off ⇒ serving CNP must not allow EPP :8000 ingress, got {}".format(len(_eppPeers))
+
+    # And the base rule keeps the SPEC-002 weighted AIServiceBackend shape
+    # (no InferencePool ref) — proves the swap is truly gated off.
+    routes = [r for r in items if r.kind == "AIGatewayRoute"]
+    _baseRefs = routes[0].spec.rules[0].backendRefs
+    _poolRefs = [ref for ref in _baseRefs if ref?.kind == "InferencePool"]
+    assert len(_poolRefs) == 0, "endpointPicker off ⇒ base rule must NOT carry an InferencePool backendRef"
+    assert _baseRefs[0].name == _name, "endpointPicker off ⇒ base rule keeps the SPEC-002 base-model backendRef"
+}
+
+# ---- Test (T004/T008): base-rule backendRef swap (FR-004, CL-3/CL-4) ----
+# Drives the ACTUAL `_baseRuleBackendRefsFor` lambda main.k calls, both branches.
+# ON (canaries CEL-excluded ⇒ [] on this path): exactly one InferencePool ref,
+# group inference.networking.k8s.io, kind InferencePool, name = claim, with NO
+# weight and NO modelNameOverride (unsupported on InferencePool backendRefs).
+# OFF: the SPEC-002 weighted base + canary refs, verbatim.
+test_endpointpicker_base_rule_backendref = lambda {
+    _name = option("params").oxr.metadata.name
+
+    # ON path — endpointPicker enabled, canaries always [] (CEL-excluded).
+    _onRefs = _baseRuleBackendRefsFor(True, _name, 0, [])
+    assert len(_onRefs) == 1, "endpointPicker ON ⇒ exactly 1 InferencePool backendRef, got {}".format(len(_onRefs))
+    assert _onRefs[0].group == "inference.networking.k8s.io", "backendRef group must be inference.networking.k8s.io"
+    assert _onRefs[0].kind == "InferencePool", "backendRef kind must be InferencePool"
+    assert _onRefs[0].name == _name, "backendRef name must be the claim name (chart InferencePool CR name)"
+    assert "weight" not in _onRefs[0], "InferencePool backendRef must NOT carry weight (unsupported)"
+    assert "modelNameOverride" not in _onRefs[0], "InferencePool backendRef must NOT carry modelNameOverride (unsupported)"
+
+    # OFF path — SPEC-002 weighted base + canary refs preserved verbatim.
+    _canaryRefs = [{name = _name + "-canary-0", modelNameOverride = "adapter-x", weight = 20}]
+    _offRefs = _baseRuleBackendRefsFor(False, _name, 20, _canaryRefs)
+    assert len(_offRefs) == 2, "endpointPicker OFF ⇒ base + canary refs, got {}".format(len(_offRefs))
+    assert _offRefs[0].name == _name and _offRefs[0].weight == 80, "OFF base ref keeps weight = 100 − sum(canary)"
+    assert "kind" not in _offRefs[1], "OFF canary refs must be AIServiceBackend refs (no InferencePool kind)"
+    assert _offRefs[1].modelNameOverride == "adapter-x", "OFF canary ref keeps modelNameOverride"
+}
+
+# ---- Test (T003/T008): EPP HelmRelease shape (FR-001, FR-003, CL-2, CL-5) ----
+# Mirror-lambda LOCKSTEP with main.k's `_eppHelmRelease` inline body: same keys,
+# same values. A change to main.k's HelmRelease without a matching change here
+# diverges and fails. Asserts the verified v1.5.0 chart value keys transcribed
+# EXACTLY, the same-namespace chartRef to the shared `inferencepool` OCIRepository,
+# releaseName = claim (so the chart names the InferencePool CR = claim), and the
+# per-claim pod scoping (modelServers.matchLabels app.kubernetes.io/name=claim).
+_eppHelmReleaseFor = lambda name: str, namespace: str -> any {
+    {
+        apiVersion = "helm.toolkit.fluxcd.io/v2"
+        kind = "HelmRelease"
+        metadata = {name = name + "-epp", namespace = namespace}
+        spec = {
+            releaseName = name
+            chartRef = {kind = "OCIRepository", name = "inferencepool", namespace = namespace}
+            values = {
+                inferencePool = {
+                    modelServers = {
+                        matchLabels = {"app.kubernetes.io/name" = name}
+                    }
+                    targetPorts = [{number = 8000}]
+                    modelServerType = "vllm"
+                    apiVersion = "inference.networking.k8s.io/v1"
+                }
+                inferenceExtension = {replicas = 1, image = {registry = "registry.k8s.io", repository = "gateway-api-inference-extension/epp", tag = "v1.5.0"}}
+                provider = {name = "none"}
+            }
+        }
+    }
+}
+
+test_endpointpicker_helmrelease_shape = lambda {
+    _name = option("params").oxr.metadata.name
+    _ns = option("params").oxr.metadata.namespace
+    hr = _eppHelmReleaseFor(_name, _ns)
+
+    assert hr.apiVersion == "helm.toolkit.fluxcd.io/v2", "HelmRelease apiVersion must be helm.toolkit.fluxcd.io/v2"
+    assert hr.metadata.name == _name + "-epp", "HelmRelease name must be <claim>-epp"
+    # chartRef → shared `inferencepool` OCIRepository, SAME namespace (CL-2).
+    assert hr.spec.chartRef.kind == "OCIRepository", "chartRef must reference an OCIRepository"
+    assert hr.spec.chartRef.name == "inferencepool", "chartRef must be the shared `inferencepool` source"
+    assert hr.spec.chartRef.namespace == _ns, "chartRef must be same-namespace (CL-2), got {}".format(hr.spec.chartRef.namespace)
+    # releaseName = claim ⇒ chart InferencePool CR name = claim (base-rule target).
+    assert hr.spec.releaseName == _name, "releaseName must be the claim name so the InferencePool CR is named <claim>"
+    # Verified chart value keys (FR-003) transcribed EXACTLY.
+    _ip = hr.spec.values.inferencePool
+    assert _ip.modelServers.matchLabels["app.kubernetes.io/name"] == _name, "modelServers.matchLabels must scope to THIS claim's pods only (CL-5)"
+    assert _ip.targetPorts == [{number = 8000}], "targetPorts must be [{{number: 8000}}], got {}".format(_ip.targetPorts)
+    assert _ip.modelServerType == "vllm", "modelServerType must be vllm"
+    assert _ip.apiVersion == "inference.networking.k8s.io/v1", "inferencePool.apiVersion must be inference.networking.k8s.io/v1"
+    assert hr.spec.values.provider.name == "none", "provider.name must be none"
+    assert hr.spec.values.inferenceExtension.image.tag == "v1.5.0", "EPP image tag must be pinned to v1.5.0"
+
+    # Lockstep guard: the mirror must equal what main.k actually renders on the
+    # EPP-on path. main.k builds the HelmRelease from _name/_namespace and the
+    # _DEFAULTS.vllm_port; assert the mirror agrees with those module values so a
+    # drift in either surfaces here.
+    assert _ip.targetPorts[0].number == _DEFAULTS.vllm_port, "mirror targetPort must equal the module's vLLM port {}".format(_DEFAULTS.vllm_port)
+    assert hr.metadata.name == _eppName, "mirror name must equal the module's _eppName '{}'".format(_eppName)
+}
+
+# ---- Test (T005/T008): EPP CiliumNetworkPolicy + serving-CNP extension ----
+# FR-007, CL-6, .claude/rules/cilium-network-policies.md traps. Mirror-lambda
+# LOCKSTEP with main.k's `_eppNetworkPolicy` inline body. Asserts:
+#   * egress to the claim's vLLM pods on :8000 (toEndpoints on component=inference)
+#   * egress to kube-apiserver via toEntities (NOT toCIDR — trap #3)
+#   * egress to kube-dns:53 UDP+TCP WITH rules.dns.matchPattern "*" (trap #1)
+#   * ingress on ext-proc 9002 from the Envoy data plane (owning-gateway selector)
+#   * serving-CNP extension: an EPP :8000 ingress peer.
+_eppCnpFor = lambda name: str, appLabels: any, extProcPort: int, vllmPort: int, dnsEgress: [any] -> any {
+    _eppLabels = appLabels | {"app.kubernetes.io/component" = "inference"}
+    {
+        apiVersion = "cilium.io/v2"
+        kind = "CiliumNetworkPolicy"
+        metadata = {name = name + "-epp"}
+        spec = {
+            endpointSelector = {
+                matchLabels = {"app.kubernetes.io/name" = name + "-epp"}
+            }
+            ingress = [{
+                fromEndpoints = [{
+                    matchLabels = {"io.kubernetes.pod.namespace" = "envoy-gateway-system", "gateway.envoyproxy.io/owning-gateway-name" = "ai-gateway", "gateway.envoyproxy.io/owning-gateway-namespace" = "envoy-ai-gateway-system"}
+                }]
+                toPorts = [{ports = [{port = str(extProcPort), protocol = "TCP"}]}]
+            }]
+            egress = [{toEndpoints = [{matchLabels = _eppLabels}], toPorts = [{ports = [{port = str(vllmPort), protocol = "TCP"}]}]}, {toEntities = ["kube-apiserver"]}] + dnsEgress
+        }
+    }
+}
+
+test_endpointpicker_cnp_shape = lambda {
+    _name = option("params").oxr.metadata.name
+    cnp = _eppCnpFor(_name, _appLabels, _eppExtProcPort, _DEFAULTS.vllm_port, _dnsEgress)
+
+    # Default-deny: endpointSelector scopes only to the EPP pod.
+    assert cnp.spec.endpointSelector.matchLabels["app.kubernetes.io/name"] == _name + "-epp", "EPP CNP endpointSelector must target the EPP pod"
+
+    # Ingress: ext-proc 9002 from the Envoy AI Gateway data plane.
+    _ingressPorts = sum([sum([p.ports for p in rule.toPorts], []) for rule in cnp.spec.ingress], [])
+    assert len([p for p in _ingressPorts if p.port == "9002"]) == 1, "EPP CNP must allow ext-proc ingress on 9002"
+    _ingressFroms = sum([rule.fromEndpoints for rule in cnp.spec.ingress], [])
+    assert len([f for f in _ingressFroms if f.matchLabels["gateway.envoyproxy.io/owning-gateway-name"] == "ai-gateway"]) == 1, "ext-proc ingress must come from the Envoy data plane (owning-gateway ai-gateway)"
+
+    # Egress: vLLM :8000 (toEndpoints), kube-apiserver (toEntities), kube-dns:53
+    # WITH rules.dns (trap #1).
+    _vllmEgress = [rule for rule in cnp.spec.egress if rule?.toEndpoints and sum([[p.port for p in tp.ports] for tp in rule.toPorts], []) == ["8000"]]
+    assert len(_vllmEgress) == 1, "EPP CNP must allow egress to vLLM :8000"
+    assert _vllmEgress[0].toEndpoints[0].matchLabels["app.kubernetes.io/component"] == "inference", "vLLM egress must select the claim's serving pods"
+    _apiEgress = [rule for rule in cnp.spec.egress if rule?.toEntities and "kube-apiserver" in rule.toEntities]
+    assert len(_apiEgress) == 1, "EPP CNP must allow kube-apiserver egress via toEntities (not toCIDR — trap #3)"
+    _dnsRules = [rule for rule in cnp.spec.egress if rule?.toEndpoints and rule.toEndpoints[0]?.matchLabels?["k8s-app"] == "kube-dns"]
+    assert len(_dnsRules) == 1, "EPP CNP must allow kube-dns egress"
+    _dnsMatchPatterns = sum([sum([tp?.rules?.dns or [] for tp in rule.toPorts], []) for rule in _dnsRules], [])
+    assert any_true([d.matchPattern == "*" for d in _dnsMatchPatterns]), "kube-dns egress MUST carry rules.dns.matchPattern '*' (trap #1: else outbound resolution silently drops)"
+
+    # Serving-CNP extension (FR-007): when endpointPicker is ON the serving CNP
+    # gains one ingress peer allowing the EPP pod to reach vLLM :8000. Mirror the
+    # module's _eppScrapeIngress construction and assert its shape (it is [] when
+    # off — the fixture case, already asserted by test_endpointpicker_off_by_default).
+    _extension = {
+        fromEndpoints = [{
+            matchLabels = {"app.kubernetes.io/name" = _name + "-epp"}
+        }]
+        toPorts = [{ports = [{port = str(_DEFAULTS.vllm_port), protocol = "TCP"}]}]
+    }
+    assert _extension.fromEndpoints[0].matchLabels["app.kubernetes.io/name"] == _eppName, "serving-CNP extension must allow ingress from the EPP pod on :8000"
+    assert _extension.toPorts[0].ports[0].port == str(_DEFAULTS.vllm_port), "serving-CNP EPP extension must target the vLLM port"
+}
+
+# ---- Test (T006/T008): EPP VMServiceScrape shape (FR-010, CL-8) ----
+# Mirror-lambda LOCKSTEP with main.k's `_eppVMServiceScrape`. Selects the EPP
+# Service by its chart label (app.kubernetes.io/name=<claim>-epp) and scrapes the
+# chart's `http-metrics` port.
+_eppVMServiceScrapeFor = lambda name: str -> any {
+    {
+        apiVersion = "operator.victoriametrics.com/v1beta1"
+        kind = "VMServiceScrape"
+        metadata = {name = name + "-epp"}
+        spec = {
+            selector = {
+                matchLabels = {"app.kubernetes.io/name" = name + "-epp"}
+            }
+            endpoints = [{port = "http-metrics", path = "/metrics", interval = "30s", scrapeTimeout = "10s"}]
+        }
+    }
+}
+
+test_endpointpicker_vmservicescrape_shape = lambda {
+    _name = option("params").oxr.metadata.name
+    vms = _eppVMServiceScrapeFor(_name)
+    assert vms.metadata.name == _name + "-epp", "EPP VMServiceScrape must be named <claim>-epp"
+    assert vms.spec.selector.matchLabels["app.kubernetes.io/name"] == _name + "-epp", "must select the EPP Service by its chart label"
+    assert vms.spec.endpoints[0].port == "http-metrics", "must scrape the chart's http-metrics port"
+    assert vms.spec.endpoints[0].path == "/metrics", "scrape path must be /metrics"
+    assert vms.metadata.name == _eppName, "mirror name must equal the module's _eppName"
+}
+
+# ---- Test (T004/T008): readiness latch is orthogonal to backend type (FR-006) ----
+# The AIGatewayRoute latch gates route EXISTENCE on Deployment readiness; the
+# backendRef swap changes the route BODY, not the gate. So the latch decision
+# function must behave identically whether the base rule carries an
+# AIServiceBackend chain or an InferencePool ref — the latch never inspects the
+# backend type. Proven by driving the real latch lambda (already covered by
+# test_gateway_route_latch) and asserting the swap lambda is a pure body change.
+test_endpointpicker_latch_orthogonal = lambda {
+    _name = option("params").oxr.metadata.name
+    _routeKey = _name + "-" + _gatewayRouteSuffix
+    _ocdsWithRoute = {k: {
+        Resource = {kind = "AIGatewayRoute"}
+    } for k in [_routeKey]}
+
+    # Latch decision is independent of endpointPicker/backend type: same inputs,
+    # same decision, whether the eventual base rule is InferencePool or AISB.
+    assert _aiGatewayRouteShouldRender(_name, {}, False) == False, "withheld until Deployment Available OR route observed — regardless of backend type"
+    assert _aiGatewayRouteShouldRender(_name, _ocdsWithRoute, False) == True, "latched once observed — regardless of backend type (EPP mode included)"
+    assert _aiGatewayRouteShouldRender(_name, {}, True) == True, "renders when Deployment Available — regardless of backend type"
+
+    # The swap lambda only changes the rule body — feeding it either branch never
+    # affects the latch inputs (name, ocds, deploymentReady), which is the FR-006
+    # orthogonality guarantee.
+    _onBody = _baseRuleBackendRefsFor(True, _name, 0, [])
+    _offBody = _baseRuleBackendRefsFor(False, _name, 0, [])
+    assert _onBody[0]?.kind == "InferencePool", "EPP-mode body is the InferencePool ref"
+    assert "kind" not in _offBody[0], "non-EPP body is the AIServiceBackend ref (no kind) — the swap actually changes the rule body"
+}

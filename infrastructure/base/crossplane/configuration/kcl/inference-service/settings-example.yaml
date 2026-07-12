@@ -138,6 +138,13 @@ kcl_options:
           # adapters (verbatim modelNameOverride), leaving the base model 75%;
           # explicit requests for either adapter name stay pinned 100% on the
           # base pod. Adapter names are distinct and the weights sum to <= 99.
+          # SPEC-004: gateway.endpointPicker.enabled is DELIBERATELY absent
+          # here — it is XRD-CEL mutually exclusive with the canaries[] below
+          # (an InferencePool backendRef supports neither weight nor
+          # modelNameOverride). The endpointPicker render path is exercised by
+          # main_test.k against the module's pure builders (see the SPEC-004
+          # test block: single-fixture problem) and by
+          # examples/inferenceservice-endpointpicker.yaml under crossplane render.
           gateway:
             enabled: true
             canaries:

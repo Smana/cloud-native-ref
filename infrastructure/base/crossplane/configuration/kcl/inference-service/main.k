@@ -241,6 +241,28 @@ _preloadJobReady = (_observedPreloadJob?.status?.succeeded or 0) > 0
 _gatewayEnabled = oxr.spec.gateway?.enabled or False
 _gatewayCanaries = oxr.spec.gateway?.canaries or []
 
+# SPEC-004: GAIE endpoint-picker opt-in. When enabled (requires gateway.enabled
+# and is mutually exclusive with canaries — both XRD-CEL-enforced), the
+# composition renders a per-claim HelmRelease `<name>-epp` (chart `inferencepool`
+# v1.5.0) that installs the InferencePool CR + EPP Deployment/Service, and swaps
+# the AIGatewayRoute base rule's backendRefs to the InferencePool. Default off.
+_endpointPickerEnabled = oxr.spec.gateway?.endpointPicker?.enabled or False
+
+# Naming (CL-2, verified against the v1.5.0 chart helpers):
+#   * The HelmRelease sets `spec.releaseName = _name`, so Helm's Release.Name is
+#     the claim name. The `inferencepool` chart names the InferencePool CR
+#     `{{ .Release.Name }}` ⇒ `<name>` (matches the base-rule backendRef, CL-3),
+#     and the EPP Deployment/Service via the `<Release.Name>-epp` helper ⇒
+#     `<name>-epp`. The HelmRelease object itself is metadata.name `<name>-epp`.
+#   * EPP Service carries chart label `app.kubernetes.io/name: <name>-epp`; the
+#     VMServiceScrape selector and the EPP CNP endpointSelector key off it.
+_eppName = _name + "-epp"
+_eppExtProcPort = 9002
+
+# Chart Service exposes the metrics endpoint on `http-metrics`/9090 (chart
+# `inferenceExtension.metricsPort` default). The VMServiceScrape targets it.
+_eppMetricsPort = 9090
+
 # Single source of truth for the gateway backend names (same discipline as
 # _gatewayRouteSuffix): the Backend's own name and the per-canary
 # AIServiceBackend backendRef linkages must never drift apart. Each canary
@@ -254,6 +276,20 @@ _gatewayCanaryBackendName = lambda i: int -> str {
 # Total canary weight; the base-model backendRef keeps the remainder. CEL at
 # the XRD guarantees this stays <= 99 so the base model always retains traffic.
 _gatewayCanaryWeightTotal = sum([c.weightPercent for c in _gatewayCanaries], 0)
+
+# SPEC-004 (FR-004, CL-3/CL-4): the base-rule backendRefs are chosen by a single
+# inline conditional on `endpointPickerEnabled`, never by mutating the SPEC-002
+# rule dict (function-kcl #285). When endpointPicker is on, the base rule hands
+# the request to the InferencePool `<name>` (group inference.networking.k8s.io,
+# kind InferencePool) — a single ref with NO weight/modelNameOverride (unsupported
+# on InferencePool backendRefs, and canaries are CEL-excluded so `canaryRefs` is
+# always [] on this path). Otherwise it keeps the SPEC-002 weighted base+canary
+# AIServiceBackend refs verbatim. Pure lambda so main_test.k drives the EPP branch
+# against a canary-less synthetic input (the single global fixture carries canaries
+# and thus cannot enable endpointPicker — same discipline as _streamerArgsFor).
+_baseRuleBackendRefsFor = lambda endpointPickerEnabled: bool, name: str, canaryWeightTotal: int, canaryRefs: [any] -> [any] {
+    [{group = "inference.networking.k8s.io", kind = "InferencePool", name = name}] if endpointPickerEnabled else ([{name = name, weight = 100 - canaryWeightTotal}] + canaryRefs)
+}
 
 # SPEC-003 FR-005: status.servedModels topology projection — the base model
 # plus one entry per LoRA adapter. `canaryWeightPercent` is included ONLY for
@@ -525,7 +561,10 @@ if _gatewayEnabled:
     # adapter names (e.g. xplane-qwen-coder-sql-dpo). NO claim prefix here —
     # prefixing would double it to <claim>-<adapter>.
     _canaryBackendRefs = [{name = _gatewayCanaryBackendName(i), modelNameOverride = _gatewayCanaries[i].adapter, weight = _gatewayCanaries[i].weightPercent} for i in range(len(_gatewayCanaries))]
-    _baseRuleBackendRefs = [{name = _name, weight = 100 - _gatewayCanaryWeightTotal}] + _canaryBackendRefs
+
+    # SPEC-004 (FR-004): InferencePool ref when endpointPicker on, SPEC-002
+    # weighted base+canary refs otherwise — via the pure lambda (no mutation).
+    _baseRuleBackendRefs = _baseRuleBackendRefsFor(_endpointPickerEnabled, _name, _gatewayCanaryWeightTotal, _canaryBackendRefs)
     _baseRule = {matches = [{headers = [{type = "Exact", name = "x-ai-eg-model", value = _name}]}], backendRefs = _baseRuleBackendRefs}
 
     # One pin rule per LoRA adapter (all adapters, canary or not): an explicit
@@ -547,6 +586,72 @@ if _gatewayEnabled:
             }
         }]
         _items += _aiGatewayRoute
+
+    # SPEC-004 (FR-001, CL-2): per-claim HelmRelease `<name>-epp` installing the
+    # GAIE `inferencepool` chart v1.5.0. `chartRef` points at the shared static
+    # `llm`-namespace OCIRepository `inferencepool` (flux/sources/…, same-namespace
+    # so cross-namespace-refs is moot). `spec.releaseName = _name` makes Helm's
+    # Release.Name the claim name, so the chart names the InferencePool CR `<name>`
+    # (the base-rule backendRef target, CL-3) and the EPP Deployment/Service
+    # `<name>-epp`. The chart owns EPP + InferencePool + its namespace-scoped
+    # pod-watch RBAC; Crossplane owns the HelmRelease ⇒ clean GC-on-delete.
+    # Values transcribe the verified v1.5.0 chart keys (FR-003):
+    #   * inferencePool.modelServers.matchLabels {app.kubernetes.io/name: <name>}
+    #     — selects ONLY this claim's vLLM replicas, never cross-model (CL-5).
+    #   * inferencePool.targetPorts [{number: 8000}] / modelServerType vllm /
+    #     apiVersion inference.networking.k8s.io/v1 ; provider.name none.
+    # HelmRelease is static-ready per crossplane-validation.md (Flux owns its
+    # lifecycle; the composition treats it as ready-on-apply).
+    if _endpointPickerEnabled:
+        _eppHelmRelease = [{
+            apiVersion = "helm.toolkit.fluxcd.io/v2"
+            kind = "HelmRelease"
+            metadata = _metadata("epp-helmrelease", True) | {name = _eppName}
+            spec = {
+                releaseName = _name
+                chartRef = {kind = "OCIRepository", name = "inferencepool", namespace = _namespace}
+                interval = "10m0s"
+                install = {
+                    remediation = {retries = 3}
+                }
+                upgrade = {
+                    remediation = {retries = 3}
+                }
+                values = {
+                    inferencePool = {
+                        modelServers = {
+                            matchLabels = {"app.kubernetes.io/name" = _name}
+                        }
+                        targetPorts = [{number = _DEFAULTS.vllm_port}]
+                        modelServerType = "vllm"
+                        apiVersion = "inference.networking.k8s.io/v1"
+                    }
+                    inferenceExtension = {
+                        replicas = 1
+                        image = {registry = "registry.k8s.io", repository = "gateway-api-inference-extension/epp", tag = "v1.5.0"}
+                    }
+                    provider = {name = "none"}
+                }
+            }
+        }]
+        _items += _eppHelmRelease
+
+        # SPEC-004 (FR-010, CL-8): VMServiceScrape `<name>-epp` selecting the EPP
+        # Service (chart label `app.kubernetes.io/name: <name>-epp`) — the
+        # composition owns it (GC'd with the claim), matching the vLLM
+        # VMServiceScrape pattern. Metrics on the chart's `http-metrics` port.
+        _eppVMServiceScrape = [{
+            apiVersion = "operator.victoriametrics.com/v1beta1"
+            kind = "VMServiceScrape"
+            metadata = _metadata("epp-vmservicescrape", _appliedReady(_observed("epp-vmservicescrape"))) | {name = _eppName}
+            spec = {
+                selector = {
+                    matchLabels = {"app.kubernetes.io/name" = _eppName}
+                }
+                endpoints = [{port = "http-metrics", path = "/metrics", interval = "30s", scrapeTimeout = "10s"}]
+            }
+        }]
+        _items += _eppVMServiceScrape
 
 
 # XR status patch (dxr) — ALWAYS rendered (SPEC-003 FR-007). servedModels +
@@ -608,6 +713,20 @@ _metricsIngress = [{
     }]
     toPorts = [{ports = [{port = str(_DEFAULTS.vllm_port), protocol = "TCP"}]}]
 }]
+
+# SPEC-004 (FR-007, CL-6): serving-CNP ingress extension — the EPP scrapes each
+# vLLM replica's `/metrics` + probes endpoints on :8000 to score them, so the
+# serving CNP must allow ingress from the EPP pod (chart label
+# `app.kubernetes.io/name: <name>-epp`, same `llm` namespace). Empty [] when
+# endpointPicker is off ⇒ byte-identical serving CNP to SPEC-002. Only appended
+# when the composition's default-deny ingress is in force (a user
+# networkPolicies.ingress override owns its own peer list).
+_eppScrapeIngress = [{
+    fromEndpoints = [{
+        matchLabels = {"app.kubernetes.io/name" = _eppName}
+    }]
+    toPorts = [{ports = [{port = str(_DEFAULTS.vllm_port), protocol = "TCP"}]}]
+}] if _endpointPickerEnabled else []
 _dnsEgress = [{
     toEndpoints = [{
         matchLabels = {"io.kubernetes.pod.namespace" = "kube-system", "k8s-app" = "kube-dns"}
@@ -656,12 +775,58 @@ _networkPolicy = [{
     kind = "CiliumNetworkPolicy"
     metadata = _metadata("cilium-netpol", True)
     spec = {
+        # _eppScrapeIngress is [] unless endpointPicker is on (FR-007, CL-6) —
+        # appended so the EPP may reach vLLM :8000 to score replicas.
         endpointSelector = {matchLabels = _appLabels | {"app.kubernetes.io/component" = "inference"}}
-        ingress = (oxr.spec.networkPolicies?.ingress or _defaultIngress) + _metricsIngress
+        ingress = (oxr.spec.networkPolicies?.ingress or _defaultIngress) + _metricsIngress + _eppScrapeIngress
         egress = oxr.spec.networkPolicies?.egress or _dnsEgress
     }
 }]
 _items += _networkPolicy
+
+# SPEC-004 EPP CiliumNetworkPolicy (FR-007, CL-6): default-deny + explicit allow
+# for the new EPP pod (chart label `app.kubernetes.io/name: <name>-epp`). Renders
+# only when endpointPicker is on. Traps from .claude/rules/cilium-network-policies.md:
+#   * egress to the claim's vLLM pods on :8000 — `toEndpoints` on the serving
+#     pods' `app.kubernetes.io/name: <name>` label (same namespace; `/metrics`
+#     scrape + endpoint health checks the EPP uses to score replicas).
+#   * egress to the kube-apiserver — `toEntities: ["kube-apiserver"]` (the EPP
+#     watches Pods + the InferencePool CR; the apiserver is the `kube-apiserver`
+#     entity, not a toCIDR — trap #3 idiom).
+#   * egress to kube-dns:53 UDP/TCP WITH `rules.dns.matchPattern "*"` (reuses
+#     `_dnsEgress`) — mandatory L7 DNS inspection or outbound resolution silently
+#     drops (trap #1).
+#   * ingress on the ext-proc port 9002 from the Envoy AI Gateway data plane
+#     (reuses the SPEC-002 `envoy-gateway-system` / owning-gateway selector) —
+#     Envoy calls the EPP per request to pick an endpoint.
+# CNP is static-ready (crossplane-validation.md: always ready when applied).
+if _endpointPickerEnabled:
+    _eppVllmScrapeEgress = [{
+        toEndpoints = [{matchLabels = _appLabels | {"app.kubernetes.io/component" = "inference"}}]
+        toPorts = [{ports = [{port = str(_DEFAULTS.vllm_port), protocol = "TCP"}]}]
+    }]
+    _eppApiServerEgress = [{
+        toEntities = ["kube-apiserver"]
+    }]
+    _eppExtProcIngress = [{
+        fromEndpoints = [{
+            matchLabels = {"io.kubernetes.pod.namespace" = "envoy-gateway-system", "gateway.envoyproxy.io/owning-gateway-name" = "ai-gateway", "gateway.envoyproxy.io/owning-gateway-namespace" = "envoy-ai-gateway-system"}
+        }]
+        toPorts = [{ports = [{port = str(_eppExtProcPort), protocol = "TCP"}]}]
+    }]
+    _eppNetworkPolicy = [{
+        apiVersion = "cilium.io/v2"
+        kind = "CiliumNetworkPolicy"
+        metadata = _metadata("epp-cilium-netpol", True) | {name = _eppName}
+        spec = {
+            endpointSelector = {
+                matchLabels = {"app.kubernetes.io/name" = _eppName}
+            }
+            ingress = _eppExtProcIngress
+            egress = _eppVllmScrapeEgress + _eppApiServerEgress + _dnsEgress
+        }
+    }]
+    _items += _eppNetworkPolicy
 
 # Preload CNP — only when the preload Job is actually rendered. The Job
 # downloads weights from HF (world:443), reads the HF token Secret

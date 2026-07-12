@@ -1,0 +1,78 @@
+---
+# InferenceService with GAIE Endpoint Picker (SPEC-004) — vLLM-aware smart
+# routing behind the Envoy AI Gateway.
+#
+# When gateway.endpointPicker.enabled is true, the composition renders a
+# per-claim Flux HelmRelease (chart `inferencepool` v1.5.0, via the shared
+# `llm`-namespace OCIRepository) that installs an InferencePool + Endpoint
+# Picker (EPP), and re-points the AIGatewayRoute base rule at that
+# InferencePool (backendRef group inference.networking.k8s.io, kind
+# InferencePool) instead of the SPEC-002 AIServiceBackend chain. The EPP
+# scores every candidate vLLM replica per request (queue depth + KV-cache
+# utilization + prefix affinity + LoRA-awareness) — replacing the Service's
+# round-robin, which scatters prefix-sharing requests and destroys per-pod
+# prefix-cache locality.
+#
+# endpointPicker is MUTUALLY EXCLUSIVE with gateway.canaries[] (XRD CEL) —
+# an InferencePool backendRef carries neither weight nor modelNameOverride,
+# so weighted LoRA canaries and InferencePool routing cannot coexist on one
+# rule in this version. It also REQUIRES gateway.enabled (XRD CEL).
+#
+# Payoff: EPP only alters routing at N>1 replicas (it is a functional no-op
+# with one endpoint), but it wires cleanly at N=1 today — enabling smart
+# routing the moment KEDA scales the model out. Opt-in, default off.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: InferenceService
+metadata:
+  name: xplane-qwen-coder
+  namespace: llm
+spec:
+  model:
+    repository: Qwen/Qwen2.5-Coder-7B-Instruct
+    revision: main
+    quantization: fp8
+    contextWindow: 32768
+    maxNumSeqs: 64
+    preload:
+      enabled: true
+  gpu:
+    count: 1
+    minVRAM: 16Gi
+  routing:
+    tier: medium
+    specialty: code
+  # Scale out under load so the EPP has >1 replica to choose among.
+  scaling:
+    minReplicas: 1
+    maxReplicas: 4
+  cache:
+    # Prefix caching is what the EPP's prefix-affinity scoring preserves —
+    # keep it on to get the TTFT benefit under concurrent load.
+    prefixCache:
+      enabled: true
+  # SPEC-004: composition-owned InferencePool + Endpoint Picker. The base
+  # rule (x-ai-eg-model: xplane-qwen-coder) is routed through the
+  # InferencePool `xplane-qwen-coder`; the EPP picks the best replica per
+  # request. NO canaries here — mutually exclusive with endpointPicker.
+  gateway:
+    enabled: true
+    endpointPicker:
+      enabled: true
+  weightsFileSystem:
+    subPath: xplane-qwen-coder
+  externalSecrets:
+    - name: hf-token
+      remoteRef: /platform/llm/hf_token
+      refreshInterval: 1h
+  envFromSecrets:
+    - hf-token
+  observability:
+    metrics:
+      interval: "30s"
+  resources:
+    requests:
+      cpu: "2"
+      memory: 16Gi
+    limits:
+      cpu: "8"
+      memory: 32Gi
