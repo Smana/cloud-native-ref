@@ -45,7 +45,7 @@ spec:
     - name: <client-facing-model-id>            # kebab-case, e.g. xplane-qwen-coder-sql
       repository: <hf-org>/<hf-repo>
       revision: <sha-or-tag>                    # defaults to "main"
-  gateway:                         # optional; v0.7.0+ (SPEC-002) — see "AI Gateway routing" section
+  gateway:                         # optional; v0.8.0+ (SPEC-002) — see "AI Gateway routing" section
     enabled: false                 # composition renders Backend + AIServiceBackend + AIGatewayRoute
     canaries:                      # optional; weighted LoRA canaries (max 4; each requires a loraAdapters match)
       - adapter: <lora-name>       # must equal a loraAdapters[].name (CEL-enforced at the XRD)
@@ -151,7 +151,7 @@ Empty/absent list = no LoRA enabled (regression-safe).
 
 ## AI Gateway routing
 
-`gateway` (v0.7.0+, [SPEC-002](../../../../../../docs/specs/002-composition-owned-gateway-routing/spec.md))
+`gateway` (v0.8.0+, [SPEC-002](../../../../../../docs/specs/002-composition-owned-gateway-routing/spec.md))
 makes the composition own the claim's Envoy AI Gateway wiring instead of the
 hand-written entries in `apps/base/ai/llm/ai-gateway-routes/route.yaml`. When
 `gateway.enabled`, the module renders:

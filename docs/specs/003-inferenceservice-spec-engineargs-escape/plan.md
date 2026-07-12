@@ -83,7 +83,7 @@ No **new** managed resources. The feature is entirely: (a) two XRD schema additi
 - **`_engineArgs`**: `oxr.spec.engineArgs or []`. Appended once at the end of `_vllmArgs` assembly (currently `main.k:159`). Verbatim — no transform.
 - **Reserved-flag set**: lives in the XRD as CEL only (NOT duplicated in KCL). Admission is the single enforcement point (CL-1); the composition trusts that anything reaching it is already collision-free, so KCL stays a plain append with no re-validation.
 - **`_servedModels`**: single-line list comprehensions — `[{name = _name, kind = "base"}]` plus `[{name = a.name, kind = "adapter", **({canaryWeightPercent = w} if <a targeted by a canary> else {})} for a in _loraAdapters]`. Built with inline conditional dict construction (no post-creation mutation — function-kcl #285). A small canary-weight lookup (`{c.adapter: c.weightPercent for c in _gatewayCanaries}`) resolves the optional field per adapter.
-- **`_servedModelsSummary`**: comma-joined `[m.name for m in _servedModels]`, set on the dxr status alongside `servedModels` (the scalar printer-column source — CL-5; T004 will implement it).
+- **served-models summary**: comma-joined `[m.name for m in _servedModels]`, computed inline in the dxr status patch alongside `servedModels` (the scalar printer-column source — CL-5). Implemented directly in the `_dxrStatus` patch (`main.k:532`), not as a module-level variable.
 - **dxr status patch**: SPEC-002 already spreads `**option("params").dxr` and sets `status.modelEndpoint` inside the `_gatewayEnabled` block. `status.servedModels` MUST be set **unconditionally** (adapters/base exist regardless of gateway), so the status-patch construction moves out of the `if _gatewayEnabled` block into an always-run `_dxrStatus` that conditionally includes `modelEndpoint`.
 
 ### Dependencies
@@ -107,7 +107,7 @@ No **new** managed resources. The feature is entirely: (a) two XRD schema additi
 - `status.servedModels` is computed from spec only (no `ocds`) so it is populated on the first reconcile, independent of Deployment/route readiness. It is a *topology* projection, not a health signal (see Non-Goals).
 - Composition OCI publish flow (same CI PR-tag dance as SPEC-002): bump `kcl.mod` version to `0.8.0`; the `crossplane-modules.yml` workflow rewrites `kcl.mod` to the PR-prefixed tag (`0.8.0-pr<N>`) before `kcl mod push` (the push uses the `version` field, not the URL tag suffix — KCL rule #5); verify the tag is anonymously pullable before pointing the composition `Function` pin at it; re-render.
 - Feature-branch cluster: deploy with `TF_VAR_flux_git_ref='refs/heads/<branch>'`; after merge restore the FluxInstance to main before the head branch auto-deletes.
-- Rollback path: remove `spec.engineArgs` from the claim (pure spec revert, no composition re-publish) reverts arg behaviour; reverting the composition pin to `0.7.0` fully reverts the feature — no managed resource is created or deleted, so rollback carries no data risk.
+- Rollback path: remove `spec.engineArgs` from the claim (pure spec revert, no composition re-publish) reverts arg behaviour; reverting the composition pin to the previous published tag (`0.6.0-pr1434`; post-merge, the previous release tag) fully reverts the feature — no managed resource is created or deleted, so rollback carries no data risk.
 
 ### File structure (composition)
 
@@ -141,24 +141,24 @@ examples/
 
 ### Phase 1: XRD schema + CEL
 
-- [x] **T001**: XRD: add `spec.engineArgs` (`array` of `string`, `maxItems: 16`) with description; add the `--` prefix CEL rule (FR-004) and one reserved-flag CEL rule per flag in the Design table (FR-003), each message naming the curated field (CL-1, CL-4) — *evidence: 710a4f14 — 17 CEL rules (1 prefix + 16 reserved), spec x-kubernetes-validations 6→23*
-- [x] **T002**: XRD: add `status.servedModels` object-list schema `{name, kind (enum base|adapter), canaryWeightPercent (optional int)}` (FR-005); add the served-models `additionalPrinterColumns` entry (FR-006); leave `status.phase`/`status.modelEndpoint` untouched (FR-007) — *evidence: 710a4f14 — servedModels + servedModelsSummary schema, SERVED MODELS printer column (CL-5)*
+- [x] **T001**: XRD: add `spec.engineArgs` (`array` of `string`, `maxItems: 16`) with description; add the `--` prefix CEL rule (FR-004) and one reserved-flag CEL rule per flag in the Design table (FR-003), each message naming the curated field (CL-1, CL-4) — *evidence: f189a75e — 17 CEL rules (1 prefix + 16 reserved), spec x-kubernetes-validations 6→23*
+- [x] **T002**: XRD: add `status.servedModels` object-list schema `{name, kind (enum base|adapter), canaryWeightPercent (optional int)}` (FR-005); add the served-models `additionalPrinterColumns` entry (FR-006); leave `status.phase`/`status.modelEndpoint` untouched (FR-007) — *evidence: f189a75e — servedModels + servedModelsSummary schema, SERVED MODELS printer column (CL-5)*
 
 ### Phase 2: Composition (KCL)
 
-- [x] **T003**: `main.k`: add `_engineArgs = oxr.spec.engineArgs or []`; append it as the last slice of `_vllmArgs` (FR-002) so managed flags always precede user flags — *evidence: 3a4ef520 — _buildVllmArgs(managed, engineArgs), user args last; kcl test 35/35*
-- [x] **T004**: `main.k`: build `_servedModels` (base + one per `loraAdapters[]`, `canaryWeightPercent` only for canary-targeted adapters — FR-005) via single-line comprehensions + inline-conditional dicts (no mutation, #285); move the dxr status patch out of the `if _gatewayEnabled` block so `servedModels` is always set and `modelEndpoint` is included only when `gateway.enabled` (FR-007) — *evidence: 3a4ef520 — _servedModels/_servedModelsSummary, dxr status hoisted, modelEndpoint conditional*
+- [x] **T003**: `main.k`: add `_engineArgs = oxr.spec.engineArgs or []`; append it as the last slice of `_vllmArgs` (FR-002) so managed flags always precede user flags — *evidence: 9f46c15f — `_vllmArgs = _managedVllmArgs + _engineArgs`, user args last; kcl test 34/34 (builder inlined by the /simplify pass e793cf14)*
+- [x] **T004**: `main.k`: build `_servedModels` (base + one per `loraAdapters[]`, `canaryWeightPercent` only for canary-targeted adapters — FR-005) via single-line comprehensions + inline-conditional dicts (no mutation, #285); move the dxr status patch out of the `if _gatewayEnabled` block so `servedModels` is always set and `modelEndpoint` is included only when `gateway.enabled` (FR-007) — *evidence: 9f46c15f — _servedModels + inline summary in the dxr status patch, dxr status hoisted, modelEndpoint conditional*
 
 ### Phase 3: Tests
 
-- [x] **T005**: `main_test.k`: engineArgs appended verbatim and LAST; explicit managed-flags-still-win ordering assertion; empty/absent engineArgs ⇒ args byte-identical to baseline (FR-001/FR-002; SC-001/SC-006) — *evidence: 3a4ef520 — mutation-tested ordering + builder([])==managed baseline assertions*
-- [x] **T006**: `main_test.k`: `servedModels` shapes — base-only; base+adapters (no canaryWeightPercent key present); base+adapter+canary (`canaryWeightPercent` set, matches the canary weight); names match the rendered `AIGatewayRoute` match/override values (FR-005; SC-004); confirm the existing 31 tests still pass (SC-006) — *evidence: 3a4ef520 — servedModels shapes incl. live non-canaried adapter-c fixture; 35/35 PASS*
+- [x] **T005**: `main_test.k`: engineArgs appended verbatim and LAST; explicit managed-flags-still-win ordering assertion; empty/absent engineArgs ⇒ args byte-identical to baseline (FR-001/FR-002; SC-001/SC-006) — *evidence: 9f46c15f — mutation-tested ordering; absent engineArgs ⇒ `_vllmArgs == _managedVllmArgs` proved by a single exact-equality assertion*
+- [x] **T006**: `main_test.k`: `servedModels` shapes — base-only; base+adapters (no canaryWeightPercent key present); base+adapter+canary (`canaryWeightPercent` set, matches the canary weight); names match the rendered `AIGatewayRoute` match/override values (FR-005; SC-004); confirm the existing 31 tests still pass (SC-006) — *evidence: 9f46c15f — servedModels shapes incl. live non-canaried adapter-c fixture; 34/34 PASS*
 
 ### Phase 4: Publish, examples, docs
 
 - [x] **T007** *(evidence: 0.8.0-pr1559 published by CI run 29186289461, verified anonymously pullable; pin bumped; crossplane render against the real tag shows engineArgs appended last + servedModels/servedModelsSummary in status — 2026-07-12)*: Bump `kcl.mod` → `0.8.0`; publish module via `crossplane-modules.yml` PR-tag flow; verify `0.8.0-pr<N>` anonymously pullable; point the composition `Function` pin at the new tag; re-render (Implementation Notes)
-- [x] **T008**: `settings-example.yaml` + `examples/inferenceservice-complete.yaml`: add an `engineArgs` example (basic stays unset); README.md: document `engineArgs`, the reserved-flag table with curated-field pointers (incl. the `--port`/`--host` serving-contract note), and `status.servedModels` — *evidence: c9f074c1 — README reserved-flag table (16 rows, XRD-faithful), example engineArgs block*
-- [x] **T009**: `./scripts/validate-kcl-compositions.sh` exit 0 (incl. Polaris ≥ 85, kube-linter); both examples render via `crossplane render` — *evidence: validate-kcl-compositions.sh exit 0 on 2026-07-12 (render still against 0.7.0-pr1559 pin; 0.8.0 render pending T007 publish)*
+- [x] **T008**: `settings-example.yaml` + `examples/inferenceservice-complete.yaml`: add an `engineArgs` example (basic stays unset); README.md: document `engineArgs`, the reserved-flag table with curated-field pointers (incl. the `--port`/`--host` serving-contract note), and `status.servedModels` — *evidence: b12444ae — README reserved-flag table (16 rows, XRD-faithful), example engineArgs block*
+- [x] **T009**: `./scripts/validate-kcl-compositions.sh` exit 0 (incl. Polaris ≥ 85, kube-linter); both examples render via `crossplane render` — *evidence: validate-kcl-compositions.sh exit 0 on 2026-07-12; pin now `0.8.0-pr1559` (b48eea38); crossplane render against the real tag verified engineArgs tail + servedModels/servedModelsSummary in status (2026-07-12)*
 
 ### Phase 5: Live verification (feature-branch cluster)
 
@@ -172,6 +172,7 @@ examples/
 Keep short — detailed rationale goes in clarifications.md if it is a decision. -->
 
 - <2026-07-11> T002/FR-006 adjusted: the printer column reads a new scalar status.servedModelsSummary (comma-joined names, computed by the composition) because server-side additionalPrinterColumns render only the first wildcard JSONPath match; structured status.servedModels is unchanged (CL-5).
+- <2026-07-12> /simplify pass (e793cf14): _buildVllmArgs lambda inlined, two engineArgs tests merged, servedModels summary assertion folded into the shape test, denylist lockstep promoted to test_engine_args_denylist_lockstep; suite 35 → 34.
 
 ---
 
@@ -209,7 +210,7 @@ Complete this before implementation begins. Each persona enforces non-negotiable
 - [x] Observability configured (N/A — VMServiceScrape/VMRule unchanged; `status.servedModels` adds topology visibility on the XR + printer column)
 - [x] Resource requests + limits appropriate (N/A — no new pods; serving resources unchanged)
 - [x] Failure modes documented (bad/unknown engineArgs ⇒ vLLM fails at container start, CrashLoopBackOff observable in logs — documented Non-Goal; reserved-flag/`--`-prefix collisions rejected at admission)
-- [x] Recovery / rollback path clear (remove `spec.engineArgs` for behaviour revert; revert composition pin to 0.7.0 for full revert — no managed resource created/deleted, no data risk — Implementation Notes)
+- [x] Recovery / rollback path clear (remove `spec.engineArgs` for behaviour revert; revert composition pin to the previous published tag (`0.6.0-pr1434`; post-merge, the previous release tag) for full revert — no managed resource created/deleted, no data risk — Implementation Notes)
 
 ---
 

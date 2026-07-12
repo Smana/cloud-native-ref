@@ -115,33 +115,34 @@ examples/
 
 ### Phase 1: Prerequisites
 
-- [ ] **T001**: Add aggregate ClusterRole rules for `gateway.envoyproxy.io/backends`, `aigateway.envoyproxy.io/{aigatewayroutes,aiservicebackends}` to `additional-rbac.yaml`; verify with `kubectl auth can-i --as=system:serviceaccount:crossplane-system:crossplane list aigatewayroutes -A`
-- [ ] **T002**: XRD: add `gateway` block schema + CEL validations (FR-005); bump examples
+- [x] **T001**: Add aggregate ClusterRole rules for `gateway.envoyproxy.io/backends`, `aigateway.envoyproxy.io/{aigatewayroutes,aiservicebackends}` to `additional-rbac.yaml`; verify with `kubectl auth can-i --as=system:serviceaccount:crossplane-system:crossplane list aigatewayroutes -A` — *evidence: 467e6c0e — additional-rbac.yaml grants backends + aigatewayroutes/aiservicebackends (+/status)*
+- [x] **T002**: XRD: add `gateway` block schema + CEL validations (FR-005); bump examples — *evidence: 467e6c0e — gateway XRD schema + CEL; canaries[] array later reshaped in ae7ec047 (forward-compatible)*
 
 ### Phase 2: Implementation
 
-- [ ] **T003**: KCL: render `Backend` + `AIServiceBackend` (+ one `-canary-<i>` variant per `canaries[]` entry) under `gateway.enabled` (FR-001)
-- [ ] **T004**: KCL: render `AIGatewayRoute` with base rule, per-canary weights summing with the base remainder (FR-003), per-adapter pin rules (FR-004); readiness latch via `ocds` (FR-002); `Accepted`-condition readiness check
-- [ ] **T005**: KCL: set `status.modelEndpoint` when enabled (FR-006)
-- [ ] **T006**: `main_test.k`: trio rendered when enabled; nothing rendered when disabled; route withheld (Deployment unavailable, absent from ocds); route latched (unavailable but present in ocds); single- and multi-canary weights sum to 100 with the base keeping the remainder; adapter pin rules present; naming `xplane-*`
-- [ ] **T007**: Bump `kcl.mod` → 0.7.0; publish module; point composition at the new tag (verify anonymous pull)
+- [x] **T003**: KCL: render `Backend` + `AIServiceBackend` (+ one `-canary-<i>` variant per `canaries[]` entry) under `gateway.enabled` (FR-001) — *evidence: adbba86d — Backend `<claim>-direct` + AIServiceBackend(s) rendered under _gatewayEnabled*
+- [x] **T004**: KCL: render `AIGatewayRoute` with base rule, per-canary weights summing with the base remainder (FR-003), per-adapter pin rules (FR-004); readiness latch via `ocds` (FR-002); `Accepted`-condition readiness check — *evidence: adbba86d — AIGatewayRoute + _aiGatewayRouteShouldRender latch keyed on _gatewayRouteSuffix, _aiRouteReady via Accepted condition; pin rules use verbatim adapter names (a320f093, CL-5)*
+- [x] **T005**: KCL: set `status.modelEndpoint` when enabled (FR-006) — *evidence: adbba86d + 40b70624 — status.modelEndpoint set in the dxr patch under _gatewayEnabled, semantics clarified*
+- [x] **T006**: `main_test.k`: trio rendered when enabled; nothing rendered when disabled; route withheld (Deployment unavailable, absent from ocds); route latched (unavailable but present in ocds); single- and multi-canary weights sum to 100 with the base keeping the remainder; adapter pin rules present; naming `xplane-*` — *evidence: adbba86d + 310e57fa — test_gateway_resources / _route_latch / _route_latch_integration (end-to-end latch via `items`) / pin_rules; suite 34/34*
+- [x] **T007**: Bump `kcl.mod` → 0.7.0; publish module; point composition at the new tag (verify anonymous pull) — *evidence: 1854abd5 pinned 0.7.0-pr1559; superseded by b48eea38 (0.8.0-pr1559) after SPEC-003 folded in — see Deviations*
 
 ### Phase 3: Migration & e2e (feature-branch cluster)
 
-- [ ] **T008**: Enable `gateway: {enabled: true, canaries: [{adapter: sql-dpo, weightPercent: 10}]}` on `xplane-qwen-coder`; remove its entries from `route.yaml` (same commit)
+- [x] **T008**: Enable `gateway: {enabled: true, canaries: [{adapter: sql-dpo, weightPercent: 10}]}` on `xplane-qwen-coder`; remove its entries from `route.yaml` (same commit) — *evidence: 2139d83d — qwen-coder.yaml gains spec.gateway (10% sql-dpo canary); route.yaml drops the claim's Backend/AIServiceBackend + 3 rules in the same commit (CL-3, no duplicate x-ai-eg-model)*
 - [ ] **T009**: e2e: SC-001 (route owned + 200 via gateway), SC-004 (gate + GC on a scratch claim), SC-005 (MoM unchanged)
 - [ ] **T010**: e2e: SC-002 — ≥50 requests, verify split via `vllm:lora_requests_info`; observe gateway metric attribution for canary tokens; `hubble observe --verdict DROPPED` clean
 - [ ] **T011**: SC-003 — apply claim with bogus adapter, capture CEL rejection
 
 ### Phase 4: Validation & Documentation
 
-- [ ] **T012**: Basic + complete examples render with `crossplane render`
-- [ ] **T013**: `./scripts/validate-kcl-compositions.sh` exit 0 (incl. Polaris ≥ 85)
-- [ ] **T014**: README.md, `settings-example.yaml`, examples updated (incl. canary metrics-attribution finding)
+- [x] **T012**: Basic + complete examples render with `crossplane render` — *evidence: examples/inferenceservice-{basic,complete}.yaml (basic gateway-off, complete gains gateway.enabled + canaries); render verified against the 0.8.0-pr1559 pin (2026-07-12)*
+- [x] **T013**: `./scripts/validate-kcl-compositions.sh` exit 0 (incl. Polaris ≥ 85) — *evidence: validate-kcl-compositions.sh exit 0 on 2026-07-12; kcl test 34/34*
+- [x] **T014**: README.md, `settings-example.yaml`, examples updated (incl. canary metrics-attribution finding) — *evidence: README gateway/canary/status.servedModels sections + settings-example gateway.canaries + complete example; the live canary metrics-attribution finding remains gated on T010 (unchecked)*
 
 ### Deviations from plan
 
 - 2026-07-07 — FR-003/FR-004 corrected mid-implementation: adapter model names are `loraAdapters[].name` verbatim, not `<claim>-<adapter>` (CL-5). Composition + tests + examples re-done accordingly.
+- <2026-07-12> Module ships as 0.8.0, not 0.7.0: SPEC-003 (engineArgs + servedModels) folded into this PR bumped kcl.mod before the release tag was cut.
 
 <!-- Append as implementation surprises show up. Format:
 - <2026-07-07> T00N was [dropped|replaced|split]: <why>

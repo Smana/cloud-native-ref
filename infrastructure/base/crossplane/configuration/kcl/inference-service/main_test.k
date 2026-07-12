@@ -474,7 +474,7 @@ test_gateway_multi_canary = lambda {
 
 # ---- Test (f): one pin rule per loraAdapters entry ----
 # Every adapter (regardless of canary) gets a pin rule matching
-# x-ai-eg-model == <claim>-<adapter> → base pod at weight 100.
+# x-ai-eg-model == the verbatim loraAdapters[].name (CL-5) → base pod at weight 100.
 test_gateway_pin_rules = lambda {
     _oxr = option("params").oxr
     _name = _oxr.metadata.name
