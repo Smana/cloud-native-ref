@@ -87,8 +87,41 @@ spec:
     #                           canary adapter on the canary slice)
     # ---------------------------------------------------------------------
     - name: llm-gateway-slo
-      interval: 30s
+      # 1m, not 30s: every alert here needs 10-15min of sustained breach before it
+      # fires, so evaluating twice a minute only burns queries. The recording rules
+      # below are the shared aggregations — computed once per interval and reused by
+      # the alerts, instead of each alert re-deriving the same sums.
+      interval: 1m
       rules:
+        # Request rate and error ratio per SERVED model (the canary dimension) and
+        # per REQUESTED model (the blended, what-the-client-asked-for dimension).
+        # Recorded rather than inlined: the same three sums otherwise appear in
+        # four alert expressions, and a drift between copies is a silently wrong
+        # alert. Rules within a group evaluate in order, so these are ready before
+        # the alerts below consume them.
+        - record: gateway:request_rate:served_15m
+          expr: |
+            sum by (gen_ai_original_model, gen_ai_request_model) (
+              rate(gen_ai_server_request_duration_seconds_count[15m])
+            )
+
+        - record: gateway:error_ratio:served_15m
+          expr: |
+            sum by (gen_ai_original_model, gen_ai_request_model) (
+              rate(gen_ai_server_request_duration_seconds_count{error_type=~".+"}[15m])
+            )
+            / gateway:request_rate:served_15m
+
+        - record: gateway:error_ratio:requested_15m
+          expr: |
+            sum by (gen_ai_original_model) (
+              rate(gen_ai_server_request_duration_seconds_count{error_type=~".+"}[15m])
+            )
+            /
+            sum by (gen_ai_original_model) (
+              rate(gen_ai_server_request_duration_seconds_count[15m])
+            )
+
         - alert: AIGatewayGenAITelemetryMissing
           # The guard against silently-empty dashboards: the engine is demonstrably
           # serving traffic, yet the gateway's gen_ai series does not exist at all.
@@ -130,16 +163,7 @@ spec:
               or a data-plane pod rollout that left the sidecar unhealthy.
 
         - alert: AIGatewayHighErrorRate
-          expr: |
-            (
-              sum by (gen_ai_original_model) (
-                rate(gen_ai_server_request_duration_seconds_count{error_type=~".+"}[10m])
-              )
-              /
-              sum by (gen_ai_original_model) (
-                rate(gen_ai_server_request_duration_seconds_count[10m])
-              )
-            ) > 0.05
+          expr: gateway:error_ratio:requested_15m > 0.05
           for: 10m
           labels:
             severity: critical
@@ -148,7 +172,7 @@ spec:
             summary: "Gateway error rate > 5% for {{ $labels.gen_ai_original_model }}"
             description: |
               More than 5% of gateway requests for
-              `{{ $labels.gen_ai_original_model }}` failed over the last 10min
+              `{{ $labels.gen_ai_original_model }}` failed over the last 15min
               (current: {{ $value | humanizePercentage }}). Note v1.0.0 only
               ever sets error.type=_OTHER, so this tells you THAT requests fail,
               not why — correlate with the vLLM engine dashboard and the
@@ -167,32 +191,12 @@ spec:
           # unlucky requests on a fresh canary cannot page anyone.
           expr: |
             (
-              (
-                sum by (gen_ai_original_model, gen_ai_request_model) (
-                  rate(gen_ai_server_request_duration_seconds_count{error_type=~".+"}[15m])
-                )
-                /
-                sum by (gen_ai_original_model, gen_ai_request_model) (
-                  rate(gen_ai_server_request_duration_seconds_count[15m])
-                )
-              )
+              gateway:error_ratio:served_15m
               > on (gen_ai_original_model) group_left ()
-              (
-                2 * (
-                  sum by (gen_ai_original_model) (
-                    rate(gen_ai_server_request_duration_seconds_count{error_type=~".+"}[15m])
-                  )
-                  /
-                  sum by (gen_ai_original_model) (
-                    rate(gen_ai_server_request_duration_seconds_count[15m])
-                  )
-                ) + 0.02
-              )
+              (2 * gateway:error_ratio:requested_15m + 0.02)
             )
             and on (gen_ai_original_model, gen_ai_request_model) (
-              sum by (gen_ai_original_model, gen_ai_request_model) (
-                rate(gen_ai_server_request_duration_seconds_count[15m])
-              ) > 0.01
+              gateway:request_rate:served_15m > 0.01
             )
           for: 15m
           labels:
@@ -230,9 +234,7 @@ spec:
               )
             )
             and on (gen_ai_original_model, gen_ai_request_model) (
-              sum by (gen_ai_original_model, gen_ai_request_model) (
-                rate(gen_ai_server_request_duration_seconds_count[15m])
-              ) > 0.01
+              gateway:request_rate:served_15m > 0.01
             )
           for: 15m
           labels:

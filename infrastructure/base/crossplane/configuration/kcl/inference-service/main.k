@@ -264,6 +264,16 @@ _eppExtProcPort = 9002
 # port NAME; the EPP CNP allows vmagent to reach it by NUMBER (_eppIngressRules).
 _eppMetricsPort = 9090
 
+# Shared CiliumNetworkPolicy peer selectors. Both the serving CNP and the EPP CNP
+# admit the same two callers, so the selectors live in one place — a drift between
+# two copies of these labels is a silent DROP, not an error.
+_vmagentPeer = {
+    matchLabels = {"io.kubernetes.pod.namespace" = "observability", "app.kubernetes.io/name" = "vmagent"}
+}
+_envoyDataPlanePeer = {
+    matchLabels = {"io.kubernetes.pod.namespace" = "envoy-gateway-system", "gateway.envoyproxy.io/owning-gateway-name" = "ai-gateway", "gateway.envoyproxy.io/owning-gateway-namespace" = "envoy-ai-gateway-system"}
+}
+
 # EPP CiliumNetworkPolicy ingress, as a module-level value the test suite drives
 # DIRECTLY (same discipline as `_baseRuleBackendRefsFor`) rather than through a
 # mirror copy — a mirror would keep passing if these rules were deleted here.
@@ -274,15 +284,11 @@ _eppMetricsPort = 9090
 #     no error surfaced anywhere (.claude/rules/cilium-network-policies.md).
 _eppIngressRules = [
     {
-        fromEndpoints = [{
-            matchLabels = {"io.kubernetes.pod.namespace" = "envoy-gateway-system", "gateway.envoyproxy.io/owning-gateway-name" = "ai-gateway", "gateway.envoyproxy.io/owning-gateway-namespace" = "envoy-ai-gateway-system"}
-        }]
+        fromEndpoints = [_envoyDataPlanePeer]
         toPorts = [{ports = [{port = str(_eppExtProcPort), protocol = "TCP"}]}]
     }
     {
-        fromEndpoints = [{
-            matchLabels = {"io.kubernetes.pod.namespace" = "observability", "app.kubernetes.io/name" = "vmagent"}
-        }]
+        fromEndpoints = [_vmagentPeer]
         toPorts = [{ports = [{port = str(_eppMetricsPort), protocol = "TCP"}]}]
     }
 ]
@@ -741,16 +747,12 @@ _defaultIngress = [{
         # (SPEC-001 removed the KEDA HTTP add-on interceptor from the
         # data path; AI Gateway calls AIServiceBackend → Backend → vLLM
         # Service FQDN). Data-plane proxy pods live in envoy-gateway-system.
-        {
-            matchLabels = {"io.kubernetes.pod.namespace" = "envoy-gateway-system", "gateway.envoyproxy.io/owning-gateway-name" = "ai-gateway", "gateway.envoyproxy.io/owning-gateway-namespace" = "envoy-ai-gateway-system"}
-        }
+        _envoyDataPlanePeer
     ]
     toPorts = [{ports = [{port = str(_DEFAULTS.vllm_port), protocol = "TCP"}]}]
 }]
 _metricsIngress = [{
-    fromEndpoints = [{
-        matchLabels = {"io.kubernetes.pod.namespace" = "observability", "app.kubernetes.io/name" = "vmagent"}
-    }]
+    fromEndpoints = [_vmagentPeer]
     toPorts = [{ports = [{port = str(_DEFAULTS.vllm_port), protocol = "TCP"}]}]
 }]
 
