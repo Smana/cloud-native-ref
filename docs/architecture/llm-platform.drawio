@@ -70,7 +70,7 @@
           <mxGeometry x="260" y="1090" width="290" height="50" as="geometry" />
         </mxCell>
 
-        <mxCell id="vpod" value="&lt;b&gt;vLLM pod&lt;/b&gt;   —   GPU L4 spot (g6, Bottlerocket NVIDIA)&#xa;vllm/vllm-openai:v0.8.5   ·   runtimeClass: nvidia&#xa;--model /models/&amp;lt;revision&amp;gt;   --served-model-name &amp;lt;claim&amp;gt;&#xa;--lora-modules &amp;lt;adapter&amp;gt;=/models/loras/&amp;lt;adapter&amp;gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="vpod" value="&lt;b&gt;vLLM pod&lt;/b&gt;   —   GPU L4 spot (g6, Bottlerocket NVIDIA)&#xa;vllm/vllm-openai:v0.25.0   ·   runtimeClass: nvidia&#xa;--model /models/&amp;lt;revision&amp;gt;   --served-model-name &amp;lt;claim&amp;gt;&#xa;--lora-modules &amp;lt;adapter&amp;gt;=/models/loras/&amp;lt;adapter&amp;gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="220" y="1190" width="370" height="100" as="geometry" />
         </mxCell>
 
@@ -298,7 +298,7 @@
         <mxCell id="k1" value="① batch saturation  —  threshold 0.7&#xa;max(vllm:num_requests_running{model_name=&quot;X&quot;}) / scalar(vector(max-num-seqs))" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="keda">
           <mxGeometry x="20" y="65" width="660" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="k2" value="② KV-cache pressure  —  threshold 0.6&#xa;max(vllm:gpu_cache_usage_perc{model_name=&quot;X&quot;})" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="keda">
+        <mxCell id="k2" value="② KV-cache pressure  —  threshold 0.6&#xa;max(vllm:kv_cache_usage_perc{model_name=&quot;X&quot;})" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="keda">
           <mxGeometry x="20" y="135" width="660" height="60" as="geometry" />
         </mxCell>
         <mxCell id="k3" value="③ queue depth  —  threshold 8&#xa;max(vllm:num_requests_waiting{model_name=&quot;X&quot;})" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="keda">

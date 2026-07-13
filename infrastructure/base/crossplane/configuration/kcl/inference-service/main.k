@@ -86,7 +86,7 @@ _DEFAULTS = {
     # 0.6.5 ships transformers too old for Phi-4-mini's modern rope_scaling
     # schema (raises `short_factor field must have length 64, got 48`).
     # 0.8.5 supports Phi-4 family + Qwen3 + DeepSeek-R1-Distill-Qwen.
-    vllm_image = "vllm/vllm-openai:v0.8.5"
+    vllm_image = "vllm/vllm-openai:v0.25.0"
     vllm_port = 8000
     gpu_memory_utilization = "0.92"
     nodepool = "gpu-l4"
@@ -165,7 +165,7 @@ _loraArgs = (["--enable-lora", "--max-loras", str(len(_loraAdapters)), "--max-lo
 # `--load-format runai_streamer`, reading the SAME local PVC-mounted
 # safetensors at _modelLocalPath (/models/<revision>) concurrently and
 # streaming tensors to GPU — no `s3://` URL, no storage change (CL-2). The
-# streamer binary is bundled in vllm/vllm-openai:v0.8.5 (CL-1) so this is a
+# streamer binary is bundled in vllm/vllm-openai:v0.25.0 (CL-1) so this is a
 # flag-only diff (no new pod / IAM / S3 / PVC / Secret — FR-006). When
 # streaming.concurrency is set, `--model-loader-extra-config` carries a
 # compact JSON object `{"concurrency": N}` (json.encode → canonical, testable
@@ -503,7 +503,7 @@ _items += [_serviceAccount, _deployment, _service]
 # GPU-bound vLLM) to a single ScaledObject with two prometheus triggers:
 #
 #   1. running / max-num-seqs ratio  — leading: scale before batch saturates
-#   2. gpu_cache_usage_perc          — leading: catches long-context bursts
+#   2. kv_cache_usage_perc          — leading: catches long-context bursts
 #                                      that running-count misses
 #   3. num_requests_waiting          — earliest pressure signal: requests
 #                                      queue before the running ratio
@@ -550,7 +550,7 @@ _scaledObject = [{
                 type = "prometheus"
                 metadata = {
                     serverAddress = _DEFAULTS.prometheus_server_address
-                    query = "max(vllm:gpu_cache_usage_perc{model_name=\"" + _name + "\"})"
+                    query = "max(vllm:kv_cache_usage_perc{model_name=\"" + _name + "\"})"
                     threshold = _cacheUtilizationThreshold
                     activationThreshold = "0.05"
                 }

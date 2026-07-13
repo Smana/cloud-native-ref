@@ -23,7 +23,7 @@ spec:
     # `--load-format runai_streamer`, reading the SAME preloaded PVC path
     # (/models/<revision>) concurrently to cut pod-ready → first-token
     # cold-start. No storage change, no new pod/IAM/S3/PVC/Secret; the
-    # streamer is already bundled in vllm/vllm-openai:v0.8.5. Off by default.
+    # streamer is already bundled in vllm/vllm-openai:v0.25.0. Off by default.
     streaming:
       enabled: true
       concurrency: 16   # optional — --model-loader-extra-config '{"concurrency":16}'
@@ -39,7 +39,7 @@ spec:
     tier: medium
     specialty: general
   # SPEC-001 default: min=1 (always warm). KEDA ScaledObject with
-  # prometheus triggers on running-ratio + gpu_cache_usage_perc reacts
+  # prometheus triggers on running-ratio + kv_cache_usage_perc reacts
   # ahead of saturation. min=0 is still allowed per-claim but accepts
   # first-request failure (no queueing layer).
   scaling:

@@ -177,7 +177,7 @@ spec:
                         container / IAM role / S3 bucket / PVC / Secret, and
                         does not touch the preload Job, autoscaling, or gateway
                         routing. The streamer binary is already bundled in
-                        vllm/vllm-openai:v0.8.5 (no image bump). Off by default;
+                        vllm/vllm-openai:v0.25.0 (no image bump). Off by default;
                         an unset block renders no streamer flags (byte-identical
                         to the default loader).
                       properties:
@@ -295,7 +295,7 @@ spec:
                       type: string
                       description: |
                         Trigger 2 threshold — scale up when
-                        `vllm:gpu_cache_usage_perc` exceeds this. 0.6
+                        `vllm:kv_cache_usage_perc` exceeds this. 0.6
                         catches long-context bursts (a single 32k-context
                         request can fill 30-50% of KV cache by itself,
                         invisible to the running-count trigger).

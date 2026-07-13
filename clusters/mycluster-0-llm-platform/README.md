@@ -157,7 +157,7 @@ S3 bucket data is what they re-mount.
 > **All models default `min=1`.** The legacy KEDA HTTP add-on (proxy in the data
 > path; request-count trigger) was replaced by a KEDA `ScaledObject` driven by
 > **three** leading vLLM saturation triggers, OR-combined: the
-> `running / max-num-seqs` ratio (0.7), `gpu_cache_usage_perc` (0.6), and
+> `running / max-num-seqs` ratio (0.7), `kv_cache_usage_perc` (0.6), and
 > `num_requests_waiting` (8). Scaling reacts ahead of saturation rather than after
 > the queue has formed. See
 > [SPEC-001](../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md).
