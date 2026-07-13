@@ -1,0 +1,68 @@
+# RBAC for the InferencePool kind that Envoy Gateway is told to delegate.
+#
+# `extensionManager.backendResources` (helmrelease.yaml) makes Envoy Gateway WATCH
+# inference.networking.k8s.io/InferencePool so it can hand those backendRefs to the AI
+# Gateway extension server. Watching requires RBAC, and the Envoy Gateway chart does not
+# grant it: its ClusterRole covers only core, apps, discovery.k8s.io,
+# gateway.envoyproxy.io, gateway.networking.k8s.io and multicluster.x-k8s.io — the kinds
+# it knows about natively. An extension kind is by definition not one of them.
+#
+# Without this grant the informer cannot list the CRD, the controller's healthz check
+# fails, readiness returns 500, the liveness probe kills the pod, and envoy-gateway
+# CrashLoops — taking every Gateway on the cluster down with it, LLM or not:
+#
+#   Failed to watch  type=inference.networking.k8s.io/v1, Kind=InferencePool
+#   error: inferencepools.inference.networking.k8s.io is forbidden:
+#          User "system:serviceaccount:envoy-gateway-system:envoy-gateway" cannot list ...
+#
+# This is easy to miss because it is ORDER-DEPENDENT. While a claim with
+# `gateway.endpointPicker.enabled` exists, the gateway-api-inference-extension chart is
+# installed and the grant is present as a side effect, so everything works. Delete the
+# last EPP — or build a cluster that never had one — and envoy-gateway CrashLoops. The
+# grant must be owned here, next to the config that requires it, not inherited from a
+# per-claim chart that may not exist.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: envoy-gateway-inferencepool-reader
+  labels:
+    app.kubernetes.io/name: envoy-gateway
+    app.kubernetes.io/part-of: envoy-gateway
+rules:
+  # Read-only: Envoy Gateway only needs to resolve the backendRef and follow the pool's
+  # endpoints. The AI Gateway extension server owns reconciling the InferencePool CR
+  # itself, and the composition owns creating it.
+  - apiGroups:
+      - inference.networking.k8s.io
+    resources:
+      - inferencepools
+    verbs:
+      - get
+      - list
+      - watch
+  # Envoy Gateway writes the route-resolution outcome back onto the pool's status
+  # (Accepted / ResolvedRefs), the same way it does for the Gateway API kinds it owns.
+  - apiGroups:
+      - inference.networking.k8s.io
+    resources:
+      - inferencepools/status
+    verbs:
+      - get
+      - patch
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: envoy-gateway-inferencepool-reader
+  labels:
+    app.kubernetes.io/name: envoy-gateway
+    app.kubernetes.io/part-of: envoy-gateway
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: envoy-gateway-inferencepool-reader
+subjects:
+  - kind: ServiceAccount
+    name: envoy-gateway
+    namespace: envoy-gateway-system
