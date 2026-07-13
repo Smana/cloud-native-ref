@@ -12,6 +12,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Resolves FLUX_BIN / HELM_BIN / KUSTOMIZE_BIN and hard-fails on a
+# too-old flux client or a missing schema plugin, instead of silently
+# picking up whatever stale binary happens to be first on PATH.
+# shellcheck source=./preflight.sh
+source "${REPO_ROOT}/scripts/flux-schema/preflight.sh"
+
 SCHEMA_DIR="${SCHEMA_DIR:-.schemas}"
 
 # Single source of truth: the same OCIRepository pin Flux uses to install the
@@ -37,11 +43,11 @@ python3 scripts/flux-schema/xrd-to-crd.py \
   > "${tmp}/xrd-crds.yaml"
 
 echo "==> Rendering Envoy AI Gateway CRDs (chart ${AI_GATEWAY_VERSION})"
-helm template aigw-crds "${AI_GATEWAY_CHART}" --version "${AI_GATEWAY_VERSION}" \
+"${HELM_BIN}" template aigw-crds "${AI_GATEWAY_CHART}" --version "${AI_GATEWAY_VERSION}" \
   > "${tmp}/aigateway-crds.yaml"
 
 echo "==> Extracting JSON Schemas into ${SCHEMA_DIR}/"
-flux schema extract crd "${tmp}/xrd-crds.yaml" -d "${SCHEMA_DIR}"
-flux schema extract crd "${tmp}/aigateway-crds.yaml" -d "${SCHEMA_DIR}"
+"${FLUX_BIN}" schema extract crd "${tmp}/xrd-crds.yaml" -d "${SCHEMA_DIR}"
+"${FLUX_BIN}" schema extract crd "${tmp}/aigateway-crds.yaml" -d "${SCHEMA_DIR}"
 
 find "${SCHEMA_DIR}" -name '*.json' | sort

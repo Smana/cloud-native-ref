@@ -48,4 +48,21 @@ else
   fail=1
 fi
 
+echo "== preflight guard =="
+old_flux="${HOME}/.local/share/mise/installs/flux2/2.8.8/flux"
+if [[ -x "${old_flux}" ]]; then
+  guard_status=0
+  guard_out="$(FLUX_BIN="${old_flux}" ./scripts/flux-schema/gen-catalog.sh 2>&1)" || guard_status=$?
+
+  if [[ "${guard_status}" -ne 0 ]]; then
+    echo "  PASS  guard rejects an old (< v2.9) flux binary"
+  else
+    echo "  FAIL  guard accepted an old flux binary (exit 0)"
+    fail=1
+  fi
+  check "guard names the v2.9 requirement" "2.9" "${guard_out}"
+else
+  echo "  SKIP  guard-rejects-old-flux (no v2.8.8 binary at ${old_flux} on this machine)"
+fi
+
 exit "$fail"
