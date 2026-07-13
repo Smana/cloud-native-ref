@@ -6,8 +6,22 @@ metadata:
 spec:
   interval: 24h
   url: oci://ghcr.io/vllm-project/charts/semantic-router
-  # Pinned to 0.2.0 — the canonical-v0.3 schema migration (started ~late
-  # April 2026 in nightlies and v0.0.0-latest) breaks our values. Bump
-  # the pin only after migrating config to providers/routing/global.
+  # PINNED TO 0.2.0 ON PURPOSE. Do not bump without migrating our values.
+  #
+  # Chart 0.3.0 restructures the values schema (canonical-v0.3:
+  # providers/routing/global) and our HelmRelease still speaks the 0.2 flat
+  # schema. Because our values no longer line up with the 0.3 component
+  # blocks, the chart's own 0.3 defaults win — and those defaults include
+  # `pullPolicy: Never` (grep the 0.3.0 values: it appears 4x; it appears
+  # 0x in 0.2.0). On a fresh node there is no local image, so the router
+  # pod dies with ErrImageNeverPull and every `model: MoM` request 404s.
+  #
+  # This is not hypothetical: renovate bumped this pin to 0.3.0 in c00892eb
+  # (2026-06-05) straight past the previous "do not bump" comment, and the
+  # breakage stayed invisible until the next from-scratch cluster build,
+  # because existing clusters kept running already-pulled pods. A comment
+  # cannot stop a bot — the real guard is the matching `packageRules` entry
+  # in .github/renovate.json, which must be removed in the same PR that
+  # migrates the values.
   ref:
-    tag: "0.3.0"
+    tag: "0.2.0"

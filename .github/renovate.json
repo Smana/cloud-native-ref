@@ -35,6 +35,15 @@
             "opentofu"
         ]
     },
+    "packageRules": [
+        {
+            "description": "vllm-semantic-router chart is pinned to 0.2.0. Chart 0.3.0 restructures the values schema (canonical-v0.3 providers/routing/global) and its component defaults set pullPolicy: Never, which breaks the router on any fresh node (ErrImageNeverPull -> every `model: MoM` request 404s). Renovate previously bumped this past a plain code comment (c00892eb) and the breakage only surfaced on the next from-scratch cluster. Re-enable in the same PR that migrates infrastructure/base/vllm-semantic-router/helmrelease.yaml to the 0.3 schema.",
+            "matchPackageNames": [
+                "ghcr.io/vllm-project/charts/semantic-router"
+            ],
+            "enabled": false
+        }
+    ],
     "registryAliases": {
         "zitadel": "https://charts.zitadel.com"
     }
