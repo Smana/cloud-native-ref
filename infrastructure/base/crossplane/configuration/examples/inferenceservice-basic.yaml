@@ -1,8 +1,19 @@
 ---
-# Basic InferenceService — smallest viable model
+# Basic InferenceService — smallest viable model.
 # Minimal claim: HF model, 1 GPU, defaults applied (min=1 always-warm per
-# SPEC-001), no preload Job, vLLM downloads from HuggingFace at boot
-# (slower first-start; fine for low-traffic / one-off models).
+# SPEC-001), no gateway, no LoRA.
+#
+# `model.preload.enabled: true` is NOT optional here, despite defaulting to
+# false. The serving pod is always launched with `--model /models/<revision>`
+# (a path on the shared S3 Files mount — never an HF repo id), and its
+# CiliumNetworkPolicy allows egress to kube-dns and NOTHING else. So a serving
+# pod cannot reach HuggingFace even in principle: with no preload Job, /models
+# stays empty and vLLM fails to start, permanently.
+#
+# The only claim that may leave preload off is one whose
+# `weightsFileSystem.subPath` points at a directory ANOTHER claim already
+# preloaded — that is the deliberate weight-sharing case, and it is why the
+# default is false rather than true.
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: InferenceService
 metadata:
@@ -14,6 +25,8 @@ spec:
     revision: main
     quantization: fp16
     contextWindow: 8192
+    preload:
+      enabled: true
   gpu:
     count: 1
   routing:

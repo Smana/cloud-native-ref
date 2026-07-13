@@ -4,3 +4,7 @@ kind: Kustomization
 resources:
   - helmrelease.yaml
   - network-policy.yaml
+  # Required by helmrelease.yaml's extensionManager.backendResources: telling
+  # Envoy Gateway to watch InferencePool without granting RBAC for it CrashLoops
+  # the controller, taking every Gateway on the cluster with it.
+  - rbac-inferencepool.yaml

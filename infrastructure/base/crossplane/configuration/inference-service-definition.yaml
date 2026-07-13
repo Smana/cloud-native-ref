@@ -149,6 +149,16 @@ spec:
                         S3 Files (POSIX), so preload Job and serving
                         Deployment share one persistent mount — no aws s3
                         sync, no init-container.
+
+                        THE WEIGHTS MUST ALREADY BE ON THE MOUNT for the pod to
+                        boot. The serving container always runs with
+                        `--model /models/<revision>` (a path, never an HF repo
+                        id) and its CiliumNetworkPolicy permits egress to
+                        kube-dns only — it cannot reach HuggingFace at all. So
+                        leave this false ONLY when weightsFileSystem.subPath
+                        points at a directory another claim has already
+                        preloaded (the weight-sharing case). Otherwise /models
+                        is empty and vLLM fails to start, permanently.
                       properties:
                         enabled:
                           type: boolean
