@@ -29,7 +29,28 @@ spec:
               apiVersion: krm.kcl.dev/v1alpha1
               kind: KCLRun
               spec:
-                  target: Resources
+                  # MUST be Default, not Resources (the other compositions here use
+                  # Resources because none of them patch XR status).
+                  #
+                  # main.k emits a desired-composite item (`**option("params").dxr`
+                  # + status) to publish status.servedModels (SPEC-003 FR-007).
+                  # function-kcl only honours that under target: Default, where
+                  # ProcessResources routes any item whose GVK matches the XR into a
+                  # status merge and then `continue`s. Under target: Resources there
+                  # is no such branch — EVERY item is treated as a composed resource,
+                  # so the dxr item leaks out as a bogus composed InferenceService.
+                  # It carries no composition-resource-name annotation and dxr has no
+                  # metadata (function-kcl sets only apiVersion/kind on it), so it
+                  # lands with an empty resource name and no spec:
+                  #   cannot apply composed resource "": InferenceService
+                  #   "xplane-qwen3-8b-rfgbr" is invalid: [spec: Required value]
+                  # -> the XR never reaches Synced=True and servedModels stays empty.
+                  #
+                  # Safe to switch: both targets key composed resources through the
+                  # same GetResourceName() (the krm.kcl.dev/composition-resource-name
+                  # annotation, falling back to metadata.name), so the other rendered
+                  # resources keep their identities and are not recreated.
+                  target: Default
                   # PR-preview tag (0.8.0-pr1559) — strip the -pr suffix post-merge
                   # once the release tag is published from main.
                   source: oci://ghcr.io/smana/cloud-native-ref/crossplane-inference-service:0.8.0-pr1559
