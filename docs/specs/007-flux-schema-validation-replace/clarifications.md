@@ -66,6 +66,45 @@
 **Decided by**: Conversation, 2026-07-13
 **References**: FR-004; SC-001
 
+## CL-3 — 2026-07-13 — `flux schema` rejects numeric resource quantities the API server accepts. Mask, fix, or skip?
+
+**Asked by**: Controller (during T005 execution)
+**Context**: The first full gate run reported `resources/limits/cpu: got number, want string` on 5 documents — 3 from the upstream KEDA chart, 1 from the upstream Harbor chart, 1 from our own `tooling/base/dagger-engine/deployment.yaml`. All write `cpu: 1` rather than `cpu: "1"`.
+
+These are **not defects**. Kubernetes' `resource.Quantity.UnmarshalJSON` parses bare numbers, so the API server accepts them. Conclusive evidence: KEDA and Harbor are running in `mycluster-0` right now with exactly these chart defaults. The reason kubeconform never flagged them is that `kubernetes-json-schema` types `Quantity` as `oneOf[string, number]`, whereas the flux-schema catalog types it as `string` only. The tool is stricter than the API server it claims to model.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Normalize numeric values to strings at quantity positions during rendering | Gate matches API-server semantics, which is what a gate should assert; no upstream charts to fight; full validation retained everywhere else | A (narrow, documented) transformation sits between the chart output and the gate |
+| B | Override the upstream charts' values to quote every quantity | No renderer transformation | Fights upstream on every chart bump; unmaintainable; we would be "fixing" manifests that were never broken |
+| C | `skipJSONPath` the `resources` blocks | Simple | Paths carry container indices (brittle), and it discards genuine validation of resource blocks — a real missing-limits bug would slip through |
+| D | Leave the gate red | Honest | A permanently-red gate is a disabled gate |
+
+**Decision**: A — normalize numeric quantities to strings during rendering, narrowly scoped to `resources.limits.*` / `resources.requests.*`, with the rationale commented in the code.
+**Rationale**: The gate exists to answer "would the API server accept this?". The API server accepts it, so a faithful gate must too. Option B would have us modify correct manifests to satisfy a tool bug. Worth reporting upstream to `fluxcd/flux-schema`.
+**Decided by**: Conversation, 2026-07-13
+**References**: FR-004; SC-001
+
+## CL-4 — 2026-07-13 — The rendered bundle must reproduce what Flux applies, not what Helm emits
+
+**Asked by**: Controller (during T005 execution)
+**Context**: The first gate run flagged `Deployment/loggen-loggen` for carrying container-level fields (`readOnlyRootFilesystem`, `allowPrivilegeEscalation`, `capabilities`) in its **pod-level** `securityContext`. Investigation showed the repo already knew: `observability/base/loggen/helmrelease.yaml` carries a `postRenderers[].kustomize` patch that strips exactly those fields, because chart 0.1.4 hardcodes them in the wrong place. The finding was a false positive produced by our own renderer, which ran `helm template` and ignored `spec.postRenderers`.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Renderer applies `spec.postRenderers` (kustomize patches/images) to the chart output, as helm-controller does | The bundle equals what Flux applies; both gates assert on reality | Renderer must reimplement a slice of helm-controller behaviour |
+| B | Add loggen to a skip list | One line | Hides a workload from Polaris; and every future postRenderer silently diverges |
+| C | Drop the postRenderer and pin/patch the chart instead | Removes the special case | Unrelated change; the postRenderer is the right fix for a broken upstream chart |
+
+**Decision**: A — the renderer applies `spec.postRenderers`.
+**Rationale**: An unfaithful bundle is worse than no bundle: it produces false positives now and could produce false negatives later (a postRenderer that *adds* something unsafe would go unaudited). Fidelity to what Flux actually applies is the renderer's entire contract. Also note the misplaced-`securityContext` case is precisely the bug class `.claude/rules/spec-constitution.md` documents — the repo's workaround is correct and must be honoured, not re-flagged.
+**Decided by**: Conversation, 2026-07-13
+**References**: FR-004; CL-1; SC-001
+
 ---
 
 ## Related

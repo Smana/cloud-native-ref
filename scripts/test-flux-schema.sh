@@ -88,4 +88,57 @@ else
   fail=1
 fi
 
+echo "== postRenderers applied (loggen) =="
+# loggen's chart hardcodes readOnlyRootFilesystem/allowPrivilegeEscalation/
+# capabilities at pod-level securityContext, where K8s rejects them; the
+# HelmRelease's spec.postRenderers strips them via a kustomize patch. If
+# render-bundle.py skips postRenderers, the bundle still has them and the
+# schema gate reports a false positive on an already-fixed problem.
+loggen_sc="$(python3 - <<'PY'
+import yaml
+for d in yaml.safe_load_all(open(".bundle/chart-observability-loggen.yaml")):
+    if d and d.get("kind") == "Deployment" and d["metadata"]["name"] == "loggen-loggen":
+        print(yaml.safe_dump(d["spec"]["template"]["spec"].get("securityContext") or {}))
+PY
+)"
+if [[ "${loggen_sc}" == *"readOnlyRootFilesystem"* || "${loggen_sc}" == *"allowPrivilegeEscalation"* || "${loggen_sc}" == *"capabilities"* ]]; then
+  echo "  FAIL  loggen postRenderer did not strip container-level fields from the pod securityContext"
+  echo "        got: ${loggen_sc}"
+  fail=1
+else
+  echo "  PASS  loggen postRenderer stripped container-level securityContext fields (spec.postRenderers applied)"
+fi
+
+echo "== List envelopes unwrapped =="
+# `kind: List` is a client-side envelope (kubectl/kustomize expand it before
+# apply), not an applyable resource - the aws-load-balancer-controller chart
+# wraps an IngressClassParams + an IngressClass this way. None should survive
+# into the bundle, and the IngressClass should appear as its own document.
+list_count="$(grep -rh '^kind: List$' .bundle/*.yaml 2>/dev/null | wc -l || true)"
+check "no List envelopes remain in the bundle" "0" "${list_count}"
+
+if grep -rq '^kind: IngressClass$' .bundle/*.yaml 2>/dev/null; then
+  echo "  PASS  IngressClass (formerly wrapped in a List) is present as a standalone resource"
+else
+  echo "  FAIL  IngressClass missing from the bundle after List unwrap"
+  fail=1
+fi
+
+echo "== quantity normalization =="
+# keda's chart defaults `resources.limits.cpu: 1` as a bare YAML number - the
+# API server's Quantity.UnmarshalJSON accepts that, but flux-schema's catalog
+# types Quantity as `string` only. render-bundle.py's normalize_quantities
+# should stringify it so the bundle doesn't manufacture a false positive.
+if grep -q "cpu: '1'" .bundle/chart-keda-keda.yaml 2>/dev/null; then
+  echo "  PASS  keda's numeric cpu limit (bare 1) normalized to a string"
+else
+  echo "  FAIL  keda's numeric cpu limit was not normalized to a string"
+  fail=1
+fi
+
+echo "== flux schema validate (gate 1, end-to-end) =="
+validate_out="$("${FLUX_BIN}" schema validate .bundle --config .fluxschema.yml 2>&1)" || true
+echo "${validate_out}"
+check "gate 1 reports zero invalid/skipped resources" "Invalid: 0, Skipped: 0" "${validate_out}"
+
 exit "$fail"

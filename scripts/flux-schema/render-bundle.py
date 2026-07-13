@@ -19,6 +19,17 @@ import tempfile
 
 import yaml
 
+# PyYAML 1.1-spec quirk, not a real document defect: a bare, unquoted `=`
+# scalar (e.g. an enum member `- =`, as in the prometheus-operator-crds
+# chart's AlertmanagerConfig CRD matchType enum: `!=`, `=`, `=~`, `!~`) is
+# reserved as the special "default value" tag `tag:yaml.org,2002:value`, for
+# which SafeLoader registers no constructor - safe_load then raises
+# ConstructorError on an otherwise perfectly valid document. Treat it as the
+# plain string it is; this is the standard workaround (see pyyaml/pyyaml#89).
+yaml.SafeLoader.add_constructor(
+    "tag:yaml.org,2002:value", lambda loader, node: loader.construct_scalar(node)
+)
+
 MANIFEST_DIRS = [
     "infrastructure",
     "security",
@@ -154,6 +165,123 @@ def load_docs(path):
         return []
 
 
+def unwrap_lists(docs):
+    """`kind: List` is a client-side envelope, not an applyable resource -
+    `kubectl apply`/kustomize expand it and apply each item individually.
+    (aws-load-balancer-controller's ingressclass.yaml template wraps an
+    IngressClassParams + an IngressClass this way.) Replace each List with
+    its items so the CONTENTS get validated, instead of failing on
+    "no schema for kind List" or silently hiding the items from both gates.
+    """
+    expanded = []
+    for doc in docs:
+        if doc.get("kind") == "List":
+            expanded.extend(item for item in (doc.get("items") or []) if isinstance(item, dict))
+        else:
+            expanded.append(doc)
+    return expanded
+
+
+def normalize_quantities(node):
+    """Stringify bare-number values under any `resources.limits`/`resources.requests` map.
+
+    The Kubernetes API server's resource.Quantity.UnmarshalJSON accepts a bare
+    JSON number (`cpu: 1`) exactly like a string (`cpu: "1"`) - upstream chart
+    defaults (KEDA, Harbor's bundled Trivy subchart) and this repo's own
+    dagger-engine overlay rely on that leniency, and these workloads run in
+    the live cluster today with these exact values. flux-schema's generated
+    JSON-Schema catalog types Quantity as `string` only, stricter than the
+    API server actually is, so a numeric value here is a validator false
+    positive, not a real defect. Narrowly scoped to resources.limits/requests
+    (containers, initContainers, ephemeralContainers, and the same shape
+    wherever it recurs in CRs) - does not touch numbers anywhere else.
+    """
+    if isinstance(node, dict):
+        resources = node.get("resources")
+        if isinstance(resources, dict):
+            for section in ("limits", "requests"):
+                quantities = resources.get(section)
+                if isinstance(quantities, dict):
+                    for key, value in quantities.items():
+                        if isinstance(value, (int, float)) and not isinstance(value, bool):
+                            quantities[key] = str(value)
+        for value in node.values():
+            normalize_quantities(value)
+    elif isinstance(node, list):
+        for item in node:
+            normalize_quantities(item)
+
+
+def postprocess(text):
+    """Make rendered output a faithful stand-in for what Flux/kubectl actually
+    applies: expand `List` envelopes and fix up bare-number Quantity values
+    that only a stricter-than-the-API-server schema catalog would reject.
+    Comments and exact formatting are not preserved - irrelevant to schema/
+    Polaris validation, and dropped anyway once helm/kustomize post-renderers
+    round-trip through YAML.
+    """
+    docs = unwrap_lists([d for d in yaml.safe_load_all(text) if isinstance(d, dict)])
+    for doc in docs:
+        normalize_quantities(doc)
+    return "\n---\n".join(
+        yaml.safe_dump(doc, sort_keys=False, default_flow_style=False, width=1000000).strip()
+        for doc in docs
+    ) + "\n"
+
+
+def apply_post_renderers(rendered_text, post_renderers):
+    """Apply `spec.postRenderers` the same way helm-controller does before
+    installing the release, so the bundle matches what Flux actually applies
+    (skipping this makes the bundle diverge from reality - e.g. loggen's
+    postRenderer strips container-level securityContext fields the chart
+    wrongly hardcodes at pod level; without it the bundle still has them and
+    the schema gate reports a false positive on an already-fixed problem).
+
+    Only the `kustomize` post-renderer is implemented - the sole kind used in
+    this repo (loggen, harbor). Other post-renderer kinds (e.g. Flagger's
+    dep-container) don't apply to static bundle rendering and are skipped.
+    """
+    workdir = pathlib.Path(tempfile.mkdtemp(prefix="flux-schema-postrender-"))
+    try:
+        (workdir / "rendered.yaml").write_text(rendered_text)
+        kustomization = {
+            "apiVersion": "kustomize.config.k8s.io/v1beta1",
+            "kind": "Kustomization",
+            "resources": ["rendered.yaml"],
+        }
+        has_kustomize_pr = False
+        for post_renderer in post_renderers:
+            kustomize_pr = (post_renderer or {}).get("kustomize")
+            if not kustomize_pr:
+                continue
+            has_kustomize_pr = True
+            if kustomize_pr.get("patches"):
+                kustomization.setdefault("patches", []).extend(kustomize_pr["patches"])
+            if kustomize_pr.get("images"):
+                kustomization.setdefault("images", []).extend(kustomize_pr["images"])
+            for idx, merge in enumerate(kustomize_pr.get("patchesStrategicMerge") or []):
+                patch_file = f"strategic-merge-{idx}.yaml"
+                content = merge if isinstance(merge, str) else yaml.safe_dump(merge)
+                (workdir / patch_file).write_text(content)
+                kustomization.setdefault("patchesStrategicMerge", []).append(patch_file)
+
+        if not has_kustomize_pr:
+            return rendered_text, None
+
+        (workdir / "kustomization.yaml").write_text(yaml.safe_dump(kustomization, sort_keys=False))
+        result = subprocess.run(
+            [KUSTOMIZE_BIN, "build", str(workdir), "--load-restrictor=LoadRestrictionsNone"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode != 0:
+            return None, (result.stderr.strip().splitlines() or ["kustomize postRenderer failed"])[-1][:200]
+        return result.stdout, None
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 def top_most_overlays():
     """Kustomize dirs with no ancestor kustomization.yaml (avoids double-render)."""
     dirs = {
@@ -265,8 +393,12 @@ def render_overlay(overlay, outdir):
     )
     if result.returncode != 0:
         return result.stderr.strip().splitlines()[-1][:200]
+    try:
+        rendered = postprocess(result.stdout)
+    except yaml.YAMLError as exc:
+        return f"postprocess: {exc}"
     name = "overlay-" + str(overlay).replace("/", "-") + ".yaml"
-    (outdir / name).write_text(substitute(result.stdout))
+    (outdir / name).write_text(substitute(rendered))
     return None
 
 
@@ -326,7 +458,20 @@ def render_helmrelease(doc, sources, outdir, namespace):
 
     if result.returncode != 0:
         return f"HelmRelease/{namespace}/{meta['name']}: {result.stderr.strip().splitlines()[-1][:160]}"
-    (outdir / f"chart-{namespace}-{meta['name']}.yaml").write_text(substitute(result.stdout))
+
+    rendered = result.stdout
+    post_renderers = spec.get("postRenderers")
+    if post_renderers:
+        rendered, pr_error = apply_post_renderers(rendered, post_renderers)
+        if pr_error:
+            return f"HelmRelease/{namespace}/{meta['name']}: postRenderer: {pr_error}"
+
+    try:
+        rendered = postprocess(rendered)
+    except yaml.YAMLError as exc:
+        return f"HelmRelease/{namespace}/{meta['name']}: postprocess: {exc}"
+
+    (outdir / f"chart-{namespace}-{meta['name']}.yaml").write_text(substitute(rendered))
     return None
 
 
