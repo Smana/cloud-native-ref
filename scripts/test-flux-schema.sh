@@ -5,6 +5,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Resolves FLUX_BIN / HELM_BIN / KUSTOMIZE_BIN and hard-fails on a too-old
+# flux client, instead of letting a stale binary earlier on PATH silently
+# misbehave. Exported so render-bundle.py (invoked below) picks them up.
+# shellcheck source=./flux-schema/preflight.sh
+source "${REPO_ROOT}/scripts/flux-schema/preflight.sh"
+
 fail=0
 check() {
   local name="$1" expected="$2" actual="$3"
@@ -63,6 +69,23 @@ if [[ -x "${old_flux}" ]]; then
   check "guard names the v2.9 requirement" "2.9" "${guard_out}"
 else
   echo "  SKIP  guard-rejects-old-flux (no v2.8.8 binary at ${old_flux} on this machine)"
+fi
+
+echo "== render-bundle =="
+rm -rf .bundle
+render_out="$(python3 scripts/flux-schema/render-bundle.py .bundle)"
+echo "${render_out}"
+
+check "renders with no failures" "failed=0" "${render_out}"
+
+# grep -h (no per-file counts) + wc -l: total match count without depending
+# on `bc`, which isn't guaranteed to be installed.
+workloads="$(grep -rh '^kind: \(Deployment\|StatefulSet\|DaemonSet\|Job\)$' .bundle/*.yaml 2>/dev/null | wc -l)"
+if [[ "${workloads:-0}" -ge 30 ]]; then
+  echo "  PASS  bundle exposes ${workloads} workloads to Polaris (SC-005: >= 30)"
+else
+  echo "  FAIL  bundle exposes only ${workloads:-0} workloads (SC-005 requires >= 30)"
+  fail=1
 fi
 
 exit "$fail"
