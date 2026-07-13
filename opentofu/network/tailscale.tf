@@ -119,6 +119,14 @@ module "tailscale_subnet_router" {
   name     = var.tailscale_config.subnet_router_name
   auth_key = tailscale_tailnet_key.this.key
 
+  # t3.micro, not the module default t3a.micro: AMD pools are the thinnest in
+  # eu-west-3 and 3a ran out (InsufficientInstanceCapacity on deploy). Intel t3
+  # is the same amd64 arch, so it needs no AMI or user-data change. Not t4g:
+  # Graviton is arm64, which needs an arm64 ami_filter AND breaks the module's
+  # node_exporter install (hardcoded linux-amd64 tarball, and we run with
+  # prometheus_enabled = true).
+  instance_type = lookup(var.tailscale_config, "instance_type", "t3.micro")
+
   vpc_id                = module.vpc.vpc_id
   subnet_ids            = module.vpc.private_subnets
   advertise_routes      = [module.vpc.vpc_cidr_block]
