@@ -51,17 +51,22 @@ spec:
                   # annotation, falling back to metadata.name), so the other rendered
                   # resources keep their identities and are not recreated.
                   target: Default
-                  # Release tag, matching `version` in kcl/inference-service/kcl.mod.
-                  # crossplane-modules.yml publishes it on push to main; a PR build
-                  # publishes the throwaway `<version>-pr<N>` preview instead.
+                  # PR-preview tag. This MUST be `<kcl.mod version>-pr<PR number>` while
+                  # the PR is open and `<kcl.mod version>` on main — the
+                  # `validate-composition-versions` job in crossplane-modules.yml enforces
+                  # exactly that, keying on `github.event_name`. Pinning the release tag
+                  # early fails the PR; leaving the -pr tag fails main.
                   #
-                  # Pin the RELEASE tag before merging, not after. A `-pr<N>` pin left on
-                  # main is a dangling reference to a preview artifact, and the "strip it
-                  # post-merge" follow-up does not happen — main still carries
-                  # crossplane-app:0.1.10-pr1434 and carried inference-service:0.6.0-pr1434.
-                  # The cost is a ~2min window after merge where this tag is not published
-                  # yet; Flux retries and converges on its own, with nothing to remember.
-                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-inference-service:0.8.2
+                  # >>> STRIP THE `-pr1559` SUFFIX IN A FOLLOW-UP COMMIT ON MAIN. <<<
+                  #
+                  # This is not a nicety. On push to main the same job expects the bare
+                  # `0.8.2`, so main goes red until it is stripped — and main is left
+                  # pointing at a mutable PR-preview artifact. That follow-up is
+                  # demonstrably easy to forget: main still carries
+                  # `crossplane-app:0.1.10-pr1434`, and carried
+                  # `crossplane-inference-service:0.6.0-pr1434` until this branch
+                  # overwrote it. Two PRs, two promises, zero follow-ups.
+                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-inference-service:0.8.2-pr1559
 
         - step: ready
           functionRef:
