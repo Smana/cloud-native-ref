@@ -51,9 +51,17 @@ spec:
                   # annotation, falling back to metadata.name), so the other rendered
                   # resources keep their identities and are not recreated.
                   target: Default
-                  # PR-preview tag (0.8.0-pr1559) — strip the -pr suffix post-merge
-                  # once the release tag is published from main.
-                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-inference-service:0.8.2-pr1559
+                  # Release tag, matching `version` in kcl/inference-service/kcl.mod.
+                  # crossplane-modules.yml publishes it on push to main; a PR build
+                  # publishes the throwaway `<version>-pr<N>` preview instead.
+                  #
+                  # Pin the RELEASE tag before merging, not after. A `-pr<N>` pin left on
+                  # main is a dangling reference to a preview artifact, and the "strip it
+                  # post-merge" follow-up does not happen — main still carries
+                  # crossplane-app:0.1.10-pr1434 and carried inference-service:0.6.0-pr1434.
+                  # The cost is a ~2min window after merge where this tag is not published
+                  # yet; Flux retries and converges on its own, with nothing to remember.
+                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-inference-service:0.8.2
 
         - step: ready
           functionRef:
