@@ -1,0 +1,19 @@
+# Shared by CI, humans, and AI agents. See docs/specs/007-flux-schema-validation-replace/
+apiVersion: schema.plugin.fluxcd.io/v1beta1
+kind: Config
+validate:
+  # Order matters: our generated catalog wins, then Flux's built-in, then the
+  # hosted CNCF ecosystem catalog (rebuilt daily from upstream releases).
+  schemaLocation:
+    - ./.schemas
+    - default
+    - ecosystem
+  # The entire point of SPEC-007: an unknown kind fails the build instead of
+  # passing silently, as it did under kubeconform's -ignore-missing-schemas.
+  skipMissingSchemas: false
+  skipFile:
+    - '.*'                     # dotfiles and dot-dirs
+    - kustomization.yaml       # kustomize build inputs, not Kubernetes objects
+    - settings-example.yaml    # KCL module settings, not Kubernetes objects
+  verbose: false
+  output: text

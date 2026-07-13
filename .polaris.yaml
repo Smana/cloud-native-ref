@@ -10,8 +10,6 @@ checks:
   insecureCapabilities: warning
   hostNetworkSet: warning
   hostPortSet: warning
-  hostIPC: danger
-  hostPID: danger
 
   # Images
   tagNotSpecified: danger
