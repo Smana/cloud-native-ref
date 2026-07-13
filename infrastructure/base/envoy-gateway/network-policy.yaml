@@ -186,20 +186,9 @@ spec:
         - ports:
             - port: "18000"
               protocol: TCP
-    # vLLM Semantic Router.
-    #
-    # :50051 — ext_proc gRPC. This is the LOAD-BEARING one for `model: MoM`:
-    # the EnvoyPatchPolicy (infrastructure/base/envoy-ai-gateway/
-    # envoypatchpolicy-semantic-router.yaml) inserts an ExternalProcessor filter
-    # at index 0 of this listener's HTTP filter chain, dialling the router over
-    # gRPC to classify the prompt and rewrite `body.model` from MoM to a concrete
-    # fleet model — before the AI Gateway extproc derives `x-ai-eg-model` from
-    # the body. Under default-deny this is a silent DROP without the allow, and
-    # the only symptom is `model: MoM` -> HTTP 404 "No matching route found",
-    # which reads like a routing bug, not a policy one.
-    #
-    # :8080 — the router's HTTP classification API. Kept for direct classify
-    # calls; it is NOT the path the MoM rewrite takes.
+    # vLLM Semantic Router. :50051 is the ext_proc gRPC hop the EnvoyPatchPolicy
+    # dials to rewrite `model: MoM` (see envoy-ai-gateway/envoypatchpolicy-semantic-router.yaml);
+    # without it MoM 404s. :8080 is the router's HTTP classify API — not the MoM path.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: llm
@@ -210,22 +199,9 @@ spec:
               protocol: TCP
             - port: "8080"
               protocol: TCP
-    # llm namespace.
-    #
-    # :8000 — vLLM container port. Reached directly by the AI Gateway data plane
-    # for every model (SPEC-001 direct routing per AIServiceBackend).
-    #
-    # :9002 — the Endpoint Picker's grpc-ext-proc port (SPEC-004). When a claim
-    # sets gateway.endpointPicker.enabled, its AIGatewayRoute base rule targets an
-    # InferencePool instead of an AIServiceBackend, and Envoy must call that pool's
-    # EPP over ext_proc to choose a pod. Without this egress allow the call is a
-    # silent default-deny DROP and EVERY request through the pool returns HTTP 500
-    # — a 500 with no upstream error, which reads like a broken backend rather than
-    # a policy problem.
-    #
-    # The matching INGRESS half is rendered by the composition onto each EPP's own
-    # CNP (_eppIngressRules in kcl/inference-service/main.k), scoped to the Envoy
-    # data-plane pods. Both halves are required.
+    # vLLM model Services in the llm namespace (HTTP 8000 — vLLM container port).
+    # Reached directly by the AI Gateway data plane for every model (SPEC-001 direct
+    # routing per AIServiceBackend).
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: llm
@@ -233,5 +209,23 @@ spec:
         - ports:
             - port: "8000"
               protocol: TCP
+    # Endpoint Picker ext-proc (SPEC-004). With gateway.endpointPicker.enabled the
+    # AIGatewayRoute base rule targets an InferencePool, and Envoy must call that
+    # pool's EPP over ext_proc to choose a pod — without this allow it is a silent
+    # default-deny DROP and every request through the pool returns HTTP 500.
+    #
+    # Scoped to EPP pods only: they are the only pods carrying the `inferencepool`
+    # label (the chart sets it; see _eppPodSelector in kcl/inference-service/main.k).
+    # Its value is per-claim, hence Exists rather than a fixed match — this keeps
+    # :9002 closed toward vLLM, the semantic router and preload Jobs. The matching
+    # ingress half is rendered by the composition onto each EPP's own CNP.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: llm
+          matchExpressions:
+            - key: inferencepool
+              operator: Exists
+      toPorts:
+        - ports:
             - port: "9002"
               protocol: TCP

@@ -818,36 +818,9 @@ _eppHelmReleaseFor = lambda name: str, namespace: str -> any {
                 }}
                 provider = {name = "none"}
             }
-            # Mirrors main.k's postRenderer (SPEC-004 FR-008 / CL-7). The chart
-            # ships NO securityContext and exposes no key to set one, so the EPP
-            # pod is rejected outright by PSS=restricted without this patch.
-            # NOTE this is a MIRROR — keeping it in sync is not enough on its own;
-            # test_endpointpicker_postrenderer_is_real (below) asserts against the
-            # module's actual render so a drop in main.k cannot pass silently.
-            postRenderers = [{
-                kustomize = {
-                    patches = [{
-                        target = {kind = "Deployment", name = name + "-epp"}
-                        patch = """\
-- op: add
-  path: /spec/template/spec/securityContext
-  value:
-    runAsNonRoot: true
-    runAsUser: 65532
-    seccompProfile:
-      type: RuntimeDefault
-- op: add
-  path: /spec/template/spec/containers/0/securityContext
-  value:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop:
-        - ALL
-"""
-                    }]
-                }
-            }]
+            # The REAL module value, not a mirror copy — deleting _eppPostRenderers
+            # from main.k must fail this suite, not sail through it.
+            postRenderers = _eppPostRenderers
         }
     }
 }
@@ -873,6 +846,23 @@ test_endpointpicker_helmrelease_shape = lambda {
     assert _ip.apiVersion == "inference.networking.k8s.io/v1", "inferencePool.apiVersion must be inference.networking.k8s.io/v1"
     assert hr.spec.values.provider.name == "none", "provider.name must be none"
     assert hr.spec.values.inferenceExtension.image.tag == "v1.5.0", "EPP image tag must be pinned to v1.5.0"
+
+    # SPEC-004 FR-008 / CL-7 — the chart ships NO securityContext and exposes no key to
+    # set one, so without this postRenderer every EPP pod is rejected by PSS=restricted
+    # ("violates PodSecurity restricted:latest"), Helm times out on the Deployment and
+    # loops install/uninstall forever. Assert the DECODED patch so a re-indent or a
+    # dropped op cannot pass.
+    _prPatch = hr.spec.postRenderers[0].kustomize.patches[0]
+    assert _prPatch.target == {kind = "Deployment", name = _name + "-epp"}, "postRenderer must target the EPP Deployment, got {}".format(_prPatch.target)
+    _ops = yaml.decode(_prPatch.patch)
+    assert len(_ops) == 2, "expected 2 JSON6902 ops (pod + container securityContext), got {}".format(len(_ops))
+    _pod = [o for o in _ops if o.path == "/spec/template/spec/securityContext"][0]
+    _ctr = [o for o in _ops if o.path == "/spec/template/spec/containers/0/securityContext"][0]
+    assert _pod.value.runAsNonRoot, "pod securityContext must set runAsNonRoot"
+    assert _pod.value.runAsUser == 65532, "runAsUser must be 65532 (distroless nonroot uid of the EPP image), got {}".format(_pod.value.runAsUser)
+    assert _pod.value.seccompProfile.type == "RuntimeDefault", "PSS=restricted requires seccompProfile RuntimeDefault"
+    assert not _ctr.value.allowPrivilegeEscalation, "container must set allowPrivilegeEscalation: false"
+    assert _ctr.value.capabilities.drop == ["ALL"], "container must drop ALL capabilities"
 
     # Metrics-auth OFF (FR-010): the chart defaults auth.enabled=true, which makes
     # the EPP demand a bearer token on :9090/metrics and 401s our credential-less
@@ -910,9 +900,7 @@ _eppCnpFor = lambda name: str, appLabels: any, vllmPort: int, dnsEgress: [any] -
         kind = "CiliumNetworkPolicy"
         metadata = {name = name + "-epp"}
         spec = {
-            endpointSelector = {
-                matchLabels = {inferencepool = name + "-epp"}
-            }
+            endpointSelector = _eppPodSelector
             ingress = _eppIngressRules
             egress = [{toEndpoints = [{matchLabels = _eppLabels}], toPorts = [{ports = [{port = str(vllmPort), protocol = "TCP"}]}]}, {toEntities = ["kube-apiserver"]}] + dnsEgress
         }
@@ -956,9 +944,7 @@ test_endpointpicker_cnp_shape = lambda {
     # module's _eppScrapeIngress construction and assert its shape (it is [] when
     # off — the fixture case, already asserted by test_endpointpicker_off_by_default).
     _extension = {
-        fromEndpoints = [{
-            matchLabels = {inferencepool = _name + "-epp"}
-        }]
+        fromEndpoints = [_eppPodSelector]
         toPorts = [{ports = [{port = str(_DEFAULTS.vllm_port), protocol = "TCP"}]}]
     }
     assert _extension.fromEndpoints[0].matchLabels.inferencepool == _eppName, "serving-CNP extension must allow ingress from the EPP pod on :8000"

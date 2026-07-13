@@ -133,11 +133,8 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-    # Egress half of the gRPC Metrics Service hop (see the matching ingress rule
-    # on the keda-operator policy above). The metrics-apiserver does NOT query
-    # vmsingle itself for scaler values — it forwards each request to the
-    # operator over :9666, which owns the scalers. Both halves are required;
-    # default-deny drops the connection silently if either is missing.
+    # Egress half of the :9666 gRPC Metrics Service hop — see the keda-operator
+    # ingress rule above. Both halves are required.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: keda

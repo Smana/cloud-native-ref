@@ -1,6 +1,7 @@
 # inference-service composition.
 #
 import json
+import yaml
 
 # Conditionally-rendered resources are wrapped in a single-element list
 # `_x = [{...}]` then appended to `_items` to avoid function-kcl issue
@@ -273,6 +274,40 @@ _vmagentPeer = {
 _envoyDataPlanePeer = {
     matchLabels = {"io.kubernetes.pod.namespace" = "envoy-gateway-system", "gateway.envoyproxy.io/owning-gateway-name" = "ai-gateway", "gateway.envoyproxy.io/owning-gateway-namespace" = "envoy-ai-gateway-system"}
 }
+
+# EPP securityContext, applied as a Flux postRenderer (SPEC-004 FR-008 / CL-7).
+#
+# The inferencepool chart renders its EPP Deployment with no securityContext — neither
+# pod- nor container-level — and exposes no values key to set one, so every EPP pod is
+# rejected by the `llm` namespace's PSS=restricted enforcement and Helm loops on
+# install/uninstall. 65532 is the distroless `nonroot` uid the registry.k8s.io EPP
+# image ships; runAsNonRoot alone would fail if its USER resolved to root.
+#
+# Built structurally and yaml.encode'd rather than hand-written as a multi-line string:
+# `kcl fmt` re-indents string CONTENTS to match the surrounding block, which silently
+# corrupts an embedded YAML document. Encoding sidesteps that and type-checks the patch.
+#
+# Module-level, like _eppIngressRules below, so main_test.k drives THIS value directly —
+# a mirror copy in the test would keep passing if this were deleted here.
+_eppPostRenderers = [{
+    kustomize = {
+        patches = [{
+            target = {kind = "Deployment", name = _eppName}
+            patch = yaml.encode([
+                {
+                    op = "add"
+                    path = "/spec/template/spec/securityContext"
+                    value = {runAsNonRoot = True, runAsUser = 65532, seccompProfile = {type = "RuntimeDefault"}}
+                }
+                {
+                    op = "add"
+                    path = "/spec/template/spec/containers/0/securityContext"
+                    value = {allowPrivilegeEscalation = False, readOnlyRootFilesystem = True, capabilities = {drop = ["ALL"]}}
+                }
+            ])
+        }]
+    }
+}]
 
 # EPP CiliumNetworkPolicy ingress, as a module-level value the test suite drives
 # DIRECTLY (same discipline as `_baseRuleBackendRefsFor`) rather than through a
@@ -678,58 +713,8 @@ if _gatewayEnabled:
                     }
                     provider = {name = "none"}
                 }
-                # PSS=restricted compliance (SPEC-004 FR-008 / CL-7).
-                #
-                # The `llm` namespace enforces PodSecurity restricted, and the
-                # inferencepool chart (v1.5.0) renders its EPP Deployment with NO
-                # securityContext at all — neither pod- nor container-level — and
-                # exposes no values key to set one (`inferenceExtension` offers only
-                # replicas/image/extProcPort/failureMode/env/pluginsConfigFile/
-                # extraContainerPorts/extraServicePorts/flags/affinity/tolerations/
-                # resources/sidecar/monitoring/tracing/latencyPredictor/
-                # metricsDataSource). So every EPP pod is rejected at admission:
-                #
-                #   replicaset/<name>-epp FailedCreate: pods "..." is forbidden:
-                #   violates PodSecurity "restricted:latest"
-                #
-                # Helm then times out waiting for the Deployment, uninstalls, and
-                # retries forever — the EPP never runs and the InferencePool has no
-                # picker. CL-7's "Option A (trust-and-verify)" is therefore refuted
-                # on-cluster: the chart is NOT restricted-compliant.
-                #
-                # Fixed with a Flux postRenderer rather than the Kyverno-mutate
-                # fallback CL-7 proposed. A postRenderer is scoped to THIS release,
-                # is rendered by (and GC'd with) the claim, keeps a cluster-wide
-                # mutating policy out of the admission path, and is deterministic —
-                # the manifest that Flux applies already carries the context.
-                #
-                # runAsUser 65532 is the distroless `nonroot` uid the registry.k8s.io
-                # EPP image ships; runAsNonRoot alone would fail if the image's USER
-                # resolved to root.
-                postRenderers = [{
-                    kustomize = {
-                        patches = [{
-                            target = {kind = "Deployment", name = _eppName}
-                            patch = """\
-- op: add
-  path: /spec/template/spec/securityContext
-  value:
-    runAsNonRoot: true
-    runAsUser: 65532
-    seccompProfile:
-      type: RuntimeDefault
-- op: add
-  path: /spec/template/spec/containers/0/securityContext
-  value:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop:
-        - ALL
-"""
-                        }]
-                    }
-                }]
+                # The PSS=restricted securityContext the chart cannot express.
+                postRenderers = _eppPostRenderers
             }
         }]
         _items += _eppHelmRelease

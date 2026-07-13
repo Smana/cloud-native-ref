@@ -1,29 +1,17 @@
-# EnvoyPatchPolicy — wires the vLLM Semantic Router into the AI Gateway's
-# HTTP filter chain so that `model: MoM` requests get classified and rewritten.
+# EnvoyPatchPolicy — inserts the vLLM Semantic Router into the AI Gateway's HTTP
+# filter chain so `model: MoM` gets classified and rewritten. Without it, MoM
+# returns 404: routes match concrete model names and nothing rewrites MoM into one.
 #
-# WHY A RAW xDS PATCH AND NOT AN EnvoyExtensionPolicy
-# ---------------------------------------------------
-# The router must run BEFORE Envoy AI Gateway's own extproc, because that
-# extproc is what derives the `x-ai-eg-model` header from `body.model` — and
-# `x-ai-eg-model` is what every AIGatewayRoute rule matches on. The semantic
-# router rewrites `body.model` from `MoM` to a concrete fleet model; the AI
-# Gateway extproc then derives the header from the ALREADY-REWRITTEN body, and
-# the existing routes match with no new rules.
+# Must be a raw xDS patch, not an EnvoyExtensionPolicy. The router has to run BEFORE
+# the AI Gateway's own extproc, because that extproc derives `x-ai-eg-model` from
+# `body.model` and every AIGatewayRoute rule matches on that header. The router
+# rewrites `body.model` MoM -> a concrete fleet model; the extproc then derives the
+# header from the already-rewritten body and the EXISTING routes match, with no new
+# rules. EnvoyExtensionPolicy can only APPEND filters — too late. Hence index 0.
 #
-# EnvoyExtensionPolicy cannot express "insert at http_filters[0]" — it appends
-# after the AI Gateway's filters, which is too late (the header is already set).
-# So we insert the ext_proc filter at index 0 of the chain, exactly as upstream
-# does in vllm-project/semantic-router
-# (deploy/kubernetes/ai-gateway/aigw-resources/gwapi-resources.yaml @ v0.2.0).
-#
-# Requires `extensionApis.enableEnvoyPatchPolicy: true` on the Envoy Gateway
-# config — already set in this cluster.
-#
-# WITHOUT THIS, `model: MoM` returns HTTP 404 "No matching route found": the
-# routes only match concrete model names, nothing rewrites MoM into one, and
-# the semantic router — though running and healthy — is never called. That was
-# the state of this repo until now; the mechanism was described in comments
-# (apps/base/ai/llm/ai-gateway-routes/route.yaml) but never actually built.
+# Mirrors upstream vllm-project/semantic-router @ v0.2.0
+# (deploy/kubernetes/ai-gateway/aigw-resources/gwapi-resources.yaml). Requires
+# `extensionApis.enableEnvoyPatchPolicy: true` (already set on this cluster).
 #
 # The listener JSON-patch `name` is `<gateway-namespace>/<gateway-name>/<listener-name>`.
 apiVersion: gateway.envoyproxy.io/v1alpha1
