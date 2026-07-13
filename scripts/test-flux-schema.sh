@@ -28,4 +28,24 @@ check "preserves the kind"               "kind: App"                       "$out
 check "injects spec.crossplane"          "crossplane:"                     "$out"
 check "injects compositionRef"           "compositionRef:"                 "$out"
 
+echo "== gen-catalog =="
+rm -rf .schemas
+./scripts/flux-schema/gen-catalog.sh >/dev/null
+
+for kind in app sqlinstance inferenceservice epi; do
+  if [[ -f ".schemas/cloud.ogenki.io/${kind}_v1alpha1.json" ]]; then
+    echo "  PASS  catalog has cloud.ogenki.io/${kind}"
+  else
+    echo "  FAIL  catalog missing cloud.ogenki.io/${kind}_v1alpha1.json"
+    fail=1
+  fi
+done
+
+if compgen -G ".schemas/aigateway.envoyproxy.io/*.json" >/dev/null; then
+  echo "  PASS  catalog has aigateway.envoyproxy.io schemas"
+else
+  echo "  FAIL  catalog missing aigateway.envoyproxy.io schemas"
+  fail=1
+fi
+
 exit "$fail"
