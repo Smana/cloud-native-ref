@@ -37,6 +37,21 @@ spec:
           runAsGroup: 123
           fsGroup: 1000
 
+        # Pin the runner image. The chart's own default is
+        # `ghcr.io/actions/actions-runner:latest`, which Polaris flags
+        # (tagNotSpecified) and which makes runner rollouts unreproducible.
+        #
+        # This list REPLACES the chart default (Helm replaces lists, it does not
+        # merge them), so name/image/command mirror that default exactly, with
+        # only the tag pinned. `2.335.1` was verified to resolve to the same
+        # digest `:latest` points at today (sha256:08c30b0a…bda2c29), so this
+        # pins current behaviour rather than changing it.
+        # The chart still injects env/volumeMounts for this container itself.
+        containers:
+          - name: runner
+            image: ghcr.io/actions/actions-runner:2.335.1
+            command: ["/home/runner/run.sh"]
+
     containerMode:
       type: "kubernetes"
       kubernetesModeWorkVolumeClaim:

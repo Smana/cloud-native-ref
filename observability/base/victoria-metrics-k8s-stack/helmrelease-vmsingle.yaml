@@ -25,6 +25,20 @@ spec:
       name: vm-common-helm-values
       valuesKey: values.yaml
   values:
+    # Dashboard sync Job. This chart names the CONTAINER context
+    # `containerSecurityContext` (`podSecurityContext` is the pod one) — putting
+    # allowPrivilegeEscalation in the pod block renders an invalid PodSpec. The
+    # chart ships neither, so the Job ran with privilege escalation allowed.
+    #
+    # Kept here in spec.values rather than in the shared vm-common-helm-values
+    # ConfigMap: the manifest renderer (scripts/flux-schema/render-bundle.py)
+    # resolves spec.values only, not spec.valuesFrom, so a fix living in the
+    # ConfigMap is invisible to the validation gate. spec.values also layers on
+    # top of valuesFrom in Flux, so this is the authoritative place either way.
+    syncJob:
+      containerSecurityContext:
+        allowPrivilegeEscalation: false
+
     vmsingle:
       spec:
         retentionPeriod: "1d" # Minimal retention, for tests only

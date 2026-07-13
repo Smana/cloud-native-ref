@@ -25,3 +25,19 @@ spec:
 
     containerMode:
       type: "dind"
+
+    template:
+      spec:
+        # Pin the runner image — see default-scale-set-helmrelease.yaml for the
+        # full rationale. In dind mode this tag also feeds the generated
+        # `init-dind-externals` initContainer, which copies the runner externals
+        # out of this same image (_helpers.tpl "dind-init-container"), so pinning
+        # here clears tagNotSpecified on both containers.
+        #
+        # The `dind` sidecar keeps its chart-hardcoded `docker:dind` +
+        # privileged: true — not overridable from values, hence the Polaris
+        # exemption in .polaris.yaml.
+        containers:
+          - name: runner
+            image: ghcr.io/actions/actions-runner:2.335.1
+            command: ["/home/runner/run.sh"]

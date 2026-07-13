@@ -16,6 +16,14 @@ spec:
         name: jameswynn
       interval: 12h
   values:
+    # CONTAINER security context for the main container. This chart is a thin
+    # wrapper over the bjw-s `common` library chart (v1.5.1), where
+    # `securityContext` is "the Security Context for the main container" and
+    # `podSecurityContext` is the pod one (lib/controller/_mainContainer.tpl).
+    # Neither is set by default, so homepage ran with escalation allowed.
+    securityContext:
+      allowPrivilegeEscalation: false
+
     # Enable RBAC for Kubernetes integration
     enableRbac: true
 

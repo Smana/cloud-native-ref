@@ -26,6 +26,15 @@ spec:
       requests:
         cpu: 100m
         memory: 128Mi
+
+    # CONTAINER security context for the `manager` container
+    # (`podSecurityContext` is the pod one). The chart ships both empty. The
+    # controller only reconciles AutoscalingRunnerSets against the Kubernetes and
+    # GitHub APIs — the privileged work happens in the runner pods it creates,
+    # not here.
+    securityContext:
+      allowPrivilegeEscalation: false
+
     flags:
       logLevel: "debug"
       logFormat: "json"

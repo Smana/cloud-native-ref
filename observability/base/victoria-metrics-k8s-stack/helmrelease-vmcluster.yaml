@@ -25,6 +25,12 @@ spec:
       name: vm-common-helm-values
       valuesKey: values.yaml
   values:
+    # Dashboard sync Job — container-level context; see helmrelease-vmsingle.yaml
+    # for why this lives in spec.values and not in the shared values ConfigMap.
+    syncJob:
+      containerSecurityContext:
+        allowPrivilegeEscalation: false
+
     vmsingle:
       enabled: false
 
