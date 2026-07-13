@@ -248,9 +248,35 @@ Use the FluxCD agent-skills plugin for Flux troubleshooting (`/gitops-cluster-de
 ```bash
 tofu validate
 trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
-kubeconform -summary -output json <manifest>.yaml
+./scripts/validate-manifests.sh   # renders the repo, then gates it (see below)
 kubectl get nodes && kubectl get pods --all-namespaces
 flux get all
 ```
+
+### Manifest validation (SPEC-007)
+
+`./scripts/validate-manifests.sh` is the single entry point CI runs, and the one to cite as
+evidence. It renders the repo the way Flux does — every Kustomize overlay (with `postBuild`
+vars substituted) plus every HelmRelease rendered through `helm template` with its own values
+and `postRenderers` — then applies two gates to the result:
+
+| Gate | Tool | Catches |
+|------|------|---------|
+| 1 | `flux schema validate` | structure + CEL, against the repo's own XRDs, the Flux catalog, and the CNCF ecosystem catalog |
+| 2 | `polaris audit` | workload best practices (privilege escalation, capabilities, image tags) |
+
+Two properties are load-bearing:
+
+- **`skipMissingSchemas: false`** (`.fluxschema.yml`) — an unknown Kind *fails the build*. It
+  does not get skipped. The previous kubeconform setup ran with `-ignore-missing-schemas`, so
+  every `cloud.ogenki.io` claim went unvalidated for the life of the repo.
+- **Polaris audits rendered charts, not raw files.** The repo has 2 raw Deployments; the
+  rendered bundle has 70 controllers. Pointing a best-practices gate at the source tree checks
+  almost nothing.
+
+The schema catalog (`.schemas/`) and the bundle (`.bundle/`) are generated on every run and are
+gitignored — a committed catalog drifts from the XRDs it is derived from.
+
+Requires `flux` ≥ 2.9 with the schema plugin: `mise install && flux plugin install schema`.
 
 - always check the network policies when there are timeouts

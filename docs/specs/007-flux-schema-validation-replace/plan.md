@@ -398,8 +398,17 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 SCHEMA_DIR="${SCHEMA_DIR:-.schemas}"
-AI_GATEWAY_VERSION="${AI_GATEWAY_VERSION:-v0.3.0}"
-AI_GATEWAY_CRD_URL="https://raw.githubusercontent.com/envoyproxy/ai-gateway/${AI_GATEWAY_VERSION}/manifests/charts/ai-gateway-crds-helm/templates/aigateway.envoyproxy.io_crds.yaml"
+
+# Single source of truth: the same OCIRepository pin Flux uses to install the
+# CRDs on the cluster. Renovate bumps that file; this script follows it.
+AI_GATEWAY_SOURCE="flux/sources/ocirepo-envoy-ai-gateway-crds.yaml"
+AI_GATEWAY_CHART="oci://docker.io/envoyproxy/ai-gateway-crds-helm"
+AI_GATEWAY_VERSION="$(grep -oP 'tag:\s*"?\K[0-9][^"]*' "${AI_GATEWAY_SOURCE}" | tr -d '"')"
+
+if [[ -z "${AI_GATEWAY_VERSION}" ]]; then
+  echo "error: could not read the AI Gateway CRD chart version from ${AI_GATEWAY_SOURCE}" >&2
+  exit 1
+fi
 
 rm -rf "${SCHEMA_DIR}"
 mkdir -p "${SCHEMA_DIR}"
@@ -412,8 +421,9 @@ python3 scripts/flux-schema/xrd-to-crd.py \
   infrastructure/base/crossplane/configuration/*-definition.yaml \
   > "${tmp}/xrd-crds.yaml"
 
-echo "==> Fetching Envoy AI Gateway CRDs (${AI_GATEWAY_VERSION})"
-curl -fsSL "${AI_GATEWAY_CRD_URL}" -o "${tmp}/aigateway-crds.yaml"
+echo "==> Rendering Envoy AI Gateway CRDs (chart ${AI_GATEWAY_VERSION})"
+helm template aigw-crds "${AI_GATEWAY_CHART}" --version "${AI_GATEWAY_VERSION}" \
+  > "${tmp}/aigateway-crds.yaml"
 
 echo "==> Extracting JSON Schemas into ${SCHEMA_DIR}/"
 flux schema extract crd "${tmp}/xrd-crds.yaml" -d "${SCHEMA_DIR}"
@@ -422,12 +432,14 @@ flux schema extract crd "${tmp}/aigateway-crds.yaml" -d "${SCHEMA_DIR}"
 find "${SCHEMA_DIR}" -name '*.json' | sort
 ```
 
+> Verified 2026-07-13: `helm template oci://docker.io/envoyproxy/ai-gateway-crds-helm --version 1.0.0` renders 6 CRDs, and `flux/sources/ocirepo-envoy-ai-gateway-crds.yaml` pins `tag: "1.0.0"`.
+
 - [ ] **Step 4: Run and watch it pass**
 
 Run: `chmod +x scripts/flux-schema/gen-catalog.sh && ./scripts/test-flux-schema.sh`
 Expected: the 4 `cloud.ogenki.io` PASS lines plus the `aigateway.envoyproxy.io` PASS line.
 
-> If the AI-Gateway CRD URL 404s, resolve the actual chart path/version first (`gh api repos/envoyproxy/ai-gateway/contents/manifests/charts`) and pin `AI_GATEWAY_VERSION` to the version the repo's `flux/sources/ocirepo-*` pins. Do not fall back to `--skip-missing-schemas`; that reintroduces the bug this spec removes.
+> If the chart render fails, fix the version resolution — do not fall back to `--skip-missing-schemas`, which reintroduces the exact bug this spec removes.
 
 - [ ] **Step 5: Commit**
 
@@ -987,6 +999,10 @@ git commit -m "chore(agents): add flux-schema MCP server for authoring-time vali
 <!-- Append as implementation surprises show up. Format:
 - <2026-07-13> T00N was [dropped|replaced|split]: <why>
 Keep short — detailed rationale goes in clarifications.md if it is a decision. -->
+
+- 2026-07-13 T003 corrected pre-flight: the Envoy AI Gateway CRDs are rendered from the pinned OCI chart (version read from `flux/sources/ocirepo-envoy-ai-gateway-crds.yaml`), not fetched from a raw GitHub URL. Same artifact the cluster installs; stays Renovate-managed.
+- 2026-07-13 T004 gained three fidelity fixes after the first full gate run (see CL-3, CL-4): apply `spec.postRenderers`, unwrap `kind: List`, normalise numeric resource quantities.
+- 2026-07-14 **T011 and T012 added.** The plan's Non-Goals assumed Polaris `danger` was clean and only the `warning` backlog needed deferring. False: once Polaris could see the rendered charts (70 controllers, up from 4), it reported **46 `danger` failures across 24 controllers**. Two groups: 6 privileged-by-design (CSI ×2, node-exporter, dagger-engine, 2 GHA runner scale sets) → documented exemptions (T011); 18 upstream charts that never set `allowPrivilegeEscalation: false`, which the constitution mandates, plus an untagged Headlamp image → fixed by plumbing values (T012). Decided in conversation 2026-07-14: fix rather than defer, since these are real constitution violations that were invisible only because the gate was blind. Scope kept minimal — clear `danger` only; `readOnlyRootFilesystem` (a `warning`, and the riskiest change) stays deferred.
 
 ---
 
