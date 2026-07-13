@@ -52,31 +52,12 @@ spec:
     workloadKind: StatefulSet
     replicaCount: 2
     image:
-      # There is NO ghcr.io/smana/runlore:v0.9.0 image. It was never built.
-      #
-      # The previous pin assumed that release-please cutting the v0.9.0 git tag would
-      # also publish a matching image. It does not, for two independent reasons in
-      # Smana/runlore .github/workflows/build-image.yml:
-      #   * the workflow triggers only on `push: branches: [main]` with a path filter
-      #     (**.go, go.mod, go.sum, Dockerfile, ...). A release-please commit
-      #     ("chore(main): release 0.9.0") touches CHANGELOG/version files and NO Go
-      #     code, so the image build never runs for the release commit;
-      #   * there is no `tags: ['v*']` trigger, so pushing the git tag builds nothing
-      #     either, and the workflow only ever pushes a rolling `:main` tag.
-      # Result: the registry holds 244 tags and ZERO semver tags. The StatefulSet sat
-      # in ImagePullBackOff since the cluster was built ("NotFound"), which is why
-      # RunLore has never been triggered by anything.
-      #
-      # Pinned here to the rolling :main tag BY DIGEST, so it is immutable and
-      # reproducible despite the tag being mutable. This digest is the newest
-      # successful main build: commit ebecf13 ("fix(triggers): filter self-resolving
-      # alerts without ever delaying a critical page", #310). The tip of main
-      # (4e8bb0f) is docs-only, correctly skipped by the path filter, so ebecf13 IS
-      # the latest code.
-      #
-      # Revert this to a plain `tag: "vX.Y.Z"` once the upstream workflow publishes
-      # semver image tags.
-      tag: "main@sha256:e641de3a255cf0bb46e09bf9113d9948da37fdc16aa852d3ab99e682b41ae872"
+      # NO leading "v". GoReleaser (Smana/runlore release-binaries.yml) publishes the
+      # release image with `{{ .Version }}`, which renders 0.9.0 — so `v0.9.0` 404s
+      # and the StatefulSet lands in ImagePullBackOff. This is the signed, multi-arch
+      # (amd64+arm64), SBOM-attested release image; the rolling `:main` tag from
+      # build-image.yml is a single-arch validation build and must not be used here.
+      tag: "0.9.0"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
