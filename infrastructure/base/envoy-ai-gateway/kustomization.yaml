@@ -16,3 +16,7 @@ resources:
   # GenAI telemetry scrape — VMPodScrape for the extproc `gen_ai.*` metrics
   # emitted on the data-plane pods' aigw-admin sidecar port (SPEC-006).
   - vmscrape.yaml
+  # Inserts the vLLM Semantic Router ext_proc filter at index 0 of the AI
+  # Gateway listener's HTTP filter chain, so `model: MoM` is classified and
+  # rewritten to a concrete fleet model before x-ai-eg-model is derived.
+  - envoypatchpolicy-semantic-router.yaml

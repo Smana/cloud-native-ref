@@ -186,17 +186,28 @@ spec:
         - ports:
             - port: "18000"
               protocol: TCP
-    # Iris HTTP classifier (vLLM Semantic Router) — called by the
-    # AIGatewayRoute extension for `model: MoM` requests to classify
-    # the prompt and rewrite x-ai-eg-model. Replaces the legacy
-    # ext_proc gRPC :50051 path that was dropped in the
-    # foundation-showcase trim.
+    # vLLM Semantic Router.
+    #
+    # :50051 — ext_proc gRPC. This is the LOAD-BEARING one for `model: MoM`:
+    # the EnvoyPatchPolicy (infrastructure/base/envoy-ai-gateway/
+    # envoypatchpolicy-semantic-router.yaml) inserts an ExternalProcessor filter
+    # at index 0 of this listener's HTTP filter chain, dialling the router over
+    # gRPC to classify the prompt and rewrite `body.model` from MoM to a concrete
+    # fleet model — before the AI Gateway extproc derives `x-ai-eg-model` from
+    # the body. Under default-deny this is a silent DROP without the allow, and
+    # the only symptom is `model: MoM` -> HTTP 404 "No matching route found",
+    # which reads like a routing bug, not a policy one.
+    #
+    # :8080 — the router's HTTP classification API. Kept for direct classify
+    # calls; it is NOT the path the MoM rewrite takes.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: llm
             app.kubernetes.io/name: vllm-semantic-router
       toPorts:
         - ports:
+            - port: "50051"
+              protocol: TCP
             - port: "8080"
               protocol: TCP
     # vLLM model Services in the llm namespace (HTTP 8000 — vLLM

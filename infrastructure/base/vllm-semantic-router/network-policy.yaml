@@ -84,11 +84,27 @@ spec:
     # `model: xplane-<name>` requests skip Iris entirely (the AI
     # Gateway's body parser sets x-ai-eg-model directly), so this
     # rule fires only on cascade-routed traffic.
+    # :50051 is the ext_proc gRPC hop that makes `model: MoM` work at all —
+    # the EnvoyPatchPolicy inserts an ExternalProcessor filter at index 0 of the
+    # AI Gateway listener's chain and dials the router here to classify the
+    # prompt and rewrite `body.model` before `x-ai-eg-model` is derived from it.
+    # Missing this allow is a silent default-deny DROP whose only symptom is
+    # `model: MoM` -> 404 "No matching route found".
+    #
+    # NOTE the selector: the Envoy data-plane pods live in envoy-gateway-system
+    # (the controller spawns them into ITS OWN namespace), even though the
+    # parent Gateway object lives in envoy-ai-gateway-system. Both namespaces
+    # are matched so the rule holds regardless of where the proxy lands.
     - fromEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: envoy-ai-gateway-system
             gateway.envoyproxy.io/owning-gateway-name: ai-gateway
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: ai-gateway
       toPorts:
         - ports:
+            - port: "50051"
+              protocol: TCP
             - port: "8080"
               protocol: TCP

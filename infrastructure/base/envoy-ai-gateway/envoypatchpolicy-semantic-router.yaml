@@ -1,0 +1,91 @@
+# EnvoyPatchPolicy — wires the vLLM Semantic Router into the AI Gateway's
+# HTTP filter chain so that `model: MoM` requests get classified and rewritten.
+#
+# WHY A RAW xDS PATCH AND NOT AN EnvoyExtensionPolicy
+# ---------------------------------------------------
+# The router must run BEFORE Envoy AI Gateway's own extproc, because that
+# extproc is what derives the `x-ai-eg-model` header from `body.model` — and
+# `x-ai-eg-model` is what every AIGatewayRoute rule matches on. The semantic
+# router rewrites `body.model` from `MoM` to a concrete fleet model; the AI
+# Gateway extproc then derives the header from the ALREADY-REWRITTEN body, and
+# the existing routes match with no new rules.
+#
+# EnvoyExtensionPolicy cannot express "insert at http_filters[0]" — it appends
+# after the AI Gateway's filters, which is too late (the header is already set).
+# So we insert the ext_proc filter at index 0 of the chain, exactly as upstream
+# does in vllm-project/semantic-router
+# (deploy/kubernetes/ai-gateway/aigw-resources/gwapi-resources.yaml @ v0.2.0).
+#
+# Requires `extensionApis.enableEnvoyPatchPolicy: true` on the Envoy Gateway
+# config — already set in this cluster.
+#
+# WITHOUT THIS, `model: MoM` returns HTTP 404 "No matching route found": the
+# routes only match concrete model names, nothing rewrites MoM into one, and
+# the semantic router — though running and healthy — is never called. That was
+# the state of this repo until now; the mechanism was described in comments
+# (apps/base/ai/llm/ai-gateway-routes/route.yaml) but never actually built.
+#
+# The listener JSON-patch `name` is `<gateway-namespace>/<gateway-name>/<listener-name>`.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyPatchPolicy
+metadata:
+  name: semantic-router-extproc
+  namespace: envoy-ai-gateway-system
+spec:
+  type: JSONPatch
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: ai-gateway
+  jsonPatches:
+    # 1. Insert the semantic-router ext_proc filter FIRST in the HTTP filter
+    #    chain (index 0), ahead of the AI Gateway's extproc.
+    - type: "type.googleapis.com/envoy.config.listener.v3.Listener"
+      name: envoy-ai-gateway-system/ai-gateway/http
+      operation:
+        op: add
+        path: /default_filter_chain/filters/0/typed_config/http_filters/0
+        value:
+          name: semantic-router-extproc
+          typedConfig:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+            # The router returns a mode override to skip response processing on
+            # requests it does not need to touch.
+            allow_mode_override: true
+            grpcService:
+              envoyGrpc:
+                authority: vllm-semantic-router.llm:50051
+                clusterName: semantic-router
+              timeout: 60s
+            message_timeout: 60s
+            processing_mode:
+              # BUFFERED request body: the router needs the whole prompt to
+              # classify it, and it rewrites `body.model` in place.
+              request_body_mode: BUFFERED
+              request_header_mode: SEND
+              request_trailer_mode: SKIP
+              response_body_mode: BUFFERED
+              response_header_mode: SEND
+              response_trailer_mode: SKIP
+    # 2. Define the upstream cluster the filter above dials. STRICT_DNS on the
+    #    Service FQDN; http2 because ext_proc is gRPC.
+    - type: "type.googleapis.com/envoy.config.cluster.v3.Cluster"
+      name: semantic-router
+      operation:
+        op: add
+        path: ""
+        value:
+          name: semantic-router
+          type: STRICT_DNS
+          connect_timeout: 60s
+          lb_policy: ROUND_ROBIN
+          http2_protocol_options: {}
+          load_assignment:
+            cluster_name: semantic-router
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: vllm-semantic-router.llm.svc.cluster.local
+                          port_value: 50051
