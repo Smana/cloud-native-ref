@@ -39,10 +39,13 @@ the corresponding entry to the gateway-side template in
 
 | Model id | Backed by | Purpose |
 |---|---|---|
-| `MoM` | semantic-router auto-routing | Default for OpenWebUI; SR classifies the prompt and picks one of the xplane-* upstreams below |
-| `xplane-qwen-coder` | Qwen2.5-Coder-7B-Instruct | Code chat, agentic edits. **Function-calling supported.** |
-| `xplane-qwen-coder-fim` | Qwen2.5-Coder-1.5B-Base | FIM tab-completion. **Always warm.** |
+| `MoM` | semantic-router auto-routing | Default for OpenWebUI; SR classifies the prompt and picks one of the `xplane-*` upstreams below |
+| `xplane-qwen-coder` | Qwen2.5-Coder-7B-Instruct | Code chat, agentic edits. **Function-calling supported.** Serves a **10% canary** onto `xplane-qwen-coder-sql-dpo` |
+| `xplane-qwen-coder-fim` | Qwen2.5-Coder-1.5B-Base | FIM tab-completion |
 | `xplane-qwen3-8b` | Qwen3-8B | Multilingual, math, longer-context (32k) |
+| `xplane-llamaguard3-1b` | Llama-Guard-3-1B | Listed, but in no `MoM` decision rule — reachable only by name |
+| `xplane-qwen-coder-sql-dpo` | LoRA adapter on `xplane-qwen-coder` | Naming it explicitly always gets 100% of the adapter |
+| `xplane-qwen-coder-securecode` | LoRA adapter on `xplane-qwen-coder` | Same |
 
 Pick a specific `xplane-*` model when you already know the workload —
 saves the ~250-300ms semantic-router classifier round-trip. Use `MoM`
@@ -125,21 +128,23 @@ out of the box.
 `https://chat.priv.cloud.ogenki.io` (Tailscale, `tag:k8s` ACL).
 
 - Default model dropdown selection: `xplane-qwen3-8b` (set via the
-  `DEFAULT_MODELS` env var on the OpenWebUI Deployment). SR runs on
-  every request and may rewrite `body.model` based on prompt content,
-  so the cascade still applies even when the user picks a specific
-  model:
-  - `code` → `xplane-qwen-coder`
+  `DEFAULT_MODELS` env var on the OpenWebUI Deployment).
+- The Semantic Router's ext_proc filter is in the chain for **every**
+  request, but it only **rewrites** `body.model` when the model is `MoM`
+  (or the literal `auto`). Naming a model explicitly is honoured as-is —
+  the cascade does **not** override your choice. The cascade, on `MoM`:
+  - `code` (+ reasoning) → `xplane-qwen-coder`
   - `math` / `physics` → `xplane-qwen3-8b` (with `use_reasoning: true`)
   - `multilingual` → `xplane-qwen3-8b`
-  - `other` → `xplane-qwen3-8b`
-- To force a specific model, switch the dropdown — the response header
-  `x-vsr-selected-model` will reflect what actually served the request.
+  - anything else → `xplane-qwen3-8b`
+- The response header `x-vsr-selected-model` reflects what actually served
+  the request.
 - **All 4 models default to `min=1`** (always warm) per
   [SPEC-001](../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md).
-  KEDA scales `1→max` on leading saturation signals (`running/max-num-seqs`
-  ratio + `gpu_cache_usage_perc`); first-request latency is dominated by
-  prompt-classifier overhead (~250-300ms via SR), not cold start.
+  KEDA scales `1→max` on three leading saturation signals (`running/max-num-seqs`
+  ratio, `gpu_cache_usage_perc`, `num_requests_waiting`). On `MoM`, first-request
+  latency is dominated by the ~250-300ms classifier round-trip rather than cold
+  start; on a directly-named model there is no classifier cost at all.
   A claim with an explicit `scaling.minReplicas: 0` override accepts
   first-request failure — pre-warm via
   `kubectl scale deploy/xplane-<model> -n llm --replicas=1` before demos.
@@ -199,7 +204,8 @@ curl -sS -X POST https://llm.priv.cloud.ogenki.io/v1/chat/completions \
   exist (`kubectl get svc -n llm xplane-qwen-coder-fim`).
 - **`Access denied` 403 from envoy** — Cilium L7 policy rejected the
   request. Either (a) the source pod doesn't have a CNP allowing
-  egress to the `llm-router` Service, or (b) the destination
+  egress to the AI Gateway data plane (`ai-gateway:8080` in
+  `envoy-gateway-system`), or (b) the destination
   InferenceService's CNP doesn't allow your client identity. For
   external clients via Tailscale Gateway this shouldn't happen; for
   in-cluster clients see `apps/base/openwebui/app.yaml` for the

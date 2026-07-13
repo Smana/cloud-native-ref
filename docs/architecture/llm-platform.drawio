@@ -1,349 +1,364 @@
-<mxfile host="app.diagrams.net" agent="cloud-native-ref" version="24.7.0" type="device">
-  <diagram name="LLM Platform — current state" id="llm-platform-arch">
-    <mxGraphModel dx="2400" dy="1500" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2200" math="0" shadow="0">
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="30.3.6">
+  <diagram name="1 — Request path" id="req-path">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" page="1" pageWidth="1654" pageHeight="1400" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
 
-        <!-- ============================================================ -->
-        <!-- Title + legend                                                -->
-        <!-- ============================================================ -->
-        <mxCell id="title" value="LLM Platform — current state on EKS &lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;cloud-native-ref &amp;mdash; branch wip/self-hosted-llm-platform-draft (PR #1434), 2026-05-03&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="20" width="1200" height="50" as="geometry" />
+        <mxCell id="t1" value="LLM platform — request path" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="30" width="600" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="t1b" value="One OpenAI-compatible request, from a laptop to a GPU. Every box is a real object in the cluster." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="62" width="900" height="20" as="geometry" />
         </mxCell>
 
-        <mxCell id="legend-box" value="Legend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="1">
-          <mxGeometry x="1320" y="20" width="340" height="180" as="geometry" />
+        <mxCell id="cli1" value="Developer laptop&#xa;OpenCode · Continue · curl" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="80" y="120" width="230" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="legend-req" value="" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;" edge="1" parent="1">
+        <mxCell id="cli2" value="OpenWebUI&#xa;ns: apps" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="560" y="120" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="cli3" value="Promptfoo&#xa;nightly eval CronJob" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="790" y="120" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ts" value="Tailscale tailnet&#xa;WireGuard mesh — ACL tag:k8s" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="80" y="240" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cgw" value="&lt;b&gt;Cilium Gateway&lt;/b&gt;&#xa;platform-tailscale-general · ns infrastructure&#xa;https :443 — llm.priv.cloud.ogenki.io" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="360" width="270" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="svc" value="&lt;b&gt;Service ai-gateway :8080&lt;/b&gt;&#xa;ns: envoy-gateway-system&#xa;in-cluster clients skip Tailscale and hit it directly" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="490" y="360" width="340" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dp" value="Envoy data-plane pod  —  ns: envoy-gateway-system" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;container=1;pointerEvents=0;whiteSpace=wrap;html=1;fillColor=#FAFAFF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="220" y="510" width="620" height="400" as="geometry" />
+        </mxCell>
+        <mxCell id="f0" value="&lt;b&gt;① SecurityPolicy — apiKeyAuth&lt;/b&gt;&#xa;Authorization: Bearer &amp;lt;key&amp;gt;   ·   sanitize: true&#xa;targets the Gateway, so every route inherits it" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="dp">
+          <mxGeometry x="30" y="45" width="560" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="f1" value="&lt;b&gt;② http_filters[0] — semantic-router ext_proc&lt;/b&gt;&#xa;gRPC / HTTP2, request body BUFFERED&#xa;runs on EVERY request; rewrites only model: MoM | auto" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="dp">
+          <mxGeometry x="30" y="130" width="560" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="f2" value="&lt;b&gt;③ AI Gateway extproc (sidecar)&lt;/b&gt;&#xa;derives header x-ai-eg-model from body.model&#xa;emits gen_ai_* metrics on :1064" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="dp">
+          <mxGeometry x="30" y="220" width="560" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="f3" value="&lt;b&gt;④ AIGatewayRoute&lt;/b&gt;   match x-ai-eg-model → AIServiceBackend&#xa;the base rule carries the canary weights (modelNameOverride)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="dp">
+          <mxGeometry x="30" y="310" width="560" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sr" value="&lt;b&gt;vllm-semantic-router&lt;/b&gt;&#xa;ns: llm   ·   ext_proc gRPC :50051&#xa;&#xa;Rewrites body.model in place:&#xa;MoM → a concrete fleet model.&#xa;&#xa;An explicit xplane-* model passes&#xa;through untouched." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=12;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="920" y="590" width="300" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="srn" value="An EnvoyPatchPolicy (raw xDS JSONPatch) inserts this&#xa;filter at index 0. It MUST run before ③, because ③&#xa;derives the routing header from the body it rewrites —&#xa;and EnvoyExtensionPolicy can only append, never prepend." style="text;html=1;align=left;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;" vertex="1" parent="1">
+          <mxGeometry x="920" y="762" width="360" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="be" value="&lt;b&gt;Backend + AIServiceBackend&lt;/b&gt;&#xa;&amp;lt;claim&amp;gt;-direct → &amp;lt;claim&amp;gt;.llm.svc:8000&#xa;one extra AIServiceBackend per canary" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="240" y="970" width="330" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="epp" value="&lt;b&gt;InferencePool + endpoint picker&lt;/b&gt;&#xa;EPP ext_proc :9002 — picks the least-loaded replica&#xa;opt-in · OFF on every claim today" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#64748B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="650" y="970" width="360" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="vsvc" value="Service &amp;lt;claim&amp;gt; :8000   ·   ns: llm" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="260" y="1090" width="290" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="vpod" value="&lt;b&gt;vLLM pod&lt;/b&gt;   —   GPU L4 spot (g6, Bottlerocket NVIDIA)&#xa;vllm/vllm-openai:v0.8.5   ·   runtimeClass: nvidia&#xa;--model /models/&amp;lt;revision&amp;gt;   --served-model-name &amp;lt;claim&amp;gt;&#xa;--lora-modules &amp;lt;adapter&amp;gt;=/models/loras/&amp;lt;adapter&amp;gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="220" y="1190" width="370" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="wt" value="/models&#xa;S3 Files (POSIX over S3)&#xa;RWX PVC llm-models" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="690" y="1180" width="220" height="115" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="cli1" target="ts">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="POST /v1/chat/completions" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="ts" target="cgw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="HTTPRoute" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="cgw" target="svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="no Tailscale hop" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.35;entryY=0;" edge="1" parent="1" source="cli2" target="svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.8;entryY=0;" edge="1" parent="1" source="cli3" target="svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="svc" target="dp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="classify + rewrite body.model" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F59E0B;strokeWidth=1.5;endArrow=classic;endFill=1;startArrow=classic;startFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.3;" edge="1" parent="1" source="f1" target="sr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.35;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="dp" target="be">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="with endpointPicker on, the base&#xa;rule points here instead" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.9;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="dp" target="epp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="be" target="vsvc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.25;exitY=1;entryX=0.9;entryY=0;" edge="1" parent="1" source="epp" target="vsvc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="vsvc" target="vpod">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" value="read at boot" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#059669;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="vpod" target="wt">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="lg" value="Legend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#94A3B8;verticalAlign=top;fontStyle=1;fontFamily=Helvetica;fontSize=13;fontColor=#1E293B;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="1080" width="240" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="lg1" value="" style="rounded=0;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;" vertex="1" parent="lg">
+          <mxGeometry x="12" y="34" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lg1t" value="Gateway / routing" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=12;fontColor=#1E293B;" vertex="1" parent="lg">
+          <mxGeometry x="52" y="32" width="180" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="lg2" value="" style="rounded=0;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;" vertex="1" parent="lg">
+          <mxGeometry x="12" y="66" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lg2t" value="Service / workload" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=12;fontColor=#1E293B;" vertex="1" parent="lg">
+          <mxGeometry x="52" y="64" width="180" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="lg3" value="" style="rounded=0;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;" vertex="1" parent="lg">
+          <mxGeometry x="12" y="98" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lg3t" value="Classification (ext_proc)" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=12;fontColor=#1E293B;" vertex="1" parent="lg">
+          <mxGeometry x="52" y="96" width="180" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="lg4" value="" style="rounded=0;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;" vertex="1" parent="lg">
+          <mxGeometry x="12" y="130" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lg4t" value="Auth / security" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=12;fontColor=#1E293B;" vertex="1" parent="lg">
+          <mxGeometry x="52" y="128" width="180" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="lg5" value="" style="rounded=0;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;dashed=1;" vertex="1" parent="lg">
+          <mxGeometry x="12" y="162" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lg5t" value="External / opt-in (off)" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=12;fontColor=#1E293B;" vertex="1" parent="lg">
+          <mxGeometry x="52" y="160" width="180" height="20" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="2 — One claim, rendered" id="composition">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" page="1" pageWidth="1654" pageHeight="1300" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="t2" value="InferenceService — what one claim renders" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="30" width="700" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="t2b" value="A ~30-line claim becomes 7 objects at minimum, 16 with every feature on. Crossplane and function-kcl do the expansion." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="62" width="960" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="claim" value="&lt;b&gt;InferenceService&lt;/b&gt;  (claim)&#xa;cloud.ogenki.io/v1alpha1 · ns: llm&#xa;&#xa;model.repository / revision&#xa;model.preload.enabled  ← needed to boot&#xa;gpu.count&#xa;gateway.enabled + canaries[]&#xa;loraAdapters[]&#xa;engineArgs[]   (escape hatch)&#xa;scaling.{min, max, thresholds}" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=12;verticalAlign=top;spacingTop=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="140" width="290" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pipe" value="Crossplane composition pipeline" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;container=1;pointerEvents=0;whiteSpace=wrap;html=1;fillColor=#FAFAFF;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="430" y="140" width="300" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="p1" value="function-environment-configs&#xa;(eks-environment)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="pipe">
+          <mxGeometry x="20" y="40" width="260" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" value="&lt;b&gt;function-kcl&lt;/b&gt;   target: Default&#xa;OCI crossplane-inference-service:0.8.2" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="pipe">
+          <mxGeometry x="20" y="105" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="p3" value="function-auto-ready" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="pipe">
+          <mxGeometry x="20" y="175" width="260" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="always" value="Always rendered  —  7 objects" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;container=1;pointerEvents=0;whiteSpace=wrap;html=1;fillColor=#F5F7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="860" y="120" width="360" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" value="Deployment  ·  Service :8000  ·  ServiceAccount&#xa;&#xa;ScaledObject  (KEDA — 3 triggers)&#xa;&#xa;CiliumNetworkPolicy  (default-deny;&#xa;egress = kube-dns ONLY)&#xa;&#xa;VMServiceScrape  ·  VMRule (2 SLO alerts)" style="text;html=1;align=left;verticalAlign=top;fontFamily=Helvetica;fontSize=12;fontColor=#1E293B;" vertex="1" parent="always">
+          <mxGeometry x="18" y="36" width="330" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gwon" value="if  gateway.enabled" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;container=1;pointerEvents=0;whiteSpace=wrap;html=1;fillColor=#F5F7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="860" y="380" width="360" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="g1" value="Backend  &amp;lt;claim&amp;gt;-direct&#xa;AIServiceBackend  &amp;lt;claim&amp;gt;&#xa;   + one per canary  (-canary-N)&#xa;AIGatewayRoute&#xa;   readiness-latched: rendered only once&#xa;   the Deployment reports Available" style="text;html=1;align=left;verticalAlign=top;fontFamily=Helvetica;fontSize=12;fontColor=#1E293B;" vertex="1" parent="gwon">
+          <mxGeometry x="18" y="34" width="330" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="eppon" value="if  gateway.endpointPicker.enabled   (off today)" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;container=1;pointerEvents=0;whiteSpace=wrap;html=1;dashed=1;fillColor=#F8FAFC;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#64748B;fontFamily=Helvetica;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="860" y="580" width="360" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="ep1" value="HelmRelease &amp;lt;claim&amp;gt;-epp  (chart v1.5.0)&#xa;   → InferencePool + EPP Deployment&#xa;CiliumNetworkPolicy  &amp;lt;claim&amp;gt;-epp&#xa;VMServiceScrape  &amp;lt;claim&amp;gt;-epp&#xa;&#xa;mutually exclusive with canaries[]" style="text;html=1;align=left;verticalAlign=top;fontFamily=Helvetica;fontSize=12;fontColor=#64748B;" vertex="1" parent="eppon">
+          <mxGeometry x="18" y="32" width="330" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pre" value="if  model.preload.enabled" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;container=1;pointerEvents=0;whiteSpace=wrap;html=1;fillColor=#F0FDF4;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="860" y="760" width="360" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="pr1" value="Job  &amp;lt;claim&amp;gt;-preload-&amp;lt;rev&amp;gt;  (one-shot, TTL 24h)&#xa;CiliumNetworkPolicy  &amp;lt;claim&amp;gt;-preload&#xa;   the ONLY workload granted world:443" style="text;html=1;align=left;verticalAlign=top;fontFamily=Helvetica;fontSize=12;fontColor=#1E293B;" vertex="1" parent="pre">
+          <mxGeometry x="18" y="34" width="330" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="wt2" value="Model weights" style="text;html=1;align=left;fontFamily=Helvetica;fontSize=17;fontStyle=1;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="60" y="960" width="240" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="wnote" value="&lt;b&gt;Weights never transit the serving pod.&lt;/b&gt;  It has no internet egress at all — it cannot reach HuggingFace even in principle.&#xa;A claim with no preload (and no subPath that another claim already filled) starts with an empty /models and never boots." style="text;html=1;align=left;fontFamily=Helvetica;fontSize=12;fontColor=#DC2626;" vertex="1" parent="1">
+          <mxGeometry x="60" y="995" width="1100" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="hf" value="HuggingFace&#xa;(world :443)" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="70" y="1080" width="180" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="job" value="preload Job&#xa;huggingface-cli download" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="390" y="1080" width="220" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="pv" value="/models&#xa;S3 Files, RWX&#xa;shared by Job and pod" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="750" y="1060" width="220" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="pod2" value="vLLM serving pod&#xa;egress: kube-dns ONLY&#xa;--model /models/&amp;lt;revision&amp;gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="1075" width="240" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="claim" target="pipe">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.3;entryX=0;entryY=0.5;" edge="1" parent="1" source="pipe" target="always">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.7;entryX=0;entryY=0.5;" edge="1" parent="1" source="pipe" target="gwon">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=0.75;exitY=1;entryX=0;entryY=0.5;" edge="1" parent="1" source="pipe" target="eppon">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#059669;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=0.45;exitY=1;entryX=0;entryY=0.5;" edge="1" parent="1" source="pipe" target="pre">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" value="download" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#059669;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="job" target="hf">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" value="write" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#059669;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="job" target="pv">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" value="read" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#059669;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="pv" target="pod2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="3 — Autoscaling &amp; telemetry" id="scaling">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" page="1" pageWidth="1654" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="t3" value="Autoscaling and telemetry" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="30" width="700" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="t3b" value="KEDA scales on leading saturation signals, never on request count. Two metric families feed two dashboards." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="62" width="960" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="vpod3" value="&lt;b&gt;vLLM pod&lt;/b&gt;&#xa;/metrics :8000&#xa;vllm:*   (model_name label)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="70" y="140" width="240" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="extp" value="&lt;b&gt;AI Gateway extproc&lt;/b&gt;&#xa;/metrics :1064&#xa;gen_ai_*   (OTel semconv)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="70" y="260" width="240" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="vmagent" value="vmagent&#xa;VMServiceScrape · VMPodScrape" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="400" y="200" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="vm" value="VictoriaMetrics&#xa;vmsingle :8428&#xa;ns: observability" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="720" y="175" width="200" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="keda" value="KEDA  —  ScaledObject &amp;lt;claim&amp;gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;container=1;pointerEvents=0;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="330" y="400" width="700" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="k0" value="defaults: min 1  ·  max 3  ·  poll 15s  ·  cooldown 300s          —          three triggers, OR-combined" style="text;html=1;align=left;fontFamily=Helvetica;fontSize=12;fontColor=#64748B;" vertex="1" parent="keda">
+          <mxGeometry x="20" y="34" width="660" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="k1" value="① batch saturation  —  threshold 0.7&#xa;max(vllm:num_requests_running{model_name=&quot;X&quot;}) / scalar(vector(max-num-seqs))" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="keda">
+          <mxGeometry x="20" y="65" width="660" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="k2" value="② KV-cache pressure  —  threshold 0.6&#xa;max(vllm:gpu_cache_usage_perc{model_name=&quot;X&quot;})" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="keda">
+          <mxGeometry x="20" y="135" width="660" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="k3" value="③ queue depth  —  threshold 8&#xa;max(vllm:num_requests_waiting{model_name=&quot;X&quot;})" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="keda">
+          <mxGeometry x="20" y="205" width="660" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="hpa" value="&lt;b&gt;keda-operator ⇄ metrics-apiserver&lt;/b&gt;&#xa;gRPC :9666&#xa;&#xa;A missing CiliumNetworkPolicy allow on this&#xa;hop drops the gRPC silently: every HPA reports&#xa;FailedGetExternalMetric and NO ScaledObject&#xa;can ever become Ready." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#DC2626;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=10;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="430" width="330" height="150" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep" value="Deployment &amp;lt;claim&amp;gt;&#xa;replicas owned exclusively by KEDA&#xa;(the composition never sets .spec.replicas)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="510" y="780" width="340" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="graf" value="Grafana  —  folder llm" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;container=1;pointerEvents=0;whiteSpace=wrap;html=1;fillColor=#F0FDF4;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="140" width="410" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="gd1" value="&lt;b&gt;LLM Platform — vLLM Fleet&lt;/b&gt;&#xa;from vllm:* — scale, queue, throughput,&#xa;latency, KV cache, prefix-cache hit rate" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="graf">
+          <mxGeometry x="20" y="38" width="370" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="gd2" value="&lt;b&gt;AI Gateway — GenAI telemetry&lt;/b&gt;&#xa;from gen_ai_* — token spend per model,&#xa;canary-vs-base attribution, TTFT / TPOT" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="graf">
+          <mxGeometry x="20" y="110" width="370" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="alerts" value="&lt;b&gt;VMRule alerts&lt;/b&gt;  —  lagging signals, deliberately NOT scale triggers&#xa;per-claim: cold-start TTFT p95 &amp;gt; 90s  ·  abort rate &amp;gt; 5%&#xa;fleet: sustained queue  ·  TTFT breach  ·  gateway error rate  ·  canary regression" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#DC2626;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="780" width="410" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.3;" edge="1" parent="1" source="vpod3" target="vmagent">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.7;" edge="1" parent="1" source="extp" target="vmagent">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="vmagent" target="vm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s4" value="PromQL, every 15s" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F59E0B;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.75;entryY=0;" edge="1" parent="1" source="vm" target="keda">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="vm" target="graf">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s6" value="scale" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F59E0B;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="keda" target="dep">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#DC2626;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.4;entryX=0;entryY=0.5;" edge="1" parent="1" source="keda" target="hpa">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s8" value="new replica&#xa;re-registers" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#94A3B8;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=0.5;entryY=1;" edge="1" parent="1" source="dep" target="vpod3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s9" value="vmalert" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#DC2626;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.9;exitY=1;entryX=0.08;entryY=0;" edge="1" parent="1" source="vm" target="alerts">
           <mxGeometry relative="1" as="geometry">
-            <mxPoint x="1340" y="62" as="sourcePoint" />
-            <mxPoint x="1400" y="62" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="900" y="360" />
+              <mxPoint x="1073" y="360" />
+            </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="legend-req-lbl" value="request flow (OpenAI HTTP / classify)" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
-          <mxGeometry x="1410" y="50" width="240" height="24" as="geometry" />
-        </mxCell>
-        <mxCell id="legend-stor" value="" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;" edge="1" parent="1">
-          <mxGeometry relative="1" as="geometry">
-            <mxPoint x="1340" y="92" as="sourcePoint" />
-            <mxPoint x="1400" y="92" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="legend-stor-lbl" value="model-weights flow (NFS → S3)" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
-          <mxGeometry x="1410" y="80" width="240" height="24" as="geometry" />
-        </mxCell>
-        <mxCell id="legend-gops" value="" style="endArrow=classic;html=1;strokeColor=#ff7f00;strokeWidth=2;dashed=1;" edge="1" parent="1">
-          <mxGeometry relative="1" as="geometry">
-            <mxPoint x="1340" y="122" as="sourcePoint" />
-            <mxPoint x="1400" y="122" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="legend-gops-lbl" value="GitOps flow (Flux / Crossplane)" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
-          <mxGeometry x="1410" y="110" width="240" height="24" as="geometry" />
-        </mxCell>
-        <mxCell id="legend-gap" value="" style="endArrow=classic;html=1;strokeColor=#e31a1c;strokeWidth=2;dashed=1;" edge="1" parent="1">
-          <mxGeometry relative="1" as="geometry">
-            <mxPoint x="1340" y="152" as="sourcePoint" />
-            <mxPoint x="1400" y="152" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="legend-gap-lbl" value="planned / blocked (gap in current deploy)" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
-          <mxGeometry x="1410" y="140" width="240" height="24" as="geometry" />
-        </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- External user                                                 -->
-        <!-- ============================================================ -->
-        <mxCell id="user" value="User&#xa;(laptop / phone)" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3E;strokeColor=#232F3E;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.user;" vertex="1" parent="1">
-          <mxGeometry x="80" y="120" width="60" height="60" as="geometry" />
-        </mxCell>
-
-        <mxCell id="ts-tailnet" value="Tailscale tailnet&#xa;(WireGuard mesh)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;dashed=1;" vertex="1" parent="1">
-          <mxGeometry x="200" y="115" width="180" height="70" as="geometry" />
-        </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- AWS region container                                          -->
-        <!-- ============================================================ -->
-        <mxCell id="aws-region" value="AWS — eu-west-3" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=14;fontStyle=1;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_region;strokeColor=#147EBA;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#147EBA;dashed=1;" vertex="1" parent="1">
-          <mxGeometry x="80" y="240" width="1580" height="1670" as="geometry" />
-        </mxCell>
-
-        <!-- VPC -->
-        <mxCell id="aws-vpc" value="VPC  10.0.0.0/16" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=1;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_vpc;strokeColor=#248814;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#248814;dashed=0;" vertex="1" parent="aws-region">
-          <mxGeometry x="40" y="50" width="1480" height="1130" as="geometry" />
-        </mxCell>
-
-        <!-- Tailscale subnet router pod (inside cluster) — represented at VPC entry -->
-        <mxCell id="ts-router" value="Tailscale&#xa;subnet router" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#9673a6;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.compute;" vertex="1" parent="aws-vpc">
-          <mxGeometry x="40" y="60" width="60" height="60" as="geometry" />
-        </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- EKS cluster                                                   -->
-        <!-- ============================================================ -->
-        <mxCell id="eks-cluster" value="EKS cluster — mycluster-0&#xa;(Kubernetes 1.35, Bottlerocket nodes, Cilium CNI + kube-proxy replacement)" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=1;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_eks_cluster;strokeColor=#5294CF;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#5294CF;dashed=0;" vertex="1" parent="aws-vpc">
-          <mxGeometry x="160" y="60" width="1280" height="980" as="geometry" />
-        </mxCell>
-
-        <!-- infrastructure namespace -->
-        <mxCell id="ns-infra" value="ns: infrastructure" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;dashed=0;" vertex="1" parent="eks-cluster">
-          <mxGeometry x="40" y="60" width="220" height="180" as="geometry" />
-        </mxCell>
-
-        <mxCell id="ts-gw" value="platform-tailscale-general&#xa;Cilium Gateway" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;align=center;" vertex="1" parent="ns-infra">
-          <mxGeometry x="20" y="40" width="180" height="50" as="geometry" />
-        </mxCell>
-
-        <mxCell id="httproute-ow" value="HTTPRoute&#xa;chat.priv.cloud.ogenki.io&#xa;→ openwebui:8080" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=9;align=center;" vertex="1" parent="ns-infra">
-          <mxGeometry x="20" y="105" width="180" height="60" as="geometry" />
-        </mxCell>
-
-        <!-- apps namespace -->
-        <mxCell id="ns-apps" value="ns: apps" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="eks-cluster">
-          <mxGeometry x="290" y="60" width="240" height="180" as="geometry" />
-        </mxCell>
-
-        <mxCell id="openwebui" value="OpenWebUI Deployment&#xa;(uid 1001 / data emptyDir)&#xa;OPENAI_API_BASE_URL =&#xa;semantic-router:8080/v1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=10;align=center;" vertex="1" parent="ns-apps">
-          <mxGeometry x="20" y="40" width="200" height="120" as="geometry" />
-        </mxCell>
-
-        <!-- llm namespace (largest) -->
-        <mxCell id="ns-llm" value="ns: llm" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="eks-cluster">
-          <mxGeometry x="40" y="270" width="1200" height="600" as="geometry" />
-        </mxCell>
-
-        <!-- semantic-router -->
-        <mxCell id="sr-pod" value="vllm-semantic-router (1/1 Running)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;:8080  Classification API (intent / PII / security)  ✓&#xa;:50051  Envoy ext_proc gRPC  (idle — needs Envoy in front)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;Loaded models:  BERT  +  LoRA intent  +  PII modernbert  +  jailbreak&#xa;Memory: 2Gi req / 4Gi limit  •  PVC vllm-semantic-router-models (gp3, 10Gi)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;" vertex="1" parent="ns-llm">
-          <mxGeometry x="20" y="40" width="560" height="130" as="geometry" />
-        </mxCell>
-
-        <!-- gap: Envoy / CEC -->
-        <mxCell id="gap-envoy" value="GAP: Envoy / Cilium CEC&#xa;(ext_proc filter — required for /v1/chat/completions)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fadbd8;strokeColor=#e31a1c;fontSize=10;fontStyle=1;align=center;dashed=1;" vertex="1" parent="ns-llm">
-          <mxGeometry x="600" y="55" width="280" height="100" as="geometry" />
-        </mxCell>
-
-        <!-- 4 InferenceServices -->
-        <mxCell id="is-grp" value="XInferenceService claims (Crossplane composition: xinferenceservices.cloud.ogenki.io v0.3.2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;dashed=1;" vertex="1" parent="ns-llm">
-          <mxGeometry x="20" y="200" width="1160" height="160" as="geometry" />
-        </mxCell>
-
-        <mxCell id="is-phi4" value="xplane-phi4-mini&#xa;━━━━━━━━━━━━&#xa;Deployment: 0/0&#xa;KEDA SO: prom&#xa;Service: 8000&#xa;subPath: phi4-mini" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e7;strokeColor=#d6b656;fontSize=9;align=left;verticalAlign=top;spacingLeft=6;spacingTop=4;" vertex="1" parent="is-grp">
-          <mxGeometry x="20" y="35" width="180" height="110" as="geometry" />
-        </mxCell>
-        <mxCell id="is-qwen" value="xplane-qwen3-8b&#xa;━━━━━━━━━━━━&#xa;Deployment: 0/0&#xa;KEDA SO: prom&#xa;Service: 8000&#xa;subPath: qwen3-8b" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e7;strokeColor=#d6b656;fontSize=9;align=left;verticalAlign=top;spacingLeft=6;spacingTop=4;" vertex="1" parent="is-grp">
-          <mxGeometry x="220" y="35" width="180" height="110" as="geometry" />
-        </mxCell>
-        <mxCell id="is-deep" value="xplane-deepseek-r1-distill-qwen3-8b&#xa;━━━━━━━━━━━━&#xa;Deployment: 0/0&#xa;KEDA SO: prom&#xa;Service: 8000&#xa;subPath: deepseek-…" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e7;strokeColor=#d6b656;fontSize=9;align=left;verticalAlign=top;spacingLeft=6;spacingTop=4;" vertex="1" parent="is-grp">
-          <mxGeometry x="420" y="35" width="180" height="110" as="geometry" />
-        </mxCell>
-        <mxCell id="is-llama" value="xplane-llamaguard3-1b&#xa;━━━━━━━━━━━━&#xa;Deployment: 0/0&#xa;KEDA SO: prom&#xa;Service: 8000&#xa;subPath: llamaguard3-1b" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e7;strokeColor=#d6b656;fontSize=9;align=left;verticalAlign=top;spacingLeft=6;spacingTop=4;" vertex="1" parent="is-grp">
-          <mxGeometry x="620" y="35" width="180" height="110" as="geometry" />
-        </mxCell>
-
-        <mxCell id="gap-gpu" value="GAP: GPU NodePool&#xa;(Bottlerocket NVIDIA AMI&#xa;+ RuntimeClass nvidia)&#xa;Deploys today reject:&#xa;&quot;RuntimeClass nvidia not found&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fadbd8;strokeColor=#e31a1c;fontSize=9;fontStyle=1;align=center;dashed=1;" vertex="1" parent="is-grp">
-          <mxGeometry x="830" y="35" width="310" height="110" as="geometry" />
-        </mxCell>
-
-        <!-- preload jobs row -->
-        <mxCell id="preload" value="Preload Jobs (Crossplane-rendered, one per claim)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;hf download &lt;repo&gt; --revision &lt;rev&gt; --local-dir /models/&lt;rev&gt; --max-workers 1&#xa;.preload-complete marker short-circuits the pip + hf cycle on retry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;" vertex="1" parent="ns-llm">
-          <mxGeometry x="20" y="380" width="850" height="100" as="geometry" />
-        </mxCell>
-
-        <!-- shared PVC and PV -->
-        <mxCell id="pvc-llm" value="PVC  llm-models  (RWX, 100Gi)&#xa;StorageClass: s3files-llm-models" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" vertex="1" parent="ns-llm">
-          <mxGeometry x="900" y="385" width="280" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="pv-llm" value="PV  llm-models  (cluster-scoped, Retain)&#xa;csi.driver: efs.csi.aws.com&#xa;volumeHandle: s3files:fs-…::fsap-…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#6c8ebf;fontSize=10;align=center;dashed=1;" vertex="1" parent="ns-llm">
-          <mxGeometry x="900" y="445" width="280" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="pv-note" value="PV is cluster-scoped — provisioned outside the namespaced XR (Crossplane v2 limitation)" style="text;html=1;align=center;fontSize=9;fontColor=#6c8ebf;fontStyle=2;" vertex="1" parent="ns-llm">
-          <mxGeometry x="900" y="510" width="280" height="20" as="geometry" />
-        </mxCell>
-
-        <!-- kube-system: EFS CSI -->
-        <mxCell id="ns-ks" value="ns: kube-system" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="eks-cluster">
-          <mxGeometry x="560" y="60" width="320" height="180" as="geometry" />
-        </mxCell>
-
-        <mxCell id="efs-csi" value="aws-efs-csi-driver  (chart 4.x / driver v3.x)&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;controller (efs-csi-controller-sa) — volume lifecycle&#xa;node DS (efs-csi-node-sa) — actual NFS mount&#xa;Both SAs bound to IAM role (Pod Identity Association)&#xa;Memory: 1Gi node limit (256Mi OOMs under load)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=9;align=left;verticalAlign=top;spacingLeft=6;spacingTop=4;" vertex="1" parent="ns-ks">
-          <mxGeometry x="15" y="40" width="290" height="130" as="geometry" />
-        </mxCell>
-
-        <!-- crossplane / flux subsystems (small boxes top right) -->
-        <mxCell id="ns-fs" value="ns: flux-system" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="eks-cluster">
-          <mxGeometry x="900" y="60" width="180" height="180" as="geometry" />
-        </mxCell>
-        <mxCell id="flux-ops" value="FluxInstance&#xa;source-controller&#xa;kustomize-controller&#xa;helm-controller&#xa;notification-controller" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=10;align=center;" vertex="1" parent="ns-fs">
-          <mxGeometry x="15" y="40" width="150" height="120" as="geometry" />
-        </mxCell>
-
-        <mxCell id="ns-cp" value="ns: crossplane-system" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="eks-cluster">
-          <mxGeometry x="1100" y="60" width="160" height="180" as="geometry" />
-        </mxCell>
-        <mxCell id="cp-ops" value="Crossplane v2&#xa;function-kcl&#xa;provider-aws v2.5&#xa;(m.upbound.io)&#xa;ManagedResource&#xa;ActivationPolicy" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=9;align=center;" vertex="1" parent="ns-cp">
-          <mxGeometry x="10" y="40" width="140" height="120" as="geometry" />
-        </mxCell>
-
-        <!-- karpenter / nodes -->
-        <mxCell id="karpenter" value="Karpenter NodePool: default&#xa;(Bottlerocket, c8i-flex.2xlarge spot)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef5e7;strokeColor=#b8860b;fontSize=10;align=center;fontStyle=1;" vertex="1" parent="eks-cluster">
-          <mxGeometry x="40" y="900" width="340" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="karpenter-gpu" value="Karpenter NodePool: gpu&#xa;(Bottlerocket NVIDIA AMI variant — planned next session)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef5e7;strokeColor=#e31a1c;fontSize=10;align=center;fontStyle=1;dashed=1;" vertex="1" parent="eks-cluster">
-          <mxGeometry x="400" y="900" width="380" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="cilium-mod" value="Cilium  (CNI + kube-proxy replacement&#xa;+ Gateway API + L7 / FQDN policy)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef5e7;strokeColor=#b8860b;fontSize=10;align=center;fontStyle=1;" vertex="1" parent="eks-cluster">
-          <mxGeometry x="800" y="900" width="280" height="60" as="geometry" />
-        </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- AWS storage — S3 Files + S3                                   -->
-        <!-- ============================================================ -->
-        <mxCell id="storage-grp" value="Model-weights storage (provisioned by opentofu/llm-platform)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf7e9;strokeColor=#33a02c;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="aws-vpc">
-          <mxGeometry x="160" y="1080" width="1280" height="240" as="geometry" />
-        </mxCell>
-
-        <mxCell id="s3files-fs" value="S3 Files  •  filesystem  fs-05109ae1cd368e6de&#xa;━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━&#xa;Access Point  fsap-06bf88ade200621dd&#xa;posix_user  uid=1001  gid=1001&#xa;root_directory  /models   creation_permissions 0775&#xa;file_system_policy  →  csi_driver IAM role  (ClientMount, ClientWrite)" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#7AA116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=middle;verticalAlign=middle;align=center;html=1;fontSize=10;fontStyle=0;shape=rectangle;rounded=1;" vertex="1" parent="storage-grp">
-          <mxGeometry x="40" y="50" width="560" height="170" as="geometry" />
-        </mxCell>
-
-        <!-- 3 mount targets per AZ -->
-        <mxCell id="mt-az1" value="MT  euw3-az1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#33a02c;strokeColor=#ffffff;fontColor=#ffffff;fontSize=10;fontStyle=1;align=center;" vertex="1" parent="storage-grp">
-          <mxGeometry x="640" y="55" width="120" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="mt-az2" value="MT  euw3-az2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#33a02c;strokeColor=#ffffff;fontColor=#ffffff;fontSize=10;fontStyle=1;align=center;" vertex="1" parent="storage-grp">
-          <mxGeometry x="640" y="105" width="120" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="mt-az3" value="MT  euw3-az3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#33a02c;strokeColor=#ffffff;fontColor=#ffffff;fontSize=10;fontStyle=1;align=center;" vertex="1" parent="storage-grp">
-          <mxGeometry x="640" y="155" width="120" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="mt-note" value="NFS 4.1 / 4.2 over TCP 2049&#xa;(mount-target SG: ingress from EKS node SG)" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#33a02c;" vertex="1" parent="storage-grp">
-          <mxGeometry x="640" y="200" width="220" height="30" as="geometry" />
-        </mxCell>
-
-        <!-- S3 bucket -->
-        <mxCell id="s3-bucket" value="S3 bucket&#xa;eu-west-3-ogenki-llm-models&#xa;(versioning ON,&#xa;EventBridge sync)" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#7AA116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" vertex="1" parent="storage-grp">
-          <mxGeometry x="900" y="60" width="78" height="78" as="geometry" />
-        </mxCell>
-        <mxCell id="s3-iam" value="IAM&#xa;s3files_service role&#xa;(trust: elasticfilesystem.amazonaws.com)" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#DD344C;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.identity_and_access_management_iam;" vertex="1" parent="storage-grp">
-          <mxGeometry x="1080" y="60" width="78" height="78" as="geometry" />
-        </mxCell>
-
-        <mxCell id="storage-eb" value="EventBridge  •  Pod Identity Associations bind csi-controller-sa AND csi-node-sa to csi_driver IAM role (AmazonEFSCSIDriverPolicy + AmazonS3FilesCSIDriverPolicy)" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#33a02c;" vertex="1" parent="storage-grp">
-          <mxGeometry x="900" y="170" width="340" height="50" as="geometry" />
-        </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- GitOps strip                                                  -->
-        <!-- ============================================================ -->
-        <mxCell id="gitops-grp" value="GitOps source of truth (drives every K8s resource above)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2dd;strokeColor=#ff7f00;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;dashed=1;" vertex="1" parent="aws-vpc">
-          <mxGeometry x="160" y="1340" width="1280" height="100" as="geometry" />
-        </mxCell>
-
-        <mxCell id="git-repo" value="GitHub  •  Smana/cloud-native-ref&#xa;branch wip/self-hosted-llm-platform-draft" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff7f00;fontSize=10;align=center;" vertex="1" parent="gitops-grp">
-          <mxGeometry x="40" y="40" width="280" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="ghcr" value="ghcr.io/smana/cloud-native-ref&#xa;OCI: KCL composition modules&#xa;(crossplane-app, crossplane-inference-service)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff7f00;fontSize=9;align=center;" vertex="1" parent="gitops-grp">
-          <mxGeometry x="360" y="40" width="280" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="gops-flow" value="Flux pulls Git → Kustomize / HelmRelease → applies&#xa;Crossplane reconciles XR claims → renders K8s + AWS managed resources" style="text;html=1;align=center;fontSize=10;fontColor=#ff7f00;fontStyle=2;" vertex="1" parent="gitops-grp">
-          <mxGeometry x="680" y="45" width="540" height="40" as="geometry" />
-        </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- Bottom: opentofu / openbao stripe                              -->
-        <!-- ============================================================ -->
-        <mxCell id="tofu-grp" value="Out-of-band (provisioned by Terramate / OpenTofu before EKS / Flux)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#666666;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;" vertex="1" parent="aws-region">
-          <mxGeometry x="40" y="1500" width="1500" height="120" as="geometry" />
-        </mxCell>
-
-        <mxCell id="tofu-net" value="opentofu/network&#xa;━━━━━━━━&#xa;VPC, subnets,&#xa;Tailscale, Route53" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;align=center;" vertex="1" parent="tofu-grp">
-          <mxGeometry x="40" y="40" width="220" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="tofu-bao" value="opentofu/openbao&#xa;━━━━━━━━&#xa;OpenBao cluster&#xa;PKI, secrets" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;align=center;" vertex="1" parent="tofu-grp">
-          <mxGeometry x="280" y="40" width="220" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="tofu-eks" value="opentofu/eks/init + configure&#xa;━━━━━━━━━━━━━━━&#xa;EKS cluster, Cilium,&#xa;Flux Operator + Instance" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;align=center;" vertex="1" parent="tofu-grp">
-          <mxGeometry x="520" y="40" width="240" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="tofu-llm" value="opentofu/llm-platform&#xa;━━━━━━━━━━━━━━━&#xa;S3 Files filesystem + AP&#xa;EFS CSI IAM + Pod Identities" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;align=center;" vertex="1" parent="tofu-grp">
-          <mxGeometry x="780" y="40" width="240" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="tofu-note" value="Terramate orchestrates these in sequence.  After all four are applied, Flux takes over." style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#666666;" vertex="1" parent="tofu-grp">
-          <mxGeometry x="1040" y="55" width="440" height="40" as="geometry" />
-        </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- EDGES                                                         -->
-        <!-- ============================================================ -->
-
-        <!-- request flow: user → tailnet → router → gateway → openwebui → semantic-router -->
-        <mxCell id="e-user-tn" value="" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;" edge="1" parent="1" source="user" target="ts-tailnet">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-tn-tsr" value="" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;" edge="1" parent="1" source="ts-tailnet" target="ts-router">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-tsr-gw" value="" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;" edge="1" parent="1" source="ts-router" target="ts-gw">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-gw-ow" value="" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;" edge="1" parent="1" source="httproute-ow" target="openwebui">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-ow-sr" value="POST /v1/chat/completions" style="endArrow=classic;html=1;strokeColor=#1f78b4;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="openwebui" target="sr-pod">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-sr-envoy" value="ext_proc gRPC" style="endArrow=classic;html=1;strokeColor=#e31a1c;strokeWidth=2;dashed=1;fontSize=9;" edge="1" parent="1" source="sr-pod" target="gap-envoy">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-envoy-is" value="forward to vLLM&#xa;backend (X-VSR-Model)" style="endArrow=classic;html=1;strokeColor=#e31a1c;strokeWidth=2;dashed=1;fontSize=9;" edge="1" parent="1" source="gap-envoy" target="is-grp">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-is-gpu" value="schedule on GPU node" style="endArrow=classic;html=1;strokeColor=#e31a1c;strokeWidth=2;dashed=1;fontSize=9;" edge="1" parent="1" source="is-grp" target="karpenter-gpu">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- model-weights flow: preload → PVC → PV → CSI → S3 Files → S3 -->
-        <mxCell id="e-preload-pvc" value="mount with subPath" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="preload" target="pvc-llm">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-is-pvc" value="mount with subPath&#xa;(load model from local NFS)" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="is-grp" target="pvc-llm">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-pvc-pv" value="" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;" edge="1" parent="1" source="pvc-llm" target="pv-llm">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-pv-csi" value="NodeStage / NodePublish" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="pv-llm" target="efs-csi">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-csi-fs" value="mount.nfs4 (TCP 2049)" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="efs-csi" target="s3files-fs">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-fs-mt1" value="" style="endArrow=none;html=1;strokeColor=#33a02c;strokeWidth=1;" edge="1" parent="1" source="s3files-fs" target="mt-az1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-fs-mt2" value="" style="endArrow=none;html=1;strokeColor=#33a02c;strokeWidth=1;" edge="1" parent="1" source="s3files-fs" target="mt-az2">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-fs-mt3" value="" style="endArrow=none;html=1;strokeColor=#33a02c;strokeWidth=1;" edge="1" parent="1" source="s3files-fs" target="mt-az3">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-fs-s3" value="write-through" style="endArrow=classic;startArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=2;fontSize=9;" edge="1" parent="1" source="s3files-fs" target="s3-bucket">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-s3-iam" value="assumed by" style="endArrow=classic;html=1;strokeColor=#33a02c;strokeWidth=1;dashed=1;fontSize=9;" edge="1" parent="1" source="s3files-fs" target="s3-iam">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- gitops flow -->
-        <mxCell id="e-git-flux" value="" style="endArrow=classic;html=1;strokeColor=#ff7f00;strokeWidth=2;dashed=1;" edge="1" parent="1" source="git-repo" target="flux-ops">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-ghcr-cp" value="" style="endArrow=classic;html=1;strokeColor=#ff7f00;strokeWidth=2;dashed=1;" edge="1" parent="1" source="ghcr" target="cp-ops">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
       </root>
     </mxGraphModel>
   </diagram>

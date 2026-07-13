@@ -78,11 +78,11 @@ spec:
     # entry point. The Service name is pinned via
     # EnvoyProxy.spec.provider.kubernetes.envoyService.name=ai-gateway
     # in infrastructure/base/envoy-ai-gateway/envoyproxy.yaml. The
-    # AIGatewayRoute body parser sets x-ai-eg-model from body.model;
-    # the route dispatches directly to each model's per-claim
-    # AIServiceBackend → vLLM Service (SPEC-001 direct routing). For
-    # `model: MoM` requests, the AIGatewayRoute extension consults
-    # Iris's HTTP classifier first, which sets x-ai-eg-model.
+    # AI Gateway extproc sets x-ai-eg-model from body.model; the route
+    # dispatches directly to each model's AIServiceBackend → vLLM Service
+    # (SPEC-001 direct routing). `model: MoM` is resolved one filter earlier,
+    # by the Semantic Router ext_proc (gRPC :50051) at http_filters[0], which
+    # rewrites body.model itself — see the EnvoyPatchPolicy.
     - name: OPENAI_API_BASE_URL
       value: "http://ai-gateway.envoy-gateway-system.svc.cluster.local:8080/v1"
     # Gateway requires `Authorization: Bearer <key>` (B-1 SecurityPolicy
@@ -218,11 +218,11 @@ spec:
               - port: "53"
                 protocol: TCP
       # OpenWebUI → AI Gateway data plane. The gateway terminates the
-      # OpenAI-compatible call, the AIGatewayRoute extension consults
-      # SR's HTTP classifier (`/api/v1/classify/intent`) for `model: MoM`
-      # cascade routing, then dispatches directly to the selected
-      # model's vLLM Service via its AIServiceBackend (SPEC-001 direct
-      # routing). OpenWebUI itself talks only to the gateway. Data-plane
+      # OpenAI-compatible call; for `model: MoM` the Semantic Router
+      # ext_proc filter rewrites body.model to a concrete fleet model,
+      # then the route dispatches directly to that model's vLLM Service
+      # via its AIServiceBackend (SPEC-001 direct routing). OpenWebUI
+      # itself talks only to the gateway. Data-plane
       # proxy pods live in envoy-gateway-system (the controller's
       # namespace), not the parent Gateway's namespace.
       - toEndpoints:

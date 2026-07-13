@@ -1,6 +1,8 @@
 ---
-# Promptfoo nightly eval CronJob — depends on the Semantic Router being
-# live (the eval queries SR's HTTP classifier as the routing target).
+# Promptfoo nightly eval CronJob — depends on the Semantic Router being live.
+# The eval sends `model: MoM` through the AI Gateway, and the router's ext_proc
+# filter (gRPC :50051) is what resolves it to a concrete model, so a suspended
+# router means every MoM request 404s.
 # Lives under the LLM umbrella so the CronJob is only created when the
 # platform is enabled — otherwise the 02:00 Paris run would fire,
 # fail with connection-refused on a non-existent SR Service, and

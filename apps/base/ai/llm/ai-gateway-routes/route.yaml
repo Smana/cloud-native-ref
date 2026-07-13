@@ -18,11 +18,15 @@
 # remaining 3 models migrate in a follow-up PR, after which this file
 # is deleted. See docs/specs/002-composition-owned-gateway-routing/.
 #
-# Header dispatch: matched on `x-ai-eg-model`, which the AI Gateway
-# body parser populates from `body.model`. For `model: MoM` requests,
-# an AIGatewayRoute extension server (Iris HTTP sidecar at
-# vllm-semantic-router.llm:8080) classifies the prompt and rewrites
-# x-ai-eg-model before this route matches.
+# Header dispatch: matched on `x-ai-eg-model`, which the AI Gateway's extproc
+# populates from `body.model`.
+#
+# `model: MoM` is resolved BEFORE that, and not by any extension server: the
+# Semantic Router runs as an ext_proc gRPC filter at http_filters[0]
+# (vllm-semantic-router.llm:50051), inserted by the EnvoyPatchPolicy in
+# infrastructure/base/envoy-ai-gateway/. It rewrites `body.model` in place, and
+# the AI Gateway extproc then derives x-ai-eg-model from the rewritten body — so
+# the rules below match with no MoM-specific rule of their own.
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
