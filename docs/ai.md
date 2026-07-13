@@ -8,7 +8,7 @@ It is **off by default.** Two independent gates must both be released — see [T
 A default `terramate script run deploy` plus a default Flux reconcile leaves the cluster LLM-free.
 
 > **Scope of this document.** It describes what the code in this repository actually does, as of the
-> composition module `crossplane-inference-service:0.8.2`. Where a capability is implemented but switched
+> composition module `crossplane-inference-service:0.9.0`. Where a capability is implemented but switched
 > on nowhere, it says so. Where something is a known gap, it is listed in [Known gaps](#known-gaps) rather
 > than quietly omitted.
 

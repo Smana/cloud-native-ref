@@ -283,11 +283,25 @@ jobs:
 
           echo "✅ Successfully published ${MODULE_NAME}:${PUBLISH_VERSION}"
 
-          if [ "$IS_PR" = "false" ]; then
-            echo "🚀 Publishing 'latest' tag for release version"
-            kcl mod push "oci://${FULL_MODULE_NAME}:latest"
-            echo "✅ Successfully published ${MODULE_NAME}:latest"
-          fi
+          # NOTE: there is deliberately no 'latest' tag push here.
+          #
+          # `kcl mod push` IGNORES the tag in the OCI URL and publishes under the
+          # `version` field in kcl.mod (the same trap that forces the sed rewrite
+          # above for PR builds). So `kcl mod push oci://...:latest` did not
+          # publish `latest` at all — it re-pushed the release version, hit
+          # "package version 'X' already exists", and exited 1.
+          #
+          # That step could never succeed, and it failed EVERY push to main. Worse,
+          # `validate-composition-versions` declares `needs: [publish]`, so a failed
+          # publish SKIPPED the pin audit — which is why a dangling `-pr<N>` pin
+          # could sit on main undetected (crossplane-app:0.1.10-pr1434 did, from
+          # May until July). Two bugs, the first one hiding the second.
+          #
+          # Nothing consumes a `:latest` module tag — compositions pin an explicit
+          # version, as they must for reproducible renders — and `latest` has never
+          # existed for any module in this registry. So the fix is to delete the
+          # step, not to repair it. If a floating tag is ever wanted, alias it with
+          # `oras tag` (which does respect the URL) rather than `kcl mod push`.
 
       - name: Generate publication summary
         env:
