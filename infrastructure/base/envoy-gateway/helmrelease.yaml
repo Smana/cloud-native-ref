@@ -39,6 +39,31 @@ spec:
           # Recommended for forward-compat (xDS patching).
           enableEnvoyPatchPolicy: true
         extensionManager:
+          # Delegate InferencePool backendRefs to the AI Gateway extension server
+          # (SPEC-004). Without this, Envoy Gateway never learns that InferencePool
+          # is a delegable backend kind and falls back to its BUILT-IN group check,
+          # which hard-rejects anything outside core / multicluster.x-k8s.io /
+          # gateway.envoyproxy.io (internal/gatewayapi/validate.go
+          # validateBackendRefGroup — envoyproxy/gateway v1.8.2 has ZERO files
+          # mentioning "inference"). The generated HTTPRoute then reports:
+          #
+          #   ResolvedRefs=False (InvalidKind): Group is invalid, only the core API
+          #   group ..., multicluster.x-k8s.io and gateway.envoyproxy.io are supported.
+          #
+          # …and Envoy installs a direct_response, so EVERY request through the pool
+          # returns HTTP 500 with `upstream_cluster: None` — no cluster is ever
+          # created. Confusingly the control plane looks healthy: the InferencePool
+          # reports Accepted=True/ResolvedRefs=True (the ai-gateway controller
+          # reconciles the CR itself) and the AIGatewayRoute reports Accepted=True.
+          # Only the GENERATED HTTPRoute carries the real error.
+          #
+          # Group/kind/version must match what the inferencepool chart creates
+          # (inference.networking.k8s.io/v1). Source: envoyproxy/ai-gateway v1.0.0
+          # examples/inference-pool/envoy-gateway-values-addon.yaml.
+          backendResources:
+            - group: inference.networking.k8s.io
+              kind: InferencePool
+              version: v1
           hooks:
             xdsTranslator:
               translation:

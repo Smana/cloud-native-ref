@@ -210,13 +210,28 @@ spec:
               protocol: TCP
             - port: "8080"
               protocol: TCP
-    # vLLM model Services in the llm namespace (HTTP 8000 — vLLM
-    # container port). Reached directly by the AI Gateway data plane
+    # llm namespace.
+    #
+    # :8000 — vLLM container port. Reached directly by the AI Gateway data plane
     # for every model (SPEC-001 direct routing per AIServiceBackend).
+    #
+    # :9002 — the Endpoint Picker's grpc-ext-proc port (SPEC-004). When a claim
+    # sets gateway.endpointPicker.enabled, its AIGatewayRoute base rule targets an
+    # InferencePool instead of an AIServiceBackend, and Envoy must call that pool's
+    # EPP over ext_proc to choose a pod. Without this egress allow the call is a
+    # silent default-deny DROP and EVERY request through the pool returns HTTP 500
+    # — a 500 with no upstream error, which reads like a broken backend rather than
+    # a policy problem.
+    #
+    # The matching INGRESS half is rendered by the composition onto each EPP's own
+    # CNP (_eppIngressRules in kcl/inference-service/main.k), scoped to the Envoy
+    # data-plane pods. Both halves are required.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: llm
       toPorts:
         - ports:
             - port: "8000"
+              protocol: TCP
+            - port: "9002"
               protocol: TCP
