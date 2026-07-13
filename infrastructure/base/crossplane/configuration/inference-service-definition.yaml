@@ -324,6 +324,15 @@ spec:
                           default: false
                 loraAdapters:
                   type: array
+                  # maxItems + the per-field maxLength below are load-bearing, not
+                  # cosmetic: the CEL cost estimator assumes worst-case sizes for any
+                  # unbounded array or string. Without them, the canary rules that
+                  # cross-reference canaries x loraAdapters estimate as an unbounded
+                  # nested loop over unbounded string compares, and the API server
+                  # rejects the whole derived CRD ("estimated rule cost exceeds budget
+                  # by factor of more than 100x"). 8 is far above the fleet's 1-2 while
+                  # keeping the estimate finite; it also caps vLLM's --max-loras N.
+                  maxItems: 8
                   description: |
                     Optional list of LoRA adapters mounted over the base model.
                     Each adapter is downloaded by the preload Job into
@@ -340,15 +349,23 @@ spec:
                     required: [name, repository]
                     properties:
                       name:
+                        # 63 = DNS label limit. This value is emitted verbatim as a
+                        # served model name (AIGatewayRoute x-ai-eg-model match value
+                        # and modelNameOverride, CL-5) and into `--lora-modules
+                        # <name>=<path>`, so it is already constrained in practice.
+                        # Bounding it here is what keeps the canary CEL rules costable.
+                        maxLength: 63
                         type: string
                         description: |
                           Adapter identifier (kebab-case). Becomes the model
                           name clients send in the OpenAI request body.
                       repository:
+                        maxLength: 255
                         type: string
                         description: |
                           HuggingFace repo id (e.g., `org/qwen-coder-sql-lora`).
                       revision:
+                        maxLength: 64
                         type: string
                         description: |
                           HF revision (branch name, tag, or commit SHA).
@@ -415,6 +432,10 @@ spec:
                         required: [adapter, weightPercent]
                         properties:
                           adapter:
+                            # Must stay in lockstep with loraAdapters[].name's maxLength —
+                            # CEL rule [3] compares the two, and the estimator costs that
+                            # compare against the larger of the two bounds.
+                            maxLength: 63
                             type: string
                             description: Must match a loraAdapters[].name entry (CEL-enforced).
                           weightPercent:
