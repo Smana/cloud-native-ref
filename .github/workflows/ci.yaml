@@ -64,7 +64,7 @@ jobs:
           directory: .
           quiet: true
           soft_fail: true
-          framework: terraform,kubernetes,secrets
+          framework: terraform,secrets
           output_format: sarif
           output_file_path: checkov-results.sarif
 
@@ -89,34 +89,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Validate Flux clusters manifests
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: "latest"
-          verb: call
-          module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.1.3
-          args: validate --manifests "./clusters" --exclude ".github/*,opentofu/*" --catalog
+      - name: Install tools
+        uses: jdx/mise-action@v2
 
-      - name: Validate Kubernetes manifests (Kustomize directories)
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: "latest"
-          verb: call
-          module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.1.3
-          args: validate --manifests "." --exclude ".github/*,opentofu/*" --env "domain_name:cluster.local,private_domain_name:priv.cluster.local,public_domain_name:cluster.local,cluster_name:foobar,region:eu-west-3,environment:dev,cert_manager_approle_id:random,route53_public_zone_id:Z0123456789" --kustomize --flux --catalog
+      - name: Install the flux-schema plugin
+        run: flux plugin install schema
 
-      - name: Run Polaris configuration validation
+      - name: Install Polaris
         uses: fairwindsops/polaris/.github/actions/setup-polaris@master
         with:
           version: '8.5.0'
 
-      - name: Validate Kubernetes best practices
-        run: |
-          find . -name "*.yaml" -o -name "*.yml" | grep -E "(infrastructure|security|observability|tooling|namespaces|crds)/" | head -20 | \
-          while read file; do
-            echo "Validating $file"
-            polaris validate --config .polaris.yaml --resource "$file" || true
-          done
+      # Charts are version-pinned, so only the download layer is cached (CL-2).
+      # The bundle itself is always rendered fresh — a stale bundle is a
+      # silently-wrong green, the exact failure class SPEC-007 removes.
+      - name: Cache Helm chart downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/helm
+          key: helm-${{ hashFiles('**/helmrelease.yaml', 'flux/sources/**') }}
+          restore-keys: helm-
+
+      - name: Validate manifests (flux schema + polaris)
+        run: ./scripts/validate-manifests.sh
 
   shellcheck:
     name: Check the shell scripts 💻
