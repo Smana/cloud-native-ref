@@ -51,20 +51,39 @@ CROSSPLANE_INJECTED = {
 
 def convert(xrd):
     spec = xrd["spec"]
+    raw_versions = spec["versions"]
+
+    # A CRD must have exactly one storage: true version. The XRD's own
+    # `referenceable: true` marks the equivalent concept; if none are
+    # marked (older XRD shape), fall back to the last version so the
+    # generated CRD is never structurally invalid with zero storage
+    # versions.
+    storage_flags = [bool(v.get("referenceable", False)) for v in raw_versions]
+    if not any(storage_flags):
+        storage_flags[-1] = True
+
     versions = []
-    for version in spec["versions"]:
+    for version, is_storage in zip(raw_versions, storage_flags):
         schema = version["schema"]["openAPIV3Schema"]
         props = schema.setdefault("properties", {})
         spec_props = props.setdefault("spec", {"type": "object"}).setdefault(
             "properties", {}
         )
         for name, definition in CROSSPLANE_INJECTED.items():
-            spec_props.setdefault(name, definition)
+            if name in spec_props:
+                print(
+                    f"error: {xrd['metadata']['name']} version {version['name']} "
+                    f"already declares reserved field 'spec.{name}', which collides "
+                    "with the Crossplane-injected schema (SPEC-007 FR-003)",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            spec_props[name] = definition
         versions.append(
             {
                 "name": version["name"],
                 "served": version.get("served", True),
-                "storage": True,
+                "storage": is_storage,
                 "schema": {"openAPIV3Schema": schema},
             }
         )

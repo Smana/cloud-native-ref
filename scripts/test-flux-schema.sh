@@ -54,21 +54,98 @@ else
   fail=1
 fi
 
-echo "== preflight guard =="
-old_flux="${HOME}/.local/share/mise/installs/flux2/2.8.8/flux"
-if [[ -x "${old_flux}" ]]; then
-  guard_status=0
-  guard_out="$(FLUX_BIN="${old_flux}" ./scripts/flux-schema/gen-catalog.sh 2>&1)" || guard_status=$?
+echo "== preflight guard (stubbed old flux — deterministic, runs in CI too) =="
+# A real pre-2.9 flux binary may not exist on every machine (CI included);
+# stub one instead so this assertion actually RUNS everywhere rather than
+# silently SKIPping wherever it can't find one (SPEC-007 review M5).
+stub_old_flux="$(mktemp)"
+cat >"${stub_old_flux}" <<'EOF'
+#!/usr/bin/env bash
+# Minimal stand-in for a pre-2.9 flux client: understands `version --client`
+# and nothing else (the real v2.8.8 has no `flux plugin` subcommand either).
+if [[ "${1:-}" == "version" ]]; then
+  echo "flux: v2.8.8"
+  exit 0
+fi
+echo "stub-flux: unsupported command: $*" >&2
+exit 1
+EOF
+chmod +x "${stub_old_flux}"
 
-  if [[ "${guard_status}" -ne 0 ]]; then
-    echo "  PASS  guard rejects an old (< v2.9) flux binary"
-  else
-    echo "  FAIL  guard accepted an old flux binary (exit 0)"
-    fail=1
-  fi
-  check "guard names the v2.9 requirement" "2.9" "${guard_out}"
+guard_status=0
+guard_out="$(FLUX_BIN="${stub_old_flux}" ./scripts/flux-schema/gen-catalog.sh 2>&1)" || guard_status=$?
+rm -f "${stub_old_flux}"
+
+if [[ "${guard_status}" -ne 0 ]]; then
+  echo "  PASS  guard rejects an old (< v2.9) flux binary"
 else
-  echo "  SKIP  guard-rejects-old-flux (no v2.8.8 binary at ${old_flux} on this machine)"
+  echo "  FAIL  guard accepted an old flux binary (exit 0)"
+  fail=1
+fi
+check "guard names the v2.9 requirement" "2.9" "${guard_out}"
+
+echo "== catalog integrity: partial/empty builds never reach disk (I1/I2) =="
+good_catalog_sum="$(find .schemas -type f -name '*.json' | sort | xargs sha256sum | sha256sum)"
+
+# I2: an unresolvable toolchain override must fail before the on-disk
+# catalog is touched at all — not leave it emptied or half-built.
+broken_status=0
+broken_out="$(HELM_BIN=/nonexistent/helm ./scripts/flux-schema/gen-catalog.sh 2>&1)" || broken_status=$?
+
+if [[ "${broken_status}" -ne 0 ]]; then
+  echo "  PASS  gen-catalog.sh fails when HELM_BIN does not exist"
+else
+  echo "  FAIL  gen-catalog.sh exited 0 with a nonexistent HELM_BIN"
+  fail=1
+fi
+check "failure message is actionable" "not an executable file" "${broken_out}"
+
+after_broken_sum="$(find .schemas -type f -name '*.json' 2>/dev/null | sort | xargs sha256sum 2>/dev/null | sha256sum)"
+if [[ "${after_broken_sum}" == "${good_catalog_sum}" ]]; then
+  echo "  PASS  .schemas/ left in its previous good state after the failed run"
+else
+  echo "  FAIL  .schemas/ was mutated by a run that ultimately failed"
+  fail=1
+fi
+
+# I1: `flux schema extract crd` exits 0 and writes 0 files for a
+# CRD-less input (e.g. a Renovate bump to a chart version that moved its
+# CRDs under crds/ without --include-crds, or an upstream packaging
+# regression). Stub helm to simulate exactly that and assert the whole
+# build fails loudly instead of silently dropping the aigateway group.
+stub_empty_helm="$(mktemp)"
+cat >"${stub_empty_helm}" <<'EOF'
+#!/usr/bin/env bash
+# Simulates `helm template` rendering a chart with zero CRDs in its output.
+cat <<'YAML'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: not-a-crd
+data:
+  foo: bar
+YAML
+EOF
+chmod +x "${stub_empty_helm}"
+
+empty_status=0
+empty_out="$(HELM_BIN="${stub_empty_helm}" ./scripts/flux-schema/gen-catalog.sh 2>&1)" || empty_status=$?
+rm -f "${stub_empty_helm}"
+
+if [[ "${empty_status}" -ne 0 ]]; then
+  echo "  PASS  gen-catalog.sh fails when the AI Gateway render yields zero CRDs"
+else
+  echo "  FAIL  gen-catalog.sh exited 0 despite extracting zero aigateway.envoyproxy.io schemas"
+  fail=1
+fi
+check "failure message names the missing group" "aigateway.envoyproxy.io" "${empty_out}"
+
+after_empty_sum="$(find .schemas -type f -name '*.json' 2>/dev/null | sort | xargs sha256sum 2>/dev/null | sha256sum)"
+if [[ "${after_empty_sum}" == "${good_catalog_sum}" ]]; then
+  echo "  PASS  .schemas/ left in its previous good state after the zero-CRD run"
+else
+  echo "  FAIL  .schemas/ was mutated by the zero-CRD run"
+  fail=1
 fi
 
 echo "== render-bundle =="
