@@ -27,3 +27,66 @@ checks:
 
   # Networking
   # tlsSettingsMissing: ignore  # We handle TLS at ingress level
+
+# Exemptions — privileged-by-design workloads only.
+#
+# Rules of engagement (SPEC-007):
+#   * Exempt the SPECIFIC rules a workload needs, never a blanket exemption.
+#   * Every entry states WHY the privilege is inherent to the workload's function.
+#   * If the finding is fixable (pin a tag, plumb a securityContext), FIX IT
+#     instead of exempting. Everything below is genuinely not fixable from values.
+exemptions:
+  # CSI node plugins mount and unmount filesystems in the host mount namespace.
+  # This requires a privileged container with bidirectional mount propagation —
+  # it is the entire function of the plugin, not an oversight.
+  - controllerNames:
+      - efs-csi-node
+    rules:
+      - privilegeEscalationAllowed
+      - runAsPrivileged
+
+  # CSI controller shares the driver image/entrypoint with the node plugin and
+  # runs it privileged for the same reason.
+  - controllerNames:
+      - efs-csi-controller
+    rules:
+      - privilegeEscalationAllowed
+      - runAsPrivileged
+
+  # Reading host process/network/filesystem metrics IS the node-exporter's job:
+  # hostPID is how it sees other processes' /proc entries. Scoped to the two
+  # rules that follow from that; it is not privileged and drops all capabilities.
+  - controllerNames:
+      - victoria-metrics-k8s-stack-prometheus-node-exporter
+    rules:
+      - hostPIDSet
+      - privilegeEscalationAllowed
+
+  # Container build engine (BuildKit). Building OCI images requires creating
+  # mount/user namespaces and running nested containers, hence a privileged
+  # container with dangerous capabilities.
+  - controllerNames:
+      - dagger-engine
+    rules:
+      - privilegeEscalationAllowed
+      - runAsPrivileged
+      - dangerousCapabilities
+
+  # GitHub Actions runner in docker-in-docker mode. The `dind` sidecar is
+  # hardcoded privileged by the upstream chart (gha-runner-scale-set
+  # _helpers.tpl "dind-container" — not overridable from values), and the runner
+  # executes arbitrary workflow code that legitimately escalates (sudo, apt).
+  # NOTE: tagNotSpecified is NOT exempted — the runner image is pinned below.
+  - controllerNames:
+      - dagger-gha-runner-scale-set
+    rules:
+      - privilegeEscalationAllowed
+      - runAsPrivileged
+
+  # GitHub Actions runner (kubernetes mode). Executes arbitrary workflow code
+  # that legitimately escalates privileges (sudo/apt in workflow steps).
+  # NOTE: tagNotSpecified is NOT exempted — the runner image is pinned below.
+  - controllerNames:
+      - default-gha-runner-scale-set
+    rules:
+      - privilegeEscalationAllowed
