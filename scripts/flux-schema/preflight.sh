@@ -83,6 +83,14 @@ if [[ -z "${FLUX_BIN}" ]]; then
   exit 1
 fi
 
+# render-bundle.py parses every rendered document. Fail here with a fixable
+# message rather than mid-render with a Python traceback.
+if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+  echo "error: the Python 'yaml' module (PyYAML) is not installed." >&2
+  echo "       Fix: python3 -m pip install pyyaml" >&2
+  exit 1
+fi
+
 # Portable (no GNU-only `grep -oP`): sed -E is extended-regex on both
 # GNU and BSD/macOS sed.
 _flux_schema_client_version="$("${FLUX_BIN}" version --client 2>/dev/null | sed -nE 's/.*v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' | head -n1 || true)"

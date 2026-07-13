@@ -95,6 +95,11 @@ jobs:
       - name: Install the flux-schema plugin
         run: flux plugin install schema
 
+      # render-bundle.py parses every rendered document; PyYAML happens to ship
+      # in the runner image today, but that is not a dependency declaration.
+      - name: Install Python dependencies
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
       - name: Install Polaris
         uses: fairwindsops/polaris/.github/actions/setup-polaris@master
         with:

@@ -105,6 +105,27 @@ These are **not defects**. Kubernetes' `resource.Quantity.UnmarshalJSON` parses 
 **Decided by**: Conversation, 2026-07-13
 **References**: FR-004; CL-1; SC-001
 
+## CL-5 — 2026-07-14 — Three charts call Helm's `lookup` and cannot render offline
+
+**Asked by**: Controller (during T004 execution)
+**Context**: `harbor`, `default-gha-runner-scale-set` and `dagger-gha-runner-scale-set` call Helm's `lookup` function against live cluster state inside their templates, and crash under offline `helm template` (`lookup` returns empty and the chart does not guard). Without a resolution, three charts — and every workload in them — would be absent from the bundle, and therefore invisible to both gates.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Supply each chart the value its own error message names as the escape hatch, matching what `lookup` would have found on the real cluster | All three charts render; their workloads reach both gates | The rendered output for one branch of `harbor` differs from production (see caveat) |
+| B | Skip the three charts | No overrides | Silently removes ~10 workloads from the audit — the exact blindness this spec removes |
+| C | Render against a live cluster | Perfect fidelity | CI would need cluster credentials; unacceptable for a PR gate |
+
+**Decision**: A — a small, commented `CHART_RENDER_OVERRIDES` table in `render-bundle.py`.
+**Rationale**: The alternative is silently dropping workloads from the gate, which is the failure this spec exists to remove. Each override is the chart's own documented workaround and matches the cluster's actual state (the real Secret / the real controller release name).
+
+**Known caveat, accepted**: emptying `harbor.redis.external.existingSecret` routes Harbor's template down its username/password branch instead of its existing-Secret branch. Harbor's *workloads* are still rendered and audited; only the redis credential plumbing differs from production. This affects a Secret reference, not a security posture, so both gates still assert on what matters. Re-examine if Harbor's chart changes how it renders that branch.
+
+**Decided by**: Conversation, 2026-07-14
+**References**: FR-004; CL-1
+
 ---
 
 ## Related
