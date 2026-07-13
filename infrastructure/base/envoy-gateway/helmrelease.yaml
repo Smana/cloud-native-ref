@@ -39,6 +39,20 @@ spec:
           # Recommended for forward-compat (xDS patching).
           enableEnvoyPatchPolicy: true
         extensionManager:
+          # Envoy Gateway has no native InferencePool support — it delegates the kind
+          # to the AI Gateway extension server, and this is what performs that
+          # delegation. Unset, its built-in backendRef group check rejects anything
+          # outside core / multicluster.x-k8s.io / gateway.envoyproxy.io, the generated
+          # HTTPRoute goes ResolvedRefs=False (InvalidKind), and every request through
+          # the pool 500s — while the InferencePool and AIGatewayRoute both still report
+          # Accepted=True, so only the generated HTTPRoute shows the error.
+          #
+          # Group/kind/version must match what the inferencepool chart creates. Source:
+          # envoyproxy/ai-gateway v1.0.0 examples/inference-pool/envoy-gateway-values-addon.yaml.
+          backendResources:
+            - group: inference.networking.k8s.io
+              kind: InferencePool
+              version: v1
           hooks:
             xdsTranslator:
               translation:

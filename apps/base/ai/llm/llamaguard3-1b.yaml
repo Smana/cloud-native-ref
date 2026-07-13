@@ -1,11 +1,21 @@
 ---
-# Guardrail model. CL-2 rec A wired LlamaGuard as the post-filter on
-# every response, but the upstream Semantic Router chart has no
-# first-class output-side hook (tracked in docs/ai.md "Open work").
-# Until that lands — either via an upstream feature or an app-layer
-# middleware — LlamaGuard runs cold and is reachable only via the
-# `guardrail` category route. Switch to minReplicas: 1 the day the
-# post-filter is actually inline.
+# Guardrail model — currently idle, and honest about it.
+#
+# CL-2 rec A wired LlamaGuard as the post-filter on every response, but the
+# upstream Semantic Router chart has no first-class output-side hook. That never
+# landed, so nothing dispatches here automatically:
+#
+#   * there is no `guardrail` category in the Semantic Router config, and this
+#     model appears in NO decision rule — `model: MoM` will never select it;
+#   * input-side jailbreak filtering is done by the router's own in-pod
+#     `prompt_guard` BERT classifier (on CPU), which BLOCKS rather than routes.
+#
+# So this claim holds one of the four GPUs in the gpu-l4 NodePool cap while
+# being reachable only by naming it explicitly. minReplicas is 1 (the platform
+# default) — it is NOT cold, whatever an older version of this comment claimed.
+#
+# Resolve it one way or the other: wire an output-side hook and keep it warm, or
+# drop the claim and give the GPU back. Tracked in docs/ai.md "Known gaps".
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: InferenceService
 metadata:

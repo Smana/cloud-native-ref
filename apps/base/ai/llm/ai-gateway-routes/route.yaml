@@ -6,17 +6,27 @@
 # rewrite is now correct (Backend FQDN = vLLM Service hostname). No
 # plain HTTPRoute hack needed; no keda-interceptor Backend.
 #
-# All 4 models default `minReplicas=1` per the production-realistic
+# All models default `minReplicas=1` per the production-realistic
 # scaling design (SPEC-001 §FR-002). For demo cold-start showcases,
 # override per-model via `spec.scaling.minReplicas: 0` on the claim
 # (with the understanding that the first request to a scaled-to-0
 # model fails until a replica becomes Ready).
 #
-# Header dispatch: matched on `x-ai-eg-model`, which the AI Gateway
-# body parser populates from `body.model`. For `model: MoM` requests,
-# an AIGatewayRoute extension server (Iris HTTP sidecar at
-# vllm-semantic-router.llm:8080) classifies the prompt and rewrites
-# x-ai-eg-model before this route matches.
+# SPEC-002 migration: xplane-qwen-coder's Backend/AIServiceBackend/rules
+# moved into the InferenceService composition (spec.gateway.enabled on
+# the claim renders a per-claim AIGatewayRoute, readiness-gated). The
+# remaining 3 models migrate in a follow-up PR, after which this file
+# is deleted. See docs/specs/002-composition-owned-gateway-routing/.
+#
+# Header dispatch: matched on `x-ai-eg-model`, which the AI Gateway's extproc
+# populates from `body.model`.
+#
+# `model: MoM` is resolved BEFORE that, and not by any extension server: the
+# Semantic Router runs as an ext_proc gRPC filter at http_filters[0]
+# (vllm-semantic-router.llm:50051), inserted by the EnvoyPatchPolicy in
+# infrastructure/base/envoy-ai-gateway/. It rewrites `body.model` in place, and
+# the AI Gateway extproc then derives x-ai-eg-model from the rewritten body — so
+# the rules below match with no MoM-specific rule of their own.
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
@@ -27,17 +37,6 @@ spec:
   endpoints:
     - fqdn:
         hostname: xplane-qwen-coder-fim.llm.svc.cluster.local
-        port: 8000
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: xplane-qwen-coder-direct
-  namespace: llm
-spec:
-  endpoints:
-    - fqdn:
-        hostname: xplane-qwen-coder.llm.svc.cluster.local
         port: 8000
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -74,19 +73,6 @@ spec:
     group: gateway.envoyproxy.io
     kind: Backend
     name: xplane-qwen-coder-fim-direct
----
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
-metadata:
-  name: xplane-qwen-coder
-  namespace: llm
-spec:
-  schema:
-    name: OpenAI
-  backendRef:
-    group: gateway.envoyproxy.io
-    kind: Backend
-    name: xplane-qwen-coder-direct
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -138,14 +124,6 @@ spec:
         - headers:
             - type: Exact
               name: x-ai-eg-model
-              value: xplane-qwen-coder
-      backendRefs:
-        - name: xplane-qwen-coder
-          weight: 100
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
               value: xplane-qwen3-8b
       backendRefs:
         - name: xplane-qwen3-8b
@@ -157,20 +135,4 @@ spec:
               value: xplane-llamaguard3-1b
       backendRefs:
         - name: xplane-llamaguard3-1b
-          weight: 100
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: xplane-qwen-coder-sql-dpo
-      backendRefs:
-        - name: xplane-qwen-coder
-          weight: 100
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: xplane-qwen-coder-securecode
-      backendRefs:
-        - name: xplane-qwen-coder
           weight: 100

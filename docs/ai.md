@@ -1,359 +1,385 @@
 # Self-Hosted LLM Platform
 
-This platform serves four self-hosted open-weights models from a single
-NVIDIA L4 GPU NodePool, behind a Tailscale-fronted OpenAI-compatible
-API with Bearer-token authentication. A Mixture-of-Models classifier
-(invoked only on `model: MoM`) routes prompts to a specialty
-(general / code / multilingual / reasoning); explicit `model: xplane-*`
-requests bypass the classifier and go straight to the named upstream.
-KEDA's `ScaledObject` scales each model `1→max` on **leading vLLM
-saturation signals** (running-batch ratio + KV-cache utilisation —
-[SPEC-001](specs/0001-llm-platform-prometheus-autoscaling/spec.md)).
-LlamaGuard 3-1B sits in the fleet as the guardrail backstop;
-output-side post-filtering currently has no first-class upstream hook
-(see *[Open work](#open-work-post-merge--blocked)*).
+An OpenAI-compatible inference platform on EKS: vLLM on L4 spot GPUs, fronted by Envoy AI Gateway,
+scaled by KEDA on vLLM saturation signals, and declared as a single Crossplane `InferenceService`
+claim per model.
 
-It is built on top of the existing platform stack — no Knative, no
-double-Envoy, no new XRD ecosystem. See
-[ADR-0003](decisions/0003-vllm-production-stack-over-kserve.md) for the
-architecture decision (vLLM Production Stack + Iris over KServe + llm-d)
-and [ADR-0004](decisions/0004-amazon-s3-files-for-model-weights-storage.md)
-for the model-weights storage choice (Amazon S3 Files POSIX mount).
+It is **off by default.** Two independent gates must both be released — see [Turning it on](#turning-it-on).
+A default `terramate script run deploy` plus a default Flux reconcile leaves the cluster LLM-free.
 
-## Request flow
+> **Scope of this document.** It describes what the code in this repository actually does, as of the
+> composition module `crossplane-inference-service:0.8.2`. Where a capability is implemented but switched
+> on nowhere, it says so. Where something is a known gap, it is listed in [Known gaps](#known-gaps) rather
+> than quietly omitted.
 
-```mermaid
-flowchart LR
-    user["👤 Tailscale member"]
+---
 
-    subgraph gateway["🚪 platform-tailscale-general"]
-        gw["Cilium Gateway API<br/>llm.priv.cloud.ogenki.io"]
-    end
+## At a glance
 
-    subgraph aigw["🚦 envoy-gateway-system / ai-gateway"]
-        sec["🔑 SecurityPolicy<br/>(Bearer apiKeyAuth)"]
-        body["② AI-EG body parser<br/>x-ai-eg-model from body.model"]
-        route["③ AIGatewayRoute → Backend"]
-    end
+| | |
+|---|---|
+| **Engine** | vLLM `v0.8.5`, one Deployment per model, port 8000 |
+| **Gateway** | Envoy Gateway `1.8.2` + Envoy AI Gateway `1.0.0` |
+| **Routing** | `AIGatewayRoute`, keyed on the `x-ai-eg-model` header |
+| **Prompt routing** | vLLM Semantic Router `0.2.0`, as a gRPC `ext_proc` filter — only acts on `model: MoM` |
+| **Autoscaling** | KEDA `2.20.1`, three vLLM saturation triggers, `min=1` (always warm) |
+| **Weights** | Amazon S3 Files (POSIX over S3), RWX PVC shared by preload Job and serving pod |
+| **GPUs** | Karpenter `gpu-l4` NodePool — `g6` spot, Bottlerocket NVIDIA AMI, capped at 4 GPUs |
+| **Observability** | VictoriaMetrics + two Grafana dashboards (`vllm:*` engine, `gen_ai_*` gateway) |
+| **Steady-state cost** | 4× L4 spot — one per model, because every model runs at `min=1` |
 
-    subgraph llm["☸️ namespace: llm"]
-        sr["🧭 vLLM Semantic Router<br/>HTTP classifier :8080"]
+---
 
-        coder["🟡 xplane-qwen-coder<br/>Qwen2.5-Coder-7B fp8"]
-        fim["🟢 xplane-qwen-coder-fim<br/>Qwen2.5-Coder-1.5B fp8 (always-warm FIM)"]
-        general["🔵 xplane-qwen3-8b<br/>Qwen3-8B fp8 (default)"]
-        guard["🛡️ xplane-llamaguard3-1b<br/>LlamaGuard 3-1B fp16"]
-    end
+## Turning it on
 
-    user -->|HTTPS| gw
-    gw -->|HTTPRoute| sec
-    sec --> body
-    body -.->|model: MoM only| sr
-    sr -.->|rewrite x-ai-eg-model| body
-    body --> route
+Two gates, deliberately independent. Both must be released.
 
-    route --> coder
-    route --> fim
-    route --> general
-    route --> guard
+```bash
+# Gate 1 — AWS (S3 Files filesystem + IAM). Terramate stack tagged `opt-in`.
+TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy
+
+# Gate 2 — Kubernetes. The umbrella Flux Kustomization ships suspended.
+flux resume kustomization llm-platform -n flux-system
 ```
 
-Two routing modes:
+The umbrella (`clusters/mycluster-0/llm-platform.yaml`) aggregates eight children under
+`clusters/mycluster-0-llm-platform/`. That directory is a **sibling** of `clusters/mycluster-0/`, not a
+child, on purpose: `flux-system` syncs `clusters/mycluster-0/` recursively, so a nested path would be
+auto-discovered and applied — bypassing the suspend gate entirely.
 
-1. **Client-deterministic** — clients send `model: xplane-<name>` directly. The AI Gateway body parser sets `x-ai-eg-model`, the AIGatewayRoute matches the header, and the request lands on the named vLLM Service. SR is not in the data path. Used by OpenCode CLI, Continue VSCode, and direct API consumers.
-2. **SR cascade** — clients send `model: MoM`. The AIGatewayRoute extension calls SR's HTTP classifier (`POST /api/v1/classify/intent` on `:8080`); SR returns the chosen model id; the body parser rewrites `x-ai-eg-model` and dispatches. Used by OpenWebUI's default flow.
+Teardown and the full child list live in
+[`clusters/mycluster-0-llm-platform/README.md`](../clusters/mycluster-0-llm-platform/README.md).
 
-The AI Gateway enforces API-key authentication via Envoy Gateway's `SecurityPolicy.apiKeyAuth` (header `Authorization: Bearer <key>`). Keys are sourced from AWS Secrets Manager at `platform/llm/api-keys` and rendered as raw values into the gateway-side Secret by the ExternalSecret in `infrastructure/base/envoy-ai-gateway/` — Envoy Gateway strips the `Bearer ` scheme from the header before comparing the remainder against the stored value, so a Bearer-prefixed Secret would never match. Anonymous requests are rejected at the gateway.
+---
 
-Latency budget on warm models: classifier (~50ms, MoM only) + one GPU hop (~150-200ms TTFT on a warm L4 fp8) → p95 < 250ms end-to-end.
+## Request path
 
-## Component layout
+![Request path](architecture/img/llm-platform-1.png)
 
-```mermaid
-flowchart TB
-    subgraph apps["📦 namespace: apps"]
-        webui["💬 OpenWebUI<br/>chat.priv.cloud.ogenki.io"]
-        webuiKey["🔐 openwebui-llm-api-key<br/>ExternalSecret"]
-    end
+*Source: [`architecture/llm-platform.drawio`](architecture/llm-platform.drawio), page 1.*
 
-    subgraph aigw["📦 namespace: envoy-gateway-system / envoy-ai-gateway-system"]
-        gwSec["🔐 SecurityPolicy + ai-gateway-api-keys<br/>(raw key Secret; Bearer scheme stripped before compare)"]
-        proxy["🚦 Envoy data plane<br/>(spawned per Gateway)"]
-    end
+A request travels through two gateways and four filters before it reaches a GPU.
 
-    subgraph llm["📦 namespace: llm"]
-        sr["🧭 vLLM Semantic Router<br/>HelmRelease"]
-        models["🤖 4× InferenceService XRs<br/>(Phase 5 claims)"]
-        bucket["🪣 xplane-llm-models<br/>Bucket + Versioning + PublicAccessBlock"]
-        pvc["📁 llm-models PVC<br/>(S3 Files via EFS CSI)"]
-        preloadSA["🔑 xplane-llm-models-preload<br/>ServiceAccount"]
-        hf["🔐 hf-token<br/>ExternalSecret"]
-    end
+**1 — Ingress.** External clients arrive over Tailscale and hit the Cilium Gateway
+`platform-tailscale-general` (`ns infrastructure`) at `llm.priv.cloud.ogenki.io`. An `HTTPRoute` forwards to
+the Envoy AI Gateway data-plane Service, `ai-gateway:8080` in `envoy-gateway-system`.
 
-    subgraph promptfoo["📦 namespace: promptfoo"]
-        pf["🧪 Promptfoo CronJob<br/>nightly · 02:00 Europe/Paris"]
-        pfKey["🔐 promptfoo-llm-api-key<br/>ExternalSecret"]
-    end
+In-cluster clients — OpenWebUI, Promptfoo — skip Tailscale and address that Service directly at
+`http://ai-gateway.envoy-gateway-system.svc.cluster.local:8080/v1`.
 
-    subgraph keda["📦 namespace: keda"]
-        kedaCore["⚖️ KEDA core<br/>(ScaledObject reconciler)"]
-    end
+**2 — Authentication.** A `SecurityPolicy` with `apiKeyAuth` targets the **Gateway**, so every route
+inherits it. Keys come from AWS Secrets Manager via External Secrets. Envoy strips the `Bearer ` prefix
+before the byte-comparison — so the stored value is the raw key — and `sanitize: true` removes the
+`Authorization` header before the request is forwarded upstream.
 
-    subgraph security["📦 namespace: security"]
-        epiPreload["🔑 xplane-llm-models-preload<br/>EPI · per-claim-prefix S3 write"]
-    end
+**3 — Prompt classification (`ext_proc`, filter index 0).** This is the part most easily got wrong, so be
+precise about it:
 
-    subgraph karpenter["☁️ Karpenter"]
-        nodepool["gpu-l4 NodePool<br/>g6 · spot+on-demand · cap 4 GPUs"]
-        ec2nc["gpu-l4 EC2NodeClass<br/>Bottlerocket Accelerated"]
-    end
+- The Semantic Router is wired in as an Envoy **`ext_proc` gRPC filter** dialling
+  `vllm-semantic-router.llm:50051`, inserted at **`http_filters[0]`** by an `EnvoyPatchPolicy` (a raw xDS
+  JSONPatch).
+- It **must** run at index 0, ahead of the AI Gateway's own extproc. That extproc derives the routing
+  header `x-ai-eg-model` from `body.model`, and the Semantic Router rewrites `body.model` **in place**
+  (`MoM` → a concrete model). The other order would classify a body that had already been read.
+  `EnvoyExtensionPolicy` can only *append* filters, which is why this has to be a raw patch.
+- The filter sits in the chain for **every** request. It only *rewrites* when `body.model` is `MoM` (or the
+  literal `auto`). An explicit `xplane-*` model passes through untouched — which is the whole point of
+  listing the concrete model names in `/v1/models`.
 
-    subgraph obs["📦 namespace: observability"]
-        vm["📊 VictoriaMetrics<br/>vmsingle / vmagent"]
-        vmrule["📋 VMRule ai<br/>fleet alerts"]
-    end
+**4 — Routing.** The AI Gateway extproc sets `x-ai-eg-model` from the (possibly rewritten) body and emits
+`gen_ai_*` telemetry on `:1064`. An `AIGatewayRoute` matches that header and forwards through an
+`AIServiceBackend` → `Backend` → the model's Service on `:8000`.
 
-    subgraph aws["☁️ AWS"]
-        s3[("📁 S3<br/>region-ogenki-llm-models")]
-        s3Files["🌐 Amazon S3 Files<br/>(POSIX over S3)"]
-        sm["🔒 Secrets Manager<br/>/platform/llm/{hf_token, api-keys}"]
-        iamPreload["🔑 IAM Role<br/>xplane-llm-models-preload<br/>(per-claim prefix)"]
-        iamCsi["🔑 IAM Role<br/>llm-models-fs-csi-driver<br/>(permissions boundary)"]
-    end
+Where the route object comes from depends on the claim:
 
-    webui -->|Bearer Authorization| proxy
-    webuiKey --> sm
-    proxy --> sr
-    proxy --> models
-    gwSec --> sm
+| Claim | Owner of its gateway objects |
+|---|---|
+| `xplane-qwen-coder` | the **composition** (`spec.gateway.enabled: true`) |
+| the other three | still hand-written in `apps/base/ai/llm/ai-gateway-routes/route.yaml` |
 
-    bucket --> s3
-    s3 -.-> s3Files
-    s3Files --> pvc
-    pvc --> models
+The migration to composition-owned routing is [half-done](#known-gaps).
 
-    epiPreload --> iamPreload
-    preloadSA -.->|Pod Identity Association| iamPreload
-    hf --> sm
+---
 
-    models -.->|nodeSelector| nodepool
-    nodepool --> ec2nc
+## Semantic routing — `model: MoM`
 
-    pf -->|Bearer Authorization| proxy
-    pfKey --> sm
-    pf -->|push prometheus text| vm
+Send `model: MoM` and the Semantic Router picks a model from the prompt. Its decision list, highest
+priority first (`infrastructure/base/vllm-semantic-router/helmrelease.yaml`):
 
-    models -.->|VMServiceScrape| vm
-    vmrule --> vm
-    models -.->|prometheus trigger query| kedaCore
-```
+| Priority | Decision | Target | Notes |
+|---|---|---|---|
+| 110 | `code_with_reasoning` | `xplane-qwen-coder` | `use_reasoning: true` |
+| 100 | `code_decision` | `xplane-qwen-coder` | |
+| 90 | `reasoning_decision` | `xplane-qwen3-8b` | math / physics; `use_reasoning: true` |
+| 80 | `multilingual_decision` | `xplane-qwen3-8b` | |
+| 50 | `general_decision` | `xplane-qwen3-8b` | the default |
 
-## Routing strategy — Hybrid (CL-1 rec C)
+Classification costs roughly **250–300 ms**. Naming a model explicitly skips it entirely, which is why the
+coding clients pin one.
 
-The router runs in **Hybrid mode** (`router.mode: hybrid`):
+Two guardrails run in the router's own pod, on CPU. Neither is a model route:
 
-- **Direct dispatch** when the request already names a specific model (`model: xplane-<name>`). Skips the classifier entirely. Latency: gateway hop only.
-- **Classifier dispatch** when the request uses the virtual `MoM` model id. The AIGatewayRoute extension calls SR's HTTP classifier (`POST /api/v1/classify/intent` on `:8080`); SR returns the model id; the body parser rewrites `x-ai-eg-model`. Latency adds ~50ms classifier round-trip.
+- **`prompt_guard`** — a BERT jailbreak classifier (threshold 0.7). It **blocks**; it does not route.
+- **`classifier.pii_model`** — PII detection. A separate block from `prompt_guard`, not part of it.
 
-Decisions for `MoM` requests (current SR config):
+`semantic_cache` exists in the chart and is **deliberately disabled**.
 
-- `code` → `xplane-qwen-coder` (Qwen2.5-Coder-7B Instruct, function-calling)
-- `math` / `physics` / `reasoning` → `xplane-qwen3-8b` (with `use_reasoning: true`)
-- `multilingual` → `xplane-qwen3-8b`
-- everything else → `xplane-qwen3-8b`
-- `prompt_guard` (jailbreak / PII) → handled by SR's input-side `prompt_guard` plugin before model dispatch
+> ⚠️ `xplane-llamaguard3-1b` and `xplane-qwen-coder-fim` appear in **no** decision rule — they are reachable
+> only by naming them directly. There is no `guardrail` category, and nothing dispatches to LlamaGuard
+> automatically. See [Known gaps](#known-gaps).
 
-The `code-fim` specialty (`xplane-qwen-coder-fim`) is reachable only by direct dispatch — it uses an OpenAI Completions API surface (FIM tokens), not Chat Completions, so the classifier never selects it.
+---
 
-Wired in [`infrastructure/base/vllm-semantic-router/helmrelease.yaml`](../infrastructure/base/vllm-semantic-router/helmrelease.yaml).
+## The model fleet
 
-## Model fleet
+Four claims in `apps/base/ai/llm/`. All four pin an upstream commit SHA and preload their weights.
 
-| Claim | Model | Quantization | Tier | Specialty | min/max | Notes |
-|-------|-------|--------------|------|-----------|---------|-------|
-| `xplane-qwen-coder-fim` | Qwen/Qwen2.5-Coder-1.5B (Base) | fp8 | small | code-fim | 1 / 1 | FIM tab-completion (Continue inline). Always-warm; no scaling. |
-| `xplane-qwen-coder` | Qwen/Qwen2.5-Coder-7B-Instruct | fp8 | medium | code | 1 / 2 | OpenCode primary + SR `code` cascade. Function-calling supported. |
-| `xplane-qwen3-8b` | Qwen/Qwen3-8B | fp8 | medium | general | 1 / 2 | OpenWebUI default + multilingual + 32k context + math/reasoning + cascade fallback. |
-| `xplane-llamaguard3-1b` | meta-llama/Llama-Guard-3-1B | fp16 | small | guardrail | 1 / 3 | Input jailbreak guardrail (SR `prompt_guard`); not user-facing. |
+| Model | Repository | Quant | Context | `maxNumSeqs` | min/max | Gateway | LoRA |
+|---|---|---|---|---|---|---|---|
+| `xplane-qwen-coder` | `Qwen/Qwen2.5-Coder-7B-Instruct` | fp8 | 32k | 32 | 1 / 2 | composition-owned | 2 adapters + 10% canary |
+| `xplane-qwen3-8b` | `Qwen/Qwen3-8B` | fp8 | 32k | 32 | 1 / 2 | `route.yaml` | — |
+| `xplane-qwen-coder-fim` | `Qwen/Qwen2.5-Coder-1.5B` | fp8 | 8k | 64 | 1 / 1 | `route.yaml` | — |
+| `xplane-llamaguard3-1b` | `meta-llama/Llama-Guard-3-1B` | fp16 | 8k | 64 | 1 / 3 | `route.yaml` | — |
 
-> **All models default `min=1`** ([SPEC-001](specs/0001-llm-platform-prometheus-autoscaling/spec.md)).
-> KEDA scales `1→max` on leading saturation signals: `running/max-num-seqs`
-> ratio (threshold 0.7) + `gpu_cache_usage_perc` (threshold 0.8). The
-> autoscaler reacts ahead of saturation rather than after the queue
-> forms, so end-to-end scale-up takes ~75-135s on a warm GPU node, ~3-5
-> min if Karpenter has to provision a fresh node. Demo `min=0` per-claim
-> overrides are still allowed (composition supports it) but accept the
-> first-request failure mode (no queueing layer; client must retry).
+Every model defaults to `minReplicas: 1` — always warm. **There is no scale-to-zero.** The platform trades
+idle GPU cost for the absence of a cold-start cliff, and the `gpu-l4` NodePool's `nvidia.com/gpu: "4"` cap
+turns those four `min=1` models into a hard cost ceiling.
 
-Each claim is an [`InferenceService`](../infrastructure/base/crossplane/configuration/kcl/inference-service/README.md)
-XR. The composition renders Deployment + Service + ServiceAccount + KEDA
-`ScaledObject` + optional HTTPRoute + default-deny CiliumNetworkPolicy
-(serving + preload) + ExternalSecrets + VMServiceScrape + per-model
-VMRule + idempotent preload Job. No per-claim EPI is rendered — weights
-flow via the shared S3 Files PVC, not the S3 API (ADR-0004).
+---
 
-## GPU foundation
+## InferenceService — one claim, many objects
+
+![What one claim renders](architecture/img/llm-platform-2.png)
+
+*Source: [`architecture/llm-platform.drawio`](architecture/llm-platform.drawio), page 2.*
+
+A ~30-line claim renders **7 objects at minimum, 16 with everything on**. The complete API reference —
+every field, default and CEL rule — lives in the
+[composition README](../infrastructure/base/crossplane/configuration/kcl/inference-service/README.md).
+The parts worth knowing before you write a claim:
+
+### Weights: `preload` is not really optional
+
+The serving container always starts with `--model /models/<revision>` — a path on the shared mount, **never**
+a HuggingFace repository id. And the serving pod's `CiliumNetworkPolicy` permits egress to kube-dns and
+*nothing else*. It cannot reach HuggingFace even in principle.
+
+So the weights must already be on the mount before the pod starts. `model.preload.enabled: true` renders the
+one-shot Job that puts them there — and that Job is the only workload in the platform granted `world:443`,
+precisely because it is bounded and short-lived.
+
+`preload.enabled` **defaults to `false`**, which is a trap worth naming: a claim without it — and without a
+`weightsFileSystem.subPath` that some other claim already filled — starts with an empty `/models` and never
+boots. The default is `false` only to allow that weight-sharing case.
+
+### `engineArgs` — the escape hatch
+
+`spec.engineArgs` passes raw flags to vLLM, appended **last** so they cannot be shadowed by the composition.
+An admission-time CEL denylist rejects the 18 flags the composition owns (`--model`, `--max-num-seqs`,
+`--gpu-memory-utilization`, `--enable-lora`, …) and requires the single-token `--flag=value` form.
 
 ```yaml
-# infrastructure/base/karpenter-nodepools-gpu/gpu-l4-nodepool.yaml
-limits:
-  nvidia.com/gpu: "4"   # CL-6 rec A: hard cap
+engineArgs:
+  - --kv-cache-dtype=fp8
+  - --enforce-eager
 ```
 
-- **EC2NodeClass `gpu-l4`** — Bottlerocket Accelerated AMI (NVIDIA variant), instance store RAID0 for ephemeral container storage.
-- **NodePool `gpu-l4`** — G6 family (NVIDIA L4 24Gi VRAM), spot+on-demand, taint `nvidia.com/gpu=true:NoSchedule`, hard cap `nvidia.com/gpu: 4`.
-- **Cilium startup taint** so pods don't schedule before the Cilium agent is ready.
+### LoRA adapters and canaries
 
-> **Cap math.** With 4 claims at `min=1`, the warm fleet steady state
-> consumes the full `nvidia.com/gpu: 4` budget. KEDA scaling any claim
-> above 1 replica requires another claim to scale down (or another L4
-> to be provisioned by Karpenter — but the cap blocks this until a
-> claim drops below 1, which `min=1` prevents). This is an intentional
-> cost-ceiling decision (CL-6 rec A; see clarifications). The fleet's
-> concurrency strategy is **vertical** (vLLM batching + KV cache reuse
-> on a single GPU) up to `max-num-seqs`; horizontal scale-out kicks in
-> only when running-ratio breaches 0.7. Raise the cap to 6-8 in
-> `gpu-l4-nodepool.yaml` if traffic patterns show simultaneous
-> sustained running-ratio breach across multiple claims.
+`loraAdapters[]` (max 8) are downloaded to `/models/loras/<name>/` and served alongside the base model. Each
+becomes a client-addressable model name in its own right.
 
-### Cold-start behaviour
+`gateway.canaries[]` (max 4) shifts a weighted slice of *base-model* traffic onto an adapter, using the AI
+Gateway's `modelNameOverride`. `xplane-qwen-coder` runs a **10% canary** onto `xplane-qwen-coder-sql-dpo`
+today — so roughly one request in ten for `model: xplane-qwen-coder` is actually served by the adapter.
 
-With S3 Files + always-warm fleet, cold-start applies in two scenarios:
+Naming an adapter explicitly always gets 100% of that adapter: the composition renders a pin rule per
+adapter, so a canary never dilutes an explicit request. Canary weights sum to ≤ 99, so the base model always
+keeps traffic.
 
-1. **Karpenter provisioning a fresh L4 for scale-up** — under load when running-ratio breaches 0.7 and the warm pod's replica count needs to grow. ~60-90s for spot G6, plus image pull (~60s if not cached on the AMI), plus vLLM model load + KV cache warmup (~15-30s). End-to-end ~2-3 min.
-2. **Per-claim `min=0` override** — demo cold-start scenario, intentional. The first request fails; the client retries after the model is ready. `kubectl scale deploy/xplane-<model> -n llm --replicas=1` pre-warms before the demo.
+### Endpoint picker (opt-in, currently unused)
 
-The `aws s3 sync` init-container path (~30-80s for 8 GB fp8 weights) was eliminated by ADR-0004: vLLM mmaps weights directly off the S3 Files POSIX mount.
+`gateway.endpointPicker.enabled` swaps the route's backend for a Gateway API Inference Extension
+`InferencePool`. The endpoint picker (`ext_proc` on `:9002`) then selects the least-loaded replica by
+KV-cache utilisation and queue depth, instead of round-robin.
 
-## Storage & IAM
+It is **mutually exclusive with canaries** — an `InferencePool` backendRef carries neither `weight` nor
+`modelNameOverride` — and since the only gateway-enabled claim uses canaries, it is **enabled nowhere**. It
+is wired and tested, but no model uses it today.
 
-Weights flow through Amazon S3 Files (POSIX-over-S3) — see [ADR-0004](decisions/0004-amazon-s3-files-for-model-weights-storage.md).
+### Run:ai Model Streamer (opt-in)
 
-```mermaid
-flowchart LR
-    subgraph cluster["☸️ EKS"]
-        infPod["🤖 inference pod<br/>(vLLM mmaps /models/&lt;rev&gt;)"]
-        plJob["📥 preload Job<br/>(hf download → /models/&lt;rev&gt;)"]
-        plSA["xplane-llm-models-preload SA"]
-    end
+`model.streaming.enabled` switches vLLM to `--load-format runai_streamer`, streaming tensors from the same
+PVC concurrently. Measured here it saved **7.3 s on a 62.5 s weight load** — but weight loading is only ~30%
+of a ~180 s cold start (engine init dominates, at ~124 s), so the end-to-end gain is about **4%**. Real, but
+small. It changes no storage, IAM, or image.
 
-    subgraph aws["☁️ AWS"]
-        s3Files["🌐 S3 Files filesystem<br/>access point root: /models<br/>posix uid/gid 1001"]
-        bucket[("📁 xplane-llm-models<br/>S3 bucket")]
-        plRole["IAM Role<br/>xplane-llm-models-preload<br/>(per-claim S3 prefix)"]
-        csiRole["IAM Role<br/>llm-models-fs-csi-driver<br/>(permissions boundary)"]
-        sm["🔒 Secrets Manager<br/>hf_token"]
-    end
+---
 
-    infPod -->|NFS mount| s3Files
-    plJob -->|NFS mount| s3Files
-    s3Files -->|s3 ops via service role| bucket
+## Autoscaling
 
-    plJob --> plSA -.->|Pod Identity Association| plRole
-    plJob -->|HF_TOKEN env| sm
-    plJob -->|hf download| HF["🤗 HuggingFace"]
-```
+![Autoscaling and telemetry](architecture/img/llm-platform-3.png)
 
-- **Mount**: every InferenceService pod (and the preload Job) mounts the shared `llm-models` PVC at `/models` with `subPath: <claim-name>`. The S3 Files access point exposes `/models/<claim>/<revision>/` to the pod as `/models/<revision>/`.
-- **Pod IAM**: serving pods need no IAM — reads happen through the NFS mount and are gated by the S3 Files filesystem policy (only the CSI driver role can mount). The CSI driver role has a permissions boundary (`opentofu/llm-platform/iam.tf`) constraining it to this filesystem's ARN.
-- **Preload IAM**: the writable `xplane-llm-models-preload` EPI is scoped to per-claim S3 prefixes (`models/xplane-<claim>/*`), preventing cross-claim weight overwrites. The 4 claim prefixes are enumerated in `security/base/epis-llm/llm-models-preload.yaml` — append a new entry when adding a claim.
-- **HuggingFace token**: stored once at `/platform/llm/hf_token`, rendered into a `hf-token` Secret in the `llm` namespace via ESO. Claims reference it via `spec.envFromSecrets: [hf-token]` (preload Job consumer; serving pods don't need it post-preload).
+*Source: [`architecture/llm-platform.drawio`](architecture/llm-platform.drawio), page 3.*
 
-The preload Job is **idempotent**: a marker file (`.preload-complete` matching `<repo>@<revision>`) plus a `config.json` + `.incomplete`-cache check short-circuit re-downloads. See `_preloadCommand` in `inference-service/main.k`.
+One KEDA `ScaledObject` per model, always rendered. **Three** Prometheus triggers against VictoriaMetrics,
+OR-combined — any one at or above its threshold drives a scale-up.
 
-## Observability & Evaluation
+| # | Signal | Query | Default threshold |
+|---|---|---|---|
+| 1 | batch saturation | `max(vllm:num_requests_running{model_name="X"}) / scalar(vector(<maxNumSeqs>))` | `0.7` |
+| 2 | KV-cache pressure | `max(vllm:gpu_cache_usage_perc{model_name="X"})` | `0.6` |
+| 3 | queue depth | `max(vllm:num_requests_waiting{model_name="X"})` | `8` |
 
-| Layer | Source | Sink | Rendered by |
-|-------|--------|------|-------------|
-| Per-pod metrics | vLLM `/metrics` (Prometheus exposition) | VictoriaMetrics | InferenceService composition (`VMServiceScrape`) |
-| Per-model alerts | `vllm:e2e_request_latency_seconds_bucket`, `vllm:request_failure_total` | `VMRule` (cold-start budget + 5% error rate) | InferenceService composition |
-| Fleet-level alerts | aggregate across claims | [`vmrules/ai.yaml`](../observability/base/victoria-metrics-k8s-stack/vmrules/ai.yaml) | Static manifest |
-| SLO breach alerts (LAGGING — not scale triggers) | `num_requests_waiting`, error budget | [`vmrule-llm-slo.yaml`](../apps/base/ai/llm/vmrule-llm-slo.yaml) | Static manifest |
-| Eval pass-rate | Promptfoo `--output json` → node parser → Prometheus text | VictoriaMetrics push (`/api/v1/import/prometheus`) | [`tooling/base/promptfoo/cronjob.yaml`](../tooling/base/promptfoo/cronjob.yaml) |
-| Logs | container stdout (JSON) | VictoriaLogs | container runtime |
-| Grafana dashboards | 23-panel "LLM Platform" + Promptfoo + KEDA | Grafana | [`apps/base/ai/llm/grafana-dashboard.yaml`](../apps/base/ai/llm/grafana-dashboard.yaml) |
+All three are **leading** signals: they fire *before* the batch saturates, *before* the cache evicts,
+*before* the queue builds. `max()` rather than an average is deliberate — it tracks the hottest replica
+instead of a fleet mean that would hide it.
 
-The Promptfoo CronJob runs nightly at 02:00 Europe/Paris (CL-4 rec A)
-against the AI Gateway directly (Bearer-token auth), emitting:
+Defaults: `minReplicas: 1`, `maxReplicas: 3`, `pollingInterval: 15s`, `cooldownPeriod: 300s`.
 
-- `promptfoo_test_pass_rate{category}` — per-category pass rate (gauge)
-- `promptfoo_test_total{category}` / `promptfoo_test_failed{category}` — raw counts
-- `promptfoo_run_duration_seconds`, `promptfoo_run_timestamp_seconds` — pipeline health
+The Deployment **never sets `.spec.replicas`**. KEDA owns it exclusively; writing it in the composition would
+race with KEDA on every reconcile. The update strategy is `Recreate`, because a rolling surge would block
+waiting for a GPU that does not exist.
 
-The fleet `VMRule` fires `PromptfooRegression` if any category drops below 0.85 for 1h, and `PromptfooStale` if no push has been received for >36h.
+> **A trap that silently costs you the entire feature.** KEDA's operator and its metrics-apiserver talk gRPC
+> on `:9666`. Under Cilium default-deny, a missing allow on that hop drops the gRPC **silently**: every HPA
+> reports `FailedGetExternalMetric` and no `ScaledObject` can ever become Ready — while nothing else looks
+> broken. The allow lives in `infrastructure/base/keda/network-policy.yaml`.
+
+`minReplicas: 0` is permitted but gives up the queueing layer: the first request after a scale-to-zero fails,
+and the client must retry.
+
+---
+
+## Observability
+
+Two metric families, two dashboards. They answer different questions.
+
+**Engine metrics** — `vllm:*`, scraped from each pod's `:8000/metrics` by a `VMServiceScrape` and labelled by
+`model_name`. These drive autoscaling and the fleet dashboard: `num_requests_running`, `num_requests_waiting`,
+`gpu_cache_usage_perc`, `time_to_first_token_seconds`, `e2e_request_latency_seconds`,
+`gpu_prefix_cache_hits_total`, and friends.
+
+**Gateway metrics** — `gen_ai_*` (OpenTelemetry semantic conventions), emitted by the AI Gateway extproc
+sidecar and scraped from `:1064` by a **`VMPodScrape`** — a pod scrape, not a service scrape, because the
+admin port is not Service-fronted.
+
+Two labels do the heavy lifting here, and confusing them will mislead you:
+
+| Label | Meaning |
+|---|---|
+| `gen_ai_original_model` | what the client **asked for** |
+| `gen_ai_request_model` | what was **actually served** — post-`modelNameOverride`, so the adapter on a canary slice |
+
+That distinction is what makes canary attribution possible: token spend and error rate can be split
+base-vs-canary from the gateway alone, without instrumenting the engine.
+
+Note that `gen_ai_client_token_usage_*` carries **no unit suffix** — "token" is already a name token in the
+semconv, so there is no trailing `_tokens`.
+
+**Dashboards** (Grafana folder `llm`):
+- *LLM Platform — Self-hosted vLLM Fleet* — scale, queue, throughput, latency, cache.
+- *AI Gateway — GenAI telemetry* — per-model token spend, canary-vs-base attribution, gateway TTFT/TPOT.
+
+**Alerts** (`VMRule`) are **lagging** signals, deliberately *not* scale triggers: per-claim cold-start TTFT
+p95 > 90 s and abort rate > 5%; fleet-wide sustained queue, TTFT breach, gateway error rate, and canary
+error/latency regression.
+
+Distributed tracing (OTLP) is **not enabled** — the extproc env block exists but is commented out.
+
+---
 
 ## Security posture
 
-Constitution-aligned:
+- **Zero trust by default.** Every workload carries a default-deny `CiliumNetworkPolicy`. The serving pod's
+  egress is kube-dns only. Only the bounded preload Job is granted `world:443`.
+- **No credentials in Git.** API keys and the HuggingFace token come from AWS Secrets Manager through
+  External Secrets.
+- **Gateway auth.** `SecurityPolicy.apiKeyAuth` on the Gateway; the `Authorization` header is sanitized before
+  the request reaches vLLM.
+- **Restricted PSS.** Non-root, read-only root filesystem, no privilege escalation, all capabilities dropped,
+  `seccompProfile: RuntimeDefault`. Where an upstream chart cannot express this (the endpoint picker), a Flux
+  `postRenderers` kustomize patch injects it.
+- **No IAM on the serving pod.** Weights arrive over the CSI mount, so the serving ServiceAccount has no role
+  bound to it at all. Only the preload Job carries an EKS Pod Identity.
+- **Private ingress.** Reachable only from the tailnet. There is no public listener.
 
-- **Default-deny CiliumNetworkPolicy** on every model pod (rendered by the composition). Egress on the serving pod: DNS only (no S3 — weights via CSI mount; no AWS API — no IAM binding). Egress on the preload Job: DNS, HuggingFace API, AWS API (EKS Pod Identity Agent on `host:80`).
-- **EKS Pod Identity** for AWS access (ADR-0002). No long-lived credentials in pods.
-- **Default-deny CiliumNetworkPolicy** on the SR, AI Gateway, KEDA, OpenWebUI, and Promptfoo.
-- **API-key authentication** at the Envoy AI Gateway via `SecurityPolicy.apiKeyAuth` — Bearer header, ForwardClientIDHeader for per-tenant audit, sanitize=true so vLLM never sees client API keys.
-- **All Secrets** flow through External Secrets Operator backed by AWS Secrets Manager.
-- **Container security context** on every pod: `runAsNonRoot`, `readOnlyRootFilesystem`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`.
-- **SR built-in chart plugins** handle the input path: `prompt_guard` (jailbreak detection), `classifier.pii_model` (PII redaction), `semantic_cache`.
-- **LlamaGuard post-filter** (CL-2 rec A) — *deferred*. The upstream chart has no first-class output-side guardrail hook; LlamaGuard is provisioned in the fleet (specialty `guardrail`) and reachable via direct dispatch, so output filtering can be wired later as an application-layer middleware or a custom `decisions[].plugins[]` chain.
+---
+
+## GPU foundation and storage
+
+**GPUs.** Karpenter NodePool `gpu-l4`: `g6` family, single-GPU instances, spot-first, Bottlerocket NVIDIA AMI,
+taint `nvidia.com/gpu=true:NoSchedule`, and `limits.nvidia.com/gpu: "4"`. Pods opt in with
+`runtimeClassName: nvidia` plus a matching toleration.
+
+There is **no NVIDIA device plugin DaemonSet**, and none is needed: the Bottlerocket NVIDIA variant advertises
+`nvidia.com/gpu` through the kubelet natively.
+
+**Weights.** An Amazon S3 Files filesystem (POSIX over S3) is mounted RWX at `/models` by both the preload Job
+and the serving pod, each with `subPath: <claim-name>`. One persistent filesystem — no `aws s3 sync`, no init
+container — and weights survive pod churn, so a scale-up reads from a warm mount instead of re-downloading.
+See [ADR-0004](decisions/0004-amazon-s3-files-for-model-weights-storage.md).
+
+---
 
 ## Adding a new model
 
-1. **Reserve an API-key prefix in AWS Secrets Manager** if the new model needs a distinct client identity (otherwise reuse an existing key).
-2. **Drop a claim into `apps/base/ai/llm/<model-slug>.yaml`**:
+1. Add an `InferenceService` claim under `apps/base/ai/llm/` and list it in that directory's
+   `kustomization.yaml`.
+2. Set `model.repository`, and pin `model.revision` to a commit SHA (not `main`).
+3. **Set `model.preload.enabled: true`.** Without it the pod has no way to fetch weights and will never start.
+4. Size the GPU: `gpu.count`, `model.quantization`, `model.contextWindow`, `model.maxNumSeqs`. Note that
+   `maxNumSeqs` is also the denominator of the batch-saturation scale trigger.
+5. Expose it with `gateway.enabled: true`. The composition renders the `Backend`, `AIServiceBackend` and
+   `AIGatewayRoute` for you — **do not** hand-edit `ai-gateway-routes/route.yaml` for a gateway-enabled claim.
+6. To make `model: MoM` route to it, add a decision rule to the Semantic Router config in
+   `infrastructure/base/vllm-semantic-router/helmrelease.yaml`. A model in the fleet but in no decision rule is
+   reachable only by name.
+7. Mind the budget: the NodePool caps the fleet at 4 GPUs, and every `min=1` model holds one.
 
-   ```yaml
-   apiVersion: cloud.ogenki.io/v1alpha1
-   kind: InferenceService
-   metadata:
-     name: xplane-<model-slug>
-     namespace: llm
-   spec:
-     model:
-       repository: <hf-org>/<hf-repo>
-       revision: <commit-sha>      # pin for reproducible preload
-       quantization: fp8
-       contextWindow: 16384
-       maxNumSeqs: 32              # vLLM batch cap; running-ratio denominator
-       preload:
-         enabled: true
-     gpu:
-       count: 1
-     routing:
-       tier: small | medium | large
-       specialty: general | code | math | guardrail | multilingual
-     scaling:
-       minReplicas: 1              # SPEC-001 default
-       maxReplicas: 2
-     envFromSecrets:
-       - hf-token
-   ```
+---
 
-3. **Wire into the kustomization** — add the file to [`apps/base/ai/llm/kustomization.yaml`](../apps/base/ai/llm/kustomization.yaml).
-4. **Append the claim's S3 prefix** to the per-claim list in [`security/base/epis-llm/llm-models-preload.yaml`](../security/base/epis-llm/llm-models-preload.yaml) — both `ListBucketScopedToClaims` and `ReadObjects` / `WriteObjects` need the new prefix.
-5. **Add a `Backend` + `AIServiceBackend` + AIGatewayRoute rule** in [`apps/base/ai/llm/ai-gateway-routes/route.yaml`](../apps/base/ai/llm/ai-gateway-routes/route.yaml).
-6. **Register with the Semantic Router** (only if you want it in the `MoM` cascade — direct-dispatch claims don't need this) — add an entry to the `models:` list in [`infrastructure/base/vllm-semantic-router/helmrelease.yaml`](../infrastructure/base/vllm-semantic-router/helmrelease.yaml).
-7. **Commit and let Flux reconcile.** The InferenceService composition renders the workload + KEDA + CNP + observability; the preload Job runs once to populate weights.
+## Known gaps
+
+An honest list. None of these are hidden behind a green checkmark.
+
+- **LlamaGuard-3-1B holds a GPU and serves no automatic traffic.** It runs at `min=1` but appears in no
+  Semantic Router decision rule, and there is no `guardrail` category. Jailbreak filtering is done by the
+  router's own in-pod `prompt_guard`, which blocks rather than routes. It occupies one of the four GPUs in the
+  cap while being reachable only by explicit dispatch. Either wire it into a decision rule, or drop it.
+- **Gateway routing is half-migrated.** `xplane-qwen-coder` is composition-owned; the other three still live in
+  `apps/base/ai/llm/ai-gateway-routes/route.yaml`. That file disappears once they migrate.
+- **The endpoint picker is inert.** Implemented, tested, and enabled on zero claims — it is mutually exclusive
+  with canaries, and the only gateway-enabled claim uses canaries. Its dashboard row is permanently empty.
+- **The weights PV `volumeHandle` is hardcoded** in `apps/base/ai/llm/models-pvc.yaml` and must be updated by
+  hand after every fresh `tofu apply` of the LLM stack. It is immutable once created. Closing that loop through
+  Secrets Manager + ESO is open work.
+- **No distributed tracing.** OTLP export from the AI Gateway is written but commented out, pending
+  verification against VictoriaTraces.
+- **`crossplane render` validates the published module, not your change.** The composition pulls its KCL module
+  from OCI, so a local render exercises the *published* tag rather than the working tree — and CI does not run
+  the render at all (it runs `kcl fmt`, `kcl test`, and `kcl run` against the local module). Treat a green local
+  render as evidence about the last release, not about your diff.
+
+---
 
 ## Reference
 
-- [`docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md`](specs/0001-llm-platform-prometheus-autoscaling/spec.md) — autoscaling redesign (the change behind every `min=1` claim and the `ScaledObject` triggers)
-- [`docs/decisions/0003-vllm-production-stack-over-kserve.md`](decisions/0003-vllm-production-stack-over-kserve.md) — vLLM PS over KServe + llm-d
-- [`docs/decisions/0004-amazon-s3-files-for-model-weights-storage.md`](decisions/0004-amazon-s3-files-for-model-weights-storage.md) — model-weights mount via S3 Files
-- [`docs/architecture/README.md`](architecture/README.md) — request flow + key resources (textual companion to the drawio diagram)
-- [`docs/coding-clients.md`](coding-clients.md) — OpenCode / Continue / OpenWebUI client configuration (auth, smoke tests, troubleshooting)
-- [`infrastructure/base/crossplane/configuration/kcl/inference-service/README.md`](../infrastructure/base/crossplane/configuration/kcl/inference-service/README.md) — composition API + examples
-- [vLLM Production Stack](https://github.com/vllm-project/production-stack)
-- [vLLM Semantic Router (Iris)](https://vllm.ai/blog/vllm-sr-iris)
+**Diagrams** — [`docs/architecture/llm-platform.drawio`](architecture/llm-platform.drawio), 3 pages.
 
-## Open work (post-merge / blocked)
+**Specs**
+- [SPEC-001 — KEDA autoscaling on leading vLLM signals](specs/0001-llm-platform-prometheus-autoscaling/spec.md)
+- [SPEC-002 — composition-owned gateway routing + LoRA canaries](specs/002-composition-owned-gateway-routing/spec.md)
+- [SPEC-003 — `engineArgs` escape hatch](specs/003-inferenceservice-spec-engineargs-escape/spec.md)
+- [SPEC-004 — per-InferenceService InferencePool + endpoint picker](specs/004-per-inferenceservice-inferencepool-endpoint/spec.md)
+- [SPEC-005 — vLLM cold start / Run:ai Model Streamer](specs/005-vllm-cold-start-run/spec.md)
+- [SPEC-006 — GenAI observability for Envoy AI Gateway](specs/006-genai-observability-envoy-gateway/spec.md)
 
-| Task | Blocker | Trigger to unblock |
-|------|---------|--------------------|
-| T020 — `aws iam simulate-principal-policy` against the live EPI roles | Needs cluster + AWS access | After cluster apply (post-merge) |
-| T040–T041 — Promptfoo regression-injection test + cost panel cross-check | None — engineering work | When the eval suite needs strengthening |
-| Drop the vLLM Production Stack HelmRelease (currently a no-op) | Architecture decision (ADR-0003 referenced it but the front-line router is Iris alone) | Follow-up PR after first deploy validates the architecture |
-| Shared `kcl/_lib/` module across compositions | Touches App composition too | When the App composition gets its next breaking change |
-| LlamaGuard post-filter wiring (CL-2 rec A) | No first-class output hook in upstream chart | Upstream feature, custom `decisions[].plugins[]` chain, or app-layer middleware |
-| Per-claim S3 read EPIs → one shared role | EPI XRD multi-SA binding | EPI XRD enhancement |
-| Per-tenant API keys for human users | Currently the `openwebui_apikey` is the de-facto shared key | Onboard per-user keys via SM JSON when team scale warrants it |
-| vLLM image pre-bake into GPU AMI | Cold-start optimization target if KEDA scale-up consistently times out the SLO | After SPEC-001 validation in production traffic patterns |
-| Pure cascade routing (always-tiny-first, escalate on confidence drop) | No `cascade.confidenceThreshold` hook in upstream chart | Custom `decisions[].plugins[]` chain |
+**Decisions**
+- [ADR-0003 — vLLM Production Stack over KServe + llm-d](decisions/0003-vllm-production-stack-over-kserve.md)
+- [ADR-0004 — Amazon S3 Files for model-weights storage](decisions/0004-amazon-s3-files-for-model-weights-storage.md)
+
+**Operations**
+- [Composition API reference](../infrastructure/base/crossplane/configuration/kcl/inference-service/README.md) — every field, default and CEL rule
+- [Enable and teardown](../clusters/mycluster-0-llm-platform/README.md)
+- [Coding clients](coding-clients.md) — OpenCode, Continue, OpenWebUI

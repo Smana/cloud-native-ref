@@ -2,6 +2,10 @@ kcl_options:
   - key: params
     value:
       ocds:
+        # SPEC-002 FR-002 latch fixture: the Deployment is deliberately NOT
+        # Available while the AIGatewayRoute is already present in ocds below.
+        # This exercises the latch end-to-end — the route must still render in
+        # `items` because it was already observed (never withdrawn on a blip).
         xplane-qwen3-8b-deployment:
           Resource:
             apiVersion: apps/v1
@@ -12,11 +16,28 @@ kcl_options:
             status:
               conditions:
                 - type: Available
-                  status: "True"
-                  reason: MinimumReplicasAvailable
-              availableReplicas: 1
-              readyReplicas: 1
+                  status: "False"
+                  reason: MinimumReplicasUnavailable
+              availableReplicas: 0
+              readyReplicas: 0
               replicas: 1
+        # AIGatewayRoute already reconciled (Accepted=True): drives both the
+        # latch (route stays rendered though the Deployment is down) and the
+        # krm.kcl.dev/ready annotation on the rendered route. Keyed under the
+        # real composition-resource-name so a suffix drift breaks the wiring
+        # test (test_gateway_route_latch_integration).
+        xplane-qwen3-8b-gateway-airoute:
+          Resource:
+            apiVersion: aigateway.envoyproxy.io/v1alpha1
+            kind: AIGatewayRoute
+            metadata:
+              name: xplane-qwen3-8b
+              namespace: llm
+            status:
+              conditions:
+                - type: Accepted
+                  status: "True"
+                  reason: Accepted
         xplane-qwen3-8b-service:
           Resource:
             apiVersion: v1
@@ -65,6 +86,15 @@ kcl_options:
           clusterName: "mycluster-0"
           region: "eu-west-3"
           environment: "production"
+      # Desired composite — function-kcl exposes this so the composition can
+      # patch XR status (SPEC-002 status.modelEndpoint). Crossplane supplies it
+      # at runtime; here it is a minimal stand-in for local `kcl run`/`kcl test`.
+      dxr:
+        apiVersion: cloud.ogenki.io/v1alpha1
+        kind: InferenceService
+        metadata:
+          name: "xplane-qwen3-8b"
+          namespace: "llm"
       oxr:
         metadata:
           name: "xplane-qwen3-8b"
@@ -77,6 +107,10 @@ kcl_options:
             contextWindow: 32768
             preload:
               enabled: true
+          # SPEC-003 escape hatch — verbatim vLLM flags appended after managed args (see README.md "Engine args").
+          engineArgs:
+            - "--kv-cache-dtype=fp8"
+            - "--swap-space=4"
           gpu:
             count: 1
             minVRAM: "16Gi"
@@ -99,6 +133,25 @@ kcl_options:
             parentGateway: "platform-tailscale-general"
             parentGatewayNamespace: "infrastructure"
             hostname: "qwen3"
+          # SPEC-002: composition-owned AI Gateway routing with weighted LoRA
+          # canaries. 10% + 15% of base-model traffic is rewritten to the two
+          # adapters (verbatim modelNameOverride), leaving the base model 75%;
+          # explicit requests for either adapter name stay pinned 100% on the
+          # base pod. Adapter names are distinct and the weights sum to <= 99.
+          # SPEC-004: gateway.endpointPicker.enabled is DELIBERATELY absent
+          # here — it is XRD-CEL mutually exclusive with the canaries[] below
+          # (an InferencePool backendRef supports neither weight nor
+          # modelNameOverride). The endpointPicker render path is exercised by
+          # main_test.k against the module's pure builders (see the SPEC-004
+          # test block: single-fixture problem) and by
+          # examples/inferenceservice-endpointpicker.yaml under crossplane render.
+          gateway:
+            enabled: true
+            canaries:
+              - adapter: xplane-qwen3-8b-adapter-a
+                weightPercent: 10
+              - adapter: xplane-qwen3-8b-adapter-b
+                weightPercent: 15
           externalSecrets:
             - name: hf-token
               remoteRef: /platform/llm/hf_token
@@ -113,10 +166,21 @@ kcl_options:
             limits:
               cpu: "8"
               memory: "32Gi"
+          # Adapter names are fully-qualified (claim-name-prefixed by
+          # convention, as on the real claims — e.g. xplane-qwen-coder-sql-dpo).
+          # vLLM serves each under this name verbatim; the AI Gateway pin rules
+          # and canary modelNameOverride use it as-is (no extra prefixing).
+          # adapter-c is deliberately NOT referenced by gateway.canaries[] —
+          # it exercises the non-canaried branch of servedModels (kind=adapter
+          # with NO canaryWeightPercent key) and the `else {}` spread arm in
+          # main.k's _servedModels comprehension. Keep it uncanaried.
           loraAdapters:
-            - name: test-adapter-a
+            - name: xplane-qwen3-8b-adapter-a
               repository: org/test-adapter-a
               revision: main
-            - name: test-adapter-b
+            - name: xplane-qwen3-8b-adapter-b
               repository: org/test-adapter-b
               revision: abc1234
+            - name: xplane-qwen3-8b-adapter-c
+              repository: org/test-adapter-c
+              revision: def5678

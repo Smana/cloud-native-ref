@@ -14,3 +14,4 @@ data:
   vpcId: "vpc-0"
   CIDRBlock: "10.0.0.0/16"
   privateSubnetIds: "subnet-0,subnet-1,subnet-2"
+  privateDomainName: "priv.cloud.ogenki.io"

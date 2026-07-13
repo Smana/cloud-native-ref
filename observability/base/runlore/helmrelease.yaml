@@ -52,10 +52,12 @@ spec:
     workloadKind: StatefulSet
     replicaCount: 2
     image:
-      # Pinned to the v0.9.0 release image (multi-arch, immutable) — switched off
-      # the rolling :main tag now that release-please cut v0.9.0. Immutable tag, so
-      # the default IfNotPresent pull policy is correct (no forced re-pull needed).
-      tag: "v0.9.0"
+      # NO leading "v". GoReleaser (Smana/runlore release-binaries.yml) publishes the
+      # release image with `{{ .Version }}`, which renders 0.9.0 — so `v0.9.0` 404s
+      # and the StatefulSet lands in ImagePullBackOff. This is the signed, multi-arch
+      # (amd64+arm64), SBOM-attested release image; the rolling `:main` tag from
+      # build-image.yml is a single-arch validation build and must not be used here.
+      tag: "0.9.0"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true

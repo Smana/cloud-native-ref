@@ -15,7 +15,7 @@ the LLM-platform resources — are created on a fresh cluster.
 | `runtimeclass-nvidia` | `infrastructure/base/runtimeclass-nvidia` | RuntimeClass `nvidia` (Bottlerocket NVIDIA AMI advertises GPU natively — no DaemonSet) |
 | `llm-platform-gpu-nodepools` | `infrastructure/base/karpenter-nodepools-gpu` | Karpenter `gpu-l4` NodePool + EC2NodeClass |
 | `envoy-gateway` | `infrastructure/base/envoy-gateway` | Envoy Gateway controller (provides the GatewayClass `envoy-ai-gateway` consumes) |
-| `envoy-ai-gateway` | `infrastructure/base/envoy-ai-gateway` | Envoy AI Gateway: AIGatewayRoute → AIServiceBackend → per-model `Backend(FQDN of vLLM Service)` direct (no proxy hop, v0.5.0+) |
+| `envoy-ai-gateway` | `infrastructure/base/envoy-ai-gateway` | Envoy AI Gateway `1.0.0`: AIGatewayRoute → AIServiceBackend → per-model `Backend` (FQDN of the vLLM Service), direct — no proxy hop. Also carries the `EnvoyPatchPolicy` that inserts the Semantic Router ext_proc filter |
 | `llm-platform-apps` | `apps/llm` | InferenceService claims + OpenWebUI + AIGatewayRoute |
 | `llm-platform-security-epi` | `security/base/epis-llm` | `xplane-llm-models-preload` writable EPI |
 | `llm-platform-promptfoo` | `tooling/base/promptfoo` | Nightly Promptfoo eval CronJob — gated under the LLM umbrella so it doesn't fire when SR is suspended |
@@ -145,26 +145,37 @@ S3 bucket data is what they re-mount.
 | `xplane-qwen-coder-fim` | `Qwen2.5-Coder-1.5B` (Base) | FIM inline tab-complete (Continue extension). | min=1 max=1 (always warm) |
 | `xplane-qwen-coder` | `Qwen2.5-Coder-7B-Instruct` | Code chat + agentic edits (OpenCode, Continue chat, OpenWebUI `code` route). Function calling. | min=1 max=2 |
 | `xplane-qwen3-8b` | `Qwen3-8B` | OpenWebUI default chat + multilingual + 32k context + math/reasoning + general cascade fallback. | min=1 max=2 |
-| `xplane-llamaguard3-1b` | `Llama-Guard-3-1B` | Input jailbreak guardrail (SR `prompt_guard`, not category-routed). | min=1 max=3 |
+| `xplane-llamaguard3-1b` | `Llama-Guard-3-1B` | **Idle.** In no cascade decision rule and reachable only by name — see the warning below. | min=1 max=3 |
 
-> **All models default `min=1`.** The legacy KEDA HTTP add-on (proxy in
-> the data path; request-count trigger) was replaced in v0.5.0 with a
-> KEDA `ScaledObject` driven by leading vLLM saturation metrics —
-> `running / max-num-seqs` ratio + `gpu_cache_usage_perc`. Scaling
-> reacts ahead of saturation rather than after the queue has formed.
-> See [SPEC-001](../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md)
-> for the design rationale. Production keeps `min=1`; demo `min=0`
-> overrides are still allowed per-claim but accept the first-request
-> failure mode (no queueing layer; client must retry).
+> ⚠️ **LlamaGuard is not wired to anything.** It appears in no Semantic Router
+> decision rule, and there is no `guardrail` category, so `model: MoM` will never
+> select it. Input jailbreak filtering is done by the router's own in-pod
+> `prompt_guard` BERT classifier, which **blocks** rather than routes. LlamaGuard
+> therefore holds one of the four GPUs in the NodePool cap while serving no
+> automatic traffic. Tracked in [docs/ai.md → Known gaps](../../docs/ai.md#known-gaps).
+
+> **All models default `min=1`.** The legacy KEDA HTTP add-on (proxy in the data
+> path; request-count trigger) was replaced by a KEDA `ScaledObject` driven by
+> **three** leading vLLM saturation triggers, OR-combined: the
+> `running / max-num-seqs` ratio (0.7), `gpu_cache_usage_perc` (0.6), and
+> `num_requests_waiting` (8). Scaling reacts ahead of saturation rather than after
+> the queue has formed. See
+> [SPEC-001](../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md).
+> Production keeps `min=1`; demo `min=0` overrides are still allowed per-claim but
+> accept the first-request failure mode (no queueing layer; the client must retry).
 
 Routing modes:
 
-- **Client-deterministic** (OpenCode CLI, Continue VSCode chat / autocomplete) — the client picks `model: xplane-*` directly, bypassing the SR classifier.
-- **SR-cascade** (OpenWebUI default — clients send `model: MoM`; SR's `MoM` virtual model classifies and rewrites the body's `model:` field). Decisions:
-  - `code` → `xplane-qwen-coder` (with optional CoT toggle for reasoning prompts)
-  - `math`/`physics` → `xplane-qwen3-8b` with `use_reasoning: true`
-  - `multilingual` → `xplane-qwen3-8b`
-  - everything else → `xplane-qwen3-8b`
+- **Client-deterministic** (OpenCode CLI, Continue chat / autocomplete) — the client names
+  `model: xplane-*`. The Semantic Router's ext_proc filter still sees the request, but only
+  rewrites `body.model` for `MoM`/`auto`, so an explicit model is honoured untouched.
+- **SR-cascade** (OpenWebUI default — clients send `model: MoM`; the router classifies the
+  prompt and rewrites `body.model`). Decisions, highest priority first:
+  - `code_with_reasoning` (110) → `xplane-qwen-coder` with `use_reasoning: true`
+  - `code_decision` (100) → `xplane-qwen-coder`
+  - `reasoning_decision` (90, math / physics) → `xplane-qwen3-8b` with `use_reasoning: true`
+  - `multilingual_decision` (80) → `xplane-qwen3-8b`
+  - `general_decision` (50) → `xplane-qwen3-8b`
 
 ## Invoking a LoRA adapter
 
@@ -175,8 +186,16 @@ Routing modes:
 | `xplane-qwen-coder-sql-dpo` | [`jk200201/qwen2.5-coder-7b-sql-dpo`](https://huggingface.co/jk200201/qwen2.5-coder-7b-sql-dpo) | Text-to-SQL (DPO over Spider V1; bare query output, no prose) |
 | `xplane-qwen-coder-securecode` | [`scthornton/qwen2.5-coder-7b-securecode`](https://huggingface.co/scthornton/qwen2.5-coder-7b-securecode) | Security-aware code generation (OWASP framing, vulnerable / secure side-by-side) |
 
+> ⚠️ **`xplane-qwen-coder` runs a 10% canary.** `gateway.canaries[]` on the claim shifts
+> 10% of base-model traffic onto `xplane-qwen-coder-sql-dpo` via the AI Gateway's
+> `modelNameOverride`. So roughly one in ten of the first curl below is **not** served by
+> the base model. Naming an adapter explicitly always gets 100% of that adapter — the
+> composition renders a pin rule per adapter, so a canary never dilutes an explicit
+> request. Check `gen_ai_request_model` (served) against `gen_ai_original_model` (asked)
+> on the gateway dashboard to see the split.
+
 ```bash
-# Base model (general code chat)
+# Base model — but ~10% of these are served by the sql-dpo canary (see above)
 curl -s https://llm.priv.cloud.ogenki.io/v1/chat/completions \
   -H "Authorization: Bearer $LLM_API_KEY" \
   -H "Content-Type: application/json" \
@@ -195,6 +214,6 @@ curl -s https://llm.priv.cloud.ogenki.io/v1/chat/completions \
   -d '{"model": "xplane-qwen-coder-securecode", "messages": [{"role": "user", "content": "How do I implement JWT auth with refresh tokens in Flask?"}]}'
 ```
 
-**To add a new adapter**: edit `loraAdapters:` in `apps/base/ai/llm/qwen-coder.yaml`, append a matching `matchRule` to `apps/base/ai/llm/ai-gateway-routes/route.yaml`, and let Flux reconcile. The preload Job re-runs only when the claim spec changes — first reconcile pulls the new adapter from HF into the shared S3 Files PVC, vLLM picks it up on next pod restart.
+**To add a new adapter**: edit `loraAdapters:` in `apps/base/ai/llm/qwen-coder.yaml` and let Flux reconcile. That is the whole change — `xplane-qwen-coder` is `gateway.enabled`, so the composition renders the `AIServiceBackend` and the per-adapter pin rule for you. Do **not** hand-edit `ai-gateway-routes/route.yaml`; qwen-coder's entries were removed from it, and editing that file for this claim is a no-op. The preload Job re-runs when the claim spec changes, pulling the adapter from HF into the shared S3 Files PVC; vLLM picks it up on the next pod restart.
 
-**Cost / scaling impact**: both adapters loaded simultaneously add ~5–10% inference overhead per request (vLLM `--enable-lora`) and ~30s to cold preload. The base pod is `min=1, max=2` (always warm), so adapter requests don't pay any cold-start cost.
+**Cost / scaling impact**: the adapters share the base pod's single L4 — that is the point of LoRA. The base pod is `min=1, max=2` (always warm), so adapter requests pay no cold-start cost. Per-request inference overhead from `--enable-lora` and the added preload time have not been measured on this platform; earlier figures quoted here were unsourced and have been removed rather than repeated.

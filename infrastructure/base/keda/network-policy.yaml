@@ -34,6 +34,23 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
+    # gRPC Metrics Service (:9666) — the metrics-apiserver proxies EVERY scaler
+    # query through the operator over this hop ("Starting Metrics Service gRPC
+    # Server {address: :9666}"). Without this allow it is a silent default-deny
+    # DROP, the external-metrics API times out
+    # ("unable to fetch metrics from external metrics API ... s0-prometheus"),
+    # every HPA reports FailedGetExternalMetric, and NO ScaledObject can ever go
+    # Ready — i.e. KEDA autoscaling (SPEC-001) is entirely inert. Nothing else
+    # surfaces the failure: the operator logs look healthy, the pod is 1/1, and
+    # the APIService reports Available=True.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: keda
+            app.kubernetes.io/name: keda-operator-metrics-apiserver
+      toPorts:
+        - ports:
+            - port: "9666"
+              protocol: TCP
   egress:
     - toEndpoints:
         - matchLabels:
@@ -115,6 +132,16 @@ spec:
       toPorts:
         - ports:
             - port: "443"
+              protocol: TCP
+    # Egress half of the :9666 gRPC Metrics Service hop — see the keda-operator
+    # ingress rule above. Both halves are required.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: keda
+            app.kubernetes.io/name: keda-operator
+      toPorts:
+        - ports:
+            - port: "9666"
               protocol: TCP
     # Prometheus trigger queries hit vmsingle on its single ingest/query
     # port 8428 (chart default — verify with

@@ -1,0 +1,79 @@
+# EnvoyPatchPolicy — inserts the vLLM Semantic Router into the AI Gateway's HTTP
+# filter chain so `model: MoM` gets classified and rewritten. Without it, MoM
+# returns 404: routes match concrete model names and nothing rewrites MoM into one.
+#
+# Must be a raw xDS patch, not an EnvoyExtensionPolicy. The router has to run BEFORE
+# the AI Gateway's own extproc, because that extproc derives `x-ai-eg-model` from
+# `body.model` and every AIGatewayRoute rule matches on that header. The router
+# rewrites `body.model` MoM -> a concrete fleet model; the extproc then derives the
+# header from the already-rewritten body and the EXISTING routes match, with no new
+# rules. EnvoyExtensionPolicy can only APPEND filters — too late. Hence index 0.
+#
+# Mirrors upstream vllm-project/semantic-router @ v0.2.0
+# (deploy/kubernetes/ai-gateway/aigw-resources/gwapi-resources.yaml). Requires
+# `extensionApis.enableEnvoyPatchPolicy: true` (already set on this cluster).
+#
+# The listener JSON-patch `name` is `<gateway-namespace>/<gateway-name>/<listener-name>`.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyPatchPolicy
+metadata:
+  name: semantic-router-extproc
+  namespace: envoy-ai-gateway-system
+spec:
+  type: JSONPatch
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: ai-gateway
+  jsonPatches:
+    # 1. Insert the semantic-router ext_proc filter FIRST in the HTTP filter
+    #    chain (index 0), ahead of the AI Gateway's extproc.
+    - type: "type.googleapis.com/envoy.config.listener.v3.Listener"
+      name: envoy-ai-gateway-system/ai-gateway/http
+      operation:
+        op: add
+        path: /default_filter_chain/filters/0/typed_config/http_filters/0
+        value:
+          name: semantic-router-extproc
+          typedConfig:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+            # The router returns a mode override to skip response processing on
+            # requests it does not need to touch.
+            allow_mode_override: true
+            grpcService:
+              envoyGrpc:
+                authority: vllm-semantic-router.llm:50051
+                clusterName: semantic-router
+              timeout: 60s
+            message_timeout: 60s
+            processing_mode:
+              # BUFFERED request body: the router needs the whole prompt to
+              # classify it, and it rewrites `body.model` in place.
+              request_body_mode: BUFFERED
+              request_header_mode: SEND
+              request_trailer_mode: SKIP
+              response_body_mode: BUFFERED
+              response_header_mode: SEND
+              response_trailer_mode: SKIP
+    # 2. Define the upstream cluster the filter above dials. STRICT_DNS on the
+    #    Service FQDN; http2 because ext_proc is gRPC.
+    - type: "type.googleapis.com/envoy.config.cluster.v3.Cluster"
+      name: semantic-router
+      operation:
+        op: add
+        path: ""
+        value:
+          name: semantic-router
+          type: STRICT_DNS
+          connect_timeout: 60s
+          lb_policy: ROUND_ROBIN
+          http2_protocol_options: {}
+          load_assignment:
+            cluster_name: semantic-router
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: vllm-semantic-router.llm.svc.cluster.local
+                          port_value: 50051

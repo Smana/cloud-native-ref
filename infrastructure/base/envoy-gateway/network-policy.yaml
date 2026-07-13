@@ -146,6 +146,22 @@ spec:
         - ports:
             - port: "19001"
               protocol: TCP
+    # GenAI telemetry scrape from VictoriaMetrics agents (SPEC-006) — the
+    # AI Gateway extproc sidecar injected into every data-plane pod exposes
+    # its `gen_ai.*` OpenTelemetry metrics on the aigw-admin server, TCP 1064
+    # (verified in envoyproxy/ai-gateway v1.0.0 gateway_mutator.go:
+    # `-adminPort 1064`). Under default-deny this scrape is silently DROPPED
+    # without an explicit allow (see .claude/rules/cilium-network-policies.md).
+    # Paired with the VMPodScrape at
+    # infrastructure/base/envoy-ai-gateway/vmscrape.yaml.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports:
+            - port: "1064"
+              protocol: TCP
   egress:
     # kube-dns — DNS L7 inspection mandatory for any toFQDNs to work.
     - toEndpoints:
@@ -170,26 +186,46 @@ spec:
         - ports:
             - port: "18000"
               protocol: TCP
-    # Iris HTTP classifier (vLLM Semantic Router) — called by the
-    # AIGatewayRoute extension for `model: MoM` requests to classify
-    # the prompt and rewrite x-ai-eg-model. Replaces the legacy
-    # ext_proc gRPC :50051 path that was dropped in the
-    # foundation-showcase trim.
+    # vLLM Semantic Router. :50051 is the ext_proc gRPC hop the EnvoyPatchPolicy
+    # dials to rewrite `model: MoM` (see envoy-ai-gateway/envoypatchpolicy-semantic-router.yaml);
+    # without it MoM 404s. :8080 is the router's HTTP classify API — not the MoM path.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: llm
             app.kubernetes.io/name: vllm-semantic-router
       toPorts:
         - ports:
+            - port: "50051"
+              protocol: TCP
             - port: "8080"
               protocol: TCP
-    # vLLM model Services in the llm namespace (HTTP 8000 — vLLM
-    # container port). Reached directly by the AI Gateway data plane
-    # for every model (SPEC-001 direct routing per AIServiceBackend).
+    # vLLM model Services in the llm namespace (HTTP 8000 — vLLM container port).
+    # Reached directly by the AI Gateway data plane for every model (SPEC-001 direct
+    # routing per AIServiceBackend).
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: llm
       toPorts:
         - ports:
             - port: "8000"
+              protocol: TCP
+    # Endpoint Picker ext-proc (SPEC-004). With gateway.endpointPicker.enabled the
+    # AIGatewayRoute base rule targets an InferencePool, and Envoy must call that
+    # pool's EPP over ext_proc to choose a pod — without this allow it is a silent
+    # default-deny DROP and every request through the pool returns HTTP 500.
+    #
+    # Scoped to EPP pods only: they are the only pods carrying the `inferencepool`
+    # label (the chart sets it; see _eppPodSelector in kcl/inference-service/main.k).
+    # Its value is per-claim, hence Exists rather than a fixed match — this keeps
+    # :9002 closed toward vLLM, the semantic router and preload Jobs. The matching
+    # ingress half is rendered by the composition onto each EPP's own CNP.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: llm
+          matchExpressions:
+            - key: inferencepool
+              operator: Exists
+      toPorts:
+        - ports:
+            - port: "9002"
               protocol: TCP

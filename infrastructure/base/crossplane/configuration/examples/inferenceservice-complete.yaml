@@ -19,6 +19,19 @@ spec:
     maxNumSeqs: 32
     preload:
       enabled: true   # CL-3 (rec A) — composition renders one-shot Job
+    # SPEC-005 (phase 1) — opt-in Run:ai Model Streamer. Loads weights with
+    # `--load-format runai_streamer`, reading the SAME preloaded PVC path
+    # (/models/<revision>) concurrently to cut pod-ready → first-token
+    # cold-start. No storage change, no new pod/IAM/S3/PVC/Secret; the
+    # streamer is already bundled in vllm/vllm-openai:v0.8.5. Off by default.
+    streaming:
+      enabled: true
+      concurrency: 16   # optional — --model-loader-extra-config '{"concurrency":16}'
+  # SPEC-003 escape hatch — verbatim vLLM flags appended after composition-managed
+  # args; reserved flags rejected at admission (see kcl/inference-service/README.md "Engine args").
+  engineArgs:
+    - --kv-cache-dtype=fp8
+    - --enforce-eager
   gpu:
     count: 1
     minVRAM: 16Gi
@@ -43,6 +56,26 @@ spec:
     parentGateway: platform-tailscale-general
     parentGatewayNamespace: infrastructure
     hostname: qwen3
+  # LoRA adapter served over the base model (same pod, zero extra GPU).
+  # Downloaded by the preload Job into /models/loras/<name>/ and served by
+  # vLLM under this name verbatim. Adapter names are fully-qualified by
+  # convention (claim-name-prefixed), matching the real fleet claims.
+  loraAdapters:
+    - name: xplane-qwen3-8b-sql-expert
+      repository: org/qwen3-sql-lora
+      revision: main
+  # SPEC-002: composition-owned Envoy AI Gateway routing with weighted LoRA
+  # canaries. The composition renders Backend + AIServiceBackend(s) +
+  # AIGatewayRoute (parentRef ai-gateway/envoy-ai-gateway-system). 15% of
+  # base-model (xplane-qwen3-8b) traffic is rewritten to the adapter
+  # xplane-qwen3-8b-sql-expert (verbatim modelNameOverride); explicit requests
+  # for that adapter name stay pinned 100% on the base pod. The AIGatewayRoute
+  # is latched on Deployment readiness.
+  gateway:
+    enabled: true
+    canaries:
+      - adapter: xplane-qwen3-8b-sql-expert
+        weightPercent: 15
   # Shared S3 Files filesystem (provisioned out-of-band by
   # opentofu/llm-platform/). subPath defaults to the claim name; set
   # explicitly here if a custom directory layout is desired.

@@ -4,10 +4,14 @@
 # the Semantic Router directly. The AIGatewayRoute terminates client
 # traffic and dispatches directly to each model's per-claim Backend
 # (FQDN of the vLLM Service) — direct routing only since SPEC-001
-# removed the KEDA HTTP add-on from the data path. For `model: MoM`
-# requests, the AIGatewayRoute extension consults SR's HTTP classifier
-# first to rewrite `x-ai-eg-model` before the route's header-match
-# resolves.
+# removed the KEDA HTTP add-on from the data path.
+#
+# `model: MoM` is resolved earlier in the filter chain, not by any extension
+# server: the Semantic Router runs as an ext_proc gRPC filter at
+# http_filters[0] (see envoypatchpolicy-semantic-router.yaml) and rewrites
+# `body.model` in place. The AI Gateway's own extproc then derives
+# `x-ai-eg-model` from the rewritten body, so the header-match resolves
+# normally with no MoM-specific rule.
 #
 # **Lives in envoy-gateway-system (not envoy-ai-gateway-system)** so
 # the backendRef can stay in-namespace and avoid a ReferenceGrant.

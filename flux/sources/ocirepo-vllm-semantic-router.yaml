@@ -6,8 +6,13 @@ metadata:
 spec:
   interval: 24h
   url: oci://ghcr.io/vllm-project/charts/semantic-router
-  # Pinned to 0.2.0 — the canonical-v0.3 schema migration (started ~late
-  # April 2026 in nightlies and v0.0.0-latest) breaks our values. Bump
-  # the pin only after migrating config to providers/routing/global.
+  # PINNED — do not bump past 0.2.x without migrating our values first.
+  #
+  # 0.3.0 restructures the values schema (canonical-v0.3: providers/routing/global).
+  # Our HelmRelease still speaks the 0.2 flat schema, so its values stop overriding
+  # the 0.3 component blocks and the chart's own defaults win — including
+  # `pullPolicy: Never`, which means ErrImageNeverPull on any fresh node and a 404
+  # for every `model: MoM` request. Renovate is bounded to <0.3.0 in
+  # .github/renovate.json; a comment alone did not stop it last time (c00892eb).
   ref:
-    tag: "0.3.0"
+    tag: "0.2.0"

@@ -1,0 +1,136 @@
+# Clarifications Log — Composition-owned AI Gateway routing with weighted LoRA canary for InferenceService
+
+**Spec**: [SPEC-002](spec.md)
+
+> **Append-only.** Never rewrite earlier entries. Every entry has a stable ID (`CL-1`, `CL-2`, ...) so `spec.md` and `plan.md` can reference the decision by ID. This is the durable "why did we pick option A?" audit trail.
+
+---
+
+<!-- Template for each entry:
+
+## CL-N — 2026-07-07 — <one-line question>
+
+**Asked by**: <role or user>
+**Context**: <1–3 sentences: why this decision matters; what is constrained>
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | <answer> | <pro> | <con> |
+| B | <answer> | <pro> | <con> |
+| C | <answer> | <pro> | <con> |
+
+**Decision**: <Option letter + answer>
+**Rationale**: <Why — tie back to constitution, existing patterns, or SC-XXX>
+**Decided by**: <who — conversation / PR reviewer / ADR>
+**References**: <links to ADR, similar spec, vendor doc>
+
+-->
+
+---
+
+## CL-1 — 2026-07-07 — What should weighted canary support in v1?
+
+**Asked by**: Spec author (brainstorming session)
+**Context**: A canary between two full model deployments costs a second GPU node while it runs; LoRA adapters already serve from the same pod as their base model at zero extra GPU cost.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | LoRA adapter canary only | Zero GPU cost; smallest useful step; exercises the whole weighted-routing machinery | No full-model rollout story yet |
+| B | Claim-vs-claim canary | Classic rollout semantics | Doubles GPU while running; cross-claim references in the XRD |
+| C | Both | Most general | Largest API surface and test matrix in one branch |
+| D | No canary in v1 | Smallest diff | Ships route ownership without the headline feature |
+
+**Decision**: A — LoRA adapter canary
+**Rationale**: Proves `weight` + `modelNameOverride` end-to-end at zero marginal cost; claim-vs-claim composes on top later without API breakage.
+**Decided by**: User (brainstorming, 2026-07-07)
+**References**: Envoy AI Gateway `AIGatewayRouteRuleBackendRef.modelNameOverride`; existing `loraAdapters` support (composition v0.6.0)
+
+## CL-2 — 2026-07-07 — Is external SaaS fallback in scope?
+
+**Asked by**: Spec author (brainstorming session)
+**Context**: Modelplane's design routes to managed providers (Groq/Together) as fallback endpoints; Envoy AI Gateway supports this natively (`BackendSecurityPolicy`, backendRef `priority`).
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Defer to follow-up | Keeps this branch focused; fallback is additive on composition-owned routes | Hybrid story waits |
+| B | In scope, minimal | Ships the hybrid story now | Drags in API-key secrets, gateway egress CNPs, cost-tracking questions |
+| C | Design-only now | Avoids API churn later | Speculative design |
+
+**Decision**: A — defer
+**Rationale**: Fallback is just another backend type on a route the composition will own after this spec; no API shape needs reserving beyond the already-existing upstream `priority` field.
+**Decided by**: User (brainstorming, 2026-07-07)
+
+## CL-3 — 2026-07-07 — Migration strategy from hand-written route.yaml?
+
+**Asked by**: Spec author (brainstorming session)
+**Context**: `apps/base/ai/llm/ai-gateway-routes/route.yaml` currently defines backends + one fleet `AIGatewayRoute` for all 4 models incl. LoRA-name pin rules. The cluster serves live traffic during migration.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Opt-in flag, migrate one model on this branch | Matches platform opt-in philosophy; cluster keeps serving; small reviewable diff | Fleet route lingers until follow-up |
+| B | Big-bang, delete route.yaml in same PR | Clean end-state immediately | Route replacement under live traffic; large diff |
+| C | Composition renders backends, fleet route stays hand-written | Smallest change | Permanent split-brain |
+
+**Decision**: A — opt-in flag (`gateway.enabled`), migrate `xplane-qwen-coder` (owns the LoRA adapters, proving canary), remove its fleet-route entries in the same commit to avoid duplicate header matches.
+**Decided by**: User (brainstorming, 2026-07-07)
+
+## CL-4 — 2026-07-07 — Per-claim route vs fleet-router XR vs ungated rendering?
+
+**Asked by**: Spec author (brainstorming session)
+**Context**: Modelplane separates `ModelService` (routing) from `ModelDeployment` (serving) as distinct composites and withholds endpoints until replicas are Ready.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Per-claim `AIGatewayRoute`, readiness-gated with latch | Self-contained claim; GC on delete; existing `ocds` idiom; no route flapping | Multiple AIGatewayRoutes on one Gateway (standard, rules merge) |
+| B | Separate fleet-router XRD + extra-resources function | Faithful ModelService split; natural home for cross-claim canary/fallback | Second XRD/composition/OCI module + new function dep — over-machinery for one cluster |
+| C | Per-claim route, no readiness gate | Smaller KCL diff | 404/503 window on brand-new claims |
+
+**Decision**: A — per-claim route rendered by the existing composition; `AIGatewayRoute` withheld until Deployment `Available=True` OR already present in `ocds` (create-time gate, latched thereafter).
+**Rationale**: Expresses the readiness-withheld-endpoint pattern (which Modelplane's parallel design also arrived at) in the composition's existing single-module idiom; the latch prevents route deletion on transient unavailability (Envoy's 503-on-empty-endpoints is the correct signal then).
+**Decided by**: User (brainstorming, 2026-07-07)
+**References**: Modelplane `design/design.md` (ModelService), `compose-model-deployment` endpoint withholding (their issue #102)
+
+## CL-5 — 2026-07-07 — Adapter model names: verbatim `loraAdapters[].name`, never claim-prefixed
+
+**Asked by**: Controller (implementation phase — defect found while migrating the real claim)
+**Context**: Spec/plan/brief originally wrote adapter model names as `<claim>-<adapter>` (concatenated). Reality: `main.k` registers each adapter with vLLM as `--lora-modules <name>=/models/loras/<name>` — the served model name IS `loraAdapters[].name` verbatim — and live claims already use fully-qualified names (`xplane-qwen-coder-sql-dpo`). The concatenated form would render `xplane-qwen-coder-xplane-qwen-coder-sql-dpo` and break both pin rules and canary `modelNameOverride`. Hidden by short adapter names in test fixtures.
+
+**Decision**: Pin-rule match values and canary `modelNameOverride` use `loraAdapters[].name` verbatim. `gateway.canary.adapter` references that same name (CEL already enforces membership). Test fixtures must use realistic fully-qualified adapter names.
+**Rationale**: Matches vLLM's actual served-model registry and the pre-existing fleet-route convention (route.yaml lines 161–176). FR-003/FR-004 amended in place with CL-5 references — factual correction, not a scope change.
+**Decided by**: Controller, verified against main.k:154 + route.yaml
+**References**: `docs/superpowers/specs/2026-05-09-llm-platform-paths-7-8-design.md` (LoRA naming), XRD `loraAdapters[].name` description ("Becomes the model name clients send")
+
+## CL-6 — 2026-07-11 — `gateway.canary` object replaced by `canaries[]` array
+
+**Asked by**: PR reviewer (Modelplane arrays-over-objects forward-compat review, PR #1559)
+**Context**: The initial API shipped `gateway.canary` as a single object (`{adapter, weightPercent}`). Before the first release, review flagged that a single-object field paints future multi-adapter splits into a corner — moving to an array later would be a breaking API change under an already-cut version. Modelplane's own routing design favours arrays over singleton objects for exactly this reason.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Keep `canary` object, add `canaries` later | Smallest diff now | Breaking change post-release; two ways to express one thing |
+| B | Replace with `canaries[]` array now (pre-release) | Forward-compatible; multi-adapter splits become additive; no post-release break | Slightly larger diff on an open branch |
+| C | Keep object, document "one canary only, ever" | No churn | Forecloses a realistic feature (progressive multi-adapter rollout) |
+
+**Decision**: B — `gateway.canary` object replaced by a `canaries[]` array (`maxItems: 4`) before first release. Each entry keeps `{adapter, weightPercent}`. A `sum(weights) <= 99` CEL guard was added so the base model always retains traffic, plus a distinct-adapter-names CEL rule. Multi-adapter splits are now additive: the base-model backendRef weight is `100 − sum(weights)` and each canary renders its own `<claim>-canary-<i>` AIServiceBackend + backendRef.
+**Rationale**: The API is not yet frozen (PR still open, no release cut), so this is a pre-release shape correction, not a break. Arrays-over-objects matches the Modelplane forward-compat review and the repo's own `loraAdapters[]` / `externalSecrets[]` idioms. FR-003/FR-005 amended in place with CL-6 references.
+**Decided by**: User + PR reviewer (2026-07-11)
+**References**: Modelplane routing design (arrays over singleton objects); XRD `loraAdapters[]` / `externalSecrets[]` array conventions; PR #1559
+
+---
+
+## Related
+
+- Constitution: [docs/specs/constitution.md](../constitution.md)
+- ADRs: [docs/decisions/](../../decisions/)

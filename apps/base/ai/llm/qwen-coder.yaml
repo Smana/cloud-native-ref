@@ -40,6 +40,18 @@ spec:
     - name: xplane-qwen-coder-securecode
       repository: scthornton/qwen2.5-coder-7b-securecode
       revision: 5745f9faa14d75f84de606ab234615ed36b656f2  # pragma: allowlist secret
+  # SPEC-002: composition-owned gateway routing. The composition renders
+  # this claim's Backend/AIServiceBackend/AIGatewayRoute (readiness-gated,
+  # latched) — its hand-written entries were removed from
+  # ai-gateway-routes/route.yaml in the same change. The canary sends 10%
+  # of base-model traffic to the sql-dpo LoRA adapter (same pod, zero
+  # extra GPU) via modelNameOverride; explicit adapter-name requests stay
+  # pinned at 100%.
+  gateway:
+    enabled: true
+    canaries:
+      - adapter: xplane-qwen-coder-sql-dpo
+        weightPercent: 10
   gpu:
     count: 1
     minVRAM: 16Gi

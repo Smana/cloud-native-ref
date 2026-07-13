@@ -203,15 +203,15 @@ Security is built-in, not bolted-on:
 
 ## Optional: Self-Hosted LLM Platform (foundation, not replacement)
 
-A reference deployment of self-hosted, open-weights LLM serving on EKS — GitOps-deployed, scale-to-zero by default, with semantic routing + jailbreak guardrails wired across an OSS model fleet.
+A reference deployment of self-hosted, open-weights LLM serving on EKS — GitOps-deployed, always-warm (`min=1` per model), with semantic routing and jailbreak guardrails wired across an OSS model fleet.
 
 - 🧠 **Models**: Qwen2.5-Coder-7B, Qwen3-8B, LlamaGuard 3-1B, Qwen2.5-Coder-1.5B (FIM) — vLLM-served, fp8.
 - 🧩 **LoRA adapters**: `xplane-qwen-coder` (composition v0.6.0+) loads two HF-published adapters (`xplane-qwen-coder-sql-dpo`, `xplane-qwen-coder-securecode`) on the same L4 pod — N specializations, one base, one GPU. See [`clusters/mycluster-0-llm-platform/README.md`](clusters/mycluster-0-llm-platform/README.md#invoking-a-lora-adapter).
 - 🚪 **Gateway**: Envoy AI Gateway with header-match routing; API-key authentication (Envoy Gateway `SecurityPolicy`, keys sourced from AWS Secrets Manager).
-- 🎯 **Routing**: [Semantic Router](https://github.com/vllm-project/semantic-router) (Iris) classifies prompts and dispatches via a cascade (code → coder, math → reasoner, multilingual → general, jailbreak → guardrail).
+- 🎯 **Routing**: [Semantic Router](https://github.com/vllm-project/semantic-router) runs as an Envoy `ext_proc` gRPC filter. On `model: MoM` it classifies the prompt and rewrites it to a concrete model (code → coder, math/physics → reasoner, multilingual/else → general). Jailbreak prompts are **blocked** in-pod by `prompt_guard`, not routed anywhere.
 - 🔌 **Clients**: OpenAI-compatible at `https://llm.priv.cloud.ogenki.io/v1` (Bearer-token auth) — OpenWebUI for chat, OpenCode + Continue for IDE.
 - 💾 **Storage**: model weights on Amazon S3 Files (POSIX over S3), shared across pods.
-- ⚡ **Scaling**: GPU L4 spot NodePool via Karpenter; all 4 models default `min=1` (always warm). KEDA `ScaledObject` with leading vLLM saturation triggers (`running/max-num-seqs` ratio + `gpu_cache_usage_perc`) reacts ahead of queue formation. See [SPEC-001](docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md).
+- ⚡ **Scaling**: GPU L4 spot NodePool via Karpenter; all 4 models default `min=1` (always warm). KEDA `ScaledObject` with three leading vLLM saturation triggers (`running/max-num-seqs` ratio, `gpu_cache_usage_perc`, `num_requests_waiting`) reacts ahead of queue formation. See [SPEC-001](docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md).
 
 **Honest framing**: the models shipped here are mid-tier open-weights — sufficient to demonstrate the architecture and exercise the cascade, **not a drop-in replacement for frontier proprietary coding tools** (Claude Code on Sonnet 4.6 / Opus 4.7, GitHub Copilot, Cursor). The composition (`InferenceService` Crossplane XR) is designed so swapping in any vLLM-compatible model is a one-claim change. As the open-weights ecosystem closes the gap with frontier APIs, the foundation is in place. Upgrade paths in [`docs/llm-platform-future-paths.md`](docs/llm-platform-future-paths.md).
 
