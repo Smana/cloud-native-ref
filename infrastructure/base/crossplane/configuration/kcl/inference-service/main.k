@@ -815,10 +815,27 @@ _metricsIngress = [{
 # endpointPicker is off ⇒ byte-identical serving CNP to SPEC-002. Only appended
 # when the composition's default-deny ingress is in force (a user
 # networkPolicies.ingress override owns its own peer list).
+# The EPP POD is selected by the chart's own label, NOT app.kubernetes.io/name.
+# The inferencepool chart puts app.kubernetes.io/* on the SERVICE but gives the
+# POD only `inferencepool: <release>-epp` (plus
+# inference.networking.k8s.io/igw-mode and pod-template-hash). Selecting the pod
+# by app.kubernetes.io/name therefore matches NOTHING, which fails silently and
+# in the worst possible way:
+#   * this vLLM ingress rule never matches, so the EPP's :8000 metric scrape —
+#     the queue-depth / KV-cache signal it PICKS ENDPOINTS WITH — is DROPPED;
+#   * the EPP's own CNP endpointSelector never matches, so the EPP pod is not
+#     even default-denied.
+# The picker then runs blind and silently degrades to fallback routing, while
+# requests still return 200 and every resource still reports Ready. Verified on
+# cluster with `hubble observe --pod llm/<epp> --verdict DROPPED`.
+# The VMServiceScrape above keeps app.kubernetes.io/name because it selects the
+# Service, which does carry it (up==1 confirms).
+_eppPodSelector = {
+    matchLabels = {inferencepool = _eppName}
+}
+
 _eppScrapeIngress = [{
-    fromEndpoints = [{
-        matchLabels = {"app.kubernetes.io/name" = _eppName}
-    }]
+    fromEndpoints = [_eppPodSelector]
     toPorts = [{ports = [{port = str(_DEFAULTS.vllm_port), protocol = "TCP"}]}]
 }] if _endpointPickerEnabled else []
 _dnsEgress = [{
@@ -907,9 +924,10 @@ if _endpointPickerEnabled:
         kind = "CiliumNetworkPolicy"
         metadata = _metadata("epp-cilium-netpol", True) | {name = _eppName}
         spec = {
-            endpointSelector = {
-                matchLabels = {"app.kubernetes.io/name" = _eppName}
-            }
+            # Chart's real POD label (see _eppPodSelector above) — app.kubernetes.io/name
+            # is on the Service only, so selecting the pod by it matches nothing and the
+            # EPP silently ends up with NO policy at all.
+            endpointSelector = _eppPodSelector
             ingress = _eppIngressRules
             egress = _eppVllmScrapeEgress + _eppApiServerEgress + _dnsEgress
         }

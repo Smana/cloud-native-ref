@@ -748,7 +748,7 @@ test_endpointpicker_off_by_default = lambda {
     # Serving CNP must NOT carry an EPP :8000 ingress peer when off.
     _servingCnps = [r for r in items if r.kind == "CiliumNetworkPolicy" and r.metadata.name == _name]
     _ingressFroms = sum([r.fromEndpoints for r in _servingCnps[0].spec.ingress], [])
-    _eppPeers = [f for f in _ingressFroms if f?.matchLabels?["app.kubernetes.io/name"] == _name + "-epp"]
+    _eppPeers = [f for f in _ingressFroms if f?.matchLabels?.inferencepool == _name + "-epp"]
     assert len(_eppPeers) == 0, "endpointPicker off ⇒ serving CNP must not allow EPP :8000 ingress, got {}".format(len(_eppPeers))
 
     # And the base rule keeps the SPEC-002 weighted AIServiceBackend shape
@@ -911,7 +911,7 @@ _eppCnpFor = lambda name: str, appLabels: any, vllmPort: int, dnsEgress: [any] -
         metadata = {name = name + "-epp"}
         spec = {
             endpointSelector = {
-                matchLabels = {"app.kubernetes.io/name" = name + "-epp"}
+                matchLabels = {inferencepool = name + "-epp"}
             }
             ingress = _eppIngressRules
             egress = [{toEndpoints = [{matchLabels = _eppLabels}], toPorts = [{ports = [{port = str(vllmPort), protocol = "TCP"}]}]}, {toEntities = ["kube-apiserver"]}] + dnsEgress
@@ -924,7 +924,7 @@ test_endpointpicker_cnp_shape = lambda {
     cnp = _eppCnpFor(_name, _appLabels, _DEFAULTS.vllm_port, _dnsEgress)
 
     # Default-deny: endpointSelector scopes only to the EPP pod.
-    assert cnp.spec.endpointSelector.matchLabels["app.kubernetes.io/name"] == _name + "-epp", "EPP CNP endpointSelector must target the EPP pod"
+    assert cnp.spec.endpointSelector.matchLabels.inferencepool == _name + "-epp", "EPP CNP endpointSelector must target the EPP pod"
 
     # Ingress: ext-proc 9002 from the Envoy AI Gateway data plane.
     _ingressPorts = sum([sum([p.ports for p in rule.toPorts], []) for rule in cnp.spec.ingress], [])
@@ -957,11 +957,11 @@ test_endpointpicker_cnp_shape = lambda {
     # off — the fixture case, already asserted by test_endpointpicker_off_by_default).
     _extension = {
         fromEndpoints = [{
-            matchLabels = {"app.kubernetes.io/name" = _name + "-epp"}
+            matchLabels = {inferencepool = _name + "-epp"}
         }]
         toPorts = [{ports = [{port = str(_DEFAULTS.vllm_port), protocol = "TCP"}]}]
     }
-    assert _extension.fromEndpoints[0].matchLabels["app.kubernetes.io/name"] == _eppName, "serving-CNP extension must allow ingress from the EPP pod on :8000"
+    assert _extension.fromEndpoints[0].matchLabels.inferencepool == _eppName, "serving-CNP extension must allow ingress from the EPP pod on :8000"
     assert _extension.toPorts[0].ports[0].port == str(_DEFAULTS.vllm_port), "serving-CNP EPP extension must target the vLLM port"
 }
 
