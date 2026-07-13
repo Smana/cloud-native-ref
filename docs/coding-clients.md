@@ -142,7 +142,7 @@ out of the box.
 - **All 4 models default to `min=1`** (always warm) per
   [SPEC-001](../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md).
   KEDA scales `1→max` on three leading saturation signals (`running/max-num-seqs`
-  ratio, `gpu_cache_usage_perc`, `num_requests_waiting`). On `MoM`, first-request
+  ratio, `kv_cache_usage_perc`, `num_requests_waiting`). On `MoM`, first-request
   latency is dominated by the ~250-300ms classifier round-trip rather than cold
   start; on a directly-named model there is no classifier cost at all.
   A claim with an explicit `scaling.minReplicas: 0` override accepts

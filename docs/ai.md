@@ -18,7 +18,7 @@ A default `terramate script run deploy` plus a default Flux reconcile leaves the
 
 | | |
 |---|---|
-| **Engine** | vLLM `v0.8.5`, one Deployment per model, port 8000 |
+| **Engine** | vLLM `v0.25.0`, one Deployment per model, port 8000 |
 | **Gateway** | Envoy Gateway `1.8.2` + Envoy AI Gateway `1.0.0` |
 | **Routing** | `AIGatewayRoute`, keyed on the `x-ai-eg-model` header |
 | **Prompt routing** | vLLM Semantic Router `0.2.0`, as a gRPC `ext_proc` filter — only acts on `model: MoM` |
@@ -228,7 +228,7 @@ OR-combined — any one at or above its threshold drives a scale-up.
 | # | Signal | Query | Default threshold |
 |---|---|---|---|
 | 1 | batch saturation | `max(vllm:num_requests_running{model_name="X"}) / scalar(vector(<maxNumSeqs>))` | `0.7` |
-| 2 | KV-cache pressure | `max(vllm:gpu_cache_usage_perc{model_name="X"})` | `0.6` |
+| 2 | KV-cache pressure | `max(vllm:kv_cache_usage_perc{model_name="X"})` | `0.6` |
 | 3 | queue depth | `max(vllm:num_requests_waiting{model_name="X"})` | `8` |
 
 All three are **leading** signals: they fire *before* the batch saturates, *before* the cache evicts,
@@ -257,8 +257,8 @@ Two metric families, two dashboards. They answer different questions.
 
 **Engine metrics** — `vllm:*`, scraped from each pod's `:8000/metrics` by a `VMServiceScrape` and labelled by
 `model_name`. These drive autoscaling and the fleet dashboard: `num_requests_running`, `num_requests_waiting`,
-`gpu_cache_usage_perc`, `time_to_first_token_seconds`, `e2e_request_latency_seconds`,
-`gpu_prefix_cache_hits_total`, and friends.
+`kv_cache_usage_perc`, `time_to_first_token_seconds`, `e2e_request_latency_seconds`,
+`prefix_cache_hits_total`, and friends.
 
 **Gateway metrics** — `gen_ai_*` (OpenTelemetry semantic conventions), emitted by the AI Gateway extproc
 sidecar and scraped from `:1064` by a **`VMPodScrape`** — a pod scrape, not a service scrape, because the

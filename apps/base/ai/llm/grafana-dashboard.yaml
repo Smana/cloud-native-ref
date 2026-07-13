@@ -117,7 +117,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
           "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
           "targets": [
-            { "expr": "avg(vllm:gpu_cache_usage_perc{model_name=~\"$${model}\"})", "refId": "A" }
+            { "expr": "avg(vllm:kv_cache_usage_perc{model_name=~\"$${model}\"})", "refId": "A" }
           ],
           "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"] } },
           "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] } } }
@@ -232,7 +232,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
           "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
           "targets": [
-            { "expr": "histogram_quantile(0.95, sum by (model_name, le) (rate(vllm:time_per_output_token_seconds_bucket{model_name=~\"$${model}\"}[5m])))", "legendFormat": "{{model_name}}", "refId": "A" }
+            { "expr": "histogram_quantile(0.95, sum by (model_name, le) (rate(vllm:inter_token_latency_seconds_bucket{model_name=~\"$${model}\"}[5m])))", "legendFormat": "{{model_name}}", "refId": "A" }
           ],
           "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "s" } },
           "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
@@ -253,7 +253,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
           "targets": [
-            { "expr": "vllm:gpu_cache_usage_perc{model_name=~\"$${model}\"}", "legendFormat": "{{model_name}}", "refId": "A" }
+            { "expr": "vllm:kv_cache_usage_perc{model_name=~\"$${model}\"}", "legendFormat": "{{model_name}}", "refId": "A" }
           ],
           "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15 }, "unit": "percentunit", "decimals": 3, "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] } } },
           "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } }
@@ -266,7 +266,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "$${datasource}" },
           "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
           "targets": [
-            { "expr": "sum by (model_name) (rate(vllm:gpu_prefix_cache_hits_total{model_name=~\"$${model}\"}[5m])) / clamp_min(sum by (model_name) (rate(vllm:gpu_prefix_cache_queries_total{model_name=~\"$${model}\"}[5m])), 1)", "legendFormat": "{{model_name}}", "refId": "A" }
+            { "expr": "sum by (model_name) (rate(vllm:prefix_cache_hits_total{model_name=~\"$${model}\"}[5m])) / clamp_min(sum by (model_name) (rate(vllm:prefix_cache_queries_total{model_name=~\"$${model}\"}[5m])), 1)", "legendFormat": "{{model_name}}", "refId": "A" }
           ],
           "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "percentunit", "decimals": 3, "min": 0, "max": 1 } },
           "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean"] } }

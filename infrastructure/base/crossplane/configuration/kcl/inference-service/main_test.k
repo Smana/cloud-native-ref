@@ -106,7 +106,7 @@ test_scaledobject_prometheus_triggers = lambda {
     triggers = so.spec.triggers
     assert len(triggers) == 3, "expected exactly 3 prometheus triggers (running ratio + cache util + queue depth), got {}".format(len(triggers))
     _runningTriggers = [t for t in triggers if "num_requests_running" in (t?.metadata?.query or "")]
-    _cacheTriggers = [t for t in triggers if "gpu_cache_usage_perc" in (t?.metadata?.query or "")]
+    _cacheTriggers = [t for t in triggers if "kv_cache_usage_perc" in (t?.metadata?.query or "")]
     _queueTriggers = [t for t in triggers if "num_requests_waiting" in (t?.metadata?.query or "")]
     assert len(_runningTriggers) == 1, "expected exactly 1 running-ratio trigger, got {}".format(len(_runningTriggers))
     assert len(_cacheTriggers) == 1, "expected exactly 1 cache-util trigger, got {}".format(len(_cacheTriggers))

@@ -1,7 +1,7 @@
 [package]
 name = "inference-service"
 edition = "v0.11.0"
-version = "0.8.2"
+version = "0.9.0"
 description = "Crossplane composition for self-hosted LLM inference services (vLLM + KEDA + Karpenter GPU)"
 
 [dependencies]
