@@ -53,7 +53,7 @@ spec:
                   target: Default
                   # PR-preview tag (0.8.0-pr1559) — strip the -pr suffix post-merge
                   # once the release tag is published from main.
-                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-inference-service:0.8.0-pr1559
+                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-inference-service:0.8.1-pr1559
 
         - step: ready
           functionRef:

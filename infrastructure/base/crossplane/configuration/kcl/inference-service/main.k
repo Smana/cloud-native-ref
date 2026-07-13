@@ -678,6 +678,58 @@ if _gatewayEnabled:
                     }
                     provider = {name = "none"}
                 }
+                # PSS=restricted compliance (SPEC-004 FR-008 / CL-7).
+                #
+                # The `llm` namespace enforces PodSecurity restricted, and the
+                # inferencepool chart (v1.5.0) renders its EPP Deployment with NO
+                # securityContext at all — neither pod- nor container-level — and
+                # exposes no values key to set one (`inferenceExtension` offers only
+                # replicas/image/extProcPort/failureMode/env/pluginsConfigFile/
+                # extraContainerPorts/extraServicePorts/flags/affinity/tolerations/
+                # resources/sidecar/monitoring/tracing/latencyPredictor/
+                # metricsDataSource). So every EPP pod is rejected at admission:
+                #
+                #   replicaset/<name>-epp FailedCreate: pods "..." is forbidden:
+                #   violates PodSecurity "restricted:latest"
+                #
+                # Helm then times out waiting for the Deployment, uninstalls, and
+                # retries forever — the EPP never runs and the InferencePool has no
+                # picker. CL-7's "Option A (trust-and-verify)" is therefore refuted
+                # on-cluster: the chart is NOT restricted-compliant.
+                #
+                # Fixed with a Flux postRenderer rather than the Kyverno-mutate
+                # fallback CL-7 proposed. A postRenderer is scoped to THIS release,
+                # is rendered by (and GC'd with) the claim, keeps a cluster-wide
+                # mutating policy out of the admission path, and is deterministic —
+                # the manifest that Flux applies already carries the context.
+                #
+                # runAsUser 65532 is the distroless `nonroot` uid the registry.k8s.io
+                # EPP image ships; runAsNonRoot alone would fail if the image's USER
+                # resolved to root.
+                postRenderers = [{
+                    kustomize = {
+                        patches = [{
+                            target = {kind = "Deployment", name = _eppName}
+                            patch = """\
+- op: add
+  path: /spec/template/spec/securityContext
+  value:
+    runAsNonRoot: true
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
+- op: add
+  path: /spec/template/spec/containers/0/securityContext
+  value:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+"""
+                        }]
+                    }
+                }]
             }
         }]
         _items += _eppHelmRelease

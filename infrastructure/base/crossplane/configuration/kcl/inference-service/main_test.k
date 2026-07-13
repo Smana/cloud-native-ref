@@ -818,6 +818,36 @@ _eppHelmReleaseFor = lambda name: str, namespace: str -> any {
                 }}
                 provider = {name = "none"}
             }
+            # Mirrors main.k's postRenderer (SPEC-004 FR-008 / CL-7). The chart
+            # ships NO securityContext and exposes no key to set one, so the EPP
+            # pod is rejected outright by PSS=restricted without this patch.
+            # NOTE this is a MIRROR — keeping it in sync is not enough on its own;
+            # test_endpointpicker_postrenderer_is_real (below) asserts against the
+            # module's actual render so a drop in main.k cannot pass silently.
+            postRenderers = [{
+                kustomize = {
+                    patches = [{
+                        target = {kind = "Deployment", name = name + "-epp"}
+                        patch = """\
+- op: add
+  path: /spec/template/spec/securityContext
+  value:
+    runAsNonRoot: true
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
+- op: add
+  path: /spec/template/spec/containers/0/securityContext
+  value:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+"""
+                    }]
+                }
+            }]
         }
     }
 }
