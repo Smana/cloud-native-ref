@@ -178,8 +178,8 @@ docs/apps-user-guide.md            # NEW (FR-013)
 - [x] **T011**: Examples — `app-worker.yaml`, `app-cron.yaml`; extend `app-complete.yaml`; verify SC-001 diff on pre-existing examples. — SC-001 empty diff verified with unmodified examples BEFORE extending app-complete (local-source render harness; see Deviations).
 - [x] **T012**: `./scripts/validate-kcl-compositions.sh` exit 0; Polaris ≥ 85; kube-linter clean (SC-002/004). — exit 0; kubeconform 0 invalid.
 - [ ] **T013**: Negative tests — apply each invalid claim from SC-003 against a cluster (or `kubectl --dry-run=server`) and record the CEL messages. — **Deferred to post-merge `/verify-spec`**: the live cluster still runs the pre-SPEC-007 XRD, so server-side dry-run would validate against the old schema.
-- [ ] **T014**: Write `docs/apps-user-guide.md` (FR-013); validate every snippet renders (SC-006).
-- [ ] **T015**: Fix `kcl/app/README.md` drift; link guide; update CLAUDE.md key-file pointers if needed.
+- [x] **T014**: Write `docs/apps-user-guide.md` (FR-013); validate every snippet renders (SC-006). — 1042 lines, 14 sections; 9 complete snippets rendered via local harness (all exit 0); 39-field reference cross-checked against XRD via yq.
+- [x] **T015**: Fix `kcl/app/README.md` drift; link guide; update CLAUDE.md key-file pointers if needed. — 507→299 lines; route.port / networkPolicies.policies / probe-path drift corrected; re-scoped to maintainers with guide links.
 
 ### Deviations from plan
 
