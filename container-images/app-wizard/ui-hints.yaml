@@ -7,6 +7,13 @@
 # A field absent from `fields` defaults to the "advanced" tier and is never
 # hidden (FR-003). Tiers: basic (first screen) | advanced (behind an expander)
 # | expert (behind an "expert" toggle).
+#
+# DRIFT GUARD: every key under `fields` MUST exist in the App XRD. The Go test
+# TestUIHintsNoDriftFromXRD (internal/schema/drift_test.go) fails the build if a
+# hint references a field the XRD does not have — so this overlay can never drift
+# from the schema. (SPEC-007 fields `type` and `persistence` are intentionally
+# absent here: this branch is off main, pre-SPEC-007; re-add their hints after
+# #1580 merges and this rebases — they render in `advanced` unhinted meanwhile.)
 
 groups:
   - id: workload
@@ -85,11 +92,6 @@ fields:
     label: Internet-facing
     help: Exposes the app publicly on the internet (…cloud.ogenki.io).
     order: 23
-  type:
-    tier: basic
-    group: workload
-    label: Workload type
-    order: 13
   service:
     tier: basic
     group: exposure
@@ -117,11 +119,6 @@ fields:
     group: data
     label: S3 bucket
     order: 42
-  persistence:
-    tier: advanced
-    group: data
-    label: Persistent volume
-    order: 43
   autoscaling:
     tier: advanced
     group: scaling
