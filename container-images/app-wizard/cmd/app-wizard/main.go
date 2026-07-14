@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -22,6 +23,17 @@ import (
 )
 
 func main() {
+	// Subcommands. `generate` is the offline dry-run of the PR flow (produces
+	// the claim + kustomization files locally, no GitHub/cluster). Bare invocation
+	// runs the HTTP server.
+	if len(os.Args) > 1 && os.Args[1] == "generate" {
+		if err := runGenerate(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
