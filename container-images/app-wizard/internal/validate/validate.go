@@ -3,24 +3,39 @@ package validate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/api"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/httputil"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-// SchemaProvider yields the JSON Schema and CEL rules for the App spec. The
-// schema.Pipeline satisfies this.
+// SchemaProvider yields the JSON Schema and CEL rules for the App spec, plus a
+// cheap version key used to memoize the compiled artifacts. The schema.Pipeline
+// satisfies this.
 type SchemaProvider interface {
 	JSONSchema(ctx context.Context) (map[string]any, error)
 	CELRules(ctx context.Context) ([]api.CELRule, error)
+	SchemaVersion(ctx context.Context) (string, error)
 }
 
 // Validator runs schema + CEL + secret gates against a candidate spec.
+//
+// The compiled JSON Schema and CEL evaluator are memoized (keyed by the
+// provider's SchemaVersion) so repeated Validate calls — fired per keystroke
+// from the form — reuse them instead of recompiling every time. Compiled
+// *jsonschema.Schema and cel-go programs are safe for concurrent reuse.
 type Validator struct {
 	provider SchemaProvider
+
+	mu           sync.Mutex
+	cachedSHA    string
+	cachedSchema *jsonschema.Schema
+	cachedCEL    *CELEvaluator
 }
 
 // NewValidator builds a Validator over a schema provider.
@@ -38,23 +53,16 @@ func (v *Validator) Validate(ctx context.Context, spec map[string]any) (api.Vali
 		SecretFindings: []api.SecretFinding{},
 	}
 
-	jsonSchema, err := v.provider.JSONSchema(ctx)
+	sch, evaluator, err := v.compiled(ctx)
 	if err != nil {
-		return resp, fmt.Errorf("load schema: %w", err)
+		return resp, err
 	}
-	if errs := validateSchema(jsonSchema, spec); len(errs) > 0 {
+
+	if errs := validateSchema(sch, spec); len(errs) > 0 {
 		resp.SchemaErrors = errs
 		resp.Valid = false
 	}
 
-	rules, err := v.provider.CELRules(ctx)
-	if err != nil {
-		return resp, fmt.Errorf("load CEL rules: %w", err)
-	}
-	evaluator, err := NewCELEvaluator(rules)
-	if err != nil {
-		return resp, fmt.Errorf("compile CEL: %w", err)
-	}
 	if viol := evaluator.Evaluate(spec); len(viol) > 0 {
 		resp.CELViolations = viol
 		resp.Valid = false
@@ -68,34 +76,69 @@ func (v *Validator) Validate(ctx context.Context, spec map[string]any) (api.Vali
 	return resp, nil
 }
 
-// validateSchema compiles the JSON Schema and validates spec against it,
-// returning per-path field errors.
-func validateSchema(jsonSchema map[string]any, spec map[string]any) []api.FieldError {
+// compiled returns the compiled JSON Schema and CEL evaluator for the current
+// schema version, recompiling (and caching) only when the version changed.
+func (v *Validator) compiled(ctx context.Context) (*jsonschema.Schema, *CELEvaluator, error) {
+	sha, err := v.provider.SchemaVersion(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load schema version: %w", err)
+	}
+
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if sha != "" && sha == v.cachedSHA && v.cachedSchema != nil && v.cachedCEL != nil {
+		return v.cachedSchema, v.cachedCEL, nil
+	}
+
+	jsonSchema, err := v.provider.JSONSchema(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load schema: %w", err)
+	}
+	sch, err := compileSchema(jsonSchema)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rules, err := v.provider.CELRules(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load CEL rules: %w", err)
+	}
+	evaluator, err := NewCELEvaluator(rules)
+	if err != nil {
+		return nil, nil, fmt.Errorf("compile CEL: %w", err)
+	}
+
+	v.cachedSHA = sha
+	v.cachedSchema = sch
+	v.cachedCEL = evaluator
+	return sch, evaluator, nil
+}
+
+// compileSchema compiles the JSON Schema document into a reusable validator.
+func compileSchema(jsonSchema map[string]any) (*jsonschema.Schema, error) {
 	compiler := jsonschema.NewCompiler()
 	const url = "mem://app-spec-schema.json"
 	if err := compiler.AddResource(url, jsonSchema); err != nil {
-		return []api.FieldError{{Path: "spec", Message: "invalid schema: " + err.Error()}}
+		return nil, fmt.Errorf("invalid schema: %w", err)
 	}
 	sch, err := compiler.Compile(url)
 	if err != nil {
-		return []api.FieldError{{Path: "spec", Message: "schema compile error: " + err.Error()}}
+		return nil, fmt.Errorf("schema compile error: %w", err)
 	}
+	return sch, nil
+}
+
+// validateSchema validates spec against the compiled schema, returning per-path
+// field errors.
+func validateSchema(sch *jsonschema.Schema, spec map[string]any) []api.FieldError {
 	if err := sch.Validate(spec); err != nil {
 		var ve *jsonschema.ValidationError
-		if ok := asValidationError(err, &ve); ok {
+		if errors.As(err, &ve) {
 			return flattenValidationError(ve)
 		}
 		return []api.FieldError{{Path: "spec", Message: err.Error()}}
 	}
 	return nil
-}
-
-func asValidationError(err error, target **jsonschema.ValidationError) bool {
-	if ve, ok := err.(*jsonschema.ValidationError); ok {
-		*target = ve
-		return true
-	}
-	return false
 }
 
 // flattenValidationError turns the nested jsonschema error tree into flat
@@ -134,7 +177,7 @@ func (v *Validator) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req api.ValidateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSONError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+			httputil.WriteError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 			return
 		}
 		if req.Spec == nil {
@@ -142,19 +185,9 @@ func (v *Validator) Handler() http.HandlerFunc {
 		}
 		resp, err := v.Validate(r.Context(), req.Spec)
 		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, resp)
+		httputil.WriteJSON(w, http.StatusOK, resp)
 	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, val any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(val)
-}
-
-func writeJSONError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, api.ErrorResponse{Error: msg})
 }

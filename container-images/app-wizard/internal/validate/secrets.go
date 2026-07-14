@@ -7,6 +7,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/api"
@@ -59,7 +60,7 @@ func walkStrings(v any, path string, fn func(path, val string)) {
 		}
 	case []any:
 		for i, e := range t {
-			walkStrings(e, path+"["+itoa(i)+"]", fn)
+			walkStrings(e, path+"["+strconv.Itoa(i)+"]", fn)
 		}
 	}
 }
@@ -95,18 +96,4 @@ func shannonEntropy(s string) float64 {
 		h -= p * math.Log2(p)
 	}
 	return h
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[i:])
 }

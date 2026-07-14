@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/api"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/httputil"
 )
 
 // schemaProvider yields the App JSON Schema and the networkPolicies subschema.
@@ -43,7 +44,7 @@ func NewHandlers(a Assist, schema schemaProvider, validator specValidator, logge
 
 // Status serves GET /api/assist/status.
 func (h *Handlers) Status(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, api.AssistStatus{Available: h.assist.Available()})
+	httputil.WriteJSON(w, http.StatusOK, api.AssistStatus{Available: h.assist.Available()})
 }
 
 // Prefill serves POST /api/assist/prefill. It asks the model for a partial
@@ -52,19 +53,19 @@ func (h *Handlers) Status(w http.ResponseWriter, _ *http.Request) {
 // set. Disabled backend -> 503; runtime LLM failure -> 502 (FR-011).
 func (h *Handlers) Prefill(w http.ResponseWriter, r *http.Request) {
 	if !h.assist.Available() {
-		writeJSONError(w, http.StatusServiceUnavailable, "LLM assists are not configured")
+		httputil.WriteError(w, http.StatusServiceUnavailable, "LLM assists are not configured")
 		return
 	}
 	var req api.AssistPrefillRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		httputil.WriteError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
 
 	appSchema, err := h.schema.JSONSchema(r.Context())
 	if err != nil {
 		h.logger.Error("assist prefill: load schema", "err", err)
-		writeJSONError(w, http.StatusInternalServerError, "failed to load schema")
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to load schema")
 		return
 	}
 
@@ -88,26 +89,26 @@ func (h *Handlers) Prefill(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(keys)
 
-	writeJSON(w, http.StatusOK, api.AssistPrefillResponse{Spec: spec, Keys: keys})
+	httputil.WriteJSON(w, http.StatusOK, api.AssistPrefillResponse{Spec: spec, Keys: keys})
 }
 
 // Policies serves POST /api/assist/policies. Disabled -> 503; runtime failure
 // -> 502.
 func (h *Handlers) Policies(w http.ResponseWriter, r *http.Request) {
 	if !h.assist.Available() {
-		writeJSONError(w, http.StatusServiceUnavailable, "LLM assists are not configured")
+		httputil.WriteError(w, http.StatusServiceUnavailable, "LLM assists are not configured")
 		return
 	}
 	var req api.AssistPoliciesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		httputil.WriteError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
 
 	cnpSchema, err := h.networkPoliciesSchema(r.Context())
 	if err != nil {
 		h.logger.Error("assist policies: load schema", "err", err)
-		writeJSONError(w, http.StatusInternalServerError, "failed to load network policy schema")
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to load network policy schema")
 		return
 	}
 
@@ -122,7 +123,7 @@ func (h *Handlers) Policies(w http.ResponseWriter, r *http.Request) {
 	if egress == nil {
 		egress = []any{}
 	}
-	writeJSON(w, http.StatusOK, api.AssistPoliciesResponse{Ingress: ingress, Egress: egress})
+	httputil.WriteJSON(w, http.StatusOK, api.AssistPoliciesResponse{Ingress: ingress, Egress: egress})
 }
 
 // networkPoliciesSchema extracts spec.properties.networkPolicies from the
@@ -196,19 +197,9 @@ func topLevelKey(path string) string {
 // FR-011). The underlying error is logged, never returned to the client.
 func (h *Handlers) handleAssistError(w http.ResponseWriter, op string, err error) {
 	if errors.Is(err, ErrNotConfigured) {
-		writeJSONError(w, http.StatusServiceUnavailable, "LLM assists are not configured")
+		httputil.WriteError(w, http.StatusServiceUnavailable, "LLM assists are not configured")
 		return
 	}
 	h.logger.Error("assist request failed", "op", op, "err", err)
-	writeJSONError(w, http.StatusBadGateway, "the assist service is temporarily unavailable; you can fill the form manually")
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeJSONError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, api.ErrorResponse{Error: msg})
+	httputil.WriteError(w, http.StatusBadGateway, "the assist service is temporarily unavailable; you can fill the form manually")
 }

@@ -1,6 +1,7 @@
 // Recursive, schema-driven field widget. Given a JSONSchema node + its path in
 // the spec, it renders the right control and recurses for objects/arrays. It is
 // entirely generic — no field is hardcoded (FR-001 / SC-002).
+import { useMemo } from "react";
 import type { FieldError, UIHints } from "../api/types";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
@@ -72,6 +73,9 @@ export function Field({
   const id = labelledById ?? `f-${pathToString(path)}`;
   const errs = fieldErrors(errors, path);
   const help_ = help ?? s.description;
+  // Compile the string-field pattern once per pattern (used in the default/string
+  // branch below). Hook must be called unconditionally, before any early return.
+  const patternRe = useMemo(() => (s.pattern ? new RegExp(s.pattern) : null), [s.pattern]);
 
   const errorNode =
     errs.length > 0 ? (
@@ -255,7 +259,7 @@ export function Field({
         ) => onChange(setAt(spec, path, e.target.value || undefined)),
       };
       const patternInvalid =
-        s.pattern && value != null && value !== "" && !new RegExp(s.pattern).test(String(value));
+        patternRe && value != null && value !== "" && !patternRe.test(String(value));
       return (
         <div className="space-y-1">
           {label && <Label id={id}>{label}</Label>}

@@ -15,6 +15,7 @@ type fakeProvider struct {
 
 func (f *fakeProvider) JSONSchema(_ context.Context) (map[string]any, error) { return f.schema, nil }
 func (f *fakeProvider) CELRules(_ context.Context) ([]api.CELRule, error)    { return f.rules, nil }
+func (f *fakeProvider) SchemaVersion(_ context.Context) (string, error)      { return "test-sha", nil }
 
 // xrdCELRules mirrors the App XRD's spec-level x-kubernetes-validations.
 var xrdCELRules = []api.CELRule{

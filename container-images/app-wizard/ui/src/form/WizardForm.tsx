@@ -24,6 +24,7 @@ import { SecretsEditor } from "./SecretsEditor";
 import {
   buildLayout,
   clearInvalidForType,
+  fieldVisibleForType,
   getAt,
   setAt,
   tierBadgeVariant,
@@ -32,6 +33,7 @@ import {
 import { claimToYaml } from "./claim";
 import { useDebounced } from "./useDebounced";
 import { validateAppName } from "./validation";
+import { errorMessage } from "../lib/utils";
 
 const EMPTY_VALIDATION: ValidateResponse = {
   valid: true,
@@ -115,41 +117,31 @@ export function WizardForm({ schema, user, initial, onBack }: Props) {
   // CEL rules). Default "web" when unset.
   const workloadType = (getAt(spec, ["type"]) as string | undefined) ?? "web";
 
-  // Visibility predicate by top-level field key — hide fields that are invalid
-  // for the current workload type so users never see them.
-  const fieldVisibleForType = (key: string): boolean => {
-    switch (key) {
-      case "route":
-      case "gateway":
-      case "service":
-        return workloadType === "web";
-      case "autoscaling":
-      case "pdb":
-        return workloadType !== "cron";
-      case "schedule":
-      case "cron":
-        return workloadType === "cron";
-      default:
-        return true;
-    }
-  };
+  // Visibility filter by workload type (fieldVisibleForType is the shared
+  // predicate in model.ts, mirroring the App XRD CEL rules). Applied to a set of
+  // { group, fields } blocks, dropping any group that becomes empty (so e.g.
+  // "Networking & exposure" disappears entirely for worker/cron, "Schedule"
+  // appears only for cron). Memoised on [layout, workloadType] since layout is
+  // already memoised on [schema].
+  const { visibleBasicGroups, visibleGroups, visibleUngrouped } = useMemo(() => {
+    const filterGroups = (
+      groups: Array<{ group: (typeof layout.groups)[number]["group"]; fields: TopField[] }>,
+    ) =>
+      groups
+        .map(({ group, fields }) => ({
+          group,
+          fields: fields.filter((f) => fieldVisibleForType(f.key, workloadType)),
+        }))
+        .filter(({ fields }) => fields.length > 0);
 
-  // Apply the visibility filter to a set of { group, fields } blocks, dropping any
-  // group that becomes empty (so e.g. "Networking & exposure" disappears entirely
-  // for worker/cron, "Schedule" appears only for cron).
-  const filterGroups = (
-    groups: Array<{ group: (typeof layout.groups)[number]["group"]; fields: TopField[] }>,
-  ) =>
-    groups
-      .map(({ group, fields }) => ({
-        group,
-        fields: fields.filter((f) => fieldVisibleForType(f.key)),
-      }))
-      .filter(({ fields }) => fields.length > 0);
-
-  const visibleBasicGroups = filterGroups(layout.basicGroups);
-  const visibleGroups = filterGroups(layout.groups);
-  const visibleUngrouped = layout.ungrouped.filter((f) => fieldVisibleForType(f.key));
+    return {
+      visibleBasicGroups: filterGroups(layout.basicGroups),
+      visibleGroups: filterGroups(layout.groups),
+      visibleUngrouped: layout.ungrouped.filter((f) =>
+        fieldVisibleForType(f.key, workloadType),
+      ),
+    };
+  }, [layout, workloadType]);
 
   // Clear now-invalid values when the type changes so a hidden field can't leave a
   // stale value that trips CEL validation and blocks the PR. clearInvalidForType
@@ -283,8 +275,14 @@ export function WizardForm({ schema, user, initial, onBack }: Props) {
     );
   };
 
-  const hasSecretFields = [...layout.basic, ...layout.groups.flatMap((g) => g.fields), ...layout.ungrouped].some(
-    (f) => SECRET_KEYS.has(f.key),
+  const hasSecretFields = useMemo(
+    () =>
+      [
+        ...layout.basic,
+        ...layout.groups.flatMap((g) => g.fields),
+        ...layout.ungrouped,
+      ].some((f) => SECRET_KEYS.has(f.key)),
+    [layout],
   );
 
   return (
@@ -836,8 +834,4 @@ function PolicySuggester({
       </CardContent>
     </Card>
   );
-}
-
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }

@@ -159,7 +159,9 @@ func Load() (*Config, error) {
 	}
 
 	if cfg.UIHintsPath == "" {
-		cfg.UIHintsPath = filepath.Join(defaultSelfDir(), "ui-hints.yaml")
+		// ui-hints.yaml lives beside the binary/source in
+		// container-images/app-wizard, i.e. the working directory.
+		cfg.UIHintsPath = filepath.Join(defaultRepoRoot(), "ui-hints.yaml")
 	}
 
 	if key := os.Getenv("SESSION_KEY"); key != "" {
@@ -206,16 +208,6 @@ func parseKVList(s string) map[string]string {
 // defaultRepoRoot best-efforts the repo root for local dev: the current
 // working directory. Overridable via REPO_ROOT.
 func defaultRepoRoot() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-	return wd
-}
-
-// defaultSelfDir returns the working directory; ui-hints.yaml lives beside the
-// binary/source in container-images/app-wizard.
-func defaultSelfDir() string {
 	wd, err := os.Getwd()
 	if err != nil {
 		return "."

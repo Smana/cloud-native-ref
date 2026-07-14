@@ -5,13 +5,13 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/api"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/gitprovider"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/httputil"
 	"github.com/gorilla/sessions"
 	"golang.org/x/oauth2"
 	githuboauth "golang.org/x/oauth2/github"
@@ -139,7 +139,7 @@ func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
 			a.writeError(w, http.StatusBadGateway, "failed to fetch user")
 			return
 		}
-		writeJSON(w, http.StatusOK, api.User{Login: u.Login, AvatarURL: u.AvatarURL, Name: u.Name, GitHubLinked: true})
+		httputil.WriteJSON(w, http.StatusOK, api.User{Login: u.Login, AvatarURL: u.AvatarURL, Name: u.Name, GitHubLinked: true})
 		return
 	}
 	token, ok := a.Token(r)
@@ -154,7 +154,7 @@ func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// In github mode the login token IS the PR token, so GitHub is always linked.
-	writeJSON(w, http.StatusOK, api.User{Login: u.Login, AvatarURL: u.AvatarURL, Name: u.Name, GitHubLinked: true})
+	httputil.WriteJSON(w, http.StatusOK, api.User{Login: u.Login, AvatarURL: u.AvatarURL, Name: u.Name, GitHubLinked: true})
 }
 
 // Logout clears the session.
@@ -229,11 +229,5 @@ func (a *Auth) LinkGitHubCallback(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *Auth) writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, api.ErrorResponse{Error: msg})
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	httputil.WriteError(w, status, msg)
 }

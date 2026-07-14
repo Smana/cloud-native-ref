@@ -194,22 +194,53 @@ export function prune(value: unknown): unknown {
   return value;
 }
 
-// Clear now-invalid top-level spec keys when the workload type changes, mirroring
-// the App XRD CEL rules (route/gateway/service only valid for web; autoscaling/pdb
-// not valid for cron; schedule/cron only valid for cron). This prevents a hidden
-// field from leaving a stale value that trips CEL validation and blocks the PR.
+// Single source of truth for which top-level spec keys are valid for a given
+// workload type, mirroring the App XRD CEL rules:
+//   - route/gateway/service : web only
+//   - autoscaling/pdb       : not for cron
+//   - schedule/cron         : cron only
+// Both the form (hide the field) and clearInvalidForType (strip the stale value)
+// derive from this predicate so the two never drift apart.
+export function fieldVisibleForType(key: string, type: string): boolean {
+  switch (key) {
+    case "route":
+    case "gateway":
+    case "service":
+      return type === "web";
+    case "autoscaling":
+    case "pdb":
+      return type !== "cron";
+    case "schedule":
+    case "cron":
+      return type === "cron";
+    default:
+      return true;
+  }
+}
+
+// The top-level keys gated by workload type — the full set clearInvalidForType
+// iterates to decide what to strip. Keep in sync with fieldVisibleForType.
+const TYPE_GATED_KEYS = [
+  "route",
+  "gateway",
+  "service",
+  "autoscaling",
+  "pdb",
+  "schedule",
+  "cron",
+] as const;
+
+// Clear now-invalid top-level spec keys when the workload type changes. This
+// prevents a hidden field from leaving a stale value that trips CEL validation
+// and blocks the PR. A key is removed when it's present but not valid for the
+// new type (per fieldVisibleForType).
 //
 // CRITICAL: returns the SAME object reference when nothing needs deleting, so the
 // caller's effect + setSpec can't loop forever. We check key presence first and
 // only rebuild when a key is actually present.
 export function clearInvalidForType(spec: unknown, type: string): unknown {
-  const toDelete: string[] = [];
-  if (type !== "web") toDelete.push("route", "gateway", "service");
-  if (type !== "cron") toDelete.push("schedule", "cron");
-  if (type === "cron") toDelete.push("autoscaling", "pdb");
-
-  const present = toDelete.filter(
-    (k) => getAt(spec, [k]) !== undefined,
+  const present = TYPE_GATED_KEYS.filter(
+    (k) => !fieldVisibleForType(k, type) && getAt(spec, [k]) !== undefined,
   );
   if (present.length === 0) return spec; // no-op: preserve reference (no render loop)
 

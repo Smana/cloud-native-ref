@@ -1,12 +1,12 @@
 package appstore
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/api"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/gitprovider"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/httputil"
 )
 
 // ProviderForRequest yields the gitprovider for the authenticated user of a
@@ -21,19 +21,19 @@ func (s *Store) ListHandler(providerFor ProviderForRequest, logger *slog.Logger)
 	return func(w http.ResponseWriter, r *http.Request) {
 		provider, err := providerFor(r)
 		if err != nil {
-			writeJSON(w, http.StatusUnauthorized, api.ErrorResponse{Error: "not authenticated"})
+			httputil.WriteError(w, http.StatusUnauthorized, "not authenticated")
 			return
 		}
 		apps, err := s.List(r.Context(), provider)
 		if err != nil {
 			logger.Error("app inventory failed", "err", err.Error())
-			writeJSON(w, http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+			httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		if apps == nil {
 			apps = []api.AppSummary{}
 		}
-		writeJSON(w, http.StatusOK, apps)
+		httputil.WriteJSON(w, http.StatusOK, apps)
 	}
 }
 
@@ -45,31 +45,25 @@ func (s *Store) GetHandler(providerFor ProviderForRequest, logger *slog.Logger) 
 	return func(w http.ResponseWriter, r *http.Request) {
 		provider, err := providerFor(r)
 		if err != nil {
-			writeJSON(w, http.StatusUnauthorized, api.ErrorResponse{Error: "not authenticated"})
+			httputil.WriteError(w, http.StatusUnauthorized, "not authenticated")
 			return
 		}
 		stack := r.PathValue("stack")
 		name := r.PathValue("name")
 		if stack == "" || name == "" {
-			writeJSON(w, http.StatusBadRequest, api.ErrorResponse{Error: "stack and name are required"})
+			httputil.WriteError(w, http.StatusBadRequest, "stack and name are required")
 			return
 		}
 		detail, err := s.Get(r.Context(), provider, stack, name)
 		if err != nil {
 			if err == gitprovider.ErrNotFound {
-				writeJSON(w, http.StatusNotFound, api.ErrorResponse{Error: "app not found"})
+				httputil.WriteError(w, http.StatusNotFound, "app not found")
 				return
 			}
 			logger.Error("load app failed", "stack", stack, "name", name, "err", err.Error())
-			writeJSON(w, http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+			httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, detail)
+		httputil.WriteJSON(w, http.StatusOK, detail)
 	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
 }

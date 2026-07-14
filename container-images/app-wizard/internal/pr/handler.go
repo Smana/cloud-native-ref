@@ -9,6 +9,7 @@ import (
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/api"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/auth"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/gitprovider"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/httputil"
 )
 
 // ProviderForRequest yields the gitprovider for the authenticated user of a
@@ -30,18 +31,16 @@ func (s *Service) Handler(providerFor ProviderForRequest, logger *slog.Logger) h
 			if errors.Is(err, auth.ErrGitHubNotLinked) {
 				// Location header carries the link URL; must be set before the body.
 				w.Header().Set("Location", auth.GitHubLinkPath)
-				writeJSON(w, http.StatusPreconditionRequired, api.ErrorResponse{
-					Error: "Connect your GitHub account to open pull requests",
-				})
+				httputil.WriteError(w, http.StatusPreconditionRequired, "Connect your GitHub account to open pull requests")
 				return
 			}
-			writeJSON(w, http.StatusUnauthorized, api.ErrorResponse{Error: "not authenticated"})
+			httputil.WriteError(w, http.StatusUnauthorized, "not authenticated")
 			return
 		}
 
 		var req api.PRRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, api.ErrorResponse{Error: "invalid request body: " + err.Error()})
+			httputil.WriteError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 			return
 		}
 
@@ -49,16 +48,16 @@ func (s *Service) Handler(providerFor ProviderForRequest, logger *slog.Logger) h
 		if err != nil {
 			if ge, ok := err.(*GateError); ok {
 				logger.Info("pr gate blocked", "stack", req.Stack, "app", req.AppName, "reason", ge.Message)
-				writeJSON(w, http.StatusUnprocessableEntity, gateErrorResponse(ge))
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, gateErrorResponse(ge))
 				return
 			}
 			logger.Error("pr creation failed", "stack", req.Stack, "app", req.AppName, "err", err.Error())
-			writeJSON(w, http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+			httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
 		logger.Info("pr created", "stack", req.Stack, "app", req.AppName, "number", resp.Number)
-		writeJSON(w, http.StatusCreated, resp)
+		httputil.WriteJSON(w, http.StatusCreated, resp)
 	}
 }
 
@@ -69,10 +68,4 @@ func gateErrorResponse(ge *GateError) any {
 		return ge.Validate
 	}
 	return api.ErrorResponse{Error: ge.Message}
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
 }

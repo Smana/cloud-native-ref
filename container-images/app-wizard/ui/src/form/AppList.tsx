@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { errorMessage } from "../lib/utils";
 
 interface Props {
   // Called when a row's "Edit" action is triggered — parent fetches the detail
@@ -38,7 +39,7 @@ export function AppList({ onEdit }: Props) {
         setState("loaded");
       })
       .catch((e) => {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(errorMessage(e));
         setState("error");
       });
   }, []);
@@ -67,7 +68,7 @@ export function AppList({ onEdit }: Props) {
       });
       setRemovalPr(res);
     } catch (e) {
-      setDecommissionError(e instanceof Error ? e.message : String(e));
+      setDecommissionError(errorMessage(e));
     } finally {
       setDecommissioning(null);
     }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/api"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/httputil"
 	"sigs.k8s.io/yaml"
 )
 
@@ -21,7 +22,7 @@ func Handler(r Renderer, stacks StackResolver) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		var body api.RenderPreviewRequest
 		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, api.ErrorResponse{Error: "invalid request body: " + err.Error()})
+			httputil.WriteError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 			return
 		}
 
@@ -29,11 +30,11 @@ func Handler(r Renderer, stacks StackResolver) http.HandlerFunc {
 		if body.Stack != "" {
 			s, ok, err := stacks.Stack(req.Context(), body.Stack)
 			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+				httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 			if !ok {
-				writeJSON(w, http.StatusOK, api.RenderPreviewResponse{OK: false, Error: "unknown stack " + body.Stack})
+				httputil.WriteJSON(w, http.StatusOK, api.RenderPreviewResponse{OK: false, Error: "unknown stack " + body.Stack})
 				return
 			}
 			namespace = s.Namespace
@@ -41,16 +42,16 @@ func Handler(r Renderer, stacks StackResolver) http.HandlerFunc {
 
 		claimYAML, err := buildClaim(body.Name, namespace, body.Spec)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, api.ErrorResponse{Error: err.Error()})
+			httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
 		resources, err := r.Render(req.Context(), claimYAML)
 		if err != nil {
-			writeJSON(w, http.StatusOK, api.RenderPreviewResponse{OK: false, Error: err.Error()})
+			httputil.WriteJSON(w, http.StatusOK, api.RenderPreviewResponse{OK: false, Error: err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, api.RenderPreviewResponse{OK: true, Resources: resources})
+		httputil.WriteJSON(w, http.StatusOK, api.RenderPreviewResponse{OK: true, Resources: resources})
 	}
 }
 
@@ -69,10 +70,4 @@ func buildClaim(name, namespace string, spec map[string]any) ([]byte, error) {
 		"spec":       spec,
 	}
 	return yaml.Marshal(claim)
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
 }

@@ -9,6 +9,7 @@ import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { WizardForm, type WizardInitial } from "./form/WizardForm";
 import { AppList } from "./form/AppList";
+import { errorMessage } from "./lib/utils";
 
 type AuthState = "loading" | "authed" | "anonymous";
 type View = "create" | "list";
@@ -48,7 +49,7 @@ export function App() {
           spec: detail.spec ?? {},
         });
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoadingApp(false));
   }
 
@@ -56,7 +57,7 @@ export function App() {
     api
       .getSchema()
       .then(setSchema)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errorMessage(e)));
 
     api
       .getMe()
@@ -66,7 +67,7 @@ export function App() {
       })
       .catch((e) => {
         if (e instanceof UnauthorizedError) setAuth("anonymous");
-        else setError(e instanceof Error ? e.message : String(e));
+        else setError(errorMessage(e));
       });
   }, []);
 

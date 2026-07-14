@@ -2,7 +2,6 @@ package schema
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/api"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/httputil"
 	"sigs.k8s.io/yaml"
 )
 
@@ -102,6 +102,17 @@ func (p *Pipeline) JSONSchema(ctx context.Context) (map[string]any, error) {
 	return pl.JSONSchema, nil
 }
 
+// SchemaVersion returns the current schema payload's SchemaVersion (the XRD
+// source SHA). Cheap to call — Build caches by SHA — so consumers can use it as
+// a cache key to memoize work derived from the schema.
+func (p *Pipeline) SchemaVersion(ctx context.Context) (string, error) {
+	pl, err := p.Build(ctx)
+	if err != nil {
+		return "", err
+	}
+	return pl.SchemaVersion, nil
+}
+
 func (p *Pipeline) loadHints() (api.UIHints, error) {
 	empty := api.UIHints{Fields: map[string]api.FieldHint{}, Groups: []api.GroupHint{}}
 	if p.uiHintsPath == "" {
@@ -177,17 +188,9 @@ func (p *Pipeline) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		payload, err := p.Build(r.Context())
 		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(payload)
+		httputil.WriteJSON(w, http.StatusOK, payload)
 	}
-}
-
-func writeJSONError(w http.ResponseWriter, status int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(api.ErrorResponse{Error: msg})
 }

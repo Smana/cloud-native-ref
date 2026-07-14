@@ -67,6 +67,22 @@ async function parseJson<T>(res: Response): Promise<T> {
   return text ? (JSON.parse(text) as T) : ({} as T);
 }
 
+// Shared status → error dispatch for a non-ok response. Maps 401 →
+// UnauthorizedError, 422 → ValidationError (with parsed body), anything else →
+// ApiError. Callers with extra status handling (e.g. openPR's 428) check that
+// first, then delegate here. Always throws.
+async function throwForStatus(res: Response): Promise<never> {
+  if (res.status === 401) {
+    throw new UnauthorizedError();
+  }
+  if (res.status === 422) {
+    const body = await parseJson<ValidateResponse | { error?: string }>(res);
+    throw new ValidationError(body);
+  }
+  const body = await parseJson<{ error?: string }>(res);
+  throw new ApiError(res.status, body.error || `Request failed (${res.status})`);
+}
+
 async function request<T>(input: string, init?: RequestInit): Promise<T> {
   const res = await fetch(input, {
     ...init,
@@ -77,16 +93,8 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
     },
   });
 
-  if (res.status === 401) {
-    throw new UnauthorizedError();
-  }
-  if (res.status === 422) {
-    const body = await parseJson<ValidateResponse | { error?: string }>(res);
-    throw new ValidationError(body);
-  }
   if (!res.ok) {
-    const body = await parseJson<{ error?: string }>(res);
-    throw new ApiError(res.status, body.error || `Request failed (${res.status})`);
+    return throwForStatus(res);
   }
   return parseJson<T>(res);
 }
@@ -145,16 +153,8 @@ export async function openPR(req: PRRequest): Promise<PRResponse> {
     const body = await parseJson<{ error?: string }>(res);
     throw new GitHubLinkRequiredError(linkUrl, body.error || "GitHub account not linked");
   }
-  if (res.status === 401) {
-    throw new UnauthorizedError();
-  }
-  if (res.status === 422) {
-    const body = await parseJson<ValidateResponse | { error?: string }>(res);
-    throw new ValidationError(body);
-  }
   if (!res.ok) {
-    const body = await parseJson<{ error?: string }>(res);
-    throw new ApiError(res.status, body.error || `Request failed (${res.status})`);
+    return throwForStatus(res);
   }
   return parseJson<PRResponse>(res);
 }

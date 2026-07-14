@@ -16,6 +16,7 @@ import (
 
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/api"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/gitprovider"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/httputil"
 	"github.com/gorilla/sessions"
 	"golang.org/x/oauth2"
 	githuboauth "golang.org/x/oauth2/github"
@@ -230,7 +231,7 @@ func (z *Zitadel) Me(w http.ResponseWriter, r *http.Request) {
 	name, _ := sess.Values[zitNameKey].(string)
 	avatar, _ := sess.Values[zitAvatarKey].(string)
 	_, linked := z.githubToken(r)
-	writeJSON(w, http.StatusOK, api.User{Login: login, Name: name, AvatarURL: avatar, GitHubLinked: linked})
+	httputil.WriteJSON(w, http.StatusOK, api.User{Login: login, Name: name, AvatarURL: avatar, GitHubLinked: linked})
 }
 
 // Logout clears the session (both Zitadel identity and linked GitHub token).
@@ -345,7 +346,7 @@ func (z *Zitadel) authorized(roles []string) bool {
 }
 
 func (z *Zitadel) writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, api.ErrorResponse{Error: msg})
+	httputil.WriteError(w, status, msg)
 }
 
 // loginFromClaims picks the best human-facing login: preferred_username, else
