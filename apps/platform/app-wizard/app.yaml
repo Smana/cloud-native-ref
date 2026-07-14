@@ -25,10 +25,16 @@ spec:
     # rebuilt image silently doesn't roll out. An immutable tag makes the rollout real.
     #
     # Tag format is <branch>-<short-sha>, set by the build workflow's metadata-action —
-    # NOT the raw commit sha. c906058 = the image that actually carries the crossplane
-    # CLI, without which every render preview fails.
-    # Once this branch merges, the equivalent tag becomes main-<short-sha>.
-    tag: "feat-flux-schema-validation-c906058"
+    # NOT the raw commit sha (that gives ImagePullBackOff: not found).
+    #
+    # 6901dd7 is the first image that can actually render: it carries the crossplane CLI
+    # AND passes --crossplane-binary, so neither the functions nor the render engine
+    # reach for a Docker socket the pod does not have.
+    #
+    # POST-MERGE: re-pin to the main-<short-sha> the merge build publishes. This is a
+    # feature-branch artifact — it resolves today, but main should not depend on a tag
+    # named after a branch that no longer exists.
+    tag: "feat-flux-schema-validation-6901dd7"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions

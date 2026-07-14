@@ -6,14 +6,16 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # TEMPORARY — tracking main to validate the commits landed after v0.9.1:
-  #   #322 redact: decode Secret data values and scrub them payload-wide
-  #   #321 security: pin the Hubble Relay TLS floor to 1.2
-  #   #320 coalesce: a standing 👎 bypasses the cooldown
-  # Paired with the rolling `main` image tag in observability/base/runlore/helmrelease.yaml.
-  # REVERT to a release tag once release-please cuts v0.9.2 (PR #323):
-  #   ref.tag: v0.9.2  +  image.tag: "0.9.2"  (released image is multi-arch + signed;
-  #   `main` is a single-arch amd64 validation build — fine on this amd64 cluster, not
-  #   what we want pinned long-term).
+  # Pinned to the v0.9.1 release: the chart and the signed, multi-arch release image in
+  # observability/base/runlore/helmrelease.yaml (image.tag "0.9.1") come from the same
+  # tag, so the two cannot drift apart.
+  #
+  # main was tracked briefly to validate #320/#321/#322 against a live cluster (all three
+  # verified: load-bearing unit tests, k3d e2e 54/0, healthy on the cluster). Reverted
+  # here deliberately — the rolling `main` tag is a single-arch, unsigned validation
+  # build and must not be what a cluster runs.
+  #
+  # Bump to v0.9.2 (release-please PR Smana/runlore#323) to pick those three up in a
+  # release: ref.tag: v0.9.2 AND image.tag: "0.9.2" — move them together.
   ref:
-    branch: main
+    tag: v0.9.1
