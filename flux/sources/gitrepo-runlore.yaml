@@ -11,4 +11,4 @@ spec:
   # multi-arch image ghcr.io/smana/runlore:v0.9.0 (helmrelease.yaml image.tag).
   # Switched off rolling main/:main now that release-please cut v0.9.0.
   ref:
-    tag: v0.9.0
+    tag: v0.9.1
