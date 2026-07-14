@@ -80,6 +80,11 @@ spec:
     # than the local disk (dev mode).
     - name: XRD_SOURCE
       value: "github"
+    # Render preview via the function sidecars below (CL-8): the renderer overlays
+    # the crossplane "Development" runtime onto functions.yaml so `crossplane
+    # render` dials these in-pod gRPC endpoints instead of running Docker.
+    - name: FUNCTIONS_DEV_TARGETS
+      value: "function-kcl=localhost:9443,function-auto-ready=localhost:9444,function-environment-configs=localhost:9445"
     # OAuth callback registered with the GitHub OAuth app (CL-9). Must match the
     # private Tailscale hostname below. Used by both the github login flow AND
     # the zitadel "link GitHub" flow (/api/auth/github/callback shares the app).
@@ -222,10 +227,53 @@ spec:
     metrics:
       enabled: false
 
-  # TODO(SPEC-008 phase1): wire function-kcl / function-auto-ready gRPC sidecars
-  # for in-pod `crossplane render` preview (CL-8). Omitted deliberately: the App
-  # XRD (app-definition.yaml) exposes no `sidecars[]` field on spec, so a sidecar
-  # block cannot be expressed through this claim today. Rendering preview must
-  # either (a) be added to the App XRD/composition first (out of scope here —
-  # this task owns only files under apps/), or (b) run render out-of-band. See
-  # the report note.
+  # ---------------------------------------------------------------------------
+  # Render-preview function sidecars (CL-8). SPEC-007 added `sidecars[]` to the
+  # App XRD, so the render pipeline's functions run as long-lived gRPC servers
+  # in this pod; the backend's FUNCTIONS_DEV_TARGETS (above) points `crossplane
+  # render` at them (Development runtime) — no Docker-in-pod.
+  #
+  # NEEDS CLUSTER VALIDATION (cannot be verified without a running cluster):
+  #   1. Function package images are run directly as gRPC servers here. Confirm
+  #      each image's entrypoint accepts `--insecure` + `--address` and serves on
+  #      the given port (crossplane-contrib function-sdk-go servers do; verify
+  #      per image/version).
+  #   2. readOnlyRootFilesystem is relaxed for function-kcl (KCL may write temp);
+  #      tighten once confirmed. The other two keep the composition defaults.
+  #   3. In-pod render ALSO requires the `crossplane` CLI in the image and the
+  #      composition/functions/environmentconfig files reachable by the renderer
+  #      (COMPOSITION_PATH/FUNCTIONS_PATH/ENVCONFIG_PATH). Until both are in
+  #      place, /api/render-preview returns a friendly error and the form still
+  #      works (validation gates are independent). Tracked for the cluster.
+  # Versions mirror infrastructure/base/crossplane/configuration/functions.yaml.
+  # ---------------------------------------------------------------------------
+  sidecars:
+    - name: function-kcl
+      image: "xpkg.upbound.io/crossplane-contrib/function-kcl:v0.12.1"
+      args: ["--insecure", "--address=:9443"]
+      ports:
+        - name: fn-kcl
+          containerPort: 9443
+      securityContext:
+        readOnlyRootFilesystem: false
+      resources:
+        requests: {cpu: "25m", memory: "64Mi"}
+        limits: {cpu: "250m", memory: "256Mi"}
+    - name: function-auto-ready
+      image: "xpkg.crossplane.io/crossplane-contrib/function-auto-ready:v0.7.0"
+      args: ["--insecure", "--address=:9444"]
+      ports:
+        - name: fn-ready
+          containerPort: 9444
+      resources:
+        requests: {cpu: "10m", memory: "32Mi"}
+        limits: {cpu: "100m", memory: "128Mi"}
+    - name: function-environment-configs
+      image: "xpkg.crossplane.io/crossplane-contrib/function-environment-configs:v0.7.2"
+      args: ["--insecure", "--address=:9445"]
+      ports:
+        - name: fn-envcfg
+          containerPort: 9445
+      resources:
+        requests: {cpu: "10m", memory: "32Mi"}
+        limits: {cpu: "100m", memory: "128Mi"}

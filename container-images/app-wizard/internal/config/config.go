@@ -95,6 +95,13 @@ type Config struct {
 	CompositionPath string
 	FunctionsPath   string
 	EnvConfigPath   string
+	// FunctionsDevTargets maps a Crossplane Function name to a running gRPC
+	// endpoint (host:port), parsed from FUNCTIONS_DEV_TARGETS
+	// ("function-kcl=localhost:9443,function-auto-ready=localhost:9444,…").
+	// When set, the renderer overlays the "Development" runtime onto the repo's
+	// functions.yaml so `crossplane render` connects to those endpoints (the
+	// in-pod function sidecars) instead of pulling+running images via Docker.
+	FunctionsDevTargets map[string]string
 
 	// --- LLM assists (Phase 3, FR-011). All optional. ---
 	//
@@ -144,6 +151,7 @@ func Load() (*Config, error) {
 		LLMAPIKey:           os.Getenv("LLM_API_KEY"),
 		LLMBaseURL:          os.Getenv("LLM_BASE_URL"),
 		LLMModel:            env("LLM_MODEL", "claude-opus-4-8"),
+		FunctionsDevTargets: parseKVList(os.Getenv("FUNCTIONS_DEV_TARGETS")),
 	}
 
 	if cfg.XRDSource != SourceLocal && cfg.XRDSource != SourceGitHub {
@@ -172,6 +180,27 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// parseKVList parses "k=v,k=v" into a map. Empty/malformed entries are skipped.
+// Returns nil for empty input so callers can test presence with len()>0.
+func parseKVList(s string) map[string]string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	out := map[string]string{}
+	for _, pair := range strings.Split(s, ",") {
+		k, v, ok := strings.Cut(strings.TrimSpace(pair), "=")
+		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+		if ok && k != "" && v != "" {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // defaultRepoRoot best-efforts the repo root for local dev: the current

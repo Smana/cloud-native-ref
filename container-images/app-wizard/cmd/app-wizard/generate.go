@@ -114,7 +114,7 @@ func runGenerate(args []string) error {
 
 	// Gate 2 (optional): crossplane render preview.
 	if *doRender {
-		renderer := render.NewCrossplaneRenderer(root, cfg.CompositionPath, cfg.FunctionsPath, cfg.EnvConfigPath)
+		renderer := render.NewCrossplaneRenderer(root, cfg.CompositionPath, cfg.FunctionsPath, cfg.EnvConfigPath, cfg.FunctionsDevTargets)
 		resources, err := renderer.Render(ctx, claimYAML)
 		if err != nil {
 			return fmt.Errorf("render gate failed: %w", err)

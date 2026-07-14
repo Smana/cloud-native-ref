@@ -69,7 +69,7 @@ func main() {
 	}
 
 	validator := validate.NewValidator(pipeline)
-	renderer := render.NewCrossplaneRenderer(cfg.RepoRoot, cfg.CompositionPath, cfg.FunctionsPath, cfg.EnvConfigPath)
+	renderer := render.NewCrossplaneRenderer(cfg.RepoRoot, cfg.CompositionPath, cfg.FunctionsPath, cfg.EnvConfigPath, cfg.FunctionsDevTargets)
 	prService := pr.NewService(validator, renderer, pipeline, cfg.RepoBaseBranch)
 	appStore := appstore.New(pipeline, cfg.RepoBaseBranch)
 

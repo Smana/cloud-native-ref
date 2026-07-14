@@ -24,11 +24,16 @@ type CrossplaneRenderer struct {
 	CompositionPath string
 	FunctionsPath   string
 	EnvConfigPath   string
+	// DevTargets maps a Function name to a running gRPC endpoint (host:port). When
+	// non-empty, Render overlays the "Development" runtime onto the functions file
+	// so `crossplane render` connects to those endpoints (the in-pod function
+	// sidecars) instead of pulling+running function images via Docker.
+	DevTargets map[string]string
 }
 
 // NewCrossplaneRenderer builds a renderer. repoRoot anchors the relative
 // composition paths.
-func NewCrossplaneRenderer(repoRoot, compositionPath, functionsPath, envConfigPath string) *CrossplaneRenderer {
+func NewCrossplaneRenderer(repoRoot, compositionPath, functionsPath, envConfigPath string, devTargets map[string]string) *CrossplaneRenderer {
 	abs := func(p string) string {
 		if filepath.IsAbs(p) {
 			return p
@@ -40,7 +45,52 @@ func NewCrossplaneRenderer(repoRoot, compositionPath, functionsPath, envConfigPa
 		CompositionPath: abs(compositionPath),
 		FunctionsPath:   abs(functionsPath),
 		EnvConfigPath:   abs(envConfigPath),
+		DevTargets:      devTargets,
 	}
+}
+
+// DevFunctionsYAML overlays the "Development" runtime onto a functions.yaml
+// stream: for each Function whose metadata.name is in targets, it adds
+//
+//	annotations:
+//	  render.crossplane.io/runtime: Development
+//	  render.crossplane.io/runtime-development-target: <host:port>
+//
+// spec.package is preserved (drift-free — packages come from the repo file), but
+// `crossplane render` ignores it in Development mode and dials the endpoint.
+func DevFunctionsYAML(functionsFile []byte, targets map[string]string) ([]byte, error) {
+	docs := splitYAMLDocs(functionsFile)
+	var out [][]byte
+	for _, doc := range docs {
+		trimmed := bytes.TrimSpace(doc)
+		if len(trimmed) == 0 {
+			continue
+		}
+		var fn map[string]any
+		if err := yaml.Unmarshal(trimmed, &fn); err != nil {
+			return nil, fmt.Errorf("parse function doc: %w", err)
+		}
+		meta, _ := fn["metadata"].(map[string]any)
+		if meta != nil {
+			name, _ := meta["name"].(string)
+			if target, ok := targets[name]; ok {
+				ann, _ := meta["annotations"].(map[string]any)
+				if ann == nil {
+					ann = map[string]any{}
+				}
+				ann["render.crossplane.io/runtime"] = "Development"
+				ann["render.crossplane.io/runtime-development-target"] = target
+				meta["annotations"] = ann
+				fn["metadata"] = meta
+			}
+		}
+		b, err := yaml.Marshal(fn)
+		if err != nil {
+			return nil, fmt.Errorf("marshal function doc: %w", err)
+		}
+		out = append(out, b)
+	}
+	return bytes.Join(out, []byte("---\n")), nil
 }
 
 func (r *CrossplaneRenderer) Render(ctx context.Context, claimYAML []byte) ([]api.RenderedResource, error) {
@@ -57,7 +107,34 @@ func (r *CrossplaneRenderer) Render(ctx context.Context, claimYAML []byte) ([]ap
 		return nil, fmt.Errorf("close temp claim: %w", err)
 	}
 
-	args := []string{"render", tmp.Name(), r.CompositionPath, r.FunctionsPath}
+	// Functions file: in dev-targets mode, overlay the Development runtime so
+	// render dials the in-pod function sidecars instead of running Docker.
+	functionsPath := r.FunctionsPath
+	if len(r.DevTargets) > 0 {
+		orig, err := os.ReadFile(r.FunctionsPath)
+		if err != nil {
+			return nil, fmt.Errorf("read functions file: %w", err)
+		}
+		devFns, err := DevFunctionsYAML(orig, r.DevTargets)
+		if err != nil {
+			return nil, err
+		}
+		ftmp, err := os.CreateTemp("", "app-wizard-functions-*.yaml")
+		if err != nil {
+			return nil, fmt.Errorf("create temp functions: %w", err)
+		}
+		defer func() { _ = os.Remove(ftmp.Name()) }()
+		if _, err := ftmp.Write(devFns); err != nil {
+			_ = ftmp.Close()
+			return nil, fmt.Errorf("write functions: %w", err)
+		}
+		if err := ftmp.Close(); err != nil {
+			return nil, fmt.Errorf("close temp functions: %w", err)
+		}
+		functionsPath = ftmp.Name()
+	}
+
+	args := []string{"render", tmp.Name(), r.CompositionPath, functionsPath}
 	if r.EnvConfigPath != "" {
 		args = append(args, "--extra-resources", r.EnvConfigPath)
 	}
