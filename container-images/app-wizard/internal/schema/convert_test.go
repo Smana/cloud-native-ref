@@ -109,8 +109,10 @@ func TestConvertXRD(t *testing.T) {
 			}
 		}},
 		{"CEL rules extracted", func(t *testing.T) {
-			if len(cel) != 3 {
-				t.Fatalf("got %d CEL rules, want 3", len(cel))
+			// Assert known rules are present (not an exact count — the XRD gains
+			// rules over time, e.g. SPEC-007 workload-type validations).
+			if len(cel) < 3 {
+				t.Fatalf("got %d CEL rules, want at least 3", len(cel))
 			}
 			found := false
 			for _, r := range cel {
@@ -152,8 +154,8 @@ func TestPipelineBuildAndCache(t *testing.T) {
 	if payload.SchemaVersion == "" {
 		t.Errorf("SchemaVersion empty")
 	}
-	if len(payload.CELRules) != 3 {
-		t.Errorf("CELRules = %d, want 3", len(payload.CELRules))
+	if len(payload.CELRules) < 3 {
+		t.Errorf("CELRules = %d, want at least 3", len(payload.CELRules))
 	}
 	if len(payload.Hints.Fields) == 0 {
 		t.Errorf("hints not loaded")

@@ -102,8 +102,53 @@ fields:
     group: exposure
     label: External route
     order: 21
+  # Workload type (SPEC-007): web | worker | cron.
+  type:
+    tier: basic
+    group: workload
+    label: Workload type
+    help: web (HTTP service) · worker (no Service/route) · cron (scheduled job).
+    order: 5
 
   # --- advanced tier ---
+  # SPEC-007 workload fields.
+  schedule:
+    tier: advanced
+    group: workload
+    label: Cron schedule
+    help: Cron expression — required when type is 'cron' (e.g. "0 3 * * *").
+    example: "0 3 * * *"
+    order: 34
+  cron:
+    tier: advanced
+    group: workload
+    label: Cron job options
+    order: 35
+  command:
+    tier: advanced
+    group: workload
+    label: Command (entrypoint override)
+    order: 36
+  args:
+    tier: advanced
+    group: workload
+    label: Args
+    order: 37
+  sidecars:
+    tier: advanced
+    group: workload
+    label: Sidecar containers
+    order: 38
+  initContainers:
+    tier: advanced
+    group: workload
+    label: Init containers
+    order: 39
+  persistence:
+    tier: advanced
+    group: data
+    label: Persistent volume
+    order: 43
   sqlInstance:
     tier: advanced
     group: data
