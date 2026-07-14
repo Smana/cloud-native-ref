@@ -4,6 +4,13 @@ Schema-driven self-service UI that turns a form (or a plain-language
 description) into a reviewable GitOps pull request under `apps/<stack>/<app>/`.
 See the spec: [`docs/specs/008-app-wizard-self-service-ui/`](../../docs/specs/008-app-wizard-self-service-ui/).
 
+> **Two ways to declare an app.** The wizard is the *assisted* path; you can
+> also just **write the App YAML yourself and open a PR** — same schema, same
+> gates, same review flow. Both are documented for developers in
+> [`docs/app-wizard.md`](../../docs/app-wizard.md). There is deliberately no
+> in-UI YAML editor: a text editor + git already do that well, and the
+> `generate` subcommand (below) covers local scaffolding/validation.
+
 ## What it is
 
 A single Go binary that serves a React SPA and a small JSON API. The form is

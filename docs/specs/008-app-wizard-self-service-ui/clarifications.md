@@ -169,6 +169,24 @@
 **Decided by**: Smaine (spec review, 2026-07-14)
 **References**: FR-004, T003
 
+## CL-10 — 2026-07-14 — Two abstractions: assisted wizard vs. hand-written YAML
+
+**Asked by**: Smaine
+**Context**: Should the platform offer both an assisted UI and a raw-YAML path, and if so does the raw-YAML path need an in-UI editor tab?
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Two paths, documented; NO in-UI YAML editor | Both personas served; the "write YAML + PR" path already exists (every app in `apps/` was made that way); zero extra UI to maintain | Experts don't get in-browser validation unless they use `app-wizard generate` |
+| B | Add an in-UI "Write YAML" editor tab | In-browser validation for pasted YAML | Re-implements a text editor + git; Monaco/sync/secret-in-textarea handling; maintenance for marginal gain |
+| C | Full bidirectional YAML↔form sync | Polished single-surface UX | Needs the Phase-2 round-trip loader; conflict/cursor handling; biggest scope |
+
+**Decision**: A — present **both** options in the developer docs (`docs/app-wizard.md`, with screenshots), but build **no** in-UI YAML editor. The raw-YAML abstraction is the existing GitOps path (write `app.yaml` + open a PR); `app-wizard generate` gives experts local scaffold + validate without a browser.
+**Rationale**: YAGNI on the editor tab — a text editor and git already do that job. The wizard is the *assisted* front door; hand-written YAML is the *direct* front door; both funnel through the identical validation + render + PR pipeline. Reinforces the spec's "the claim is the interface; the form is scaffolding" stance.
+**Decided by**: Smaine (2026-07-14)
+**References**: spec.md Non-Goals ("Not a YAML editor"); `docs/app-wizard.md`; `app-wizard generate` subcommand
+
 ---
 
 ## Related
