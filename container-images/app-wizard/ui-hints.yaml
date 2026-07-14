@@ -57,6 +57,34 @@ fields:
     label: Image tag
     example: v1.0.0
     order: 12
+  image.pullPolicy:
+    tier: advanced
+    group: workload
+    label: Image pull policy
+    order: 13
+  service.port:
+    tier: basic
+    group: exposure
+    label: Port
+    example: "8080"
+    order: 20
+  route.enabled:
+    tier: basic
+    group: exposure
+    label: Enabled
+    order: 21
+  route.hostname:
+    tier: basic
+    group: exposure
+    label: Hostname
+    example: myapp
+    order: 22
+  route.internetFacing:
+    tier: basic
+    group: exposure
+    label: Internet-facing
+    help: Exposes the app publicly on the internet (…cloud.ogenki.io).
+    order: 23
   type:
     tier: basic
     group: workload

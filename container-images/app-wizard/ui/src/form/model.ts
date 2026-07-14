@@ -133,7 +133,9 @@ export function pathToString(path: PathSeg[]): string {
 export function prune(value: unknown): unknown {
   if (Array.isArray(value)) {
     const arr = value.map(prune).filter((v) => v !== undefined);
-    return arr;
+    // Drop empty arrays entirely so defaulted/untouched list fields (e.g.
+    // route.rules) never appear in the generated claim.
+    return arr.length ? arr : undefined;
   }
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
@@ -147,6 +149,54 @@ export function prune(value: unknown): unknown {
     return out;
   }
   if (value === "" || value === undefined || value === null) return undefined;
+  return value;
+}
+
+// Deep-copy `spec` and fill in schema `default` values for absent keys,
+// recursing into nested object `properties` (FIX 4 — "Show defaults" view).
+// Pure: never mutates its inputs. Only fills values that have an explicit
+// schema default — no values are invented for defaultless fields.
+export function applyDefaults(spec: unknown, jsonSchema: unknown): unknown {
+  const schema = asSchema(jsonSchema);
+
+  if (schema.type === "object" || schema.properties) {
+    const src =
+      spec && typeof spec === "object" && !Array.isArray(spec)
+        ? (spec as Record<string, unknown>)
+        : {};
+    const out: Record<string, unknown> = {};
+    // Preserve user-provided keys (deep copy) even if not in the schema.
+    for (const [k, v] of Object.entries(src)) {
+      out[k] = deepCopy(v);
+    }
+    for (const [k, child] of Object.entries(schema.properties ?? {})) {
+      const childSchema = asSchema(child);
+      const present = k in src;
+      if (present) {
+        out[k] = applyDefaults(src[k], childSchema);
+      } else if (childSchema.default !== undefined) {
+        out[k] = deepCopy(childSchema.default);
+      } else if (childSchema.type === "object" || childSchema.properties) {
+        // Recurse to surface nested defaults even when the parent is absent.
+        const nested = applyDefaults(undefined, childSchema);
+        if (nested && Object.keys(nested as object).length > 0) out[k] = nested;
+      }
+    }
+    return out;
+  }
+
+  return deepCopy(spec);
+}
+
+function deepCopy(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(deepCopy);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = deepCopy(v);
+    }
+    return out;
+  }
   return value;
 }
 

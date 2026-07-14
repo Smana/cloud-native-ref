@@ -20,7 +20,7 @@ import { Input, Textarea } from "../components/ui/input";
 import { Select } from "../components/ui/select";
 import { Field } from "./Field";
 import { SecretsEditor } from "./SecretsEditor";
-import { buildLayout, tierBadgeVariant, type TopField } from "./model";
+import { applyDefaults, buildLayout, tierBadgeVariant, type TopField } from "./model";
 import { claimToYaml } from "./claim";
 import { useDebounced } from "./useDebounced";
 import { validateAppName } from "./validation";
@@ -56,14 +56,23 @@ export function WizardForm({ schema, user }: Props) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showDefaults, setShowDefaults] = useState(false);
 
   const nameError = name ? validateAppName(name) : null;
   const namespace = schema.stacks.find((s) => s.name === stack)?.namespace;
 
+  // Minimal claim — exactly what gets committed (and what "Eject to YAML" copies).
   const yamlText = useMemo(
     () => claimToYaml({ name, namespace, spec }),
     [name, namespace, spec],
   );
+
+  // Informational view: the effective spec after the XRD fills in defaults.
+  const displayYaml = useMemo(() => {
+    if (!showDefaults) return yamlText;
+    const effectiveSpec = applyDefaults(spec, schema.jsonSchema);
+    return claimToYaml({ name, namespace, spec: effectiveSpec });
+  }, [showDefaults, yamlText, spec, schema.jsonSchema, name, namespace]);
 
   // Live validation (FR-002): debounce the spec and POST /api/validate.
   const debouncedSpec = useDebounced(spec, 400);
@@ -153,7 +162,7 @@ export function WizardForm({ schema, user }: Props) {
     }
   }
 
-  const renderField = (f: TopField) => {
+  const renderField = (f: TopField, basicScreen = false) => {
     if (SECRET_KEYS.has(f.key)) return null; // handled by the secrets group
     return (
       <Field
@@ -166,6 +175,8 @@ export function WizardForm({ schema, user }: Props) {
         label={f.hint.label ?? f.key}
         help={f.hint.help ?? f.schema.description}
         placeholder={f.hint.example}
+        hints={schema.hints}
+        basicScreen={basicScreen}
       />
     );
   };
@@ -225,7 +236,7 @@ export function WizardForm({ schema, user }: Props) {
             </div>
 
             {/* Schema-driven basic-tier fields */}
-            {layout.basic.map(renderField)}
+            {layout.basic.map((f) => renderField(f, true))}
           </CardContent>
         </Card>
 
@@ -248,7 +259,7 @@ export function WizardForm({ schema, user }: Props) {
                 secretsPath={["externalSecrets"]}
               />
             )}
-            {fields.map(renderField)}
+            {fields.map((f) => renderField(f, false))}
           </Collapsible>
         ))}
 
@@ -258,7 +269,7 @@ export function WizardForm({ schema, user }: Props) {
             badge={<Badge variant="secondary">advanced</Badge>}
             subtitle={`${layout.ungrouped.length} field${layout.ungrouped.length === 1 ? "" : "s"}`}
           >
-            {layout.ungrouped.map(renderField)}
+            {layout.ungrouped.map((f) => renderField(f, false))}
           </Collapsible>
         )}
 
@@ -317,16 +328,50 @@ export function WizardForm({ schema, user }: Props) {
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Generated claim (live)</CardTitle>
-            <Button type="button" size="sm" variant="outline" onClick={copyYaml}>
-              {copied ? "Copied!" : "Eject to YAML"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex overflow-hidden rounded-md border border-border text-xs">
+                <button
+                  type="button"
+                  aria-pressed={!showDefaults}
+                  onClick={() => setShowDefaults(false)}
+                  className={
+                    !showDefaults
+                      ? "bg-primary px-2 py-1 text-primary-foreground"
+                      : "bg-background px-2 py-1 text-muted-foreground hover:bg-muted"
+                  }
+                >
+                  Minimal
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={showDefaults}
+                  onClick={() => setShowDefaults(true)}
+                  className={
+                    showDefaults
+                      ? "bg-primary px-2 py-1 text-primary-foreground"
+                      : "bg-background px-2 py-1 text-muted-foreground hover:bg-muted"
+                  }
+                >
+                  With defaults
+                </button>
+              </div>
+              <Button type="button" size="sm" variant="outline" onClick={copyYaml}>
+                {copied ? "Copied!" : "Eject to YAML"}
+              </Button>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-2">
+            {showDefaults && (
+              <p className="text-xs text-muted-foreground">
+                Showing defaults — the committed claim only includes values you
+                changed.
+              </p>
+            )}
             <pre
               data-testid="yaml-pane"
               className="max-h-[70vh] overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed"
             >
-              <code>{yamlText}</code>
+              <code>{displayYaml}</code>
             </pre>
           </CardContent>
         </Card>

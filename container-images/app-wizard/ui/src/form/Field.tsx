@@ -1,7 +1,8 @@
 // Recursive, schema-driven field widget. Given a JSONSchema node + its path in
 // the spec, it renders the right control and recurses for objects/arrays. It is
 // entirely generic — no field is hardcoded (FR-001 / SC-002).
-import type { FieldError } from "../api/types";
+import type { FieldError, UIHints } from "../api/types";
+import { Alert, AlertDescription } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input, Textarea } from "../components/ui/input";
@@ -21,6 +22,11 @@ interface FieldProps {
   help?: string;
   placeholder?: string;
   labelledById?: string;
+  // Presentation overlay + basic-screen filtering (FIX 3). When basicScreen is
+  // true, object children are limited to basic-tier or required keys; when
+  // false/undefined, ALL children render (advanced/expert groups).
+  hints?: UIHints;
+  basicScreen?: boolean;
 }
 
 function Label({ id, children }: { id?: string; children: React.ReactNode }) {
@@ -58,6 +64,8 @@ export function Field({
   help,
   placeholder,
   labelledById,
+  hints,
+  basicScreen,
 }: FieldProps) {
   const s = asSchema(schema);
   const value = getAt(spec, path);
@@ -98,20 +106,37 @@ export function Field({
   }
 
   switch (s.type) {
-    case "boolean":
+    case "boolean": {
+      const boolChecked = Boolean(value ?? s.default ?? false);
+      // Generic public-exposure guardrail: any boolean whose path ends with
+      // `internetFacing` shows a warning when toggled ON (FIX 2).
+      const isInternetFacing = path[path.length - 1] === "internetFacing";
       return (
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-0.5">
-            {label && <Label id={id}>{label}</Label>}
-            <Help text={help_} />
+        <div className="space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-0.5">
+              {label && <Label id={id}>{label}</Label>}
+              <Help text={help_} />
+            </div>
+            <Switch
+              id={id}
+              checked={boolChecked}
+              onCheckedChange={(v) => onChange(setAt(spec, path, v))}
+            />
           </div>
-          <Switch
-            id={id}
-            checked={Boolean(value ?? s.default ?? false)}
-            onCheckedChange={(v) => onChange(setAt(spec, path, v))}
-          />
+          {isInternetFacing && boolChecked && (
+            <Alert variant="warning">
+              <AlertDescription>
+                ⚠ Public exposure — this serves the app on the public internet
+                (…cloud.ogenki.io). Use a private (Tailscale) route unless public
+                access is required.
+              </AlertDescription>
+            </Alert>
+          )}
+          {errorNode}
         </div>
       );
+    }
 
     case "integer":
     case "number":
@@ -146,6 +171,7 @@ export function Field({
           errors={errors}
           label={label}
           help={help_}
+          hints={hints}
         />
       );
 
@@ -165,28 +191,50 @@ export function Field({
           />
         );
       }
-      // nested group of properties
-      return (
-        <fieldset className="space-y-3 rounded-md border border-border/60 p-3">
-          {label && <legend className="px-1 text-sm font-medium">{label}</legend>}
-          <Help text={help_} />
-          {Object.entries(s.properties ?? {}).map(([k, child]) => {
-            const childSchema = asSchema(child);
-            return (
+      // nested group of properties. Children are ordered by their hint.order
+      // (the backend serializes Go maps alphabetically, so insertion order is
+      // NOT meaningful) and — on the basic screen only — filtered to basic-tier
+      // or required keys (FIX 3).
+      {
+        const required = new Set(s.required ?? []);
+        const children = Object.entries(s.properties ?? {})
+          .map(([k, child]) => {
+            const hintKey = [...path, k].join(".");
+            const hint = hints?.fields[hintKey];
+            return { k, child: asSchema(child), hint };
+          })
+          .filter(({ k, hint }) => {
+            if (!basicScreen) return true; // advanced/expert: render everything
+            return hint?.tier === "basic" || required.has(k);
+          })
+          .sort(
+            (a, b) =>
+              (a.hint?.order ?? 500) - (b.hint?.order ?? 500) ||
+              a.k.localeCompare(b.k),
+          );
+        return (
+          <fieldset className="space-y-3 rounded-md border border-border/60 p-3">
+            {label && <legend className="px-1 text-sm font-medium">{label}</legend>}
+            <Help text={help_} />
+            {children.map(({ k, child, hint }) => (
               <Field
                 key={k}
-                schema={childSchema}
+                schema={child}
                 path={[...path, k]}
                 spec={spec}
                 onChange={onChange}
                 errors={errors}
-                label={humanize(k)}
+                label={hint?.label ?? humanize(k)}
+                help={hint?.help ?? child.description}
+                placeholder={hint?.example}
+                hints={hints}
+                basicScreen={basicScreen}
               />
-            );
-          })}
-          {errorNode}
-        </fieldset>
-      );
+            ))}
+            {errorNode}
+          </fieldset>
+        );
+      }
 
     default: {
       // string (with pattern validation) — textarea for long content fields.
@@ -228,6 +276,7 @@ function ArrayField({
   errors,
   label,
   help,
+  hints,
 }: {
   schema: JSONSchema;
   path: PathSeg[];
@@ -236,6 +285,7 @@ function ArrayField({
   errors: FieldError[];
   label?: string;
   help?: string;
+  hints?: UIHints;
 }) {
   const item = asSchema(schema.items);
   const arr = (getAt(spec, path) as unknown[] | undefined) ?? [];
@@ -264,6 +314,7 @@ function ArrayField({
               spec={spec}
               onChange={onChange}
               errors={errors}
+              hints={hints}
             />
           </div>
         ))}
