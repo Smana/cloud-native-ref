@@ -34,6 +34,9 @@ type Auth struct {
 	store       sessions.Store
 	factory     ProviderFactory
 	logger      *slog.Logger
+	// devProvider, when non-nil, activates AUTH_MODE=dev: login is bypassed
+	// (Me returns a fake user) and this provider handles all requests. DEV ONLY.
+	devProvider gitprovider.Provider
 }
 
 // Config configures the Auth handler.
@@ -44,6 +47,9 @@ type Config struct {
 	SessionKey   []byte
 	Factory      ProviderFactory
 	Logger       *slog.Logger
+	// DevProvider activates the dev bypass when non-nil (AUTH_MODE=dev). Must be
+	// nil in any deployed environment.
+	DevProvider gitprovider.Provider
 }
 
 // New builds an Auth handler.
@@ -68,9 +74,10 @@ func New(cfg Config) *Auth {
 			Scopes:       []string{"repo", "read:user"},
 			Endpoint:     githuboauth.Endpoint,
 		},
-		store:   store,
-		factory: cfg.Factory,
-		logger:  logger,
+		store:       store,
+		factory:     cfg.Factory,
+		logger:      logger,
+		devProvider: cfg.DevProvider,
 	}
 }
 
@@ -126,6 +133,15 @@ func (a *Auth) Callback(w http.ResponseWriter, r *http.Request) {
 
 // Me returns the authenticated user (401 if unauthenticated).
 func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
+	if a.devProvider != nil { // AUTH_MODE=dev
+		u, err := a.devProvider.CurrentUser(r.Context())
+		if err != nil {
+			a.writeError(w, http.StatusBadGateway, "failed to fetch user")
+			return
+		}
+		writeJSON(w, http.StatusOK, api.User{Login: u.Login, AvatarURL: u.AvatarURL, Name: u.Name})
+		return
+	}
 	token, ok := a.Token(r)
 	if !ok {
 		a.writeError(w, http.StatusUnauthorized, "not authenticated")
@@ -164,6 +180,9 @@ func (a *Auth) Token(r *http.Request) (string, bool) {
 
 // ProviderForRequest builds a gitprovider for the request's authenticated user.
 func (a *Auth) ProviderForRequest(r *http.Request) (gitprovider.Provider, error) {
+	if a.devProvider != nil { // AUTH_MODE=dev
+		return a.devProvider, nil
+	}
 	token, ok := a.Token(r)
 	if !ok {
 		return nil, ErrUnauthenticated

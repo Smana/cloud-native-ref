@@ -27,6 +27,13 @@ type Config struct {
 	// ListenAddr is the HTTP bind address (LISTEN_ADDR, default ":8080").
 	ListenAddr string
 
+	// AuthMode selects the authentication backend (AUTH_MODE):
+	//   "github" (default) — real GitHub OAuth; PRs opened as the user.
+	//   "dev"              — LOCAL TESTING ONLY. Bypasses login (fake user) and
+	//                        writes generated files to RepoRoot instead of opening
+	//                        a real PR. Must never be set in a deployed environment.
+	AuthMode string
+
 	// GitHubClientID / GitHubClientSecret are the OAuth app credentials
 	// (GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET).
 	GitHubClientID     string
@@ -70,6 +77,7 @@ type Config struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		ListenAddr:         env("LISTEN_ADDR", ":8080"),
+		AuthMode:           strings.ToLower(env("AUTH_MODE", "github")),
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
 		OAuthRedirectURL:   env("OAUTH_REDIRECT_URL", "http://localhost:8080/api/auth/callback"),

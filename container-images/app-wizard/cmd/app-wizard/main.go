@@ -73,14 +73,19 @@ func main() {
 	factory := func(ctx context.Context, token string) gitprovider.Provider {
 		return gitprovider.NewGitHub(ctx, token, cfg.RepoOwner, cfg.RepoName)
 	}
-	authHandler := auth.New(auth.Config{
+	authCfg := auth.Config{
 		ClientID:     cfg.GitHubClientID,
 		ClientSecret: cfg.GitHubClientSecret,
 		RedirectURL:  cfg.OAuthRedirectURL,
 		SessionKey:   cfg.SessionKey,
 		Factory:      factory,
 		Logger:       logger,
-	})
+	}
+	if cfg.AuthMode == "dev" {
+		logger.Warn("AUTH_MODE=dev — login bypassed, PRs written to the working tree; DO NOT use in a deployed environment")
+		authCfg.DevProvider = gitprovider.NewLocalDryRun(cfg.RepoRoot)
+	}
+	authHandler := auth.New(authCfg)
 
 	mux := http.NewServeMux()
 
