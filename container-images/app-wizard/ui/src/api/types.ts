@@ -81,6 +81,9 @@ export interface RenderedResource {
   kind: string;
   name: string;
   role?: string;
+  // Full rendered manifest — the effective spec after the composition applies its
+  // defaults (resources/limits, probes, securityContext, …). Shown expandable.
+  yaml?: string;
 }
 
 export interface PRRequest {

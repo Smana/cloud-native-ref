@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, within, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { fixtureSchema } from "../api/__fixtures__/schema";
 import type { User } from "../api/types";
 
@@ -31,11 +31,15 @@ describe("WizardForm renderer", () => {
   it("basic tier (first screen) shows ≤ 8 visible inputs", () => {
     render(<WizardForm schema={fixtureSchema} user={user} />);
     const formColumn = screen.getByTestId("form-column");
-    // Only controls in the always-visible "Basics" card count as first-screen
-    // inputs; advanced/expert groups are collapsed by default.
-    const basicsCard = within(formColumn).getByText("Basics").closest("div")!
-      .parentElement as HTMLElement;
-    const inputs = basicsCard.querySelectorAll("input, textarea, select");
+    // First-screen inputs = every control rendered outside a collapsed section.
+    // The "Basics" card and the always-open basic-group cards (Workload,
+    // Networking & exposure, …) are visible; advanced/expert <Collapsible>
+    // groups are collapsed by default and render no children until expanded.
+    // Excludes radio inputs (the ImageField pull-policy is an inline radio group,
+    // not a distinct first-screen field).
+    const inputs = formColumn.querySelectorAll(
+      "input:not([type='radio']), textarea, select",
+    );
     expect(inputs.length).toBeLessThanOrEqual(8);
     expect(inputs.length).toBeGreaterThan(0);
   });

@@ -100,6 +100,7 @@ func ParseRenderStream(stream []byte) ([]api.RenderedResource, error) {
 			Kind: obj.Kind,
 			Name: obj.Metadata.Name,
 			Role: roleForKind(obj.Kind),
+			YAML: string(trimmed) + "\n",
 		})
 	}
 	return out, nil

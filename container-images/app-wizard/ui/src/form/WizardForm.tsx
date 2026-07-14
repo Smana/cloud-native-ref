@@ -21,7 +21,7 @@ import { Select } from "../components/ui/select";
 import { Field } from "./Field";
 import { ImageField } from "./ImageField";
 import { SecretsEditor } from "./SecretsEditor";
-import { applyDefaults, buildLayout, tierBadgeVariant, type TopField } from "./model";
+import { buildLayout, tierBadgeVariant, type TopField } from "./model";
 import { claimToYaml } from "./claim";
 import { useDebounced } from "./useDebounced";
 import { validateAppName } from "./validation";
@@ -57,23 +57,16 @@ export function WizardForm({ schema, user }: Props) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [showDefaults, setShowDefaults] = useState(false);
-
   const nameError = name ? validateAppName(name) : null;
   const namespace = schema.stacks.find((s) => s.name === stack)?.namespace;
 
-  // Minimal claim — exactly what gets committed (and what "Eject to YAML" copies).
+  // The generated claim — exactly what gets committed. This is the minimal claim
+  // (only values you set); the full effective resources (with composition
+  // defaults like resources/limits) are shown by the render Preview below.
   const yamlText = useMemo(
     () => claimToYaml({ name, namespace, spec }),
     [name, namespace, spec],
   );
-
-  // Informational view: the effective spec after the XRD fills in defaults.
-  const displayYaml = useMemo(() => {
-    if (!showDefaults) return yamlText;
-    const effectiveSpec = applyDefaults(spec, schema.jsonSchema);
-    return claimToYaml({ name, namespace, spec: effectiveSpec });
-  }, [showDefaults, yamlText, spec, schema.jsonSchema, name, namespace]);
 
   // Live validation (FR-002): debounce the spec and POST /api/validate.
   const debouncedSpec = useDebounced(spec, 400);
@@ -238,27 +231,35 @@ export function WizardForm({ schema, user }: Props) {
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
-
-            {/* Schema-driven basic-tier fields. `image` is special-cased to the
-                bespoke ImageField (single guided input + pull policy in an inner
-                advanced expander); everything else stays generic. */}
-            {layout.basic.map((f) =>
-              f.key === "image" ? (
-                <ImageField
-                  key={f.key}
-                  schema={f.schema}
-                  spec={spec}
-                  onChange={setSpec}
-                  errors={validation.schemaErrors}
-                  label={f.hint.label ?? "Image"}
-                  hints={schema.hints}
-                />
-              ) : (
-                renderField(f, true)
-              ),
-            )}
           </CardContent>
         </Card>
+
+        {/* Schema-driven basic-tier fields, grouped into always-open display
+            blocks (Workload, Networking & exposure, …) by their ui-hints group.
+            `image` is special-cased to the bespoke ImageField; everything else
+            stays generic. */}
+        {layout.basicGroups.map(({ group, fields }) => (
+          <Card key={group.id}>
+            <CardHeader>
+              <CardTitle>{group.label}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {fields.map((f) =>
+                f.key === "image" ? (
+                  <ImageField
+                    key={f.key}
+                    schema={f.schema}
+                    spec={spec}
+                    onChange={setSpec}
+                    label={f.hint.label ?? "Image"}
+                  />
+                ) : (
+                  renderField(f, true)
+                ),
+              )}
+            </CardContent>
+          </Card>
+        ))}
 
         {/* Advanced / expert groups */}
         {layout.groups.map(({ group, fields }) => (
@@ -348,50 +349,20 @@ export function WizardForm({ schema, user }: Props) {
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Generated claim (live)</CardTitle>
-            <div className="flex items-center gap-2">
-              <div className="inline-flex overflow-hidden rounded-md border border-border text-xs">
-                <button
-                  type="button"
-                  aria-pressed={!showDefaults}
-                  onClick={() => setShowDefaults(false)}
-                  className={
-                    !showDefaults
-                      ? "bg-primary px-2 py-1 text-primary-foreground"
-                      : "bg-background px-2 py-1 text-muted-foreground hover:bg-muted"
-                  }
-                >
-                  Minimal
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={showDefaults}
-                  onClick={() => setShowDefaults(true)}
-                  className={
-                    showDefaults
-                      ? "bg-primary px-2 py-1 text-primary-foreground"
-                      : "bg-background px-2 py-1 text-muted-foreground hover:bg-muted"
-                  }
-                >
-                  Expand applied values
-                </button>
-              </div>
-              <Button type="button" size="sm" variant="outline" onClick={copyYaml}>
-                {copied ? "Copied!" : "Eject to YAML"}
-              </Button>
-            </div>
+            <Button type="button" size="sm" variant="outline" onClick={copyYaml}>
+              {copied ? "Copied!" : "Copy YAML"}
+            </Button>
           </CardHeader>
           <CardContent className="space-y-2">
-            {showDefaults && (
-              <p className="text-xs text-muted-foreground">
-                Expanded view — shows values the platform applies (defaults
-                included). The committed claim only includes what you changed.
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              Only the values you set — the platform fills in the rest. Use
+              <strong> Preview </strong> to see the full resources that will be created.
+            </p>
             <pre
               data-testid="yaml-pane"
               className="max-h-[70vh] overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed"
             >
-              <code>{displayYaml}</code>
+              <code>{yamlText}</code>
             </pre>
           </CardContent>
         </Card>
@@ -479,6 +450,10 @@ function PreviewCard({ preview }: { preview: RenderPreviewResponse }) {
       <CardContent>
         {preview.ok ? (
           <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              The full resources the platform will create — including defaults
+              (resources, probes, security context) the composition fills in.
+            </p>
             <div className="flex items-center gap-2 text-xs">
               <Badge variant="success">Rendered</Badge>
               <span className="text-muted-foreground">
@@ -487,13 +462,30 @@ function PreviewCard({ preview }: { preview: RenderPreviewResponse }) {
               </span>
             </div>
             <ul className="space-y-1 text-sm">
-              {preview.resources.map((r, i) => (
-                <li key={i} className="flex items-center gap-2">
-                  <Badge variant="outline">{r.kind}</Badge>
-                  <span className="font-mono">{r.name}</span>
-                  {r.role && <span className="text-xs text-muted-foreground">— {r.role}</span>}
-                </li>
-              ))}
+              {preview.resources.map((r, i) =>
+                r.yaml ? (
+                  <li key={i} className="rounded-md border border-border/60">
+                    <details>
+                      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 hover:bg-muted">
+                        <Badge variant="outline">{r.kind}</Badge>
+                        <span className="font-mono">{r.name}</span>
+                        {r.role && (
+                          <span className="text-xs text-muted-foreground">— {r.role}</span>
+                        )}
+                      </summary>
+                      <pre className="max-h-[50vh] overflow-auto border-t border-border/60 bg-muted p-3 text-xs leading-relaxed">
+                        <code>{r.yaml}</code>
+                      </pre>
+                    </details>
+                  </li>
+                ) : (
+                  <li key={i} className="flex items-center gap-2 px-3 py-2">
+                    <Badge variant="outline">{r.kind}</Badge>
+                    <span className="font-mono">{r.name}</span>
+                    {r.role && <span className="text-xs text-muted-foreground">— {r.role}</span>}
+                  </li>
+                ),
+              )}
             </ul>
           </div>
         ) : (

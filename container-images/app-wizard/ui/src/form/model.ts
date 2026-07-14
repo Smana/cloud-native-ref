@@ -18,6 +18,11 @@ export function hintFor(key: string, hints: SchemaPayload["hints"]): FieldHint {
 
 export interface Layout {
   basic: TopField[];
+  // Basic-tier fields organised into always-open display blocks by their group
+  // hint (same GroupHint defs as the advanced groups), groups themselves ordered.
+  // Basic fields whose hint.group is unknown/missing land in a trailing
+  // "Details" block so nothing is dropped. This drives the first-screen sections.
+  basicGroups: Array<{ group: GroupHint; fields: TopField[] }>;
   // Advanced/expert fields organised by group, groups themselves ordered.
   groups: Array<{ group: GroupHint; fields: TopField[] }>;
   // Advanced/expert fields whose hint.group is unknown/missing land here so they
@@ -29,6 +34,15 @@ const FALLBACK_GROUP: GroupHint = {
   id: "__more__",
   label: "More options",
   tier: "advanced",
+  order: 999,
+};
+
+// Trailing block for basic fields that carry no (known) group hint — keeps the
+// first screen complete without inventing a group. Ordered last.
+const BASIC_FALLBACK_GROUP: GroupHint = {
+  id: "__basic_details__",
+  label: "Details",
+  tier: "basic",
   order: 999,
 };
 
@@ -47,6 +61,10 @@ export function buildLayout(payload: SchemaPayload): Layout {
 
   const groupsById = new Map<string, GroupHint>();
   for (const g of payload.hints.groups) groupsById.set(g.id, g);
+
+  // --- Basic tier: grouped into always-open display blocks. Fields with no
+  // known group fall into a trailing "Details" block (never dropped). ---
+  const basicGroups = groupFields(basic, groupsById, BASIC_FALLBACK_GROUP, byOrder);
 
   const grouped = new Map<string, TopField[]>();
   const ungrouped: TopField[] = [];
@@ -68,7 +86,31 @@ export function buildLayout(payload: SchemaPayload): Layout {
     }))
     .sort((a, b) => a.group.order - b.group.order);
 
-  return { basic, groups, ungrouped: ungrouped.sort(byOrder) };
+  return { basic, basicGroups, groups, ungrouped: ungrouped.sort(byOrder) };
+}
+
+// Partition a set of fields into ordered { group, fields } blocks, keyed by
+// hint.group; fields whose group is unknown/absent collect into `fallback` so
+// none are dropped. The fallback block only appears when it has fields.
+function groupFields(
+  fields: TopField[],
+  groupsById: Map<string, GroupHint>,
+  fallback: GroupHint,
+  byOrder: (a: TopField, b: TopField) => number,
+): Array<{ group: GroupHint; fields: TopField[] }> {
+  const grouped = new Map<string, TopField[]>();
+  for (const f of fields) {
+    const gid = f.hint.group && groupsById.has(f.hint.group) ? f.hint.group : fallback.id;
+    const arr = grouped.get(gid) ?? [];
+    arr.push(f);
+    grouped.set(gid, arr);
+  }
+  return [...grouped.entries()]
+    .map(([gid, fs]) => ({
+      group: gid === fallback.id ? fallback : groupsById.get(gid)!,
+      fields: fs.sort(byOrder),
+    }))
+    .sort((a, b) => a.group.order - b.group.order);
 }
 
 export const fallbackGroup = FALLBACK_GROUP;
@@ -149,54 +191,6 @@ export function prune(value: unknown): unknown {
     return out;
   }
   if (value === "" || value === undefined || value === null) return undefined;
-  return value;
-}
-
-// Deep-copy `spec` and fill in schema `default` values for absent keys,
-// recursing into nested object `properties` (FIX 4 — "Show defaults" view).
-// Pure: never mutates its inputs. Only fills values that have an explicit
-// schema default — no values are invented for defaultless fields.
-export function applyDefaults(spec: unknown, jsonSchema: unknown): unknown {
-  const schema = asSchema(jsonSchema);
-
-  if (schema.type === "object" || schema.properties) {
-    const src =
-      spec && typeof spec === "object" && !Array.isArray(spec)
-        ? (spec as Record<string, unknown>)
-        : {};
-    const out: Record<string, unknown> = {};
-    // Preserve user-provided keys (deep copy) even if not in the schema.
-    for (const [k, v] of Object.entries(src)) {
-      out[k] = deepCopy(v);
-    }
-    for (const [k, child] of Object.entries(schema.properties ?? {})) {
-      const childSchema = asSchema(child);
-      const present = k in src;
-      if (present) {
-        out[k] = applyDefaults(src[k], childSchema);
-      } else if (childSchema.default !== undefined) {
-        out[k] = deepCopy(childSchema.default);
-      } else if (childSchema.type === "object" || childSchema.properties) {
-        // Recurse to surface nested defaults even when the parent is absent.
-        const nested = applyDefaults(undefined, childSchema);
-        if (nested && Object.keys(nested as object).length > 0) out[k] = nested;
-      }
-    }
-    return out;
-  }
-
-  return deepCopy(spec);
-}
-
-function deepCopy(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(deepCopy);
-  if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = deepCopy(v);
-    }
-    return out;
-  }
   return value;
 }
 

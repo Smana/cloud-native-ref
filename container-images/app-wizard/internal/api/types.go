@@ -115,6 +115,11 @@ type RenderedResource struct {
 	Kind string `json:"kind"`
 	Name string `json:"name"`
 	Role string `json:"role,omitempty"` // one-line human description
+	// YAML is the full rendered manifest for this resource — the effective spec
+	// after the composition applies its defaults (resources/limits, probes,
+	// securityContext, …). Shown expandable in the UI so users see exactly what
+	// gets created, not just the kind/name.
+	YAML string `json:"yaml,omitempty"`
 }
 
 // PRRequest is the payload to create the app and open a pull request (FR-005).
