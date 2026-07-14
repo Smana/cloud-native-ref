@@ -53,10 +53,61 @@ kcl_options:
         spec:
           # Deployment specific parameters. Should follow common Kubernetes best practices.
           # See https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+          # type defaults to "web"; exercised here with sidecars + persistence
+          # (worker/cron are covered by the examples/ app-worker + app-cron).
           image:
             repository: "myrepo/myapp"
             tag: "latest"
             pullPolicy: "IfNotPresent" # Always, Never, IfNotPresent
+          # Main container ergonomics (SPEC-007)
+          command: ["/app/server"]
+          args: ["--config", "/app/config.yaml"]
+          imagePullSecrets: ["regcred"]
+          terminationGracePeriodSeconds: 45
+          # Multi-container: one init container + one sidecar (SPEC-007)
+          initContainers:
+            - name: migrate
+              image: "myrepo/myapp:latest"
+              command: ["/app/migrate"]
+              resources:
+                requests:
+                  cpu: "10m"
+                  memory: "16Mi"
+                limits:
+                  cpu: "50m"
+                  memory: "32Mi"
+          sidecars:
+            - name: log-shipper
+              image: "grafana/promtail:3.0.0"
+              args: ["-config.file=/etc/promtail/config.yaml"]
+              ports:
+                - name: sidecar-http
+                  containerPort: 3101
+              resources:
+                requests:
+                  cpu: "10m"
+                  memory: "16Mi"
+                limits:
+                  cpu: "50m"
+                  memory: "32Mi"
+              # Per-sidecar securityContext override (override wins per field)
+              securityContext:
+                readOnlyRootFilesystem: false
+          # Simple persistence (RWX so it coexists with the HPA below) (SPEC-007)
+          persistence:
+            enabled: true
+            size: 5Gi
+            mountPath: /data
+            accessModes: ["ReadWriteMany"]
+          # Startup probe (SPEC-007) plus a tcp readiness probe variant
+          healthProbes:
+            readiness:
+              type: tcp
+            startup:
+              type: http
+              path: /healthz
+              periodSeconds: 5
+              failureThreshold: 20
           autoscaling:
             enabled: true
             minReplicas: 2
@@ -105,6 +156,10 @@ kcl_options:
           # Parameters for exposing the service using Gateway API
           service:
             port: 8080
+            # Additional Service ports (SPEC-007) — e.g. a metrics port.
+            extraPorts:
+              - name: metrics
+                port: 9090 # targetPort defaults to port
           gateway: # Create a dedicated Gateway for this application otherwise using the shared one.
             enabled: true
             gatewayClassName: "my-gateway-class"

@@ -1,0 +1,43 @@
+---
+# Cron app example — a recurring scheduled job.
+#
+# `type: cron` renders a batch/v1 CronJob driven by `schedule`. No Service,
+# HTTPRoute, Gateway, HPA, or PDB is created. The pod template shares the same
+# security defaults, env, volumes, and secrets plumbing as the other types.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: nightly-cleanup
+  namespace: demo
+spec:
+  type: cron
+  schedule: "0 3 * * *" # every day at 03:00 UTC
+
+  image:
+    repository: ghcr.io/example/maintenance
+    tag: "v2.0.1"
+
+  # The job entrypoint
+  command: ["./cleanup"]
+  args: ["--older-than", "30d"]
+
+  # CronJob tuning (all optional — these are the defaults, shown for clarity)
+  cron:
+    concurrencyPolicy: Forbid # don't start a new run if the previous is still going
+    backoffLimit: 3 # retries before the job is marked failed
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    restartPolicy: OnFailure
+    activeDeadlineSeconds: 3600 # hard cap: kill the job after 1h
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+  env:
+    - name: LOG_LEVEL
+      value: "info"

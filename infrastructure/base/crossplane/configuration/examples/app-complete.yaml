@@ -30,6 +30,16 @@ spec:
     pullPolicy: IfNotPresent # Use Always for :latest, IfNotPresent for versioned tags
 
   # ============================================================================
+  # Image Pull Secrets & Pod Lifecycle
+  # ============================================================================
+  # Names of docker-registry Secrets (in the same namespace) used to pull the
+  # image from a private registry.
+  imagePullSecrets:
+    - regcred
+  # Extra time (seconds) for the pod to shut down gracefully before SIGKILL.
+  terminationGracePeriodSeconds: 30
+
+  # ============================================================================
   # Scaling Configuration
   # ============================================================================
   # Initial replica count when autoscaling is disabled or during startup
@@ -87,6 +97,45 @@ spec:
     capabilities:
       drop: ["ALL"] # Drop all Linux capabilities
     enableWritableTmp: true # Provide writable /tmp via emptyDir
+
+  # ============================================================================
+  # Init Containers - run to completion before the main container starts
+  # ============================================================================
+  # Common uses: wait-for-dependency, one-off migrations, cache warm-up.
+  # Init containers use the reduced container schema (no ports) and inherit the
+  # constitution security defaults unless a securityContext override is given.
+  initContainers:
+    - name: wait-for-db
+      image: "busybox:1.36"
+      command: ["sh", "-c", "until nc -z image-gallery-rw 5432; do sleep 2; done"]
+      resources:
+        requests:
+          cpu: "10m"
+          memory: "16Mi"
+        limits:
+          cpu: "50m"
+          memory: "32Mi"
+
+  # ============================================================================
+  # Sidecars - containers that run alongside the main container
+  # ============================================================================
+  # Common uses: auth proxies, log shippers, metrics adapters. Sidecars use the
+  # reduced container schema (ports allowed) and inherit the constitution
+  # security defaults unless a securityContext override is given.
+  sidecars:
+    - name: metrics-adapter
+      image: "nginx/nginx-prometheus-exporter:1.1.0"
+      args: ["--nginx.scrape-uri=http://localhost:8080/stub_status"]
+      ports:
+        - name: sidecar-metrics
+          containerPort: 9113
+      resources:
+        requests:
+          cpu: "10m"
+          memory: "16Mi"
+        limits:
+          cpu: "50m"
+          memory: "32Mi"
 
   # ============================================================================
   # Environment Variables
@@ -185,11 +234,43 @@ spec:
     unhealthyPodEvictionPolicy: AlwaysAllow # Allow eviction of unhealthy pods
 
   # ============================================================================
+  # Persistence - simple PVC-backed storage
+  # ============================================================================
+  # Renders a PVC named <name>-data mounted at mountPath on the main container.
+  # NOTE: with the default ReadWriteOnce mode, the effective deployment strategy
+  # becomes Recreate and RWO is incompatible with autoscaling — so this example
+  # uses ReadWriteMany to coexist with the HPA above.
+  persistence:
+    enabled: true
+    size: 10Gi
+    mountPath: /data
+    accessModes:
+      - ReadWriteMany
+
+  # ============================================================================
+  # Health Probes - liveness, readiness, and startup
+  # ============================================================================
+  # Web apps keep sensible HTTP defaults for liveness (/healthz) and readiness
+  # (/readyz). A startup probe guards slow-boot apps: liveness/readiness are held
+  # off until the startup probe first succeeds.
+  healthProbes:
+    startup:
+      type: http
+      path: /healthz
+      periodSeconds: 5
+      failureThreshold: 30 # allow up to 150s (5s * 30) for the app to boot
+
+  # ============================================================================
   # Service Configuration
   # ============================================================================
   # Kubernetes Service for internal communication
   service:
     port: 8080 # Container port to expose (default: 8080)
+    # Additional Service ports (e.g. a separate metrics port). Sidecar ports are
+    # NOT automatically exposed on the Service — declare them here if needed.
+    extraPorts:
+      - name: metrics
+        port: 9113 # targetPort defaults to port
 
   # ============================================================================
   # HTTP Routing - External Access

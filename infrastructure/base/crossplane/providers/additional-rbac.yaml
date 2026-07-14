@@ -91,7 +91,11 @@ rules:
     resources: ["deployments", "deployments/status"]
     verbs: ["*"]
   - apiGroups: [""]
-    resources: ["services", "services/status"]
+    resources: ["services", "services/status", "persistentvolumeclaims", "persistentvolumeclaims/status"]
+    verbs: ["*"]
+  # CronJob for type=cron workloads (SPEC-007)
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "cronjobs/status"]
     verbs: ["*"]
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers", "horizontalpodautoscalers/status"]
