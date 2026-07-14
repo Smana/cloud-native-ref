@@ -152,14 +152,20 @@ jobs:
       - name: Extract application version from Dockerfile
         id: app-version
         run: |
-          # Extract version from Dockerfile ARG (e.g., ARG PEV2_VERSION=v1.17.0)
-          VERSION=$(grep -oP 'ARG \w*VERSION=\K[^\s]+' ${{ matrix.dockerfile }} || echo "")
+          # The image's OWN version ARG: app-wizard -> APP_WIZARD_VERSION, pev2 -> PEV2_VERSION.
+          #
+          # This used to match any ARG *VERSION=, which breaks the moment a Dockerfile also
+          # pins a tool it vendors (app-wizard pins CROSSPLANE_VERSION for the render CLI):
+          # grep then returns two lines, the multi-line value is written to $GITHUB_OUTPUT
+          # without a delimiter, and the job dies with `Invalid format 'v2.3.3'`.
+          ARG_NAME="$(printf '%s' '${{ matrix.name }}' | tr 'a-z-' 'A-Z_')_VERSION"
+          VERSION=$(grep -oP "ARG ${ARG_NAME}=\K[^\s]+" "${{ matrix.dockerfile }}" | head -1 || echo "")
           if [[ -n "$VERSION" ]]; then
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
-            echo "Found application version: ${VERSION}"
+            echo "Found application version (${ARG_NAME}): ${VERSION}"
           else
             echo "version=" >> $GITHUB_OUTPUT
-            echo "No application version found in Dockerfile"
+            echo "No ${ARG_NAME} found in ${{ matrix.dockerfile }}"
           fi
 
       - name: Extract metadata
