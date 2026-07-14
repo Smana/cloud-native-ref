@@ -2,6 +2,8 @@
 // internal/api. 401 (unauthenticated) and 422 (validation failure) are surfaced
 // as distinct error subclasses so callers can react differently.
 import type {
+  AppDetail,
+  AppSummary,
   PRRequest,
   PRResponse,
   RenderPreviewRequest,
@@ -90,10 +92,24 @@ export function renderPreview(req: RenderPreviewRequest): Promise<RenderPreviewR
   });
 }
 
+// GET /api/apps — day-2 inventory of apps declared across all stacks.
+export function listApps(): Promise<AppSummary[]> {
+  return request<AppSummary[]>("/api/apps");
+}
+
+// GET /api/apps/{stack}/{name} — a single app loaded for editing.
+export function getApp(stack: string, name: string): Promise<AppDetail> {
+  return request<AppDetail>(
+    `/api/apps/${encodeURIComponent(stack)}/${encodeURIComponent(name)}`,
+  );
+}
+
+// POST /api/pr — opens a create/update/delete PR. `mode` defaults to "create"
+// server-side when omitted; we send it explicitly.
 export function openPR(req: PRRequest): Promise<PRResponse> {
   return request<PRResponse>("/api/pr", {
     method: "POST",
-    body: JSON.stringify(req),
+    body: JSON.stringify({ mode: "create", ...req }),
   });
 }
 

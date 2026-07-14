@@ -86,9 +86,12 @@ export interface RenderedResource {
   yaml?: string;
 }
 
+export type PRMode = "create" | "update" | "delete";
+
 export interface PRRequest {
   stack: string;
   appName: string;
+  mode?: PRMode; // default "create"
   spec: Record<string, unknown>;
   description: string;
 }
@@ -97,6 +100,23 @@ export interface PRResponse {
   url: string;
   number: number;
   branch: string;
+}
+
+// App inventory entry (GET /api/apps, Phase 2).
+export interface AppSummary {
+  stack: string;
+  name: string;
+  namespace: string;
+  image: string;
+  type: string; // web | worker | cron ("" ⇒ web)
+}
+
+// A single app loaded for editing (GET /api/apps/{stack}/{name}, Phase 2).
+export interface AppDetail {
+  stack: string;
+  name: string;
+  spec: Record<string, unknown>;
+  rawYaml: string;
 }
 
 export interface User {

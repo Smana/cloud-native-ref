@@ -148,6 +148,16 @@ func (p *Pipeline) loadStacks(ctx context.Context) ([]api.Stack, error) {
 	return doc.Stacks, nil
 }
 
+// Stacks returns the full stack registry (StackLister, used by the app
+// inventory).
+func (p *Pipeline) Stacks(ctx context.Context) ([]api.Stack, error) {
+	pl, err := p.Build(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return pl.Stacks, nil
+}
+
 // Stack resolves a stack name to its registry entry (StackResolver).
 func (p *Pipeline) Stack(ctx context.Context, name string) (api.Stack, bool, error) {
 	pl, err := p.Build(ctx)

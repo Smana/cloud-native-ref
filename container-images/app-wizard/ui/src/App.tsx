@@ -1,21 +1,56 @@
 // App shell: auth gate (GET /api/me) + schema load, then the schema-driven
 // create wizard. When unauthenticated (401), shows the GitHub sign-in button.
 import { useEffect, useState } from "react";
-import type { SchemaPayload, User } from "./api/types";
+import type { AppSummary, SchemaPayload, User } from "./api/types";
 import * as api from "./api/client";
 import { UnauthorizedError } from "./api/client";
 import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
-import { WizardForm } from "./form/WizardForm";
+import { WizardForm, type WizardInitial } from "./form/WizardForm";
+import { AppList } from "./form/AppList";
 
 type AuthState = "loading" | "authed" | "anonymous";
+type View = "create" | "list";
 
 export function App() {
   const [schema, setSchema] = useState<SchemaPayload | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [auth, setAuth] = useState<AuthState>("loading");
   const [error, setError] = useState<string | null>(null);
+
+  // Top-level view: create wizard (default) or the day-2 inventory.
+  const [view, setView] = useState<View>("create");
+  // When set, the wizard renders in edit mode for this loaded app.
+  const [editing, setEditing] = useState<WizardInitial | null>(null);
+  const [loadingApp, setLoadingApp] = useState(false);
+
+  function openList() {
+    setEditing(null);
+    setView("list");
+  }
+
+  function openCreate() {
+    setEditing(null);
+    setView("create");
+  }
+
+  function onEditApp(app: AppSummary) {
+    setError(null);
+    setLoadingApp(true);
+    api
+      .getApp(app.stack, app.name)
+      .then((detail) => {
+        setEditing({
+          mode: "update",
+          appName: detail.name,
+          stack: detail.stack,
+          spec: detail.spec ?? {},
+        });
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoadingApp(false));
+  }
 
   useEffect(() => {
     api
@@ -90,7 +125,47 @@ export function App() {
         </Card>
       )}
 
-      {auth === "authed" && schema && user && <WizardForm schema={schema} user={user} />}
+      {auth === "authed" && schema && user && (
+        <div className="space-y-4">
+          {/* Segmented control: Create app (default) vs My apps (inventory). */}
+          <div className="inline-flex rounded-md border border-border p-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "create" && !editing ? "default" : "ghost"}
+              onClick={openCreate}
+            >
+              Create app
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "list" || editing ? "default" : "ghost"}
+              onClick={openList}
+            >
+              My apps
+            </Button>
+          </div>
+
+          {loadingApp && (
+            <p className="text-sm text-muted-foreground">Loading app…</p>
+          )}
+
+          {editing ? (
+            <WizardForm
+              key={`${editing.stack}/${editing.appName}`}
+              schema={schema}
+              user={user}
+              initial={editing}
+              onBack={openList}
+            />
+          ) : view === "list" ? (
+            <AppList onEdit={onEditApp} />
+          ) : (
+            <WizardForm key="create" schema={schema} user={user} />
+          )}
+        </div>
+      )}
 
       {auth === "authed" && !schema && !error && (
         <p className="text-sm text-muted-foreground">Loading schema…</p>

@@ -57,6 +57,12 @@ func (l *LocalDryRun) CreateBranch(_ context.Context, _, _ string) error { retur
 func (l *LocalDryRun) CommitFiles(_ context.Context, _ string, files []File, _ string) error {
 	for _, f := range files {
 		dst := filepath.Join(l.Root, f.Path)
+		if f.Delete {
+			if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			continue
+		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}

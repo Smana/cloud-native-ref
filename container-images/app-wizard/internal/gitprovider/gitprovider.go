@@ -12,10 +12,12 @@ import (
 // ErrNotFound is returned by ReadFile when a path does not exist.
 var ErrNotFound = errors.New("gitprovider: file not found")
 
-// File is a path/content pair to commit.
+// File is a path/content pair to commit. When Delete is true the path is
+// removed in the commit and Content is ignored (Phase 2 decommission flow).
 type File struct {
 	Path    string
 	Content []byte
+	Delete  bool
 }
 
 // TreeEntry is one entry from ReadTree.

@@ -115,6 +115,10 @@ func (f *FakeProvider) CommitFiles(_ context.Context, branch string, files []Fil
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, file := range files {
+		if file.Delete {
+			delete(f.Files, branch+":"+file.Path)
+			continue
+		}
 		f.Files[branch+":"+file.Path] = file.Content
 	}
 	f.Commits = append(f.Commits, FakeCommit{Branch: branch, Message: message, Files: files})

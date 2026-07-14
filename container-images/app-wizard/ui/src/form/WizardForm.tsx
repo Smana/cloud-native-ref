@@ -42,18 +42,38 @@ const EMPTY_VALIDATION: ValidateResponse = {
 // These keys are rendered by the bespoke SecretsEditor, not the generic widget.
 const SECRET_KEYS = new Set(["env", "externalSecrets"]);
 
+// When editing an existing app, the caller passes the loaded AppDetail here.
+// `mode: "update"` puts the form in edit mode: name + stack are prefilled and
+// read-only (renaming = create+delete), and the spec is fully hydrated.
+export interface WizardInitial {
+  mode: "create" | "update";
+  appName: string;
+  stack: string;
+  spec: Record<string, unknown>;
+}
+
 interface Props {
   schema: SchemaPayload;
   user: User;
+  initial?: WizardInitial;
+  // Optional "back to inventory" affordance, shown in edit mode.
+  onBack?: () => void;
 }
 
-export function WizardForm({ schema, user }: Props) {
+export function WizardForm({ schema, user, initial, onBack }: Props) {
   const layout = useMemo(() => buildLayout(schema), [schema]);
 
-  const [name, setName] = useState("");
-  const [stack, setStack] = useState("");
+  const mode = initial?.mode ?? "create";
+  const isEdit = mode === "update";
+
+  // Prefill from `initial` when editing. The full loaded spec is stored as-is —
+  // including keys the generic renderer doesn't know about — so an update PR
+  // re-submits every field (the backend patch is authoritative). Only the YAML
+  // pane display prunes; state retains everything.
+  const [name, setName] = useState(initial?.appName ?? "");
+  const [stack, setStack] = useState(initial?.stack ?? "");
   const [description, setDescription] = useState("");
-  const [spec, setSpec] = useState<unknown>({});
+  const [spec, setSpec] = useState<unknown>(initial?.spec ?? {});
 
   const [validation, setValidation] = useState<ValidateResponse>(EMPTY_VALIDATION);
   const [validating, setValidating] = useState(false);
@@ -180,6 +200,7 @@ export function WizardForm({ schema, user }: Props) {
       const res = await api.openPR({
         stack,
         appName: name,
+        mode,
         spec: (spec ?? {}) as Record<string, unknown>,
         description,
       });
@@ -236,6 +257,16 @@ export function WizardForm({ schema, user }: Props) {
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
       {/* ---- Form column ---- */}
       <div className="space-y-4" data-testid="form-column">
+        {isEdit && onBack && (
+          <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+            ← Back to my apps
+          </Button>
+        )}
+        {isEdit && (
+          <p className="text-sm text-muted-foreground">
+            Editing <strong>{name}</strong> in stack <strong>{stack}</strong>.
+          </p>
+        )}
         <Card>
           <CardHeader>
             <CardTitle>Basics</CardTitle>
@@ -249,16 +280,29 @@ export function WizardForm({ schema, user }: Props) {
                 id="app-name"
                 placeholder="my-app"
                 value={name}
+                readOnly={isEdit}
+                disabled={isEdit}
                 onChange={(e) => setName(e.target.value)}
               />
-              {nameError && <p className="text-xs text-destructive">{nameError}</p>}
+              {isEdit ? (
+                <p className="text-xs text-muted-foreground">
+                  Name can't be changed — to rename, decommission and create a new app.
+                </p>
+              ) : (
+                nameError && <p className="text-xs text-destructive">{nameError}</p>
+              )}
             </div>
 
             <div className="space-y-1">
               <label htmlFor="stack" className="text-sm font-medium">
                 Stack
               </label>
-              <Select id="stack" value={stack} onChange={(e) => setStack(e.target.value)}>
+              <Select
+                id="stack"
+                value={stack}
+                disabled={isEdit}
+                onChange={(e) => setStack(e.target.value)}
+              >
                 <option value="" disabled>
                   — select a stack —
                 </option>
@@ -369,7 +413,13 @@ export function WizardForm({ schema, user }: Props) {
             {previewing ? "Rendering…" : "Preview"}
           </Button>
           <Button type="button" onClick={onOpenPR} disabled={blocked || submitting}>
-            {submitting ? "Opening PR…" : "Open PR"}
+            {submitting
+              ? isEdit
+                ? "Opening update PR…"
+                : "Opening PR…"
+              : isEdit
+                ? "Open update PR"
+                : "Open PR"}
           </Button>
           <span className="text-xs text-muted-foreground">
             Signed in as <strong>{user.login}</strong>

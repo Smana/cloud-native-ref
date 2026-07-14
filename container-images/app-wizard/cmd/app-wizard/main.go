@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/appstore"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/auth"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/config"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/gitprovider"
@@ -68,6 +69,7 @@ func main() {
 	validator := validate.NewValidator(pipeline)
 	renderer := render.NewCrossplaneRenderer(cfg.RepoRoot, cfg.CompositionPath, cfg.FunctionsPath, cfg.EnvConfigPath)
 	prService := pr.NewService(validator, renderer, pipeline, cfg.RepoBaseBranch)
+	appStore := appstore.New(pipeline, cfg.RepoBaseBranch)
 
 	// Provider factory: build a GitHub gitprovider from a user token.
 	factory := func(ctx context.Context, token string) gitprovider.Provider {
@@ -109,6 +111,10 @@ func main() {
 	mux.HandleFunc("GET /api/auth/callback", authHandler.Callback)
 	mux.HandleFunc("GET /api/me", authHandler.Me)
 	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
+
+	// App inventory (authenticated, Phase 2).
+	mux.Handle("GET /api/apps", appStore.ListHandler(authHandler.ProviderForRequest, logger))
+	mux.Handle("GET /api/apps/{stack}/{name}", appStore.GetHandler(authHandler.ProviderForRequest, logger))
 
 	// PR flow (authenticated).
 	mux.Handle("POST /api/pr", prService.Handler(authHandler.ProviderForRequest, logger))

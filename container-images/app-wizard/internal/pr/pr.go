@@ -49,8 +49,10 @@ func NewService(validator Validator, renderer render.Renderer, stacks StackResol
 	return &Service{validator: validator, renderer: renderer, stacks: stacks, baseBranch: baseBranch}
 }
 
-// Create runs the gates and, on success, creates the branch/files/PR/comment as
-// the user behind provider. It returns a *GateError when a gate blocks the PR.
+// Create runs the requested operation (create/update/delete) and, on success,
+// creates the branch/files/PR/comment as the user behind provider. It returns a
+// *GateError when a gate blocks the PR. Mode selects the operation; "" defaults
+// to "create".
 func (s *Service) Create(ctx context.Context, provider gitprovider.Provider, req api.PRRequest) (api.PRResponse, error) {
 	if req.AppName == "" {
 		return api.PRResponse{}, &GateError{Message: "appName is required"}
@@ -65,6 +67,42 @@ func (s *Service) Create(ctx context.Context, provider gitprovider.Provider, req
 	}
 	if !ok {
 		return api.PRResponse{}, &GateError{Message: fmt.Sprintf("unknown stack %q", req.Stack)}
+	}
+
+	switch req.Mode {
+	case "", "create":
+		return s.create(ctx, provider, req, stack)
+	case "update":
+		return s.update(ctx, provider, req, stack)
+	case "delete":
+		return s.delete(ctx, provider, req, stack)
+	default:
+		return api.PRResponse{}, &GateError{Message: fmt.Sprintf("unknown mode %q (want create|update|delete)", req.Mode)}
+	}
+}
+
+// appPaths returns the app.yaml, app kustomization.yaml, and parent
+// kustomization.yaml paths for a stack/app.
+func appPaths(stack, app string) (appPath, kustPath, parentKustPath string) {
+	appDir := path.Join("apps", stack, app)
+	return path.Join(appDir, "app.yaml"),
+		path.Join(appDir, "kustomization.yaml"),
+		path.Join("apps", stack, "kustomization.yaml")
+}
+
+// create is the default new-app flow (three files). It refuses to clobber an
+// existing app (US-1.3): if apps/<stack>/<app>/app.yaml exists at base, it
+// returns a GateError directing the user to edit instead.
+func (s *Service) create(ctx context.Context, provider gitprovider.Provider, req api.PRRequest, stack api.Stack) (api.PRResponse, error) {
+	appPath, kustPath, parentKustPath := appPaths(req.Stack, req.AppName)
+
+	// Guard: don't overwrite an existing app.
+	if _, _, err := provider.ReadFile(ctx, s.baseBranch, appPath); err == nil {
+		return api.PRResponse{}, &GateError{
+			Message: fmt.Sprintf("app %q already exists in stack %q — edit it instead", req.AppName, req.Stack),
+		}
+	} else if err != gitprovider.ErrNotFound {
+		return api.PRResponse{}, fmt.Errorf("check existing app: %w", err)
 	}
 
 	// Gate 1: schema + CEL + secret validation.
@@ -85,12 +123,6 @@ func (s *Service) Create(ctx context.Context, provider gitprovider.Provider, req
 	if err != nil {
 		return api.PRResponse{}, &GateError{Message: "render failed: " + err.Error()}
 	}
-
-	// Generate the three files.
-	appDir := path.Join("apps", req.Stack, req.AppName)
-	appPath := path.Join(appDir, "app.yaml")
-	kustPath := path.Join(appDir, "kustomization.yaml")
-	parentKustPath := path.Join("apps", req.Stack, "kustomization.yaml")
 
 	kustYAML, err := BuildKustomizationYAML()
 	if err != nil {
@@ -113,36 +145,121 @@ func (s *Service) Create(ctx context.Context, provider gitprovider.Provider, req
 		{Path: parentKustPath, Content: parentYAML},
 	}
 
-	// Create branch, commit, open PR, comment.
-	branch := branchName(req.Stack, req.AppName)
+	branch := branchName("create", req.Stack, req.AppName)
+	commitMsg := fmt.Sprintf("feat(apps): add %s to %s stack", req.AppName, req.Stack)
+	title := fmt.Sprintf("feat(apps): deploy %s to %s", req.AppName, req.Stack)
+	return s.commitAndPR(ctx, provider, branch, files, commitMsg, title, prBody(req, stack), resources)
+}
+
+// update edits an existing app via a structure-preserving patch of its
+// app.yaml. It requires the app to exist, runs the same validate + render gates,
+// and commits ONLY app.yaml (kustomizations already exist).
+func (s *Service) update(ctx context.Context, provider gitprovider.Provider, req api.PRRequest, stack api.Stack) (api.PRResponse, error) {
+	appPath, _, _ := appPaths(req.Stack, req.AppName)
+
+	existing, _, err := provider.ReadFile(ctx, s.baseBranch, appPath)
+	if err == gitprovider.ErrNotFound {
+		return api.PRResponse{}, &GateError{
+			Message: fmt.Sprintf("app %q not found in stack %q", req.AppName, req.Stack),
+		}
+	} else if err != nil {
+		return api.PRResponse{}, fmt.Errorf("read existing app: %w", err)
+	}
+
+	// Gate 1: schema + CEL + secret validation.
+	vr, err := s.validator.Validate(ctx, req.Spec)
+	if err != nil {
+		return api.PRResponse{}, fmt.Errorf("validate: %w", err)
+	}
+	if !vr.Valid {
+		return api.PRResponse{}, &GateError{Message: "validation failed", Validate: &vr}
+	}
+
+	// Structure-preserving patch (SC-005): only changed fields diff.
+	patched, err := PatchClaimYAML(existing, req.Spec)
+	if err != nil {
+		return api.PRResponse{}, err
+	}
+
+	// Gate 2: render the patched claim.
+	resources, err := s.renderer.Render(ctx, patched)
+	if err != nil {
+		return api.PRResponse{}, &GateError{Message: "render failed: " + err.Error()}
+	}
+
+	files := []gitprovider.File{{Path: appPath, Content: patched}}
+
+	branch := branchName("update", req.Stack, req.AppName)
+	commitMsg := fmt.Sprintf("chore(apps): update %s in %s", req.AppName, req.Stack)
+	title := fmt.Sprintf("chore(apps): update %s in %s", req.AppName, req.Stack)
+	return s.commitAndPR(ctx, provider, branch, files, commitMsg, title, prBody(req, stack), resources)
+}
+
+// delete produces a removal PR: it deletes app.yaml + the app kustomization and
+// removes the "./<app>" entry from the parent kustomization. No validate/render
+// gates run for a removal.
+func (s *Service) delete(ctx context.Context, provider gitprovider.Provider, req api.PRRequest, stack api.Stack) (api.PRResponse, error) {
+	appPath, kustPath, parentKustPath := appPaths(req.Stack, req.AppName)
+
+	if _, _, err := provider.ReadFile(ctx, s.baseBranch, appPath); err == gitprovider.ErrNotFound {
+		return api.PRResponse{}, &GateError{
+			Message: fmt.Sprintf("app %q not found in stack %q", req.AppName, req.Stack),
+		}
+	} else if err != nil {
+		return api.PRResponse{}, fmt.Errorf("read existing app: %w", err)
+	}
+
+	existingParent, _, err := provider.ReadFile(ctx, s.baseBranch, parentKustPath)
+	if err != nil && err != gitprovider.ErrNotFound {
+		return api.PRResponse{}, fmt.Errorf("read parent kustomization: %w", err)
+	}
+	parentYAML, _, err := RemoveResourceFromKustomization(existingParent, "./"+req.AppName)
+	if err != nil {
+		return api.PRResponse{}, err
+	}
+
+	files := []gitprovider.File{
+		{Path: appPath, Delete: true},
+		{Path: kustPath, Delete: true},
+		{Path: parentKustPath, Content: parentYAML},
+	}
+
+	branch := branchName("remove", req.Stack, req.AppName)
+	commitMsg := fmt.Sprintf("chore(apps): remove %s from %s", req.AppName, req.Stack)
+	title := fmt.Sprintf("chore(apps): remove %s from %s", req.AppName, req.Stack)
+	return s.commitAndPR(ctx, provider, branch, files, commitMsg, title, removalBody(req, stack), nil)
+}
+
+// commitAndPR creates the branch, commits files, opens the PR, and (when
+// resources are given) posts a render-preview comment.
+func (s *Service) commitAndPR(ctx context.Context, provider gitprovider.Provider, branch string, files []gitprovider.File, commitMsg, title, body string, resources []api.RenderedResource) (api.PRResponse, error) {
 	if err := provider.CreateBranch(ctx, s.baseBranch, branch); err != nil {
 		return api.PRResponse{}, fmt.Errorf("create branch: %w", err)
 	}
-	commitMsg := fmt.Sprintf("feat(apps): add %s to %s stack", req.AppName, req.Stack)
 	if err := provider.CommitFiles(ctx, branch, files, commitMsg); err != nil {
 		return api.PRResponse{}, fmt.Errorf("commit files: %w", err)
 	}
 
-	title := fmt.Sprintf("feat(apps): deploy %s to %s", req.AppName, req.Stack)
-	body := prBody(req, stack)
 	pull, err := provider.OpenPR(ctx, s.baseBranch, branch, title, body)
 	if err != nil {
 		return api.PRResponse{}, fmt.Errorf("open PR: %w", err)
 	}
 
-	if comment := renderComment(resources); comment != "" {
-		if err := provider.CommentPR(ctx, pull.Number, comment); err != nil {
-			// Non-fatal: the PR exists; surface via logs at the caller.
-			return api.PRResponse{URL: pull.URL, Number: pull.Number, Branch: branch},
-				fmt.Errorf("post render comment: %w", err)
+	if resources != nil {
+		if comment := renderComment(resources); comment != "" {
+			if err := provider.CommentPR(ctx, pull.Number, comment); err != nil {
+				// Non-fatal: the PR exists; surface via logs at the caller.
+				return api.PRResponse{URL: pull.URL, Number: pull.Number, Branch: branch},
+					fmt.Errorf("post render comment: %w", err)
+			}
 		}
 	}
 
 	return api.PRResponse{URL: pull.URL, Number: pull.Number, Branch: branch}, nil
 }
 
-func branchName(stack, app string) string {
-	return fmt.Sprintf("wizard/%s-%s-%s", stack, app, shortID())
+func branchName(op, stack, app string) string {
+	return fmt.Sprintf("wizard/%s-%s-%s-%s", op, stack, app, shortID())
 }
 
 func shortID() string {
@@ -158,6 +275,18 @@ func prBody(req api.PRRequest, stack api.Stack) string {
 	fmt.Fprintf(&sb, "## App: `%s`\n\n", req.AppName)
 	fmt.Fprintf(&sb, "Opened via the App Wizard.\n\n")
 	fmt.Fprintf(&sb, "- **Stack**: `%s` (namespace `%s`, owner `%s`)\n", stack.Name, stack.Namespace, stack.OwnerTeam)
+	if req.Description != "" {
+		fmt.Fprintf(&sb, "\n%s\n", req.Description)
+	}
+	return sb.String()
+}
+
+func removalBody(req api.PRRequest, stack api.Stack) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "## Remove app: `%s`\n\n", req.AppName)
+	fmt.Fprintf(&sb, "Decommission requested via the App Wizard.\n\n")
+	fmt.Fprintf(&sb, "- **Stack**: `%s` (namespace `%s`, owner `%s`)\n", stack.Name, stack.Namespace, stack.OwnerTeam)
+	fmt.Fprintf(&sb, "\nThis PR deletes `apps/%s/%s/` and removes its registration from the stack kustomization.\n", req.Stack, req.AppName)
 	if req.Description != "" {
 		fmt.Fprintf(&sb, "\n%s\n", req.Description)
 	}

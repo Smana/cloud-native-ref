@@ -90,6 +90,17 @@ func (g *GitHub) CommitFiles(ctx context.Context, branch string, files []File, m
 
 	entries := make([]*github.TreeEntry, 0, len(files))
 	for _, f := range files {
+		if f.Delete {
+			// A tree entry with a nil SHA (and no content) removes the path from
+			// the base tree when committed.
+			entries = append(entries, &github.TreeEntry{
+				Path: github.String(f.Path),
+				Mode: github.String("100644"),
+				Type: github.String("blob"),
+				SHA:  nil,
+			})
+			continue
+		}
 		entries = append(entries, &github.TreeEntry{
 			Path:    github.String(f.Path),
 			Mode:    github.String("100644"),

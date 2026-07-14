@@ -122,12 +122,36 @@ type RenderedResource struct {
 	YAML string `json:"yaml,omitempty"`
 }
 
-// PRRequest is the payload to create the app and open a pull request (FR-005).
+// PRRequest is the payload to create/update/delete an app and open a pull
+// request (FR-005; Phase 2 US-4).
 type PRRequest struct {
-	Stack       string         `json:"stack"`
-	AppName     string         `json:"appName"`
+	Stack   string `json:"stack"`
+	AppName string `json:"appName"`
+	// Mode selects the operation: "create" (default), "update" (edit an existing
+	// app via a structure-preserving patch), or "delete" (decommission — removal
+	// PR). See internal/pr.
+	Mode        string         `json:"mode,omitempty"`
 	Spec        map[string]any `json:"spec"`
 	Description string         `json:"description"` // feeds the PR body
+}
+
+// AppSummary is one entry in the app inventory (GET /api/apps, Phase 2 T201).
+type AppSummary struct {
+	Stack     string `json:"stack"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Image     string `json:"image"`
+	Type      string `json:"type"` // web | worker | cron ("" ⇒ web)
+}
+
+// AppDetail is a single app loaded for editing (GET /api/apps/{stack}/{name},
+// Phase 2 T202). RawYAML is the committed app.yaml, preserved so the update is a
+// structure-preserving patch (comments/unknown fields survive, SC-005).
+type AppDetail struct {
+	Stack   string         `json:"stack"`
+	Name    string         `json:"name"`
+	Spec    map[string]any `json:"spec"`
+	RawYAML string         `json:"rawYaml"`
 }
 
 // PRResponse is returned once the PR is opened (FR-005).

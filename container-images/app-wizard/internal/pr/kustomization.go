@@ -45,3 +45,40 @@ func AddResourceToKustomization(existing []byte, entry string) ([]byte, bool, er
 	}
 	return out, true, nil
 }
+
+// RemoveResourceFromKustomization performs an idempotent edit of a parent
+// kustomization: it removes `entry` (e.g. "./myapp") from the resources list if
+// present, returning the updated YAML and whether a change was made. It mirrors
+// AddResourceToKustomization and preserves other fields via a generic map.
+//
+// When existing is nil/empty (nothing to remove) it returns unchanged.
+func RemoveResourceFromKustomization(existing []byte, entry string) ([]byte, bool, error) {
+	if len(existing) == 0 {
+		return existing, false, nil
+	}
+	doc := map[string]any{}
+	if err := yaml.Unmarshal(existing, &doc); err != nil {
+		return nil, false, fmt.Errorf("parse parent kustomization: %w", err)
+	}
+
+	resources, _ := doc["resources"].([]any)
+	filtered := make([]any, 0, len(resources))
+	removed := false
+	for _, r := range resources {
+		if s, ok := r.(string); ok && s == entry {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	if !removed {
+		return existing, false, nil
+	}
+	doc["resources"] = filtered
+
+	out, err := yaml.Marshal(doc)
+	if err != nil {
+		return nil, false, fmt.Errorf("marshal parent kustomization: %w", err)
+	}
+	return out, true, nil
+}
