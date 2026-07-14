@@ -78,7 +78,7 @@ kcl_options:
                   memory: "32Mi"
           sidecars:
             - name: log-shipper
-              image: "grafana/promtail:3.0.0"
+              image: "grafana/promtail:3.6.11"
               args: ["-config.file=/etc/promtail/config.yaml"]
               ports:
                 - name: sidecar-http
