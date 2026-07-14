@@ -24,8 +24,10 @@ spec:
     # but the kubelet already has *a* `latest` on the node and never pulls again — so a
     # rebuilt image silently doesn't roll out. An immutable tag makes the rollout real.
     #
-    # b0af0698 = feat(app-wizard): turn on the dark theme. Bump on each image rebuild.
-    tag: "b0af06988bc4c91cef15fd184ec0dac76383cf6d" # pragma: allowlist secret
+    # Tag format is <branch>-<short-sha>, set by the build workflow's metadata-action —
+    # NOT the raw commit sha. b0af069 = feat(app-wizard): turn on the dark theme.
+    # Once this branch merges, the equivalent tag becomes main-<short-sha>.
+    tag: "feat-flux-schema-validation-b0af069"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
