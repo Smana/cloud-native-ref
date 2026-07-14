@@ -1,0 +1,4 @@
+ui/node_modules
+**/*.test.go
+.git
+*.md

@@ -1,0 +1,6 @@
+ui/node_modules/
+ui/dist/
+# The embedded SPA build output is produced in Docker; only the committed
+# placeholder (internal/web/dist/index.html) is tracked so `go build` works.
+internal/web/dist/assets/
+/app-wizard
