@@ -98,6 +98,11 @@ _DEFAULTS = {
     readiness_period = 5
     readiness_timeout = 3
     readiness_failure_threshold = 3
+    startup_initial_delay = 0
+    startup_period = 10
+    startup_failure_threshold = 30
+    # Service (mirrors the XRD `service.port` schema default)
+    service_port = 8080
     # Autoscaling
     hpa_min_replicas = 1
     hpa_max_replicas = 5
@@ -192,13 +197,18 @@ _isCron = _type == "cron"
 
 # Deployment-backed types (web + worker) share the pod-builder and the
 # Available-condition readiness check; cron renders a CronJob instead.
-_isDeploymentType = _type == "web" or _type == "worker"
+_isDeploymentType = not _isCron
 
 # Effective deployment strategy (FR-007): an explicit user value always wins;
 # otherwise `Recreate` when persistence is enabled (RWO multi-attach guard),
 # else `RollingUpdate`. Computed here since the XRD no longer carries a default.
-_persistenceEnabled = oxr.spec.persistence?.enabled or False
+_persistenceEnabled = oxr.spec.persistence?.enabled
 _effectiveStrategy = oxr.spec?.deploymentStrategy or ("Recreate" if _persistenceEnabled else "RollingUpdate")
+
+# Claim-constant hoists shared across the pod-builder, Service and route blocks.
+_servicePort = oxr.spec.service?.port
+_writableTmp = oxr.spec.securityContext?.enableWritableTmp != False
+_pvcName = _name + "-data"
 
 # ============================================================================
 # Pod-builder shared by Deployment and CronJob (SPEC-007 T007)
@@ -210,7 +220,10 @@ _containerSecurityDefaults = lambda override: any -> any {
     # absent key, `override?.X` yields Undefined and `Undefined == None` makes
     # the whole ternary Undefined — which would silently DROP the field. That
     # would strip un-overridden security fields from a partially-overridden
-    # sidecar/init container. `in` keeps every default present.
+    # container. `in` keeps every default present.
+    # seccompProfile is deliberately NOT set here: the pod-level securityContext
+    # in `_podSpec` sets RuntimeDefault unconditionally, which PSS=restricted
+    # accepts for every container in the pod.
     _o = override or {}
     {
         allowPrivilegeEscalation = _o.allowPrivilegeEscalation if "allowPrivilegeEscalation" in _o else False
@@ -218,9 +231,6 @@ _containerSecurityDefaults = lambda override: any -> any {
         runAsNonRoot = _o.runAsNonRoot if "runAsNonRoot" in _o else True
         capabilities = {
             drop = _o.capabilities.drop if "capabilities" in _o and "drop" in (_o.capabilities or {}) else ["ALL"]
-        }
-        seccompProfile = {
-            type = "RuntimeDefault"
         }
     }
 }
@@ -233,12 +243,12 @@ _containerSecurityDefaults = lambda override: any -> any {
 _buildProbe = lambda p: any, defaults: any -> any {
     _pType = p?.type or "http"
     # Numeric port fallback for tcp/grpc (they require an integer port).
-    _pPortNum = p?.port or oxr.spec.service?.port or 8080
+    _pPortNum = p?.port or _servicePort or _DEFAULTS.service_port
 
     # For http, when no explicit probe port is set and a service port exists,
     # reference the named container port "http" (byte-identical to the legacy
     # web rendered output); otherwise use the numeric fallback.
-    _pPortHttp = p?.port or ("http" if oxr.spec.service?.port else 8080)
+    _pPortHttp = p?.port or ("http" if _servicePort else _DEFAULTS.service_port)
     {
         if _pType == "http":
             httpGet = {
@@ -313,23 +323,22 @@ _readinessProbeDefaults = {
 }
 _startupProbeDefaults = {
     path = "/healthz"
-    initialDelaySeconds = 0
-    periodSeconds = 10
-    failureThreshold = 30
+    initialDelaySeconds = _DEFAULTS.startup_initial_delay
+    periodSeconds = _DEFAULTS.startup_period
+    failureThreshold = _DEFAULTS.startup_failure_threshold
 }
 
 # Whether the main container should carry HTTP probe defaults. `web` keeps
 # today's behavior (probes when a service port is set); `worker`/`cron` only
 # get probes when healthProbes is explicitly set on the claim (FR-002).
-_hasHealthProbes = "healthProbes" in oxr.spec
-_wantMainProbes = (_isWeb and oxr.spec.service?.port) or (not _isWeb and _hasHealthProbes)
+_wantMainProbes = (_isWeb and _servicePort) or (not _isWeb and "healthProbes" in oxr.spec)
 
 # Persistence volume + mount (SPEC-007 T009). PVC is named `<xr-name>-data`
 # and mounted on the MAIN container only.
 _persistenceVolume = [{
     name = "data"
     persistentVolumeClaim = {
-        claimName = _name + "-data"
+        claimName = _pvcName
     }
 }] if _persistenceEnabled else []
 _persistenceMount = [{
@@ -379,26 +388,21 @@ _mainContainer = {
         command = oxr.spec.command
     if oxr.spec?.args:
         args = oxr.spec.args
-    securityContext = {
-        allowPrivilegeEscalation = False if oxr.spec.securityContext?.allowPrivilegeEscalation == None else oxr.spec.securityContext.allowPrivilegeEscalation
-        readOnlyRootFilesystem = True if oxr.spec.securityContext?.readOnlyRootFilesystem == None else oxr.spec.securityContext.readOnlyRootFilesystem
-        runAsNonRoot = True if oxr.spec.securityContext?.runAsNonRoot == None else oxr.spec.securityContext.runAsNonRoot
-        capabilities = {
-            drop = oxr.spec.securityContext?.capabilities?.drop or ["ALL"]
-        }
-    }
+    # Same per-field default merge as sidecars/init containers (single source
+    # of truth for the constitution container security defaults).
+    securityContext = _containerSecurityDefaults(oxr.spec.securityContext)
     # Same one-shot assignment pattern as `volumes` in the pod spec.
     volumeMounts = ([{
         name = "tmp"
         mountPath = "/tmp"
-    }] if oxr.spec.securityContext?.enableWritableTmp != False else []) + (oxr.spec.extraVolumeMounts or []) + _persistenceMount
+    }] if _writableTmp else []) + (oxr.spec.extraVolumeMounts or []) + _persistenceMount
     if oxr.spec.envFrom:
         envFrom = oxr.spec.envFrom
     if _mainCombinedEnv:
         env = _mainCombinedEnv
-    if oxr.spec.service?.port:
+    if _servicePort:
         ports = [{
-            containerPort = oxr.spec.service.port
+            containerPort = _servicePort
             name = "http"
             protocol = "TCP"
         }]
@@ -438,14 +442,9 @@ _podSpec = {
     volumes = ([{
         name = "tmp"
         emptyDir = {}
-    }] if oxr.spec.securityContext?.enableWritableTmp != False else []) + (oxr.spec.extraVolumes or []) + _persistenceVolume
+    }] if _writableTmp else []) + (oxr.spec.extraVolumes or []) + _persistenceVolume
     if oxr.spec.spreadAcrossZones:
-        topologySpreadConstraints = [{
-            maxSkew = 1
-            topologyKey = "topology.kubernetes.io/zone"
-            whenUnsatisfiable = "ScheduleAnyway"
-            labelSelector = _podSelector
-        }]
+        topologySpreadConstraints = _buildTopologySpreadConstraints(True)
     if oxr.spec.onDemand or oxr.spec.antiAffinityPreset:
         affinity = _buildAffinity(oxr.spec.onDemand or False, oxr.spec.antiAffinityPreset or "")
     if _initContainerList:
@@ -569,9 +568,8 @@ _deployment = {
 # CronJob (type == cron). Pod template is built from the SAME pod-builder as
 # the Deployment; batch defaults (Forbid/backoffLimit=3/history=3/OnFailure)
 # are all overridable via spec.cron.*. Built in one shot (no mutation, #285).
-_cronRestartPolicy = oxr.spec.cron?.restartPolicy or "OnFailure"
 _cronPodSpec = _podSpec | {
-    restartPolicy = _cronRestartPolicy
+    restartPolicy = oxr.spec.cron?.restartPolicy or "OnFailure"
 }
 _cronjob = {
     apiVersion = "batch/v1"
@@ -627,10 +625,10 @@ _service = {
         # become Service ports automatically.
         _mainPorts = [{
             name = "http"
-            port = oxr.spec.service.port
+            port = _servicePort
             targetPort = "http"
             protocol = "TCP"
-        }] if oxr.spec.service?.port else []
+        }] if _servicePort else []
         _extraPorts = [{
             name = p.name
             port = p.port
@@ -667,7 +665,7 @@ if _persistenceEnabled:
         apiVersion = "v1"
         kind = "PersistentVolumeClaim"
         metadata = {
-            name = _name + "-data"
+            name = _pvcName
             namespace = _namespace
             annotations = {
                 "krm.kcl.dev/composition-resource-name" = _name + "-pvc"
@@ -854,11 +852,11 @@ if oxr.spec.route?.enabled == True and _isWeb:
                         type = "PathPrefix"
                         value = rule.pathPrefix or "/"
                     }
-                } for rule in (oxr.spec.route.rules or [{backendPort: oxr.spec.service?.port or 8080, pathPrefix: "/"}])]
+                } for rule in (oxr.spec.route.rules or [{backendPort: _servicePort or _DEFAULTS.service_port, pathPrefix: "/"}])]
                 backendRefs = [{
                     name = _name
                     port = rule.backendPort
-                } for rule in (oxr.spec.route.rules or [{backendPort: oxr.spec.service?.port or 8080}])]
+                } for rule in (oxr.spec.route.rules or [{backendPort: _servicePort or _DEFAULTS.service_port}])]
             }]
         }
     }]

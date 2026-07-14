@@ -270,8 +270,7 @@ spec:
     # NOT automatically exposed on the Service — declare them here if needed.
     extraPorts:
       - name: metrics
-        port: 9113
-        targetPort: 9113
+        port: 9113 # targetPort defaults to port
 
   # ============================================================================
   # HTTP Routing - External Access

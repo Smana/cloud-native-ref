@@ -213,9 +213,12 @@ test_sidecars_security = lambda {
     _sidecarContainers = containers[1::]
     _names = [c.name for c in _sidecarContainers]
     assert _names == [s.name for s in _sidecarSpecs], "sidecar names/order mismatch: {}".format(_names)
-    # Every sidecar carries the constitution security defaults.
-    _missingDefaults = [c.name for c in _sidecarContainers if c.securityContext.allowPrivilegeEscalation != False or c.securityContext.runAsNonRoot != True or "ALL" not in c.securityContext.capabilities.drop or c.securityContext.seccompProfile.type != "RuntimeDefault"]
+
+    # Every sidecar carries the constitution security defaults. seccompProfile
+    # is enforced at pod level (covers all containers under PSS=restricted).
+    _missingDefaults = [c.name for c in _sidecarContainers if c.securityContext.allowPrivilegeEscalation != False or c.securityContext.runAsNonRoot != True or "ALL" not in c.securityContext.capabilities.drop]
     assert len(_missingDefaults) == 0, "sidecars missing constitution security defaults: {}".format(_missingDefaults)
+    assert dep.spec.template.spec.securityContext.seccompProfile.type == "RuntimeDefault", "pod-level seccompProfile must be RuntimeDefault"
     # Per-field override wins: the log-shipper sidecar sets readOnlyRootFilesystem=false.
     _override = [c for c in _sidecarContainers if c.name == "log-shipper"]
     if _override:
@@ -232,7 +235,7 @@ test_init_containers_security = lambda {
     _init = dep.spec.template.spec?.initContainers or []
     assert len(_init) == len(_initSpecs), "expected {} initContainers, got {}".format(len(_initSpecs), len(_init))
     assert [c.name for c in _init] == [s.name for s in _initSpecs], "init container names/order mismatch"
-    _missingDefaults = [c.name for c in _init if c.securityContext.allowPrivilegeEscalation != False or c.securityContext.readOnlyRootFilesystem != True or c.securityContext.runAsNonRoot != True or "ALL" not in c.securityContext.capabilities.drop or c.securityContext.seccompProfile.type != "RuntimeDefault"]
+    _missingDefaults = [c.name for c in _init if c.securityContext.allowPrivilegeEscalation != False or c.securityContext.readOnlyRootFilesystem != True or c.securityContext.runAsNonRoot != True or "ALL" not in c.securityContext.capabilities.drop]
     assert len(_missingDefaults) == 0, "initContainers missing constitution security defaults: {}".format(_missingDefaults)
     _withPorts = [c.name for c in _init if c?.ports]
     assert len(_withPorts) == 0, "init containers must not expose ports: {}".format(_withPorts)
@@ -314,28 +317,28 @@ test_build_probe_types = lambda {
 # loads a single settings file. Here we assert the fork flags + web invariants.
 test_type_fork_flags = lambda {
     _oxr = option("params").oxr
-    _t = _oxr.spec?.type or "web"
-    assert _type == _t, "resolved _type should match spec.type (defaulting to web)"
-    assert _isDeploymentType == (_t == "web" or _t == "worker"), "web/worker are Deployment-backed"
-    assert _isWeb == (_t == "web"), "_isWeb flag mismatch"
-    assert _isCron == (_t == "cron"), "_isCron flag mismatch"
-    if _isWeb:
+
+    # Assert rendered invariants, not the flag derivation itself (which would
+    # just restate the implementation).
+    if (_oxr.spec?.type or "web") == "web":
         assert len([r for r in items if r.kind == "Service"]) == 1, "web must render a Service"
         assert len([r for r in items if r.kind == "CronJob"]) == 0, "web must not render a CronJob"
+        assert len([r for r in items if r.kind == "Deployment"]) == 1, "web must render a Deployment"
 
     assert True
 }
 
-# ---- Test: _effectiveStrategy resolution (SPEC-007 FR-007) ----
+# ---- Test: strategy resolution wired into the rendered Deployment (FR-007) ----
 test_effective_strategy = lambda {
     _oxr = option("params").oxr
-    # explicit value always wins
+    _dep = [r for r in items if r.kind == "Deployment"][0]
+    # explicit value always wins; else persistence flips to Recreate
     if _oxr.spec?.deploymentStrategy:
-        assert _effectiveStrategy == _oxr.spec.deploymentStrategy, "explicit deploymentStrategy must win"
+        assert _dep.spec.strategy.type == _oxr.spec.deploymentStrategy, "explicit deploymentStrategy must win in rendered output"
     elif _oxr.spec.persistence?.enabled:
-        assert _effectiveStrategy == "Recreate", "persistence must default strategy to Recreate"
+        assert _dep.spec.strategy.type == "Recreate", "persistence must default rendered strategy to Recreate"
     else:
-        assert _effectiveStrategy == "RollingUpdate", "default strategy must be RollingUpdate"
+        assert _dep.spec.strategy.type == "RollingUpdate", "default rendered strategy must be RollingUpdate"
     assert True
 }
 
@@ -346,7 +349,6 @@ test_container_security_defaults = lambda {
     assert _def.readOnlyRootFilesystem == True, "default readOnlyRootFilesystem True"
     assert _def.runAsNonRoot == True, "default runAsNonRoot True"
     assert _def.capabilities.drop == ["ALL"], "default drop ALL"
-    assert _def.seccompProfile.type == "RuntimeDefault", "default seccomp RuntimeDefault"
     _ovr = _containerSecurityDefaults({readOnlyRootFilesystem = False})
     assert _ovr.readOnlyRootFilesystem == False, "override readOnlyRootFilesystem should win"
     assert _ovr.runAsNonRoot == True, "un-overridden fields keep defaults"

@@ -159,8 +159,7 @@ kcl_options:
             # Additional Service ports (SPEC-007) — e.g. a metrics port.
             extraPorts:
               - name: metrics
-                port: 9090
-                targetPort: 9090
+                port: 9090 # targetPort defaults to port
           gateway: # Create a dedicated Gateway for this application otherwise using the shared one.
             enabled: true
             gatewayClassName: "my-gateway-class"
