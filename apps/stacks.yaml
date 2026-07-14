@@ -1,0 +1,37 @@
+# =============================================================================
+# App Wizard — Stack Registry (SPEC-008 FR-006, CL-6)
+# =============================================================================
+# Platform-owned registry of "stacks" the App Wizard offers as a dropdown when
+# a developer declares a new app. A *stack* is a logical grouping that maps to:
+#   - a directory prefix under `apps/<stack>/<app_name>/` where the wizard writes
+#     the generated `app.yaml` + `kustomization.yaml`, and
+#   - the Kubernetes `namespace` the App claim is created in.
+#
+# The wizard READS this file (via STACKS_PATH, default `apps/stacks.yaml`) — it
+# NEVER writes to it. Adding, renaming, or removing a stack (and provisioning
+# the matching namespace under `namespaces/base/` + wiring the parent
+# `apps/mycluster-0/kustomization.yaml`) is a deliberate, platform-reviewed PR.
+# The wizard cannot create stacks or namespaces (SPEC-008 Non-Goals).
+#
+# Each entry:
+#   name        — stack id shown in the dropdown and used as the `apps/<stack>/`
+#                 directory prefix.
+#   description — one-line human explanation surfaced in the UI.
+#   namespace   — Kubernetes namespace the App claim targets. MUST already exist
+#                 (defined under `namespaces/base/` and reconciled by Flux).
+#   ownerTeam   — the team accountable for reviewing PRs targeting this stack.
+# =============================================================================
+stacks:
+  - name: platform
+    description: >-
+      Platform / internal tooling apps operated by the platform team
+      (e.g. the App Wizard itself). Private Tailscale access by default.
+    namespace: apps
+    ownerTeam: platform-engineering
+
+  - name: demo
+    description: >-
+      Sandbox stack for demos and first-app onboarding. Lower review bar;
+      not for production workloads.
+    namespace: demo
+    ownerTeam: platform-engineering

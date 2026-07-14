@@ -4,6 +4,8 @@ kind: Kustomization
 resources:
   - ../base/basic
   - ../base/complete
+  # "platform" stack — platform-operated apps (App Wizard, SPEC-008).
+  - ../platform
   # LLM apps (../base/ai/llm + ../base/openwebui) are gated through
   # the LLM umbrella Kustomization (clusters/mycluster-0/llm-platform.yaml).
   # They live in apps/llm/kustomization.yaml so the umbrella's child

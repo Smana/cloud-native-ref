@@ -1,0 +1,180 @@
+# ui-hints.yaml — presentation overlay for the App Wizard form (FR-003).
+#
+# This file controls ONLY how fields are presented (tier, group, label, help,
+# example, order). It never carries field knowledge — types, enums, defaults,
+# min/max and descriptions all come from the App XRD via the schema pipeline.
+#
+# A field absent from `fields` defaults to the "advanced" tier and is never
+# hidden (FR-003). Tiers: basic (first screen) | advanced (behind an expander)
+# | expert (behind an "expert" toggle).
+
+groups:
+  - id: workload
+    label: Workload
+    tier: basic
+    order: 10
+  - id: exposure
+    label: Networking & exposure
+    tier: basic
+    order: 20
+  - id: scaling
+    label: Scaling & availability
+    tier: advanced
+    order: 30
+  - id: data
+    label: Data & storage
+    tier: advanced
+    order: 40
+  - id: config
+    label: Configuration & secrets
+    tier: advanced
+    order: 50
+  - id: security
+    label: Security & policies
+    tier: expert
+    order: 60
+  - id: observability
+    label: Observability
+    tier: expert
+    order: 70
+
+fields:
+  # --- basic tier ---
+  image:
+    tier: basic
+    group: workload
+    label: Container image
+    order: 10
+  image.repository:
+    tier: basic
+    group: workload
+    label: Image repository
+    example: ghcr.io/acme/my-api
+    order: 11
+  image.tag:
+    tier: basic
+    group: workload
+    label: Image tag
+    example: v1.0.0
+    order: 12
+  type:
+    tier: basic
+    group: workload
+    label: Workload type
+    order: 13
+  service:
+    tier: basic
+    group: exposure
+    label: Service
+    order: 20
+  route:
+    tier: basic
+    group: exposure
+    label: External route
+    order: 21
+
+  # --- advanced tier ---
+  sqlInstance:
+    tier: advanced
+    group: data
+    label: PostgreSQL database
+    order: 40
+  kvStore:
+    tier: advanced
+    group: data
+    label: Key-value store (Valkey/Redis)
+    order: 41
+  s3Bucket:
+    tier: advanced
+    group: data
+    label: S3 bucket
+    order: 42
+  persistence:
+    tier: advanced
+    group: data
+    label: Persistent volume
+    order: 43
+  autoscaling:
+    tier: advanced
+    group: scaling
+    label: Autoscaling (HPA)
+    order: 30
+  pdb:
+    tier: advanced
+    group: scaling
+    label: Pod Disruption Budget
+    order: 31
+  replicas:
+    tier: advanced
+    group: scaling
+    label: Replicas
+    order: 32
+  resources:
+    tier: advanced
+    group: workload
+    label: Resource requests & limits
+    order: 33
+  env:
+    tier: advanced
+    group: config
+    label: Environment variables
+    order: 50
+  envFrom:
+    tier: advanced
+    group: config
+    label: Env from ConfigMap/Secret
+    order: 51
+  configs:
+    tier: advanced
+    group: config
+    label: Mounted config files
+    order: 52
+  externalSecrets:
+    tier: advanced
+    group: config
+    label: External secrets (AWS Secrets Manager)
+    order: 53
+
+  # --- expert tier ---
+  securityContext:
+    tier: expert
+    group: security
+    order: 60
+  networkPolicies:
+    tier: expert
+    group: security
+    label: Cilium network policies
+    order: 61
+  automountServiceAccountToken:
+    tier: expert
+    group: security
+    order: 62
+  antiAffinityPreset:
+    tier: expert
+    group: scaling
+    order: 63
+  spreadAcrossZones:
+    tier: expert
+    group: scaling
+    order: 64
+  gateway:
+    tier: expert
+    group: exposure
+    order: 65
+  observability:
+    tier: expert
+    group: observability
+    order: 70
+  healthProbes:
+    tier: expert
+    group: observability
+    label: Health probes
+    order: 71
+  deploymentStrategy:
+    tier: expert
+    group: workload
+    order: 72
+  onDemand:
+    tier: expert
+    group: workload
+    order: 73

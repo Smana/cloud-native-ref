@@ -59,7 +59,7 @@ type FieldHint struct {
 type GroupHint struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
-	Tier  string `json:"tier"`  // basic | advanced | expert
+	Tier  string `json:"tier"` // basic | advanced | expert
 	Order int    `json:"order"`
 }
 
@@ -79,10 +79,10 @@ type ValidateRequest struct {
 
 // ValidateResponse reports schema + CEL validation outcomes (FR-002, FR-007).
 type ValidateResponse struct {
-	Valid          bool             `json:"valid"`
-	SchemaErrors   []FieldError     `json:"schemaErrors"`
-	CELViolations  []CELRule        `json:"celViolations"` // rules that failed, with their messages
-	SecretFindings []SecretFinding  `json:"secretFindings"` // FR-010: candidate secrets in the spec
+	Valid          bool            `json:"valid"`
+	SchemaErrors   []FieldError    `json:"schemaErrors"`
+	CELViolations  []CELRule       `json:"celViolations"`  // rules that failed, with their messages
+	SecretFindings []SecretFinding `json:"secretFindings"` // FR-010: candidate secrets in the spec
 }
 
 type FieldError struct {
@@ -106,9 +106,9 @@ type RenderPreviewRequest struct {
 
 // RenderPreviewResponse lists the resources the claim would create (FR-008, SC-004).
 type RenderPreviewResponse struct {
-	OK        bool             `json:"ok"`
+	OK        bool               `json:"ok"`
 	Resources []RenderedResource `json:"resources"`
-	Error     string           `json:"error,omitempty"`
+	Error     string             `json:"error,omitempty"`
 }
 
 type RenderedResource struct {

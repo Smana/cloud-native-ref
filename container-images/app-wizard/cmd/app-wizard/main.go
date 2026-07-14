@@ -1,28 +1,74 @@
-// Command app-wizard serves the App Wizard SPA and its JSON API.
-//
-// This is the Phase 1 scaffold (SPEC-008). The backend implementation
-// (schema pipeline, validation, gitprovider, PR flow, OAuth) fills the
-// internal/* packages and replaces the stub handlers registered here.
+// Command app-wizard serves the App Wizard SPA and its JSON API (SPEC-008
+// Phase 1). It wires the schema pipeline, validation gates, secret scanning,
+// GitHub OAuth, gitprovider, render preview, and the PR flow, then serves the
+// embedded SPA for all non-/api paths.
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 
-	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/api"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/auth"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/config"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/gitprovider"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/pr"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/render"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/schema"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/validate"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/web"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
 
-	addr := os.Getenv("LISTEN_ADDR")
-	if addr == "" {
-		addr = ":8080"
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Error("failed to load config", "err", err)
+		os.Exit(1)
 	}
+
+	ctx := context.Background()
+
+	// Schema source: local disk (dev/test) or GitHub (prod). The GitHub source
+	// reads the XRD/stacks as the process's default identity via an anonymous
+	// provider is not possible, so in github mode we read from the repo on disk
+	// if present, else fall back to local. For simplicity v1 uses LocalSource
+	// against REPO_ROOT; GitHub source is available for callers that inject a
+	// provider (see internal/schema.NewGitHubSource).
+	src := schema.SchemaSource(schema.NewLocalSource(cfg.RepoRoot))
+	if cfg.XRDSource == config.SourceGitHub && cfg.GitHubClientID != "" {
+		// Server-side reads require a token; when unavailable we keep LocalSource.
+		logger.Info("XRD_SOURCE=github requested; using LocalSource for server-side reads (per-user tokens are request-scoped)")
+	}
+
+	pipeline := schema.NewPipeline(src, cfg.XRDPath, cfg.StacksPath, cfg.UIHintsPath)
+
+	// Warm the cache / fail fast on a broken XRD.
+	if _, err := pipeline.Build(ctx); err != nil {
+		logger.Error("failed to build schema payload", "err", err)
+		os.Exit(1)
+	}
+
+	validator := validate.NewValidator(pipeline)
+	renderer := render.NewCrossplaneRenderer(cfg.RepoRoot, cfg.CompositionPath, cfg.FunctionsPath, cfg.EnvConfigPath)
+	prService := pr.NewService(validator, renderer, pipeline, cfg.RepoBaseBranch)
+
+	// Provider factory: build a GitHub gitprovider from a user token.
+	factory := func(ctx context.Context, token string) gitprovider.Provider {
+		return gitprovider.NewGitHub(ctx, token, cfg.RepoOwner, cfg.RepoName)
+	}
+	authHandler := auth.New(auth.Config{
+		ClientID:     cfg.GitHubClientID,
+		ClientSecret: cfg.GitHubClientSecret,
+		RedirectURL:  cfg.OAuthRedirectURL,
+		SessionKey:   cfg.SessionKey,
+		Factory:      factory,
+		Logger:       logger,
+	})
 
 	mux := http.NewServeMux()
 
@@ -36,17 +82,19 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	// Stub /api/schema so the SPA has a live target before the schema pipeline
-	// lands. Replaced by internal/schema in the backend implementation task.
-	mux.HandleFunc("GET /api/schema", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, api.SchemaPayload{
-			JSONSchema:    map[string]any{"type": "object", "properties": map[string]any{}},
-			CELRules:      []api.CELRule{},
-			Hints:         api.UIHints{Fields: map[string]api.FieldHint{}, Groups: []api.GroupHint{}},
-			Stacks:        []api.Stack{},
-			SchemaVersion: "scaffold",
-		})
-	})
+	// Schema / validation / render.
+	mux.Handle("GET /api/schema", pipeline.Handler())
+	mux.Handle("POST /api/validate", validator.Handler())
+	mux.Handle("POST /api/render-preview", render.Handler(renderer, pipeline))
+
+	// Auth.
+	mux.HandleFunc("GET /api/auth/login", authHandler.Login)
+	mux.HandleFunc("GET /api/auth/callback", authHandler.Callback)
+	mux.HandleFunc("GET /api/me", authHandler.Me)
+	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
+
+	// PR flow (authenticated).
+	mux.Handle("POST /api/pr", prService.Handler(authHandler.ProviderForRequest, logger))
 
 	// Serve the embedded SPA for everything else, with SPA fallback to index.html.
 	spa, err := fs.Sub(web.Assets, "dist")
@@ -56,16 +104,10 @@ func main() {
 	}
 	mux.Handle("/", web.SPAHandler(spa))
 
-	logger.Info("app-wizard listening", "addr", addr)
-	srv := &http.Server{Addr: addr, Handler: mux}
+	logger.Info("app-wizard listening", "addr", cfg.ListenAddr, "repoRoot", cfg.RepoRoot, "xrdSource", cfg.XRDSource)
+	srv := &http.Server{Addr: cfg.ListenAddr, Handler: mux}
 	if err := srv.ListenAndServe(); err != nil {
 		logger.Error("server exited", "err", err)
 		os.Exit(1)
 	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
 }

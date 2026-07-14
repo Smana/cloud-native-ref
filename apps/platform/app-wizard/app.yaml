@@ -1,0 +1,181 @@
+---
+# =============================================================================
+# App Wizard (SPEC-008, FR-013) — deployed on the platform as an App claim,
+# the same abstraction it helps developers author. Schema-driven self-service
+# UI that opens GitOps PRs under apps/<stack>/<app_name>/.
+#
+# Container built from container-images/app-wizard/ by build-container-images.yml
+# and published to ghcr.io/smana/app-wizard.
+#
+# Filed under apps/platform/ (the "platform" stack in apps/stacks.yaml). The
+# Kubernetes namespace is `apps` — the existing, Flux-reconciled namespace every
+# App claim lands in today (there is no dedicated `platform` namespace yet).
+# =============================================================================
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: app-wizard
+  namespace: apps
+spec:
+  image:
+    repository: ghcr.io/smana/app-wizard
+    # `latest` is published by build-container-images.yml on merge to main.
+    # Pin to an immutable sha/tag once the first image ships.
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  # Single stateless replica — the wizard holds no persistent state (sessions
+  # are cookie-based, signed by SESSION_KEY). Scale up later if needed.
+  replicas: 1
+
+  # Restricted-PSS compliant container context (constitution mandate). These
+  # match the composition defaults but are restated for clarity/auditability.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    capabilities:
+      drop: ["ALL"]
+    enableWritableTmp: true
+  runAsNonRoot: true
+  automountServiceAccountToken: false
+
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+  # type: web — HTTP workload exposed via Service + HTTPRoute.
+  service:
+    port: 8080
+
+  # Backend serves /healthz (liveness) and /readyz (readiness).
+  healthProbes:
+    liveness:
+      path: /healthz
+      initialDelaySeconds: 15
+      periodSeconds: 20
+    readiness:
+      path: /readyz
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+  # Non-secret runtime config. Env var names are taken from
+  # container-images/app-wizard/internal/config/config.go (Load()).
+  env:
+    # HTTP bind address.
+    - name: LISTEN_ADDR
+      value: ":8080"
+    # GitOps repo PRs are opened against.
+    - name: REPO_OWNER
+      value: "Smana"
+    - name: REPO_NAME
+      value: "cloud-native-ref"
+    - name: REPO_BASE_BRANCH
+      value: "main"
+    # Read the App XRD + stacks.yaml from the GitHub repo (prod mode) rather
+    # than the local disk (dev mode).
+    - name: XRD_SOURCE
+      value: "github"
+    # OAuth callback registered with the GitHub OAuth app (CL-9). Must match the
+    # private Tailscale hostname below.
+    - name: OAUTH_REDIRECT_URL
+      value: "https://app-wizard.priv.cloud.ogenki.io/api/auth/callback"
+    # OAuth client id/secret and SESSION_KEY come from the ExternalSecret below
+    # via envFrom (GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET / SESSION_KEY keys).
+
+  # ---------------------------------------------------------------------------
+  # OAuth app credentials + session key from AWS Secrets Manager.
+  # ---------------------------------------------------------------------------
+  # The ExternalSecret is reconciled by the External Secrets Operator (which has
+  # its own EKS Pod Identity) — the wizard pod itself makes NO direct AWS calls,
+  # so it needs no egress to the Pod Identity endpoint (169.254.170.23). ESO
+  # materializes the `app-wizard-oauth` Secret; the wizard reads it via envFrom.
+  #
+  # The AWS Secrets Manager blob at apps/app-wizard/oauth MUST contain the keys:
+  #   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_KEY
+  # (the composition imports ALL keys from the path via dataFrom → they land as
+  # env vars of the same name through envFrom).
+  externalSecrets:
+    - name: app-wizard-oauth
+      remoteRef: apps/app-wizard/oauth
+      refreshInterval: 1h
+  envFrom:
+    - secretRef:
+        name: app-wizard-oauth
+        optional: true
+
+  # Private access via Tailscale — NOT internet-facing.
+  # hostname `app-wizard` → app-wizard.priv.cloud.ogenki.io.
+  route:
+    enabled: true
+    internetFacing: false
+    hostname: "app-wizard"
+
+  # ---------------------------------------------------------------------------
+  # CiliumNetworkPolicy — default-deny + explicit allow (constitution mandate).
+  # The App composition passes `ingress`/`egress` verbatim into the CNP spec
+  # (kcl/app/main.k) with NO auto-injected DNS rule, so what is declared here is
+  # exactly what renders.
+  # ---------------------------------------------------------------------------
+  networkPolicies:
+    enabled: true
+    ingress:
+      # Tailscale gateway → wizard. `ingress` entity covers the Cilium Gateway
+      # data-plane pods that terminate the Tailscale-fronted HTTPRoute
+      # (established pattern — see openwebui/app.yaml). TRAP #3-adjacent: the
+      # gateway is classified as the `ingress` entity, not a pod selector.
+      - fromEntities:
+          - ingress
+        toPorts:
+          - ports:
+              - port: "8080"
+                protocol: TCP
+    egress:
+      # DNS resolution (kube-dns). NOTE on CNP-rules TRAP #1: the mandatory L7
+      # DNS rule (`toPorts.rules.dns.matchPattern: "*"`) cannot be expressed
+      # through the App XRD — its egress `toPorts` schema only allows `ports[]`,
+      # no `rules` field (an unknown field would be dropped by the API server).
+      # Because the L7 DNS rule is unavailable, `toFQDNs` allowlists cannot work
+      # here (they'd have no resolved IPs to match — TRAP #1 failure mode). So
+      # GitHub egress uses `toEntities: world` on 443 instead (see below), the
+      # same proven pattern every other App claim uses (openwebui, image-gallery).
+      - toEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "kube-system"
+              "k8s-app": "kube-dns"
+        toPorts:
+          - ports:
+              - port: "53"
+                protocol: UDP
+              - port: "53"
+                protocol: TCP
+      # GitHub API + git over HTTPS (api.github.com, github.com) for OAuth token
+      # exchange, reading repo files (XRD/stacks/composition), and opening PRs.
+      # `toEntities: world` on 443 rather than `toFQDNs` — see the TRAP #1 note
+      # above. TRAP #4 rationale: escaping to world:443 on a long-lived pod is
+      # normally discouraged, but here the composition cannot render a working
+      # `toFQDNs` rule at all; egress stays HTTPS-only, restricted PSS is
+      # enforced, and the pod holds no cluster credentials.
+      - toEntities:
+          - world
+        toPorts:
+          - ports:
+              - port: "443"
+                protocol: TCP
+
+  # No native /metrics endpoint yet.
+  observability:
+    metrics:
+      enabled: false
+
+  # TODO(SPEC-008 phase1): wire function-kcl / function-auto-ready gRPC sidecars
+  # for in-pod `crossplane render` preview (CL-8). Omitted deliberately: the App
+  # XRD (app-definition.yaml) exposes no `sidecars[]` field on spec, so a sidecar
+  # block cannot be expressed through this claim today. Rendering preview must
+  # either (a) be added to the App XRD/composition first (out of scope here —
+  # this task owns only files under apps/), or (b) run render out-of-band. See
+  # the report note.
