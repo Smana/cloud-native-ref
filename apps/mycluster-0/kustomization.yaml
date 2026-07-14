@@ -6,6 +6,11 @@ resources:
   - ../base/complete
   # "platform" stack — platform-operated apps (App Wizard, SPEC-008).
   - ../platform
+  # "demo" stack — the sandbox the App Wizard offers for first-app onboarding.
+  # Reconciled even while empty: the wizard advertises this stack in apps/stacks.yaml,
+  # so the path it writes into has to be one Flux actually applies. Without this line a
+  # wizard PR into `demo` merges and then does nothing at all.
+  - ../demo
   # LLM apps (../base/ai/llm + ../base/openwebui) are gated through
   # the LLM umbrella Kustomization (clusters/mycluster-0/llm-platform.yaml).
   # They live in apps/llm/kustomization.yaml so the umbrella's child

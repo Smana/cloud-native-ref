@@ -5,6 +5,7 @@ resources:
   - llm.yaml
   - apps.yaml
   - crossplane-system.yaml
+  - demo.yaml
   - envoy-ai-gateway-system.yaml
   - envoy-gateway-system.yaml
   - harbor.yaml
