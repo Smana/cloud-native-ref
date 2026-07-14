@@ -25,6 +25,22 @@ spec:
                   message: "route.hostname is required when route is enabled"
                 - rule: "!has(self.sqlInstance) || !self.sqlInstance.enabled || !has(self.sqlInstance.backup) || !has(self.sqlInstance.backup.schedule) || has(self.sqlInstance.backup.bucketName)"
                   message: "sqlInstance.backup.bucketName is required when backup schedule is set"
+                - rule: "!has(self.type) || self.type != 'cron' || has(self.schedule)"
+                  message: "schedule is required when type is 'cron'"
+                - rule: "!has(self.schedule) || (has(self.type) && self.type == 'cron')"
+                  message: "schedule is only valid when type is 'cron'"
+                - rule: "!has(self.route) || !self.route.enabled || (has(self.type) ? self.type == 'web' : true)"
+                  message: "route is only valid when type is 'web'"
+                - rule: "!has(self.gateway) || !self.gateway.enabled || (has(self.type) ? self.type == 'web' : true)"
+                  message: "gateway is only valid when type is 'web'"
+                - rule: "!has(self.autoscaling) || !self.autoscaling.enabled || (has(self.type) ? self.type != 'cron' : true)"
+                  message: "autoscaling is not valid when type is 'cron'"
+                - rule: "!has(self.pdb) || !self.pdb.enabled || (has(self.type) ? self.type != 'cron' : true)"
+                  message: "pdb is not valid when type is 'cron'"
+                - rule: "!has(self.persistence) || !self.persistence.enabled || (has(self.persistence.size) && has(self.persistence.mountPath))"
+                  message: "persistence.size and persistence.mountPath are required when persistence is enabled"
+                - rule: "!has(self.persistence) || !self.persistence.enabled || !has(self.autoscaling) || !self.autoscaling.enabled || (has(self.persistence.accessModes) && !('ReadWriteOnce' in self.persistence.accessModes))"
+                  message: "autoscaling is incompatible with ReadWriteOnce persistence (multi-attach)"
               properties:
                 # Deployment specific parameters
                 image:
@@ -44,6 +60,70 @@ spec:
                       default: "IfNotPresent"
                   required:
                     - repository
+                type:
+                  type: string
+                  description: |
+                    Workload shape. `web` renders a Deployment plus a Service and
+                    optional HTTPRoute/Gateway (HTTP service). `worker` renders a
+                    Deployment only — no Service, route, or default HTTP probes
+                    (background/queue consumer). `cron` renders a CronJob driven by
+                    `schedule` (scheduled batch task).
+                  enum: ["web", "worker", "cron"]
+                  default: "web"
+                schedule:
+                  type: string
+                  description: CronJob schedule in cron format; required when type=cron
+                  pattern: "^[0-9*/ ,-]+$"
+                cron:
+                  type: object
+                  description: CronJob tuning (only used when type=cron)
+                  properties:
+                    concurrencyPolicy:
+                      type: string
+                      description: How to treat concurrent executions of a job
+                      enum: ["Allow", "Forbid", "Replace"]
+                      default: "Forbid"
+                    backoffLimit:
+                      type: integer
+                      description: Number of retries before marking a job as failed
+                      minimum: 0
+                      default: 3
+                    activeDeadlineSeconds:
+                      type: integer
+                      description: Deadline in seconds for the job to complete
+                      minimum: 1
+                    restartPolicy:
+                      type: string
+                      description: Restart policy for the job pod
+                      enum: ["OnFailure", "Never"]
+                      default: "OnFailure"
+                    successfulJobsHistoryLimit:
+                      type: integer
+                      description: Number of successful finished jobs to retain
+                      default: 3
+                    failedJobsHistoryLimit:
+                      type: integer
+                      description: Number of failed finished jobs to retain
+                      default: 3
+                command:
+                  type: array
+                  description: Entrypoint override for the main container
+                  items:
+                    type: string
+                args:
+                  type: array
+                  description: Arguments to the main container entrypoint
+                  items:
+                    type: string
+                imagePullSecrets:
+                  type: array
+                  description: Names of image pull secrets in the same namespace
+                  items:
+                    type: string
+                terminationGracePeriodSeconds:
+                  type: integer
+                  description: Grace period in seconds before the pod is force-killed
+                  minimum: 0
                 autoscaling:
                   type: object
                   properties:
@@ -80,8 +160,10 @@ spec:
                     spin up the new pod alongside the old, which can't attach
                     a single-attach volume and stalls with `Multi-Attach error
                     for volume`. Use `RollingUpdate` for stateless apps.
+                    When unset, the effective default is `RollingUpdate`, or
+                    `Recreate` when `persistence.enabled` is true (RWO
+                    multi-attach guard); an explicit value always wins.
                   enum: [RollingUpdate, Recreate]
-                  default: RollingUpdate
                 pdb:
                   type: object
                   description: Pod Disruption Budget configuration
@@ -99,6 +181,35 @@ spec:
                       description: Unhealthy pod eviction policy
                       enum: ["IfHealthyBudget", "AlwaysAllow"]
                       default: "AlwaysAllow"
+                persistence:
+                  type: object
+                  description: |
+                    Simple persistent storage. When enabled, renders a PVC mounted
+                    at `mountPath` on the main container. With RWO access (default),
+                    the effective deployment strategy becomes `Recreate` to avoid the
+                    multi-attach trap; RWO persistence is incompatible with autoscaling.
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: Enable persistent storage (renders a PVC)
+                      default: false
+                    size:
+                      type: string
+                      description: Requested storage size (required when enabled)
+                      pattern: "^[0-9]+[KMGT]i$"
+                    mountPath:
+                      type: string
+                      description: Path where the volume is mounted (required when enabled)
+                    storageClass:
+                      type: string
+                      description: StorageClass name (defaults to the cluster default when unset)
+                    accessModes:
+                      type: array
+                      description: PVC access modes
+                      items:
+                        type: string
+                        enum: ["ReadWriteOnce", "ReadWriteMany", "ReadOnlyMany"]
+                      default: ["ReadWriteOnce"]
                 resources:
                   type: object
                   description: Resource requirements
@@ -264,6 +375,379 @@ spec:
                       prefix:
                         type: string
                         description: Prefix to add to all environment variables
+                initContainers:
+                  type: array
+                  description: Init containers that run to completion before the main container starts. Inherit the constitution security defaults unless overridden.
+                  maxItems: 16
+                  x-kubernetes-validations:
+                    - rule: "self.all(c, c.name != 'main')"
+                      message: "container name 'main' is reserved for the primary container"
+                    - rule: "self.all(c, self.filter(d, d.name == c.name).size() == 1)"
+                      message: "initContainers names must be unique"
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Container name
+                      image:
+                        type: string
+                        description: Container image in plain "repo:tag" form
+                      command:
+                        type: array
+                        description: Entrypoint override for the container
+                        items:
+                          type: string
+                      args:
+                        type: array
+                        description: Arguments to the container entrypoint
+                        items:
+                          type: string
+                      env:
+                        type: array
+                        description: Environment variables to set in the container
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                              description: Environment variable name
+                            value:
+                              type: string
+                              description: Environment variable value
+                            valueFrom:
+                              type: object
+                              description: Source for the environment variable value
+                              properties:
+                                configMapKeyRef:
+                                  type: object
+                                  description: Reference to a ConfigMap key
+                                  properties:
+                                    name:
+                                      type: string
+                                      description: Name of the ConfigMap
+                                    key:
+                                      type: string
+                                      description: Key in the ConfigMap
+                                  required:
+                                    - name
+                                    - key
+                                secretKeyRef:
+                                  type: object
+                                  description: Reference to a Secret key
+                                  properties:
+                                    name:
+                                      type: string
+                                      description: Name of the Secret
+                                    key:
+                                      type: string
+                                      description: Key in the Secret
+                                  required:
+                                    - name
+                                    - key
+                                fieldRef:
+                                  type: object
+                                  description: Reference to a field in the pod spec
+                                  properties:
+                                    fieldPath:
+                                      type: string
+                                      description: Path to the field
+                                  required:
+                                    - fieldPath
+                          required:
+                            - name
+                      envFrom:
+                        type: array
+                        description: List of sources to populate environment variables
+                        items:
+                          type: object
+                          properties:
+                            configMapRef:
+                              type: object
+                              description: ConfigMap to populate environment variables from
+                              properties:
+                                name:
+                                  type: string
+                                  description: Name of the ConfigMap
+                                optional:
+                                  type: boolean
+                                  description: Whether the ConfigMap must exist
+                                  default: false
+                              required:
+                                - name
+                            secretRef:
+                              type: object
+                              description: Secret to populate environment variables from
+                              properties:
+                                name:
+                                  type: string
+                                  description: Name of the Secret
+                                optional:
+                                  type: boolean
+                                  description: Whether the Secret must exist
+                                  default: false
+                              required:
+                                - name
+                            prefix:
+                              type: string
+                              description: Prefix to add to all environment variables
+                      resources:
+                        type: object
+                        description: Resource requirements
+                        properties:
+                          requests:
+                            type: object
+                            properties:
+                              cpu:
+                                type: string
+                                description: CPU request
+                                pattern: "^[0-9]+m?$"
+                              memory:
+                                type: string
+                                description: Memory request
+                                pattern: "^[0-9]+[KMGT]i?$"
+                          limits:
+                            type: object
+                            properties:
+                              cpu:
+                                type: string
+                                description: CPU limit
+                                pattern: "^[0-9]+m?$"
+                              memory:
+                                type: string
+                                description: Memory limit
+                                pattern: "^[0-9]+[KMGT]i?$"
+                      volumeMounts:
+                        type: array
+                        description: Container volume mounts (passthrough to Container.volumeMounts)
+                        items:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                      securityContext:
+                        type: object
+                        description: Container security context override (defaults to the constitution security defaults)
+                        properties:
+                          allowPrivilegeEscalation:
+                            type: boolean
+                            description: Allow privilege escalation
+                            default: false
+                          readOnlyRootFilesystem:
+                            type: boolean
+                            description: Mount root filesystem as read-only
+                            default: true
+                          runAsNonRoot:
+                            type: boolean
+                            description: Require container to run as non-root user
+                            default: true
+                          capabilities:
+                            type: object
+                            description: Linux capabilities
+                            properties:
+                              drop:
+                                type: array
+                                description: Capabilities to drop
+                                items:
+                                  type: string
+                                default: ["ALL"]
+                    required:
+                      - name
+                      - image
+                sidecars:
+                  type: array
+                  description: Sidecar containers that run alongside the main container. Inherit the constitution security defaults unless overridden.
+                  maxItems: 16
+                  x-kubernetes-validations:
+                    - rule: "self.all(c, c.name != 'main')"
+                      message: "container name 'main' is reserved for the primary container"
+                    - rule: "self.all(c, self.filter(d, d.name == c.name).size() == 1)"
+                      message: "sidecars names must be unique"
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Container name
+                      image:
+                        type: string
+                        description: Container image in plain "repo:tag" form
+                      command:
+                        type: array
+                        description: Entrypoint override for the container
+                        items:
+                          type: string
+                      args:
+                        type: array
+                        description: Arguments to the container entrypoint
+                        items:
+                          type: string
+                      env:
+                        type: array
+                        description: Environment variables to set in the container
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                              description: Environment variable name
+                            value:
+                              type: string
+                              description: Environment variable value
+                            valueFrom:
+                              type: object
+                              description: Source for the environment variable value
+                              properties:
+                                configMapKeyRef:
+                                  type: object
+                                  description: Reference to a ConfigMap key
+                                  properties:
+                                    name:
+                                      type: string
+                                      description: Name of the ConfigMap
+                                    key:
+                                      type: string
+                                      description: Key in the ConfigMap
+                                  required:
+                                    - name
+                                    - key
+                                secretKeyRef:
+                                  type: object
+                                  description: Reference to a Secret key
+                                  properties:
+                                    name:
+                                      type: string
+                                      description: Name of the Secret
+                                    key:
+                                      type: string
+                                      description: Key in the Secret
+                                  required:
+                                    - name
+                                    - key
+                                fieldRef:
+                                  type: object
+                                  description: Reference to a field in the pod spec
+                                  properties:
+                                    fieldPath:
+                                      type: string
+                                      description: Path to the field
+                                  required:
+                                    - fieldPath
+                          required:
+                            - name
+                      envFrom:
+                        type: array
+                        description: List of sources to populate environment variables
+                        items:
+                          type: object
+                          properties:
+                            configMapRef:
+                              type: object
+                              description: ConfigMap to populate environment variables from
+                              properties:
+                                name:
+                                  type: string
+                                  description: Name of the ConfigMap
+                                optional:
+                                  type: boolean
+                                  description: Whether the ConfigMap must exist
+                                  default: false
+                              required:
+                                - name
+                            secretRef:
+                              type: object
+                              description: Secret to populate environment variables from
+                              properties:
+                                name:
+                                  type: string
+                                  description: Name of the Secret
+                                optional:
+                                  type: boolean
+                                  description: Whether the Secret must exist
+                                  default: false
+                              required:
+                                - name
+                            prefix:
+                              type: string
+                              description: Prefix to add to all environment variables
+                      resources:
+                        type: object
+                        description: Resource requirements
+                        properties:
+                          requests:
+                            type: object
+                            properties:
+                              cpu:
+                                type: string
+                                description: CPU request
+                                pattern: "^[0-9]+m?$"
+                              memory:
+                                type: string
+                                description: Memory request
+                                pattern: "^[0-9]+[KMGT]i?$"
+                          limits:
+                            type: object
+                            properties:
+                              cpu:
+                                type: string
+                                description: CPU limit
+                                pattern: "^[0-9]+m?$"
+                              memory:
+                                type: string
+                                description: Memory limit
+                                pattern: "^[0-9]+[KMGT]i?$"
+                      volumeMounts:
+                        type: array
+                        description: Container volume mounts (passthrough to Container.volumeMounts)
+                        items:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                      securityContext:
+                        type: object
+                        description: Container security context override (defaults to the constitution security defaults)
+                        properties:
+                          allowPrivilegeEscalation:
+                            type: boolean
+                            description: Allow privilege escalation
+                            default: false
+                          readOnlyRootFilesystem:
+                            type: boolean
+                            description: Mount root filesystem as read-only
+                            default: true
+                          runAsNonRoot:
+                            type: boolean
+                            description: Require container to run as non-root user
+                            default: true
+                          capabilities:
+                            type: object
+                            description: Linux capabilities
+                            properties:
+                              drop:
+                                type: array
+                                description: Capabilities to drop
+                                items:
+                                  type: string
+                                default: ["ALL"]
+                      ports:
+                        type: array
+                        description: Ports exposed by the sidecar container
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                              description: Port name
+                            containerPort:
+                              type: integer
+                              description: Container port number
+                              minimum: 1
+                              maximum: 65535
+                            protocol:
+                              type: string
+                              description: Port protocol
+                              enum: ["TCP", "UDP"]
+                              default: "TCP"
+                    required:
+                      - name
+                      - image
                 extraVolumes:
                   type: array
                   description: Extra volumes to add to the pod (passthrough to PodSpec.volumes). Combined with the default `tmp` emptyDir.
@@ -316,10 +800,25 @@ spec:
                       type: object
                       description: Liveness probe configuration
                       properties:
+                        type:
+                          type: string
+                          description: Probe type (http, tcp, grpc, exec)
+                          enum: ["http", "tcp", "grpc", "exec"]
+                          default: "http"
                         path:
                           type: string
-                          description: HTTP path for liveness probe
+                          description: HTTP path for liveness probe (http type only)
                           default: "/healthz"
+                        port:
+                          type: integer
+                          description: Probe port (defaults to service.port when unset)
+                          minimum: 1
+                          maximum: 65535
+                        command:
+                          type: array
+                          description: Command to run for the exec probe (exec type only)
+                          items:
+                            type: string
                         initialDelaySeconds:
                           type: integer
                           description: Initial delay before liveness probe
@@ -328,14 +827,33 @@ spec:
                           type: integer
                           description: How often to perform the probe
                           default: 10
+                        failureThreshold:
+                          type: integer
+                          description: Consecutive failures before the probe is considered failed
+                          default: 3
                     readiness:
                       type: object
                       description: Readiness probe configuration
                       properties:
+                        type:
+                          type: string
+                          description: Probe type (http, tcp, grpc, exec)
+                          enum: ["http", "tcp", "grpc", "exec"]
+                          default: "http"
                         path:
                           type: string
-                          description: HTTP path for readiness probe
+                          description: HTTP path for readiness probe (http type only)
                           default: "/readyz"
+                        port:
+                          type: integer
+                          description: Probe port (defaults to service.port when unset)
+                          minimum: 1
+                          maximum: 65535
+                        command:
+                          type: array
+                          description: Command to run for the exec probe (exec type only)
+                          items:
+                            type: string
                         initialDelaySeconds:
                           type: integer
                           description: Initial delay before readiness probe
@@ -344,6 +862,44 @@ spec:
                           type: integer
                           description: How often to perform the probe
                           default: 5
+                        failureThreshold:
+                          type: integer
+                          description: Consecutive failures before the probe is considered failed
+                          default: 3
+                    startup:
+                      type: object
+                      description: Startup probe configuration (disabled by default; guards slow-boot apps)
+                      properties:
+                        type:
+                          type: string
+                          description: Probe type (http, tcp, grpc, exec)
+                          enum: ["http", "tcp", "grpc", "exec"]
+                          default: "http"
+                        path:
+                          type: string
+                          description: HTTP path for startup probe (http type only)
+                        port:
+                          type: integer
+                          description: Probe port (defaults to service.port when unset)
+                          minimum: 1
+                          maximum: 65535
+                        command:
+                          type: array
+                          description: Command to run for the exec probe (exec type only)
+                          items:
+                            type: string
+                        initialDelaySeconds:
+                          type: integer
+                          description: Initial delay before startup probe
+                          default: 0
+                        periodSeconds:
+                          type: integer
+                          description: How often to perform the probe
+                          default: 10
+                        failureThreshold:
+                          type: integer
+                          description: Consecutive failures before the probe is considered failed
+                          default: 30
                 # Service configuration
                 service:
                   type: object
@@ -355,6 +911,33 @@ spec:
                       minimum: 1
                       maximum: 65535
                       default: 8080
+                    extraPorts:
+                      type: array
+                      description: Additional Service ports (e.g. a separate metrics port)
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: Port name
+                          port:
+                            type: integer
+                            description: Service port
+                            minimum: 1
+                            maximum: 65535
+                          targetPort:
+                            type: integer
+                            description: Container target port (defaults to port when unset)
+                            minimum: 1
+                            maximum: 65535
+                          protocol:
+                            type: string
+                            description: Port protocol
+                            enum: ["TCP", "UDP"]
+                            default: "TCP"
+                        required:
+                          - name
+                          - port
                 # Gateway and routing configuration
                 gateway:
                   type: object

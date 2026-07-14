@@ -1,0 +1,46 @@
+---
+# Worker app example — a background/queue consumer.
+#
+# `type: worker` renders a Deployment only: no Service, no HTTPRoute, no
+# Gateway, and no default HTTP probes (a queue consumer's liveness is
+# queue-lag, not an HTTP endpoint). HPA and PDB still work if enabled.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: orders-consumer
+  namespace: demo
+spec:
+  type: worker
+
+  image:
+    repository: ghcr.io/example/orders-consumer
+    tag: "v1.2.0"
+
+  # Entrypoint override for the worker process
+  command: ["./consume"]
+  args: ["--queue", "orders", "--concurrency", "4"]
+
+  # Modest footprint for a background consumer
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"
+
+  # Environment for the consumer
+  env:
+    - name: LOG_LEVEL
+      value: "info"
+    - name: QUEUE_URL
+      valueFrom:
+        secretKeyRef:
+          name: orders-consumer-secrets
+          key: queue_url
+
+  # Pull queue credentials from AWS Secrets Manager
+  externalSecrets:
+    - name: orders-consumer-secrets
+      remoteRef: apps/orders-consumer/secrets
+      refreshInterval: 1h

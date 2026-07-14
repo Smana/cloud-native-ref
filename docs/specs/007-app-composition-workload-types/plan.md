@@ -159,25 +159,25 @@ docs/apps-user-guide.md            # NEW (FR-013)
 
 ### Phase 1: Prerequisites
 
-- [ ] **T001**: Snapshot current `crossplane render` output for `app-basic.yaml` and `app-complete.yaml` (SC-001 baseline).
-- [ ] **T002**: Verify Crossplane aggregate ClusterRole covers `batch/cronjobs` + `persistentvolumeclaims`; add to `additional-rbac.yaml` if missing.
-- [ ] **T003**: Resolve the two open `[NEEDS CLARIFICATION]` items in spec.md via `/clarify` (sidecar image form; cron × infra blocks).
+- [x] **T001**: Snapshot current `crossplane render` output for `app-basic.yaml` and `app-complete.yaml` (SC-001 baseline). — Evidence: `/tmp/spec007-baseline/` (4 + 15 resources), 2026-07-14.
+- [x] **T002**: Verify Crossplane aggregate ClusterRole covers `batch/cronjobs` + `persistentvolumeclaims`; add to `additional-rbac.yaml` if missing. — Both were missing; added to `app-composition:aggregate-to-crossplane`.
+- [x] **T003**: Resolve the two open `[NEEDS CLARIFICATION]` items in spec.md via `/clarify` (sidecar image form; cron × infra blocks). — CL-6, CL-7.
 
 ### Phase 2: Implementation
 
-- [ ] **T004**: XRD — add `type`, `schedule`, `cron`, `command`/`args`, `imagePullSecrets`, `terminationGracePeriodSeconds` + CEL rules (FR-001, FR-003, FR-004, FR-010, FR-011).
-- [ ] **T005**: XRD — add `sidecars[]`/`initContainers[]` reduced container schema (FR-005).
-- [ ] **T006**: XRD — add `persistence`, reworked `healthProbes` (type/startup), `service.extraPorts`; drop `deploymentStrategy` schema default (FR-006, FR-007, FR-008, FR-009).
-- [ ] **T007**: KCL — extract shared pod-builder (containers incl. sidecars/init, volumes incl. persistence, security defaults merge).
-- [ ] **T008**: KCL — `type` fork: worker (no Service/route/probe defaults) and cron (CronJob + defaults); readiness wiring (FR-002, FR-003, FR-012).
-- [ ] **T009**: KCL — persistence PVC + strategy auto-`Recreate`; probe type variants; extraPorts (FR-006, FR-007, FR-008, FR-009).
+- [x] **T004**: XRD — add `type`, `schedule`, `cron`, `command`/`args`, `imagePullSecrets`, `terminationGracePeriodSeconds` + CEL rules (FR-001, FR-003, FR-004, FR-010, FR-011). — 8 new spec-level CEL rules + 2 per array.
+- [x] **T005**: XRD — add `sidecars[]`/`initContainers[]` reduced container schema (FR-005). — maxItems 16 for CEL cost budget.
+- [x] **T006**: XRD — add `persistence`, reworked `healthProbes` (type/startup), `service.extraPorts`; drop `deploymentStrategy` schema default (FR-006, FR-007, FR-008, FR-009).
+- [x] **T007**: KCL — extract shared pod-builder (containers incl. sidecars/init, volumes incl. persistence, security defaults merge). — `_mainContainer`/`_sidecarContainers`/`_initContainerList`/`_podSpec` shared by Deployment and CronJob.
+- [x] **T008**: KCL — `type` fork: worker (no Service/route/probe defaults) and cron (CronJob + defaults); readiness wiring (FR-002, FR-003, FR-012). — CronJob statically ready; VMServiceScrape gated to web (no Service otherwise).
+- [x] **T009**: KCL — persistence PVC + strategy auto-`Recreate`; probe type variants; extraPorts (FR-006, FR-007, FR-008, FR-009).
 
 ### Phase 3: Validation & Documentation
 
-- [ ] **T010**: `main_test.k` — worker/cron rendering, sidecar+init security context, persistence strategy flip, probe variants, container-name rules (SC-002/004/005).
-- [ ] **T011**: Examples — `app-worker.yaml`, `app-cron.yaml`; extend `app-complete.yaml`; verify SC-001 diff on pre-existing examples.
-- [ ] **T012**: `./scripts/validate-kcl-compositions.sh` exit 0; Polaris ≥ 85; kube-linter clean (SC-002/004).
-- [ ] **T013**: Negative tests — apply each invalid claim from SC-003 against a cluster (or `kubectl --dry-run=server`) and record the CEL messages.
+- [x] **T010**: `main_test.k` — worker/cron rendering, sidecar+init security context, persistence strategy flip, probe variants, container-name rules (SC-002/004/005). — `kcl test . -Y settings-example.yaml` → PASS 27/27 (2026-07-14).
+- [x] **T011**: Examples — `app-worker.yaml`, `app-cron.yaml`; extend `app-complete.yaml`; verify SC-001 diff on pre-existing examples. — SC-001 empty diff verified with unmodified examples BEFORE extending app-complete (local-source render harness; see Deviations).
+- [x] **T012**: `./scripts/validate-kcl-compositions.sh` exit 0; Polaris ≥ 85; kube-linter clean (SC-002/004). — exit 0; kubeconform 0 invalid.
+- [ ] **T013**: Negative tests — apply each invalid claim from SC-003 against a cluster (or `kubectl --dry-run=server`) and record the CEL messages. — **Deferred to post-merge `/verify-spec`**: the live cluster still runs the pre-SPEC-007 XRD, so server-side dry-run would validate against the old schema.
 - [ ] **T014**: Write `docs/apps-user-guide.md` (FR-013); validate every snippet renders (SC-006).
 - [ ] **T015**: Fix `kcl/app/README.md` drift; link guide; update CLAUDE.md key-file pointers if needed.
 
@@ -186,6 +186,9 @@ docs/apps-user-guide.md            # NEW (FR-013)
 <!-- Append as implementation surprises show up. Format:
 - <date> T00N was [dropped|replaced|split]: <why>
 Keep short — detailed rationale goes in clarifications.md if it is a decision. -->
+
+- 2026-07-14 — SC-001/T011-T012 verification caveat: `app-composition.yaml` pins the OCI-published module (`crossplane-app:0.1.10-pr1434`), so plain `crossplane render` exercises the *published* code, not local `main.k`. SC-001 and the worker/cron render evidence were produced with a local-source harness (inline `source: |` substitution). Follow-up on PR open: `kcl.mod` bumped to `0.2.0`; CI publishes `0.2.0-pr<N>`; update the composition pin to that tag so render CI exercises the new code, then strip to `0.2.0` after merge (same flow as PR #1574/#1576).
+- 2026-07-14 — T013 deferred to post-merge `/verify-spec` (live cluster still has the old XRD; `--dry-run=server` would test the wrong schema).
 
 ---
 

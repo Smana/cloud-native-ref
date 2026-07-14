@@ -53,7 +53,7 @@ fi
 # Define compositions to validate
 # Format: "module_name:composition_file:example1,example2,..."
 declare -a COMPOSITIONS=(
-    "app:app-composition.yaml:app-basic.yaml,app-complete.yaml"
+    "app:app-composition.yaml:app-basic.yaml,app-complete.yaml,app-worker.yaml,app-cron.yaml"
     "cloudnativepg:sql-instance-composition.yaml:sqlinstance-basic.yaml,sqlinstance-complete.yaml"
     "eks-pod-identity:epi-composition.yaml:epi.yaml"
     "inference-service:inference-service-composition.yaml:inferenceservice-basic.yaml,inferenceservice-complete.yaml"
