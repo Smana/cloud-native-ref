@@ -10,7 +10,7 @@ import type {
   ValidateResponse,
 } from "../api/types";
 import * as api from "../api/client";
-import { ValidationError } from "../api/client";
+import { GitHubLinkRequiredError, ValidationError } from "../api/client";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -82,6 +82,9 @@ export function WizardForm({ schema, user, initial, onBack }: Props) {
   const [previewing, setPreviewing] = useState(false);
   const [pr, setPr] = useState<PRResponse | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // zitadel mode: set when a PR attempt returns 428 (GitHub not linked). Carries
+  // the link URL so the alert can offer a "Connect GitHub" action.
+  const [linkPrompt, setLinkPrompt] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
   const nameError = name ? validateAppName(name) : null;
@@ -188,10 +191,15 @@ export function WizardForm({ schema, user, initial, onBack }: Props) {
     };
   }, [debouncedSpec]);
 
+  // zitadel mode: PRs open under the user's GitHub identity, so a linked GitHub
+  // token is required. github/dev modes always report githubLinked:true.
+  const githubLinked = user.githubLinked !== false;
+
   const blocked =
     !name ||
     !!nameError ||
     !stack ||
+    !githubLinked ||
     !validation.valid ||
     validation.schemaErrors.length > 0 ||
     validation.celViolations.length > 0 ||
@@ -217,6 +225,7 @@ export function WizardForm({ schema, user, initial, onBack }: Props) {
   async function onOpenPR() {
     setSubmitting(true);
     setSubmitError(null);
+    setLinkPrompt(null);
     setPr(null);
     try {
       const res = await api.openPR({
@@ -228,7 +237,10 @@ export function WizardForm({ schema, user, initial, onBack }: Props) {
       });
       setPr(res);
     } catch (e) {
-      if (e instanceof ValidationError) {
+      if (e instanceof GitHubLinkRequiredError) {
+        // zitadel mode: authenticated but GitHub not linked → prompt to connect.
+        setLinkPrompt(e.linkUrl);
+      } else if (e instanceof ValidationError) {
         if ("valid" in e.body) setValidation(e.body as ValidateResponse);
         setSubmitError(
           (e.body as { error?: string }).error ??
@@ -467,6 +479,30 @@ export function WizardForm({ schema, user, initial, onBack }: Props) {
             Signed in as <strong>{user.login}</strong>
           </span>
         </div>
+        {!githubLinked && (
+          <p className="text-xs text-muted-foreground">
+            Connect your GitHub account first —{" "}
+            <a className="text-primary underline" href={api.githubLinkUrl()}>
+              connect GitHub
+            </a>
+            .
+          </p>
+        )}
+
+        {linkPrompt && (
+          <Alert variant="warning">
+            <AlertTitle>Connect your GitHub account to open pull requests</AlertTitle>
+            <AlertDescription className="space-y-2">
+              <p>
+                Pull requests are opened under your own GitHub identity. Connect
+                your GitHub account, then try again.
+              </p>
+              <Button type="button" size="sm" onClick={() => (window.location.href = linkPrompt)}>
+                Connect GitHub
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {submitError && (
           <Alert variant="destructive">

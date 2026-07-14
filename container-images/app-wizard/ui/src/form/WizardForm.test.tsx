@@ -25,7 +25,12 @@ vi.mock("../api/client", async (importOriginal) => {
 
 import { WizardForm } from "./WizardForm";
 
-const user: User = { login: "octocat", name: "The Octocat", avatarUrl: "" };
+const user: User = {
+  login: "octocat",
+  name: "The Octocat",
+  avatarUrl: "",
+  githubLinked: true,
+};
 
 describe("WizardForm renderer", () => {
   beforeEach(() => {
@@ -93,5 +98,18 @@ describe("WizardForm renderer", () => {
     // Expanding the describe section reveals the Prefill button.
     fireEvent.click(screen.getByRole("button", { name: /Describe your app/i }));
     expect(screen.getByRole("button", { name: /Prefill/i })).toBeTruthy();
+  });
+
+  it("disables Open PR and shows a connect hint when githubLinked is false (zitadel mode)", () => {
+    const unlinked: User = { ...user, githubLinked: false };
+    render(<WizardForm schema={fixtureSchema} user={unlinked} />);
+
+    const openPr = screen.getByRole("button", { name: /Open PR/i }) as HTMLButtonElement;
+    expect(openPr.disabled).toBe(true);
+
+    // Connect-GitHub helper text + link surfaces the account-link flow.
+    expect(screen.getByText(/Connect your GitHub account first/i)).toBeTruthy();
+    const link = screen.getByRole("link", { name: /connect GitHub/i });
+    expect(link.getAttribute("href")).toBe("/api/auth/github/link");
   });
 });

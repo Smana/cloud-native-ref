@@ -81,11 +81,54 @@ spec:
     - name: XRD_SOURCE
       value: "github"
     # OAuth callback registered with the GitHub OAuth app (CL-9). Must match the
-    # private Tailscale hostname below.
+    # private Tailscale hostname below. Used by both the github login flow AND
+    # the zitadel "link GitHub" flow (/api/auth/github/callback shares the app).
     - name: OAUTH_REDIRECT_URL
       value: "https://app-wizard.priv.cloud.ogenki.io/api/auth/callback"
     # OAuth client id/secret and SESSION_KEY come from the ExternalSecret below
     # via envFrom (GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET / SESSION_KEY keys).
+
+    # -------------------------------------------------------------------------
+    # Authentication mode (CL-11). One of: github | dev | zitadel.
+    #   github  — GitHub OAuth is the login (default; PRs open as the GitHub user)
+    #   dev     — no auth, local development only
+    #   zitadel — Zitadel OIDC (SSO) is the login; the user ALSO links GitHub
+    #             once so PRs are opened as them (two-flow model).
+    # Deployed default stays "github" so this manifest is deployable as-is.
+    # To switch to zitadel: uncomment the AUTH_MODE line below, ensure the
+    # ZITADEL_* vars are set, register the Zitadel app + role, and populate the
+    # ZITADEL_CLIENT_ID / ZITADEL_CLIENT_SECRET secret keys (human steps
+    # T401/T003 — see container-images/app-wizard/README.md).
+    - name: AUTH_MODE
+      value: "github"
+    # - name: AUTH_MODE
+    #   value: "zitadel"
+
+    # Zitadel OIDC (non-secret) config — only consumed when AUTH_MODE=zitadel.
+    # Safe to leave set in any mode; ignored unless zitadel is active.
+    # Replace <your-zitadel-domain> with the real Zitadel issuer URL.
+    - name: ZITADEL_ISSUER
+      value: "https://<your-zitadel-domain>"
+    # Redirect back to the wizard after the Zitadel OIDC login.
+    - name: ZITADEL_REDIRECT_URL
+      value: "https://app-wizard.priv.cloud.ogenki.io/api/auth/callback"
+    # Role the Zitadel user must hold to use the wizard (project role key).
+    - name: ZITADEL_REQUIRED_ROLE
+      value: "app-wizard:user"
+    # ZITADEL_CLIENT_ID / ZITADEL_CLIENT_SECRET come from the ExternalSecret
+    # below via envFrom — register the app as Web / OIDC / PKCE (T401).
+
+    # -------------------------------------------------------------------------
+    # LLM assists (Phase 3, optional). Assists become AVAILABLE when either
+    # LLM_API_KEY (secret, via envFrom) OR LLM_BASE_URL is set; otherwise the UI
+    # hides the assist affordances via /api/assist/status. LLM_MODEL is
+    # non-secret and defaults to "claude-opus-4-8" in the binary — override here
+    # if needed. Neither key nor base URL is set below, so assists ship OFF.
+    # - name: LLM_MODEL
+    #   value: "claude-opus-4-8"
+    # Optional: point at the in-cluster AI Gateway instead of a public endpoint.
+    # - name: LLM_BASE_URL
+    #   value: "http://ai-gateway.llm-platform.svc/v1"
 
   # ---------------------------------------------------------------------------
   # OAuth app credentials + session key from AWS Secrets Manager.
@@ -95,10 +138,17 @@ spec:
   # so it needs no egress to the Pod Identity endpoint (169.254.170.23). ESO
   # materializes the `app-wizard-oauth` Secret; the wizard reads it via envFrom.
   #
-  # The AWS Secrets Manager blob at apps/app-wizard/oauth MUST contain the keys:
-  #   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_KEY
-  # (the composition imports ALL keys from the path via dataFrom → they land as
-  # env vars of the same name through envFrom).
+  # The AWS Secrets Manager blob at apps/app-wizard/oauth MUST contain these
+  # keys (the composition imports ALL keys from the path via dataFrom → they
+  # land as env vars of the same name through envFrom):
+  #   GITHUB_CLIENT_ID       — GitHub OAuth app (login in github mode; the
+  #   GITHUB_CLIENT_SECRET     "link GitHub" flow in zitadel mode)
+  #   SESSION_KEY            — signs the session cookie (required in all modes)
+  #   ZITADEL_CLIENT_ID      — Zitadel OIDC app creds (only used when
+  #   ZITADEL_CLIENT_SECRET    AUTH_MODE=zitadel; PKCE app secret may be empty)
+  #   LLM_API_KEY           — LLM assists (optional; omit to keep assists off)
+  # Missing keys simply don't materialize as env vars; a mode that doesn't need
+  # a key is unaffected. Populating them is a human step (T003).
   externalSecrets:
     - name: app-wizard-oauth
       remoteRef: apps/app-wizard/oauth

@@ -43,6 +43,25 @@ export class ApiError extends Error {
   }
 }
 
+// Thrown by openPR when the backend returns HTTP 428 (zitadel mode): the user is
+// authenticated via Zitadel but has NOT yet linked a GitHub token, so no PR can
+// be opened as them. Carries the link URL to send the user through the GitHub
+// account-link flow (from the response `Location` header, or the default).
+export class GitHubLinkRequiredError extends Error {
+  linkUrl: string;
+  constructor(linkUrl = githubLinkUrl(), message = "GitHub account not linked") {
+    super(message);
+    this.name = "GitHubLinkRequiredError";
+    this.linkUrl = linkUrl;
+  }
+}
+
+// The backend endpoint that starts the GitHub account-link OAuth flow (zitadel
+// mode). Full-page navigation, like login().
+export function githubLinkUrl(): string {
+  return "/api/auth/github/link";
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   return text ? (JSON.parse(text) as T) : ({} as T);
@@ -109,11 +128,35 @@ export function getApp(stack: string, name: string): Promise<AppDetail> {
 
 // POST /api/pr — opens a create/update/delete PR. `mode` defaults to "create"
 // server-side when omitted; we send it explicitly.
-export function openPR(req: PRRequest): Promise<PRResponse> {
-  return request<PRResponse>("/api/pr", {
+//
+// zitadel mode: if the user hasn't linked GitHub, the backend answers HTTP 428
+// (Precondition Required) with a `Location` header pointing at the link flow.
+// We surface that as a distinct GitHubLinkRequiredError so the UI can offer the
+// "Connect GitHub" action instead of showing a generic failure.
+export async function openPR(req: PRRequest): Promise<PRResponse> {
+  const res = await fetch("/api/pr", {
     method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ mode: "create", ...req }),
   });
+
+  if (res.status === 428) {
+    const linkUrl = res.headers.get("Location") || githubLinkUrl();
+    const body = await parseJson<{ error?: string }>(res);
+    throw new GitHubLinkRequiredError(linkUrl, body.error || "GitHub account not linked");
+  }
+  if (res.status === 401) {
+    throw new UnauthorizedError();
+  }
+  if (res.status === 422) {
+    const body = await parseJson<ValidateResponse | { error?: string }>(res);
+    throw new ValidationError(body);
+  }
+  if (!res.ok) {
+    const body = await parseJson<{ error?: string }>(res);
+    throw new ApiError(res.status, body.error || `Request failed (${res.status})`);
+  }
+  return parseJson<PRResponse>(res);
 }
 
 // --- LLM assists (Phase 3) -------------------------------------------------
@@ -143,7 +186,14 @@ export function assistPolicies(description: string): Promise<AssistPoliciesRespo
   });
 }
 
-// Full-page redirect to the backend's GitHub OAuth login endpoint.
+// Full-page redirect to the backend's login endpoint. Same path for both auth
+// modes: github (GitHub OAuth) and zitadel (Zitadel OIDC).
 export function login(): void {
   window.location.href = "/api/auth/login";
+}
+
+// Full-page redirect to the GitHub account-link flow (zitadel mode): a Zitadel-
+// authenticated user links their GitHub identity so PRs open as them.
+export function linkGitHub(): void {
+  window.location.href = githubLinkUrl();
 }

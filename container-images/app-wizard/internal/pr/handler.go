@@ -2,10 +2,12 @@ package pr
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/api"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/auth"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/gitprovider"
 )
 
@@ -22,6 +24,17 @@ func (s *Service) Handler(providerFor ProviderForRequest, logger *slog.Logger) h
 	return func(w http.ResponseWriter, r *http.Request) {
 		provider, err := providerFor(r)
 		if err != nil {
+			// Zitadel mode: authenticated but no linked GitHub token yet — the user
+			// must connect GitHub before a PR can be opened (CL-11). Signal with 428
+			// Precondition Required + a link hint the UI can act on.
+			if errors.Is(err, auth.ErrGitHubNotLinked) {
+				// Location header carries the link URL; must be set before the body.
+				w.Header().Set("Location", auth.GitHubLinkPath)
+				writeJSON(w, http.StatusPreconditionRequired, api.ErrorResponse{
+					Error: "Connect your GitHub account to open pull requests",
+				})
+				return
+			}
 			writeJSON(w, http.StatusUnauthorized, api.ErrorResponse{Error: "not authenticated"})
 			return
 		}

@@ -125,6 +125,24 @@ export function App() {
         </Card>
       )}
 
+      {/* zitadel mode: authenticated via SSO but GitHub not yet linked. Persistent,
+          prominent prompt to connect GitHub before any PR can be opened. Never
+          shown in github/dev modes (backend returns githubLinked:true there). */}
+      {auth === "authed" && user && user.githubLinked === false && (
+        <Alert variant="warning" className="mb-4">
+          <AlertTitle>Connect GitHub to open pull requests</AlertTitle>
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              You're signed in, but the wizard opens pull requests under your own
+              GitHub identity. Connect your GitHub account once to continue.
+            </span>
+            <Button type="button" onClick={() => api.linkGitHub()}>
+              Connect GitHub
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {auth === "authed" && schema && user && (
         <div className="space-y-4">
           {/* Segmented control: Create app (default) vs My apps (inventory). */}

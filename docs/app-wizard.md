@@ -23,8 +23,21 @@ deploy anything directly — Flux remains the only actor that touches the cluste
 ## Option A — App Wizard (assisted)
 
 The wizard is a small web app (private, behind Tailscale at
-`https://app-wizard.priv.cloud.ogenki.io`). Sign in with GitHub, fill the form,
-review, and it opens the PR under your own identity.
+`https://app-wizard.priv.cloud.ogenki.io`). Sign in, fill the form, review, and
+it opens the PR under your own GitHub identity.
+
+### Signing in
+
+You authenticate with **Zitadel (SSO)** — the same single sign-on you use for
+the rest of the platform. Because every pull request is opened as *you* on
+GitHub, you also **connect your GitHub account once**: after signing in, the
+wizard shows a "Connect GitHub" prompt; follow it, authorize, and you're done.
+That link is remembered for future sessions, so it's a one-time step. Until
+GitHub is connected the "Open PR" button stays disabled — everything else
+(building the form, live validation, preview) works without it.
+
+> In local/dev deployments the wizard may run in a plain GitHub-login mode
+> instead; there is no separate connect step there.
 
 The first screen shows only the essentials — name, stack, image, and how the
 app is exposed — with everything else (database, cache, autoscaling, network

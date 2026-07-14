@@ -139,7 +139,7 @@ func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
 			a.writeError(w, http.StatusBadGateway, "failed to fetch user")
 			return
 		}
-		writeJSON(w, http.StatusOK, api.User{Login: u.Login, AvatarURL: u.AvatarURL, Name: u.Name})
+		writeJSON(w, http.StatusOK, api.User{Login: u.Login, AvatarURL: u.AvatarURL, Name: u.Name, GitHubLinked: true})
 		return
 	}
 	token, ok := a.Token(r)
@@ -153,7 +153,8 @@ func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadGateway, "failed to fetch user")
 		return
 	}
-	writeJSON(w, http.StatusOK, api.User{Login: u.Login, AvatarURL: u.AvatarURL, Name: u.Name})
+	// In github mode the login token IS the PR token, so GitHub is always linked.
+	writeJSON(w, http.StatusOK, api.User{Login: u.Login, AvatarURL: u.AvatarURL, Name: u.Name, GitHubLinked: true})
 }
 
 // Logout clears the session.
@@ -192,6 +193,40 @@ func (a *Auth) ProviderForRequest(r *http.Request) (gitprovider.Provider, error)
 
 // ErrUnauthenticated is returned when no user token is in the session.
 var ErrUnauthenticated = errors.New("auth: not authenticated")
+
+// ErrGitHubNotLinked is returned by ProviderForRequest in zitadel mode when the
+// authenticated Zitadel user has not yet linked a GitHub `repo` token. Callers
+// (the PR handler) map it to 428 Precondition Required with a link hint so the
+// UI can prompt the user to connect GitHub before opening a PR (CL-11).
+var ErrGitHubNotLinked = errors.New("auth: github account not linked")
+
+// GitHubLinkPath is the route that starts the secondary GitHub OAuth link flow
+// (zitadel mode). Returned as a hint alongside ErrGitHubNotLinked.
+const GitHubLinkPath = "/api/auth/github/link"
+
+// Authenticator is the surface the HTTP layer wires per AUTH_MODE. Both the
+// GitHub/dev Auth and the Zitadel authenticator implement it, so main.go
+// registers the same routes regardless of mode. LinkGitHub / LinkGitHubCallback
+// are only meaningful in zitadel mode (github/dev return 404-style no-ops).
+type Authenticator interface {
+	Login(w http.ResponseWriter, r *http.Request)
+	Callback(w http.ResponseWriter, r *http.Request)
+	Me(w http.ResponseWriter, r *http.Request)
+	Logout(w http.ResponseWriter, r *http.Request)
+	LinkGitHub(w http.ResponseWriter, r *http.Request)
+	LinkGitHubCallback(w http.ResponseWriter, r *http.Request)
+	ProviderForRequest(r *http.Request) (gitprovider.Provider, error)
+}
+
+// LinkGitHub is a no-op in github/dev mode (GitHub is already the identity).
+func (a *Auth) LinkGitHub(w http.ResponseWriter, _ *http.Request) {
+	a.writeError(w, http.StatusNotFound, "github link is only available in zitadel auth mode")
+}
+
+// LinkGitHubCallback is a no-op in github/dev mode.
+func (a *Auth) LinkGitHubCallback(w http.ResponseWriter, _ *http.Request) {
+	a.writeError(w, http.StatusNotFound, "github link is only available in zitadel auth mode")
+}
 
 func (a *Auth) writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, api.ErrorResponse{Error: msg})

@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.57.0
+	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/google/cel-go v0.29.2
 	github.com/google/go-github/v66 v66.0.0
 	github.com/gorilla/sessions v1.4.0
@@ -18,6 +19,7 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect

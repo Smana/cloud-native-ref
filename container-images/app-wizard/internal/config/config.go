@@ -28,19 +28,43 @@ type Config struct {
 	ListenAddr string
 
 	// AuthMode selects the authentication backend (AUTH_MODE):
-	//   "github" (default) — real GitHub OAuth; PRs opened as the user.
+	//   "github" (default) — real GitHub OAuth; login == PR token, opened as the user.
 	//   "dev"              — LOCAL TESTING ONLY. Bypasses login (fake user) and
 	//                        writes generated files to RepoRoot instead of opening
 	//                        a real PR. Must never be set in a deployed environment.
+	//   "zitadel"          — Zitadel OIDC is the login + authorization gate (CL-11);
+	//                        GitHub OAuth is demoted to a linked `repo` token used
+	//                        only to open PRs (Zitadel cannot supply a GitHub token).
 	AuthMode string
 
 	// GitHubClientID / GitHubClientSecret are the OAuth app credentials
-	// (GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET).
+	// (GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET). In zitadel mode these back the
+	// secondary "Connect GitHub" link flow that yields the PR token.
 	GitHubClientID     string
 	GitHubClientSecret string
 	// OAuthRedirectURL is the callback URL registered with the OAuth app
-	// (OAUTH_REDIRECT_URL). Defaults to a localhost callback for dev.
+	// (OAUTH_REDIRECT_URL). Defaults to a localhost callback for dev. In zitadel
+	// mode this is the GitHub-link callback (/api/auth/github/callback); if it
+	// still points at the primary callback path it is rewritten automatically.
 	OAuthRedirectURL string
+
+	// --- Zitadel OIDC (AUTH_MODE=zitadel, CL-11). ---
+	//
+	// ZitadelIssuer is the OIDC issuer URL used for discovery + ID-token
+	// verification (ZITADEL_ISSUER, e.g. https://id.priv.cloud.ogenki.io).
+	ZitadelIssuer string
+	// ZitadelClientID / ZitadelClientSecret are the Zitadel application
+	// credentials (ZITADEL_CLIENT_ID / ZITADEL_CLIENT_SECRET). The secret may be
+	// empty for a public PKCE client. Never logged.
+	ZitadelClientID     string
+	ZitadelClientSecret string
+	// ZitadelRedirectURL is the Zitadel callback URL registered with the
+	// application (ZITADEL_REDIRECT_URL, default localhost /api/auth/callback).
+	ZitadelRedirectURL string
+	// ZitadelRequiredRole, when set, gates access: only users whose Zitadel
+	// role/group claim contains it may use the wizard (e.g. "app-wizard:user").
+	// Empty ⇒ any authenticated Zitadel user is allowed (ZITADEL_REQUIRED_ROLE).
+	ZitadelRequiredRole string
 
 	// RepoOwner / RepoName identify the GitOps repository PRs are opened
 	// against (REPO_OWNER / REPO_NAME).
@@ -96,25 +120,30 @@ func (c *Config) AssistsAvailable() bool {
 // Load resolves configuration from the environment, applying defaults.
 func Load() (*Config, error) {
 	cfg := &Config{
-		ListenAddr:         env("LISTEN_ADDR", ":8080"),
-		AuthMode:           strings.ToLower(env("AUTH_MODE", "github")),
-		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
-		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
-		OAuthRedirectURL:   env("OAUTH_REDIRECT_URL", "http://localhost:8080/api/auth/callback"),
-		RepoOwner:          env("REPO_OWNER", "Smana"),
-		RepoName:           env("REPO_NAME", "cloud-native-ref"),
-		RepoBaseBranch:     env("REPO_BASE_BRANCH", "main"),
-		XRDSource:          XRDSourceMode(strings.ToLower(env("XRD_SOURCE", string(SourceLocal)))),
-		RepoRoot:           env("REPO_ROOT", defaultRepoRoot()),
-		XRDPath:            env("XRD_PATH", "infrastructure/base/crossplane/configuration/app-definition.yaml"),
-		UIHintsPath:        os.Getenv("UI_HINTS_PATH"),
-		StacksPath:         env("STACKS_PATH", "apps/stacks.yaml"),
-		CompositionPath:    env("COMPOSITION_PATH", "infrastructure/base/crossplane/configuration/app-composition.yaml"),
-		FunctionsPath:      env("FUNCTIONS_PATH", "infrastructure/base/crossplane/configuration/functions.yaml"),
-		EnvConfigPath:      env("ENVCONFIG_PATH", "infrastructure/base/crossplane/configuration/environmentconfig.yaml"),
-		LLMAPIKey:          os.Getenv("LLM_API_KEY"),
-		LLMBaseURL:         os.Getenv("LLM_BASE_URL"),
-		LLMModel:           env("LLM_MODEL", "claude-opus-4-8"),
+		ListenAddr:          env("LISTEN_ADDR", ":8080"),
+		AuthMode:            strings.ToLower(env("AUTH_MODE", "github")),
+		GitHubClientID:      os.Getenv("GITHUB_CLIENT_ID"),
+		GitHubClientSecret:  os.Getenv("GITHUB_CLIENT_SECRET"),
+		OAuthRedirectURL:    env("OAUTH_REDIRECT_URL", "http://localhost:8080/api/auth/callback"),
+		ZitadelIssuer:       os.Getenv("ZITADEL_ISSUER"),
+		ZitadelClientID:     os.Getenv("ZITADEL_CLIENT_ID"),
+		ZitadelClientSecret: os.Getenv("ZITADEL_CLIENT_SECRET"),
+		ZitadelRedirectURL:  env("ZITADEL_REDIRECT_URL", "http://localhost:8080/api/auth/callback"),
+		ZitadelRequiredRole: os.Getenv("ZITADEL_REQUIRED_ROLE"),
+		RepoOwner:           env("REPO_OWNER", "Smana"),
+		RepoName:            env("REPO_NAME", "cloud-native-ref"),
+		RepoBaseBranch:      env("REPO_BASE_BRANCH", "main"),
+		XRDSource:           XRDSourceMode(strings.ToLower(env("XRD_SOURCE", string(SourceLocal)))),
+		RepoRoot:            env("REPO_ROOT", defaultRepoRoot()),
+		XRDPath:             env("XRD_PATH", "infrastructure/base/crossplane/configuration/app-definition.yaml"),
+		UIHintsPath:         os.Getenv("UI_HINTS_PATH"),
+		StacksPath:          env("STACKS_PATH", "apps/stacks.yaml"),
+		CompositionPath:     env("COMPOSITION_PATH", "infrastructure/base/crossplane/configuration/app-composition.yaml"),
+		FunctionsPath:       env("FUNCTIONS_PATH", "infrastructure/base/crossplane/configuration/functions.yaml"),
+		EnvConfigPath:       env("ENVCONFIG_PATH", "infrastructure/base/crossplane/configuration/environmentconfig.yaml"),
+		LLMAPIKey:           os.Getenv("LLM_API_KEY"),
+		LLMBaseURL:          os.Getenv("LLM_BASE_URL"),
+		LLMModel:            env("LLM_MODEL", "claude-opus-4-8"),
 	}
 
 	if cfg.XRDSource != SourceLocal && cfg.XRDSource != SourceGitHub {
