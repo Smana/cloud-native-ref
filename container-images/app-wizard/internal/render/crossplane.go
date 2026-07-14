@@ -48,12 +48,14 @@ func (r *CrossplaneRenderer) Render(ctx context.Context, claimYAML []byte) ([]ap
 	if err != nil {
 		return nil, fmt.Errorf("create temp claim: %w", err)
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	if _, err := tmp.Write(claimYAML); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return nil, fmt.Errorf("write claim: %w", err)
 	}
-	tmp.Close()
+	if err := tmp.Close(); err != nil {
+		return nil, fmt.Errorf("close temp claim: %w", err)
+	}
 
 	args := []string{"render", tmp.Name(), r.CompositionPath, r.FunctionsPath}
 	if r.EnvConfigPath != "" {

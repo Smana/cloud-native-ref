@@ -78,5 +78,5 @@ func isFalse(v ref.Val) bool {
 	if !ok {
 		return false
 	}
-	return bool(b) == false
+	return !bool(b)
 }
