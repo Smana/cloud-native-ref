@@ -25,9 +25,10 @@ spec:
     # rebuilt image silently doesn't roll out. An immutable tag makes the rollout real.
     #
     # Tag format is <branch>-<short-sha>, set by the build workflow's metadata-action —
-    # NOT the raw commit sha. b0af069 = feat(app-wizard): turn on the dark theme.
+    # NOT the raw commit sha. c906058 = the image that actually carries the crossplane
+    # CLI, without which every render preview fails.
     # Once this branch merges, the equivalent tag becomes main-<short-sha>.
-    tag: "feat-flux-schema-validation-b0af069"
+    tag: "feat-flux-schema-validation-c906058"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
