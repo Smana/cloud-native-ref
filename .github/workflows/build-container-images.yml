@@ -43,6 +43,14 @@ jobs:
           dir_names: true
           dir_names_max_depth: 2
           json: true
+          # REQUIRED alongside json: true. The action defaults escape_json to true, which
+          # backslash-escapes the quotes: the output arrives as [\"container-images/foo\"],
+          # and interpolating that into a shell string gives jq invalid JSON. jq then died
+          # with `parse error: Invalid numeric literal at line 1, column 3`, IMAGES silently
+          # became [], the build matrix came out empty, every build was skipped — and the
+          # workflow still reported success. That is why ghcr.io/smana/app-wizard was never
+          # published despite a green run on main.
+          escape_json: false
 
       - name: Detect which images changed
         id: filter
@@ -59,7 +67,14 @@ jobs:
             exit 0
           fi
 
-          # Automatic trigger - detect changes
+          # Automatic trigger - detect changes.
+          #
+          # pipefail matters here: the extraction below is a pipeline whose LAST command
+          # (jq -R -s) succeeds even when the FIRST one (jq -r '.[]') dies. Without it a
+          # parse failure just yields an empty list and the workflow goes green having
+          # built nothing — exactly how app-wizard silently never shipped.
+          set -o pipefail
+
           CHANGED_DIRS='${{ steps.changed-files.outputs.all_changed_files }}'
 
           if [[ "$CHANGED_DIRS" == "[]" ]] || [[ -z "$CHANGED_DIRS" ]]; then
@@ -70,6 +85,13 @@ jobs:
 
           # Extract unique image names from changed paths
           IMAGES=$(echo "$CHANGED_DIRS" | jq -r '.[]' | grep "container-images/" | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
+
+          # We got here because changed dirs WERE detected, so an empty image list can only
+          # mean the extraction broke. Fail instead of skipping the build behind a green tick.
+          if [[ "$IMAGES" == "[]" ]] || [[ -z "$IMAGES" ]]; then
+            echo "::error::detected changed dirs ${CHANGED_DIRS} but extracted no image names - image detection is broken"
+            exit 1
+          fi
 
           echo "Changed images: ${IMAGES}"
           echo "images=${IMAGES}" >> $GITHUB_OUTPUT
