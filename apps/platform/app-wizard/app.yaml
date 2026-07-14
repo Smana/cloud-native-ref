@@ -19,9 +19,13 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/app-wizard
-    # `latest` is published by build-container-images.yml on merge to main.
-    # Pin to an immutable sha/tag once the first image ships.
-    tag: "latest"
+    # Pinned to the commit, as the previous comment here said to do once an image
+    # existed. `latest` + IfNotPresent is a trap: the tag moves, the digest changes,
+    # but the kubelet already has *a* `latest` on the node and never pulls again — so a
+    # rebuilt image silently doesn't roll out. An immutable tag makes the rollout real.
+    #
+    # b0af0698 = feat(app-wizard): turn on the dark theme. Bump on each image rebuild.
+    tag: "b0af06988bc4c91cef15fd184ec0dac76383cf6d" # pragma: allowlist secret
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
