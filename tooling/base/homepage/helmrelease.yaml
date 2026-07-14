@@ -85,6 +85,19 @@ spec:
 
     config:
       bookmarks:
+        # First, next to the App Wizard card: the two things a developer needs the
+        # moment the form asks them something they don't know the answer to.
+        - For Developers:
+            - App Wizard Guide:
+                - abbr: WIZ
+                  href: https://github.com/Smana/cloud-native-ref/blob/main/docs/app-wizard.md
+            - App Claim Examples:
+                - abbr: APP
+                  href: https://github.com/Smana/cloud-native-ref/tree/main/apps
+            - Platform Repo:
+                - abbr: GIT
+                  href: https://github.com/Smana/cloud-native-ref
+
         - Cloud Native:
             - Kubernetes Docs:
                 - abbr: K8s
@@ -108,6 +121,18 @@ spec:
                   href: https://docs.cilium.io/
 
       services:
+        # Deliberately first, and rendered as a single full-width row (see `layout`
+        # below): this is the front door for developers. Everything under it is a tool
+        # you look at; this is the one thing you *do*. Burying it in Platform Tools
+        # alongside Headlamp/Harbor is how self-service goes unused.
+        - Ship an App:
+            - App Wizard:
+                href: https://app-wizard.priv.cloud.ogenki.io
+                description: Describe your app in a form — the wizard opens a GitOps pull request for you. No YAML to write.
+                icon: mdi-rocket-launch-#38bdf8
+                namespace: apps
+                app: app-wizard
+
         - Platform Tools:
             - Headlamp:
                 href: https://headlamp.priv.cloud.ogenki.io
@@ -122,6 +147,13 @@ spec:
                 icon: harbor.png
                 namespace: tooling
                 app: harbor
+
+            - PEV2:
+                href: https://pev2.priv.cloud.ogenki.io
+                description: PostgreSQL Execution Plan Visualizer
+                icon: postgres.png
+                namespace: tooling
+                app: pev2
 
         - Observability:
             - Grafana:
@@ -246,9 +278,15 @@ spec:
           hideInternetSearch: false
           showSearchSuggestions: true
         layout:
+          # Order here is the order groups render in, so "Ship an App" leads. columns: 1
+          # gives its single card the full width — it reads as a call to action rather
+          # than one tile among twelve. This is what puts self-service above the fold.
+          Ship an App:
+            style: row
+            columns: 1
           Platform Tools:
             style: row
-            columns: 2
+            columns: 3 # 3 since PEV2 joined Headlamp + Harbor
           Observability:
             style: row
             columns: 3

@@ -76,10 +76,24 @@ spec:
       value: "cloud-native-ref"
     - name: REPO_BASE_BRANCH
       value: "main"
-    # Read the App XRD + stacks.yaml from the GitHub repo (prod mode) rather
-    # than the local disk (dev mode).
+    # XRD_SOURCE=github is NOT implemented server-side: cmd/app-wizard/main.go always
+    # builds a LocalSource and only logs a line for github mode ("per-user tokens are
+    # request-scoped"). Left as-is for when that lands; today the files come from the
+    # initContainer clone below, via REPO_ROOT.
     - name: XRD_SOURCE
       value: "github"
+
+    # Where the wizard reads the repo from. The distroless image ships ONLY the binary,
+    # so without this it resolves REPO_ROOT to the container root and dies at startup:
+    #   open /infrastructure/.../app-definition.yaml: no such file or directory
+    - name: REPO_ROOT
+      value: "/repo"
+
+    # Field labels/grouping for the generated form. Unset, loadHints() silently returns
+    # empty hints — the form still renders, but ungrouped and unlabelled. Read with
+    # os.ReadFile (not through the schema source), so it must be an absolute path.
+    - name: UI_HINTS_PATH
+      value: "/repo/container-images/app-wizard/ui-hints.yaml"
     # Render preview via the function sidecars below (CL-8): the renderer overlays
     # the crossplane "Development" runtime onto functions.yaml so `crossplane
     # render` dials these in-pod gRPC endpoints instead of running Docker.
@@ -162,6 +176,63 @@ spec:
     - secretRef:
         name: app-wizard-oauth
         optional: true
+
+  # ---------------------------------------------------------------------------
+  # The repo on disk.
+  # ---------------------------------------------------------------------------
+  # The wizard needs SIX repo files at runtime, all resolved under REPO_ROOT:
+  #   - the App XRD + apps/stacks.yaml  -> to build the form
+  #   - ui-hints.yaml                   -> to label and group its fields
+  #   - the composition + functions.yaml + environmentconfig.yaml
+  #                                     -> `crossplane render` shells out to these for
+  #                                        the live preview (internal/render/crossplane.go)
+  # The image carries none of them (distroless, binary only) and the build context is
+  # container-images/app-wizard/, so it *cannot* ship repo-root files. Shallow-clone the
+  # public platform repo into an emptyDir instead.
+  #
+  # Frozen at pod start: an XRD or composition change is picked up on the next pod
+  # restart, not live. Acceptable for now — the form should track `main` (the branch PRs
+  # are opened against), not whatever this cluster happens to be running.
+  initContainers:
+    - name: fetch-repo
+      # Chainguard's git runs as uid 65532 by default. That is load-bearing: the
+      # composition applies runAsNonRoot to initContainers too, and the XRD exposes no
+      # runAsUser to override with — a root-by-default image (alpine/git) is rejected.
+      image: cgr.dev/chainguard/git:latest
+      args:
+        - clone
+        - --depth=1
+        - --single-branch
+        - --branch=main
+        - https://github.com/Smana/cloud-native-ref.git
+        - /repo
+      securityContext:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: "50m"
+          memory: "64Mi"
+        limits:
+          cpu: "500m"
+          memory: "256Mi"
+      volumeMounts:
+        - name: repo
+          mountPath: /repo
+
+  extraVolumes:
+    - name: repo
+      emptyDir: {}
+
+  extraVolumeMounts:
+    # Read-only in the app container: the wizard only reads these. `crossplane render`
+    # writes its temp files to /tmp, which securityContext.enableWritableTmp covers.
+    - name: repo
+      mountPath: /repo
+      readOnly: true
 
   # Private access via Tailscale — NOT internet-facing.
   # hostname `app-wizard` → app-wizard.priv.cloud.ogenki.io.
