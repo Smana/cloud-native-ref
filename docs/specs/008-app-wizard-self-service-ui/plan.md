@@ -67,6 +67,9 @@ Backstage scaffolder (portal adoption too heavy for one form), GitHub Issue Form
 | [1-create-flow](phases/1-create-flow/plan.md) | Schema pipeline, form (basic+advanced tiers), validation gates, secret guardrail, GitHub OAuth, create PR + render comment, wizard deployed as App claim | — | TBD | 🚧 implemented (T101–T108; T109 E2E deferred to live OAuth) |
 | [2-day2-operations](phases/2-day2-operations/plan.md) | App list, edit with round-trip fidelity, decommission PR | 1-create-flow | TBD | ⏸ pending |
 | [3-llm-assists](phases/3-llm-assists/plan.md) | Describe-to-prefill, network-policy suggester, prompt-set eval | 1-create-flow | TBD | ⏸ pending |
+| [4-zitadel-auth](phases/4-zitadel-auth/plan.md) | Zitadel OIDC login/authz gate; GitHub OAuth demoted to a linked `repo` token for PRs (CL-11) | 1-create-flow | TBD | ⏸ pending |
+
+Phase 1 ships with GitHub OAuth login + an `AUTH_MODE=dev` local bypass; Phase 4 puts Zitadel in front (see CL-11).
 
 Phase acceptance maps to SCs: Phase 1 → SC-001..004, SC-006, SC-008; Phase 2 → SC-005; Phase 3 → SC-007.
 

@@ -187,6 +187,29 @@
 **Decided by**: Smaine (2026-07-14)
 **References**: spec.md Non-Goals ("Not a YAML editor"); `docs/app-wizard.md`; `app-wizard generate` subcommand
 
+## CL-11 — 2026-07-14 — Zitadel for authentication; GitHub only for the PR token (refines CL-3)
+
+**Asked by**: Smaine ("we'll obviously need an authentication layer, using zitadel")
+**Context**: CL-3 had login = GitHub OAuth. The platform's IdP is Zitadel (it already backs OpenWebUI's OIDC login). User authentication should move to Zitadel. But opening a PR still requires a GitHub identity with repo write — Zitadel cannot author a GitHub PR. Question: can the wizard obtain the GitHub token *through* Zitadel (one login), or does it need a second, direct GitHub OAuth?
+
+**Docs research (official)**:
+- Zitadel's retrieve-identity-provider-intent API returns `idpInformation` / `rawInformation` (external **profile** attributes) — **not** the external IdP's access token. There is no documented `idpAccessToken` for apps to reuse. → Zitadel will **not** hand the wizard a `repo`-scoped GitHub token.
+- GitHub: creating branches/commits/PRs on a user's behalf requires the **`repo`** scope (or a fine-grained token with Contents + Pull requests write).
+- Zitadel web-app login is standard OIDC Authorization Code + PKCE (`/authorize` → `/oauth/v2/token`).
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Zitadel brokers GitHub; app reuses the Zitadel-obtained GitHub token | One login | **Not supported** — Zitadel doesn't expose the external IdP access token (docs above) |
+| B | Two OAuth flows: Zitadel OIDC = authn/authz; direct GitHub OAuth (`repo`) = linked token for PRs | Decoupled; reuses existing GitHub OAuth code; no dependency on Zitadel token exposure; least-privilege consent | User consents twice (Zitadel SSO, then GitHub link on first PR) |
+| C | Zitadel login + GitHub App bot authors PRs | No per-user GitHub link | Bot is the PR author (loses CL-3's per-user audit trail); high-value bot token |
+
+**Decision**: B — **Zitadel OIDC is the login + authorization gate** (who you are, whether you're allowed, via a Zitadel role/group claim); a **direct GitHub OAuth (`repo`)** obtains the token to open the PR, linked to the Zitadel session on first use. PR stays authored as the user (CL-3's audit trail preserved).
+**Rationale**: The docs make B not just a preference but the only clean shape — Zitadel structurally cannot provide a `repo` token. Zitadel owns "who/allowed", GitHub owns "act on the repo"; they stay decoupled behind the existing `internal/auth` seam. In-repo analogue: OpenWebUI already logs in via Zitadel OIDC (`apps/base/openwebui/externalsecret-oauth-zitadel.yaml`) — same client-registration + ExternalSecret pattern.
+**Decided by**: Smaine (2026-07-14)
+**References**: supersedes CL-3; FR-004, FR-014; Zitadel retrieve-idp-intent API + OIDC login-users guide; GitHub OAuth scopes doc; `apps/base/openwebui/externalsecret-oauth-zitadel.yaml`
+
 ---
 
 ## Related
