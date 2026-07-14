@@ -1,0 +1,279 @@
+---
+# =============================================================================
+# App Wizard (SPEC-008, FR-013) — deployed on the platform as an App claim,
+# the same abstraction it helps developers author. Schema-driven self-service
+# UI that opens GitOps PRs under apps/<stack>/<app_name>/.
+#
+# Container built from container-images/app-wizard/ by build-container-images.yml
+# and published to ghcr.io/smana/app-wizard.
+#
+# Filed under apps/platform/ (the "platform" stack in apps/stacks.yaml). The
+# Kubernetes namespace is `apps` — the existing, Flux-reconciled namespace every
+# App claim lands in today (there is no dedicated `platform` namespace yet).
+# =============================================================================
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: app-wizard
+  namespace: apps
+spec:
+  image:
+    repository: ghcr.io/smana/app-wizard
+    # `latest` is published by build-container-images.yml on merge to main.
+    # Pin to an immutable sha/tag once the first image ships.
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  # Single stateless replica — the wizard holds no persistent state (sessions
+  # are cookie-based, signed by SESSION_KEY). Scale up later if needed.
+  replicas: 1
+
+  # Restricted-PSS compliant container context (constitution mandate). These
+  # match the composition defaults but are restated for clarity/auditability.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    capabilities:
+      drop: ["ALL"]
+    enableWritableTmp: true
+  runAsNonRoot: true
+  automountServiceAccountToken: false
+
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+  # type: web — HTTP workload exposed via Service + HTTPRoute.
+  service:
+    port: 8080
+
+  # Backend serves /healthz (liveness) and /readyz (readiness).
+  healthProbes:
+    liveness:
+      path: /healthz
+      initialDelaySeconds: 15
+      periodSeconds: 20
+    readiness:
+      path: /readyz
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+  # Non-secret runtime config. Env var names are taken from
+  # container-images/app-wizard/internal/config/config.go (Load()).
+  env:
+    # HTTP bind address.
+    - name: LISTEN_ADDR
+      value: ":8080"
+    # GitOps repo PRs are opened against.
+    - name: REPO_OWNER
+      value: "Smana"
+    - name: REPO_NAME
+      value: "cloud-native-ref"
+    - name: REPO_BASE_BRANCH
+      value: "main"
+    # Read the App XRD + stacks.yaml from the GitHub repo (prod mode) rather
+    # than the local disk (dev mode).
+    - name: XRD_SOURCE
+      value: "github"
+    # Render preview via the function sidecars below (CL-8): the renderer overlays
+    # the crossplane "Development" runtime onto functions.yaml so `crossplane
+    # render` dials these in-pod gRPC endpoints instead of running Docker.
+    - name: FUNCTIONS_DEV_TARGETS
+      value: "function-kcl=localhost:9443,function-auto-ready=localhost:9444,function-environment-configs=localhost:9445"
+    # OAuth callback registered with the GitHub OAuth app (CL-9). Must match the
+    # private Tailscale hostname below. Used by both the github login flow AND
+    # the zitadel "link GitHub" flow (/api/auth/github/callback shares the app).
+    - name: OAUTH_REDIRECT_URL
+      value: "https://app-wizard.priv.cloud.ogenki.io/api/auth/callback"
+    # OAuth client id/secret and SESSION_KEY come from the ExternalSecret below
+    # via envFrom (GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET / SESSION_KEY keys).
+
+    # -------------------------------------------------------------------------
+    # Authentication mode (CL-11). One of: github | dev | zitadel.
+    #   github  — GitHub OAuth is the login (default; PRs open as the GitHub user)
+    #   dev     — no auth, local development only
+    #   zitadel — Zitadel OIDC (SSO) is the login; the user ALSO links GitHub
+    #             once so PRs are opened as them (two-flow model).
+    # Deployed default stays "github" so this manifest is deployable as-is.
+    # To switch to zitadel: uncomment the AUTH_MODE line below, ensure the
+    # ZITADEL_* vars are set, register the Zitadel app + role, and populate the
+    # ZITADEL_CLIENT_ID / ZITADEL_CLIENT_SECRET secret keys (human steps
+    # T401/T003 — see container-images/app-wizard/README.md).
+    - name: AUTH_MODE
+      value: "github"
+    # - name: AUTH_MODE
+    #   value: "zitadel"
+
+    # Zitadel OIDC (non-secret) config — only consumed when AUTH_MODE=zitadel.
+    # Safe to leave set in any mode; ignored unless zitadel is active.
+    # Replace <your-zitadel-domain> with the real Zitadel issuer URL.
+    - name: ZITADEL_ISSUER
+      value: "https://<your-zitadel-domain>"
+    # Redirect back to the wizard after the Zitadel OIDC login.
+    - name: ZITADEL_REDIRECT_URL
+      value: "https://app-wizard.priv.cloud.ogenki.io/api/auth/callback"
+    # Role the Zitadel user must hold to use the wizard (project role key).
+    - name: ZITADEL_REQUIRED_ROLE
+      value: "app-wizard:user"
+    # ZITADEL_CLIENT_ID / ZITADEL_CLIENT_SECRET come from the ExternalSecret
+    # below via envFrom — register the app as Web / OIDC / PKCE (T401).
+
+    # -------------------------------------------------------------------------
+    # LLM assists (Phase 3, optional). Assists become AVAILABLE when either
+    # LLM_API_KEY (secret, via envFrom) OR LLM_BASE_URL is set; otherwise the UI
+    # hides the assist affordances via /api/assist/status. LLM_MODEL is
+    # non-secret and defaults to "claude-opus-4-8" in the binary — override here
+    # if needed. Neither key nor base URL is set below, so assists ship OFF.
+    # - name: LLM_MODEL
+    #   value: "claude-opus-4-8"
+    # Optional: point at the in-cluster AI Gateway instead of a public endpoint.
+    # - name: LLM_BASE_URL
+    #   value: "http://ai-gateway.llm-platform.svc/v1"
+
+  # ---------------------------------------------------------------------------
+  # OAuth app credentials + session key from AWS Secrets Manager.
+  # ---------------------------------------------------------------------------
+  # The ExternalSecret is reconciled by the External Secrets Operator (which has
+  # its own EKS Pod Identity) — the wizard pod itself makes NO direct AWS calls,
+  # so it needs no egress to the Pod Identity endpoint (169.254.170.23). ESO
+  # materializes the `app-wizard-oauth` Secret; the wizard reads it via envFrom.
+  #
+  # The AWS Secrets Manager blob at apps/app-wizard/oauth MUST contain these
+  # keys (the composition imports ALL keys from the path via dataFrom → they
+  # land as env vars of the same name through envFrom):
+  #   GITHUB_CLIENT_ID       — GitHub OAuth app (login in github mode; the
+  #   GITHUB_CLIENT_SECRET     "link GitHub" flow in zitadel mode)
+  #   SESSION_KEY            — signs the session cookie (required in all modes)
+  #   ZITADEL_CLIENT_ID      — Zitadel OIDC app creds (only used when
+  #   ZITADEL_CLIENT_SECRET    AUTH_MODE=zitadel; PKCE app secret may be empty)
+  #   LLM_API_KEY           — LLM assists (optional; omit to keep assists off)
+  # Missing keys simply don't materialize as env vars; a mode that doesn't need
+  # a key is unaffected. Populating them is a human step (T003).
+  externalSecrets:
+    - name: app-wizard-oauth
+      remoteRef: apps/app-wizard/oauth
+      refreshInterval: 1h
+  envFrom:
+    - secretRef:
+        name: app-wizard-oauth
+        optional: true
+
+  # Private access via Tailscale — NOT internet-facing.
+  # hostname `app-wizard` → app-wizard.priv.cloud.ogenki.io.
+  route:
+    enabled: true
+    internetFacing: false
+    hostname: "app-wizard"
+
+  # ---------------------------------------------------------------------------
+  # CiliumNetworkPolicy — default-deny + explicit allow (constitution mandate).
+  # The App composition passes `ingress`/`egress` verbatim into the CNP spec
+  # (kcl/app/main.k) with NO auto-injected DNS rule, so what is declared here is
+  # exactly what renders.
+  # ---------------------------------------------------------------------------
+  networkPolicies:
+    enabled: true
+    ingress:
+      # Tailscale gateway → wizard. `ingress` entity covers the Cilium Gateway
+      # data-plane pods that terminate the Tailscale-fronted HTTPRoute
+      # (established pattern — see openwebui/app.yaml). TRAP #3-adjacent: the
+      # gateway is classified as the `ingress` entity, not a pod selector.
+      - fromEntities:
+          - ingress
+        toPorts:
+          - ports:
+              - port: "8080"
+                protocol: TCP
+    egress:
+      # DNS resolution (kube-dns). NOTE on CNP-rules TRAP #1: the mandatory L7
+      # DNS rule (`toPorts.rules.dns.matchPattern: "*"`) cannot be expressed
+      # through the App XRD — its egress `toPorts` schema only allows `ports[]`,
+      # no `rules` field (an unknown field would be dropped by the API server).
+      # Because the L7 DNS rule is unavailable, `toFQDNs` allowlists cannot work
+      # here (they'd have no resolved IPs to match — TRAP #1 failure mode). So
+      # GitHub egress uses `toEntities: world` on 443 instead (see below), the
+      # same proven pattern every other App claim uses (openwebui, image-gallery).
+      - toEndpoints:
+          - matchLabels:
+              "io.kubernetes.pod.namespace": "kube-system"
+              "k8s-app": "kube-dns"
+        toPorts:
+          - ports:
+              - port: "53"
+                protocol: UDP
+              - port: "53"
+                protocol: TCP
+      # GitHub API + git over HTTPS (api.github.com, github.com) for OAuth token
+      # exchange, reading repo files (XRD/stacks/composition), and opening PRs.
+      # `toEntities: world` on 443 rather than `toFQDNs` — see the TRAP #1 note
+      # above. TRAP #4 rationale: escaping to world:443 on a long-lived pod is
+      # normally discouraged, but here the composition cannot render a working
+      # `toFQDNs` rule at all; egress stays HTTPS-only, restricted PSS is
+      # enforced, and the pod holds no cluster credentials.
+      - toEntities:
+          - world
+        toPorts:
+          - ports:
+              - port: "443"
+                protocol: TCP
+
+  # No native /metrics endpoint yet.
+  observability:
+    metrics:
+      enabled: false
+
+  # ---------------------------------------------------------------------------
+  # Render-preview function sidecars (CL-8). SPEC-007 added `sidecars[]` to the
+  # App XRD, so the render pipeline's functions run as long-lived gRPC servers
+  # in this pod; the backend's FUNCTIONS_DEV_TARGETS (above) points `crossplane
+  # render` at them (Development runtime) — no Docker-in-pod.
+  #
+  # NEEDS CLUSTER VALIDATION (cannot be verified without a running cluster):
+  #   1. Function package images are run directly as gRPC servers here. Confirm
+  #      each image's entrypoint accepts `--insecure` + `--address` and serves on
+  #      the given port (crossplane-contrib function-sdk-go servers do; verify
+  #      per image/version).
+  #   2. readOnlyRootFilesystem is relaxed for function-kcl (KCL may write temp);
+  #      tighten once confirmed. The other two keep the composition defaults.
+  #   3. In-pod render ALSO requires the `crossplane` CLI in the image and the
+  #      composition/functions/environmentconfig files reachable by the renderer
+  #      (COMPOSITION_PATH/FUNCTIONS_PATH/ENVCONFIG_PATH). Until both are in
+  #      place, /api/render-preview returns a friendly error and the form still
+  #      works (validation gates are independent). Tracked for the cluster.
+  # Versions mirror infrastructure/base/crossplane/configuration/functions.yaml.
+  # ---------------------------------------------------------------------------
+  sidecars:
+    - name: function-kcl
+      image: "xpkg.upbound.io/crossplane-contrib/function-kcl:v0.12.1"
+      args: ["--insecure", "--address=:9443"]
+      ports:
+        - name: fn-kcl
+          containerPort: 9443
+      securityContext:
+        readOnlyRootFilesystem: false
+      resources:
+        requests: {cpu: "25m", memory: "64Mi"}
+        limits: {cpu: "250m", memory: "256Mi"}
+    - name: function-auto-ready
+      image: "xpkg.crossplane.io/crossplane-contrib/function-auto-ready:v0.7.0"
+      args: ["--insecure", "--address=:9444"]
+      ports:
+        - name: fn-ready
+          containerPort: 9444
+      resources:
+        requests: {cpu: "10m", memory: "32Mi"}
+        limits: {cpu: "100m", memory: "128Mi"}
+    - name: function-environment-configs
+      image: "xpkg.crossplane.io/crossplane-contrib/function-environment-configs:v0.7.2"
+      args: ["--insecure", "--address=:9445"]
+      ports:
+        - name: fn-envcfg
+          containerPort: 9445
+      resources:
+        requests: {cpu: "10m", memory: "32Mi"}
+        limits: {cpu: "100m", memory: "128Mi"}

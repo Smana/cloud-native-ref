@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# "platform" stack (apps/stacks.yaml) — platform-operated apps.
+resources:
+  - app-wizard

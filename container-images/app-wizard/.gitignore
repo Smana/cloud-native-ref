@@ -1,0 +1,9 @@
+ui/node_modules/
+ui/dist/
+ui/tsconfig.tsbuildinfo
+# Embedded SPA build output — produced in Docker/CI (multi-stage build).
+# Only the committed placeholder is tracked so `go build` (go:embed all:dist)
+# works during local backend development.
+internal/web/dist/*
+!internal/web/dist/index.html
+/app-wizard
