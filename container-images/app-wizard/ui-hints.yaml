@@ -11,9 +11,9 @@
 # DRIFT GUARD: every key under `fields` MUST exist in the App XRD. The Go test
 # TestUIHintsNoDriftFromXRD (internal/schema/drift_test.go) fails the build if a
 # hint references a field the XRD does not have — so this overlay can never drift
-# from the schema. (SPEC-007 fields `type` and `persistence` are intentionally
-# absent here: this branch is off main, pre-SPEC-007; re-add their hints after
-# #1580 merges and this rebases — they render in `advanced` unhinted meanwhile.)
+# from the schema. (This branch is rebased onto SPEC-007, so the v0.2.0 workload
+# fields — type, schedule, cron, sidecars, initContainers, persistence — exist in
+# the XRD and are hinted below.)
 
 groups:
   - id: workload
@@ -24,8 +24,16 @@ groups:
     label: Networking & exposure
     tier: basic
     order: 20
+  - id: containers
+    label: Containers & command
+    tier: advanced
+    order: 15
+  - id: scheduling
+    label: Schedule
+    tier: advanced
+    order: 16
   - id: scaling
-    label: Scaling & availability
+    label: Scaling & resources
     tier: advanced
     order: 30
   - id: data
@@ -114,34 +122,34 @@ fields:
   # SPEC-007 workload fields.
   schedule:
     tier: advanced
-    group: workload
+    group: scheduling
     label: Cron schedule
     help: Cron expression — required when type is 'cron' (e.g. "0 3 * * *").
     example: "0 3 * * *"
     order: 34
   cron:
     tier: advanced
-    group: workload
+    group: scheduling
     label: Cron job options
     order: 35
   command:
     tier: advanced
-    group: workload
+    group: containers
     label: Command (entrypoint override)
     order: 36
   args:
     tier: advanced
-    group: workload
+    group: containers
     label: Args
     order: 37
   sidecars:
     tier: advanced
-    group: workload
+    group: containers
     label: Sidecar containers
     order: 38
   initContainers:
     tier: advanced
-    group: workload
+    group: containers
     label: Init containers
     order: 39
   persistence:
@@ -181,7 +189,7 @@ fields:
     order: 32
   resources:
     tier: advanced
-    group: workload
+    group: scaling
     label: Resource requests & limits
     order: 33
   env:
@@ -242,9 +250,9 @@ fields:
     order: 71
   deploymentStrategy:
     tier: expert
-    group: workload
+    group: scaling
     order: 72
   onDemand:
     tier: expert
-    group: workload
+    group: scaling
     order: 73

@@ -21,7 +21,13 @@ import { Select } from "../components/ui/select";
 import { Field } from "./Field";
 import { ImageField } from "./ImageField";
 import { SecretsEditor } from "./SecretsEditor";
-import { buildLayout, tierBadgeVariant, type TopField } from "./model";
+import {
+  buildLayout,
+  clearInvalidForType,
+  getAt,
+  tierBadgeVariant,
+  type TopField,
+} from "./model";
 import { claimToYaml } from "./claim";
 import { useDebounced } from "./useDebounced";
 import { validateAppName } from "./validation";
@@ -59,6 +65,53 @@ export function WizardForm({ schema, user }: Props) {
   const [copied, setCopied] = useState(false);
   const nameError = name ? validateAppName(name) : null;
   const namespace = schema.stacks.find((s) => s.name === stack)?.namespace;
+
+  // Workload type drives which top-level fields are valid (mirrors the App XRD
+  // CEL rules). Default "web" when unset.
+  const workloadType = (getAt(spec, ["type"]) as string | undefined) ?? "web";
+
+  // Visibility predicate by top-level field key — hide fields that are invalid
+  // for the current workload type so users never see them.
+  const fieldVisibleForType = (key: string): boolean => {
+    switch (key) {
+      case "route":
+      case "gateway":
+      case "service":
+        return workloadType === "web";
+      case "autoscaling":
+      case "pdb":
+        return workloadType !== "cron";
+      case "schedule":
+      case "cron":
+        return workloadType === "cron";
+      default:
+        return true;
+    }
+  };
+
+  // Apply the visibility filter to a set of { group, fields } blocks, dropping any
+  // group that becomes empty (so e.g. "Networking & exposure" disappears entirely
+  // for worker/cron, "Schedule" appears only for cron).
+  const filterGroups = (
+    groups: Array<{ group: (typeof layout.groups)[number]["group"]; fields: TopField[] }>,
+  ) =>
+    groups
+      .map(({ group, fields }) => ({
+        group,
+        fields: fields.filter((f) => fieldVisibleForType(f.key)),
+      }))
+      .filter(({ fields }) => fields.length > 0);
+
+  const visibleBasicGroups = filterGroups(layout.basicGroups);
+  const visibleGroups = filterGroups(layout.groups);
+  const visibleUngrouped = layout.ungrouped.filter((f) => fieldVisibleForType(f.key));
+
+  // Clear now-invalid values when the type changes so a hidden field can't leave a
+  // stale value that trips CEL validation and blocks the PR. clearInvalidForType
+  // returns the SAME reference when nothing changes, so this never loops.
+  useEffect(() => {
+    setSpec((s: unknown) => clearInvalidForType(s, workloadType));
+  }, [workloadType]);
 
   // The generated claim — exactly what gets committed. This is the minimal claim
   // (only values you set); the full effective resources (with composition
@@ -238,7 +291,7 @@ export function WizardForm({ schema, user }: Props) {
             blocks (Workload, Networking & exposure, …) by their ui-hints group.
             `image` is special-cased to the bespoke ImageField; everything else
             stays generic. */}
-        {layout.basicGroups.map(({ group, fields }) => (
+        {visibleBasicGroups.map(({ group, fields }) => (
           <Card key={group.id}>
             <CardHeader>
               <CardTitle>{group.label}</CardTitle>
@@ -262,7 +315,7 @@ export function WizardForm({ schema, user }: Props) {
         ))}
 
         {/* Advanced / expert groups */}
-        {layout.groups.map(({ group, fields }) => (
+        {visibleGroups.map(({ group, fields }) => (
           <Collapsible
             key={group.id}
             title={group.label}
@@ -284,13 +337,13 @@ export function WizardForm({ schema, user }: Props) {
           </Collapsible>
         ))}
 
-        {layout.ungrouped.length > 0 && (
+        {visibleUngrouped.length > 0 && (
           <Collapsible
             title="More options"
             badge={<Badge variant="secondary">advanced</Badge>}
-            subtitle={`${layout.ungrouped.length} field${layout.ungrouped.length === 1 ? "" : "s"}`}
+            subtitle={`${visibleUngrouped.length} field${visibleUngrouped.length === 1 ? "" : "s"}`}
           >
-            {layout.ungrouped.map((f) => renderField(f, false))}
+            {visibleUngrouped.map((f) => renderField(f, false))}
           </Collapsible>
         )}
 

@@ -194,6 +194,30 @@ export function prune(value: unknown): unknown {
   return value;
 }
 
+// Clear now-invalid top-level spec keys when the workload type changes, mirroring
+// the App XRD CEL rules (route/gateway/service only valid for web; autoscaling/pdb
+// not valid for cron; schedule/cron only valid for cron). This prevents a hidden
+// field from leaving a stale value that trips CEL validation and blocks the PR.
+//
+// CRITICAL: returns the SAME object reference when nothing needs deleting, so the
+// caller's effect + setSpec can't loop forever. We check key presence first and
+// only rebuild when a key is actually present.
+export function clearInvalidForType(spec: unknown, type: string): unknown {
+  const toDelete: string[] = [];
+  if (type !== "web") toDelete.push("route", "gateway", "service");
+  if (type !== "cron") toDelete.push("schedule", "cron");
+  if (type === "cron") toDelete.push("autoscaling", "pdb");
+
+  const present = toDelete.filter(
+    (k) => getAt(spec, [k]) !== undefined,
+  );
+  if (present.length === 0) return spec; // no-op: preserve reference (no render loop)
+
+  let next = spec;
+  for (const k of present) next = deleteAt(next, [k]);
+  return next;
+}
+
 // Tier badge helper.
 export function tierBadgeVariant(tier: Tier): "secondary" | "outline" | "default" {
   if (tier === "expert") return "outline";
