@@ -6,6 +6,7 @@ import * as api from "./api/client";
 import { UnauthorizedError } from "./api/client";
 import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { WizardForm, type WizardInitial } from "./form/WizardForm";
 import { AppList } from "./form/AppList";
@@ -89,14 +90,20 @@ export function App() {
               </p>
             </div>
           </div>
-          {user && (
-            <div className="flex items-center gap-2 text-sm">
-              {user.avatarUrl && (
-                <img src={user.avatarUrl} alt="" className="h-7 w-7 rounded-full" />
-              )}
-              <span>{user.name || user.login}</span>
-            </div>
-          )}
+          {/* Outside the `user &&` block on purpose: when signed out this side of the
+              header is empty, and someone should be able to flip to dark from the
+              sign-in screen rather than having to log in first. */}
+          <div className="flex items-center gap-3">
+            {user && (
+              <div className="flex items-center gap-2 text-sm">
+                {user.avatarUrl && (
+                  <img src={user.avatarUrl} alt="" className="h-7 w-7 rounded-full" />
+                )}
+                <span>{user.name || user.login}</span>
+              </div>
+            )}
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
