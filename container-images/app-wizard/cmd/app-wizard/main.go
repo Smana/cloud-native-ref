@@ -13,6 +13,7 @@ import (
 	"os"
 
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/appstore"
+	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/assist"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/auth"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/config"
 	"github.com/Smana/cloud-native-ref/container-images/app-wizard/internal/gitprovider"
@@ -71,6 +72,18 @@ func main() {
 	prService := pr.NewService(validator, renderer, pipeline, cfg.RepoBaseBranch)
 	appStore := appstore.New(pipeline, cfg.RepoBaseBranch)
 
+	// LLM assists (Phase 3, FR-011). Available when an API key or a base URL
+	// (keyless gateway) is set; otherwise a no-op backend keeps the form working.
+	var assistBackend assist.Assist
+	if cfg.AssistsAvailable() {
+		assistBackend = assist.NewAnthropicAssist(cfg)
+		logger.Info("LLM assists enabled", "model", cfg.LLMModel, "customBaseURL", cfg.LLMBaseURL != "")
+	} else {
+		assistBackend = assist.Disabled{}
+		logger.Info("LLM assists disabled (no LLM_API_KEY or LLM_BASE_URL)")
+	}
+	assistHandlers := assist.NewHandlers(assistBackend, pipeline, validator, logger)
+
 	// Provider factory: build a GitHub gitprovider from a user token.
 	factory := func(ctx context.Context, token string) gitprovider.Provider {
 		return gitprovider.NewGitHub(ctx, token, cfg.RepoOwner, cfg.RepoName)
@@ -105,6 +118,11 @@ func main() {
 	mux.Handle("GET /api/schema", pipeline.Handler())
 	mux.Handle("POST /api/validate", validator.Handler())
 	mux.Handle("POST /api/render-preview", render.Handler(renderer, pipeline))
+
+	// LLM assists (optional; same public surface as validate — no git provider).
+	mux.HandleFunc("GET /api/assist/status", assistHandlers.Status)
+	mux.HandleFunc("POST /api/assist/prefill", assistHandlers.Prefill)
+	mux.HandleFunc("POST /api/assist/policies", assistHandlers.Policies)
 
 	// Auth.
 	mux.HandleFunc("GET /api/auth/login", authHandler.Login)

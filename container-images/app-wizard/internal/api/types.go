@@ -161,6 +161,41 @@ type PRResponse struct {
 	Branch string `json:"branch"`
 }
 
+// --- LLM assists (Phase 3, FR-011). All optional; the form works with the LLM
+// endpoint down. Output is constrained by the XRD-derived schema and never
+// auto-submitted. ---
+
+// AssistStatus reports whether LLM assists are configured/available so the UI
+// can show or hide the assist affordances (graceful degradation).
+type AssistStatus struct {
+	Available bool `json:"available"`
+}
+
+// AssistPrefillRequest carries a plain-language description of the app.
+type AssistPrefillRequest struct {
+	Description string `json:"description"`
+}
+
+// AssistPrefillResponse is a schema-valid partial App spec suggested from the
+// description, plus the top-level keys the model set (for "AI-suggested" badges).
+type AssistPrefillResponse struct {
+	Spec map[string]any `json:"spec"`
+	Keys []string       `json:"keys"`
+}
+
+// AssistPoliciesRequest describes an app's dependencies in plain language.
+type AssistPoliciesRequest struct {
+	Description string `json:"description"`
+}
+
+// AssistPoliciesResponse is candidate CiliumNetworkPolicy ingress/egress rules
+// matching the composition's networkPolicies schema (incl. the mandatory
+// kube-dns L7 DNS egress rule).
+type AssistPoliciesResponse struct {
+	Ingress []any `json:"ingress"`
+	Egress  []any `json:"egress"`
+}
+
 // User is the authenticated GitHub identity (FR-004).
 type User struct {
 	Login     string `json:"login"`

@@ -119,6 +119,21 @@ export interface AppDetail {
   rawYaml: string;
 }
 
+// LLM assists (Phase 3). Optional — hidden when unavailable.
+export interface AssistStatus {
+  available: boolean;
+}
+
+export interface AssistPrefillResponse {
+  spec: Record<string, unknown>;
+  keys: string[]; // top-level keys the model set (for "AI-suggested" badges)
+}
+
+export interface AssistPoliciesResponse {
+  ingress: unknown[];
+  egress: unknown[];
+}
+
 export interface User {
   login: string;
   avatarUrl: string;

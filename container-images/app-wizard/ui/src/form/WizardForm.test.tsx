@@ -1,9 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { fixtureSchema } from "../api/__fixtures__/schema";
 import type { User } from "../api/types";
 
 // Stub the API client so the form's live-validate effect doesn't hit the network.
+// assistStatus defaults to unavailable so the LLM assist UI stays hidden; the
+// availability-gate test overrides it per-case.
+const assistStatusMock = vi.fn().mockResolvedValue({ available: false });
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
   return {
@@ -16,6 +19,7 @@ vi.mock("../api/client", async (importOriginal) => {
     }),
     renderPreview: vi.fn(),
     openPR: vi.fn(),
+    assistStatus: () => assistStatusMock(),
   };
 });
 
@@ -26,6 +30,7 @@ const user: User = { login: "octocat", name: "The Octocat", avatarUrl: "" };
 describe("WizardForm renderer", () => {
   beforeEach(() => {
     vi.stubGlobal("clipboard", undefined);
+    assistStatusMock.mockResolvedValue({ available: false });
   });
 
   it("basic tier (first screen) shows ≤ 8 visible inputs", () => {
@@ -59,5 +64,34 @@ describe("WizardForm renderer", () => {
     // the schema alone, with zero wizard code referencing it).
     const control = screen.getByLabelText(/future/i);
     expect(control).toBeTruthy();
+  });
+
+  it("hides all LLM assist affordances when the assist backend is unavailable", async () => {
+    assistStatusMock.mockResolvedValue({ available: false });
+    render(<WizardForm schema={fixtureSchema} user={user} />);
+
+    // Give the mount-time status probe a chance to resolve.
+    await waitFor(() => expect(assistStatusMock).toHaveBeenCalled());
+
+    expect(screen.queryByText(/Describe your app/i)).toBeNull();
+    expect(screen.queryByText(/Network policy helper/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Prefill/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Suggest policies/i })).toBeNull();
+  });
+
+  it("shows the assist affordances when the backend reports available", async () => {
+    assistStatusMock.mockResolvedValue({ available: true });
+    render(<WizardForm schema={fixtureSchema} user={user} />);
+
+    // The "Describe your app" collapsible header and the always-visible network
+    // policy helper card appear once the status probe resolves available.
+    expect(await screen.findByText(/Describe your app/i)).toBeTruthy();
+    expect(screen.getByText(/Network policy helper/i)).toBeTruthy();
+    // The policy suggester's button is not gated behind a collapse.
+    expect(screen.getByRole("button", { name: /Suggest policies/i })).toBeTruthy();
+
+    // Expanding the describe section reveals the Prefill button.
+    fireEvent.click(screen.getByRole("button", { name: /Describe your app/i }));
+    expect(screen.getByRole("button", { name: /Prefill/i })).toBeTruthy();
   });
 });

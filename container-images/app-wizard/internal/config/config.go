@@ -71,6 +71,26 @@ type Config struct {
 	CompositionPath string
 	FunctionsPath   string
 	EnvConfigPath   string
+
+	// --- LLM assists (Phase 3, FR-011). All optional. ---
+	//
+	// LLMAPIKey is the Anthropic API key (LLM_API_KEY). Never logged. When set,
+	// LLM assists are available.
+	LLMAPIKey string
+	// LLMBaseURL overrides the Anthropic API base URL (LLM_BASE_URL). Optional;
+	// lets the wizard target the platform AI Gateway. When empty the SDK default
+	// (api.anthropic.com) is used. A non-empty base URL also marks assists as
+	// available (supports a keyless gateway).
+	LLMBaseURL string
+	// LLMModel is the model id used for assists (LLM_MODEL, default
+	// "claude-opus-4-8").
+	LLMModel string
+}
+
+// AssistsAvailable reports whether LLM assists are configured: either an API
+// key or a base URL (keyless gateway) is set.
+func (c *Config) AssistsAvailable() bool {
+	return c.LLMAPIKey != "" || c.LLMBaseURL != ""
 }
 
 // Load resolves configuration from the environment, applying defaults.
@@ -92,6 +112,9 @@ func Load() (*Config, error) {
 		CompositionPath:    env("COMPOSITION_PATH", "infrastructure/base/crossplane/configuration/app-composition.yaml"),
 		FunctionsPath:      env("FUNCTIONS_PATH", "infrastructure/base/crossplane/configuration/functions.yaml"),
 		EnvConfigPath:      env("ENVCONFIG_PATH", "infrastructure/base/crossplane/configuration/environmentconfig.yaml"),
+		LLMAPIKey:          os.Getenv("LLM_API_KEY"),
+		LLMBaseURL:         os.Getenv("LLM_BASE_URL"),
+		LLMModel:           env("LLM_MODEL", "claude-opus-4-8"),
 	}
 
 	if cfg.XRDSource != SourceLocal && cfg.XRDSource != SourceGitHub {

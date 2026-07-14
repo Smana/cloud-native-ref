@@ -4,6 +4,9 @@
 import type {
   AppDetail,
   AppSummary,
+  AssistPoliciesResponse,
+  AssistPrefillResponse,
+  AssistStatus,
   PRRequest,
   PRResponse,
   RenderPreviewRequest,
@@ -110,6 +113,33 @@ export function openPR(req: PRRequest): Promise<PRResponse> {
   return request<PRResponse>("/api/pr", {
     method: "POST",
     body: JSON.stringify({ mode: "create", ...req }),
+  });
+}
+
+// --- LLM assists (Phase 3) -------------------------------------------------
+// All optional. The form must work fully when assists are unavailable (FR-011),
+// so a 503 (or any failure) is surfaced as "unavailable" rather than an error.
+
+// GET /api/assist/status — is the assist backend configured/reachable?
+// Never throws for the availability probe: any failure ⇒ { available: false }.
+export function assistStatus(): Promise<AssistStatus> {
+  return request<AssistStatus>("/api/assist/status").catch(() => ({ available: false }));
+}
+
+// POST /api/assist/prefill — describe-to-spec. 503 ⇒ ApiError(503); callers
+// should treat that as "assist unavailable" and keep the form usable.
+export function assistPrefill(description: string): Promise<AssistPrefillResponse> {
+  return request<AssistPrefillResponse>("/api/assist/prefill", {
+    method: "POST",
+    body: JSON.stringify({ description }),
+  });
+}
+
+// POST /api/assist/policies — describe-to-network-policies. 503 ⇒ ApiError(503).
+export function assistPolicies(description: string): Promise<AssistPoliciesResponse> {
+  return request<AssistPoliciesResponse>("/api/assist/policies", {
+    method: "POST",
+    body: JSON.stringify({ description }),
   });
 }
 

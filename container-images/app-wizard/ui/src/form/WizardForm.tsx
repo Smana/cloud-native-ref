@@ -25,6 +25,7 @@ import {
   buildLayout,
   clearInvalidForType,
   getAt,
+  setAt,
   tierBadgeVariant,
   type TopField,
 } from "./model";
@@ -85,6 +86,27 @@ export function WizardForm({ schema, user, initial, onBack }: Props) {
   const [copied, setCopied] = useState(false);
   const nameError = name ? validateAppName(name) : null;
   const namespace = schema.stacks.find((s) => s.name === stack)?.namespace;
+
+  // --- LLM assists (Phase 3, all optional; FR-011) ---
+  // Availability gate: probe once on mount. Until it resolves `true`, NONE of the
+  // assist affordances render. Any failure ⇒ unavailable (the form stays usable).
+  const [assistAvailable, setAssistAvailable] = useState(false);
+  // Top-level spec keys the prefill assist set, for the "AI-suggested" badge.
+  const [prefilledKeys, setPrefilledKeys] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .assistStatus()
+      .then((s) => {
+        if (!cancelled) setAssistAvailable(!!s.available);
+      })
+      .catch(() => {
+        if (!cancelled) setAssistAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Workload type drives which top-level fields are valid (mirrors the App XRD
   // CEL rules). Default "web" when unset.
@@ -267,6 +289,26 @@ export function WizardForm({ schema, user, initial, onBack }: Props) {
             Editing <strong>{name}</strong> in stack <strong>{stack}</strong>.
           </p>
         )}
+        {/* Describe-to-prefill (optional; only when the assist backend is up) */}
+        {assistAvailable && (
+          <DescribePrefill
+            onPrefill={(spec, keys) => {
+              // Shallow-merge the partial App spec the model returned. name/stack
+              // are managed by the Basics fields, never by spec — drop them here.
+              const { name: _n, stack: _s, ...rest } = spec as Record<string, unknown>;
+              void _n;
+              void _s;
+              setSpec((prev: unknown) => ({
+                ...((prev ?? {}) as Record<string, unknown>),
+                ...rest,
+              }));
+              setPrefilledKeys(keys.filter((k) => k !== "name" && k !== "stack"));
+              // Never auto-submit — the user still reviews and clicks Open PR.
+            }}
+            suggestedKeys={prefilledKeys}
+          />
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Basics</CardTitle>
@@ -445,6 +487,19 @@ export function WizardForm({ schema, user, initial, onBack }: Props) {
         )}
 
         {preview && <PreviewCard preview={preview} />}
+
+        {/* Network-policy suggester (optional; expert helper). Writes into
+            spec.networkPolicies (enabled + ingress + egress). */}
+        {assistAvailable && (
+          <PolicySuggester
+            onSuggest={(ingress, egress) => {
+              let next = setAt(spec, ["networkPolicies", "enabled"], true);
+              next = setAt(next, ["networkPolicies", "ingress"], ingress);
+              next = setAt(next, ["networkPolicies", "egress"], egress);
+              setSpec(next);
+            }}
+          />
+        )}
       </div>
 
       {/* ---- Live YAML pane ---- */}
@@ -595,6 +650,152 @@ function PreviewCard({ preview }: { preview: RenderPreviewResponse }) {
           <Alert variant="destructive">
             <AlertDescription>{preview.error ?? "Render failed."}</AlertDescription>
           </Alert>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// --- LLM assist widgets (Phase 3, optional) --------------------------------
+
+// Describe-to-prefill: free-text → partial App spec merged into the form. Never
+// auto-submits. Badges which top-level fields the model set so the user reviews.
+function DescribePrefill({
+  onPrefill,
+  suggestedKeys,
+}: {
+  onPrefill: (spec: Record<string, unknown>, keys: string[]) => void;
+  suggestedKeys: string[];
+}) {
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    if (!text.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.assistPrefill(text);
+      onPrefill(res.spec ?? {}, res.keys ?? []);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Collapsible
+      title="✨ Describe your app"
+      subtitle="optional AI assist"
+      badge={<Badge variant="secondary">beta</Badge>}
+    >
+      <div className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Describe what you want in plain language and we'll prefill the form. You
+          stay in control — review every field before opening a PR. Nothing is
+          submitted automatically.
+        </p>
+        <Textarea
+          aria-label="Describe your app"
+          placeholder="A Python API on port 8000 with a small Postgres, private access"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" size="sm" onClick={run} disabled={loading || !text.trim()}>
+            {loading ? "Prefilling…" : "Prefill"}
+          </Button>
+          {suggestedKeys.length > 0 && (
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Badge variant="default">AI-suggested — review</Badge>
+              Set: <code>{suggestedKeys.join(", ")}</code>
+            </span>
+          )}
+        </div>
+        {error && (
+          <p className="text-xs text-destructive">
+            Couldn't prefill ({error}). The form still works — fill it in manually.
+          </p>
+        )}
+      </div>
+    </Collapsible>
+  );
+}
+
+// Network-policy suggester: free-text → ingress/egress rules written into
+// spec.networkPolicies. Badged "AI-suggested — review" with a strong warning.
+function PolicySuggester({
+  onSuggest,
+}: {
+  onSuggest: (ingress: unknown[], egress: unknown[]) => void;
+}) {
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [applied, setApplied] = useState(false);
+
+  async function run() {
+    if (!text.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.assistPolicies(text);
+      onSuggest(res.ingress ?? [], res.egress ?? []);
+      setApplied(true);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Network policy helper</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Alert variant="warning">
+          <AlertTitle>Review carefully</AlertTitle>
+          <AlertDescription>
+            Network policies control what your app can reach. Suggestions are a
+            starting point — verify every rule against what your app actually needs
+            before opening a PR.
+          </AlertDescription>
+        </Alert>
+        <Textarea
+          aria-label="Describe network access"
+          placeholder="e.g. calls stripe.com and the payments database"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={run}
+            disabled={loading || !text.trim()}
+          >
+            {loading ? "Suggesting…" : "Suggest policies"}
+          </Button>
+          {applied && !error && (
+            <Badge variant="default">AI-suggested — review</Badge>
+          )}
+        </div>
+        {applied && !error && (
+          <p className="text-xs text-muted-foreground">
+            Rules written to <code>networkPolicies</code>. Review them in the
+            Networking section and the generated claim.
+          </p>
+        )}
+        {error && (
+          <p className="text-xs text-destructive">
+            Couldn't suggest policies ({error}). You can still edit network policies
+            manually.
+          </p>
         )}
       </CardContent>
     </Card>
