@@ -82,14 +82,21 @@ export function Field({
       </ul>
     ) : null;
 
-  // enum → select
+  // enum → select. Do NOT pre-select the schema default: an unset field shows the
+  // "— select —" option so the form never looks pre-filled (FIX 1). When unset and
+  // a default exists, surface it in the help text instead of writing it to state.
   if (s.enum && s.enum.length > 0) {
+    const isUnset = value === undefined || value === null || value === "";
+    const enumHelp =
+      isUnset && s.default != null
+        ? [help_, `Default: ${String(s.default)}`].filter(Boolean).join(" ")
+        : help_;
     return (
       <div className="space-y-1">
         {label && <Label id={id}>{label}</Label>}
         <Select
           id={id}
-          value={String(value ?? s.default ?? "")}
+          value={String(value ?? "")}
           onChange={(e) => onChange(setAt(spec, path, e.target.value || undefined))}
         >
           <option value="">— select —</option>
@@ -99,7 +106,7 @@ export function Field({
             </option>
           ))}
         </Select>
-        <Help text={help_} />
+        <Help text={enumHelp} />
         {errorNode}
       </div>
     );

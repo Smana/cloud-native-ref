@@ -73,8 +73,9 @@ func TestLoadBearingUIKeysExist(t *testing.T) {
 		"externalSecrets",      // WizardForm SECRET_KEYS + SecretsEditor secretsPath
 		"route.internetFacing", // Field.tsx public-exposure warning
 		"service.port",         // basic-tier leaf
-		"image.repository",     // basic-tier leaf (required)
-		"image.pullPolicy",     // basic-tier filter relies on it being advanced
+		"image.repository",     // ImageField parses into it (required)
+		"image.tag",            // ImageField parses into it
+		"image.pullPolicy",     // ImageField renders it in the advanced sub-option
 	}
 	for _, key := range keys {
 		if !resolvePath(jsonSchema, key) {

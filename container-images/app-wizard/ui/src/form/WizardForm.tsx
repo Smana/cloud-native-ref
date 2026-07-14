@@ -19,6 +19,7 @@ import { Collapsible } from "../components/ui/collapsible";
 import { Input, Textarea } from "../components/ui/input";
 import { Select } from "../components/ui/select";
 import { Field } from "./Field";
+import { ImageField } from "./ImageField";
 import { SecretsEditor } from "./SecretsEditor";
 import { applyDefaults, buildLayout, tierBadgeVariant, type TopField } from "./model";
 import { claimToYaml } from "./claim";
@@ -44,7 +45,7 @@ export function WizardForm({ schema, user }: Props) {
   const layout = useMemo(() => buildLayout(schema), [schema]);
 
   const [name, setName] = useState("");
-  const [stack, setStack] = useState(schema.stacks[0]?.name ?? "");
+  const [stack, setStack] = useState("");
   const [description, setDescription] = useState("");
   const [spec, setSpec] = useState<unknown>({});
 
@@ -212,6 +213,9 @@ export function WizardForm({ schema, user }: Props) {
                 Stack
               </label>
               <Select id="stack" value={stack} onChange={(e) => setStack(e.target.value)}>
+                <option value="" disabled>
+                  — select a stack —
+                </option>
                 {schema.stacks.map((s) => (
                   <option key={s.name} value={s.name}>
                     {s.name} — {s.description}
@@ -235,8 +239,24 @@ export function WizardForm({ schema, user }: Props) {
               />
             </div>
 
-            {/* Schema-driven basic-tier fields */}
-            {layout.basic.map((f) => renderField(f, true))}
+            {/* Schema-driven basic-tier fields. `image` is special-cased to the
+                bespoke ImageField (single guided input + pull policy in an inner
+                advanced expander); everything else stays generic. */}
+            {layout.basic.map((f) =>
+              f.key === "image" ? (
+                <ImageField
+                  key={f.key}
+                  schema={f.schema}
+                  spec={spec}
+                  onChange={setSpec}
+                  errors={validation.schemaErrors}
+                  label={f.hint.label ?? "Image"}
+                  hints={schema.hints}
+                />
+              ) : (
+                renderField(f, true)
+              ),
+            )}
           </CardContent>
         </Card>
 
@@ -352,7 +372,7 @@ export function WizardForm({ schema, user }: Props) {
                       : "bg-background px-2 py-1 text-muted-foreground hover:bg-muted"
                   }
                 >
-                  With defaults
+                  Expand applied values
                 </button>
               </div>
               <Button type="button" size="sm" variant="outline" onClick={copyYaml}>
@@ -363,8 +383,8 @@ export function WizardForm({ schema, user }: Props) {
           <CardContent className="space-y-2">
             {showDefaults && (
               <p className="text-xs text-muted-foreground">
-                Showing defaults — the committed claim only includes values you
-                changed.
+                Expanded view — shows values the platform applies (defaults
+                included). The committed claim only includes what you changed.
               </p>
             )}
             <pre
