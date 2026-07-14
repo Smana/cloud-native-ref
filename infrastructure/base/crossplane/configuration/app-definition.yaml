@@ -15,6 +15,21 @@ spec:
       schema:
         openAPIV3Schema:
           type: object
+          # The primary container is named after the app itself, not `main` — the
+          # composition's own test pins this (kcl/app/main_test.k: `containers[0].name
+          # == _oxr.metadata.name`). So a sidecar/initContainer that reuses the app's
+          # name renders a Deployment with two containers of the same name. Caught here,
+          # at admission, where the message tells you what to do; otherwise it surfaces
+          # deep in the Crossplane reconcile loop as an opaque
+          # `duplicate entries for key [name=...]` on the managed resource.
+          #
+          # These live at the schema root because a rule under `spec` cannot see
+          # metadata.name.
+          x-kubernetes-validations:
+            - rule: "!has(self.spec) || !has(self.spec.sidecars) || self.spec.sidecars.all(c, c.name != self.metadata.name)"
+              message: "a sidecar may not reuse the app's own name: it collides with the primary container"
+            - rule: "!has(self.spec) || !has(self.spec.initContainers) || self.spec.initContainers.all(c, c.name != self.metadata.name)"
+              message: "an initContainer may not reuse the app's own name: it collides with the primary container"
           properties:
             spec:
               type: object
@@ -385,9 +400,6 @@ spec:
                   x-kubernetes-list-type: map
                   x-kubernetes-list-map-keys:
                     - name
-                  x-kubernetes-validations:
-                    - rule: "self.all(c, c.name != 'main')"
-                      message: "container name 'main' is reserved for the primary container"
                   items:
                     type: object
                     properties:
@@ -565,9 +577,6 @@ spec:
                   x-kubernetes-list-type: map
                   x-kubernetes-list-map-keys:
                     - name
-                  x-kubernetes-validations:
-                    - rule: "self.all(c, c.name != 'main')"
-                      message: "container name 'main' is reserved for the primary container"
                   items:
                     type: object
                     properties:
