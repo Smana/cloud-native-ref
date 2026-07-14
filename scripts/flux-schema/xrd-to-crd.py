@@ -51,7 +51,13 @@ CROSSPLANE_INJECTED = {
 
 def convert(xrd):
     spec = xrd["spec"]
-    raw_versions = spec["versions"]
+    raw_versions = spec.get("versions") or []
+    if not raw_versions:
+        print(
+            f"error: XRD {xrd['metadata']['name']} declares no spec.versions",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # A CRD must have exactly one storage: true version. The XRD's own
     # `referenceable: true` marks the equivalent concept; if none are

@@ -229,6 +229,12 @@ def postprocess(text):
     ) + "\n"
 
 
+def _last_line(result, default, limit=200):
+    """Last line of a subprocess' stderr (or `default`), truncated for a
+    one-line error message."""
+    return (result.stderr.strip().splitlines() or [default])[-1][:limit]
+
+
 def apply_post_renderers(rendered_text, post_renderers):
     """Apply `spec.postRenderers` the same way helm-controller does before
     installing the release, so the bundle matches what Flux actually applies
@@ -276,21 +282,63 @@ def apply_post_renderers(rendered_text, post_renderers):
             timeout=300,
         )
         if result.returncode != 0:
-            return None, (result.stderr.strip().splitlines() or ["kustomize postRenderer failed"])[-1][:200]
+            return None, _last_line(result, "kustomize postRenderer failed")
         return result.stdout, None
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
 
-def top_most_overlays():
-    """Kustomize dirs with no ancestor kustomization.yaml (avoids double-render)."""
-    dirs = {
+def _kustomization_dirs():
+    return {
         p.parent
         for root in MANIFEST_DIRS
-        for p in pathlib.Path(root).rglob("kustomization.yaml")
         if pathlib.Path(root).exists()
+        for p in pathlib.Path(root).rglob("kustomization.yaml")
     }
-    return sorted(d for d in dirs if not any(a in dirs for a in d.parents))
+
+
+def _referenced_dirs(kdirs):
+    """Directories pulled in by another kustomization's resources/components/
+    bases. Such a dir is rendered transitively by its parent, so it must not
+    also be rendered as its own root."""
+    referenced = set()
+    for d in kdirs:
+        for doc in load_docs(d / "kustomization.yaml"):
+            for field in ("resources", "components", "bases"):
+                for entry in doc.get(field) or []:
+                    if not isinstance(entry, str):
+                        continue
+                    target = pathlib.Path(os.path.normpath(d / entry))
+                    if (target / "kustomization.yaml").is_file():
+                        referenced.add(target)
+    return referenced
+
+
+def top_most_overlays():
+    """Kustomize dirs to `kustomize build` as roots.
+
+    A dir is a root when it is filesystem-top-most (no ancestor kustomization)
+    OR it is nested but no other kustomization references it — the latter being
+    a dir a Flux Kustomization targets directly by `spec.path`
+    (infrastructure/mycluster-0/crossplane/*, security/mycluster-0/zitadel,
+    observability/mycluster-0/victoria-metrics-k8s-stack). The old
+    `no ancestor kustomization` rule silently dropped that second class from
+    both render paths, contradicting SPEC-007's no-silent-skips guarantee.
+
+    This is a filesystem heuristic that approximates the true source of truth —
+    the `spec.path` of every Flux Kustomization under clusters/. Deriving roots
+    from those directly would be more exact but couples the renderer to the
+    cluster's Kustomization graph (base-vs-overlay, suspended siblings, multiple
+    clusters); test-flux-schema.sh pins the known nested cases as a safety net."""
+    dirs = _kustomization_dirs()
+    referenced = _referenced_dirs(dirs)
+    roots = []
+    for d in dirs:
+        if not any(a in dirs for a in d.parents):
+            roots.append(d)          # filesystem-top-most (unchanged)
+        elif d not in referenced:
+            roots.append(d)          # nested, but nobody includes it
+    return sorted(roots)
 
 
 def index_sources():
@@ -359,28 +407,36 @@ def clone_git_source(url, ref, dest):
     """Shallow-clone a GitRepository source at its pinned tag/branch/commit."""
     ref = ref or {}
     tag_or_branch = ref.get("tag") or ref.get("branch")
+    commit = ref.get("commit")
+    # A ref pinned only by `semver`/`name` needs the remote tag list to
+    # resolve; we cannot do that faithfully offline, so fail loudly rather than
+    # silently clone the default branch (a different revision than Flux applies).
+    if not (tag_or_branch or commit) and (ref.get("semver") or ref.get("name")):
+        return f"unsupported GitRepository ref (semver/name resolves against remote tags): {ref}"
     cmd = ["git", "clone", "--quiet", "--depth", "1"]
     if tag_or_branch:
         cmd += ["--branch", tag_or_branch]
     cmd += [url, str(dest)]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
-        return (result.stderr.strip().splitlines() or ["git clone failed"])[-1][:200]
+        return _last_line(result, "git clone failed")
 
-    commit = ref.get("commit")
-    if commit and not tag_or_branch:
+    # Honor an explicit commit even when a tag/branch was also given: Flux
+    # resolves to that exact commit, and a moved tag would otherwise render a
+    # different revision than the cluster applies.
+    if commit:
         result = subprocess.run(
             ["git", "fetch", "--quiet", "--depth", "1", "origin", commit],
             cwd=dest, capture_output=True, text=True, timeout=300,
         )
         if result.returncode != 0:
-            return (result.stderr.strip().splitlines() or ["git fetch failed"])[-1][:200]
+            return _last_line(result, "git fetch failed")
         result = subprocess.run(
             ["git", "checkout", "--quiet", commit],
             cwd=dest, capture_output=True, text=True, timeout=300,
         )
         if result.returncode != 0:
-            return (result.stderr.strip().splitlines() or ["git checkout failed"])[-1][:200]
+            return _last_line(result, "git checkout failed")
     return None
 
 
@@ -392,7 +448,7 @@ def render_overlay(overlay, outdir):
         timeout=300,
     )
     if result.returncode != 0:
-        return result.stderr.strip().splitlines()[-1][:200]
+        return _last_line(result, "kustomize build failed")
     try:
         rendered = postprocess(result.stdout)
     except yaml.YAMLError as exc:
@@ -402,17 +458,38 @@ def render_overlay(overlay, outdir):
     return None
 
 
+def _resolve_chart(spec, sources, namespace):
+    """Resolve a HelmRelease's chart source, whether inline or by reference.
+
+    `spec.chartRef` points straight at a source object (OCIRepository /
+    HelmChart): the source URL is already the fully-qualified chart path and the
+    version lives on the source's own `ref`, so `chart` is None. `spec.chart` is
+    the inline form (chart name + sourceRef). Returns (source, chart, version);
+    `source` is None when it cannot be resolved."""
+    chart_ref = spec.get("chartRef")
+    if chart_ref:
+        source = resolve_source(sources, chart_ref, namespace)
+        pin = (source.get("ref") or {}) if source else {}
+        return source, None, pin.get("tag") or pin.get("semver")
+    chart_spec = spec.get("chart", {}).get("spec", {})
+    source = resolve_source(sources, chart_spec.get("sourceRef", {}), namespace)
+    return source, chart_spec.get("chart"), chart_spec.get("version")
+
+
 def render_helmrelease(doc, sources, outdir, namespace):
     meta, spec = doc["metadata"], doc["spec"]
     namespace = meta.get("namespace") or namespace or "default"
-    chart_spec = spec.get("chart", {}).get("spec", {})
-    source = resolve_source(sources, chart_spec.get("sourceRef", {}), namespace)
-    if not source or not source.get("url"):
-        return f"unresolved chart source for HelmRelease/{namespace}/{meta['name']}"
 
-    url, chart, version = source["url"], chart_spec.get("chart"), chart_spec.get("version")
+    source, chart, version = _resolve_chart(spec, sources, namespace)
+    if not source or not source.get("url"):
+        kind = "chartRef" if spec.get("chartRef") else "chart"
+        return f"unresolved {kind} source for HelmRelease/{namespace}/{meta['name']}"
+
+    url = source["url"]
     is_oci = source.get("type") == "oci" or url.startswith("oci://")
     is_git = source.get("_kind") == "GitRepository"
+    # `chart` is None only for a chartRef (the source URL is the chart itself).
+    via_ref = chart is None
 
     values = spec.get("values") or {}
     overrides = CHART_RENDER_OVERRIDES.get((namespace, meta["name"]))
@@ -426,14 +503,20 @@ def render_helmrelease(doc, sources, outdir, namespace):
     git_clone_dir = None
     try:
         if is_git:
-            # GitRepository sourceRef: `chart` is a path to the chart *within*
+            # GitRepository source: `chart` is a path to the chart *within*
             # the repo, not a repo-relative chart name - clone, then point
             # helm template at the local checkout subdirectory.
+            if via_ref:
+                return f"HelmRelease/{namespace}/{meta['name']}: chartRef to a GitRepository is not supported"
             git_clone_dir = tempfile.mkdtemp(prefix="flux-schema-git-")
             error = clone_git_source(url, source.get("ref"), git_clone_dir)
             if error:
                 return f"HelmRelease/{namespace}/{meta['name']}: git clone {url}: {error}"
             chart_path = str(pathlib.Path(git_clone_dir) / chart)
+        elif via_ref:
+            # chartRef -> OCIRepository: the source URL already points at the
+            # chart itself, so there is no chart name to append.
+            chart_path = url
         else:
             chart_path = f"{url.rstrip('/')}/{chart}" if is_oci else chart
 
@@ -448,6 +531,12 @@ def render_helmrelease(doc, sources, outdir, namespace):
         if not is_oci and not is_git:
             cmd += ["--repo", url]
         if version and not is_git:
+            # `version` may be a semver RANGE from an OCIRepository ref (e.g.
+            # flux-operator's ">=0.43.0 <1.0.0"). helm resolves it against the
+            # registry's tags at template time, which can differ from the
+            # concrete version Flux's source-controller picked — a rendered
+            # version that is helm's independent resolution, not necessarily
+            # the cluster's. Exact pins (tag / exact semver) are unaffected.
             cmd += ["--version", version]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
@@ -457,7 +546,8 @@ def render_helmrelease(doc, sources, outdir, namespace):
             shutil.rmtree(git_clone_dir, ignore_errors=True)
 
     if result.returncode != 0:
-        return f"HelmRelease/{namespace}/{meta['name']}: {result.stderr.strip().splitlines()[-1][:160]}"
+        detail = _last_line(result, "helm template failed")
+        return f"HelmRelease/{namespace}/{meta['name']}: {detail}"
 
     rendered = result.stdout
     post_renderers = spec.get("postRenderers")
@@ -499,9 +589,15 @@ def main():
             docs = load_docs(path)
             in_overlay = any(str(path).startswith(c + "/") for c in covered)
             for doc in docs:
-                # HelmReleases carrying `chart` are renderable; `chartRef` (OCIRepository)
-                # and patch fragments (no chart at all) are validated via the overlay.
-                if doc.get("kind") == "HelmRelease" and doc.get("spec", {}).get("chart"):
+                # A HelmRelease is renderable whether it names its chart inline
+                # (`spec.chart`) or by reference (`spec.chartRef` -> an
+                # OCIRepository/HelmChart). Both produce pods Polaris must
+                # audit; rendering only `spec.chart` left every chartRef
+                # controller (Karpenter, Envoy Gateway, ...) as a bare
+                # HelmRelease CR with no workloads behind it. Patch fragments
+                # (no chart at all) are still validated via the overlay.
+                hr_spec = doc.get("spec", {})
+                if doc.get("kind") == "HelmRelease" and (hr_spec.get("chart") or hr_spec.get("chartRef")):
                     namespace = namespaces.get(path.resolve())
                     error = render_helmrelease(doc, sources, outdir, namespace)
                     if error:

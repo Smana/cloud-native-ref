@@ -36,9 +36,17 @@ SCHEMA_DIR="${SCHEMA_DIR:-.schemas}"
 # `pipefail`, a failing sed/grep would otherwise abort the script *before*
 # the "could not read the version" guard below ever runs.
 AI_GATEWAY_SOURCE="flux/sources/ocirepo-envoy-ai-gateway-crds.yaml"
-AI_GATEWAY_CHART="oci://docker.io/envoyproxy/ai-gateway-crds-helm"
-AI_GATEWAY_VERSION="$(sed -nE 's/^[[:space:]]*tag:[[:space:]]*"?([0-9][^"[:space:]]*)"?[[:space:]]*$/\1/p' "${AI_GATEWAY_SOURCE}" | head -n1 || true)"
+# BOTH the chart URL and its version come from the OCIRepository Flux uses to
+# install these CRDs, so the catalog can never drift from what is applied
+# (the URL was previously hardcoded and would silently diverge on a registry
+# move). The tag regex accepts an optional leading `v` (v1.2.3 is a valid tag).
+AI_GATEWAY_CHART="$(sed -nE 's#^[[:space:]]*url:[[:space:]]*"?(oci://[^"[:space:]]+)"?[[:space:]]*$#\1#p' "${AI_GATEWAY_SOURCE}" | head -n1 || true)"
+AI_GATEWAY_VERSION="$(sed -nE 's/^[[:space:]]*tag:[[:space:]]*"?(v?[0-9][^"[:space:]]*)"?[[:space:]]*$/\1/p' "${AI_GATEWAY_SOURCE}" | head -n1 || true)"
 
+if [[ -z "${AI_GATEWAY_CHART}" ]]; then
+  echo "error: could not read the AI Gateway CRD chart url from ${AI_GATEWAY_SOURCE}" >&2
+  exit 1
+fi
 if [[ -z "${AI_GATEWAY_VERSION}" ]]; then
   echo "error: could not read the AI Gateway CRD chart version from ${AI_GATEWAY_SOURCE}" >&2
   exit 1
