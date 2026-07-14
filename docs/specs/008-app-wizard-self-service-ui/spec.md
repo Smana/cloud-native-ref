@@ -138,9 +138,9 @@ Each criterion must be **falsifiable** — a human or `/verify-spec` must be abl
 - CL-4 — LLM scope v1: describe-to-prefill + network-policy suggester, optional layer
 - CL-5 — Day-2 in scope: create + edit + decommission
 - CL-6 — Stack = registry entry (namespace + owning team), platform-owned dropdown
-- [ ] [NEEDS CLARIFICATION: Frontend stack — React+shadcn vs Preact/htmx-style minimal? Affects bundle/maintenance, not behavior. Decide at plan time.]
-- [ ] [NEEDS CLARIFICATION: Where does `crossplane render` run in the backend — embedded function runtime, sidecar container with docker-less runner, or pre-rendered via CI on a draft branch? Security/latency trade-off.]
-- [ ] [NEEDS CLARIFICATION: GitHub OAuth app registration — org-level app or personal? Determines who can log in.]
+- CL-7 — Frontend: React + shadcn/ui
+- CL-8 — Render preview via function-kcl/function-auto-ready gRPC sidecars in the wizard pod
+- CL-9 — GitHub OAuth app under the personal account; org registration documented for adopters
 
 ---
 

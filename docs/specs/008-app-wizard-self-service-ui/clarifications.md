@@ -116,6 +116,59 @@
 **Decided by**: Smaine (brainstorming, 2026-07-14)
 **References**: FR-006, T002
 
+## CL-7 — 2026-07-14 — Frontend stack
+
+**Asked by**: Spec author (spec review)
+**Context**: Open question #1; affects maintenance surface, not behavior.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | React + shadcn/ui | Ecosystem for schema-driven forms (react-hook-form); polished a11y components | Heavier toolchain |
+| B | Preact + htm | Tiny | Hand-rolled form state/validation UX |
+| C | HTMX + Go templates | One language | Live CEL validation + YAML pane fight the model |
+
+**Decision**: A — React + shadcn/ui
+**Rationale**: The form renderer is the product; the ecosystem minimizes bespoke code. Bundle size irrelevant for an internal tool.
+**Decided by**: Smaine (spec review, 2026-07-14)
+**References**: T101, T103
+
+## CL-8 — 2026-07-14 — `crossplane render` execution model for the pre-PR preview
+
+**Asked by**: Spec author (spec review)
+**Context**: Open question #2; render needs the function-kcl runtime, normally Docker.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Long-lived function sidecars (gRPC) in the wizard pod | No Docker-in-pod; low latency; dogfoods SPEC-007 `sidecars[]` | Sidecar images to keep in sync with `functions.yaml` versions |
+| B | CI on a draft branch | Zero new runtime | Minutes of latency; broken claims still create branches |
+| C | Embed KCL Go SDK | Fastest | Re-implements/drifts from the real composition pipeline |
+
+**Decision**: A — function-kcl + function-auto-ready as sidecars, `crossplane render` connecting to running functions
+**Rationale**: Preview must reflect the real pipeline (C drifts); pre-PR feedback must be interactive (kills B). Version sync with `functions.yaml` becomes a Renovate-visible dependency.
+**Decided by**: Smaine (spec review, 2026-07-14)
+**References**: FR-007, FR-008, T105
+
+## CL-9 — 2026-07-14 — GitHub OAuth app registration
+
+**Asked by**: Spec author (spec review)
+**Context**: Open question #3; determines who can log in.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | Personal-account OAuth app (Smana) | Matches the repo's reality | Single-owner login base |
+| B | Org-level app | Team semantics | No org in play; premature |
+
+**Decision**: A — personal app; README documents "register under your org" for adopters
+**Rationale**: Reference platform, single maintainer; the seam (FR-014 + standard OAuth config) makes the org variant a config change, not a code change.
+**Decided by**: Smaine (spec review, 2026-07-14)
+**References**: FR-004, T003
+
 ---
 
 ## Related
