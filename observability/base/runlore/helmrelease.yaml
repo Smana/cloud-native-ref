@@ -52,12 +52,20 @@ spec:
     workloadKind: StatefulSet
     replicaCount: 2
     image:
+      # TEMPORARY — rolling `main` tag, paired with `ref.branch: main` in
+      # flux/sources/gitrepo-runlore.yaml, to validate the post-v0.9.1 commits
+      # (#320 / #321 / #322) on a live cluster. Single-arch amd64 validation build from
+      # build-image.yml: fine here (every node is amd64 Bottlerocket), NOT for long-term use.
+      #
+      # REVERT to the released tag once v0.9.2 is cut (PR #323): tag: "0.9.2".
       # NO leading "v". GoReleaser (Smana/runlore release-binaries.yml) publishes the
-      # release image with `{{ .Version }}`, which renders 0.9.0 — so `v0.9.0` 404s
-      # and the StatefulSet lands in ImagePullBackOff. This is the signed, multi-arch
-      # (amd64+arm64), SBOM-attested release image; the rolling `:main` tag from
-      # build-image.yml is a single-arch validation build and must not be used here.
-      tag: "0.9.0"
+      # release image with `{{ .Version }}`, which renders 0.9.2 — so `v0.9.2` 404s
+      # and the StatefulSet lands in ImagePullBackOff. The release image is the signed,
+      # multi-arch (amd64+arm64), SBOM-attested one.
+      #
+      # NB: this was left at "0.9.0" while the GitRepository moved to v0.9.1, so the
+      # cluster ran the 0.9.0 binary against the 0.9.1 chart. Keep the two in lockstep.
+      tag: "main"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
