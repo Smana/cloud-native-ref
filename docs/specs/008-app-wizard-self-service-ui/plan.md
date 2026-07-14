@@ -65,9 +65,9 @@ Backstage scaffolder (portal adoption too heavy for one form), GitHub Issue Form
 | Phase | Scope | Depends on | Issue | Status |
 |-------|-------|------------|-------|--------|
 | [1-create-flow](phases/1-create-flow/plan.md) | Schema pipeline, form (basic+advanced tiers), validation gates, secret guardrail, GitHub OAuth, create PR + render comment, wizard deployed as App claim | — | TBD | 🚧 implemented (T101–T108; T109 E2E deferred to live OAuth) |
-| [2-day2-operations](phases/2-day2-operations/plan.md) | App list, edit with round-trip fidelity, decommission PR | 1-create-flow | TBD | ⏸ pending |
-| [3-llm-assists](phases/3-llm-assists/plan.md) | Describe-to-prefill, network-policy suggester, prompt-set eval | 1-create-flow | TBD | ⏸ pending |
-| [4-zitadel-auth](phases/4-zitadel-auth/plan.md) | Zitadel OIDC login/authz gate; GitHub OAuth demoted to a linked `repo` token for PRs (CL-11) | 1-create-flow | TBD | ⏸ pending |
+| [2-day2-operations](phases/2-day2-operations/plan.md) | App list, edit with round-trip fidelity, decommission PR | 1-create-flow | TBD | 🚧 implemented (T201–T204; T205 live-E2E deferred) |
+| [3-llm-assists](phases/3-llm-assists/plan.md) | Describe-to-prefill, network-policy suggester, prompt-set eval | 1-create-flow | TBD | 🚧 implemented (T301–T303; T304 live prompt-eval needs an LLM key) |
+| [4-zitadel-auth](phases/4-zitadel-auth/plan.md) | Zitadel OIDC login/authz gate; GitHub OAuth demoted to a linked `repo` token for PRs (CL-11) | 1-create-flow | TBD | 🚧 implemented (code complete; live OIDC needs Zitadel client registration T401) |
 
 Phase 1 ships with GitHub OAuth login + an `AUTH_MODE=dev` local bypass; Phase 4 puts Zitadel in front (see CL-11).
 
