@@ -264,7 +264,17 @@ spec:
         # Enable standard Ingress discovery
         ingress: true
 
-      settings:
+      # settingsString, NOT settings — and that is load-bearing, not a style choice.
+      #
+      # `layout` is a YAML map, and homepage renders groups in the order its keys appear.
+      # The chart pipes .Values.config.settings through `toYaml`, which sorts map keys
+      # alphabetically, so a structured `settings:` silently reorders the groups: the
+      # rendered ConfigMap came out Cluster / Demo Apps / LLM Platform / Observability /
+      # Platform Tools / Security & Identity / Ship an App — i.e. the call to action last.
+      # The chart's settingsString is emitted verbatim (no toYaml), so the order below is
+      # the order on screen. `settings` takes precedence over `settingsString`, so it must
+      # be absent entirely.
+      settingsString: |
         title: Cloud Native Platform
         headerStyle: boxed
         # Theme and color not set to allow UI switchers
@@ -278,9 +288,9 @@ spec:
           hideInternetSearch: false
           showSearchSuggestions: true
         layout:
-          # Order here is the order groups render in, so "Ship an App" leads. columns: 1
-          # gives its single card the full width — it reads as a call to action rather
-          # than one tile among twelve. This is what puts self-service above the fold.
+          # This order is the on-screen order: "Ship an App" leads, and columns: 1 gives
+          # its single card the full width so it reads as a call to action rather than one
+          # tile among twelve. That is what puts self-service above the fold.
           Ship an App:
             style: row
             columns: 1
