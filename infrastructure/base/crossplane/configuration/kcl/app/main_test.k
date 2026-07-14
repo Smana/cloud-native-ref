@@ -219,6 +219,11 @@ test_sidecars_security = lambda {
     _missingDefaults = [c.name for c in _sidecarContainers if c.securityContext.allowPrivilegeEscalation != False or c.securityContext.runAsNonRoot != True or "ALL" not in c.securityContext.capabilities.drop]
     assert len(_missingDefaults) == 0, "sidecars missing constitution security defaults: {}".format(_missingDefaults)
     assert dep.spec.template.spec.securityContext.seccompProfile.type == "RuntimeDefault", "pod-level seccompProfile must be RuntimeDefault"
+
+    # Every sidecar gets resource requests+limits even when the claim omits them
+    # (constitution: resource requests + limits mandatory).
+    _missingResources = [c.name for c in _sidecarContainers if not c?.resources?.requests or not c?.resources?.limits]
+    assert len(_missingResources) == 0, "sidecars missing resource requests/limits: {}".format(_missingResources)
     # Per-field override wins: the log-shipper sidecar sets readOnlyRootFilesystem=false.
     _override = [c for c in _sidecarContainers if c.name == "log-shipper"]
     if _override:
@@ -257,9 +262,13 @@ test_persistence = lambda {
         assert "data" in _vols, "pod must have a 'data' volume for persistence"
         _mounts = [m.mountPath for m in dep.spec.template.spec.containers[0].volumeMounts]
         assert _oxr.spec.persistence.mountPath in _mounts, "main container must mount persistence at mountPath"
-        # strategy flips to Recreate unless an explicit RollingUpdate is set
+
+        # strategy: RWO persistence flips to Recreate; RWX keeps RollingUpdate
+        # (unless an explicit deploymentStrategy is set).
         if not _oxr.spec?.deploymentStrategy:
-            assert dep.spec.strategy.type == "Recreate", "persistence should flip strategy to Recreate"
+            _rwo = "ReadWriteOnce" in (_oxr.spec.persistence?.accessModes or ["ReadWriteOnce"])
+            _wantStrategy = "Recreate" if _rwo else "RollingUpdate"
+            assert dep.spec.strategy.type == _wantStrategy, "persistence strategy: RWO->Recreate, RWX->RollingUpdate"
 
     else:
         assert len(pvcs) == 0, "expected 0 PVCs when persistence disabled"
@@ -332,13 +341,13 @@ test_type_fork_flags = lambda {
 test_effective_strategy = lambda {
     _oxr = option("params").oxr
     _dep = [r for r in items if r.kind == "Deployment"][0]
-    # explicit value always wins; else persistence flips to Recreate
+    # explicit value always wins; else RWO persistence -> Recreate, RWX/none -> RollingUpdate
     if _oxr.spec?.deploymentStrategy:
         assert _dep.spec.strategy.type == _oxr.spec.deploymentStrategy, "explicit deploymentStrategy must win in rendered output"
-    elif _oxr.spec.persistence?.enabled:
-        assert _dep.spec.strategy.type == "Recreate", "persistence must default rendered strategy to Recreate"
+    elif _oxr.spec.persistence?.enabled and ("ReadWriteOnce" in (_oxr.spec.persistence?.accessModes or ["ReadWriteOnce"])):
+        assert _dep.spec.strategy.type == "Recreate", "RWO persistence must default rendered strategy to Recreate"
     else:
-        assert _dep.spec.strategy.type == "RollingUpdate", "default rendered strategy must be RollingUpdate"
+        assert _dep.spec.strategy.type == "RollingUpdate", "default/RWX rendered strategy must be RollingUpdate"
     assert True
 }
 

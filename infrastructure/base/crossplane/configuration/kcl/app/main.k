@@ -200,10 +200,12 @@ _isCron = _type == "cron"
 _isDeploymentType = not _isCron
 
 # Effective deployment strategy (FR-007): an explicit user value always wins;
-# otherwise `Recreate` when persistence is enabled (RWO multi-attach guard),
-# else `RollingUpdate`. Computed here since the XRD no longer carries a default.
+# otherwise `Recreate` only for ReadWriteOnce persistence (the multi-attach
+# guard), else `RollingUpdate`. ReadWriteMany supports concurrent attach and
+# keeps RollingUpdate. Computed here since the XRD no longer carries a default.
 _persistenceEnabled = oxr.spec.persistence?.enabled
-_effectiveStrategy = oxr.spec?.deploymentStrategy or ("Recreate" if _persistenceEnabled else "RollingUpdate")
+_persistenceRWO = _persistenceEnabled and "ReadWriteOnce" in (oxr.spec.persistence?.accessModes or ["ReadWriteOnce"])
+_effectiveStrategy = oxr.spec?.deploymentStrategy or ("Recreate" if _persistenceRWO else "RollingUpdate")
 
 # Claim-constant hoists shared across the pod-builder, Service and route blocks.
 _servicePort = oxr.spec.service?.port
@@ -241,6 +243,7 @@ _containerSecurityDefaults = lambda override: any -> any {
 # port exists (preserves the historical web rendered output), else the numeric
 # service.port default (8080). Built in one shot (no mutation).
 _buildProbe = lambda p: any, defaults: any -> any {
+    _p = p or {}
     _pType = p?.type or "http"
     # Numeric port fallback for tcp/grpc (they require an integer port).
     _pPortNum = p?.port or _servicePort or _DEFAULTS.service_port
@@ -267,11 +270,13 @@ _buildProbe = lambda p: any, defaults: any -> any {
             exec = {
                 command = p?.command or []
             }
-        initialDelaySeconds = p?.initialDelaySeconds or defaults.initialDelaySeconds
-        periodSeconds = p?.periodSeconds or defaults.periodSeconds
-        failureThreshold = p?.failureThreshold or defaults.failureThreshold
+        # Key-presence checks (not `or`): an explicit 0 is valid in Kubernetes
+        # and must not be swallowed by the falsy `or` fallback.
+        initialDelaySeconds = _p.initialDelaySeconds if "initialDelaySeconds" in _p else defaults.initialDelaySeconds
+        periodSeconds = _p.periodSeconds if "periodSeconds" in _p else defaults.periodSeconds
+        failureThreshold = _p.failureThreshold if "failureThreshold" in _p else defaults.failureThreshold
         if defaults?.timeoutSeconds:
-            timeoutSeconds = p?.timeoutSeconds or defaults.timeoutSeconds
+            timeoutSeconds = _p.timeoutSeconds if "timeoutSeconds" in _p else defaults.timeoutSeconds
     }
 }
 
@@ -291,8 +296,7 @@ _buildExtraContainer = lambda c: any, withPorts: bool -> any {
             env = c.env
         if c?.envFrom:
             envFrom = c.envFrom
-        if c?.resources:
-            resources = _setResourceRequirements(c.resources)
+        resources = _setResourceRequirements(c?.resources)
         if c?.volumeMounts:
             volumeMounts = c.volumeMounts
         if withPorts and c?.ports:
@@ -328,10 +332,11 @@ _startupProbeDefaults = {
     failureThreshold = _DEFAULTS.startup_failure_threshold
 }
 
-# Whether the main container should carry HTTP probe defaults. `web` keeps
-# today's behavior (probes when a service port is set); `worker`/`cron` only
-# get probes when healthProbes is explicitly set on the claim (FR-002).
-_wantMainProbes = (_isWeb and _servicePort) or (not _isWeb and "healthProbes" in oxr.spec)
+# Probe defaulting. `web` keeps today's behavior: liveness + readiness rendered
+# with HTTP defaults when a service port is set. `worker`/`cron` get a probe
+# ONLY when that specific probe is set on the claim — no HTTP defaults, and each
+# probe is gated independently so setting one never injects the other (FR-002).
+_webDefaultProbes = _isWeb and _servicePort
 
 # Persistence volume + mount (SPEC-007 T009). PVC is named `<xr-name>-data`
 # and mounted on the MAIN container only.
@@ -407,8 +412,9 @@ _mainContainer = {
             protocol = "TCP"
         }]
     resources = _setResourceRequirements(oxr.spec.resources)
-    if _wantMainProbes:
+    if _webDefaultProbes or oxr.spec.healthProbes?.liveness:
         livenessProbe = _buildProbe(oxr.spec.healthProbes?.liveness, _livenessProbeDefaults)
+    if _webDefaultProbes or oxr.spec.healthProbes?.readiness:
         readinessProbe = _buildProbe(oxr.spec.healthProbes?.readiness, _readinessProbeDefaults)
     if oxr.spec.healthProbes?.startup:
         startupProbe = _buildProbe(oxr.spec.healthProbes.startup, _startupProbeDefaults)

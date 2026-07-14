@@ -72,8 +72,8 @@ spec:
                   default: "web"
                 schedule:
                   type: string
-                  description: CronJob schedule in cron format; required when type=cron
-                  pattern: "^[0-9*/ ,-]+$"
+                  description: CronJob schedule — a cron expression or a named schedule (@daily, @hourly, …); required when type=cron
+                  pattern: "^(@(hourly|daily|weekly|monthly|yearly|annually|midnight)|[0-9*/ ,-]+)$"
                 cron:
                   type: object
                   description: CronJob tuning (only used when type=cron)
