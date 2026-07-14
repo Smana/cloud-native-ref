@@ -42,6 +42,18 @@ MANIFEST_DIRS = [
     "crds",
 ]
 
+# YAML that lives under a manifest dir but is NOT a Kubernetes manifest: plain
+# config a workload reads at runtime. It has no apiVersion/kind, so sweeping it
+# into the bundle fails gate 1 ("missing required property: /apiVersion").
+#
+# This list is deliberately explicit rather than a blanket "skip docs with no
+# kind" rule: SPEC-007's contract is that nothing is silently skipped, so a NEW
+# non-manifest YAML must fail the build loudly and be added here on purpose.
+NON_MANIFEST_FILES = {
+    # Stack registry the App Wizard reads via STACKS_PATH (SPEC-008 FR-006).
+    "apps/stacks.yaml",
+}
+
 # Same fixture values CI passed to kubeconform. Substituted so that
 # ${private_domain_name} in a DNS-1123 field validates as a hostname.
 FIXTURE_VARS = {
@@ -586,6 +598,8 @@ def main():
         if not base.exists():
             continue
         for path in base.rglob("*.yaml"):
+            if path.as_posix() in NON_MANIFEST_FILES:
+                continue
             docs = load_docs(path)
             in_overlay = any(str(path).startswith(c + "/") for c in covered)
             for doc in docs:
