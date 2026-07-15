@@ -178,7 +178,13 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix={{branch}}-
+            # {{branch}} is empty on pull_request events, so this template renders the
+            # invalid tag "-<sha>" (leading dash) and buildx fails before it even decides
+            # not to push. The <branch>-<sha> tag is what deployments pin to, and it only
+            # comes from push / workflow_dispatch — where {{branch}} is set — so restrict
+            # it to those. PR builds still get a valid tag from type=ref,event=pr (pr-<n>)
+            # and don't push anyway.
+            type=sha,prefix={{branch}}-,enable=${{ github.event_name != 'pull_request' }}
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
             type=raw,value=${{ steps.app-version.outputs.version }},enable=${{ steps.app-version.outputs.version != '' }}

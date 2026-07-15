@@ -63,11 +63,13 @@ Uses Dagger to run pre-commit hooks in a consistent environment:
 
 #### Kubernetes Validation
 
-**kubeconform**: Kubernetes manifest schema validation
+**`./scripts/validate-manifests.sh`** (SPEC-007): renders the repo the way Flux does —
+every Kustomize overlay (with `postBuild` vars) plus every HelmRelease through `helm
+template` — then gates the rendered bundle with `flux schema validate`.
 ```bash
-- Validates: All YAML manifests against Kubernetes API schemas
-- Checks: Flux clusters, Kustomize directories
-- Detects: Invalid resource definitions, API version mismatches
+- Validates: the rendered bundle against the repo's own XRDs + the Flux/CNCF catalogs
+- Checks: structure AND CEL rules; an unknown Kind FAILS the build (skipMissingSchemas: false)
+- Replaces: kubeconform, which ran with -ignore-missing-schemas and skipped every cloud.ogenki.io claim
 ```
 
 **Polaris**: Best practices enforcement
@@ -253,9 +255,8 @@ Traditional CI/CD has the "works on my machine" problem. Dagger solves this by:
 dagger call pre-commit-terraform \
   --directory=./opentofu/network
 
-# Kubeconform validation
-dagger call kubeconform \
-  --manifests=./clusters/mycluster-0
+# Manifest validation (flux schema + polaris, SPEC-007) — a plain script, not Dagger
+./scripts/validate-manifests.sh
 ```
 
 **Related**: [Dagger: The missing piece of the developer experience](https://blog.ogenki.io/post/dagger-intro/)
@@ -405,12 +406,14 @@ git commit --amend
 - Store real secrets in AWS Secrets Manager
 - Update `.secrets.baseline` if false positive
 
-### Kubeconform Validation Failures
+### Manifest Validation Failures (flux schema)
 
-**Unknown resource type**:
-- Check CRD is installed
-- Verify API version matches CRD version
-- Ensure kubeconform has correct schema path
+**Unknown resource type** (`Skipped` > 0, or a Kind fails to resolve):
+- The schema catalog is generated from the repo's XRDs on every run — a new custom Kind
+  needs its XRD/CRD present so `flux schema` can extract a schema for it
+- Verify the manifest's `apiVersion` matches the CRD version the catalog was built from
+- Unlike the old kubeconform (`-ignore-missing-schemas`), a missing schema is a hard
+  failure by design — `Skipped: 0` is part of the pass criteria, not decoration
 
 ### Crossplane Render Failures
 
