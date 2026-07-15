@@ -40,7 +40,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /out/app-wizard ./cmd/app-wizard
 
 # ---------- crossplane CLI ----------
-FROM alpine:3.21 AS crossplane-cli
+FROM alpine:3.24 AS crossplane-cli
 ARG TARGETOS
 ARG TARGETARCH
 ARG CROSSPLANE_VERSION
