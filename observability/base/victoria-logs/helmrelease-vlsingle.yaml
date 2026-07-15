@@ -38,6 +38,15 @@ spec:
     vector:
       enabled: true
 
+      # Vector subchart: `securityContext` is the CONTAINER context
+      # ("Specify securityContext on Vector containers" — vector values.yaml);
+      # `podSecurityContext` is the pod one. Vector tails host log files as root
+      # but never needs to escalate privileges.
+      # (The `server` component already ships allowPrivilegeEscalation: false as
+      # a chart default, so it needs nothing here.)
+      securityContext:
+        allowPrivilegeEscalation: false
+
       # ============================================================================
       # Vector Custom Configuration for PostgreSQL Query Plan History Parsing
       # ============================================================================

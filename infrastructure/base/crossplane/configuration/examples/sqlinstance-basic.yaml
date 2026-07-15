@@ -12,7 +12,8 @@ metadata:
   name: my-database
   namespace: demo
 spec:
-  # Minimum required configuration
+  # Minimum required configuration (all three are required by the XRD)
+  instances: 1          # Number of PostgreSQL instances; 1 = no HA, fine for dev
   size: small           # Options: small, medium, large
   storageSize: 20Gi     # Persistent storage size
 
@@ -24,3 +25,4 @@ spec:
   roles:
     - name: myapp-user
       comment: "Application database user"
+      superuser: false  # Required; grant superuser only when genuinely needed

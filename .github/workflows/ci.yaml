@@ -64,7 +64,7 @@ jobs:
           directory: .
           quiet: true
           soft_fail: true
-          framework: terraform,kubernetes,secrets
+          framework: terraform,secrets
           output_format: sarif
           output_file_path: checkov-results.sarif
 
@@ -89,34 +89,105 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Validate Flux clusters manifests
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: "latest"
-          verb: call
-          module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.1.3
-          args: validate --manifests "./clusters" --exclude ".github/*,opentofu/*" --catalog
+      - name: Install tools
+        uses: jdx/mise-action@v2
 
-      - name: Validate Kubernetes manifests (Kustomize directories)
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: "latest"
-          verb: call
-          module: github.com/Smana/daggerverse/kubeconform@kubeconform/v0.1.3
-          args: validate --manifests "." --exclude ".github/*,opentofu/*" --env "domain_name:cluster.local,private_domain_name:priv.cluster.local,public_domain_name:cluster.local,cluster_name:foobar,region:eu-west-3,environment:dev,cert_manager_approle_id:random,route53_public_zone_id:Z0123456789" --kustomize --flux --catalog
+      - name: Install the flux-schema plugin
+        run: flux plugin install schema
 
-      - name: Run Polaris configuration validation
+      # render-bundle.py parses every rendered document; PyYAML happens to ship
+      # in the runner image today, but that is not a dependency declaration.
+      - name: Install Python dependencies
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
+      - name: Install Polaris
         uses: fairwindsops/polaris/.github/actions/setup-polaris@master
         with:
           version: '8.5.0'
 
-      - name: Validate Kubernetes best practices
+      # Charts are version-pinned, so only the download layer is cached (CL-2).
+      # The bundle itself is always rendered fresh — a stale bundle is a
+      # silently-wrong green, the exact failure class SPEC-007 removes.
+      - name: Cache Helm chart downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/helm
+          # Glob every HelmRelease filename (helmrelease.yaml, helmrelease-*.yaml,
+          # *-helmrelease.yaml), not just the exact name — ~17 releases use a
+          # suffix and a version bump in those must still bust the cache.
+          key: helm-${{ hashFiles('**/*helmrelease*.yaml', 'flux/sources/**') }}
+          restore-keys: helm-
+
+      - name: Validate manifests (flux schema + polaris)
+        run: ./scripts/validate-manifests.sh
+
+  render-diff:
+    name: Rendered manifest diff 📝
+    runs-on: ubuntu-latest
+    # Informational only — never gates. GitOps: git is the source of truth, so
+    # this diffs the rendered DESIRED state (main vs this PR). Drift (cluster ≠
+    # git) is Flux's concern and is alerted on separately, so no cluster access
+    # is needed here — keeping the job hosted, secretless and fork-safe.
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install tools
+        uses: jdx/mise-action@v2
+
+      - name: Install Python dependencies
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
+      - name: Cache Helm chart downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/helm
+          key: helm-${{ hashFiles('**/*helmrelease*.yaml', 'flux/sources/**') }}
+          restore-keys: helm-
+
+      # Render both sides with each ref's OWN renderer, so a change to
+      # render-bundle.py itself shows up in the diff. Renders are best-effort:
+      # a render error must not sink this informational job (the hard gate is
+      # the kubernetes-validation job above).
+      - name: Render PR head
+        run: python3 scripts/flux-schema/render-bundle.py .bundle-head || true
+
+      - name: Render base (merge-base)
         run: |
-          find . -name "*.yaml" -o -name "*.yml" | grep -E "(infrastructure|security|observability|tooling|namespaces|crds)/" | head -20 | \
-          while read file; do
-            echo "Validating $file"
-            polaris validate --config .polaris.yaml --resource "$file" || true
-          done
+          set -euo pipefail
+          base_sha="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
+          echo "base merge-base: ${base_sha}"
+          git worktree add /tmp/base "${base_sha}"
+          if [[ -f /tmp/base/scripts/flux-schema/render-bundle.py ]]; then
+            ( cd /tmp/base && python3 scripts/flux-schema/render-bundle.py /tmp/base/.bundle-base ) || true
+          else
+            # Transitional: only the PR that introduces render-bundle.py has a
+            # merge-base without it. Safe to delete this branch once merged.
+            echo "base ref predates render-bundle.py — treating base as empty (everything shows as added)."
+            mkdir -p /tmp/base/.bundle-base
+          fi
+
+      - name: Compute rendered diff
+        run: python3 scripts/flux-schema/diff-bundles.py /tmp/base/.bundle-base .bundle-head | tee rendered-diff.md
+
+      - name: Upload full diff artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-diff
+          path: rendered-diff.md
+          if-no-files-found: ignore
+
+      - name: Post/update PR comment
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: rendered-manifest-diff
+          path: rendered-diff.md
 
   shellcheck:
     name: Check the shell scripts 💻

@@ -25,6 +25,12 @@ spec:
       name: vm-common-helm-values
       valuesKey: values.yaml
   values:
+    # Dashboard sync Job — container-level context; see helmrelease-vmsingle.yaml
+    # for why this lives in spec.values and not in the shared values ConfigMap.
+    syncJob:
+      containerSecurityContext:
+        allowPrivilegeEscalation: false
+
     vmsingle:
       enabled: false
 
@@ -40,8 +46,12 @@ spec:
         vmstorage:
           storage:
             volumeClaimTemplate:
-              storageClassName: "gp3"
               spec:
+                # storageClassName is a PersistentVolumeClaimSpec field, so it belongs
+                # under .spec — not directly on volumeClaimTemplate. Misplaced, the VM
+                # operator silently ignored it and provisioned with the default
+                # StorageClass instead of gp3; the schema gate now rejects it outright.
+                storageClassName: "gp3"
                 resources:
                   requests:
                     storage: 10Gi
@@ -69,8 +79,9 @@ spec:
         vmselect:
           storage:
             volumeClaimTemplate:
-              storageClassName: "gp3"
               spec:
+                # See vmstorage above: storageClassName goes under .spec.
+                storageClassName: "gp3"
                 resources:
                   requests:
                     storage: 2Gi

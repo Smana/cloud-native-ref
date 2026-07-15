@@ -5,6 +5,15 @@ Drawio (`.drawio`) files. Open with the [drawio desktop app](https://www.drawio.
 
 ## Files
 
+- [`platform-overview.drawio`](platform-overview.drawio) — the whole platform on one page (AWS
+  managed services → EKS tiers → applications & data). Embedded in the root [`README.md`](../../README.md).
+  Uses official AWS icons (`mxgraph.aws4`) and CNCF/vendor logos embedded as PNG data-URIs
+  (see "Logos" below). Regenerate the README preview after editing:
+
+  ```bash
+  drawio -x -f png -s 2 -b 10 -o docs/architecture/img/platform-overview.png docs/architecture/platform-overview.drawio
+  ```
+
 - [`llm-platform.drawio`](llm-platform.drawio) — self-hosted LLM platform on EKS. Three pages:
   1. **Request path** — client → Tailscale → AI Gateway → filter chain → vLLM.
   2. **One claim, rendered** — what a Crossplane `InferenceService` expands into, plus the weights flow.
@@ -37,3 +46,19 @@ source of truth; keeping the prose in one place is what stops the two from drift
   though it exists is worse than no diagram.
 - Edge colors: slate = request flow, emerald = storage / weights, amber = scaling decisions, red =
   failure paths, dashed grey = optional or disabled.
+
+## Logos
+
+The ogenki preset supports icons/stencils on top of the clean-box style:
+
+- **AWS** services use native draw.io stencils (`mxgraph.aws4.resourceIcon`).
+- **Cloud-native / application** components use their real brand logos, embedded as **PNG
+  data-URIs** so the `.drawio` stays self-contained (no remote refs to rot).
+- Source the logos from the **[CNCF Artwork](https://github.com/cncf/artwork)** repo
+  (`projects/<name>/icon/color/*.svg`) for CNCF projects, and each project's own brand for the
+  rest. **Rasterize SVG → PNG before embedding** — headless draw.io export does not render SVG
+  `data:` URIs (they show as a broken-image placeholder); `rsvg-convert -w 64 -h 64` works. Embed
+  as `image=data:image/png,<base64>` (a comma, **not** `;base64,` — the semicolon terminates the
+  draw.io style value early and the icon silently disappears).
+- Components with no clean logo source (e.g. Gateway API, ExternalDNS, ZITADEL, External Secrets)
+  stay clean ogenki boxes — a consistent, intentional fallback, not a gap to paper over.

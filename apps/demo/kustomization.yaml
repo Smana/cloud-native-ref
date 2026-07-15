@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Parent kustomization for the "demo" stack (apps/stacks.yaml -> namespace: demo).
+#
+# Empty on purpose: the App Wizard appends each new app directory here when it opens a
+# PR (internal/pr/pr.go writes app.yaml, the app's kustomization.yaml, and idempotently
+# registers it in this file). It must exist and be reconciled BEFORE the first app
+# lands — otherwise the wizard offers the stack, opens a perfectly good PR, and the
+# merged app is never applied by Flux, which is the worst kind of failure: silent.
+resources: []

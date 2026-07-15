@@ -53,8 +53,7 @@ spec:
       enabled: true
   route:
     enabled: true
-    parentGateway: platform-tailscale-general
-    parentGatewayNamespace: infrastructure
+    # The parent Gateway is owned by the composition (SPEC-002), not the claim.
     hostname: qwen3
   # LoRA adapter served over the base model (same pod, zero extra GPU).
   # Downloaded by the preload Job into /models/loras/<name>/ and served by

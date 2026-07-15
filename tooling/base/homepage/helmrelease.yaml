@@ -16,6 +16,14 @@ spec:
         name: jameswynn
       interval: 12h
   values:
+    # CONTAINER security context for the main container. This chart is a thin
+    # wrapper over the bjw-s `common` library chart (v1.5.1), where
+    # `securityContext` is "the Security Context for the main container" and
+    # `podSecurityContext` is the pod one (lib/controller/_mainContainer.tpl).
+    # Neither is set by default, so homepage ran with escalation allowed.
+    securityContext:
+      allowPrivilegeEscalation: false
+
     # Enable RBAC for Kubernetes integration
     enableRbac: true
 
@@ -77,6 +85,19 @@ spec:
 
     config:
       bookmarks:
+        # First, next to the App Wizard card: the two things a developer needs the
+        # moment the form asks them something they don't know the answer to.
+        - For Developers:
+            - App Wizard Guide:
+                - abbr: WIZ
+                  href: https://github.com/Smana/cloud-native-ref/blob/main/docs/app-wizard.md
+            - App Claim Examples:
+                - abbr: APP
+                  href: https://github.com/Smana/cloud-native-ref/tree/main/apps
+            - Platform Repo:
+                - abbr: GIT
+                  href: https://github.com/Smana/cloud-native-ref
+
         - Cloud Native:
             - Kubernetes Docs:
                 - abbr: K8s
@@ -100,6 +121,18 @@ spec:
                   href: https://docs.cilium.io/
 
       services:
+        # Deliberately first, and rendered as a single full-width row (see `layout`
+        # below): this is the front door for developers. Everything under it is a tool
+        # you look at; this is the one thing you *do*. Burying it in Platform Tools
+        # alongside Headlamp/Harbor is how self-service goes unused.
+        - Ship an App:
+            - App Wizard:
+                href: https://app-wizard.priv.cloud.ogenki.io
+                description: Describe your app in a form — the wizard opens a GitOps pull request for you. No YAML to write.
+                icon: mdi-rocket-launch-#38bdf8
+                namespace: apps
+                app: app-wizard
+
         - Platform Tools:
             - Headlamp:
                 href: https://headlamp.priv.cloud.ogenki.io
@@ -114,6 +147,13 @@ spec:
                 icon: harbor.png
                 namespace: tooling
                 app: harbor
+
+            - PEV2:
+                href: https://pev2.priv.cloud.ogenki.io
+                description: PostgreSQL Execution Plan Visualizer
+                icon: postgres.png
+                namespace: tooling
+                app: pev2
 
         - Observability:
             - Grafana:
@@ -224,7 +264,17 @@ spec:
         # Enable standard Ingress discovery
         ingress: true
 
-      settings:
+      # settingsString, NOT settings — and that is load-bearing, not a style choice.
+      #
+      # `layout` is a YAML map, and homepage renders groups in the order its keys appear.
+      # The chart pipes .Values.config.settings through `toYaml`, which sorts map keys
+      # alphabetically, so a structured `settings:` silently reorders the groups: the
+      # rendered ConfigMap came out Cluster / Demo Apps / LLM Platform / Observability /
+      # Platform Tools / Security & Identity / Ship an App — i.e. the call to action last.
+      # The chart's settingsString is emitted verbatim (no toYaml), so the order below is
+      # the order on screen. `settings` takes precedence over `settingsString`, so it must
+      # be absent entirely.
+      settingsString: |
         title: Cloud Native Platform
         headerStyle: boxed
         # Theme and color not set to allow UI switchers
@@ -238,9 +288,15 @@ spec:
           hideInternetSearch: false
           showSearchSuggestions: true
         layout:
+          # This order is the on-screen order: "Ship an App" leads, and columns: 1 gives
+          # its single card the full width so it reads as a call to action rather than one
+          # tile among twelve. That is what puts self-service above the fold.
+          Ship an App:
+            style: row
+            columns: 1
           Platform Tools:
             style: row
-            columns: 2
+            columns: 3 # 3 since PEV2 joined Headlamp + Harbor
           Observability:
             style: row
             columns: 3

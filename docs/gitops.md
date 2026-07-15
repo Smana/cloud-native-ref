@@ -576,8 +576,8 @@ spec:
    # Run pre-commit hooks
    pre-commit run --all-files
 
-   # Validate with kubeconform
-   kubeconform infrastructure/base/cilium/
+   # Validate manifests (renders the repo, then flux schema + polaris — SPEC-007)
+   ./scripts/validate-manifests.sh
    ```
 
 4. **Commit and Push**

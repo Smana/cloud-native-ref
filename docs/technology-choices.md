@@ -15,7 +15,7 @@ This platform is built on these core principles:
 
 ## Technology Stack
 
-![Architecture Overview](../.assets/cloud-native-ref.png)
+![Architecture Overview](architecture/img/platform-overview.png)
 
 | Technology                                                                                                           | Domain                 | What it is used for?                                                                                      |
 |----------------------------------------------------------------------------------------------------------------------|------------------------|----------------------------------------------------------------------------------------------------------|

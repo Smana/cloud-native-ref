@@ -15,6 +15,21 @@ spec:
       schema:
         openAPIV3Schema:
           type: object
+          # The primary container is named after the app itself, not `main` — the
+          # composition's own test pins this (kcl/app/main_test.k: `containers[0].name
+          # == _oxr.metadata.name`). So a sidecar/initContainer that reuses the app's
+          # name renders a Deployment with two containers of the same name. Caught here,
+          # at admission, where the message tells you what to do; otherwise it surfaces
+          # deep in the Crossplane reconcile loop as an opaque
+          # `duplicate entries for key [name=...]` on the managed resource.
+          #
+          # These live at the schema root because a rule under `spec` cannot see
+          # metadata.name.
+          x-kubernetes-validations:
+            - rule: "!has(self.spec) || !has(self.spec.sidecars) || self.spec.sidecars.all(c, c.name != self.metadata.name)"
+              message: "a sidecar may not reuse the app's own name: it collides with the primary container"
+            - rule: "!has(self.spec) || !has(self.spec.initContainers) || self.spec.initContainers.all(c, c.name != self.metadata.name)"
+              message: "an initContainer may not reuse the app's own name: it collides with the primary container"
           properties:
             spec:
               type: object
@@ -379,17 +394,19 @@ spec:
                   type: array
                   description: Init containers that run to completion before the main container starts. Inherit the constitution security defaults unless overridden.
                   maxItems: 16
-                  x-kubernetes-validations:
-                    - rule: "self.all(c, c.name != 'main')"
-                      message: "container name 'main' is reserved for the primary container"
-                    - rule: "self.all(c, self.filter(d, d.name == c.name).size() == 1)"
-                      message: "initContainers names must be unique"
+                  # Uniqueness on name is enforced by the API server via the map list
+                  # type, not by a CEL rule: an O(n^2) self.filter() rule over 16 items
+                  # blows the CRD's estimated-cost budget and the XRD never establishes.
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - name
                   items:
                     type: object
                     properties:
                       name:
                         type: string
                         description: Container name
+                        maxLength: 63
                       image:
                         type: string
                         description: Container image in plain "repo:tag" form
@@ -556,16 +573,16 @@ spec:
                   type: array
                   description: Sidecar containers that run alongside the main container. Inherit the constitution security defaults unless overridden.
                   maxItems: 16
-                  x-kubernetes-validations:
-                    - rule: "self.all(c, c.name != 'main')"
-                      message: "container name 'main' is reserved for the primary container"
-                    - rule: "self.all(c, self.filter(d, d.name == c.name).size() == 1)"
-                      message: "sidecars names must be unique"
+                  # See initContainers: uniqueness via map list type, not a CEL rule.
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - name
                   items:
                     type: object
                     properties:
                       name:
                         type: string
+                        maxLength: 63
                         description: Container name
                       image:
                         type: string

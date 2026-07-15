@@ -23,14 +23,30 @@ spec:
         externalSecret:
           enabled: true
           name: "headlamp-envvars"
+    # CONTAINER security context for the main `headlamp` container ("Headlamp
+    # containers Security Context" — chart values.yaml; `podSecurityContext` is
+    # the pod one). Merged with the chart default (runAsNonRoot / runAsUser 100 /
+    # runAsGroup 101 / privileged false), which omits allowPrivilegeEscalation.
+    securityContext:
+      allowPrivilegeEscalation: false
+
+    # The chart renders `initContainers` verbatim (toYaml), so these three carry
+    # their own securityContext — .Values.securityContext does NOT reach them.
+    #
+    # Images are pinned instead of tracking `:latest`. Each pinned tag below was
+    # verified to resolve to the SAME digest `:latest` currently points at, so
+    # this pins today's behaviour rather than changing it.
     initContainers:
       - name: flux-plugin
         command:
           - /bin/sh
           - -c
           - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/
-        image: ghcr.io/headlamp-k8s/headlamp-plugin-flux:latest
-        imagePullPolicy: Always
+        # was :latest — sha256:055377b9…667fdccb
+        image: ghcr.io/headlamp-k8s/headlamp-plugin-flux:v0.6.0
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
         volumeMounts:
           - mountPath: /build/plugins
             name: headlamp-plugins
@@ -40,8 +56,11 @@ spec:
           - /bin/sh
           - -c
           - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/
-        image: ghcr.io/headlamp-k8s/headlamp-plugin-cert-manager:latest
-        imagePullPolicy: Always
+        # was :latest — sha256:d7d0321a…476b43fe
+        image: ghcr.io/headlamp-k8s/headlamp-plugin-cert-manager:v0.1.0
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
         volumeMounts:
           - mountPath: /build/plugins
             name: headlamp-plugins
@@ -51,8 +70,11 @@ spec:
           - /bin/sh
           - -c
           - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/
-        image: ghcr.io/headlamp-k8s/headlamp-plugin-ai-assistant:latest
-        imagePullPolicy: Always
+        # was :latest — sha256:6e66f8b7…bc335aa1
+        image: ghcr.io/headlamp-k8s/headlamp-plugin-ai-assistant:v0.2.0-alpha
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
         volumeMounts:
           - mountPath: /build/plugins
             name: headlamp-plugins

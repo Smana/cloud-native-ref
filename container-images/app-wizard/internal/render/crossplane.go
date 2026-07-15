@@ -19,6 +19,18 @@ import (
 type CrossplaneRenderer struct {
 	// Binary is the crossplane CLI path (default "crossplane").
 	Binary string
+	// EngineBinary is passed as --crossplane-binary.
+	//
+	// Crossplane v2's render runs TWO things in Docker by default: the composition
+	// functions AND the render engine itself. DevTargets below only addresses the
+	// former. In a distroless pod there is no Docker daemon, so the engine half fails
+	// with `cannot create Docker network for rendering`, no matter how the functions
+	// are annotated. Pointing the engine at the local CLI is what makes rendering
+	// possible without a Docker socket.
+	//
+	// Empty when the binary cannot be resolved, in which case the flag is omitted
+	// rather than passed empty.
+	EngineBinary string
 	// CompositionPath / FunctionsPath / EnvConfigPath are absolute paths to the
 	// composition, functions, and environmentconfig files.
 	CompositionPath string
@@ -40,13 +52,33 @@ func NewCrossplaneRenderer(repoRoot, compositionPath, functionsPath, envConfigPa
 		}
 		return filepath.Join(repoRoot, p)
 	}
+	const binary = "crossplane"
+	// Resolve once, here, rather than per render: if the CLI is missing we want that
+	// visible in one place, and an unresolved path must not become `--crossplane-binary=`.
+	enginePath, err := exec.LookPath(binary)
+	if err != nil {
+		enginePath = ""
+	}
 	return &CrossplaneRenderer{
-		Binary:          "crossplane",
+		Binary:          binary,
+		EngineBinary:    enginePath,
 		CompositionPath: abs(compositionPath),
 		FunctionsPath:   abs(functionsPath),
 		EnvConfigPath:   abs(envConfigPath),
 		DevTargets:      devTargets,
 	}
+}
+
+// renderArgs builds the `crossplane render` argv.
+func (r *CrossplaneRenderer) renderArgs(claimPath, functionsPath string) []string {
+	args := []string{"render", claimPath, r.CompositionPath, functionsPath}
+	if r.EnvConfigPath != "" {
+		args = append(args, "--extra-resources", r.EnvConfigPath)
+	}
+	if r.EngineBinary != "" {
+		args = append(args, "--crossplane-binary="+r.EngineBinary)
+	}
+	return args
 }
 
 // DevFunctionsYAML overlays the "Development" runtime onto a functions.yaml
@@ -134,10 +166,7 @@ func (r *CrossplaneRenderer) Render(ctx context.Context, claimYAML []byte) ([]ap
 		functionsPath = ftmp.Name()
 	}
 
-	args := []string{"render", tmp.Name(), r.CompositionPath, functionsPath}
-	if r.EnvConfigPath != "" {
-		args = append(args, "--extra-resources", r.EnvConfigPath)
-	}
+	args := r.renderArgs(tmp.Name(), functionsPath)
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, r.Binary, args...)

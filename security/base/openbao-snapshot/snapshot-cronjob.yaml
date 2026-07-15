@@ -43,6 +43,12 @@ spec:
               image: smana/openbao-snapshot:v0.1.0
               imagePullPolicy: IfNotPresent
               name: openbao-snapshot
+              # Container-level context. The pod-level `securityContext` above
+              # carries fsGroup/runAsUser/runAsGroup; allowPrivilegeEscalation is
+              # only valid at container level. The job just calls the OpenBao API
+              # and writes a snapshot to S3 — it never needs to escalate.
+              securityContext:
+                allowPrivilegeEscalation: false
               resources:
                 limits:
                   cpu: 150m

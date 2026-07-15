@@ -24,6 +24,37 @@ spec:
     base_url: oncall.${private_domain_name}
     base_url_protocol: https
 
+    # --- Container security contexts -----------------------------------------
+    # This chart ships all three of these empty, so every container ran with
+    # privilege escalation allowed. Three separate keys are needed because three
+    # different container sets are involved (verified against the chart templates):
+    #
+    #   securityContext                     -> the `oncall` container in the engine
+    #                                          and celery Deployments, and in the
+    #                                          engine-migrate Job
+    #                                          (engine/deployment.yaml, celery/deployment.yaml,
+    #                                           engine/job-migrate.yaml)
+    #   init.securityContext                -> the `wait-for-db` initContainer
+    #                                          (_helpers.tpl "oncall.initContainer")
+    #   grafana.initChownData.securityContext -> the bundled grafana subchart's
+    #                                          `init-chown-data` initContainer
+    #
+    # All three are CONTAINER-level contexts (`podSecurityContext` is the pod one).
+    securityContext:
+      allowPrivilegeEscalation: false
+
+    init:
+      securityContext:
+        allowPrivilegeEscalation: false
+
+    grafana:
+      # Merged with the chart default (runAsUser: 0 + CHOWN capability), which this
+      # initContainer needs to chown the Grafana PVC. Forbidding *escalation* does
+      # not remove the capability it already holds, so the chown still works.
+      initChownData:
+        securityContext:
+          allowPrivilegeEscalation: false
+
     engine:
       replicaCount: 1
       resources:

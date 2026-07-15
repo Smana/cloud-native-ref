@@ -2,7 +2,7 @@
 name: kubernetes-reviewer
 description: Review Kubernetes manifests for best practices including resource limits, probes, labels, security contexts, and pod disruption budgets
 model: sonnet
-allowed-tools: Read, Grep, Glob, Bash(kubectl:*), Bash(polaris:*), Bash(kube-linter:*), Bash(kubeconform:*), mcp__flux-operator-mcp__get_kubernetes_resources, mcp__context7__query-docs
+allowed-tools: Read, Grep, Glob, Bash(kubectl:*), Bash(polaris:*), Bash(kube-linter:*), Bash(flux:*), mcp__flux-operator-mcp__get_kubernetes_resources, mcp__context7__query-docs
 ---
 
 # Kubernetes Manifest Reviewer
@@ -26,7 +26,7 @@ You review Kubernetes manifests for production readiness and best practices.
 
 - `polaris audit --audit-path <file> --format=pretty` for security scoring
 - `kube-linter lint <file>` for best practices
-- `kubeconform -summary -output json <file>` for schema validation
+- `flux schema validate <file>` for schema + CEL validation (SPEC-007 replaced kubeconform; the whole repo is gated by `./scripts/validate-manifests.sh`)
 
 ## Output
 

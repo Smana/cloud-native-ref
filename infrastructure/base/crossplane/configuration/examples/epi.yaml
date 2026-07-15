@@ -4,9 +4,6 @@ metadata:
   name: xplane-foobar
   namespace: security
 spec:
-  claimRef:
-    name: xplane-foobar
-    namespace: security
   clusters:
     - name: "mycluster-0"
       region: "eu-west-3"

@@ -109,3 +109,41 @@ spec:
 		}
 	}
 }
+
+// Crossplane v2 runs the render ENGINE in Docker by default — separately from the
+// functions — so annotating the functions for the Development runtime is not enough
+// inside a container. Without --crossplane-binary the preview dies with:
+//
+//	crossplane: error: cannot create Docker network for rendering: ...
+//	Cannot connect to the Docker daemon at unix:///var/run/docker.sock
+func TestRenderArgsPointTheEngineAtTheLocalBinary(t *testing.T) {
+	r := &CrossplaneRenderer{
+		Binary:          "crossplane",
+		EngineBinary:    "/usr/local/bin/crossplane",
+		CompositionPath: "/repo/composition.yaml",
+		EnvConfigPath:   "/repo/environmentconfig.yaml",
+		DevTargets:      map[string]string{"function-kcl": "localhost:9443"},
+	}
+
+	args := r.renderArgs("/tmp/claim.yaml", "/tmp/functions.yaml")
+
+	var got string
+	for _, a := range args {
+		if strings.HasPrefix(a, "--crossplane-binary=") {
+			got = a
+		}
+	}
+	if got != "--crossplane-binary=/usr/local/bin/crossplane" {
+		t.Fatalf("render must run the engine from the local binary, not Docker; args = %v", args)
+	}
+}
+
+func TestRenderArgsOmitEngineFlagWhenBinaryUnresolved(t *testing.T) {
+	r := &CrossplaneRenderer{Binary: "crossplane", CompositionPath: "/repo/composition.yaml"}
+
+	for _, a := range r.renderArgs("/tmp/claim.yaml", "/tmp/functions.yaml") {
+		if strings.HasPrefix(a, "--crossplane-binary=") {
+			t.Fatalf("must not pass an empty --crossplane-binary; args = %v", r.renderArgs("/tmp/claim.yaml", "/tmp/functions.yaml"))
+		}
+	}
+}

@@ -28,3 +28,12 @@ spec:
         requests:
           cpu: 300m
           memory: 256Mi
+
+      # CONTAINER security context for the `operator` container
+      # (`operatorConfig.podSecurityContext` is the pod one — see the chart's
+      # templates/deployment.yaml). The chart ships both empty, so the operator
+      # ran with privilege escalation allowed. The operator only talks to the
+      # Kubernetes and Tailscale APIs; the tailscale *proxies* it creates are
+      # separate pods governed by their own ProxyClass.
+      securityContext:
+        allowPrivilegeEscalation: false

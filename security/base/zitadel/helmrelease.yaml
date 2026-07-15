@@ -24,6 +24,18 @@ spec:
       interval: 12h
   values:
     replicaCount: 1
+
+    # Chart-wide CONTAINER security context. The chart threads `.Values.securityContext`
+    # into the zitadel Deployment AND every Job container (init, setup + its
+    # machinekey/machine-pat sidecars, cleanup), so this one block covers all six.
+    # The chart default sets runAsNonRoot/runAsUser/readOnlyRootFilesystem/privileged
+    # but omits allowPrivilegeEscalation; this merges with those defaults rather
+    # than replacing them.
+    # (`zitadel.securityContext` / `login.securityContext` are per-component
+    # overrides that fall back to this block while left empty — they are.)
+    securityContext:
+      allowPrivilegeEscalation: false
+
     initJob:
       backoffLimit: 30 # Wait for the CNPG database instance to be ready
 

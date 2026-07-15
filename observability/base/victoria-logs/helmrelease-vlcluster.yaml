@@ -66,6 +66,14 @@ spec:
           cpu: 100m
           memory: 200Mi
 
+      # Container-level securityContext. In the VictoriaMetrics charts the
+      # `securityContext` key is the CONTAINER context (`podSecurityContext` is
+      # the pod one); the chart default only sets runAsNonRoot/runAsUser/
+      # runAsGroup and omits allowPrivilegeEscalation, which the constitution
+      # mandates. Merged with, not replacing, those defaults.
+      securityContext:
+        allowPrivilegeEscalation: false
+
       vmServiceScrape:
         enabled: true
 
@@ -112,6 +120,10 @@ spec:
           cpu: 100m
           memory: 200Mi
 
+      # Container-level securityContext — see the vlselect block above.
+      securityContext:
+        allowPrivilegeEscalation: false
+
       vmServiceScrape:
         enabled: true
 
@@ -156,8 +168,18 @@ spec:
           cpu: 500m
           memory: 512Mi
 
+      # Container-level securityContext — see the vlselect block above.
+      securityContext:
+        allowPrivilegeEscalation: false
+
       vmServiceScrape:
         enabled: true
 
     vector:
       enabled: true
+
+      # Vector subchart: `securityContext` is the CONTAINER context
+      # ("Specify securityContext on Vector containers" — vector values.yaml).
+      # Vector tails host log files as root; it never needs to escalate.
+      securityContext:
+        allowPrivilegeEscalation: false

@@ -71,7 +71,7 @@ SC-XXX whose text contains no metric or observable condition. Recommendation: re
 Every SC-XXX should be answerable with a command a reader can run (inspired by superpowers `verification-before-completion`). Check `spec.md` / `plan.md` for each SC: is there a clear command, query, or observable signal that produces pass/fail evidence?
 
 Examples of acceptable evidence paths:
-- `kubeconform -summary <manifest>` → 0 invalid
+- `./scripts/validate-manifests.sh` → `Invalid: 0, Skipped: 0`
 - `./scripts/validate-kcl-compositions.sh` → exit 0
 - `flux get kustomization <name>` → `Ready=True`
 - `kubectl get <xr>` → `Synced=True, Ready=True`

@@ -12,6 +12,7 @@ Before claiming status: identify the command, run it fresh, cite the output inli
 
 | Claim | Evidence (fresh, this message) |
 |-------|--------------------------------|
+| Manifests valid | `./scripts/validate-manifests.sh` → exit 0, and the report shows `Invalid: 0, Skipped: 0` |
 | KCL composition valid | `./scripts/validate-kcl-compositions.sh` → exit 0 |
 | Spec ready | `./scripts/validate-spec.sh <dir>` → 0 errors |
 | SC-XXX met (post-merge) | `/verify-spec <dir>` against live cluster |
@@ -20,7 +21,12 @@ Before claiming status: identify the command, run it fresh, cite the output inli
 | Policy change works | `hubble observe --verdict DROPPED` matches intent |
 | Configuration change took effect | Observable difference (rendered manifest, log line, API response) — not just "reconciled" |
 
-Generic commands (`kcl fmt`, `kubeconform`, `trivy config`, `tofu plan`) are already listed in [`CLAUDE.md`](../../CLAUDE.md) under *Validation Commands* and the per-domain rules (`opentofu.md`, `kcl-crossplane.md`).
+**`Skipped: 0` is part of the claim, not decoration.** A resource with no schema is not validated;
+it is ignored. Reporting "validation passed" while resources were skipped is the failure mode
+SPEC-007 was written to remove — kubeconform ran with `-ignore-missing-schemas` and every
+`cloud.ogenki.io` claim in the repo went unchecked for the life of the project.
+
+Generic commands (`kcl fmt`, `trivy config`, `tofu plan`) are already listed in [`CLAUDE.md`](../../CLAUDE.md) under *Validation Commands* and the per-domain rules (`opentofu.md`, `kcl-crossplane.md`).
 
 ## Systematic debugging
 
@@ -31,7 +37,7 @@ Four phases, in order:
 1. **Investigate** — read the error exactly, reproduce, check recent commits / Renovate PRs / Flux lastHandled timestamps, gather evidence at each layer (use `/gitops-cluster-debug` for the Flux → Kubernetes → Crossplane chain; use the `victorialogs` / `victoriametrics` MCPs for log/metric scale; use `hubble observe` for network).
 2. **Pattern** — find a working analogue (sibling composition, prior commit, reference ADR). List every difference — no detail is too small.
 3. **Hypothesize** — one stated theory, smallest possible test, one variable. Worked → step 4. Didn't work → new hypothesis, do not pile fixes.
-4. **Fix** — single change at the root cause. Reproduce as a test when feasible (`main_test.k` for KCL, `kubeconform` for manifests). Verify with the evidence table above.
+4. **Fix** — single change at the root cause. Reproduce as a test when feasible (`main_test.k` for KCL, `./scripts/validate-manifests.sh` for manifests). Verify with the evidence table above.
 
 After three failed fixes, stop — the pattern is probably wrong, not fix #4. Raise it.
 

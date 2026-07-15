@@ -7,6 +7,23 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#002538" />
     <title>App Wizard · Ogenki</title>
+    <script>
+      // Runs before first paint, so a dark-mode user never sees a white flash: React
+      // only resolves the theme after mount, which is one paint too late. Mirrors
+      // src/lib/theme.ts — keep the storage key and the fallback in step with it.
+      (function () {
+        try {
+          var stored = localStorage.getItem("app-wizard:theme");
+          var mode = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+          var dark =
+            mode === "dark" ||
+            (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
+        } catch (e) {
+          /* localStorage unavailable (Safari private mode): fall through to light. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

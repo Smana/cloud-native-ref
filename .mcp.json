@@ -9,6 +9,10 @@
         "KUBECONFIG": "/home/smana/.kube/config"
       }
     },
+    "flux-schema": {
+      "type": "http",
+      "url": "https://schemas.fluxoperator.dev/mcp"
+    },
     "victorialogs": {
       "command": "/usr/local/bin/mcp-victorialogs",
       "env": {
