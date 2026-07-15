@@ -17,17 +17,17 @@ This is a **reference implementation** of a complete cloud-native platform that 
 
 ## Architecture Overview
 
-![Platform Architecture](.assets/cloud-native-ref.png)
+![Platform Architecture](docs/architecture/img/platform-overview.png)
 
-The platform is organized in three layers:
+> Editable source: [`docs/architecture/platform-overview.drawio`](docs/architecture/platform-overview.drawio)
 
-1. **AWS Managed Services** (left): Route53, ELB, KMS, IAM, S3 (Could be any other cloud provider that has these basic managed services)
-2. **Platform Services** (center): EKS cluster with Flux, Crossplane, security, networking, observability
-3. **Applications** (right): Harbor, Grafana, VictoriaMetrics, demo apps
+The platform is organized in three bands:
 
-**Private Access**: Tailscale VPN provides secure access to platform tools.
+1. **AWS Managed Services** (left): Route 53, ELB, IAM (via EKS Pod Identity), S3, KMS — all provisioned by Crossplane `provider-aws` (could be any cloud with these basic managed services).
+2. **EKS Cluster** (center): Cilium eBPF CNI on Karpenter-managed nodes, in four tiers — GitOps & composition (Flux, Crossplane, the App/SQLInstance/EPI compositions), compute & networking (Cilium, Gateway API, ExternalDNS, Karpenter + KEDA), security & identity (External Secrets, cert-manager, Kyverno, ZITADEL), and observability (VictoriaMetrics/Logs/Traces, Grafana).
+3. **Applications & Data** (right): App Wizard, Harbor, demo apps, runlore, plus the CloudNativePG / Valkey / S3 data stores the App and SQLInstance compositions provision. The self-hosted LLM platform is opt-in and off by default.
 
-**Secrets Management**: OpenBao (open-source Vault fork) provides PKI and secret storage.
+**GitOps**: Flux reconciles the repo; **private access**: Tailscale zero-trust VPN; **secrets & PKI**: OpenBao (open-source Vault fork). CI runs on self-hosted GitHub Actions runners (disabled by default).
 
 ## Quickstart
 
