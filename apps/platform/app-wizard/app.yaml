@@ -27,14 +27,11 @@ spec:
     # Tag format is <branch>-<short-sha>, set by the build workflow's metadata-action —
     # NOT the raw commit sha (that gives ImagePullBackOff: not found).
     #
-    # 6901dd7 is the first image that can actually render: it carries the crossplane CLI
-    # AND passes --crossplane-binary, so neither the functions nor the render engine
-    # reach for a Docker socket the pod does not have.
-    #
-    # POST-MERGE: re-pin to the main-<short-sha> the merge build publishes. This is a
-    # feature-branch artifact — it resolves today, but main should not depend on a tag
-    # named after a branch that no longer exists.
-    tag: "feat-flux-schema-validation-6901dd7"
+    # main-8886ba3 = the merge of #1593 (SPEC-007). This image carries the crossplane CLI
+    # AND passes --crossplane-binary, so neither the functions nor the render engine reach
+    # for a Docker socket the pod does not have. Bump to the next main-<short-sha> whenever
+    # container-images/app-wizard/ changes and the build publishes a new image.
+    tag: "main-8886ba3"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
