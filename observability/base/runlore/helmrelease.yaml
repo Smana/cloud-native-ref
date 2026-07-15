@@ -52,17 +52,17 @@ spec:
     workloadKind: StatefulSet
     replicaCount: 2
     image:
-      # MUST match the GitRepository tag in flux/sources/gitrepo-runlore.yaml. This was
-      # left at "0.9.0" while the source moved to v0.9.1, so the cluster quietly ran the
-      # 0.9.0 binary behind the 0.9.1 chart — none of v0.9.1's six Go fixes were actually
-      # live, and nothing failed to say so. Move the two together, always.
+      # MUST match the GitRepository tag in flux/sources/gitrepo-runlore.yaml. It was
+      # once left at "0.9.0" while the source moved to v0.9.1, so the cluster quietly ran
+      # the 0.9.0 binary behind the 0.9.1 chart — none of that release's fixes were live,
+      # and nothing failed to say so. Move the two together, always.
       #
       # NO leading "v". GoReleaser (Smana/runlore release-binaries.yml) publishes the
-      # release image as `{{ .Version }}` — 0.9.1, not v0.9.1 — so a `v` prefix 404s and
+      # release image as `{{ .Version }}` — 0.9.2, not v0.9.2 — so a `v` prefix 404s and
       # the StatefulSet lands in ImagePullBackOff. This is the signed, multi-arch,
       # SBOM-attested release image; the rolling `:main` tag from build-image.yml is a
       # single-arch validation build and must not be used here.
-      tag: "0.9.1"
+      tag: "0.9.2"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
