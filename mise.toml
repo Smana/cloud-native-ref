@@ -18,4 +18,4 @@ trivy = "0.72.0"
 # install the schema plugin with: flux plugin install schema
 flux2 = "2.9.2"
 helm = "3.21.3"
-kustomize = "5.4.3"
+kustomize = "5.8.1"
