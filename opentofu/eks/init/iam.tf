@@ -207,6 +207,11 @@ resource "aws_iam_policy" "crossplane_s3" {
 EOF
 }
 
+# kms:CreateKey/TagResource are gated by the xplane-* request tag (tag-on-create).
+# kms:CreateAlias is kept in a SEPARATE statement scoped by resource ARN, because
+# CreateAlias does not support request tags — an aws:RequestTag condition on it can
+# never match, which silently denies it (symptom: Crossplane KMS Alias MR stuck
+# Synced=False with AccessDenied on kms:CreateAlias even though the action is listed).
 resource "aws_iam_policy" "crossplane_kms" {
   name        = "crossplane_kms_${var.name}"
   path        = "/"
@@ -232,8 +237,7 @@ resource "aws_iam_policy" "crossplane_kms" {
             "Effect": "Allow",
             "Action": [
                     "kms:CreateKey",
-                    "kms:TagResource",
-                    "kms:CreateAlias"
+                    "kms:TagResource"
             ],
             "Resource": [
                 "*"
@@ -243,6 +247,17 @@ resource "aws_iam_policy" "crossplane_kms" {
                     "aws:RequestTag/crossplane-name": "xplane-*"
                 }
             }
+        },
+        {
+            "Sid": "CreateXplaneAliases",
+            "Effect": "Allow",
+            "Action": [
+                    "kms:CreateAlias"
+            ],
+            "Resource": [
+                "arn:aws:kms:${var.region}:*:alias/xplane-*",
+                "arn:aws:kms:${var.region}:*:key/*"
+            ]
         }
     ]
 }
