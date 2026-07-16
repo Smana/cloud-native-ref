@@ -184,7 +184,7 @@ jobs:
 
       - name: Post/update PR comment
         if: always() && github.event.pull_request.head.repo.full_name == github.repository
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
         with:
           header: rendered-manifest-diff
           path: rendered-diff.md
