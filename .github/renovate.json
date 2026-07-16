@@ -42,6 +42,56 @@
                 "ghcr.io/vllm-project/charts/semantic-router"
             ],
             "allowedVersions": "<0.3.0"
+        },
+        {
+            "description": "app-wizard Go modules: group non-major bumps into one PR and automerge patch/minor/digest once CI (go test + image build) passes. Major bumps stay individual PRs for review.",
+            "matchFileNames": [
+                "container-images/app-wizard/**"
+            ],
+            "matchManagers": [
+                "gomod"
+            ],
+            "matchUpdateTypes": [
+                "minor",
+                "patch",
+                "digest"
+            ],
+            "groupName": "app-wizard go",
+            "automerge": true,
+            "platformAutomerge": true
+        },
+        {
+            "description": "app-wizard UI (npm): group non-major bumps into one PR and automerge patch/minor once CI (vitest + tsc + build) passes. Major bumps (e.g. tailwind v4, vite v8, typescript v7, vitest v4) stay individual PRs for review.",
+            "matchFileNames": [
+                "container-images/app-wizard/**"
+            ],
+            "matchManagers": [
+                "npm"
+            ],
+            "matchUpdateTypes": [
+                "minor",
+                "patch"
+            ],
+            "groupName": "app-wizard ui",
+            "automerge": true,
+            "platformAutomerge": true
+        },
+        {
+            "description": "app-wizard Dockerfile base images (node, golang, alpine): group non-major bumps and automerge patch/minor/digest once the image build passes. Major bumps stay individual PRs for review.",
+            "matchFileNames": [
+                "container-images/app-wizard/**"
+            ],
+            "matchManagers": [
+                "dockerfile"
+            ],
+            "matchUpdateTypes": [
+                "minor",
+                "patch",
+                "digest"
+            ],
+            "groupName": "app-wizard docker",
+            "automerge": true,
+            "platformAutomerge": true
         }
     ],
     "registryAliases": {
