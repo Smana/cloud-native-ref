@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Collapsible } from "../components/ui/collapsible";
 import { Input, Textarea } from "../components/ui/input";
 import { Select } from "../components/ui/select";
+import { YamlBlock } from "../components/YamlBlock";
 import { Field } from "./Field";
 import { ImageField } from "./ImageField";
 import { SecretsEditor } from "./SecretsEditor";
@@ -550,12 +551,12 @@ export function WizardForm({ schema, user, initial, onBack }: Props) {
               Only the values you set — the platform fills in the rest. Use
               <strong> Preview </strong> to see the full resources that will be created.
             </p>
-            <pre
-              data-testid="yaml-pane"
-              className="max-h-[70vh] overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed"
-            >
-              <code>{yamlText}</code>
-            </pre>
+            <YamlBlock
+              yaml={yamlText}
+              maxHeightClass="max-h-[70vh]"
+              copyable={false}
+              testId="yaml-pane"
+            />
           </CardContent>
         </Card>
       </div>
@@ -665,9 +666,9 @@ function PreviewCard({ preview }: { preview: RenderPreviewResponse }) {
                           <span className="text-xs text-muted-foreground">— {r.role}</span>
                         )}
                       </summary>
-                      <pre className="max-h-[50vh] overflow-auto border-t border-border/60 bg-muted p-3 text-xs leading-relaxed">
-                        <code>{r.yaml}</code>
-                      </pre>
+                      <div className="border-t border-border/60 p-2">
+                        <YamlBlock yaml={r.yaml} maxHeightClass="max-h-[50vh]" />
+                      </div>
                     </details>
                   </li>
                 ) : (
