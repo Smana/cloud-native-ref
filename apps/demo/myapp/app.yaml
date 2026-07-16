@@ -1,0 +1,10 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: myapp
+  namespace: demo
+spec:
+  image:
+    repository: myimg
+    tag: v1.0
+  type: worker
