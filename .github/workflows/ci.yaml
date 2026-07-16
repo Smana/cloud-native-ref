@@ -109,7 +109,7 @@ jobs:
       # The bundle itself is always rendered fresh — a stale bundle is a
       # silently-wrong green, the exact failure class SPEC-007 removes.
       - name: Cache Helm chart downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/helm
           # Glob every HelmRelease filename (helmrelease.yaml, helmrelease-*.yaml,
@@ -144,7 +144,7 @@ jobs:
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
 
       - name: Cache Helm chart downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/helm
           key: helm-${{ hashFiles('**/*helmrelease*.yaml', 'flux/sources/**') }}
