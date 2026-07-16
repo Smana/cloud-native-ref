@@ -53,13 +53,32 @@ RUN apk add --no-cache curl \
     # preview in production.
     && /out-crossplane version --client
 
+# ---------- crossplane CORE engine ----------
+# The crank/CLI above is only the render DRIVER. `crossplane render` shells out to
+# `<--crossplane-binary> internal render`, and `internal render` is implemented ONLY
+# by the crossplane CORE binary — the crank/CLI has no `internal` command and fails
+# with `crossplane: error: unexpected argument internal` (exit 80). The core binary
+# is not published on releases.crossplane.io, so extract it from the same-versioned
+# controller image (kept in lockstep with CROSSPLANE_VERSION). Its `/bin/crossplane`
+# is a symlink into the image's /nix/store, so resolve and copy the real target.
+FROM xpkg.crossplane.io/crossplane/crossplane:${CROSSPLANE_VERSION} AS crossplane-core-img
+
+FROM alpine:3.21 AS crossplane-core
+COPY --from=crossplane-core-img / /core-root/
+RUN set -eux \
+    && cp "/core-root$(readlink /core-root/bin/crossplane)" /out-crossplane-core \
+    && chmod 0755 /out-crossplane-core \
+    # Fail the build here if this isn't the core engine (the CLI lacks `internal`).
+    && /out-crossplane-core internal render --help >/dev/null
+
 # ---------- Runtime ----------
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /
 COPY --from=build /out/app-wizard /app-wizard
-# The renderer resolves "crossplane" through $PATH; distroless sets PATH to
-# /usr/local/bin:/usr/bin:/bin, so this lands on it.
+# The renderer resolves "crossplane" (driver) and "crossplane-core" (engine) through
+# $PATH; distroless sets PATH to /usr/local/bin:/usr/bin:/bin, so these land on it.
 COPY --from=crossplane-cli /out-crossplane /usr/local/bin/crossplane
+COPY --from=crossplane-core /out-crossplane-core /usr/local/bin/crossplane-core
 EXPOSE 8080
 USER nonroot:nonroot
 ENTRYPOINT ["/app-wizard"]

@@ -25,8 +25,14 @@ type CrossplaneRenderer struct {
 	// functions AND the render engine itself. DevTargets below only addresses the
 	// former. In a distroless pod there is no Docker daemon, so the engine half fails
 	// with `cannot create Docker network for rendering`, no matter how the functions
-	// are annotated. Pointing the engine at the local CLI is what makes rendering
+	// are annotated. Pointing the engine at a local binary is what makes rendering
 	// possible without a Docker socket.
+	//
+	// This is the crossplane CORE binary, NOT the crank/CLI in Binary: `crossplane
+	// render` shells out to `<EngineBinary> internal render`, and `internal render`
+	// is implemented only by the core binary. Pointing it at the CLI itself fails
+	// with `crossplane: error: unexpected argument internal` (exit 80). The two
+	// binaries are shipped side by side (crossplane + crossplane-core).
 	//
 	// Empty when the binary cannot be resolved, in which case the flag is omitted
 	// rather than passed empty.
@@ -52,12 +58,25 @@ func NewCrossplaneRenderer(repoRoot, compositionPath, functionsPath, envConfigPa
 		}
 		return filepath.Join(repoRoot, p)
 	}
-	const binary = "crossplane"
-	// Resolve once, here, rather than per render: if the CLI is missing we want that
-	// visible in one place, and an unresolved path must not become `--crossplane-binary=`.
-	enginePath, err := exec.LookPath(binary)
-	if err != nil {
-		enginePath = ""
+	const (
+		// binary is the crossplane crank/CLI — the render DRIVER (has `render`).
+		binary = "crossplane"
+		// engineBinary is the crossplane CORE binary — the render ENGINE (has
+		// `internal render`). `crossplane render` shells out to `<engine> internal
+		// render`, so this must be the core binary, not the CLI. Shipped alongside
+		// the CLI in the image.
+		engineBinary = "crossplane-core"
+	)
+	// Resolve the engine once, here, rather than per render, and keep it visible in
+	// one place if it is missing. An unresolved path must not become
+	// `--crossplane-binary=` (empty) — leaving it empty omits the flag and falls back
+	// to Docker, which is visibly broken in a distroless pod rather than silently wrong.
+	// CROSSPLANE_ENGINE_BINARY overrides discovery for tests / non-standard layouts.
+	enginePath := strings.TrimSpace(os.Getenv("CROSSPLANE_ENGINE_BINARY"))
+	if enginePath == "" {
+		if p, err := exec.LookPath(engineBinary); err == nil {
+			enginePath = p
+		}
 	}
 	return &CrossplaneRenderer{
 		Binary:          binary,
