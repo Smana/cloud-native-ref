@@ -176,7 +176,7 @@ jobs:
         run: python3 scripts/flux-schema/diff-bundles.py /tmp/base/.bundle-base .bundle-head | tee rendered-diff.md
 
       - name: Upload full diff artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rendered-diff
           path: rendered-diff.md
