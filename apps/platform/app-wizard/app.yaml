@@ -27,18 +27,15 @@ spec:
     # Tag format is <branch>-<short-sha>, set by the build workflow's metadata-action —
     # NOT the raw commit sha (that gives ImagePullBackOff: not found).
     #
-    # feat-wizard-app-d20fd7b is the first image that can actually render. Earlier
-    # images shipped only the crossplane CLI (crank) and pointed --crossplane-binary
-    # at it, but `crossplane render` shells out to `<binary> internal render` — a
-    # subcommand only the crossplane CORE binary implements — so render died with
-    # `crossplane: error: unexpected argument internal` (exit 80). This image ships
-    # BOTH the CLI (render driver) and the core binary (crossplane-core, the engine)
-    # and points --crossplane-binary at the core binary. See #1590.
+    # This image ships BOTH the crossplane CLI (render driver, has `render`) and the
+    # crossplane CORE binary (crossplane-core, the engine, has `internal render`), and
+    # points --crossplane-binary at core. Earlier CLI-only images died at render with
+    # `crossplane: error: unexpected argument internal` (exit 80) — `crossplane render`
+    # shells out to `<binary> internal render`, which the CLI does not implement. See #1590.
     #
-    # POST-MERGE: re-pin to the main-<short-sha> the merge build publishes. This is a
-    # feature-branch artifact — it resolves today, but main should not depend on a tag
-    # named after a branch that no longer exists.
-    tag: "feat-wizard-app-2cf8c65"
+    # Pinned to the main-<short-sha> published by the merge build (#1622), not the
+    # feature-branch tag it superseded.
+    tag: "main-88965e4"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
