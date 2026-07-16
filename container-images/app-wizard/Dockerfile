@@ -63,7 +63,7 @@ RUN apk add --no-cache curl \
 # is a symlink into the image's /nix/store, so resolve and copy the real target.
 FROM xpkg.crossplane.io/crossplane/crossplane:${CROSSPLANE_VERSION} AS crossplane-core-img
 
-FROM alpine:3.21 AS crossplane-core
+FROM alpine:3.24 AS crossplane-core
 COPY --from=crossplane-core-img / /core-root/
 RUN set -eux \
     && cp "/core-root$(readlink /core-root/bin/crossplane)" /out-crossplane-core \
