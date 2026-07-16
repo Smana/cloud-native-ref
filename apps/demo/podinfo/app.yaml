@@ -1,0 +1,11 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: podinfo
+  namespace: demo
+spec:
+  image:
+    repository: stefanprodan/podinfo
+    tag: "6.14.0"
+  service:
+    port: 9898

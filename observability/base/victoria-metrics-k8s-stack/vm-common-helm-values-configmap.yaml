@@ -9,6 +9,18 @@ data:
     tenant: "0"
 
     defaultRules:
+      # The control-plane components below are a managed service on EKS (and
+      # kube-proxy is replaced by Cilium), so they are not scraped — see the
+      # kube* toggles further down. Their default *Down alerts evaluate
+      # absent(up{job=...}) and would therefore fire forever. Disable the
+      # matching rule groups so the alerts track the scrape config.
+      groups:
+        kubernetes-system-apiserver:
+          create: false
+        kubernetes-system-controller-manager:
+          create: false
+        kubernetes-system-scheduler:
+          create: false
       rule:
         spec:
           annotations:

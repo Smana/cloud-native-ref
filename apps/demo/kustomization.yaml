@@ -8,4 +8,5 @@ kind: Kustomization
 # registers it in this file). It must exist and be reconciled BEFORE the first app
 # lands — otherwise the wizard offers the stack, opens a perfectly good PR, and the
 # merged app is never applied by Flux, which is the worst kind of failure: silent.
-resources: []
+resources:
+  - ./podinfo

@@ -116,10 +116,14 @@ spec:
 //
 //	crossplane: error: cannot create Docker network for rendering: ...
 //	Cannot connect to the Docker daemon at unix:///var/run/docker.sock
-func TestRenderArgsPointTheEngineAtTheLocalBinary(t *testing.T) {
+//
+// The engine binary is the crossplane CORE binary (crossplane-core), NOT the
+// crank/CLI: `crossplane render` shells out to `<engine> internal render`, which
+// only the core binary implements.
+func TestRenderArgsPointTheEngineAtTheCoreBinary(t *testing.T) {
 	r := &CrossplaneRenderer{
 		Binary:          "crossplane",
-		EngineBinary:    "/usr/local/bin/crossplane",
+		EngineBinary:    "/usr/local/bin/crossplane-core",
 		CompositionPath: "/repo/composition.yaml",
 		EnvConfigPath:   "/repo/environmentconfig.yaml",
 		DevTargets:      map[string]string{"function-kcl": "localhost:9443"},
@@ -133,8 +137,33 @@ func TestRenderArgsPointTheEngineAtTheLocalBinary(t *testing.T) {
 			got = a
 		}
 	}
-	if got != "--crossplane-binary=/usr/local/bin/crossplane" {
-		t.Fatalf("render must run the engine from the local binary, not Docker; args = %v", args)
+	if got != "--crossplane-binary=/usr/local/bin/crossplane-core" {
+		t.Fatalf("render must run the engine from the local core binary, not Docker; args = %v", args)
+	}
+}
+
+// The engine is a DIFFERENT binary from the render driver. `crossplane render`
+// (crank/CLI) shells out to `<--crossplane-binary> internal render`, a subcommand
+// only the crossplane CORE binary implements — pointing the flag at the CLI itself
+// fails with `crossplane: error: unexpected argument internal` (exit 80). The
+// constructor must therefore resolve the engine to the core binary, and honor an
+// explicit override so tests/operators can point it anywhere.
+func TestNewCrossplaneRendererResolvesEngineFromOverride(t *testing.T) {
+	t.Setenv("CROSSPLANE_ENGINE_BINARY", "/opt/xp/crossplane-core")
+
+	r := NewCrossplaneRenderer("/repo", "composition.yaml", "functions.yaml", "environmentconfig.yaml", nil)
+
+	if r.EngineBinary != "/opt/xp/crossplane-core" {
+		t.Fatalf("EngineBinary = %q, want /opt/xp/crossplane-core (the CORE engine, not the CLI)", r.EngineBinary)
+	}
+	found := false
+	for _, a := range r.renderArgs("/tmp/claim.yaml", "/tmp/functions.yaml") {
+		if a == "--crossplane-binary=/opt/xp/crossplane-core" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("engine binary override not passed through to --crossplane-binary; args = %v", r.renderArgs("/tmp/claim.yaml", "/tmp/functions.yaml"))
 	}
 }
 

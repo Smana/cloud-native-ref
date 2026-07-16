@@ -1,5 +1,6 @@
 // Assemble the App claim object from form state and dump it to YAML (FR-012).
-import yaml from "js-yaml";
+// js-yaml v5 is ESM named-exports only — there is no default export.
+import { dump } from "js-yaml";
 import { prune } from "./model";
 
 export interface ClaimInput {
@@ -20,5 +21,5 @@ export function buildClaim({ name, namespace, spec }: ClaimInput): Record<string
 }
 
 export function claimToYaml(input: ClaimInput): string {
-  return yaml.dump(buildClaim(input), { noRefs: true, lineWidth: 100, sortKeys: false });
+  return dump(buildClaim(input), { noRefs: true, lineWidth: 100, sortKeys: false });
 }

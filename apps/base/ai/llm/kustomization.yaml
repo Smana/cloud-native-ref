@@ -34,3 +34,6 @@ resources:
   # Per SPEC-001, autoscaling is driven by LEADING indicators in the
   # composition's ScaledObject; these page when the autoscaler missed.
   - vmrule-llm-slo.yaml
+  # Platform-level ai-fleet alerts (fleet abort rate, semantic-router down).
+  # Gated here with the LLM platform so they don't fire on LLM-free clusters.
+  - vmrule-ai-fleet.yaml
