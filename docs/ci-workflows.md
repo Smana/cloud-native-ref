@@ -52,7 +52,7 @@ The hard manifest gate — `./scripts/validate-manifests.sh` (SPEC-007). It rend
 1. **`flux schema validate`** — structure **and** CEL rules, against the repo's own XRDs plus the Flux/CNCF catalogs. `skipMissingSchemas: false`, so an unknown Kind **fails the build** — it is not skipped. `Skipped: 0` is part of the pass criteria.
 2. **Polaris** — workload best practices (privilege escalation, resource limits, probes, image tags) on the rendered controllers.
 
-This replaced kubeconform, which ran with `-ignore-missing-schemas` and silently skipped every custom (`cloud.ogenki.io`, Flux, VictoriaMetrics, Cilium) resource.
+This replaced kubeconform, which ran with `-ignore-missing-schemas` and silently skipped every custom (`cloud.ogenki.io`, Flux, VictoriaMetrics, Cilium) resource. See [How manifest validation works](#how-manifest-validation-works) for the full pipeline.
 
 ### Rendered manifest diff 📝
 
@@ -63,6 +63,60 @@ This replaced kubeconform, which ran with `-ignore-missing-schemas` and silently
 ### Check the shell scripts 💻
 
 `shellcheck -x -S warning` over every `scripts/**/*.sh`.
+
+## How manifest validation works
+
+`./scripts/validate-manifests.sh` is one entry point run **identically in CI and locally** (SPEC-007), so "the manifests are valid" is a claim backed by a command anyone — human or agent — can reproduce. It has three steps: build a schema catalog, render the repo into a bundle, then gate the bundle.
+
+```
+validate-manifests.sh
+  ├─ [1/3] gen-catalog.sh        → .schemas/   (JSON Schemas for the repo's own CRDs)
+  ├─ [2/3] render-bundle.py      → .bundle/    (what Flux actually applies)
+  └─ [3/3] gate 1: flux schema validate .bundle --config .fluxschema.yml
+           gate 2: polaris audit .bundle --config .polaris.yaml
+```
+
+`.schemas/` and `.bundle/` are **gitignored and regenerated on every run** — a committed catalog would drift from the XRDs it is derived from, and a committed bundle would be a silently-wrong green.
+
+### Step 1 — schema catalog (`gen-catalog.sh` → `.schemas/`)
+
+The repo's own custom resources have no schema in any public catalog, so one is built from source:
+
+- Crossplane **XRDs → CRDs** (`xrd-to-crd.py` over `*-definition.yaml`), because `flux schema extract` reads CRDs, not XRDs.
+- The **Envoy AI Gateway CRDs** are rendered from the exact chart version pinned in `flux/sources/` (so the catalog tracks the version actually deployed).
+- `flux schema extract crd` pulls JSON Schemas out of both into `.schemas/`.
+- A completeness check fails the build if any expected schema (`app`, `sqlinstance`, `inferenceservice`, `epi`, and the `aigateway.envoyproxy.io` group) came out missing or empty — so a broken catalog can't produce a false pass.
+
+### Step 2 — render the bundle (`render-bundle.py` → `.bundle/`)
+
+Renders the repo the way Flux applies it — because raw source files aren't what runs, and a raw patch fragment can never satisfy a full schema (CL-1):
+
+- every top-most **Kustomize overlay** → `kustomize build` + Flux `postBuild` envsubst (fixture vars substituted);
+- every **HelmRelease** → `helm template` with its own `spec.values` and `postRenderers` (both inline `spec.chart` and `spec.chartRef` sources);
+- **standalone manifests** → copied verbatim.
+
+The result is ~70 rendered controllers from a tree with only 2 raw Deployments — which is the point: pointing a validator at the source tree checks almost nothing.
+
+### Step 3 — two gates on the rendered bundle
+
+**Gate 1 — `flux schema validate` (`.fluxschema.yml`):** structure **and** CEL (`x-kubernetes-validations`) rules. Schema lookup order is the repo catalog → Flux built-in → the hosted CNCF ecosystem catalog:
+
+```yaml
+schemaLocation: [ ./.schemas, default, ecosystem ]
+skipMissingSchemas: false          # unknown kind FAILS — the whole point of SPEC-007
+skipFile: [ '.*', kustomization.yaml, settings-example.yaml ]  # non-manifest inputs
+```
+
+**Gate 2 — Polaris (`.polaris.yaml`):** workload best practices (privilege escalation, capabilities, resource limits, probes, image tags) with `--set-exit-code-on-danger`, on the rendered controllers.
+
+### The two load-bearing properties
+
+1. **`skipMissingSchemas: false`** — an unknown Kind *fails the build*, it is not skipped. `Skipped: 0` is part of the pass criteria, not decoration. The old kubeconform ran with `-ignore-missing-schemas`, so every `cloud.ogenki.io` claim went unvalidated for the life of the repo.
+2. **Polaris audits the rendered bundle, not raw files** — the 2 raw Deployments in the tree become ~70 rendered controllers. A best-practices gate pointed at the source tree checks almost nothing.
+
+### Requirements
+
+`flux` ≥ 2.9 with the schema plugin (`mise install && flux plugin install schema`), Polaris 8.5.0, and `helm` / `kustomize` / `tofu` (pinned via `mise.toml`). `preflight.sh` hard-fails on a too-old flux client or a missing plugin rather than picking up a stale binary from `PATH`.
 
 ## Application & image builds
 
