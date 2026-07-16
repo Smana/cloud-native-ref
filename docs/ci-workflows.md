@@ -1,442 +1,235 @@
 # CI/CD Workflows
 
-This document explains the continuous integration and delivery workflows used in this repository.
+How continuous integration and delivery work in this repository.
 
 ## Overview
 
-Our CI/CD strategy focuses on:
+- **Shift left** — pre-commit hooks catch issues before a commit; GitHub Actions gate every pull request.
+- **Validate what Flux applies** — manifests are rendered (Kustomize overlays + `helm template`) and validated as the rendered desired state, not as raw source files.
+- **GitOps delivery** — nothing is deployed from CI. On merge, Flux reconciles `main` onto the cluster.
+- **Publish artifacts** — container images and Crossplane KCL modules are built and pushed to GHCR.
 
-- **Early feedback**: Catch issues locally with pre-commit hooks
-- **Comprehensive validation**: Security scanning, syntax checking, policy enforcement
-- **Portable pipelines**: Run the same checks locally and in CI using Dagger
-- **GitOps delivery**: Flux automatically deploys what's in Git
-- **Module publishing**: Crossplane KCL modules published to GitHub Container Registry
+CI never applies changes to a cluster. It validates, scans, and publishes; Flux owns delivery.
 
-## CI Philosophy
+## Workflows at a glance
 
-**"Shift Left" Approach**: Catch issues as early as possible in the development workflow:
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yaml` | PR → main | The main gate: OpenTofu validation, security scanning, manifest validation, rendered diff, shellcheck |
+| `app-wizard.yml` | push / PR | Go lint & test + UI build & test for the App Wizard (`container-images/app-wizard/`) |
+| `build-container-images.yml` | push / PR / dispatch | Detect changed images under `container-images/`, build each, push on non-PR events |
+| `crossplane-modules.yml` | push / PR | Validate, test and publish the KCL Crossplane modules to GHCR |
+| `vector-config-validation.yml` | push / PR | Validate the Vector log-parsing configuration |
+| `spec-archive.yaml` | PR (merge) | SDD automation: archive a spec directory when its PR merges |
+| `terramate-preview.yaml` / `terramate-drift-detection.yaml` | — | **Currently disabled** (fully commented out). See [Terramate workflows](#terramate-workflows-disabled). |
 
-1. **Pre-commit hooks** - Before Git commit
-2. **Local Dagger runs** - During development
-3. **GitHub Actions** - On pull request
-4. **Flux sync** - On merge to main
+## CI pipeline (`ci.yaml`)
 
-## GitHub Actions Workflows
+Runs on every pull request to `main`. Five independent jobs:
 
-### CI Pipeline (`.github/workflows/ci.yaml`)
+### Pre-commit checks 🛃
 
-Runs on every pull request to validate changes before merge.
+Validates the OpenTofu/Terraform code with the standard Terraform pre-commit hooks, across every stack:
 
-#### Pre-commit Checks
+- `terraform_fmt` — formatting
+- `terraform_validate` — syntax / provider validation
+- `terraform_tflint` — linting
+
+These are the same hooks declared in `.pre-commit-config.yaml`, so `pre-commit run --all-files` reproduces the check locally.
+
+### Security scanning 🔒
+
+Three scanners, results uploaded to the GitHub **Security** tab as SARIF:
+
+- **Trivy** — filesystem vulnerability scan (`CRITICAL,HIGH`, `ignore-unfixed`). Config exceptions live in `.trivyignore.yaml`.
+- **Checkov** — IaC static analysis (`terraform,secrets` frameworks, soft-fail — reports without gating).
+- **TruffleHog** — verified-secret detection across the PR diff (`--only-verified`).
+
+### Kubernetes validation ☸
+
+The hard manifest gate — `./scripts/validate-manifests.sh` (SPEC-007). It renders the repo the way Flux does — every Kustomize overlay (with `postBuild` vars) plus every HelmRelease through `helm template` — then runs two gates on the **rendered bundle**:
+
+1. **`flux schema validate`** — structure **and** CEL rules, against the repo's own XRDs plus the Flux/CNCF catalogs. `skipMissingSchemas: false`, so an unknown Kind **fails the build** — it is not skipped. `Skipped: 0` is part of the pass criteria.
+2. **Polaris** — workload best practices (privilege escalation, resource limits, probes, image tags) on the rendered controllers.
+
+This replaced kubeconform, which ran with `-ignore-missing-schemas` and silently skipped every custom (`cloud.ogenki.io`, Flux, VictoriaMetrics, Cilium) resource. See [How manifest validation works](#how-manifest-validation-works) for the full pipeline.
+
+### Rendered manifest diff 📝
+
+**Informational only — never gates.** Renders the PR head and the merge base, then posts a per-PR comment showing exactly which rendered resources the PR **adds / changes / removes**. This is a diff of the rendered *desired state* (git vs git); cluster drift is Flux's concern, handled separately, so the job needs no cluster access and stays secretless and fork-safe.
+
+> Note: on the PR that first introduces the renderer, the merge base predates it, so the base renders to nothing and the whole bundle shows as "added". That is a one-time bootstrap effect and resolves for every subsequent PR.
+
+### Check the shell scripts 💻
+
+`shellcheck -x -S warning` over every `scripts/**/*.sh`.
+
+## How manifest validation works
+
+`./scripts/validate-manifests.sh` is one entry point run **identically in CI and locally** (SPEC-007), so "the manifests are valid" is a claim backed by a command anyone — human or agent — can reproduce. It has three steps: build a schema catalog, render the repo into a bundle, then gate the bundle.
+
+```
+validate-manifests.sh
+  ├─ [1/3] gen-catalog.sh        → .schemas/   (JSON Schemas for the repo's own CRDs)
+  ├─ [2/3] render-bundle.py      → .bundle/    (what Flux actually applies)
+  └─ [3/3] gate 1: flux schema validate .bundle --config .fluxschema.yml
+           gate 2: polaris audit .bundle --config .polaris.yaml
+```
+
+`.schemas/` and `.bundle/` are **gitignored and regenerated on every run** — a committed catalog would drift from the XRDs it is derived from, and a committed bundle would be a silently-wrong green.
+
+### Step 1 — schema catalog (`gen-catalog.sh` → `.schemas/`)
+
+The repo's own custom resources have no schema in any public catalog, so one is built from source:
+
+- Crossplane **XRDs → CRDs** (`xrd-to-crd.py` over `*-definition.yaml`), because `flux schema extract` reads CRDs, not XRDs.
+- The **Envoy AI Gateway CRDs** are rendered from the exact chart version pinned in `flux/sources/` (so the catalog tracks the version actually deployed).
+- `flux schema extract crd` pulls JSON Schemas out of both into `.schemas/`.
+- A completeness check fails the build if any expected schema (`app`, `sqlinstance`, `inferenceservice`, `epi`, and the `aigateway.envoyproxy.io` group) came out missing or empty — so a broken catalog can't produce a false pass.
+
+### Step 2 — render the bundle (`render-bundle.py` → `.bundle/`)
+
+Renders the repo the way Flux applies it — because raw source files aren't what runs, and a raw patch fragment can never satisfy a full schema (CL-1):
+
+- every top-most **Kustomize overlay** → `kustomize build` + Flux `postBuild` envsubst (fixture vars substituted);
+- every **HelmRelease** → `helm template` with its own `spec.values` and `postRenderers` (both inline `spec.chart` and `spec.chartRef` sources);
+- **standalone manifests** → copied verbatim.
+
+The result is ~70 rendered controllers from a tree with only 2 raw Deployments — which is the point: pointing a validator at the source tree checks almost nothing.
+
+### Step 3 — two gates on the rendered bundle
+
+**Gate 1 — `flux schema validate` (`.fluxschema.yml`):** structure **and** CEL (`x-kubernetes-validations`) rules. Schema lookup order is the repo catalog → Flux built-in → the hosted CNCF ecosystem catalog:
 
 ```yaml
-- Pre-commit OpenTofu validation via Dagger
+schemaLocation: [ ./.schemas, default, ecosystem ]
+skipMissingSchemas: false          # unknown kind FAILS — the whole point of SPEC-007
+skipFile: [ '.*', kustomization.yaml, settings-example.yaml ]  # non-manifest inputs
 ```
 
-Uses Dagger to run pre-commit hooks in a consistent environment:
-- `terraform_fmt`: Format checking
-- `terraform_validate`: Syntax validation
-- `terraform_tflint`: Linting with TFLint
+**Gate 2 — Polaris (`.polaris.yaml`):** workload best practices (privilege escalation, capabilities, resource limits, probes, image tags) with `--set-exit-code-on-danger`, on the rendered controllers.
 
-#### Security Scanning
+### The two load-bearing properties
 
-**Trivy**: Vulnerability scanning for containers, infrastructure, and dependencies
-```bash
-- Scans: Terraform, Kubernetes manifests, container images
-- Output: SARIF format for GitHub Security tab
-- Fail on: Critical/High vulnerabilities (configurable via .trivyignore.yaml)
-```
+1. **`skipMissingSchemas: false`** — an unknown Kind *fails the build*, it is not skipped. `Skipped: 0` is part of the pass criteria, not decoration. The old kubeconform ran with `-ignore-missing-schemas`, so every `cloud.ogenki.io` claim went unvalidated for the life of the repo.
+2. **Polaris audits the rendered bundle, not raw files** — the 2 raw Deployments in the tree become ~70 rendered controllers. A best-practices gate pointed at the source tree checks almost nothing.
 
-**Checkov**: Static analysis for infrastructure as code
-```bash
-- Scans: Terraform/OpenTofu configurations, Kubernetes manifests
-- Checks: Security best practices, compliance frameworks
-- Output: Detailed policy violations with remediation guidance
-```
+### Requirements
 
-**TruffleHog**: Secret detection
-```bash
-- Scans: Git history, file content
-- Detects: API keys, passwords, tokens, certificates
-- Prevents: Accidental secret commits
-```
+`flux` ≥ 2.9 with the schema plugin (`mise install && flux plugin install schema`), Polaris 8.5.0, and `helm` / `kustomize` / `tofu` (pinned via `mise.toml`). `preflight.sh` hard-fails on a too-old flux client or a missing plugin rather than picking up a stale binary from `PATH`.
 
-#### Kubernetes Validation
+## Application & image builds
 
-**`./scripts/validate-manifests.sh`** (SPEC-007): renders the repo the way Flux does —
-every Kustomize overlay (with `postBuild` vars) plus every HelmRelease through `helm
-template` — then gates the rendered bundle with `flux schema validate`.
-```bash
-- Validates: the rendered bundle against the repo's own XRDs + the Flux/CNCF catalogs
-- Checks: structure AND CEL rules; an unknown Kind FAILS the build (skipMissingSchemas: false)
-- Replaces: kubeconform, which ran with -ignore-missing-schemas and skipped every cloud.ogenki.io claim
-```
+### App Wizard (`app-wizard.yml`)
 
-**Polaris**: Best practices enforcement
-```bash
-- Checks: Resource limits, security contexts, health probes
-- Validates: Pod Security Standards compliance
-- Reports: Actionable recommendations
-```
+On changes under `container-images/app-wizard/`:
 
-#### Shell Script Validation
+- **Go lint & test** — `golangci-lint run ./...` + `go test ./...` for the backend.
+- **UI build & test** — the embedded React SPA build + tests.
 
-**ShellCheck**: Bash/shell script linting
-```bash
-- Validates: All .sh scripts in repository
-- Detects: Common shell scripting errors
-- Enforces: Best practices (quoting, error handling)
-```
+### Container images (`build-container-images.yml`)
 
-### Crossplane Modules Pipeline (`.github/workflows/crossplane-modules.yml`)
+Builds the images under `container-images/` (`app-wizard`, `pev2`, …):
 
-Handles KCL module validation, testing, and publishing.
+- **Detect Changed Images** — determines which image directories changed (dynamic build matrix).
+- **Build `<image>`** — builds each changed image. **On pull requests it builds but does not push** (validation only); on push to `main` and `workflow_dispatch` it pushes to `ghcr.io/smana/<image>`.
+- Tags are `<branch>-<short-sha>` (e.g. `main-8886ba3`) plus `latest` on the default branch. Deployments pin an immutable `<branch>-<sha>` tag — never `latest` (which `IfNotPresent` would never re-pull).
 
-#### Change Detection
+## Crossplane modules (`crossplane-modules.yml`)
 
-```yaml
-- Detects modified KCL modules
-- Tracks changes in infrastructure/base/crossplane/configuration/kcl/
-- Triggers module-specific validation
-```
+Validates and publishes the KCL Crossplane modules in `infrastructure/base/crossplane/configuration/kcl/`:
 
-#### Quality Checks
+- **detect-changes** — which KCL modules changed.
+- **quality-checks** — `kcl fmt` (CI-enforced), `kcl lint`, `kcl test`, and `kcl run -Y settings-example.yaml` (render with example inputs).
+- **publish** — pushes the module to GHCR. Pull requests publish a `-pr<number>`-suffixed tag (overwritable, for testing); `main` publishes the release version. The publish rewrites `kcl.mod`'s `version` before push, since `kcl mod push` uses that field as the actual tag (see `.claude/rules/kcl-crossplane.md`).
+- **validate-composition-versions** — ensures compositions reference published (non-PR-suffixed) module versions.
+- **summary** — job summary with the published version, GHCR URL, and usage snippet.
 
-**KCL Formatting** (CRITICAL - CI Enforced!)
-```bash
-kcl fmt .
-```
-- **Mandatory**: CI fails if code is not formatted
-- **Rules**: Single-line list comprehensions, no trailing blank lines
-- **Local check**: Run `kcl fmt` before committing
-- **Why**: Consistent code style, avoid mutation patterns
+## Other validation
 
-**KCL Linting**
-```bash
-kcl lint .
-```
-- Static analysis for KCL code
-- Detects: Unused variables, type errors, logic issues
+### Vector configuration (`vector-config-validation.yml`)
 
-**KCL Testing**
-```bash
-kcl test .
-```
-- Runs unit tests for composition logic
-- Validates: Function behavior, edge cases
+Validates the Vector log-parsing configuration so a malformed pipeline is caught before it reaches the observability stack.
 
-**Syntax Validation**
-```bash
-kcl run -Y settings-example.yaml
-```
-- Tests KCL code with example inputs
-- Ensures: Compositions can parse and execute
+### Spec archive (`spec-archive.yaml`)
 
-#### Publishing Strategy
+SDD automation. When a PR that touches a spec directory merges, the workflow moves it to `docs/specs/done/YYYY-Qn/NNN-slug/` and generates a `SUMMARY.md` (see `docs/specs/README.md`).
 
-**Pull Request**: Publishes with `-pr{number}` suffix
-```bash
-# Example: ghcr.io/smana/cloud-native-ref/app:v1.0.0-pr123
-- Purpose: Testing in development environments
-- Overwritable: Yes (for iterative PR development)
-```
+## Terramate workflows (disabled)
 
-**Main Branch**: Publishes with version + latest tag
-```bash
-# Example: ghcr.io/smana/cloud-native-ref/app:v1.0.0
-#          ghcr.io/smana/cloud-native-ref/app:latest
-- Purpose: Production releases
-- Immutable: Version tags cannot be overwritten
-- Latest: Points to most recent stable version
-```
+`terramate-preview.yaml` (OpenTofu plan preview on PRs) and `terramate-drift-detection.yaml` (scheduled drift detection) are present but **fully commented out** — they do not run today. When re-enabled they run `terramate script run preview` / `terramate script run drift detect` respectively. Treat them as templates, not active pipeline stages.
 
-#### Composition Validation
+## Pre-commit hooks
 
-Ensures compositions reference the latest module versions:
-```bash
-# Validates that compositions use the correct module versions
-# Prevents: Using outdated or PR-suffixed modules in production
-```
-
-#### Job Summary
-
-Generates markdown summary with:
-- Module version published
-- GHCR URL
-- Usage instructions for referencing in compositions
-
-### Terramate Workflows
-
-**Drift Detection** (`.github/workflows/terramate-drift-detection.yaml`)
-```bash
-terramate script run drift detect
-```
-- **Frequency**: Scheduled (e.g., daily)
-- **Purpose**: Detect infrastructure drift from desired state
-- **Alerts**: Creates GitHub issues on drift detection
-
-**Preview** (`.github/workflows/terramate-preview.yaml`)
-```bash
-terramate script run preview
-```
-- **Trigger**: Pull requests modifying OpenTofu code
-- **Purpose**: Show what will change before merge
-- **Output**: Plan output as PR comment
-
-## Pre-commit Hooks
-
-Local validation before Git commits (`.pre-commit-config.yaml`).
-
-### General Hooks
-
-```yaml
-- trailing-whitespace: Remove trailing spaces
-- end-of-file-fixer: Ensure files end with newline
-- check-yaml: Validate YAML syntax
-- check-json: Validate JSON syntax
-- check-added-large-files: Prevent large file commits
-- check-merge-conflict: Detect unresolved merge conflicts
-```
-
-### OpenTofu/Terraform Hooks
-
-```yaml
-- terraform_fmt: Format Terraform files
-- terraform_validate: Validate Terraform syntax
-- terraform_tflint: Lint Terraform code
-```
-
-### Security Hooks
-
-```yaml
-- detect-secrets: Scan for secrets using baseline
-```
-
-**Baseline**: `.secrets.baseline` contains known false positives
-
-### KCL Hooks
-
-```yaml
-# Note: KCL files (.k) excluded from trailing-whitespace
-# Reason: KCL uses indented blank lines in specific patterns
-```
-
-### Installation
+Local validation before a commit (`.pre-commit-config.yaml`). Install once, then it runs on every commit:
 
 ```bash
-# Install pre-commit
-pip install pre-commit
-
-# Or with uv (recommended)
-uv pip install pre-commit
-
-# Install hooks
+pip install pre-commit   # or: uv pip install pre-commit
 pre-commit install
-
-# Run manually
-pre-commit run --all-files
+pre-commit run --all-files   # run against the whole tree
 ```
 
-## Dagger: The Missing Piece
+| Group | Hooks |
+|-------|-------|
+| General | `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-json`, `check-added-large-files`, `check-merge-conflict` |
+| OpenTofu / Terraform | `terraform_fmt`, `terraform_validate`, `terraform_tflint` (`--tf-path=tofu`) |
+| Secrets | `detect-secrets` (baseline: `.secrets.baseline`) |
 
-**Why Dagger?**
+KCL files (`.k`) are excluded from `trailing-whitespace` — KCL uses indented blank lines in some patterns.
 
-Traditional CI/CD has the "works on my machine" problem. Dagger solves this by:
+## Local validation scripts
 
-- **Portable**: Same pipeline runs locally and in CI
-- **Fast**: Sophisticated caching across runs
-- **Debuggable**: Test CI changes locally before pushing
-- **Code over YAML**: Define pipelines in real programming languages
+These are the same checks CI runs — cite them as evidence, and run them before pushing.
 
-**Current Dagger Functions**:
+### Manifests — `./scripts/validate-manifests.sh`
 
-```bash
-# Pre-commit Terraform validation
-dagger call pre-commit-terraform \
-  --directory=./opentofu/network
+The single entry point the `Kubernetes validation` job runs. Renders the repo and gates it with `flux schema validate` + Polaris (see above). A clean run reports `Valid: N, Invalid: 0, Skipped: 0`. Requires `flux` ≥ 2.9 with the schema plugin (`mise install && flux plugin install schema`).
 
-# Manifest validation (flux schema + polaris, SPEC-007) — a plain script, not Dagger
-./scripts/validate-manifests.sh
+### Crossplane compositions — `./scripts/validate-kcl-compositions.sh`
+
+Four stages per composition: `kcl fmt` → syntax (`kcl run`) → `crossplane render` (basic + complete examples) → security. Run from the repo root to validate every composition.
+
 ```
-
-**Related**: [Dagger: The missing piece of the developer experience](https://blog.ogenki.io/post/dagger-intro/)
-
-## Validation Scripts
-
-### Crossplane Composition Validation
-
-**Script**: `scripts/validate-kcl-compositions.sh`
-
-Comprehensive validation for all Crossplane compositions:
-
-**Stage 1: KCL Formatting**
-```bash
-kcl fmt .
-```
-- Checks formatting compliance
-- Shows what needs to be fixed
-- **Required** by CI
-
-**Stage 2: KCL Syntax Validation**
-```bash
-kcl run -Y settings-example.yaml
-```
-- Tests KCL logic with example inputs
-- Validates: Conditionals, loops, function calls
-- Catches errors early before crossplane render
-
-**Stage 3: Crossplane Rendering**
-```bash
-crossplane render examples/app-basic.yaml \
-  app-composition.yaml \
-  functions.yaml \
-  --extra-resources examples/environmentconfig.yaml
-```
-- End-to-end validation
-- Tests with multiple examples (basic + complete)
-- Requires Docker
-- Validates full composition pipeline
-
-**Usage**:
-```bash
-# From repository root - validates ALL compositions
-./scripts/validate-kcl-compositions.sh
-```
-
-**Output Example**:
-```
-╔════════════════════════════════════════════════════════════════╗
-║  KCL Crossplane Composition Validation                        ║
-╚════════════════════════════════════════════════════════════════╝
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Validating: app
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📝 [1/3] Checking KCL formatting...
-   ✅ Formatting is correct
-
-🧪 [2/3] Validating KCL syntax and logic...
-   ✅ KCL syntax valid
-
-🎨 [3/3] Testing crossplane render...
-   Testing: app-basic.yaml
-   ✅ app-basic.yaml renders successfully
-   Testing: app-complete.yaml
-   ✅ app-complete.yaml renders successfully
-
+📝 [1/3] Checking KCL formatting...        ✅
+🧪 [2/3] Validating KCL syntax and logic... ✅
+🎨 [3/3] Testing crossplane render...       ✅
 ✅ All checks passed for app
 ```
 
-## Self-Hosted GitHub Runners
+## Self-hosted GitHub runners
 
-**Why Self-Hosted Runners?**
+Self-hosted runner scale sets run in-cluster (`tooling/base/gha-runners/`), enabled via the `tooling` Kustomization. They give:
 
-- **Private endpoint access**: Validate resources not publicly accessible
-- **Faster builds**: No egress charges, lower latency
-- **Secure environment**: Runs within VPC, no exposure of credentials
+- **Private-endpoint access** — validate/reach resources not publicly exposed.
+- **Lower latency and no egress charges** for heavy builds.
+- **Secure execution** inside the VPC — ephemeral runners, network policies, secrets via External Secrets Operator, no long-lived credentials in the workflow.
 
-**Setup**:
+## Troubleshooting
 
-Enabled via `tooling` Kustomization:
-```yaml
-# tooling/mycluster-0/kustomization.yaml
-# Uncomment github-runners patch
-```
-
-**Security Considerations**:
-- Dedicated service account with minimal permissions
-- Ephemeral runners (destroyed after each job)
-- Network policies restrict outbound access
-- Secrets injected via External Secrets Operator
-
-## CI Best Practices
-
-### Before Committing
-
-1. ✅ Run pre-commit hooks: `pre-commit run --all-files`
-2. ✅ Format KCL code: `kcl fmt .` (if modified)
-3. ✅ Validate compositions: `./scripts/validate-kcl-compositions.sh`
-4. ✅ Test locally with Dagger (if available)
-
-### Pull Request Workflow
-
-1. Create feature branch
-2. Make changes
-3. Run local validation
-4. Push and create PR
-5. Review CI results
-6. Address any failures
-7. Request review
-8. Merge when approved and green
-
-### Merge to Main
-
-1. Flux detects changes in Git
-2. Reconciles resources based on dependencies
-3. Health checks ensure proper deployment
-4. Monitors for drift
-
-## Troubleshooting CI Failures
-
-### KCL Formatting Failures
-
+### KCL formatting failure
 ```bash
-Error: KCL files are not formatted correctly
-```
-
-**Fix**:
-```bash
-cd infrastructure/base/crossplane/configuration/kcl/app
+cd infrastructure/base/crossplane/configuration/kcl/<module>
 kcl fmt .
-git add .
-git commit --amend
 ```
+CI fails if code is not formatted. Run `kcl fmt` before committing.
 
-### Security Scan Failures
+### Manifest validation failure (`Invalid` > 0 or `Skipped` > 0)
+- A new custom Kind needs its XRD/CRD present so the generated schema catalog covers it — a missing schema is a **hard failure** by design (`Skipped: 0` is part of the pass criteria), unlike the old `-ignore-missing-schemas` behaviour.
+- Check the failing resource's `apiVersion` matches the CRD version the catalog was built from.
+- Reproduce locally with `./scripts/validate-manifests.sh`.
 
-**Trivy finds vulnerabilities**:
-- Review findings in Security tab
-- Update base images or dependencies
-- Add to `.trivyignore.yaml` if false positive (with justification)
+### Security scan findings
+- **Trivy** — review the Security tab; bump base images/deps, or add a justified entry to `.trivyignore.yaml`.
+- **TruffleHog** — never commit real secrets; use placeholders and store real values in AWS Secrets Manager. Update `.secrets.baseline` for a genuine false positive.
 
-**TruffleHog finds secrets**:
-- Never commit real secrets!
-- Use placeholder values
-- Store real secrets in AWS Secrets Manager
-- Update `.secrets.baseline` if false positive
+### Crossplane render failure
+- **Module not found** — confirm the module is published to GHCR and the composition references the correct (non-PR-suffixed) version.
+- **KCL logic error** — read the line number; test with `kcl run -Y settings-example.yaml`; watch for post-creation dict mutation (function-kcl #285).
 
-### Manifest Validation Failures (flux schema)
+## Related documentation
 
-**Unknown resource type** (`Skipped` > 0, or a Kind fails to resolve):
-- The schema catalog is generated from the repo's XRDs on every run — a new custom Kind
-  needs its XRD/CRD present so `flux schema` can extract a schema for it
-- Verify the manifest's `apiVersion` matches the CRD version the catalog was built from
-- Unlike the old kubeconform (`-ignore-missing-schemas`), a missing schema is a hard
-  failure by design — `Skipped: 0` is part of the pass criteria, not decoration
-
-### Crossplane Render Failures
-
-**Module not found**:
-- Verify module is published to GHCR
-- Check composition references correct version
-- Ensure `functions.yaml` includes module
-
-**KCL logic errors**:
-- Review error message for line number
-- Test with `kcl run -Y settings-example.yaml`
-- Check for mutation patterns (issue #285)
-
-## Future Enhancements
-
-- [ ] **E2E Testing**: Automated testing of deployed applications
-- [ ] **Performance Testing**: Load testing for critical paths
-- [ ] **Chaos Engineering**: Automated failure injection
-- [ ] **Progressive Delivery**: Canary/blue-green deployments
-- [ ] **SBOM Generation**: Software Bill of Materials for security
-
-## Related Documentation
-
-- [Technology Choices](./technology-choices.md) - Why Dagger, GitHub Actions
-- [Crossplane](./crossplane.md) - Composition validation requirements
-- [GitHub Self-Hosted Runners Documentation](https://docs.github.com/en/actions/hosting-your-own-runners)
+- [Technology Choices](./technology-choices.md)
+- [Crossplane](./crossplane.md) — composition validation requirements
+- [Spec-driven development](./specs/README.md) — SDD workflow, including SPEC-007 (manifest validation)
+- `CLAUDE.md` → *Validation Commands* — the canonical local validation entry points
+- [GitHub self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners)
