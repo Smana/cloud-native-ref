@@ -3,5 +3,7 @@ kind: Kustomization
 
 resources:
   - karpenter.yaml
-  - ai.yaml
+  # ai-fleet LLM-platform alerts moved to apps/base/ai/llm/vmrule-ai-fleet.yaml so
+  # they only deploy when the (opt-in, suspend-by-default) LLM platform is resumed —
+  # otherwise LLMPlatformSemanticRouterDown fires forever on an LLM-free cluster.
   - runlore.yaml
