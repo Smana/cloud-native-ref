@@ -38,7 +38,7 @@ spec:
     # POST-MERGE: re-pin to the main-<short-sha> the merge build publishes. This is a
     # feature-branch artifact — it resolves today, but main should not depend on a tag
     # named after a branch that no longer exists.
-    tag: "feat-wizard-app-d20fd7b"
+    tag: "feat-wizard-app-2cf8c65"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
