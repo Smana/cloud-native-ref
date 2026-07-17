@@ -125,7 +125,7 @@ Refactor-in-place-then-extract (rejected: churns cloud-native-ref with refactor 
 
 - [x] **T011** (oss-repo): README — purpose, quickstart, full `wizard.yaml` + secret-env reference (every key + default), screenshots, security model. *(FR-007, US-2.2)*
 - [ ] **T012** (oss-repo): CI fully green (Go + UI + container); verify SC-001/002/004/007/008; **flip repo public after user review** (CL-5).
-- [ ] **T013** (oss-repo): Publish the refactored image tag the consumer PR will pin (record digest/tag for T015).
+- [x] **T013** (oss-repo): Publish the refactored image tag the consumer PR will pin (record digest/tag for T015).
 
 ### Phase 4: cloud-native-ref consumer cutover (cnr)
 
@@ -138,10 +138,10 @@ Refactor-in-place-then-extract (rejected: churns cloud-native-ref with refactor 
 
 - **2026-07-17** — CL-6 added mid-implementation: Zitadel auth removed (T018).
 - **2026-07-17** — T016's "remove the CI entry" is a no-op: `build-container-images.yml` auto-detects dirs under `container-images/`, so deleting the folder removes it from the build matrix (and from Renovate's Go/npm scan) automatically. Only the 4 explicit app-wizard `packageRules` in `.github/renovate.json` needed removing.
-- **2026-07-17** — **Everything is done and validated except the steps that need a published upstream image, which are hard-blocked on the ghcr package Actions-access human step:**
-  - **T012** (flip repo public) — held: CI's build job can't go green (can't push the image) until the grant.
-  - **T013** (publish the refactored image) — blocked on the grant.
-  - **T017** — the consumer cutover is authored and *structurally* verified (`validate-manifests.sh` → `Invalid: 0`; the refactored binary loaded the real `wizard.yaml`/XRD/stacks/hints/assists), and lives on branch `feat/app-wizard-oss-split` commit `08a97dc8`. But the claim image is pinned to a `PENDING-UPSTREAM-PUBLISH` placeholder — **must not merge** until T013 publishes an image and the tag is re-pinned. Ideally e2e-verify on a feature-branch cluster (SC-005 PR-shape parity) before merge.
+- **2026-07-17** — the ghcr package Actions-access grant landed, unblocking publish:
+  - **T013 done** — `Smana/app-wizard` published `ghcr.io/smana/app-wizard:main-018a625` (+ `main-19bd324`). Its `build.yml` SARIF-upload step was made `continue-on-error` (a private repo lacks code scanning); CI + build are now green on main.
+  - **T017** — consumer cutover verified with the **actual published image** (`docker run` vs the repo + `wizard.yaml` → gvk `cloud.ogenki.io/v1alpha1`, stacks, ui-hints, assists) and re-pinned to `main-018a625`. `validate-manifests.sh` → `Invalid: 0`. **PR [#1632](https://github.com/Smana/cloud-native-ref/pull/1632) open** — merge (a production deploy of the new image + deletion of the vendored source) awaits user go, ideally after a feature-branch-cluster e2e (SC-005).
+  - **T012** (flip repo public) — CI is green and ready; held for explicit user review per CL-5 (public is effectively irreversible).
 
 ---
 
