@@ -24,14 +24,13 @@ spec:
     # the SPEC-009 split). The image ships neutral; wizard.yaml supplies this
     # platform's config.
     #
-    # !!! MERGE GATE !!! This tag is a PLACEHOLDER. The pre-split main-61bc2c9
-    # image does NOT understand wizard.yaml (it predates the config-file/agnostic
-    # refactor) and would break against the thinned env above. DO NOT MERGE until
-    # Smana/app-wizard has published a post-refactor image, then re-pin to that
-    # main-<short-sha>. Blocked on the ghcr package Actions-access grant (see
-    # docs/specs/009-app-wizard-oss-split/plan.md Dependencies).
+    # Immutable <branch>-<short-sha> tag from Smana/app-wizard's build workflow.
+    # main-018a625 is the first published post-refactor image: it understands
+    # wizard.yaml (config-file layer), derives the claim GVK from the XRD, and
+    # ships github+dev auth only. Bump to the newest main-<short-sha> when the
+    # upstream wizard changes.
     repository: ghcr.io/smana/app-wizard
-    tag: "PENDING-UPSTREAM-PUBLISH"
+    tag: "main-018a625"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
