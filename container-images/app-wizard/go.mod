@@ -3,7 +3,7 @@ module github.com/Smana/cloud-native-ref/container-images/app-wizard
 go 1.26
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.57.0
+	github.com/anthropics/anthropic-sdk-go v1.58.0
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/google/cel-go v0.29.2
 	github.com/google/go-github/v66 v66.0.0
