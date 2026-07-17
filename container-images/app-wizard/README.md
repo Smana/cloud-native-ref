@@ -85,14 +85,20 @@ Non-secret (set via `env` in the App claim):
 | `ZITADEL_REDIRECT_URL` | OIDC callback (default `.../api/auth/callback`) |
 | `ZITADEL_REQUIRED_ROLE` | project role a user must hold, e.g. `app-wizard:user` (empty ⇒ any authenticated user) |
 | `OAUTH_REDIRECT_URL` | GitHub OAuth / GitHub-link callback |
-| `LLM_MODEL` | assist model id (default `claude-opus-4-8`) |
-| `LLM_BASE_URL` | optional; point assists at the in-cluster AI Gateway |
+| `LLM_MODEL` | assist model id (default `claude-opus-4-8`; deployed as `glm-5.2` — see below) |
+| `LLM_BASE_URL` | optional Anthropic-API-compatible endpoint (deployed: `https://api.z.ai/api/anthropic`; can also target the in-cluster AI Gateway) |
 
-Secret (via `envFrom` from the ESO-materialized `app-wizard-oauth` Secret;
-source blob `apps/app-wizard/oauth` in AWS Secrets Manager):
+Secret (via `envFrom` from two ESO-materialized Secrets):
 
-`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_KEY`,
-`ZITADEL_CLIENT_ID`, `ZITADEL_CLIENT_SECRET`, `LLM_API_KEY`.
+- `app-wizard-oauth` (source blob `apps/app-wizard/oauth`): `GITHUB_CLIENT_ID`,
+  `GITHUB_CLIENT_SECRET`, `SESSION_KEY`, `ZITADEL_CLIENT_ID`, `ZITADEL_CLIENT_SECRET`.
+- `app-wizard-llm` (source blob `apps/app-wizard/llm`): `LLM_API_KEY` — a copy of
+  runlore's Z.ai GLM key in a wizard-owned blob (own rotation lifecycle).
+
+The deployed assists run on **GLM 5.2 via Z.ai's Anthropic-compatible endpoint**
+(the assist backend speaks the Anthropic Messages API with forced tool use, which
+that endpoint implements). `LLM_MODEL=glm-5.2` is set explicitly because the
+endpoint maps the Anthropic alias `claude-opus-4-8` to the older `glm-4.7`.
 
 Switching a deployment to `zitadel` requires registering the Zitadel app
 (Web / OIDC / PKCE) and its role, plus populating the `ZITADEL_*` secret keys
