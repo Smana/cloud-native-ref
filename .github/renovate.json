@@ -1,116 +1,50 @@
 {
-    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "extends": [
-        "config:recommended"
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate Dashboard",
+  "labels": [
+    "renovatebot"
+  ],
+  "flux": {
+    "fileMatch": [
+      ".+\\.ya?ml"
     ],
-    "dependencyDashboard": true,
-    "dependencyDashboardTitle": "Renovate Dashboard",
-    "labels": [
-        "renovatebot"
+    "ignorePaths": [
+      "clusters",
+      "opentofu"
+    ]
+  },
+  "helm-values": {
+    "fileMatch": [
+      ".+\\.ya?ml"
     ],
-    "flux": {
-        "fileMatch": [
-            ".+\\.ya?ml"
-        ],
-        "ignorePaths": [
-            "clusters",
-            "opentofu"
-        ]
-    },
-    "helm-values": {
-        "fileMatch": [
-            ".+\\.ya?ml"
-        ],
-        "ignorePaths": [
-            "clusters",
-            "opentofu"
-        ]
-    },
-    "kubernetes": {
-        "fileMatch": [
-            ".+\\.ya?ml"
-        ],
-        "ignorePaths": [
-            "clusters",
-            "opentofu"
-        ]
-    },
-    "packageRules": [
-        {
-            "description": "Block the 0.3.x schema break, not the whole chart. Chart 0.3.0 restructures the values schema (canonical-v0.3 providers/routing/global); our values still speak 0.2, so the chart's own 0.3 component defaults win — including pullPolicy: Never, which breaks the router on any fresh node (ErrImageNeverPull -> every `model: MoM` request 404s). Renovate bumped this past a plain code comment (c00892eb) and it stayed invisible for five weeks, because running clusters kept already-pulled images. allowedVersions rather than enabled:false so 0.2.x patch and security releases still flow. Lift the bound in the same PR that migrates infrastructure/base/vllm-semantic-router/helmrelease.yaml to the 0.3 schema.",
-            "matchPackageNames": [
-                "ghcr.io/vllm-project/charts/semantic-router"
-            ],
-            "allowedVersions": "<0.3.0"
-        },
-        {
-            "description": "app-wizard Go modules: group non-major bumps into one PR and automerge patch/minor/digest once CI (go test + image build) passes. Major bumps stay individual PRs for review.",
-            "matchFileNames": [
-                "container-images/app-wizard/**"
-            ],
-            "matchManagers": [
-                "gomod"
-            ],
-            "matchUpdateTypes": [
-                "minor",
-                "patch",
-                "digest"
-            ],
-            "groupName": "app-wizard go",
-            "automerge": true,
-            "platformAutomerge": true
-        },
-        {
-            "description": "app-wizard UI (npm): group non-major bumps into one PR and automerge patch/minor once CI (vitest + tsc + build) passes. Major bumps (e.g. tailwind v4, vite v8, typescript v7, vitest v4) stay individual PRs for review.",
-            "matchFileNames": [
-                "container-images/app-wizard/**"
-            ],
-            "matchManagers": [
-                "npm"
-            ],
-            "matchUpdateTypes": [
-                "minor",
-                "patch"
-            ],
-            "groupName": "app-wizard ui",
-            "automerge": true,
-            "platformAutomerge": true
-        },
-        {
-            "description": "app-wizard Dockerfile base images (node, golang, alpine): group non-major bumps and automerge patch/minor/digest once the image build passes. Major bumps stay individual PRs for review.",
-            "matchFileNames": [
-                "container-images/app-wizard/**"
-            ],
-            "matchManagers": [
-                "dockerfile"
-            ],
-            "matchUpdateTypes": [
-                "minor",
-                "patch",
-                "digest"
-            ],
-            "groupName": "app-wizard docker",
-            "automerge": true,
-            "platformAutomerge": true
-        },
-        {
-            "description": "app-wizard: group the Vite build toolchain (vite, @vitejs/plugin-react, vitest) MAJOR bumps into ONE PR. These are coupled (plugin-react and vitest track vite's major), so Renovate opening them individually makes each fail CI. Grouped, they upgrade together and pass as a unit. Kept manual for review; non-major of these still flows through the app-wizard ui rule above.",
-            "matchFileNames": [
-                "container-images/app-wizard/**"
-            ],
-            "matchPackageNames": [
-                "vite",
-                "vitest",
-                "@vitejs/**",
-                "@vitest/**"
-            ],
-            "matchUpdateTypes": [
-                "major"
-            ],
-            "groupName": "app-wizard vite toolchain"
-        }
+    "ignorePaths": [
+      "clusters",
+      "opentofu"
+    ]
+  },
+  "kubernetes": {
+    "fileMatch": [
+      ".+\\.ya?ml"
     ],
-    "registryAliases": {
-        "zitadel": "https://charts.zitadel.com"
+    "ignorePaths": [
+      "clusters",
+      "opentofu"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "Block the 0.3.x schema break, not the whole chart. Chart 0.3.0 restructures the values schema (canonical-v0.3 providers/routing/global); our values still speak 0.2, so the chart's own 0.3 component defaults win \u2014 including pullPolicy: Never, which breaks the router on any fresh node (ErrImageNeverPull -> every `model: MoM` request 404s). Renovate bumped this past a plain code comment (c00892eb) and it stayed invisible for five weeks, because running clusters kept already-pulled images. allowedVersions rather than enabled:false so 0.2.x patch and security releases still flow. Lift the bound in the same PR that migrates infrastructure/base/vllm-semantic-router/helmrelease.yaml to the 0.3 schema.",
+      "matchPackageNames": [
+        "ghcr.io/vllm-project/charts/semantic-router"
+      ],
+      "allowedVersions": "<0.3.0"
     }
+  ],
+  "registryAliases": {
+    "zitadel": "https://charts.zitadel.com"
+  }
 }

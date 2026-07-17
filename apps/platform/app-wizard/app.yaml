@@ -4,8 +4,9 @@
 # the same abstraction it helps developers author. Schema-driven self-service
 # UI that opens GitOps PRs under apps/<stack>/<app_name>/.
 #
-# Container built from container-images/app-wizard/ by build-container-images.yml
-# and published to ghcr.io/smana/app-wizard.
+# The image is the agnostic upstream ghcr.io/smana/app-wizard, built by
+# Smana/app-wizard (extracted from this repo in SPEC-009). This platform's
+# config lives beside this file in wizard.yaml + ui-hints.yaml.
 #
 # Filed under apps/platform/ (the "platform" stack in apps/stacks.yaml). The
 # Kubernetes namespace is `apps` — the existing, Flux-reconciled namespace every
@@ -18,26 +19,18 @@ metadata:
   namespace: apps
 spec:
   image:
+    # Now the AGNOSTIC upstream image, built and published by Smana/app-wizard —
+    # NO LONGER built by this repo (container-images/app-wizard/ was removed in
+    # the SPEC-009 split). The image ships neutral; wizard.yaml supplies this
+    # platform's config.
+    #
+    # Immutable <branch>-<short-sha> tag from Smana/app-wizard's build workflow.
+    # main-018a625 is the first published post-refactor image: it understands
+    # wizard.yaml (config-file layer), derives the claim GVK from the XRD, and
+    # ships github+dev auth only. Bump to the newest main-<short-sha> when the
+    # upstream wizard changes.
     repository: ghcr.io/smana/app-wizard
-    # Immutable tag, not `latest`. `latest` + IfNotPresent is a trap: the tag
-    # moves, the digest changes, but the kubelet already has *a* `latest` on the
-    # node and never pulls again — so a rebuilt image silently doesn't roll out.
-    # An immutable tag makes the rollout real.
-    #
-    # Tag format is <branch>-<short-sha>, set by the build workflow's metadata-action —
-    # NOT the raw commit sha (that gives ImagePullBackOff: not found).
-    #
-    # main-61bc2c9 is the merge build of #1628 (LLM assists). It carries the render
-    # engine fix from #1590: earlier images shipped only the crossplane CLI (crank)
-    # and pointed --crossplane-binary at it, but `crossplane render` shells out to
-    # `<binary> internal render` — a subcommand only the crossplane CORE binary
-    # implements — so render died with `unexpected argument internal` (exit 80). The
-    # image ships BOTH the CLI (render driver) and the core binary and points
-    # --crossplane-binary at the core binary.
-    #
-    # Bump this to the newest main-<short-sha> whenever a wizard change merges; the
-    # build workflow publishes it on every push to main under container-images/app-wizard/.
-    tag: "main-61bc2c9"
+    tag: "main-018a625"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
@@ -80,98 +73,20 @@ spec:
       periodSeconds: 10
 
   # Non-secret runtime config. Env var names are taken from
-  # container-images/app-wizard/internal/config/config.go (Load()).
+  # Non-secret config now lives in wizard.yaml (SPEC-009): repo coordinates, XRD/
+  # stacks/composition paths, layout, branding, assists, auth mode. The env below
+  # is only what's needed to FIND that file. REPO_ROOT is where the initContainer
+  # clones this repo; WIZARD_CONFIG is the cloned config file. Secrets come from
+  # the ExternalSecrets via envFrom. (Env still overrides file values if needed.)
   env:
-    # HTTP bind address.
     - name: LISTEN_ADDR
       value: ":8080"
-    # GitOps repo PRs are opened against.
-    - name: REPO_OWNER
-      value: "Smana"
-    - name: REPO_NAME
-      value: "cloud-native-ref"
-    - name: REPO_BASE_BRANCH
-      value: "main"
-    # XRD_SOURCE=github is NOT implemented server-side: cmd/app-wizard/main.go always
-    # builds a LocalSource and only logs a line for github mode ("per-user tokens are
-    # request-scoped"). Left as-is for when that lands; today the files come from the
-    # initContainer clone below, via REPO_ROOT.
-    - name: XRD_SOURCE
-      value: "github"
-
-    # Where the wizard reads the repo from. The distroless image ships ONLY the binary,
-    # so without this it resolves REPO_ROOT to the container root and dies at startup:
-    #   open /infrastructure/.../app-definition.yaml: no such file or directory
+    # The distroless image ships only the binary; the initContainer clones this
+    # repo to /repo so the wizard can read the XRD/stacks/composition/config.
     - name: REPO_ROOT
       value: "/repo"
-
-    # Field labels/grouping for the generated form. Unset, loadHints() silently returns
-    # empty hints — the form still renders, but ungrouped and unlabelled. Read with
-    # os.ReadFile (not through the schema source), so it must be an absolute path.
-    - name: UI_HINTS_PATH
-      value: "/repo/container-images/app-wizard/ui-hints.yaml"
-    # Render preview via the function sidecars below (CL-8): the renderer overlays
-    # the crossplane "Development" runtime onto functions.yaml so `crossplane
-    # render` dials these in-pod gRPC endpoints instead of running Docker.
-    - name: FUNCTIONS_DEV_TARGETS
-      value: "function-kcl=localhost:9443,function-auto-ready=localhost:9444,function-environment-configs=localhost:9445"
-    # OAuth callback registered with the GitHub OAuth app (CL-9). Must match the
-    # private Tailscale hostname below. Used by both the github login flow AND
-    # the zitadel "link GitHub" flow (/api/auth/github/callback shares the app).
-    - name: OAUTH_REDIRECT_URL
-      value: "https://app-wizard.priv.cloud.ogenki.io/api/auth/callback"
-    # OAuth client id/secret and SESSION_KEY come from the ExternalSecret below
-    # via envFrom (GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET / SESSION_KEY keys).
-
-    # -------------------------------------------------------------------------
-    # Authentication mode (CL-11). One of: github | dev | zitadel.
-    #   github  — GitHub OAuth is the login (default; PRs open as the GitHub user)
-    #   dev     — no auth, local development only
-    #   zitadel — Zitadel OIDC (SSO) is the login; the user ALSO links GitHub
-    #             once so PRs are opened as them (two-flow model).
-    # Deployed default stays "github" so this manifest is deployable as-is.
-    # To switch to zitadel: uncomment the AUTH_MODE line below, ensure the
-    # ZITADEL_* vars are set, register the Zitadel app + role, and populate the
-    # ZITADEL_CLIENT_ID / ZITADEL_CLIENT_SECRET secret keys (human steps
-    # T401/T003 — see container-images/app-wizard/README.md).
-    - name: AUTH_MODE
-      value: "github"
-    # - name: AUTH_MODE
-    #   value: "zitadel"
-
-    # Zitadel OIDC (non-secret) config — only consumed when AUTH_MODE=zitadel.
-    # Safe to leave set in any mode; ignored unless zitadel is active.
-    # Replace <your-zitadel-domain> with the real Zitadel issuer URL.
-    - name: ZITADEL_ISSUER
-      value: "https://<your-zitadel-domain>"
-    # Redirect back to the wizard after the Zitadel OIDC login.
-    - name: ZITADEL_REDIRECT_URL
-      value: "https://app-wizard.priv.cloud.ogenki.io/api/auth/callback"
-    # Role the Zitadel user must hold to use the wizard (project role key).
-    - name: ZITADEL_REQUIRED_ROLE
-      value: "app-wizard:user"
-    # ZITADEL_CLIENT_ID / ZITADEL_CLIENT_SECRET come from the ExternalSecret
-    # below via envFrom — register the app as Web / OIDC / PKCE (T401).
-
-    # -------------------------------------------------------------------------
-    # LLM assists (Phase 3, optional). Assists become AVAILABLE when either
-    # LLM_API_KEY (secret, via envFrom) OR LLM_BASE_URL is set; otherwise the UI
-    # hides the assist affordances via /api/assist/status. LLM_MODEL is
-    # non-secret and defaults to "claude-opus-4-8" in the binary.
-    #
-    # Assists run on GLM 5.2 through Z.ai's Anthropic-compatible endpoint — the
-    # backend speaks the Anthropic Messages API (forced tool_use for structured
-    # output), which this endpoint implements. The API key is a copy of
-    # runlore's GLM key, held in the wizard's own blob (apps/app-wizard/llm).
-    #
-    # LLM_MODEL is set explicitly: the endpoint also accepts Anthropic model
-    # ids as aliases, but maps claude-opus-4-8 → glm-4.7 (verified live), an
-    # OLDER model than glm-5.2 — relying on the binary's default would silently
-    # downgrade the assists.
-    - name: LLM_MODEL
-      value: "glm-5.2"
-    - name: LLM_BASE_URL
-      value: "https://api.z.ai/api/anthropic"
+    - name: WIZARD_CONFIG
+      value: "/repo/apps/platform/app-wizard/wizard.yaml"
 
   # ---------------------------------------------------------------------------
   # OAuth app credentials + session key from AWS Secrets Manager.
@@ -184,13 +99,11 @@ spec:
   # The AWS Secrets Manager blob at apps/app-wizard/oauth MUST contain these
   # keys (the composition imports ALL keys from the path via dataFrom → they
   # land as env vars of the same name through envFrom):
-  #   GITHUB_CLIENT_ID       — GitHub OAuth app (login in github mode; the
-  #   GITHUB_CLIENT_SECRET     "link GitHub" flow in zitadel mode)
-  #   SESSION_KEY            — signs the session cookie (required in all modes)
-  #   ZITADEL_CLIENT_ID      — Zitadel OIDC app creds (only used when
-  #   ZITADEL_CLIENT_SECRET    AUTH_MODE=zitadel; PKCE app secret may be empty)
-  # Missing keys simply don't materialize as env vars; a mode that doesn't need
-  # a key is unaffected. Populating them is a human step (T003).
+  #   GITHUB_CLIENT_ID       — GitHub OAuth app (login; PRs open as the user)
+  #   GITHUB_CLIENT_SECRET
+  #   SESSION_KEY            — signs the session cookie
+  # Missing keys simply don't materialize as env vars. Populating them is a
+  # human step (T003).
   #
   # The LLM assist key lives in its OWN blob (apps/app-wizard/llm, key
   # LLM_API_KEY) rather than the oauth blob: it is a copy of runlore's GLM key
@@ -214,15 +127,15 @@ spec:
   # ---------------------------------------------------------------------------
   # The repo on disk.
   # ---------------------------------------------------------------------------
-  # The wizard needs SIX repo files at runtime, all resolved under REPO_ROOT:
+  # The wizard needs these repo files at runtime, all resolved under REPO_ROOT:
+  #   - wizard.yaml                     -> this platform's config (WIZARD_CONFIG)
   #   - the App XRD + apps/stacks.yaml  -> to build the form
-  #   - ui-hints.yaml                   -> to label and group its fields
+  #   - apps/platform/app-wizard/ui-hints.yaml -> to label and group its fields
   #   - the composition + functions.yaml + environmentconfig.yaml
   #                                     -> `crossplane render` shells out to these for
-  #                                        the live preview (internal/render/crossplane.go)
-  # The image carries none of them (distroless, binary only) and the build context is
-  # container-images/app-wizard/, so it *cannot* ship repo-root files. Shallow-clone the
-  # public platform repo into an emptyDir instead.
+  #                                        the live preview
+  # The agnostic upstream image carries none of them (distroless, binary only),
+  # so shallow-clone this repo into an emptyDir.
   #
   # Frozen at pod start: an XRD or composition change is picked up on the next pod
   # restart, not live. Acceptable for now — the form should track `main` (the branch PRs

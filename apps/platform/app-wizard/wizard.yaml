@@ -1,0 +1,52 @@
+# wizard.yaml — App Wizard configuration for this platform (SPEC-009).
+#
+# The wizard image is the agnostic upstream ghcr.io/smana/app-wizard
+# (Smana/app-wizard). This file is what points it at THIS repo: the App XRD, the
+# stacks registry, the composition, the file layout, and the branding. The
+# initContainer in app.yaml clones this repo to /repo, so the wizard reads this
+# file (WIZARD_CONFIG=/repo/apps/platform/app-wizard/wizard.yaml) and the paths
+# below resolve under REPO_ROOT=/repo.
+#
+# Secrets are NEVER here — GITHUB_CLIENT_SECRET / SESSION_KEY / LLM_API_KEY come
+# from the ExternalSecrets in app.yaml via envFrom.
+
+repo:
+  owner: Smana
+  name: cloud-native-ref
+  baseBranch: main
+
+schema:
+  # Repo-relative (resolved under REPO_ROOT by the local source).
+  xrdPath: infrastructure/base/crossplane/configuration/app-definition.yaml
+  stacksPath: apps/stacks.yaml
+  # Read with os.ReadFile, so an absolute path inside the cloned repo.
+  uiHintsPath: /repo/apps/platform/app-wizard/ui-hints.yaml
+
+# PR file layout — unchanged from the historical apps/<stack>/<app>.
+layout: "apps/{stack}/{app}"
+
+render:
+  enabled: true
+  compositionPath: infrastructure/base/crossplane/configuration/app-composition.yaml
+  functionsPath: infrastructure/base/crossplane/configuration/functions.yaml
+  envConfigPath: infrastructure/base/crossplane/configuration/environmentconfig.yaml
+  # Render via the in-pod function sidecars (CL-8) instead of Docker.
+  functionsDevTargets: "function-kcl=localhost:9443,function-auto-ready=localhost:9444,function-environment-configs=localhost:9445"
+
+branding:
+  # The upstream image ships neutral; ogenki branding is supplied here. (No logo
+  # yet — the ogenki asset left with the SPA in the split; add a logoUrl to a
+  # hosted asset to restore it.)
+  title: App Wizard
+
+# GLM 5.2 via Z.ai's Anthropic-compatible endpoint. The API key (LLM_API_KEY)
+# is env-only via the app-wizard-llm ExternalSecret; a non-empty baseUrl marks
+# assists available. glm-5.2 is pinned explicitly (the endpoint maps the
+# claude-opus-4-8 alias to the older glm-4.7).
+assists:
+  model: glm-5.2
+  baseUrl: https://api.z.ai/api/anthropic
+
+auth:
+  mode: github
+  redirectUrl: https://app-wizard.priv.cloud.ogenki.io/api/auth/callback
