@@ -123,20 +123,25 @@ Refactor-in-place-then-extract (rejected: churns cloud-native-ref with refactor 
 
 ### Phase 3: Docs, publish, verify
 
-- [ ] **T011** (oss-repo): README — purpose, quickstart, full `wizard.yaml` + secret-env reference (every key + default), screenshots, security model. *(FR-007, US-2.2)*
+- [x] **T011** (oss-repo): README — purpose, quickstart, full `wizard.yaml` + secret-env reference (every key + default), screenshots, security model. *(FR-007, US-2.2)*
 - [ ] **T012** (oss-repo): CI fully green (Go + UI + container); verify SC-001/002/004/007/008; **flip repo public after user review** (CL-5).
 - [ ] **T013** (oss-repo): Publish the refactored image tag the consumer PR will pin (record digest/tag for T015).
 
 ### Phase 4: cloud-native-ref consumer cutover (cnr)
 
-- [ ] **T014** (cnr): Relocate `ui-hints.yaml` → platform-owned path (`apps/platform/app-wizard/ui-hints.yaml`); add ogenki `wizard.yaml`. *(FR-010)*
-- [ ] **T015** (cnr): Update the `app-wizard` App claim — mount `wizard.yaml` + `ui-hints.yaml`, pin the refactored upstream image; CNP/ESO/route/initContainer unchanged. *(FR-010, NFR-001)*
-- [ ] **T016** (cnr): Delete `container-images/app-wizard/`; remove its entry from `build-container-images.yml`; drop wizard-specific Renovate rules. *(FR-010, FR-011)*
+- [x] **T014** (cnr): Relocate `ui-hints.yaml` → platform-owned path (`apps/platform/app-wizard/ui-hints.yaml`); add ogenki `wizard.yaml`. *(FR-010)*
+- [x] **T015** (cnr): Update the `app-wizard` App claim — mount `wizard.yaml` + `ui-hints.yaml`, pin the refactored upstream image; CNP/ESO/route/initContainer unchanged. *(FR-010, NFR-001)*
+- [x] **T016** (cnr): Delete `container-images/app-wizard/`; remove its entry from `build-container-images.yml`; drop wizard-specific Renovate rules. *(FR-010, FR-011)*
 - [ ] **T017** (cnr): Evidence — `./scripts/validate-manifests.sh` → `Invalid: 0, Skipped: 0` (SC-006); PR-shape parity vs. pre-split baseline (SC-005). Open consumer PR; merge only after T013 image is published.
 
 ### Deviations from plan
 
-<!-- Append as implementation surprises show up. -->
+- **2026-07-17** — CL-6 added mid-implementation: Zitadel auth removed (T018).
+- **2026-07-17** — T016's "remove the CI entry" is a no-op: `build-container-images.yml` auto-detects dirs under `container-images/`, so deleting the folder removes it from the build matrix (and from Renovate's Go/npm scan) automatically. Only the 4 explicit app-wizard `packageRules` in `.github/renovate.json` needed removing.
+- **2026-07-17** — **Everything is done and validated except the steps that need a published upstream image, which are hard-blocked on the ghcr package Actions-access human step:**
+  - **T012** (flip repo public) — held: CI's build job can't go green (can't push the image) until the grant.
+  - **T013** (publish the refactored image) — blocked on the grant.
+  - **T017** — the consumer cutover is authored and *structurally* verified (`validate-manifests.sh` → `Invalid: 0`; the refactored binary loaded the real `wizard.yaml`/XRD/stacks/hints/assists), and lives on branch `feat/app-wizard-oss-split` commit `08a97dc8`. But the claim image is pinned to a `PENDING-UPSTREAM-PUBLISH` placeholder — **must not merge** until T013 publishes an image and the tag is re-pinned. Ideally e2e-verify on a feature-branch cluster (SC-005 PR-shape parity) before merge.
 
 ---
 
