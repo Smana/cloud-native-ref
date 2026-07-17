@@ -2,7 +2,7 @@
 
 **ID**: SPEC-009
 **Issue**: [#1631](https://github.com/Smana/cloud-native-ref/issues/1631)
-**Status**: draft
+**Status**: approved
 **Type**: platform
 **Created**: 2026-07-17
 **Last updated**: 2026-07-17
@@ -74,7 +74,7 @@ As a **potential contributor**, I want the repo to have the hallmarks of a maint
 ### Functional
 
 - **FR-001**: The claim's `apiVersion` and `kind` MUST be derived from the configured XRD (its `group`, served version, and `claimNames.kind`), not hardcoded. No `cloud.ogenki.io` or `App` literal may remain in Go or UI source as the claim GVK.
-- **FR-002**: All non-secret configuration MUST be expressible in a single `wizard.yaml` config file: repo coordinates (owner/name/base branch), XRD path, stacks path, render engine + composition/functions/environmentconfig paths, PR file-layout template, branding (title, logo, theme), and assist settings. Environment variables MUST override file values (12-factor); secrets (`GITHUB_CLIENT_SECRET`, `LLM_API_KEY`, `SESSION_KEY`, Zitadel client secret) MUST remain environment-only and MUST NOT be accepted from the file.
+- **FR-002**: All non-secret configuration MUST be expressible in a single `wizard.yaml` config file: repo coordinates (owner/name/base branch), XRD path, stacks path, render engine + composition/functions/environmentconfig paths, PR file-layout template, branding (title, logo, theme), and assist settings. Environment variables MUST override file values (12-factor); secrets (`GITHUB_CLIENT_SECRET`, `LLM_API_KEY`, `SESSION_KEY`) MUST remain environment-only and MUST NOT be accepted from the file.
 - **FR-003**: The PR file layout MUST be a configurable template (default `apps/{stack}/{app}`) that determines the app directory, its `kustomization.yaml`, and the parent-kustomization registration path. The default MUST reproduce today's behavior exactly.
 - **FR-004**: Branding MUST be configuration-driven: application title, logo (URL or mounted asset), and a theme (CSS custom properties). The shipped default MUST be neutral (no "ogenki"/"Ogenki" string, neutral palette, generic mark). cloud-native-ref supplies ogenki branding via its own `wizard.yaml`.
 - **FR-005**: The `crossplane render` preview MUST be gated by config (`render.enabled`). When disabled, schema validation, CEL evaluation, secret scanning, and PR creation MUST all still function; only the rendered-resource preview and its PR comment are omitted.
@@ -87,7 +87,7 @@ As a **potential contributor**, I want the repo to have the hallmarks of a maint
 
 ### Non-Functional
 
-- **NFR-001**: No regression in the deployed wizard's behavior for cloud-native-ref users — the create → validate → render-preview → PR flow, GitHub/dev/zitadel auth modes, and the CiliumNetworkPolicy egress model are preserved.
+- **NFR-001**: No regression in the deployed wizard's behavior for cloud-native-ref users — the create → validate → render-preview → PR flow, GitHub/dev auth modes (Zitadel removed per [CL-6](clarifications.md)), and the CiliumNetworkPolicy egress model are preserved.
 - **NFR-002**: Secrets never transit the config file or logs; the existing secret-scanning gate on PR content is retained.
 - **NFR-003**: The split introduces no new long-lived credential in either repo; the wizard continues to hold no cluster credentials and opens PRs as the signed-in user.
 

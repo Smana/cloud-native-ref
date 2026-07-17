@@ -107,6 +107,24 @@
 **Decided by**: User (brainstorming session, 2026-07-17)
 **References**: FR-007, T-tasks in plan.md
 
+## CL-6 — 2026-07-17 — Keep the Zitadel auth mode in the OSS wizard?
+
+**Asked by**: User
+**Context**: The wizard ships three auth modes (`github`, `dev`, `zitadel`). Zitadel adds a two-flow model (OIDC SSO login + a separately-linked GitHub token, an HTTP-428 "Connect GitHub" handshake, an OIDC verifier) woven across ~15 files. The user's platform is not using Zitadel.
+
+**Options considered**:
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A | **Remove Zitadel; ship `github` + `dev` only** | Smaller, clearer auth surface for adopters; less to maintain/document; GitHub OAuth (login == PR token) is the simple path | Loses in-tree SSO; re-add later if wanted |
+| B | Keep all three | No code churn; SSO available out of the box | Carries an unused, non-trivial subsystem into the OSS baseline |
+
+**Decision**: A — remove Zitadel; keep `github` (default) and `dev`.
+**Rationale**: It is unused and materially enlarges the auth surface (two-flow linking, 428 handshake, OIDC verifier) for a tool meant to be simple to adopt. GitHub OAuth already covers single-sign-in with the user's own PR token. `gitprovider.Provider` and the auth dispatch stay pluggable, so an OIDC mode can return later behind the same seam if demand appears.
+**Impact**: Supersedes the "three auth modes preserved" wording — NFR-001 now preserves `github`/`dev` only; FR-002's secret list drops `ZITADEL_CLIENT_SECRET`; adds task T018 (Phase 2). Delete `internal/auth/{zitadel.go,zitadel_test.go,oidc_verifier.go}`, the Zitadel config fields, the PR-handler 428 link flow, and the UI "Connect GitHub" prompt.
+**Decided by**: User (mid-session directive, 2026-07-17)
+**References**: NFR-001, FR-002, T018; supersedes SPEC-008 CL-11 for the OSS baseline
+
 ---
 
 ## Related

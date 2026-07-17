@@ -1,7 +1,7 @@
 # Plan: Extract app-wizard into a standalone agnostic open-source repository
 
 **Spec**: [SPEC-009](spec.md)
-**Status**: draft
+**Status**: implementing
 **Last updated**: 2026-07-17
 
 > The **plan** covers *HOW* to deliver the spec. It may evolve during implementation (unlike `spec.md`, which freezes after approval). Append-only `clarifications.md` is where decisions are durable.
@@ -57,10 +57,10 @@ assists:
   model: glm-5.2
   baseUrl: https://api.z.ai/api/anthropic
 auth:
-  mode: github                            # github | dev | zitadel
-  # OAuth redirect, Zitadel issuer/role, etc.
-# secrets are NEVER here: GITHUB_CLIENT_SECRET, LLM_API_KEY, SESSION_KEY,
-# ZITADEL_CLIENT_SECRET stay environment-only (NFR-002).
+  mode: github                            # github | dev  (Zitadel removed, CL-6)
+  # OAuth redirect URL, etc.
+# secrets are NEVER here: GITHUB_CLIENT_SECRET, LLM_API_KEY, SESSION_KEY
+# stay environment-only (NFR-002).
 ```
 
 Loader precedence: **defaults → `wizard.yaml` → environment** (env wins). Secret keys are rejected if present in the file (fail closed).
@@ -75,7 +75,7 @@ Loader precedence: **defaults → `wizard.yaml` → environment** (env wins). Se
 
 - [ ] `gh` authenticated as Smana with `repo` + `workflow` scopes (confirmed 2026-07-17).
 - [ ] `git filter-repo` installed (for history-preserving extraction, CL-4).
-- [ ] `ghcr.io/smana/app-wizard` package re-pointable to the new source repo (Assumption).
+- [ ] **HUMAN STEP** — `ghcr.io/smana/app-wizard` package already exists (created by cloud-native-ref); the new repo's Actions token cannot push to it until `Smana/app-wizard` is granted **Write** under the package's *Manage Actions access* (UI-only for user packages; the `gh` token also lacks `write:packages`). Do NOT delete the package — the cluster pins an immutable tag (`main-61bc2c9`) from it. Until granted, the new repo's build succeeds but cannot publish (proven in T003: both arches built, push denied).
 - [ ] App XRD declares its claim GVK derivably (confirm in T005 against `app-definition.yaml`).
 
 ### Alternatives considered
@@ -119,6 +119,7 @@ Refactor-in-place-then-extract (rejected: churns cloud-native-ref with refactor 
 - [ ] **T008** (oss-repo): Config-driven branding (title/logo/theme via API → SPA); neutral default asset + palette; strip ogenki/Tailscale strings. `grep` gate for zero ogenki matches. *(FR-004, SC-002)*
 - [ ] **T009** (oss-repo): Gate render preview on `render.enabled`; when off, validate + PR still work (assist/render affordances hidden, like the existing degraded-assist path). Test both branches. *(FR-005, SC-004)*
 - [ ] **T010** (oss-repo): `examples/` (sample XRD + stacks + `wizard.yaml`) + `make dev` (dev auth, local git provider, offline). *(FR-008, SC-003)*
+- [ ] **T018** (oss-repo): Remove the Zitadel auth mode (CL-6) — delete `internal/auth/{zitadel.go,zitadel_test.go,oidc_verifier.go}`, the Zitadel config fields, the PR-handler HTTP-428 "link GitHub" flow, and the UI "Connect GitHub" prompt + `GitHubLinkRequiredError`; keep `github` + `dev`. `go test ./...` + `npm test` green; `grep -ri zitadel` returns nothing in `internal`/`ui/src`/`cmd`. Substantive (backend + UI) → subagent-driven with 2-stage review.
 
 ### Phase 3: Docs, publish, verify
 
