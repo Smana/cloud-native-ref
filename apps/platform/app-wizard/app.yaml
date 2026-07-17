@@ -158,13 +158,21 @@ spec:
     # LLM assists (Phase 3, optional). Assists become AVAILABLE when either
     # LLM_API_KEY (secret, via envFrom) OR LLM_BASE_URL is set; otherwise the UI
     # hides the assist affordances via /api/assist/status. LLM_MODEL is
-    # non-secret and defaults to "claude-opus-4-8" in the binary — override here
-    # if needed. Neither key nor base URL is set below, so assists ship OFF.
-    # - name: LLM_MODEL
-    #   value: "claude-opus-4-8"
-    # Optional: point at the in-cluster AI Gateway instead of a public endpoint.
-    # - name: LLM_BASE_URL
-    #   value: "http://ai-gateway.llm-platform.svc/v1"
+    # non-secret and defaults to "claude-opus-4-8" in the binary.
+    #
+    # Assists run on GLM 5.2 through Z.ai's Anthropic-compatible endpoint — the
+    # backend speaks the Anthropic Messages API (forced tool_use for structured
+    # output), which this endpoint implements. The API key is a copy of
+    # runlore's GLM key, held in the wizard's own blob (apps/app-wizard/llm).
+    #
+    # LLM_MODEL is set explicitly: the endpoint also accepts Anthropic model
+    # ids as aliases, but maps claude-opus-4-8 → glm-4.7 (verified live), an
+    # OLDER model than glm-5.2 — relying on the binary's default would silently
+    # downgrade the assists.
+    - name: LLM_MODEL
+      value: "glm-5.2"
+    - name: LLM_BASE_URL
+      value: "https://api.z.ai/api/anthropic"
 
   # ---------------------------------------------------------------------------
   # OAuth app credentials + session key from AWS Secrets Manager.
@@ -182,16 +190,26 @@ spec:
   #   SESSION_KEY            — signs the session cookie (required in all modes)
   #   ZITADEL_CLIENT_ID      — Zitadel OIDC app creds (only used when
   #   ZITADEL_CLIENT_SECRET    AUTH_MODE=zitadel; PKCE app secret may be empty)
-  #   LLM_API_KEY           — LLM assists (optional; omit to keep assists off)
   # Missing keys simply don't materialize as env vars; a mode that doesn't need
   # a key is unaffected. Populating them is a human step (T003).
+  #
+  # The LLM assist key lives in its OWN blob (apps/app-wizard/llm, key
+  # LLM_API_KEY) rather than the oauth blob: it is a copy of runlore's GLM key
+  # and rotates on that key's lifecycle, not the OAuth apps'. Remove the blob
+  # (or the entry below) to switch assists off.
   externalSecrets:
     - name: app-wizard-oauth
       remoteRef: apps/app-wizard/oauth
       refreshInterval: 1h
+    - name: app-wizard-llm
+      remoteRef: apps/app-wizard/llm
+      refreshInterval: 1h
   envFrom:
     - secretRef:
         name: app-wizard-oauth
+        optional: true
+    - secretRef:
+        name: app-wizard-llm
         optional: true
 
   # ---------------------------------------------------------------------------
