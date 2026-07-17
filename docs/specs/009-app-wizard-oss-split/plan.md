@@ -106,20 +106,20 @@ Refactor-in-place-then-extract (rejected: churns cloud-native-ref with refactor 
 
 ### Phase 1: Extract & stand up the OSS repo (history-preserving, mechanical)
 
-- [ ] **T001** (oss-repo): `git filter-repo` extract `container-images/app-wizard/` → repo root with history; rewrite Go module path `github.com/Smana/cloud-native-ref/container-images/app-wizard` → `github.com/Smana/app-wizard`; `go build ./...` + `go test ./...` green. *(FR-006, FR-009)*
-- [ ] **T002** (oss-repo): `gh repo create Smana/app-wizard --private`; push the extracted tree + tags. *(CL-5)*
-- [ ] **T003** (oss-repo): Move the container build workflow in (publishes `ghcr.io/smana/app-wizard`); add Go + UI build/test CI. First green run + first published image. *(FR-007)*
-- [ ] **T004** (oss-repo): Apache-2.0 `LICENSE`, README skeleton, `renovate.json` for the wizard's own deps. *(FR-007, FR-011)*
+- [x] **T001** (oss-repo): `git filter-repo` extract `container-images/app-wizard/` → repo root with history; rewrite Go module path `github.com/Smana/cloud-native-ref/container-images/app-wizard` → `github.com/Smana/app-wizard`; `go build ./...` + `go test ./...` green. *(FR-006, FR-009)*
+- [x] **T002** (oss-repo): `gh repo create Smana/app-wizard --private`; push the extracted tree + tags. *(CL-5)*
+- [x] **T003** (oss-repo): Move the container build workflow in (publishes `ghcr.io/smana/app-wizard`); add Go + UI build/test CI. First green run + first published image. *(FR-007)*
+- [x] **T004** (oss-repo): Apache-2.0 `LICENSE`, README skeleton, `renovate.json` for the wizard's own deps. *(FR-007, FR-011)*
 
 ### Phase 2: Agnostic refactor (in the OSS repo)
 
-- [ ] **T005** (oss-repo): `wizard.yaml` loader — file (`WIZARD_CONFIG`) + env override, secrets rejected from file; every existing env var preserved as an override. Table-test precedence + secret-rejection. *(FR-002, NFR-002)*
-- [ ] **T006** (oss-repo): Derive claim `apiVersion`/`kind` from the XRD; remove the three hardcoded GVK sites (Go ×2 + UI). Golden test: ogenki XRD → `cloud.ogenki.io/v1alpha1` `App`; synthetic XRD → its own GVK. *(FR-001, SC-002, SC-003)*
-- [ ] **T007** (oss-repo): Configurable PR file-layout template (default `apps/{stack}/{app}`); golden test that the default reproduces today's three-file output byte-for-byte. *(FR-003, SC-005)*
-- [ ] **T008** (oss-repo): Config-driven branding (title/logo/theme via API → SPA); neutral default asset + palette; strip ogenki/Tailscale strings. `grep` gate for zero ogenki matches. *(FR-004, SC-002)*
-- [ ] **T009** (oss-repo): Gate render preview on `render.enabled`; when off, validate + PR still work (assist/render affordances hidden, like the existing degraded-assist path). Test both branches. *(FR-005, SC-004)*
-- [ ] **T010** (oss-repo): `examples/` (sample XRD + stacks + `wizard.yaml`) + `make dev` (dev auth, local git provider, offline). *(FR-008, SC-003)*
-- [ ] **T018** (oss-repo): Remove the Zitadel auth mode (CL-6) — delete `internal/auth/{zitadel.go,zitadel_test.go,oidc_verifier.go}`, the Zitadel config fields, the PR-handler HTTP-428 "link GitHub" flow, and the UI "Connect GitHub" prompt + `GitHubLinkRequiredError`; keep `github` + `dev`. `go test ./...` + `npm test` green; `grep -ri zitadel` returns nothing in `internal`/`ui/src`/`cmd`. Substantive (backend + UI) → subagent-driven with 2-stage review.
+- [x] **T005** (oss-repo): `wizard.yaml` loader — file (`WIZARD_CONFIG`) + env override, secrets rejected from file; every existing env var preserved as an override. Table-test precedence + secret-rejection. *(FR-002, NFR-002)*
+- [x] **T006** (oss-repo): Derive claim `apiVersion`/`kind` from the XRD; remove the three hardcoded GVK sites (Go ×2 + UI). Golden test: ogenki XRD → `cloud.ogenki.io/v1alpha1` `App`; synthetic XRD → its own GVK. *(FR-001, SC-002, SC-003)*
+- [x] **T007** (oss-repo): Configurable PR file-layout template (default `apps/{stack}/{app}`); golden test that the default reproduces today's three-file output byte-for-byte. *(FR-003, SC-005)*
+- [x] **T008** (oss-repo): Config-driven branding (title/logo/theme via API → SPA); neutral default asset + palette; strip ogenki/Tailscale strings. `grep` gate for zero ogenki matches. *(FR-004, SC-002)*
+- [x] **T009** (oss-repo): Gate render preview on `render.enabled`; when off, validate + PR still work (assist/render affordances hidden, like the existing degraded-assist path). Test both branches. *(FR-005, SC-004)*
+- [x] **T010** (oss-repo): `examples/` (sample XRD + stacks + `wizard.yaml`) + `make dev` (dev auth, local git provider, offline). *(FR-008, SC-003)*
+- [x] **T018** (oss-repo): Remove the Zitadel auth mode (CL-6) — delete `internal/auth/{zitadel.go,zitadel_test.go,oidc_verifier.go}`, the Zitadel config fields, the PR-handler HTTP-428 "link GitHub" flow, and the UI "Connect GitHub" prompt + `GitHubLinkRequiredError`; keep `github` + `dev`. `go test ./...` + `npm test` green; `grep -ri zitadel` returns nothing in `internal`/`ui/src`/`cmd`. Substantive (backend + UI) → subagent-driven with 2-stage review.
 
 ### Phase 3: Docs, publish, verify
 
