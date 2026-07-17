@@ -19,26 +19,25 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/app-wizard
-    # Pinned to the commit, as the previous comment here said to do once an image
-    # existed. `latest` + IfNotPresent is a trap: the tag moves, the digest changes,
-    # but the kubelet already has *a* `latest` on the node and never pulls again — so a
-    # rebuilt image silently doesn't roll out. An immutable tag makes the rollout real.
+    # Immutable tag, not `latest`. `latest` + IfNotPresent is a trap: the tag
+    # moves, the digest changes, but the kubelet already has *a* `latest` on the
+    # node and never pulls again — so a rebuilt image silently doesn't roll out.
+    # An immutable tag makes the rollout real.
     #
     # Tag format is <branch>-<short-sha>, set by the build workflow's metadata-action —
     # NOT the raw commit sha (that gives ImagePullBackOff: not found).
     #
-    # feat-wizard-app-d20fd7b is the first image that can actually render. Earlier
-    # images shipped only the crossplane CLI (crank) and pointed --crossplane-binary
-    # at it, but `crossplane render` shells out to `<binary> internal render` — a
-    # subcommand only the crossplane CORE binary implements — so render died with
-    # `crossplane: error: unexpected argument internal` (exit 80). This image ships
-    # BOTH the CLI (render driver) and the core binary (crossplane-core, the engine)
-    # and points --crossplane-binary at the core binary. See #1590.
+    # main-61bc2c9 is the merge build of #1628 (LLM assists). It carries the render
+    # engine fix from #1590: earlier images shipped only the crossplane CLI (crank)
+    # and pointed --crossplane-binary at it, but `crossplane render` shells out to
+    # `<binary> internal render` — a subcommand only the crossplane CORE binary
+    # implements — so render died with `unexpected argument internal` (exit 80). The
+    # image ships BOTH the CLI (render driver) and the core binary and points
+    # --crossplane-binary at the core binary.
     #
-    # POST-MERGE: re-pin to the main-<short-sha> the merge build publishes. This is a
-    # feature-branch artifact — it resolves today, but main should not depend on a tag
-    # named after a branch that no longer exists.
-    tag: "feat-wizard-app-2cf8c65"
+    # Bump this to the newest main-<short-sha> whenever a wizard change merges; the
+    # build workflow publishes it on every push to main under container-images/app-wizard/.
+    tag: "main-61bc2c9"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
