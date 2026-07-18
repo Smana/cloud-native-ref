@@ -29,7 +29,7 @@ spec:
     # the XRD, and ships github+dev auth only. Bump to the newest main-<short-sha>
     # when the upstream wizard changes.
     repository: ghcr.io/smana/app-wizard
-    tag: "main-119c516"
+    tag: "main-f0a8361"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
