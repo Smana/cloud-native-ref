@@ -40,6 +40,21 @@ test_databases_resources = lambda {
     assert True
 }
 
+# ---- Test: DB connection secret always exposes a ready-to-use `uri` (Option C) ----
+# The username/password/uri template is unconditional (not gated on atlasSchema),
+# so any DB-backed app can consume `key: uri` directly as its DATABASE_URL.
+test_db_connection_secret_uri = lambda {
+    _oxr = option("params").oxr
+    dbs = _oxr.spec.databases or []
+    if len(dbs) > 0:
+        dbSecrets = [r for r in items if r.kind == "ExternalSecret" and "superuser" not in r.metadata.name]
+        assert len(dbSecrets) == len(dbs), "expected {} db ExternalSecrets, got {}".format(len(dbs), len(dbSecrets))
+        withUri = [s for s in dbSecrets if s.spec?.target?.template?.data?.uri]
+        assert len(withUri) == len(dbs), "every db ExternalSecret must template a uri key, got {} of {}".format(len(withUri), len(dbs))
+
+    assert True
+}
+
 # ---- Test: Backup creates ScheduledBackup and IAM resources ----
 test_backup_resources = lambda {
     _oxr = option("params").oxr
