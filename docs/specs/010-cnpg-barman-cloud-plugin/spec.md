@@ -60,7 +60,7 @@ As a **platform maintainer**, I want the composition free of deprecated Barman A
 - **FR-003**: `ScheduledBackup` MUST set `spec.method: plugin` and the plugin reference (exact field — `pluginConfiguration.name` — per the targeted plugin CRD), replacing the default in-tree method (`main.k:649-670`).
 - **FR-004**: The recovery path (`externalClusters[].barmanObjectStore`, `main.k:325-339`, driven by `spec.objectStoreRecovery`) MUST migrate to the plugin recovery model (`ObjectStore` + `externalClusters` plugin ref).
 - **FR-005**: Retention MUST move from `Cluster.spec.backup.retentionPolicy` (`main.k:287`) to `ObjectStore.spec.retentionPolicy`.
-- **FR-006**: S3 credentials MUST continue via IAM role (EKS Pod Identity, `inheritFromIAMRole`) with **no new Kubernetes Secret** — reusing the existing `xplane-*-cnpg-iam-role` + `PodIdentityAssociation` (`main.k:671-761`). *(Conditional on FR-007 verification.)*
+- **FR-006**: **By default**, S3 credentials MUST use credential-less IAM (EKS Pod Identity) — the `ObjectStore` omits explicit `s3Credentials` and the plugin sidecar inherits ambient credentials from the existing `PodIdentityAssociation` (SA `<name>-cnpg-cluster`, `main.k:744-761`) — with **no new Kubernetes Secret**. A claim MAY opt into access-key mode (keys sourced from OpenBao via `ExternalSecret`, referenced in `ObjectStore.s3Credentials`). See CL-4. *(Default path conditional on FR-007 verifying the `ObjectStore` accepts an omitted `s3Credentials` block; the IRSA `eks.amazonaws.com/role-arn` annotation MUST NOT be used — Pod Identity supplies ambient creds.)*
 - **FR-007**: The barman-cloud plugin (controller `Deployment` + `ObjectStore` CRD) MUST be installed cluster-wide (greenfield — nothing exists today) before the composition renders plugin refs, AND its `ObjectStore.spec.configuration.s3Credentials` MUST be confirmed to support `inheritFromIAMRole`.
 - **FR-008**: The Crossplane aggregate `ClusterRole` (`additional-rbac.yaml:6-14`) MUST grant `objectstores` (apiGroup `postgresql.cnpg.io`) so the Crossplane SA can create the CR.
 - **FR-009**: `main_test.k` (`main_test.k:43-59`) SHOULD assert the new `ObjectStore` count, `ScheduledBackup.spec.method == "plugin"`, and `Cluster.spec.plugins` presence.
@@ -68,7 +68,7 @@ As a **platform maintainer**, I want the composition free of deprecated Barman A
 ### Non-Goals
 
 - Not changing the shared S3 bucket (`infrastructure/base/cloudnative-pg/s3-bucket.yaml`, `cnpg-backups`) — the composition keeps taking `bucketName` and granting access.
-- Not changing the user-facing XRD backup API (`spec.backup.{schedule,bucketName,retentionPolicy}`, `spec.objectStoreRecovery.{bucketName,path}`) — this is an internal rendering change.
+- Not changing the user-facing XRD backup API (`spec.backup.{schedule,bucketName,retentionPolicy}`, `spec.objectStoreRecovery.{bucketName,path}`) — this is an internal rendering change, **except** one optional, default-off access-key field added per CL-4.
 - Not migrating other CNPG features (Poolers, declarative DatabaseRole, etc.).
 - Not performing the operator `1.31.0` bump itself — that is a separate PR, blocked on this one.
 - Not fixing anything outside backup/recovery rendering.
@@ -93,10 +93,10 @@ Each criterion must be **falsifiable** — a human or `/verify-spec` must answer
 
 <!-- Resolved via /clarify → appended to clarifications.md as CL-N. -->
 
-- [ ] [NEEDS CLARIFICATION: Plugin delivery mechanism — `HelmRelease` from the `plugin-barman-cloud` chart (consistent with the CNPG install) vs raw manifests under `crds/base/` + `infrastructure/base/`?]
-- [ ] [NEEDS CLARIFICATION: Exact `ScheduledBackup` plugin API shape (`method` + `pluginConfiguration`) for the targeted plugin version (`plugin-barman-cloud-v0.7.0`, 2026-06-10) — verify against its CRD.]
-- [ ] [NEEDS CLARIFICATION: Does the plugin's `ObjectStore.spec.configuration.s3Credentials` support `inheritFromIAMRole` (Pod Identity)? FR-006 (no new Secret, reuse existing IAM bundle) depends on this being yes.]
-- [ ] [NEEDS CLARIFICATION: Plugin controller security context (PSS-restricted) + resource requests/limits + `CiliumNetworkPolicy` egress shape (S3 endpoints via `toFQDNs` vs `toEntities`).]
+- [x] CL-2 — Plugin delivery mechanism: `HelmRelease` from the official `plugin-barman-cloud` chart
+- [x] CL-3 — `ScheduledBackup` / `Cluster.spec.plugins` / recovery API shape (verified from upstream docs)
+- [x] CL-4 — Credential model: credential-less IAM via Pod Identity (default) + opt-in access-key Secret via ESO
+- [x] CL-5 — Plugin securityContext (PSS-restricted) + CNP egress via `toFQDNs` + Pod Identity Agent host:80
 
 ---
 
