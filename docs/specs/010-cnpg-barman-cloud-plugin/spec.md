@@ -93,7 +93,7 @@ Each criterion must be **falsifiable** — a human or `/verify-spec` must answer
 
 <!-- Resolved via /clarify → appended to clarifications.md as CL-N. -->
 
-- [x] CL-2 — Plugin delivery mechanism: `HelmRelease` from the official `plugin-barman-cloud` chart
+- [x] CL-2 — Plugin delivery mechanism — **SUPERSEDED by CL-6** (no Helm chart exists → GitRepository + Flux Kustomization)
 - [x] CL-3 — `ScheduledBackup` / `Cluster.spec.plugins` / recovery API shape (verified from upstream docs)
 - [x] CL-4 — Credential model: credential-less IAM via Pod Identity (default) + opt-in access-key Secret via ESO
 - [x] CL-5 — Plugin securityContext (PSS-restricted) + CNP egress via `toFQDNs` + Pod Identity Agent host:80

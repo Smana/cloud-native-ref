@@ -103,6 +103,33 @@
 
 ---
 
+## CL-6 — 2026-07-18 — CORRECTION: no Helm chart exists → GitRepository + Flux Kustomization (supersedes CL-2)
+
+**Asked by**: Implementation (verification before build)
+**Context**: CL-2 chose `HelmRelease` delivery on the premise that the plugin ships an official chart. **Verification during implementation found this premise false**: the Barman Cloud plugin supports only manifest/Kustomize installation — a Helm chart is an open upstream feature request (issue #351). The `plugin-barman-cloud-v0.7.0` "chart" referenced in CL-2 is a *manifest release*, not a Helm chart.
+
+**Options considered** (both raw-manifest — no chart exists):
+
+| Option | Answer | Pros | Cons |
+|--------|--------|------|------|
+| A′ | Flux `Kustomization` from a `GitRepository` at the plugin release tag, with kustomize patches (namespace, securityContext, CNP) | Mirrors the repo's existing CNPG-CRD + gateway-api-CRD install pattern; versioned by tag; Renovate-trackable; minimal vendored YAML | Patching a multi-resource upstream manifest |
+| B′ | Vendor the release `manifest.yaml` into the repo | Fully explicit | Large static blob; manual version bumps |
+
+**Decision**: **A′ — Flux `Kustomization` from a `GitRepository`** at the plugin release tag. **Supersedes CL-2.**
+- `ObjectStore` CRD under `crds/base/` (mirrors `crds/base/kustomization-cloudnative-pg.yaml`).
+- Plugin workload under `infrastructure/base/cloudnative-pg-barman-plugin/` via a Flux Kustomization from `flux/sources/gitrepo-barman-cloud-plugin.yaml` (tag), with kustomize patches: **namespace = `infrastructure`** (MUST match the CNPG operator, not the docs' default `cnpg-system`), PSS-restricted securityContext, resource limits, + an added `CiliumNetworkPolicy` (CL-5).
+- Requires **cert-manager** (already in the repo) for plugin↔operator TLS.
+
+**Side-findings (same verification):**
+1. **cert-manager is a hard requirement** for the plugin↔operator mTLS — satisfied (repo already runs cert-manager).
+2. **CL-4 credential mechanism refined**: `ObjectStore.spec.configuration` is the *same* `BarmanObjectStoreConfiguration` type as the in-tree field, so the default path sets `s3Credentials.inheritFromIAMRole: true` (a verbatim carry-over of `main.k:277`) — **not** an omitted block. Ambient Pod Identity still supplies creds via the AWS SDK default chain; the CL-5 host:80 CNP rule is still required. This *strengthens* CL-4 (direct carry-over, no "omit-and-verify" residual).
+
+**Rationale**: No chart exists, so CL-2's `HelmRelease` is impossible. A′ matches the repo's established CRD-install pattern (GitRepository + Flux Kustomization), keeps upgrades to a tag bump, and lets the namespace/securityContext/CNP patches layer on cleanly.
+**Decided by**: user via /clarify (correction), 2026-07-18
+**References**: upstream issue #351 (Helm chart requested); plugin installation docs (manifest/Kustomize; same-namespace-as-operator; cert-manager required); `crds/base/kustomization-cloudnative-pg.yaml`; `flux/sources/gitrepo-cloudnative-pg.yaml`; supersedes [[CL-2]]
+
+---
+
 ## Related
 
 - Constitution: [docs/specs/constitution.md](../constitution.md)

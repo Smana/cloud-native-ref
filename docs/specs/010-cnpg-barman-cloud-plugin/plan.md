@@ -25,9 +25,11 @@ metadata:
 spec:
   configuration:
     destinationPath: s3://<bucketName>
-    # DEFAULT (CL-4): no s3Credentials block → plugin sidecar uses ambient creds from the
-    # existing PodIdentityAssociation. OPT-IN access-key mode adds s3Credentials referencing
-    # an ESO-backed Secret. The IRSA `eks.amazonaws.com/role-arn` annotation is NOT used.
+    s3Credentials:
+      inheritFromIAMRole: true        # DEFAULT (CL-4, refined by CL-6): same barman-cloud API as
+                                      # the in-tree field (main.k:277); ambient Pod Identity via the
+                                      # AWS SDK default chain. OPT-IN access-key mode swaps in
+                                      # accessKeyId/secretAccessKey (ESO Secret). No IRSA annotation.
     wal: { compression: bzip2 }
     data: { compression: bzip2 }
   retentionPolicy: <retentionPolicy>  # moved off Cluster.spec.backup (CL-3)
@@ -79,23 +81,24 @@ spec:
 | `ScheduledBackup` (`method: plugin`) | When `spec.backup.schedule` set | Was in-tree default |
 | `ExternalSecret` (access-key) | When opt-in access-key mode (CL-4 B) | Keys from OpenBao → Secret referenced in `ObjectStore.s3Credentials` |
 | RBAC `objectstores` grant | Always (one-time) | Added to `additional-rbac.yaml` aggregate ClusterRole |
-| barman-cloud plugin (HelmRelease → Deployment + CRD + CNP) | Always (one-time, cluster-wide) | Greenfield install via HelmRelease (CL-2) |
+| barman-cloud plugin (GitRepository + Flux Kustomization → CRD + Deployment + RBAC + Service + cert-manager certs + CNP) | Always (one-time, cluster-wide) | Greenfield install, patched to ns `infrastructure` (CL-6) |
 
 ### Key Entities
 
 - **`ObjectStore`** (`barmancloud.cnpg.io`): per-claim S3 backup destination, named `xplane-<claim>-cnpg-objectstore`.
-- **barman-cloud plugin controller**: cluster-wide Deployment (installed via HelmRelease, CL-2) reconciling `ObjectStore` + injecting the WAL-archiver/backup sidecar into instance pods (runs under the existing SA `<claim>-cnpg-cluster` → existing Pod Identity carries over).
+- **barman-cloud plugin controller**: cluster-wide Deployment in ns `infrastructure` (installed via Flux Kustomization from a GitRepository, CL-6) reconciling `ObjectStore` + injecting the WAL-archiver/backup sidecar into instance pods (runs under the existing SA `<claim>-cnpg-cluster` → existing Pod Identity carries over).
 
 ### Dependencies
 
-- [ ] barman-cloud CNPG-I plugin installed cluster-wide via **HelmRelease** (Deployment + `ObjectStore` CRD + CNP) — greenfield, nothing exists today (CL-2).
+- [ ] barman-cloud CNPG-I plugin installed cluster-wide via **Flux Kustomization from a GitRepository** at the release tag (CRD + Deployment + RBAC + Service + cert-manager certs + CNP), patched to ns `infrastructure` — greenfield, nothing exists today (CL-6).
+- [ ] cert-manager present (plugin↔operator mTLS) — already in the repo.
 - [ ] `objectstores` added to the Crossplane aggregate ClusterRole (`additional-rbac.yaml:13`).
 - [ ] Verify the `ObjectStore` accepts an omitted `s3Credentials` block → ambient Pod Identity auth (CL-4 default; T001).
 - [ ] Target the migration to land **before** any operator `1.31.0` bump (in-tree removed there).
 
 ### Alternatives considered
 
-Keep in-tree `barmanObjectStore` — rejected: removed in operator 1.31.0, blocks the CNPG upgrade path. Switch backup tooling entirely (e.g. off Barman) — rejected: out of scope, plugin is the sanctioned CNPG path. Raw-manifest plugin delivery — rejected (CL-2): constitution prefers `HelmRelease` when an upstream chart exists.
+Keep in-tree `barmanObjectStore` — rejected: removed in operator 1.31.0, blocks the CNPG upgrade path. Switch backup tooling entirely (e.g. off Barman) — rejected: out of scope, plugin is the sanctioned CNPG path. `HelmRelease` delivery — not possible (CL-6): the plugin ships no Helm chart (upstream #351); vendoring the raw manifest — rejected (CL-6) in favour of a GitRepository + Flux Kustomization (matches the repo's CRD-install pattern, tag-versioned).
 
 ---
 
@@ -118,8 +121,9 @@ infrastructure/base/crossplane/configuration/kcl/cloudnativepg/
 ├── main_test.k       # + ObjectStore count / method=plugin / spec.plugins assertions
 └── settings-example.yaml
 infrastructure/base/crossplane/providers/additional-rbac.yaml   # + objectstores
-infrastructure/base/cloudnative-pg-barman-plugin/               # HelmRelease + source + CNP (CL-2)
-crds/base/                                                      # ObjectStore CRD (if not chart-managed)
+infrastructure/base/cloudnative-pg-barman-plugin/               # Flux Kustomization + kustomize patches (ns/securityContext/CNP) (CL-6)
+flux/sources/gitrepo-barman-cloud-plugin.yaml                   # GitRepository @ release tag (CL-6)
+crds/base/kustomization-barman-cloud-plugin.yaml                # ObjectStore CRD, mirrors kustomization-cloudnative-pg.yaml
 ```
 
 ### Validation path
@@ -135,12 +139,12 @@ crds/base/                                                      # ObjectStore CR
 
 > Each task has a stable ID. Cite fresh evidence before marking `[x]` (see [.claude/rules/process.md](../../../.claude/rules/process.md)).
 
-> **Requirements coverage**: FR-001 → T004; FR-002 → T005; FR-003 → T006 (CL-3); FR-004 → T007; FR-005 → T004; FR-006 → T004 (default: omit `s3Credentials`) / T012 (opt-in access-key, CL-4); FR-007 → T001/T002 (CL-2); FR-008 → T003; FR-009 → T008.
+> **Requirements coverage**: FR-001 → T004; FR-002 → T005; FR-003 → T006 (CL-3); FR-004 → T007; FR-005 → T004; FR-006 → T004 (default: omit `s3Credentials`) / T012 (opt-in access-key, CL-4); FR-007 → T001/T002 (CL-6); FR-008 → T003; FR-009 → T008.
 
 ### Phase 1: Prerequisites
 
 - [ ] **T001**: Verify the `ObjectStore` CRD apiVersion/kind and that omitting `s3Credentials` yields ambient IAM (Pod Identity) auth, against `plugin-barman-cloud` v0.7.0. (The `ScheduledBackup` / `Cluster.spec.plugins` / `externalClusters[].plugin` shapes are confirmed in CL-3.)
-- [ ] **T002**: Install the plugin via **HelmRelease** from the `plugin-barman-cloud` chart (CL-2) — HelmRepository/OCIRepository source + HelmRelease + `ObjectStore` CRD; PSS-restricted securityContext + resource limits (CL-5); default-deny `CiliumNetworkPolicy` per CL-5 (kube-dns L7 + `toFQDNs` S3 + `toEntities: host` TCP 80 Pod Identity Agent).
+- [ ] **T002**: Install the plugin via a **Flux Kustomization from a GitRepository** at the plugin release tag (CL-6): `ObjectStore` CRD under `crds/base/`; Deployment/RBAC/Service/cert-manager certs applied via `infrastructure/base/cloudnative-pg-barman-plugin/` with kustomize patches — **namespace → `infrastructure`** (match the CNPG operator), PSS-restricted securityContext + resource limits (CL-5), and a default-deny `CiliumNetworkPolicy` (kube-dns L7 + `toFQDNs` S3 + `toEntities: host` TCP 80 Pod Identity Agent).
 - [ ] **T003**: Add `objectstores` to the Crossplane aggregate ClusterRole (`additional-rbac.yaml:13`).
 
 ### Phase 2: Implementation
