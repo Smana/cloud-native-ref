@@ -270,22 +270,20 @@ _items += [
                                 }
                         }
                 }
-            if oxr.spec.backup:
-                backup = {
-                    barmanObjectStore = {
-                        destinationPath = "s3://" + oxr.spec.backup.bucketName
-                        s3Credentials = {
-                            inheritFromIAMRole = True
-                        }
-                        wal = {
-                            compression = "bzip2"
-                        }
-                        data = {
-                            compression = "bzip2"
+            # Barman Cloud CNPG-I plugin (SPEC-010): the plugin must be loaded for
+            # backup (WAL archiving) OR recovery. isWALArchiver only when backing up;
+            # barmanObjectName points at the backup ObjectStore, else the recovery one.
+            if oxr.spec.backup or oxr.spec.objectStoreRecovery:
+                plugins = [
+                    {
+                        name = "barman-cloud.cloudnative-pg.io"
+                        if oxr.spec.backup:
+                            isWALArchiver = True
+                        parameters = {
+                            barmanObjectName = (oxr.metadata.name + "-cnpg-objectstore") if oxr.spec.backup else (oxr.metadata.name + "-cnpg-objectstore-recovery")
                         }
                     }
-                    retentionPolicy = oxr.spec.backup.retentionPolicy
-                }
+                ]
             if oxr.spec.createSuperuser:
                 superuserSecret = {
                     name = oxr.metadata.name + "-cnpg-superuser"
@@ -326,13 +324,11 @@ _items += [
                 externalClusters = [
                     {
                         name = oxr.spec.objectStoreRecovery.path
-                        barmanObjectStore = {
-                            destinationPath = "s3://" + oxr.spec.objectStoreRecovery.bucketName
-                            s3Credentials = {
-                                inheritFromIAMRole = True
-                            }
-                            wal: {
-                                maxParallel: 8
+                        plugin = {
+                            name = "barman-cloud.cloudnative-pg.io"
+                            parameters = {
+                                barmanObjectName = oxr.metadata.name + "-cnpg-objectstore-recovery"
+                                serverName = oxr.spec.objectStoreRecovery.path
                             }
                         }
                     }
@@ -352,6 +348,48 @@ _items += [
         }
     }
 ]
+
+# Barman Cloud plugin ObjectStore(s) (SPEC-010) — replace the deprecated in-tree
+# barmanObjectStore. spec.configuration is the same BarmanObjectStoreConfiguration
+# type as the in-tree field, so s3Credentials.inheritFromIAMRole (Pod Identity) is a
+# verbatim carry-over; retentionPolicy relocates from Cluster.spec.backup to here.
+if oxr.spec.backup:
+    _items += [{
+        apiVersion = "barmancloud.cnpg.io/v1"
+        kind = "ObjectStore"
+        metadata = {
+            name = oxr.metadata.name + "-cnpg-objectstore"
+            namespace = oxr.metadata.namespace
+            annotations = {"krm.kcl.dev/ready" = "True"}
+        }
+        spec = {
+            configuration = {
+                destinationPath = "s3://" + oxr.spec.backup.bucketName
+                s3Credentials = {inheritFromIAMRole = True}
+                wal = {compression = "bzip2"}
+                data = {compression = "bzip2"}
+            }
+            retentionPolicy = oxr.spec.backup.retentionPolicy
+        }
+    }]
+
+if oxr.spec.objectStoreRecovery:
+    _items += [{
+        apiVersion = "barmancloud.cnpg.io/v1"
+        kind = "ObjectStore"
+        metadata = {
+            name = oxr.metadata.name + "-cnpg-objectstore-recovery"
+            namespace = oxr.metadata.namespace
+            annotations = {"krm.kcl.dev/ready" = "True"}
+        }
+        spec = {
+            configuration = {
+                destinationPath = "s3://" + oxr.spec.objectStoreRecovery.bucketName
+                s3Credentials = {inheritFromIAMRole = True}
+                wal = {maxParallel = 8}
+            }
+        }
+    }]
 
 # Create ExternalSecrets for database owners (used by initdb, roles, and applications)
 # Each database gets a secret named after the database (not the role) to support CNPG initdb bootstrap
@@ -663,6 +701,11 @@ if oxr.spec.backup?.schedule:
             spec = {
                 schedule = oxr.spec.backup.schedule
                 backupOwnerReference = "self"
+                # Plugin-based backup (SPEC-010, CL-3) — replaces the in-tree barmanObjectStore method.
+                method = "plugin"
+                pluginConfiguration = {
+                    name = "barman-cloud.cloudnative-pg.io"
+                }
                 cluster = {
                     name = oxr.metadata.name + "-cnpg-cluster"
                 }
