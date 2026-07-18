@@ -13,8 +13,8 @@ globals {
 
   # Helm chart versions for EKS bootstrap
   cilium_version        = "1.19.6"
-  flux_operator_version = "0.53.0"
-  flux_instance_version = "0.53.0"
+  flux_operator_version = "0.55.0"
+  flux_instance_version = "0.55.0"
 
   # Flux sync configuration
   flux_sync_repository_url = "https://github.com/Smana/cloud-native-ref.git"
