@@ -47,6 +47,20 @@ test_backup_resources = lambda {
         backups = [r for r in items if r.kind == "ScheduledBackup"]
         assert len(backups) == 1, "expected 1 ScheduledBackup"
         assert backups[0].spec.schedule == _oxr.spec.backup.schedule
+        # SPEC-010: plugin-based backup, not the in-tree barmanObjectStore method
+        assert backups[0].spec.method == "plugin", "ScheduledBackup must use method=plugin"
+        assert backups[0].spec.pluginConfiguration.name == "barman-cloud.cloudnative-pg.io"
+        # ObjectStore CR carries the S3 config + retention (moved off the Cluster)
+        objectstores = [r for r in items if r.kind == "ObjectStore"]
+        assert len(objectstores) == 1, "expected 1 ObjectStore for backup"
+        assert objectstores[0].spec.configuration.destinationPath == "s3://" + _oxr.spec.backup.bucketName
+        assert objectstores[0].spec.retentionPolicy == _oxr.spec.backup.retentionPolicy
+        # Cluster loads the barman-cloud WAL archiver plugin, not in-tree spec.backup
+        clusters = [r for r in items if r.kind == "Cluster"]
+        assert len(clusters[0].spec.plugins) == 1, "expected the barman-cloud plugin on the Cluster"
+        assert clusters[0].spec.plugins[0].name == "barman-cloud.cloudnative-pg.io"
+        assert clusters[0].spec.plugins[0].isWALArchiver == True
+        assert not clusters[0].spec?.backup, "Cluster must not carry in-tree spec.backup (SC-005)"
         # IAM resources for backup
         roles = [r for r in items if r.kind == "Role"]
         assert len(roles) >= 1, "expected at least 1 IAM Role for backup"
