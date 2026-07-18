@@ -77,6 +77,24 @@ if [[ -z "${KARPENTER_VERSION}" ]]; then
   exit 1
 fi
 
+# Barman Cloud CNPG-I plugin: the ObjectStore CRD (barmancloud.cnpg.io/v1) is
+# absent from the hosted ecosystem catalog and the plugin ships no Helm chart,
+# so extract it straight from the GitRepository Flux installs from. URL + tag
+# come from that same source file (single source of truth — Renovate bumps the
+# tag, this follows it). The URL is https (git), not oci, hence a distinct regex.
+BARMAN_PLUGIN_SOURCE="flux/sources/gitrepo-barman-cloud-plugin.yaml"
+BARMAN_PLUGIN_URL="$(sed -nE 's#^[[:space:]]*url:[[:space:]]*"?(https?://[^"[:space:]]+)"?[[:space:]]*$#\1#p' "${BARMAN_PLUGIN_SOURCE}" | head -n1 || true)"
+BARMAN_PLUGIN_VERSION="$(sed -nE 's/^[[:space:]]*tag:[[:space:]]*"?(v?[0-9][^"[:space:]]*)"?[[:space:]]*$/\1/p' "${BARMAN_PLUGIN_SOURCE}" | head -n1 || true)"
+
+if [[ -z "${BARMAN_PLUGIN_URL}" ]]; then
+  echo "error: could not read the barman-cloud plugin git url from ${BARMAN_PLUGIN_SOURCE}" >&2
+  exit 1
+fi
+if [[ -z "${BARMAN_PLUGIN_VERSION}" ]]; then
+  echo "error: could not read the barman-cloud plugin tag from ${BARMAN_PLUGIN_SOURCE}" >&2
+  exit 1
+fi
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
@@ -106,10 +124,19 @@ echo "==> Rendering Karpenter CRDs (chart ${KARPENTER_VERSION})"
   --set settings.clusterName=catalog \
   > "${tmp}/karpenter-crds.yaml"
 
+echo "==> Fetching Barman Cloud plugin ObjectStore CRD (git ${BARMAN_PLUGIN_VERSION})"
+# The plugin ships no Helm chart (only manifest/Kustomize install), so its CRD
+# comes from a shallow clone of the pinned Git tag Flux installs from - not a
+# helm render. config/crd/bases is the same path the crds-barman-cloud-plugin
+# Kustomization applies (single source of truth for what lands on the cluster).
+git clone --quiet --depth 1 --branch "${BARMAN_PLUGIN_VERSION}" "${BARMAN_PLUGIN_URL}" "${tmp}/barman-plugin"
+cat "${tmp}/barman-plugin/config/crd/bases"/*.yaml > "${tmp}/barman-crds.yaml"
+
 echo "==> Extracting JSON Schemas into ${build_dir}/"
 "${FLUX_BIN}" schema extract crd "${tmp}/xrd-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/aigateway-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/karpenter-crds.yaml" -d "${build_dir}"
+"${FLUX_BIN}" schema extract crd "${tmp}/barman-crds.yaml" -d "${build_dir}"
 
 echo "==> Verifying the catalog is complete"
 for kind in app sqlinstance inferenceservice epi; do
@@ -130,6 +157,13 @@ fi
 # schema landed".
 if [[ ! -s "${build_dir}/karpenter.k8s.aws/ec2nodeclass_v1.json" ]]; then
   echo "error: catalog build produced no karpenter.k8s.aws/ec2nodeclass_v1.json (chart ${KARPENTER_VERSION} rendered no CRDs?)" >&2
+  exit 1
+fi
+
+# The ObjectStore CRD (barmancloud.cnpg.io/v1) is the reason the barman-cloud
+# source block exists; assert it specifically, not just "some barman schema landed".
+if [[ ! -s "${build_dir}/barmancloud.cnpg.io/objectstore_v1.json" ]]; then
+  echo "error: catalog build produced no barmancloud.cnpg.io/objectstore_v1.json (plugin ${BARMAN_PLUGIN_VERSION} shipped no ObjectStore CRD at config/crd/bases?)" >&2
   exit 1
 fi
 

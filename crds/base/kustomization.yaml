@@ -12,5 +12,6 @@ resources:
   - kustomization-inference-extension.yaml
   - kustomization-kyverno.yaml
   - kustomization-cloudnative-pg.yaml
+  - kustomization-barman-cloud-plugin.yaml
   - kustomization-tailscale-operator.yaml
   - kustomization-victoria-metrics-operator.yaml

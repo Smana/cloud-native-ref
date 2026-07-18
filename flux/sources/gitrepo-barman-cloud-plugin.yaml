@@ -1,0 +1,14 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: barman-cloud-plugin
+  namespace: infrastructure
+spec:
+  interval: 5m0s
+  url: https://github.com/cloudnative-pg/plugin-barman-cloud.git
+  ref:
+    # Pinned to the release contemporary with CNPG operator 1.30.0 (SPEC-010
+    # migrates to the plugin *before* the 1.31.0 bump). Bump this tag together
+    # with the operator upgrade; scripts/flux-schema/gen-catalog.sh reads it as
+    # the single source of truth for the ObjectStore CRD schema.
+    tag: v0.7.0
