@@ -48,7 +48,7 @@ test_backend_env_autowired = lambda {
     if _oxr.spec.kvStore?.enabled and "REDIS_URL" not in _userNames:
         _redisEnv = [e for e in env if e.name == "REDIS_URL"]
         assert len(_redisEnv) == 1, "REDIS_URL should be auto-injected exactly once"
-        assert _redisEnv[0].value == "redis://" + _oxr.metadata.name + "-valkey-primary:6379", "REDIS_URL value mismatch"
+        assert _redisEnv[0].value == "redis://" + _oxr.metadata.name + "-" + (_oxr.spec.kvStore?.type or "valkey") + "-primary:6379", "REDIS_URL value mismatch"
 
     assert True
 }

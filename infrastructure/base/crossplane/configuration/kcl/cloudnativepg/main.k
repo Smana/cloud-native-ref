@@ -429,6 +429,9 @@ if oxr.spec.databases:
             target = {
                 creationPolicy = "Owner"
                 deletionPolicy = "Retain"
+                # SHARED CONTRACT: `<xr>-cnpg-<db>`. The App composition auto-wires
+                # DATABASE_URL to this secret by name (app module main.k); keep the
+                # two encodings in sync if this naming ever changes.
                 name = oxr.metadata.name + "-cnpg-" + db.name
                 # Always template a ready-to-consume connection secret (Option C):
                 # username/password/uri, so any app can reference `key: uri` as its

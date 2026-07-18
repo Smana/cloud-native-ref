@@ -388,14 +388,21 @@ _mainDefaultEnv = [
 # secret/service - UNLESS the user already set that variable (their value wins,
 # so nothing is ever double-set). DATABASE_URL consumes the SQLInstance
 # connection secret's `uri` key (a ready postgresql:// DSN, from the first
-# database); REDIS_URL targets the Valkey primary Service. This lets a
+# database); REDIS_URL targets the kvStore primary Service. This lets a
 # DB/cache-backed app work from just `sqlInstance.enabled`/`kvStore.enabled`
 # with no hand-wired secretKeyRef - the App Wizard needs only the toggle.
+#
+# SHARED CONTRACT (restated across a module boundary - separate kcl.mod
+# packages, no shared import): the `<name>-cnpg-<db>` secret name is owned by
+# the cloudnativepg module (its ExternalSecret target); the `<name>-<type>`
+# release name (hence `-primary` Service) is owned by the kvStore block below.
+# Keep both in sync - if either convention changes, the auto-wired reference
+# silently points at a non-existent secret/Service.
 _userEnvNames = [e.name for e in (oxr.spec.env or [])]
 _dbAutoEnv = [{name = "DATABASE_URL", valueFrom = {
     secretKeyRef = {name = _name + "-cnpg-" + oxr.spec.sqlInstance.databases[0].name, key = "uri"}
 }}] if oxr.spec.sqlInstance?.enabled and len(oxr.spec.sqlInstance?.databases or []) > 0 and "DATABASE_URL" not in _userEnvNames else []
-_cacheAutoEnv = [{name = "REDIS_URL", value = "redis://" + _name + "-valkey-primary:6379"}] if oxr.spec.kvStore?.enabled and "REDIS_URL" not in _userEnvNames else []
+_cacheAutoEnv = [{name = "REDIS_URL", value = "redis://" + _name + "-" + (oxr.spec.kvStore?.type or "valkey") + "-primary:6379"}] if oxr.spec.kvStore?.enabled and "REDIS_URL" not in _userEnvNames else []
 _mainCombinedEnv = _mainDefaultEnv + _buildObservabilityEnv(oxr.spec.observability) + _dbAutoEnv + _cacheAutoEnv + (oxr.spec.env or [])
 
 # Main application container (SPEC-007 T007). Built in one shot (no mutation).
