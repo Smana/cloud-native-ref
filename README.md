@@ -114,7 +114,7 @@ flux get all
 
 Once deployed, access the **Homepage dashboard** for a unified view of all platform services:
 
-![Platform Architecture](.assets/homepage.png)
+![Homepage UI](.assets/homepage.png)
 
 
 Homepage provides:

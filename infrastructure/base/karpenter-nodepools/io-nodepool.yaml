@@ -38,7 +38,7 @@ spec:
           effect: NoSchedule
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
-    consolidateAfter: 30s
+    consolidateAfter: 15m
   limits:
     cpu: "20"
     memory: 64Gi

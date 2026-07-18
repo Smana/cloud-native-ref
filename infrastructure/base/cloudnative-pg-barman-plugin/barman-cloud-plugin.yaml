@@ -71,6 +71,32 @@ spec:
                         - ALL
                     seccompProfile:
                       type: RuntimeDefault
+    # `targetNamespace` moves resource metadata to `infrastructure` but does NOT
+    # rewrite RoleBinding/ClusterRoleBinding `subjects[].namespace` (kustomize
+    # gotcha) — upstream hardcodes `cnpg-system`, so the plugin SA (now in
+    # `infrastructure`) gets "forbidden" on leases (leader election) and
+    # objectstores (controller). Repoint every binding's subject.
+    - target:
+        kind: RoleBinding
+        name: leader-election-rolebinding
+      patch: |
+        - op: replace
+          path: /subjects/0/namespace
+          value: infrastructure
+    - target:
+        kind: ClusterRoleBinding
+        name: plugin-barman-cloud-binding
+      patch: |
+        - op: replace
+          path: /subjects/0/namespace
+          value: infrastructure
+    - target:
+        kind: ClusterRoleBinding
+        name: metrics-auth-rolebinding
+      patch: |
+        - op: replace
+          path: /subjects/0/namespace
+          value: infrastructure
     # Owned by crds-barman-cloud-plugin; drop it from the controller bundle.
     - target:
         kind: CustomResourceDefinition
