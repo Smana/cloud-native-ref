@@ -233,6 +233,16 @@ def postprocess(text):
     round-trip through YAML.
     """
     docs = unwrap_lists([d for d in yaml.safe_load_all(text) if isinstance(d, dict)])
+    # Drop non-resource docs before they reach the bundle. `helm template`
+    # (notably Helm v4) can emit a stray YAML document that is a non-empty dict
+    # yet carries no apiVersion/kind - not an applyable Kubernetes resource, but
+    # a dict, so the isinstance() filter above lets it through and gate 1 then
+    # rejects it ("missing required property: /apiVersion"). A real resource
+    # always has both fields, so requiring them here is the faithful stand-in
+    # for what Flux/kubectl would actually apply. Applied after unwrap_lists so
+    # `kind: List` envelopes (apiVersion/kind present) are expanded first and
+    # only their inner resources are checked.
+    docs = [doc for doc in docs if doc.get("apiVersion") and doc.get("kind")]
     for doc in docs:
         normalize_quantities(doc)
     return "\n---\n".join(
