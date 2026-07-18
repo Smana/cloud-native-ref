@@ -26,6 +26,26 @@ _metadata = lambda suffix: str -> any {
         }
     }
 }
+
+# Managed-resource name for the IAM-bearing resources. Apps that provision AWS
+# IAM (s3Bucket -> EPI role/policy, sqlInstance -> S3-backup role) must land those
+# roles inside the provider-aws xplane-* permission boundary
+# (opentofu/eks/init/iam.tf). The COMPOSITION owns that prefix so the developer
+# never types it: a dev names the App `outline`, and the IAM-bearing resources are
+# named `xplane-outline-*` internally. Idempotent - an already-`xplane-`-prefixed
+# claim is returned unchanged (zero churn on existing apps). Dev-facing resources
+# (Deployment/Service/route) and the S3 bucket (boundary is `<region>-ogenki-*`,
+# any name) keep the plain claim name.
+_managedName = _name if _name[0:7:] == "xplane-" else "xplane-" + _name
+_managedMetadata = lambda suffix: str -> any {
+    {
+        name = _managedName + "-" + suffix
+        namespace = _namespace
+        annotations = {
+            "krm.kcl.dev/composition-resource-name" = _managedName + "-" + suffix
+        }
+    }
+}
 # Build node affinity for on-demand instances
 _buildNodeAffinity = lambda onDemand: bool -> any {
     {
@@ -400,7 +420,7 @@ _mainDefaultEnv = [
 # silently points at a non-existent secret/Service.
 _userEnvNames = [e.name for e in (oxr.spec.env or [])]
 _dbAutoEnv = [{name = "DATABASE_URL", valueFrom = {
-    secretKeyRef = {name = _name + "-cnpg-" + oxr.spec.sqlInstance.databases[0].name, key = "uri"}
+    secretKeyRef = {name = _managedName + "-cnpg-" + oxr.spec.sqlInstance.databases[0].name, key = "uri"}
 }}] if oxr.spec.sqlInstance?.enabled and len(oxr.spec.sqlInstance?.databases or []) > 0 and "DATABASE_URL" not in _userEnvNames else []
 _cacheAutoEnv = [{name = "REDIS_URL", value = "redis://" + _name + "-" + (oxr.spec.kvStore?.type or "valkey") + "-primary:6379"}] if oxr.spec.kvStore?.enabled and "REDIS_URL" not in _userEnvNames else []
 _mainCombinedEnv = _mainDefaultEnv + _buildObservabilityEnv(oxr.spec.observability) + _dbAutoEnv + _cacheAutoEnv + (oxr.spec.env or [])
@@ -889,6 +909,46 @@ if oxr.spec.route?.enabled == True and _isWeb:
     }]
     _items += _httpRouteResource
 
+# Auto-generated egress rules for enabled managed backends, so the developer
+# never hand-writes (nor learns) the composition-internal Service labels - most
+# importantly the DB rule targets the managed xplane-* CNPG cluster label. Only
+# injected when a backend is enabled, so a net-pol-only app (no backend) renders
+# byte-identically. Includes the DNS rule the backend connections need to resolve
+# their in-cluster Services. The developer's networkPolicies.egress adds
+# app-specific destinations on top of these.
+_npDns = [{
+    toEndpoints = [{
+        matchLabels = {"io.kubernetes.pod.namespace" = "kube-system", "k8s-app" = "kube-dns"}
+    }]
+    # L7 dns matchPattern "*" is mandatory so a developer-added toFQDNs egress
+    # rule works (Cilium must see the resolved IPs) - .claude/rules/cilium-network-policies.md.
+    toPorts = [{ports = [{port = "53", protocol = "UDP"}, {port = "53", protocol = "TCP"}], rules = {dns = [{matchPattern = "*"}]}}]
+}] if (oxr.spec.sqlInstance?.enabled or oxr.spec.kvStore?.enabled or oxr.spec.s3Bucket?.enabled) else []
+_npDb = [{
+    toEndpoints = [{
+        matchLabels = {"cnpg.io/cluster" = _managedName + "-cnpg-cluster"}
+    }]
+    toPorts = [{ports = [{port = "5432", protocol = "TCP"}]}]
+}] if oxr.spec.sqlInstance?.enabled else []
+_npCache = [{
+    toEndpoints = [{
+        matchLabels = {"app.kubernetes.io/instance" = _name + "-" + (oxr.spec.kvStore?.type or "valkey"), "app.kubernetes.io/name" = (oxr.spec.kvStore?.type or "valkey")}
+    }]
+    toPorts = [{ports = [{port = "6379", protocol = "TCP"}]}]
+}] if oxr.spec.kvStore?.enabled else []
+_npS3 = [
+    {
+        toEntities = ["host"]
+        toPorts = [{ports = [{port = "80", protocol = "TCP"}]}]
+    }
+    {
+        toEntities = ["world"]
+        toPorts = [{ports = [{port = "443", protocol = "TCP"}]}]
+    }
+] if oxr.spec.s3Bucket?.enabled else []
+# `[]` + user egress == user egress, so a backend-less app is byte-identical.
+_npEgress = _npDns + _npDb + _npCache + _npS3 + (oxr.spec.networkPolicies?.egress or [])
+
 # CiliumNetworkPolicy
 # NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
 # See: https://github.com/crossplane-contrib/function-kcl/issues/285
@@ -909,8 +969,8 @@ if oxr.spec.networkPolicies?.enabled:
             endpointSelector = _podSelector
             if oxr.spec.networkPolicies.ingress:
                 ingress = oxr.spec.networkPolicies.ingress
-            if oxr.spec.networkPolicies.egress:
-                egress = oxr.spec.networkPolicies.egress
+            if _npEgress:
+                egress = _npEgress
         }
     }]
     _items += _networkPolicyResource
@@ -999,10 +1059,10 @@ if oxr.spec.sqlInstance?.enabled:
         apiVersion = "cloud.ogenki.io/v1alpha1"
         kind = "SQLInstance"
         metadata = {
-            name = _name
+            name = _managedName
             namespace = _namespace
             annotations = {
-                "krm.kcl.dev/composition-resource-name" = _name + "-sqlinstance"
+                "krm.kcl.dev/composition-resource-name" = _managedName + "-sqlinstance"
             }
         }
         spec = {
@@ -1098,7 +1158,7 @@ if oxr.spec.s3Bucket?.enabled:
         {
             apiVersion = "cloud.ogenki.io/v1alpha1"
             kind = "EPI"
-            metadata = _metadata("s3-pod-identity")
+            metadata = _managedMetadata("s3-pod-identity")
             spec = {
                 serviceAccount = {
                     name = _name
