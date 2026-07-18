@@ -184,24 +184,9 @@ kcl_options:
                   - port: "8080"
                     protocol: TCP
             egress:
-              # Allow DNS
-              - toEndpoints:
-                - matchLabels:
-                    "io.kubernetes.pod.namespace": "kube-system"
-                    "k8s-app": "kube-dns"
-                toPorts:
-                - ports:
-                  - port: "53"
-                    protocol: UDP
-              # Allow to database
-              - toEndpoints:
-                - matchLabels:
-                    "app.kubernetes.io/name": "myname-sqlinstance"
-                toPorts:
-                - ports:
-                  - port: "5432"
-                    protocol: TCP
-              # Allow external HTTPS
+              # The composition auto-injects DNS + the DB/cache/S3 backend egress
+              # rules (see the App module). The developer only declares
+              # app-specific external destinations, like this one.
               - toFQDNs:
                 - matchPattern: "*.github.com"
                 - matchName: "api.example.com"
