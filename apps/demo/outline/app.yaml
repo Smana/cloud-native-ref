@@ -1,0 +1,144 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: outline
+  namespace: demo
+spec:
+  automountServiceAccountToken: false
+  env:
+  - name: NODE_ENV
+    value: production
+  - name: PORT
+    value: "3000"
+  - name: URL
+    value: https://outline.priv.cloud.ogenki.io
+  - name: PGSSLMODE
+    value: disable
+  - name: SECRET_KEY
+    valueFrom:
+      secretKeyRef:
+        key: SECRET_KEY
+        name: outline-secrets
+  - name: UTILS_SECRET
+    valueFrom:
+      secretKeyRef:
+        key: UTILS_SECRET
+        name: outline-secrets
+  - name: FILE_STORAGE
+    value: s3
+  - name: AWS_REGION
+    value: eu-west-3
+  - name: AWS_S3_UPLOAD_BUCKET_NAME
+    value: eu-west-3-ogenki-outline
+  - name: AWS_S3_UPLOAD_BUCKET_URL
+    value: https://s3.eu-west-3.amazonaws.com
+  - name: AWS_S3_FORCE_PATH_STYLE
+    value: "false"
+  - name: AWS_S3_ACL
+    value: private
+  - name: OIDC_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        key: OIDC_CLIENT_ID
+        name: outline-secrets
+  - name: OIDC_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        key: OIDC_CLIENT_SECRET
+        name: outline-secrets
+  - name: OIDC_AUTH_URI
+    value: https://auth.cloud.ogenki.io/oauth/v2/authorize
+  - name: OIDC_TOKEN_URI
+    value: https://auth.cloud.ogenki.io/oauth/v2/token
+  - name: OIDC_USERINFO_URI
+    value: https://auth.cloud.ogenki.io/oidc/v1/userinfo
+  - name: OIDC_USERNAME_CLAIM
+    value: preferred_username
+  - name: OIDC_DISPLAY_NAME
+    value: Zitadel
+  - name: OIDC_SCOPES
+    value: openid profile email
+  externalSecrets:
+  - name: outline-secrets
+    refreshInterval: 1h
+    remoteRef: apps/outline/secrets
+  healthProbes:
+    liveness:
+      path: /_health
+      type: http
+    readiness:
+      path: /_health
+      type: http
+    startup:
+      failureThreshold: 30
+      path: /_health
+      periodSeconds: 5
+      type: http
+  image:
+    pullPolicy: IfNotPresent
+    repository: docker.getoutline.com/outlinewiki/outline
+    tag: 1.9.1
+  kvStore:
+    enabled: true
+    size: small
+    type: valkey
+  networkPolicies:
+    enabled: true
+    ingress:
+    - fromEntities:
+      - ingress
+      toPorts:
+      - ports:
+        - port: "3000"
+          protocol: TCP
+  replicas: 1
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+  route:
+    enabled: true
+    hostname: outline
+    internetFacing: false
+  runAsNonRoot: true
+  s3Bucket:
+    enabled: true
+    permissions: readwrite
+    region: eu-west-3
+    versioning: true
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    enableWritableTmp: true
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+  service:
+    port: 3000
+  sqlInstance:
+    backup:
+      bucketName: ${region}-ogenki-cnpg-backups
+      retentionPolicy: 30d
+      schedule: 0 3 * * *
+    createSuperuser: false
+    databases:
+    - name: outline
+      owner: outline
+    enabled: true
+    instances: 2
+    postgresql:
+      parameters:
+        max_connections: 100
+    primaryUpdateStrategy: unsupervised
+    roles:
+    - comment: Application user for Outline
+      inRoles:
+      - pg_monitor
+      name: outline
+      superuser: false
+    size: small
+    storageSize: 10Gi
