@@ -382,7 +382,21 @@ _mainDefaultEnv = [
         }
     }
 ]
-_mainCombinedEnv = _mainDefaultEnv + _buildObservabilityEnv(oxr.spec.observability) + (oxr.spec.env or [])
+
+# Auto-wired backend connection env: when a managed backend is enabled, inject
+# the conventional connection variable pointing at the composition-created
+# secret/service - UNLESS the user already set that variable (their value wins,
+# so nothing is ever double-set). DATABASE_URL consumes the SQLInstance
+# connection secret's `uri` key (a ready postgresql:// DSN, from the first
+# database); REDIS_URL targets the Valkey primary Service. This lets a
+# DB/cache-backed app work from just `sqlInstance.enabled`/`kvStore.enabled`
+# with no hand-wired secretKeyRef - the App Wizard needs only the toggle.
+_userEnvNames = [e.name for e in (oxr.spec.env or [])]
+_dbAutoEnv = [{name = "DATABASE_URL", valueFrom = {
+    secretKeyRef = {name = _name + "-cnpg-" + oxr.spec.sqlInstance.databases[0].name, key = "uri"}
+}}] if oxr.spec.sqlInstance?.enabled and len(oxr.spec.sqlInstance?.databases or []) > 0 and "DATABASE_URL" not in _userEnvNames else []
+_cacheAutoEnv = [{name = "REDIS_URL", value = "redis://" + _name + "-valkey-primary:6379"}] if oxr.spec.kvStore?.enabled and "REDIS_URL" not in _userEnvNames else []
+_mainCombinedEnv = _mainDefaultEnv + _buildObservabilityEnv(oxr.spec.observability) + _dbAutoEnv + _cacheAutoEnv + (oxr.spec.env or [])
 
 # Main application container (SPEC-007 T007). Built in one shot (no mutation).
 _mainContainer = {

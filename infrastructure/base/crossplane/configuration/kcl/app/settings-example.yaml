@@ -226,6 +226,12 @@ kcl_options:
               url: "https://github.com/Smana/image-gallery"
               ref: "main"
               path: "internal/platform/database/migrations"
+            roles:
+              - name: "myname-user"
+                superuser: false
+            databases:
+              - name: "appdb"
+                owner: "myname-user"
           s3Bucket: # This creates an S3 but also the lifecycle policies. The bucket encrytion is SSE-S3. the EKS pod identity using the composition  EPI.
             enabled: true
             providerConfigRef:
