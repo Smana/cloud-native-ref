@@ -30,6 +30,15 @@ spec:
               message: "a sidecar may not reuse the app's own name: it collides with the primary container"
             - rule: "!has(self.spec) || !has(self.spec.initContainers) || self.spec.initContainers.all(c, c.name != self.metadata.name)"
               message: "an initContainer may not reuse the app's own name: it collides with the primary container"
+            # Apps enabling an AWS-backed feature (s3Bucket or sqlInstance) create
+            # IAM resources named after the claim; the Crossplane provider-aws
+            # credentials are scoped to xplane-*, so an unprefixed name lands the
+            # IAM outside the boundary (app deploys, S3/backup access denied). This
+            # root-level rule is the authoritative enforcement across every apply
+            # path (kubectl, Flux); the App Wizard's Go NamingGate is the matching
+            # fast-feedback layer (its spec-scoped CEL cannot see metadata.name).
+            - rule: "!has(self.spec) || !((has(self.spec.s3Bucket) && self.spec.s3Bucket.enabled) || (has(self.spec.sqlInstance) && self.spec.sqlInstance.enabled)) || self.metadata.name.startsWith('xplane-')"
+              message: "apps enabling an AWS-backed feature (s3Bucket or sqlInstance) must be named with the 'xplane-' prefix (Crossplane IAM is scoped to xplane-*)"
           properties:
             spec:
               type: object

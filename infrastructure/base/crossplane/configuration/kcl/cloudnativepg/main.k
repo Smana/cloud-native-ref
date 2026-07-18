@@ -429,16 +429,22 @@ if oxr.spec.databases:
             target = {
                 creationPolicy = "Owner"
                 deletionPolicy = "Retain"
+                # SHARED CONTRACT: `<xr>-cnpg-<db>`. The App composition auto-wires
+                # DATABASE_URL to this secret by name (app module main.k); keep the
+                # two encodings in sync if this naming ever changes.
                 name = oxr.metadata.name + "-cnpg-" + db.name
-                if oxr.spec.atlasSchema:
-                    template = {
-                        engineVersion = "v2"
-                        data = {
-                            username = "{{ .username }}"
-                            password = "{{ .password }}"
-                            uri = "postgresql://{{ .username | urlquery }}:{{ .password | urlquery }}@" + oxr.metadata.name + "-cnpg-cluster-rw." + oxr.metadata.namespace + ".svc:5432/" + db.name
-                        }
+                # Always template a ready-to-consume connection secret (Option C):
+                # username/password/uri, so any app can reference `key: uri` as its
+                # DATABASE_URL - not only Atlas-migrated apps. The password is
+                # urlquery-escaped so special characters can't break the DSN.
+                template = {
+                    engineVersion = "v2"
+                    data = {
+                        username = "{{ .username }}"
+                        password = "{{ .password }}"
+                        uri = "postgresql://{{ .username | urlquery }}:{{ .password | urlquery }}@" + oxr.metadata.name + "-cnpg-cluster-rw." + oxr.metadata.namespace + ".svc:5432/" + db.name
                     }
+                }
             }
         }
     } for db in oxr.spec.databases]

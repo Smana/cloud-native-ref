@@ -30,6 +30,29 @@ test_security_context = lambda {
     assert "ALL" in container.securityContext.capabilities.drop, "should drop ALL capabilities"
 }
 
+# ---- Test: backend connection env auto-wired ----
+# DATABASE_URL from the SQLInstance connection secret's `uri` key (when
+# sqlInstance + databases); REDIS_URL from the Valkey primary Service (when
+# kvStore). Both skip when the user already set that variable.
+test_backend_env_autowired = lambda {
+    _oxr = option("params").oxr
+    dep = [r for r in items if r.kind == "Deployment"][0]
+    env = dep.spec.template.spec.containers[0].env
+    _userNames = [e.name for e in (_oxr.spec.env or [])]
+    if _oxr.spec.sqlInstance?.enabled and len(_oxr.spec.sqlInstance?.databases or []) > 0 and "DATABASE_URL" not in _userNames:
+        _dbEnv = [e for e in env if e.name == "DATABASE_URL"]
+        assert len(_dbEnv) == 1, "DATABASE_URL should be auto-injected exactly once"
+        assert _dbEnv[0].valueFrom.secretKeyRef.name == _oxr.metadata.name + "-cnpg-" + _oxr.spec.sqlInstance.databases[0].name, "DATABASE_URL secret name mismatch"
+        assert _dbEnv[0].valueFrom.secretKeyRef.key == "uri", "DATABASE_URL should use the uri key"
+
+    if _oxr.spec.kvStore?.enabled and "REDIS_URL" not in _userNames:
+        _redisEnv = [e for e in env if e.name == "REDIS_URL"]
+        assert len(_redisEnv) == 1, "REDIS_URL should be auto-injected exactly once"
+        assert _redisEnv[0].value == "redis://" + _oxr.metadata.name + "-" + (_oxr.spec.kvStore?.type or "valkey") + "-primary:6379", "REDIS_URL value mismatch"
+
+    assert True
+}
+
 # ---- Test: Autoscaling creates HPA ----
 test_autoscaling_hpa = lambda {
     _oxr = option("params").oxr
