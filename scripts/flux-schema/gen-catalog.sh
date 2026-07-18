@@ -77,6 +77,24 @@ if [[ -z "${KARPENTER_VERSION}" ]]; then
   exit 1
 fi
 
+# Barman Cloud CNPG-I plugin: the ObjectStore CRD (barmancloud.cnpg.io/v1) is
+# absent from the hosted ecosystem catalog and the plugin ships no Helm chart,
+# so extract it straight from the GitRepository Flux installs from. URL + tag
+# come from that same source file (single source of truth — Renovate bumps the
+# tag, this follows it). The URL is https (git), not oci, hence a distinct regex.
+BARMAN_PLUGIN_SOURCE="flux/sources/gitrepo-barman-cloud-plugin.yaml"
+BARMAN_PLUGIN_URL="$(sed -nE 's#^[[:space:]]*url:[[:space:]]*"?(https?://[^"[:space:]]+)"?[[:space:]]*$#\1#p' "${BARMAN_PLUGIN_SOURCE}" | head -n1 || true)"
+BARMAN_PLUGIN_VERSION="$(sed -nE 's/^[[:space:]]*tag:[[:space:]]*"?(v?[0-9][^"[:space:]]*)"?[[:space:]]*$/\1/p' "${BARMAN_PLUGIN_SOURCE}" | head -n1 || true)"
+
+if [[ -z "${BARMAN_PLUGIN_URL}" ]]; then
+  echo "error: could not read the barman-cloud plugin git url from ${BARMAN_PLUGIN_SOURCE}" >&2
+  exit 1
+fi
+if [[ -z "${BARMAN_PLUGIN_VERSION}" ]]; then
+  echo "error: could not read the barman-cloud plugin tag from ${BARMAN_PLUGIN_SOURCE}" >&2
+  exit 1
+fi
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 

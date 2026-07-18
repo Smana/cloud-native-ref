@@ -1,0 +1,83 @@
+# Barman Cloud CNPG-I plugin controller (SPEC-010, CL-6).
+#
+# No Helm chart exists for the plugin (upstream #351), so it is installed the
+# same way this repo installs CNPG's own CRDs: a Flux Kustomization sourcing the
+# plugin GitRepository at a pinned tag. The upstream `kubernetes/` overlay ships
+# a controller Deployment + Service + RBAC + cert-manager Issuer/Certificates
+# for the plugin<->operator mTLS, defaulting to namespace `cnpg-system`.
+#
+# Patches applied here (kustomize semantics via spec.patches / spec.targetNamespace):
+#   - targetNamespace: infrastructure  -> co-locate with the CNPG operator
+#     (the plugin MUST run in the operator's namespace).
+#   - Deployment barman-cloud: add resource requests + limits (upstream ships
+#     `resources: {}`) and restate the PSS-restricted securityContext explicitly.
+#   - delete the ObjectStore CRD from this render — it is owned by the
+#     `crds-barman-cloud-plugin` Kustomization (crds/base) so the two do not
+#     fight over the same cluster-scoped object.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cloudnative-pg-barman-plugin
+spec:
+  interval: 10m
+  timeout: 5m
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: barman-cloud-plugin
+  path: "./kubernetes"
+  targetNamespace: infrastructure
+  # cert-manager (Issuer/Certificates for plugin<->operator mTLS) lives in the
+  # `security` stage; the `infrastructure` parent does NOT depend on it, so gate
+  # here explicitly. `crds` provides the ObjectStore CRD the controller watches.
+  dependsOn:
+    - name: crds
+      namespace: flux-system
+    - name: security
+      namespace: flux-system
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: barman-cloud
+      namespace: infrastructure
+  patches:
+    - patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: barman-cloud
+        spec:
+          template:
+            spec:
+              securityContext:
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+              containers:
+                - name: barman-cloud
+                  resources:
+                    requests:
+                      cpu: 10m
+                      memory: 64Mi
+                    limits:
+                      cpu: 200m
+                      memory: 256Mi
+                  securityContext:
+                    allowPrivilegeEscalation: false
+                    readOnlyRootFilesystem: true
+                    runAsNonRoot: true
+                    capabilities:
+                      drop:
+                        - ALL
+                    seccompProfile:
+                      type: RuntimeDefault
+    # Owned by crds-barman-cloud-plugin; drop it from the controller bundle.
+    - target:
+        kind: CustomResourceDefinition
+        name: objectstores.barmancloud.cnpg.io
+      patch: |
+        $patch: delete
+        apiVersion: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        metadata:
+          name: objectstores.barmancloud.cnpg.io

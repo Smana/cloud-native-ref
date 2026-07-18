@@ -1,0 +1,89 @@
+# Default-deny + explicit allow for the Barman Cloud plugin controller
+# (SPEC-010 CL-5). Zero-trust posture per platform constitution.
+#
+# The controller (`app: barman-cloud`) serves the CNPG-I gRPC API on :9090 to
+# the CloudNativePG operator and instance managers, reconciles ObjectStore /
+# Backup CRs against the Kubernetes API, and performs object-store operations
+# (backup listing / store validation) directly against S3. The actual WAL
+# archiving / base-backup I/O is done by a sidecar injected into the CNPG
+# instance pods (SA `<name>-cnpg-cluster`); that sidecar's egress is governed by
+# a CNP rendered by the SQLInstance composition, not here.
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: barman-cloud-plugin
+spec:
+  description: "Barman Cloud CNPG-I plugin controller — S3 backups for CloudNativePG"
+  endpointSelector:
+    matchLabels:
+      app: barman-cloud
+  ingress:
+    # Kubelet TCP readiness probe on the gRPC port (host network).
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    # CNPG operator (same namespace) dials the plugin gRPC API.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: infrastructure
+            app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    # CNPG instance managers (in any claim namespace) also dial the plugin.
+    - fromEndpoints:
+        - matchLabels:
+            cnpg.io/podRole: instance
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+  egress:
+    # DNS — L7 inspection is MANDATORY for toFQDNs to resolve (CNP rule #1):
+    # without rules.dns Cilium never learns the S3 IPs and every TCP follow-up
+    # is silently dropped.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # Kubernetes API server (reconciles ObjectStore / Backup / Cluster status).
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # S3 backup store. matchPattern is single-segment (CNP rule #2):
+    # `*.s3.<region>...` covers virtual-hosted bucket URLs; the bare regional
+    # host covers path-style + the S3 API endpoint.
+    - toFQDNs:
+        - matchName: s3.${region}.amazonaws.com
+        - matchPattern: "*.s3.${region}.amazonaws.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # EKS Pod Identity Agent (169.254.170.23:80) for ambient IAM credentials
+    # (inheritFromIAMRole). It runs on the node host network, so Cilium
+    # classifies it as the `host` entity — toCIDR alone would silently fail
+    # (CNP rule #3).
+    - toEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP

@@ -7,6 +7,7 @@ resources:
   - ../base/aws-load-balancer-controller
   - ../base/cilium
   - ../base/cloudnative-pg
+  - ../base/cloudnative-pg-barman-plugin
   - ../base/external-dns
   - ../base/gapi
   - ../base/keda
