@@ -127,6 +127,19 @@ test_postgres_version = lambda {
     assert _version in clusters[0].spec.imageName, "image should contain postgres version {}".format(_version)
 }
 
+# ---- Test: postgresql.parameters values stringified for CNPG ----
+# CNPG's Cluster schema requires string parameter values; the module stringifies
+# them so a developer's natural int (e.g. `max_connections: 100`) is accepted.
+test_pg_parameters_stringified = lambda {
+    _oxr = option("params").oxr
+    if _oxr.spec.postgresql?.parameters:
+        _p = [r for r in items if r.kind == "Cluster"][0].spec.postgresql.parameters
+        _nonStr = [k for k in _p if _p[k] != str(_p[k])]
+        assert len(_nonStr) == 0, "postgresql.parameters must be all strings; non-string keys: {}".format(_nonStr)
+
+    assert True
+}
+
 # ---- Test: Superuser secret created when enabled ----
 test_superuser_secret = lambda {
     _oxr = option("params").oxr

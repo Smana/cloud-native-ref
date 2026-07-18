@@ -313,9 +313,12 @@ _items += [
                             # Apply performance insights params if enabled
                             if oxr.spec.performanceInsights?.enabled:
                                 **_performanceInsightsParams
-                            # User parameters override performance insights
+                            # User parameters override performance insights.
+                            # CNPG's Cluster schema requires string parameter
+                            # values, so stringify them - a developer's natural
+                            # int (e.g. `max_connections: 100`) is accepted.
                             if oxr.spec.postgresql?.parameters:
-                                **oxr.spec.postgresql.parameters
+                                **{k: str(v) for k, v in oxr.spec.postgresql.parameters}
                         }
                     if oxr.spec.postgresql?.pg_hba:
                         pg_hba = oxr.spec.postgresql.pg_hba

@@ -145,6 +145,89 @@ kustomization, ready to commit. Drop `-out` to print to stdout instead.
 
 ---
 
+## Worked example — deploying Outline with the wizard
+
+[Outline](https://www.getoutline.com/) (a self-hosted team wiki) is a good
+end-to-end demo: one `App` claim that uses **all three** managed backends —
+PostgreSQL, Valkey, and S3 — plus OIDC login. It shows how much the composition
+does for you. You toggle the backends and it auto-wires `DATABASE_URL` /
+`REDIS_URL`, provisions the S3 bucket and its keyless IAM, the route, and the
+network-policy egress. **You never type an `xplane-*` name or a `secretKeyRef`** —
+the composition owns every naming/IAM detail, so you name the app plainly.
+
+### One-time prerequisites (operator)
+
+Two secrets must exist in AWS Secrets Manager, and one app must be registered in
+Zitadel, before Outline can start:
+
+```bash
+# DB role credentials — the SQLInstance reads these at bootstrap. The path uses
+# the *managed* name (the composition prefixes the SQLInstance with xplane-).
+aws secretsmanager create-secret --region eu-west-3 \
+  --name cnpg/xplane-outline/roles/outline \
+  --secret-string "{\"username\":\"outline\",\"password\":\"$(openssl rand -base64 24 | tr -d '/+=')\"}"
+
+# App secrets — SECRET_KEY/UTILS_SECRET generated; OIDC creds from Zitadel (below).
+aws secretsmanager create-secret --region eu-west-3 \
+  --name apps/outline/secrets \
+  --secret-string "{\"SECRET_KEY\":\"$(openssl rand -hex 32)\",\"UTILS_SECRET\":\"$(openssl rand -hex 32)\",\"OIDC_CLIENT_ID\":\"<id>\",\"OIDC_CLIENT_SECRET\":\"<secret>\"}"
+```
+
+In Zitadel (`auth.cloud.ogenki.io`) create a **Web / OIDC** application, auth
+method **Code**, redirect URI
+`https://outline.priv.cloud.ogenki.io/auth/oidc.callback`; copy its client ID +
+secret into `apps/outline/secrets` above.
+
+### Method 1 — fill the form (primary)
+
+Open the wizard → **New app** → stack **`demo`** → name **`outline`** (plain — no
+`xplane-` prefix). Then fill:
+
+| Section | Values |
+|---|---|
+| Container | image `docker.getoutline.com/outlinewiki/outline:1.9.1` · port `3000` |
+| Health probes | liveness / readiness / startup · type `http` · path `/_health` |
+| PostgreSQL (`sqlInstance`) | enabled · database `outline`, owner role `outline` · **leave `postgresql.parameters` empty** |
+| Key-value (`kvStore`) | enabled · `valkey` |
+| S3 (`s3Bucket`) | enabled · `readwrite` |
+| Route | enabled · **not** internet-facing · hostname `outline` |
+| Env | `NODE_ENV=production`, `PORT=3000`, `URL=https://outline.priv.cloud.ogenki.io`, `PGSSLMODE=disable`, `FILE_STORAGE=s3`, `AWS_REGION=eu-west-3`, `AWS_S3_UPLOAD_BUCKET_NAME=eu-west-3-ogenki-outline`, `OIDC_AUTH_URI=https://auth.cloud.ogenki.io/oauth/v2/authorize`, `OIDC_TOKEN_URI=https://auth.cloud.ogenki.io/oauth/v2/token`, `OIDC_USERINFO_URI=https://auth.cloud.ogenki.io/oidc/v1/userinfo`, `OIDC_USERNAME_CLAIM=preferred_username`, `OIDC_SCOPES=openid profile email` |
+| External secrets | `outline-secrets` ← `apps/outline/secrets` |
+
+**Do not add** `DATABASE_URL`, `REDIS_URL`, or network-policy egress rules — the
+composition injects all of them (referencing the internal `xplane-outline-*`
+names you never see). If you *do* set any `postgresql.parameters`, quote the
+values (`max_connections: "100"`, not `100`).
+
+### Method 2 — describe it (faster)
+
+Rather than filling every field, click **✨ Describe** and paste a paragraph. GLM
+maps it to a partial spec and prefills the form — every field badged
+"AI-suggested — review", never auto-submitted:
+
+> Outline self-hosted team wiki. Deploy container image
+> docker.getoutline.com/outlinewiki/outline:1.9.1 on port 3000, health check path
+> /_health. It needs a PostgreSQL database (database outline, owner role outline),
+> a Valkey cache, and a read-write S3 bucket for uploads. Expose on a private
+> route with hostname outline. Users log in via Zitadel OIDC at
+> auth.cloud.ogenki.io. Import SECRET_KEY, UTILS_SECRET and OIDC client
+> credentials from apps/outline/secrets.
+
+That single paragraph fills the image, all three backends (with db `outline` /
+owner `outline` / role), the private route, the health probes, and the full env —
+including the OIDC block via `secretKeyRef` — and correctly omits `DATABASE_URL` /
+`REDIS_URL`. **Review the result, and fix the one value it tends to guess wrong:
+`OIDC_USERINFO_URI` should be `https://auth.cloud.ogenki.io/oidc/v1/userinfo`.**
+
+### Submit and verify
+
+Either way: **Preview** (render) → **Open PR** → review → merge. Flux deploys, the
+SQLInstance bootstraps from the seeded credentials, Valkey and the S3 bucket come
+up, Outline runs its own migrations, and it's reachable at
+`https://outline.priv.cloud.ogenki.io` (sign in via Zitadel).
+
+---
+
 ## Which should I use?
 
 - **New to the platform, or not sure what's available?** Use the **wizard** — it
