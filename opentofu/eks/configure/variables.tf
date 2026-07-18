@@ -56,7 +56,7 @@ variable "env" {
 variable "gateway_api_version" {
   description = "Gateway API CRDs version — must match flux/sources/gitrepo-gateway-api.yaml ref"
   type        = string
-  default     = "v1.6.0"
+  default     = "v1.6.1"
 }
 
 variable "private_domain_name" {
