@@ -9,3 +9,13 @@ spec:
     type: LoadBalancer
     loadBalancerClass: tailscale
     externalTrafficPolicy: Cluster
+  # Envoy L7 access logs for both Tailscale gateways (admin + general) using this
+  # GatewayClass. JSON format so VictoriaLogs' `unpack_json` can parse fields
+  # (log.method, log.path, log.response_code, log.duration, ...). Requires Cilium
+  # >= 1.19.6 (spec.telemetry.accessLogs on CiliumGatewayClassConfig). The default
+  # `json` field map (method/path/response_code/duration/upstream_host/...) applies
+  # unless overridden. Logs emit on the cilium-envoy DaemonSet stdout -> VictoriaLogs.
+  telemetry:
+    accessLogs:
+      - format: JSON
+        targets: ["HTTP"]
