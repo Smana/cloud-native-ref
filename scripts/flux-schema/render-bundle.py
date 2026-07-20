@@ -517,9 +517,17 @@ def _resolve_chart(spec, sources, namespace):
     return source, chart_spec.get("chart"), chart_spec.get("version")
 
 
+def effective_namespace(doc, kustomize_namespace):
+    """metadata.namespace > enclosing kustomization's namespace transformer >
+    "default". Shared by render_helmrelease and the duplicate-variant dedupe
+    key in main() - they MUST agree, since the key decides which variant is
+    rendered under the chart-<ns>-<name>.yaml filename this resolves."""
+    return doc["metadata"].get("namespace") or kustomize_namespace or "default"
+
+
 def render_helmrelease(doc, sources, outdir, namespace):
     meta, spec = doc["metadata"], doc["spec"]
-    namespace = meta.get("namespace") or namespace or "default"
+    namespace = effective_namespace(doc, namespace)
 
     source, chart, version = _resolve_chart(spec, sources, namespace)
     if not source or not source.get("url"):
@@ -652,18 +660,19 @@ def main():
                 # (no chart at all) are still validated via the overlay.
                 hr_spec = doc.get("spec", {})
                 if doc.get("kind") == "HelmRelease" and (hr_spec.get("chart") or hr_spec.get("chartRef")):
-                    kustomize_ns = namespaces.get(path.resolve())
-                    effective_ns = doc["metadata"].get("namespace") or kustomize_ns or "default"
-                    key = (effective_ns, doc["metadata"]["name"])
-                    is_referenced = path.resolve() in referenced
-                    if key in helmreleases and helmreleases[key][2] and not is_referenced:
+                    resolved = path.resolve()
+                    kustomize_ns = namespaces.get(resolved)
+                    key = (effective_namespace(doc, kustomize_ns), doc["metadata"]["name"])
+                    is_referenced = resolved in referenced
+                    prev = helmreleases.get(key)
+                    if prev and prev[2] and not is_referenced:
                         print(
                             f"note: duplicate HelmRelease/{key[0]}/{key[1]}: skipping "
                             f"unreferenced variant {path} (a kustomization references the other)",
                             file=sys.stderr,
                         )
                         continue
-                    if key in helmreleases:
+                    if prev:
                         print(
                             f"note: duplicate HelmRelease/{key[0]}/{key[1]}: rendering {path} "
                             "(kustomization-referenced, or last in scan order)",

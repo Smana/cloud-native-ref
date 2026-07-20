@@ -28,6 +28,7 @@ from yamlcompat import YAML_DUMPER, YAML_LOADER
 
 REDACTED = "<redacted by diff-bundles>"
 MAX_TOTAL = int(os.environ.get("DIFF_MAX_CHARS", "58000"))  # GitHub comment cap is 65536
+SUMMARY_MAX = 1_000_000  # GitHub job-summary cap is 1MiB; headroom for the note
 MARKERS = {"added": "🟢 added", "removed": "🔴 removed", "changed": "🟡 changed"}
 
 # `helm template` regenerates some values on every render, so they differ
@@ -188,13 +189,15 @@ def main():
         ))
         chunks.append((key, tag, diff))
 
-    # stdout is the size-capped PR comment; the optional third argument gets
-    # the untruncated report (previously the artifact was a tee of the capped
-    # stdout, so "see the artifact for the full diff" pointed at the same
-    # truncated content).
+    # stdout is the comment-capped report; the optional third argument gets the
+    # full report (previously the artifact was a tee of the capped stdout, so
+    # "see the artifact for the full diff" pointed at the same truncated
+    # content). The full report is itself capped at the job-summary limit -
+    # boundary-aware with a visible note, instead of the workflow byte-chopping
+    # it mid-fence/mid-codepoint - which only fires on pathological >1MB diffs.
     sys.stdout.write(render_report(chunks, counts, cap=MAX_TOTAL))
     if len(sys.argv) == 4:
-        pathlib.Path(sys.argv[3]).write_text(render_report(chunks, counts))
+        pathlib.Path(sys.argv[3]).write_text(render_report(chunks, counts, cap=SUMMARY_MAX))
     return 0
 
 

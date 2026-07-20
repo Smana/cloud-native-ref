@@ -157,21 +157,20 @@ jobs:
         run: ./scripts/flux-schema/render-both.sh "origin/${{ github.base_ref }}"
 
       # stdout (tee'd) is the size-capped PR comment; rendered-diff-full.md is
-      # the untruncated report, published two ways: as the job summary (the
-      # human-readable page the comment's truncation link points at — capped
-      # at the 1MiB summary limit) and as a downloadable artifact.
+      # the full report (capped only by the job-summary limit, inside the
+      # script, so a cut is boundary-aware and visibly noted), published two
+      # ways: as the job summary — the human-readable page the comment's
+      # truncation link points at — and as a downloadable artifact.
       - name: Compute rendered diff
         run: |
           python3 scripts/flux-schema/diff-bundles.py /tmp/base/.bundle-base .bundle-head rendered-diff-full.md | tee rendered-diff.md
-          head -c 1000000 rendered-diff-full.md >> "$GITHUB_STEP_SUMMARY"
+          cat rendered-diff-full.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload full diff artifact
         uses: actions/upload-artifact@v7
         with:
           name: rendered-diff
-          path: |
-            rendered-diff-full.md
-            rendered-diff.md
+          path: rendered-diff-full.md
           if-no-files-found: ignore
 
       - name: Post/update PR comment
