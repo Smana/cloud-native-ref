@@ -103,9 +103,62 @@ def canonical(doc):
     return TIMESTAMP_RE.sub("<render-timestamp>", text)
 
 
+def _truncation_note():
+    """Point at the full diff. In CI, a clickable link to the workflow run
+    page, where the full diff is readable as the job summary and downloadable
+    as the `rendered-diff` artifact; plain text outside CI."""
+    repo, run_id = os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_RUN_ID")
+    if repo and run_id:
+        server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+        return (
+            "\n> ⚠️ Diff truncated to fit the comment size limit — "
+            f"[full human-readable diff]({server}/{repo}/actions/runs/{run_id}) "
+            "(job summary on the run page; also downloadable as the `rendered-diff` artifact).\n"
+        )
+    return "\n> ⚠️ Diff truncated to fit the comment size limit — see the workflow artifact for the full diff.\n"
+
+
+def render_report(chunks, counts, cap=None):
+    """Assemble the markdown report; `cap` bounds the total size (the PR
+    comment), None renders everything (the artifact / job summary)."""
+    lines = ["### 🔍 Rendered manifest diff — this PR vs `main` (desired state)", ""]
+    if not chunks:
+        lines.append("No changes to the rendered desired state. ✅")
+        return "\n".join(lines) + "\n"
+    lines += [
+        f"**{counts['changed']} changed · {counts['added']} added · {counts['removed']} removed**",
+        "",
+        "> Rendered with `kustomize build` + `helm template` (source of truth = git), "
+        "so Helm-expanded workloads are included. Shows what Flux will apply — not a diff "
+        "against live cluster state (drift is alerted on separately), and not "
+        "CRD-defaulted / webhook-mutated output. Secret values are redacted; "
+        "per-render noise (webhook `caBundle`s, `checksum/*` annotations, render "
+        "timestamps) is normalized out.",
+        "",
+    ]
+    body = "\n".join(lines) + "\n"
+
+    truncated = False
+    for key, tag, diff in chunks:
+        section = (
+            f"<details><summary>{MARKERS[tag]} — <code>{key}</code></summary>\n\n"
+            f"```diff\n{diff}```\n</details>\n\n"
+        )
+        if cap is not None and len(body) + len(section) > cap:
+            truncated = True
+            break
+        body += section
+    if truncated:
+        body += _truncation_note()
+    return body
+
+
 def main():
-    if len(sys.argv) != 3:
-        print("usage: diff-bundles.py <base-bundle-dir> <head-bundle-dir>", file=sys.stderr)
+    if len(sys.argv) not in (3, 4):
+        print(
+            "usage: diff-bundles.py <base-bundle-dir> <head-bundle-dir> [full-report-path]",
+            file=sys.stderr,
+        )
         return 2
     base, head = load_bundle(sys.argv[1]), load_bundle(sys.argv[2])
 
@@ -134,38 +187,13 @@ def main():
         ))
         chunks.append((key, tag, diff))
 
-    lines = ["### 🔍 Rendered manifest diff — this PR vs `main` (desired state)", ""]
-    if not chunks:
-        lines.append("No changes to the rendered desired state. ✅")
-        sys.stdout.write("\n".join(lines) + "\n")
-        return 0
-    lines += [
-        f"**{counts['changed']} changed · {counts['added']} added · {counts['removed']} removed**",
-        "",
-        "> Rendered with `kustomize build` + `helm template` (source of truth = git), "
-        "so Helm-expanded workloads are included. Shows what Flux will apply — not a diff "
-        "against live cluster state (drift is alerted on separately), and not "
-        "CRD-defaulted / webhook-mutated output. Secret values are redacted; "
-        "per-render noise (webhook `caBundle`s, `checksum/*` annotations, render "
-        "timestamps) is normalized out.",
-        "",
-    ]
-    body = "\n".join(lines) + "\n"
-
-    truncated = False
-    for key, tag, diff in chunks:
-        section = (
-            f"<details><summary>{MARKERS[tag]} — <code>{key}</code></summary>\n\n"
-            f"```diff\n{diff}```\n</details>\n\n"
-        )
-        if len(body) + len(section) > MAX_TOTAL:
-            truncated = True
-            break
-        body += section
-    if truncated:
-        body += "\n> ⚠️ Diff truncated to fit the comment size limit — see the workflow artifact for the full diff.\n"
-
-    sys.stdout.write(body)
+    # stdout is the size-capped PR comment; the optional third argument gets
+    # the untruncated report (previously the artifact was a tee of the capped
+    # stdout, so "see the artifact for the full diff" pointed at the same
+    # truncated content).
+    sys.stdout.write(render_report(chunks, counts, cap=MAX_TOTAL))
+    if len(sys.argv) == 4:
+        pathlib.Path(sys.argv[3]).write_text(render_report(chunks, counts))
     return 0
 
 
