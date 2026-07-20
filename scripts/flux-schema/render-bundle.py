@@ -10,6 +10,7 @@ Rendered output is what Flux actually applies, so it is the only artifact worth
 asserting on (CL-1): raw patch fragments can never satisfy a full schema.
 """
 import concurrent.futures
+import contextlib
 import os
 import pathlib
 import re
@@ -21,22 +22,7 @@ import threading
 
 import yaml
 
-# libyaml-backed loader/dumper when the wheel ships it (5-10x faster on the
-# multi-MB helm outputs postprocess round-trips); pure-Python fallback keeps
-# the script working on a libyaml-less PyYAML build.
-YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
-YAML_DUMPER = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
-
-# PyYAML 1.1-spec quirk, not a real document defect: a bare, unquoted `=`
-# scalar (e.g. an enum member `- =`, as in the prometheus-operator-crds
-# chart's AlertmanagerConfig CRD matchType enum: `!=`, `=`, `=~`, `!~`) is
-# reserved as the special "default value" tag `tag:yaml.org,2002:value`, for
-# which SafeLoader registers no constructor - safe_load then raises
-# ConstructorError on an otherwise perfectly valid document. Treat it as the
-# plain string it is; this is the standard workaround (see pyyaml/pyyaml#89).
-YAML_LOADER.add_constructor(
-    "tag:yaml.org,2002:value", lambda loader, node: loader.construct_scalar(node)
-)
+from yamlcompat import YAML_DUMPER, YAML_LOADER
 
 # Renders are independent subprocesses (helm/kustomize), so they parallelize
 # near-linearly; the loops in main() were sequential and dominated the runtime
@@ -424,16 +410,22 @@ def resolve_source(sources, source_ref, hr_namespace):
 
 
 def index_namespaces():
-    """Map each locally-listed kustomize resource file to its effective namespace.
+    """Map each locally-listed kustomize resource file to its effective
+    namespace, and collect the set of ALL files any kustomization references.
 
-    This repo's convention is `base/<component>/kustomization.yaml` carrying
-    both `namespace: X` and a `resources:` list of local files (helmrelease.yaml
-    among them) - the namespace transformer stamps X onto them at apply time,
-    even though the raw HelmRelease YAML on disk has no metadata.namespace.
-    Without this, HelmReleases relying on that convention default to the wrong
-    namespace and both their own render and their sourceRef lookup fail.
+    Namespaces: this repo's convention is `base/<component>/kustomization.yaml`
+    carrying both `namespace: X` and a `resources:` list of local files
+    (helmrelease.yaml among them) - the namespace transformer stamps X onto
+    them at apply time, even though the raw HelmRelease YAML on disk has no
+    metadata.namespace. Without this, HelmReleases relying on that convention
+    default to the wrong namespace and both their own render and their
+    sourceRef lookup fail.
+
+    Referenced set: used to pick between ALTERNATIVE HelmRelease variants of
+    the same release (see main()) - the variant a kustomization actually lists
+    is the one Flux applies; the commented-out sibling is not.
     """
-    index = {}
+    index, referenced = {}, set()
     for root in MANIFEST_DIRS:
         base = pathlib.Path(root)
         if not base.exists():
@@ -443,13 +435,13 @@ def index_namespaces():
             if not docs:
                 continue
             namespace = docs[0].get("namespace")
-            if not namespace:
-                continue
             for resource in docs[0].get("resources") or []:
                 candidate = (kfile.parent / resource).resolve()
                 if candidate.is_file():
-                    index[candidate] = namespace
-    return index
+                    referenced.add(candidate)
+                    if namespace:
+                        index[candidate] = namespace
+    return index, referenced
 
 
 def clone_git_source(url, ref, dest):
@@ -589,11 +581,9 @@ def render_helmrelease(doc, sources, outdir, namespace):
             cmd += ["--version", version]
 
         # Local git checkouts touch no shared helm cache - no lock needed.
-        if is_git:
+        lock = contextlib.nullcontext() if is_git else _repo_lock(url)
+        with lock:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        else:
-            with _repo_lock(url):
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     finally:
         os.unlink(values_file)
         if git_clone_dir:
@@ -626,11 +616,23 @@ def main():
     errors = []
     overlays = top_most_overlays()
     sources = index_sources()
-    namespaces = index_namespaces()
+    namespaces, referenced = index_namespaces()
     covered = {str(o) for o in overlays}
     charts = standalone = 0
 
-    helmreleases = []
+    # Keyed by the OUTPUT identity (effective namespace, name): the repo keeps
+    # alternative HelmRelease variants for the same release side by side (e.g.
+    # victoria-metrics-k8s-stack's helmrelease-vmsingle.yaml vs
+    # helmrelease-vmcluster.yaml, one commented out in the kustomization), and
+    # this wiring-agnostic scan picks up both - yet they write the same
+    # chart-<ns>-<name>.yaml, so only one can be rendered. The winner is the
+    # variant some kustomization actually references (that is what Flux
+    # applies; scan-order last-write-wins previously picked victoria-logs'
+    # UNREFERENCED vlcluster variant, and under parallel rendering the winner
+    # was whichever FINISHED last). Among equally-referenced (or equally
+    # unreferenced) duplicates, last in scan order wins. Dropped duplicates
+    # are logged, never silent.
+    helmreleases = {}
     for root in MANIFEST_DIRS:
         base = pathlib.Path(root)
         if not base.exists():
@@ -650,7 +652,24 @@ def main():
                 # (no chart at all) are still validated via the overlay.
                 hr_spec = doc.get("spec", {})
                 if doc.get("kind") == "HelmRelease" and (hr_spec.get("chart") or hr_spec.get("chartRef")):
-                    helmreleases.append((doc, namespaces.get(path.resolve())))
+                    kustomize_ns = namespaces.get(path.resolve())
+                    effective_ns = doc["metadata"].get("namespace") or kustomize_ns or "default"
+                    key = (effective_ns, doc["metadata"]["name"])
+                    is_referenced = path.resolve() in referenced
+                    if key in helmreleases and helmreleases[key][2] and not is_referenced:
+                        print(
+                            f"note: duplicate HelmRelease/{key[0]}/{key[1]}: skipping "
+                            f"unreferenced variant {path} (a kustomization references the other)",
+                            file=sys.stderr,
+                        )
+                        continue
+                    if key in helmreleases:
+                        print(
+                            f"note: duplicate HelmRelease/{key[0]}/{key[1]}: rendering {path} "
+                            "(kustomization-referenced, or last in scan order)",
+                            file=sys.stderr,
+                        )
+                    helmreleases[key] = (doc, kustomize_ns, is_referenced)
             if not in_overlay and docs:
                 (outdir / ("standalone-" + str(path).replace("/", "-"))).write_text(
                     substitute(path.read_text())
@@ -662,12 +681,12 @@ def main():
     # Futures are drained in submission order to keep error output
     # deterministic regardless of completion order.
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        overlay_futures = [pool.submit(render_overlay, o, outdir) for o in overlays]
+        overlay_futures = [(o, pool.submit(render_overlay, o, outdir)) for o in overlays]
         chart_futures = [
             pool.submit(render_helmrelease, doc, sources, outdir, namespace)
-            for doc, namespace in helmreleases
+            for doc, namespace, _ in helmreleases.values()
         ]
-        for overlay, future in zip(overlays, overlay_futures):
+        for overlay, future in overlay_futures:
             error = future.result()
             if error:
                 errors.append(f"kustomize {overlay}: {error}")

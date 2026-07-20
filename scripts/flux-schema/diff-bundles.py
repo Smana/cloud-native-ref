@@ -23,19 +23,7 @@ import sys
 
 import yaml
 
-# libyaml-backed loader/dumper when the wheel ships it (5-10x faster parse of
-# the two full bundles); pure-Python fallback keeps a libyaml-less PyYAML working.
-YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
-YAML_DUMPER = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
-
-# Same PyYAML workaround render-bundle.py registers: a bare `=` scalar (the
-# prometheus-operator-crds AlertmanagerConfig matchType enum `!=`,`=`,`=~`,`!~`)
-# is the reserved tag:yaml.org,2002:value, which SafeLoader refuses to construct.
-# Without this, safe_load_all raises and load_bundle() would silently drop the
-# whole document from the diff. Keep in lockstep with render-bundle.py.
-YAML_LOADER.add_constructor(
-    "tag:yaml.org,2002:value", lambda loader, node: loader.construct_scalar(node)
-)
+from yamlcompat import YAML_DUMPER, YAML_LOADER
 
 REDACTED = "<redacted by diff-bundles>"
 MAX_TOTAL = int(os.environ.get("DIFF_MAX_CHARS", "58000"))  # GitHub comment cap is 65536

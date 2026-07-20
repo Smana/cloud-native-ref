@@ -150,34 +150,11 @@ jobs:
           key: helm-${{ hashFiles('**/*helmrelease*.yaml', 'flux/sources/**') }}
           restore-keys: helm-
 
-      # Render both sides with each ref's OWN renderer, so a change to
-      # render-bundle.py itself shows up in the diff. Renders are best-effort:
-      # a render error must not sink this informational job (the hard gate is
-      # the kubernetes-validation job above).
-      #
-      # The two renders are independent, so they run concurrently — but helm's
-      # repository cache is not safe for concurrent writers across processes
-      # (index files + chart tarballs share one dir), so the base render gets
-      # its own seeded COPY of the cache instead of the shared one.
+      # Orchestration (concurrent best-effort renders, worktree, helm cache
+      # isolation) lives in the script so it is shellcheck-covered and
+      # documented next to the renderer it drives.
       - name: Render head and base (concurrent)
-        run: |
-          set -uo pipefail
-          python3 scripts/flux-schema/render-bundle.py .bundle-head &
-          head_pid=$!
-          (
-            set -euo pipefail
-            base_sha="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
-            echo "base merge-base: ${base_sha}"
-            git worktree add /tmp/base "${base_sha}"
-            mkdir -p ~/.cache/helm /tmp/helm-cache-base
-            cp -r ~/.cache/helm/. /tmp/helm-cache-base/
-            cd /tmp/base
-            HELM_REPOSITORY_CACHE=/tmp/helm-cache-base/repository \
-              python3 scripts/flux-schema/render-bundle.py /tmp/base/.bundle-base
-          ) &
-          base_pid=$!
-          wait "${head_pid}" || echo "::warning::head render failed — the rendered diff below is unreliable"
-          wait "${base_pid}" || echo "::warning::base render failed — the rendered diff may show everything as added"
+        run: ./scripts/flux-schema/render-both.sh "origin/${{ github.base_ref }}"
 
       - name: Compute rendered diff
         run: python3 scripts/flux-schema/diff-bundles.py /tmp/base/.bundle-base .bundle-head | tee rendered-diff.md
