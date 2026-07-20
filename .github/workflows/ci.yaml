@@ -176,8 +176,8 @@ jobs:
               python3 scripts/flux-schema/render-bundle.py /tmp/base/.bundle-base
           ) &
           base_pid=$!
-          wait "${head_pid}" || echo "head render failed (best-effort — continuing)"
-          wait "${base_pid}" || echo "base render failed (best-effort — continuing)"
+          wait "${head_pid}" || echo "::warning::head render failed — the rendered diff below is unreliable"
+          wait "${base_pid}" || echo "::warning::base render failed — the rendered diff may show everything as added"
 
       - name: Compute rendered diff
         run: python3 scripts/flux-schema/diff-bundles.py /tmp/base/.bundle-base .bundle-head | tee rendered-diff.md
