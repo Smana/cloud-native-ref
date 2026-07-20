@@ -154,23 +154,30 @@ jobs:
       # render-bundle.py itself shows up in the diff. Renders are best-effort:
       # a render error must not sink this informational job (the hard gate is
       # the kubernetes-validation job above).
-      - name: Render PR head
-        run: python3 scripts/flux-schema/render-bundle.py .bundle-head || true
-
-      - name: Render base (merge-base)
+      #
+      # The two renders are independent, so they run concurrently — but helm's
+      # repository cache is not safe for concurrent writers across processes
+      # (index files + chart tarballs share one dir), so the base render gets
+      # its own seeded COPY of the cache instead of the shared one.
+      - name: Render head and base (concurrent)
         run: |
-          set -euo pipefail
-          base_sha="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
-          echo "base merge-base: ${base_sha}"
-          git worktree add /tmp/base "${base_sha}"
-          if [[ -f /tmp/base/scripts/flux-schema/render-bundle.py ]]; then
-            ( cd /tmp/base && python3 scripts/flux-schema/render-bundle.py /tmp/base/.bundle-base ) || true
-          else
-            # Transitional: only the PR that introduces render-bundle.py has a
-            # merge-base without it. Safe to delete this branch once merged.
-            echo "base ref predates render-bundle.py — treating base as empty (everything shows as added)."
-            mkdir -p /tmp/base/.bundle-base
-          fi
+          set -uo pipefail
+          python3 scripts/flux-schema/render-bundle.py .bundle-head &
+          head_pid=$!
+          (
+            set -euo pipefail
+            base_sha="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
+            echo "base merge-base: ${base_sha}"
+            git worktree add /tmp/base "${base_sha}"
+            mkdir -p ~/.cache/helm /tmp/helm-cache-base
+            cp -r ~/.cache/helm/. /tmp/helm-cache-base/
+            cd /tmp/base
+            HELM_REPOSITORY_CACHE=/tmp/helm-cache-base/repository \
+              python3 scripts/flux-schema/render-bundle.py /tmp/base/.bundle-base
+          ) &
+          base_pid=$!
+          wait "${head_pid}" || echo "head render failed (best-effort — continuing)"
+          wait "${base_pid}" || echo "base render failed (best-effort — continuing)"
 
       - name: Compute rendered diff
         run: python3 scripts/flux-schema/diff-bundles.py /tmp/base/.bundle-base .bundle-head | tee rendered-diff.md

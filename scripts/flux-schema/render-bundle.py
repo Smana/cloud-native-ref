@@ -9,6 +9,7 @@ Three inputs, one output directory:
 Rendered output is what Flux actually applies, so it is the only artifact worth
 asserting on (CL-1): raw patch fragments can never satisfy a full schema.
 """
+import concurrent.futures
 import os
 import pathlib
 import re
@@ -16,8 +17,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 
 import yaml
+
+# libyaml-backed loader/dumper when the wheel ships it (5-10x faster on the
+# multi-MB helm outputs postprocess round-trips); pure-Python fallback keeps
+# the script working on a libyaml-less PyYAML build.
+YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+YAML_DUMPER = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
 
 # PyYAML 1.1-spec quirk, not a real document defect: a bare, unquoted `=`
 # scalar (e.g. an enum member `- =`, as in the prometheus-operator-crds
@@ -26,9 +34,28 @@ import yaml
 # which SafeLoader registers no constructor - safe_load then raises
 # ConstructorError on an otherwise perfectly valid document. Treat it as the
 # plain string it is; this is the standard workaround (see pyyaml/pyyaml#89).
-yaml.SafeLoader.add_constructor(
+YAML_LOADER.add_constructor(
     "tag:yaml.org,2002:value", lambda loader, node: loader.construct_scalar(node)
 )
+
+# Renders are independent subprocesses (helm/kustomize), so they parallelize
+# near-linearly; the loops in main() were sequential and dominated the runtime
+# (~130s of a ~140s validate run for 67 overlays + 40 charts).
+MAX_WORKERS = int(os.environ.get("RENDER_WORKERS", "8"))
+
+# helm shares one repository cache dir for index files AND chart tarballs
+# (`<chart>-<version>.tgz` - not namespaced by repo, and OCI pulls land there
+# too). Two concurrent helm invocations against the same source can race on
+# the same cache file (e.g. the two gha-runner-scale-set HelmReleases share a
+# chart), so helm calls are serialized per source URL; distinct sources still
+# run fully parallel.
+_repo_locks = {}
+_repo_locks_guard = threading.Lock()
+
+
+def _repo_lock(url):
+    with _repo_locks_guard:
+        return _repo_locks.setdefault(url, threading.Lock())
 
 MANIFEST_DIRS = [
     "infrastructure",
@@ -172,7 +199,7 @@ def substitute(text):
 
 def load_docs(path):
     try:
-        return [d for d in yaml.safe_load_all(path.read_text()) if isinstance(d, dict)]
+        return [d for d in yaml.load_all(path.read_text(), Loader=YAML_LOADER) if isinstance(d, dict)]
     except yaml.YAMLError:
         return []
 
@@ -232,7 +259,7 @@ def postprocess(text):
     Polaris validation, and dropped anyway once helm/kustomize post-renderers
     round-trip through YAML.
     """
-    docs = unwrap_lists([d for d in yaml.safe_load_all(text) if isinstance(d, dict)])
+    docs = unwrap_lists([d for d in yaml.load_all(text, Loader=YAML_LOADER) if isinstance(d, dict)])
     # Drop non-resource docs before they reach the bundle. `helm template`
     # (notably Helm v4) can emit a stray YAML document that is a non-empty dict
     # yet carries no apiVersion/kind - not an applyable Kubernetes resource, but
@@ -246,7 +273,7 @@ def postprocess(text):
     for doc in docs:
         normalize_quantities(doc)
     return "\n---\n".join(
-        yaml.safe_dump(doc, sort_keys=False, default_flow_style=False, width=1000000).strip()
+        yaml.dump(doc, Dumper=YAML_DUMPER, sort_keys=False, default_flow_style=False, width=1000000).strip()
         for doc in docs
     ) + "\n"
 
@@ -561,7 +588,12 @@ def render_helmrelease(doc, sources, outdir, namespace):
             # the cluster's. Exact pins (tag / exact semver) are unaffected.
             cmd += ["--version", version]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        # Local git checkouts touch no shared helm cache - no lock needed.
+        if is_git:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        else:
+            with _repo_lock(url):
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     finally:
         os.unlink(values_file)
         if git_clone_dir:
@@ -593,16 +625,12 @@ def main():
 
     errors = []
     overlays = top_most_overlays()
-    for overlay in overlays:
-        error = render_overlay(overlay, outdir)
-        if error:
-            errors.append(f"kustomize {overlay}: {error}")
-
     sources = index_sources()
     namespaces = index_namespaces()
     covered = {str(o) for o in overlays}
     charts = standalone = 0
 
+    helmreleases = []
     for root in MANIFEST_DIRS:
         base = pathlib.Path(root)
         if not base.exists():
@@ -622,17 +650,33 @@ def main():
                 # (no chart at all) are still validated via the overlay.
                 hr_spec = doc.get("spec", {})
                 if doc.get("kind") == "HelmRelease" and (hr_spec.get("chart") or hr_spec.get("chartRef")):
-                    namespace = namespaces.get(path.resolve())
-                    error = render_helmrelease(doc, sources, outdir, namespace)
-                    if error:
-                        errors.append(error)
-                    else:
-                        charts += 1
+                    helmreleases.append((doc, namespaces.get(path.resolve())))
             if not in_overlay and docs:
                 (outdir / ("standalone-" + str(path).replace("/", "-"))).write_text(
                     substitute(path.read_text())
                 )
                 standalone += 1
+
+    # Every render writes its own uniquely-named output file, so the only
+    # shared mutable state is the helm cache (serialized per source URL above).
+    # Futures are drained in submission order to keep error output
+    # deterministic regardless of completion order.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        overlay_futures = [pool.submit(render_overlay, o, outdir) for o in overlays]
+        chart_futures = [
+            pool.submit(render_helmrelease, doc, sources, outdir, namespace)
+            for doc, namespace in helmreleases
+        ]
+        for overlay, future in zip(overlays, overlay_futures):
+            error = future.result()
+            if error:
+                errors.append(f"kustomize {overlay}: {error}")
+        for future in chart_futures:
+            error = future.result()
+            if error:
+                errors.append(error)
+            else:
+                charts += 1
 
     print(
         f"RENDER: overlays={len(overlays)} charts={charts} "

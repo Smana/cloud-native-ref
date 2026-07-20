@@ -22,12 +22,17 @@ import sys
 
 import yaml
 
+# libyaml-backed loader/dumper when the wheel ships it (5-10x faster parse of
+# the two full bundles); pure-Python fallback keeps a libyaml-less PyYAML working.
+YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+YAML_DUMPER = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
+
 # Same PyYAML workaround render-bundle.py registers: a bare `=` scalar (the
 # prometheus-operator-crds AlertmanagerConfig matchType enum `!=`,`=`,`=~`,`!~`)
 # is the reserved tag:yaml.org,2002:value, which SafeLoader refuses to construct.
 # Without this, safe_load_all raises and load_bundle() would silently drop the
 # whole document from the diff. Keep in lockstep with render-bundle.py.
-yaml.SafeLoader.add_constructor(
+YAML_LOADER.add_constructor(
     "tag:yaml.org,2002:value", lambda loader, node: loader.construct_scalar(node)
 )
 
@@ -44,7 +49,7 @@ def load_bundle(directory):
         return resources
     for path in sorted(base.rglob("*.yaml")):
         try:
-            docs = list(yaml.safe_load_all(path.read_text()))
+            docs = list(yaml.load_all(path.read_text(), Loader=YAML_LOADER))
         except (yaml.YAMLError, OSError):
             continue
         for doc in docs:
@@ -66,7 +71,7 @@ def canonical(doc):
         for field in ("data", "stringData"):
             if isinstance(doc.get(field), dict):
                 doc[field] = {k: REDACTED for k in doc[field]}
-    return yaml.safe_dump(doc, sort_keys=True, default_flow_style=False, width=10 ** 6)
+    return yaml.dump(doc, Dumper=YAML_DUMPER, sort_keys=True, default_flow_style=False, width=10 ** 6)
 
 
 def main():
@@ -78,6 +83,13 @@ def main():
     chunks, counts = [], {"added": 0, "removed": 0, "changed": 0}
     for key in sorted(set(base) | set(head)):
         in_base, in_head = key in base, key in head
+        # Fast path: equal parsed docs can't produce a diff (canonical() is a
+        # pure function of the doc), and in a typical PR ~99% of resources are
+        # unchanged - canonicalizing all of them dominated this script's runtime.
+        # Docs differing only in redacted Secret values fall through to the
+        # canonical comparison below, which still treats them as unchanged.
+        if in_base and in_head and base[key] == head[key]:
+            continue
         before = canonical(base[key]) if in_base else ""
         after = canonical(head[key]) if in_head else ""
         if before == after:
