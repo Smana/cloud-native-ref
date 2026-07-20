@@ -150,36 +150,27 @@ jobs:
           key: helm-${{ hashFiles('**/*helmrelease*.yaml', 'flux/sources/**') }}
           restore-keys: helm-
 
-      # Render both sides with each ref's OWN renderer, so a change to
-      # render-bundle.py itself shows up in the diff. Renders are best-effort:
-      # a render error must not sink this informational job (the hard gate is
-      # the kubernetes-validation job above).
-      - name: Render PR head
-        run: python3 scripts/flux-schema/render-bundle.py .bundle-head || true
+      # Orchestration (concurrent best-effort renders, worktree, helm cache
+      # isolation) lives in the script so it is shellcheck-covered and
+      # documented next to the renderer it drives.
+      - name: Render head and base (concurrent)
+        run: ./scripts/flux-schema/render-both.sh "origin/${{ github.base_ref }}"
 
-      - name: Render base (merge-base)
-        run: |
-          set -euo pipefail
-          base_sha="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
-          echo "base merge-base: ${base_sha}"
-          git worktree add /tmp/base "${base_sha}"
-          if [[ -f /tmp/base/scripts/flux-schema/render-bundle.py ]]; then
-            ( cd /tmp/base && python3 scripts/flux-schema/render-bundle.py /tmp/base/.bundle-base ) || true
-          else
-            # Transitional: only the PR that introduces render-bundle.py has a
-            # merge-base without it. Safe to delete this branch once merged.
-            echo "base ref predates render-bundle.py — treating base as empty (everything shows as added)."
-            mkdir -p /tmp/base/.bundle-base
-          fi
-
+      # stdout (tee'd) is the size-capped PR comment; rendered-diff-full.md is
+      # the full report (capped only by the job-summary limit, inside the
+      # script, so a cut is boundary-aware and visibly noted), published two
+      # ways: as the job summary — the human-readable page the comment's
+      # truncation link points at — and as a downloadable artifact.
       - name: Compute rendered diff
-        run: python3 scripts/flux-schema/diff-bundles.py /tmp/base/.bundle-base .bundle-head | tee rendered-diff.md
+        run: |
+          python3 scripts/flux-schema/diff-bundles.py /tmp/base/.bundle-base .bundle-head rendered-diff-full.md | tee rendered-diff.md
+          cat rendered-diff-full.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload full diff artifact
         uses: actions/upload-artifact@v7
         with:
           name: rendered-diff
-          path: rendered-diff.md
+          path: rendered-diff-full.md
           if-no-files-found: ignore
 
       - name: Post/update PR comment

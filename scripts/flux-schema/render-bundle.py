@@ -9,6 +9,8 @@ Three inputs, one output directory:
 Rendered output is what Flux actually applies, so it is the only artifact worth
 asserting on (CL-1): raw patch fragments can never satisfy a full schema.
 """
+import concurrent.futures
+import contextlib
 import os
 import pathlib
 import re
@@ -16,19 +18,30 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 
 import yaml
 
-# PyYAML 1.1-spec quirk, not a real document defect: a bare, unquoted `=`
-# scalar (e.g. an enum member `- =`, as in the prometheus-operator-crds
-# chart's AlertmanagerConfig CRD matchType enum: `!=`, `=`, `=~`, `!~`) is
-# reserved as the special "default value" tag `tag:yaml.org,2002:value`, for
-# which SafeLoader registers no constructor - safe_load then raises
-# ConstructorError on an otherwise perfectly valid document. Treat it as the
-# plain string it is; this is the standard workaround (see pyyaml/pyyaml#89).
-yaml.SafeLoader.add_constructor(
-    "tag:yaml.org,2002:value", lambda loader, node: loader.construct_scalar(node)
-)
+from yamlcompat import YAML_DUMPER, YAML_LOADER
+
+# Renders are independent subprocesses (helm/kustomize), so they parallelize
+# near-linearly; the loops in main() were sequential and dominated the runtime
+# (~130s of a ~140s validate run for 67 overlays + 40 charts).
+MAX_WORKERS = int(os.environ.get("RENDER_WORKERS", "8"))
+
+# helm shares one repository cache dir for index files AND chart tarballs
+# (`<chart>-<version>.tgz` - not namespaced by repo, and OCI pulls land there
+# too). Two concurrent helm invocations against the same source can race on
+# the same cache file (e.g. the two gha-runner-scale-set HelmReleases share a
+# chart), so helm calls are serialized per source URL; distinct sources still
+# run fully parallel.
+_repo_locks = {}
+_repo_locks_guard = threading.Lock()
+
+
+def _repo_lock(url):
+    with _repo_locks_guard:
+        return _repo_locks.setdefault(url, threading.Lock())
 
 MANIFEST_DIRS = [
     "infrastructure",
@@ -172,7 +185,7 @@ def substitute(text):
 
 def load_docs(path):
     try:
-        return [d for d in yaml.safe_load_all(path.read_text()) if isinstance(d, dict)]
+        return [d for d in yaml.load_all(path.read_text(), Loader=YAML_LOADER) if isinstance(d, dict)]
     except yaml.YAMLError:
         return []
 
@@ -232,7 +245,7 @@ def postprocess(text):
     Polaris validation, and dropped anyway once helm/kustomize post-renderers
     round-trip through YAML.
     """
-    docs = unwrap_lists([d for d in yaml.safe_load_all(text) if isinstance(d, dict)])
+    docs = unwrap_lists([d for d in yaml.load_all(text, Loader=YAML_LOADER) if isinstance(d, dict)])
     # Drop non-resource docs before they reach the bundle. `helm template`
     # (notably Helm v4) can emit a stray YAML document that is a non-empty dict
     # yet carries no apiVersion/kind - not an applyable Kubernetes resource, but
@@ -246,7 +259,7 @@ def postprocess(text):
     for doc in docs:
         normalize_quantities(doc)
     return "\n---\n".join(
-        yaml.safe_dump(doc, sort_keys=False, default_flow_style=False, width=1000000).strip()
+        yaml.dump(doc, Dumper=YAML_DUMPER, sort_keys=False, default_flow_style=False, width=1000000).strip()
         for doc in docs
     ) + "\n"
 
@@ -369,7 +382,7 @@ def index_sources():
         base = pathlib.Path(root)
         if not base.exists():
             continue
-        for path in base.rglob("*.yaml"):
+        for path in sorted(base.rglob("*.yaml")):
             for doc in load_docs(path):
                 # GitRepository is included alongside HelmRepository/OCIRepository:
                 # one HelmRelease (runlore) points `chart.spec.sourceRef` at a
@@ -397,32 +410,38 @@ def resolve_source(sources, source_ref, hr_namespace):
 
 
 def index_namespaces():
-    """Map each locally-listed kustomize resource file to its effective namespace.
+    """Map each locally-listed kustomize resource file to its effective
+    namespace, and collect the set of ALL files any kustomization references.
 
-    This repo's convention is `base/<component>/kustomization.yaml` carrying
-    both `namespace: X` and a `resources:` list of local files (helmrelease.yaml
-    among them) - the namespace transformer stamps X onto them at apply time,
-    even though the raw HelmRelease YAML on disk has no metadata.namespace.
-    Without this, HelmReleases relying on that convention default to the wrong
-    namespace and both their own render and their sourceRef lookup fail.
+    Namespaces: this repo's convention is `base/<component>/kustomization.yaml`
+    carrying both `namespace: X` and a `resources:` list of local files
+    (helmrelease.yaml among them) - the namespace transformer stamps X onto
+    them at apply time, even though the raw HelmRelease YAML on disk has no
+    metadata.namespace. Without this, HelmReleases relying on that convention
+    default to the wrong namespace and both their own render and their
+    sourceRef lookup fail.
+
+    Referenced set: used to pick between ALTERNATIVE HelmRelease variants of
+    the same release (see main()) - the variant a kustomization actually lists
+    is the one Flux applies; the commented-out sibling is not.
     """
-    index = {}
+    index, referenced = {}, set()
     for root in MANIFEST_DIRS:
         base = pathlib.Path(root)
         if not base.exists():
             continue
-        for kfile in base.rglob("kustomization.yaml"):
+        for kfile in sorted(base.rglob("kustomization.yaml")):
             docs = load_docs(kfile)
             if not docs:
                 continue
             namespace = docs[0].get("namespace")
-            if not namespace:
-                continue
             for resource in docs[0].get("resources") or []:
                 candidate = (kfile.parent / resource).resolve()
                 if candidate.is_file():
-                    index[candidate] = namespace
-    return index
+                    referenced.add(candidate)
+                    if namespace:
+                        index[candidate] = namespace
+    return index, referenced
 
 
 def clone_git_source(url, ref, dest):
@@ -498,9 +517,17 @@ def _resolve_chart(spec, sources, namespace):
     return source, chart_spec.get("chart"), chart_spec.get("version")
 
 
+def effective_namespace(doc, kustomize_namespace):
+    """metadata.namespace > enclosing kustomization's namespace transformer >
+    "default". Shared by render_helmrelease and the duplicate-variant dedupe
+    key in main() - they MUST agree, since the key decides which variant is
+    rendered under the chart-<ns>-<name>.yaml filename this resolves."""
+    return doc["metadata"].get("namespace") or kustomize_namespace or "default"
+
+
 def render_helmrelease(doc, sources, outdir, namespace):
     meta, spec = doc["metadata"], doc["spec"]
-    namespace = meta.get("namespace") or namespace or "default"
+    namespace = effective_namespace(doc, namespace)
 
     source, chart, version = _resolve_chart(spec, sources, namespace)
     if not source or not source.get("url"):
@@ -561,7 +588,10 @@ def render_helmrelease(doc, sources, outdir, namespace):
             # the cluster's. Exact pins (tag / exact semver) are unaffected.
             cmd += ["--version", version]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        # Local git checkouts touch no shared helm cache - no lock needed.
+        lock = contextlib.nullcontext() if is_git else _repo_lock(url)
+        with lock:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     finally:
         os.unlink(values_file)
         if git_clone_dir:
@@ -593,21 +623,29 @@ def main():
 
     errors = []
     overlays = top_most_overlays()
-    for overlay in overlays:
-        error = render_overlay(overlay, outdir)
-        if error:
-            errors.append(f"kustomize {overlay}: {error}")
-
     sources = index_sources()
-    namespaces = index_namespaces()
+    namespaces, referenced = index_namespaces()
     covered = {str(o) for o in overlays}
     charts = standalone = 0
 
+    # Keyed by the OUTPUT identity (effective namespace, name): the repo keeps
+    # alternative HelmRelease variants for the same release side by side (e.g.
+    # victoria-metrics-k8s-stack's helmrelease-vmsingle.yaml vs
+    # helmrelease-vmcluster.yaml, one commented out in the kustomization), and
+    # this wiring-agnostic scan picks up both - yet they write the same
+    # chart-<ns>-<name>.yaml, so only one can be rendered. The winner is the
+    # variant some kustomization actually references (that is what Flux
+    # applies; scan-order last-write-wins previously picked victoria-logs'
+    # UNREFERENCED vlcluster variant, and under parallel rendering the winner
+    # was whichever FINISHED last). Among equally-referenced (or equally
+    # unreferenced) duplicates, last in scan order wins. Dropped duplicates
+    # are logged, never silent.
+    helmreleases = {}
     for root in MANIFEST_DIRS:
         base = pathlib.Path(root)
         if not base.exists():
             continue
-        for path in base.rglob("*.yaml"):
+        for path in sorted(base.rglob("*.yaml")):
             if path.as_posix() in NON_MANIFEST_FILES:
                 continue
             docs = load_docs(path)
@@ -622,17 +660,51 @@ def main():
                 # (no chart at all) are still validated via the overlay.
                 hr_spec = doc.get("spec", {})
                 if doc.get("kind") == "HelmRelease" and (hr_spec.get("chart") or hr_spec.get("chartRef")):
-                    namespace = namespaces.get(path.resolve())
-                    error = render_helmrelease(doc, sources, outdir, namespace)
-                    if error:
-                        errors.append(error)
-                    else:
-                        charts += 1
+                    resolved = path.resolve()
+                    kustomize_ns = namespaces.get(resolved)
+                    key = (effective_namespace(doc, kustomize_ns), doc["metadata"]["name"])
+                    is_referenced = resolved in referenced
+                    prev = helmreleases.get(key)
+                    if prev and prev[2] and not is_referenced:
+                        print(
+                            f"note: duplicate HelmRelease/{key[0]}/{key[1]}: skipping "
+                            f"unreferenced variant {path} (a kustomization references the other)",
+                            file=sys.stderr,
+                        )
+                        continue
+                    if prev:
+                        print(
+                            f"note: duplicate HelmRelease/{key[0]}/{key[1]}: rendering {path} "
+                            "(kustomization-referenced, or last in scan order)",
+                            file=sys.stderr,
+                        )
+                    helmreleases[key] = (doc, kustomize_ns, is_referenced)
             if not in_overlay and docs:
                 (outdir / ("standalone-" + str(path).replace("/", "-"))).write_text(
                     substitute(path.read_text())
                 )
                 standalone += 1
+
+    # Every render writes its own uniquely-named output file, so the only
+    # shared mutable state is the helm cache (serialized per source URL above).
+    # Futures are drained in submission order to keep error output
+    # deterministic regardless of completion order.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        overlay_futures = [(o, pool.submit(render_overlay, o, outdir)) for o in overlays]
+        chart_futures = [
+            pool.submit(render_helmrelease, doc, sources, outdir, namespace)
+            for doc, namespace, _ in helmreleases.values()
+        ]
+        for overlay, future in overlay_futures:
+            error = future.result()
+            if error:
+                errors.append(f"kustomize {overlay}: {error}")
+        for future in chart_futures:
+            error = future.result()
+            if error:
+                errors.append(error)
+            else:
+                charts += 1
 
     print(
         f"RENDER: overlays={len(overlays)} charts={charts} "
