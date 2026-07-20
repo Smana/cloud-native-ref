@@ -13,7 +13,8 @@ Reads two bundle dirs produced by render-bundle.py, groups every document by its
 Kubernetes identity, redacts Secret payloads, canonicalizes (sorted keys), and
 prints a unified diff + summary as GitHub-flavored markdown on stdout.
 
-Usage: diff-bundles.py <base-bundle-dir> <head-bundle-dir>
+Usage: diff-bundles.py <base-bundle-dir> <head-bundle-dir> [full-report-path]
+(stdout is capped for the PR comment; the optional path gets the full report)
 """
 import difflib
 import os

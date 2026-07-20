@@ -382,7 +382,7 @@ def index_sources():
         base = pathlib.Path(root)
         if not base.exists():
             continue
-        for path in base.rglob("*.yaml"):
+        for path in sorted(base.rglob("*.yaml")):
             for doc in load_docs(path):
                 # GitRepository is included alongside HelmRepository/OCIRepository:
                 # one HelmRelease (runlore) points `chart.spec.sourceRef` at a
@@ -430,7 +430,7 @@ def index_namespaces():
         base = pathlib.Path(root)
         if not base.exists():
             continue
-        for kfile in base.rglob("kustomization.yaml"):
+        for kfile in sorted(base.rglob("kustomization.yaml")):
             docs = load_docs(kfile)
             if not docs:
                 continue
@@ -637,7 +637,7 @@ def main():
         base = pathlib.Path(root)
         if not base.exists():
             continue
-        for path in base.rglob("*.yaml"):
+        for path in sorted(base.rglob("*.yaml")):
             if path.as_posix() in NON_MANIFEST_FILES:
                 continue
             docs = load_docs(path)
