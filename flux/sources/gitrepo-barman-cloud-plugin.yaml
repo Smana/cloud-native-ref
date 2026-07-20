@@ -11,4 +11,4 @@ spec:
     # migrates to the plugin *before* the 1.31.0 bump). Bump this tag together
     # with the operator upgrade; scripts/flux-schema/gen-catalog.sh reads it as
     # the single source of truth for the ObjectStore CRD schema.
-    tag: v0.7.0
+    tag: v0.13.0
