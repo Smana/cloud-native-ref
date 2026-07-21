@@ -18,7 +18,7 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-kvstore:0.1.0
+                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-kvstore:0.1.0-pr1664
 
         - step: ready
           functionRef:
