@@ -22,7 +22,10 @@ variable "mode" {
 variable "openbao_version" {
   description = "OpenBao version to install"
   type        = string
-  default     = "2.6.0"
+  # 2.6.0 deadlocks on concurrent namespace creation (openbao/openbao#3411):
+  # the management stack's parallel vault_namespace resources wedge the core
+  # and every subsequent request hangs. Stay on 2.5.5 until a fixed release.
+  default = "2.5.5"
 }
 
 variable "openbao_data_path" {
