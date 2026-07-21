@@ -1,0 +1,15 @@
+---
+# Basic KVStore Example
+#
+# Minimal Valkey cache: standalone, ephemeral, no auth, metrics on.
+# Reachable at <name>-valkey:6379 inside the namespace.
+#
+# For a complete example with all features, see kvstore-complete.yaml
+
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: KVStore
+metadata:
+  name: xplane-mycache
+  namespace: demo
+spec:
+  size: small # Options: nano, small, medium, large

@@ -12,5 +12,7 @@ resources:
   - functions.yaml
   - inference-service-composition.yaml
   - inference-service-definition.yaml
+  - kvstore-composition.yaml
+  - kvstore-definition.yaml
   - sql-instance-composition.yaml
   - sql-instance-definition.yaml

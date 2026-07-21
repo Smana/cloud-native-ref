@@ -57,6 +57,7 @@ declare -a COMPOSITIONS=(
     "cloudnativepg:sql-instance-composition.yaml:sqlinstance-basic.yaml,sqlinstance-complete.yaml"
     "eks-pod-identity:epi-composition.yaml:epi.yaml"
     "inference-service:inference-service-composition.yaml:inferenceservice-basic.yaml,inferenceservice-complete.yaml"
+    "kvstore:kvstore-composition.yaml:kvstore-basic.yaml,kvstore-complete.yaml"
 )
 
 # Validate a single composition
