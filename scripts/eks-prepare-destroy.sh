@@ -103,6 +103,61 @@ done
 # also fires during destroy when the gateway-api CRDs go away).
 kubectl delete validatingadmissionpolicybinding --all --wait=false 2>/dev/null || true
 
+# Reclaim CSI-provisioned volumes BEFORE any node teardown. Destroying the
+# cluster with PVCs still bound skips the reclaim (the EBS CSI controller
+# dies with the cluster) and every PVC-backed EBS volume is orphaned in the
+# account — 62 volumes (~518Gi) had accumulated across rebuilds by 2026-07.
+# Must run while the CSI controller is schedulable, i.e. before the
+# Karpenter NodePool deletion below starts draining nodes.
+echo "Reclaiming CSI-provisioned volumes..."
+
+# 1. Belt-and-braces: make every PV reclaimable (covers future Retain PVs).
+for pv in $(kubectl get pv -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+	kubectl patch pv "$pv" --type=merge -p '{"spec":{"persistentVolumeReclaimPolicy":"Delete"}}' >/dev/null 2>&1 || true
+done
+
+# 2. CNPG clusters own their pods AND PVCs (recreating both if deleted from
+#    under them) — delete the Cluster CRs so the operator reclaims cleanly.
+if kubectl api-resources --api-group=postgresql.cnpg.io 2>/dev/null | grep -q clusters; then
+	kubectl delete clusters.postgresql.cnpg.io --all --all-namespaces --wait=false 2>/dev/null || true
+fi
+
+# 3. Scale to 0 exactly the Deployments/StatefulSets that mount PVCs (STS
+#    would recreate PVCs from their templates if we only deleted pods).
+#    Selecting by PVC-presence never touches kube-system's CSI controller.
+kubectl get deploy,statefulset --all-namespaces -o json 2>/dev/null \
+	| jq -r '.items[] | select((([.spec.template.spec.volumes[]? | select(.persistentVolumeClaim)] | length) > 0) or (((.spec.volumeClaimTemplates // []) | length) > 0)) | "\(.kind|ascii_downcase) \(.metadata.namespace) \(.metadata.name)"' 2>/dev/null \
+	| while read -r kind ns name; do
+		[ -z "$name" ] && continue
+		kubectl scale "$kind" -n "$ns" "$name" --replicas=0 >/dev/null 2>&1 || true
+	done
+
+# 4. Catch-all for remaining PVC-mounting pods (Jobs, naked pods): PVC
+#    deletion blocks on the pvc-protection finalizer while any pod uses it.
+kubectl get pods --all-namespaces -o json 2>/dev/null \
+	| jq -r '.items[] | select(([.spec.volumes[]? | select(.persistentVolumeClaim)] | length) > 0) | "\(.metadata.namespace) \(.metadata.name)"' 2>/dev/null \
+	| while read -r ns name; do
+		[ -z "$name" ] && continue
+		kubectl delete pod -n "$ns" "$name" --wait=false 2>/dev/null || true
+	done
+
+# 5. Delete the PVCs and wait for the CSI driver to reclaim every PV (the
+#    moment the PV list is empty, the EBS volumes are gone from AWS too).
+kubectl delete pvc --all --all-namespaces --wait=false 2>/dev/null || true
+echo "Waiting for PersistentVolumes to be reclaimed (up to 300s)..."
+for _ in $(seq 1 60); do
+	pv_count=$(kubectl get pv --no-headers 2>/dev/null | wc -l)
+	[ "$pv_count" = "0" ] && break
+	sleep 5
+done
+if [ "${pv_count:-0}" != "0" ]; then
+	echo "WARNING: ${pv_count} PV(s) not reclaimed — their backing volumes will be orphaned:"
+	kubectl get pv -o jsonpath='{range .items[*]}{.metadata.name}{" -> "}{.spec.csi.volumeHandle}{"\n"}{end}' 2>/dev/null || true
+	echo "Clean them up after destroy: aws ec2 describe-volumes --filters Name=status,Values=available Name=tag-key,Values=kubernetes.io/created-for/pvc/name"
+else
+	echo "All PersistentVolumes reclaimed."
+fi
+
 # Delete Karpenter NodePools (only if CRD exists)
 echo "Checking for Karpenter NodePools..."
 if kubectl api-resources --api-group=karpenter.sh 2>/dev/null | grep -q nodepools; then
