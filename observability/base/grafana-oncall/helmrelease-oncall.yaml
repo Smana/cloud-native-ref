@@ -118,7 +118,8 @@ spec:
       enabled: false
 
     externalRedis:
-      host: oncall-valkey-primary
+      # KVStore claim `xplane-oncall` (SPEC-012)
+      host: xplane-oncall-valkey
       port: 6379
       username: default
       existingSecret: "oncall-valkey"

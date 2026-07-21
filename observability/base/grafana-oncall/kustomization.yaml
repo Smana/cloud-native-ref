@@ -9,7 +9,7 @@ resources:
   - externalsecret-valkey.yaml
   - helmrelease-oncall.yaml
   - helmrelease-rabbitmq.yaml
-  - helmrelease-valkey.yaml
   - httproute-oncall.yaml
   - httproute-rabbitmq.yaml
+  - kvstore.yaml
   - sqlinstance.yaml
