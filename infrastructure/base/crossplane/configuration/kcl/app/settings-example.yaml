@@ -195,10 +195,10 @@ kcl_options:
                   - port: "443"
                     protocol: TCP
           # Parameters for the underlying infrastructure
-          kvStore: # By default it creates a Valkey Helmrelease
+          kvStore: # Nested KVStore XR (official valkey chart, SPEC-012)
             enabled: true
             size: "small"
-            type: "valkey"
+            type: "valkey" # deprecated - ignored (CL-5, Valkey-only)
           sqlInstance: # Refer to the SQLInstance composition for more details
             enabled: true
             size: "small"

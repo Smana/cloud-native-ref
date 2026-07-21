@@ -9,7 +9,7 @@ A KCL composition function module (`function-kcl`) that renders a complete
 application deployment from a single `App` claim. It is the platform's
 developer-facing abstraction: one small claim expands into a Deployment or
 CronJob, a Service, routes, autoscaling, persistence, network policies, and
-optional managed infrastructure (PostgreSQL, Valkey/Redis, S3), with the
+optional managed infrastructure (PostgreSQL, Valkey, S3), with the
 constitution's security defaults baked in.
 
 The authoritative schema — every field, type, enum, default, and CEL rule — is
@@ -34,7 +34,7 @@ Depending on `spec.type` and which optional blocks are set, the module renders:
   types only).
 - **CiliumNetworkPolicy** for micro-segmentation.
 - **ExternalSecrets** (AWS Secrets Manager) and mounted config files.
-- Managed infrastructure: **HelmRelease** (Valkey/Redis), **SQLInstance**
+- Managed infrastructure: **KVStore** (Valkey, SPEC-012), **SQLInstance**
   (PostgreSQL), **Bucket** + **EPI** (S3 with Pod Identity).
 - Observability: **VMServiceScrape** (web) and **VMRule**.
 
@@ -52,7 +52,7 @@ Depending on `spec.type` and which optional blocks are set, the module renders:
 - **High availability**: Pod Disruption Budgets, anti-affinity, zone spreading.
 - **Gateway API**: HTTPRoute and optional dedicated Gateway (web only).
 - **Config & secrets**: mounted config files and External Secrets.
-- **Infrastructure integration**: Valkey/Redis, PostgreSQL, S3.
+- **Infrastructure integration**: Valkey, PostgreSQL, S3.
 - **Security by default**: non-root, read-only rootfs, dropped capabilities,
   seccomp, EKS Pod Identity.
 - **Observability**: OTLP env wiring, VMServiceScrape, VMRule.
@@ -114,7 +114,7 @@ Keyed by their `krm.kcl.dev/composition-resource-name` annotation
 | Gateway | `-gateway` | `gateway.enabled` and `type: web` |
 | HTTPRoute | `-httproute` | `route.enabled` and `type: web` |
 | CiliumNetworkPolicy | `-cilium-netpol` | `networkPolicies.enabled` |
-| HelmRelease (Valkey/Redis) | `-kvstore` | `kvStore.enabled` |
+| KVStore XR (Valkey) | `-kvstore` | `kvStore.enabled` |
 | SQLInstance | `-sqlinstance` | `sqlInstance.enabled` |
 | Bucket (+ BucketVersioning) + EPI | `-s3-bucket`, `-s3-pod-identity` | `s3Bucket.enabled` |
 | ExternalSecret | `-externalsecret-<name>` | per `externalSecrets[]` entry |
@@ -130,7 +130,7 @@ The module sets `krm.kcl.dev/ready = "True"` from observed cluster state:
 - **HTTPRoute**: `status.parents[].conditions[type=Accepted, status=True]`.
 - **Gateway**: `Programmed` or `Accepted` condition True.
 - **HPA / PDB**: controller has reported status.
-- **HelmRelease**: `Ready` condition True.
+- **KVStore XR**: `Ready` condition True (function-auto-ready, like SQLInstance).
 - **VMServiceScrape / VMRule**: a `*/Applied` condition True.
 - **Statically ready when created**: CronJob, PVC, ServiceAccount,
   CiliumNetworkPolicy.
@@ -281,7 +281,7 @@ kubectl logs deployment/<name> -n <ns>        # -c <container> for a sidecar/ini
 kubectl get httproute,gateway -n <ns>
 kubectl get externalsecret -n <ns>
 kubectl get ciliumnetworkpolicy -n <ns>
-kubectl get sqlinstance,helmrelease -n <ns>
+kubectl get sqlinstance,kvstore -n <ns>
 ```
 
 Common issues: image pull errors (check `image.*` and `imagePullSecrets` in the

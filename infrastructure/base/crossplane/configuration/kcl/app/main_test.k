@@ -32,24 +32,25 @@ test_security_context = lambda {
 
 # ---- Test: backend connection env auto-wired ----
 # DATABASE_URL from the SQLInstance connection secret's `uri` key (when
-# sqlInstance + databases); REDIS_URL from the Valkey primary Service (when
-# kvStore). Both skip when the user already set that variable.
+# sqlInstance + databases); REDIS_URL from the KVStore XR's Valkey Service
+# `<managedName>-valkey:6379` (when kvStore). Both skip when the user already
+# set that variable.
 test_backend_env_autowired = lambda {
     _oxr = option("params").oxr
     dep = [r for r in items if r.kind == "Deployment"][0]
     env = dep.spec.template.spec.containers[0].env
     _userNames = [e.name for e in (_oxr.spec.env or [])]
+    _mn = _oxr.metadata.name if _oxr.metadata.name[0:7:] == "xplane-" else "xplane-" + _oxr.metadata.name
     if _oxr.spec.sqlInstance?.enabled and len(_oxr.spec.sqlInstance?.databases or []) > 0 and "DATABASE_URL" not in _userNames:
         _dbEnv = [e for e in env if e.name == "DATABASE_URL"]
         assert len(_dbEnv) == 1, "DATABASE_URL should be auto-injected exactly once"
-        _mn = _oxr.metadata.name if _oxr.metadata.name[0:7:] == "xplane-" else "xplane-" + _oxr.metadata.name
         assert _dbEnv[0].valueFrom.secretKeyRef.name == _mn + "-cnpg-" + _oxr.spec.sqlInstance.databases[0].name, "DATABASE_URL secret name mismatch"
         assert _dbEnv[0].valueFrom.secretKeyRef.key == "uri", "DATABASE_URL should use the uri key"
 
     if _oxr.spec.kvStore?.enabled and "REDIS_URL" not in _userNames:
         _redisEnv = [e for e in env if e.name == "REDIS_URL"]
         assert len(_redisEnv) == 1, "REDIS_URL should be auto-injected exactly once"
-        assert _redisEnv[0].value == "redis://" + _oxr.metadata.name + "-" + (_oxr.spec.kvStore?.type or "valkey") + "-primary:6379", "REDIS_URL value mismatch"
+        assert _redisEnv[0].value == "redis://" + _mn + "-valkey:6379", "REDIS_URL value mismatch"
 
     assert True
 }
@@ -159,17 +160,34 @@ test_netpol_auto_egress = lambda {
         _clusterLabels = [ep.matchLabels["cnpg.io/cluster"] for e in cnp.spec.egress for ep in (e?.toEndpoints or []) if "cnpg.io/cluster" in (ep?.matchLabels or {})]
         assert (_mn + "-cnpg-cluster") in _clusterLabels, "DB egress must target the managed cluster label, got {}".format(_clusterLabels)
 
+    if _oxr.spec.networkPolicies?.enabled and _oxr.spec.kvStore?.enabled:
+        cnp = [r for r in items if r.kind == "CiliumNetworkPolicy"][0]
+        _cacheInstances = [ep.matchLabels["app.kubernetes.io/instance"] for e in cnp.spec.egress for ep in (e?.toEndpoints or []) if "app.kubernetes.io/instance" in (ep?.matchLabels or {}) and "app.kubernetes.io/name" in (ep?.matchLabels or {}) and ep.matchLabels["app.kubernetes.io/name"] == "valkey"]
+        assert (_mn + "-valkey") in _cacheInstances, "cache egress must target the KVStore-managed valkey instance label, got {}".format(_cacheInstances)
+
     assert True
 }
 
-# ---- Test: KV Store creates HelmRelease ----
+# ---- Test: KV Store creates a nested KVStore XR (SPEC-012) ----
+# The App module no longer renders the Bitnami valkey HelmRelease itself; it
+# delegates to the KVStore composition (mirrors the SQLInstance pattern).
+# No krm.kcl.dev/ready annotation: function-auto-ready reads the XR's Ready
+# condition, same as SQLInstance.
 test_kvstore = lambda {
     _oxr = option("params").oxr
-    helmReleases = [r for r in items if r.kind == "HelmRelease"]
+    _mn = _oxr.metadata.name if _oxr.metadata.name[0:7:] == "xplane-" else "xplane-" + _oxr.metadata.name
+    kvstores = [r for r in items if r.kind == "KVStore"]
+    _valkeyHelmReleases = [r for r in items if r.kind == "HelmRelease" and r.spec?.chart?.spec?.chart == "valkey"]
+    assert len(_valkeyHelmReleases) == 0, "the app module must not render a valkey HelmRelease anymore (owned by the KVStore composition)"
     if _oxr.spec.kvStore?.enabled:
-        assert len(helmReleases) == 1, "expected 1 HelmRelease for kvStore"
+        assert len(kvstores) == 1, "expected 1 KVStore XR"
+        _kv = kvstores[0]
+        assert _kv.apiVersion == "cloud.ogenki.io/v1alpha1", "KVStore apiVersion mismatch"
+        assert _kv.metadata.name == _mn, "KVStore must use the managed xplane-* name, got {}".format(_kv.metadata.name)
+        assert _kv.spec.size == (_oxr.spec.kvStore?.size or "small"), "KVStore size passthrough mismatch"
+        assert "krm.kcl.dev/ready" not in _kv.metadata.annotations, "KVStore XR must not carry a static ready annotation (function-auto-ready owns it)"
     else:
-        assert len(helmReleases) == 0, "expected 0 HelmReleases when kvStore disabled"
+        assert len(kvstores) == 0, "expected 0 KVStore XRs when kvStore disabled"
     assert True
 }
 

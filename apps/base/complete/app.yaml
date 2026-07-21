@@ -78,7 +78,7 @@ spec:
     - name: CACHE_ENABLED
       value: "true"
     - name: CACHE_ADDRESS
-      value: "xplane-image-gallery-valkey-primary:6379"
+      value: "xplane-image-gallery-valkey:6379"
     - name: CACHE_PASSWORD
       value: ""
 
