@@ -6,13 +6,18 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to the v0.9.2 release: the chart and the signed, multi-arch release image in
-  # observability/base/runlore/helmrelease.yaml (image.tag "0.9.2") come from the same
-  # tag, so the two cannot drift apart. Keep them in lockstep on every bump.
+  # Pinned to the v0.10.0 release: the chart and the signed, multi-arch release image in
+  # observability/base/runlore/helmrelease.yaml (image.tag "0.10.0") come from the same
+  # tag, so the two cannot drift apart. Keep them in lockstep on every bump — Renovate
+  # bumps only THIS tag (#1594 moved it to v0.10.0 while the image sat on 0.9.2 for
+  # three days), so every Renovate bump here needs the image.tag moved by hand.
   #
-  # v0.9.2 is the release that carries #320 (a standing 👎 bypasses the coalesce
-  # cooldown), #321 (Hubble Relay TLS floor pinned to 1.2) and #322 (Secret data values
-  # decoded and scrubbed payload-wide) — all three validated against a live cluster this
-  # session (load-bearing unit tests, k3d e2e 54/0, healthy in cluster).
+  # v0.10.0 is the 2026-07-19/20 feature wave (#326-#342): path-keyed incremental
+  # catalog index + persisted vector cache (#341/#328), recall runner-up fallback
+  # (#329), outcome "confirm" events (#335), OKF status/last_validated honored by
+  # recall (#336), persistent what_changed git mirrors (#332 — dir pointed at the
+  # catalog PVC in the helmrelease), KB retirement pass (#333, opt-in, off here),
+  # webhook payload cap + auth backoff (#330), templated source/notifier (#339/#340,
+  # unused here), MCP tool allowlists (#331, unused here).
   ref:
     tag: v0.10.0

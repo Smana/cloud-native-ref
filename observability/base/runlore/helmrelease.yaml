@@ -62,7 +62,7 @@ spec:
       # the StatefulSet lands in ImagePullBackOff. This is the signed, multi-arch,
       # SBOM-attested release image; the rolling `:main` tag from build-image.yml is a
       # single-arch validation build and must not be used here.
-      tag: "0.9.2"
+      tag: "0.10.0"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
@@ -131,6 +131,15 @@ spec:
     config:
       gitops:
         engine: flux
+        # what_changed git mirrors (runlore#332, on by default) default to
+        # $TMPDIR — our /tmp is an emptyDir, so every restart re-clones and the
+        # cache is unbounded on node disk. Keep the bare mirrors on the catalog
+        # PVC instead (the ONLY writable persistent mount: the chart mounts the
+        # PVC at catalog.mountPath, NOT /var/lib/runlore — a path outside it
+        # fails on readOnlyRootFilesystem). Untracked-in-checkout is fine; the
+        # outcome ledger below has lived there the same way since June.
+        mirror:
+          dir: /var/lib/runlore/catalog/git-mirror
       # Source enablement (runlore v0.5.0+): presence of a key under `sources`
       # turns that source on; its value is the source's own config. Enablement
       # moved here out of the old `triggers.<name>.enabled: true` flags.
