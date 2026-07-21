@@ -165,7 +165,7 @@ fields:
   kvStore:
     tier: advanced
     group: data
-    label: Key-value store (Valkey/Redis)
+    label: Key-value store (Valkey)
     order: 41
   s3Bucket:
     tier: advanced

@@ -511,14 +511,18 @@ You can also declare **schema migrations** via `atlasSchema` (Git URL, ref, and
 path to migration files); Atlas applies them declaratively. A backup `schedule`
 requires `backup.bucketName` — the API server enforces this.
 
-### `kvStore` — Valkey / Redis
+### `kvStore` — Valkey
 
-An in-cluster key-value store for caching, sessions, or queues:
+An in-cluster Valkey key-value store for caching, sessions, or queues, delivered
+as a nested `KVStore` composition backed by the official
+[valkey-helm](https://github.com/valkey-io/valkey-helm) chart (SPEC-012). Your
+workload automatically receives `REDIS_URL=redis://<managed-name>-valkey:6379`
+(unless you set `REDIS_URL` yourself). Cache semantics: standalone and ephemeral
+by default — a restarted pod means a refilled cache, not lost data.
 
 ```yaml
   kvStore:
     enabled: true
-    type: valkey              # valkey (default) | redis
     size: small               # small | medium | large
 ```
 
@@ -753,7 +757,7 @@ fields apply to all types.
 | `gateway` | object | — | web only | Dedicated Gateway (see below). |
 | `route` | object | — | web only | HTTPRoute config (see below). |
 | `networkPolicies` | object | disabled | all | Cilium policies (see below). |
-| `kvStore` | object | disabled | all | Valkey/Redis (see below). |
+| `kvStore` | object | disabled | all | Valkey (see below). |
 | `sqlInstance` | object | disabled | all | PostgreSQL (see below). |
 | `s3Bucket` | object | disabled | all | S3 + Pod Identity (see below). |
 | `externalSecrets` | []object | — | all | AWS Secrets Manager sync (see below). |
@@ -896,7 +900,7 @@ Blocks: `liveness`, `readiness`, `startup`. Each block:
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | Enable the KV store. |
 | `size` | enum `small`\|`medium`\|`large` | `small` | Store size. |
-| `type` | enum `valkey`\|`redis` | `valkey` | Store type. |
+| `type` | enum `valkey`\|`redis` | `valkey` | **Deprecated — ignored.** The backend is Valkey-only (SPEC-012 CL-5); the field is kept for API compatibility. |
 
 ### `sqlInstance`
 
@@ -1029,7 +1033,7 @@ kubectl get httproute,gateway -n <ns>
 kubectl get ciliumnetworkpolicy -n <ns>
 
 # Infrastructure components
-kubectl get sqlinstance,helmrelease -n <ns>       # PostgreSQL, Valkey/Redis
+kubectl get sqlinstance,kvstore -n <ns>           # PostgreSQL, Valkey
 ```
 
 On connection timeouts, always check the CiliumNetworkPolicy first — a

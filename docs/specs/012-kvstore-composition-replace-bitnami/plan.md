@@ -167,6 +167,10 @@ flux/sources/helmrepo-valkey.yaml
 <!-- Append as implementation surprises show up. Format:
 - <2026-07-20> T00N was [dropped|replaced|split]: <why>
 Keep short — detailed rationale goes in clarifications.md if it is a decision. -->
+- 2026-07-21 — T005 pin-strip moved from "final pre-merge commit" to PR 2: the
+  `validate-composition-versions` gate REQUIRES the `-pr<N>` tag on PR runs, so
+  PR 1 merges pinned to `0.1.0-pr1664`; PR 2 strips it to `0.1.0` (published by
+  the main-branch run after PR 1 merges). Same for the app module pin in PR 2.
 
 ---
 
