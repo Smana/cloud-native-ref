@@ -9,7 +9,7 @@ kcl_options:
           size: "small"
           replicas: 2
           auth:
-            existingSecret: "mycache-valkey-password"
+            existingSecret: "mycache-valkey-password" # checkov:skip=CKV_SECRET_6: secret name, not a value
             passwordKey: "password"
           persistence:
             size: "4Gi"

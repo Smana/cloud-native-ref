@@ -23,7 +23,7 @@ spec:
 
   # Password for the "default" ACL user, from an existing Secret
   auth:
-    existingSecret: mycache-valkey-password
+    existingSecret: mycache-valkey-password # checkov:skip=CKV_SECRET_6: secret name, not a value
     passwordKey: password # default
 
   # Replica mode always persists (defaults to 4Gi when omitted);
