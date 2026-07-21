@@ -6,6 +6,9 @@ resource "aws_launch_template" "dev" {
   vpc_security_group_ids = [aws_security_group.openbao.id]
   user_data              = base64encode(data.cloudinit_config.openbao_cloud_init.rendered)
   ebs_optimized          = true
+  # The ASG launches from the template's default version; without this, user_data
+  # or AMI changes only bump the latest version and never reach new instances.
+  update_default_version = true
   monitoring {
     enabled = true
   }
@@ -38,6 +41,7 @@ resource "aws_launch_template" "ha" {
   vpc_security_group_ids = [aws_security_group.openbao.id]
   user_data              = base64encode(data.cloudinit_config.openbao_cloud_init.rendered)
   ebs_optimized          = true
+  update_default_version = true
   monitoring {
     enabled = true
   }
