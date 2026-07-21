@@ -109,8 +109,8 @@ spec:
     redis:
       type: external
       external:
-        addr: "harbor-valkey-primary:6379"
-        username: "user"
+        # KVStore claim `xplane-harbor` (SPEC-012); classic AUTH = `default` ACL user
+        addr: "xplane-harbor-valkey:6379"
         existingSecret: "harbor-valkey-password"
 
     metrics:
