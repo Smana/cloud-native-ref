@@ -323,10 +323,10 @@ spec:
               - port: "5432"
                 protocol: TCP
 
-      # Key-Value Store: allow connections to Valkey/Redis
+      # Key-Value Store: allow connections to Valkey
       - toEndpoints:
           - matchLabels:
-              "app.kubernetes.io/instance": "image-gallery-valkey"
+              "app.kubernetes.io/instance": "xplane-image-gallery-valkey"
               "app.kubernetes.io/name": "valkey"
         toPorts:
           - ports:

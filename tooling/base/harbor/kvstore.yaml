@@ -1,0 +1,11 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: KVStore
+metadata:
+  name: xplane-harbor
+spec:
+  size: nano
+  # Cache/job-queue semantics: standalone, ephemeral (SPEC-012 CL-2/CL-4).
+  # Password for the "default" ACL user; Harbor authenticates with classic AUTH.
+  auth:
+    existingSecret: harbor-valkey-password # pragma: allowlist secret — checkov:skip=CKV_SECRET_6 secret name, not a value
+    passwordKey: REDIS_PASSWORD # pragma: allowlist secret

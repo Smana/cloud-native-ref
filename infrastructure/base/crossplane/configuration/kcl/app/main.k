@@ -98,10 +98,6 @@ _buildTopologySpreadConstraints = lambda enabled: bool -> any {
         labelSelector = _podSelector
     }] if enabled else None
 }
-# Map KV store size to Helm chart resource preset
-_kvSizeToPreset = lambda size: str -> str {
-    "nano" if size == "small" else "small" if size == "medium" else "medium"
-}
 # Constants
 _DEFAULTS = {
     # Resource requirements
@@ -130,8 +126,6 @@ _DEFAULTS = {
     # PodDisruptionBudget
     pdb_min_available = 1
     pdb_eviction_policy = "AlwaysAllow"
-    # KV Store
-    valkey_chart_version = "3.0.31"
     # Observability endpoints
     traces_endpoint = "http://victoria-traces-vt-single-server.observability.svc.cluster.local:10428/insert/opentelemetry/v1/traces"
     metrics_endpoint = "http://vmsingle-victoria-metrics-k8s-stack.observability.svc.cluster.local:8428/opentelemetry/v1/metrics"
@@ -408,21 +402,22 @@ _mainDefaultEnv = [
 # secret/service - UNLESS the user already set that variable (their value wins,
 # so nothing is ever double-set). DATABASE_URL consumes the SQLInstance
 # connection secret's `uri` key (a ready postgresql:// DSN, from the first
-# database); REDIS_URL targets the kvStore primary Service. This lets a
+# database); REDIS_URL targets the KVStore XR's Valkey Service. This lets a
 # DB/cache-backed app work from just `sqlInstance.enabled`/`kvStore.enabled`
 # with no hand-wired secretKeyRef - the App Wizard needs only the toggle.
 #
 # SHARED CONTRACT (restated across a module boundary - separate kcl.mod
 # packages, no shared import): the `<name>-cnpg-<db>` secret name is owned by
-# the cloudnativepg module (its ExternalSecret target); the `<name>-<type>`
-# release name (hence `-primary` Service) is owned by the kvStore block below.
-# Keep both in sync - if either convention changes, the auto-wired reference
-# silently points at a non-existent secret/Service.
+# the cloudnativepg module (its ExternalSecret target); the
+# `<managedName>-valkey` Service name is owned by the kvstore KCL module
+# (fullnameOverride on its HelmRelease - the nested KVStore XR below is named
+# `_managedName`). Keep both in sync - if either convention changes, the
+# auto-wired reference silently points at a non-existent secret/Service.
 _userEnvNames = [e.name for e in (oxr.spec.env or [])]
 _dbAutoEnv = [{name = "DATABASE_URL", valueFrom = {
     secretKeyRef = {name = _managedName + "-cnpg-" + oxr.spec.sqlInstance.databases[0].name, key = "uri"}
 }}] if oxr.spec.sqlInstance?.enabled and len(oxr.spec.sqlInstance?.databases or []) > 0 and "DATABASE_URL" not in _userEnvNames else []
-_cacheAutoEnv = [{name = "REDIS_URL", value = "redis://" + _name + "-" + (oxr.spec.kvStore?.type or "valkey") + "-primary:6379"}] if oxr.spec.kvStore?.enabled and "REDIS_URL" not in _userEnvNames else []
+_cacheAutoEnv = [{name = "REDIS_URL", value = "redis://" + _managedName + "-valkey:6379"}] if oxr.spec.kvStore?.enabled and "REDIS_URL" not in _userEnvNames else []
 _mainCombinedEnv = _mainDefaultEnv + _buildObservabilityEnv(oxr.spec.observability) + _dbAutoEnv + _cacheAutoEnv + (oxr.spec.env or [])
 
 # Main application container (SPEC-007 T007). Built in one shot (no mutation).
@@ -524,7 +519,6 @@ _observedHPA = ocds[_name + "-hpa"]?.Resource if _name + "-hpa" in ocds else Non
 _observedPDB = ocds[_name + "-pdb"]?.Resource if _name + "-pdb" in ocds else None
 _observedGateway = ocds[_name + "-gateway"]?.Resource if _name + "-gateway" in ocds else None
 _observedNetworkPolicy = ocds[_name + "-cilium-netpol"]?.Resource if _name + "-cilium-netpol" in ocds else None
-_observedKVStore = ocds[_name + "-kvstore"]?.Resource if _name + "-kvstore" in ocds else None
 _observedServiceAccount = ocds[_name + "-serviceaccount"]?.Resource if _name + "-serviceaccount" in ocds else None
 
 # Check if Deployment is actually Available (not just created)
@@ -556,10 +550,6 @@ _gatewayReady = any_true([(c?.type == "Programmed" or c?.type == "Accepted") and
 # Check if CiliumNetworkPolicy exists in the cluster
 # Network policies don't have status conditions, so we check if the resource exists
 _networkPolicyReady = _observedNetworkPolicy != None and _observedNetworkPolicy?.metadata != None
-
-# Check if HelmRelease is Ready
-# Looks for HelmRelease.status.conditions[type=Ready, status=True]
-_helmReleaseReady = any_true([c?.type == "Ready" and c?.status == "True" for c in _observedKVStore?.status?.conditions or []])
 
 # Check if ServiceAccount exists in the cluster
 # ServiceAccounts don't have status conditions, so we check if the resource exists
@@ -932,7 +922,7 @@ _npDb = [{
 }] if oxr.spec.sqlInstance?.enabled else []
 _npCache = [{
     toEndpoints = [{
-        matchLabels = {"app.kubernetes.io/instance" = _name + "-" + (oxr.spec.kvStore?.type or "valkey"), "app.kubernetes.io/name" = (oxr.spec.kvStore?.type or "valkey")}
+        matchLabels = {"app.kubernetes.io/instance" = _managedName + "-valkey", "app.kubernetes.io/name" = "valkey"}
     }]
     toPorts = [{ports = [{port = "6379", protocol = "TCP"}]}]
 }] if oxr.spec.kvStore?.enabled else []
@@ -976,77 +966,26 @@ if oxr.spec.networkPolicies?.enabled:
     _items += _networkPolicyResource
 
 # Infrastructure resources
-# Key-Value Store (Valkey/Redis)
+# Key-Value Store: nested KVStore XR (SPEC-012) - the KVStore composition owns
+# the Valkey HelmRelease (official valkey chart) and its CiliumNetworkPolicy.
+# Mirrors the SQLInstance block below; no ready annotation because
+# function-auto-ready reads the XR's Ready condition, same as SQLInstance.
+# `kvStore.type` is accepted-but-ignored (CL-5): the backend is Valkey-only.
 # NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
 # See: https://github.com/crossplane-contrib/function-kcl/issues/285
 if oxr.spec.kvStore?.enabled:
-    _kvType = oxr.spec.kvStore.type or "valkey"
-    _kvPreset = _kvSizeToPreset(oxr.spec.kvStore.size or "small")
     _kvStoreResource = [{
-        apiVersion = "helm.toolkit.fluxcd.io/v2"
-        kind = "HelmRelease"
+        apiVersion = "cloud.ogenki.io/v1alpha1"
+        kind = "KVStore"
         metadata = {
-            name = _name + "-" + _kvType
+            name = _managedName
             namespace = _namespace
             annotations = {
-                "krm.kcl.dev/composition-resource-name" = _name + "-kvstore"
-                if _helmReleaseReady:
-                    "krm.kcl.dev/ready" = "True"
+                "krm.kcl.dev/composition-resource-name" = _managedName + "-kvstore"
             }
         }
         spec = {
-            releaseName = _name + "-" + _kvType
-            driftDetection = {
-                mode = "enabled"
-            }
-            chart = {
-                spec = {
-                    chart = _kvType
-                    sourceRef = {
-                        kind = "HelmRepository"
-                        name = "bitnami"
-                        namespace = "flux-system"
-                    }
-                    version = _DEFAULTS.valkey_chart_version
-                }
-            }
-            interval = "10m0s"
-            install = {
-                remediation = {
-                    retries = 3
-                }
-            }
-            values = {
-                image = {
-                    registry = "docker.io"
-                    repository = "bitnamilegacy/valkey"
-                }
-                auth = {
-                    enabled = False
-                }
-                primary = {
-                    resourcesPreset = _kvPreset
-                    persistence = {
-                        size = "4Gi"
-                    }
-                }
-                replica = {
-                    resourcesPreset = _kvPreset
-                    persistence = {
-                        size = "4Gi"
-                    }
-                }
-                metrics = {
-                    enabled = True
-                    image = {
-                        registry = "docker.io"
-                        repository = "bitnamilegacy/redis-exporter"
-                    }
-                    serviceMonitor = {
-                        enabled = True
-                    }
-                }
-            }
+            size = oxr.spec.kvStore.size or "small"
         }
     }]
     _items += _kvStoreResource

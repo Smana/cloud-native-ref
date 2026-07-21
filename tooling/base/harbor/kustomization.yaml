@@ -9,6 +9,6 @@ resources:
   - serviceaccount-harbor.yaml
   - iam-user.yaml
   - httproute.yaml
-  - helmrelease-valkey.yaml
+  - kvstore.yaml
   - s3-bucket.yaml
   - sqlinstance.yaml
