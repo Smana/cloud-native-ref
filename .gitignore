@@ -68,6 +68,10 @@ variables.auto.tfvars
 .env.*.local
 .envrc
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Virtual environment
 .venv/
 venv/
