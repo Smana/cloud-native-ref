@@ -1,0 +1,34 @@
+---
+# Complete KVStore Example
+#
+# Valkey with read replicas, persistence, ACL auth from an existing
+# Secret (ExternalSecret target), and metrics.
+#
+# Services rendered by the chart:
+#   xplane-mycache-valkey:6379          writes (primary)
+#   xplane-mycache-valkey-read:6379     reads (all pods, replica mode only)
+#   xplane-mycache-valkey-metrics:9121  Prometheus exporter
+#
+# No automatic failover — cache semantics (SPEC-012 CL-2). If the primary
+# pod is rescheduled the cache refills; durable data does not belong here.
+
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: KVStore
+metadata:
+  name: xplane-mycache
+  namespace: demo
+spec:
+  size: medium # Options: nano, small, medium, large
+  replicas: 2 # 0 = standalone (default)
+
+  # Password for the "default" ACL user, from an existing Secret
+  auth:
+    existingSecret: mycache-valkey-password # checkov:skip=CKV_SECRET_6: secret name, not a value
+    passwordKey: password # default
+
+  # Replica mode always persists (defaults to 4Gi when omitted);
+  # in standalone mode this opts out of the ephemeral default.
+  persistence:
+    size: 8Gi
+
+  metrics: true # default

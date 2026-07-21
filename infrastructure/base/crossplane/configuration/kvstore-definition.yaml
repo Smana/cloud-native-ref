@@ -1,0 +1,75 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: kvstores.cloud.ogenki.io
+spec:
+  group: cloud.ogenki.io
+  scope: Namespaced
+  names:
+    kind: KVStore
+    plural: kvstores
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                size:
+                  description: Instance size, maps to CPU/memory requests and limits.
+                  type: string
+                  enum:
+                    - nano
+                    - small
+                    - medium
+                    - large
+                  default: small
+                replicas:
+                  description: |
+                    Number of read replicas. 0 (default) = standalone Deployment.
+                    N > 0 = StatefulSet with N replicas and a read Service.
+                    No automatic failover — cache semantics (SPEC-012 CL-2).
+                  type: integer
+                  default: 0
+                  minimum: 0
+                  maximum: 5
+                auth:
+                  description: |
+                    Optional ACL authentication for the "default" user. Omitted = auth
+                    disabled. The password comes from an existing Secret (typically an
+                    ExternalSecret target) — never inline.
+                  type: object
+                  properties:
+                    existingSecret:
+                      description: Name of the Secret holding the password.
+                      type: string
+                    passwordKey:
+                      description: Key inside existingSecret holding the password.
+                      type: string
+                      default: password
+                  required:
+                    - existingSecret
+                persistence:
+                  description: |
+                    Optional persistent storage. Omitted = ephemeral in standalone mode
+                    (cache semantics, SPEC-012 CL-4). Replica mode always persists and
+                    defaults to 4Gi when this block is omitted.
+                  type: object
+                  properties:
+                    size:
+                      description: PVC size, e.g. 4Gi.
+                      type: string
+                  required:
+                    - size
+                metrics:
+                  description: |
+                    Prometheus exporter sidecar + ServiceMonitor (converted and scraped
+                    by the VictoriaMetrics operator).
+                  type: boolean
+                  default: true
+          required:
+            - spec

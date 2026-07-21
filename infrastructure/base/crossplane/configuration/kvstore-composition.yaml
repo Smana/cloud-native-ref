@@ -1,0 +1,25 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+    name: xkvstores.cloud.ogenki.io
+    labels:
+        provider: kubernetes
+spec:
+    compositeTypeRef:
+        apiVersion: cloud.ogenki.io/v1alpha1
+        kind: KVStore
+    mode: Pipeline
+    pipeline:
+        - step: kvstore
+          functionRef:
+              name: function-kcl
+          input:
+              apiVersion: krm.kcl.dev/v1alpha1
+              kind: KCLRun
+              spec:
+                  target: Resources
+                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-kvstore:0.1.0-pr1664
+
+        - step: ready
+          functionRef:
+              name: function-auto-ready

@@ -1,0 +1,17 @@
+kcl_options:
+  - key: params
+    value:
+      oxr:
+        metadata:
+          name: "xplane-mycache"
+          namespace: "apps"
+        spec:
+          size: "small"
+          replicas: 2
+          auth:
+            existingSecret: "mycache-valkey-password" # checkov:skip=CKV_SECRET_6: secret name, not a value
+            passwordKey: "password"
+          persistence:
+            size: "4Gi"
+          metrics: true
+      ocds: {}
