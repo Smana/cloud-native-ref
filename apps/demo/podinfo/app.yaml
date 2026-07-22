@@ -6,6 +6,6 @@ metadata:
 spec:
   image:
     repository: stefanprodan/podinfo
-    tag: "6.14.0"
+    tag: "6.14.1"
   service:
     port: 9898
