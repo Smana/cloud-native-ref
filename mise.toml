@@ -16,6 +16,6 @@ trivy = "0.72.0"
 
 # Manifest validation (SPEC-007). flux 2.9+ is required for `flux plugin`;
 # install the schema plugin with: flux plugin install schema
-flux2 = "2.9.2"
+flux2 = "2.9.3"
 helm = "4.2.3"
 kustomize = "5.8.1"
