@@ -2,10 +2,15 @@
 apiVersion: schema.plugin.fluxcd.io/v1beta1
 kind: Config
 validate:
-  # Order matters: our generated catalog wins, then Flux's built-in, then the
-  # hosted CNCF ecosystem catalog (rebuilt daily from upstream releases).
+  # Order matters: our generated catalog wins, then version-pinned catalogs
+  # matching what the cluster actually runs (bump alongside the EKS
+  # kubernetes_version in opentofu/eks/init and the Flux minor), then Flux's
+  # built-in (Gateway API, Flagger, flux-operator), then the hosted CNCF
+  # ecosystem catalog (rebuilt daily from upstream releases).
   schemaLocation:
     - ./.schemas
+    - https://schemas.fluxoperator.dev/catalog/versions/kubernetes/v1.36
+    - https://schemas.fluxoperator.dev/catalog/versions/flux/v2.9
     - default
     - ecosystem
   # The entire point of SPEC-007: an unknown kind fails the build instead of

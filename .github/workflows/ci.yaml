@@ -43,7 +43,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -59,7 +59,10 @@ jobs:
           sarif_file: 'trivy-results.sarif'
 
       - name: Run Checkov static analysis
-        uses: bridgecrewio/checkov-action@master
+        # Latest TAG, not latest RELEASE — the repo stopped cutting releases at
+        # v12.1347.0 (whose old action.yml breaks on comma-separated framework)
+        # but still tags every checkov bump.
+        uses: bridgecrewio/checkov-action@v12.3114.0
         with:
           directory: .
           quiet: true
@@ -75,7 +78,7 @@ jobs:
           sarif_file: checkov-results.sarif
 
       - name: Detect secrets with TruffleHog
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3.95.9
         with:
           path: ./
           base: main
@@ -92,8 +95,10 @@ jobs:
       - name: Install tools
         uses: jdx/mise-action@v4
 
+      # Pinned: preflight.sh only enforces a version floor (>=0.10), so an
+      # unpinned install silently floats to whatever upstream released.
       - name: Install the flux-schema plugin
-        run: flux plugin install schema
+        run: flux plugin install schema@0.11.0
 
       # render-bundle.py parses every rendered document; PyYAML happens to ship
       # in the runner image today, but that is not a dependency declaration.
@@ -101,7 +106,7 @@ jobs:
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
 
       - name: Install Polaris
-        uses: fairwindsops/polaris/.github/actions/setup-polaris@master
+        uses: fairwindsops/polaris/.github/actions/setup-polaris@v10.2.1
         with:
           version: '8.5.0'
 
