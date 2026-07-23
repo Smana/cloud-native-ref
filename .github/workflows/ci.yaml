@@ -59,7 +59,10 @@ jobs:
           sarif_file: 'trivy-results.sarif'
 
       - name: Run Checkov static analysis
-        uses: bridgecrewio/checkov-action@v12.1347.0
+        # Latest TAG, not latest RELEASE — the repo stopped cutting releases at
+        # v12.1347.0 (whose old action.yml breaks on comma-separated framework)
+        # but still tags every checkov bump.
+        uses: bridgecrewio/checkov-action@v12.3114.0
         with:
           directory: .
           quiet: true
