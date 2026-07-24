@@ -121,6 +121,10 @@ logs/
 coverage/
 *.coverage
 
+# Python bytecode cache
+__pycache__/
+*.py[cod]
+
 # Package manager files
 node_modules/
 .pnpm-debug.log*
