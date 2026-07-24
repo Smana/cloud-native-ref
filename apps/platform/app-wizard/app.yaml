@@ -78,8 +78,12 @@ spec:
   # clones this repo; WIZARD_CONFIG is the cloned config file. Secrets come from
   # the ExternalSecrets via envFrom. (Env still overrides file values if needed.)
   env:
+    # TEMP FAULT INJECTION — runlore validation session (REVERT after). An
+    # invalid port (>65535) makes the backend fail to bind at startup and
+    # crashloop, simulating a broken code/config deploy for RunLore to
+    # investigate. Restore to ":8080".
     - name: LISTEN_ADDR
-      value: ":8080"
+      value: ":99999"
     # The distroless image ships only the binary; the initContainer clones this
     # repo to /repo so the wizard can read the XRD/stacks/composition/config.
     - name: REPO_ROOT
