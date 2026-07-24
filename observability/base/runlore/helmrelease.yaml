@@ -151,6 +151,9 @@ spec:
           dedup:
             window: 30m
       investigation:
+        # Per-investigation deadline (default 10m). Bumped to 15m as headroom for the
+        # slower self-hosted model; the real latency fix is model.effort: low below.
+        timeout: 15m
         # Recurrence cooldown (runlore#270): a trigger answered CONCLUSIVELY less
         # than this long ago is not re-investigated — no model call, no duplicate
         # notification. Complements dedup above: dedup keys on the alert
@@ -189,6 +192,15 @@ spec:
         model: glm-5.2
         base_url: https://api.z.ai/api/paas/v4/
         api_key_env: GLM_API_KEY  # pragma: allowlist secret
+        # Cap GLM 5.2's per-call reasoning depth. Unset, GLM runs its default (deep)
+        # thinking every call → ~29s/call baseline and occasional multi-minute runaway
+        # turns; a first live investigation burned the full 10m deadline at confidence:0
+        # with 471s of the 600s spent purely in model inference (tools were <0.2s each,
+        # 92% prompt-cache hit — the model was the bottleneck, not the tool count). For
+        # the openai wire protocol runlore maps effort → reasoning_effort
+        # (minimal|low|medium|high). low keeps enough reasoning to converge while cutting
+        # per-call latency and preventing runaway turns.
+        effort: low
       catalog:
         dir: /var/lib/runlore/catalog
         git:
