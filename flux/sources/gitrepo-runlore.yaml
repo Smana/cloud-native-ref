@@ -15,4 +15,4 @@ spec:
   # decoded and scrubbed payload-wide) — all three validated against a live cluster this
   # session (load-bearing unit tests, k3d e2e 54/0, healthy in cluster).
   ref:
-    tag: v0.10.0
+    tag: v0.11.0
