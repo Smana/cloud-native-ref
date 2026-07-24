@@ -64,10 +64,10 @@ spec:
       # tag. The two ALWAYS move together — a chart/image SHA split silently runs the
       # wrong binary behind the right chart with nothing failing to say so.
       tag: "main"
-      # Mutable tag: on this fresh cluster the first pull fetches current :main = main
-      # HEAD; kept IfNotPresent so a mid-validation pod reschedule reuses the cached image
-      # rather than drifting if remote :main advances during the session.
-      pullPolicy: IfNotPresent
+      # TEMP Always (validation): :main is mutable and the nodes already cached the
+      # pre-#359 image; Always forces a re-pull so the new :main (with source_diff) runs.
+      # Revert to IfNotPresent after the source_diff test.
+      pullPolicy: Always
     serviceAccount:
       create: true
       # Must match the SA bound by the xplane-runlore EKS Pod Identity (security/base/epis/runlore.yaml).
@@ -270,4 +270,12 @@ spec:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
       logs:
         url: http://victoria-logs-victoria-logs-single-server.observability.svc:9428
+      # M4 source_diff (runlore#359): allowlist of app/module SOURCE repos the agent may
+      # clone+diff when what_changed shows an image/module version bump — turns "the image
+      # bumped" into the offending commit (subjects + diffstat + largest hunks). Enabling
+      # this key registers the source_diff tool. Smana/app-wizard is public (anon clone);
+      # a private repo would reuse forge.github_app (contents:read), host-confined.
+      source_repos:
+        allow:
+          - github.com/Smana/app-wizard
       # network: deferred (needs a Hubble/flow-log provider choice).
