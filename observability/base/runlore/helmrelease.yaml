@@ -270,5 +270,10 @@ spec:
       metrics:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
       logs:
-        url: http://victoria-logs-victoria-logs-single-server.observability.svc:9428
+        # TEMP — M1 (runlore#372) LogsProvider validation: point at a throwaway Loki
+        # (observability ns, port 9428 so the existing egress CNP covers it). Left
+        # UNPINNED (no provider:) on purpose — this exercises the runtime auto-detect
+        # (probe /loki/api/v1/status/buildinfo → loki). Restore the VictoriaLogs URL
+        # after the test.
+        url: http://loki-throwaway.observability.svc:9428
       # network: deferred (needs a Hubble/flow-log provider choice).
