@@ -64,10 +64,7 @@ spec:
       # tag. The two ALWAYS move together — a chart/image SHA split silently runs the
       # wrong binary behind the right chart with nothing failing to say so.
       tag: "main"
-      # TEMP Always (validation): :main is mutable and the nodes already cached the
-      # pre-#359 image; Always forces a re-pull so the new :main (with source_diff) runs.
-      # Revert to IfNotPresent after the source_diff test.
-      pullPolicy: Always
+      pullPolicy: IfNotPresent
     serviceAccount:
       create: true
       # Must match the SA bound by the xplane-runlore EKS Pod Identity (security/base/epis/runlore.yaml).
