@@ -29,10 +29,11 @@ spec:
     # the XRD, and ships github+dev auth only. Bump to the newest main-<short-sha>
     # when the upstream wizard changes.
     repository: ghcr.io/smana/app-wizard
-    # TEMP (source_diff #359 validation, REVERT): image "bump" a23e28f→f0a8361 so
-    # runlore's what_changed sees a version change and the agent can source_diff the
-    # app-wizard source between the two commits. Restore main-a23e28f after.
-    tag: "main-f0a8361"
+    # TEMP (source_diff #359 validation, REVERT): "bad deploy" to a buggy app-wizard
+    # build (branch srcdiff-bug, commit 3f5036e) that inverts the /readyz gate so the
+    # pod never becomes Ready. RunLore's what_changed sees the image bump and source_diff
+    # diffs the app-wizard source to the offending commit. Restore main-a23e28f after.
+    tag: "srcdiff-bug-3f5036e"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
