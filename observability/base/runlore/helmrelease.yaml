@@ -229,15 +229,14 @@ spec:
         ledger_path: /var/lib/runlore/catalog/outcomes.jsonl
       # D2 (runlore#370) in-server curator sweeps: the LEADER replica runs the KB
       # grooming passes on a timer — no CronJob, no shared ledger volume (it reads the
-      # pod's live outcome ledger above). mode: dry-run is the default, safe posture:
-      # every candidate action is logged, nothing is written to the KB forge until
-      # mode: apply. interval is shortened from the 6h default to the 10m minimum for
-      # THIS validation session so a sweep actually fires while we watch — restore to 6h
-      # (or drop this block to inherit the default) after validation.
+      # pod's live outcome ledger above). mode: dry-run is the safe posture: every
+      # candidate action is logged, nothing is written to the KB forge until mode: apply.
+      # Both mode: dry-run and interval: 6h are the chart defaults — stated explicitly
+      # here for auditability. (Validated 2026-07-24 at interval 10m; restored to 6h.)
       curate:
         sweeps:
           mode: dry-run
-          interval: 10m
+          interval: 6h
       forge:
         kb_repo: Smana/runlore-kb
         base_branch: main
@@ -270,10 +269,5 @@ spec:
       metrics:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
       logs:
-        # TEMP — M1 (runlore#372) LogsProvider validation: point at a throwaway Loki
-        # (observability ns, port 9428 so the existing egress CNP covers it). Left
-        # UNPINNED (no provider:) on purpose — this exercises the runtime auto-detect
-        # (probe /loki/api/v1/status/buildinfo → loki). Restore the VictoriaLogs URL
-        # after the test.
-        url: http://loki-throwaway.observability.svc:9428
+        url: http://victoria-logs-victoria-logs-single-server.observability.svc:9428
       # network: deferred (needs a Hubble/flow-log provider choice).
