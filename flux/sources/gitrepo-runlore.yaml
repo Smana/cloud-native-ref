@@ -6,13 +6,17 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to the v0.9.2 release: the chart and the signed, multi-arch release image in
-  # observability/base/runlore/helmrelease.yaml (image.tag "0.9.2") come from the same
-  # tag, so the two cannot drift apart. Keep them in lockstep on every bump.
+  # VALIDATION DEPLOY — pinned to main HEAD (commit 26723739, "fix(eval): … #374") to
+  # validate every feature shipped since v0.10.0: D2 in-server curator sweeps (#370),
+  # M1 LogsProvider (#372), M3 Argo executor (#371), D1 `lore kb import` (#369),
+  # F1 OCI chart (#367), F2 nightly eval scorecard (#368).
   #
-  # v0.9.2 is the release that carries #320 (a standing 👎 bypasses the coalesce
-  # cooldown), #321 (Hubble Relay TLS floor pinned to 1.2) and #322 (Secret data values
-  # decoded and scrubbed payload-wide) — all three validated against a live cluster this
-  # session (load-bearing unit tests, k3d e2e 54/0, healthy in cluster).
+  # The chart (deploy/helm/runlore) is checked out from THIS commit, and the image tag in
+  # observability/base/runlore/helmrelease.yaml is ":main" — the rolling single-arch
+  # (amd64) build-image.yml build pushed 2.5 min after this commit — so chart + binary
+  # stay in lockstep at the same SHA. NOT a release: there is no v0.11.0 tag yet, hence
+  # commit-pin + :main instead of a version tag. `branch: main` lets source-controller
+  # shallow-clone efficiently; `commit` takes precedence over it.
   ref:
-    tag: v0.10.0
+    branch: main
+    commit: 26723739d6fed97237e3ba5e2d667fe0b0aae10b  # pragma: allowlist secret (git SHA, not a secret)

@@ -52,17 +52,21 @@ spec:
     workloadKind: StatefulSet
     replicaCount: 2
     image:
-      # MUST match the GitRepository tag in flux/sources/gitrepo-runlore.yaml. It was
-      # once left at "0.9.0" while the source moved to v0.9.1, so the cluster quietly ran
-      # the 0.9.0 binary behind the 0.9.1 chart — none of that release's fixes were live,
-      # and nothing failed to say so. Move the two together, always.
+      # VALIDATION DEPLOY: tracking runlore main HEAD (commit 26723739), which has no
+      # release tag yet — so this uses the rolling ":main" tag from build-image.yml
+      # (single-arch amd64; nodes are amd64 t3a.xlarge, so fine). It was pushed 2.5 min
+      # after the commit flux/sources/gitrepo-runlore.yaml is pinned to, keeping chart +
+      # binary in lockstep at that SHA. build_info then reads "main-<short-sha>".
       #
-      # NO leading "v". GoReleaser (Smana/runlore release-binaries.yml) publishes the
-      # release image as `{{ .Version }}` — 0.9.2, not v0.9.2 — so a `v` prefix 404s and
-      # the StatefulSet lands in ImagePullBackOff. This is the signed, multi-arch,
-      # SBOM-attested release image; the rolling `:main` tag from build-image.yml is a
-      # single-arch validation build and must not be used here.
-      tag: "0.9.2"
+      # For a RELEASE deploy this MUST be the GoReleaser version tag instead (e.g.
+      # "0.11.0", NO leading "v" — release-binaries.yml publishes `{{ .Version }}`; a `v`
+      # prefix 404s into ImagePullBackOff) AND the GitRepository must move to the matching
+      # tag. The two ALWAYS move together — a chart/image SHA split silently runs the
+      # wrong binary behind the right chart with nothing failing to say so.
+      tag: "main"
+      # Mutable tag: on this fresh cluster the first pull fetches current :main = main
+      # HEAD; kept IfNotPresent so a mid-validation pod reschedule reuses the cached image
+      # rather than drifting if remote :main advances during the session.
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
@@ -211,6 +215,17 @@ spec:
           outcome_floor: 0.5
       outcome:
         ledger_path: /var/lib/runlore/catalog/outcomes.jsonl
+      # D2 (runlore#370) in-server curator sweeps: the LEADER replica runs the KB
+      # grooming passes on a timer — no CronJob, no shared ledger volume (it reads the
+      # pod's live outcome ledger above). mode: dry-run is the default, safe posture:
+      # every candidate action is logged, nothing is written to the KB forge until
+      # mode: apply. interval is shortened from the 6h default to the 10m minimum for
+      # THIS validation session so a sweep actually fires while we watch — restore to 6h
+      # (or drop this block to inherit the default) after validation.
+      curate:
+        sweeps:
+          mode: dry-run
+          interval: 10m
       forge:
         kb_repo: Smana/runlore-kb
         base_branch: main
