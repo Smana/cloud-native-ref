@@ -1127,70 +1127,70 @@ if oxr.spec.s3Bucket?.enabled:
         }
     }]
 
-# EKS Pod Identity for S3 access
-_s3Epi = [
-    {
-        apiVersion = "cloud.ogenki.io/v1alpha1"
-        kind = "EPI"
-        metadata = _managedMetadata("s3-pod-identity")
-        spec = {
-            serviceAccount = {
-                name = _name
-                namespace = _namespace
+    # EKS Pod Identity for S3 access
+    _s3Epi = [
+        {
+            apiVersion = "cloud.ogenki.io/v1alpha1"
+            kind = "EPI"
+            metadata = _managedMetadata("s3-pod-identity")
+            spec = {
+                serviceAccount = {
+                    name = _name
+                    namespace = _namespace
+                }
+                clusters = [{
+                    name = envConfig.clusterName
+                    region = envConfig.region
+                }]
+                if oxr.spec.s3Bucket.permissions == "custom" and oxr.spec.s3Bucket.customPolicy:
+                    policyDocument = oxr.spec.s3Bucket.customPolicy
+                elif oxr.spec.s3Bucket.permissions == "readwrite":
+                    policyDocument = """{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "s3:ListBucket"
+                ],
+                "Resource": \"""" + _bucketArn + """\"
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:DeleteObject"
+                ],
+                "Resource": \"""" + _bucketArn + """/*\"
             }
-            clusters = [{
-                name = envConfig.clusterName
-                region = envConfig.region
-            }]
-            if oxr.spec.s3Bucket.permissions == "custom" and oxr.spec.s3Bucket.customPolicy:
-                policyDocument = oxr.spec.s3Bucket.customPolicy
-            elif oxr.spec.s3Bucket.permissions == "readwrite":
-                policyDocument = """{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:ListBucket"
-            ],
-            "Resource": \"""" + _bucketArn + """\"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:GetObject",
-                "s3:PutObject",
-                "s3:DeleteObject"
-            ],
-            "Resource": \"""" + _bucketArn + """/*\"
+        ]
+    }"""
+                elif oxr.spec.s3Bucket.permissions == "readonly":
+                    policyDocument = """{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "s3:ListBucket"
+                ],
+                "Resource": \"""" + _bucketArn + """\"
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "s3:GetObject"
+                ],
+                "Resource": \"""" + _bucketArn + """/*\"
+            }
+        ]
+    }"""
+            }
         }
     ]
-}"""
-            elif oxr.spec.s3Bucket.permissions == "readonly":
-                policyDocument = """{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:ListBucket"
-            ],
-            "Resource": \"""" + _bucketArn + """\"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:GetObject"
-            ],
-            "Resource": \"""" + _bucketArn + """/*\"
-        }
-    ]
-}"""
-        }
-    }
-]
-_s3BucketResources = _s3ResourceList(_s3Bucket, _s3BucketVersioning, _s3Epi, oxr.spec.s3Bucket.versioning or False)
-_items += _s3BucketResources
+    _s3BucketResources = _s3ResourceList(_s3Bucket, _s3BucketVersioning, _s3Epi, oxr.spec.s3Bucket.versioning or False)
+    _items += _s3BucketResources
 
 # External Secrets
 # Create ExternalSecrets from AWS Secrets Manager using dataFrom pattern
