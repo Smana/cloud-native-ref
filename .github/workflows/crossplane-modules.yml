@@ -33,6 +33,10 @@ jobs:
           files: |
             infrastructure/base/crossplane/configuration/kcl/**/*.k
             infrastructure/base/crossplane/configuration/kcl/**/kcl.mod
+            # Fixtures are inputs to the render check below, so editing one must
+            # re-run validation. Without this a fixture could be broken -- or a
+            # new one added -- and nothing would render it.
+            infrastructure/base/crossplane/configuration/kcl/**/settings-*.yaml
 
       - name: Set matrix for changed modules
         id: set-matrix
