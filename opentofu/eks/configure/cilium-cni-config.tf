@@ -9,6 +9,10 @@
 #   - first-interface-index: 1 (skip eth0, use secondary ENIs only for pods)
 #   - subnet-tags: select subnets tagged with cilium.io/pod-subnet=true (100.64.0.0/16)
 #   - disable-prefix-delegation: false (enable prefix delegation)
+#
+# cniVersion tracks the CNI standard version Cilium defaults to: 1.20 moved it
+# from 0.3.1 to 1.0.0. The chart default does not apply here — cni.configMap
+# means we own this file, so the bump is manual on every Cilium minor upgrade.
 resource "kubectl_manifest" "cilium_cni_config" {
   yaml_body = yamlencode({
     apiVersion = "v1"
@@ -19,10 +23,10 @@ resource "kubectl_manifest" "cilium_cni_config" {
     }
     data = {
       "cni-config" = jsonencode({
-        cniVersion = "0.3.1"
+        cniVersion = "1.0.0"
         name       = "cilium"
         plugins = [{
-          cniVersion = "0.3.1"
+          cniVersion = "1.0.0"
           type       = "cilium-cni"
           eni = {
             "first-interface-index"     = 1

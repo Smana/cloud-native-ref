@@ -56,8 +56,11 @@ spec:
             runbook_url: "https://docs.cilium.io/en/stable/operations/troubleshooting/"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
 
+        # cilium_policy_import_errors_total was removed from Cilium's metrics
+        # registry several minors ago; this alert silently never fired. The
+        # replacement is cilium_policy_change_total{source,operation,outcome}.
         - alert: CiliumAgentPolicyImportErrors
-          expr: sum by (namespace, pod) (rate(cilium_policy_import_errors_total[2m]) > 0)
+          expr: sum by (namespace, pod) (rate(cilium_policy_change_total{outcome="fail"}[2m])) > 0
           for: 5m
           labels:
             severity: critical

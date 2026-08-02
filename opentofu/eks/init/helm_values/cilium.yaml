@@ -86,6 +86,14 @@ encryption:
 envoy:
   # Explicitly enable Envoy DaemonSet for Gateway API L7 proxy
   enabled: true
+  # xdsMode is deliberately left unset so Cilium >= 1.20 picks its new default,
+  # "ads" (Aggregated Discovery Service), instead of the legacy "split" mode.
+  # Setting `upgradeCompatibility: "1.19"` anywhere would silently pin us back to
+  # "split". ADS delivers Envoy config consistently in one stream — lower CPU and
+  # lower policy-update latency on the surface this cluster leans on: the two
+  # Tailscale Gateways plus the CiliumEnvoyConfig ext_proc hop to
+  # vllm-semantic-router. Verify with:
+  #   kubectl -n kube-system get cm cilium-config -o jsonpath='{.data.envoy-xds-mode}'
   resources:
     limits:
       memory: 300Mi
