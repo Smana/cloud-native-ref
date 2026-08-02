@@ -520,11 +520,50 @@ _observedPDB = ocds[_name + "-pdb"]?.Resource if _name + "-pdb" in ocds else Non
 _observedGateway = ocds[_name + "-gateway"]?.Resource if _name + "-gateway" in ocds else None
 _observedNetworkPolicy = ocds[_name + "-cilium-netpol"]?.Resource if _name + "-cilium-netpol" in ocds else None
 _observedServiceAccount = ocds[_name + "-serviceaccount"]?.Resource if _name + "-serviceaccount" in ocds else None
+# The EPI is rendered under the xplane-* managed name, not the claim name.
+_observedS3PodIdentity = ocds[_managedName + "-s3-pod-identity"]?.Resource if _managedName + "-s3-pod-identity" in ocds else None
 
 # Check if Deployment is actually Available (not just created)
 # Looks for Deployment.status.conditions[type=Available, status=True]
 # Use direct field access (c?.type) instead of c.get() to avoid UndefinedType
 _deploymentReady = any_true([c?.type == "Available" and c?.status == "True" for c in _observedDeployment?.status?.conditions or []])
+
+# EKS Pod Identity admission gate (#1700)
+# ======================================
+# Pod Identity credentials (AWS_CONTAINER_CREDENTIALS_FULL_URI + the projected
+# eks-pod-identity-token volume) are injected by the EKS webhook at pod
+# ADMISSION. A pod admitted before its PodIdentityAssociation has propagated
+# gets nothing, and because the pod spec is fixed at admission NO restart ever
+# recovers it — it crashloops indefinitely against a perfectly good IAM role,
+# failing with an application-level "Access Denied" that points the investigation
+# at AWS instead of at scheduling order.
+#
+# Observed on xplane-image-gallery (2026-08-02): the composition rendered the
+# Deployment and the EPI concurrently, one replica was admitted 2s BEFORE the
+# PodIdentityAssociation object even existed and the other 1s after it reported
+# Ready (still inside webhook propagation lag). Both crashlooped for ~3h / 36
+# restarts. It reproduces on every cluster rebuild and is invisible on
+# steady-state clusters where the association long predates any pod.
+#
+# So: withhold the pod-bearing resource until the EPI reports Ready. The
+# ServiceAccount and Service are deliberately NOT gated — the
+# PodIdentityAssociation binds to the ServiceAccount, so gating it would
+# deadlock the very readiness we wait on.
+_s3PodIdentityReady = any_true([c?.type == "Ready" and c?.status == "True" for c in _observedS3PodIdentity?.status?.conditions or []])
+
+# Tracks the SAME condition that renders the EPI (see the s3Bucket block). If
+# these two ever drift the workload is either gated on an EPI that is never
+# created, or not gated when it should be.
+_podIdentityRequired = oxr.spec.s3Bucket?.enabled or False
+
+# Render when no EPI is required, OR the EPI is Ready, OR the workload is
+# already observed. The last clause is a latch: once the workload exists it is
+# never withdrawn, so a transient EPI blip cannot delete a running app. Takes
+# the raw ocds so tests exercise the exact key construction main.k relies on
+# rather than a re-implementation of it.
+_workloadShouldRender = lambda name: str, ocdsState: any, suffix: str, podIdentityRequired: bool, podIdentityReady: bool -> bool {
+    not podIdentityRequired or podIdentityReady or (name + "-" + suffix) in ocdsState
+}
 
 # Check if Service has ClusterIP assigned
 # Services are ready when they have a ClusterIP (can route traffic)
@@ -728,12 +767,22 @@ if _persistenceEnabled:
 # - worker: Deployment + ServiceAccount (no Service)
 # - cron:   CronJob + ServiceAccount (no Service)
 # The ServiceAccount is created for all types (IAM/EPI integration).
+#
+# The pod-bearing resource is additionally gated on EKS Pod Identity readiness
+# (#1700) — see _workloadShouldRender. The ServiceAccount always renders: the
+# PodIdentityAssociation binds to it, so gating it would deadlock the readiness
+# this gate waits on. The Service always renders too — it selects on labels and
+# is valid with zero endpoints, so the HTTPRoute chain stays intact.
+_workloadSuffix = "cronjob" if _isCron else "deployment"
+_renderWorkload = _workloadShouldRender(_name, ocds, _workloadSuffix, _podIdentityRequired, _s3PodIdentityReady)
+_gatedCronJob = [_cronjob] if _renderWorkload else []
+_gatedDeployment = [_deployment] if _renderWorkload else []
 if _isCron:
-    _items += [_cronjob, _serviceAccount]
+    _items += _gatedCronJob + [_serviceAccount]
 elif _isWeb:
-    _items += [_deployment, _service, _serviceAccount]
+    _items += _gatedDeployment + [_service, _serviceAccount]
 else:
-    _items += [_deployment, _serviceAccount]
+    _items += _gatedDeployment + [_serviceAccount]
 # HorizontalPodAutoscaler (Deployment-backed types only; CEL forbids on cron)
 # NOTE: Using intermediate variable to avoid function-kcl duplicate detection bug
 # See: https://github.com/crossplane-contrib/function-kcl/issues/285
