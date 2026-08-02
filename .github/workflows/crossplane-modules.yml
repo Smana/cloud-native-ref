@@ -162,14 +162,30 @@ jobs:
 
           # A KCL module is considered a Crossplane function if it has both a kcl.mod
           # and a settings-example.yaml file for mocking runtime parameters.
+          #
+          # Render EVERY settings-*.yaml, not just the example. settings-example.yaml
+          # enables essentially every optional block, so a broken `if oxr.spec.X:`
+          # guard still renders under it — X is always set. That blind spot shipped
+          # a regression: an s3Bucket block escaped its guard and broke every App
+          # WITHOUT an s3Bucket, while this step stayed green. Modules add a fixture
+          # (e.g. settings-minimal.yaml) and it is picked up automatically.
           if [ -f "kcl.mod" ] && [ -f "settings-example.yaml" ]; then
-            echo "   Found settings-example.yaml, running validation with settings..."
-            if kcl run . -Y settings-example.yaml --output /dev/null; then
-              echo "✅ KCL configuration is valid with mock parameters."
-            else
+            rc=0
+            for fixture in settings-*.yaml; do
+              [ -f "$fixture" ] || continue
+              echo "   Rendering with $fixture ..."
+              if kcl run . -Y "$fixture" --output /dev/null; then
+                echo "   ✅ valid — $fixture"
+              else
+                echo "   ❌ validation failed — $fixture"
+                rc=1
+              fi
+            done
+            if [ "$rc" -ne 0 ]; then
               echo "❌ KCL configuration validation failed with mock parameters."
               exit 1
             fi
+            echo "✅ KCL configuration is valid with mock parameters."
           else
             echo "   No settings-example.yaml found, running standard validation..."
             kcl run . --output /dev/null

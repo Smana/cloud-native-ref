@@ -110,20 +110,32 @@ validate_composition() {
     echo ""
     echo -e "${YELLOW}🧪 [2/3] Validating KCL syntax and logic...${NC}"
 
+    # Renders EVERY settings-*.yaml the module ships, not just the example.
+    # settings-example.yaml enables essentially every optional block, so a broken
+    # `if oxr.spec.X:` guard still renders under it — X is always set. That gap
+    # let an s3Bucket block escape its guard and break reconciliation for every
+    # App WITHOUT an s3Bucket, while this validator exited 0. A module adds a
+    # fixture (e.g. settings-minimal.yaml) and it is picked up automatically.
     if [[ ! -f "$settings_file" ]]; then
         echo -e "${YELLOW}   ⚠️  Settings file not found: $settings_file${NC}"
         warnings=$((warnings + 1))
     else
         cd "$module_path"
-        if kcl run . -Y settings-example.yaml > /dev/null 2>&1; then
-            echo -e "${GREEN}   ✅ KCL syntax valid${NC}"
-        else
-            echo -e "${RED}   ❌ KCL syntax error${NC}"
-            echo ""
-            echo "   Running with output to show error:"
-            kcl run . -Y settings-example.yaml || true
-            errors=$((errors + 1))
-        fi
+        local fixture_count=0
+        for fixture in settings-*.yaml; do
+            [[ -f "$fixture" ]] || continue
+            fixture_count=$((fixture_count + 1))
+            if kcl run . -Y "$fixture" > /dev/null 2>&1; then
+                echo -e "${GREEN}   ✅ KCL syntax valid — ${fixture}${NC}"
+            else
+                echo -e "${RED}   ❌ KCL syntax error — ${fixture}${NC}"
+                echo ""
+                echo "   Running with output to show error:"
+                kcl run . -Y "$fixture" || true
+                errors=$((errors + 1))
+            fi
+        done
+        echo -e "   (${fixture_count} fixture(s) rendered)"
         cd - > /dev/null
     fi
 
