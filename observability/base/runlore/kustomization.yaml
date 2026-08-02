@@ -4,6 +4,7 @@ kind: Kustomization
 namespace: runlore
 
 resources:
+  - ciliumnetworkpolicy-ingress.yaml
   - externalsecret-credentials.yaml
   - externalsecret-slack.yaml
   - externalsecret-webhook.yaml

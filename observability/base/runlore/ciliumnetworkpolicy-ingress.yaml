@@ -1,0 +1,34 @@
+---
+# Companion to the chart-rendered NetworkPolicy (values.networkPolicy.ingressFrom).
+#
+# runlore's HTTPRoute parents onto `platform-public` (GatewayClass cilium), and this
+# cluster runs the shared cilium-envoy DaemonSet with hostNetwork=true
+# (external-envoy-proxy=true). Traffic leaving that proxy toward a pod is classified
+# by Cilium as the reserved `ingress` entity — it is not a pod in a namespace, so a
+# Kubernetes NetworkPolicy `from: namespaceSelector` can never match it.
+#
+# Because Cilium unions Kubernetes NetworkPolicies with CiliumNetworkPolicies, the
+# effective ingress allow-list for :8080 is:
+#   observability namespace  (chart NetworkPolicy — vmagent scrape + Alertmanager webhook)
+# + runlore peer pods        (chart NetworkPolicy — leader forwarding, runlore#264)
+# + ingress entity           (this policy — Gateway data plane / Slack interactions)
+# and nothing else.
+#
+# Dropping this file without also clearing `ingressFrom` black-holes every externally
+# routed request, including Slack's POST /slack/interactions. See issue #1589.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: runlore-gateway-ingress
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: runlore
+      app.kubernetes.io/instance: runlore
+  ingress:
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
