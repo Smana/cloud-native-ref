@@ -31,6 +31,18 @@ spec:
         - key: karpenter.k8s.aws/instance-memory
           operator: Lt
           values: ["50001"]
+        # Nitro only — REQUIRED for Cilium ENI prefix delegation, which is a
+        # Nitro-only feature. On a Xen instance Cilium falls back to secondary IPs and
+        # the node is hard-capped at (usable ENIs x IPs-per-ENI). Since the scheduler
+        # does not read Cilium IPAM, it keeps placing pods on a node that cannot
+        # network them and they sit in ContainerCreating on "no IPs currently
+        # available on the node".
+        #
+        # Added here as well as on the io pool: nothing in the requirements above
+        # excludes a Xen family, so this pool could select one at any time.
+        - key: karpenter.k8s.aws/instance-hypervisor
+          operator: In
+          values: ["nitro"]
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 15m
