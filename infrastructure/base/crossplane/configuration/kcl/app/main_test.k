@@ -546,3 +546,45 @@ test_live_reconcile_detection = lambda {
     assert not ("uid" in option("params").oxr.metadata), "fixture precondition: no uid in the render fixture"
     assert True
 }
+
+# ---- Test: the s3Bucket set never emits a duplicate composed resource ----
+# The block used to build `_s3BucketResources` by mutation — `= [Bucket]`, then
+# `+= [BucketVersioning]` under a conditional, then `+= [EPI]`. Under function-kcl
+# that shape re-evaluates and emits the Bucket and the EPI TWICE when the middle
+# `+=` is skipped (i.e. versioning off), which crossplane rejects outright:
+#
+#   multiple composed resources with name "<app>-s3-bucket" returned:
+#   Bucket/<app>-s3-bucket and Bucket/<app>-s3-bucket
+#
+# Latent since nothing in the repo sets versioning off — but it is the wizard's
+# default, so the first S3 app created through the form hit it. Same class as
+# function-kcl#285, which the externalSecrets block below already guards against.
+#
+# Driven through the real constructor rather than `items`, because KCL's single
+# global fixture pins versioning=true and cannot encode the failing case.
+test_s3_resources_never_duplicate = lambda {
+    _b = {kind = "Bucket", metadata = {name = "x-s3-bucket"}}
+    _v = {kind = "BucketVersioning", metadata = {name = "x-s3-bucket-versioning"}}
+    _e = {kind = "EPI", metadata = {name = "x-s3-pod-identity"}}
+    _off = _s3ResourceList([_b], [_v], [_e], False)
+    _on = _s3ResourceList([_b], [_v], [_e], True)
+    assert len(_off) == 2, "versioning off ⇒ Bucket + EPI only, got {}".format(len(_off))
+    assert len(_on) == 3, "versioning on ⇒ Bucket + BucketVersioning + EPI, got {}".format(len(_on))
+    assert len([r for r in _off if r.kind == "Bucket"]) == 1, "exactly one Bucket with versioning off"
+    assert len([r for r in _on if r.kind == "Bucket"]) == 1, "exactly one Bucket with versioning on"
+    assert len([r for r in _off if r.kind == "EPI"]) == 1, "exactly one EPI with versioning off"
+    assert len([r for r in _on if r.kind == "BucketVersioning"]) == 1, "versioning on adds exactly one BucketVersioning"
+    assert len([r for r in _off if r.kind == "BucketVersioning"]) == 0, "versioning off adds no BucketVersioning"
+}
+
+# ---- Test: rendered s3 resources carry unique composition-resource-names ----
+# End-to-end guard on the fixture (versioning=true). Crossplane keys composed
+# resources by that annotation, so a repeat is a hard render failure, not a warning.
+test_s3_items_unique_names = lambda {
+    if option("params").oxr.spec.s3Bucket?.enabled:
+        _names = [r.metadata.annotations["krm.kcl.dev/composition-resource-name"] for r in items if r.kind in ["Bucket", "BucketVersioning", "EPI"]]
+        _uniq = {n: 1 for n in _names}
+        assert len(_names) == len(_uniq), "duplicate composition-resource-name among s3 resources: {}".format(_names)
+
+    assert True
+}
