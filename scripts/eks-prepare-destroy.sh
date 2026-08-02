@@ -151,11 +151,99 @@ for _ in $(seq 1 60); do
 	sleep 5
 done
 if [ "${pv_count:-0}" != "0" ]; then
-	echo "WARNING: ${pv_count} PV(s) not reclaimed — their backing volumes will be orphaned:"
+	echo "WARNING: ${pv_count} PV(s) not reclaimed — their backing volumes may be orphaned:"
 	kubectl get pv -o jsonpath='{range .items[*]}{.metadata.name}{" -> "}{.spec.csi.volumeHandle}{"\n"}{end}' 2>/dev/null || true
-	echo "Clean them up after destroy: aws ec2 describe-volumes --filters Name=status,Values=available Name=tag-key,Values=kubernetes.io/created-for/pvc/name"
+	echo "The EBS sweep below deletes any that reach 'available' before this script exits;"
+	echo "volumes still attached to draining nodes are caught by the NEXT prepare-destroy run."
 else
 	echo "All PersistentVolumes reclaimed."
+fi
+
+# Sweep EBS volumes this cluster orphaned in EARLIER runs. The reclaim above
+# only covers PVs that still exist; anything left behind by a previous destroy
+# (cluster torn down before the CSI controller could reclaim, or a PV that
+# missed the 300s window) sits in the account forever. 62 volumes (~518Gi) had
+# accumulated by 2026-07, and 12 more (~138Gi) from a single 2026-07-21 rebuild.
+#
+# Safety, in order of importance:
+#   1. `status=available` ONLY — an attached volume is never a candidate. This
+#      runs after the PVC deletion above, so anything detached here is genuinely
+#      orphaned rather than mid-reschedule.
+#   2. Scoped to THIS cluster via `kubernetes.io/cluster/<name>=owned`, the tag
+#      the EBS CSI driver stamps on every volume it provisions.
+#   3. Requires the `kubernetes.io/created-for/pvc/name` tag, so only
+#      PVC-provisioned volumes qualify — never a hand-made or root volume.
+# Set EKS_DESTROY_KEEP_VOLUMES=true to skip (e.g. to salvage data first).
+echo "Sweeping EBS volumes orphaned by earlier runs of cluster ${CLUSTER_NAME}..."
+if [ "${EKS_DESTROY_KEEP_VOLUMES:-false}" = "true" ]; then
+	echo "EKS_DESTROY_KEEP_VOLUMES=true — skipping EBS sweep."
+else
+	mapfile -t ORPHAN_VOLS < <(${AWS_CMD} ec2 describe-volumes \
+		--filters "Name=status,Values=available" \
+		"Name=tag:kubernetes.io/cluster/${CLUSTER_NAME},Values=owned" \
+		"Name=tag-key,Values=kubernetes.io/created-for/pvc/name" \
+		--query 'Volumes[].VolumeId' --output text 2>/dev/null | tr '\t' '\n' | grep -v '^[[:space:]]*$' || true)
+	if [ ${#ORPHAN_VOLS[@]} -eq 0 ]; then
+		echo "No orphaned EBS volumes found."
+	else
+		echo "Deleting ${#ORPHAN_VOLS[@]} orphaned volume(s):"
+		${AWS_CMD} ec2 describe-volumes --volume-ids "${ORPHAN_VOLS[@]}" \
+			--query 'Volumes[].[VolumeId,Size,Tags[?Key==`kubernetes.io/created-for/pvc/name`]|[0].Value]' \
+			--output text 2>/dev/null | while read -r vid vsize vpvc; do
+				echo "  ${vid}  ${vsize}Gi  ${vpvc}"
+			done
+		for vol in "${ORPHAN_VOLS[@]}"; do
+			${AWS_CMD} ec2 delete-volume --volume-id "${vol}" >/dev/null 2>&1 \
+				|| echo "  WARNING: failed to delete ${vol} (may still be detaching — the next run retries)"
+		done
+		echo "EBS sweep done."
+	fi
+fi
+
+# Reclaim the IAM access keys this cluster created. Harbor's S3 registry
+# storage cannot use EKS Pod Identity (goharbor/harbor#18686 closed unmerged),
+# so it authenticates as a static IAM user — and the constitution deliberately
+# withholds IAM delete rights from Crossplane, so the user and its key OUTLIVE
+# the cluster. AWS caps AccessKeysPerUser at 2, so after two rebuilds the quota
+# is full and the THIRD rebuild's Harbor never starts: the AccessKey MR fails
+# with `LimitExceeded`, its connection Secret stays empty, and harbor-registry
+# dies with `CreateContainerConfigError: couldn't find key username`.
+#
+# Delete only the keys THIS cluster owns, read from the AccessKey managed
+# resources themselves. Blanket-deleting every key on an `xplane-*` user would
+# be wrong: those user names are global, so a second live cluster running
+# Harbor holds the other key slot — and that is precisely how the quota fills.
+#
+# Order is load-bearing: the Kubernetes MR must go FIRST. Deleting the AWS key
+# while its MR still exists just makes Crossplane reconcile a replacement,
+# re-consuming the slot we are trying to free.
+echo "Reclaiming IAM access keys owned by this cluster..."
+if kubectl api-resources --api-group=iam.aws.m.upbound.io 2>/dev/null | grep -q accesskeys; then
+	mapfile -t ACCESS_KEYS < <(kubectl get accesskey.iam.aws.m.upbound.io -A -o json 2>/dev/null \
+		| jq -r '.items[] | select(.metadata.annotations["crossplane.io/external-name"]) | "\(.metadata.namespace)|\(.metadata.name)|\(.spec.forProvider.user // .status.atProvider.user // "")|\(.metadata.annotations["crossplane.io/external-name"])"' 2>/dev/null || true)
+	if [ ${#ACCESS_KEYS[@]} -eq 0 ]; then
+		echo "No AccessKey resources found."
+	else
+		for entry in "${ACCESS_KEYS[@]}"; do
+			[ -z "${entry}" ] && continue
+			ak_ns="${entry%%|*}"; rest="${entry#*|}"
+			ak_name="${rest%%|*}"; rest="${rest#*|}"
+			ak_user="${rest%%|*}"; ak_id="${rest##*|}"
+			if [ -z "${ak_user}" ] || [ -z "${ak_id}" ]; then
+				continue
+			fi
+			echo "  ${ak_user} / ${ak_id} (from ${ak_ns}/${ak_name})"
+			# 1. Stop Crossplane managing it, so it cannot recreate the key.
+			kubectl delete accesskey.iam.aws.m.upbound.io -n "${ak_ns}" "${ak_name}" --wait=false >/dev/null 2>&1 || true
+			kubectl patch accesskey.iam.aws.m.upbound.io -n "${ak_ns}" "${ak_name}" --type=merge -p '{"metadata":{"finalizers":null}}' >/dev/null 2>&1 || true
+			# 2. Now free the quota slot in AWS.
+			${AWS_CMD} iam delete-access-key --user-name "${ak_user}" --access-key-id "${ak_id}" >/dev/null 2>&1 \
+				|| echo "    WARNING: failed to delete ${ak_id} — free it manually or the next rebuild's Harbor will not start"
+		done
+		echo "IAM access key reclaim done."
+	fi
+else
+	echo "AccessKey CRDs not available, skipping IAM key reclaim."
 fi
 
 # Delete Karpenter NodePools (only if CRD exists)
@@ -288,6 +376,10 @@ fi
 # associations vanish with the cluster. Clean up xplane-* IAM resources
 # manually after tofu destroy finishes:
 #   aws iam list-roles --query 'Roles[?starts_with(RoleName, `xplane-`)].RoleName' --output text
+# NOTE: IAM access KEYS and CSI EBS volumes are no longer in that manual list —
+# both are reclaimed automatically earlier in this script. Roles, policies and
+# S3 buckets still are: they are re-adopted by name on the next apply, so they
+# cost nothing to leave behind, whereas keys hit a hard quota of 2 per user.
 echo "Stripping Crossplane composite finalizers from any stuck XRs..."
 if kubectl api-resources --api-group=apiextensions.crossplane.io 2>/dev/null | grep -q .; then
 	# Wait briefly for natural cleanup before forcing
