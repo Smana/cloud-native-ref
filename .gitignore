@@ -132,3 +132,8 @@ node_modules/
 # bundle becomes a second source of truth.
 .schemas/
 .bundle/
+
+# Python bytecode — scripts/flux-schema/*.py are helper modules imported by
+# the render scripts, so CPython drops __pycache__ next to them on every run.
+__pycache__/
+*.py[cod]
