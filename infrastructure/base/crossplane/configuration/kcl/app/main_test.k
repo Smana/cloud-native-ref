@@ -467,30 +467,30 @@ test_workload_pod_identity_latch = lambda {
 
     # No EPI declared ⇒ render immediately. Unchanged behaviour for every App
     # that does not ask for AWS credentials.
-    assert _workloadShouldRender(_n, _emptyOcds, "deployment", False, False) == True, "an App without an EPI must never be gated"
+    assert _workloadShouldRender(_n, _emptyOcds, "deployment", False, False, True) == True, "an App without an EPI must never be gated"
 
     # EPI declared, not yet Ready, workload never created ⇒ withhold. This is the
     # bug: rendering here admits pods into the credential gap.
-    assert _workloadShouldRender(_n, _emptyOcds, "deployment", True, False) == False, "workload must be withheld until the EPI is Ready"
+    assert _workloadShouldRender(_n, _emptyOcds, "deployment", True, False, True) == False, "workload must be withheld until the EPI is Ready"
 
     # EPI Ready ⇒ render.
-    assert _workloadShouldRender(_n, _emptyOcds, "deployment", True, True) == True, "workload renders once the EPI is Ready"
+    assert _workloadShouldRender(_n, _emptyOcds, "deployment", True, True, True) == True, "workload renders once the EPI is Ready"
 
     # Latch: already observed ⇒ keep rendering even if the EPI reports not-ready.
     # A transient EPI blip must never delete a running workload.
-    assert _workloadShouldRender(_n, _ocdsWithWorkload, "deployment", True, False) == True, "an observed workload latches — never withdrawn on an EPI blip"
+    assert _workloadShouldRender(_n, _ocdsWithWorkload, "deployment", True, False, True) == True, "an observed workload latches — never withdrawn on an EPI blip"
 
     # Guard: an unrelated observed resource must NOT satisfy the latch (proves
     # the suffix is load-bearing, not incidental).
     _wrongKeyOcds = {k: {} for k in [_n + "-service"]}
-    assert _workloadShouldRender(_n, _wrongKeyOcds, "deployment", True, False) == False, "an unrelated observed resource must not latch the workload"
+    assert _workloadShouldRender(_n, _wrongKeyOcds, "deployment", True, False, True) == False, "an unrelated observed resource must not latch the workload"
 
     # The cron fork uses its own suffix and must latch on that, not on Deployment.
     _ocdsWithCron = {k: {
         Resource = {kind = "CronJob"}
     } for k in [_n + "-cronjob"]}
-    assert _workloadShouldRender(_n, _ocdsWithCron, "cronjob", True, False) == True, "an observed CronJob latches under its own suffix"
-    assert _workloadShouldRender(_n, _ocdsWithCron, "deployment", True, False) == False, "a CronJob in ocds must not latch a Deployment"
+    assert _workloadShouldRender(_n, _ocdsWithCron, "cronjob", True, False, True) == True, "an observed CronJob latches under its own suffix"
+    assert _workloadShouldRender(_n, _ocdsWithCron, "deployment", True, False, True) == False, "a CronJob in ocds must not latch a Deployment"
 }
 
 # ---- Test: the EPI gate is driven by s3Bucket.enabled (#1700) ----
@@ -507,5 +507,42 @@ test_pod_identity_required_tracks_s3bucket = lambda {
     else:
         assert _podIdentityRequired == False, "no s3Bucket ⇒ pod identity not required"
         assert len(_epis) == 0, "no s3Bucket must render no EPI"
+    assert True
+}
+
+# ---- Test: the admission gate must NOT fire during `crossplane render` (#1700 follow-up) ----
+# `crossplane render` — which the App Wizard's preview shells out to — has no
+# cluster behind it: ocds is empty and no EPI will EVER report Ready. The #1700
+# gate therefore withheld the Deployment from every preview of an s3Bucket app,
+# so the wizard told developers their claim creates no workload. From inside KCL
+# that state is indistinguishable from "first reconcile on a real cluster" — the
+# case the gate exists for — unless we look at whether the XR came from the API
+# server at all.
+test_workload_renders_in_preview = lambda {
+    _n = option("params").oxr.metadata.name
+    _emptyOcds = {}
+
+    # Live cluster: EPI required, not ready, nothing observed ⇒ withhold. This is
+    # #1700 and must keep working.
+    assert _workloadShouldRender(_n, _emptyOcds, "deployment", True, False, True) == False, "on a live cluster the workload is still withheld until the EPI is Ready"
+
+    # Identical inputs, but not a live reconcile ⇒ render. Withholding here would
+    # make the preview lie about what the claim creates.
+    assert _workloadShouldRender(_n, _emptyOcds, "deployment", True, False, False) == True, "crossplane render must show the workload — there is no cluster to gate on"
+
+    # Render mode must not resurrect a workload that a live cluster is gating,
+    # nor change any of the already-passing branches.
+    assert _workloadShouldRender(_n, _emptyOcds, "deployment", False, False, False) == True, "no EPI required renders in preview too"
+    assert _workloadShouldRender(_n, _emptyOcds, "deployment", True, True, True) == True, "EPI ready still renders on a live cluster"
+}
+
+# ---- Test: live-reconcile detection keys off metadata.uid ----
+# The settings fixture mirrors `crossplane render` input: a hand-authored XR the
+# API server has never persisted, so it carries no metadata.uid. Every XR read
+# back from a cluster has one. If this ever inverts, the gate silently stops
+# protecting first reconciles — which is the whole point of #1700.
+test_live_reconcile_detection = lambda {
+    assert _isLiveReconcile == False, "fixture XR has no metadata.uid, so this is render mode"
+    assert not ("uid" in option("params").oxr.metadata), "fixture precondition: no uid in the render fixture"
     assert True
 }

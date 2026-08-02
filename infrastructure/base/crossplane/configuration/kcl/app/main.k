@@ -556,13 +556,31 @@ _s3PodIdentityReady = any_true([c?.type == "Ready" and c?.status == "True" for c
 # created, or not gated when it should be.
 _podIdentityRequired = oxr.spec.s3Bucket?.enabled or False
 
-# Render when no EPI is required, OR the EPI is Ready, OR the workload is
-# already observed. The last clause is a latch: once the workload exists it is
-# never withdrawn, so a transient EPI blip cannot delete a running app. Takes
-# the raw ocds so tests exercise the exact key construction main.k relies on
-# rather than a re-implementation of it.
-_workloadShouldRender = lambda name: str, ocdsState: any, suffix: str, podIdentityRequired: bool, podIdentityReady: bool -> bool {
-    not podIdentityRequired or podIdentityReady or (name + "-" + suffix) in ocdsState
+# Is there a cluster behind this render at all?
+#
+# `crossplane render` — which the App Wizard's preview shells out to — is
+# offline: ocds is empty and no EPI will EVER report Ready. From inside KCL that
+# is indistinguishable from "first reconcile on a live cluster", which is
+# precisely the case the gate below exists to catch. Without a discriminator the
+# gate withholds the Deployment from every preview of an s3Bucket app, so the
+# wizard tells developers their claim creates no workload.
+#
+# The tell is provenance, not state: `crossplane render` is handed a
+# hand-authored XR the API server has never persisted, so it carries no
+# metadata.uid. Every XR read back from a cluster has one.
+# Membership test, not `oxr.metadata?.uid != None`: KCL's optional access yields
+# Undefined for a missing key, and `Undefined == None` is False — so the `!= None`
+# form reports EVERY render as live and silently disables this escape hatch.
+_isLiveReconcile = "uid" in oxr.metadata and (oxr.metadata.uid or "") != ""
+
+# Render when this is not a live reconcile (nothing to gate on — see above), OR
+# no EPI is required, OR the EPI is Ready, OR the workload is already observed.
+# The last clause is a latch: once the workload exists it is never withdrawn, so
+# a transient EPI blip cannot delete a running app. Takes the raw ocds so tests
+# exercise the exact key construction main.k relies on rather than a
+# re-implementation of it.
+_workloadShouldRender = lambda name: str, ocdsState: any, suffix: str, podIdentityRequired: bool, podIdentityReady: bool, liveReconcile: bool -> bool {
+    not liveReconcile or not podIdentityRequired or podIdentityReady or (name + "-" + suffix) in ocdsState
 }
 
 # Check if Service has ClusterIP assigned
@@ -774,7 +792,7 @@ if _persistenceEnabled:
 # this gate waits on. The Service always renders too — it selects on labels and
 # is valid with zero endpoints, so the HTTPRoute chain stays intact.
 _workloadSuffix = "cronjob" if _isCron else "deployment"
-_renderWorkload = _workloadShouldRender(_name, ocds, _workloadSuffix, _podIdentityRequired, _s3PodIdentityReady)
+_renderWorkload = _workloadShouldRender(_name, ocds, _workloadSuffix, _podIdentityRequired, _s3PodIdentityReady, _isLiveReconcile)
 _gatedCronJob = [_cronjob] if _renderWorkload else []
 _gatedDeployment = [_deployment] if _renderWorkload else []
 if _isCron:
