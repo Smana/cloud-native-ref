@@ -583,6 +583,25 @@ _workloadShouldRender = lambda name: str, ocdsState: any, suffix: str, podIdenti
     not liveReconcile or not podIdentityRequired or podIdentityReady or (name + "-" + suffix) in ocdsState
 }
 
+# The s3Bucket set, assembled in ONE expression.
+#
+# This used to be `_s3BucketResources = [Bucket]`, then `+= [BucketVersioning]`
+# under a conditional, then `+= [EPI]`. Under function-kcl that mutation shape
+# re-evaluates and emits the Bucket and the EPI TWICE whenever the middle `+=`
+# is skipped — i.e. whenever versioning is off — and crossplane rejects the
+# render outright:
+#
+#   multiple composed resources with name "<app>-s3-bucket" returned:
+#   Bucket/<app>-s3-bucket and Bucket/<app>-s3-bucket
+#
+# Same class as function-kcl#285, which the externalSecrets block already guards
+# against by building its list in a single comprehension. It stayed latent
+# because every s3Bucket claim in the repo sets versioning: true — but the App
+# Wizard's default is off, so the first S3 app created through the form hit it.
+_s3ResourceList = lambda bucket: [any], versioningResource: [any], epi: [any], versioningEnabled: bool -> [any] {
+    bucket + (versioningResource if versioningEnabled else []) + epi
+}
+
 # Check if Service has ClusterIP assigned
 # Services are ready when they have a ClusterIP (can route traffic)
 _serviceReady = _observedService?.spec?.clusterIP != None
@@ -1111,7 +1130,7 @@ if oxr.spec.s3Bucket?.enabled:
     _bucketName = (oxr.spec.s3Bucket.region or envConfig.region) + "-ogenki-" + _name
     _bucketArn = "arn:aws:s3:::" + _bucketName
 
-    _s3BucketResources = [
+    _s3Bucket = [
         {
             apiVersion = "s3.aws.m.upbound.io/v1beta1"
             kind = "Bucket"
@@ -1135,49 +1154,48 @@ if oxr.spec.s3Bucket?.enabled:
         }
     ]
 
-    # Add BucketVersioning as separate resource if versioning is enabled
-    if oxr.spec.s3Bucket.versioning:
-        _s3BucketResources += [{
-            apiVersion = "s3.aws.m.upbound.io/v1beta1"
-            kind = "BucketVersioning"
-            metadata = _metadata("s3-bucket-versioning")
-            spec = {
-                providerConfigRef = {
-                    name = oxr.spec.s3Bucket.providerConfigRef?.name or "default"
-                    kind = "ClusterProviderConfig"
+    # BucketVersioning, rendered only when versioning is enabled. Kept as its own
+    # list so the final set is ONE concatenation — see _s3ResourceList.
+    _s3BucketVersioning = [{
+        apiVersion = "s3.aws.m.upbound.io/v1beta1"
+        kind = "BucketVersioning"
+        metadata = _metadata("s3-bucket-versioning")
+        spec = {
+            providerConfigRef = {
+                name = oxr.spec.s3Bucket.providerConfigRef?.name or "default"
+                kind = "ClusterProviderConfig"
+            }
+            forProvider = {
+                region = oxr.spec.s3Bucket.region or envConfig.region
+                bucketRef = {
+                    name = _name + "-s3-bucket"
                 }
-                forProvider = {
-                    region = oxr.spec.s3Bucket.region or envConfig.region
-                    bucketRef = {
-                        name = _name + "-s3-bucket"
-                    }
-                    versioningConfiguration = {
-                        status = "Enabled"
-                    }
+                versioningConfiguration = {
+                    status = "Enabled"
                 }
             }
-        }]
+        }
+    }]
 
-    # Add EKS Pod Identity for S3 access
-    _s3BucketResources += [
-        # EKS Pod Identity for S3 access
-        {
-            apiVersion = "cloud.ogenki.io/v1alpha1"
-            kind = "EPI"
-            metadata = _managedMetadata("s3-pod-identity")
-            spec = {
-                serviceAccount = {
-                    name = _name
-                    namespace = _namespace
-                }
-                clusters = [{
-                    name = envConfig.clusterName
-                    region = envConfig.region
-                }]
-                if oxr.spec.s3Bucket.permissions == "custom" and oxr.spec.s3Bucket.customPolicy:
-                    policyDocument = oxr.spec.s3Bucket.customPolicy
-                elif oxr.spec.s3Bucket.permissions == "readwrite":
-                    policyDocument = """{
+# EKS Pod Identity for S3 access
+_s3Epi = [
+    {
+        apiVersion = "cloud.ogenki.io/v1alpha1"
+        kind = "EPI"
+        metadata = _managedMetadata("s3-pod-identity")
+        spec = {
+            serviceAccount = {
+                name = _name
+                namespace = _namespace
+            }
+            clusters = [{
+                name = envConfig.clusterName
+                region = envConfig.region
+            }]
+            if oxr.spec.s3Bucket.permissions == "custom" and oxr.spec.s3Bucket.customPolicy:
+                policyDocument = oxr.spec.s3Bucket.customPolicy
+            elif oxr.spec.s3Bucket.permissions == "readwrite":
+                policyDocument = """{
     "Version": "2012-10-17",
     "Statement": [
         {
@@ -1198,8 +1216,8 @@ if oxr.spec.s3Bucket?.enabled:
         }
     ]
 }"""
-                elif oxr.spec.s3Bucket.permissions == "readonly":
-                    policyDocument = """{
+            elif oxr.spec.s3Bucket.permissions == "readonly":
+                policyDocument = """{
     "Version": "2012-10-17",
     "Statement": [
         {
@@ -1218,10 +1236,11 @@ if oxr.spec.s3Bucket?.enabled:
         }
     ]
 }"""
-            }
         }
-    ]
-    _items += _s3BucketResources
+    }
+]
+_s3BucketResources = _s3ResourceList(_s3Bucket, _s3BucketVersioning, _s3Epi, oxr.spec.s3Bucket.versioning or False)
+_items += _s3BucketResources
 
 # External Secrets
 # Create ExternalSecrets from AWS Secrets Manager using dataFrom pattern
