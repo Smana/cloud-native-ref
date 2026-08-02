@@ -39,8 +39,10 @@ Two-stage OpenTofu deployment: Stage 1 creates the EKS cluster with temporary CN
 - `opentofu/eks/configure/main.tf` - Cilium and Flux helm_releases
 - `opentofu/eks/init/helm_values/cilium.yaml` - Cilium Helm values
 
-**Cilium Prefix Delegation (DISABLED):**
-Secondary CIDR (100.64.0.0/16) is disabled due to Cilium bug #43493 causing Gateway API L7 proxy failures on cross-node traffic. When fixed, uncomment `cilium-cni-config.tf` and related settings in `cilium.yaml`.
+**Cilium Prefix Delegation (ENABLED — WireGuard is load-bearing):**
+Pods get IPs from the secondary CIDR (100.64.0.0/16) via prefix delegation, configured by the custom CNI ConfigMap in `opentofu/eks/configure/cilium-cni-config.tf`. Cilium bug #43493 (still open) breaks the Gateway API L7 proxy on cross-node traffic in this mode: the BPF ipcache sets `hastunnel` incorrectly for remote pods under native routing. **The workaround is `encryption.type: wireguard`** — node-to-node tunnels bypass the faulty routing logic. Do not disable WireGuard, and do not swap it for ztunnel transparent encryption, while #43493 is open.
+
+`cniVersion` in `cilium-cni-config.tf` must track the CNI standard version Cilium defaults to (1.20 moved it 0.3.1 → 1.0.0). Because we set `cni.configMap`, the chart default never applies — bump it manually on every Cilium minor upgrade.
 
 **Pod Subnet Tagging (IMPORTANT):**
 The pod subnets (100.64.x.x) must NOT have the `kubernetes.io/role/cni` tag. VPC-CNI uses this tag to discover subnets during Stage 1 bootstrap, which creates orphan ENIs when Cilium takes over in Stage 2. Only use `cilium.io/pod-subnet=true` for these subnets.
