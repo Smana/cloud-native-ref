@@ -19,15 +19,43 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
+      # Two independent axes, because two different questions are being asked.
+      #
+      #   matrix / has-changes                -> anything that affects RENDERING,
+      #                                          including settings-*.yaml fixtures.
+      #                                          Drives quality-checks.
+      #   module-matrix / has-module-changes  -> only *.k and kcl.mod, i.e. what
+      #                                          actually changes the PUBLISHED
+      #                                          artifact. Drives publish and
+      #                                          validate-composition-versions.
+      #
+      # Collapsing these into one filter forces a false choice: keep fixtures out
+      # and a broken one merges unrendered (that is how the s3Bucket guard
+      # regression reached the cluster), or put them in and every fixture edit
+      # republishes the module and demands a -prN pin flip for a change that
+      # touches no composition logic.
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       has-changes: ${{ steps.set-matrix.outputs.has-changes }}
+      module-matrix: ${{ steps.set-matrix.outputs.module-matrix }}
+      has-module-changes: ${{ steps.set-matrix.outputs.has-module-changes }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Get changed KCL files
+      # Render-affecting: code, module metadata, and fixtures.
+      - name: Get changed KCL files (render scope)
         id: changed-files
+        uses: tj-actions/changed-files@v47
+        with:
+          files: |
+            infrastructure/base/crossplane/configuration/kcl/**/*.k
+            infrastructure/base/crossplane/configuration/kcl/**/kcl.mod
+            infrastructure/base/crossplane/configuration/kcl/**/settings-*.yaml
+
+      # Artifact-affecting: what a consumer of the published module would notice.
+      - name: Get changed KCL files (module scope)
+        id: changed-module-files
         uses: tj-actions/changed-files@v47
         with:
           files: |
@@ -36,45 +64,52 @@ jobs:
 
       - name: Set matrix for changed modules
         id: set-matrix
+        env:
+          RENDER_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+          RENDER_ANY: ${{ steps.changed-files.outputs.any_changed }}
+          MODULE_FILES: ${{ steps.changed-module-files.outputs.all_changed_files }}
+          MODULE_ANY: ${{ steps.changed-module-files.outputs.any_changed }}
         run: |
-          echo "Changed files: ${{ steps.changed-files.outputs.all_changed_files }}"
-          echo "Any changed: ${{ steps.changed-files.outputs.any_changed }}"
+          # Maps a list of changed paths to the unique KCL modules containing them,
+          # then emits <prefix>matrix / has-<prefix>changes. Shared by both scopes so
+          # the two axes cannot drift in how they resolve a module.
+          emit_matrix() {
+            local any="$1" files="$2" matrix_key="$3" flag_key="$4"
+            local changed_modules=() module
 
-          # Extract unique module names from file paths
-          changed_modules=()
-          if [[ "${{ steps.changed-files.outputs.any_changed }}" == "true" ]]; then
-            for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
-              echo "Processing file: $file"
-              # Extract module directory from file path (e.g., infrastructure/base/crossplane/configuration/kcl/cloudnativepg/main.k)
-              if [[ "$file" =~ infrastructure/base/crossplane/configuration/kcl/([^/]+)/ ]]; then
-                module="${BASH_REMATCH[1]}"
-                echo "  → Found module: $module"
-                # Check if it's a valid KCL module (has kcl.mod) and not already in the list
-                if [[ -f "infrastructure/base/crossplane/configuration/kcl/${module}/kcl.mod" ]] && [[ ! " ${changed_modules[*]} " =~ " ${module} " ]]; then
-                  changed_modules+=("$module")
-                  echo "  → Added module: $module"
+            if [[ "$any" == "true" ]]; then
+              for file in $files; do
+                if [[ "$file" =~ infrastructure/base/crossplane/configuration/kcl/([^/]+)/ ]]; then
+                  module="${BASH_REMATCH[1]}"
+                  # Must be a real module (has kcl.mod) and not already collected.
+                  if [[ -f "infrastructure/base/crossplane/configuration/kcl/${module}/kcl.mod" ]] \
+                     && [[ ! " ${changed_modules[*]} " =~ \ ${module}\  ]]; then
+                    changed_modules+=("$module")
+                  fi
                 fi
-              fi
-            done
-          fi
+              done
+            fi
 
-          echo "Final detected modules: ${changed_modules[*]}"
+            echo "${flag_key} modules: ${changed_modules[*]:-<none>}"
 
-          # Build matrix
-          if [ ${#changed_modules[@]} -eq 0 ]; then
-            echo "has-changes=false" >> $GITHUB_OUTPUT
-            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
-          else
-            echo "has-changes=true" >> $GITHUB_OUTPUT
-            matrix="{\"include\":["
-            for i in "${!changed_modules[@]}"; do
-              if [ $i -gt 0 ]; then matrix+=","; fi
-              matrix+="{\"module\":\"${changed_modules[$i]}\",\"path\":\"infrastructure/base/crossplane/configuration/kcl/${changed_modules[$i]}\"}"
-            done
-            matrix+="]}"
-            echo "matrix=$matrix" >> $GITHUB_OUTPUT
-            echo "Generated matrix: $matrix"
-          fi
+            if [ ${#changed_modules[@]} -eq 0 ]; then
+              echo "${flag_key}=false" >> "$GITHUB_OUTPUT"
+              echo "${matrix_key}={\"include\":[]}" >> "$GITHUB_OUTPUT"
+            else
+              local matrix="{\"include\":["
+              for i in "${!changed_modules[@]}"; do
+                if [ "$i" -gt 0 ]; then matrix+=","; fi
+                matrix+="{\"module\":\"${changed_modules[$i]}\",\"path\":\"infrastructure/base/crossplane/configuration/kcl/${changed_modules[$i]}\"}"
+              done
+              matrix+="]}"
+              echo "${flag_key}=true" >> "$GITHUB_OUTPUT"
+              echo "${matrix_key}=${matrix}" >> "$GITHUB_OUTPUT"
+              echo "${matrix_key}: ${matrix}"
+            fi
+          }
+
+          emit_matrix "$RENDER_ANY" "$RENDER_FILES" "matrix"        "has-changes"
+          emit_matrix "$MODULE_ANY" "$MODULE_FILES" "module-matrix" "has-module-changes"
 
   quality-checks:
     needs: detect-changes
@@ -194,10 +229,12 @@ jobs:
 
   publish:
     needs: [detect-changes, quality-checks]
-    if: needs.detect-changes.outputs.has-changes == 'true'
+    # Module axis: only republish when *.k or kcl.mod changed. A fixture edit
+    # must not mint a new preview tag.
+    if: needs.detect-changes.outputs.has-module-changes == 'true'
     runs-on: ubuntu-latest
     strategy:
-      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.detect-changes.outputs.module-matrix) }}
       fail-fast: false
 
     permissions:
@@ -357,10 +394,11 @@ jobs:
 
   validate-composition-versions:
     needs: [detect-changes, publish]
-    if: needs.detect-changes.outputs.has-changes == 'true'
+    # Module axis: the pin only has to match when the published version moved.
+    if: needs.detect-changes.outputs.has-module-changes == 'true'
     runs-on: ubuntu-latest
     strategy:
-      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.detect-changes.outputs.module-matrix) }}
 
     steps:
       - uses: actions/checkout@v7
