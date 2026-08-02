@@ -25,8 +25,14 @@ spec:
             matchExpressions:
               - key: kubernetes.io/metadata.name
                 operator: In
+                # Every namespace an App claim can target must be listed here, or
+                # its HTTPRoute is rejected `NotAllowedByListeners` and the App XR
+                # never goes Ready — the workload runs fine, only the route is
+                # refused, so it reads as a broken app rather than a gateway ACL.
+                # Keep in lockstep with the stacks in apps/stacks.yaml.
                 values:
                   - apps
+                  - demo
                   - envoy-ai-gateway-system
                   - envoy-gateway-system
                   - observability
