@@ -445,3 +445,67 @@ test_container_security_defaults = lambda {
     assert _ovr.runAsNonRoot == True, "un-overridden fields keep defaults"
     assert True
 }
+
+# ---- Test: workload withheld until the S3 EKS Pod Identity is Ready (#1700) ----
+# EKS Pod Identity credentials are injected at pod ADMISSION. A pod admitted
+# before its PodIdentityAssociation has propagated gets none, and no restart ever
+# fixes it — it crashloops forever against a correctly-configured IAM role
+# (observed on xplane-image-gallery: 36 restarts, fatal "Access Denied.").
+#
+# Drives the ACTUAL decision function main.k calls, with synthetic ocds keyed
+# under the REAL composition-resource-name, so the latch branch exercises the
+# exact `<claim>-deployment` key construction rather than a re-implementation.
+# The withheld case cannot be reached through `items` because KCL's single
+# global fixture already carries `myname-deployment` in ocds (which is itself
+# the latch case, covered end-to-end by test_core_resources).
+test_workload_pod_identity_latch = lambda {
+    _n = option("params").oxr.metadata.name
+    _emptyOcds = {}
+    _ocdsWithWorkload = {k: {
+        Resource = {kind = "Deployment"}
+    } for k in [_n + "-deployment"]}
+
+    # No EPI declared ⇒ render immediately. Unchanged behaviour for every App
+    # that does not ask for AWS credentials.
+    assert _workloadShouldRender(_n, _emptyOcds, "deployment", False, False) == True, "an App without an EPI must never be gated"
+
+    # EPI declared, not yet Ready, workload never created ⇒ withhold. This is the
+    # bug: rendering here admits pods into the credential gap.
+    assert _workloadShouldRender(_n, _emptyOcds, "deployment", True, False) == False, "workload must be withheld until the EPI is Ready"
+
+    # EPI Ready ⇒ render.
+    assert _workloadShouldRender(_n, _emptyOcds, "deployment", True, True) == True, "workload renders once the EPI is Ready"
+
+    # Latch: already observed ⇒ keep rendering even if the EPI reports not-ready.
+    # A transient EPI blip must never delete a running workload.
+    assert _workloadShouldRender(_n, _ocdsWithWorkload, "deployment", True, False) == True, "an observed workload latches — never withdrawn on an EPI blip"
+
+    # Guard: an unrelated observed resource must NOT satisfy the latch (proves
+    # the suffix is load-bearing, not incidental).
+    _wrongKeyOcds = {k: {} for k in [_n + "-service"]}
+    assert _workloadShouldRender(_n, _wrongKeyOcds, "deployment", True, False) == False, "an unrelated observed resource must not latch the workload"
+
+    # The cron fork uses its own suffix and must latch on that, not on Deployment.
+    _ocdsWithCron = {k: {
+        Resource = {kind = "CronJob"}
+    } for k in [_n + "-cronjob"]}
+    assert _workloadShouldRender(_n, _ocdsWithCron, "cronjob", True, False) == True, "an observed CronJob latches under its own suffix"
+    assert _workloadShouldRender(_n, _ocdsWithCron, "deployment", True, False) == False, "a CronJob in ocds must not latch a Deployment"
+}
+
+# ---- Test: the EPI gate is driven by s3Bucket.enabled (#1700) ----
+# _podIdentityRequired must track the SAME condition that renders the EPI
+# (`oxr.spec.s3Bucket?.enabled`). If the two ever drift, either the workload is
+# gated on an EPI that is never created (permanent withhold) or it is not gated
+# when it should be (the original race).
+test_pod_identity_required_tracks_s3bucket = lambda {
+    _oxr = option("params").oxr
+    _epis = [r for r in items if r.kind == "EPI"]
+    if _oxr.spec.s3Bucket?.enabled:
+        assert _podIdentityRequired == True, "s3Bucket.enabled ⇒ pod identity required"
+        assert len(_epis) == 1, "s3Bucket.enabled must render exactly 1 EPI, got {}".format(len(_epis))
+    else:
+        assert _podIdentityRequired == False, "no s3Bucket ⇒ pod identity not required"
+        assert len(_epis) == 0, "no s3Bucket must render no EPI"
+    assert True
+}
