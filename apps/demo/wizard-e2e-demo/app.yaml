@@ -1,0 +1,19 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: App
+metadata:
+  name: wizard-e2e-demo
+  namespace: demo
+spec:
+  image:
+    repository: ghcr.io/stefanprodan/podinfo
+    tag: 6.9.2
+  route:
+    enabled: true
+    hostname: wizard-2
+    internetFacing: false
+    rules:
+    - backendPort: 9898
+      pathPrefix: /
+  service:
+    port: 9898
+  type: web
