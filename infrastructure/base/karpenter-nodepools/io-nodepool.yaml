@@ -32,6 +32,25 @@ spec:
         - key: karpenter.k8s.aws/instance-category
           operator: In
           values: ["c", "i", "m", "r"]
+        # Nitro only — REQUIRED for Cilium ENI prefix delegation.
+        #
+        # Prefix delegation is a Nitro-only feature. On a Xen instance Cilium falls
+        # back to secondary IPs and the node is hard-capped at
+        # (usable ENIs x IPs-per-ENI), which the kubelet's advertised max-pods then
+        # dwarfs. The scheduler does not read Cilium IPAM, so it keeps packing pods
+        # onto a node that cannot network them and they sit in ContainerCreating on
+        # "no IPs currently available on the node".
+        #
+        # This pool is the one that hit it: instance-local-nvme > 100 matches the i3
+        # family, the last Xen-based NVMe generation. An i3.large came up with
+        # prefixes=0 on every ENI, 2 usable ENIs x 9 IPs = 18 addresses, against a
+        # kubelet advertising 100 pods.
+        #
+        # The constraint costs nothing: 59 Nitro types still carry >100GB local NVMe,
+        # including i3en, i4i and i7i (the direct i3 successors) plus c5d/c6id/m5d/r5d.
+        - key: karpenter.k8s.aws/instance-hypervisor
+          operator: In
+          values: ["nitro"]
       taints:
         - key: ogenki/io
           value: "true"
