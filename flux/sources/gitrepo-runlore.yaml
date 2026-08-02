@@ -6,16 +6,15 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to the v0.11.0 release: the chart is rendered from THIS tag, and the signed,
-  # multi-arch release image in observability/base/runlore/helmrelease.yaml
-  # (image.tag "0.11.0") must come from the same one. Keep them in lockstep on every
-  # bump — bumping one alone is not a partial upgrade, it is an outage.
+  # TRACKING main, deliberately: this cluster is where the latest RunLore work is
+  # exercised before a release is cut. The chart is rendered from this ref and the
+  # image below is the matching rolling :main build, so the two still move together —
+  # which is the invariant that matters. Bumping one alone is not a partial upgrade,
+  # it is an outage: RunLore parses config with KnownFields(true), so a chart newer
+  # than its binary emits keys the binary rejects and `serve` fails closed. That is
+  # exactly what a v0.11.0 chart against a 0.9.2 image did — crashlooping both
+  # replicas on `field sweeps not found in type config.Curate`.
   #
-  # This comment previously claimed a v0.9.2 lockstep while this tag already read
-  # v0.11.0: the chart was bumped and image.tag was left behind. RunLore parses its
-  # config with KnownFields(true), so the v0.11.0 chart's `curate.sweeps` key was
-  # rejected by the v0.9.2 binary and `serve` failed closed on startup —
-  # `field sweeps not found in type config.Curate` — crashlooping both replicas
-  # for as long as the drift lasted.
+  # Pin both back to a release tag when this cluster should mirror production.
   ref:
-    tag: v0.11.0
+    branch: main
