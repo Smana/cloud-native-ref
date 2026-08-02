@@ -147,11 +147,35 @@ module "eks" {
       capacity_type        = "SPOT"
       force_update_version = true
       instance_types       = ["c7i.xlarge", "c7i-flex.xlarge", "c6i.xlarge", "t3a.xlarge", "c7i.2xlarge", "c7i-flex.2xlarge"]
-      # Exemple of how to configure Bottlerocket. https://bottlerocket.dev/en/os/1.41.x/api/settings/
-      # bootstrap_extra_args = <<-EOT
-      #   [settings.host-containers.admin]
-      #   enabled = true
-      # EOT
+
+      # max-pods must match what CILIUM can address, not what AWS can attach.
+      #
+      # The AMI default comes from the AWS formula, which counts the primary ENI's
+      # secondary IPs:        ENIs x (IPs-1) + 2  =  4 x 14 + 2  =  58
+      # Cilium runs ENI IPAM with first-interface-index: 1, so eth0 is skipped
+      # entirely -- it sits in the NODE subnet (10.0.0.0/20) while pods must come
+      # from the pod subnet (100.64.0.0/18). Its real ceiling is:
+      #                       (ENIs-1) x (IPs-1)  =  3 x 14      =  42
+      #
+      # The 16-pod gap is not theoretical. The scheduler fills to 58, Cilium runs
+      # out at 42, and the overflow sits in ContainerCreating on "no IPs currently
+      # available on the node" -- observed on both nodes of this group.
+      #
+      # Prefix delegation would lift the ceiling to 3 x 14 x 16, but cannot be
+      # relied on HERE: these nodes are created during cluster bootstrap, before a
+      # cilium-operator exists to apply it, and their ENIs are never converted
+      # afterwards. Both showed prefixes=0 while every later Karpenter node had
+      # prefixes. Upstream also reports isPrefixDelegated flipping across an
+      # instance's lifetime (cilium/cilium#29634), so 42 is the guaranteed floor
+      # rather than a pessimistic guess.
+      #
+      # 42 holds for every instance_type above -- all six are 4 ENIs x 15 IPs.
+      # Re-check with `aws ec2 describe-instance-types` before adding a type.
+      # Bottlerocket settings reference: https://bottlerocket.dev/en/os/1.41.x/api/settings/
+      bootstrap_extra_args = <<-EOT
+        [settings.kubernetes]
+        max-pods = 42
+      EOT
     }
   }
 
