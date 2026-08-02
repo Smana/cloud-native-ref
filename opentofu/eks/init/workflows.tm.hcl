@@ -32,6 +32,34 @@ script "deploy" {
       ["bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var=\"flux_git_ref=$${TF_VAR_flux_git_ref}\"}"],
     ]
   }
+
+  # Stage 3: the node group exists from Stage 1, i.e. BEFORE Cilium. Cilium
+  # therefore creates its ENIs filled with individual secondary IPs instead of
+  # /28 prefixes, and never converts them — leaving the bootstrap nodes with a
+  # permanent ~42-IP ceiling while every Karpenter node gets ~240. Measured on
+  # mycluster-0: two c7i-flex.xlarge MNG nodes at prefixes=0 next to a Karpenter
+  # c7i-flex.xlarge at prefixes=2. Same instance type; the difference is that the
+  # MNG nodes predate Cilium.
+  #
+  # It surfaces far from the cause: a DaemonSet pod that cannot get an IP keeps
+  # its DaemonSet InProgress, so Helm's --wait times out and an unrelated
+  # HelmRelease reports InstallFailed.
+  #
+  # The script is idempotent — it inspects each node's CiliumNode and only
+  # recycles ones actually missing prefixes — so this is a no-op on every deploy
+  # after the first, and on clusters where prefix delegation is off.
+  #
+  # This lives in a Terramate job rather than a tofu local-exec on purpose: the
+  # configure stack is deliberately local-exec-free (see the comments in
+  # configure/main.tf), and imperative steps belong here, as with
+  # eks-prepare-destroy.sh on the destroy path.
+  job {
+    name        = "stage3-recycle-bootstrap-nodes"
+    description = "Recycle node-group nodes whose ENIs predate Cilium (no-op once they use prefix delegation)"
+    commands = [
+      ["bash", "-c", "../../../scripts/eks-recycle-bootstrap-nodes.sh --cluster-name ${global.eks_cluster_name} --region ${global.region}"],
+    ]
+  }
 }
 
 script "deploy-stage1" {
