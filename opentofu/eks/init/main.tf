@@ -161,20 +161,36 @@ module "eks" {
       # out at 42, and the overflow sits in ContainerCreating on "no IPs currently
       # available on the node" -- observed on both nodes of this group.
       #
-      # Prefix delegation would lift the ceiling to 3 x 14 x 16, but cannot be
-      # relied on HERE: these nodes are created during cluster bootstrap, before a
-      # cilium-operator exists to apply it, and their ENIs are never converted
-      # afterwards. Both showed prefixes=0 while every later Karpenter node had
-      # prefixes. Upstream also reports isPrefixDelegated flipping across an
-      # instance's lifetime (cilium/cilium#29634), so 42 is the guaranteed floor
-      # rather than a pessimistic guess.
+      # That 42 floor assumed prefix delegation could not be relied on here --
+      # these nodes are created during bootstrap, before a cilium-operator exists
+      # to apply it, and Cilium never converts an existing secondary-IP ENI. Both
+      # showed prefixes=0 while every later Karpenter node had prefixes.
       #
-      # 42 holds for every instance_type above -- all six are 4 ENIs x 15 IPs.
+      # That assumption no longer holds. The deploy script now recycles node-group
+      # nodes after Cilium is healthy (scripts/eks-recycle-bootstrap-nodes.sh,
+      # stage 3), so their replacements come up with Cilium already running and DO
+      # get prefixes. Verified on mycluster-0: both node-group nodes now report
+      # prefixes=3 after being replaced, alongside every Karpenter node.
+      #
+      # With prefix delegation applied the ceiling becomes
+      #                       (ENIs-1) x (IPs-1) x 16  =  3 x 14 x 16  =  672
+      # so IP addressability stops being the binding constraint and the limit
+      # becomes Kubernetes' own recommended maximum of 110 pods per node.
+      #
+      # 110 accepts one residual risk deliberately: upstream reports
+      # isPrefixDelegated flipping across an instance's lifetime
+      # (cilium/cilium#29634). If that happened, capacity would fall back to 42
+      # and pods above it would sit in ContainerCreating on "no IPs currently
+      # available on the node". The 42 floor was immune to that; 110 is not. The
+      # trade is deliberate -- pinning every node to 42 wastes ~85% of a
+      # prefix-delegated node to guard against a bug we have not observed here.
+      # If it ever bites, that symptom is the signature to look for.
+      #
       # Re-check with `aws ec2 describe-instance-types` before adding a type.
       # Bottlerocket settings reference: https://bottlerocket.dev/en/os/1.41.x/api/settings/
       bootstrap_extra_args = <<-EOT
         [settings.kubernetes]
-        max-pods = 42
+        max-pods = 110
       EOT
     }
   }
