@@ -51,7 +51,11 @@ spec:
             description: "`{{ $labels.kind }}` `{{ $labels.name }}` in namespace `{{ $labels.exported_namespace }}` is suspended."
             runbook_url: "https://fluxcd.io/flux/cheatsheets/troubleshooting/"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
-          expr: max by (kind, name, exported_namespace) (flux_resource_info{suspended="True"}) == 1
+          # llm-platform is suspended DELIBERATELY and long-term, so it is excluded by
+          # name rather than left to fire forever and be muted in Alertmanager — a
+          # permanently-firing alert trains people to ignore the whole rule. Drop this
+          # matcher the moment that Kustomization is resumed or removed.
+          expr: max by (kind, name, exported_namespace) (flux_resource_info{suspended="True", name!="llm-platform"}) == 1
           for: 45m
           labels:
             severity: warning
