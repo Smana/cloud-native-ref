@@ -6,36 +6,62 @@ metadata:
 spec:
   groups:
     - name: flux-system
+      # These rules were rewritten onto flux_resource_info because every metric they
+      # previously used returns ZERO series on this cluster:
+      #
+      #   gotk_reconcile_condition                          0   (not emitted by any controller)
+      #   gotk_suspend_status                               0   (same)
+      #   flux_helm_operator_release_duration_seconds_count  0   (Flux v1 Helm Operator, removed)
+      #
+      # Verified two ways: queried against VictoriaMetrics, and read directly off each
+      # controller's /metrics — kustomize/helm/source/notification-controller emit only
+      # gotk_reconcile_duration_seconds_* and gotk_token_*. So all three alerts could
+      # never fire, and Flux failures on this cluster have never paged anyone.
+      #
+      # flux_resource_info comes from flux-operator (already scraped via the
+      # flux-operator VMServiceScrape) and carries kind, name, exported_namespace,
+      # ready, suspended, reason and revision across every Flux kind: Kustomization,
+      # HelmRelease, GitRepository, OCIRepository, HelmChart/Repository,
+      # ExternalArtifact, ArtifactGenerator, Alert, Provider.
+      #
+      # Checked against history rather than assumed: in a 3h window covering two real
+      # ArtifactFailed incidents, flux_resource_info{ready="False"} had 8 samples
+      # peaking at 3 resources. The old expressions had none.
       rules:
         - alert: FluxReconciliationFailure
           annotations:
-            message: Flux resource has been unhealthy for more than 5m
-            description: "{{ $labels.kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} reconciliation has been failing for more than ten minutes."
+            message: Flux resource has been unhealthy for more than 10m
+            description: "`{{ $labels.kind }}` `{{ $labels.exported_namespace }}/{{ $labels.name }}` is not Ready ({{ $labels.reason }}) and has been failing for more than 10 minutes."
             runbook_url: "https://fluxcd.io/flux/cheatsheets/troubleshooting/"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
-          expr: max(gotk_reconcile_condition{status="False",type="Ready"}) by (exported_namespace, name, kind) + on(exported_namespace, name, kind) (max(gotk_reconcile_condition{status="Deleted"}) by (exported_namespace, name, kind)) * 2 == 1
+          # suspended resources are excluded: a suspended Kustomization is not Ready by
+          # design, and FluxSuspended below is the alert for that state. Without this
+          # every deliberate suspend would also raise a reconciliation failure.
+          #
+          # ready="Unknown" (mid-reconcile) is deliberately NOT included: a healthy
+          # cluster passes through it constantly. `for: 10m` covers a resource genuinely
+          # stuck there, since it never reaches ready="True".
+          expr: max by (kind, name, exported_namespace, reason) (flux_resource_info{ready="False", suspended="False"}) == 1
           for: 10m
-          labels:
-            severity: warning
-        - alert: FluxHelmOperatorErrors
-          annotations:
-            message: Flux Helm operator errors
-            description: >
-              There is an issue deploying `{{ $labels.release_name }}` release helm chart.
-              Errors count `{{ $value }}`.
-            runbook_url: "https://fluxcd.io/flux/cheatsheets/troubleshooting/"
-            dashboard: "https://grafana.${private_domain_name}/dashboards"
-          for: 5m
-          expr: sum(increase(flux_helm_operator_release_duration_seconds_count{success="false"}[5m])) by (release_name) > 0
           labels:
             severity: warning
         - alert: FluxSuspended
           annotations:
             message: (Flux) Resource suspended for more than 45m
-            description: "`{{ $labels.kind }}` `{{ $labels.name  }}` in namespace `{{ $labels.exported_namespace }}` is suspended."
+            description: "`{{ $labels.kind }}` `{{ $labels.name }}` in namespace `{{ $labels.exported_namespace }}` is suspended."
             runbook_url: "https://fluxcd.io/flux/cheatsheets/troubleshooting/"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
-          expr: sum(gotk_suspend_status) by (name, kind, exported_namespace) > 0
+          # llm-platform is suspended DELIBERATELY and long-term, so it is excluded by
+          # name rather than left to fire forever and be muted in Alertmanager — a
+          # permanently-firing alert trains people to ignore the whole rule. Drop this
+          # matcher the moment that Kustomization is resumed or removed.
+          expr: max by (kind, name, exported_namespace) (flux_resource_info{suspended="True", name!="llm-platform"}) == 1
           for: 45m
           labels:
             severity: warning
+# FluxHelmOperatorErrors was DELETED rather than rewritten. It queried
+# flux_helm_operator_release_duration_seconds_count, a Flux v1 Helm Operator metric —
+# that component no longer exists (v2 uses helm-controller). A HelmRelease that fails
+# to install or upgrade now goes ready="False", which FluxReconciliationFailure above
+# already covers: flux_resource_info tracks 29 HelmReleases on this cluster. Rewriting
+# it would have produced a second alert firing on the same series.
