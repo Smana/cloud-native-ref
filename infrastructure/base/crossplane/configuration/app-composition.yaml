@@ -30,10 +30,7 @@ spec:
               kind: KCLRun
               spec:
                   target: Resources
-                  # PR-preview tag (#1703). MUST become `0.6.0` at merge —
-                  # validate-composition-versions expects the -prN tag on a PR
-                  # and the bare module version on main.
-                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-app:0.6.0-pr1703
+                  source: oci://ghcr.io/smana/cloud-native-ref/crossplane-app:0.6.0
 
         - step: ready
           functionRef:
