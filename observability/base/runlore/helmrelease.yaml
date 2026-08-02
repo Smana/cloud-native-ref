@@ -105,6 +105,24 @@ spec:
       # Renders a CiliumNetworkPolicy allowing egress to the EKS Pod Identity
       # credential endpoint (169.254.170.23:80, host entity) — required on Cilium.
       awsPodIdentity: true
+      # Scope who may reach :8080. Left empty the chart emits no `from:` at all,
+      # i.e. every pod in the cluster can post to the webhook endpoint (#1589).
+      # In-cluster callers all live in `observability`: vmagent scrapes /metrics
+      # (vmServiceScrape below) and Alertmanager/VMAlert POST the incident
+      # webhook. The chart always prepends a peer podSelector, so replica-to-
+      # replica leader forwarding (runlore#264) survives this narrowing.
+      #
+      # NOT expressible here: the Gateway data plane. runlore's HTTPRoute hangs
+      # off `platform-public` (GatewayClass cilium), and this cluster runs the
+      # shared cilium-envoy DaemonSet with hostNetwork=true — so from runlore's
+      # side that traffic is Cilium's `ingress` entity, not a pod in a namespace.
+      # A namespaceSelector cannot match it, and adding one here alone would
+      # black-hole Slack's POST /slack/interactions. It is allowed instead by
+      # ciliumnetworkpolicy-ingress.yaml (Cilium unions the two policies).
+      ingressFrom:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
       # The chart's non-strict egress only opens 443/6443 — but VictoriaMetrics
       # (vmsingle :8428) and VictoriaLogs (:9428) listen on other ports, so without
       # this the agent's metrics/logs tool calls hang until they time out, starving
