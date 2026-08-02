@@ -1,0 +1,45 @@
+# Minimal App claim — the complement to settings-example.yaml.
+#
+# settings-example.yaml turns on essentially EVERY optional block (s3Bucket,
+# sqlInstance, kvStore, externalSecrets, gateway, route, persistence, sidecars,
+# autoscaling, pdb…) and pre-populates ocds. That makes it a good exercise of the
+# feature paths and a bad exercise of the guards around them: any block whose
+# `if oxr.spec.X:` condition is broken still renders, because X is always set.
+#
+# That gap shipped a live regression. The s3Bucket block was accidentally
+# dedented out of `if oxr.spec.s3Bucket?.enabled:`, so every App WITHOUT an
+# s3Bucket failed to reconcile with:
+#
+#   invalid value 'UndefinedType' to load attribute 'permissions'
+#
+# `kcl test` stayed 32/32 green and the validator exited 0 throughout, because
+# the only fixture rendered always had s3Bucket enabled. Six of seven App XRs
+# went Synced=False on the cluster before anyone noticed.
+#
+# So this fixture is deliberately bare: image + service and nothing else, with an
+# empty ocds (a first reconcile, before anything is observed). It is the shape a
+# developer's first claim actually has, and the shape the optional-block guards
+# have to survive. Keep it that way — resist adding features to it; add a third
+# fixture instead.
+kcl_options:
+  - key: params
+    value:
+      oxr:
+        apiVersion: cloud.ogenki.io/v1alpha1
+        kind: App
+        metadata:
+          name: minimal
+          namespace: apps
+        spec:
+          image:
+            repository: ghcr.io/stefanprodan/podinfo
+            tag: "6.9.2"
+          service:
+            port: 9898
+      # Empty: a first reconcile, nothing observed yet. Exercises every
+      # `... in ocds else None` accessor against the absent case.
+      ocds: {}
+      ctx:
+        apiextensions.crossplane.io/environment:
+          clusterName: mycluster-0
+          region: eu-west-3
