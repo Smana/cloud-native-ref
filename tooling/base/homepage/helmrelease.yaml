@@ -153,7 +153,13 @@ spec:
                 description: PostgreSQL Execution Plan Visualizer
                 icon: postgres.png
                 namespace: tooling
-                app: pev2
+                # Homepage matches on `app.kubernetes.io/name`, which the App
+                # composition sets to the CLAIM name — and this claim is
+                # `xplane-pev2`. Plain `pev2` matches 0 pods, so the card showed
+                # an unknown/degraded status while the workload was perfectly
+                # healthy. Entries whose claim carries the prefix must repeat it
+                # here (cf. xplane-podinfo, xplane-image-gallery below).
+                app: xplane-pev2
 
         - Observability:
             - Grafana:
