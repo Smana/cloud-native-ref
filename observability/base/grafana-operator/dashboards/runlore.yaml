@@ -267,7 +267,7 @@ spec:
             "type": "prometheus",
             "uid": "$${datasource}"
           },
-          "description": "Estimated model tokens NOT spent because a recall short-circuited a full investigation \u2014 the compounding payoff of the catalog.",
+          "description": "Share of an investigation's model tokens that a delivered recall short-circuit avoids: 1 - (tokens per recall / tokens per full-loop investigation), both provider-reported over the dashboard range. MEASURED on both sides \u2014 not an assumed budget ceiling. Negative means a recall currently costs more than the loop it replaced (check the reranker and verify token counts). The \"Token cost: full loop vs recall\" panel shows the two raw means.",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -278,12 +278,20 @@ spec:
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
+                    "color": "red",
                     "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.5
+                  },
+                  {
+                    "color": "green",
+                    "value": 0.8
                   }
                 ]
               },
-              "unit": "short"
+              "unit": "percentunit"
             },
             "overrides": []
           },
@@ -316,13 +324,12 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum(increase(runlore_recall_tokens_saved_total[$__range]))",
-              "legendFormat": "saved",
-              "refId": "A",
-              "instant": true
+              "expr": "1 - (\n  (sum(increase(runlore_recall_tokens_spent_total[$__range]))\n   / sum(increase(runlore_investigations_completed_total{result=\"recall\"}[$__range]))\n   and sum(increase(runlore_investigations_completed_total{result=\"recall\"}[$__range])) > 0)\n  /\n  ((\n       sum(increase(runlore_investigation_input_tokens_sum{result!=\"recall\"}[$__range]))\n     + sum(increase(runlore_investigation_output_tokens_sum{result!=\"recall\"}[$__range]))\n   )\n   / sum(increase(runlore_investigation_input_tokens_count{result!=\"recall\"}[$__range]))\n   and sum(increase(runlore_investigation_input_tokens_count{result!=\"recall\"}[$__range])) > 0)\n)",
+              "legendFormat": "savings",
+              "refId": "A"
             }
           ],
-          "title": "Tokens saved by recall",
+          "title": "Recall token savings",
           "type": "stat"
         },
         {
@@ -1268,7 +1275,7 @@ spec:
             "type": "prometheus",
             "uid": "$${datasource}"
           },
-          "description": "Per-investigation token estimate (p50 / p95) and estimated tokens saved per second via recall.",
+          "description": "Mean provider-reported tokens (input incl. cached + output) per investigation, split by whether a recall short-circuited it. The GAP between the two lines IS the saving \u2014 both are measured the same way, over the same window, per investigation. The full-loop line filters {result!=\"recall\"} so it excludes the very runs it is being compared against; without that filter it would contain them and the apparent saving would shrink as recall improved. A window with no investigations of a given kind reads as no-data, not zero.",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -1316,20 +1323,7 @@ spec:
               },
               "unit": "short"
             },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "tokens saved /s"
-                },
-                "properties": [
-                  {
-                    "id": "custom.axisPlacement",
-                    "value": "right"
-                  }
-                ]
-              }
-            ]
+            "overrides": []
           },
           "gridPos": {
             "h": 8,
@@ -1361,8 +1355,8 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(runlore_investigation_tokens_estimated_bucket[$__rate_interval])) by (le))",
-              "legendFormat": "tokens/investigation p50",
+              "expr": "(\n    sum(increase(runlore_investigation_input_tokens_sum{result!=\"recall\"}[$__range]))\n  + sum(increase(runlore_investigation_output_tokens_sum{result!=\"recall\"}[$__range]))\n)\n/ sum(increase(runlore_investigation_input_tokens_count{result!=\"recall\"}[$__range]))\nand sum(increase(runlore_investigation_input_tokens_count{result!=\"recall\"}[$__range])) > 0",
+              "legendFormat": "tokens/investigation (full loop)",
               "refId": "A"
             },
             {
@@ -1371,22 +1365,12 @@ spec:
                 "uid": "$${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(runlore_investigation_tokens_estimated_bucket[$__rate_interval])) by (le))",
-              "legendFormat": "tokens/investigation p95",
+              "expr": "sum(increase(runlore_recall_tokens_spent_total[$__range]))\n/ sum(increase(runlore_investigations_completed_total{result=\"recall\"}[$__range]))\nand sum(increase(runlore_investigations_completed_total{result=\"recall\"}[$__range])) > 0",
+              "legendFormat": "tokens/recall (short-circuit)",
               "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "$${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(runlore_recall_tokens_saved_total[$__rate_interval]))",
-              "legendFormat": "tokens saved /s",
-              "refId": "C"
             }
           ],
-          "title": "Token cost & savings",
+          "title": "Token cost: full loop vs recall",
           "type": "timeseries"
         },
         {

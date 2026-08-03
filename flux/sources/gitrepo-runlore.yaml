@@ -6,16 +6,24 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to the v0.11.0 release: the chart is rendered from THIS tag, and the signed,
+  # Pinned to the v0.13.0 release: the chart is rendered from THIS tag, and the signed,
   # multi-arch release image in observability/base/runlore/helmrelease.yaml
-  # (image.tag "0.11.0") must come from the same one. Keep them in lockstep on every
+  # (image.tag "0.13.0") must come from the same one. Keep them in lockstep on every
   # bump — bumping one alone is not a partial upgrade, it is an outage.
+  #
+  # v0.13.0 was validated before it was cut, not after: this pin briefly pointed at
+  # main commit e999554 with image.tag pinned to that commit's ghcr digest, which is
+  # how the 14 changes since v0.12.0 got exercised on a live cluster — a real
+  # investigation, a curated KB entry, and an instant recall off it. The validation
+  # pin is gone now, which is the deal a validation pin makes.
   #
   # This comment previously claimed a v0.9.2 lockstep while this tag already read
   # v0.11.0: the chart was bumped and image.tag was left behind. RunLore parses its
   # config with KnownFields(true), so the v0.11.0 chart's `curate.sweeps` key was
   # rejected by the v0.9.2 binary and `serve` failed closed on startup —
   # `field sweeps not found in type config.Curate` — crashlooping both replicas
-  # for as long as the drift lasted.
+  # for as long as the drift lasted. Before this bump the v0.13.0 chart was rendered
+  # with the live HelmRelease values and the resulting config replayed through the
+  # v0.13.0 binary's own config.Load (KnownFields + Validate): both pass.
   ref:
-    tag: v0.11.0
+    tag: v0.13.0

@@ -52,23 +52,30 @@ spec:
     workloadKind: StatefulSet
     replicaCount: 2
     image:
-      # MUST match the GitRepository tag in flux/sources/gitrepo-runlore.yaml. It was
+      # MUST match the GitRepository ref in flux/sources/gitrepo-runlore.yaml. It was
       # once left at "0.9.0" while the source moved to v0.9.1, so the cluster quietly ran
       # the 0.9.0 binary behind the 0.9.1 chart — none of that release's fixes were live,
       # and nothing failed to say so. Move the two together, always.
       #
       # NO leading "v". GoReleaser (Smana/runlore release-binaries.yml) publishes the
-      # release image as `{{ .Version }}` — 0.9.2, not v0.9.2 — so a `v` prefix 404s and
-      # the StatefulSet lands in ImagePullBackOff. This is the signed, multi-arch,
+      # release image as `{{ .Version }}` — 0.13.0, not v0.13.0 — so a `v` prefix 404s
+      # and the StatefulSet lands in ImagePullBackOff. This is the signed, multi-arch,
       # SBOM-attested release image; the rolling `:main` tag from build-image.yml is a
       # single-arch validation build and must not be used here.
       #
-      # KEEP THIS IN LOCKSTEP WITH the GitRepository tag in
+      # It was pinned to that :main build by digest between 18:35 and 19:0x on
+      # 2026-08-03 to exercise the 14 changes since v0.12.0 on a live cluster before
+      # 0.13.0 was cut. That pin is reverted here, which is the point of a validation
+      # pin: it does not outlive its validation.
+      #
+      # KEEP THIS IN LOCKSTEP WITH the GitRepository ref in
       # flux/sources/gitrepo-runlore.yaml. The chart is rendered from that ref, so a
       # chart newer than the image emits config keys the older binary rejects:
       # config parsing uses KnownFields(true), and 0.9.2 against the v0.11.0 chart
-      # crashlooped on `field sweeps not found in type config.Curate`.
-      tag: "0.11.0"
+      # crashlooped on `field sweeps not found in type config.Curate`. Before this
+      # bump the v0.13.0 chart was rendered with these exact values and the resulting
+      # config replayed through the v0.13.0 binary's own config.Load: both pass.
+      tag: "0.13.0"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
