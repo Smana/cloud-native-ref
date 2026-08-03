@@ -156,6 +156,40 @@ spec:
                 (sum(rate(image_cache_hits{service.name="xplane-image-gallery"}[5m]))
                  + sum(rate(image_cache_misses{service.name="xplane-image-gallery"}[5m])))
 
+        - name: availability
+          interval: 30s
+          rules:
+            # Every other rule in this file reads OTel metrics the pod itself emits
+            # — which stop arriving at exactly the moment they would matter most. A
+            # deployment with zero available replicas emits no request rate, no
+            # upload count and no cache hits, so none of those rules can fire; the
+            # app's only `critical` was HighImageUploadFailureRate, a ratio over a
+            # numerator that is gone. This rule reads kube-state-metrics instead, so
+            # it still has a signal when no replica is left to produce one.
+            #
+            # `critical` on purpose: severity is not decoration here. RunLore's
+            # trigger policy matches severity: [critical] exclusively, so a
+            # `warning` on total unavailability would be filed by the agent and
+            # never investigated. Observed on 2026-08-03: the app dropped to 1/2
+            # replicas after a secret it mounts was removed, KubePodNotReady fired
+            # as `warning`, reached RunLore, and was dropped — "filtered by trigger
+            # policy". Nothing was wrong with the pipeline; nothing was critical.
+            - alert: ImageGalleryUnavailable
+              expr: |
+                kube_deployment_status_replicas_available{namespace="apps",deployment="xplane-image-gallery"} == 0
+              for: 2m
+              labels:
+                severity: critical
+                service: image-gallery
+              annotations:
+                summary: "image-gallery has no available replicas"
+                description: |
+                  The xplane-image-gallery Deployment reports 0 of {{ $labels.deployment }}'s
+                  desired replicas as available — users are served nothing at all.
+                  Frequent causes: a Secret or ConfigMap the pod mounts has gone missing
+                  (pods sit in CreateContainerConfigError), the image cannot be pulled, or
+                  the CloudNativePG cluster behind DATABASE_URL is refusing connections.
+
   # Optional: Additional secrets from AWS Secrets Manager
   # Currently only needed for non-infrastructure config (optional overrides)
   externalSecrets:
