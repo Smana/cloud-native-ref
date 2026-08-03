@@ -57,32 +57,25 @@ spec:
       # the 0.9.0 binary behind the 0.9.1 chart — none of that release's fixes were live,
       # and nothing failed to say so. Move the two together, always.
       #
-      # TEMPORARY validation pin, deliberately suspending the "never the :main build"
-      # rule below — see flux/sources/gitrepo-runlore.yaml. This is build-image.yml's
-      # rolling :main image, pinned BY DIGEST to the build of commit e999554, the same
-      # commit the chart is rendered from. Two conditions make that safe, and both were
-      # checked rather than assumed:
-      #   - The digest, not the tag, is what resolves. `:main` is mutable — the next
-      #     push to main overwrites it — so naming it alone would silently swap the
-      #     binary under a chart that did not move. repo:tag@sha256:... is a valid OCI
-      #     reference and containerd pulls the digest, ignoring the tag.
-      #   - :main is amd64-only (single-arch, by design — arm64-under-QEMU dominated
-      #     CI time). Every node here is amd64 AND both Karpenter NodePools require
-      #     kubernetes.io/arch In [amd64], so there is no node it could fail to run on.
-      # It is NOT signed and NOT SBOM-attested. That is the price of validating before
-      # release, and the reason this must be short-lived.
+      # NO leading "v". GoReleaser (Smana/runlore release-binaries.yml) publishes the
+      # release image as `{{ .Version }}` — 0.13.0, not v0.13.0 — so a `v` prefix 404s
+      # and the StatefulSet lands in ImagePullBackOff. This is the signed, multi-arch,
+      # SBOM-attested release image; the rolling `:main` tag from build-image.yml is a
+      # single-arch validation build and must not be used here.
       #
-      # REVERT to the signed multi-arch release image — tag: "0.13.0", NO leading "v"
-      # — once Smana/runlore#453 merges. GoReleaser (release-binaries.yml) publishes it
-      # as `{{ .Version }}` — 0.9.2, not v0.9.2 — so a `v` prefix 404s and the
-      # StatefulSet lands in ImagePullBackOff.
+      # It was pinned to that :main build by digest between 18:35 and 19:0x on
+      # 2026-08-03 to exercise the 14 changes since v0.12.0 on a live cluster before
+      # 0.13.0 was cut. That pin is reverted here, which is the point of a validation
+      # pin: it does not outlive its validation.
       #
       # KEEP THIS IN LOCKSTEP WITH the GitRepository ref in
       # flux/sources/gitrepo-runlore.yaml. The chart is rendered from that ref, so a
       # chart newer than the image emits config keys the older binary rejects:
       # config parsing uses KnownFields(true), and 0.9.2 against the v0.11.0 chart
-      # crashlooped on `field sweeps not found in type config.Curate`.
-      tag: "main@sha256:4b9f12c8e78fcab91ac5b87a9ffa2be26747eda8b07b330007914c5598d4d84c"
+      # crashlooped on `field sweeps not found in type config.Curate`. Before this
+      # bump the v0.13.0 chart was rendered with these exact values and the resulting
+      # config replayed through the v0.13.0 binary's own config.Load: both pass.
+      tag: "0.13.0"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
