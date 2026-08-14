@@ -124,7 +124,7 @@ spec:
   # security defaults unless a securityContext override is given.
   sidecars:
     - name: metrics-adapter
-      image: "nginx/nginx-prometheus-exporter:1.5.1"
+      image: "nginx/nginx-prometheus-exporter:1.5.3"
       args: ["--nginx.scrape-uri=http://localhost:8080/stub_status"]
       ports:
         - name: sidecar-metrics
