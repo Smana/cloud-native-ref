@@ -10,7 +10,7 @@
 
 ## Why this design exists
 
-The platform's Crossplane API surface — 4 XRDs, 5 Compositions, 5 KCL modules — lives inside
+The platform's Crossplane API surface — 5 XRDs, 5 Compositions, 5 KCL modules — lives inside
 `cloud-native-ref`, the repository that also holds the cluster it happens to run on. Nobody can adopt
 `App` or `SQLInstance` without cloning a repository full of one specific EKS cluster's wiring, and
 nothing forces the API to stay separable from that wiring.
@@ -144,11 +144,16 @@ A GCP-only adopter installs `-core` + `-gcp` and receives no AWS CRD and no AWS 
 | `environmentconfig.yaml` | 9 Flux `${...}` postBuild vars — cluster identity |
 | `cluster-providerconfig-aws.yaml` | cluster credentials |
 | `providers/`, `activation-policy.yaml`, `additional-rbac.yaml` | cluster wiring |
+| `functions.yaml` | **corrected** — also cluster wiring. `Function` objects are cluster-scoped install manifests and cannot live inside a Configuration package. Deleting it would make Flux prune the Functions while the packages' `dependsOn` reinstalls them, for no gain |
 | ~37 claims across 42 files | the consumers |
 | **new** — 2 `Configuration` manifests | the pins |
 
-Moves: 4 XRDs, 5 Compositions, 5 KCL modules, `functions.yaml`, `examples/`,
+Moves: 5 XRDs, 5 Compositions, 5 KCL modules, `examples/`,
 `scripts/validate-kcl-compositions.sh`, `scripts/flux-schema/xrd-to-crd.py`.
+
+The new repository keeps its **own** `functions.yaml` for local `crossplane render` and for the
+App Wizard's preview, and declares the same versions as `dependsOn` for external adopters. CI
+asserts the two agree, so the duplication cannot drift silently.
 
 ### Repository layout
 
@@ -254,7 +259,8 @@ Kustomization prunes the old XRDs, or claims briefly lose their CRDs.
   revisit in GCP workstream 8.
 - Does the App Wizard eventually read XRDs from the cluster rather than from a clone? That would
   remove the second initContainer, but is an app-wizard change and out of scope here.
-- Should `examples/` stay in the new repository, move to per-API `apis/<name>/examples/`, or both?
-  Leaning per-API, since the flat directory already mixes five APIs.
+- ~~Should `examples/` be flat or per-API?~~ **Decided: flat**, because
+  `crossplane xpkg build --examples-root` takes exactly one directory, and the build stages the
+  per-package subset anyway.
 - Does `crossplane-configuration` become the home of the App Wizard's `ui-hints.yaml` too? It is
   XRD-shaped metadata living in `cloud-native-ref` today.
