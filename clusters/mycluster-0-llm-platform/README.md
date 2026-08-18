@@ -160,7 +160,7 @@ S3 bucket data is what they re-mount.
 > `running / max-num-seqs` ratio (0.7), `kv_cache_usage_perc` (0.6), and
 > `num_requests_waiting` (8). Scaling reacts ahead of saturation rather than after
 > the queue has formed. See
-> [SPEC-001](../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md).
+> [SPEC-001](../../docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md).
 > Production keeps `min=1`; demo `min=0` overrides are still allowed per-claim but
 > accept the first-request failure mode (no queueing layer; the client must retry).
 

@@ -140,7 +140,7 @@ out of the box.
 - The response header `x-vsr-selected-model` reflects what actually served
   the request.
 - **All 4 models default to `min=1`** (always warm) per
-  [SPEC-001](../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md).
+  [SPEC-001](../docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md).
   KEDA scales `1→max` on three leading saturation signals (`running/max-num-seqs`
   ratio, `kv_cache_usage_perc`, `num_requests_waiting`). On `MoM`, first-request
   latency is dominated by the ~250-300ms classifier round-trip rather than cold

@@ -118,5 +118,5 @@
 
 ## Related
 
-- Constitution: [docs/specs/constitution.md](../constitution.md)
+- Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
 - ADRs: [docs/decisions/](../../decisions/)

@@ -55,7 +55,7 @@ kcl fmt . && kcl test . -Y settings-example.yaml   # 15 tests
 
 ## Design decisions
 
-See [SPEC-012](../../../../../../docs/specs/012-kvstore-composition-replace-bitnami/spec.md)
+See [SPEC-012](../../../../../../docs/specs/done/2026-Q3/012-kvstore-composition-replace-bitnami/spec.md)
 and its clarifications log: CL-1 in-cluster (CNPG precedent), CL-2 cache
 semantics, CL-3 official chart behind this XRD (operator swap stays possible
 without touching consumers), CL-4 ephemeral default, CL-5 App `kvStore.type`

@@ -298,7 +298,7 @@ git rm -q docs/specs/PHASED.md
 
 ```bash
 cd /home/smana/Sources/cloud-native-ref
-FILES=$(git grep -l 'docs/specs/[0-9]' -- . ':!docs/specs/done')
+FILES=$(git grep -l 'docs/specs/[0-9]' -- . ':!docs/specs/done' ':!docs/superpowers')
 
 for f in $FILES; do
   sed -i \
@@ -964,13 +964,16 @@ the edits did not corrupt them. If it fails, stop and fix the root cause — do 
 - [ ] **Step 2: Prove no dangling spec references**
 
 ```bash
-git grep -ho 'docs/specs/[A-Za-z0-9/_.-]*' -- . | sed 's/[.,)]*$//' | sort -u | while read -r p; do
-  case "$p" in docs/specs|docs/specs/|docs/specs/done|docs/specs/done/) continue ;; esac
-  [ -e "$p" ] || echo "MISSING: $p"
-done; echo "done"
+git grep -ho 'docs/specs/[A-Za-z0-9/_.-]*' -- . ':!docs/superpowers' \
+  | sed 's/[.,)]*$//' | sort -u | grep -v 'NNN\|YYYY-Qn' | while read -r p; do
+      case "$p" in docs/specs|docs/specs/|docs/specs/done|docs/specs/done/) continue ;; esac
+      [ -e "$p" ] || echo "MISSING: $p"
+    done; echo "done"
 ```
 
-Expected: no `MISSING:` lines.
+Expected: no `MISSING:` lines. Two exclusions are deliberate: `docs/superpowers/` holds this
+migration's own design and plan, which quote pre-migration paths on purpose, and `NNN` /
+`YYYY-Qn` are prose placeholders, not paths.
 
 - [ ] **Step 3: Prove no live reference to deleted machinery**
 

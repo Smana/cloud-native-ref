@@ -2,7 +2,7 @@
 
 Crossplane composition for self-hosted LLM inference on EKS. Renders a vLLM
 Deployment plus all surrounding plumbing: KEDA `ScaledObject` with prometheus
-triggers on leading vLLM saturation metrics ([SPEC-001](../../../../../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md)),
+triggers on leading vLLM saturation metrics ([SPEC-001](../../../../../../docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)),
 GPU node selection (Karpenter `gpu-l4` NodePool), zero-trust networking,
 weights mounted from a shared S3 Files filesystem (ADR-0004),
 observability scrapes / rules, and an optional one-shot weights-preload Job.
@@ -72,7 +72,7 @@ spec:
 
 ## Engine args
 
-`engineArgs` (v0.8.0+, [SPEC-003](../../../../../../docs/specs/003-inferenceservice-spec-engineargs-escape/spec.md))
+`engineArgs` (v0.8.0+, [SPEC-003](../../../../../../docs/specs/done/2026-Q3/003-inferenceservice-spec-engineargs-escape/spec.md))
 is an optional escape hatch for verbatim vLLM CLI flags that have no dedicated
 `spec` field. Each entry is a **single token** — either `--flag` or
 `--flag=value`, never `--flag value` split across two array items (the CEL
@@ -158,7 +158,7 @@ Empty/absent list = no LoRA enabled (regression-safe).
 
 ## Model Streamer (cold-start)
 
-`model.streaming` (v0.8.0+, [SPEC-005](../../../../../../docs/specs/005-vllm-cold-start-run/spec.md))
+`model.streaming` (v0.8.0+, [SPEC-005](../../../../../../docs/specs/done/2026-Q3/005-vllm-cold-start-run/spec.md))
 is an optional, opt-in block that switches vLLM's weight loader to NVIDIA's
 [Run:ai Model Streamer](https://docs.vllm.ai/en/stable/models/extensions/runai_model_streamer/).
 When `enabled`, the composition adds `--load-format runai_streamer` to the vLLM
@@ -166,7 +166,7 @@ container args. The streamer reads the **same** PVC-mounted safetensors at
 `/models/<revision>` (no `s3://` URL, no storage change) but reads shards
 **concurrently** and streams tensors straight to GPU — cutting the
 pod-ready → first-token cold-start window that the KEDA autoscaler
-([SPEC-001](../../../../../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md))
+([SPEC-001](../../../../../../docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md))
 trades against cost on every scale-from-zero.
 
 ```yaml
@@ -214,7 +214,7 @@ Non-Goals and CL-2/CL-4.
 
 ## AI Gateway routing
 
-`gateway` (v0.8.0+, [SPEC-002](../../../../../../docs/specs/002-composition-owned-gateway-routing/spec.md))
+`gateway` (v0.8.0+, [SPEC-002](../../../../../../docs/specs/done/2026-Q3/002-composition-owned-gateway-routing/spec.md))
 makes the composition own the claim's Envoy AI Gateway wiring instead of the
 hand-written entries in `apps/base/ai/llm/ai-gateway-routes/route.yaml`. When
 `gateway.enabled`, the module renders:
@@ -265,7 +265,7 @@ When `gateway.enabled`, `status.modelEndpoint` is populated — see the [Status]
 
 ### Endpoint Picker (smart routing)
 
-`gateway.endpointPicker.enabled` (v0.8.0+, [SPEC-004](../../../../../../docs/specs/004-per-inferenceservice-inferencepool-endpoint/spec.md))
+`gateway.endpointPicker.enabled` (v0.8.0+, [SPEC-004](../../../../../../docs/specs/done/2026-Q3/004-per-inferenceservice-inferencepool-endpoint/spec.md))
 turns on **vLLM-aware routing** via the Gateway API Inference Extension (GAIE
 v1.5.0). A Kubernetes `Service` load-balances **round-robin across replicas**,
 which is adversarial to vLLM: it scatters requests that share a prompt prefix
@@ -341,7 +341,7 @@ See `examples/inferenceservice-endpointpicker.yaml` for a full claim.
 
 ### servedModels (topology projection)
 
-`status.servedModels` (v0.8.0+, [SPEC-003](../../../../../../docs/specs/003-inferenceservice-spec-engineargs-escape/spec.md))
+`status.servedModels` (v0.8.0+, [SPEC-003](../../../../../../docs/specs/done/2026-Q3/003-inferenceservice-spec-engineargs-escape/spec.md))
 is the set of model names this claim serves — the base model plus one entry per
 LoRA adapter. It is a **routing/topology view, NOT a health signal**: an entry
 appearing here means the name *would* be served by this claim's vLLM pod, not
@@ -392,13 +392,13 @@ single scalar field the column can read directly.
 | `Deployment` | always | vLLM container, GPU request, toleration, `gpu-l4` nodeSelector, Recreate strategy |
 | `Service` | always | ClusterIP `:8000` (vLLM OpenAI server) |
 | `ServiceAccount` | always | Token mounted; no IAM binding (weights via CSI mount per ADR-0004) |
-| `ScaledObject` (KEDA core) | always | Prometheus triggers on **leading** vLLM saturation metrics: `running/max-num-seqs` ratio + `kv_cache_usage_perc` + `num_requests_waiting` (waiting-queue depth, earliest pressure signal). Replaces the legacy `HTTPScaledObject` + `HPA` rendering (composition v0.5.0+, [SPEC-001](../../../../../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md)). |
+| `ScaledObject` (KEDA core) | always | Prometheus triggers on **leading** vLLM saturation metrics: `running/max-num-seqs` ratio + `kv_cache_usage_perc` + `num_requests_waiting` (waiting-queue depth, earliest pressure signal). Replaces the legacy `HTTPScaledObject` + `HPA` rendering (composition v0.5.0+, [SPEC-001](../../../../../../docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)). |
 | `HTTPRoute` | `route.enabled` | Per-model HTTPRoute on the platform Tailscale gateway (otherwise reach via the AI Gateway / SR) |
 | `Backend` (`<claim>-direct`) | `gateway.enabled` | Envoy Gateway `Backend` → vLLM Service FQDN `:8000`. Static-ready |
 | `AIServiceBackend` (`<claim>`) | `gateway.enabled` | OpenAI-schema AI backend referencing the `Backend`. Static-ready |
 | `AIServiceBackend` (`<claim>-canary-<i>`) | per `gateway.canaries[]` entry | One extra AI backend per canary (same `Backend`) so the route rule can carry a distinct named backendRef per canary. Static-ready |
 | `AIGatewayRoute` (`<claim>`) | `gateway.enabled` **and** Deployment `Available` (latched) | Base rule (`x-ai-eg-model == <claim>`) + one pin rule per LoRA adapter. Withheld until the Deployment is ready, then latched (never withdrawn on transient unavailability). Ready when `status.conditions[Accepted]=True`. With `endpointPicker.enabled`, the base rule's backendRef switches to the `InferencePool` `<claim>` (group `inference.networking.k8s.io`) — pin rules unchanged |
-| `HelmRelease` (`<claim>-epp`) | `gateway.endpointPicker.enabled` | GAIE `inferencepool` chart v1.5.0 via `chartRef` → shared `llm`/`inferencepool` OCIRepository. Installs the InferencePool CR (`<claim>`) + EPP Deployment/Service (`<claim>-epp`). Static-ready ([SPEC-004](../../../../../../docs/specs/004-per-inferenceservice-inferencepool-endpoint/spec.md)) |
+| `HelmRelease` (`<claim>-epp`) | `gateway.endpointPicker.enabled` | GAIE `inferencepool` chart v1.5.0 via `chartRef` → shared `llm`/`inferencepool` OCIRepository. Installs the InferencePool CR (`<claim>`) + EPP Deployment/Service (`<claim>-epp`). Static-ready ([SPEC-004](../../../../../../docs/specs/done/2026-Q3/004-per-inferenceservice-inferencepool-endpoint/spec.md)) |
 | `CiliumNetworkPolicy` (`<claim>-epp`) | `gateway.endpointPicker.enabled` | Default-deny EPP policy: egress vLLM `:8000` + kube-apiserver entity + kube-dns (with `rules.dns`); ingress ext-proc `:9002` from the Envoy data plane. Static-ready |
 | `VMServiceScrape` (`<claim>-epp`) | `gateway.endpointPicker.enabled` | Scrapes the EPP Service `http-metrics` port |
 | XR `status.modelEndpoint` | `gateway.enabled` | XR status patched via the desired-composite (dxr) — see [Status](#status) |
@@ -443,7 +443,7 @@ on PR (preview tag `0.4.0-pr<N>`) and on merge to main (`0.4.0` + `latest`).
 
 - **GPU request + toleration + nodeSelector** — pods land on the `gpu-l4` Karpenter NodePool only.
 - **`Recreate` strategy** — GPUs are scarce; rolling-update surge would block scheduling.
-- **KEDA `ScaledObject` on leading saturation signals** ([SPEC-001](../../../../../../docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md)) — `minReplicas: 1` is the default (always warm). KEDA scales 1→max on `running/max-num-seqs` ratio + `kv_cache_usage_perc` + `num_requests_waiting` (waiting-queue depth, threshold 8), reacting *before* the queue forms. `minReplicas: 0` is allowed for demo cold-start showcases but accepts first-request failure (no queueing layer; client must retry).
+- **KEDA `ScaledObject` on leading saturation signals** ([SPEC-001](../../../../../../docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)) — `minReplicas: 1` is the default (always warm). KEDA scales 1→max on `running/max-num-seqs` ratio + `kv_cache_usage_perc` + `num_requests_waiting` (waiting-queue depth, threshold 8), reacting *before* the queue forms. `minReplicas: 0` is allowed for demo cold-start showcases but accepts first-request failure (no queueing layer; client must retry).
 - **Default-deny network policies are split per workload** — serving Deployment gets a tight CNP (DNS only egress); preload Job gets a broader CNP (HF/world:443, AWS API, EKS Pod Identity Agent). Each pod template carries `app.kubernetes.io/component=inference` or `=preload` so Cilium scopes the right policy.
 - **Weights via CSI mount, not S3 API** (ADR-0004) — serving pods reach weights through the shared S3 Files PV/PVC, no per-claim EPI. Preload Job uses the shared writable `xplane-llm-models-preload` EPI.
 - **CL-3 model preload Job** — composition-rendered, two-tier idempotency (marker file + `config.json` short-circuit). Default off (`model.preload.enabled: false`).

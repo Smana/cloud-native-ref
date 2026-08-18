@@ -171,7 +171,7 @@ HelmRepository.
 
 - Plan: [plan.md](plan.md) — design, tasks, review checklist
 - Clarifications: [clarifications.md](clarifications.md)
-- Constitution: [docs/specs/constitution.md](../constitution.md)
+- Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
 - Official chart announcement: <https://valkey.io/blog/valkey-helm-chart/>
 - Official chart repo: <https://github.com/valkey-io/valkey-helm>
 - Nesting precedent: `kcl/app/main.k` `sqlInstance` block → `SQLInstance` XR
