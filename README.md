@@ -297,7 +297,7 @@ This repository is documented through a series of blog posts:
 
 ## AI-Assisted Development
 
-This repository leverages a coding agent for various development tasks including code generation, troubleshooting, and documentation. The [CLAUDE.md](CLAUDE.md) file provides project context and platform-specific knowledge to help the agent understand the codebase. For non-trivial changes, we use a **Spec-Driven Development** workflow where specifications are created and validated before implementation (see [SDD documentation](docs/specs/README.md)). The agent also integrates with observability tools via MCP servers (VictoriaMetrics, VictoriaLogs, Flux) for real-time debugging directly from the development environment.
+This repository leverages a coding agent for various development tasks including code generation, troubleshooting, and documentation. The [CLAUDE.md](CLAUDE.md) file provides project context and platform-specific knowledge to help the agent understand the codebase. For non-trivial changes we use the [Superpowers](https://github.com/obra/superpowers) workflow — a design document is brainstormed and approved, turned into an implementation plan, then executed task by task, with every artifact committed under [docs/superpowers/](docs/superpowers/). A [platform constitution](docs/platform-constitution.md) states the non-negotiable rules every design is checked against. The agent also integrates with observability tools via MCP servers (VictoriaMetrics, VictoriaLogs, Flux) for real-time debugging directly from the development environment.
 
 ## Contributing and Community
 

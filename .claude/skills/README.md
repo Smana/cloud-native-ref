@@ -2,51 +2,30 @@
 
 Custom skills for platform engineering workflows.
 
-## Quick Start — core SDD flow (4 commands)
+## Quick Start
+
+The core development workflow is the [Superpowers](https://github.com/obra/superpowers) plugin —
+its skills auto-trigger, so there is nothing to type. See `CLAUDE.md` → *Development Workflow*.
+
+The skills in this directory are repo-specific companions to that flow:
 
 ```bash
-/spec "Add Redis caching"                # Create spec + GitHub issue (type inferred)
-/clarify                                 # Resolve [NEEDS CLARIFICATION] → CL-N entries
-/validate                                # Single quality gate (structural + cross-artifact)
-/create-pr                               # Open PR (auto-detects spec directory)
-```
-
-Power tools (optional):
-
-```bash
-/spec-research <slug> "<question>"        # Deep ecosystem scan in forked subagent → research.md
-/spec-status                              # Pipeline overview with dynamic context
-/verify-spec <spec-dir>                   # Post-merge: prove SC-XXX against the live cluster
-```
-
-Other workflows:
-
-```bash
-/commit                                   # Pre-commit validate + conventional commit
-/improve-pr <pr-number>                   # Security review + code improvements
-/gitops-cluster-debug                     # Troubleshoot Flux issues
+/spec-research <slug> "<question>"   # Deep ecosystem scan in a forked subagent → research doc
+/verify-spec <design-doc>            # Post-merge: prove the criteria against the live cluster
+/commit                              # Pre-commit validate + conventional commit
+/create-pr                           # Open PR with a mermaid diagram, links the design doc
+/improve-pr <pr-number>              # Security review + code improvements
+/gitops-cluster-debug                # Troubleshoot Flux issues
 ```
 
 ## Available Skills
 
-### Spec-Driven Development (SDD)
+### Design and verification
 
 | Skill | Usage | Description |
 |-------|-------|-------------|
-| **spec** | `/spec "description"` (or `<type> "description"` to override) | Create GitHub issue + 3-artifact spec directory (`spec.md` + `plan.md` + `clarifications.md`) via `scripts/sdd/create-spec.sh`. Type is auto-inferred from the description |
-| **clarify** | `/clarify [spec-dir]` | Append-only: replace `[NEEDS CLARIFICATION]` with `CL-N` reference; full deliberation logged in `clarifications.md` |
-| **validate** | `/validate [spec-dir]` | Single quality gate — structural + FR coverage + CL-N references + constitution compliance |
-| **create-pr** | `/create-pr [base]` or `--update <num>` | Create/update PR with mermaid diagram; auto-detects spec directory |
-
-**Power tools** (optional, surface when needed):
-
-| Skill | Usage | Description |
-|-------|-------|-------------|
-| **spec-research** | `/spec-research <slug> "<question>"` | Forked Explore subagent: Context7 + repo scan → writes `research.md` (without burning main context) |
-| **spec-status** | `/spec-status` | Pipeline overview with `!\`cmd\`` dynamic context (counts computed before Claude reads) |
-| **verify-spec** | `/verify-spec <spec-dir>` | Post-merge: check SC-XXX against live cluster via Flux + VictoriaMetrics MCPs, write `VERIFICATION.md` |
-
-For complete SDD documentation see [`docs/specs/README.md`](../../docs/specs/README.md). Path-scoped rules in [`../rules/`](../rules/) auto-load when editing matching files — notably `spec-constitution.md` (platform non-negotiables) and `process.md` (verification + debugging discipline).
+| **spec-research** | `/spec-research <slug> "<question>"` | Forked Explore subagent: Context7 + repo scan → writes `docs/superpowers/specs/<date>-<slug>-research.md` without burning main context |
+| **verify-spec** | `/verify-spec <design-doc>` | Post-merge: check a design's success criteria against the live cluster via the Flux + VictoriaMetrics/VictoriaLogs MCPs, write `<topic>-verification.md` |
 
 ### Git & PR Workflows
 

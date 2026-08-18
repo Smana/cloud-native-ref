@@ -20,7 +20,6 @@ CI never applies changes to a cluster. It validates, scans, and publishes; Flux 
 | `build-container-images.yml` | push / PR / dispatch | Detect changed images under `container-images/`, build each, push on non-PR events |
 | `crossplane-modules.yml` | push / PR | Validate, test and publish the KCL Crossplane modules to GHCR |
 | `vector-config-validation.yml` | push / PR | Validate the Vector log-parsing configuration |
-| `spec-archive.yaml` | PR (merge) | SDD automation: archive a spec directory when its PR merges |
 | `terramate-preview.yaml` / `terramate-drift-detection.yaml` | — | **Currently disabled** (fully commented out). See [Terramate workflows](#terramate-workflows-disabled). |
 
 ## CI pipeline (`ci.yaml`)
@@ -151,10 +150,6 @@ Validates and publishes the KCL Crossplane modules in `infrastructure/base/cross
 
 Validates the Vector log-parsing configuration so a malformed pipeline is caught before it reaches the observability stack.
 
-### Spec archive (`spec-archive.yaml`)
-
-SDD automation. When a PR that touches a spec directory merges, the workflow moves it to `docs/specs/done/YYYY-Qn/NNN-slug/` and generates a `SUMMARY.md` (see `docs/specs/README.md`).
-
 ## Terramate workflows (disabled)
 
 `terramate-preview.yaml` (OpenTofu plan preview on PRs) and `terramate-drift-detection.yaml` (scheduled drift detection) are present but **fully commented out** — they do not run today. When re-enabled they run `terramate script run preview` / `terramate script run drift detect` respectively. Treat them as templates, not active pipeline stages.
@@ -230,6 +225,7 @@ CI fails if code is not formatted. Run `kcl fmt` before committing.
 
 - [Technology Choices](./technology-choices.md)
 - [Crossplane](./crossplane.md) — composition validation requirements
-- [Spec-driven development](./specs/README.md) — SDD workflow, including SPEC-007 (manifest validation)
+- [Platform constitution](./platform-constitution.md) — the non-negotiable rules CI enforces
+- [Spec archive](./specs/) — the retired SDD workflow that produced SPEC-007 (manifest validation)
 - `CLAUDE.md` → *Validation Commands* — the canonical local validation entry points
 - [GitHub self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners)
