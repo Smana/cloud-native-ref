@@ -1,36 +1,43 @@
 ---
 name: verify-spec
-description: Verify that a merged spec's success criteria (SC-XXX) are actually met in the live cluster. Deploys the example manifest, watches Flux reconciliation, queries VictoriaMetrics/VictoriaLogs for evidence, writes docs/specs/<dir>/VERIFICATION.md.
+description: Verify that a merged design's success criteria are actually met in the live cluster. Deploys the example manifest, watches Flux reconciliation, queries VictoriaMetrics/VictoriaLogs for evidence, writes docs/superpowers/specs/<topic>-verification.md.
 when_to_use: |
-  When the user says "verify the spec", "did SC-XXX actually ship",
-  "check this spec works", "post-merge verification", "UAT this feature",
-  "prove the success criteria", or after a spec PR has merged and the
-  user wants to close the loop on whether the delivered feature satisfies
-  the spec's acceptance criteria.
+  When the user says "verify the design", "did that actually ship",
+  "check this works", "post-merge verification", "UAT this feature",
+  "prove the success criteria", or after a feature PR has merged and the
+  user wants to close the loop on whether the delivered work satisfies
+  the design's acceptance criteria.
 disable-model-invocation: true
-argument-hint: "<spec-dir> — path to the (archived or active) spec directory"
-paths: "docs/specs/**"
+argument-hint: "<design-doc> — path to a docs/superpowers/specs/*-design.md file"
+paths: "docs/superpowers/**"
 allowed-tools: Read, Write, Bash(kubectl:*), Bash(flux:*), Grep, Glob
 ---
 
 # Verify Spec Skill
 
-Close the acceptance loop. A merged spec is not "done" until its `SC-XXX` criteria are observably met in the target cluster.
+Close the acceptance loop. Merged work is not "done" until the design's success criteria are observably met in the target cluster.
 
 ## Workflow
 
 ### 1. Locate inputs
 
-Resolve `$ARGUMENTS` to a spec directory. Accept either active (`docs/specs/NNN-slug/`) or archived (`docs/specs/done/NNN-slug/` or `docs/specs/done/YYYY-Qn/NNN-slug/`). Abort with guidance if not found.
+Resolve `$ARGUMENTS` to a design document under `docs/superpowers/specs/`. Accept a bare topic
+slug and glob for it. Abort with guidance if not found.
 
 Read:
-- `<dir>/spec.md` — extract `SC-XXX` list.
-- `<dir>/plan.md` (if exists) — extract example manifest paths and Tasks section.
-- `<dir>/examples/` (if exists).
+- the design doc — its goals, its **Testing** table, and any explicit success criteria
+- the matching plan at `docs/superpowers/plans/<same-date>-<same-topic>-plan.md`, if present —
+  its per-task verification commands are usually the best evidence source
+- any example manifests the design names
+
+Archived specs under `docs/specs/done/` are also accepted, for re-verifying older work. Those use
+the retired `SC-XXX` format; parse `**SC-XXX**: <text>` lines when you see them.
 
 ### 2. Enumerate success criteria
 
-Parse every `**SC-XXX**: <text>` line. For each, infer a verification method:
+Superpowers designs state criteria in prose and in a **Testing** table rather than as numbered
+`SC-XXX` items. Extract one checkable claim per row or per bullet, and give each a stable local
+id (`C-1`, `C-2`, …) for the report. For each, infer a verification method:
 
 | Criterion pattern | Verification method |
 |---|---|
@@ -41,8 +48,9 @@ Parse every `**SC-XXX**: <text>` line. For each, infer a verification method:
 | "latency p95 < Y" | VictoriaMetrics `histogram_quantile(0.95, ...)` |
 | "eviction deterministic" | deploy, fill, observe eviction counter |
 | "resource X created" | `kubectl get X -l <label>` |
+| a literal shell command in the Testing table | run it verbatim; compare to the stated expected output |
 
-If the method is unclear, list the SC as `MANUAL` and ask the user how they want to verify.
+If the method is unclear, list the criterion as `MANUAL` and ask the user how they want to verify.
 
 ### 3. Deploy the example (idempotent)
 
@@ -66,14 +74,15 @@ Report any resource whose `Ready=False` condition persists past the timeout name
 
 For metrics-based SCs: `mcp__victoriametrics__query` / `query_range` with the metric name extracted from the SC text. For log-based SCs: `mcp__victorialogs__query` with a LogsQL stream filter (respect the project's dot-notation convention: `kubernetes.container_name`, `log.level`, etc.).
 
-### 6. Write `VERIFICATION.md`
+### 6. Write the verification report
 
-Emit to `<spec-dir>/VERIFICATION.md`:
+Emit to `docs/superpowers/specs/<YYYY-MM-DD>-<topic>-verification.md`, using the same date and
+topic as the design it verifies:
 
 ```markdown
 # Verification: <spec title>
 
-**Spec**: <slug>
+**Design**: <design-doc filename>
 **Cluster**: <context>  (`kubectl config current-context`)
 **Verified**: <YYYY-MM-DD HH:MM TZ>
 **Verifier**: Claude (verify-spec)
@@ -82,16 +91,16 @@ Emit to `<spec-dir>/VERIFICATION.md`:
 
 ## Success criteria results
 
-| ID     | Criterion (1 line)                      | Method              | Verdict | Evidence |
-|--------|------------------------------------------|---------------------|---------|----------|
-| SC-001 | Pods call AWS APIs without credentials  | kubectl exec probe  | ✅ PASS | `aws-cli output snippet` |
-| SC-002 | Evictions deterministic                  | VictoriaMetrics q   | ❌ FAIL | metric `cache_evictions_total` absent |
-| SC-003 | IAM roles cleaned up on delete           | kubectl delete + re-query | ✅ PASS | no dangling roles |
-| SC-004 | Reconcile < 2 min                        | flux get            | ✅ PASS | 42s |
+| ID  | Criterion (1 line)                      | Method              | Verdict | Evidence |
+|-----|------------------------------------------|---------------------|---------|----------|
+| C-1 | Pods call AWS APIs without credentials  | kubectl exec probe  | ✅ PASS | `aws-cli output snippet` |
+| C-2 | Evictions deterministic                  | VictoriaMetrics q   | ❌ FAIL | metric `cache_evictions_total` absent |
+| C-3 | IAM roles cleaned up on delete           | kubectl delete + re-query | ✅ PASS | no dangling roles |
+| C-4 | Reconcile < 2 min                        | flux get            | ✅ PASS | 42s |
 
 ## Issues found
 
-### SC-002 FAIL — eviction metric absent
+### C-2 FAIL — eviction metric absent
 
 <diagnosis, root cause hypothesis, suggested fix>
 
@@ -104,8 +113,8 @@ Emit to `<spec-dir>/VERIFICATION.md`:
 
 ## References
 
-- Spec: `<spec-dir>/spec.md`
-- Plan: `<spec-dir>/plan.md` (if present)
+- Design: `docs/superpowers/specs/<name>-design.md`
+- Plan: `docs/superpowers/plans/<name>-plan.md` (if present)
 - Example applied: `<path>`
 ```
 
@@ -113,13 +122,13 @@ Emit to `<spec-dir>/VERIFICATION.md`:
 
 Return to the main context:
 
-- Total SCs: N
+- Total criteria: N
 - Passed: N
 - Failed: N
 - Manual: N
-- Link to `VERIFICATION.md`
+- Link to the verification report
 
-If any SC failed, suggest opening a follow-up issue tagged `spec:regression` and reference this VERIFICATION.md.
+If any criterion failed, suggest opening a follow-up issue and reference the verification report.
 
 ## Safety rules
 
@@ -129,6 +138,6 @@ If any SC failed, suggest opening a follow-up issue tagged `spec:regression` and
 
 ## Related skills
 
-- `/spec` — the upstream spec this verifies
-- `/validate` — spec completeness (different concern)
+- `superpowers:brainstorming` — produced the design this verifies
+- `superpowers:verification-before-completion` — the generic evidence discipline
 - `/gitops-cluster-debug` (fluxcd plugin) — deep Flux troubleshooting

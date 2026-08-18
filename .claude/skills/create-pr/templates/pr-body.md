@@ -11,14 +11,15 @@ Use this as the skeleton for both Create Mode and Update Mode. Fill every bracke
 
 <1–2 sentence summary focused on the WHY, not a file list>
 
-## 📋 Specification
+## 📋 Design
 
-<!-- When a spec is detected, link it: -->
-Implements [#<issue-num>](../issues/<issue-num>) — see [`<spec-dir>/spec.md`](../blob/main/<spec-dir>/spec.md).
+<!-- When a design doc is detected, link it: -->
+Design: [`<date>-<topic>-design.md`](../blob/main/docs/superpowers/specs/<date>-<topic>-design.md)
+Plan: [`<date>-<topic>-plan.md`](../blob/main/docs/superpowers/plans/<date>-<topic>-plan.md)
 
-**Spec status**: <draft | in-review | approved | implementing>
+<one line: which part of the plan this PR delivers>
 
-<!-- When no spec but one is recommended, replace the above block with the warning snippet below. -->
+<!-- When no design exists but one is recommended, replace the above block with the warning snippet below. -->
 
 ## 🎯 Changes
 
@@ -57,19 +58,20 @@ flowchart LR
 <suggested labels, e.g. composition, security, infrastructure>
 ```
 
-## Spec-recommendation warning
+## Design-recommendation warning
 
-Use this when the diff looks spec-worthy but no spec exists:
+Use this when the diff is substantial but no design doc exists:
 
 ```markdown
-## ⚠️ Spec Recommendation
+## ⚠️ Design Recommendation
 
-This PR contains changes that may benefit from a formal specification:
+This PR contains changes that would benefit from a design document:
 - **Detected type**: <composition | infrastructure | security | platform>
 - **Affected paths**: <key paths>
 
-Consider running `/spec <type> "<short description>"` before implementation
-to ensure thorough planning and 4-persona review.
+Consider brainstorming a design first (see `CLAUDE.md` → *Development Workflow*)
+so the approach is agreed and checked against the platform constitution
+before implementation.
 ```
 
 ## Content rules

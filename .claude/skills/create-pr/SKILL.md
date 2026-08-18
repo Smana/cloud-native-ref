@@ -1,6 +1,6 @@
 ---
 name: create-pr
-description: Create or update a Pull Request with AI-generated description, mermaid diagram, file walkthrough, and automatic SDD spec detection. Uses templates/pr-body.md for structure.
+description: Create or update a Pull Request with AI-generated description, mermaid diagram, file walkthrough, and automatic design-doc detection. Uses templates/pr-body.md for structure.
 when_to_use: |
   When the user says "open a PR", "create pull request", "push this as a PR",
   "open PR against main", "update my PR description", "--update <number>",
@@ -30,40 +30,44 @@ git diff origin/${BASE:-main}...HEAD --stat
 git diff origin/${BASE:-main}...HEAD
 ```
 
-### 2. Detect spec context
+### 2. Detect the design context
 
-Changed paths → spec type:
+Changed paths → change type:
 
-| Path pattern | Spec type |
+| Path pattern | Change type |
 |---|---|
 | `infrastructure/base/crossplane/configuration/kcl/**/*.k`, `*-composition.yaml` | composition |
 | `opentofu/**/*.tf`, `terramate.tm.hcl` | infrastructure |
 | `*networkpolicy*`, `*rbac*`, `openbao/**`, `*cilium*policy*` | security |
 | Multiple top-level dirs + HelmRelease/Kustomization | platform |
 
-Find the spec directory for these changes (if one exists). The repo uses the 3-artifact structure (`spec.md`, `plan.md`, `clarifications.md`) so any of those files in the diff signals a spec:
+Find the design document behind these changes, if one exists. Non-trivial work goes through the
+Superpowers flow (see `CLAUDE.md` → *Development Workflow*), which commits a design and a plan on
+the branch:
 
 ```bash
 git diff origin/${BASE:-main}...HEAD --name-only \
-  | grep -oE 'docs/specs/[0-9]+-[a-z0-9-]+' | sort -u | head -1
+  | grep -oE 'docs/superpowers/(specs|plans)/[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]+\.md' \
+  | sort -u
 ```
 
-For each detected spec directory, also note which artifacts changed (`spec.md` / `plan.md` / `clarifications.md`). Include them as bullet points under the **Specification** block:
+When a design is detected, include the **Design** block:
 
 ```
-## 📋 Specification
+## 📋 Design
 
-Implements [#<issue>](../issues/<issue>) — see [`<spec-dir>/`](../blob/main/<spec-dir>/).
+Design: [`<date>-<topic>-design.md`](../blob/main/docs/superpowers/specs/<date>-<topic>-design.md)
+Plan: [`<date>-<topic>-plan.md`](../blob/main/docs/superpowers/plans/<date>-<topic>-plan.md)
 
-Artifacts touched in this PR:
-- `spec.md` (contract — should usually be unchanged after approval)
-- `plan.md` (design + tasks + review checklist)
-- `clarifications.md` (CL-N entries appended)
+<one line: which part of the plan this PR delivers>
 ```
 
-If `spec.md` itself changed in a non-frozen way (i.e., this PR isn't the spec-creation PR), surface a warning — modifying the contract mid-implementation usually indicates scope creep that should be a follow-up spec.
+If the design doc itself changed materially in a PR that also implements it, say so in the
+summary — a design moving during implementation usually signals scope creep worth calling out.
 
-If changes look spec-worthy but no spec directory exists, include the **Spec Recommendation** warning block from the template.
+If the changes look substantial (a new composition, a new OpenTofu stack, a security-model change)
+and no design doc is present, include the **Design Recommendation** warning block from the
+template.
 
 ### 3. Render the PR body
 
@@ -99,16 +103,16 @@ Return `Updated PR #<N>: <url>`.
 
 - Title: conventional prefix (`feat(crossplane): ...`), under 70 chars.
 - Summary: WHY, not WHAT. The file table shows WHAT.
-- Auto-detect spec directory by scanning `docs/specs/NNN-*` in the diff. Preserve existing references on update.
+- Auto-detect the design by scanning `docs/superpowers/specs/*-design.md` in the diff. Preserve existing references on update.
 - Never skip hooks, never force-push without explicit user direction.
 
 ## Related skills
 
-- `/spec` — create the spec this PR references
+- `superpowers:brainstorming` — produces the design this PR references
 - `/commit` — commit with pre-commit validation before creating PR
 - `/improve-pr <number>` — security + quality review after PR exists
 
 ## Supporting files
 
-- [`templates/pr-body.md`](templates/pr-body.md) — full body template with both spec-present and spec-recommendation variants
+- [`templates/pr-body.md`](templates/pr-body.md) — full body template with both design-present and design-recommendation variants
 - [`references/mermaid-styles.md`](references/mermaid-styles.md) — color classes and best practices for flow diagrams

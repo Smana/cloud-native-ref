@@ -40,9 +40,16 @@ and a CI workflow with a shell-injection bug is still armed on every merge to `m
 ## Non-goals
 
 - Changing the platform constitution's *content*. It moves and is renamed; the rules are unchanged.
-- Replacing `/commit`, `/create-pr`, `/improve-pr`, `/crossplane-validator`, or the three
-  custom subagents. They are workflow-agnostic and stay as-is.
+- Replacing `/commit`, `/improve-pr`, `/crossplane-validator`, or the three custom subagents.
+  They are workflow-agnostic and stay as-is.
 - Building repo-local wrappers around Superpowers skills. The plugin's skills are used directly.
+
+> **Correction (during execution, 2026-08-18):** this section originally listed `/create-pr` as
+> workflow-agnostic. It is not. Its "Detect spec context" step greps for
+> `docs/specs/[0-9]+-[a-z0-9-]+`, its PR-body template carries a `Spec status` line and a
+> "⚠️ Spec Recommendation" block pointing at the now-deleted `/spec`, and its related-skills list
+> links `/spec`. Left untouched it would emit that recommendation on **every** PR. It is retooled
+> alongside the other two skills in §E.
 
 ## Target workflow
 
