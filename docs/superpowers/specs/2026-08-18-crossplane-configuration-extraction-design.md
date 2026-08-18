@@ -34,11 +34,19 @@ makes room for it.
 | Do the XRDs carry Flux `postBuild` vars? | **No.** All 9 `${...}` vars live in `environmentconfig.yaml` alone, which stays behind | `grep '\${' *.yaml` |
 | Does anything else read the XRD files by path? | **Yes, two consumers** — see *Blockers* | `gen-catalog.sh:106`, `wizard.yaml:20,30-32` |
 | Does Crossplane here support Configuration packages with function dependencies? | Yes — Crossplane **2.3.4** | `controller/helmrelease.yaml:16` |
-| Current KCL validation baseline | `./scripts/validate-kcl-compositions.sh` → exit 0, 5 modules fmt + syntax clean; `crossplane render` **skipped, Docker not running** | fresh run |
+| Current KCL validation baseline | `./scripts/validate-kcl-compositions.sh` → exit 0, 5 modules fmt + syntax clean | fresh run |
+| **Does an inlined Composition render identically to the OCI module?** | **Yes — 12/12 examples byte-identical**, across all 5 Compositions, 2 480–25 433 B each | `crossplane render` both ways, `cmp` |
+| Does the validator cover every example? | **No** — `inferenceservice-endpointpicker.yaml` exists but is absent from the `COMPOSITIONS` array; 12 examples, 11 tested | `validate-kcl-compositions.sh:55-60` |
 
-The `crossplane render` gap is a property of this workstation, not of the change. It applies equally
-before and after, so it cannot serve as the migration's proof — the plan must obtain it from Docker
-or a live cluster.
+The render equivalence result is the migration's central premise and it is **settled, not assumed**.
+Each of the 12 claim examples was rendered twice — once through the current
+`source: oci://ghcr.io/smana/cloud-native-ref/crossplane-<mod>:<ver>` Composition and once through a
+generated Composition with `main.k` inlined — and compared with `cmp`. All 12 are byte-identical,
+including the 1291-line `app` module and the 1144-line `inference-service` module.
+
+The prototype generator that produced the inlined Compositions is ~25 lines: parse the Composition,
+find the pipeline step whose `input.spec.source` starts with `oci://`, resolve the module name from
+the `crossplane-<mod>:` segment, and substitute the file contents. It becomes `make generate`.
 
 ## Measured cloud coupling
 
@@ -216,9 +224,10 @@ Kustomization prunes the old XRDs, or claims briefly lose their CRDs.
 ## Success criteria
 
 1. `crossplane-configuration` publishes `-core` and `-aws` at `0.1.0`, both pullable anonymously.
-2. Rendering each of the 12 claim examples through the inlined Compositions produces output byte-identical
-   to rendering through today's OCI modules. **This is the migration's real proof** and needs Docker
-   or a cluster; it cannot be satisfied on this workstation as configured.
+2. Rendering each of the 12 claim examples through the inlined Compositions produces output
+   byte-identical to rendering through today's OCI modules. **Already proven during design** (12/12);
+   the plan re-runs it in the new repository's CI as a standing regression gate, and closes the
+   `inferenceservice-endpointpicker.yaml` coverage gap while doing so.
 3. `./scripts/validate-manifests.sh` → exit 0, `Invalid: 0, Skipped: 0`, with the XRD schemas sourced
    from the release asset.
 4. `kubectl get app,sqlinstance,kvstore,epi,inferenceservice -A` shows the same objects as before,
@@ -232,7 +241,7 @@ Kustomization prunes the old XRDs, or claims briefly lose their CRDs.
 |---|---|
 | Package install re-creates XRDs, transiently orphaning claims | XRDs are identical by name and schema, so Crossplane adopts them. Prove on a scratch cluster during stage 1, never first on `mycluster-0`. Criterion 4 checks `uid` |
 | `dependsOn` on providers conflicts with the cluster's own `Provider` manifests | Declare only function and configuration dependencies in `crossplane.yaml`; the cluster already owns its providers |
-| Inlined 1291-line `main.k` makes `composition.yaml` unreviewable | Review happens on `main.k`; CI proves the generated file matches. Byte-identical round-trip already verified |
+| Inlined 1291-line `main.k` makes `composition.yaml` unreviewable | Review happens on `main.k`; CI proves the generated file matches. Both the YAML round-trip and full render equivalence are already verified |
 | `ManagedResourceActivationPolicy` interferes with package-installed XRDs | The policy governs provider MR CRDs, not XRDs — expected unaffected, asserted in stage 3 |
 | Schema catalog fetch becomes a network dependency of CI | Already true for the Flux and CNCF catalogs; pin by version and fail loudly |
 | Stage 2 is large and atomic | It is a cutover; a partial one leaves claims without CRDs. Size is the price of atomicity |
