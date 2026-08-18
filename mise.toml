@@ -11,7 +11,7 @@ go = "1.26.5"
 nodejs = "22.23.1"
 opentofu = "1.12.5"
 pre-commit = "4.6.2"
-trivy = "0.73.0"
+trivy = "0.74.0"
 "ubi:terramate-io/terramate" = "0.17.2"
 
 # Manifest validation (SPEC-007). flux 2.9+ is required for `flux plugin`;
