@@ -250,6 +250,7 @@ Use the FluxCD agent-skills plugin for Flux troubleshooting (`/gitops-cluster-de
 tofu validate
 trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
 ./scripts/validate-manifests.sh   # renders the repo, then gates it (see below)
+./scripts/validate-links.sh       # resolves every relative Markdown link
 kubectl get nodes && kubectl get pods --all-namespaces
 flux get all
 ```

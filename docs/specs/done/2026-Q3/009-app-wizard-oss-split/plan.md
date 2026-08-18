@@ -102,7 +102,7 @@ Refactor-in-place-then-extract (rejected: churns cloud-native-ref with refactor 
 
 ## Tasks
 
-> Each task has a stable ID (`T001`, `T002`, …). Before marking `[x]`, cite fresh evidence (see [`.claude/rules/process.md`](../../../.claude/rules/process.md)). Tasks marked **(oss-repo)** run in `Smana/app-wizard`; **(cnr)** run in cloud-native-ref.
+> Each task has a stable ID (`T001`, `T002`, …). Before marking `[x]`, cite fresh evidence (see [`.claude/rules/process.md`](../../../../../.claude/rules/process.md)). Tasks marked **(oss-repo)** run in `Smana/app-wizard`; **(cnr)** run in cloud-native-ref.
 
 ### Phase 1: Extract & stand up the OSS repo (history-preserving, mechanical)
 

@@ -3,7 +3,26 @@
 **Status**: Accepted
 **Date**: 2024-01-15
 **Deciders**: Platform Team
-**Related Spec**: [SPEC-0000: EKS Pod Identity Composition](../specs/completed/0000-#0-eks-pod-identity-composition.md)
+**Related Spec**: [SPEC-0000: EKS Pod Identity](../specs/done/2024-Q1/0000-eks-pod-identity/spec.md)
+**Scope**: AWS only — narrowed 2026-08-18, see [ADR-0007](0007-cloud-abstraction-boundaries.md)
+
+---
+
+> **Amendment (2026-08-18)** — This decision remains **Accepted and unchanged for AWS**. It is no
+> longer a platform-wide statement about workload identity: the platform now also runs GKE, where
+> the equivalent mechanism is Workload Identity Federation.
+>
+> [ADR-0007](0007-cloud-abstraction-boundaries.md) establishes that platform-facing identity APIs
+> stay cloud-shaped, so `EPI` keeps this design and its ten claim manifests unchanged, and GCP gets
+> a sibling `GCPWorkloadIdentity` XRD ([design](../superpowers/specs/2026-08-18-gcp-support-design.md))
+> rather than `EPI` being generalised.
+>
+> Worth recording, because it makes the sibling split cheap: modern GCP lets an IAM policy bind
+> **directly to the Kubernetes ServiceAccount principal**, with no Google service account and no
+> `iam.gke.io/gcp-service-account` annotation. That is the same "bind identity to the (namespace,
+> ServiceAccount) pair from outside" model this ADR chose Pod Identity for — so the reasoning below
+> generalises even though the API does not. The IRSA-style annotation dance this ADR rejected is
+> not what GCP requires either.
 
 ---
 
@@ -127,3 +146,5 @@ Store AWS access keys in Kubernetes secrets.
 - [AWS Blog: EKS Pod Identity](https://aws.amazon.com/blogs/containers/amazon-eks-pod-identity-a-new-way-for-applications-on-eks-to-obtain-iam-credentials/)
 - [IRSA vs Pod Identity Comparison](https://docs.aws.amazon.com/eks/latest/userguide/service-accounts.html)
 - EPI Composition: `infrastructure/base/crossplane/configuration/kcl/eks-pod-identity/`
+- [ADR-0007: Cloud abstraction boundaries](0007-cloud-abstraction-boundaries.md) — narrows this ADR's scope to AWS
+- [GKE Workload Identity Federation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) — the GCP counterpart

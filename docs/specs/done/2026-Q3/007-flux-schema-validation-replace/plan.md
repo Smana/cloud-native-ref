@@ -116,7 +116,7 @@ The upstream `fluxcd/flux-schema` composite action was rejected: it has no `envs
 
 ## Tasks
 
-> Each task has a stable ID (`T001`, `T002`, …) — committable unit, referenced by PRs and `/verify-spec`. Before marking `[x]`, cite fresh evidence (see [`.claude/rules/process.md`](../../../.claude/rules/process.md)).
+> Each task has a stable ID (`T001`, `T002`, …) — committable unit, referenced by PRs and `/verify-spec`. Before marking `[x]`, cite fresh evidence (see [`.claude/rules/process.md`](../../../../../.claude/rules/process.md)).
 
 **Task index** — tick here as each task's detailed steps below are completed and evidenced.
 

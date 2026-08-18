@@ -221,7 +221,7 @@ bao write pki/priv_cloud_ogenki_io/roles/priv-cloud-ogenki-io \
   max_ttl=2160h  # 90 days
 ```
 
-**Related**: [OpenBao PKI Documentation](../opentofu/openbao/management/docs/getting_started.md)
+**Related**: [OpenBao PKI Documentation](../opentofu/openbao/cluster/docs/getting_started.md)
 
 ### cert-manager Integration
 
@@ -711,7 +711,7 @@ curl -v https://grafana.priv.cloud.ogenki.io
 - [Technology Choices](./technology-choices.md) - Gateway API, Tailscale rationale
 - [OpenTofu](./opentofu.md) - Network and OpenBao deployment
 - [Crossplane](./crossplane.md) - App composition ingress configuration
-- [OpenBao PKI Setup](../opentofu/openbao/management/docs/getting_started.md)
+- [OpenBao PKI Setup](../opentofu/openbao/cluster/docs/getting_started.md)
 - [cert-manager Integration](../opentofu/openbao/management/docs/cert-manager.md)
 - [Tailscale Network Setup](../opentofu/network/README.md)
 

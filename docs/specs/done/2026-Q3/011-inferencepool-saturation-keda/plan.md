@@ -91,7 +91,7 @@ infrastructure/base/crossplane/configuration/kcl/inference-service/
 
 ## Tasks
 
-> Each task has a stable ID. Cite fresh evidence before marking `[x]` (see [.claude/rules/process.md](../../../.claude/rules/process.md)).
+> Each task has a stable ID. Cite fresh evidence before marking `[x]` (see [.claude/rules/process.md](../../../../../.claude/rules/process.md)).
 
 > **Requirements coverage**: FR-001 → T003; FR-002 → T003/T005; FR-003 → T003; FR-004 → T005; FR-005 → T001; FR-006 → T001/T002; FR-007 → Design (ADD not replace); FR-008 → T004.
 

@@ -1302,7 +1302,7 @@ on publication.
 
 ```bash
 git push -u origin docs/superpowers-switch
-gh pr create --title "Record the switch from the in-house SDD workflow to Superpowers" --body "..."
+gh pr create --title "Record the switch from the in-house SDD workflow to Superpowers" --body "<body>"
 ```
 
 Body in English: what changed in each article, why (the workflow it documents is retired), the

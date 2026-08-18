@@ -8,7 +8,7 @@ Before integrating `cert-manager` with OpenBao, ensure these prerequisites are m
 
 - **OpenBao Setup**: A OpenBao instance with permissions to manage [approles](https://developer.hashicorp.com/vault/docs/auth/approle). Use our guide for [building a OpenBao cluster](../../cluster/README.md).
 - **TLS Configuration**: Ensure a proper TLS setup, including the CA chain. If you've followed the [PKI requirements procedure](../../cluster/docs/pki_requirements.md), you should have `.tls/ca-chain.pem` locally.
-- **Kubernetes Cluster**: A Kubernetes cluster capable of reaching the OpenBao. You can set one up using our [EKS cluster guide](../../../eks/README.md).
+- **Kubernetes Cluster**: A Kubernetes cluster capable of reaching the OpenBao. You can set one up using our [EKS cluster guide](../../../eks/init/README.md).
 
 Once these requirements are met, you're ready to proceed with the `cert-manager` integration.
 
@@ -50,7 +50,7 @@ In the context of cert-manager, a `ClusterIssuer` is a Kubernetes resource used 
 
 As stated in the requirements, OpenBao should be reachable from the Kubernetes cluster but also from the CLI in order to run the following commands that make use of the `bao` CLI.
 
-⚠️ During this procedure we'll use the `root` token but this is strongly recommended to configure an Identity provider as soon as the cluster is up and running. More about that [here](root_token.md).
+⚠️ During this procedure we'll use the `root` token but this is strongly recommended to configure an Identity provider as soon as the cluster is up and running. More about that here.
 
 1. Check that you can effectively access to OpenBao.
 
