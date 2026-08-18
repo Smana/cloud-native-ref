@@ -9,9 +9,3 @@ docs/app-wizard.md	assets/app-wizard/02-advanced.png
 docs/app-wizard.md	assets/app-wizard/03-validation.png
 docs/app-wizard.md	assets/app-wizard/04-render-preview.png
 docs/app-wizard.md	assets/app-wizard/05-pull-request.png
-#
-# ADR-0002's Related Spec link predates the 2026-08 spec archive and points at a
-# `specs/completed/` path that never existed. PR #1763 repoints it at
-# ../specs/done/2024-Q1/0000-eks-pod-identity/spec.md as part of the GCP ADR work —
-# delete this entry when that merges.
-docs/decisions/0002-eks-pod-identity-over-irsa.md	../specs/completed/0000-
