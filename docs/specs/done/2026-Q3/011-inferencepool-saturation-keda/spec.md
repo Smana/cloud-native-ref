@@ -21,7 +21,7 @@ Add an **opt-in** fourth KEDA trigger to the `inference-service` composition tha
 
 Today the composition scales every vLLM model on **three OR-combined vLLM-raw Prometheus triggers** (`kcl/inference-service/main.k:532-567`): running-ratio (`vllm:num_requests_running / maxNumSeqs`, threshold 0.7), KV-cache (`vllm:kv_cache_usage_perc`, 0.6), and queue-depth (`vllm:num_requests_waiting`, 8). Two problems:
 
-1. **The KV-cache trigger is dead weight on L4 GPUs.** [SPEC-001](../0001-llm-platform-prometheus-autoscaling/spec.md) records (its inert-cache-trigger finding) that with `maxNumSeqs=32` the running-ratio trigger always fires first, so the cache trigger is never practically exercised — three triggers where one is inert.
+1. **The KV-cache trigger is dead weight on L4 GPUs.** [SPEC-001](../../2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md) records (its inert-cache-trigger finding) that with `maxNumSeqs=32` the running-ratio trigger always fires first, so the cache trigger is never practically exercised — three triggers where one is inert.
 2. When the **EPP** is enabled (SPEC-004), the Inference Extension v1.5.0 EPP emits a **pool-level saturation gauge** (plus inflight-token saturation) that could be a cleaner *single* leading signal than three raw per-replica metrics. But that gauge **only exists when the EPP runs** — there is no independent pool controller emitting it, and the EPP is opt-in, default-off, and enabled on **zero models today**.
 
 We want an opt-in path to scale on the pool saturation signal for EPP-enabled models, **without** forcing an EPP rollout and **without** changing autoscaling for the (majority) non-EPP models.
@@ -107,6 +107,6 @@ Each criterion must be **falsifiable** — a human or `/verify-spec` must answer
 - Clarifications: [clarifications.md](clarifications.md)
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
 - Depends on: [SPEC-004 — per-InferenceService InferencePool + EPP](../004-per-inferenceservice-inferencepool-endpoint/spec.md) (opt-in, default-off)
-- Builds on: [SPEC-001 — LLM platform Prometheus autoscaling](../0001-llm-platform-prometheus-autoscaling/spec.md) (its lagging-signal + inert-cache-trigger decisions)
+- Builds on: [SPEC-001 — LLM platform Prometheus autoscaling](../../2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md) (its lagging-signal + inert-cache-trigger decisions)
 - Composition: `infrastructure/base/crossplane/configuration/kcl/inference-service/main.k`
 - EPP metrics precedent: `apps/base/ai/llm/grafana-dashboard-gateway.yaml`

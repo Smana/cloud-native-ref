@@ -123,7 +123,7 @@ reference them by ID (CL-1, CL-2, ...) once resolved. -->
 - Clarifications: [clarifications.md](clarifications.md)
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
 - Predecessor (same PR/module): [SPEC-002 — Composition-owned AI Gateway routing](../002-composition-owned-gateway-routing/spec.md), SPEC-003 (engineArgs + servedModels)
-- Related: [SPEC-001 — LLM platform prometheus autoscaling](../0001-llm-platform-prometheus-autoscaling/spec.md) (KEDA; complementary control loop)
+- Related: [SPEC-001 — LLM platform prometheus autoscaling](../../2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md) (KEDA; complementary control loop)
 - Verified current state: `flux/sources/ocirepo-inferencepool.yaml` (GAIE `inferencepool` chart v1.5.0, `llm` ns), `crds/base/kustomization-inference-extension.yaml` (InferencePool CRDs), `infrastructure/base/envoy-ai-gateway/gateway.yaml` (Gateway `ai-gateway`, HTTP/8080, AllowedRoutes from `llm`), `infrastructure/base/crossplane/providers/additional-rbac.yaml` (aggregate ClusterRole)
 - Envoy AI Gateway InferencePool guide: <https://aigateway.envoyproxy.io/docs/capabilities/inference/aigatewayroute-inferencepool/> — backendRef `group: inference.networking.k8s.io`, `kind: InferencePool`; blog: <https://aigateway.envoyproxy.io/blog/endpoint-picker-for-inference-routing/>
 - GAIE `inferencepool` chart values (v1.5.0): <https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/v1.5.0/config/charts/inferencepool/values.yaml>

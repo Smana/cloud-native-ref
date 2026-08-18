@@ -108,4 +108,4 @@ Each criterion must be **falsifiable** — a human or `/verify-spec` must answer
 - Migration guide: <https://cloudnative-pg.io/plugin-barman-cloud/docs/migration/>
 - Plugin chart: `plugin-barman-cloud-v0.7.0` (2026-06-10)
 - Composition: `infrastructure/base/crossplane/configuration/kcl/cloudnativepg/main.k`
-- Database migrations rule: [.claude/rules/database-migrations.md](../../../.claude/rules/database-migrations.md)
+- Database migrations rule: [.claude/rules/database-migrations.md](../../../../../.claude/rules/database-migrations.md)

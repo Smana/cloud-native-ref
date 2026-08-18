@@ -111,6 +111,6 @@ reference them by ID (CL-1, CL-2, ...) once resolved. -->
 - Plan: [plan.md](plan.md) — design, tasks, review checklist
 - Clarifications: [clarifications.md](clarifications.md)
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
-- Similar spec: [SPEC-002 — Composition-owned AI Gateway routing](../002-composition-owned-gateway-routing/spec.md) (same InferenceService module; opt-in `enabled` block idiom); [SPEC-001 — LLM platform Prometheus autoscaling](../0001-llm-platform-prometheus-autoscaling/spec.md) (cold-start is the latency this feature reduces); SPEC-003 (`engineArgs` denylist this spec extends)
+- Similar spec: [SPEC-002 — Composition-owned AI Gateway routing](../002-composition-owned-gateway-routing/spec.md) (same InferenceService module; opt-in `enabled` block idiom); [SPEC-001 — LLM platform Prometheus autoscaling](../../2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md) (cold-start is the latency this feature reduces); SPEC-003 (`engineArgs` denylist this spec extends)
 - Run:ai Model Streamer (vLLM): <https://docs.vllm.ai/en/stable/models/extensions/runai_model_streamer/> — `--load-format runai_streamer`, `--model-loader-extra-config` (`concurrency`, `memory_limit`); bundled via `vllm[runai]` in the openai image (v0.8.5 release, PR #16317)
 - LoRA resolver plugins (deferred): <https://docs.vllm.ai/en/stable/features/lora/> — built-in `lora_filesystem_resolver` first shipped in vLLM v0.9.0; requires `VLLM_PLUGINS`, `VLLM_LORA_RESOLVER_CACHE_DIR`, `VLLM_ALLOW_RUNTIME_LORA_UPDATING`

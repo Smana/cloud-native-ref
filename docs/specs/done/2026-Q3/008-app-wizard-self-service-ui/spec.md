@@ -150,4 +150,4 @@ Each criterion must be **falsifiable** — a human or `/verify-spec` must be abl
 - Clarifications: [clarifications.md](clarifications.md)
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
 - Related spec: [SPEC-007 App workload types](../007-app-composition-workload-types/spec.md) — the schema this wizard renders
-- User guide the wizard complements: [docs/apps-user-guide.md](../../apps-user-guide.md)
+- User guide the wizard complements: [docs/apps-user-guide.md](../../../../apps-user-guide.md)

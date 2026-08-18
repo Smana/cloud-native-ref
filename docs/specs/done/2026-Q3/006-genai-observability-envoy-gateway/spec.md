@@ -117,8 +117,8 @@ reference them by ID (CL-1, CL-2, ...) once resolved. -->
 - Plan: [plan.md](plan.md) — design, tasks, review checklist
 - Clarifications: [clarifications.md](clarifications.md)
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md) — §5 Observability (VictoriaMetrics/VMServiceScrape, VictoriaLogs)
-- Observability rules: [.claude/rules/observability.md](../../../.claude/rules/observability.md) — `$${var}` dashboard escaping, logs datasource
-- CNP rules: [.claude/rules/cilium-network-policies.md](../../../.claude/rules/cilium-network-policies.md) — scrape-ingress on default-deny
+- Observability rules: [.claude/rules/observability.md](../../../../../.claude/rules/observability.md) — `$${var}` dashboard escaping, logs datasource
+- CNP rules: [.claude/rules/cilium-network-policies.md](../../../../../.claude/rules/cilium-network-policies.md) — scrape-ingress on default-deny
 - Related spec (same PR): [SPEC-002 — composition-owned AI Gateway routing + LoRA canary](../002-composition-owned-gateway-routing/spec.md) — this spec closes its open question on canary token attribution
 - Envoy AI Gateway v1.0 observability: <https://aigateway.envoyproxy.io/docs/capabilities/observability/> (metrics: `gen_ai.client.token.usage`, `gen_ai.server.request.duration`, `gen_ai.server.time_to_first_token`, `gen_ai.server.time_per_output_token`; labels `gen_ai_request_model` / `gen_ai_original_model` / `gen_ai_response_model`, `gateway_envoyproxy_io_owning_gateway_name`; tracing via `extProc.extraEnvVars` OTLP)
 - VictoriaTraces OTLP ingest: <https://docs.victoriametrics.com/victoriatraces/data-ingestion/opentelemetry/> (`http://<vt>:10428/insert/opentelemetry/v1/traces` OTLP/HTTP; OTLP/gRPC `:4317` via `-otlpGRPCListenAddr`)

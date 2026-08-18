@@ -368,12 +368,12 @@ An honest list. None of these are hidden behind a green checkmark.
 **Diagrams** — [`docs/architecture/llm-platform.drawio`](architecture/llm-platform.drawio), 3 pages.
 
 **Specs**
-- [SPEC-001 — KEDA autoscaling on leading vLLM signals](specs/0001-llm-platform-prometheus-autoscaling/spec.md)
-- [SPEC-002 — composition-owned gateway routing + LoRA canaries](specs/002-composition-owned-gateway-routing/spec.md)
-- [SPEC-003 — `engineArgs` escape hatch](specs/003-inferenceservice-spec-engineargs-escape/spec.md)
-- [SPEC-004 — per-InferenceService InferencePool + endpoint picker](specs/004-per-inferenceservice-inferencepool-endpoint/spec.md)
-- [SPEC-005 — vLLM cold start / Run:ai Model Streamer](specs/005-vllm-cold-start-run/spec.md)
-- [SPEC-006 — GenAI observability for Envoy AI Gateway](specs/006-genai-observability-envoy-gateway/spec.md)
+- [SPEC-001 — KEDA autoscaling on leading vLLM signals](specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)
+- [SPEC-002 — composition-owned gateway routing + LoRA canaries](specs/done/2026-Q3/002-composition-owned-gateway-routing/spec.md)
+- [SPEC-003 — `engineArgs` escape hatch](specs/done/2026-Q3/003-inferenceservice-spec-engineargs-escape/spec.md)
+- [SPEC-004 — per-InferenceService InferencePool + endpoint picker](specs/done/2026-Q3/004-per-inferenceservice-inferencepool-endpoint/spec.md)
+- [SPEC-005 — vLLM cold start / Run:ai Model Streamer](specs/done/2026-Q3/005-vllm-cold-start-run/spec.md)
+- [SPEC-006 — GenAI observability for Envoy AI Gateway](specs/done/2026-Q3/006-genai-observability-envoy-gateway/spec.md)
 
 **Decisions**
 - [ADR-0003 — vLLM Production Stack over KServe + llm-d](decisions/0003-vllm-production-stack-over-kserve.md)

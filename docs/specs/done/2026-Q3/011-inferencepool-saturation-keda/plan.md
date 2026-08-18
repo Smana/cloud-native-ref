@@ -157,4 +157,4 @@ infrastructure/base/crossplane/configuration/kcl/inference-service/
 - Clarifications log: [clarifications.md](clarifications.md)
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
 - Depends on: [SPEC-004](../004-per-inferenceservice-inferencepool-endpoint/spec.md)
-- Builds on: [SPEC-001](../0001-llm-platform-prometheus-autoscaling/spec.md)
+- Builds on: [SPEC-001](../../2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)

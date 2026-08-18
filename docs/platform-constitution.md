@@ -16,7 +16,7 @@ All Crossplane-managed AWS and Kubernetes resources MUST use the `xplane-` prefi
 - `xplane-myapp-sqlinstance` (correct)
 - `myapp-sqlinstance` (incorrect - missing prefix)
 
-**Reference**: [ADR-0002: EKS Pod Identity](../decisions/0002-eks-pod-identity-over-irsa.md)
+**Reference**: [ADR-0002: EKS Pod Identity](decisions/0002-eks-pod-identity-over-irsa.md)
 
 ---
 
@@ -54,7 +54,7 @@ if _ready:
 - List comprehensions MUST be single-line
 - CI enforces formatting and will fail otherwise
 
-**Reference**: [ADR-0001: Use KCL for Compositions](../decisions/0001-use-kcl-for-crossplane-compositions.md)
+**Reference**: [ADR-0001: Use KCL for Compositions](decisions/0001-use-kcl-for-crossplane-compositions.md)
 
 ---
 
@@ -105,7 +105,7 @@ Use EKS Pod Identity for all AWS access from pods. Do NOT use IRSA.
 - Crossplane controllers have NO deletion permissions for stateful services (S3, IAM, Route53)
 - Use resource-level permissions, not `*` wildcards where possible
 
-**Reference**: [ADR-0002: EKS Pod Identity](../decisions/0002-eks-pod-identity-over-irsa.md)
+**Reference**: [ADR-0002: EKS Pod Identity](decisions/0002-eks-pod-identity-over-irsa.md)
 
 ---
 

@@ -4,7 +4,7 @@
 
 **Goal:** Replace the CEC + cilium-envoy + custom Go proxy stack with **Envoy AI Gateway + InferencePool + EPP** on a dedicated Envoy data plane. Originally phased with the `llm-router-proxy` retained as a safety net until P5 demolition; **mid-flight reframe (user call, 2026-05-05)** dropped the proxy + CEC in the same PR — solo experimental scope made the rollback insurance unnecessary, and the blog post deliverable favors the cleaner state.
 
-**Source design:** [`2026-05-05-ai-gateway-redesign-design.md`](./2026-05-05-ai-gateway-redesign-design.md) (commit `060c02e8`).
+**Source design:** [`2026-05-05-ai-gateway-redesign-design.md`](../specs/2026-05-05-ai-gateway-redesign-design.md) (commit `060c02e8`).
 
 **Commit conventions:** Use Smana / smainklh@gmail.com (configured for the repo). Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`). **Never** add `Co-Authored-By:` lines or "Generated with Claude" attribution — `CLAUDE.md` forbids it.
 

@@ -108,6 +108,6 @@ reference them by ID (CL-1, CL-2, ...) once resolved. -->
 - Plan: [plan.md](plan.md) — design, tasks, review checklist
 - Clarifications: [clarifications.md](clarifications.md)
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
-- Similar spec: [SPEC-001 — LLM platform prometheus autoscaling](../0001-llm-platform-prometheus-autoscaling/spec.md)
+- Similar spec: [SPEC-001 — LLM platform prometheus autoscaling](../../2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)
 - Comparison (parallel effort, used as review lens): [Modelplane design docs](https://github.com/modelplaneai/modelplane) — `design/design.md` (ModelService/ModelEndpoint), readiness-withheld endpoints; their weighted routing is designed but unimplemented (modelplane#90). The InferenceService abstraction predates Modelplane's publication.
 - Envoy AI Gateway v1.0.0 `AIGatewayRouteRuleBackendRef`: `weight`, `modelNameOverride`, `priority`
