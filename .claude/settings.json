@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "gitops-skills@fluxcd": true
+    "gitops-skills@fluxcd": true,
+    "superpowers@claude-plugins-official": true
   }
 }

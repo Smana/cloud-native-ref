@@ -347,6 +347,6 @@ Five phases. Each is independently mergeable. The `llm-router-proxy` is fully re
 
 ## 10. Implementation plan handoff
 
-Next step: invoke the writing-plans skill (or the SDD `/spec` workflow) to produce a phased implementation plan with TDD-shaped tasks. Plan filename will mirror this design: `docs/superpowers/specs/2026-05-05-ai-gateway-redesign-plan.md`.
+Next step: invoke the writing-plans skill (or the SDD `/spec` workflow) to produce a phased implementation plan with TDD-shaped tasks. Plan filename will mirror this design: `docs/superpowers/plans/2026-05-05-ai-gateway-redesign-plan.md`.
 
 Tasks #108–112 (the remaining `llm-router-proxy` work) are **superseded** and should be marked as such in the task list with a pointer to this design.

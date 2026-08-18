@@ -1,6 +1,6 @@
 # Process Rules — verification and debugging
 
-Auto-loaded when editing files under `docs/specs/**`, `infrastructure/**`, `security/**`, `observability/**`, `tooling/**`, `opentofu/**`, `clusters/**`, or `flux/**`. The generic methodology lives in the superpowers plugin (`superpowers:verification-before-completion`, `superpowers:systematic-debugging`); this file captures the repo-specific deltas.
+Auto-loaded when editing files under `docs/superpowers/**`, `infrastructure/**`, `security/**`, `observability/**`, `tooling/**`, `opentofu/**`, `clusters/**`, or `flux/**`. The generic methodology lives in the superpowers plugin (`superpowers:verification-before-completion`, `superpowers:systematic-debugging`); this file captures the repo-specific deltas.
 
 ## Verification before completion
 
@@ -14,8 +14,8 @@ Before claiming status: identify the command, run it fresh, cite the output inli
 |-------|--------------------------------|
 | Manifests valid | `./scripts/validate-manifests.sh` → exit 0, and the report shows `Invalid: 0, Skipped: 0` |
 | KCL composition valid | `./scripts/validate-kcl-compositions.sh` → exit 0 |
-| Spec ready | `./scripts/validate-spec.sh <dir>` → 0 errors |
-| SC-XXX met (post-merge) | `/verify-spec <dir>` against live cluster |
+| Design ready | Design doc committed under `docs/superpowers/specs/`, no `[NEEDS CLARIFICATION]` markers left |
+| Success criteria met (post-merge) | `/verify-spec <design-doc>` against live cluster |
 | Flux reconciled | `flux get kustomizations` / `helmreleases` → `Ready=True` |
 | Crossplane XR ready | `kubectl get <xr>` → `Synced=True` and `Ready=True` |
 | Policy change works | `hubble observe --verdict DROPPED` matches intent |

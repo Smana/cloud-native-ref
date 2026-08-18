@@ -3,6 +3,9 @@
 # Local Claude state (lock files, scheduled task metadata)
 .claude/scheduled_tasks.lock
 
+# Superpowers git worktrees (superpowers:using-git-worktrees creates these)
+.claude/worktrees/
+
 # Local .terraform directories
 **/.terraform/*
 
