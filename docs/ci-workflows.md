@@ -21,7 +21,7 @@ CI never applies changes to a cluster. It validates, scans, and publishes; Flux 
 | `crossplane-modules.yml` | push / PR | Validate, test and publish the KCL Crossplane modules to GHCR |
 | `vector-config-validation.yml` | push / PR | Validate the Vector log-parsing configuration |
 | `ci.yaml` → `links` | PR → main | Resolve every relative Markdown link; fails on any break not in `.linkcheck-allow` |
-| `terramate-preview.yaml` / `terramate-drift-detection.yaml` | — | **Currently disabled** (fully commented out). See [Terramate workflows](#terramate-workflows-disabled). |
+
 
 ## CI pipeline (`ci.yaml`)
 
@@ -170,7 +170,15 @@ Validates the Vector log-parsing configuration so a malformed pipeline is caught
 
 ## Terramate workflows (disabled)
 
-`terramate-preview.yaml` (OpenTofu plan preview on PRs) and `terramate-drift-detection.yaml` (scheduled drift detection) are present but **fully commented out** — they do not run today. When re-enabled they run `terramate script run preview` / `terramate script run drift detect` respectively. Treat them as templates, not active pipeline stages.
+`terramate-preview.yaml` (OpenTofu plan preview on PRs) and `terramate-drift-detection.yaml`
+(scheduled drift detection) are **fully commented out** and live in
+[`.github/workflows-disabled/`](../.github/workflows-disabled/), which GitHub does not execute.
+
+They used to sit in `.github/workflows/`. A workflow file whose every line is a comment has no
+valid `name`, `on` or `jobs` key, so GitHub queued each one on every push, failed to parse it,
+and recorded a failed run — two permanent red marks on every branch, for workflows that do
+nothing. Moved out on 2026-08-18. Treat them as templates; see the README next to them for how
+to re-enable one.
 
 ## Pre-commit hooks
 
