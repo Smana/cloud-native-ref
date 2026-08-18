@@ -20,6 +20,7 @@ CI never applies changes to a cluster. It validates, scans, and publishes; Flux 
 | `build-container-images.yml` | push / PR / dispatch | Detect changed images under `container-images/`, build each, push on non-PR events |
 | `crossplane-modules.yml` | push / PR | Validate, test and publish the KCL Crossplane modules to GHCR |
 | `vector-config-validation.yml` | push / PR | Validate the Vector log-parsing configuration |
+| `ci.yaml` → `links` | PR → main | Resolve every relative Markdown link; fails on any break not in `.linkcheck-allow` |
 | `terramate-preview.yaml` / `terramate-drift-detection.yaml` | — | **Currently disabled** (fully commented out). See [Terramate workflows](#terramate-workflows-disabled). |
 
 ## CI pipeline (`ci.yaml`)
@@ -145,6 +146,23 @@ Validates and publishes the KCL Crossplane modules in `infrastructure/base/cross
 - **summary** — job summary with the published version, GHCR URL, and usage snippet.
 
 ## Other validation
+
+### Documentation links (`ci.yaml` → `links`)
+
+`./scripts/validate-links.sh` resolves every relative Markdown link target in the repository —
+`git ls-files '*.md'`, then `os.path.exists` on each `](target)` relative to the file holding it.
+
+It exists because a *string* match cannot catch link rot from a directory move. When
+`docs/specs/NNN-slug/` was archived to `docs/specs/done/<quarter>/NNN-slug/` in 2026-08, every
+`../`-relative link inside those files changed meaning, and 22 broke while a
+`git grep 'docs/specs/'` gate reported clean — the string never appears in the link.
+
+Fenced code blocks, inline code spans, absolute URLs, anchors and template placeholders
+(`NNN`, `YYYY`) are skipped: documentation samples are not navigation.
+
+`.linkcheck-allow` holds known-broken links (currently the five App Wizard screenshot
+placeholders) so pre-existing breakage does not block unrelated work. Delete entries as they are
+fixed; never add one to route around a break your own change introduced.
 
 ### Vector configuration (`vector-config-validation.yml`)
 

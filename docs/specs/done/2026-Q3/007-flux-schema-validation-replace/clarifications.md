@@ -131,4 +131,4 @@ These are **not defects**. Kubernetes' `resource.Quantity.UnmarshalJSON` parses 
 ## Related
 
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
-- ADRs: [docs/decisions/](../../decisions/)
+- ADRs: [docs/decisions/](../../../../decisions/)

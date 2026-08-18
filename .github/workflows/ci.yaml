@@ -195,3 +195,11 @@ jobs:
       - name: Run ShellCheck
         run: |
           find ./scripts -name "*.sh" -type f -print0 | xargs -0 shellcheck -x -S warning
+
+  links:
+    name: Check the documentation links 🔗
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve every relative Markdown link
+        run: ./scripts/validate-links.sh

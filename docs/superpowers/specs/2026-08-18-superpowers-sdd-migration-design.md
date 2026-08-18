@@ -129,10 +129,10 @@ Three classes, all mechanical:
 2. **Constitution links inside archived docs** (~40 occurrences) — two forms exist today:
    `](../constitution.md)` in the directories being moved, and `](../../../constitution.md)` in
    the two already-archived ones. Both are rewritten to
-   `[docs/platform-constitution.md](../../../../platform-constitution.md)`, matching the uniform
+   ``[docs/platform-constitution.md](../../../../platform-constitution.md)``, matching the uniform
    post-move depth `docs/specs/done/<quarter>/<slug>/`.
 
-3. **PHASED.md links inside archived docs** (~10 `- Phased specs: [...](../PHASED.md)` lines) —
+3. **PHASED.md links inside archived docs** (~10 `- Phased specs: ...(../PHASED.md)` lines) —
    deleted, since the target is deleted.
 
 The `runbook_url` in `vmrule-llm-slo.yaml` is a live alert annotation pointing at a

@@ -3,7 +3,7 @@
 **Status**: Accepted
 **Date**: 2026-04-30
 **Deciders**: Smana (Platform Owner)
-**Related Spec**: [Self-Hosted LLM Platform with Cascade Routing](../plans/self-hosted-ai/02-spec-draft.md)
+**Related Spec**: Self-Hosted LLM Platform with Cascade Routing
 
 ---
 
@@ -156,8 +156,8 @@ The decision is already realised on branch `wip/self-hosted-ai-draft`:
 
 ## References
 
-- Spec: [`docs/plans/self-hosted-ai/02-spec-draft.md`](../plans/self-hosted-ai/02-spec-draft.md)
-- Plan §6 "Alternatives considered": [`docs/plans/self-hosted-ai/03-plan-draft.md`](../plans/self-hosted-ai/03-plan-draft.md)
+- Spec: `docs/plans/self-hosted-ai/02-spec-draft.md`
+- Plan §6 "Alternatives considered": `docs/plans/self-hosted-ai/03-plan-draft.md`
 - vLLM Production Stack: <https://github.com/vllm-project/production-stack>
 - vLLM Semantic Router (Iris) release notes: <https://vllm.ai/blog/vllm-sr-iris>
 - KServe v0.16 LLMInferenceService: <https://kserve.github.io/website/master/modelserving/v1beta1/llm/>

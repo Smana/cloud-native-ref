@@ -108,7 +108,7 @@ docs/specs/008-app-wizard-self-service-ui/phases/*/plan.md
 
 ## Tasks
 
-> Cross-phase tasks only — phase-local tasks live in each phase's `plan.md`. Before marking `[x]`, cite fresh evidence (see [`.claude/rules/process.md`](../../../.claude/rules/process.md)).
+> Cross-phase tasks only — phase-local tasks live in each phase's `plan.md`. Before marking `[x]`, cite fresh evidence (see [`.claude/rules/process.md`](../../../../../.claude/rules/process.md)).
 
 - [ ] **T001**: Resolve the 3 open questions in spec.md (frontend stack; render execution model; OAuth app registration) via `/clarify`.
 - [ ] **T002**: Create `apps/stacks.yaml` registry + document the stack-creation process (platform PR).

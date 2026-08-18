@@ -112,7 +112,7 @@ infrastructure/base/crossplane/providers/additional-rbac.yaml  # + inferencepool
 
 ## Tasks
 
-> Each task has a stable ID (`T001`, `T002`, …) — committable unit, referenced by PRs and `/verify-spec`. Before marking `[x]`, cite fresh evidence (see [`.claude/rules/process.md`](../../../.claude/rules/process.md)).
+> Each task has a stable ID (`T001`, `T002`, …) — committable unit, referenced by PRs and `/verify-spec`. Before marking `[x]`, cite fresh evidence (see [`.claude/rules/process.md`](../../../../../.claude/rules/process.md)).
 
 ### Phase 1: Prerequisites
 

@@ -4,7 +4,7 @@
 **Owner:** smana
 **Repo:** `cloud-native-ref` @ branch `wip/self-hosted-llm-platform-draft` (PR #1434 in flight; this design **trims** that PR rather than opening a new one)
 **Branches affected:** `apps/base/ai/llm/`, `infrastructure/base/{vllm-semantic-router,llm-ai-gateway,keda}/`, `infrastructure/base/crossplane/configuration/kcl/inference-service/`, `README.md`, `docs/`
-**Sibling docs:** [`2026-05-04-coding-llm-fleet-design.md`](./2026-05-04-coding-llm-fleet-design.md) (the prior, now-superseded "drop-in replacement" framing), [`2026-05-05-llm-router-proxy-design.md`](./2026-05-05-llm-router-proxy-design.md) (Go router-proxy — explicitly cancelled by this design).
+**Sibling docs:** [`2026-05-04-coding-llm-fleet-design.md`](./2026-05-04-coding-llm-fleet-design.md) (the prior, now-superseded "drop-in replacement" framing), `2026-05-05-llm-router-proxy-design.md` (deleted by this design) (Go router-proxy — explicitly cancelled by this design).
 
 ## Why this design exists
 

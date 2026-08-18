@@ -14,6 +14,7 @@ Before claiming status: identify the command, run it fresh, cite the output inli
 |-------|--------------------------------|
 | Manifests valid | `./scripts/validate-manifests.sh` → exit 0, and the report shows `Invalid: 0, Skipped: 0` |
 | KCL composition valid | `./scripts/validate-kcl-compositions.sh` → exit 0 |
+| Docs links resolve | `./scripts/validate-links.sh` → exit 0 (run after ANY file move — a path grep cannot see relative-link rot) |
 | Design ready | Design doc committed under `docs/superpowers/specs/`, no `[NEEDS CLARIFICATION]` markers left |
 | Success criteria met (post-merge) | `/verify-spec <design-doc>` against live cluster |
 | Flux reconciled | `flux get kustomizations` / `helmreleases` → `Ready=True` |

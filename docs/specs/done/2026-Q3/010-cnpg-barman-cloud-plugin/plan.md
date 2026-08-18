@@ -137,7 +137,7 @@ crds/base/kustomization-barman-cloud-plugin.yaml                # ObjectStore CR
 
 ## Tasks
 
-> Each task has a stable ID. Cite fresh evidence before marking `[x]` (see [.claude/rules/process.md](../../../.claude/rules/process.md)).
+> Each task has a stable ID. Cite fresh evidence before marking `[x]` (see [.claude/rules/process.md](../../../../../.claude/rules/process.md)).
 
 > **Requirements coverage**: FR-001 → T004; FR-002 → T005; FR-003 → T006 (CL-3); FR-004 → T007; FR-005 → T004; FR-006 → T004 (default: omit `s3Credentials`) / T012 (opt-in access-key, CL-4); FR-007 → T001/T002 (CL-6); FR-008 → T003; FR-009 → T008.
 

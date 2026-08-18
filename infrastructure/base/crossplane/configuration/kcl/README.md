@@ -82,7 +82,7 @@ The CI/CD pipeline automatically:
 
 ## CI/CD Pipeline
 
-The workflow is defined in [`.github/workflows/crossplane-modules.yml`](../../../../../../.github/workflows/crossplane-modules.yml).
+The workflow is defined in [`.github/workflows/crossplane-modules.yml`](../../../../../.github/workflows/crossplane-modules.yml).
 
 ### Triggers
 
