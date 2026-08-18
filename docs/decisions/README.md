@@ -116,7 +116,7 @@ ADRs, Specs, and Constitution serve different purposes:
 - **Constitution**: Defining rules that apply to ALL specs (e.g., `xplane-*` naming, security defaults)
 
 **Relationships**:
-- Specs MUST comply with the [Constitution](../specs/constitution.md)
+- Specs MUST comply with the [Constitution](../platform-constitution.md)
 - Specs MAY reference ADRs for context on technology choices
 - Implementing a Spec MAY result in new ADRs if cross-cutting decisions emerge
 - Constitution amendments require an ADR to document the change

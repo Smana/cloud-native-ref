@@ -60,7 +60,7 @@ Two independent gates govern the self-hosted LLM platform; both must be released
 
 The umbrella Kustomization aggregates 5 children under `clusters/mycluster-0-llm-platform/` (kept a sibling of `clusters/mycluster-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/mycluster-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
 
-**Autoscaling design** (composition v0.5.0+, [SPEC-001](docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md)): every model defaults `min=1` with a KEDA `ScaledObject` driven by leading vLLM saturation metrics — `running/max-num-seqs` ratio + `kv_cache_usage_perc`. The legacy KEDA HTTP add-on (proxy in the data path, lagging request-count trigger) is no longer used; AI Gateway routes directly to each vLLM Service.
+**Autoscaling design** (composition v0.5.0+, [SPEC-001](docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)): every model defaults `min=1` with a KEDA `ScaledObject` driven by leading vLLM saturation metrics — `running/max-num-seqs` ratio + `kv_cache_usage_perc`. The legacy KEDA HTTP add-on (proxy in the data path, lagging request-count trigger) is no longer used; AI Gateway routes directly to each vLLM Service.
 
 **Experimental TUI client:** OpenCode (used occasionally; Claude Code stays primary). Setup design lives in the standalone [`Smana/opencode-config`](https://github.com/Smana/opencode-config) repo at `docs/2026-05-05-opencode-migration-design.md`.
 
@@ -139,24 +139,27 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 
 > **KCL and Crossplane validation rules** are in `.claude/rules/kcl-crossplane.md` and `.claude/rules/crossplane-validation.md` (loaded automatically when editing those files).
 
-## Spec-Driven Development (SDD)
+## Development Workflow (Superpowers)
 
-This repository uses SDD for non-trivial changes. See [docs/specs/README.md](docs/specs/README.md) for complete documentation.
-
-**Core workflow — 4 commands**:
+Non-trivial changes go through the [Superpowers](https://github.com/obra/superpowers) plugin,
+declared in `.claude/settings.json`. Its skills auto-trigger — there are no repo-specific slash
+commands to remember for the core flow.
 
 ```
-/spec  →  /clarify  →  /validate  →  /create-pr
+superpowers:brainstorming        -> docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md
+  superpowers:writing-plans      -> docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md
+    superpowers:subagent-driven-development (or executing-plans)
+      /verify-spec               -> docs/superpowers/specs/YYYY-MM-DD-<topic>-verification.md
+        /commit -> /create-pr
 ```
-
-Each spec lives in a **3-artifact directory** (`spec.md` = WHAT, `plan.md` = HOW + tasks + review checklist, `clarifications.md` = append-only decision log). Auto-archive on merge moves it to `docs/specs/done/YYYY-Qn/NNN-slug/` with an auto-generated `SUMMARY.md`.
 
 **Key documents**:
-- [Platform Constitution](docs/specs/constitution.md) — non-negotiable principles (auto-loaded via `.claude/rules/spec-constitution.md`)
+- [Platform Constitution](docs/platform-constitution.md) — non-negotiable principles (auto-loaded via `.claude/rules/platform-constitution.md`)
 - [Architecture Decision Records](docs/decisions/) — cross-cutting technology choices
-- [Phased specs](docs/specs/PHASED.md) — for features that span multiple PRs
+- [Repo deltas](.claude/rules/superpowers.md) — artifact locations and the gate that applies at each phase
+- [Spec archive](docs/specs/) — output of the in-house SDD workflow retired on 2026-08-18, read-only
 
-### When Specs Are Required
+### When a Design Is Required
 
 | Change Type | Examples |
 |-------------|----------|
@@ -165,22 +168,18 @@ Each spec lives in a **3-artifact directory** (`spec.md` = WHAT, `plan.md` = HOW
 | Security Changes | Network policies, RBAC, PKI, secrets |
 | Platform Capabilities | Multi-component features, observability |
 
-### When to Skip Specs
+### When to Skip
 
 Version bumps, documentation-only, single-file bug fixes, minor config changes, HelmRelease value tweaks.
 
-### SDD Skills
+### Repo-Specific Companions
+
+Two skills cover ground the plugin does not. Both are optional.
 
 | Skill | Description |
 |-------|-------------|
-| `/spec "description"` | Create GitHub issue + 3-artifact spec directory (via `scripts/sdd/create-spec.sh`). Type auto-inferred; pass `<type>` before description to override |
-| `/spec-status` | Pipeline overview (counts pre-computed via `!\`cmd\`` context injection) |
-| `/clarify [spec-dir]` | Append-only: replace `[NEEDS CLARIFICATION]` markers with `CL-N` references in `clarifications.md` |
-| `/validate [spec-dir]` | Single quality gate — structural + cross-artifact + constitution compliance checks |
-| `/verify-spec <spec-dir>` | (Power tool) Post-merge: verify SC-XXX against live cluster, write `VERIFICATION.md` |
-| `/spec-research <slug> "<q>"` | (Power tool) Forked Explore subagent: Context7 + repo scan → writes `research.md` |
-
-For phased specs (multi-PR features), see [`docs/specs/PHASED.md`](docs/specs/PHASED.md). Use sparingly.
+| `/verify-spec <design-doc>` | Post-merge: verify a design's success criteria against the live cluster via the Flux and VictoriaMetrics/VictoriaLogs MCPs, write `<topic>-verification.md` |
+| `/spec-research <slug> "<q>"` | Forked Explore subagent: Context7 + repo scan -> writes `<date>-<slug>-research.md` without burning main context |
 
 ## Security Considerations
 

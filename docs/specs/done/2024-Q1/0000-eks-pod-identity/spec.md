@@ -80,7 +80,7 @@ As a **platform operator**, I want to associate a single IAM role with service a
 - Plan: [plan.md](plan.md)
 - Clarifications: [clarifications.md](clarifications.md)
 - Summary (post-merge): [SUMMARY.md](SUMMARY.md)
-- Constitution: [docs/specs/constitution.md](../../../constitution.md)
+- Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
 - Related ADR: [ADR-0002: EKS Pod Identity over IRSA](../../../../decisions/0002-eks-pod-identity-over-irsa.md)
 - KCL Module: `infrastructure/base/crossplane/configuration/kcl/eks-pod-identity/`
 - Usage: `security/base/epis/`

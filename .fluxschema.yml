@@ -1,4 +1,4 @@
-# Shared by CI, humans, and AI agents. See docs/specs/007-flux-schema-validation-replace/
+# Shared by CI, humans, and AI agents. See docs/specs/done/2026-Q3/007-flux-schema-validation-replace/
 apiVersion: schema.plugin.fluxcd.io/v1beta1
 kind: Config
 validate:

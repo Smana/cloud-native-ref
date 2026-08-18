@@ -3,7 +3,7 @@
 **Status**: Accepted
 **Date**: 2026-05-01
 **Deciders**: Smana (Platform Owner)
-**Related Spec**: [Self-Hosted LLM Platform with Cascade Routing](../plans/self-hosted-llm-platform/02-spec-draft.md)
+**Related Spec**: Self-Hosted LLM Platform with Cascade Routing — pre-SDD draft, removed 2026-08-18; recover with `git log --all -- docs/plans/self-hosted-llm-platform/`
 **Supersedes (in part)**: implementation of spec FR-011 + plan T013/T019 — replaces "init-container `aws s3 sync` + `emptyDir` staging" with a POSIX mount of an S3 Files file system over the same bucket. The bucket and EPI ratification (CL-8) stand.
 
 **TL;DR**: Mount the model-weights S3 bucket via **Amazon S3 Files** (Option 4); bootstrap the FileSystem via OpenTofu until Upbound `provider-upjet-aws` v2.6+ ships native CRDs. Drop the init-container, drop the `emptyDir`, drop the platform-wide xvdb 80 GiB.
@@ -121,6 +121,8 @@ If S3 Files latency under safetensors `mmap` proves problematic, revert to **Opt
 - [Mountpoint for Amazon S3 CSI driver](https://github.com/awslabs/mountpoint-s3-csi-driver) — Option 2 / rollback target
 - ADR-0002: [Use EKS Pod Identity over IRSA](0002-eks-pod-identity-over-irsa.md)
 - ADR-0003: [Use vLLM Production Stack over KServe + llm-d](0003-vllm-production-stack-over-kserve.md)
-- Spec: [Self-Hosted LLM Platform with Cascade Routing](../plans/self-hosted-llm-platform/02-spec-draft.md) — this ADR supersedes the implementation of FR-011 only
-- Plan: [03-plan-draft.md](../plans/self-hosted-llm-platform/03-plan-draft.md) — Phase 4 split
-- Clarifications: [04-clarifications-draft.md](../plans/self-hosted-llm-platform/04-clarifications-draft.md) — CL-8 (storage layer, ratified) + CL-9 (mount mechanism, this ADR)
+- Spec / Plan / Clarifications: the pre-SDD drafts at `docs/plans/self-hosted-llm-platform/`
+  (`02-spec-draft.md` — FR-011, whose implementation this ADR supersedes; `03-plan-draft.md` —
+  Phase 4 split; `04-clarifications-draft.md` — CL-8 storage layer, ratified, and CL-9 mount
+  mechanism, this ADR). Removed on 2026-08-18 with the rest of the retired SDD machinery;
+  recover with `git log --all -- docs/plans/self-hosted-llm-platform/`.

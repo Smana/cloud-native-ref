@@ -216,7 +216,6 @@ Complete this before implementation begins. Each persona enforces non-negotiable
 
 - Spec: [spec.md](spec.md)
 - Clarifications log: [clarifications.md](clarifications.md)
-- Constitution: [docs/specs/constitution.md](../constitution.md)
-- Phased specs: [docs/specs/PHASED.md](../PHASED.md)
+- Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
 - Similar composition: `infrastructure/base/crossplane/configuration/kcl/cloudnativepg/` + `sql-instance-composition.yaml`
 - Chart source: <https://github.com/valkey-io/valkey-helm> (`valkey/` chart 0.10.0, appVersion 9.1.0)

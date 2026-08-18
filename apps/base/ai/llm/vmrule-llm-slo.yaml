@@ -34,7 +34,7 @@ spec:
               kicked in before we got here. If this fires repeatedly,
               consider lowering `runningRatioThreshold` or
               `cacheUtilizationThreshold` in the InferenceService claim.
-            runbook_url: https://github.com/Smana/cloud-native-ref/blob/main/docs/specs/0001-llm-platform-prometheus-autoscaling/spec.md#fr-006
+            runbook_url: https://github.com/Smana/cloud-native-ref/blob/main/docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md#fr-006
 
         - alert: LLMTimeToFirstTokenBreached
           expr: |

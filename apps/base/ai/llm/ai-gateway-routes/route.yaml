@@ -16,7 +16,7 @@
 # moved into the InferenceService composition (spec.gateway.enabled on
 # the claim renders a per-claim AIGatewayRoute, readiness-gated). The
 # remaining 3 models migrate in a follow-up PR, after which this file
-# is deleted. See docs/specs/002-composition-owned-gateway-routing/.
+# is deleted. See docs/specs/done/2026-Q3/002-composition-owned-gateway-routing/.
 #
 # Header dispatch: matched on `x-ai-eg-model`, which the AI Gateway's extproc
 # populates from `body.model`.
