@@ -153,6 +153,11 @@ superpowers:brainstorming        -> docs/superpowers/specs/YYYY-MM-DD-<topic>-de
         /commit -> /create-pr
 ```
 
+> **Always work in a git worktree.** Use the `EnterWorktree` tool at the start of any task that
+> changes files — worktrees land in the gitignored `.claude/worktrees/` and branch from
+> `origin/main`, so concurrent sessions never share a working directory or inherit each other's
+> `HEAD`. Details in [`.claude/rules/superpowers.md`](.claude/rules/superpowers.md).
+
 **Key documents**:
 - [Platform Constitution](docs/platform-constitution.md) — non-negotiable principles (auto-loaded via `.claude/rules/platform-constitution.md`)
 - [Architecture Decision Records](docs/decisions/) — cross-cutting technology choices
