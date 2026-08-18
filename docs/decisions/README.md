@@ -129,9 +129,6 @@ ADRs, Specs, and Constitution serve different purposes:
 | [0002](0002-eks-pod-identity-over-irsa.md) | Use EKS Pod Identity over IRSA | Accepted | 2024-01-15 |
 | [0003](0003-vllm-production-stack-over-kserve.md) | Use vLLM Production Stack over KServe + llm-d for v1 LLM Platform | Accepted | 2026-04-30 |
 | [0004](0004-amazon-s3-files-for-model-weights-storage.md) | Use Amazon S3 Files for LLM Model Weights Storage | Accepted | 2026-05-01 |
-| [0005](0005-gke-standard-self-managed-cilium.md) | GKE Standard with self-managed Cilium (not Dataplane V2, not Autopilot) | Accepted | 2026-08-18 |
-| [0006](0006-nap-computeclass-over-karpenter.md) | GKE node auto-provisioning (ComputeClass) over Karpenter on GCP | Accepted | 2026-08-18 |
-| [0007](0007-cloud-abstraction-boundaries.md) | Cloud abstraction boundaries — cloud-shaped platform APIs, neutral developer APIs | Accepted | 2026-08-18 |
 
 ## Further Reading
 
