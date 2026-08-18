@@ -1,6 +1,6 @@
-# SDD Constitution Rules
+# Platform Constitution Rules
 
-Auto-loaded when editing files under `docs/specs/**`, `infrastructure/**`, `security/**`, `observability/**`, or `tooling/**`. These are the non-negotiable platform rules every spec / composition / manifest must comply with. Source of truth: [`docs/specs/constitution.md`](../../docs/specs/constitution.md).
+Auto-loaded when editing files under `docs/superpowers/**`, `infrastructure/**`, `security/**`, `observability/**`, or `tooling/**`. These are the non-negotiable platform rules every design / composition / manifest must comply with. Source of truth: [`docs/platform-constitution.md`](../../docs/platform-constitution.md).
 
 ## Resource naming
 
@@ -78,7 +78,7 @@ Every new composition includes:
 - [ ] IAM: EKS Pod Identity; policy scoped to `xplane-*`
 - [ ] Observability: metrics + logs + health checks
 - [ ] Documentation: README, settings-example, examples, tests
-- [ ] All 3 spec artifacts present (spec.md / plan.md / clarifications.md)
-- [ ] No inline `[CLARIFIED:]` in spec.md (decisions are CL-N entries)
+- [ ] Design doc committed under `docs/superpowers/specs/` and linked from the PR
+- [ ] No `[NEEDS CLARIFICATION]` markers left in the approved design
 
 Related ADRs: `docs/decisions/0001-use-kcl-for-crossplane-compositions.md`, `docs/decisions/0002-eks-pod-identity-over-irsa.md`.

@@ -1,8 +1,8 @@
 # Platform Constitution
 
-This document defines the non-negotiable principles that govern all specifications and implementations in this platform. Every spec MUST comply with these principles.
+This document defines the non-negotiable principles that govern all designs and implementations in this platform. Every design MUST comply with these principles.
 
-**Related**: [Architecture Decision Records](../decisions/) | [SDD Workflow](./README.md)
+**Related**: [Architecture Decision Records](./decisions/) | [Development workflow](../CLAUDE.md#development-workflow-superpowers)
 
 ---
 
@@ -193,21 +193,24 @@ Every KCL composition MUST include:
 - `settings-example.yaml` for local testing
 - Basic and complete example claims in `examples/`
 
-### 8.2 Specifications
+### 8.2 Design documents
 
-Non-trivial changes require specs per [SDD workflow](./README.md).
+Non-trivial changes are designed before they are built, using the
+[Superpowers](https://github.com/obra/superpowers) workflow (see `CLAUDE.md` →
+*Development Workflow*).
 
-Each spec lives in its own directory `docs/specs/NNN-slug/` and consists of **3 mandatory artifacts**:
+| Artifact | Path | Produced by |
+|----------|------|-------------|
+| Design | `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` | `superpowers:brainstorming` |
+| Plan | `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md` | `superpowers:writing-plans` |
+| Verification | `docs/superpowers/specs/YYYY-MM-DD-<topic>-verification.md` | `/verify-spec`, post-merge |
 
-| File | Purpose | Cadence |
-|------|---------|---------|
-| `spec.md` | Contract — WHAT and WHY (FR-XXX, SC-XXX, user stories) | **Frozen after approval** |
-| `plan.md` | Design + tasks (T001+) + 4-persona review checklist | May evolve during implementation |
-| `clarifications.md` | **Append-only** decision log: each `## CL-N` entry captures options considered + decision + rationale + references | Append-only — never overwrite |
+**Decisions are durable**: a design records the options considered, the decision, and the
+rationale — not just the outcome. Never leave a `[NEEDS CLARIFICATION]` marker in an approved
+design; resolve it and write down why.
 
-**Decisions are durable**: never inline `[CLARIFIED: ...]` in `spec.md`. Run `/clarify` to append a `CL-N` entry to `clarifications.md` and replace the marker in `spec.md` with `CL-N — <one-line summary>`. Future readers can always reconstruct *why* the decision was made.
-
-On PR merge, the archive workflow generates a `SUMMARY.md` (auto from PR + git metadata) and moves the directory to `docs/specs/done/YYYY-Qn/NNN-slug/` (quarterly bucketing).
+Specs produced by the retired in-house SDD workflow (2026-Q1 → 2026-Q3) are archived read-only
+under [`docs/specs/`](./specs/).
 
 ---
 
@@ -226,9 +229,9 @@ Use this checklist when reviewing specs and implementations:
 - [ ] Observability configured (metrics, logs)
 - [ ] Validation tools pass (Polaris 85+, kube-linter, Datree)
 - [ ] Examples provided (basic + complete)
-- [ ] Spec directory has all 3 artifacts (spec.md / plan.md / clarifications.md)
-- [ ] No inline `[CLARIFIED: ...]` in spec.md — decisions are CL-N entries in clarifications.md
-- [ ] `/validate` passes before implementation
+- [ ] Design doc committed under `docs/superpowers/specs/` and linked from the PR
+- [ ] No `[NEEDS CLARIFICATION]` markers left in the approved design
+- [ ] Design written and approved before implementation
 
 ---
 
