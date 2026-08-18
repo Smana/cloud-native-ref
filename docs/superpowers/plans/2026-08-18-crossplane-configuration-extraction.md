@@ -10,7 +10,9 @@
 
 ## Global Constraints
 
-- **`cloud-native-ref` is READ-ONLY for this entire stage.** Every task reads from it; no task writes to it. Stage 2 is a separate plan. Verify with `git -C <cloud-native-ref> status --porcelain` returning empty.
+- **`cloud-native-ref`'s FUNCTIONAL files are READ-ONLY for this entire stage.** No manifest, script, composition, workflow or cluster file may change. Stage 2 is a separate plan. Documentation under `docs/superpowers/` on the `feat/crossplane-configuration-extraction` branch MAY be updated to record evidence (Task 11 Step 8 does exactly this). Verify with both:
+  - `git -C $CNR status --porcelain` → empty
+  - `git -C $CNR diff --stat main...HEAD` → paths under `docs/` only
 - **The API group is `cloud.ogenki.io` and does not change.** No XRD schema edit, no `metadata.name` edit, no `kind` or `plural` edit. This is a relocation.
 - **`kcl test` requires `-Y settings-example.yaml`.** Without it every test fails with `EvaluationError` (verified: kvstore 15/15 FAIL bare, 15/15 PASS with the flag).
 - **Baseline test counts that must not regress:** app 32, cloudnativepg 12, eks-pod-identity 7, inference-service 44, kvstore 15 — **110 total**.
@@ -282,13 +284,48 @@ diff <(cat "$CFG/app-definition.yaml") apis/app/definition.yaml && echo "verbati
 
 Expected: `10`, `5`, `13`, `verbatim`.
 
-- [ ] **Step 3: Drop the module README files, which describe the old layout**
+- [ ] **Step 3: Move the per-module READMEs up and repoint their paths**
 
-The per-module `README.md` files reference `infrastructure/base/crossplane/configuration/kcl/...`
-paths that no longer exist. They are replaced by the root `README.md`.
+The platform constitution requires a `README.md` per composition, so these are kept rather than
+folded into the root README. They currently reference
+`infrastructure/base/crossplane/configuration/kcl/...` paths that no longer exist.
 
 ```bash
-rm -f apis/*/kcl/README.md
+for api in app sqlinstance kvstore inferenceservice epi; do
+  [ -f "apis/$api/kcl/README.md" ] && git mv 2>/dev/null || true
+  mv "apis/$api/kcl/README.md" "apis/$api/README.md" 2>/dev/null || true
+done
+ls apis/*/README.md
+```
+
+Expected: five files, one per API.
+
+Then rewrite every stale path inside them. The old layout had a flat directory; the new one is
+per-API:
+
+```bash
+for api in app sqlinstance kvstore inferenceservice epi; do
+  sed -i \
+    -e "s#infrastructure/base/crossplane/configuration/kcl/[a-z-]*#apis/$api/kcl#g" \
+    -e "s#infrastructure/base/crossplane/configuration/examples#examples#g" \
+    -e "s#infrastructure/base/crossplane/configuration#apis/$api#g" \
+    "apis/$api/README.md"
+done
+grep -rn 'infrastructure/base' apis/*/README.md || echo "no stale paths remain"
+```
+
+Expected: `no stale paths remain`.
+
+Finally, verify each README still describes the right API — the `sqlinstance` README belongs to the
+`cloudnativepg` module and the `epi` README to `eks-pod-identity`, so their titles and any module
+names inside must match the new API directory names. Fix any mismatch by hand.
+
+Add the links to the root `README.md` under the APIs table:
+
+```markdown
+Per-API documentation: [`App`](apis/app/README.md) · [`SQLInstance`](apis/sqlinstance/README.md) ·
+[`KVStore`](apis/kvstore/README.md) · [`InferenceService`](apis/inferenceservice/README.md) ·
+[`EPI`](apis/epi/README.md)
 ```
 
 - [ ] **Step 4: Run the tests in their new location**
@@ -976,10 +1013,12 @@ recurses and --ignore cannot exclude directories."
 cp /home/smana/Sources/cloud-native-ref/scripts/flux-schema/xrd-to-crd.py scripts/xrd_to_crd.py
 ```
 
-- [ ] **Step 2: Read it and adjust only the input path handling**
+- [ ] **Step 2: Read it and confirm it needs no change**
 
-The script takes XRD file paths as `argv` and writes CRDs to stdout. It needs no logic change; the
-caller changes from a flat glob to `apis/*/definition.yaml`.
+The script takes XRD file paths as `argv` and writes CRDs to stdout, so only the *caller's* glob
+changes — from the old flat `configuration/*-definition.yaml` to `apis/*/definition.yaml`. Read the
+file to confirm it has no hardcoded input path. If it does, that is the only edit to make; Step 4
+proves the output is unchanged either way.
 
 - [ ] **Step 3: Add the Makefile target**
 
@@ -1262,15 +1301,20 @@ configured, and `cloud-native-ref` configures none.
 `crossplane xpkg install` has no `--dry-run` flag (verified against v2.1.3), so check the registry
 directly:
 
+Use a throwaway Docker config directory rather than `docker logout`, which would drop the
+operator's real ghcr.io credentials from their machine:
+
 ```bash
-docker logout ghcr.io
+ANON=$(mktemp -d)
 for p in core aws; do
-  if docker manifest inspect "ghcr.io/smana/crossplane-configuration-$p:0.1.0" >/dev/null 2>&1; then
+  if DOCKER_CONFIG="$ANON" docker manifest inspect \
+       "ghcr.io/smana/crossplane-configuration-$p:0.1.0" >/dev/null 2>&1; then
     echo "$p: pullable anonymously"
   else
     echo "$p: NOT pullable anonymously"
   fi
 done
+rm -rf "$ANON"
 ```
 
 Expected: `core: pullable` and `aws: pullable`. If either fails with `denied` or `unauthorized`,
