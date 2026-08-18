@@ -961,19 +961,46 @@ Expected: exit 0, and the report line reads `Invalid: 0, Skipped: 0`. Two touche
 (`vmrule-llm-slo.yaml`, `route.yaml`) are in the rendered bundle, so this is the gate that proves
 the edits did not corrupt them. If it fails, stop and fix the root cause — do not proceed.
 
-- [ ] **Step 2: Prove no dangling spec references**
+- [ ] **Step 2: Prove no dangling links**
+
+A string match on `docs/specs/` is **not** sufficient — it misses relative links whose *depth*
+changed when a file moved (e.g. `../../decisions/` inside an archived spec, or
+`specs/002-.../spec.md` in `docs/ai.md`). Resolve every relative markdown link target instead,
+and compare against a baseline taken from `main`:
 
 ```bash
-git grep -ho 'docs/specs/[A-Za-z0-9/_.-]*' -- . ':!docs/superpowers' \
-  | sed 's/[.,)]*$//' | sort -u | grep -v 'NNN\|YYYY-Qn' | while read -r p; do
-      case "$p" in docs/specs|docs/specs/|docs/specs/done|docs/specs/done/) continue ;; esac
-      [ -e "$p" ] || echo "MISSING: $p"
-    done; echo "done"
+cd /home/smana/Sources/cloud-native-ref
+cat > /tmp/linkcheck.py <<'EOF'
+import os, re, subprocess, sys
+os.chdir(sys.argv[1] if len(sys.argv) > 1 else '.')
+files = subprocess.run(['git','ls-files','*.md'], capture_output=True, text=True).stdout.split()
+pat = re.compile(r'\[[^\]]*\]\(([^)#\s]+)(?:#[^)\s]*)?\)')
+for f in files:
+    d = os.path.dirname(f)
+    for m in pat.finditer(open(f, encoding='utf-8', errors='replace').read()):
+        t = m.group(1)
+        if t.startswith(('http://','https://','mailto:','tel:','<','/')): continue
+        if any(c in t for c in '<>*\\'): continue
+        if not os.path.exists(os.path.normpath(os.path.join(d, t))):
+            print(f"{f}\t{t}")
+EOF
+git worktree add -q /tmp/baseline main
+python3 /tmp/linkcheck.py . | sort > /tmp/after.txt
+python3 /tmp/linkcheck.py /tmp/baseline | sort > /tmp/before.txt
+comm -13 /tmp/before.txt /tmp/after.txt
+git worktree remove /tmp/baseline
 ```
 
-Expected: no `MISSING:` lines. Two exclusions are deliberate: `docs/superpowers/` holds this
-migration's own design and plan, which quote pre-migration paths on purpose, and `NNN` /
-`YYYY-Qn` are prose placeholders, not paths.
+Expected: every line printed falls into one of two benign classes, and **nothing else**:
+
+1. the file is this migration's own design or plan — they quote pre-migration paths inside code
+   samples on purpose;
+2. the same `(basename, target)` pair already appears in `/tmp/before.txt` — pre-existing
+   breakage whose file merely moved.
+
+Anything outside those two classes is real link rot this migration caused. Fix it before
+proceeding; the usual repair is prepending `../../` (archive moved two levels deeper) or
+inserting `done/<quarter>/`.
 
 - [ ] **Step 3: Prove no live reference to deleted machinery**
 
@@ -991,8 +1018,9 @@ ls docs/specs/done/*/ -d
 ls docs/specs/done/*/ | grep -c '^0\|^1'
 ```
 
-Expected: `docs/specs/` shows `README.md  done`; three bucket directories; thirteen spec
-directories in total.
+Expected: `docs/specs/` shows `README.md  done`; three bucket directories; **fourteen** spec
+directories in total (12 moved by this migration — 11 into `2026-Q3`, 1 into `2026-Q2` — plus
+`0000-eks-pod-identity` and `012-kvstore-composition-replace-bitnami`, already archived).
 
 - [ ] **Step 5: Confirm the rules still parse**
 
@@ -1291,6 +1319,7 @@ Run before declaring the whole migration complete:
 - [ ] `git grep 'scripts/sdd\|validate-spec.sh\|spec-archive'` returns only archived content
 - [ ] `docs/specs/` contains only `README.md` and `done/`
 - [ ] `.claude/rules/` contains `superpowers.md`, `platform-constitution.md`, `process.md` — and no `spec-constitution.md`
+- [ ] `docs/specs/done/` holds 14 spec directories across 3 quarterly buckets
 - [ ] `.claude/skills/` contains `verify-spec`, `spec-research`, `commit`, `create-pr`, `improve-pr`, `crossplane-validator` — and nothing else
 - [ ] `hugo --gc --minify` → exit 0 in the blog repo
 - [ ] cloud-native-ref PR merged **before** the blog PR
