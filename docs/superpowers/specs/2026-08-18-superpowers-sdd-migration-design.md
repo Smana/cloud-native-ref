@@ -2,7 +2,8 @@
 
 **Date**: 2026-08-18
 **Status**: Approved (design)
-**Scope**: repository workflow + agent configuration. No platform/cluster changes.
+**Scope**: repository workflow + agent configuration, plus a companion documentation update in
+the blog repo (`Smana/smana.github.io`). No platform/cluster changes.
 
 ## Problem
 
@@ -33,6 +34,8 @@ and a CI workflow with a shell-injection bug is still armed on every merge to `m
 3. Repo-specific engineering gates (platform constitution, verification evidence table,
    systematic debugging) keep applying — rebound to the Superpowers artifacts.
 4. Nothing in CI references specs afterward.
+5. The published articles that document the retired SDD workflow say so, and their links keep
+   resolving after the constitution moves.
 
 ## Non-goals
 
@@ -184,6 +187,45 @@ Both are documented as optional companions to the Superpowers flow, not steps in
 | `README.md` | the public "we use Spec-Driven Development" paragraph rewritten to describe the Superpowers flow, pointing at `docs/superpowers/` |
 | `docs/specs/README.md` | replaced by the archive notice |
 
+### H. Blog: mark the custom SDD workflow as retired
+
+The custom SDD workflow is public. Two articles in the `agentic_ai` series on
+[blog.ogenki.io](https://blog.ogenki.io) describe it, and one links directly into the file tree
+this change rearranges. Repo: `Smana/smana.github.io` (separate repository, separate PR).
+
+**`content/{fr,en}/post/series/agentic_ai/ai-coding-agent/index.md`** (2026-02-06) — carries the
+whole "My SDD variant for Platform Engineering" section: the constitution, the 4 review personas,
+the `/spec` `/clarify` `/validate` `/create-pr` skill table, eight screenshots and a full
+walkthrough. Three edits:
+
+1. **Top banner** — `{{% notice info "Update 2026-08-18" %}}` immediately after the front matter,
+   matching the convention already used in `terraform-controller` and
+   `crossplane_composition_functions`. States that after several months of using Superpowers the
+   repo switched to it, and that the workflow described below is retired.
+2. **In-section note** — a short line at the head of the "My SDD variant" notice, so a reader
+   arriving mid-article from a search result is not misled. The section body is *not* rewritten:
+   it remains an accurate account of what was built and why, and the reasoning behind it
+   (constitution, review personas, verification against a live cluster) survived the switch —
+   only the mechanism changed.
+3. **Link fix** — the constitution link
+   (`.../blob/main/docs/specs/constitution.md`) is repointed at
+   `.../blob/main/docs/platform-constitution.md`. Superpowers is added to the article's
+   "Spec-Driven Development" reference list, which currently lists Spec Kit, OpenSpec and BMAD
+   but not the tool that won.
+
+The screenshots stay. They document a real workflow that ran for months; the notes frame them.
+
+**`content/en/post/series/agentic_ai/ai-coding-tips/index.md`** (2026-02-08) — the English
+translation is missing the article's entire opening section, `## Mon utilisation actuelle de
+Claude Code` (~25 lines: the MCP list, the skills / subagents / SDD bullets, and the
+"mise en abyme" notice about the self-hosted LLM stack). The French version already states that
+Superpowers is the preferred SDD flavour; the English reader never sees it. The section is
+translated and inserted, with the SDD bullet updated from "my current preference" to the
+completed switch.
+
+Tone and formatting follow the `ogenki-blog-style` skill; both language versions are edited in
+the same commit so translations never diverge again on this point.
+
 ## Error handling and risks
 
 | Risk | Mitigation |
@@ -193,6 +235,8 @@ Both are documented as optional companions to the Superpowers flow, not steps in
 | Someone re-runs a deleted script from muscle memory or an old doc | deletions and doc rewrites land in the same commit series; no doc left pointing at a deleted script |
 | Constitution content drifts from `.claude/rules/platform-constitution.md` | unchanged from today — the rule file already summarizes the doc. The link is repointed, the duplication is pre-existing and deliberate (rules are loaded into context; the doc is for humans) |
 | Archived specs' internal cross-references between each other (e.g. 009 → 008) | both move to the same bucket, so sibling `../008-.../` links keep resolving |
+| Blog constitution link 404s between the two merges | the blog link is a `blob/main` URL, so it only resolves once the cloud-native-ref PR is on `main`. Merge order is enforced: platform PR first, blog PR second |
+| Blog repo is mid-work (`fix/searchbar` branch, unrelated untracked files) | blog edits go on their own branch cut from the blog repo's default branch, touching only the three `index.md` files |
 
 ## Testing
 
@@ -203,9 +247,16 @@ Both are documented as optional companions to the Superpowers flow, not steps in
 | No live references to deleted machinery | `git grep -n 'scripts/sdd\|validate-spec.sh\|spec-archive\|/clarify\|/spec-status'` returns only archive content |
 | Rules still auto-load | `.claude/rules/*.md` front matter globs reviewed; `docs/superpowers/**` present in both `platform-constitution.md` and `process.md` |
 | Archive complete | `docs/specs/` contains only `README.md` and `done/`; `ls docs/specs/done/*/` shows 13 spec directories |
+| Blog builds | `hugo --gc --minify` in the blog repo → exit 0, no broken shortcode |
+| Blog link targets exist | the constitution path referenced by both language versions resolves in the cloud-native-ref working tree |
+| Translations in sync | FR and EN `ai-coding-agent` carry the same two notices; EN `ai-coding-tips` contains the ported section |
 
 ## Rollout
 
-Single PR on `chore/superpowers-sdd-migration`, structured as ordered commits so review is
-tractable: (1) archive move + link repair, (2) constitution promotion, (3) deletions,
-(4) Superpowers configuration, (5) documentation rewrites, (6) power-tool retooling.
+**Platform repo** — single PR on `chore/superpowers-sdd-migration`, structured as ordered commits
+so review is tractable: (1) archive move + link repair, (2) constitution promotion,
+(3) deletions, (4) Superpowers configuration, (5) documentation rewrites, (6) power-tool
+retooling.
+
+**Blog repo** — a second, smaller PR on its own branch, merged *after* the platform PR so the
+`blob/main` constitution link resolves on publication.
