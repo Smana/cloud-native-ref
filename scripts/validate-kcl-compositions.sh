@@ -56,7 +56,7 @@ declare -a COMPOSITIONS=(
     "app:app-composition.yaml:app-basic.yaml,app-complete.yaml,app-worker.yaml,app-cron.yaml"
     "cloudnativepg:sql-instance-composition.yaml:sqlinstance-basic.yaml,sqlinstance-complete.yaml"
     "eks-pod-identity:epi-composition.yaml:epi.yaml"
-    "inference-service:inference-service-composition.yaml:inferenceservice-basic.yaml,inferenceservice-complete.yaml"
+    "inference-service:inference-service-composition.yaml:inferenceservice-basic.yaml,inferenceservice-complete.yaml,inferenceservice-endpointpicker.yaml"
     "kvstore:kvstore-composition.yaml:kvstore-basic.yaml,kvstore-complete.yaml"
 )
 
@@ -213,8 +213,36 @@ validate_composition() {
     return $errors
 }
 
+# Coverage guard: every example claim on disk must be listed above.
+#
+# `inferenceservice-endpointpicker.yaml` sat in examples/ for months while absent from
+# COMPOSITIONS, so 11 of 12 examples were rendered and the run still reported SUCCESS. An
+# untested example is not a partial pass, it is an unvalidated API surface — the same failure
+# shape SPEC-007 removed from manifest validation. Fail loudly instead.
+#
+# environmentconfig.yaml is excluded: it is an --extra-resources input, not a claim.
+listed_examples=$(printf '%s\n' "${COMPOSITIONS[@]}" | cut -d: -f3 | tr ',' '\n' | sort -u)
+disk_examples=$(find "$CONFIG_BASE/examples" -maxdepth 1 -name '*.yaml' -printf '%f\n' \
+    | grep -v '^environmentconfig\.yaml$' | sort -u)
+uncovered=$(comm -13 <(echo "$listed_examples") <(echo "$disk_examples"))
+
+if [[ -n "$uncovered" ]]; then
+    echo -e "${RED}❌ Example(s) present in $CONFIG_BASE/examples/ but not listed in COMPOSITIONS:${NC}"
+    echo "$uncovered" | sed 's/^/     /'
+    echo ""
+    echo "   Add each to the matching COMPOSITIONS entry, or delete the example."
+    exit 1
+fi
+
+missing=$(comm -23 <(echo "$listed_examples") <(echo "$disk_examples"))
+if [[ -n "$missing" ]]; then
+    echo -e "${RED}❌ Example(s) listed in COMPOSITIONS but missing from disk:${NC}"
+    echo "$missing" | sed 's/^/     /'
+    exit 1
+fi
+
 # Main validation loop
-echo "Starting validation for ${#COMPOSITIONS[@]} compositions..."
+echo "Validating ${#COMPOSITIONS[@]} compositions across $(echo "$disk_examples" | wc -l) examples..."
 
 for composition_spec in "${COMPOSITIONS[@]}"; do
     IFS=':' read -r module composition examples <<< "$composition_spec"

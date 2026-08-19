@@ -109,10 +109,33 @@ known rather than predicted.
 
 ### Deferred (later plans)
 
+> **Amendment (2026-08-19) — workstreams 6 and 7 are swapped.**
+>
+> This table originally had **7 depend on 6**: extract the compositions *after* the directory
+> refactor. The Crossplane Configuration Extraction design reverses it, and that reversal stands.
+> (That design lives on branch `feat/crossplane-configuration-extraction` as
+> `docs/superpowers/specs/2026-08-18-crossplane-configuration-extraction-design.md` — not yet
+> merged, so it is named rather than linked here.) Two reasons, both load-bearing:
+>
+> 1. The refactor's job is to partition the repo by cloud. Doing it first means partitioning ~40
+>    files that are about to leave the repository entirely.
+> 2. The extraction is what *forces* the AWS coupling to become explicit — it measured the seam and
+>    found three of five APIs are mixed (`App`, `SQLInstance` cloud-neutral contracts with AWS
+>    slices; `EPI` wholly AWS). That measurement is the input the refactor needs, so producing it
+>    first makes the refactor cheaper and better-informed rather than the other way round.
+>
+> The repository is named **`crossplane-configuration`**, not `ogenki-compositions` as written
+> below — see that design's *Naming* section for the namespace research behind the choice. It ships
+> two packages, `-core` and `-aws`, with XRDs in `-core` and cloud-coupled Compositions in `-aws`.
+>
+> Workstream 15 (`per-cloud schema catalogs`) is also affected: once the XRDs leave, the catalog
+> sources them from a release asset rather than a local glob. That seam exists in
+> `gen-catalog.sh` today via `XRD_CRDS_FILE`, verified to produce byte-identical schemas.
+
 | # | Workstream | Depends on |
 |---|---|---|
-| 6 | Directory refactor to cloud-partitioned layout | 3 |
-| 7 | Extract `ogenki-compositions` repo, OCI-released | 6 |
+| 6 | Directory refactor to cloud-partitioned layout | 3, **7** |
+| 7 | Extract the Crossplane Configuration packages, OCI-released | 3 |
 | 8 | `objectStore` API migration + `App`/`SQLInstance` branching | 5, 7 |
 | 9 | Object-storage call sites: Harbor (GCS driver), `openbao-snapshot` (GCS + Cloud KMS), CNPG barman (GCS) | 5, 8 |
 | 10 | DNS + PKI: `external-dns` google provider, cert-manager clouddns DNS-01 | 5 |
