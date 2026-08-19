@@ -2,7 +2,7 @@ name                  = "ogenki-openbao"           # Name of your Vault instance
 leader_tls_servername = "bao.priv.cloud.ogenki.io" # Vault domain name that will be exposed to users
 domain_name           = "priv.cloud.ogenki.io"     # Route53 private zone where to provision the DNS records
 env                   = "dev"                      # Environment used to tags resources
-mode                  = "ha"                       # Important: More about this setting in this documentation.
+mode                  = "dev"                      # Important: More about this setting in this documentation.
 region                = "eu-west-3"                # Where all the resources will be created
 # Kept on deliberately: this cluster is reprovisioned on every platform test, and SSM
 # is how you get onto a node whose boot script failed. Turn it off for a long-lived
