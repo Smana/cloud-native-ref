@@ -236,6 +236,19 @@ spec:
           # updating the runlore/slack-app secret. Then Event Subscriptions →
           # Request URL https://runlore.<domain>/slack/events → subscribe app_mention.
           thread_capture: true
+      # Hubble as the network-flow source, which is what makes `network_drops`
+      # available to the investigator. Without it that tool is not registered at
+      # all, and RunLore cannot see a CiliumNetworkPolicy denial — it would work a
+      # connectivity timeout from the application logs alone and never reach the
+      # cause. This repo's own rule is "always check the network policies when
+      # there are timeouts"; this is what lets RunLore follow it.
+      #
+      # hubble-relay.kube-system:80 is the in-cluster relay Service
+      # (enable-hubble: true, hubble-listen-address :4244 in cilium-config).
+      network:
+        provider: hubble
+        hubble:
+          url: hubble-relay.kube-system:80
       telemetry:
         metrics_enabled: true
       model:
