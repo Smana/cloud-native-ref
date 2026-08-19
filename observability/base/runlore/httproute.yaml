@@ -1,10 +1,21 @@
-# Slack interactivity callback — the ONLY publicly-routed runlore endpoint.
-# Slack posts 👍/👎 feedback clicks (and, if approve mode is ever enabled,
-# Approve/Reject) as HTTPS callbacks from Slack's servers; the app verifies every
-# request against the signing secret (HMAC, ±5min replay window) before acting.
+# Slack callbacks — the ONLY publicly-routed runlore endpoints, and they are
+# enumerated one path at a time on purpose.
+#
+#   /slack/interactions  👍/👎 feedback clicks (and Approve/Reject if approve mode
+#                        is ever enabled).
+#   /slack/events        app_mention delivery for thread capture
+#                        (notify.slack.thread_capture in helmrelease.yaml).
+#                        DEMO-SCOPED: remove this rule when thread_capture goes.
+#
+# Slack posts both as HTTPS callbacks from its own servers; the app verifies every
+# request against the signing secret (HMAC, ±5min replay window) before acting, so
+# the exposure is an unauthenticated POST that fails closed on a bad signature.
+#
 # Anything else on this hostname — /webhook/alertmanager, /metrics, /actions/* —
 # deliberately has NO route: the gateway answers 404. In-cluster senders keep
-# using the ClusterIP service directly.
+# using the ClusterIP service directly. Match on Exact paths rather than a
+# /slack/ prefix for exactly that reason: a prefix would silently publish any
+# future /slack/* endpoint the binary grows.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -20,6 +31,10 @@ spec:
         - path:
             type: Exact
             value: /slack/interactions
+          method: POST
+        - path:
+            type: Exact
+            value: /slack/events
           method: POST
       backendRefs:
         - name: runlore

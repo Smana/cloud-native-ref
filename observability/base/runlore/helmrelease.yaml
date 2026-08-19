@@ -222,6 +222,20 @@ spec:
           # https://runlore.<domain>/slack/interactions.
           signing_secret_env: SLACK_SIGNING_SECRET  # pragma: allowlist secret
           feedback_buttons: true
+          # DEMO-SCOPED opt-in. Exposes a SECOND public endpoint, POST
+          # /slack/events (routed in httproute.yaml), where Slack delivers
+          # app_mention. That is how a human addresses an investigation in its own
+          # thread: "note: ..." files a knowledge-base entry, anything else is a
+          # question. Every request is HMAC-verified with the signing secret above,
+          # which is why the config requires it.
+          #
+          # Slack-app side, and it is NOT just a toggle: the bot needs the
+          # app_mentions:read scope, which today's token does NOT carry
+          # (chat:write, chat:write.public, channels:history, groups:history). Adding
+          # it requires a workspace reinstall, which reissues the bot token and means
+          # updating the runlore/slack-app secret. Then Event Subscriptions →
+          # Request URL https://runlore.<domain>/slack/events → subscribe app_mention.
+          thread_capture: true
       telemetry:
         metrics_enabled: true
       model:
@@ -232,6 +246,23 @@ spec:
         model: glm-5.2
         base_url: https://api.z.ai/api/paas/v4/
         api_key_env: GLM_API_KEY  # pragma: allowlist secret
+        # DEMO-SCOPED opt-in, and it spends money on a path other people trigger.
+        # PRESENT ⇒ an addressed thread message with no recognised prefix gets a
+        # model-authored answer; ABSENT ⇒ it gets a fixed "I can only record notes".
+        # Read plainly, from RunLore's own SECURITY.md: every addressed message
+        # that is not a `note:` costs exactly one model call, and every member of
+        # #alerts can send one. `note:` stays deterministic and free either way.
+        #
+        # `model` is named explicitly because the config refuses to infer it here.
+        # Verify may inherit the investigation model harmlessly — it runs once per
+        # investigation, on a path RunLore itself starts. Chat runs once per
+        # addressed message, on a path anyone can start, so silently inheriting a
+        # frontier model would make the cheapest way to enable this the most
+        # expensive way to run it. Named as glm-5.2 rather than something smaller
+        # because the point of the demo is the quality of the answer; drop it to a
+        # cheaper model if this outlives the demo.
+        chat:
+          model: glm-5.2
       catalog:
         dir: /var/lib/runlore/catalog
         git:
