@@ -97,7 +97,7 @@ flux resume kustomization --all
 
 ```bash
 export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
-export VAULT_CACERT=opentofu/openbao/cluster/.tls/ca-chain.pem   # prefer this over VAULT_SKIP_VERIFY
+export VAULT_CACERT=opentofu/openbao/management/.tls/ca.pem   # written by `openbao-config.sh ca`; prefer this over VAULT_SKIP_VERIFY
 bao status
 
 # Operator login is userpass in the root namespace, managed by

@@ -10,8 +10,13 @@ spec:
   schedule: "0 4 * * *"
   successfulJobsHistoryLimit: 1
   suspend: false
-  # Without this a controller outage silently swallows missed runs instead of
-  # catching up when it recovers.
+  # Bounds how late a missed run may start. The semantics are the opposite of
+  # what they look like: with this UNSET the controller catches up a missed
+  # schedule whenever it recovers, and setting it makes anything missed by more
+  # than the deadline get skipped. It is set anyway, because unbounded catch-up
+  # means a controller outage spanning several days fires a burst of snapshots
+  # at once. An hour is long enough to ride out a node or control-plane blip.
+  # A run dropped past that surfaces as OpenBaoSnapshotStale.
   startingDeadlineSeconds: 3600
   jobTemplate:
     metadata:
@@ -79,7 +84,13 @@ spec:
                 requests:
                   cpu: 50m
                   memory: 150Mi
+                  # The snapshot lands in an emptyDir backed by the node's root
+                  # disk, so the scheduler has to account for it. Without this
+                  # a large snapshot triggers node DiskPressure and evicts
+                  # unrelated pods before the volume's own sizeLimit fires.
+                  ephemeral-storage: 5Gi
                 limits:
+                  ephemeral-storage: 5Gi
                   # Headroom over the request rather than a tight cap: the job is
                   # a once-a-night snapshot, so throttling it only makes the
                   # backup window longer. The constitution requires a limit, so

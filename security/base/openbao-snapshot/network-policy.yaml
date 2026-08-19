@@ -3,10 +3,18 @@ kind: CiliumNetworkPolicy
 metadata:
   name: openbao-snapshot
 spec:
-  description: "Limit egress from the OpenBao snapshot job. No ingress - nothing calls it."
+  description: "Limit egress from the OpenBao snapshot job, and deny all ingress - nothing calls it."
   endpointSelector:
     matchLabels:
       k8s:app.kubernetes.io/instance: openbao
+  # Default-deny is per-direction in Cilium: an endpoint only enters default-deny
+  # for a direction if a rule selecting it has a section for that direction. An
+  # egress-only policy therefore leaves ingress fully open, which is what this
+  # policy did before — the description claimed otherwise. Asking for it
+  # explicitly is clearer than relying on an empty `ingress: []` array.
+  enableDefaultDeny:
+    ingress: true
+    egress: true
   egress:
     - toEndpoints:
         - matchLabels:

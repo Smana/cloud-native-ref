@@ -22,6 +22,11 @@ export AWS_PAGER=""
 SCRIPT_NAME=$(basename "${0}")
 DEFAULT_DAYS=8 # Default number of days for snapshot validation
 
+# Where the restore freshness marker lives. The kv-v2 mount is in the `app`
+# tenant namespace — platform services live in root, tenants get namespaces.
+CHECK_NAMESPACE="${CHECK_NAMESPACE:-app}"
+CHECK_PATH="${CHECK_PATH:-secret/check_timestamp}"
+
 # Writable volume
 export HOME=/snapshot
 
@@ -117,9 +122,13 @@ generate_root_token() {
         exit 1
     fi
 
-    bao operator generate-root -init --format json | jq -cr '.nonce, .otp' > tmpfile
-    read -r VAULT_NONCE VAULT_OTP < tmpfile
-    rm tmpfile
+    # Under $HOME (a writable volume), not the CWD. The container runs with
+    # readOnlyRootFilesystem and CWD is `/`, so a relative `> tmpfile` fails with
+    # "Read-only file system" and, under `set -e`, aborts the restore.
+    nonce_file="$HOME/.generate-root.$$"
+    bao operator generate-root -init --format json | jq -cr '.nonce, .otp' > "$nonce_file"
+    read -r VAULT_NONCE VAULT_OTP < "$nonce_file"
+    rm -f "$nonce_file"
     VAULT_ENCODED_TOKEN=$(echo "${RECOVERY_SECRET}" | jq -r '.recovery_key' | bao operator generate-root -nonce="${VAULT_NONCE}" --format json - | jq -cr '.encoded_root_token')
     VAULT_TOKEN=$(bao operator generate-root -decode "${VAULT_ENCODED_TOKEN}" -otp "${VAULT_OTP}")
     unset RECOVERY_SECRET
@@ -193,23 +202,37 @@ restore() {
     aws s3 cp "s3://${BUCKET_NAME}/${SNAP}" /tmp/bao.snap
     echo "${info}: Restoring snapshot ${SNAP}"
 
-    # Root token only from here on, and revoked on the way out whatever happens.
+    VAULT_TOKEN=$(generate_root_token)
+    export VAULT_TOKEN
+
+    bao operator raft snapshot restore -force /tmp/bao.snap
+
+    # A raft restore replaces the entire storage backend, token store included,
+    # so the token minted above no longer exists. Everything after this point —
+    # including the revoke in the exit trap — needs a token generated against
+    # the *restored* cluster.
     VAULT_TOKEN=$(generate_root_token)
     export VAULT_TOKEN
     trap 'bao token revoke "${VAULT_TOKEN}" >/dev/null 2>&1 || true' EXIT
 
-    bao operator raft snapshot restore -force /tmp/bao.snap
-
-    echo "${info}: Check that the timestamp from the path secret/check_timestamp is less than ${NUM_DAYS} days"
+    # The kv-v2 mount lives in the `app` tenant namespace, not root — platform
+    # services are in root and tenants get namespaces. Without -namespace this
+    # 404s.
+    echo "${info}: Check that ${CHECK_NAMESPACE}/${CHECK_PATH} is less than ${NUM_DAYS} days old"
     CURR_TS=$(date "+%s")
-    VAULT_TS=$(bao kv get --field=value secret/check_timestamp)
+    VAULT_TS=$(bao kv get -namespace="${CHECK_NAMESPACE}" --field=value "${CHECK_PATH}")
+
+    if [ -z "${VAULT_TS}" ]; then
+        echo "${err}: ${CHECK_PATH} is absent from the restored snapshot; cannot judge its age."
+        exit 1
+    fi
 
     if [ $((CURR_TS - VAULT_TS)) -gt $((NUM_DAYS * 86400)) ]; then
         echo "${err}: The restored snapshot is more than ${NUM_DAYS} days old."
         exit 1
     fi
 
-    bao kv put secret/check_timestamp "value=$(date "+%s")" >/dev/null 2>&1
+    bao kv put -namespace="${CHECK_NAMESPACE}" "${CHECK_PATH}" "value=$(date "+%s")" >/dev/null 2>&1
 }
 
 # Command execution

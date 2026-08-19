@@ -44,7 +44,7 @@
         "/^opentofu/openbao/cluster/scripts/startup_script\\.sh$/"
       ],
       "matchStrings": [
-        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)\\s+\\n\\s*(?:default\\s*=\\s*\"|NODE_EXPORTER_VERSION=)(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*(?:default\\s*=\\s*\"|NODE_EXPORTER_VERSION=)(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
       ],
       "versioningTemplate": "semver"
     }

@@ -3,7 +3,11 @@ provider "aws" {
 }
 
 provider "vault" {
-  address = var.openbao_domain_name == "" ? format("https://bao.%s:8200", var.domain_name) : var.openbao_domain_name
+  # local.openbao_address (secrets.tf) rather than a second copy of the same
+  # ternary: the snapshot job's VAULT_ADDR and the operator credentials blob are
+  # built from that local, and two copies could drift into pointing the provider
+  # at one endpoint while its consumers get another.
+  address = local.openbao_address
   token   = jsondecode(data.aws_secretsmanager_secret_version.openbao_root_token_secret.secret_string)["token"]
 
   # This stack imports the CA, signs the intermediate, and writes every policy

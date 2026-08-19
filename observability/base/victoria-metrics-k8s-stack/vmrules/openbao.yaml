@@ -92,16 +92,26 @@ spec:
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/opentofu/openbao/management/docs/backup_restore.md"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
 
+        # Two arms on purpose. kube-state-metrics only emits
+        # kube_cronjob_status_last_successful_time once status.lastSuccessfulTime
+        # is populated, so a CronJob that has *never* succeeded produces no
+        # series at all and a `time() - <series>` comparison evaluates over an
+        # empty vector — silent forever. That is precisely the cluster's current
+        # state in dev mode, where snapshots are raft-only and cannot run.
         - alert: OpenBaoSnapshotStale
-          expr: time() - kube_cronjob_status_last_successful_time{namespace="security", cronjob="openbao-snapshot"} > 129600
+          expr: |
+            time() - kube_cronjob_status_last_successful_time{namespace="security", cronjob="openbao-snapshot"} > 129600
+            or absent(kube_cronjob_status_last_successful_time{namespace="security", cronjob="openbao-snapshot"}) == 1
           for: 30m
           labels:
             severity: critical
           annotations:
-            message: No successful OpenBao snapshot in 36 hours.
+            message: No successful OpenBao snapshot in 36 hours (or ever).
             description: |
-              The last successful snapshot is more than 36 hours old, against a
-              daily schedule. The disaster-recovery position is degrading
-              silently — a backup with no freshness signal is not a backup.
+              Either the last successful snapshot is more than 36 hours old against
+              a daily schedule, or the CronJob has never succeeded once. The
+              disaster-recovery position is degrading silently — a backup with no
+              freshness signal is not a backup, and one that has never run is not
+              a backup at all.
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/opentofu/openbao/management/docs/backup_restore.md"
             dashboard: "https://grafana.${private_domain_name}/dashboards"

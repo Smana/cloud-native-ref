@@ -145,30 +145,40 @@ module "openbao_asg" {
   # mid-provision, in a loop. Revisit downwards once the AMI is baked.
   health_check_grace_period = 600
 
-  # Launch template changes (AMI, user_data) previously only reached *new*
-  # instances; existing ones had to be terminated by hand.
-  instance_refresh = {
+  # Rolling refresh in `ha` only.
+  #
+  # NOT in dev, and the reason matters: dev is a single node whose `file`
+  # storage backend lives on the root volume, which block_device_mappings above
+  # marks delete_on_termination (t3.micro has no instance store, so
+  # setup-local-disks.sh leaves openbao_data_path as a plain directory there).
+  # A refresh would terminate the only copy of every secret, policy, AppRole and
+  # the PKI intermediate — and there is nothing to restore from, because
+  # snapshots are raft-only and dev runs `file`.
+  #
+  # The triggers are routine, not exceptional: `data.aws_ami.this` sets
+  # most_recent = true, so a Canonical AMI publish alone rewrites the launch
+  # template, as does any openbao_version bump. dev therefore keeps the
+  # pre-existing behaviour — template changes reach new instances, and replacing
+  # the running one stays a deliberate manual act.
+  instance_refresh = var.mode == "ha" ? {
     strategy = "Rolling"
     preferences = {
-      # dev is a single node, so any non-zero minimum deadlocks the refresh.
-      # In ha, 60% of 5 keeps 3 voters up and preserves raft quorum throughout.
-      min_healthy_percentage = var.mode == "dev" ? 0 : 60
-      instance_warmup        = 300
+      # 60% of 5 keeps 3 voters up, preserving raft quorum throughout.
+      min_healthy_percentage = 60
+      # Must be >= health_check_grace_period. Lower, and the refresh marks a
+      # replacement healthy before the ASG has begun health-checking it, then
+      # moves on to the next node while the first may not have joined raft.
+      instance_warmup = 600
     }
-  }
+  } : null
 
-  ebs_optimized            = true
-  enable_monitoring        = true
-  iam_instance_profile_arn = aws_iam_instance_profile.this.arn
-
-  metadata_options = {
-    http_endpoint               = "enabled"
-    http_tokens                 = "required"
-    http_put_response_hop_limit = 1
-    instance_metadata_tags      = "enabled"
-  }
-
-  security_groups = [aws_security_group.openbao.id]
+  # `ebs_optimized`, `enable_monitoring`, `iam_instance_profile_arn`,
+  # `metadata_options` and `security_groups` are NOT set here on purpose. The
+  # module only applies those to a launch template it creates itself, and
+  # create_launch_template = false above — the real values live on
+  # aws_launch_template.dev / .ha. Keeping copies here meant maintaining dead
+  # configuration and implied all of them were load-bearing; the IMDS hop limit
+  # in particular was previously edited in three places when only two mattered.
 
   use_mixed_instances_policy = var.mode == "ha"
 
