@@ -245,6 +245,15 @@ Use the FluxCD agent-skills plugin for Flux troubleshooting (`/gitops-cluster-de
 - **Certificates**: Check OpenBao CA chain and cert-manager logs
 - **Network**: Confirm Tailscale subnet router connectivity
 - **Resource Conflicts**: Review Crossplane composition functions and resource references
+- **Gateways stuck `Waiting for controller`**: cilium-operator probes for the Gateway API CRDs
+  **once, at startup**, and permanently disables its Gateway API controller if any are missing —
+  no crash, no alert. Symptoms cascade: `GatewayClass ACCEPTED=Unknown`, Gateways unprogrammed,
+  HTTPRoutes with no `status.parents`, and every `App` claim that owns a route stuck
+  `READY=False`. Confirm with
+  `kubectl logs -n kube-system -l io.cilium/app=operator | grep "Required GatewayAPI resources"`,
+  then `kubectl rollout restart -n kube-system deployment/cilium-operator`. The durable fix is to
+  add the missing CRD to `gateway_api_crds_urls` in `opentofu/eks/configure/locals.tf` — Flux
+  applies the full CRD directory, but only *after* Cilium is already running.
 
 > **VictoriaLogs and Grafana rules** are in `.claude/rules/observability.md` (loaded automatically when editing observability files).
 
