@@ -176,6 +176,7 @@ Security is built-in, not bolted-on:
 - 📖 [OpenTofu Deployment](docs/opentofu.md) - Infrastructure deployment guide
 - 🔄 [GitOps with Flux](docs/gitops.md) - How continuous delivery works
 - 🏗️ [Crossplane](docs/crossplane.md) - Infrastructure compositions
+- 🧩 [Authoring KCL compositions](docs/crossplane-kcl-authoring.md) - composition authoring rules and gotchas
 
 ### Platform Services
 

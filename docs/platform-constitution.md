@@ -147,7 +147,7 @@ Before committing composition changes:
 | kube-linter | No errors | Kubernetes best practices |
 | Datree | Pass | Policy enforcement |
 
-**Validation**: `make check` in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration), which owns the compositions. This repo pins a released version in `infrastructure/base/crossplane/configuration/configuration-packages.yaml`.
+**Validation**: `task check` in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration), which owns the compositions. This repo pins a released version in `infrastructure/base/crossplane/configuration/configuration-packages.yaml`.
 
 ### 6.2 Infrastructure Changes
 

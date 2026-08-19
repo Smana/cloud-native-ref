@@ -233,7 +233,7 @@ Self-hosted runner scale sets run in-cluster (`tooling/base/gha-runners/`), enab
 
 ### KCL formatting failure
 
-Now a `Smana/crossplane-configuration` concern — `make test` there formats in place and fails if the
+Now a `Smana/crossplane-configuration` concern — `task test` there formats in place and fails if the
 tree changes. Nothing in this repo runs `kcl`.
 
 ### Manifest validation failure (`Invalid` > 0 or `Skipped` > 0)
