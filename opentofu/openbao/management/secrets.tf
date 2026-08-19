@@ -20,6 +20,8 @@ data "aws_secretsmanager_secret_version" "root_ca" {
 # "already scheduled for deletion" for up to 30 days. The credential is
 # regenerated from OpenBao on every apply, so there is nothing to recover.
 resource "aws_secretsmanager_secret" "cert_manager_approle_credentials" {
+  #checkov:skip=CKV_AWS_149:AWS-managed key, matching the AVD-AWS-0098 decision recorded in .trivyignore.yaml. A CMK would add key-policy access control at the cost of another key to manage and a kms:Decrypt grant on every consumer (ESO, the eks/configure stack). Revisit if this platform stops being ephemeral.
+  #checkov:skip=CKV2_AWS_57:Rotation happens by re-running this stack, which mints a fresh AppRole secret ID. A Secrets Manager rotation Lambda cannot rotate an OpenBao credential - it has no way to talk to OpenBao.
   name                    = var.cert_manager_approle_secret_name
   recovery_window_in_days = 0
 }
@@ -57,6 +59,8 @@ resource "random_password" "admin" {
 }
 
 resource "aws_secretsmanager_secret" "admin_credentials" {
+  #checkov:skip=CKV_AWS_149:AWS-managed key, matching the AVD-AWS-0098 decision recorded in .trivyignore.yaml. A CMK would add key-policy access control at the cost of another key to manage and a kms:Decrypt grant on every consumer. Revisit if this platform stops being ephemeral.
+  #checkov:skip=CKV2_AWS_57:Rotation happens by re-running this stack, which generates a fresh password. A Secrets Manager rotation Lambda cannot rotate an OpenBao userpass credential - it has no way to talk to OpenBao.
   name                    = var.admin_credentials_secret_name
   recovery_window_in_days = 0
 }
@@ -84,6 +88,8 @@ locals {
 }
 
 resource "aws_secretsmanager_secret" "snapshot_approle_credentials" {
+  #checkov:skip=CKV_AWS_149:AWS-managed key, matching the AVD-AWS-0098 decision recorded in .trivyignore.yaml. A CMK would add key-policy access control at the cost of another key to manage and a kms:Decrypt grant on every consumer. Revisit if this platform stops being ephemeral.
+  #checkov:skip=CKV2_AWS_57:Rotation happens by re-running this stack, which mints a fresh AppRole secret ID. A Secrets Manager rotation Lambda cannot rotate an OpenBao credential - it has no way to talk to OpenBao.
   name                    = var.snapshot_approle_secret_name
   recovery_window_in_days = 0
 }
