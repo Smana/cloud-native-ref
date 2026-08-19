@@ -10,3 +10,4 @@ resources:
   - externalsecret-webhook.yaml
   - helmrelease.yaml
   - httproute.yaml
+  - rbac-cilium.yaml
