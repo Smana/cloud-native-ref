@@ -1,0 +1,42 @@
+# Read access to Cilium policy objects.
+#
+# The investigation of 2026-08-19 reached the right root cause — a Cilium ingress
+# policy dropping storefront's probe traffic — but had to say this in its open
+# questions:
+#
+#   "Which exact Cilium policy object and rule denies the flow —
+#    ciliumnetworkpolicies.cilium.io is RBAC-FORBIDDEN to this agent in namespace
+#    demo; a human with cilium.io read access must identify it"
+#
+# So it could infer the class of fault but not name the object, and handed that
+# back to a human. The chart's RBAC covers core/apps/GitOps resources and has no
+# extension point for extra API groups, hence a separate ClusterRole here rather
+# than a values change.
+#
+# READ ONLY, and deliberately so: RunLore runs actions.mode=off and this grants no
+# write verb. Policy objects are configuration, not secrets — they name selectors
+# and ports, which is exactly what the investigator needs to quote and what an
+# operator would read to answer the same question.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: runlore-cilium-read
+rules:
+  - apiGroups: ["cilium.io"]
+    resources:
+      - ciliumnetworkpolicies
+      - ciliumclusterwidenetworkpolicies
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: runlore-cilium-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: runlore-cilium-read
+subjects:
+  - kind: ServiceAccount
+    name: runlore
+    namespace: runlore

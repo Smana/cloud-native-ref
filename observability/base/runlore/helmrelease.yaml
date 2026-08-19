@@ -161,6 +161,24 @@ spec:
               protocol: TCP
             - port: 9428   # VictoriaLogs — logs.url
               protocol: TCP
+        # Same failure, third port: Hubble relay listens on 80, so
+        # `network.provider: hubble` above could not connect at all. The
+        # network_drops tool was registered, called, and failed with
+        #   get flows: rpc error: code = Unavailable ... dial tcp …:80: i/o timeout
+        # The 2026-08-19 investigation still reached the right cause from Cilium
+        # metrics and signature analysis, and declared the gap on the card — which
+        # is how this was found. Enabling a provider is not the same as its tool
+        # working, and only the card said so.
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+              podSelector:
+                matchLabels:
+                  k8s-app: hubble-relay
+          ports:
+            - port: 80     # hubble-relay — network.hubble.url
+              protocol: TCP
     vmServiceScrape:
       enabled: true
       interval: 30s
