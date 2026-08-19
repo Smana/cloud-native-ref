@@ -440,7 +440,7 @@ datree test /tmp/rendered.yaml --ignore-missing-schemas
 - **Target**: No policy violations
 - **Action**: Fix failures, document accepted warnings
 
-**Related**: [CI Workflows - Crossplane Modules Pipeline](./ci-workflows.md#crossplane-modules-pipeline-githubworkflowscrossplane-modulesyml)
+**Related**: [CI Workflows](./ci-workflows.md)
 
 ## Known Limitations and Considerations
 
@@ -572,7 +572,7 @@ _deployment = {
    - Commit changes
    - CI publishes to GHCR with version tag
 
-**Related**: [KCL Development Guide](https://github.com/Smana/crossplane-configuration)
+**Related**: [Authoring KCL compositions](./crossplane-kcl-authoring.md) — the mutation trap, readiness patterns and Crossplane v2 traps
 
 ## Using Compositions
 
