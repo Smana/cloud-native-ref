@@ -9,14 +9,11 @@ output "cert_manager_approle_role_id" {
 }
 
 output "admin_credentials_secret_name" {
-  description = "AWS Secrets Manager entry holding the generated operator passwords. Retrieve with: aws secretsmanager get-secret-value --secret-id <this> --query SecretString --output text | jq"
+  description = "AWS Secrets Manager entry holding the generated operator password. Retrieve with: aws secretsmanager get-secret-value --secret-id <this> --query SecretString --output text | jq"
   value       = aws_secretsmanager_secret.admin_credentials.name
 }
 
-output "operator_login_commands" {
-  description = "How to log in as a human operator. Two logins because policies bind within a single namespace."
-  value = {
-    admin = "bao login -method=userpass -namespace=${vault_namespace.admin.path_fq} username=${var.admin_username}"
-    pki   = "bao login -method=userpass -namespace=${vault_namespace.pki.path_fq} username=${var.admin_username}"
-  }
+output "operator_login_command" {
+  description = "How to log in as a human operator. One login, in the root namespace, carrying both the admin and pki-admin policies."
+  value       = "bao login -method=userpass username=${var.admin_username}"
 }

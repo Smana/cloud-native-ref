@@ -35,33 +35,21 @@ path "identity/*"
   capabilities = ["create", "read", "update", "delete", "list", "sudo"]
 }
 
-# NOTE: this policy previously granted on `pki/*` and `int_pki/*`. Those paths
-# are gone because they cannot work from here, not because nobody holds this
-# policy.
+# PKI is deliberately not granted here. It has its own policy, `pki-admin.hcl`,
+# scoped to the real mount and templated from var.pki_mount_path. The operator
+# login carries both.
 #
-# They were never part of the bootstrap: `openbao-config.sh` and the Vault
-# provider both authenticate with the root token, which carries the built-in
-# `root` policy and bypasses ACL evaluation entirely. No named policy is
-# consulted while the platform is being built.
+# This policy used to grant `pki/*` and `int_pki/*`, and neither named a real
+# mount. It was reachable, though — CLAUDE.md documented a hand-created userpass
+# admin, and both this policy and a stray `pki` mount created by the old
+# `openbao-config.sh pki` step happened to land in root, so the paths lined up
+# by accident. That mount held a duplicate copy of the root CA private key and
+# had no `vault_pki_secret_backend_role`, so it could not issue anything anyway.
 #
-# They were, however, plausibly reachable by a human. CLAUDE.md documents
-# `bao auth -method=userpass username=admin`, created by hand outside this
-# stack. That used to line up by accident: this policy landed in the *root*
-# namespace (`vault_namespace.admin.namespace` resolves to the parent of
-# `admin`, i.e. ""), and the old `openbao-config.sh pki` step created a `pki`
-# mount in the root namespace too — so `pki/*` matched.
-#
-# Both halves of that accident are gone. This policy now lives in `admin`
-# (see policies.tf), and from `admin` the path `pki/*` can match neither a
-# root-namespace mount nor `pki_private_issuer` in the `admin/pki` *child*
-# namespace — namespaces are an isolation boundary. Note also that the removed
-# root-namespace mount never had a `vault_pki_secret_backend_role`, and a PKI
-# engine cannot issue without one.
-#
-# To give an operator real PKI access, the policy has to be created *in*
-# `admin/pki` and bound to an auth role in that same namespace. That, and
-# bringing the hand-made userpass user into Terraform, is the identity work
-# tracked separately.
+# Note for anyone adding paths here: this policy lives in the root namespace, so
+# a path only matches mounts in root. It cannot reach into the `app` tenant
+# namespace. Manage namespaces via `sys/namespaces/*` below; manage what is
+# inside one from a policy created in that namespace.
 
 # Create, update, and delete auth methods
 path "sys/auth/*"
@@ -77,11 +65,23 @@ path "sys/auth"
 
 # Enable and manage the key/value secrets engine at `secret/` path
 
-# List, create, update, and delete key/value secrets
-path "secret/*"
+# Manage tenant namespaces. Creating and deleting a namespace is a root-level
+# operation; administering what is inside one needs a policy created in that
+# namespace (see policies/app.hcl).
+path "sys/namespaces"
 {
-  capabilities = ["create", "read", "update", "patch", "delete", "list", "sudo"]
+  capabilities = ["list"]
 }
+
+path "sys/namespaces/*"
+{
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+# NOTE: there is deliberately no `secret/*` grant. The only kv-v2 mount on this
+# cluster is `secret/` in the `app` tenant namespace, which this policy cannot
+# reach from root. The grant that used to be here matched nothing.
+# Any kv mount later created *in* root would need it back.
 
 # Manage secrets engines
 path "sys/mounts/*"

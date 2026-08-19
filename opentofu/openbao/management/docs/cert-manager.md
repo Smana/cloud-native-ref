@@ -58,7 +58,7 @@ As stated in the requirements, OpenBao should be reachable from the Kubernetes c
    export VAULT_SKIP_VERIFY=true
    export VAULT_TOKEN=<token>
    export VAULT_ADDR="https://bao.priv.cloud.ogenki.io"
-   export VAULT_NAMESPACE=admin/pki
+   # The PKI now lives in the root namespace; no VAULT_NAMESPACE is needed.
    bao secrets list
    ```
 

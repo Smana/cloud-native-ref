@@ -26,8 +26,8 @@ resource "aws_secretsmanager_secret" "cert_manager_approle_credentials" {
 
 # Generate a new secret ID for the AppRole
 resource "vault_approle_auth_backend_role_secret_id" "cert_manager" {
-  namespace = vault_auth_backend.approle_pki.namespace
-  backend   = vault_auth_backend.approle_pki.path
+
+  backend   = vault_auth_backend.approle.path
   role_name = vault_approle_auth_backend_role.cert_manager.role_name
 }
 
@@ -39,20 +39,18 @@ resource "aws_secretsmanager_secret_version" "cert_manager_approle_credentials" 
   })
 }
 
-# Human operator passwords
-# ------------------------
+# Human operator password
+# -----------------------
 # Generated here rather than chosen by hand, and published to Secrets Manager so
-# the operator can retrieve them. Note these do land in the state file, as does
-# every other credential this stack manages (the root token, both AppRole secret
-# IDs) - the provider's write-only `password_wo` attribute would avoid that but
-# needs write-only attribute support, so it is deliberately not used here.
+# the operator can retrieve it. One password now: collapsing the platform into
+# the root namespace means one login carrying both the `admin` and `pki-admin`
+# policies, where the old `admin` / `admin/pki` split forced one per namespace.
+#
+# This does land in the state file, as does every other credential this stack
+# manages (the root token, both AppRole secret IDs). The provider's write-only
+# `password_wo` attribute would avoid that, but it needs write-only attribute
+# support, so it is deliberately not used here.
 resource "random_password" "admin" {
-  length           = 32
-  special          = true
-  override_special = "!#%*-_=+"
-}
-
-resource "random_password" "pki_admin" {
   length           = 32
   special          = true
   override_special = "!#%*-_=+"
@@ -66,13 +64,10 @@ resource "aws_secretsmanager_secret" "admin_credentials" {
 resource "aws_secretsmanager_secret_version" "admin_credentials" {
   secret_id = aws_secretsmanager_secret.admin_credentials.id
   secret_string = jsonencode({
-    # Both logins share a username but live in different namespaces, so the
-    # namespace is part of the credential.
-    username           = var.admin_username
-    admin_namespace    = vault_namespace.admin.path_fq
-    admin_password     = random_password.admin.result
-    pki_namespace      = vault_namespace.pki.path_fq
-    pki_admin_password = random_password.pki_admin.result
+    username = var.admin_username
+    password = random_password.admin.result
+    # Root namespace, so no namespace argument is needed when logging in.
+    address = local.openbao_address
   })
 }
 
@@ -95,7 +90,7 @@ resource "aws_secretsmanager_secret" "snapshot_approle_credentials" {
 
 # Root namespace, matching the role — see auth.tf.
 resource "vault_approle_auth_backend_role_secret_id" "snapshot" {
-  backend   = vault_auth_backend.approle_snapshot.path
+  backend   = vault_auth_backend.approle.path
   role_name = vault_approle_auth_backend_role.snapshot.role_name
 }
 

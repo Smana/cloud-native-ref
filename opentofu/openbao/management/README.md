@@ -27,15 +27,10 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
      ```
 
    - ℹ️ **Note:** The root token is for bootstrap only. For routine operations use the
-     userpass logins this stack creates — `tofu output operator_login_commands` prints
-     both, and the generated passwords are in the Secrets Manager entry named by
-     `tofu output admin_credentials_secret_name`.
-
-     There are two logins because **a policy binds only within its own namespace**: the
-     `admin` policy lives in `admin`, and `pki-admin` lives in `admin/pki` alongside the
-     `pki_private_issuer` mount it governs. A single login covering both would depend on
-     cross-namespace policy resolution, which is not something to rely on for an
-     access-control boundary without testing it first.
+     userpass login this stack creates — `tofu output operator_login_command` prints it,
+     and the generated password is in the Secrets Manager entry named by
+     `tofu output admin_credentials_secret_name`. It carries both the `admin` and
+     `pki-admin` policies.
 
      Retiring the root token entirely still needs an identity provider (Zitadel is
      already running in the cluster) plus the `aws` auth method so this stack can
@@ -43,14 +38,13 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
 
 2. **PKI setup is handled by OpenTofu.**
    - There is no manual `bao secrets enable pki` step any more. `pki.tf` creates the
-     `pki_private_issuer` mount in the `admin/pki` namespace, imports the CA bundle,
+     `pki_private_issuer` mount in the **root** namespace, imports the CA bundle,
      generates a key, and signs and installs the intermediate.
-   - The previous instructions enabled a *second* `pki` mount in the **root** namespace
-     and imported the same bundle — root CA private key included — into it. Nothing
-     consumed that mount: cert-manager issues from `pki_private_issuer` in `admin/pki`.
-     It was a duplicate online copy of the root CA key with no role restrictions and no
-     reader, so both the mount and the `openbao-config.sh pki` command that created it
-     have been removed.
+   - The previous instructions enabled a *second* `pki` mount holding the same bundle,
+     root CA private key included. Nothing consumed it, and it had no
+     `vault_pki_secret_backend_role`, so it could not issue anything either — a
+     duplicate online copy of the root CA key with no reader. Both it and the
+     `openbao-config.sh pki` command that created it have been removed.
 
    > ⚠️ The root CA private key is still present in the `pki_private_issuer` mount,
    > because `vault_pki_secret_backend_root_sign_intermediate` signs the intermediate CSR

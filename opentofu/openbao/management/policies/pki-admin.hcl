@@ -1,11 +1,10 @@
 # Administer the private PKI issuer.
 #
-# This policy is created *in* the `admin/pki` namespace, which is where the
-# mount actually lives. The `admin` policy used to carry `path "pki/*"` and
-# `path "int_pki/*"`; neither named a real mount, and a policy in `admin`
-# cannot address a mount in the `admin/pki` child namespace regardless of the
-# path it uses. Same-namespace grants avoid depending on cross-namespace policy
-# semantics entirely.
+# Created in the root namespace, alongside the mount. The `admin` policy used to
+# carry `path "pki/*"` and `path "int_pki/*"`; neither named a real mount, and
+# while the PKI lived in the `admin/pki` child namespace no path written from
+# `admin` could have reached it — a policy binds only within its own namespace.
+# Collapsing the platform into root makes co-location the answer.
 #
 # The mount path below is templated from var.pki_mount_path (escaped here as
 # $${pki_mount}) so the policy cannot drift from the mount it governs.
