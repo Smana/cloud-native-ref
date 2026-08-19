@@ -101,10 +101,44 @@ trap 'rm -rf "${tmp}"' EXIT
 build_dir="${tmp}/schemas"
 mkdir -p "${build_dir}"
 
-echo "==> Converting Crossplane XRDs to CRDs"
-python3 scripts/flux-schema/xrd-to-crd.py \
-  infrastructure/base/crossplane/configuration/*-definition.yaml \
-  > "${tmp}/xrd-crds.yaml"
+# The cloud.ogenki.io schemas have exactly one requirement: a multi-doc YAML of
+# CustomResourceDefinitions for `flux schema extract crd` to read. Today that is
+# produced locally from the XRDs in this repo. Once the XRDs move to
+# github.com/Smana/crossplane-configuration, the same file arrives as a release
+# asset pinned to the installed Configuration version, and only XRD_CRDS_FILE
+# changes — the extract step below is already file-based and does not care.
+#
+# Verified equivalent (2026-08-19): `flux schema extract crd` over a standalone
+# xrd-crds.yaml produced schemas byte-identical to the local-glob path for all 5
+# APIs (`diff -r` clean), so the cutover cannot silently alter validation.
+#
+# Keep this a single seam. If the fetch ever grows conditional logic, the catalog
+# can drift from the Configuration package that is actually installed — the exact
+# failure the AI Gateway / Karpenter pins above are written to prevent.
+if [[ -n "${XRD_CRDS_FILE:-}" ]]; then
+  echo "==> Using pre-built Crossplane XRD CRDs from ${XRD_CRDS_FILE}"
+  if [[ ! -s "${XRD_CRDS_FILE}" ]]; then
+    echo "error: XRD_CRDS_FILE is set but '${XRD_CRDS_FILE}' is missing or empty" >&2
+    exit 1
+  fi
+  cp "${XRD_CRDS_FILE}" "${tmp}/xrd-crds.yaml"
+else
+  echo "==> Converting Crossplane XRDs to CRDs"
+  python3 scripts/flux-schema/xrd-to-crd.py \
+    infrastructure/base/crossplane/configuration/*-definition.yaml \
+    > "${tmp}/xrd-crds.yaml"
+fi
+
+# Guard the count either way: `flux schema extract crd` exits 0 on an input with
+# no CRDs (see the header note), so an empty or truncated artifact would drop the
+# whole cloud.ogenki.io group while the build still reported success — and every
+# claim in the repo would then fail against `skipMissingSchemas: false`.
+xrd_crd_count="$(grep -c '^kind: CustomResourceDefinition' "${tmp}/xrd-crds.yaml" || true)"
+if [[ "${xrd_crd_count}" -lt 1 ]]; then
+  echo "error: no CustomResourceDefinitions in ${tmp}/xrd-crds.yaml (got ${xrd_crd_count})" >&2
+  exit 1
+fi
+echo "    ${xrd_crd_count} cloud.ogenki.io CRD(s)"
 
 echo "==> Rendering Envoy AI Gateway CRDs (chart ${AI_GATEWAY_VERSION})"
 # --include-crds: Helm skips a chart's crds/ directory by default. Without
