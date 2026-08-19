@@ -13,6 +13,19 @@ resource "aws_launch_template" "dev" {
     enabled = true
   }
 
+  # Neither template declared a root volume, so size and encryption were
+  # whatever the AMI shipped. That matters most here: in dev mode the `file`
+  # storage backend and the server TLS private key both live on the root volume.
+  block_device_mappings {
+    device_name = data.aws_ami.this.root_device_name
+    ebs {
+      volume_size           = var.root_volume_size
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+    }
+  }
+
   iam_instance_profile {
     name = aws_iam_instance_profile.this.name
   }
@@ -20,7 +33,7 @@ resource "aws_launch_template" "dev" {
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
-    http_put_response_hop_limit = 32
+    http_put_response_hop_limit = 1
     instance_metadata_tags      = "enabled"
   }
 
@@ -45,6 +58,20 @@ resource "aws_launch_template" "ha" {
   monitoring {
     enabled = true
   }
+
+  # In ha mode the raft data lives on the instance-store RAID-0, so the root
+  # volume only carries the OS, the binary and the TLS material - but it still
+  # carries the TLS private key, so it is still encrypted.
+  block_device_mappings {
+    device_name = data.aws_ami.this.root_device_name
+    ebs {
+      volume_size           = var.root_volume_size
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+    }
+  }
+
   iam_instance_profile {
     name = aws_iam_instance_profile.this.name
   }
@@ -52,7 +79,7 @@ resource "aws_launch_template" "ha" {
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
-    http_put_response_hop_limit = 32
+    http_put_response_hop_limit = 1
     instance_metadata_tags      = "enabled"
   }
   instance_requirements {
@@ -108,33 +135,64 @@ module "openbao_asg" {
   create_launch_template = false
   launch_template_id     = var.mode == "dev" ? aws_launch_template.dev.id : aws_launch_template.ha.id
 
-  ebs_optimized            = true
-  enable_monitoring        = true
-  iam_instance_profile_arn = aws_iam_instance_profile.this.arn
+  # Without this the ASG defaults to EC2 health checks, which only test that
+  # the hypervisor is alive. A node whose boot script failed - a wget timeout,
+  # a bad dpkg, a GPG mismatch - stays InService forever: the target group
+  # drops it, the ASG never replaces it.
+  health_check_type = "ELB"
+  # Boot does a package upgrade, a snap install and two signed downloads before
+  # OpenBao listens. Too short a grace period and the ASG kills instances
+  # mid-provision, in a loop. Revisit downwards once the AMI is baked.
+  health_check_grace_period = 600
 
-  metadata_options = {
-    http_endpoint               = "enabled"
-    http_tokens                 = "required"
-    http_put_response_hop_limit = 32
-    instance_metadata_tags      = "enabled"
-  }
+  # Rolling refresh in `ha` only.
+  #
+  # NOT in dev, and the reason matters: dev is a single node whose `file`
+  # storage backend lives on the root volume, which block_device_mappings above
+  # marks delete_on_termination (t3.micro has no instance store, so
+  # setup-local-disks.sh leaves openbao_data_path as a plain directory there).
+  # A refresh would terminate the only copy of every secret, policy, AppRole and
+  # the PKI intermediate — and there is nothing to restore from, because
+  # snapshots are raft-only and dev runs `file`.
+  #
+  # The triggers are routine, not exceptional: `data.aws_ami.this` sets
+  # most_recent = true, so a Canonical AMI publish alone rewrites the launch
+  # template, as does any openbao_version bump. dev therefore keeps the
+  # pre-existing behaviour — template changes reach new instances, and replacing
+  # the running one stays a deliberate manual act.
+  instance_refresh = var.mode == "ha" ? {
+    strategy = "Rolling"
+    preferences = {
+      # 60% of 5 keeps 3 voters up, preserving raft quorum throughout.
+      min_healthy_percentage = 60
+      # Must be >= health_check_grace_period. Lower, and the refresh marks a
+      # replacement healthy before the ASG has begun health-checking it, then
+      # moves on to the next node while the first may not have joined raft.
+      instance_warmup = 600
+    }
+  } : null
 
-  security_groups = [aws_security_group.openbao.id]
+  # `ebs_optimized`, `enable_monitoring`, `iam_instance_profile_arn`,
+  # `metadata_options` and `security_groups` are NOT set here on purpose. The
+  # module only applies those to a launch template it creates itself, and
+  # create_launch_template = false above — the real values live on
+  # aws_launch_template.dev / .ha. Keeping copies here meant maintaining dead
+  # configuration and implied all of them were load-bearing; the IMDS hop limit
+  # in particular was previously edited in three places when only two mattered.
 
   use_mixed_instances_policy = var.mode == "ha"
 
 
+  # No weighted_capacity. ASG reads desired/min/max as *capacity units*, so the
+  # previous weights (t3.small=2, t3.medium=1) meant desired_capacity = 5 could
+  # settle anywhere between three and five instances depending on which pool
+  # won - a raft cluster whose quorum size is decided by spot pricing. Equal
+  # weighting makes 5 mean five nodes.
   mixed_instances_policy = var.mode == "ha" ? {
     launch_template = {
       override = [
-        {
-          instance_type     = "t3.small"
-          weighted_capacity = "2"
-        },
-        {
-          instance_type     = "t3.medium"
-          weighted_capacity = "1"
-        },
+        { instance_type = "t3.small" },
+        { instance_type = "t3.medium" },
       ]
     }
     instances_distribution = {

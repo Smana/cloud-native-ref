@@ -48,38 +48,33 @@ We use an AppRole named `snapshot-agent` with the necessary permissions for snap
 
 ### Backup Process
 
-1. Set the secrets for the Kubernetes pod:
+1. **Nothing to do by hand.** The `snapshot-agent` AppRole, its secret ID, and the
+   `security/openbao/openbao-snapshot` Secrets Manager entry are all created by the
+   management stack (`secrets.tf`). External Secrets syncs that entry into the `security`
+   namespace, where the CronJob reads it via `envFrom`.
 
-```console
-VAULT_ADDR="https://bao.priv.cloud.ogenki.io:8200"
-BUCKET_NAME="eu-west-3-ogenki-openbao-snapshot"
-APPROLE_ROLE_ID=$(bao read --field=role_id auth/approle/role/snapshot-agent/role-id)
-APPROLE_SECRET_ID=$(bao write --field=secret_id -f auth/approle/role/snapshot-agent/secret-id)
-```
+   This used to be a manual `bao write .../secret-id` followed by a hand-built
+   `aws secretsmanager create-secret`. A credential created outside the stack that manages
+   every other credential drifts by construction — and this is the one the
+   disaster-recovery job depends on. The payload shape is unchanged:
 
-2. Store these secrets in AWS Secrets Manager and sync them to a Kubernetes secret using the External Secret Operator:
+   ```json
+   {
+     "APPROLE_ROLE_ID": "...",
+     "APPROLE_SECRET_ID": "...",
+     "VAULT_ADDR": "https://bao.priv.cloud.ogenki.io:8200",
+     "BUCKET_NAME": "eu-west-3-ogenki-openbao-snapshot",
+     "RECOVERY_KEYS_SECRET_ID": "openbao/cloud-native-ref/tokens/recovery"
+   }
+   ```
 
-```console
-jq -nr --arg roleId "${APPROLE_ROLE_ID}" \
---arg secretId "${APPROLE_SECRET_ID}" \
---arg vaultAddr "${VAULT_ADDR}" \
---arg bucketName "${BUCKET_NAME}" \
-'{"APPROLE_ROLE_ID":$roleId,"APPROLE_SECRET_ID":$secretId,"VAULT_ADDR":$vaultAddr,"BUCKET_NAME":$bucketName}' > /tmp/secret.json
-```
+   `RECOVERY_KEYS_SECRET_ID` names the secret holding the recovery keys; it is consumed
+   only by the `restore` path. The CronJob's EKS Pod Identity role deliberately has **no**
+   `secretsmanager` permission — a daily backup pod able to read the material that
+   regenerates a root token is a privilege escalation, not a convenience. Run restores as
+   an operator, with operator credentials.
 
-Verify the JSON file's contents
-
-```console
-cat /tmp/secret.json
-```
-
-Create the AWS Secrets Manager secret
-
-```console
-aws secretsmanager create-secret --name 'security/openbao/openbao-snapshot' --description 'Used to backup and restore an OpenBao instance' --secret-string file:///tmp/secret.json
-```
-
-3. When all the Kubernetes resources will be created using Flux, trigger the cronjob to perform a backup:
+2. When all the Kubernetes resources will be created using Flux, trigger the cronjob to perform a backup:
 
 ```console
 kubectl create job --namespace security --from=cronjob/openbao-snapshot manual-openbao-snapshot-$(date +%s)
@@ -91,49 +86,46 @@ Verify the backup in the S3 bucket
 kubectl logs -n security manual-openbao-snapshot-$(date +%s)-<id>
 ```
 
-## 🕵️ Restore and Check
 
-⚠️ **Not Implemented Yet:**
-I plan to develop a CI workflow to automatically restore from the previously saved backup and verify the data within the Vault instance.
+## 🕵️ Restore
 
-Below is the draft script for this process:
+The implementation is [`scripts/openbao-snapshot.sh`](../../../../scripts/openbao-snapshot.sh)
+(`restore` subcommand). It fetches the newest snapshot from S3, mints a temporary root
+token from the recovery key, restores, and checks that `secret/check_timestamp` is recent
+enough that you have not just restored a stale backup over a good cluster.
 
-- The script uses the same KMS key to unseal the new instance and generates a temporary root token.
+### Run it as an operator, not as the CronJob
 
-```bash
-#!/bin/bash
-set -e
-# This script restores a snapshot from S3
+`restore` needs `RECOVERY_KEYS_SECRET_ID` set, and needs AWS credentials that can read that
+secret. The snapshot job's EKS Pod Identity role cannot — deliberately. Export the same
+variables the job gets, plus your own AWS credentials:
 
-function generate_root_token()
-{
-    read VAULT_NONCE VAULT_OTP < <(bao operator generate-root -init --format json | jq -cr '.nonce, .otp' | tr '\n' ' ')
-    VAULT_ENCODED_TOKEN=$(echo $(aws secretsmanager get-secret-value --secret-id <secret_id> | jq -r '.SecretString' | jq -r '.recovery_key') | bao operator generate-root -nonce=${VAULT_NONCE} --format json - | jq -cr '.encoded_root_token')
-    local VAULT_TOKEN=$(bao operator generate-root -decode ${VAULT_ENCODED_TOKEN} -otp ${VAULT_OTP})
-    echo ${VAULT_TOKEN}
-}
-
-export VAULT_TOKEN=$(generate_root_token)
-
-echo "Fetching latest backup from s3 bucket ${BUCKET_NAME}"
-SNAP=$(aws s3 ls ${BUCKET_NAME} | sort | tail -n 1 | awk '{print $4}')
-aws s3 cp s3://${BUCKET_NAME}/${SNAP} /tmp/openbao.snap
-
-echo "Restoring snapshot ${SNAP}"
-bao operator raft snapshot restore -force /tmp/openbao.snap
-
-export VAULT_TOKEN=$(generate_root_token)
-
-trap "bao token revoke ${VAULT_TOKEN}" EXIT
-
-echo "Check that the timestamp from the path secret/check_timestamp is less than 8 days"
-CURR_TS=$(date "+%s")
-VAULT_TS=$(bao kv get --field=value secret/check_timestamp)
-
-if [[ $(echo $((${CURR_TS}-${VAULT_TS}))) -gt 691200 ]]; then
-    echo "ERROR: The restored snapshot is more than 8 days"
-    exit 1
-fi
-
-bao kv put secret/check_timestamp value=$(date "+%s") &>/dev/null
+```console
+export APPROLE_ROLE_ID=... APPROLE_SECRET_ID=...
+export RECOVERY_KEYS_SECRET_ID="openbao/cloud-native-ref/tokens/recovery"
+./scripts/openbao-snapshot.sh restore -a "https://bao.priv.cloud.ogenki.io:8200" \
+  -b eu-west-3-ogenki-openbao-snapshot -s /tmp/bao.snap -d 8
 ```
+
+### Prerequisites this path used to be missing
+
+- **The recovery keys must exist.** `openbao-config.sh init` now stores them in their own
+  Secrets Manager entry, separate from the root token. Before that it kept only the root
+  token and discarded the recovery keys, which made `bao operator generate-root`
+  impossible: this restore path could never have authenticated, and a lost root token
+  would have left the cluster unrecoverable.
+- **The script only automates a recovery threshold of 1.** With a higher threshold it
+  exits and tells you to run `bao operator generate-root` by hand with the required number
+  of shares.
+- **Raft storage is required.** `bao operator raft snapshot save|restore` and
+  `sys/storage/raft/configuration` are Raft-only endpoints. In `dev` mode the cluster runs
+  the `file` backend and neither the backup nor the restore can work — see
+  `cluster/README.md`.
+
+### Verify it, don't assume it
+
+⚠️ **Still not automated.** There is no CI workflow that restores the latest snapshot into
+a throwaway cluster and asserts the contents. Until there is, the restore procedure is a
+hypothesis. The `OpenBaoSnapshotStale` and `OpenBaoSnapshotJobFailed` alerts
+(`observability/base/victoria-metrics-k8s-stack/vmrules/openbao.yaml`) at least tell you
+when the *backup* half stops working.

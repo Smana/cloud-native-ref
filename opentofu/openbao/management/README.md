@@ -26,26 +26,34 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
      export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
      ```
 
-   - ℹ️ **Note:** This guide does not include setting up an authentication system. It's recommended to use an identity provider instead of the root token for routine operations. Ensure the root token is securely stored.
+   - ℹ️ **Note:** The root token is for bootstrap only. For routine operations use the
+     userpass login this stack creates — `tofu output operator_login_command` prints it,
+     and the generated password is in the Secrets Manager entry named by
+     `tofu output admin_credentials_secret_name`. It carries both the `admin` and
+     `pki-admin` policies.
 
-2. **Enable PKI and Set TTL:**
-   - Activate the PKI (Public Key Infrastructure) secrets engine and set the maximum Time To Live (TTL) to 10 years:
+     Retiring the root token entirely still needs an identity provider (Zitadel is
+     already running in the cluster) plus the `aws` auth method so this stack can
+     authenticate as an IAM role rather than carrying a token.
 
-     ```bash
-     bao secrets enable pki
-     bao secrets tune -max-lease-ttl=315360000 pki
-     ```
+2. **PKI setup is handled by OpenTofu.**
+   - There is no manual `bao secrets enable pki` step any more. `pki.tf` creates the
+     `pki_private_issuer` mount in the **root** namespace, imports the CA bundle,
+     generates a key, and signs and installs the intermediate.
+   - The previous instructions enabled a *second* `pki` mount holding the same bundle,
+     root CA private key included. Nothing consumed it, and it had no
+     `vault_pki_secret_backend_role`, so it could not issue anything either — a
+     duplicate online copy of the root CA key with no reader. Both it and the
+     `openbao-config.sh pki` command that created it have been removed.
 
-3. **Build and Import the Full Chain Bundle:**
-   - Create the bundle and import it into Vault:
+   > ⚠️ The root CA private key is still present in the `pki_private_issuer` mount,
+   > because `vault_pki_secret_backend_root_sign_intermediate` signs the intermediate CSR
+   > inside OpenBao. Keeping the root offline would mean the CSR leaves OpenBao, gets
+   > signed elsewhere, and comes back — a manual step incompatible with
+   > `terramate script run deploy`. Accepted for this reference platform; do not carry it
+   > into a deployment where the root CA matters.
 
-     ```console
-     cd terraform/openbao/management
-     cat .tls/intermediate-ca.pem .tls/root-ca.pem .tls/intermediate-ca-key.pem > .tls/bundle.pem
-     bao write pki/config/ca pem_bundle=@.tls/bundle.pem
-     ```
-
-4. **Prepare `variables.tfvars` File:**
+3. **Prepare `variables.tfvars` File:**
    - Example configuration:
 
      ```hcl
@@ -63,7 +71,21 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
      }
      ```
 
-5. **Execute OpentofuCommands:**
+4. **Write the CA chain for TLS verification:**
+   - The Vault provider verifies the OpenBao server certificate rather than running with
+     `skip_tls_verify`. A provider block cannot depend on a resource, so the CA has to be
+     on disk before `tofu init`:
+
+     ```console
+     ../../../scripts/openbao-config.sh ca \
+       --root-ca-secret-name certificates/priv.cloud.ogenki.io/root-ca \
+       --ca-output-file .tls/ca.pem
+     ```
+
+     `terramate script run deploy` does this for you. If the CA is not available yet on a
+     first bootstrap, pass `-var openbao_skip_tls_verify=true` for that one run.
+
+5. **Execute Opentofu Commands:**
    - Initialize and apply the Opentofu configuration:
 
      ```console

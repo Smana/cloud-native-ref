@@ -1,0 +1,58 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: openbao-snapshot
+spec:
+  description: "Limit egress from the OpenBao snapshot job, and deny all ingress - nothing calls it."
+  endpointSelector:
+    matchLabels:
+      k8s:app.kubernetes.io/instance: openbao
+  # Default-deny is per-direction in Cilium: an endpoint only enters default-deny
+  # for a direction if a rule selecting it has a section for that direction. An
+  # egress-only policy therefore leaves ingress fully open, which is what this
+  # policy did before — the description claimed otherwise. Asking for it
+  # explicitly is clearer than relying on an empty `ingress: []` array.
+  enableDefaultDeny:
+    ingress: true
+    egress: true
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # EKS Pod Identity agent. It runs on the node's host network, so Cilium
+    # classifies the destination as the `host` entity and a toCIDR rule for
+    # 169.254.170.23/32 silently fails - see .claude/rules/cilium-network-policies.md.
+    - toEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+    # The OpenBao API, reached through the internal NLB, whose private addresses
+    # sit in the VPC CIDR. The job no longer connects to the raft leader by
+    # private IP — it goes through the NLB and lets standby nodes forward the
+    # request to the active node.
+    - toCIDR:
+        - 10.0.0.0/16
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP
+    # S3 and STS. toFQDNs would be the tighter rule, but S3 endpoint topology
+    # fans out past what a single-segment matchPattern can follow. The blanket
+    # 443 rule is the sanctioned trade for a bounded one-shot job: this is a
+    # CronJob with a TTL, running under restricted PSS with a scoped IAM role,
+    # and every other port stays denied.
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

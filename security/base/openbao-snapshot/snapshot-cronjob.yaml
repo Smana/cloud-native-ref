@@ -10,51 +10,104 @@ spec:
   schedule: "0 4 * * *"
   successfulJobsHistoryLimit: 1
   suspend: false
+  # Bounds how late a missed run may start. The semantics are the opposite of
+  # what they look like: with this UNSET the controller catches up a missed
+  # schedule whenever it recovers, and setting it makes anything missed by more
+  # than the deadline get skipped. It is set anyway, because unbounded catch-up
+  # means a controller outage spanning several days fires a burst of snapshots
+  # at once. An hour is long enough to ride out a node or control-plane blip.
+  # A run dropped past that surfaces as OpenBaoSnapshotStale.
+  startingDeadlineSeconds: 3600
   jobTemplate:
     metadata:
       labels:
         app.kubernetes.io/instance: openbao
     spec:
+      backoffLimit: 2
+      # A snapshot that has not finished in 30 minutes is wedged, not slow.
+      activeDeadlineSeconds: 1800
+      ttlSecondsAfterFinished: 86400
       template:
         metadata:
           labels:
             app.kubernetes.io/instance: openbao
         spec:
           volumes:
+            # Was a 5Gi ReadWriteOnce gp3 PVC, which pinned the job to a single
+            # AZ and outlived every run for no reason - the snapshot is copied
+            # to S3 and the local file is disposable. concurrencyPolicy: Forbid
+            # already serialises runs.
             - name: snapshot
-              persistentVolumeClaim:
-                claimName: openbao-snapshot
+              emptyDir:
+                sizeLimit: 5Gi
+            # readOnlyRootFilesystem is on, and the AWS CLI wants a scratch dir.
+            - name: tmp
+              emptyDir:
+                sizeLimit: 256Mi
+            # Same ExternalSecret the cert-manager ClusterIssuer uses; both live
+            # in this namespace.
+            - name: openbao-ca
+              secret:
+                secretName: openbao-ca  # pragma: allowlist secret
           securityContext:
             fsGroup: 1001
             runAsUser: 1000
             runAsGroup: 1001
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - command:
                 - sh
                 - -c
                 - "openbao-snapshot.sh save -b $(BUCKET_NAME) -s /snapshot/backup.snap -a $(VAULT_ADDR) -d 8"
               env:
-                # The CA cert should be added to the container image
-                - name: "VAULT_SKIP_VERIFY"
-                  value: "true"
+                # No VAULT_SKIP_VERIFY. It was only ever needed because the job
+                # resolved the raft leader and connected to it by private IP,
+                # which the server certificate's single DNS SAN cannot match.
+                # Now that the snapshot goes through the NLB at
+                # bao.<private_domain_name>, the name matches and the CA is
+                # enough — so this workload verifies TLS like everything else.
+                - name: VAULT_CACERT
+                  value: /etc/openbao/tls/ca.crt
+                - name: HOME
+                  value: /snapshot
               envFrom:
                 - secretRef:
                     name: openbao-snapshot
               image: smana/openbao-snapshot:v0.1.0
               imagePullPolicy: IfNotPresent
               name: openbao-snapshot
-              # Container-level context. The pod-level `securityContext` above
-              # carries fsGroup/runAsUser/runAsGroup; allowPrivilegeEscalation is
-              # only valid at container level. The job just calls the OpenBao API
-              # and writes a snapshot to S3 — it never needs to escalate.
               securityContext:
                 allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
               resources:
+                requests:
+                  cpu: 50m
+                  memory: 150Mi
+                  # The snapshot lands in an emptyDir backed by the node's root
+                  # disk, so the scheduler has to account for it. Without this
+                  # a large snapshot triggers node DiskPressure and evicts
+                  # unrelated pods before the volume's own sizeLimit fires.
+                  ephemeral-storage: 5Gi
                 limits:
-                  cpu: 150m
+                  ephemeral-storage: 5Gi
+                  # Headroom over the request rather than a tight cap: the job is
+                  # a once-a-night snapshot, so throttling it only makes the
+                  # backup window longer. The constitution requires a limit, so
+                  # there is one.
+                  cpu: 300m
                   memory: 150Mi
               volumeMounts:
                 - mountPath: "/snapshot"
                   name: snapshot
+                - mountPath: "/tmp"
+                  name: tmp
+                - mountPath: "/etc/openbao/tls"
+                  name: openbao-ca
+                  readOnly: true
           serviceAccountName: openbao-snapshot
           restartPolicy: Never

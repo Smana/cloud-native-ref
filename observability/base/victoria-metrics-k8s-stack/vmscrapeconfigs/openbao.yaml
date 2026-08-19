@@ -1,0 +1,41 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMScrapeConfig
+metadata:
+  name: openbao
+  namespace: observability
+spec:
+  # OpenBao's listener has always carried `unauthenticated_metrics_access =
+  # true` — for a scraper that did not exist. Only the host-level node exporter
+  # (ec2.yaml, port 9100) was ever collected, so seal state, leadership and
+  # raft health went unrecorded.
+  #
+  # This targets the internal NLB by DNS rather than discovering instances via
+  # EC2 service discovery, for two reasons: the instance security group now
+  # admits port 8200 from the NLB only, and the server certificate carries a
+  # single DNS SAN, so scraping instances by IP could not verify TLS.
+  #
+  # The trade-off is that each scrape lands on whichever node the NLB picks.
+  # That is exact for the current single-node dev mode. Moving to ha means
+  # per-node scraping: add an ingress rule for 8200 from the pod CIDR and swap
+  # this for an ec2SDConfigs block filtered on tag:app=openbao.
+  staticConfigs:
+    - targets:
+        - "bao.${private_domain_name}:8200"
+      labels:
+        job: openbao
+  scheme: HTTPS
+  params:
+    format:
+      - prometheus
+  tlsConfig:
+    ca:
+      secret:
+        name: openbao-ca
+        key: ca.crt
+    serverName: "bao.${private_domain_name}"
+  relabelConfigs:
+    - action: replace
+      target_label: cluster
+      replacement: ${cluster_name}
+  path: /v1/sys/metrics
+  interval: 30s

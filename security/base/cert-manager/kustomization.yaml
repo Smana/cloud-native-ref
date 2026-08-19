@@ -1,9 +1,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
 resources:
   - le-clusterissuer-prod.yaml
   - le-clusterissuer-staging.yaml
   - helmrelease.yaml
   - openbao-clusterissuer.yaml
   - openbao-approle-externalsecret.yaml
+  - openbao-ca-externalsecret.yaml

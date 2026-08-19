@@ -1,15 +1,27 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
-# This script is used to configure OpenBao. It supports three operations:
-# - init: Initialize the OpenBao cluster and store the root token in AWS Secrets Manager
-# - pki: Configure OpenBao's private key infrastructure
-# - cert-manager: Configure cert-manager to use OpenBao for certificate management
+# This script is used to configure OpenBao. It supports two operations:
+# - init: Initialize the OpenBao cluster, then store the root token and the
+#         recovery keys in two SEPARATE AWS Secrets Manager entries
+# - ca:   Write the CA chain to a local file so the Vault provider can verify
+#         the server certificate instead of running with skip_tls_verify
+#
+# The former `pki` command was removed. It enabled a second `pki` mount in the
+# ROOT namespace and imported the root CA bundle - private key included - into
+# it. Nothing consumed that mount: cert-manager issues from
+# `pki_private_issuer` in the `admin/pki` namespace, which the OpenTofu in this
+# stack manages (pki.tf). It was a duplicate online copy of the root CA key
+# with no role restrictions and no reader.
 
 OPENBAO_URL=""
 ROOT_TOKEN_SECRET_NAME=""
+RECOVERY_KEYS_SECRET_NAME=""
 ROOT_CA_SECRET_NAME=""
+CA_OUTPUT_FILE=""
+RECOVERY_SHARES=1
+RECOVERY_THRESHOLD=1
 SKIP_VERIFY=false
 REGION="eu-west-3"
 PROFILE=""
@@ -18,50 +30,39 @@ usage() {
     echo "Usage: $0 <command> [options]"
     echo "Commands:"
     echo "  init          Initialize OpenBao cluster"
-    echo "  pki           Configure PKI secrets engine"
-    echo "  cert-manager  Configure cert-manager to use OpenBao"
+    echo "  ca            Write the CA chain to a local file for TLS verification"
     echo ""
     echo "Common Options:"
-    echo "  --url <OpenBao URL>                     OpenBao server URL (required)"
-    echo "  --root-token-secret-name <Secret Name>  AWS Secrets Manager secret name for the root token (required)"
-    echo "  --root-ca-secret-name <Secret Name>     AWS Secrets Manager for the root CA certificate (required for pki)"
-    echo "  --skip-verify                           Skip TLS verification"
-    echo "  --region <Region>                       AWS region (default: eu-west-3)"
-    echo "  --profile <Profile>                     AWS profile"
+    echo "  --url <OpenBao URL>                       OpenBao server URL (required for init)"
+    echo "  --root-token-secret-name <Secret Name>    AWS Secrets Manager secret for the root token (required for init)"
+    echo "  --recovery-keys-secret-name <Secret Name> AWS Secrets Manager secret for the recovery keys (required for init)"
+    echo "  --recovery-shares <N>                     Number of recovery key shares (default: ${RECOVERY_SHARES})"
+    echo "  --recovery-threshold <N>                  Shares needed to reconstruct (default: ${RECOVERY_THRESHOLD})"
+    echo "  --root-ca-secret-name <Secret Name>       AWS Secrets Manager secret holding the CA chain (required for ca)"
+    echo "  --ca-output-file <Path>                   Where to write the CA chain (required for ca)"
+    echo "  --skip-verify                             Skip TLS verification"
+    echo "  --region <Region>                         AWS region (default: ${REGION})"
+    echo "  --profile <Profile>                       AWS profile"
     echo ""
     echo "Example:"
-    echo "  $0 init --url https://openbao:8200 --root-token-secret-name openbao/root-token"
-    echo "  $0 pki --url https://openbao:8200 --root-token-secret-name openbao/root-token --root-ca-secret-name certificates/domain.tld/root-ca"
+    echo "  $0 init --url https://openbao:8200 --root-token-secret-name openbao/root-token \\"
+    echo "          --recovery-keys-secret-name openbao/recovery-keys"
+    echo "  $0 ca --root-ca-secret-name certificates/domain.tld/root-ca --ca-output-file .tls/ca.pem"
 }
 
-# Common function to parse arguments
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --url)
-                OPENBAO_URL="$2"
-                shift 2
-                ;;
-            --root-token-secret-name)
-                ROOT_TOKEN_SECRET_NAME="$2"
-                shift 2
-                ;;
-            --root-ca-secret-name)
-                ROOT_CA_SECRET_NAME="$2"
-                shift 2
-                ;;
-            --skip-verify)
-                SKIP_VERIFY=true
-                shift
-                ;;
-            --region)
-                REGION="$2"
-                shift 2
-                ;;
-            --profile)
-                PROFILE="$2"
-                shift 2
-                ;;
+            --url)                        OPENBAO_URL="$2"; shift 2 ;;
+            --root-token-secret-name)     ROOT_TOKEN_SECRET_NAME="$2"; shift 2 ;;
+            --recovery-keys-secret-name)  RECOVERY_KEYS_SECRET_NAME="$2"; shift 2 ;;
+            --recovery-shares)            RECOVERY_SHARES="$2"; shift 2 ;;
+            --recovery-threshold)         RECOVERY_THRESHOLD="$2"; shift 2 ;;
+            --root-ca-secret-name)        ROOT_CA_SECRET_NAME="$2"; shift 2 ;;
+            --ca-output-file)             CA_OUTPUT_FILE="$2"; shift 2 ;;
+            --skip-verify)                SKIP_VERIFY=true; shift ;;
+            --region)                     REGION="$2"; shift 2 ;;
+            --profile)                    PROFILE="$2"; shift 2 ;;
             *)
                 echo "Invalid argument: $1"
                 usage
@@ -70,28 +71,30 @@ parse_args() {
         esac
     done
 
-    if [ -z "$OPENBAO_URL" ]; then
-        echo "OpenBao URL is required"
-        usage
-        exit 1
+    if [ "$COMMAND" = "init" ]; then
+        if [ -z "$OPENBAO_URL" ]; then
+            echo "OpenBao URL is required"; usage; exit 1
+        fi
+        if [ -z "$ROOT_TOKEN_SECRET_NAME" ]; then
+            echo "Root token secret name is required"; usage; exit 1
+        fi
+        if [ -z "$RECOVERY_KEYS_SECRET_NAME" ]; then
+            echo "Recovery keys secret name is required - see the note in init_openbao()"
+            usage; exit 1
+        fi
+        if [ "$ROOT_TOKEN_SECRET_NAME" = "$RECOVERY_KEYS_SECRET_NAME" ]; then
+            echo "The root token and the recovery keys must not share a secret: the recovery keys exist to regenerate a lost root token."
+            exit 1
+        fi
     fi
 
-    if [ -z "$ROOT_TOKEN_SECRET_NAME" ]; then
-        echo "Root token secret name is required"
-        usage
-        exit 1
-    fi
-
-    if [ "$COMMAND" = "pki" ] && [ -z "$ROOT_CA_SECRET_NAME" ]; then
-        echo "Root CA secret name is required for PKI configuration"
-        usage
-        exit 1
-    fi
-
-    if [ "$COMMAND" = "cert-manager" ] && [ -z "$CERTMANAGER_APPROLE_SECRET_NAME" ]; then
-        echo "Cert-manager approle secret name is required"
-        usage
-        exit 1
+    if [ "$COMMAND" = "ca" ]; then
+        if [ -z "$ROOT_CA_SECRET_NAME" ]; then
+            echo "Root CA secret name is required"; usage; exit 1
+        fi
+        if [ -z "$CA_OUTPUT_FILE" ]; then
+            echo "CA output file is required"; usage; exit 1
+        fi
     fi
 
     export VAULT_ADDR="$OPENBAO_URL"
@@ -100,27 +103,15 @@ parse_args() {
     fi
 }
 
-# Common function to check prerequisites
 check_prerequisites() {
-    # Check if bao is installed
-    if ! command -v bao &> /dev/null; then
-        echo "Error: bao is not installed"
-        exit 1
-    fi
-
-    # Check if jq is installed
-    if ! command -v jq &> /dev/null; then
-        echo "Error: jq is not installed"
-        exit 1
-    fi
-
-    # Check if kubectl is installed (needed for cert-manager)
-    if ! command -v kubectl &> /dev/null; then
-        echo "Warning: kubectl is not installed. This is required for cert-manager configuration."
-    fi
+    for bin in bao jq aws; do
+        if ! command -v "$bin" &> /dev/null; then
+            echo "Error: $bin is not installed"
+            exit 1
+        fi
+    done
 }
 
-# Common function to get AWS command
 get_aws_cmd() {
     if [ -n "$PROFILE" ]; then
         echo "aws --profile $PROFILE --region $REGION"
@@ -129,7 +120,6 @@ get_aws_cmd() {
     fi
 }
 
-# Function to log messages with timestamps
 log_message() {
     local level=$1
     shift
@@ -137,7 +127,6 @@ log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $message"
 }
 
-# Function to wait for OpenBao to be ready
 wait_for_openbao() {
     local max_retries=20
     local timeout_seconds=600
@@ -161,7 +150,6 @@ wait_for_openbao() {
     return 1
 }
 
-# Function to check OpenBao status
 check_openbao_status() {
     local max_retries=20
     local timeout_seconds=600
@@ -173,12 +161,10 @@ check_openbao_status() {
         log_message "INFO" "Attempt $attempt: Checking $OPENBAO_URL..."
         status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health")
 
-        case $status_code in
-            200)
-                log_message "INFO" "OpenBao is initialized, unsealed, and active"
-                return 0
-                ;;
-        esac
+        if [ "$status_code" = "200" ]; then
+            log_message "INFO" "OpenBao is initialized, unsealed, and active"
+            return 0
+        fi
 
         sleep $interval
         attempt=$((attempt + 1))
@@ -193,15 +179,14 @@ create_or_update_secret() {
     local secret_name=$2
     local secret_value=$3
 
-    # First check if the secret exists
     if $aws_cmd secretsmanager describe-secret --secret-id "$secret_name" >/dev/null 2>&1; then
-        log_message "INFO" "Secret exists, updating it..."
+        log_message "INFO" "Secret $secret_name exists, updating it..."
         if ! $aws_cmd secretsmanager update-secret --secret-id "$secret_name" --secret-string "$secret_value" >/dev/null 2>&1; then
             log_message "ERROR" "Failed to update secret $secret_name"
             return 1
         fi
     else
-        log_message "INFO" "Secret does not exist, creating it..."
+        log_message "INFO" "Secret $secret_name does not exist, creating it..."
         if ! $aws_cmd secretsmanager create-secret --name "$secret_name" --secret-string "$secret_value" >/dev/null 2>&1; then
             log_message "ERROR" "Failed to create secret $secret_name"
             return 1
@@ -213,49 +198,72 @@ create_or_update_secret() {
 }
 
 # Initialize OpenBao
+#
+# The recovery keys are persisted, in their own secret. Previously only the
+# root token was kept and the recovery keys were printed and dropped, which
+# meant `bao operator generate-root` was impossible: losing or revoking the
+# root token left the cluster unrecoverable, and the restore path in
+# scripts/openbao-snapshot.sh could never authenticate.
+#
+# They go in a SEPARATE secret from the root token on purpose - co-locating a
+# credential with the material that regenerates it makes the pair worth exactly
+# as much as the weaker of the two.
 init_openbao() {
     if ! wait_for_openbao; then
         log_message "ERROR" "Failed to wait for OpenBao to be ready"
         exit 1
     fi
 
-    # Check if OpenBao is already initialized
     status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health")
     if [ "$status_code" = "200" ]; then
         log_message "INFO" "OpenBao is already initialized, unsealed, and active"
         exit 0
     fi
 
-    if [ "$status_code" = "501" ]; then
-        log_message "INFO" "OpenBao is not initialized - proceeding with initialization"
-        init_output=$(bao operator init -recovery-shares=1 -recovery-threshold=1 -format=json)
-        if ! echo "$init_output" | jq -r '.root_token' > /dev/null; then
-            log_message "ERROR" "Failed to initialize OpenBao"
-            exit 1
-        fi
-
-        root_token=$(echo "$init_output" | jq -r '.root_token')
-        if [ -z "$root_token" ]; then
-            log_message "ERROR" "Failed to extract root token from initialization output"
-            exit 1
-        fi
-
-        secret_value=$(jq -n --arg token "$root_token" '{"token": $token}')
-
-        # Store the root token in AWS Secrets Manager
-        log_message "INFO" "Storing root token in AWS Secrets Manager..."
-        AWS_CMD=$(get_aws_cmd)
-
-        if ! create_or_update_secret "$AWS_CMD" "$ROOT_TOKEN_SECRET_NAME" "$secret_value"; then
-            log_message "ERROR" "Failed to store root token in AWS Secrets Manager"
-            exit 1
-        fi
-    else
+    if [ "$status_code" != "501" ]; then
         log_message "ERROR" "Unexpected status code: $status_code"
         exit 1
     fi
 
-    # Final health check
+    log_message "INFO" "OpenBao is not initialized - proceeding with initialization"
+    init_output=$(bao operator init \
+        -recovery-shares="$RECOVERY_SHARES" \
+        -recovery-threshold="$RECOVERY_THRESHOLD" \
+        -format=json)
+
+    root_token=$(echo "$init_output" | jq -r '.root_token // empty')
+    if [ -z "$root_token" ]; then
+        log_message "ERROR" "Failed to extract root token from initialization output"
+        exit 1
+    fi
+
+    recovery_keys=$(echo "$init_output" | jq -c '.recovery_keys_b64 // empty')
+    if [ -z "$recovery_keys" ] || [ "$recovery_keys" = "null" ]; then
+        log_message "ERROR" "Failed to extract recovery keys from initialization output"
+        exit 1
+    fi
+
+    AWS_CMD=$(get_aws_cmd)
+
+    log_message "INFO" "Storing root token in AWS Secrets Manager..."
+    root_token_value=$(jq -n --arg token "$root_token" '{"token": $token}')
+    if ! create_or_update_secret "$AWS_CMD" "$ROOT_TOKEN_SECRET_NAME" "$root_token_value"; then
+        log_message "ERROR" "Failed to store root token in AWS Secrets Manager"
+        exit 1
+    fi
+
+    log_message "INFO" "Storing recovery keys in AWS Secrets Manager..."
+    recovery_value=$(jq -n \
+        --argjson keys "$recovery_keys" \
+        --argjson threshold "$RECOVERY_THRESHOLD" \
+        '{"recovery_keys": $keys, "recovery_key": $keys[0], "threshold": $threshold}')
+    if ! create_or_update_secret "$AWS_CMD" "$RECOVERY_KEYS_SECRET_NAME" "$recovery_value"; then
+        log_message "ERROR" "Failed to store recovery keys in AWS Secrets Manager"
+        exit 1
+    fi
+
+    unset init_output root_token recovery_keys root_token_value recovery_value
+
     log_message "INFO" "Performing final health check..."
     if ! check_openbao_status; then
         log_message "ERROR" "Final health check failed"
@@ -263,67 +271,47 @@ init_openbao() {
     fi
 }
 
-# Configure PKI
-configure_pki() {
-    # Check if OpenBao is reachable and initialized
-    if ! curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health" | grep -q "200"; then
-        log_message "ERROR" "OpenBao is not reachable or not properly initialized"
-        exit 1
-    fi
-
-    # Retrieve the root token from AWS Secrets Manager
+# Write the CA chain to disk so the Vault provider can verify the server
+# certificate (var.openbao_ca_cert_file in the management stack). A provider
+# block cannot depend on a resource, so this cannot be a local_file.
+write_ca() {
     AWS_CMD=$(get_aws_cmd)
-    root_token=$($AWS_CMD secretsmanager get-secret-value --secret-id "$ROOT_TOKEN_SECRET_NAME" --output text --query 'SecretString' | jq -r '.token')
-    if [ -z "$root_token" ]; then
-        log_message "ERROR" "Failed to retrieve root token from AWS Secrets Manager"
+
+    ca_chain=$($AWS_CMD secretsmanager get-secret-value \
+        --secret-id "$ROOT_CA_SECRET_NAME" \
+        --query "SecretString" --output text | jq -r '.ca // empty')
+
+    if [ -z "$ca_chain" ]; then
+        log_message "ERROR" "Failed to retrieve the CA chain from $ROOT_CA_SECRET_NAME"
         exit 1
     fi
 
-    ca_bundle=$($AWS_CMD secretsmanager get-secret-value --secret-id "$ROOT_CA_SECRET_NAME" --query "SecretString" --output text | jq -r .bundle)
-    if [ -z "$ca_bundle" ]; then
-        log_message "ERROR" "Failed to retrieve CA bundle from AWS Secrets Manager"
-        exit 1
-    fi
-
-    export VAULT_TOKEN="$root_token"
-
-    # Enable PKI secrets engine
-    if ! bao secrets list --format=json | jq -e '.["pki/"]' > /dev/null; then
-        echo "Enabling PKI secrets engine..."
-        bao secrets enable pki
-    fi
-
-    # Create a temporary file for the certificate bundle
-    temp_bundle=$(mktemp)
-    echo "$ca_bundle" > "$temp_bundle"
-
-    # Configure the PKI mount with the certificate bundle
-    echo "Configuring PKI mount with certificate bundle..."
-    bao write pki/config/ca pem_bundle=@"$temp_bundle"
-
-    # Clean up the temporary file
-    rm -f "$temp_bundle"
-
-    # Check the PKI configuration
-    if [[ $(bao pki health-check --format=json pki|jq -r '.ca_validity_period[0].status') == "ok" ]]; then
-        echo "PKI configuration is correct"
+    ca_dir=$(dirname "$CA_OUTPUT_FILE")
+    if [ -L "$ca_dir" ]; then
+        # `opentofu/openbao/management/.tls` is a committed symlink to
+        # ../cluster/.tls. On a fresh checkout that target does not exist yet
+        # (.tls/ is gitignored), and `mkdir -p` on a dangling symlink fails with
+        # "File exists" rather than creating the target. Resolve one level by
+        # hand - `readlink -f` is not portable to BSD/macOS.
+        link_target=$(cd "$(dirname "$ca_dir")" && readlink "$(basename "$ca_dir")")
+        case "$link_target" in
+            /*) ;;
+            *) link_target="$(dirname "$ca_dir")/$link_target" ;;
+        esac
+        mkdir -p "$link_target"
     else
-        echo "PKI configuration is incorrect"
+        mkdir -p "$ca_dir"
+    fi
+
+    printf '%s\n' "$ca_chain" > "$CA_OUTPUT_FILE"
+    chmod 0600 "$CA_OUTPUT_FILE"
+
+    if ! openssl x509 -in "$CA_OUTPUT_FILE" -noout -subject >/dev/null 2>&1; then
+        log_message "ERROR" "$CA_OUTPUT_FILE is not a valid PEM certificate"
         exit 1
     fi
 
-    # Expected max-lease-ttl value
-    expected_ttl="315360000"
-
-    # Read the configuration of the pki secrets engine
-    actual_ttl=$(bao read -format=json sys/mounts/pki/tune | jq -r '.data.max_lease_ttl')
-
-    # Check if the actual value matches the expected value
-    if [ "$actual_ttl" == "$expected_ttl" ]; then
-        echo "The max-lease-ttl value is as expected: $actual_ttl"
-    else
-        bao secrets tune -max-lease-ttl="$expected_ttl" pki
-    fi
+    log_message "INFO" "Wrote the CA chain to $CA_OUTPUT_FILE"
 }
 
 # Main script
@@ -341,10 +329,10 @@ case "$COMMAND" in
         check_prerequisites
         init_openbao
         ;;
-    pki)
+    ca)
         parse_args "$@"
         check_prerequisites
-        configure_pki
+        write_ca
         ;;
     *)
         echo "Unknown command: $COMMAND"

@@ -25,6 +25,7 @@ variable "openbao_version" {
   # 2.6.0 deadlocks on concurrent namespace creation (openbao/openbao#3411):
   # the management stack's parallel vault_namespace resources wedge the core
   # and every subsequent request hangs. Stay on 2.5.5 until a fixed release.
+  # renovate: datasource=github-releases depName=openbao/openbao
   default = "2.5.5"
 }
 
@@ -32,6 +33,12 @@ variable "openbao_data_path" {
   description = "Directory where OpenBao's data will be stored in an EC2 instance"
   type        = string
   default     = "/opt/openbao/data"
+}
+
+variable "root_volume_size" {
+  description = "Size (GiB) of the encrypted gp3 root volume. In dev mode this also holds the `file` storage backend, so it needs headroom beyond the AMI default of 8."
+  type        = number
+  default     = 20
 }
 
 variable "region" {

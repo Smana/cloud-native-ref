@@ -74,6 +74,27 @@ Success! OpenBao is initialized
 
 Additionally, the `recovery key` requires careful handling. It should be securely stored in a highly safe location. Use the `recovery key` only in exceptionally rare situations, specifically when there is a need to generate a new `root` token. This key serves as a critical backup mechanism and should be treated with the utmost security.
 
+ℹ️ **You normally do not run this by hand.** `terramate script run deploy` calls
+[`scripts/openbao-config.sh init`](../../../../scripts/openbao-config.sh), which
+initialises the cluster and writes the root token and the recovery keys to **two separate**
+AWS Secrets Manager entries (`openbao/cloud-native-ref/tokens/root` and
+`.../tokens/recovery`).
+
+Two of those details are load-bearing:
+
+- **The recovery keys are persisted.** The script previously kept only the root token and
+  let the recovery keys scroll past on stdout. That made `bao operator generate-root`
+  impossible: losing or revoking the root token would have left the cluster unrecoverable,
+  and the restore path in `scripts/openbao-snapshot.sh` could never authenticate.
+- **They live in a different secret from the root token.** The recovery keys exist to
+  regenerate a lost root token, so storing both in one entry makes the pair worth only as
+  much as the weaker of the two.
+
+`-recovery-shares=1 -recovery-threshold=1` is the default because the flow is automated —
+one share, one holder, no split knowledge. For anything long-lived, raise
+`--recovery-shares` / `--recovery-threshold` and distribute the shares to separate holders
+rather than to one Secrets Manager entry.
+
 1. Check that the cluster is working properly using the root token above
 
 ```console
@@ -109,8 +130,8 @@ Initialized              true
 Sealed                   false
 Total Recovery Shares    1
 Threshold                1
-Version                  1.14.8
-Build Date               2023-12-04T17:45:23Z
+Version                  2.5.5
+Build Date               2026-06-18T09:12:41Z
 Storage Type             raft
 Cluster Name             openbao-cluster-6209d1c3
 Cluster ID               a5055510-ab2d-3e91-8051-d58a3041a47d
