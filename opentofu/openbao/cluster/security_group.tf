@@ -1,19 +1,33 @@
 # Access model
 # ------------
 # Everything reaching the OpenBao API goes through the NLB, and the NLB now
-# actually has this security group attached (it previously did not, so these
-# rules enforced nothing and the real perimeter was the blanket VPC-CIDR rule
-# on the instance SG below - which let every pod in the cluster talk to the
-# API directly).
+# actually has this security group attached — it previously did not, so these
+# rules enforced nothing at all and the only real perimeter was a blanket
+# VPC-CIDR rule on the instance SG.
+#
+# Be precise about what that did and did not buy, because it is easy to
+# overclaim:
+#
+#   - The instance SG is genuinely tighter. It now admits 8200 from the NLB's
+#     security group and from itself, nothing else. Port 8201 — the raft
+#     cluster port — is no longer reachable from pods at all, where the old
+#     rule spanned 8200-8201 across the whole VPC and pod CIDR. That is the
+#     real narrowing.
+#   - Pods can still reach the API on 8200. `nlb_from_vpc` below admits the
+#     same CIDR list the deleted instance rule used, which includes the
+#     secondary pod CIDR. The hop moved from the instance to the NLB; the
+#     reachability did not change. This is NOT a "pod-CIDR bypass removed".
+#
+# Nor could it be: cert-manager and the snapshot CronJob are pods and
+# legitimately need 8200. At the network layer every pod looks alike, and this
+# stack is ordered *before* /opentofu/eks/init, so there is no EKS node
+# security group to name instead. What actually distinguishes an authorised pod
+# from any other is AppRole authentication and the per-workload
+# CiliumNetworkPolicy — not this security group.
 #
 # Two classes of client:
 #   - operators, arriving over Tailscale via the subnet router
-#   - in-cluster workloads (cert-manager, the snapshot CronJob), arriving from
-#     the pod CIDR
-#
-# The pod CIDR has to be expressed as a CIDR rather than the EKS node security
-# group: terramate orders this stack *before* /opentofu/eks/init, so that group
-# does not exist yet.
+#   - in-cluster workloads (cert-manager, the snapshot CronJob)
 
 resource "aws_security_group" "nlb" {
   name        = format("%s-nlb", local.name)

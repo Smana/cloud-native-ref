@@ -35,8 +35,10 @@ spec:
         - ports:
             - port: "80"
               protocol: TCP
-    # The OpenBao API, reached through the internal NLB in the VPC CIDR, plus
-    # the raft leader by private IP once the job has discovered it.
+    # The OpenBao API, reached through the internal NLB, whose private addresses
+    # sit in the VPC CIDR. The job no longer connects to the raft leader by
+    # private IP — it goes through the NLB and lets standby nodes forward the
+    # request to the active node.
     - toCIDR:
         - 10.0.0.0/16
       toPorts:

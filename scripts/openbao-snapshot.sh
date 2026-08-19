@@ -135,10 +135,9 @@ generate_root_token() {
     echo "${VAULT_TOKEN}"
 }
 
-# One AppRole login per run. `discover_leader` used to authenticate, then unset
-# the token, and `save` logged in again immediately afterwards - two logins and
-# two token leases for one snapshot. An OpenBao token is valid against any node
-# in the cluster, so it survives the VAULT_ADDR switch to the leader.
+# One AppRole login per run. Leader discovery used to authenticate, unset the
+# token, and then `save` logged in again immediately afterwards - two logins and
+# two token leases for one snapshot.
 authenticate() {
     echo "${info}: Authenticating with OpenBao..."
     VAULT_TOKEN=$(bao write -field=token auth/approle/login role_id="${APPROLE_ROLE_ID}" secret_id="${APPROLE_SECRET_ID}")
@@ -149,29 +148,33 @@ authenticate() {
     export VAULT_TOKEN
 }
 
-discover_leader() {
-    echo "${info}: Discovering the leader node..."
-    LEADER_ADDRESS=$(bao read -format=json sys/storage/raft/configuration | jq -r '.data.config.servers[] | select(.leader == true) | .address' | sed 's/:8201/:8200/')
-
-    if [ -z "${LEADER_ADDRESS}" ]; then
-        echo "${err}: Unable to discover the leader node."
-        echo "${err}: sys/storage/raft/* exists only with raft storage. In dev mode the"
-        echo "${err}: cluster runs the file backend and this command cannot work at all."
-        exit 1
-    fi
-    echo "${info}: Leader node discovered at ${LEADER_ADDRESS}"
-    # Exported explicitly: in the CronJob VAULT_ADDR arrives via envFrom and is
-    # already in the environment, so a plain assignment happened to stay
-    # exported. Run outside the pod with only -a, it would not have been.
-    VAULT_ADDR="https://${LEADER_ADDRESS}"
-    export VAULT_ADDR
-}
+# No leader discovery. This used to read sys/storage/raft/configuration, pick
+# the server with leader == true, and reconnect straight to its private IP —
+# which bypassed the NLB entirely, needed a security-group rule opening 8200
+# from the whole pod CIDR to the instances, and could not verify TLS, because
+# the server certificate carries a DNS SAN and no IP SANs.
+#
+# Going through the NLB instead relies on standby nodes forwarding the request:
+# OpenBao standbys RPC the active node over the cluster port and only fall back
+# to a 307 redirect when X-Vault-No-Request-Forwarding is set, which nothing
+# here sets. Only the active node can generate a snapshot, so the forward is
+# what makes an address that may land on any node work.
+#
+# Caveat, because this is the historically fragile path: Vault's equivalent has
+# an open bug (hashicorp/vault#15258) where a snapshot taken through a
+# *redirect* fails with "incomplete snapshot, unable to read SHA256SUMS.sealed
+# file". If snapshots start failing that way in `ha` mode, the fix is a second
+# target group whose health check omits standbyok so it contains only the active
+# node — but note it must NOT be attached to the ASG, because Auto Scaling
+# replaces an instance reported unhealthy by *any* attached target group, which
+# would terminate every standby.
+export VAULT_ADDR
 
 save() {
     echo "${info}: Starting OpenBao backup to S3..."
     check_required_bin
     authenticate
-    discover_leader
+    echo "${info}: Requesting a snapshot via ${VAULT_ADDR}"
     bao operator raft snapshot save "${SNAPSHOT_FILE}"
     # UTC, colon-free, lexicographically sortable. The previous
     # "%Y-%m-%d_%H:%M:%S_%Z" embedded colons (legal in S3, awkward everywhere
@@ -184,7 +187,6 @@ restore() {
     echo "${info}: Restoring OpenBao from S3..."
     check_required_bin
     authenticate
-    discover_leader
 
     echo "${info}: Fetching latest backup from S3 bucket ${BUCKET_NAME}"
     # Sorted by LastModified, not by key name. Key-name ordering would be

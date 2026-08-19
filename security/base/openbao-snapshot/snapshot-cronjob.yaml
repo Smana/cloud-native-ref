@@ -44,6 +44,11 @@ spec:
             - name: tmp
               emptyDir:
                 sizeLimit: 256Mi
+            # Same ExternalSecret the cert-manager ClusterIssuer uses; both live
+            # in this namespace.
+            - name: openbao-ca
+              secret:
+                secretName: openbao-ca  # pragma: allowlist secret
           securityContext:
             fsGroup: 1001
             runAsUser: 1000
@@ -57,15 +62,14 @@ spec:
                 - -c
                 - "openbao-snapshot.sh save -b $(BUCKET_NAME) -s /snapshot/backup.snap -a $(VAULT_ADDR) -d 8"
               env:
-                # Not yet removable. Two things block it, both tracked
-                # elsewhere: the script resolves the raft leader and connects
-                # to it by private IP, and the server certificate carries only
-                # a DNS SAN (bao.priv.cloud.ogenki.io), so verification cannot
-                # succeed against an IP. Mounting the CA alone would not help.
-                # Fixing it means either adding IP SANs to the server
-                # certificate or routing the snapshot call through the NLB.
-                - name: "VAULT_SKIP_VERIFY"
-                  value: "true"
+                # No VAULT_SKIP_VERIFY. It was only ever needed because the job
+                # resolved the raft leader and connected to it by private IP,
+                # which the server certificate's single DNS SAN cannot match.
+                # Now that the snapshot goes through the NLB at
+                # bao.<private_domain_name>, the name matches and the CA is
+                # enough — so this workload verifies TLS like everything else.
+                - name: VAULT_CACERT
+                  value: /etc/openbao/tls/ca.crt
                 - name: HOME
                   value: /snapshot
               envFrom:
@@ -102,5 +106,8 @@ spec:
                   name: snapshot
                 - mountPath: "/tmp"
                   name: tmp
+                - mountPath: "/etc/openbao/tls"
+                  name: openbao-ca
+                  readOnly: true
           serviceAccountName: openbao-snapshot
           restartPolicy: Never
