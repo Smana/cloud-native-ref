@@ -29,7 +29,16 @@ spec:
             dashboard: "https://grafana.${private_domain_name}/dashboards"
 
         - alert: OpenBaoSealed
-          expr: vault_core_unsealed{job="openbao"} == 0
+          # max by (instance), not a bare `== 0`, for the same reason
+          # OpenBaoNoActiveNode below wraps its expression in max(): OpenBao
+          # publishes vault_core_unsealed TWICE per scrape -- once carrying the
+          # cluster label (which the scrape relabels to exported_cluster) with
+          # the real value, and once without any, always 0. A bare comparison
+          # matches the always-zero copy, so this alert fires critical forever on
+          # a perfectly healthy cluster. Verified on the rebuilt HA cluster:
+          # `vault_core_unsealed` returns {exported_cluster=...}=1 AND {}=0, both
+          # 16s fresh, while `max by (instance) (...)` returns 1.
+          expr: max by (instance) (vault_core_unsealed{job="openbao"}) == 0
           for: 5m
           labels:
             severity: critical
