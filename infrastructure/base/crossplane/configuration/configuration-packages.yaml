@@ -1,0 +1,15 @@
+# The platform's XRDs and Compositions, published from Smana/crossplane-configuration.
+#
+# Only the -aws package is declared. It pulls -core through its `dependsOn`, and
+# Crossplane creates that dependency itself under a registry-derived name
+# (smana-crossplane-configuration-core, not the name in packages/core/crossplane.yaml).
+# Declaring -core here as well would leave two Configuration objects for one package.
+#
+# Functions are NOT left to `dependsOn` either: functions.yaml in this directory keeps
+# them cluster-owned and version-pinned, which is why it survives the cutover.
+apiVersion: pkg.crossplane.io/v1
+kind: Configuration
+metadata:
+  name: crossplane-configuration-aws
+spec:
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.1.0
