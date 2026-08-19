@@ -73,9 +73,25 @@ spec:
       # chart newer than the image emits config keys the older binary rejects:
       # config parsing uses KnownFields(true), and 0.9.2 against the v0.11.0 chart
       # crashlooped on `field sweeps not found in type config.Curate`. Before this
-      # bump the v0.13.0 chart was rendered with these exact values and the resulting
-      # config replayed through the v0.13.0 binary's own config.Load: both pass.
-      tag: "0.13.0"
+      # pin the 0ed7806 chart was rendered with these exact values and the resulting
+      # config replayed through 0ed7806's own config.Load: both pass.
+      # TEMPORARY validation pin — the rolling :main image, pinned BY DIGEST to the
+      # build of commit 0ed7806, the same commit the GitRepository renders the chart
+      # from. Two things make this safe:
+      #
+      #   - The digest, not the tag, is what resolves. `:main` is mutable and the
+      #     next main push overwrites it, which with pullPolicy IfNotPresent would
+      #     otherwise mean a replaced pod silently runs a newer binary under a chart
+      #     that did not move. repo:tag@sha256:... is a valid OCI reference and
+      #     containerd pulls the digest, ignoring the tag.
+      #   - It is single-arch linux/amd64 (build-image.yml builds only that for main,
+      #     unlike the multi-arch release image). Every node in this cluster is
+      #     amd64 Bottlerocket, so it schedules — but this is another reason the pin
+      #     must not outlive its validation.
+      #
+      # REVERT to the signed multi-arch release image — tag: "0.14.0", NO leading "v"
+      # — once this validation is done.
+      tag: "main@sha256:90be3ab71321177581083f3379d417693cfbd49d28985897658517835d8cd3dc"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true

@@ -6,10 +6,25 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://github.com/Smana/runlore.git
-  # Pinned to the v0.13.0 release: the chart is rendered from THIS tag, and the signed,
-  # multi-arch release image in observability/base/runlore/helmrelease.yaml
-  # (image.tag "0.13.0") must come from the same one. Keep them in lockstep on every
-  # bump — bumping one alone is not a partial upgrade, it is an outage.
+  # TEMPORARY validation pin — NOT a release. Pinned to main commit 0ed7806 so the
+  # 50 changes since v0.14.0 can be exercised on a live cluster. The chart is
+  # rendered from THIS commit, and image.tag in
+  # observability/base/runlore/helmrelease.yaml pins the ghcr digest that
+  # build-image.yml produced from THIS SAME commit.
+  #
+  # REVERT to `tag: v0.14.0` (or whatever release supersedes it) plus the signed
+  # multi-arch release image once the validation is done. A validation build must
+  # not outlive its validation — that is the deal, and it has been kept twice now.
+  #
+  # Why a commit and not `branch: main`: build-image.yml filters on
+  # (**.go, Dockerfile, go.{mod,sum}), so not every main commit HAS an image.
+  # Tracking the branch would eventually render a chart from a commit with no
+  # image, and any later push would move the chart out from under the pinned
+  # digest. The commit pin is what makes the lockstep actually hold. 0ed7806 was
+  # confirmed to have a successful build-image run before pinning.
+  #
+  # Keep them in lockstep on every bump — bumping one alone is not a partial
+  # upgrade, it is an outage.
   #
   # v0.13.0 was validated before it was cut, not after: this pin briefly pointed at
   # main commit e999554 with image.tag pinned to that commit's ghcr digest, which is
@@ -22,8 +37,11 @@ spec:
   # config with KnownFields(true), so the v0.11.0 chart's `curate.sweeps` key was
   # rejected by the v0.9.2 binary and `serve` failed closed on startup —
   # `field sweeps not found in type config.Curate` — crashlooping both replicas
-  # for as long as the drift lasted. Before this bump the v0.13.0 chart was rendered
-  # with the live HelmRelease values and the resulting config replayed through the
-  # v0.13.0 binary's own config.Load (KnownFields + Validate): both pass.
+  # for as long as the drift lasted. Before this pin the 0ed7806 chart was rendered
+  # with the live HelmRelease values and the resulting config replayed through
+  # 0ed7806's own config.Load (KnownFields + Validate): both pass.
   ref:
-    tag: v0.13.0
+    branch: main
+    # The allowlist pragma below is detect-secrets' required inline escape: it reads a
+    # 40-char hex string as a high-entropy credential. This one is a public commit SHA.
+    commit: 0ed78066d98997476e6bd34a45d6bb3fa05fe989 # pragma: allowlist secret
