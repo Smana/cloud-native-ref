@@ -251,8 +251,21 @@ helm install cilium cilium/cilium --version 1.20.0 --namespace kube-system \
   --set hubble.relay.enabled=true --set hubble.ui.enabled=true
 kubectl -n kube-system rollout status ds/cilium --timeout=5m
 ```
-Expected: DaemonSet rolls out. Gateway API CRDs must exist first if `gatewayAPI.enabled=true` errors — apply them with
-`kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml` and retry.
+Expected: DaemonSet rolls out.
+
+**Install the Gateway API CRDs BEFORE this helm install**, not after it errors. `gatewayAPI.enabled=true`
+does not necessarily fail loudly on missing CRDs — cilium-operator probes for them once at startup and
+then silently disables Gateway API for the life of the pod (see Task 11). Installing after the fact
+leaves the gate cluster in exactly the broken state that took AWS down on 2026-08-19, and a gate that
+lies is worse than no gate.
+
+```bash
+kubectl apply -f "https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/experimental-install.yaml"
+```
+
+`GATEWAY_API_VERSION` is `flux/sources/gitrepo-gateway-api.yaml`'s `ref.tag` — experimental channel, to
+match AWS. If you install Cilium first by mistake:
+`kubectl rollout restart -n kube-system deployment/cilium-operator`.
 
 - [ ] **Step 4: CHECK 1 — Cilium's CNI config displaced netd**
 
@@ -1237,42 +1250,128 @@ so both clouds upgrade together. Header documents every divergent key."
 **Files:**
 - Create: `opentofu/gcp/gke/init/gateway_api.tf`
 
-- [ ] **Step 1: Check how the AWS side does it**
+> **Rewritten 2026-08-19 after this exact task's AWS equivalent took the cluster down.**
+>
+> `cilium-operator` probes for the Gateway API CRDs **once, at startup**. If any are missing it logs
+> `Required GatewayAPI resources are not found`, disables its Gateway API controller and **never
+> retries** — the pod stays `Running` and `Ready`, nothing crashes, nothing alerts. The symptom
+> surfaces four layers away: `GatewayClass ACCEPTED=Unknown` → Gateways never `Programmed` →
+> HTTPRoutes with no `status.parents` at all → every `App` claim owning a route stuck `READY=False`.
+> Worse, only the *leader* replica logs the error, so a one-pod `kubectl logs` looks clean.
+>
+> On AWS this fired on 2026-08-19 over a **two-second** gap: the operator probed at 11:26:44 and Flux
+> created `backendtlspolicies` at 11:26:46. Cilium 1.20 requires `BackendTLSPolicy`; the hand-written
+> CRD list in `eks/configure` had eight entries and not that one. Fixed in #1781.
+>
+> **The lesson for GCP: do not enumerate the CRDs.** Apply the whole release bundle, so a CRD Cilium
+> starts requiring in a later version cannot be silently missing. The AWS side cannot switch cheaply
+> — its list is `count`-indexed, so restructuring would destroy and recreate live CRDs — but GCP is
+> greenfield and should start correct.
 
-Run: `grep -rn 'gateway_api_crds' opentofu/eks/ | head`
-Expected: a `kubectl_manifest.gateway_api_crds` referenced by `helm_release.cilium`'s `depends_on`. Match that shape and the pinned Gateway API version.
+- [ ] **Step 1: Read the AWS pin and the trap it encodes**
+
+```bash
+grep -n "gateway_api_crds_urls" -A 30 opentofu/eks/configure/locals.tf
+grep -rn "gateway_api_version" opentofu/eks/configure/variables.tf
+grep -n "gateway_api_crds" opentofu/eks/configure/main.tf
+```
+
+Expected: a URL list with a comment block explaining the startup probe, `depends_on` from the Cilium
+`helm_release`, and a `gateway_api_version` variable. Take **only the version** from here — the
+enumeration is the thing this task deliberately does not copy.
+
+The version must equal `flux/sources/gitrepo-gateway-api.yaml`'s `ref.tag`, which is the cross-cloud
+invariant: one Gateway API version on both clouds.
 
 - [ ] **Step 2: Write `gateway_api.tf`**
 
-Cilium's `gatewayAPI.enabled=true` fails at install time if the CRDs are absent, which is why this must precede it. Mirror the version the AWS stack pins:
+Use the **experimental** channel bundle. Two reasons, and the second is not obvious:
+
+1. AWS runs experimental (`crds/base/kustomization-gateway-api.yaml` applies
+   `./config/crd/experimental`, and the installed CRDs carry
+   `gateway.networking.k8s.io/channel: experimental`). Different channels across clouds means a route
+   using an experimental field works on AWS and fails on GCP — a divergence that would surface as an
+   application bug, not a platform one.
+2. Cilium's 1.19 upgrade notes call for the experimental TLSRoute specifically.
 
 ```hcl
-# Gateway API CRDs must exist BEFORE Cilium installs with gatewayAPI.enabled.
-# Version is pinned to match the AWS stack so both clouds run one Gateway API
-# version -- see opentofu/eks/init for the canonical pin.
+# The whole bundle, not a hand-picked list. cilium-operator probes for these CRDs
+# exactly once at startup and permanently disables Gateway API if any are absent
+# (see the AWS incident referenced in the plan). Enumerating them is what failed
+# there; the bundle cannot drift from what Cilium expects.
+#
+# Experimental channel to match the AWS side -- one Gateway API surface on both
+# clouds. Version must equal flux/sources/gitrepo-gateway-api.yaml's ref.tag.
 data "http" "gateway_api_crds" {
-  url = "https://github.com/kubernetes-sigs/gateway-api/releases/download/${var.gateway_api_version}/standard-install.yaml"
+  url = "https://github.com/kubernetes-sigs/gateway-api/releases/download/${var.gateway_api_version}/experimental-install.yaml"
+}
+
+data "kubectl_file_documents" "gateway_api_crds" {
+  content = data.http.gateway_api_crds.response_body
+}
+
+# for_each, NOT count: keyed by manifest identity, so a future Gateway API release
+# adding a CRD appends instead of shifting every index. A count-indexed list would
+# make tofu destroy and recreate live CRDs on any reordering, taking every Gateway
+# and HTTPRoute with them.
+resource "kubectl_manifest" "gateway_api_crds" {
+  for_each  = data.kubectl_file_documents.gateway_api_crds.manifests
+  yaml_body = each.value
+
+  # Flux also reconciles these from the gateway-api GitRepository; whoever applies
+  # second must not fight the first.
+  server_side_apply = true
+  force_conflicts   = true
 }
 ```
 
-Add the variable to `variables.tf`, using the exact version the AWS stack pins:
+`response_body` rather than the deprecated `body` attribute (#1772).
+
+Add to `variables.tf`:
 
 ```hcl
 variable "gateway_api_version" {
-  description = "Gateway API release. Must match the AWS stack so both clouds run one version."
+  description = "Gateway API release. Must match flux/sources/gitrepo-gateway-api.yaml ref.tag so both clouds run one version."
   type        = string
   default     = "<version-from-step-1>"
 }
 ```
 
-> If the AWS stack applies the CRDs from a vendored file rather than a URL, do the same here instead of using `data "http"` — consistency with the existing pattern matters more than this specific mechanism.
+- [ ] **Step 3: Verify the bundle actually resolves before wiring Cilium to it**
 
-- [ ] **Step 3: Commit**
+A 404 here fails the apply *after* the cluster exists, which is an expensive way to find a typo.
+
+```bash
+curl -fsSL -o /dev/null -w "%{http_code}
+" \
+  "https://github.com/kubernetes-sigs/gateway-api/releases/download/<version>/experimental-install.yaml"
+```
+
+Expected: `200`.
+
+- [ ] **Step 4: Confirm Cilium depends on this**
+
+Task 12 wires `helm_release.cilium`'s `depends_on` to `kubectl_manifest.gateway_api_crds`. That
+dependency is necessary and **not sufficient** — it was already correct on AWS when the outage
+happened. What made it insufficient was an incomplete list, which Step 2 removes by construction.
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add opentofu/gcp/gke/init
-git commit -m "feat(gcp): pin Gateway API CRDs for the GKE cluster"
+git commit -m "feat(gcp): install the full Gateway API CRD bundle before Cilium"
 ```
+
+**If Gateway API is inert after the cluster comes up** — GatewayClass `Accepted=Unknown`, Gateways
+`Waiting for controller` — check every operator replica, then restart:
+
+```bash
+kubectl logs -n kube-system -l io.cilium/app=operator | grep "Required GatewayAPI resources"
+kubectl rollout restart -n kube-system deployment/cilium-operator
+```
+
+Recovery on AWS took under 20 seconds. If a restart fixes it, a CRD arrived late and Step 2's bundle
+did not cover it — record which one.
 
 ### Task 12: Configure stack — Cilium then Flux
 
@@ -1801,7 +1900,22 @@ cd ../gke/init && tofu plan -var-file=variables.tfvars -detailed-exitcode; echo 
 ```
 Expected: `exit=0` for both (exit 2 means changes — investigate the drift rather than applying it away).
 
-- [ ] **Step 7: Record every result**
+- [ ] **Step 7: Gateway API is actually wired, not merely installed**
+
+Cheap, and the one failure this plan has already seen in production. A Gateway API that was disabled
+at operator startup looks completely healthy from the Cilium side — `cilium status` is fine, the
+DaemonSet is fine, the operator is `Running`.
+
+```bash
+kubectl get gatewayclass                        # ACCEPTED must be True, not Unknown
+kubectl logs -n kube-system -l io.cilium/app=operator \
+  | grep -c "Required GatewayAPI resources"     # must be 0, across ALL replicas
+```
+
+`ACCEPTED=Unknown` or a non-zero count means a CRD was missing at startup: restart the operator to
+recover, then fix Task 11's bundle so the next build does not repeat it.
+
+- [ ] **Step 8: Record every result**
 
 Write the actual command output into `docs/gcp-bootstrap.md` (created in Task 20) under a "Verification evidence" section, with the date and cluster version. Prose is not evidence; numbers and exit codes are.
 
