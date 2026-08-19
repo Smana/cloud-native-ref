@@ -85,7 +85,12 @@ resource "vault_generic_endpoint" "admin_user" {
 resource "vault_auth_backend" "approle_app" {
   namespace = vault_namespace.app.path_fq
   type      = "approle"
-  path      = "approle"
+  # No explicit `path`. Setting it -- even to "approle", the value the provider
+  # defaults to -- makes hashicorp/vault v5 fail the post-create read on a
+  # namespaced backend: "Provider produced inconsistent result after apply ...
+  # root object was present, but now absent". The mount IS created server-side;
+  # only the read-back fails, so every apply errors and leaves an untracked
+  # mount behind. Every other namespaced backend here omits `path` too.
 }
 
 resource "vault_approle_auth_backend_role" "app" {
