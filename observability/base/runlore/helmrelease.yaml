@@ -177,7 +177,14 @@ spec:
                 matchLabels:
                   k8s-app: hubble-relay
           ports:
-            - port: 80     # hubble-relay — network.hubble.url
+            # 4245, NOT the Service's port 80. NetworkPolicy matches the
+            # DESTINATION POD port after Service translation, and hubble-relay's
+            # Service maps 80 -> targetPort 4245. A rule for 80 therefore matches
+            # nothing and the connection times out exactly as if no rule existed —
+            # which is what the first attempt at this did, and what the second
+            # investigation reported again in its data gaps. The URL above stays
+            # :80 because that IS the Service port the client dials.
+            - port: 4245   # hubble-relay listen-address (Service 80 -> 4245)
               protocol: TCP
     vmServiceScrape:
       enabled: true
