@@ -36,7 +36,7 @@ Changed paths → change type:
 
 | Path pattern | Change type |
 |---|---|
-| `infrastructure/base/crossplane/configuration/kcl/**/*.k`, `*-composition.yaml` | composition |
+| `infrastructure/base/crossplane/configuration/configuration-packages.yaml` (composition package pin) | composition |
 | `opentofu/**/*.tf`, `terramate.tm.hcl` | infrastructure |
 | `*networkpolicy*`, `*rbac*`, `openbao/**`, `*cilium*policy*` | security |
 | Multiple top-level dirs + HelmRelease/Kustomization | platform |

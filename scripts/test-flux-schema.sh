@@ -24,15 +24,10 @@ check() {
   fi
 }
 
-echo "== xrd-to-crd =="
-out="$(python3 scripts/flux-schema/xrd-to-crd.py \
-  infrastructure/base/crossplane/configuration/app-definition.yaml)"
-
-check "emits a CustomResourceDefinition" "kind: CustomResourceDefinition" "$out"
-check "preserves the group"              "group: cloud.ogenki.io"          "$out"
-check "preserves the kind"               "kind: App"                       "$out"
-check "injects spec.crossplane"          "crossplane:"                     "$out"
-check "injects compositionRef"           "compositionRef:"                 "$out"
+# The xrd-to-crd converter moved to Smana/crossplane-configuration along with the
+# XRDs it converts, and is tested there. What this repo still needs to hold true
+# is that the catalog ends up carrying the cloud.ogenki.io group — asserted below
+# on the generated output rather than on the converter's.
 
 echo "== gen-catalog =="
 rm -rf .schemas

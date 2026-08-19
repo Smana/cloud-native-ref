@@ -7,7 +7,7 @@ We have chosen [KCL (Kusion Configuration Language)](https://github.com/crosspla
 Here is an example for creating and pushing a composition for an RDS instance:
 
 ```console
-cd infrastructure/base/crossplane/configuration/kcl
+# KCL modules moved to https://github.com/Smana/crossplane-configuration (apis/<api>/kcl)
 kcl mod init rdsinstance
 ```
 

@@ -189,7 +189,7 @@ Security is built-in, not bolted-on:
 
 ### Deep Dives
 
-- [App Composition Detailed Guide](infrastructure/base/crossplane/configuration/kcl/app/README.md) - Complete reference (507 lines!)
+- [App Composition Detailed Guide](https://github.com/Smana/crossplane-configuration/blob/main/apis/app/kcl/README.md) - Complete reference (507 lines!)
 - [OpenBao PKI Setup](opentofu/openbao/cluster/docs/getting_started.md) - Certificate authority configuration
 - [cert-manager Integration](opentofu/openbao/management/docs/cert-manager.md) - Automated TLS certificates
 

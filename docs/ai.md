@@ -155,7 +155,7 @@ turns those four `min=1` models into a hard cost ceiling.
 
 A ~30-line claim renders **7 objects at minimum, 16 with everything on**. The complete API reference —
 every field, default and CEL rule — lives in the
-[composition README](../infrastructure/base/crossplane/configuration/kcl/inference-service/README.md).
+[composition README](https://github.com/Smana/crossplane-configuration/blob/main/apis/inferenceservice/kcl/README.md).
 The parts worth knowing before you write a claim:
 
 ### Weights: `preload` is not really optional
@@ -380,6 +380,6 @@ An honest list. None of these are hidden behind a green checkmark.
 - [ADR-0004 — Amazon S3 Files for model-weights storage](decisions/0004-amazon-s3-files-for-model-weights-storage.md)
 
 **Operations**
-- [Composition API reference](../infrastructure/base/crossplane/configuration/kcl/inference-service/README.md) — every field, default and CEL rule
+- [Composition API reference](https://github.com/Smana/crossplane-configuration/blob/main/apis/inferenceservice/kcl/README.md) — every field, default and CEL rule
 - [Enable and teardown](../clusters/mycluster-0-llm-platform/README.md)
 - [Coding clients](coding-clients.md) — OpenCode, Continue, OpenWebUI

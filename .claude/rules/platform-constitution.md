@@ -8,10 +8,14 @@ All Crossplane-managed resources use the **`xplane-*`** prefix (e.g., `xplane-ha
 
 ## KCL composition patterns
 
+> Compositions live in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)
+> and are validated there. These patterns are the constitution's standing requirements on them,
+> restated here because a design written in this repo still has to satisfy them.
+
 - **Never mutate a dict after creation** — causes duplicate resources (function-kcl issue #285). Use inline conditionals: `obj = { spec.X = ... if cond else default }`.
 - **List comprehensions** must be single-line.
 - Run **`kcl fmt`** before every commit; CI is strict.
-- Validate with `./scripts/validate-kcl-compositions.sh` or the `/crossplane-validator` skill (4-stage: format / syntax / render / security).
+- Validate with `make check` in `Smana/crossplane-configuration` (generate-sync, `kcl fmt`/`kcl test`, XRD schema, render equivalence against golden fixtures).
 - Native Kubernetes readiness via `option("params").ocds`:
   - Deployment: `status.conditions[type=Available, status=True]`
   - Service: `spec.clusterIP` assigned

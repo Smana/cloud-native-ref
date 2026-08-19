@@ -132,12 +132,13 @@ Flux manages all Kubernetes resources through a dependency hierarchy:
 
 ### Crossplane Resources
 
-- **Compositions**: Infrastructure templates in `infrastructure/base/crossplane/configuration/`
+- **XRDs and Compositions live in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)**, not here. This repo installs them as a Crossplane Configuration package — see `infrastructure/base/crossplane/configuration/configuration-packages.yaml` for the pinned version. Edit the KCL, run the validators and cut a release **in that repo**; then bump the pin here.
 - **App Composition**: Platform abstraction supporting progressive complexity (image-only to production-ready with managed PostgreSQL, Redis/Valkey, S3, autoscaling, HA, zero-trust networking)
 - **EPI (EKS Pod Identity)**: IAM roles for service accounts in `security/base/epis/`
 - **Resource naming**: All Crossplane-managed resources prefixed with `xplane-`
+- **Still owned here**: `functions.yaml` (version-pinned rather than resolved by the packages' `dependsOn`), `environmentconfig.yaml`, and the provider config.
 
-> **KCL and Crossplane validation rules** are in `.claude/rules/kcl-crossplane.md` and `.claude/rules/crossplane-validation.md` (loaded automatically when editing those files).
+> The claim-side rules that still apply in this repo are in `.claude/rules/crossplane-validation.md`.
 
 ## Development Workflow (Superpowers)
 
@@ -232,7 +233,7 @@ Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDN
 ### Scripts
 - EKS cleanup: `scripts/eks-prepare-destroy.sh`
 - OpenBao config: `scripts/openbao-config.sh`
-- KCL validation: `scripts/validate-kcl-compositions.sh`
+- KCL/composition validation: `make check` in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) (moved with the compositions)
 
 ## Troubleshooting
 

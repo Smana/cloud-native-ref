@@ -6,7 +6,6 @@ globs:
   - "apps/base/**/*network-policy*.yaml"
   - "tooling/base/**/*network-policy*.yaml"
   - "security/base/**/*network-policy*.yaml"
-  - "infrastructure/base/crossplane/configuration/kcl/**/*.k"
 ---
 
 # CiliumNetworkPolicy Rules

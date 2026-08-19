@@ -18,7 +18,6 @@ CI never applies changes to a cluster. It validates, scans, and publishes; Flux 
 | `ci.yaml` | PR → main | The main gate: OpenTofu validation, security scanning, manifest validation, rendered diff, shellcheck |
 | `app-wizard.yml` | push / PR | Go lint & test + UI build & test for the App Wizard (`container-images/app-wizard/`) |
 | `build-container-images.yml` | push / PR / dispatch | Detect changed images under `container-images/`, build each, push on non-PR events |
-| `crossplane-modules.yml` | push / PR | Validate, test and publish the KCL Crossplane modules to GHCR |
 | `vector-config-validation.yml` | push / PR | Validate the Vector log-parsing configuration |
 | `ci.yaml` → `links` | PR → main | Resolve every relative Markdown link; fails on any break not in `.linkcheck-allow` |
 
@@ -135,15 +134,17 @@ Builds the images under `container-images/` (`app-wizard`, `pev2`, …):
 - **Build `<image>`** — builds each changed image. **On pull requests it builds but does not push** (validation only); on push to `main` and `workflow_dispatch` it pushes to `ghcr.io/smana/<image>`.
 - Tags are `<branch>-<short-sha>` (e.g. `main-8886ba3`) plus `latest` on the default branch. Deployments pin an immutable `<branch>-<sha>` tag — never `latest` (which `IfNotPresent` would never re-pull).
 
-## Crossplane modules (`crossplane-modules.yml`)
+## Crossplane modules — moved out of this repo
 
-Validates and publishes the KCL Crossplane modules in `infrastructure/base/crossplane/configuration/kcl/`:
+The `crossplane-modules.yml` workflow published the KCL modules to GHCR as OCI artifacts that the
+Compositions then pulled at render time. Both the modules and that indirection are gone: the KCL is
+now **inlined into the Compositions**, which ship as a Configuration package from
+[`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration). Installing a
+package pulls no further artifacts at render time.
 
-- **detect-changes** — which KCL modules changed.
-- **quality-checks** — `kcl fmt` (CI-enforced), `kcl lint`, `kcl test`, and `kcl run -Y settings-example.yaml` (render with example inputs).
-- **publish** — pushes the module to GHCR. Pull requests publish a `-pr<number>`-suffixed tag (overwritable, for testing); `main` publishes the release version. The publish rewrites `kcl.mod`'s `version` before push, since `kcl mod push` uses that field as the actual tag (see `.claude/rules/kcl-crossplane.md`).
-- **validate-composition-versions** — ensures compositions reference published (non-PR-suffixed) module versions.
-- **summary** — job summary with the published version, GHCR URL, and usage snippet.
+That repo's own CI runs the equivalent gates (`kcl fmt`/`kcl test`, generate-sync, XRD schema, render
+equivalence against golden fixtures) and its release workflow publishes both packages plus the
+`xrd-crds.yaml` asset this repo's schema catalog is built from.
 
 ## Other validation
 
@@ -206,16 +207,19 @@ These are the same checks CI runs — cite them as evidence, and run them before
 
 The single entry point the `Kubernetes validation` job runs. Renders the repo and gates it with `flux schema validate` + Polaris (see above). A clean run reports `Valid: N, Invalid: 0, Skipped: 0`. Requires `flux` ≥ 2.9 with the schema plugin (`mise install && flux plugin install schema`).
 
-### Crossplane compositions — `./scripts/validate-kcl-compositions.sh`
+### Crossplane compositions — moved out of this repo
 
-Four stages per composition: `kcl fmt` → syntax (`kcl run`) → `crossplane render` (basic + complete examples) → security. Run from the repo root to validate every composition.
+Compositions and their KCL live in
+[`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) and are
+validated by that repo's own CI: generate-sync, `kcl fmt` + `kcl test`, XRD schema validation of the
+example claims, render equivalence against golden fixtures, and a check that the built packages
+carry no `oci://` module references.
 
-```
-📝 [1/3] Checking KCL formatting...        ✅
-🧪 [2/3] Validating KCL syntax and logic... ✅
-🎨 [3/3] Testing crossplane render...       ✅
-✅ All checks passed for app
-```
+What this repo still gates is the *consumption* side. `./scripts/validate-manifests.sh` builds its
+schema catalog from the `xrd-crds.yaml` asset of the release pinned in
+`infrastructure/base/crossplane/configuration/configuration-packages.yaml`, so every claim here is
+validated against the schemas the installed package actually serves — and a pin bump that breaks a
+claim fails the `Kubernetes validation` job.
 
 ## Self-hosted GitHub runners
 
@@ -228,11 +232,9 @@ Self-hosted runner scale sets run in-cluster (`tooling/base/gha-runners/`), enab
 ## Troubleshooting
 
 ### KCL formatting failure
-```bash
-cd infrastructure/base/crossplane/configuration/kcl/<module>
-kcl fmt .
-```
-CI fails if code is not formatted. Run `kcl fmt` before committing.
+
+Now a `Smana/crossplane-configuration` concern — `make test` there formats in place and fails if the
+tree changes. Nothing in this repo runs `kcl`.
 
 ### Manifest validation failure (`Invalid` > 0 or `Skipped` > 0)
 - A new custom Kind needs its XRD/CRD present so the generated schema catalog covers it — a missing schema is a **hard failure** by design (`Skipped: 0` is part of the pass criteria), unlike the old `-ignore-missing-schemas` behaviour.

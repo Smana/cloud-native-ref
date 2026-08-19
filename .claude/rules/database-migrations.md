@@ -1,7 +1,8 @@
 ---
 description: Atlas Operator database migration integration with SQLInstance composition
 globs:
-  - "infrastructure/base/crossplane/configuration/kcl/cloudnativepg/**"
+  - "apps/**/*.yaml"
+  - "infrastructure/base/crossplane/configuration/**"
 ---
 
 # Database Migrations with Atlas Operator
@@ -9,6 +10,9 @@ globs:
 ## Overview
 
 The SQLInstance composition supports declarative schema migrations via Atlas Operator + Flux GitOps.
+The composition itself lives in
+[`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration); what follows
+is how a **claim** in this repo uses it, and how to debug the result on the cluster.
 
 When `atlasSchema` is defined in SQLInstance spec, the composition creates:
 1. **GitRepository** - Flux pulls migration files from Git

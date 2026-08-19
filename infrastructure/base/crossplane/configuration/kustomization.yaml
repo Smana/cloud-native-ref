@@ -2,49 +2,18 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: crossplane-system
 
+# The XRDs and Compositions are no longer here — they ship in the Configuration
+# package declared in configuration-packages.yaml, built from
+# github.com/Smana/crossplane-configuration.
+#
+# What stays is what the *cluster* owns rather than the API contract:
+#   - functions.yaml            version-pinned here rather than resolved by the
+#                               packages' `dependsOn`, so a package bump cannot
+#                               silently move a function version
+#   - environmentconfig.yaml    per-cluster values the Compositions read
+#   - cluster-providerconfig    provider credentials wiring
 resources:
-  - app-composition.yaml
-  - app-definition.yaml
   - cluster-providerconfig-aws.yaml
   - configuration-packages.yaml
   - environmentconfig.yaml
-  - epi-composition.yaml
-  - epi-definition.yaml
   - functions.yaml
-  - inference-service-composition.yaml
-  - inference-service-definition.yaml
-  - kvstore-composition.yaml
-  - kvstore-definition.yaml
-  - sql-instance-composition.yaml
-  - sql-instance-definition.yaml
-
-# MIGRATION, TEMPORARY — removed together with the files it targets in the
-# follow-up PR that completes the cutover.
-#
-# The Configuration package above ADOPTS these XRDs and Compositions: same names,
-# same schemas, so Crossplane takes ownership without recreating them and every
-# claim keeps its uid. Adoption does not, however, remove them from this
-# Kustomization's inventory. Deleting the files in the same commit that adds the
-# package therefore makes kustomize-controller DELETE the XRDs it still tracks,
-# which cascades to the CRDs and destroys every claim — measured on kind, 3/3
-# claims gone at t+45s while the cluster still reported Ready=True.
-#
-# prune: disabled breaks that link: the objects leave the inventory in the next PR
-# without a DELETE being issued.
-patches:
-  - target:
-      group: apiextensions.crossplane.io
-      kind: CompositeResourceDefinition
-    patch: |
-      - op: add
-        path: /metadata/annotations
-        value:
-          kustomize.toolkit.fluxcd.io/prune: disabled
-  - target:
-      group: apiextensions.crossplane.io
-      kind: Composition
-    patch: |
-      - op: add
-        path: /metadata/annotations
-        value:
-          kustomize.toolkit.fluxcd.io/prune: disabled

@@ -1043,4 +1043,4 @@ default-deny policy with a missing egress rule is the most common cause. See
 ---
 
 *Maintainers: module internals, testing, and validation live in
-[`infrastructure/base/crossplane/configuration/kcl/app/README.md`](../infrastructure/base/crossplane/configuration/kcl/app/README.md).*
+[`https://github.com/Smana/crossplane-configuration/blob/main/apis/app/kcl/README.md`](https://github.com/Smana/crossplane-configuration/blob/main/apis/app/kcl/README.md).*
