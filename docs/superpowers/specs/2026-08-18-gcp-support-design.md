@@ -112,10 +112,8 @@ known rather than predicted.
 > **Amendment (2026-08-19) — workstreams 6 and 7 are swapped.**
 >
 > This table originally had **7 depend on 6**: extract the compositions *after* the directory
-> refactor. The Crossplane Configuration Extraction design reverses it, and that reversal stands.
-> (That design lives on branch `feat/crossplane-configuration-extraction` as
-> `docs/superpowers/specs/2026-08-18-crossplane-configuration-extraction-design.md` — not yet
-> merged, so it is named rather than linked here.) Two reasons, both load-bearing:
+> refactor. The [Crossplane Configuration Extraction design](2026-08-18-crossplane-configuration-extraction-design.md)
+> reverses it, and that reversal stands. Two reasons, both load-bearing:
 >
 > 1. The refactor's job is to partition the repo by cloud. Doing it first means partitioning ~40
 >    files that are about to leave the repository entirely.
@@ -132,18 +130,43 @@ known rather than predicted.
 > sources them from a release asset rather than a local glob. That seam exists in
 > `gen-catalog.sh` today via `XRD_CRDS_FILE`, verified to produce byte-identical schemas.
 
-| # | Workstream | Depends on |
-|---|---|---|
-| 6 | Directory refactor to cloud-partitioned layout | 3, **7** |
-| 7 | Extract the Crossplane Configuration packages, OCI-released | 3 |
-| 8 | `objectStore` API migration + `App`/`SQLInstance` branching | 5, 7 |
-| 9 | Object-storage call sites: Harbor (GCS driver), `openbao-snapshot` (GCS + Cloud KMS), CNPG barman (GCS) | 5, 8 |
-| 10 | DNS + PKI: `external-dns` google provider, cert-manager clouddns DNS-01 | 5 |
-| 11 | OpenBao on GCP: MIG + internal LB + Cloud KMS auto-unseal | 1 |
-| 12 | Gateway/LB: GCP public-LB annotations, drop `aws-load-balancer-controller` | 3 |
-| 13 | Storage: `gp3` → `pd-balanced`/hyperdisk, EFS CSI → Filestore CSI | 3 |
-| 14 | GPU + LLM platform: GPU `ComputeClass`, GCS Fuse weights, no `runtimeclass-nvidia` | 4, 9 |
-| 15 | CI: `validate-manifests.sh` renders both clouds; Renovate; per-cloud schema catalogs | 6 |
+> **Amendment (2026-08-19) — workstream 7 has SHIPPED.**
+>
+> [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) `v0.1.0` is
+> published and installed on `mycluster-0`; `cloud-native-ref` no longer contains an XRD, a
+> Composition or a KCL module. Cut over in #1774 (install + adopt) and #1778 (delete), with all 35
+> identities — 5 XRDs, 5 CRDs, 5 Compositions, 20 claims — preserved by `uid`.
+>
+> **This unblocks 6 and 8, and it removed the coupling measurement 6 was waiting for.** The seam
+> came out as predicted: `App`, `SQLInstance` and `InferenceService` have cloud-neutral XRDs in
+> `-core` with AWS-coupled Compositions in `-aws`; `KVStore` is wholly neutral; `EPI` is wholly AWS.
+> Workstream 8 branches inside the `-aws`/`-gcp` Composition split rather than inside
+> `cloud-native-ref`.
+>
+> A `-gcp` package is added when it has content. Consequences for this plan:
+>
+> - `GCPWorkloadIdentity` (workstream 5) is authored in `crossplane-configuration`, **not** here —
+>   `apis/gcpworkloadidentity/`, released, then pinned from
+>   `infrastructure/base/crossplane/configuration/configuration-packages.yaml`.
+> - Workstream 15's per-cloud schema catalogs already have their seam: `gen-catalog.sh` derives the
+>   version from the package pin and fetches the release's `xrd-crds.yaml` asset.
+> - **Migrating a live cluster onto a package is not a one-commit operation.** Adoption preserves
+>   object identity but leaves the objects in Flux's inventory, so deleting the old manifests in the
+>   same commit prunes them and destroys every claim. Two PRs, `prune: disabled` first. Measured, not
+>   theorised — see the extraction design's *Stage 2 cutover sequence*.
+
+| # | Workstream | Depends on | Status |
+|---|---|---|---|
+| 6 | Directory refactor to cloud-partitioned layout | 3, **7** | unblocked |
+| 7 | Extract the Crossplane Configuration packages, OCI-released | 3 | **DONE 2026-08-19 (v0.1.0)** |
+| 8 | `objectStore` API migration + `App`/`SQLInstance` branching | 5, 7 | unblocked by 7 |
+| 9 | Object-storage call sites: Harbor (GCS driver), `openbao-snapshot` (GCS + Cloud KMS), CNPG barman (GCS) | 5, 8 |  |
+| 10 | DNS + PKI: `external-dns` google provider, cert-manager clouddns DNS-01 | 5 |  |
+| 11 | OpenBao on GCP: MIG + internal LB + Cloud KMS auto-unseal | 1 |  |
+| 12 | Gateway/LB: GCP public-LB annotations, drop `aws-load-balancer-controller` | 3 |  |
+| 13 | Storage: `gp3` → `pd-balanced`/hyperdisk, EFS CSI → Filestore CSI | 3 |  |
+| 14 | GPU + LLM platform: GPU `ComputeClass`, GCS Fuse weights, no `runtimeclass-nvidia` | 4, 9 |  |
+| 15 | CI: `validate-manifests.sh` renders both clouds; Renovate; per-cloud schema catalogs | 6 |  |
 
 ### Already cloud-agnostic (verified — do not touch)
 
@@ -350,7 +373,11 @@ Falsifiable, verified against a live cluster.
 - Where do Flux's GitHub App credentials come from on GCP? They live in AWS Secrets Manager today;
   reading them from GCP would create a hard AWS dependency in the GCP bootstrap. Likely a GCP Secret
   Manager copy first, OpenBao once workstream 11 lands.
-- Does the `ogenki-compositions` split absorb the App Wizard split already designed elsewhere?
+- ~~Does the `ogenki-compositions` split absorb the App Wizard split?~~ **Resolved:** the repo is
+  `crossplane-configuration` and the split shipped without touching the App Wizard, which still
+  lives in `Smana/app-wizard`. It now clones `crossplane-configuration` at the pinned tag to read
+  the `App` XRD and Composition, so **that tag and the package pin must move together** — a
+  coupling any GCP API added to the package inherits.
 
 **External prerequisite:** a GCP project with billing and APIs enabled, plus a Tailscale auth path
 for a second cloud. Nothing past the gate task can be verified without it.
@@ -363,7 +390,9 @@ for a second cloud. Nothing past the gate task can be verified without it.
 - `trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .`
 - `./scripts/validate-manifests.sh` → exit 0 with **`Invalid: 0, Skipped: 0`** (a skipped resource is
   an unvalidated one)
-- `./scripts/validate-kcl-compositions.sh` → exit 0, and `kcl test` (needs `-Y settings-example.yaml`)
+- `task check` in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)
+  → exit 0, for any XRD or Composition this work adds. `validate-kcl-compositions.sh` was deleted
+  with the compositions; that repo uses a taskfile, not a Makefile
 - `crossplane render` succeeds for the basic and complete `GCPWorkloadIdentity` examples
 - `pre-commit run --all-files`
 - Live-cluster evidence cited for every success criterion above, per
