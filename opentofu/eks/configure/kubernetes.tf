@@ -18,7 +18,7 @@
 # identical (same upstream URL) so there's no flap.
 resource "kubectl_manifest" "gateway_api_crds" {
   count             = length(local.gateway_api_crds_urls)
-  yaml_body         = data.http.gateway_api_crds[count.index].body
+  yaml_body         = data.http.gateway_api_crds[count.index].response_body
   server_side_apply = true
   force_conflicts   = true
   wait              = true
