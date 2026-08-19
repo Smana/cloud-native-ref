@@ -26,7 +26,20 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
      export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
      ```
 
-   - ℹ️ **Note:** This guide does not include setting up an authentication system. It's recommended to use an identity provider instead of the root token for routine operations. Ensure the root token is securely stored.
+   - ℹ️ **Note:** The root token is for bootstrap only. For routine operations use the
+     userpass logins this stack creates — `tofu output operator_login_commands` prints
+     both, and the generated passwords are in the Secrets Manager entry named by
+     `tofu output admin_credentials_secret_name`.
+
+     There are two logins because **a policy binds only within its own namespace**: the
+     `admin` policy lives in `admin`, and `pki-admin` lives in `admin/pki` alongside the
+     `pki_private_issuer` mount it governs. A single login covering both would depend on
+     cross-namespace policy resolution, which is not something to rely on for an
+     access-control boundary without testing it first.
+
+     Retiring the root token entirely still needs an identity provider (Zitadel is
+     already running in the cluster) plus the `aws` auth method so this stack can
+     authenticate as an IAM role rather than carrying a token.
 
 2. **PKI setup is handled by OpenTofu.**
    - There is no manual `bao secrets enable pki` step any more. `pki.tf` creates the

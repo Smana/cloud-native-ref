@@ -35,6 +35,12 @@ variable "openbao_data_path" {
   default     = "/opt/openbao/data"
 }
 
+variable "root_volume_size" {
+  description = "Size (GiB) of the encrypted gp3 root volume. In dev mode this also holds the `file` storage backend, so it needs headroom beyond the AMI default of 8."
+  type        = number
+  default     = 20
+}
+
 variable "region" {
   description = "AWS Region"
   default     = "eu-west-3"

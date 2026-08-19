@@ -126,48 +126,79 @@ generate_root_token() {
     echo "${VAULT_TOKEN}"
 }
 
-discover_leader() {
+# One AppRole login per run. `discover_leader` used to authenticate, then unset
+# the token, and `save` logged in again immediately afterwards - two logins and
+# two token leases for one snapshot. An OpenBao token is valid against any node
+# in the cluster, so it survives the VAULT_ADDR switch to the leader.
+authenticate() {
     echo "${info}: Authenticating with OpenBao..."
     VAULT_TOKEN=$(bao write -field=token auth/approle/login role_id="${APPROLE_ROLE_ID}" secret_id="${APPROLE_SECRET_ID}")
     if [ -z "${VAULT_TOKEN}" ]; then
         echo "${err}: Authentication failed. Unable to retrieve OpenBao token."
         exit 1
     fi
-
-    echo "${info}: Discovering the leader node..."
     export VAULT_TOKEN
+}
+
+discover_leader() {
+    echo "${info}: Discovering the leader node..."
     LEADER_ADDRESS=$(bao read -format=json sys/storage/raft/configuration | jq -r '.data.config.servers[] | select(.leader == true) | .address' | sed 's/:8201/:8200/')
-    unset VAULT_TOKEN
 
     if [ -z "${LEADER_ADDRESS}" ]; then
         echo "${err}: Unable to discover the leader node."
+        echo "${err}: sys/storage/raft/* exists only with raft storage. In dev mode the"
+        echo "${err}: cluster runs the file backend and this command cannot work at all."
         exit 1
     fi
     echo "${info}: Leader node discovered at ${LEADER_ADDRESS}"
+    # Exported explicitly: in the CronJob VAULT_ADDR arrives via envFrom and is
+    # already in the environment, so a plain assignment happened to stay
+    # exported. Run outside the pod with only -a, it would not have been.
     VAULT_ADDR="https://${LEADER_ADDRESS}"
+    export VAULT_ADDR
 }
 
 save() {
     echo "${info}: Starting OpenBao backup to S3..."
     check_required_bin
+    authenticate
     discover_leader
-    bao login -no-print "$(bao write -field=token auth/approle/login role_id="${APPROLE_ROLE_ID}" secret_id="${APPROLE_SECRET_ID}")"
     bao operator raft snapshot save "${SNAPSHOT_FILE}"
-    aws s3 cp "${SNAPSHOT_FILE}" "s3://${BUCKET_NAME}/$(date +"%Y-%m-%d_%H:%M:%S_%Z").snap"
+    # UTC, colon-free, lexicographically sortable. The previous
+    # "%Y-%m-%d_%H:%M:%S_%Z" embedded colons (legal in S3, awkward everywhere
+    # downstream) and a local timezone abbreviation, so key order broke across a
+    # DST change.
+    aws s3 cp "${SNAPSHOT_FILE}" "s3://${BUCKET_NAME}/$(date -u +"%Y-%m-%dT%H%M%SZ").snap"
 }
 
 restore() {
     echo "${info}: Restoring OpenBao from S3..."
     check_required_bin
+    authenticate
     discover_leader
-    VAULT_TOKEN=$(generate_root_token)
+
     echo "${info}: Fetching latest backup from S3 bucket ${BUCKET_NAME}"
-    SNAP=$(aws s3 ls "${BUCKET_NAME}" | sort | tail -n 1 | awk '{print $4}')
+    # Sorted by LastModified, not by key name. Key-name ordering would be
+    # actively dangerous during the changeover from the old
+    # "%Y-%m-%d_%H:%M:%S_%Z" format: '_' sorts after 'T', so every old-format
+    # object ranks above every new one and `tail -n1` would keep selecting a
+    # stale snapshot until the 120-day lifecycle rule aged them out.
+    SNAP=$(aws s3api list-objects-v2 --bucket "${BUCKET_NAME}" \
+        --query 'sort_by(Contents, &LastModified)[-1].Key' --output text)
+    if [ -z "${SNAP}" ] || [ "${SNAP}" = "None" ]; then
+        echo "${err}: No snapshots found in ${BUCKET_NAME}."
+        exit 1
+    fi
+
     aws s3 cp "s3://${BUCKET_NAME}/${SNAP}" /tmp/bao.snap
     echo "${info}: Restoring snapshot ${SNAP}"
-    bao operator raft snapshot restore -force /tmp/bao.snap
 
-    trap 'bao token revoke "${VAULT_TOKEN}"' EXIT
+    # Root token only from here on, and revoked on the way out whatever happens.
+    VAULT_TOKEN=$(generate_root_token)
+    export VAULT_TOKEN
+    trap 'bao token revoke "${VAULT_TOKEN}" >/dev/null 2>&1 || true' EXIT
+
+    bao operator raft snapshot restore -force /tmp/bao.snap
 
     echo "${info}: Check that the timestamp from the path secret/check_timestamp is less than ${NUM_DAYS} days"
     CURR_TS=$(date "+%s")

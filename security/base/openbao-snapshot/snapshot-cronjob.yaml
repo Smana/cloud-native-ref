@@ -80,6 +80,11 @@ spec:
                   cpu: 50m
                   memory: 150Mi
                 limits:
+                  # Headroom over the request rather than a tight cap: the job is
+                  # a once-a-night snapshot, so throttling it only makes the
+                  # backup window longer. The constitution requires a limit, so
+                  # there is one.
+                  cpu: 300m
                   memory: 150Mi
               volumeMounts:
                 - mountPath: "/snapshot"

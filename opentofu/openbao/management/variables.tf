@@ -123,3 +123,15 @@ variable "snapshot_bucket_name" {
   type        = string
   default     = ""
 }
+
+variable "admin_username" {
+  description = "Username for the human operator userpass logins, created in both the `admin` and `admin/pki` namespaces"
+  type        = string
+  default     = "admin"
+}
+
+variable "admin_credentials_secret_name" {
+  description = "The name of the AWS Secrets Manager secret holding the generated operator passwords for both namespaces"
+  type        = string
+  default     = "openbao/cloud-native-ref/users/admin"
+}

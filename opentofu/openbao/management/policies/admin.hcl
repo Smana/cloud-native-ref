@@ -35,15 +35,33 @@ path "identity/*"
   capabilities = ["create", "read", "update", "delete", "list", "sudo"]
 }
 
-# Manage PKI broadly across Vault
-path "pki/*"
-{
-  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
-}
-path "int_pki/*"
-{
-  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
-}
+# NOTE: this policy previously granted on `pki/*` and `int_pki/*`. Those paths
+# are gone because they cannot work from here, not because nobody holds this
+# policy.
+#
+# They were never part of the bootstrap: `openbao-config.sh` and the Vault
+# provider both authenticate with the root token, which carries the built-in
+# `root` policy and bypasses ACL evaluation entirely. No named policy is
+# consulted while the platform is being built.
+#
+# They were, however, plausibly reachable by a human. CLAUDE.md documents
+# `bao auth -method=userpass username=admin`, created by hand outside this
+# stack. That used to line up by accident: this policy landed in the *root*
+# namespace (`vault_namespace.admin.namespace` resolves to the parent of
+# `admin`, i.e. ""), and the old `openbao-config.sh pki` step created a `pki`
+# mount in the root namespace too — so `pki/*` matched.
+#
+# Both halves of that accident are gone. This policy now lives in `admin`
+# (see policies.tf), and from `admin` the path `pki/*` can match neither a
+# root-namespace mount nor `pki_private_issuer` in the `admin/pki` *child*
+# namespace — namespaces are an isolation boundary. Note also that the removed
+# root-namespace mount never had a `vault_pki_secret_backend_role`, and a PKI
+# engine cannot issue without one.
+#
+# To give an operator real PKI access, the policy has to be created *in*
+# `admin/pki` and bound to an auth role in that same namespace. That, and
+# bringing the hand-made userpass user into Terraform, is the identity work
+# tracked separately.
 
 # Create, update, and delete auth methods
 path "sys/auth/*"

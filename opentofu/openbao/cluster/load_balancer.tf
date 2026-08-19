@@ -9,7 +9,18 @@ resource "aws_lb" "this" {
   # one automatically.
   security_groups = [aws_security_group.nlb.id]
 
+  # Deliberately off. This platform is torn down and reprovisioned on every
+  # test, and deletion protection would make `terramate script run destroy`
+  # fail. Turn it on for any deployment meant to stay up.
   enable_deletion_protection = false
+
+  # No access_logs block on purpose: AWS only emits NLB access logs for a TLS
+  # listener, and "the logs contain information about TLS requests only". This
+  # listener is plain TCP (OpenBao terminates its own TLS), so the feature would
+  # produce empty buckets. The modern alternative is the NLB's CloudWatch Logs
+  # integration, which is worth evaluating separately if connection-level
+  # auditing is wanted - but the higher-value gap is that OpenBao itself has no
+  # audit device enabled, which is where secret-access auditing belongs.
 }
 
 resource "aws_lb_target_group" "this" {

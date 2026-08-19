@@ -7,3 +7,16 @@ output "cert_manager_approle_role_id" {
   description = "The role ID of the cert-manager AppRole"
   value       = vault_approle_auth_backend_role.cert_manager.role_id
 }
+
+output "admin_credentials_secret_name" {
+  description = "AWS Secrets Manager entry holding the generated operator passwords. Retrieve with: aws secretsmanager get-secret-value --secret-id <this> --query SecretString --output text | jq"
+  value       = aws_secretsmanager_secret.admin_credentials.name
+}
+
+output "operator_login_commands" {
+  description = "How to log in as a human operator. Two logins because policies bind within a single namespace."
+  value = {
+    admin = "bao login -method=userpass -namespace=${vault_namespace.admin.path_fq} username=${var.admin_username}"
+    pki   = "bao login -method=userpass -namespace=${vault_namespace.pki.path_fq} username=${var.admin_username}"
+  }
+}

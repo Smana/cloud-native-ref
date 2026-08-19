@@ -14,11 +14,12 @@ resource "vault_policy" "admin" {
   policy    = file("policies/admin.hcl")
 }
 
-# Creating snapshots
+# Creating snapshots. ROOT namespace, no `namespace` argument — it grants on
+# `sys/storage/raft/*`, which is a restricted endpoint callable only from root.
+# See the note on vault_auth_backend.approle_snapshot in auth.tf.
 resource "vault_policy" "snapshot" {
-  namespace = vault_namespace.admin.path_fq
-  name      = "snapshot"
-  policy    = file("policies/snapshot.hcl")
+  name   = "snapshot"
+  policy = file("policies/snapshot.hcl")
 }
 
 # Cert manager
@@ -26,4 +27,14 @@ resource "vault_policy" "cert_manager" {
   namespace = vault_namespace.pki.path_fq
   name      = "cert-manager"
   policy    = file("policies/cert-manager.hcl")
+}
+
+# PKI administration, in the namespace the mount actually lives in.
+# templatefile rather than file: the paths have to track var.pki_mount_path.
+resource "vault_policy" "pki_admin" {
+  namespace = vault_namespace.pki.path_fq
+  name      = "pki-admin"
+  policy = templatefile("policies/pki-admin.hcl", {
+    pki_mount = var.pki_mount_path
+  })
 }

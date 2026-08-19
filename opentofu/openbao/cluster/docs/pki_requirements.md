@@ -121,9 +121,22 @@ DNS.1 = bao.priv.cloud.ogenki.io
 Generate the private key and CSR:
 
 ```console
-openssl genrsa -out openbao-key.pem 2048
+openssl ecparam -genkey -name prime256v1 -out openbao-key.pem
+chmod 600 openbao-key.pem
 openssl req -new -key openbao-key.pem -out openbao.csr -config openbao.cnf
 ```
+
+> ℹ️ Two changes from the older version of this step. The key is now EC P-256
+> rather than RSA-2048, so the leaf matches the EC P-384 CAs above instead of
+> being the one RSA key in an otherwise elliptic-curve chain. And `openssl`
+> creates key files world-readable by default, hence the explicit `chmod` — this
+> is the private key that terminates TLS for every OpenBao client.
+>
+> ⚠️ Also note there is no IP SAN here, only `DNS:bao.priv.cloud.ogenki.io`.
+> That is why the snapshot job cannot verify TLS when it connects to the raft
+> leader by private address, and why `VAULT_SKIP_VERIFY` is still set on that
+> workload. Add the node addresses as SANs, or route the snapshot call through
+> the NLB, if you want to remove it.
 
 Create the certificate
 

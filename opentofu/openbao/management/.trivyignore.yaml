@@ -1,2 +1,9 @@
 misconfigurations:
+  # Secrets Manager secret without a customer-managed KMS key. The AppRole
+  # credentials here are encrypted with the AWS-managed `aws/secretsmanager`
+  # key. A CMK would add key-policy-level access control and a separate audit
+  # trail, at the cost of another key to manage and rotate for an ephemeral
+  # platform. Accepted knowingly rather than silently: the bare id carried no
+  # justification before.
   - id: AVD-AWS-0098
+    statement: "AppRole credentials use the AWS-managed Secrets Manager key. Revisit with a CMK if this platform becomes long-lived."

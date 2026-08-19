@@ -13,6 +13,19 @@ resource "aws_launch_template" "dev" {
     enabled = true
   }
 
+  # Neither template declared a root volume, so size and encryption were
+  # whatever the AMI shipped. That matters most here: in dev mode the `file`
+  # storage backend and the server TLS private key both live on the root volume.
+  block_device_mappings {
+    device_name = data.aws_ami.this.root_device_name
+    ebs {
+      volume_size           = var.root_volume_size
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+    }
+  }
+
   iam_instance_profile {
     name = aws_iam_instance_profile.this.name
   }
@@ -45,6 +58,20 @@ resource "aws_launch_template" "ha" {
   monitoring {
     enabled = true
   }
+
+  # In ha mode the raft data lives on the instance-store RAID-0, so the root
+  # volume only carries the OS, the binary and the TLS material - but it still
+  # carries the TLS private key, so it is still encrypted.
+  block_device_mappings {
+    device_name = data.aws_ami.this.root_device_name
+    ebs {
+      volume_size           = var.root_volume_size
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+    }
+  }
+
   iam_instance_profile {
     name = aws_iam_instance_profile.this.name
   }

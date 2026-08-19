@@ -1,6 +1,3 @@
-# tflint-ignore: terraform_unused_declarations
-data "aws_ecr_authorization_token" "token" {}
-
 data "aws_route53_zone" "this" {
   name         = var.domain_name
   private_zone = true

@@ -13,6 +13,12 @@ data "aws_secretsmanager_secret_version" "root_ca" {
 }
 
 # Store AppRole credentials in AWS Secrets Manager
+#
+# recovery_window_in_days = 0 is required here, not sloppy. Secrets Manager
+# refuses to create a secret whose name is in a pending-deletion window, so any
+# non-zero value would break the next reprovision of this platform with
+# "already scheduled for deletion" for up to 30 days. The credential is
+# regenerated from OpenBao on every apply, so there is nothing to recover.
 resource "aws_secretsmanager_secret" "cert_manager_approle_credentials" {
   name                    = var.cert_manager_approle_secret_name
   recovery_window_in_days = 0
@@ -33,6 +39,43 @@ resource "aws_secretsmanager_secret_version" "cert_manager_approle_credentials" 
   })
 }
 
+# Human operator passwords
+# ------------------------
+# Generated here rather than chosen by hand, and published to Secrets Manager so
+# the operator can retrieve them. Note these do land in the state file, as does
+# every other credential this stack manages (the root token, both AppRole secret
+# IDs) - the provider's write-only `password_wo` attribute would avoid that but
+# needs write-only attribute support, so it is deliberately not used here.
+resource "random_password" "admin" {
+  length           = 32
+  special          = true
+  override_special = "!#%*-_=+"
+}
+
+resource "random_password" "pki_admin" {
+  length           = 32
+  special          = true
+  override_special = "!#%*-_=+"
+}
+
+resource "aws_secretsmanager_secret" "admin_credentials" {
+  name                    = var.admin_credentials_secret_name
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "admin_credentials" {
+  secret_id = aws_secretsmanager_secret.admin_credentials.id
+  secret_string = jsonencode({
+    # Both logins share a username but live in different namespaces, so the
+    # namespace is part of the credential.
+    username           = var.admin_username
+    admin_namespace    = vault_namespace.admin.path_fq
+    admin_password     = random_password.admin.result
+    pki_namespace      = vault_namespace.pki.path_fq
+    pki_admin_password = random_password.pki_admin.result
+  })
+}
+
 # Snapshot agent AppRole
 # ----------------------
 # This used to be a manual `bao write ... /secret-id` plus a hand-built
@@ -50,9 +93,9 @@ resource "aws_secretsmanager_secret" "snapshot_approle_credentials" {
   recovery_window_in_days = 0
 }
 
+# Root namespace, matching the role — see auth.tf.
 resource "vault_approle_auth_backend_role_secret_id" "snapshot" {
-  namespace = vault_auth_backend.approle_admin.namespace
-  backend   = vault_auth_backend.approle_admin.path
+  backend   = vault_auth_backend.approle_snapshot.path
   role_name = vault_approle_auth_backend_role.snapshot.role_name
 }
 

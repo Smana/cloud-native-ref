@@ -130,8 +130,8 @@ Initialized              true
 Sealed                   false
 Total Recovery Shares    1
 Threshold                1
-Version                  1.14.8
-Build Date               2023-12-04T17:45:23Z
+Version                  2.5.5
+Build Date               2026-06-18T09:12:41Z
 Storage Type             raft
 Cluster Name             openbao-cluster-6209d1c3
 Cluster ID               a5055510-ab2d-3e91-8051-d58a3041a47d
