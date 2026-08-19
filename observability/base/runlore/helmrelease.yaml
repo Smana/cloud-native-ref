@@ -252,11 +252,18 @@ spec:
       telemetry:
         metrics_enabled: true
       model:
-        # GLM 5.2 via Z.ai's OpenAI-compatible API. Any provider name other than
+        # GLM via Z.ai OpenAI-compatible API. Any provider name other than
         # anthropic/gemini falls back to the OpenAI wire protocol (NewModelClient),
         # so provider: openai + base_url is the correct way to point at it.
         provider: openai
-        model: glm-5.2
+        # glm-5.3, not 5.2. Measured 2026-08-19 against an investigation-shaped
+        # prompt (evidence blob + "what is the root cause"), 3 calls each:
+        # glm-5.3 mean 3.7s (2.7-5.1s); glm-5.2 did not answer at all inside 180s.
+        # The live investigation running at the time averaged 25.3s per model
+        # request against a 20-step loop -- roughly ten minutes of model time for
+        # one incident, and getting worse. Confirmed served_as=glm-5.3 rather than
+        # silently aliased to an older model, which Z.ai has done before.
+        model: glm-5.3
         base_url: https://api.z.ai/api/paas/v4/
         api_key_env: GLM_API_KEY  # pragma: allowlist secret
         # DEMO-SCOPED opt-in, and it spends money on a path other people trigger.
@@ -271,11 +278,11 @@ spec:
         # investigation, on a path RunLore itself starts. Chat runs once per
         # addressed message, on a path anyone can start, so silently inheriting a
         # frontier model would make the cheapest way to enable this the most
-        # expensive way to run it. Named as glm-5.2 rather than something smaller
+        # expensive way to run it. Named as glm-5.3 rather than something smaller
         # because the point of the demo is the quality of the answer; drop it to a
         # cheaper model if this outlives the demo.
         chat:
-          model: glm-5.2
+          model: glm-5.3
       catalog:
         dir: /var/lib/runlore/catalog
         git:
