@@ -1,4 +1,4 @@
-<!-- MIRROR of Smana/crossplane-configuration:docs/kcl-authoring.md @ 9292741
+<!-- MIRROR of Smana/crossplane-configuration:docs/kcl-authoring.md @ ddc6717
      Upstream is authoritative. Kept here so the platform docs site can publish it.
      Update by re-copying from upstream; see the note at the foot of this page. -->
 
@@ -11,7 +11,7 @@
 # Authoring KCL compositions
 
 The Compositions in `crossplane-configuration` are generated: `apis/<api>/kcl/main.k` is the source of truth and
-`make generate` inlines it into `apis/<api>/composition.yaml` as a block scalar. **Never edit the
+`task generate` inlines it into `apis/<api>/composition.yaml` as a block scalar. **Never edit the
 inlined copy** — CI regenerates and fails if the two disagree.
 
 Inlining is why a published package pulls nothing at render time. It also means the KCL modules are
@@ -21,7 +21,7 @@ metadata that nothing reads.
 ## The five rules
 
 **1. Always `kcl fmt`.** CI formats in place and fails if the tree changes. `kcl fmt` has no
-`--check` flag (0.11.3), which is why `make test` formats then diffs.
+`--check` flag (0.11.3), which is why `task test` formats then diffs.
 
 **2. Never mutate a dict after creation.** This is the one that silently doubles your output.
 function-kcl hashes each resource at creation; mutating it produces a second hash, so *both*
@@ -53,7 +53,7 @@ writes the *value* as both key and value — you get `{<value>: <value>}`, not `
 Rename the loop variable: `for n in xs`. The symptom is remote and confusing: Kubernetes rejects the
 rendered manifest with `field not declared in schema`.
 
-**5. Validate with `make check`.** Runs generate-sync, `kcl fmt` + `kcl test`, XRD schema validation
+**5. Validate with `task check`.** Runs generate-sync, `kcl fmt` + `kcl test`, XRD schema validation
 of the example claims, and render equivalence against the golden fixtures in `tests/golden/`.
 
 [function-kcl#285]: https://github.com/crossplane-contrib/function-kcl/issues/285
@@ -63,7 +63,7 @@ of the example claims, and render equivalence against the golden fixtures in `te
 The failure is duplicate resources in the rendered output, so look there rather than at the source:
 
 ```bash
-make render                      # diffs every example against tests/golden/
+task render                      # diffs every example against tests/golden/
 crossplane render examples/app-basic.yaml apis/app/composition.yaml functions.yaml \
   | grep -c "^kind: Deployment"  # >1 for a single-Deployment claim means duplicates
 ```
@@ -133,7 +133,7 @@ workflow, never a script.
 So a composition that drops `readOnlyRootFilesystem` or `seccompProfile` from its pod spec passes
 every gate in both repos. Review pod specs by hand until this is closed.
 
-The fix is cheap and belongs in `crossplane-configuration`: `make render` already writes rendered
+The fix is cheap and belongs in `crossplane-configuration`: `task render` already writes rendered
 output for all 12 examples, which is exactly the input a Polaris audit wants.
 
 ---

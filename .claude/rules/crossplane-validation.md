@@ -10,7 +10,7 @@ globs:
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) and ship as a
 Configuration package; this repo pins a version in
 `infrastructure/base/crossplane/configuration/configuration-packages.yaml`. Change a composition
-there, run `make check` there, cut a release, then bump the pin here.
+there, run `task check` there, cut a release, then bump the pin here.
 
 Two things in this repo still gate on that pin:
 

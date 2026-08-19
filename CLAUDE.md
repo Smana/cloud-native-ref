@@ -233,7 +233,7 @@ Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDN
 ### Scripts
 - EKS cleanup: `scripts/eks-prepare-destroy.sh`
 - OpenBao config: `scripts/openbao-config.sh`
-- KCL/composition validation: `make check` in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) (moved with the compositions)
+- KCL/composition validation: `task check` in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) (moved with the compositions)
 
 ## Troubleshooting
 

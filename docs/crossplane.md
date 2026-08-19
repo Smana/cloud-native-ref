@@ -372,7 +372,7 @@ spec:
 
 ```bash
 # From repository root - validates ALL compositions
-make check   # in https://github.com/Smana/crossplane-configuration
+task check   # in https://github.com/Smana/crossplane-configuration
 ```
 
 This script performs three stages:
@@ -565,7 +565,7 @@ _deployment = {
 
    # Validate full composition
    cd ../..
-   make check   # in https://github.com/Smana/crossplane-configuration
+   task check   # in https://github.com/Smana/crossplane-configuration
    ```
 
 5. **Publish Module** (via CI)
@@ -638,7 +638,7 @@ kubectl logs -n crossplane-system deployment/function-kcl
 1. **Start Simple**: Begin with minimal configuration, add complexity as needed
 2. **Use Compositions**: Don't create managed resources directly
 3. **Follow Naming Convention**: Always prefix with `xplane-`
-4. **Validate Before Commit**: Run `make check` in https://github.com/Smana/crossplane-configuration
+4. **Validate Before Commit**: Run `task check` in https://github.com/Smana/crossplane-configuration
 5. **Format KCL Code**: Always run `kcl fmt` before committing
 6. **Avoid Mutations**: Use inline conditionals, not post-creation assignment
 7. **Monitor Resources**: Use `crossplane beta trace` for debugging

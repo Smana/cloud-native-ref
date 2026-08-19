@@ -15,7 +15,7 @@ All Crossplane-managed resources use the **`xplane-*`** prefix (e.g., `xplane-ha
 - **Never mutate a dict after creation** — causes duplicate resources (function-kcl issue #285). Use inline conditionals: `obj = { spec.X = ... if cond else default }`.
 - **List comprehensions** must be single-line.
 - Run **`kcl fmt`** before every commit; CI is strict.
-- Validate with `make check` in `Smana/crossplane-configuration` (generate-sync, `kcl fmt`/`kcl test`, XRD schema, render equivalence against golden fixtures).
+- Validate with `task check` in `Smana/crossplane-configuration` (generate-sync, `kcl fmt`/`kcl test`, XRD schema, render equivalence against golden fixtures).
 - Native Kubernetes readiness via `option("params").ocds`:
   - Deployment: `status.conditions[type=Available, status=True]`
   - Service: `spec.clusterIP` assigned
