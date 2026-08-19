@@ -189,7 +189,7 @@ This creates 30+ Kubernetes and AWS resources automatically!
 - ✅ EKS Pod Identity (IAM role for service account)
 - ✅ Cilium Network Policies (zero-trust micro-segmentation)
 
-**Related**: [App Composition Detailed Guide](../infrastructure/base/crossplane/configuration/kcl/app/README.md)
+**Related**: [App Composition Detailed Guide](https://github.com/Smana/crossplane-configuration/blob/main/apis/app/kcl/README.md)
 
 ### 2. SQLInstance Composition
 
@@ -244,7 +244,7 @@ spec:
 - External Secrets for credentials
 - Atlas Operator resources for migrations
 
-**Related**: [CloudNativePG Composition](../infrastructure/base/crossplane/configuration/kcl/cloudnativepg/README.md)
+**Related**: [CloudNativePG Composition](https://github.com/Smana/crossplane-configuration/blob/main/apis/sqlinstance/kcl/README.md)
 
 ### 3. EKSPodIdentity Composition
 
@@ -294,7 +294,7 @@ spec:
 - Managed policy attachments
 - EKS Pod Identity Associations (one per cluster)
 
-**Related**: [EKS Pod Identity Composition](../infrastructure/base/crossplane/configuration/kcl/eks-pod-identity/README.md)
+**Related**: [EKS Pod Identity Composition](https://github.com/Smana/crossplane-configuration/blob/main/apis/epi/kcl/README.md)
 
 ## Composition Functions with KCL
 
@@ -372,7 +372,7 @@ spec:
 
 ```bash
 # From repository root - validates ALL compositions
-./scripts/validate-kcl-compositions.sh
+make check   # in https://github.com/Smana/crossplane-configuration
 ```
 
 This script performs three stages:
@@ -535,7 +535,7 @@ _deployment = {
 
 2. **Write KCL Module**
    ```python
-   # infrastructure/base/crossplane/configuration/kcl/myresource/main.k
+   # apis/myresource/kcl/main.k in https://github.com/Smana/crossplane-configuration
    oxr = option("params").oxr
    ocds = option("params").ocds
 
@@ -557,7 +557,7 @@ _deployment = {
 4. **Validate**
    ```bash
    # Format
-   cd infrastructure/base/crossplane/configuration/kcl/myresource
+   cd apis/myresource/kcl   # in a clone of https://github.com/Smana/crossplane-configuration
    kcl fmt .
 
    # Test
@@ -565,14 +565,14 @@ _deployment = {
 
    # Validate full composition
    cd ../..
-   ./scripts/validate-kcl-compositions.sh
+   make check   # in https://github.com/Smana/crossplane-configuration
    ```
 
 5. **Publish Module** (via CI)
    - Commit changes
    - CI publishes to GHCR with version tag
 
-**Related**: [KCL Development Guide](../infrastructure/base/crossplane/configuration/kcl/README.md)
+**Related**: [KCL Development Guide](https://github.com/Smana/crossplane-configuration)
 
 ## Using Compositions
 
@@ -638,7 +638,7 @@ kubectl logs -n crossplane-system deployment/function-kcl
 1. **Start Simple**: Begin with minimal configuration, add complexity as needed
 2. **Use Compositions**: Don't create managed resources directly
 3. **Follow Naming Convention**: Always prefix with `xplane-`
-4. **Validate Before Commit**: Run `./scripts/validate-kcl-compositions.sh`
+4. **Validate Before Commit**: Run `make check` in https://github.com/Smana/crossplane-configuration
 5. **Format KCL Code**: Always run `kcl fmt` before committing
 6. **Avoid Mutations**: Use inline conditionals, not post-creation assignment
 7. **Monitor Resources**: Use `crossplane beta trace` for debugging
@@ -647,12 +647,12 @@ kubectl logs -n crossplane-system deployment/function-kcl
 ## Further Reading
 
 **Composition Detailed Guides**:
-- [App Composition](../infrastructure/base/crossplane/configuration/kcl/app/README.md) - Comprehensive guide (507 lines!)
-- [SQLInstance Composition](../infrastructure/base/crossplane/configuration/kcl/cloudnativepg/README.md)
-- [EKS Pod Identity Composition](../infrastructure/base/crossplane/configuration/kcl/eks-pod-identity/README.md)
+- [App Composition](https://github.com/Smana/crossplane-configuration/blob/main/apis/app/kcl/README.md) - Comprehensive guide (507 lines!)
+- [SQLInstance Composition](https://github.com/Smana/crossplane-configuration/blob/main/apis/sqlinstance/kcl/README.md)
+- [EKS Pod Identity Composition](https://github.com/Smana/crossplane-configuration/blob/main/apis/epi/kcl/README.md)
 
 **KCL Development**:
-- [KCL Module Development](../infrastructure/base/crossplane/configuration/kcl/README.md)
+- [KCL Module Development](https://github.com/Smana/crossplane-configuration)
 - [KCL Documentation](https://kcl-lang.io/)
 
 **Crossplane**:

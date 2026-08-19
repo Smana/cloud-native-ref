@@ -31,7 +31,7 @@ Parse `$ARGUMENTS` for the topic slug (first token) and the research question (r
 
 Before going external, exhaust the repo:
 
-- **Existing compositions** in `infrastructure/base/crossplane/configuration/kcl/` — grep for analogous patterns (e.g., if researching cache, look at `app/`, `sqlinstance/`).
+- **Existing compositions** in the sibling [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) repo, under `apis/<api>/kcl/` — grep for analogous patterns (e.g., if researching cache, look at `app/`, `sqlinstance/`).
 - **Constitution** (`docs/platform-constitution.md`) — which rules apply to this topic?
 - **ADRs** (`docs/decisions/`) — any prior decision constrains this?
 - **Prior designs** (`docs/superpowers/specs/`) and **archived specs** (`docs/specs/done/`) — reuse patterns rather than reinvent.

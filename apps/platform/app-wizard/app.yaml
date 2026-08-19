@@ -169,6 +169,42 @@ spec:
         - name: repo
           mountPath: /repo
 
+    # The App XRD and Composition left this repo in the Configuration extraction,
+    # so clone the repo that owns them now into a subdirectory of the same
+    # emptyDir. It has to live under REPO_ROOT: wizard.yaml's xrdPath and
+    # compositionPath are resolved repo-relative by the wizard's SchemaSource,
+    # so an absolute path to a separate mount would not resolve.
+    #
+    # VERSION COUPLING: this tag must match the package tag in
+    # infrastructure/base/crossplane/configuration/configuration-packages.yaml.
+    # The form and the render preview would otherwise describe a different API
+    # version than the cluster serves. Bump both together.
+    - name: fetch-crossplane-configuration
+      image: cgr.dev/chainguard/git:latest
+      args:
+        - clone
+        - --depth=1
+        - --single-branch
+        - --branch=v0.1.0
+        - https://github.com/Smana/crossplane-configuration.git
+        - /repo/crossplane-configuration
+      securityContext:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: "50m"
+          memory: "64Mi"
+        limits:
+          cpu: "500m"
+          memory: "256Mi"
+      volumeMounts:
+        - name: repo
+          mountPath: /repo
+
   extraVolumes:
     - name: repo
       emptyDir: {}

@@ -1,4 +1,0 @@
-[package]
-name = "cloudnativepg"
-edition = "v0.11.3"
-version = "0.3.2"

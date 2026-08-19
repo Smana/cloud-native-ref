@@ -147,7 +147,7 @@ spec:
     # port 8428 (chart default — verify with
     # `kubectl get svc vmsingle-victoria-metrics-k8s-stack -n observability`).
     # 8429 is vmagent (push), not vmsingle. Composition driver:
-    # `infrastructure/base/crossplane/configuration/kcl/inference-service/main.k`
+    # `apis/inferenceservice/kcl/main.k` in Smana/crossplane-configuration
     # `_DEFAULTS.prometheus_server_address`.
     - toEndpoints:
         - matchLabels:

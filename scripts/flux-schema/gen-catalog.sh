@@ -77,6 +77,20 @@ if [[ -z "${KARPENTER_VERSION}" ]]; then
   exit 1
 fi
 
+# Same single-source-of-truth approach for the platform's own APIs. The XRDs
+# left this repo in the Configuration extraction, so the version comes from the
+# Configuration package Flux installs: a claim is validated against the schemas
+# the cluster actually serves, and bumping the package bumps the catalog with it.
+# The tag is read from the `package:` image reference, which is v-prefixed and
+# identical to the git tag the release was cut from.
+XPKG_SOURCE="infrastructure/base/crossplane/configuration/configuration-packages.yaml"
+XPKG_VERSION="$(sed -nE 's#^[[:space:]]*package:[[:space:]]*"?[^":[:space:]]+:(v?[0-9][^"[:space:]]*)"?[[:space:]]*$#\1#p' "${XPKG_SOURCE}" | head -n1 || true)"
+
+if [[ -z "${XPKG_VERSION}" ]]; then
+  echo "error: could not read the crossplane-configuration package version from ${XPKG_SOURCE}" >&2
+  exit 1
+fi
+
 # Barman Cloud CNPG-I plugin: the ObjectStore CRD (barmancloud.cnpg.io/v1) is
 # absent from the hosted ecosystem catalog and the plugin ships no Helm chart,
 # so extract it straight from the GitRepository Flux installs from. URL + tag
@@ -123,10 +137,13 @@ if [[ -n "${XRD_CRDS_FILE:-}" ]]; then
   fi
   cp "${XRD_CRDS_FILE}" "${tmp}/xrd-crds.yaml"
 else
-  echo "==> Converting Crossplane XRDs to CRDs"
-  python3 scripts/flux-schema/xrd-to-crd.py \
-    infrastructure/base/crossplane/configuration/*-definition.yaml \
-    > "${tmp}/xrd-crds.yaml"
+  echo "==> Fetching Crossplane XRD CRDs from crossplane-configuration ${XPKG_VERSION}"
+  # The release asset is produced by `make crds` in that repo, using the SAME
+  # converter that used to run here — so the schemas cannot diverge from the
+  # XRDs the installed package actually serves.
+  curl -fsSL --retry 3 --retry-delay 2 \
+    "https://github.com/Smana/crossplane-configuration/releases/download/${XPKG_VERSION}/xrd-crds.yaml" \
+    -o "${tmp}/xrd-crds.yaml"
 fi
 
 # Guard the count either way: `flux schema extract crd` exits 0 on an input with

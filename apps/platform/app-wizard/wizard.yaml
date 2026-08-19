@@ -16,8 +16,11 @@ repo:
   baseBranch: main
 
 schema:
-  # Repo-relative (resolved under REPO_ROOT by the local source).
-  xrdPath: infrastructure/base/crossplane/configuration/app-definition.yaml
+  # Repo-relative (resolved under REPO_ROOT by the local source). The XRD and
+  # Composition now come from the crossplane-configuration clone that the
+  # fetch-crossplane-configuration initContainer places under REPO_ROOT — see the
+  # version-coupling note in app.yaml.
+  xrdPath: crossplane-configuration/apis/app/definition.yaml
   stacksPath: apps/stacks.yaml
   # Read with os.ReadFile, so an absolute path inside the cloned repo.
   uiHintsPath: /repo/apps/platform/app-wizard/ui-hints.yaml
@@ -27,7 +30,9 @@ layout: "apps/{stack}/{app}"
 
 render:
   enabled: true
-  compositionPath: infrastructure/base/crossplane/configuration/app-composition.yaml
+  # The packaged Composition carries the KCL inlined, so `crossplane render` no
+  # longer pulls an OCI module at preview time.
+  compositionPath: crossplane-configuration/apis/app/composition.yaml
   functionsPath: infrastructure/base/crossplane/configuration/functions.yaml
   envConfigPath: infrastructure/base/crossplane/configuration/environmentconfig.yaml
   # Render via the in-pod function sidecars (CL-8) instead of Docker.

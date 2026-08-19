@@ -6,11 +6,21 @@ globs:
 
 # Crossplane Validation
 
-Every composition change must pass validation. Run `/crossplane-validator` or:
+**Compositions are not edited in this repo.** They live in
+[`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) and ship as a
+Configuration package; this repo pins a version in
+`infrastructure/base/crossplane/configuration/configuration-packages.yaml`. Change a composition
+there, run `make check` there, cut a release, then bump the pin here.
 
-```bash
-./scripts/validate-kcl-compositions.sh
-```
+Two things in this repo still gate on that pin:
+
+- `./scripts/validate-manifests.sh` validates every claim against the XRD schemas fetched from the
+  pinned release — so a pin bump that changes a schema fails here if a claim no longer matches.
+- The App Wizard clones the same tag (see the version-coupling note in
+  `apps/platform/app-wizard/app.yaml`). Bump both together.
+
+The readiness and v2 traps below still apply: they describe how the *cluster* behaves, which is
+what this repo's claims and manifests run against.
 
 ## Native K8s Resource Readiness
 
