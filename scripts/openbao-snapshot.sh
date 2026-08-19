@@ -93,12 +93,36 @@ if [ -z "${APPROLE_ROLE_ID}" ] || [ -z "${APPROLE_SECRET_ID}" ]; then
 fi
 
 # Check if required binaries are installed
+# Only used by `restore`, which is an operator action run with operator
+# credentials - not something the CronJob can do. The job's EKS Pod Identity
+# role has no secretsmanager access on purpose: a daily backup pod able to read
+# the material that regenerates a root token is a privilege escalation.
+#
+# The secret is written by `openbao-config.sh init` as
+# {"recovery_keys": [...], "recovery_key": "<first>", "threshold": N}.
+# This handles threshold 1; a higher threshold needs one -nonce round per share.
 generate_root_token() {
+    if [ -z "${RECOVERY_KEYS_SECRET_ID:-}" ]; then
+        echo "${err}: RECOVERY_KEYS_SECRET_ID must be set to run a restore."
+        echo "${err}: It is the AWS Secrets Manager entry holding the OpenBao recovery keys."
+        exit 1
+    fi
+
+    RECOVERY_SECRET=$(aws secretsmanager get-secret-value --secret-id "${RECOVERY_KEYS_SECRET_ID}" | jq -r '.SecretString')
+
+    RECOVERY_THRESHOLD=$(echo "${RECOVERY_SECRET}" | jq -r '.threshold // 1')
+    if [ "${RECOVERY_THRESHOLD}" -gt 1 ]; then
+        echo "${err}: recovery threshold is ${RECOVERY_THRESHOLD}; this script only automates a threshold of 1."
+        echo "${err}: Run 'bao operator generate-root' by hand, supplying ${RECOVERY_THRESHOLD} shares."
+        exit 1
+    fi
+
     bao operator generate-root -init --format json | jq -cr '.nonce, .otp' > tmpfile
     read -r VAULT_NONCE VAULT_OTP < tmpfile
     rm tmpfile
-    VAULT_ENCODED_TOKEN=$(aws secretsmanager get-secret-value --secret-id bao-staging-hungry-hamster | jq -r '.SecretString' | jq -r '.recovery_key' | bao operator generate-root -nonce="${VAULT_NONCE}" --format json - | jq -cr '.encoded_root_token')
+    VAULT_ENCODED_TOKEN=$(echo "${RECOVERY_SECRET}" | jq -r '.recovery_key' | bao operator generate-root -nonce="${VAULT_NONCE}" --format json - | jq -cr '.encoded_root_token')
     VAULT_TOKEN=$(bao operator generate-root -decode "${VAULT_ENCODED_TOKEN}" -otp "${VAULT_OTP}")
+    unset RECOVERY_SECRET
     echo "${VAULT_TOKEN}"
 }
 

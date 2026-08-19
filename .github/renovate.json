@@ -35,7 +35,27 @@
       "opentofu"
     ]
   },
+  "customManagers": [
+    {
+      "description": "OpenBao and node_exporter versions in the OpenBao cluster stack. The flux/helm-values/kubernetes managers all ignore `opentofu`, and the terraform manager does not look at variable defaults, so both of these were bumped by hand - node_exporter had been pinned to a July 2024 release since it was written.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^opentofu/openbao/cluster/variables\\.tf$/",
+        "/^opentofu/openbao/cluster/scripts/startup_script\\.sh$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)\\s+\\n\\s*(?:default\\s*=\\s*\"|NODE_EXPORTER_VERSION=)(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "versioningTemplate": "semver"
+    }
+  ],
   "packageRules": [
+    {
+      "description": "Block 2.6.0 only, not the whole project. 2.6.0 deadlocks on concurrent namespace creation (openbao/openbao#3411): the management stack creates vault_namespace resources in parallel, which wedges the core so every subsequent request hangs. The version now carries a renovate annotation (opentofu/openbao/cluster/variables.tf), so without this rule the first PR raised would reintroduce that deadlock. Drop the exclusion once a release carrying the fix is out, in the same PR that bumps the default.",
+      "matchDatasources": ["github-releases"],
+      "matchPackageNames": ["openbao/openbao"],
+      "allowedVersions": "!/^2\\.6\\.0$/"
+    },
     {
       "description": "Block the 0.3.x schema break, not the whole chart. Chart 0.3.0 restructures the values schema (canonical-v0.3 providers/routing/global); our values still speak 0.2, so the chart's own 0.3 component defaults win — including pullPolicy: Never, which breaks the router on any fresh node (ErrImageNeverPull -> every `model: MoM` request 404s). Renovate bumped this past a plain code comment (c00892eb) and it stayed invisible for five weeks, because running clusters kept already-pulled images. allowedVersions rather than enabled:false so 0.2.x patch and security releases still flow. Lift the bound in the same PR that migrates infrastructure/base/vllm-semantic-router/helmrelease.yaml to the 0.3 schema.",
       "matchPackageNames": [

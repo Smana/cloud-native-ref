@@ -1,30 +1,25 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
 resources:
+  - externalsecret-openbao-ca.yaml
   - externalsecret-alertmanager-slack-app.yaml
   - externalsecret-runlore-webhook-token.yaml
   - externalsecret-grafana-envvars.yaml
-
   # HttpRoutes
   - httproute-grafana.yaml
   - httproute-vmagent.yaml
   - httproute-vmalertmanager.yaml
-
   # Victoria Metrics Operator resources
   - vmscrapeconfigs
   - vmservicecrapes
   - vmrules
-
   # Common Helm values for both single and cluster
   - vm-common-helm-values-configmap.yaml
-
   # Choose between single or cluster helm release
 
   # VM Single
   - helmrelease-vmsingle.yaml
   - httproute-vmsingle.yaml
-
   # VM Cluster
   # - helmrelease-vmcluster.yaml
   # - httproute-vmcluster.yaml

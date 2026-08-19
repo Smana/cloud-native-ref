@@ -4,7 +4,10 @@ resource "vault_auth_backend" "approle_admin" {
 }
 
 resource "vault_approle_auth_backend_role" "snapshot" {
-  namespace         = vault_namespace.admin.path
+  # `path_fq`, not `path` — see the note in policies.tf. This role and
+  # vault_policy.snapshot must resolve to the same namespace or the token
+  # comes back with no capabilities.
+  namespace         = vault_namespace.admin.path_fq
   backend           = vault_auth_backend.approle_admin.path
   role_name         = "snapshot-agent"
   token_policies    = ["snapshot"]

@@ -68,16 +68,14 @@ data "aws_ami" "this" {
   owners = [var.ami_owner]
 }
 
+# Resolved for its ARN only, to scope the instance role's
+# secretsmanager:GetSecretValue grant (iam.tf). The secret *value* is
+# deliberately not read here: a
+# `data.aws_secretsmanager_secret_version.openbao_certificates` would put the
+# server private key into user_data and into the OpenTofu state file. The
+# instance fetches it itself at boot instead.
 data "aws_secretsmanager_secret" "openbao_certificates" {
   name = var.openbao_certificates_secret_name
-}
-
-data "aws_secretsmanager_secret_version" "openbao_certificates" {
-  secret_id = data.aws_secretsmanager_secret.openbao_certificates.id
-}
-
-locals {
-  openbao_certificates = jsondecode(data.aws_secretsmanager_secret_version.openbao_certificates.secret_string)
 }
 
 data "cloudinit_config" "openbao_cloud_init" {
@@ -87,14 +85,7 @@ data "cloudinit_config" "openbao_cloud_init" {
   part {
     filename     = "cloud-init-config.yaml"
     content_type = "text/cloud-config"
-    content = templatefile(
-      "${path.module}/scripts/cloudinit-config.yaml",
-      {
-        tls_key_b64    = base64encode(local.openbao_certificates.key)
-        tls_cert_b64   = base64encode(local.openbao_certificates.cert)
-        tls_cacert_b64 = base64encode(local.openbao_certificates.ca)
-      },
-    )
+    content      = file("${path.module}/scripts/cloudinit-config.yaml")
   }
 
   part {
@@ -119,7 +110,8 @@ data "cloudinit_config" "openbao_cloud_init" {
       "dev_mode"              = var.mode == "dev" ? true : false
       "leader_tls_servername" = var.leader_tls_servername
       "kms_unseal_key_id"     = aws_kms_key.openbao.id
-
+      # The secret *name*, not its contents.
+      "openbao_certificates_secret_id" = var.openbao_certificates_secret_name
     }
 )}
       EOF

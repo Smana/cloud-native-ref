@@ -25,6 +25,7 @@ variable "openbao_version" {
   # 2.6.0 deadlocks on concurrent namespace creation (openbao/openbao#3411):
   # the management stack's parallel vault_namespace resources wedge the core
   # and every subsequent request hangs. Stay on 2.5.5 until a fixed release.
+  # renovate: datasource=github-releases depName=openbao/openbao
   default = "2.5.5"
 }
 

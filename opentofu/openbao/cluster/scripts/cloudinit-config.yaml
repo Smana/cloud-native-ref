@@ -1,16 +1,11 @@
-write_files:
-  - content: ${tls_key_b64}
-    encoding: b64
-    path: /opt/openbao/tls/tls.key
-    permissions: "0640"
-  - content: ${tls_cert_b64}
-    encoding: b64
-    path: /opt/openbao/tls/tls.crt
-    permissions: "0644"
-  - content: ${tls_cacert_b64} # intermediate CA
-    encoding: b64
-    path: /opt/openbao/tls/ca.pem
-    permissions: "0644"
+# The server TLS cert, key and CA chain used to be written here. They are now
+# fetched from AWS Secrets Manager by startup_script.sh, under an instance-role
+# policy scoped to that one secret ARN.
+#
+# Anything written here lands in the launch template's user_data, which is
+# served by IMDS to every process on the instance and readable through
+# ec2:DescribeLaunchTemplateVersions. It also lands in the OpenTofu state file
+# in plaintext. Do not put secrets in this file.
 
 package_upgrade: true
 

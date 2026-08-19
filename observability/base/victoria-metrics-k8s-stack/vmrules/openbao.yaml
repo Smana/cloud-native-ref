@@ -1,0 +1,107 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  labels:
+    app: openbao
+  name: openbao
+  namespace: observability
+spec:
+  groups:
+    - name: openbao
+      rules:
+        # This is the alert whose absence let an expired server certificate go
+        # unnoticed for nine months. The scrape verifies TLS against the CA
+        # chain, so an expired or mis-issued certificate fails the scrape and
+        # surfaces here rather than being papered over by a skip-verify.
+        - alert: OpenBaoDown
+          expr: up{job="openbao"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            message: OpenBao is unreachable.
+            description: |
+              The OpenBao endpoint has failed to scrape for 5 minutes. Either the
+              service is down or its TLS certificate no longer validates against
+              the CA chain. Check `openssl s_client -connect bao.${private_domain_name}:8200`
+              for an expiry before assuming the process is dead.
+            runbook_url: "https://openbao.org/docs/internals/telemetry/"
+            dashboard: "https://grafana.${private_domain_name}/dashboards"
+
+        - alert: OpenBaoSealed
+          expr: vault_core_unsealed{job="openbao"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            message: OpenBao is sealed.
+            description: |
+              A node has been sealed for 5 minutes. Auto-unseal uses AWS KMS, so
+              this usually means the instance role lost kms:Decrypt on the unseal
+              key or KMS is unavailable in the region. Every secret read and
+              certificate issuance is failing while this holds.
+            runbook_url: "https://openbao.org/docs/concepts/seal/"
+            dashboard: "https://grafana.${private_domain_name}/dashboards"
+
+        - alert: OpenBaoNoActiveNode
+          expr: max(vault_core_active{job="openbao"}) == 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            message: No active OpenBao node.
+            description: |
+              No node has reported itself active for 10 minutes. In ha mode this
+              means raft has not elected a leader; check `bao operator raft
+              list-peers` for dead voters left behind by replaced instances.
+            runbook_url: "https://openbao.org/docs/internals/integrated-storage/"
+            dashboard: "https://grafana.${private_domain_name}/dashboards"
+
+        # Only meaningful in ha mode; absent metrics simply never fire.
+        - alert: OpenBaoRaftQuorumAtRisk
+          expr: vault_autopilot_failure_tolerance{job="openbao"} < 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            message: OpenBao raft cluster cannot tolerate a node failure.
+            description: |
+              Failure tolerance has been below 1 for 15 minutes: losing one more
+              node loses quorum. Dead peers accumulate when instances are
+              replaced without `bao operator raft remove-peer`, which spot
+              reclamation does routinely.
+            runbook_url: "https://openbao.org/docs/internals/integrated-storage/"
+            dashboard: "https://grafana.${private_domain_name}/dashboards"
+
+        # The backup ran and failed every night with nobody watching. Two
+        # separate alerts on purpose: a job can fail loudly, or the CronJob can
+        # quietly stop being scheduled at all.
+        - alert: OpenBaoSnapshotJobFailed
+          expr: kube_job_status_failed{namespace="security", job_name=~"openbao-snapshot.*"} > 0
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            message: The OpenBao snapshot job failed.
+            description: |
+              The nightly raft snapshot did not complete. Check
+              `kubectl logs -n security -l app.kubernetes.io/instance=openbao`.
+              Note that `bao operator raft snapshot save` only works against raft
+              storage — in dev mode the cluster runs the file backend and this
+              job cannot succeed at all.
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/opentofu/openbao/management/docs/backup_restore.md"
+            dashboard: "https://grafana.${private_domain_name}/dashboards"
+
+        - alert: OpenBaoSnapshotStale
+          expr: time() - kube_cronjob_status_last_successful_time{namespace="security", cronjob="openbao-snapshot"} > 129600
+          for: 30m
+          labels:
+            severity: critical
+          annotations:
+            message: No successful OpenBao snapshot in 36 hours.
+            description: |
+              The last successful snapshot is more than 36 hours old, against a
+              daily schedule. The disaster-recovery position is degrading
+              silently — a backup with no freshness signal is not a backup.
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/opentofu/openbao/management/docs/backup_restore.md"
+            dashboard: "https://grafana.${private_domain_name}/dashboards"

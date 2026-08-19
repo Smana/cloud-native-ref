@@ -4,7 +4,12 @@ script "deploy" {
     name        = "openbao-configure"
     description = "OpenBao configuration"
     commands = [
-      # Initialize OpenBao cluster
+      # Initialize OpenBao cluster. Stores the root token and the recovery keys
+      # in two separate AWS Secrets Manager entries.
+      #
+      # --skip-verify is still needed here: this runs against a freshly booted
+      # cluster before anything has vouched for its certificate, and the
+      # request carries no secret in either direction.
       [
         "bash",
         "../../../scripts/openbao-config.sh",
@@ -13,22 +18,26 @@ script "deploy" {
         global.openbao_url,
         "--root-token-secret-name",
         global.root_token_secret_name,
+        "--recovery-keys-secret-name",
+        global.recovery_keys_secret_name,
         "--region",
         global.region,
         "--profile",
         global.profile,
         "--skip-verify",
       ],
+      # Materialise the CA chain for the Vault provider. Has to be a script
+      # step rather than a local_file resource: provider configuration is
+      # evaluated before any resource exists, so the file must already be on
+      # disk when `tofu init` runs.
       [
         "bash",
         "../../../scripts/openbao-config.sh",
-        "pki",
-        "--url",
-        global.openbao_url,
-        "--root-token-secret-name",
-        global.root_token_secret_name,
+        "ca",
         "--root-ca-secret-name",
         global.root_ca_secret_name,
+        "--ca-output-file",
+        ".tls/ca.pem",
         "--region",
         global.region,
         "--profile",
