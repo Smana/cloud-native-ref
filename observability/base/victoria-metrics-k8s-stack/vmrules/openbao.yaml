@@ -66,20 +66,60 @@ spec:
             runbook_url: "https://openbao.org/docs/internals/integrated-storage/"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
 
-        # Only meaningful in ha mode; absent metrics simply never fire.
-        - alert: OpenBaoRaftQuorumAtRisk
-          expr: vault_autopilot_failure_tolerance{job="openbao"} < 1
+        # Two thresholds on the same metric, because the interesting moment is
+        # the FIRST lost node, not the last. A five-node cluster with min_quorum
+        # 3 has a failure tolerance of 2 when healthy. At `< 1` the cluster is
+        # already one failure from losing quorum -- by then it is an incident,
+        # not a warning.
+        #
+        # Measured 2026-08-19: raft listed six voters against five live
+        # instances (a replaced spot node left behind as a voter) and
+        # vault_autopilot_failure_tolerance read exactly 1 -- so the old rule
+        # stayed silent through it. Quorum is computed over the voter set, not
+        # over live instances, so a stale voter raises the quorum bar (4 of 6
+        # instead of 3 of 5) and halves the tolerance without anything failing.
+        #
+        # Neither fires in dev mode: file storage has no raft and no autopilot,
+        # so the metric does not exist.
+        - alert: OpenBaoRaftNodeLost
+          expr: vault_autopilot_failure_tolerance{job="openbao"} < 2
           for: 15m
           labels:
             severity: warning
           annotations:
+            message: OpenBao raft cluster has lost redundancy.
+            description: |
+              Failure tolerance has been below 2 for 15 minutes, so a five-node
+              cluster is no longer tolerating the two failures it is sized for.
+              Usually a dead peer: instances replaced without
+              `bao operator raft remove-peer` stay in the voter set, which spot
+              reclamation does routinely.
+
+              Compare the voter list against the running instances:
+                bao operator raft list-peers
+                aws autoscaling describe-auto-scaling-groups --region <region> \
+                  --auto-scaling-group-names <asg> \
+                  --query 'AutoScalingGroups[0].Instances[].InstanceId'
+
+              Autopilot only removes these when dead server cleanup is enabled;
+              that is the vault_raft_autopilot resource in
+              opentofu/openbao/management/autopilot.tf.
+            runbook_url: "https://openbao.org/docs/concepts/integrated-storage/autopilot"
+            dashboard: "https://grafana.${private_domain_name}/dashboards"
+
+        - alert: OpenBaoRaftQuorumAtRisk
+          expr: vault_autopilot_failure_tolerance{job="openbao"} < 1
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
             message: OpenBao raft cluster cannot tolerate a node failure.
             description: |
               Failure tolerance has been below 1 for 15 minutes: losing one more
-              node loses quorum. Dead peers accumulate when instances are
-              replaced without `bao operator raft remove-peer`, which spot
-              reclamation does routinely.
-            runbook_url: "https://openbao.org/docs/internals/integrated-storage/"
+              node loses quorum, and a cluster without quorum cannot issue a
+              certificate or read a secret. If OpenBaoRaftNodeLost fired first
+              and was not acted on, this is that same dead peer plus a real one.
+            runbook_url: "https://openbao.org/docs/concepts/integrated-storage/autopilot"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
 
         # The backup ran and failed every night with nobody watching. Two
