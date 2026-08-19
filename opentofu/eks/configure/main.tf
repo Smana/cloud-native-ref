@@ -139,6 +139,18 @@ resource "helm_release" "flux_operator" {
 
   wait    = true
   timeout = 300
+
+  # Purge the release if the install fails, instead of leaving a `failed`
+  # revision behind. OpenTofu does not record a failed create in state, so the
+  # orphan makes every later apply fail with "cannot re-use a name that is still
+  # in use" — hit on 2026-08-19, when a transient 401 during the post-install
+  # wait wedged the deploy until the release was uninstalled by hand.
+  # `atomic` covers a failed install, `cleanup_on_fail` a failed upgrade (the
+  # version-bump path). `atomic` forces wait=true, which this release already
+  # sets — do NOT copy it to helm_release.cilium, which sets wait=false on
+  # purpose (see the comment there).
+  atomic          = true
+  cleanup_on_fail = true
 }
 
 # =============================================================================
@@ -180,4 +192,8 @@ resource "helm_release" "flux_instance" {
 
   wait    = true
   timeout = 300
+
+  # Same rationale as helm_release.flux_operator above.
+  atomic          = true
+  cleanup_on_fail = true
 }
