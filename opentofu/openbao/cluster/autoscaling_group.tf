@@ -195,9 +195,24 @@ module "openbao_asg" {
         { instance_type = "t3.medium" },
       ]
     }
+    # Quorum must not depend on spot capacity. With base 0 all five nodes were
+    # spot, so a single unavailable pool could leave raft short of the three
+    # voters it needs to elect a leader — and an OpenBao that cannot elect is an
+    # OpenBao that cannot issue a certificate or read a secret.
+    #
+    # Not theoretical: the 2026-08-19 HA bring-up failed with
+    # "InsufficientInstanceCapacity - We currently do not have sufficient
+    # t3.small capacity in eu-west-3b". It self-healed on retry, but nothing
+    # guaranteed that.
+    #
+    # base 3 pins the quorum majority to on-demand and leaves the two nodes
+    # above it 95% spot, so the fault tolerance a five-node cluster is supposed
+    # to provide is what actually survives a pool outage. The extra cost applies
+    # only in ha mode — dev mode uses one instance from the dev launch template
+    # and no mixed-instances policy at all.
     instances_distribution = {
       on_demand_allocation_strategy            = "lowest-price"
-      on_demand_base_capacity                  = 0
+      on_demand_base_capacity                  = 3
       on_demand_percentage_above_base_capacity = 5
       spot_allocation_strategy                 = "lowest-price"
       spot_instance_pools                      = 3

@@ -28,6 +28,39 @@
 # Two classes of client:
 #   - operators, arriving over Tailscale via the subnet router
 #   - in-cluster workloads (cert-manager, the snapshot CronJob)
+#
+# MIGRATING AN EXISTING DEPLOYMENT: revoke the legacy inline rule first.
+# ---------------------------------------------------------------------
+# The Tailscale ingress used to be an inline `ingress` block on the security
+# group below; it is now the standalone `nlb_from_tailscale` resource. A fresh
+# deploy is unaffected. Re-applying over a deployment created by the older code
+# fails, once, with:
+#
+#   Error: InvalidPermission.Duplicate: the specified rule
+#   "peer: sg-…, TCP, from port: 8200, to port: 8200, ALLOW" already exists
+#     with aws_security_group_rule.nlb_from_tailscale
+#
+# No `moved` block fixes this and no dependency ordering avoids it. An inline
+# block has no state address to move *from*, and with the block simply deleted
+# from the config the provider plans no rule change on the group at all — the
+# plan shows `aws_security_group.nlb will be updated in-place` for tags only —
+# so it never revokes what it created inline. The old rule and the new resource
+# then describe the same AWS rule, and the create collides.
+#
+# `ingress = []` would revoke it, but the provider forbids mixing inline blocks
+# with aws_security_group_rule and the two would fight on every subsequent
+# apply. So the one-time remedy is out of band, before the apply:
+#
+#   aws ec2 describe-security-group-rules --region <region> \
+#     --filters Name=group-id,Values=<nlb-sg-id> \
+#     --query "SecurityGroupRules[?!IsEgress && FromPort==\`8200\`].[SecurityGroupRuleId,Description]" \
+#     --output text
+#   aws ec2 revoke-security-group-ingress --region <region> \
+#     --group-id <nlb-sg-id> --security-group-rule-ids <the legacy rule id>
+#
+# Access is not interrupted: `nlb_from_vpc` below admits the whole VPC CIDR,
+# and the Tailscale subnet router is an EC2 instance inside it. Verified during
+# the 2026-08-19 migration — the API answered 200 throughout the revoke.
 
 resource "aws_security_group" "nlb" {
   name        = format("%s-nlb", local.name)
