@@ -244,12 +244,46 @@ Kustomization prunes the old XRDs, or claims briefly lose their CRDs.
 
 | Risk | Mitigation |
 |---|---|
-| Package install re-creates XRDs, transiently orphaning claims | XRDs are identical by name and schema, so Crossplane adopts them. Prove on a scratch cluster during stage 1, never first on `mycluster-0`. Criterion 4 checks `uid` |
+| Package install re-creates XRDs, transiently orphaning claims | **Measured 2026-08-19 on kind, and it does not.** Installing the published `-aws:v0.1.0` over five XRDs applied the old way left all 20 identities — 5 XRDs, 5 CRDs, 5 Compositions, 5 claims — byte-identical by `uid`. Crossplane adopts the existing objects and takes controller ownership via `ownerReferences` on the `ConfigurationRevision` |
 | `dependsOn` on providers conflicts with the cluster's own `Provider` manifests | Declare only function and configuration dependencies in `crossplane.yaml`; the cluster already owns its providers |
 | Inlined 1291-line `main.k` makes `composition.yaml` unreviewable | Review happens on `main.k`; CI proves the generated file matches. Both the YAML round-trip and full render equivalence are already verified |
 | `ManagedResourceActivationPolicy` interferes with package-installed XRDs | The policy governs provider MR CRDs, not XRDs — expected unaffected, asserted in stage 3 |
 | Schema catalog fetch becomes a network dependency of CI | Already true for the Flux and CNCF catalogs; pin by version and fail loudly |
-| Stage 2 is large and atomic | It is a cutover; a partial one leaves claims without CRDs. Size is the price of atomicity |
+| **Flux prunes the old XRDs and destroys every claim** | **Measured 2026-08-19 on kind with real Flux, and the single-PR cutover is fatal.** Removing the old manifests in the same commit that adds the `Configuration` makes kustomize-controller `DELETE` the five XRDs it still has in inventory. That cascades to the CRDs and *every claim is permanently lost* — all 13 identities changed, 3/3 claims `GONE`, Crossplane then recreated empty XRDs from the package. Adoption does not protect against this: the objects are adopted but stay in Flux's inventory. **Stage 2 must therefore be two PRs** — see below |
+| Stage 2 is large and atomic | ~~It is a cutover; a partial one leaves claims without CRDs. Size is the price of atomicity.~~ **Reversed by the prune finding above:** atomicity is what destroys the claims. The safe sequence is two PRs, verified end-to-end on kind with all 13 identities preserved |
+
+## Stage 2 cutover sequence (revised 2026-08-19)
+
+Verified on kind against real Flux and the published `v0.1.0` packages. The naive single-PR
+cutover was run first and destroyed every claim; this sequence was then run from the same
+starting state and preserved all 13 identities.
+
+**PR A — adopt, prune nothing.** Add the two `Configuration` manifests *and* annotate every old
+XRD and Composition with `kustomize.toolkit.fluxcd.io/prune: disabled`. The old files stay in
+git. Flux applies both; the packages adopt the existing XRDs.
+
+```yaml
+commonAnnotations:
+  kustomize.toolkit.fluxcd.io/prune: disabled
+```
+
+Verify before proceeding: both `Configuration`s `INSTALLED=True HEALTHY=True`, and every claim's
+`metadata.uid` unchanged.
+
+**PR B — delete the old files.** With prune disabled on those objects, Flux drops them from its
+inventory without issuing a `DELETE`. The XRDs remain, now owned solely by the
+`ConfigurationRevision`.
+
+Two details observed during the test:
+
+- The `-core` package is pulled in by `-aws`'s `dependsOn` and lands as
+  `smana-crossplane-configuration-core` — a registry-derived name, not the one in
+  `packages/core/crossplane.yaml`. It is created by Crossplane, so it is **not** in Flux's
+  inventory and is not pruned when the source changes. Declare only `-aws` in git.
+- The adopted XRDs keep their `kustomize.toolkit.fluxcd.io/*` labels after PR B. Cosmetic —
+  the labels are inert once the objects leave the inventory. `resourceVersion` held steady over
+  90s, so Flux and Crossplane are not fighting over them.
+
 
 ## Open questions
 
