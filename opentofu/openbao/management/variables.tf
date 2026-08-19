@@ -135,3 +135,23 @@ variable "admin_credentials_secret_name" {
   type        = string
   default     = "openbao/cloud-native-ref/users/admin"
 }
+
+# Must match `mode` in opentofu/openbao/cluster/variables.tfvars. It duplicates
+# one fact across two stacks, which is a drift risk, but the alternative is
+# wiring remote state between them for a single flag and this stack has no
+# other cross-stack coupling.
+#
+# Getting it wrong is loud rather than silent in the direction that matters:
+# "ha" against a dev cluster fails the apply on raft endpoints that do not
+# exist on file storage. "dev" against an ha cluster leaves dead server cleanup
+# off, which is what OpenBaoRaftNodeLost exists to catch.
+variable "mode" {
+  description = "Storage mode of the target OpenBao cluster: 'dev' (file, single node) or 'ha' (raft). Must match the cluster stack."
+  type        = string
+  default     = "dev"
+
+  validation {
+    condition     = contains(["dev", "ha"], var.mode)
+    error_message = "mode must be 'dev' or 'ha'."
+  }
+}
