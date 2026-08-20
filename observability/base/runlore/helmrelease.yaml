@@ -288,32 +288,29 @@ spec:
       telemetry:
         metrics_enabled: true
       model:
-        # glm-5.2, NOT 5.3 — the constraint is z.ai's per-model CONCURRENCY limit,
-        # not a token quota:
+        # glm-5.3 for the investigator. z.ai limits by PER-MODEL CONCURRENCY, and
+        # 5.3 allows 1 in-flight request — which is fine here, because the agent
+        # loop is sequential: one model call at a time, one investigation at a
+        # time per leader. Verified sequentially on the live key: 10.0s, 2.5s,
+        # 2.3s.
         #
-        #   GLM-5.3        concurrency 1      GLM-5.2   concurrency 10
-        #   GLM-5-Turbo    concurrency 1      GLM-5.1   concurrency 10
+        # The 429 storm that killed an earlier run was self-inflicted contention
+        # (a benchmark hitting the same key mid-investigation), not the model
+        # being unusable. Reference table:
         #
-        # An agent loop on a single slot serialises against itself and anything
-        # else touching the key: requests queue server-side, so calls that answer
-        # in ~12s standalone were taking 60-100s inside the loop, and overlap
-        # returns `429 code 1302 Rate limit reached for requests` — which RunLore
-        # surfaces as "investigation failed; retrying" until it gives up. That is
-        # what killed the ShopUiUnavailable run (confidence=0, root_causes=0).
-        #
-        # Verified live, same key, same moment: glm-5.3 -> 429, glm-5-turbo ->
-        # timeout, glm-5.2 -> OK in 1.5s, glm-5.1 -> OK in 4.2s.
-        #
-        # 5.2 is also what this deployment ran on before (#1556). Do not move to
-        # a concurrency-1 model without checking the rate-limit table first.
+        #   GLM-5.3  1 slot     GLM-5-Turbo  1 slot
+        #   GLM-5.2  10 slots   GLM-5.1      10 slots
         provider: openai
-        model: glm-5.2
+        model: glm-5.3
         base_url: https://api.z.ai/api/paas/v4/
         api_key_env: GLM_API_KEY  # pragma: allowlist secret
         chat:
-          # Also concurrency 10. Thread replies can overlap an in-flight
-          # investigation, so a 1-slot model here would 429 exactly when someone
-          # asks a follow-up mid-incident — the worst possible moment.
+          # DELIBERATELY a different model from the investigator, and one with
+          # 10 slots. Chat is the one path that genuinely runs CONCURRENTLY with
+          # an investigation: someone asks a follow-up in the thread while the
+          # loop is still working. On a 1-slot model those collide and the reply
+          # 429s at exactly the moment it is wanted. 5.2 has slots to spare and
+          # answers a thread turn in ~1.5s.
           model: glm-5.2
       catalog:
         dir: /var/lib/runlore/catalog
