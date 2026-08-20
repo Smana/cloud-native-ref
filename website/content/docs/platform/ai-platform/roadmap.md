@@ -5,8 +5,8 @@ description: Seven upgrade paths for the self-hosted LLM platform, checked again
 lastVerified: 2026-08-20
 ---
 
-`docs/llm-platform-future-paths.md` in the repository originally listed seven
-upgrade paths for evolving the platform beyond its current shape. None were
+A now-retired note in the repository, `llm-platform-future-paths`, originally
+listed seven upgrade paths for evolving the platform beyond its current shape. None were
 committed work — they were reference notes for when the open-weights
 ecosystem, the team's needs, or the demo scope warranted the next
 investment. This page carries forward only what is **still open**, checked

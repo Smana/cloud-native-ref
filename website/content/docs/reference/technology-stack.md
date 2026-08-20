@@ -96,8 +96,8 @@ Elastic Load Balancing, IAM (via EKS Pod Identity), KMS, and S3.
 
 ## What this table intentionally omits
 
-`docs/technology-choices.md` carried a flatter, badge-illustrated version of
-this table with no version column at all — every entry there had drifted from
+The retired `technology-choices` page carried a flatter, badge-illustrated
+version of this table with no version column at all — every entry there had drifted from
 what actually deploys, which is the reason this page exists. This page also
 drops a few rows that duplicated the [Repository Layout]({{< relref "/docs/reference/repository-layout.md" >}})
 page's directory listing without adding version information.
