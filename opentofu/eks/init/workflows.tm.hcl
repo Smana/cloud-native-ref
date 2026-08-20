@@ -128,7 +128,10 @@ script "destroy" {
     description = "Destroy Cilium and Flux (configure stack)"
     commands = [
       ["bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
-      ["bash", "-c", "cd ../configure && ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars"],
+      # The three version variables carry no defaults (see configure/variables.tf),
+      # so they must be supplied here too: OpenTofu requires every variable to be
+      # set on destroy, not just on apply.
+      ["bash", "-c", "cd ../configure && ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
     ]
   }
 
