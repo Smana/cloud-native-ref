@@ -408,16 +408,35 @@ Hextra derives its full colour scale from three variables. Its defaults are `:ro
 The design's stated norm is that a page says what it was checked against. `website/layouts/_partials/custom/footer.html`:
 
 ```go-html-template
-{{- with .Params.lastVerified }}
+{{- /*
+  Hextra's own _partials/footer.html invokes this partial with a wrapper dict
+  (dict "context" . "switchesVisible" ... "copyrightVisible" ...), not the page
+  itself — so "." here is that dict, and $ is bound to it too. Pull the real
+  page out first. Writing .Params.lastVerified directly does not error: it
+  resolves to a missing map key, yields the zero value, `with` skips, and the
+  stamp silently renders nowhere on every page.
+*/ -}}
+{{- $page := .context }}
+{{- with $page.Params.lastVerified }}
   <p class="cnref-verified">
     Verified against the repository on
     <time datetime="{{ . }}">{{ time.Format "2 January 2006" . }}</time>.
-    {{- with $.GitInfo }}
+    {{- with $page.GitInfo }}
       Last edited in
       <a href="https://github.com/Smana/cloud-native-ref/commit/{{ .Hash }}">{{ .AbbreviatedHash }}</a>.
     {{- end }}
   </p>
 {{- end }}
+```
+
+Verify it actually renders rather than assuming — a silent no-op is the failure mode here:
+
+```bash
+# temporarily stamp the placeholder home page, build, check, revert
+sed -i '2i lastVerified: 2026-08-20' website/content/_index.md
+cd website && $HUGO --quiet && cd ..
+grep -c "cnref-verified" website/public/index.html   # expected: 1, not 0
+sed -i '2d' website/content/_index.md
 ```
 
 - [ ] **Step 3: Add the CNAME**
@@ -442,7 +461,9 @@ magick images/logo.png -define icon:auto-resize=64,48,32,16 favicon.ico
 cd ../..
 ```
 
-Expected: five files created, each under 100 KB.
+Expected: five files created. The four generated icons should each be well under 100 KB; the
+source `logo.png` is copied verbatim and is ~108 KB, which is fine — the budget is about the icon
+set, not the logo.
 
 - [ ] **Step 5: Create the diagram export script and export the existing sources**
 
@@ -507,10 +528,14 @@ echo "==> platform-overview (svg + png)"
 drawio "${SVGOPTS[@]}" -o "$STATIC/platform-overview.svg" "$SRC/platform-overview.drawio"
 drawio -x -f png -s 2 -b 10 -o "$SRC/img/platform-overview.png" "$SRC/platform-overview.drawio"
 
-for i in 0 1 2; do
+# --page-index is 1-BASED in this CLI, and 0 silently clamps to 1 rather than
+# erroring. Verified: `--page-index 0` and `--page-index 1` produce byte-identical
+# output. A 0-based loop therefore exports page 1 twice and drops page 3 with no
+# warning. docs/architecture/README.md already used 1..3 — that was correct.
+for i in 1 2 3; do
     echo "==> llm-platform page $i"
     drawio "${SVGOPTS[@]}" --page-index "$i" \
-        -o "$ASSETS/llm-platform-$((i + 1)).svg" "$SRC/llm-platform.drawio"
+        -o "$ASSETS/llm-platform-$i.svg" "$SRC/llm-platform.drawio"
 done
 
 echo
