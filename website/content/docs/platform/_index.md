@@ -13,4 +13,5 @@ self-hosted AI stack.
 {{< cards >}}
   {{< card link="/docs/platform/foundations/" title="Foundations" icon="cube" subtitle="OpenTofu, Terramate, and the three-stage model that provisions everything before Flux takes over." >}}
   {{< card link="/docs/platform/gitops/" title="GitOps" icon="refresh" subtitle="Why Flux, the dependency hierarchy, and how manifests are validated before they merge." >}}
+  {{< card link="/docs/platform/security/" title="Security" icon="lock-closed" subtitle="OpenBao's PKI and secrets engine, cert-manager and External Secrets, Kyverno and CiliumNetworkPolicy defaults." >}}
 {{< /cards >}}

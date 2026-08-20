@@ -1,0 +1,180 @@
+---
+title: PKI & Secrets
+weight: 20
+description: The three-tier PKI chain OpenBao issues from, how cert-manager and External Secrets pull from it, and how the chain rotates.
+lastVerified: 2026-08-20
+---
+
+Every internal TLS certificate on this platform — Gateway API listeners,
+service-to-service TLS — traces back to one private PKI hosted in
+[OpenBao]({{< relref "/docs/platform/security/openbao.md" >}}). Nothing here
+is a public CA: `bao.priv.cloud.ogenki.io` and everything it signs is only
+meaningful inside the tailnet.
+
+## The three-tier chain
+
+```
+Root CA  →  Intermediate CA  →  Issuer CA (OpenBao pki_private_issuer)  →  Leaf certificates
+```
+
+A Root CA at the top, an Intermediate CA in the middle, end-entity leaf
+certificates at the bottom. The Root CA issues only to the Intermediate; the
+Intermediate is what OpenBao's `pki_private_issuer` mount imports as its
+signing certificate and uses to issue every leaf. This minimises the Root
+CA's exposure — it never touches a running system — and keeps
+revocation/rotation scoped to the tier that actually changed.
+
+{{< callout type="warning" >}}
+The Root CA is generated offline and stored outside the cluster entirely —
+an air-gapped machine, an HSM, or a securely held USB device — never as a
+live OpenBao mount. Only the Intermediate's private key lives inside the
+platform (imported into `pki_private_issuer`), because that's the only tier
+that needs to sign on demand.
+{{< /callout >}}
+
+### Building the chain
+
+The root and intermediate CAs are generated once, outside Terraform, with
+`openssl` — EC keys (`secp384r1` for the CAs, `prime256v1` for OpenBao's own
+leaf) rather than RSA:
+
+```bash
+# Root CA
+openssl ecparam -genkey -name secp384r1 -out root-ca-key.pem
+openssl req -x509 -new -nodes -key root-ca-key.pem -sha384 -days 3653 -out root-ca.pem
+
+# Intermediate CA — CSR, then sign it with the root
+openssl ecparam -genkey -name secp384r1 -out intermediate-ca-key.pem
+openssl req -new -key intermediate-ca-key.pem -out intermediate-ca.csr
+openssl x509 -req -in intermediate-ca.csr -CA root-ca.pem -CAkey root-ca-key.pem \
+  -CAcreateserial -out intermediate-ca.pem -days 1827 -sha384 \
+  -extfile intermediate-ca.cnf -extensions v3_req
+```
+
+The intermediate's certificate and private key (`bundle`/`ca` in the JSON
+shape below) are what `opentofu/openbao/management/pki.tf` imports into the
+`pki_private_issuer` mount — `vault_pki_secret_backend_config_ca`, followed
+by a CSR/sign/set-signed sequence that makes OpenBao the active issuer for
+that intermediate. The root material itself is read from AWS Secrets
+Manager, not committed to Git:
+
+```hcl
+resource "vault_pki_secret_backend_config_ca" "pki" {
+  backend    = vault_mount.pki.path
+  pem_bundle = jsondecode(data.aws_secretsmanager_secret_version.root_ca.secret_string).bundle
+}
+```
+
+OpenBao's own server certificate (the one terminating TLS on
+`bao.priv.cloud.ogenki.io:8200`) is a leaf signed the same way, generated
+once before the cluster exists and stored in Secrets Manager for
+`opentofu/openbao/cluster/` to consume at bootstrap. Two details worth
+carrying forward if you regenerate it:
+
+- The key is EC P-256, matching the EC P-384 CAs above, and `openssl` writes
+  key files world-readable by default — `chmod 600` it, since this key
+  terminates TLS for every OpenBao client.
+- The SAN list has **no IP address**, only `DNS:bao.priv.cloud.ogenki.io`.
+  That's why a client connecting to a Raft peer by private IP address
+  (rather than through the NLB's DNS name) cannot verify TLS against it.
+
+## cert-manager: issuing from the PKI
+
+A `ClusterIssuer` authenticates to OpenBao with the `cert-manager` AppRole
+and signs from `pki_private_issuer/sign/ogenki`. Both the CA bundle and the
+AppRole `SecretID` are synced from AWS Secrets Manager by External Secrets
+Operator rather than pasted into the manifest — rotating the intermediate no
+longer means hand-editing a `ClusterIssuer`:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: openbao
+  namespace: security
+spec:
+  vault:
+    server: https://bao.priv.cloud.ogenki.io:8200
+    path: pki_private_issuer/sign/ogenki
+    caBundleSecretRef:
+      name: openbao-ca
+      key: ca.crt
+    auth:
+      appRole:
+        path: approle
+        roleId: ${cert_manager_approle_id}
+        secretRef:
+          name: cert-manager-openbao-approle
+          key: cert_manager_approle_secret
+```
+
+Both referenced secrets are `ExternalSecret` objects
+(`security/base/cert-manager/`) pulling from the same AWS Secrets Manager
+entries the OpenTofu management stack writes to — one for the CA chain
+(`certificates/priv.cloud.ogenki.io/root-ca`), one for the AppRole
+credential (`openbao/cloud-native-ref/approles/cert-manager`). Neither the
+PKI mount nor the AppRole needs a `namespace:` field on the issuer — both
+live in OpenBao's root namespace (see
+[OpenBao]({{< relref "/docs/platform/security/openbao.md#namespace-layout" >}})).
+
+A `Certificate` object requesting one of these leaves looks like any other
+cert-manager request:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: foobar
+spec:
+  secretName: foobar-tls
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+  commonName: foobar.priv.cloud.ogenki.io
+  dnsNames:
+    - foobar.priv.cloud.ogenki.io
+    - foobar.security.svc.cluster.local
+  issuerRef:
+    name: openbao
+    kind: ClusterIssuer
+    group: cert-manager.io
+```
+
+This is also what terminates TLS at the Gateway API layer: Gateway listeners
+reference a `Secret` cert-manager keeps populated from this same issuer, so
+rotation is automatic — cert-manager renews `renewBefore` the expiry and the
+Gateway picks up the new `Secret` without a redeploy.
+
+## External Secrets: the other direction
+
+Where cert-manager pulls certificates *out* of OpenBao's PKI, External
+Secrets Operator pulls arbitrary credentials *out of AWS Secrets Manager* —
+the AppRole `SecretID`s above, the OpenBao admin password, the snapshot
+job's credentials. One `ClusterSecretStore` backs every `ExternalSecret` in
+the cluster:
+
+```yaml
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: clustersecretstore
+spec:
+  provider:
+    aws:
+      region: ${region}
+      service: SecretsManager
+```
+
+This is the platform's concrete instance of the constitution's [Secrets
+Management rule]({{< relref "/docs/reference/platform-constitution.md#32-secrets-management" >}}):
+no hardcoded credentials in a manifest, HelmRelease, or Crossplane
+composition — everything resolves through this one `ClusterSecretStore` at
+reconcile time, refreshed on an interval (`refreshInterval: 1h` is typical)
+rather than baked in once.
+
+## Rotation
+
+Nothing here rotates itself yet. The intermediate is a manual re-import into
+`pki_private_issuer` when it approaches its `days` expiry; leaf certificates
+rotate automatically through cert-manager's `renewBefore`. Treat the
+Root/Intermediate chain's expiry the same way as any other operational
+calendar item — there's no alert wired to it today.
