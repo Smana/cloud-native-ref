@@ -98,6 +98,40 @@ the page. Never as a nav entry, never as a feed.
 | [Agentic Coding: concepts and hands-on Platform Engineering use cases](https://blog.ogenki.io/post/series/agentic_ai/ai-coding-agent/) | `concepts/how-this-is-built.md` |
 | [Dagger: The Missing Piece of Developer Experience](https://blog.ogenki.io/post/dagger-intro/) | `reference/ci-workflows.md` |
 
+### Three pull requests
+
+Execution is split into three independently mergeable pull requests. **Each must pass CI on its
+own** — `main` is branch-protected with required checks and no admin bypass, so a PR that leaves a
+dangling link is not mergeable.
+
+| PR | Branch | Tasks | State when merged |
+|---|---|---|---|
+| 1 | `feat/docs-hugo` | 1, 2, 3, 4 | Site builds and deploys. Landing page and six empty lanes. `docs/` untouched. |
+| 2 | `feat/docs-content` | 15, 14, 5, 6, 8, 7, 10, 9, 11, 12, 13, 16 | All content and all diagrams published. `docs/` still holds the old sources — duplicated, not yet retired. |
+| 3 | `feat/docs-cleanup` | 17, 18 | `docs/` retired to `architecture/`, `specs/`, `superpowers/`. README shrunk, consumers rewired, launched. |
+
+PR 2 and PR 3 branch from `main` **after** the preceding PR merges, using the `EnterWorktree`
+tool — not `git checkout -b`, and not stacked branches, which fight the strict required-status-check
+setting.
+
+That PR 2 leaves content duplicated between `docs/` and `website/content/` is deliberate: deleting a
+source in the same PR that publishes its replacement makes the diff unreviewable, and PR 3 exists to
+do exactly that deletion under its own review.
+
+### Moves re-point their own references, in the same task
+
+**A task that moves or deletes a file rewires every inbound reference to it, in that same task.**
+Never defer rewiring to the cleanup task — with the work split across three PRs, a deferred rewire
+means the intermediate PR merges to `main` with a broken link and a failing `links` check.
+
+Find the inbound set before moving anything:
+
+```bash
+git grep -l "<the-path-being-moved>" -- '*.md'
+```
+
+Rewrite every hit. Never add a `.linkcheck-allow` entry to route around a break the move introduced.
+
 ### Commit convention
 
 Conventional commits, `docs(site):` scope for site work, `docs(<lane>):` for content lanes. **Never co-author.** No "Generated with Claude Code" line.
@@ -181,6 +215,19 @@ module:
     min: "0.146.0"
   imports:
     - path: github.com/imfing/hextra
+  # The platform constitution is published here but NOT moved here. It has 50
+  # inbound references, 37 of them in the read-only docs/specs/ archive, and it
+  # is the source of truth loaded by .claude/rules/platform-constitution.md — so
+  # its repository path has to stay stable. A single-file mount publishes it in
+  # full without breaking one link. Verified working on Hugo 0.156.0.
+  #
+  # Declaring any `content` mount REPLACES Hugo's default content mount, so the
+  # first entry below is mandatory, not decorative.
+  mounts:
+    - source: content
+      target: content
+    - source: ../docs/platform-constitution.md
+      target: content/docs/reference/platform-constitution.md
 
 markup:
   goldmark:
@@ -293,6 +340,8 @@ failure rather than a silent 404."
 - Create: `website/layouts/_partials/custom/footer.html`
 - Create: `website/static/CNAME`
 - Create: `website/static/images/logo.png`, `website/static/favicon.ico`, `website/static/favicon-32x32.png`, `website/static/favicon-16x16.png`, `website/static/apple-touch-icon.png`
+- Create: `scripts/export-diagrams.sh`
+- Create: `website/static/images/diagrams/platform-overview.svg`, `website/assets/diagrams/llm-platform-{1,2,3}.svg`
 
 **Interfaces:**
 - Consumes: the site from Task 1.
@@ -395,7 +444,79 @@ cd ../..
 
 Expected: five files created, each under 100 KB.
 
-- [ ] **Step 5: Build and verify the palette applied**
+- [ ] **Step 5: Create the diagram export script and export the existing sources**
+
+Task 4's landing page embeds `platform-overview.svg`. Its `.drawio` source already exists, so PR 1
+must ship the export rather than leave a broken image on the site's front page. Task 16 extends this
+same script with the six new diagrams.
+
+`scripts/export-diagrams.sh`:
+
+```bash
+#!/usr/bin/env bash
+#
+# export-diagrams.sh — regenerate every diagram export from its .drawio source.
+#
+# Sources live in docs/architecture/ (one topic per file, kebab-case, ogenki
+# preset). Exports are written where each consumer needs them:
+#   - website/assets/diagrams/         for docs pages
+#   - website/static/images/diagrams/  for the landing page (no asset pipeline)
+#   - docs/architecture/img/           PNG, only where GitHub also renders it
+#
+# SVG is the site format. The PNG-only rule recorded in docs/architecture/README.md
+# exists because GitHub's sanitizer strips <foreignObject> text from drawio SVG,
+# which does not apply to a Hugo site.
+#
+# Requires the draw.io desktop app on PATH.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+command -v drawio >/dev/null || { echo "drawio not on PATH — install the desktop app"; exit 1; }
+
+SRC="docs/architecture"
+ASSETS="website/assets/diagrams"
+STATIC="website/static/images/diagrams"
+mkdir -p "$ASSETS" "$STATIC"
+
+# Task 16 appends the six new domain diagrams here.
+SINGLE_PAGE=()
+
+for name in "${SINGLE_PAGE[@]}"; do
+    echo "==> $name.svg"
+    drawio -x -f svg -b 10 -o "$ASSETS/$name.svg" "$SRC/$name.drawio"
+done
+
+# platform-overview is embedded in both the site and the GitHub README, so it
+# needs both formats and lands in static/ for the home layout.
+echo "==> platform-overview (svg + png)"
+drawio -x -f svg -b 10 -o "$STATIC/platform-overview.svg" "$SRC/platform-overview.drawio"
+drawio -x -f png -s 2 -b 10 -o "$SRC/img/platform-overview.png" "$SRC/platform-overview.drawio"
+
+for i in 0 1 2; do
+    echo "==> llm-platform page $i"
+    drawio -x -f svg -b 10 --page-index "$i" \
+        -o "$ASSETS/llm-platform-$((i + 1)).svg" "$SRC/llm-platform.drawio"
+done
+
+echo
+echo "==> Size check (budget: 500 KB per SVG export)"
+find "$ASSETS" "$STATIC" -name '*.svg' -size +500k -printf '    OVER BUDGET: %p (%s bytes)\n' | tee /tmp/oversize
+[ ! -s /tmp/oversize ] || { echo "Reduce embedded raster logos or their resolution."; exit 1; }
+echo "    all exports within budget"
+```
+
+Run it:
+
+```bash
+chmod +x scripts/export-diagrams.sh
+./scripts/export-diagrams.sh
+ls -lh website/static/images/diagrams/ website/assets/diagrams/
+```
+
+Expected: four SVGs plus the regenerated PNG; the size check passes.
+
+- [ ] **Step 6: Build and verify the palette applied**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -404,11 +525,11 @@ grep -c "primary-lightness: 26%" website/public/css/*.css
 
 Expected: build exits 0; the grep returns at least 1.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add website/assets website/layouts website/static
-git commit -m "docs(site): apply the ogenki palette and static assets
+git add website/assets website/layouts website/static scripts/export-diagrams.sh docs/architecture/img
+git commit -m "docs(site): apply the ogenki palette, static assets and diagram exports
 
 Accent derived rather than copied: Hextra builds its scale from
 --primary-lightness and uses primary-600 for links, which is 0.9x lightness.
@@ -1517,21 +1638,51 @@ requirement, and Flux source sharding."
 
 **Files:**
 - Create: `website/content/docs/reference/{repository-layout,technology-stack,commands,ci-workflows,glossary,further-reading}.md`
-- Move: `docs/platform-constitution.md` → `website/content/docs/reference/platform-constitution.md`
+- Modify (in place, do **not** move): `docs/platform-constitution.md` — add front matter only
 - Read: `README.md` §Repository Structure, `docs/technology-choices.md` §Technology Stack, `CLAUDE.md`, `docs/ci-workflows.md`, `mise.toml`
 
 **Interfaces:**
 - Produces: `/docs/reference/platform-constitution/`, which `.claude/rules/platform-constitution.md` is re-pointed at in Task 17.
 
-- [ ] **Step 1: Move the constitution with git history preserved**
+- [ ] **Step 1: Publish the constitution by mounting it, not by moving it**
+
+**Do not `git mv` this file.** It has 50 inbound references — 37 inside the read-only `docs/specs/`
+archive, which was already rewritten for this exact path two weeks ago — and it is the source of
+truth that `.claude/rules/platform-constitution.md` loads. Task 1's `hugo.yaml` already carries the
+single-file mount that publishes it at `/docs/reference/platform-constitution/`.
+
+Confirm the mount is present and then add front matter **in place**, at the very top of
+`docs/platform-constitution.md`, above the existing `# Platform Constitution` heading:
 
 ```bash
-git mv docs/platform-constitution.md website/content/docs/reference/platform-constitution.md
+grep -A2 "platform-constitution" website/hugo.yaml
 ```
 
-Then add the front matter at the top of the file (`title: Platform Constitution`, `weight: 50`, a description, `lastVerified: 2026-08-20`). Do not otherwise edit the body — it is a governance document and the agent rules load it.
+Expected: the `source: ../docs/platform-constitution.md` mount entry.
 
-- [ ] **Step 2: Write `technology-stack.md`**
+```yaml
+---
+title: Platform Constitution
+weight: 60
+description: The non-negotiable rules every design, composition and manifest is checked against.
+lastVerified: 2026-08-20
+---
+```
+
+Change nothing else in the file. GitHub renders the front matter as a small table above the content,
+which is cosmetic and harmless; `.claude/rules` reads the file unchanged.
+
+- [ ] **Step 2: Verify nothing broke and the page renders**
+
+```bash
+./scripts/validate-links.sh
+cd website && mise exec -- hugo --minify --gc && cd ..
+test -f website/public/docs/reference/platform-constitution/index.html && echo "constitution published"
+```
+
+Expected: link check exits 0 with all 50 references intact, and the page exists in `public/`.
+
+- [ ] **Step 3: Write `technology-stack.md`**
 
 The table from `docs/technology-choices.md` §Technology Stack, with every version re-verified:
 
@@ -1543,7 +1694,7 @@ grep -rhn "version:" --include="helmrelease*.yaml" infrastructure/base observabi
 
 A version table that is wrong is worse than absent. If a version cannot be resolved from the repository, name the source of truth rather than a number.
 
-- [ ] **Step 3: Write `commands.md`**
+- [ ] **Step 4: Write `commands.md`**
 
 From `CLAUDE.md` §Common Commands and §Validation Commands. Every command verified to exist:
 
@@ -1552,7 +1703,7 @@ grep -n 'name *=' opentofu/workflows.tm.hcl opentofu/eks/init/workflows.tm.hcl o
 ls scripts/
 ```
 
-- [ ] **Step 4: Write `repository-layout.md` and `ci-workflows.md`**
+- [ ] **Step 5: Write `repository-layout.md` and `ci-workflows.md`**
 
 `repository-layout.md` from `README.md` §Repository Structure, using the `{{< filetree/container >}}` shortcode. Verify against `ls`.
 
@@ -1565,11 +1716,11 @@ ls .github/workflows/
 
 Note that the new `docs-check` and `docs` workflows exist and what they gate.
 
-- [ ] **Step 5: Write `glossary.md`**
+- [ ] **Step 6: Write `glossary.md`**
 
 Definitions, each one or two sentences: claim, composition, XR, XRD, EPI, stack, reconciliation, drift, tenant, prefix delegation, GitOps, managed resource, Configuration package, shard.
 
-- [ ] **Step 6: Write `further-reading.md`**
+- [ ] **Step 7: Write `further-reading.md`**
 
 The destination for the README's §Learning Resources, which Task 17 removes. Two sections:
 
@@ -1589,7 +1740,7 @@ done
 
 Expected: every line reports `200`.
 
-- [ ] **Step 7: Verify**
+- [ ] **Step 8: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1597,16 +1748,20 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 ./scripts/validate-links.sh
 ```
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add website/content/docs/reference docs/platform-constitution.md
-git commit -m "docs(reference): write the reference lane and move the constitution
+git commit -m "docs(reference): write the reference lane, publish the constitution
 
-Constitution moved with git mv so its history survives; .claude/rules is
-re-pointed in the cleanup commit. Every version in the stack table re-derived
-from mise.toml, config.tm.hcl and the HelmReleases rather than copied from
-technology-choices.md, which had drifted."
+The constitution is mounted, not moved. It carries 50 inbound references, 37 of
+them in the read-only spec archive that was rewritten for this same path two
+weeks ago, and .claude/rules loads it as the source of truth — so the repository
+path stays stable and Hugo publishes it in place.
+
+Every version in the stack table re-derived from mise.toml, config.tm.hcl and
+the HelmReleases rather than copied from technology-choices.md, which had
+drifted."
 ```
 
 ---
@@ -1624,11 +1779,13 @@ technology-choices.md, which had drifted."
 - [ ] **Step 1: Enumerate the inbound links before moving anything**
 
 ```bash
-git grep -n "decisions/000" -- '*.md' > /tmp/adr-inbound.txt
-wc -l /tmp/adr-inbound.txt
+git grep -l "decisions/000" -- '*.md' | tee /tmp/adr-inbound.txt | wc -l
 ```
 
-Expected: 12 files. This list is the checklist for Step 4.
+14 files at the time of writing — 8 in the read-only `docs/specs/` archive, plus `CLAUDE.md`,
+`.claude/rules/`, and this plan and its design document, which cite the ADRs themselves. Do not trust
+that number: run the command and treat its output as the checklist for Step 4. Every hit is rewired;
+none is allowlisted.
 
 - [ ] **Step 2: Move the files**
 
@@ -1675,10 +1832,14 @@ Expected: all exit 0, and the final grep finds nothing.
 git add -A website/content/docs/decisions docs CLAUDE.md .claude
 git commit -m "docs(decisions): move the ADRs into the site and rewire inbound links
 
-git mv preserves history. All 12 inbound references rewritten rather than
-allowlisted — eight of them live in the read-only spec archive, where a path
-grep cannot see relative-link rot, which is exactly the failure validate-links
-exists to catch."
+git mv preserves history. Every inbound reference rewritten rather than
+allowlisted — eight live in the read-only spec archive, where a path grep cannot
+see relative-link rot, which is exactly the failure validate-links exists to
+catch.
+
+Unlike the platform constitution, the ADRs move: 14 inbound files against the
+constitution's 50, and none of them is an agent contract that needs a stable
+repository path."
 ```
 
 ---
@@ -1687,45 +1848,20 @@ exists to catch."
 
 **Files:**
 - Create: `docs/architecture/{bootstrap-stages,flux-dependency-tree,request-path,secrets-and-pki,app-claim-expansion,observability-flow}.drawio`
-- Create: `scripts/export-diagrams.sh`
-- Create: `website/assets/diagrams/*.svg`, `website/static/images/diagrams/platform-overview.svg`
+- Modify: `scripts/export-diagrams.sh` (created in Task 2 — extend its `SINGLE_PAGE` array)
+- Create: `website/assets/diagrams/{bootstrap-stages,flux-dependency-tree,request-path,secrets-and-pki,app-claim-expansion,observability-flow}.svg`
 - Modify: `docs/architecture/README.md`
 
 **Interfaces:**
 - Consumes: the content pages from Tasks 5–14, which reference these image paths.
 - Produces: the SVG assets the landing page and each platform section embed.
 
-- [ ] **Step 1: Write the export script**
+- [ ] **Step 1: Extend the export script**
 
-`scripts/export-diagrams.sh`:
+`scripts/export-diagrams.sh` already exists from Task 2 and handles `platform-overview` and the
+three `llm-platform` pages. Add the six new names to its (currently empty) `SINGLE_PAGE` array:
 
 ```bash
-#!/usr/bin/env bash
-#
-# export-diagrams.sh — regenerate every diagram export from its .drawio source.
-#
-# Sources live in docs/architecture/ (one topic per file, kebab-case, ogenki
-# preset). Exports are written where each consumer needs them:
-#   - website/assets/diagrams/     for docs pages
-#   - website/static/images/diagrams/  for the landing page (no asset pipeline)
-#   - docs/architecture/img/       PNG, only where GitHub also renders it
-#
-# SVG is the site format. The PNG-only rule recorded in docs/architecture/README.md
-# exists because GitHub's sanitizer strips <foreignObject> text from drawio SVG,
-# which does not apply to a Hugo site.
-#
-# Requires the draw.io desktop app on PATH.
-
-set -euo pipefail
-cd "$(dirname "$0")/.."
-
-command -v drawio >/dev/null || { echo "drawio not on PATH — install the desktop app"; exit 1; }
-
-SRC="docs/architecture"
-ASSETS="website/assets/diagrams"
-STATIC="website/static/images/diagrams"
-mkdir -p "$ASSETS" "$STATIC"
-
 SINGLE_PAGE=(
   bootstrap-stages
   flux-dependency-tree
@@ -1734,39 +1870,19 @@ SINGLE_PAGE=(
   app-claim-expansion
   observability-flow
 )
-
-for name in "${SINGLE_PAGE[@]}"; do
-    echo "==> $name.svg"
-    drawio -x -f svg -b 10 -o "$ASSETS/$name.svg" "$SRC/$name.drawio"
-done
-
-# platform-overview is embedded in both the site and the GitHub README, so it
-# needs both formats and lands in static/ for the home layout.
-echo "==> platform-overview (svg + png)"
-drawio -x -f svg -b 10 -o "$STATIC/platform-overview.svg" "$SRC/platform-overview.drawio"
-drawio -x -f png -s 2 -b 10 -o "$SRC/img/platform-overview.png" "$SRC/platform-overview.drawio"
-
-for i in 0 1 2; do
-    echo "==> llm-platform page $i"
-    drawio -x -f svg -b 10 --page-index "$i" \
-        -o "$ASSETS/llm-platform-$((i + 1)).svg" "$SRC/llm-platform.drawio"
-done
-
-echo
-echo "==> Size check (budget: 500 KB per new export)"
-find "$ASSETS" "$STATIC" -name '*.svg' -size +500k -printf '    OVER BUDGET: %p (%s bytes)\n' | tee /tmp/oversize
-[ ! -s /tmp/oversize ] || { echo "Reduce embedded raster logos or their resolution."; exit 1; }
-echo "    all exports within budget"
 ```
 
-- [ ] **Step 2: Make it executable and confirm it runs against the existing sources**
+Change nothing else in the script — the export loop, the PNG special case and the 500 KB size check
+are already correct.
+
+- [ ] **Step 2: Confirm the script still runs against the existing sources**
 
 ```bash
-chmod +x scripts/export-diagrams.sh
 ./scripts/export-diagrams.sh
 ```
 
-Expected: `platform-overview` and the three `llm-platform` pages export; the six new ones fail because their sources do not exist yet. Comment out the `SINGLE_PAGE` loop for this run, or create empty sources first.
+Expected: it fails on the first new name, because no `.drawio` source exists yet. That failure is the
+signal to write them; it is not a bug in the script.
 
 - [ ] **Step 3: Author the six diagrams**
 
@@ -1817,7 +1933,7 @@ Then run `hugo server` and confirm each diagram renders and zooms in both light 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add docs/architecture website/assets/diagrams website/static/images/diagrams scripts/export-diagrams.sh website/content
+git add docs/architecture website/assets/diagrams scripts/export-diagrams.sh website/content
 git commit -m "docs(architecture): add six domain diagrams and one export command
 
 Every platform section now opens with a diagram, so the shape of a subsystem is
@@ -1825,8 +1941,8 @@ visible before any prose is read. app-claim-expansion is the one that shows what
 this repository is actually for: a single claim becoming nine objects.
 
 SVG for the site — the PNG-only rule was a GitHub sanitizer constraint that does
-not apply to Hugo. export-diagrams.sh replaces the hand-copied per-file drawio
-invocations and enforces the 500 KB budget."
+not apply to Hugo. export-diagrams.sh now covers all nine sources and enforces
+the 500 KB budget."
 ```
 
 ---
@@ -1935,10 +2051,14 @@ Expected: at least 7.
 - [ ] **Step 7: Re-point the agent-facing files**
 
 ```bash
-git grep -n "docs/platform-constitution.md\|docs/tailscale-gateway-api.md\|docs/opentofu.md\|docs/crossplane.md\|docs/observability.md\|docs/ci-workflows.md\|docs/apps-user-guide.md\|docs/gitops.md\|docs/ingress.md\|docs/ai.md" -- CLAUDE.md '.claude/**'
+git grep -n "docs/tailscale-gateway-api.md\|docs/opentofu.md\|docs/crossplane.md\|docs/observability.md\|docs/ci-workflows.md\|docs/apps-user-guide.md\|docs/gitops.md\|docs/ingress.md\|docs/ai.md" -- CLAUDE.md '.claude/**'
 ```
 
-Rewrite each hit. `docs/platform-constitution.md` becomes `website/content/docs/reference/platform-constitution.md`. Paths that moved into the site and have no agent-facing role become the published URL instead.
+Rewrite each hit to the published URL, e.g. `docs/gitops.md` → `https://cnref.ogenki.io/docs/platform/gitops/`.
+
+**`docs/platform-constitution.md` is not in this list and must not be rewritten.** It was published
+by mount in Task 14, not moved; its repository path is deliberately stable and 50 references depend
+on it. If the grep above returns constitution hits, leave them alone.
 
 - [ ] **Step 8: Verify the whole repository**
 
@@ -2029,29 +2149,39 @@ grep -rln "aws\|AWS\|EKS" website/content/docs/platform/gitops website/content/d
 
 Each hit must be a deliberate reference to the current implementation, not an assumption baked into a page that ADR-0007 says should be cloud-neutral. Fix any that are not.
 
-- [ ] **Step 7: Open the pull request**
+- [ ] **Step 7: Open the final pull request**
+
+This is PR 3 of three. PRs 1 and 2 are already merged; see *Three pull requests* in Global
+Constraints for what each carried.
 
 ```bash
-git push -u origin feat/docs-hugo
-gh pr create --title "docs: publish the documentation as a Hugo site at cnref.ogenki.io" --body "$(cat <<'BODY'
-Publishes the repository's documentation as a searchable Hugo + Hextra site,
-reorganised into audience lanes, with every page verified against the repository
-rather than moved as-is.
+git push -u origin feat/docs-cleanup
+gh pr create --title "docs: retire docs/ into the site and launch cnref.ogenki.io" --body "$(cat <<'BODY'
+Final PR of three. Retires `docs/` into the published site and rewires every
+consumer.
+
+- PR 1 — site foundation (Hugo, Hextra, palette, CI, landing page)
+- PR 2 — all content and diagrams
+- PR 3 — **this one**: retire `docs/`, shrink the README, rewire, launch
 
 Design: `docs/superpowers/specs/2026-08-20-docs-hugo-site-design.md`
 Plan: `docs/superpowers/plans/2026-08-20-docs-hugo-site.md`
 
 ## What changed
 
-- `website/` — Hugo site, Hextra as a Hugo Module, no npm toolchain
-- `docs/` retires to `architecture/`, `specs/`, `superpowers/`; everything
-  reader-facing is published
+- `docs/` retires to `architecture/`, `specs/`, `superpowers/` — everything
+  reader-facing is now published at cnref.ogenki.io
 - 703 lines of OpenBao documentation promoted out of `opentofu/openbao/*/docs/`
-- `ingress.md` and `tailscale-gateway-api.md` merged; each topic has one owner
-- Six new diagrams, one per platform domain
-- `observability.md` rebuilt from the manifests — it had drifted since November
-- New: fork-and-adapt, add-a-cloud-provider, how-this-is-built, cilium, glossary
-- The IA already has a place for GCP, per ADR-0007
+- README shrunk from 335 to ~120 lines; it points at the site rather than
+  duplicating it
+- `validate-links.sh` no longer walks `website/content` — internal links there
+  are `relref` shortcodes it cannot resolve, and Hugo's `refLinksErrorLevel`
+  already fails the build on a dead ref. Each gate owns exactly one tree.
+- `.linkcheck-allow` is empty for the first time
+
+The platform constitution is deliberately **not** moved: it is published by a
+single-file Hugo mount, because 50 files reference its repository path and
+`.claude/rules` loads it as the source of truth.
 
 ## Verification
 
@@ -2102,12 +2232,25 @@ Hard dependencies:
 | 17 (cleanup) | **all content tasks** | it deletes the sources |
 | 18 | 17 | it is the final gate |
 
-**Recommended order:** 1 → 2 → 3 → 4 → **15** → **14** → 5 → 6 → 8 → 7 → 10 → 9 → 11 → 12 → 13 → 16 → 17 → 18.
+**Recommended order, with PR boundaries:**
 
-Decisions and Reference move first because almost everything links into them and both are cheap —
-15 is a `git mv` plus front matter, 14 is largely re-derivation from files that already exist.
-Security precedes networking, and observability precedes the developer platform, for the same
+```
+PR 1  feat/docs-hugo      1 → 2 → 3 → 4                     site live, empty
+                          ── merge, then branch from main ──
+PR 2  feat/docs-content   15 → 14 → 5 → 6 → 8 → 7 → 10      content + diagrams
+                             → 9 → 11 → 12 → 13 → 16
+                          ── merge, then branch from main ──
+PR 3  feat/docs-cleanup   17 → 18                           retire docs/, launch
+```
+
+Decisions and Reference come first in PR 2 because almost everything links into them and both are
+cheap — 15 is a `git mv` plus front matter, 14 is largely re-derivation from files that already
+exist. Security precedes networking, and observability precedes the developer platform, for the same
 reason: the link target should exist before the link.
+
+Task 16 (diagrams) sits at the end of PR 2 rather than in PR 3 so that no merged state of `main`
+ever serves a content page with a missing image. Task 2 already exported `platform-overview.svg` for
+the same reason — PR 1's landing page embeds it.
 
 Genuinely parallelisable, once 15 and 14 are done: **6, 8, 10, 11** have no cross-links between
 them.
