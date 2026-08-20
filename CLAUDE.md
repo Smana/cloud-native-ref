@@ -58,7 +58,7 @@ Two independent gates govern the self-hosted LLM platform; both must be released
 | AWS (S3 Files filesystem + IAM) | `opentofu/llm-platform/` Terramate stack tagged `opt-in`, `$TM_LLM_PLATFORM_ENABLED` env-var guard in `workflows.tm.hcl` | skipped | `TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy` |
 | Kubernetes (vLLM router, NVIDIA plugin, GPU NodePool, LLM apps, LLM EPI) | `clusters/mycluster-0/llm-platform.yaml` umbrella Flux Kustomization with `spec.suspend: true` | skipped | `flux resume kustomization llm-platform -n flux-system` |
 
-The umbrella Kustomization aggregates 5 children under `clusters/mycluster-0-llm-platform/` (kept a sibling of `clusters/mycluster-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/mycluster-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
+The umbrella Kustomization aggregates 8 children under `clusters/mycluster-0-llm-platform/` (kept a sibling of `clusters/mycluster-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/mycluster-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
 
 **Autoscaling design** (composition v0.5.0+, [SPEC-001](docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)): every model defaults `min=1` with a KEDA `ScaledObject` driven by leading vLLM saturation metrics — `running/max-num-seqs` ratio + `kv_cache_usage_perc`. The legacy KEDA HTTP add-on (proxy in the data path, lagging request-count trigger) is no longer used; AI Gateway routes directly to each vLLM Service.
 
@@ -313,8 +313,8 @@ Two properties are load-bearing:
 - **`skipMissingSchemas: false`** (`.fluxschema.yml`) — an unknown Kind *fails the build*. It
   does not get skipped. The previous kubeconform setup ran with `-ignore-missing-schemas`, so
   every `cloud.ogenki.io` claim went unvalidated for the life of the repo.
-- **Polaris audits rendered charts, not raw files.** The repo has 2 raw Deployments; the
-  rendered bundle has 70 controllers. Pointing a best-practices gate at the source tree checks
+- **Polaris audits rendered charts, not raw files.** The repo has 1 raw Deployment; the
+  rendered bundle has ~69 controllers. Pointing a best-practices gate at the source tree checks
   almost nothing.
 
 The schema catalog (`.schemas/`) and the bundle (`.bundle/`) are generated on every run and are
