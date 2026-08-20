@@ -9,12 +9,3 @@ docs/app-wizard.md	assets/app-wizard/02-advanced.png
 docs/app-wizard.md	assets/app-wizard/03-validation.png
 docs/app-wizard.md	assets/app-wizard/04-render-preview.png
 docs/app-wizard.md	assets/app-wizard/05-pull-request.png
-#
-# Hugo static-root image reference, not a repo-relative link. Hugo resolves
-# unprefixed image paths in content against the site root (website/static/),
-# not against the content file's directory, so this checker's repo-relative
-# model false-positives on it. Target exists at
-# website/static/images/diagrams/platform-overview.svg and is confirmed
-# resolving in the built output (website/public/images/diagrams/…) by `hugo
-# --minify --gc`.
-website/content/_index.md	images/diagrams/platform-overview.svg

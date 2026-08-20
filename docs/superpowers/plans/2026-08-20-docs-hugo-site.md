@@ -868,7 +868,7 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
 <h2 style="margin-top:3.5rem">What this repository is for</h2>
 
 {{< hextra/feature-grid cols="2" >}}
-  {{< hextra/feature-card link="docs/get-started/" icon="rocket-launch" title="Bootstrap a platform"
+  {{< hextra/feature-card link="docs/get-started/" icon="lightning-bolt" title="Bootstrap a platform"
     subtitle="Three sequential stages — network, secrets, Kubernetes — driven by OpenTofu and Terramate. One command per stage, and the cluster comes up with Cilium, Flux and Karpenter already running." >}}
   {{< hextra/feature-card link="docs/concepts/" icon="academic-cap" title="Learn the concepts"
     subtitle="GitOps as a dependency hierarchy rather than a slogan. Progressive complexity in a platform API. Zero trust that is enforced by policy, not asserted in a README." >}}
@@ -2036,9 +2036,17 @@ ls docs/
 
 Expected exactly: `architecture`, `specs`, `superpowers`. Anything else is unfinished migration.
 
-- [ ] **Step 4: Scope the link checker**
+- [ ] **Step 4: Confirm the link checker is already scoped**
 
-In `scripts/validate-links.sh`, change the file list so the site tree is excluded, and record why:
+`scripts/validate-links.sh` was scoped in Task 3 — the moment `website/content` gained pages, the
+checker began false-positiving on Hugo's site-root-relative asset paths. Verify it is still in place
+rather than re-doing it:
+
+```bash
+grep -n "website/content/" scripts/validate-links.sh
+```
+
+Expected: the filter line and its explanatory comment. If missing, restore it:
 
 ```python
 files = subprocess.run(['git', 'ls-files', '*.md'],

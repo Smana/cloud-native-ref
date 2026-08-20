@@ -18,6 +18,12 @@
 # Skipped by design: absolute URLs, anchors, absolute paths, template placeholders, and
 # anything inside a fenced code block or an inline code span (documentation samples are
 # not navigation).
+#
+# Also skipped by design: the whole `website/content/` tree. That is Hugo's, and its
+# link model is different — `relref` shortcodes this regex cannot resolve, and
+# site-root-relative asset paths rather than file-relative ones. Hugo's own
+# `refLinksErrorLevel: ERROR` fails the build on a dead ref, so that tree is gated
+# harder there than here. Two gates, one tree each, no overlap.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -30,6 +36,12 @@ import os, re, subprocess
 
 files = subprocess.run(['git', 'ls-files', '*.md'],
                        capture_output=True, text=True).stdout.split()
+# website/content is Hugo's tree, and this checker's model does not fit it:
+# internal links there are `relref` shortcodes it cannot resolve, and asset
+# paths are site-root-relative, not relative to the file's directory. Hugo
+# already gates that tree harder than this script could — refLinksErrorLevel:
+# ERROR fails the build on a dead ref — so each gate owns exactly one tree.
+files = [f for f in files if not f.startswith('website/content/')]
 link = re.compile(r'\[[^\]]*\]\(([^)#\s]+)(?:#[^)\s]*)?\)')
 fence = re.compile(r'^\s*(```|~~~)')
 # inline code spans hold illustrative links, not navigation — strip before matching
