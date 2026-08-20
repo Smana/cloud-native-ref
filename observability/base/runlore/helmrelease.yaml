@@ -219,6 +219,17 @@ spec:
           dedup:
             window: 30m
       investigation:
+        # The 10m default is a poor fit for this provider. z.ai generates at
+        # ~20-30 tok/s and the investigator emits ~1660 output tokens per turn
+        # (measured: runlore_investigation_output_tokens_sum 9968 over 6 calls),
+        # so ONE model call costs 60-100s. Six calls consumed the entire 10m and
+        # the investigation died with confidence=0, root_causes=0.
+        #
+        # Latency here is dominated by OUTPUT generation, not input: the same
+        # model answers a 14.7k-token prompt in ~12s, and adding all 21 tool
+        # definitions changes nothing (13.3s). The loop needs ~12-20 steps, which
+        # simply does not fit in 10 minutes at this generation speed.
+        timeout: 30m
         # Recurrence cooldown (runlore#270): a trigger answered CONCLUSIVELY less
         # than this long ago is not re-investigated — no model call, no duplicate
         # notification. Complements dedup above: dedup keys on the alert
@@ -307,7 +318,13 @@ spec:
         # because the point of the demo is the quality of the answer; drop it to a
         # cheaper model if this outlives the demo.
         chat:
-          model: glm-5.3
+          # glm-5-turbo, not the investigator's model. Chat answers one question
+          # against an already-written report, so it wants latency, not depth.
+          # Measured on a realistic thread turn (report + question, 3 runs each,
+          # median): glm-5-turbo 4.7s, glm-4.6 7.7s, glm-5.1 10.0s, air 10.1s.
+          # turbo was also the most concise (99 output tokens vs 777 for glm-4.6)
+          # and still answered correctly — and output length drives latency here.
+          model: glm-5-turbo
       catalog:
         dir: /var/lib/runlore/catalog
         git:
