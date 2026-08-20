@@ -288,26 +288,43 @@ spec:
       telemetry:
         metrics_enabled: true
       model:
-        # Gemini, not GLM. The z.ai account's request quota is too small for an
-        # agent loop: a single investigation exhausted it and every subsequent
-        # call returned `429 code 1302 Rate limit reached for requests`, which
-        # RunLore surfaces as "investigation failed; retrying" until it gives up.
+        # GLM via Z.ai OpenAI-compatible API. Any provider name other than
+        # anthropic/gemini falls back to the OpenAI wire protocol (NewModelClient),
+        # so provider: openai + base_url is the correct way to point at it.
+        provider: openai
+        # glm-5.3, not 5.2. Measured 2026-08-19 against an investigation-shaped
+        # prompt (evidence blob + "what is the root cause"), 3 calls each:
+        # glm-5.3 mean 3.7s (2.7-5.1s); glm-5.2 did not answer at all inside 180s.
+        # The live investigation running at the time averaged 25.3s per model
+        # request against a 20-step loop -- roughly ten minutes of model time for
+        # one incident, and getting worse. Confirmed served_as=glm-5.3 rather than
+        # silently aliased to an older model, which Z.ai has done before.
+        model: glm-5.3
+        base_url: https://api.z.ai/api/paas/v4/
+        api_key_env: GLM_API_KEY  # pragma: allowlist secret
+        # DEMO-SCOPED opt-in, and it spends money on a path other people trigger.
+        # PRESENT ⇒ an addressed thread message with no recognised prefix gets a
+        # model-authored answer; ABSENT ⇒ it gets a fixed "I can only record notes".
+        # Read plainly, from RunLore's own SECURITY.md: every addressed message
+        # that is not a `note:` costs exactly one model call, and every member of
+        # #alerts can send one. `note:` stays deterministic and free either way.
         #
-        # It is also far faster on the shape of request this loop makes. Measured
-        # on a realistic 12k-token investigation prompt, median of 2 runs:
-        #
-        #   gemini-3.5-flash 3.0s   gemini-2.5-flash 3.1s   gemini-3-flash 3.9s
-        #   glm-5.3 direct  ~12s    glm-5.3 inside the loop  60-100s per call
-        #
-        # 2.5-flash is the model this deployment ran on before the GLM switch
-        # (#1556), so it is the proven option rather than the newest one.
-        provider: gemini
-        model: gemini-2.5-flash
-        api_key_env: GEMINI_API_KEY  # pragma: allowlist secret
+        # `model` is named explicitly because the config refuses to infer it here.
+        # Verify may inherit the investigation model harmlessly — it runs once per
+        # investigation, on a path RunLore itself starts. Chat runs once per
+        # addressed message, on a path anyone can start, so silently inheriting a
+        # frontier model would make the cheapest way to enable this the most
+        # expensive way to run it. Named as glm-5.3 rather than something smaller
+        # because the point of the demo is the quality of the answer; drop it to a
+        # cheaper model if this outlives the demo.
         chat:
-          # Thread replies answer one question against an already-written report,
-          # so they want latency over depth. Same model here is already ~3s.
-          model: gemini-2.5-flash
+          # glm-5-turbo, not the investigator's model. Chat answers one question
+          # against an already-written report, so it wants latency, not depth.
+          # Measured on a realistic thread turn (report + question, 3 runs each,
+          # median): glm-5-turbo 4.7s, glm-4.6 7.7s, glm-5.1 10.0s, air 10.1s.
+          # turbo was also the most concise (99 output tokens vs 777 for glm-4.6)
+          # and still answered correctly — and output length drives latency here.
+          model: glm-5-turbo
       catalog:
         dir: /var/lib/runlore/catalog
         git:
