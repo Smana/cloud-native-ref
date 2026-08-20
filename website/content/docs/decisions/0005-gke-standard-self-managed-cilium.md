@@ -1,4 +1,10 @@
-# ADR-0005: GKE Standard with self-managed Cilium (not Dataplane V2, not Autopilot)
+---
+title: GKE Standard with self-managed Cilium (not Dataplane V2, not Autopilot)
+linkTitle: ADR-0005
+weight: 50
+description: GCP clusters run GKE Standard with self-managed Cilium rather than Dataplane V2 or Autopilot, to keep Gateway API, Tailscale ingress, and default-deny CiliumNetworkPolicy unchanged.
+lastVerified: 2026-08-20
+---
 
 **Status**: Accepted
 **Date**: 2026-08-18

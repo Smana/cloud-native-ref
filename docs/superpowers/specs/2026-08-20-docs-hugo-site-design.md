@@ -3,7 +3,7 @@
 **Date:** 2026-08-20
 **Status:** design approved, plan pending
 **Branch:** `feat/docs-hugo`
-**Related:** [ADR-0007 Cloud abstraction boundaries](../../decisions/0007-cloud-abstraction-boundaries.md), [GCP Support design](2026-08-18-gcp-support-design.md), [Platform Constitution](../../platform-constitution.md)
+**Related:** [ADR-0007 Cloud abstraction boundaries](../../../website/content/docs/decisions/0007-cloud-abstraction-boundaries.md), [GCP Support design](2026-08-18-gcp-support-design.md), [Platform Constitution](../../platform-constitution.md)
 
 ---
 

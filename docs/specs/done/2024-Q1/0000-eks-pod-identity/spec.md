@@ -81,7 +81,7 @@ As a **platform operator**, I want to associate a single IAM role with service a
 - Clarifications: [clarifications.md](clarifications.md)
 - Summary (post-merge): [SUMMARY.md](SUMMARY.md)
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
-- Related ADR: [ADR-0002: EKS Pod Identity over IRSA](../../../../decisions/0002-eks-pod-identity-over-irsa.md)
+- Related ADR: [ADR-0002: EKS Pod Identity over IRSA](../../../../../website/content/docs/decisions/0002-eks-pod-identity-over-irsa.md)
 - KCL Module: `infrastructure/base/crossplane/configuration/kcl/eks-pod-identity/`
 - Usage: `security/base/epis/`
 - AWS Docs: [EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html)

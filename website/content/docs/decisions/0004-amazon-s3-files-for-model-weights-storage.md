@@ -1,4 +1,10 @@
-## ADR-0004: Use Amazon S3 Files for LLM Model Weights Storage
+---
+title: Use Amazon S3 Files for LLM Model Weights Storage
+linkTitle: ADR-0004
+weight: 40
+description: LLM model weights are mounted from an Amazon S3 Files POSIX file system instead of an init-container sync into emptyDir, dropping per-replica copies and the platform-wide extra disk.
+lastVerified: 2026-08-20
+---
 
 **Status**: Accepted
 **Date**: 2026-05-01
@@ -94,7 +100,7 @@ The original spec chose **S3 bucket + init-container `aws s3 sync` + local `empt
 ### Order of operations
 
 1. **OpenTofu stack** `opentofu/llm-platform/` — `aws_s3files_file_system.llm_models` over the existing bucket; `aws_s3files_access_point` (one shared by default); IAM role `xplane-llm-models-fs-access` with the EKS Pod Identity Agent trust policy. Outputs: `llm_models_fs_id`, `llm_models_fs_dns_name`, `llm_models_fs_role_arn`.
-2. **EnvironmentConfig refresh** `clusters/mycluster-0/environment-config.yaml` — fold the OpenTofu outputs alongside `clusterName` / `region`.
+2. **EnvironmentConfig refresh** `infrastructure/base/crossplane/configuration/environmentconfig.yaml` — fold the OpenTofu outputs alongside `clusterName` / `region`.
 3. **CSI driver install** — once AWS publishes the K8s integration (TBD: extension of `efs-csi-driver` or a dedicated `s3files-csi-driver`); HelmRelease under `infrastructure/base/`, dependency-ordered after `crossplane-providers`.
 4. **InferenceService composition update** — `weightsBucket` → `weightsFileSystem`; drop init-container; drop `models` `emptyDir`; render PVC referencing the new `StorageClass`.
 5. **Cilium egress** — drop the temporary `toEntities: world` on TCP 443 once preload no longer hits the HF Xet CDN; replace with a tight `huggingface.co` API allowlist.
@@ -121,7 +127,7 @@ If S3 Files latency under safetensors `mmap` proves problematic, revert to **Opt
 - [Mountpoint for Amazon S3 CSI driver](https://github.com/awslabs/mountpoint-s3-csi-driver) — Option 2 / rollback target
 - ADR-0002: [Use EKS Pod Identity over IRSA](0002-eks-pod-identity-over-irsa.md)
 - ADR-0003: [Use vLLM Production Stack over KServe + llm-d](0003-vllm-production-stack-over-kserve.md)
-- Spec / Plan / Clarifications: the pre-SDD drafts at `docs/plans/self-hosted-llm-platform/`
+- Spec / Plan / Clarifications: the pre-SDD drafts formerly at docs/plans/self-hosted-llm-platform/
   (`02-spec-draft.md` — FR-011, whose implementation this ADR supersedes; `03-plan-draft.md` —
   Phase 4 split; `04-clarifications-draft.md` — CL-8 storage layer, ratified, and CL-9 mount
   mechanism, this ADR). Removed on 2026-08-18 with the rest of the retired SDD machinery;

@@ -53,6 +53,6 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
 
 <p style="margin-top:3.5rem;font-size:0.9375rem;color:var(--ogenki-external)">
 Runs on <strong>AWS EKS</strong> today. A second cloud is designed but not yet
-implemented — see <a href="docs/decisions/0007-cloud-abstraction-boundaries/">ADR-0007</a>
+implemented — see <a href="{{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}}">ADR-0007</a>
 for where the platform draws its cloud boundary.
 </p>

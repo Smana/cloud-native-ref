@@ -1,4 +1,10 @@
-# ADR-0006: GKE node auto-provisioning (ComputeClass) over Karpenter on GCP
+---
+title: GKE node auto-provisioning (ComputeClass) over Karpenter on GCP
+linkTitle: ADR-0006
+weight: 60
+description: GCP nodes autoscale via GKE node auto-provisioning (ComputeClass) rather than Karpenter, because ComputeClass can taint every new node before scheduling, which self-managed Cilium requires.
+lastVerified: 2026-08-20
+---
 
 **Status**: Accepted
 **Date**: 2026-08-18

@@ -179,7 +179,7 @@ superpowers:brainstorming        -> docs/superpowers/specs/YYYY-MM-DD-<topic>-de
 
 **Key documents**:
 - [Platform Constitution](docs/platform-constitution.md) — non-negotiable principles (auto-loaded via `.claude/rules/platform-constitution.md`)
-- [Architecture Decision Records](docs/decisions/) — cross-cutting technology choices
+- [Architecture Decision Records](website/content/docs/decisions/) — cross-cutting technology choices
 - [Repo deltas](.claude/rules/superpowers.md) — artifact locations and the gate that applies at each phase
 - [Spec archive](docs/specs/) — output of the in-house SDD workflow retired on 2026-08-18, read-only
 

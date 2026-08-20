@@ -318,7 +318,7 @@ There is **no NVIDIA device plugin DaemonSet**, and none is needed: the Bottlero
 **Weights.** An Amazon S3 Files filesystem (POSIX over S3) is mounted RWX at `/models` by both the preload Job
 and the serving pod, each with `subPath: <claim-name>`. One persistent filesystem — no `aws s3 sync`, no init
 container — and weights survive pod churn, so a scale-up reads from a warm mount instead of re-downloading.
-See [ADR-0004](decisions/0004-amazon-s3-files-for-model-weights-storage.md).
+See [ADR-0004](../website/content/docs/decisions/0004-amazon-s3-files-for-model-weights-storage.md).
 
 ---
 
@@ -376,8 +376,8 @@ An honest list. None of these are hidden behind a green checkmark.
 - [SPEC-006 — GenAI observability for Envoy AI Gateway](specs/done/2026-Q3/006-genai-observability-envoy-gateway/spec.md)
 
 **Decisions**
-- [ADR-0003 — vLLM Production Stack over KServe + llm-d](decisions/0003-vllm-production-stack-over-kserve.md)
-- [ADR-0004 — Amazon S3 Files for model-weights storage](decisions/0004-amazon-s3-files-for-model-weights-storage.md)
+- [ADR-0003 — vLLM Production Stack over KServe + llm-d](../website/content/docs/decisions/0003-vllm-production-stack-over-kserve.md)
+- [ADR-0004 — Amazon S3 Files for model-weights storage](../website/content/docs/decisions/0004-amazon-s3-files-for-model-weights-storage.md)
 
 **Operations**
 - [Composition API reference](https://github.com/Smana/crossplane-configuration/blob/main/apis/inferenceservice/kcl/README.md) — every field, default and CEL rule

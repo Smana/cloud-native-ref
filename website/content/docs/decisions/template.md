@@ -1,4 +1,10 @@
-# ADR-XXXX: [Decision Title]
+---
+title: ADR Template
+linkTitle: Template
+weight: 80
+description: Copy this template to start a new Architecture Decision Record.
+lastVerified: 2026-08-20
+---
 
 **Status**: Proposed | Accepted | Deprecated | Superseded by [ADR-XXXX]
 **Date**: YYYY-MM-DD

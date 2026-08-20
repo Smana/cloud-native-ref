@@ -131,7 +131,7 @@ infrastructure/base/crossplane/configuration/kcl/eks-pod-identity/
 
 ### Phase 4: ADR
 
-- [x] **T016**: Author ADR-0002 (`docs/decisions/0002-eks-pod-identity-over-irsa.md`)
+- [x] **T016**: Author ADR-0002 (`website/content/docs/decisions/0002-eks-pod-identity-over-irsa.md`)
 
 ### Deviations from plan
 
@@ -176,4 +176,4 @@ _None recorded for this retrospective migration._
 - Spec: [spec.md](spec.md)
 - Clarifications: [clarifications.md](clarifications.md)
 - Summary: [SUMMARY.md](SUMMARY.md)
-- ADR: [ADR-0002: EKS Pod Identity over IRSA](../../../../decisions/0002-eks-pod-identity-over-irsa.md)
+- ADR: [ADR-0002: EKS Pod Identity over IRSA](../../../../../website/content/docs/decisions/0002-eks-pod-identity-over-irsa.md)

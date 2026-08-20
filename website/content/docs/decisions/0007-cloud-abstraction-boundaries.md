@@ -1,4 +1,10 @@
-# ADR-0007: Cloud abstraction boundaries — cloud-shaped platform APIs, neutral developer APIs
+---
+title: Cloud abstraction boundaries — cloud-shaped platform APIs, neutral developer APIs
+linkTitle: ADR-0007
+weight: 70
+description: Platform-facing infrastructure APIs stay cloud-shaped per provider, while developer-facing APIs like App stay cloud-neutral, splitting the abstraction by audience instead of forcing one shape on both.
+lastVerified: 2026-08-20
+---
 
 **Status**: Accepted
 **Date**: 2026-08-18
@@ -175,5 +181,5 @@ constitution requirement, not an AWS detail.
 - [ADR-0005](0005-gke-standard-self-managed-cilium.md), [ADR-0006](0006-nap-computeclass-over-karpenter.md)
 - [GKE Workload Identity Federation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) — direct KSA principal binding
 - [GCP support design](../superpowers/specs/2026-08-18-gcp-support-design.md) — the fifteen workstreams this rule applies to
-- `EPI` composition: `infrastructure/base/crossplane/configuration/kcl/eks-pod-identity/`
-- `App` composition: `infrastructure/base/crossplane/configuration/kcl/app/`
+- `EPI` composition and `App` composition: both in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration),
+  pinned here via `infrastructure/base/crossplane/configuration/configuration-packages.yaml`

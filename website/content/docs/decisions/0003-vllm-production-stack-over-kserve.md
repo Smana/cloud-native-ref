@@ -1,4 +1,10 @@
-# ADR-0003: Use vLLM Production Stack over KServe + llm-d for v1 LLM Platform
+---
+title: Use vLLM Production Stack over KServe + llm-d for v1 LLM Platform
+linkTitle: ADR-0003
+weight: 30
+description: The self-hosted LLM platform uses the vLLM Production Stack router with LMCache instead of KServe + llm-d, to avoid a second Envoy layer and stay on the existing Crossplane/KCL composition pattern.
+lastVerified: 2026-08-20
+---
 
 **Status**: Accepted
 **Date**: 2026-04-30
@@ -156,8 +162,9 @@ The decision is already realised on branch `wip/self-hosted-ai-draft`:
 
 ## References
 
-- Spec: `docs/plans/self-hosted-ai/02-spec-draft.md`
-- Plan §6 "Alternatives considered": `docs/plans/self-hosted-ai/03-plan-draft.md`
+- Spec: pre-SDD draft `02-spec-draft.md`, removed 2026-08-18 with the rest of the retired
+  SDD machinery; recover with `git log --all -- docs/plans/self-hosted-llm-platform/`
+- Plan §6 "Alternatives considered": pre-SDD draft `03-plan-draft.md`, same archive
 - vLLM Production Stack: <https://github.com/vllm-project/production-stack>
 - vLLM Semantic Router (Iris) release notes: <https://vllm.ai/blog/vllm-sr-iris>
 - KServe v0.16 LLMInferenceService: <https://kserve.github.io/website/master/modelserving/v1beta1/llm/>
