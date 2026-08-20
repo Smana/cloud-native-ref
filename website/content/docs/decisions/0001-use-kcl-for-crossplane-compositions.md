@@ -140,4 +140,4 @@ Using KCL (Kusion Configuration Language) via `function-kcl` for composition log
 - [function-kcl GitHub](https://github.com/crossplane-contrib/function-kcl)
 - [KCL Mutation Bug #285](https://github.com/crossplane-contrib/function-kcl/issues/285)
 - [Blog: Going Further with Crossplane](https://blog.ogenki.io/post/crossplane_composition_functions/)
-- Existing compositions: `infrastructure/base/crossplane/configuration/kcl/{app,cloudnativepg,eks-pod-identity}/`
+- Existing compositions: when this decision was taken they lived under infrastructure/base/crossplane/configuration/kcl/ in this repository. They were extracted in 2026-08 and now live in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration), which this repository pins a released version of.
