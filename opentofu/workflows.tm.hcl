@@ -99,6 +99,10 @@ script "destroy" {
       # Single y/n prompt; cached for 10 min so `--reverse destroy` asks once.
       # Bypass with TM_DESTROY_CONFIRMED=true for CI.
       ["bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
+      # `destroy` is a standalone entrypoint: unlike `deploy` it can be the first
+      # tofu command run in a stack, so it has to init itself. Without this a lock
+      # file predating a new provider fails the whole `--reverse destroy` sweep.
+      [global.provisioner, "init", "-lock-timeout=5m"],
       # `-auto-approve`: confirmation already handled by the helper above —
       # without this flag tofu would prompt a second time.
       [global.provisioner, "destroy", "-auto-approve", "-var-file=variables.tfvars"],
