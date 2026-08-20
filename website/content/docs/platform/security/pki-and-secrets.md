@@ -20,16 +20,19 @@ Root CA  →  Intermediate CA  →  Issuer CA (OpenBao pki_private_issuer)  → 
 A Root CA at the top, an Intermediate CA in the middle, end-entity leaf
 certificates at the bottom. The Root CA issues only to the Intermediate; the
 Intermediate is what OpenBao's `pki_private_issuer` mount imports as its
-signing certificate and uses to issue every leaf. This minimises the Root
-CA's exposure — it never touches a running system — and keeps
+signing certificate and uses to issue every leaf, which keeps
 revocation/rotation scoped to the tier that actually changed.
 
 {{< callout type="warning" >}}
-The Root CA is generated offline and stored outside the cluster entirely —
-an air-gapped machine, an HSM, or a securely held USB device — never as a
-live OpenBao mount. Only the Intermediate's private key lives inside the
-platform (imported into `pki_private_issuer`), because that's the only tier
-that needs to sign on demand.
+The Root CA private key is **present in the live `pki_private_issuer`
+mount**, not held offline. `opentofu/openbao/management/pki.tf`'s
+`vault_pki_secret_backend_root_sign_intermediate` resource signs the
+Intermediate's CSR *inside* OpenBao — keeping the root offline would mean
+the CSR leaves OpenBao, gets signed elsewhere, and comes back, a manual step
+incompatible with `terramate script run deploy`
+(`opentofu/openbao/management/README.md`). This is an accepted trade-off
+**for this reference platform**; do not carry it into a deployment where the
+root CA matters.
 {{< /callout >}}
 
 ### Building the chain

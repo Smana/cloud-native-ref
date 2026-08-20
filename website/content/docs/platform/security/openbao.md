@@ -13,6 +13,15 @@ policies onto it, and this is the operational surface every other security
 page and the [Access]({{< relref "/docs/get-started/aws/access.md" >}}) guide
 build on.
 
+One secret predates both stacks: OpenBao's own server certificate — the leaf
+terminating TLS on `bao.priv.cloud.ogenki.io:8200`, see
+[PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md#building-the-chain" >}})
+— is generated offline and read from Secrets Manager at
+`certificates/priv.cloud.ogenki.io/openbao` (the `openbao_certificates_secret_name`
+default in `opentofu/openbao/cluster/variables.tf`, set explicitly in that
+stack's `variables.tfvars`) by `opentofu/openbao/cluster/` before the
+management stack in this page ever runs.
+
 {{< callout type="warning" >}}
 **OpenBao stays on the 2.6 line (currently 2.6.2), not pinned back to an
 older release.** 2.6.x carries [openbao/openbao#3411](https://github.com/openbao/openbao/issues/3411)
@@ -109,9 +118,21 @@ path "sys/storage/raft/snapshot" {
 ```
 
 Each role's credentials are minted once by Terraform and published to
-Secrets Manager under `openbao/cloud-native-ref/approles/<role>`, then synced
-into the cluster by External Secrets — see
+Secrets Manager — but not under one shared path pattern per role:
+
+| Role | Secrets Manager entry | Source |
+|---|---|---|
+| `cert-manager` | `openbao/cloud-native-ref/approles/cert-manager` | `variables.tfvars` (`cert_manager_approle_secret_name`) |
+| `snapshot-agent` | Secrets Manager secret ID "security/openbao/openbao-snapshot" — also carries `VAULT_ADDR` and `BUCKET_NAME`, not just the RoleID/SecretID pair | `variables.tf:112` default (`snapshot_approle_secret_name`), not overridden |
+
+then synced into the cluster by External Secrets — see
 [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
+The tenant-namespace `app` AppRole has no minted `SecretID`, and so no
+Secrets Manager entry, at all: nothing consumes it yet, and an unused live
+credential is worse than none (`opentofu/openbao/management/auth.tf`) — mint
+one by hand with `bao write -f -namespace=app auth/approle/role/app/secret-id`
+only when something needs it.
+
 Nothing mints an AppRole `SecretID` by hand outside that flow; a credential
 created outside the stack that manages every other credential drifts by
 construction.
@@ -172,12 +193,27 @@ root token from the recovery key, restores, and checks that
 `secret/check_timestamp` is recent enough to rule out restoring a stale
 backup over a good cluster. Run it as an **operator**, never as the CronJob —
 it needs `RECOVERY_KEYS_SECRET_ID` and AWS credentials that can read that
-secret, which the snapshot job's Pod Identity role is deliberately denied:
+secret, which the snapshot job's Pod Identity role is deliberately denied.
+
+The script itself does `export HOME=/snapshot`, unconditionally, before the
+first line of `restore` runs — the CronJob gets that for free from a mounted
+`emptyDir`, but a bare operator shell does not, and the recovery-token
+nonce-file write under `set -e` aborts the whole restore the instant `$HOME`
+isn't writable. Create it before invoking the script:
 
 ```bash
+sudo mkdir -p /snapshot && sudo chown "$(id -u):$(id -g)" /snapshot
+```
+
+The block below is self-contained — every variable the script needs is
+exported here, not assumed left over from the Operator Login section above:
+
+```bash
+export VAULT_ADDR="https://bao.priv.cloud.ogenki.io:8200"
+export VAULT_CACERT=opentofu/openbao/management/.tls/ca.pem
 export APPROLE_ROLE_ID=... APPROLE_SECRET_ID=...
 export RECOVERY_KEYS_SECRET_ID="openbao/cloud-native-ref/tokens/recovery"
-./scripts/openbao-snapshot.sh restore -a "https://bao.priv.cloud.ogenki.io:8200" \
+./scripts/openbao-snapshot.sh restore -a "${VAULT_ADDR}" \
   -b eu-west-3-ogenki-openbao-snapshot -s /tmp/bao.snap -d 8
 ```
 
