@@ -96,6 +96,7 @@ everything past it.
 
 {{< cards >}}
   {{< card link="/docs/platform/developer-platform/app/" title="The App claim" icon="cube" subtitle="Workers, cron, config and secrets, sidecars, storage, probes, routing, autoscaling, and observability." >}}
+  {{< card link="/docs/platform/developer-platform/app-field-reference/" title="App field reference" icon="table" subtitle="Every spec field, type, and default — the exhaustive reference behind the pages above." >}}
   {{< card link="/docs/platform/developer-platform/data-services/" title="Data services" icon="database" subtitle="PostgreSQL, Valkey, and S3 — provisioned inline with an App claim, wired automatically." >}}
   {{< card link="/docs/platform/developer-platform/app-wizard/" title="App Wizard" icon="sparkles" subtitle="A guided form that opens the same PR a hand-written claim would, with live validation and a render preview." >}}
 {{< /cards >}}

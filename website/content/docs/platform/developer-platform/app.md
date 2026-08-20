@@ -9,6 +9,8 @@ This page covers everything on an `App` claim past the minimal web service in
 [Get Started]({{< relref "/docs/get-started/first-app.md" >}}): the other two
 workload shapes, and every capability orthogonal to shape. Databases, cache,
 and object storage have their own page — [Data services]({{< relref "/docs/platform/developer-platform/data-services.md" >}}).
+For the exhaustive `spec` field list — every field, type, and default — see
+[App field reference]({{< relref "/docs/platform/developer-platform/app-field-reference.md" >}}).
 
 ## Background workers
 
