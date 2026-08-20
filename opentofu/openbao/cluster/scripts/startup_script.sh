@@ -151,7 +151,7 @@ if ${prom_exporter_enabled}; then
 useradd --system --no-create-home --shell /usr/sbin/nologin prometheus
 
 # renovate: datasource=github-releases depName=prometheus/node_exporter
-NODE_EXPORTER_VERSION=1.8.2
+NODE_EXPORTER_VERSION=1.12.1
 wget -q -O /tmp/node_exporter.tar.gz "https://github.com/prometheus/node_exporter/releases/download/v$NODE_EXPORTER_VERSION/node_exporter-$NODE_EXPORTER_VERSION.linux-amd64.tar.gz"
 tar -xzf /tmp/node_exporter.tar.gz -C /tmp
 mv "/tmp/node_exporter-$NODE_EXPORTER_VERSION.linux-amd64/node_exporter" /usr/local/bin/node_exporter
