@@ -28,7 +28,7 @@ script "deploy" {
     name        = "stage2-cilium-and-flux"
     description = "Disable VPC CNI/kube-proxy, install Cilium and Flux"
     commands = [
-      ["bash", "-c", "cd ../configure && ${global.provisioner} init"],
+      ["bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
       ["bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var=\"flux_git_ref=$${TF_VAR_flux_git_ref}\"}"],
     ]
   }
@@ -106,6 +106,10 @@ script "destroy" {
       # Single y/n prompt; cached for 10 min so `--reverse destroy` asks once.
       # Bypass with TM_DESTROY_CONFIRMED=true for CI.
       ["bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
+      # Init before anything is torn down: a lock file predating a new provider
+      # must fail here, not after Flux has been suspended. Same stack dir as the
+      # stage1-destroy-cluster job below, so that job inherits this init.
+      [global.provisioner, "init", "-lock-timeout=5m"],
       [
         "bash",
         "../../../scripts/eks-prepare-destroy.sh",
@@ -123,7 +127,7 @@ script "destroy" {
     name        = "stage2-destroy-addons"
     description = "Destroy Cilium and Flux (configure stack)"
     commands = [
-      ["bash", "-c", "cd ../configure && ${global.provisioner} init"],
+      ["bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
       ["bash", "-c", "cd ../configure && ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars"],
     ]
   }

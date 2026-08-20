@@ -84,6 +84,10 @@ script "destroy" {
     description = "Opentofu destroy"
     commands = [
       ["bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
+      # `destroy` is a standalone entrypoint: unlike `deploy` it can be the first
+      # tofu command run in a stack, so it has to init itself. Without this a lock
+      # file predating a new provider fails the whole `--reverse destroy` sweep.
+      [global.provisioner, "init", "-lock-timeout=5m"],
       # Needed even to tear down: the provider still has to configure before it
       # can plan the destroy.
       global.openbao_ca_cmd.args,
