@@ -140,13 +140,21 @@ via its own AppRole. Cluster-wide endpoints such as `sys/storage/raft/*` are cal
 
 ### GitOps with Flux
 
-Flux manages all Kubernetes resources through a dependency hierarchy:
+Flux manages all Kubernetes resources through a dependency hierarchy, broadly:
 
 1. **Namespaces** -> **CRDs** -> **Crossplane** -> **EKS Pod Identities**
 2. **Security** (External Secrets, Cert-Manager, Kyverno)
 3. **Infrastructure** (Cilium, DNS, Load Balancers)
 4. **Observability** (VictoriaMetrics, Grafana)
 5. **Applications** (Harbor, Headlamp, etc.)
+
+> **Simplified model — do not copy a `dependsOn` from it.** The real graph is
+> wider than this chain: Crossplane is three sequential Kustomizations, Karpenter
+> sits outside them, `infrastructure` depends on `karpenter` + `eks-pod-identities`
+> rather than on `security`, and several `flux/*` Kustomizations run in parallel.
+> Read `clusters/mycluster-0/` — or the derived graph at
+> [Platform → GitOps](https://cnref.ogenki.io/docs/platform/gitops/) — before
+> wiring a new component.
 
 ### Crossplane Resources
 

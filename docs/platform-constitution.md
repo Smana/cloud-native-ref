@@ -176,12 +176,26 @@ All cluster state is defined in Git. Manual `kubectl apply` is prohibited for pe
 
 ### 7.2 Flux Dependency Hierarchy
 
-Resources deploy in this order:
+Broadly, resources deploy in this order:
+
 1. Namespaces → CRDs → Crossplane → EKS Pod Identities
 2. Security (External Secrets, Cert-Manager, Kyverno)
 3. Infrastructure (Cilium, DNS, Load Balancers)
 4. Observability (VictoriaMetrics, Grafana)
 5. Applications
+
+**This is a simplified model, not the dependency graph.** It states the
+principle — foundations before the things that build on them — and is the right
+level for deciding roughly where a new component belongs. It is *not* accurate
+enough to copy a `dependsOn` from. The real graph is wider than a chain: the
+Crossplane stage is three sequential Kustomizations, Karpenter sits outside them,
+`infrastructure` depends on `karpenter` and `eks-pod-identities` rather than on
+`security`, and several `flux/*` self-management Kustomizations run in parallel.
+
+**Before setting `dependsOn` on anything, read the real graph**, derived from the
+manifests and kept current:
+[Platform → GitOps](https://cnref.ogenki.io/docs/platform/gitops/). When the two
+disagree, `clusters/mycluster-0/` wins.
 
 ### 7.3 HelmRelease Patterns
 
