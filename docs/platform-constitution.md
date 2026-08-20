@@ -1,3 +1,10 @@
+---
+title: Platform Constitution
+weight: 60
+description: The non-negotiable rules every design, composition and manifest is checked against.
+lastVerified: 2026-08-20
+---
+
 # Platform Constitution
 
 This document defines the non-negotiable principles that govern all designs and implementations in this platform. Every design MUST comply with these principles.
