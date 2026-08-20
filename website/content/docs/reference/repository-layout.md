@@ -13,49 +13,7 @@ umbrella) wires the overlay into the reconciliation graph. Infrastructure that
 predates Kubernetes — the VPC, EKS itself, OpenBao — lives under `opentofu/`
 instead, orchestrated by Terramate.
 
-{{< filetree/container >}}
-{{< filetree/folder name="opentofu" state="closed" >}}
-  {{< filetree/file name="network/ — VPC, subnets, Route53, Tailscale VPN" >}}
-  {{< filetree/file name="openbao/ — secrets management and private PKI cluster" >}}
-  {{< filetree/file name="eks/init/ — Stage 1: EKS cluster + bootstrap addons" >}}
-  {{< filetree/file name="eks/configure/ — Stage 2: Cilium + Flux" >}}
-  {{< filetree/file name="llm-platform/ — opt-in: S3 Files + IAM for self-hosted LLMs" >}}
-{{< /filetree/folder >}}
-{{< filetree/folder name="flux" state="closed" >}}
-  {{< filetree/file name="operator/ — Flux Operator + Instance bootstrap" >}}
-  {{< filetree/file name="sources/ — GitRepository / HelmRepository / OCIRepository (unsharded)" >}}
-  {{< filetree/file name="notifications/ — Alertmanager and Slack notification wiring" >}}
-  {{< filetree/file name="artifact-generators/ — ArtifactGenerator resources" >}}
-  {{< filetree/file name="previews/ — Flux preview-environment wiring" >}}
-{{< /filetree/folder >}}
-{{< filetree/folder name="clusters" state="closed" >}}
-  {{< filetree/file name="mycluster-0/ — Flux Kustomizations for the default cluster" >}}
-  {{< filetree/file name="mycluster-0-llm-platform/ — sibling umbrella for the opt-in LLM platform" >}}
-{{< /filetree/folder >}}
-{{< filetree/folder name="infrastructure" state="closed" >}}
-  {{< filetree/file name="base/ — Cilium, Crossplane, Karpenter, Gateway API, CSI drivers, …" >}}
-  {{< filetree/file name="mycluster-0/ — overlay selecting which base components run" >}}
-{{< /filetree/folder >}}
-{{< filetree/folder name="security" state="closed" >}}
-  {{< filetree/file name="base/ — cert-manager, Kyverno, External Secrets, ZITADEL, EPIs, RBAC" >}}
-  {{< filetree/file name="mycluster-0/ — overlay" >}}
-{{< /filetree/folder >}}
-{{< filetree/folder name="observability" state="closed" >}}
-  {{< filetree/file name="base/ — VictoriaMetrics, VictoriaLogs, VictoriaTraces, Grafana, RunLore" >}}
-  {{< filetree/file name="mycluster-0/ — overlay" >}}
-{{< /filetree/folder >}}
-{{< filetree/folder name="tooling" state="closed" >}}
-  {{< filetree/file name="base/ — Harbor, Headlamp, Homepage, Dagger engine, GHA runners (off by default)" >}}
-  {{< filetree/file name="mycluster-0/ — overlay" >}}
-{{< /filetree/folder >}}
-{{< filetree/file name="apps/ — App composition claims (the tenant-facing workload API)" >}}
-{{< filetree/file name="namespaces/ — Namespace manifests, applied first in the dependency chain" >}}
-{{< filetree/file name="crds/base/ — Custom Resource Definitions applied ahead of their consumers" >}}
-{{< filetree/file name="container-images/ — Dockerfiles/sources for images this repo builds and publishes" >}}
-{{< filetree/file name="scripts/ — validate-manifests.sh, validate-links.sh, openbao-config.sh, …" >}}
-{{< filetree/file name="docs/ — the pre-site documentation source; platform-constitution.md and the archived docs/specs/ live here" >}}
-{{< filetree/file name="website/ — this Hugo + Hextra documentation site" >}}
-{{< /filetree/container >}}
+{{< repo-tree >}}
 
 ## The base / overlay pattern
 

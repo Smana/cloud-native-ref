@@ -130,3 +130,91 @@ html.light .chroma .cp,
 html.light .chroma .cpf {
   color: #57606a;
 }
+
+/* ── Repository tree ────────────────────────────────────────────────────────
+ *
+ * Rendered by layouts/_shortcodes/repo-tree.html from data/repo-tree.yaml, on
+ * both Platform → GitOps and Reference → Repository Layout.
+ *
+ * A table rather than a grid: the three columns have to line up down the page,
+ * and a per-row grid container sizes its columns independently of its
+ * neighbours, so every row came out a different width.
+ *
+ * The path cell drops the theme's inline-code pill. Twenty-seven grey pills
+ * stacked vertically read as a wall of chips rather than as a tree; plain
+ * monospace at the same weight carries the same "this is a path" signal
+ * without the boxes competing with the row borders.
+ *
+ * Colours: path and description inherit body text, the owner column uses
+ * --cnref-stamp, already measured at 6.9:1 on both themes where it is defined
+ * above. No new token and no new measurement.
+ */
+.cnref-tree {
+  margin: 1.5rem 0;
+  border: 1px solid var(--ogenki-external);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+.cnref-tree table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.cnref-tree th {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cnref-stamp);
+  text-align: left;
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid var(--ogenki-external);
+  white-space: nowrap;
+}
+
+.cnref-tree td {
+  padding: 0.5rem 1rem;
+  vertical-align: baseline;
+  border-top: 1px solid rgb(148 163 184 / 20%);
+}
+
+.cnref-tree tbody tr:first-child td {
+  border-top: 0;
+}
+
+.cnref-tree-path {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cnref-tree-owner {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  color: var(--cnref-stamp);
+}
+
+/* markdownify wraps the owner value in a <p>; strip its margins so the cell
+ * stays on the row's baseline. */
+.cnref-tree-owner p {
+  margin: 0;
+}
+
+/* A child row indents its path only. The description column stays aligned with
+ * its parent's, so the eye reads straight down one column instead of a
+ * staircase — the parent path is already the visual anchor. */
+.cnref-tree-child .cnref-tree-path {
+  padding-left: 2rem;
+  font-weight: 400;
+  color: var(--cnref-stamp);
+}
+
+/* A top-level row after a child group opens a new section of the tree; a
+ * heavier rule marks it without needing a second colour. */
+.cnref-tree-child + tr:not(.cnref-tree-child) td {
+  border-top-color: var(--ogenki-external);
+}
