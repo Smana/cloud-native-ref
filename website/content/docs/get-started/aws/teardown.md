@@ -7,25 +7,11 @@ lastVerified: 2026-08-20
 
 Destroying by hand, stack by stack, is easy to get wrong: the EKS cluster
 holds resources (Gateways, PVC-backed volumes, IAM access keys) that need
-cleaning up in a specific order before OpenTofu can even start deleting, and
-every stack has to go in the reverse of the order it was created. The
-`destroy` script handles both.
-
-## Full teardown
-
-```bash
-cd opentofu
-terramate script run --reverse destroy
-```
-
-Destroys every stack in reverse dependency order — EKS (`configure` then
-`init`) → OpenBao management → OpenBao cluster → Network — with a single
-confirmation prompt (`scripts/terramate-destroy-confirm.sh`), cached for 10
-minutes so the whole reverse sweep only asks once.
+cleaning up in a specific order before OpenTofu can even start deleting.
 
 ## EKS only
 
-To rebuild just the cluster and leave Network/OpenBao standing:
+This is the safe, documented path — always tear the cluster down this way:
 
 ```bash
 cd opentofu/eks/init
@@ -38,6 +24,35 @@ Three steps, defined in `opentofu/eks/init/workflows.tm.hcl`:
 2. **`stage2-destroy-addons`** — destroys the `eks/configure` stack (Cilium, Flux).
 3. **`stage1-destroy-cluster`** — destroys the `eks/init` stack (the cluster itself).
 
+## Full teardown
+
+{{< callout type="warning" >}}
+Do **not** run `terramate script run --reverse destroy` from `opentofu/` on a
+cluster carrying real data or live Karpenter nodes. `eks/configure` is a
+separately registered stack (`after = ["/opentofu/eks/init"]`) with its own
+bare `destroy` script — confirm → `tofu init` → `tofu destroy` — that never
+calls `eks-prepare-destroy.sh`. The reverse dependency walk destroys
+`eks/configure` **first**: Cilium and Flux are torn down raw, with Flux never
+suspended, webhooks never disabled, and PVCs/NodePools/IAM keys never
+cleaned up. Only afterwards does the sweep reach `eks/init`, whose own
+`prepare-destroy` job then runs against a cluster whose networking is
+already gone. This is a known ordering issue, tracked separately — it is not
+fixed today. Use [EKS only](#eks-only) above instead.
+{{< /callout >}}
+
+To tear down every stack — EKS, OpenBao, Network — in one sweep once the
+ordering above is fixed, or on a cluster you are certain holds no data worth
+protecting:
+
+```bash
+cd opentofu
+terramate script run --reverse destroy
+```
+
+Destroys every stack in reverse dependency order with a single confirmation
+prompt (`scripts/terramate-destroy-confirm.sh`), cached for 10 minutes so
+the whole reverse sweep only asks once.
+
 ## What `eks-prepare-destroy.sh` does first
 
 Before OpenTofu deletes anything, the script:
@@ -46,12 +61,20 @@ Before OpenTofu deletes anything, the script:
 - Disables Kyverno's and the Cilium operator's blocking admission webhooks —
   once their pods are evicted with the nodes, every subsequent delete would
   otherwise fail against a webhook with no live endpoint.
-- Reclaims CSI-provisioned EBS volumes: marks every PV reclaimable, deletes
-  CloudNativePG `Cluster` resources so the operator releases their PVCs
-  cleanly, scales down every Deployment/StatefulSet that mounts a PVC,
-  deletes remaining PVC-mounting pods, then deletes the PVCs and waits up to
-  300s for reclaim. Set `EKS_DESTROY_KEEP_VOLUMES=true` to skip this if you
-  need to salvage data first.
+- Reclaims CSI-provisioned EBS volumes: patches **every** PV's
+  `persistentVolumeReclaimPolicy` to `Delete` — including PVs deliberately
+  set to `Retain` — deletes CloudNativePG `Cluster` resources so the operator
+  releases their PVCs cleanly, scales down every Deployment/StatefulSet that
+  mounts a PVC, deletes remaining PVC-mounting pods, then runs
+  `kubectl delete pvc --all --all-namespaces` and waits up to 300s for
+  reclaim. **This step is unconditional** — nothing in the script gates it,
+  and it deletes PVC data regardless of the reclaim policy a PV was created
+  with. If you need to keep data, back it up out of band *before* running
+  `eks-prepare-destroy.sh`; there is no flag that skips this step.
+- Separately, sweeps EBS volumes **orphaned by earlier teardown runs** —
+  volumes in `available` state, tagged for this cluster, whose PV no longer
+  exists. `EKS_DESTROY_KEEP_VOLUMES=true` skips only this sweep of
+  already-orphaned volumes; it has no effect on the PV/PVC reclaim above.
 - Reclaims the IAM access keys Harbor's S3 registry storage uses — AWS caps
   `AccessKeysPerUser` at 2, so without this a second or third rebuild's
   Harbor can fail to start on a full quota.

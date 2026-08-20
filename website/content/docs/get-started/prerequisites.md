@@ -19,6 +19,26 @@ lane you deploy next.
   access token or a GitHub App.
 - **Tailscale account and API key** — provisions the subnet router that gives
   you private access to the cluster.
+- **A GitHub App, and its credentials in AWS Secrets Manager** — Flux
+  authenticates to pull this repository as a GitHub App, and
+  `opentofu/eks/configure` reads its credentials from Secrets Manager at
+  apply time (`var.github_app_secret_name`, default `github/flux-app`); if
+  the secret does not exist, Stage 3 of the AWS deploy fails. Create the App
+  per the
+  [Flux GitHub App docs](https://fluxcd.io/flux/components/source/gitrepositories/#github),
+  then publish its credentials:
+
+  ```bash
+  jq -n --arg key "$(cat your-githubapp.private-key.pem)" \
+    '{githubAppID: "<app_id>", githubAppInstallationID: "<installation_id>", githubAppPrivateKey: $key}' \
+    > flux-ghapp.json
+
+  aws secretsmanager create-secret \
+    --name github/flux-app \
+    --description "FluxCD Github App" \
+    --region eu-west-3 \
+    --secret-string file://flux-ghapp.json
+  ```
 
 ## Tools
 

@@ -1,6 +1,6 @@
 ---
 title: AWS
-weight: 10
+weight: 20
 description: Deploy the platform on AWS — three sequential stages, about thirty minutes.
 lastVerified: 2026-08-20
 ---
@@ -19,8 +19,14 @@ spans several stages.
    fork), and `openbao_url`.
 2. Create a `variables.tfvars` in each stack directory
    (`opentofu/network/`, `opentofu/openbao/cluster/`,
-   `opentofu/openbao/management/`, `opentofu/eks/init/`) with your
-   environment-specific values.
+   `opentofu/openbao/management/`, `opentofu/eks/init/`,
+   `opentofu/eks/configure/`) with your environment-specific values.
+   `eks/configure` is easy to miss — it has no default `variables.tfvars` in
+   the repo, and Stage 3 below runs `tofu apply -var-file=variables.tfvars`
+   in that directory as its second internal step, which hard-errors if the
+   file is absent. At minimum it must set the variables with no default:
+   `cluster_name`, `env`, `flux_sync_url`, `private_domain_name`, and
+   `public_domain_name` (see `opentofu/eks/configure/variables.tf`).
 3. Export the one secret Terraform needs from the environment rather than a
    file:
 
