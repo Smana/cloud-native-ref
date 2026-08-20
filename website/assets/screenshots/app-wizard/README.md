@@ -1,6 +1,7 @@
 # App Wizard screenshots
 
-Drop the following PNGs here; they are referenced by [`docs/app-wizard.md`](../../app-wizard.md).
+Drop the following PNGs here; they are referenced by
+[App Wizard](../../../content/docs/platform/developer-platform/app-wizard.md).
 Capture from the running wizard (`https://app-wizard.priv.cloud.ogenki.io`, or a
 local `npm run dev` / container run).
 

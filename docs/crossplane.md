@@ -296,151 +296,16 @@ spec:
 
 **Related**: [EKS Pod Identity Composition](https://github.com/Smana/crossplane-configuration/blob/main/apis/epi/kcl/README.md)
 
-## Composition Functions with KCL
+## Authoring compositions
 
-This platform uses **KCL (Kusion Configuration Language)** instead of traditional Crossplane patch-and-transform.
-
-### Why KCL?
-
-**Traditional Composition Problems**:
-```yaml
-# ❌ Complex, hard to read, limited logic
-patches:
-  - type: FromCompositeFieldPath
-    fromFieldPath: spec.replicas
-    toFieldPath: spec.forProvider.manifest.spec.replicas
-    transforms:
-      - type: math
-        math:
-          multiply: 2
-```
-
-**KCL Solution**:
-```python
-# ✅ Readable, testable, powerful
-_replicas = option("params").oxr.spec.replicas or 1
-_deployment = {
-    apiVersion = "apps/v1"
-    kind = "Deployment"
-    spec.replicas = _replicas * 2  # Simple conditional logic
-}
-```
-
-**KCL Advantages**:
-- **Readability**: Code is self-documenting
-- **Validation**: Built-in type checking and schema validation
-- **Testing**: Unit tests for composition logic
-- **Conditionals**: Complex business logic without gymnastics
-- **Iteration**: Easy loops over databases, buckets, etc.
-
-### KCL Module Publishing
-
-KCL modules are published to GitHub Container Registry as OCI artifacts:
-
-```bash
-# Published to GHCR
-ghcr.io/smana/cloud-native-ref/app:v1.0.0
-ghcr.io/smana/cloud-native-ref/sqlinstance:v1.0.0
-ghcr.io/smana/cloud-native-ref/eks-pod-identity:v1.0.0
-```
-
-**Referenced in Composition**:
-```yaml
-# app-composition.yaml
-apiVersion: apiextensions.crossplane.io/v1
-kind: Composition
-metadata:
-  name: app
-spec:
-  mode: Pipeline
-  pipeline:
-    - step: kcl-function
-      functionRef:
-        name: kcl
-      input:
-        apiVersion: krm.kcl.dev/v1alpha1
-        kind: KCLRun
-        spec:
-          source: oci://ghcr.io/smana/cloud-native-ref/app:v1.0.0
-```
-
-## Validation Requirements
-
-**CRITICAL**: Every Crossplane composition change MUST be validated before committing.
-
-### Automated Validation Script
-
-```bash
-# From repository root - validates ALL compositions
-task check   # in https://github.com/Smana/crossplane-configuration
-```
-
-This script performs three stages:
-
-#### Stage 1: KCL Formatting (CI Enforced!)
-
-```bash
-kcl fmt .
-```
-
-**CRITICAL**: CI will fail if code is not formatted correctly.
-
-**Common Issues**:
-- Multi-line list comprehensions (must be single-line)
-- Trailing blank lines between sections
-- **Mutation patterns** (see Known Limitations below)
-
-#### Stage 2: KCL Syntax Validation
-
-```bash
-kcl run -Y settings-example.yaml
-```
-
-Tests KCL logic with example inputs:
-- Validates conditionals and loops
-- Catches type errors
-- Ensures functions work correctly
-
-#### Stage 3: Crossplane Rendering
-
-```bash
-crossplane render examples/app-basic.yaml \
-  app-composition.yaml \
-  functions.yaml \
-  --extra-resources examples/environmentconfig.yaml
-```
-
-End-to-end validation:
-- Tests with multiple examples (basic + complete)
-- Validates full composition pipeline
-- Ensures all resources render correctly
-
-### Manual Validation Tools
-
-After rendering, validate with additional tools:
-
-**Polaris** (Security and Best Practices):
-```bash
-polaris audit --audit-path /tmp/rendered.yaml --format=pretty
-```
-- **Target**: Score 85+
-- **Action**: Fix critical security issues
-
-**kube-linter** (Kubernetes Best Practices):
-```bash
-kube-linter lint /tmp/rendered.yaml
-```
-- **Target**: No errors
-- **Action**: Fix all lint errors
-
-**Datree** (Policy Enforcement):
-```bash
-datree test /tmp/rendered.yaml --ignore-missing-schemas
-```
-- **Target**: No policy violations
-- **Action**: Fix failures, document accepted warnings
-
-**Related**: [CI Workflows](./ci-workflows.md)
+Compositions are written in KCL, published as OCI artifacts, and validated
+with `task check` — none of that happens in this repository any more. It
+all moved to [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)
+in the Configuration-package extraction: this repository only pins a
+released version, in
+`infrastructure/base/crossplane/configuration/configuration-packages.yaml`.
+Change a composition, run its validation, and cut a release there; then
+bump the pin here.
 
 ## Known Limitations and Considerations
 
