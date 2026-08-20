@@ -1,0 +1,45 @@
+/* ogenki palette.
+ *
+ * Hextra generates its whole primary scale from these three variables and uses
+ * --color-primary-600 for links and active nav. That shade is 0.9 x lightness,
+ * so lightness is set to 26% -> primary-600 = hsl(204 100% 23.4%) = #004777,
+ * the ogenki brand navy. Setting 23% here instead would render links at 20.7%
+ * lightness: near-black, and visually identical to body text.
+ *
+ * The `deg` unit is required — the theme's own values carry it.
+ */
+:root {
+  --primary-hue: 204deg;
+  --primary-saturation: 100%;
+  --primary-lightness: 26%;
+}
+
+.dark {
+  --primary-hue: 204deg;
+  --primary-saturation: 62%;
+  --primary-lightness: 65%; /* -> primary-600 = #4FA6D9 */
+}
+
+/* Semantic colours, shared verbatim with the `ogenki` drawio preset
+ * (~/.drawio-skill/styles/ogenki.json) so that callouts, badges and diagram
+ * legends read as one system. Identical in both themes on purpose: a diagram
+ * cannot change colour with the page, so neither should the legend beside it.
+ */
+:root,
+.dark {
+  --ogenki-service: #6366f1;  /* indigo  */
+  --ogenki-security: #7c3aed; /* violet  */
+  --ogenki-storage: #059669;  /* emerald */
+  --ogenki-scaling: #f59e0b;  /* amber   */
+  --ogenki-failure: #dc2626;  /* red     */
+  --ogenki-external: #94a3b8; /* slate   */
+}
+
+/* The verification stamp rendered by layouts/_partials/custom/footer.html */
+.cnref-verified {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ogenki-external);
+  font-size: 0.8125rem;
+  color: var(--ogenki-external);
+}

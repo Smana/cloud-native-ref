@@ -1,0 +1,18 @@
+{{- /*
+  Hextra's own _partials/footer.html invokes this partial with a wrapper dict
+  (dict "context" . "switchesVisible" ... "copyrightVisible" ...), not the
+  page itself — so "." here is that dict, and $ stays bound to it too. Pull
+  the real page out first; .Params.lastVerified / $.GitInfo directly would
+  silently no-op (missing map key -> zero value -> `with` skips, no error).
+*/ -}}
+{{- $page := .context }}
+{{- with $page.Params.lastVerified }}
+  <p class="cnref-verified">
+    Verified against the repository on
+    <time datetime="{{ . }}">{{ time.Format "2 January 2006" . }}</time>.
+    {{- with $page.GitInfo }}
+      Last edited in
+      <a href="https://github.com/Smana/cloud-native-ref/commit/{{ .Hash }}">{{ .AbbreviatedHash }}</a>.
+    {{- end }}
+  </p>
+{{- end }}
