@@ -26,7 +26,7 @@ variable "openbao_version" {
   # the management stack's parallel vault_namespace resources wedge the core
   # and every subsequent request hangs. Stay on 2.5.5 until a fixed release.
   # renovate: datasource=github-releases depName=openbao/openbao
-  default = "2.5.5"
+  default = "2.6.2"
 }
 
 variable "openbao_data_path" {
