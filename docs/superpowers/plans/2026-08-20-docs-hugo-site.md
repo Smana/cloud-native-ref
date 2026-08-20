@@ -482,20 +482,34 @@ mkdir -p "$ASSETS" "$STATIC"
 # Task 16 appends the six new domain diagrams here.
 SINGLE_PAGE=()
 
+# --embed-svg-fonts false is load-bearing, not a micro-optimisation. drawio
+# embeds the full font as base64 by default: platform-overview exports at
+# 1.29 MB with fonts and 155 KB without — the fonts are 1.14 MB of it, while
+# every logo in the diagram together is only 64 KB. That difference is the
+# whole 500 KB budget, and it also clears pre-commit's 1000 KB ceiling.
+#
+# Nothing is lost. The ogenki preset sets fontFamily: Helvetica, a web-safe
+# stack every browser resolves locally, so embedding a font to render
+# "Helvetica" buys nothing. Labels are unaffected: they live in <foreignObject>
+# elements, which is also why these SVGs must not be embedded in the GitHub
+# README — GitHub's sanitizer strips foreignObject and the diagram would render
+# with no text at all. That is what the PNG below is for.
+SVGOPTS=(-x -f svg -b 10 --embed-svg-fonts false)
+
 for name in "${SINGLE_PAGE[@]}"; do
     echo "==> $name.svg"
-    drawio -x -f svg -b 10 -o "$ASSETS/$name.svg" "$SRC/$name.drawio"
+    drawio "${SVGOPTS[@]}" -o "$ASSETS/$name.svg" "$SRC/$name.drawio"
 done
 
 # platform-overview is embedded in both the site and the GitHub README, so it
 # needs both formats and lands in static/ for the home layout.
 echo "==> platform-overview (svg + png)"
-drawio -x -f svg -b 10 -o "$STATIC/platform-overview.svg" "$SRC/platform-overview.drawio"
+drawio "${SVGOPTS[@]}" -o "$STATIC/platform-overview.svg" "$SRC/platform-overview.drawio"
 drawio -x -f png -s 2 -b 10 -o "$SRC/img/platform-overview.png" "$SRC/platform-overview.drawio"
 
 for i in 0 1 2; do
     echo "==> llm-platform page $i"
-    drawio -x -f svg -b 10 --page-index "$i" \
+    drawio "${SVGOPTS[@]}" --page-index "$i" \
         -o "$ASSETS/llm-platform-$((i + 1)).svg" "$SRC/llm-platform.drawio"
 done
 
@@ -515,6 +529,8 @@ ls -lh website/static/images/diagrams/ website/assets/diagrams/
 ```
 
 Expected: four SVGs plus the regenerated PNG; the size check passes.
+`platform-overview.svg` should land near **155 KB**. If it comes out over 1 MB, the
+`--embed-svg-fonts false` flag was dropped — that is the only plausible cause.
 
 - [ ] **Step 6: Build and verify the palette applied**
 
