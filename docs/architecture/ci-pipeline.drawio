@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="30.3.6">
+  <diagram name="CI pipeline" id="ci-pipeline">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" page="1" pageWidth="1280" pageHeight="960" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="__t" value="What CI gates, and what it never does" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="30" width="1100" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="__ts" value="CI validates, scans and publishes. It never applies anything to a cluster — Flux does that, from main, after the merge." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="62" width="1180" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pr" value="&lt;b&gt;Pull request&lt;/b&gt;&#xa;targeting main" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="220" width="170" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cbox" value="&lt;b&gt;ci.yaml&lt;/b&gt; — six jobs, every pull request, no path filter" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=13;fontStyle=1;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="290" y="110" width="570" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="j1" value="&lt;b&gt;Pre-commit checks&lt;/b&gt;&#xa;Dagger → daggerverse/pre-commit-tf&#xa;terraform fmt · validate · tflint" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="150" width="260" height="74" as="geometry" />
+        </mxCell>
+        <mxCell id="j2" value="&lt;b&gt;Security scanning&lt;/b&gt;&#xa;Trivy · Checkov · TruffleHog&#xa;SARIF → GitHub Security tab" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="150" width="260" height="74" as="geometry" />
+        </mxCell>
+        <mxCell id="j3" value="&lt;b&gt;Kubernetes validation&lt;/b&gt;&#xa;validate-manifests.sh — renders the repo&#xa;flux schema validate + polaris audit" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="234" width="260" height="74" as="geometry" />
+        </mxCell>
+        <mxCell id="j4" value="&lt;b&gt;Rendered manifest diff&lt;/b&gt;&#xa;head vs merge-base, posted as a&#xa;PR comment — content never fails it" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="234" width="260" height="74" as="geometry" />
+        </mxCell>
+        <mxCell id="j5" value="&lt;b&gt;Check the shell scripts&lt;/b&gt;&#xa;shellcheck -x -S warning" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="318" width="260" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="j6" value="&lt;b&gt;Check the documentation links&lt;/b&gt;&#xa;validate-links.sh" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="318" width="260" height="62" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pbox" value="&lt;b&gt;Path-filtered workflows&lt;/b&gt; — none of them is a required check" style="rounded=1;absoluteArcSize=1;arcSize=16;verticalAlign=top;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#94A3B8;strokeWidth=1.5;dashed=1;fontColor=#1E293B;fontFamily=Helvetica;fontSize=13;fontStyle=1;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="290" y="440" width="570" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="p1" value="&lt;b&gt;Docs site&lt;/b&gt; (docs-check.yml)&#xa;website/** · docs/architecture/** · mise.toml&#xa;hugo --minify + verify-doc-paths.sh" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="480" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" value="&lt;b&gt;Vector config validation&lt;/b&gt;&#xa;victoria-logs helmrelease-*.yaml&#xa;VRL parsing rules" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="480" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p3" value="&lt;b&gt;Build container images&lt;/b&gt; — container-images/** · on a pull request it builds and scans but does not push" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="560" width="530" height="52" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gate" value="&lt;b&gt;Six required status checks&lt;/b&gt;&#xa;&#xa;every job in ci.yaml, and only those&#xa;&#xa;strict — the branch must be up to date&#xa;with main before it can merge&#xa;&#xa;enforce_admins — no --admin bypass,&#xa;for anyone" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="910" y="150" width="310" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="merge" value="&lt;b&gt;Merge to main&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="910" y="410" width="310" height="56" as="geometry" />
+        </mxCell>
+
+        <mxCell id="abox" value="&lt;b&gt;After the merge&lt;/b&gt; — three independent consumers of main" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=13;fontStyle=1;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="60" y="680" width="1160" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" value="&lt;b&gt;Flux reconciles the cluster&lt;/b&gt;&#xa;the GitRepository observes the new commit,&#xa;the ArtifactGenerator re-slices it, and every&#xa;affected Kustomization applies in dependency order.&#xa;No CI job ever runs kubectl apply." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="85" y="722" width="360" height="94" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" value="&lt;b&gt;docs.yml → GitHub Pages&lt;/b&gt;&#xa;same path filter as docs-check,&#xa;builds the site and publishes it&#xa;to cnref.ogenki.io" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="465" y="722" width="360" height="94" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" value="&lt;b&gt;build-container-images → ghcr.io&lt;/b&gt;&#xa;pushes &lt;branch&gt;-&lt;sha&gt; plus latest.&#xa;Deployments pin the immutable&#xa;&lt;branch&gt;-&lt;sha&gt; tag, never latest." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="845" y="722" width="350" height="94" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="pr" target="cbox">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="pr" target="pbox">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="all six must pass" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="cbox" target="gate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="gate" target="merge">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=0.5;exitY=1;entryX=0.75;entryY=0;" edge="1" parent="1" source="merge" target="abox">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="__lg" value="" style="rounded=1;absoluteArcSize=1;arcSize=8;html=1;fillColor=#FFFFFF;strokeColor=#CBD5E1;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="860" width="820" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgt" value="Legend" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="76" y="866" width="120" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgs1" value="" style="rounded=0;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="76" y="892" width="26" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgl1" value="required status check" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="110" y="890" width="160" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgs2" value="" style="rounded=0;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="286" y="892" width="26" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgl2" value="security scanning" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="320" y="890" width="150" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgs3" value="" style="rounded=0;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="476" y="892" width="26" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgl3" value="path-filtered, not required" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="510" y="890" width="180" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgs4" value="" style="rounded=0;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="696" y="892" width="26" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgl4" value="the merge gate" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="730" y="890" width="140" height="16" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

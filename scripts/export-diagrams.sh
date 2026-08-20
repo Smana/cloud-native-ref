@@ -31,6 +31,7 @@ mkdir -p "$OUT"
 SINGLE_PAGE=(
     bootstrap-stages
     flux-dependency-tree
+    ci-pipeline
     request-path
     secrets-and-pki
     app-claim-expansion

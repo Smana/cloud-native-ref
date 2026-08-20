@@ -20,6 +20,7 @@ committed, so a source change without a re-run ships a stale picture.
 | `platform-overview.drawio` | The whole platform on one page. Site landing page, [Concepts → Architecture](../../website/content/docs/concepts/architecture.md), and the root [`README.md`](../../README.md) |
 | `bootstrap-stages.drawio` | The five OpenTofu stacks in Terramate's order, and the two-stage CNI swap. [Platform → Foundations](../../website/content/docs/platform/foundations/_index.md) |
 | `flux-dependency-tree.drawio` | Every Flux Kustomization and its `dependsOn` edges. [Platform → GitOps](../../website/content/docs/platform/gitops/_index.md) |
+| `ci-pipeline.drawio` | What gates a merge, and the three consumers of `main` afterwards. [Reference → CI Workflows](../../website/content/docs/reference/ci-workflows.md), [Platform → GitOps → Validation](../../website/content/docs/platform/gitops/validation.md) |
 | `request-path.drawio` | Three front doors onto one Envoy fleet. [Platform → Networking](../../website/content/docs/platform/networking/_index.md) |
 | `secrets-and-pki.drawio` | The private CA chain and the two secret paths. [Platform → Security](../../website/content/docs/platform/security/_index.md) |
 | `app-claim-expansion.drawio` | One `App` claim becoming a whole application. [Platform → Developer Platform](../../website/content/docs/platform/developer-platform/_index.md) |
