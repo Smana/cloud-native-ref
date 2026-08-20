@@ -288,30 +288,34 @@ spec:
       telemetry:
         metrics_enabled: true
       model:
-        # glm-5.3 for the investigator. z.ai limits by PER-MODEL CONCURRENCY, and
-        # 5.3 allows 1 in-flight request — which is fine here, because the agent
-        # loop is sequential: one model call at a time, one investigation at a
-        # time per leader. Verified sequentially on the live key: 10.0s, 2.5s,
-        # 2.3s.
+        # glm-5.2 for the investigator. 5.3 was tried and is worse HERE, despite
+        # scoring itself higher — the confidence number inverts the real quality:
         #
-        # The 429 storm that killed an earlier run was self-inflicted contention
-        # (a benchmark hitting the same key mid-investigation), not the model
-        # being unusable. Reference table:
+        #   glm-5.2  12 calls, <10 min, confidence 0.70 — NAMED the policy
+        #            ("CiliumNetworkPolicy demo/inventory-api-allow-payments-only")
+        #   glm-5.3  18 calls, ~28 min, confidence 0.85 — did NOT name it
+        #            ("object not identifiable with available tooling")
         #
-        #   GLM-5.3  1 slot     GLM-5-Turbo  1 slot
-        #   GLM-5.2  10 slots   GLM-5.1      10 slots
+        # 5.3 also writes ~3000 output tokens per turn against 5.2's ~1660, which
+        # is what made it slow (~94s/call) and what exhausted
+        # investigation.max_tokens_per_investigation (394170/400000, forcing an
+        # early conclusion). Output volume is the cost driver, not input size.
+        #
+        # Separately, z.ai limits by PER-MODEL CONCURRENCY: 5.3 and 5-Turbo get 1
+        # in-flight request, 5.2 and 5.1 get 10. One slot is enough for this
+        # sequential loop, but it 429s the moment anything else touches the key.
         provider: openai
-        model: glm-5.3
+        model: glm-5.2
         base_url: https://api.z.ai/api/paas/v4/
         api_key_env: GLM_API_KEY  # pragma: allowlist secret
         chat:
-          # DELIBERATELY a different model from the investigator, and one with
-          # 10 slots. Chat is the one path that genuinely runs CONCURRENTLY with
-          # an investigation: someone asks a follow-up in the thread while the
-          # loop is still working. On a 1-slot model those collide and the reply
-          # 429s at exactly the moment it is wanted. 5.2 has slots to spare and
-          # answers a thread turn in ~1.5s.
-          model: glm-5.2
+          # Thread replies answer a question against an already-written report,
+          # so they want latency and cost, not depth. Measured on a realistic
+          # thread turn (3 runs, median): 1.6s and 40 output tokens, against 2.9s
+          # and 84 for glm-5.2 — and $0.1/$0.1 per 1M vs $1.4/$4.4, ~19x cheaper
+          # per reply. 15 concurrency slots, the most of any model here, so a
+          # follow-up asked mid-investigation cannot collide with the loop.
+          model: glm-4-32b-0414-128k
       catalog:
         dir: /var/lib/runlore/catalog
         git:
