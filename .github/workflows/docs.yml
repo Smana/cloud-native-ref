@@ -1,0 +1,59 @@
+name: Deploy docs site
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "website/**"
+      - "docs/architecture/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel an in-flight deploy: a half-published site is worse than a
+# slightly stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy to GitHub Pages 🚀
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install tools
+        uses: jdx/mise-action@v4
+
+      - name: Cache Hugo modules
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/hugo_cache
+          key: hugo-mod-${{ hashFiles('website/go.sum') }}
+          restore-keys: hugo-mod-
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Build
+        working-directory: website
+        run: hugo --minify --gc
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/public
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5
