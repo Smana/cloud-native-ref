@@ -1,0 +1,74 @@
+{{- /*
+  Renders one group of website/data/stack.yaml as a table with project logos.
+
+  Replaces seven hand-written Markdown tables. They were accurate, but the same
+  45 versions also have to appear in the landing-page strip, and a second
+  hand-maintained copy of a version table drifts — which is precisely the
+  failure the page's own preamble was written to guard against.
+
+  Three behaviours are deliberate:
+
+  - A group carrying `pin_note` drops the per-row "Pinned in" column entirely
+    and states the shared pin once, above the table. Every CLI tool is pinned in
+    mise.toml, and eleven identical cells carry no information.
+
+  - An item with no `logo` renders a typographic tile. A missing logo must never
+    fail a build that is otherwise correct, and a table with holes in it reads
+    as broken where a tile reads as intentional.
+
+  - An item with `logo_dark` emits BOTH marks and lets CSS pick one. The swap is
+    scoped to `.cnref-has-dark` so that the common case — one mark, legible on
+    both grounds — is never hidden by it.
+
+  Logos are decorative: the component name sits beside every one as linked text,
+  so each <img> carries alt="" and aria-hidden, and a screen reader is not read
+  the same name twice.
+
+  @param group  the `id` of the group to render.
+*/ -}}
+
+{{- $id := .Get "group" -}}
+{{- $group := "" -}}
+{{- range site.Data.stack.groups -}}
+  {{- if eq .id $id }}{{ $group = . }}{{ end -}}
+{{- end -}}
+{{- if not $group -}}
+  {{- errorf "stack-table: no group with id %q in data/stack.yaml" $id -}}
+{{- end -}}
+{{- $hasPinColumn := not $group.pin_note -}}
+{{- with $group.pin_note }}
+<p class="cnref-stack-pinnote">{{ . | markdownify }}</p>
+{{- end }}
+<div class="cnref-stack">
+  <table>
+    <thead>
+      <tr>
+        <th colspan="2">Component</th>
+        <th>Version</th>
+        {{- if $hasPinColumn }}<th>Pinned in</th>{{ end }}
+      </tr>
+    </thead>
+    <tbody>
+      {{- range $group.items }}
+      <tr>
+        <td class="cnref-stack-mark{{ if .logo_dark }} cnref-has-dark{{ end }}">
+          {{- if .logo -}}
+            <img class="not-prose cnref-logo cnref-logo-light" src="{{ printf "/images/logos/%s.svg" .logo | relURL }}" alt="" aria-hidden="true" loading="lazy" width="22" height="22">
+            {{- with .logo_dark -}}
+              <img class="not-prose cnref-logo cnref-logo-dark" src="{{ printf "/images/logos/%s.svg" . | relURL }}" alt="" aria-hidden="true" loading="lazy" width="22" height="22">
+            {{- end -}}
+          {{- else -}}
+            <span class="cnref-tile" aria-hidden="true">{{ substr .name 0 1 }}</span>
+          {{- end -}}
+        </td>
+        <td class="cnref-stack-name">
+          <a href="{{ .url }}" target="_blank" rel="noopener">{{ .name }}</a>
+          {{- with .note }}<span class="cnref-stack-note">{{ . | markdownify }}</span>{{ end -}}
+        </td>
+        <td class="cnref-stack-version"><code>{{ .version }}</code></td>
+        {{- if $hasPinColumn }}<td class="cnref-stack-pin">{{ with .pin }}{{ . | markdownify }}{{ else }}—{{ end }}</td>{{ end }}
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+</div>

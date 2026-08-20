@@ -218,3 +218,162 @@ html.light .chroma .cpf {
 .cnref-tree-child + tr:not(.cnref-tree-child) td {
   border-top-color: var(--ogenki-external);
 }
+
+/* ── Technology stack ───────────────────────────────────────────────────────
+ *
+ * Rendered by layouts/_shortcodes/stack-table.html and stack-strip.html from
+ * data/stack.yaml.
+ *
+ * The logo column is a fixed 22px box with object-fit: contain, because the
+ * marks are not one shape: CNCF icons are square, Trivy and Hugo ship
+ * horizontal lockups. A fixed height with free width would make the wide ones
+ * three times the visual weight of the square ones; a fixed box normalises
+ * them without distorting any.
+ */
+.cnref-stack {
+  margin: 1.25rem 0;
+  border: 1px solid var(--ogenki-external);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+.cnref-stack table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.cnref-stack th {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cnref-stamp);
+  text-align: left;
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid var(--ogenki-external);
+  white-space: nowrap;
+}
+
+.cnref-stack td {
+  padding: 0.5rem 1rem;
+  vertical-align: top;
+  border-top: 1px solid rgb(148 163 184 / 20%);
+}
+
+.cnref-stack tbody tr:first-child td {
+  border-top: 0;
+}
+
+/* min-width, not just width. Giving the name cell `width: 100%` collapses every
+ * other column to min-content, and a global `img { max-width: 100% }` then
+ * resolves to 0 inside a zero-width cell — which silently blanked six logos
+ * while leaving the <img> loaded and `display: block`. The mark column has to
+ * reserve its box explicitly. */
+.cnref-stack-mark {
+  width: 22px;
+  min-width: 22px;
+  padding-right: 0;
+}
+
+/* The name column absorbs the table's slack. Without this, `width: 100%` is
+ * split across the columns and the last one trails off into empty space with a
+ * stray border down the middle of it. */
+.cnref-stack-name {
+  width: 100%;
+}
+
+.cnref-stack-name a {
+  font-weight: 500;
+}
+
+.cnref-stack-version code {
+  white-space: nowrap;
+}
+
+.cnref-stack-pin,
+.cnref-stack-note {
+  color: var(--cnref-stamp);
+  font-size: 0.8125rem;
+}
+
+.cnref-stack-note {
+  display: block;
+  margin-top: 0.125rem;
+}
+
+.cnref-stack-note p,
+.cnref-stack-pin p {
+  margin: 0;
+}
+
+.cnref-stack-pinnote {
+  font-size: 0.875rem;
+  color: var(--cnref-stamp);
+}
+
+.cnref-logo {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  max-width: 22px;
+  object-fit: contain;
+  display: block;
+  /* Hextra gives prose images `margin: 16px 0`, which turned a 22px mark into a
+   * 54px cell and made every logo row 71px against 39px for a tile row. These
+   * are UI chrome inside a table, not figures in the prose flow.
+   *
+   * The margin is zeroed by the theme's own `not-prose` escape hatch on the
+   * <img> rather than by a rule here: its prose selector is
+   * `.content :where(img)`, which has the same (0,1,0) specificity as a class,
+   * so whichever stylesheet loads last would win. That is a coin-flip, not a
+   * fix. `margin: 0` stays as belt-and-braces. */
+  margin: 0;
+}
+
+/* The dark variant exists only for marks that are dark ink on transparent —
+ * OpenBao, Trivy, Helm's wordmark — which disappear on the dark page. Scoped
+ * to .cnref-has-dark so a lone mark is never hidden by these rules. */
+.cnref-logo-dark {
+  display: none;
+}
+
+.dark .cnref-has-dark .cnref-logo-light {
+  display: none;
+}
+
+.dark .cnref-has-dark .cnref-logo-dark {
+  display: block;
+}
+
+/* Fallback for a component with no usable mark — see
+ * static/images/logos/LICENSES.md for which, and why borrowing a neighbouring
+ * project's logo was rejected. Indigo is --ogenki-service; white on it measures
+ * 4.8:1, clearing AA for the 12px bold glyph it carries, in both themes.
+ */
+.cnref-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: var(--ogenki-service);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+
+/* Pin paths are long (`observability/base/victoria-metrics-k8s-stack/…`) and an
+ * inline <code> will not break on its own, so the widest row set the table's
+ * width and every group scrolled horizontally. Let the pin column break: it is
+ * a reference, not something anyone types from the page. The version column
+ * keeps `white-space: nowrap` — a version split across two lines is unreadable.
+ */
+.cnref-stack-pin code {
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,293 @@
+# Every component this platform runs, its version, and where that version is
+# pinned. Rendered by layouts/_shortcodes/stack-table.html on Reference →
+# Technology Stack, and by stack-strip.html on the landing page.
+#
+# Versions were re-read from their pins on 2026-08-20 — mise.toml,
+# opentofu/config.tm.hcl, an OpenTofu variable default, or a HelmRelease /
+# OCIRepository — not copied from prose. Where a component has no version
+# pinned in this repository, `version` says so rather than guessing a number.
+#
+# Fields
+#   name        display name
+#   version     as pinned, verbatim
+#   logo        basename under static/images/logos/; omit for a typographic tile
+#   logo_dark   light-ink variant, for marks that vanish on the dark theme
+#   pin         where the version lives (Markdown); omit when the group sets pin_note
+#   url         the project's home
+#   note        optional caveat, rendered under the row
+#   strip       true = also appears in the landing-page strip
+#
+# Group `pin_note` hoists a pin shared by every row out of the per-row column,
+# which is what stops the CLI table repeating `mise.toml` eleven times.
+groups:
+  - id: cli
+    title: CLI tools
+    pin_note: "All pinned in `mise.toml`. Run `mise install` to get exactly these."
+    items:
+      - name: OpenTofu
+        version: "1.12.6"
+        logo: opentofu
+        url: https://opentofu.org
+        strip: true
+      - name: Terramate
+        version: "0.17.2"
+        url: https://terramate.io
+        strip: true
+      - name: Flux CLI (+ schema plugin)
+        version: "2.9.4"
+        logo: flux
+        url: https://fluxcd.io
+      - name: Helm
+        version: "4.2.4"
+        logo: helm
+        logo_dark: helm-dark
+        url: https://helm.sh
+      - name: Kustomize
+        version: "5.8.1"
+        url: https://kustomize.io
+      - name: Trivy
+        version: "0.74.0"
+        logo: trivy
+        logo_dark: trivy-dark
+        url: https://trivy.dev
+      - name: Go
+        version: "1.27.0"
+        logo: go
+        url: https://go.dev
+      - name: Node.js
+        version: "22.23.1"
+        logo: nodejs
+        url: https://nodejs.org
+      - name: golangci-lint
+        version: "2.12.2"
+        url: https://golangci-lint.run
+      - name: pre-commit
+        version: "4.6.2"
+        url: https://pre-commit.com
+      - name: Hugo (extended)
+        version: "0.156.0"
+        logo: hugo
+        url: https://gohugo.io
+        note: Required for this site — Hextra targets the extended build.
+
+  - id: bootstrap
+    title: EKS bootstrap
+    items:
+      - name: Kubernetes (EKS control plane)
+        version: "1.36"
+        logo: kubernetes
+        url: https://kubernetes.io
+        pin: "`opentofu/eks/init/variables.tf` — `kubernetes_version` default, not overridden in `variables.tfvars`"
+        strip: true
+      - name: Cilium
+        version: "1.20.0"
+        logo: cilium
+        url: https://cilium.io
+        pin: "`opentofu/config.tm.hcl` — `cilium_version`"
+        strip: true
+      - name: Flux Operator
+        version: "0.55.0"
+        logo: flux
+        url: https://fluxcd.control-plane.io
+        pin: "`opentofu/config.tm.hcl` — `flux_operator_version`"
+        strip: true
+      - name: Flux Instance
+        version: "0.55.0"
+        logo: flux
+        url: https://fluxcd.io
+        pin: "`opentofu/config.tm.hcl` — `flux_instance_version`"
+      - name: Gateway API CRDs
+        version: "v1.6.1"
+        url: https://gateway-api.sigs.k8s.io
+        pin: "`opentofu/eks/configure/variables.tf` — `gateway_api_version` default"
+        strip: true
+
+  - id: infrastructure
+    title: Infrastructure
+    items:
+      - name: Crossplane (controller)
+        version: "2.3.4"
+        logo: crossplane
+        url: https://crossplane.io
+        pin: "`infrastructure/base/crossplane/controller/helmrelease.yaml`"
+        strip: true
+      - name: Crossplane Configuration package
+        version: "v0.1.0"
+        logo: crossplane
+        url: https://github.com/Smana/crossplane-configuration
+        pin: "`infrastructure/base/crossplane/configuration/configuration-packages.yaml`"
+        note: The compositions themselves are built and released from `Smana/crossplane-configuration`, not from this repository.
+      - name: Karpenter
+        version: "1.13.0"
+        logo: karpenter
+        url: https://karpenter.sh
+        pin: "`flux/sources/ocirepo-karpenter.yaml`"
+        strip: true
+      - name: KEDA
+        version: "2.20.2"
+        logo: keda
+        url: https://keda.sh
+        pin: "`infrastructure/base/keda/helmrelease.yaml`"
+      - name: CloudNativePG (operator)
+        version: "0.29.0"
+        logo: cloudnativepg
+        url: https://cloudnative-pg.io
+        pin: "`infrastructure/base/cloudnative-pg/helmrelease.yaml`"
+        strip: true
+      - name: Atlas Operator
+        version: "0.7.11"
+        url: https://atlasgo.io
+        pin: "`flux/sources/ocirepo-atlas-operator.yaml`"
+        note: v0.7.11 does not support `dir.remote` for Git repositories; migrations use the GitOps/ConfigMap pattern instead.
+      - name: AWS Load Balancer Controller
+        version: "3.5.0"
+        url: https://kubernetes-sigs.github.io/aws-load-balancer-controller/
+        pin: "`infrastructure/base/aws-load-balancer-controller/helmrelease.yaml`"
+      - name: AWS EFS CSI driver
+        version: "4.4.1"
+        url: https://github.com/kubernetes-sigs/aws-efs-csi-driver
+        pin: "`infrastructure/base/aws-efs-csi-driver/helmrelease.yaml`"
+        note: Chart 4.x ships driver v3.x, needed for S3 Files access points.
+      - name: External DNS
+        version: "1.21.1"
+        url: https://kubernetes-sigs.github.io/external-dns/
+        pin: "`infrastructure/base/external-dns/helmrelease.yaml`"
+      - name: Envoy Gateway
+        version: "1.9.0"
+        logo: envoy
+        url: https://gateway.envoyproxy.io
+        pin: "`flux/sources/ocirepo-envoy-gateway.yaml`"
+        note: LLM platform, opt-in.
+      - name: Envoy AI Gateway
+        version: "1.0.0"
+        logo: envoy
+        url: https://aigateway.envoyproxy.io
+        pin: "`flux/sources/ocirepo-envoy-ai-gateway.yaml`"
+        note: LLM platform, opt-in.
+      - name: vLLM Semantic Router
+        version: "0.2.0"
+        logo: vllm
+        url: https://github.com/vllm-project/semantic-router
+        pin: "`flux/sources/ocirepo-vllm-semantic-router.yaml`"
+        note: LLM platform, opt-in.
+
+  - id: security
+    title: Security
+    items:
+      - name: OpenBao
+        version: "2.6.2"
+        logo: openbao
+        logo_dark: openbao-dark
+        url: https://openbao.org
+        pin: "`opentofu/openbao/cluster/variables.tf` — `openbao_version` default, not overridden in `variables.tfvars`"
+        strip: true
+      - name: cert-manager
+        version: "v1.21.1"
+        logo: cert-manager
+        url: https://cert-manager.io
+        pin: "`security/base/cert-manager/helmrelease.yaml`"
+        strip: true
+      - name: External Secrets Operator
+        version: "2.9.0"
+        logo: external-secrets
+        url: https://external-secrets.io
+        pin: "`security/base/external-secrets/helmrelease.yaml`"
+        strip: true
+      - name: Kyverno
+        version: "3.8.2"
+        logo: kyverno
+        url: https://kyverno.io
+        pin: "`security/base/kyverno/helmrelease-controller.yaml`"
+        strip: true
+      - name: Tailscale Operator
+        version: "1.90.6"
+        logo: tailscale
+        url: https://tailscale.com/kb/1236/kubernetes-operator
+        pin: "`security/base/tailscale-operator/helmrelease.yaml`"
+      - name: ZITADEL
+        version: "10.0.4"
+        logo: zitadel
+        url: https://zitadel.com
+        pin: "`security/base/zitadel/helmrelease.yaml`"
+
+  - id: observability
+    title: Observability
+    items:
+      - name: VictoriaMetrics k8s stack
+        version: "0.91.0"
+        logo: victoriametrics
+        url: https://victoriametrics.com
+        pin: "`observability/base/victoria-metrics-k8s-stack/helmrelease-vmcluster.yaml`"
+        note: The single-node variant pins the same 0.91.0 and is the one actually running.
+        strip: true
+      - name: VictoriaLogs (cluster mode)
+        version: "0.2.8"
+        logo: victoriametrics
+        url: https://docs.victoriametrics.com/victorialogs/
+        pin: "`observability/base/victoria-logs/helmrelease-vlcluster.yaml`"
+      - name: VictoriaLogs (single mode)
+        version: "0.13.9"
+        logo: victoriametrics
+        url: https://docs.victoriametrics.com/victorialogs/
+        pin: "`observability/base/victoria-logs/helmrelease-vlsingle.yaml`"
+      - name: VictoriaTraces
+        version: "0.1.11"
+        logo: victoriametrics
+        url: https://docs.victoriametrics.com/victoriatraces/
+        pin: "`observability/base/victoria-traces/helmrelease-vtsingle.yaml`"
+      - name: Grafana Operator
+        version: "5.24.0"
+        logo: grafana
+        url: https://grafana.github.io/grafana-operator/
+        pin: "`observability/base/grafana-operator/helmrelease.yaml`"
+        strip: true
+      - name: Grafana OnCall
+        version: "1.16.5"
+        logo: grafana
+        url: https://grafana.com/products/oncall/
+        pin: "`observability/base/grafana-oncall/helmrelease-oncall.yaml`"
+        note: Built but wired into no Kustomization — it does not run on the cluster.
+      - name: metrics-server
+        version: "3.14.0"
+        url: https://github.com/kubernetes-sigs/metrics-server
+        pin: "`observability/base/metrics-server/helmrelease.yaml`"
+
+  - id: tooling
+    title: Data and tooling
+    items:
+      - name: Harbor
+        version: "1.18.3"
+        logo: harbor
+        url: https://goharbor.io
+        pin: "`tooling/base/harbor/helmrelease-harbor.yaml`"
+        strip: true
+      - name: Headlamp
+        version: "0.44.0"
+        logo: headlamp
+        url: https://headlamp.dev
+        pin: "`tooling/base/headlamp/helmrelease.yaml`"
+      - name: Homepage
+        version: "2.1.0"
+        url: https://gethomepage.dev
+        pin: "`tooling/base/homepage/helmrelease.yaml`"
+      - name: Dagger engine
+        version: "v0.21.8"
+        logo: dagger
+        url: https://dagger.io
+        pin: "`tooling/base/dagger-engine/deployment.yaml` — image tag"
+      - name: GitHub Actions Runner Controller
+        version: "0.14.2"
+        logo: github-actions
+        url: https://github.com/actions/actions-runner-controller
+        pin: "`tooling/base/gha-runners/controller-helmrelease.yaml`"
+        note: Off by default.
+      - name: GHA runner scale sets
+        version: "0.9.3"
+        logo: github-actions
+        url: https://github.com/actions/actions-runner-controller
+        pin: "`tooling/base/gha-runners/default-scale-set-helmrelease.yaml`, `dagger-scale-set-helmrelease.yaml`"
+        note: Off by default.
+      - name: Valkey
+        version: not pinned in this repo
+        url: https://valkey.io
+        note: Provisioned per tenant by the `KVStore` Crossplane composition in `Smana/crossplane-configuration`; the chart version tracks that repository's release, not a pin here.
