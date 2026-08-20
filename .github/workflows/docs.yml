@@ -6,6 +6,9 @@ on:
     paths:
       - "website/**"
       - "docs/architecture/**"
+      # Renovate bumps hugo-extended here on its own; without this the
+      # site is never built against the new version before it reaches main.
+      - "mise.toml"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 

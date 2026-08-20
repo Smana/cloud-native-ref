@@ -693,6 +693,10 @@ on:
       - "website/**"
       - "docs/architecture/**"
       - "scripts/verify-doc-paths.sh"
+      # Renovate bumps hugo-extended here on its own. Without this path the
+      # site is never built against the new version before it reaches main,
+      # and the breakage surfaces on the next unrelated content push.
+      - "mise.toml"
       - ".github/workflows/docs-check.yml"
 
 permissions:
@@ -740,6 +744,7 @@ on:
     paths:
       - "website/**"
       - "docs/architecture/**"
+      - "mise.toml"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
