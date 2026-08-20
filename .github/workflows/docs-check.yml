@@ -1,0 +1,44 @@
+name: Docs site
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "website/**"
+      - "docs/architecture/**"
+      # Renovate bumps hugo-extended here on its own; without this the
+      # site is never built against the new version before it reaches main.
+      - "mise.toml"
+      - "scripts/verify-doc-paths.sh"
+      - ".github/workflows/docs-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the documentation site 📚
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # enableGitInfo needs history
+
+      - name: Install tools
+        uses: jdx/mise-action@v4
+
+      - name: Cache Hugo modules
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/hugo_cache
+          key: hugo-mod-${{ hashFiles('website/go.sum') }}
+          restore-keys: hugo-mod-
+
+      # refLinksErrorLevel: ERROR turns an unresolved relref into a non-zero
+      # exit, so this step is the internal-link gate as well as the build gate.
+      - name: Build
+        working-directory: website
+        run: hugo --minify --gc
+
+      - name: Verify every referenced repository path exists
+        run: ./scripts/verify-doc-paths.sh
