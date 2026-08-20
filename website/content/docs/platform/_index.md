@@ -9,3 +9,8 @@ One section per domain: what runs, why it was chosen over the alternatives,
 and how it is wired together. Foundations and GitOps first, then networking
 and security, then the developer platform, observability, and the optional
 self-hosted AI stack.
+
+{{< cards >}}
+  {{< card link="/docs/platform/foundations/" title="Foundations" icon="cube" subtitle="OpenTofu, Terramate, and the three-stage model that provisions everything before Flux takes over." >}}
+  {{< card link="/docs/platform/gitops/" title="GitOps" icon="refresh" subtitle="Why Flux, the dependency hierarchy, and how manifests are validated before they merge." >}}
+{{< /cards >}}
