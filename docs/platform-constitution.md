@@ -9,7 +9,7 @@ lastVerified: 2026-08-20
 
 This document defines the non-negotiable principles that govern all designs and implementations in this platform. Every design MUST comply with these principles.
 
-**Related**: [Architecture Decision Records](https://cnref.ogenki.io/docs/decisions/) | [Development workflow](../CLAUDE.md#development-workflow-superpowers)
+**Related**: [Architecture Decision Records](https://cnref.ogenki.io/docs/decisions/) | [Development workflow](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md#development-workflow-superpowers)
 
 ---
 
@@ -217,7 +217,7 @@ rationale — not just the outcome. Never leave a `[NEEDS CLARIFICATION]` marker
 design; resolve it and write down why.
 
 Specs produced by the retired in-house SDD workflow (2026-Q1 → 2026-Q3) are archived read-only
-under [`docs/specs/`](./specs/).
+under [`docs/specs/`](https://github.com/Smana/cloud-native-ref/tree/main/docs/specs).
 
 ---
 
