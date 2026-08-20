@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-20
 **Status:** design approved
-**Branch:** `worktree-docs-site-quality`
+**Branch:** `feat/docs-site-quality`
 **Related:** [Documentation Site design](2026-08-20-docs-hugo-site-design.md), [plan](../plans/2026-08-20-docs-hugo-site.md)
 
 ---
