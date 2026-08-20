@@ -240,7 +240,7 @@ Two skills cover ground the plugin does not. Both are optional.
 Private services exposed via Tailscale using Gateway API with custom domains (`*.priv.cloud.ogenki.io`). Two separate Gateways enforce ACL-based access control:
 
 - **General Gateway** (`tag:k8s`): All Tailscale members. Services: Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics.
-- **Admin Gateway** (`tag:admin`): `group:admin` only. Services: Hubble UI, VictoriaLogs, Grafana OnCall.
+- **Admin Gateway** (`tag:admin`): `group:admin` only. Services: Hubble UI. (VictoriaLogs is on the *general* gateway — both its HTTPRoutes name `platform-tailscale-general`. Grafana OnCall is built under `observability/base/grafana-oncall/` but wired into no Kustomization, so it does not run.)
 
 Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDNS watches HTTPRoutes to create Route53 records. See [Platform → Networking → Private access](https://cnref.ogenki.io/docs/platform/networking/private-access/) for setup details.
 
