@@ -1,0 +1,46 @@
+{{- /*
+  The landing-page technology strip: every item in data/stack.yaml flagged
+  `strip: true`, as a wrapped row of logo + name chips.
+
+  This is item 5 of the original site design's landing page ("Stack strip — the
+  technology set") and the one part of it that never got built. It answers,
+  above the fold and without reading, the question a visitor actually arrives
+  with: what is this platform made of?
+
+  It reads the same data file as stack-table.html rather than repeating the
+  list, so a component cannot appear here at one version and there at another —
+  and adding one to the strip is a one-word change, not a second edit in a
+  second place.
+
+  Curated, not exhaustive: 16 of 48 items carry `strip: true`. Forty-eight
+  marks is a wall, not a strip.
+*/ -}}
+
+<div class="cnref-strip">
+  <p class="cnref-eyebrow">Built with</p>
+  <ul class="cnref-strip-list">
+    {{- range site.Data.stack.groups -}}
+      {{- range .items -}}
+        {{- if .strip }}
+    <li class="cnref-strip-item{{ if .logo_dark }} cnref-has-dark{{ end }}">
+      <a href="{{ .url }}" target="_blank" rel="noopener">
+        {{- if .logo -}}
+          <img class="not-prose cnref-logo cnref-logo-light" src="{{ printf "/images/logos/%s.svg" .logo | relURL }}" alt="" aria-hidden="true" loading="lazy" width="22" height="22">
+          {{- with .logo_dark -}}
+            <img class="not-prose cnref-logo cnref-logo-dark" src="{{ printf "/images/logos/%s.svg" . | relURL }}" alt="" aria-hidden="true" loading="lazy" width="22" height="22">
+          {{- end -}}
+        {{- else -}}
+          <span class="cnref-tile" aria-hidden="true">{{ substr .name 0 1 }}</span>
+        {{- end -}}
+        <span>{{ .short | default .name }}</span>
+      </a>
+    </li>
+        {{- end -}}
+      {{- end -}}
+    {{- end }}
+  </ul>
+  <p class="cnref-strip-more">
+    Every component, its version, and where that version is pinned:
+    <a href="{{ "docs/reference/technology-stack/" | relURL }}">Technology Stack</a>.
+  </p>
+</div>

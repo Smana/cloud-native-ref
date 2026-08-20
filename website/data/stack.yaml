@@ -9,6 +9,8 @@
 #
 # Fields
 #   name        display name
+#   short       shorter label for the landing-page strip, where the full name
+#               would not fit a chip; falls back to `name`
 #   version     as pinned, verbatim
 #   logo        basename under static/images/logos/; omit for a typographic tile
 #   logo_dark   light-ink variant, for marks that vanish on the dark theme
@@ -74,6 +76,7 @@ groups:
     title: EKS bootstrap
     items:
       - name: Kubernetes (EKS control plane)
+        short: Kubernetes
         version: "1.36"
         logo: kubernetes
         url: https://kubernetes.io
@@ -86,6 +89,7 @@ groups:
         pin: "`opentofu/config.tm.hcl` — `cilium_version`"
         strip: true
       - name: Flux Operator
+        short: Flux
         version: "0.55.0"
         logo: flux
         url: https://fluxcd.control-plane.io
@@ -97,6 +101,7 @@ groups:
         url: https://fluxcd.io
         pin: "`opentofu/config.tm.hcl` — `flux_instance_version`"
       - name: Gateway API CRDs
+        short: Gateway API
         version: "v1.6.1"
         url: https://gateway-api.sigs.k8s.io
         pin: "`opentofu/eks/configure/variables.tf` — `gateway_api_version` default"
@@ -106,6 +111,7 @@ groups:
     title: Infrastructure
     items:
       - name: Crossplane (controller)
+        short: Crossplane
         version: "2.3.4"
         logo: crossplane
         url: https://crossplane.io
@@ -129,6 +135,7 @@ groups:
         url: https://keda.sh
         pin: "`infrastructure/base/keda/helmrelease.yaml`"
       - name: CloudNativePG (operator)
+        short: CloudNativePG
         version: "0.29.0"
         logo: cloudnativepg
         url: https://cloudnative-pg.io
@@ -188,6 +195,7 @@ groups:
         pin: "`security/base/cert-manager/helmrelease.yaml`"
         strip: true
       - name: External Secrets Operator
+        short: External Secrets
         version: "2.9.0"
         logo: external-secrets
         url: https://external-secrets.io
@@ -214,6 +222,7 @@ groups:
     title: Observability
     items:
       - name: VictoriaMetrics k8s stack
+        short: VictoriaMetrics
         version: "0.91.0"
         logo: victoriametrics
         url: https://victoriametrics.com
@@ -236,6 +245,7 @@ groups:
         url: https://docs.victoriametrics.com/victoriatraces/
         pin: "`observability/base/victoria-traces/helmrelease-vtsingle.yaml`"
       - name: Grafana Operator
+        short: Grafana
         version: "5.24.0"
         logo: grafana
         url: https://grafana.github.io/grafana-operator/

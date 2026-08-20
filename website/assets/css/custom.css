@@ -377,3 +377,133 @@ html.light .chroma .cpf {
 .cnref-stack-pin code {
   overflow-wrap: anywhere;
 }
+
+/* ── Landing page: section headings and the technology strip ────────────────
+ *
+ * The landing page carried its own layout in inline `style` attributes — six
+ * declarations on one <p>, a margin on each <h2>. Fine for one page until it is
+ * not: the values could not be reused, could not respond to the viewport, and
+ * could not be checked for contrast alongside everything else in this file.
+ */
+.cnref-eyebrow {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cnref-stamp);
+}
+
+/* The two landing-page section headings previously rendered with a hand-written
+ * top margin and the theme's default weight, so they read as labels rather than
+ * as the entry point to a section. */
+.cnref-section-title {
+  margin: 3.5rem 0 1.25rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.cnref-strip {
+  margin-top: 3.5rem;
+}
+
+.cnref-strip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cnref-strip-item a {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4375rem 0.75rem;
+  border: 1px solid var(--ogenki-external);
+  border-radius: 999px;
+  font-size: 0.875rem;
+  color: inherit;
+  text-decoration: none;
+  /* Only the border and background move on hover. Transforming a chip inside a
+   * wrapped row nudges its neighbours' perceived baseline. */
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.cnref-strip-item a:hover {
+  border-color: var(--color-primary-600, #4fa6d9);
+  background: rgb(148 163 184 / 10%);
+}
+
+.cnref-strip-more {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: var(--cnref-stamp);
+}
+
+/* ── Card hover ─────────────────────────────────────────────────────────────
+ *
+ * Hextra's feature cards and card grids have no hover state beyond the cursor,
+ * so the landing page's twelve clickable cards give no feedback that they are
+ * clickable. A 1px lift plus the accent border is enough; anything larger
+ * visibly reflows a wrapped grid row.
+ */
+.hextra-feature-card,
+.hextra-card {
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hextra-feature-card:hover,
+.hextra-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--color-primary-600, #4fa6d9);
+  box-shadow: 0 4px 14px rgb(15 23 42 / 8%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hextra-feature-card,
+  .hextra-card,
+  .cnref-strip-item a {
+    transition: none;
+  }
+
+  .hextra-feature-card:hover,
+  .hextra-card:hover {
+    transform: none;
+  }
+}
+
+/* ── Anchor links land under the sticky navbar ──────────────────────────────
+ *
+ * The navbar is position: sticky and 4rem tall, so following an in-page anchor
+ * or an "On this page" entry scrolled the target heading underneath it: the
+ * reader lands one heading too far down and has to scroll back. scroll-margin
+ * fixes it without any code needing to know the navbar's height at runtime.
+ */
+.content h2,
+.content h3,
+.content h4,
+.content h5 {
+  scroll-margin-top: 5rem;
+}
+
+/* Every diagram is already data-zoomable and nothing said so. They are dense —
+ * the Flux dependency graph carries twenty-odd boxes — so a reader who does not
+ * know they can zoom simply squints at it. */
+img[src*="images/diagrams/"] {
+  cursor: zoom-in;
+}
+
+/* Links inside a muted paragraph inherit its muted colour, so "Technology
+ * Stack" and "ADR-0007" on the landing page rendered as plain grey text with no
+ * affordance at all. Restore the accent, and underline on hover — inside a grey
+ * block, colour alone is a weaker signal than it is in body copy. */
+.cnref-strip-more a {
+  color: var(--color-primary-600, #4fa6d9);
+}
+
+.cnref-strip-more a:hover {
+  text-decoration: underline;
+}

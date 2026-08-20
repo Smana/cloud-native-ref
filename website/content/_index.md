@@ -23,11 +23,11 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
 {{< hextra/hero-button text="Deploy in 30 minutes" link="docs/get-started/" >}}
 {{< hextra/hero-button text="View on GitHub" link="https://github.com/Smana/cloud-native-ref" style="background:transparent;border:1px solid rgba(148,163,184,0.45);color:inherit" >}}
 
-<p style="margin-top:3rem;margin-bottom:0.5rem;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--cnref-stamp)">The whole platform, on one page</p>
+<p class="cnref-eyebrow" style="margin-top:3rem">The whole platform, on one page</p>
 
 ![Platform architecture: AWS managed services, the EKS cluster in four tiers, and the applications and data stores on top](/images/diagrams/platform-overview.svg)
 
-<h2 style="margin-top:3.5rem">What this repository is for</h2>
+<h2 class="cnref-section-title">What this repository is for</h2>
 
 {{< hextra/feature-grid cols="2" >}}
   {{< hextra/feature-card link="docs/get-started/" icon="lightning-bolt" title="Bootstrap a platform"
@@ -40,7 +40,7 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
     subtitle="Which values are environment-specific, what to strip out, what the minimum viable subset is, and roughly what it costs to run." >}}
 {{< /hextra/feature-grid >}}
 
-<h2 style="margin-top:3.5rem">Browse the docs</h2>
+<h2 class="cnref-section-title">Browse the docs</h2>
 
 {{< hextra/feature-grid cols="3" >}}
   {{< hextra/feature-card link="docs/get-started/" icon="play" title="Get Started" subtitle="Prerequisites, the deploy path, first application, teardown." >}}
@@ -51,7 +51,9 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
   {{< hextra/feature-card link="docs/decisions/" icon="scale" title="Decisions" subtitle="Architecture decision records — what was chosen, and what it was chosen over." >}}
 {{< /hextra/feature-grid >}}
 
-<p style="margin-top:3.5rem;font-size:0.9375rem;color:var(--cnref-stamp)">
+{{< stack-strip >}}
+
+<p class="cnref-strip-more" style="margin-top:2.5rem">
 Runs on <strong>AWS EKS</strong> today. A second cloud is designed but not yet
 implemented — see <a href="{{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}}">ADR-0007</a>
 for where the platform draws its cloud boundary.
