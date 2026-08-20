@@ -1,0 +1,103 @@
+{{/*
+  Project override of Hextra's image render hook.
+
+  Identical to the theme's own hook (hextra@v0.12.3 layouts/_markup/render-image.html)
+  except for one addition: a diagram SVG is emitted with the intrinsic width and
+  height read out of the file itself.
+
+  Why it is worth overriding a theme file for this. An <img> with no dimensions
+  occupies no space until the image arrives, so the browser lays the page out
+  once without it and again with it. On the landing page that single reflow
+  measured 0.21 cumulative layout shift — the entire CLS of the page, from one
+  image — against a 0.1 "good" threshold. Ten diagrams are embedded across the
+  site, so the fix has to be structural rather than per-page.
+
+  The numbers are read from the SVG rather than written down here, because
+  drawio changes a diagram's dimensions whenever its content changes. A hardcoded
+  size would silently stop matching on the next ./scripts/export-diagrams.sh run
+  and reserve the wrong box, which is worse than reserving none.
+
+  Markdown attributes (`![alt](x.svg){width="1343"}`) do not work here: Goldmark
+  binds a trailing attribute block to the enclosing paragraph, not to the inline
+  image, so the values never reach this hook.
+
+  When bumping Hextra, diff its render-image.html against this file.
+*/}}
+{{- $alt := .PlainText | safeHTML -}}
+{{- $lazyLoading := .Page.Site.Params.enableImageLazyLoading | default true -}}
+{{- $enableImageZoom := .Page.Site.Params.imageZoom.enable | default false -}}
+{{- if not (eq .Page.Params.imageZoom nil) -}}
+  {{- $enableImageZoom = .Page.Params.imageZoom -}}
+{{- end -}}
+{{- $dest := .Destination -}}
+{{- $url := urls.Parse $dest -}}
+
+{{- $isLocal := not $url.Scheme -}}
+{{- $isPage := and (eq .Page.Kind "page") (not .Page.BundleType) -}}
+{{- $startsWithSlash := hasPrefix $dest "/" -}}
+{{- $startsWithRelative := hasPrefix $dest "../" -}}
+
+{{- if and $dest $isLocal -}}
+  {{- if $startsWithSlash -}}
+    {{- with or (.PageInner.Resources.Get $url.Path) (resources.Get $url.Path) -}}
+      {{/* Images under assets directory */}}
+      {{- $query := cond $url.RawQuery (printf "?%s" $url.RawQuery) "" -}}
+      {{- $fragment := cond $url.Fragment (printf "#%s" $url.Fragment) "" -}}
+      {{- $dest = printf "%s%s%s" .RelPermalink $query $fragment -}}
+    {{- else -}}
+      {{/* Images under static directory */}}
+      {{- $dest = (relURL (strings.TrimPrefix "/" $dest)) -}}
+    {{- end -}}
+  {{- else -}}
+    {{/* Resolve page bundle resource for multilingual permalink */}}
+    {{- with .PageInner.Resources.Get (strings.TrimPrefix "./" $url.Path) -}}
+      {{- $query := cond $url.RawQuery (printf "?%s" $url.RawQuery) "" -}}
+      {{- $fragment := cond $url.Fragment (printf "#%s" $url.Fragment) "" -}}
+      {{- $dest = printf "%s%s%s" .RelPermalink $query $fragment -}}
+    {{- else -}}
+      {{- if and $isPage (not $startsWithRelative) -}}
+        {{ $dest = (printf "../%s" $dest) }}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{/* The addition: reserve the diagram's box before it loads. */}}
+{{- $sizing := "" -}}
+{{- if hasPrefix $url.Path "/images/diagrams/" -}}
+  {{- with (readFile (printf "static%s" $url.Path)) -}}
+    {{- $head := substr . 0 1200 -}}
+    {{- $w := "" -}}
+    {{- $h := "" -}}
+    {{- with (findRE `width="[0-9]+px"` $head 1) -}}
+      {{- $w = replaceRE `\D` "" (index . 0) -}}
+    {{- end -}}
+    {{- with (findRE `height="[0-9]+px"` $head 1) -}}
+      {{- $h = replaceRE `\D` "" (index . 0) -}}
+    {{- end -}}
+    {{- if and $w $h -}}
+      {{- $sizing = printf ` width="%s" height="%s"` $w $h -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- $attributes := "" -}}
+{{- range $key, $value := .Attributes -}}
+  {{- if $value -}}
+    {{- $pair := printf "%s=%q" $key ($value | transform.HTMLEscape) -}}
+    {{- $attributes = printf "%s %s" $attributes $pair -}}
+  {{- end -}}
+{{- end -}}
+
+{{- if $enableImageZoom -}}
+  {{- .Page.Store.Set "hasImageZoom" true -}}
+{{- end -}}
+
+{{- with .Title -}}
+  <figure>
+    <img src="{{ $dest | safeURL }}" title="{{ . }}" alt="{{ $alt }}" {{ $attributes | safeHTMLAttr }}{{ $sizing | safeHTMLAttr }}{{ if $enableImageZoom }} data-zoomable{{ end }}{{ if $lazyLoading }} loading="lazy"{{ end }} />
+    <figcaption>{{ . }}</figcaption>
+  </figure>
+{{- else -}}
+  <img src="{{ $dest | safeURL }}" alt="{{ $alt }}" {{ $attributes | safeHTMLAttr }}{{ $sizing | safeHTMLAttr }}{{ if $enableImageZoom }} data-zoomable{{ end }}{{ if $lazyLoading }} loading="lazy"{{ end }} />
+{{- end -}}

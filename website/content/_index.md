@@ -23,7 +23,7 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
 {{< hextra/hero-button text="Deploy in 30 minutes" link="docs/get-started/" >}}
 {{< hextra/hero-button text="View on GitHub" link="https://github.com/Smana/cloud-native-ref" style="background:transparent;border:1px solid rgba(148,163,184,0.45);color:inherit" >}}
 
-<p style="margin-top:3rem;margin-bottom:0.5rem;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--ogenki-external)">The whole platform, on one page</p>
+<p style="margin-top:3rem;margin-bottom:0.5rem;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--cnref-stamp)">The whole platform, on one page</p>
 
 ![Platform architecture: AWS managed services, the EKS cluster in four tiers, and the applications and data stores on top](/images/diagrams/platform-overview.svg)
 
@@ -51,7 +51,7 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
   {{< hextra/feature-card link="docs/decisions/" icon="scale" title="Decisions" subtitle="Architecture decision records — what was chosen, and what it was chosen over." >}}
 {{< /hextra/feature-grid >}}
 
-<p style="margin-top:3.5rem;font-size:0.9375rem;color:var(--ogenki-external)">
+<p style="margin-top:3.5rem;font-size:0.9375rem;color:var(--cnref-stamp)">
 Runs on <strong>AWS EKS</strong> today. A second cloud is designed but not yet
 implemented — see <a href="{{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}}">ADR-0007</a>
 for where the platform draws its cloud boundary.
