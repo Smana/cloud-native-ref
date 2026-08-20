@@ -35,13 +35,28 @@
   --ogenki-external: #94a3b8; /* slate   */
 }
 
-/* The verification stamp rendered by layouts/_partials/custom/footer.html */
+/* The verification stamp rendered by layouts/_partials/custom/footer.html.
+ *
+ * Its colour cannot be --ogenki-external. That token is deliberately identical
+ * in both themes so the diagram legends match the diagrams, and slate-400 on
+ * the light page background is 2.3:1 — below the 4.5:1 WCAG AA needs for 13px
+ * text. No single slate clears AA on both grounds (slate-600 is 6.9:1 on light
+ * but 2.3:1 on dark), so the stamp gets its own token, flipped per theme.
+ */
+:root {
+  --cnref-stamp: #475569; /* slate-600 — 6.9:1 on the light page */
+}
+
+.dark {
+  --cnref-stamp: #94a3b8; /* slate-400 — 6.9:1 on the dark page */
+}
+
 .cnref-verified {
   margin-top: 3rem;
   padding-top: 1rem;
   border-top: 1px solid var(--ogenki-external);
   font-size: 0.8125rem;
-  color: var(--ogenki-external);
+  color: var(--cnref-stamp);
 }
 
 /* Diagram surface.
@@ -66,8 +81,52 @@
  */
 img[src*="images/diagrams/"] {
   color-scheme: light;
+  /* layouts/_markup/render-image.html stamps the SVG's intrinsic width and
+   * height on the tag so the browser reserves the box before the file loads.
+   * Those are absolute, so max-width alone would squash the diagram on any
+   * viewport narrower than the diagram: height must yield with it. */
+  max-width: 100%;
+  height: auto;
   background: #ffffff;
   padding: 1rem;
   border-radius: 0.5rem;
   border: 1px solid var(--ogenki-external);
+}
+
+/* Sidebar section toggles.
+ *
+ * Hextra renders these at 18x18, below the 24x24 minimum WCAG 2.2 sets for a
+ * pointer target. The button is absolutely positioned and centred on its own
+ * transform, so growing the box would shift the chevron off the row — padding
+ * grows the hit area instead and leaves the glyph where it is.
+ */
+.hextra-sidebar-collapsible-button {
+  min-width: 24px;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Code comments, light theme only.
+ *
+ * Chroma's default comment token is #999988 — 2.9:1 on white and only 2.2:1
+ * once a snippet sits inside an info callout, whose blue ground is darker than
+ * the page. Comments in this repository's snippets carry the file path the
+ * snippet came from, so they are content, not decoration, and they have to
+ * clear 4.5:1 like any other text.
+ *
+ * #57606a holds AA on all three grounds the snippets actually appear on:
+ * white 6.4:1, callout blue 4.8:1, code grey 6.0:1 — and stays muted enough to
+ * still read as a comment. Scoped to the light theme; the dark palette has its
+ * own comment colour and does not have this problem.
+ */
+html.light .chroma .c,
+html.light .chroma .ch,
+html.light .chroma .cm,
+html.light .chroma .c1,
+html.light .chroma .cs,
+html.light .chroma .cp,
+html.light .chroma .cpf {
+  color: #57606a;
 }

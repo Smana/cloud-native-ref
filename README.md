@@ -2,303 +2,108 @@
 
 **_An opinionated, production-ready Kubernetes platform using GitOps principles._**
 
-This repository demonstrates how to build and operate a secure, scalable cloud-native platform. It showcases modern cloud-native technologies, GitOps workflows, and platform engineering best practices.
+A reference implementation of a complete cloud-native platform on AWS EKS: infrastructure as
+code with OpenTofu and Crossplane, continuous delivery with Flux, a private PKI and zero-trust
+networking, a full observability stack, and a developer-facing abstraction that turns one small
+YAML claim into a whole application.
 
-## What is This?
+📖 **Full documentation: [cnref.ogenki.io](https://cnref.ogenki.io)**
 
-This is a **reference implementation** of a complete cloud-native platform that includes:
-
-- 🔧 **Infrastructure as Code**: OpenTofu for AWS resources, Crossplane for application infrastructure
-- 🚀 **GitOps**: Flux for continuous delivery and reconciliation
-- 🔒 **Security-First**: Private PKI (OpenBao), zero-trust networking (Cilium), secrets management
-- 📊 **Observability**: Metrics (VictoriaMetrics), logs (VictoriaLogs), dashboards (Grafana)
-- 🎯 **Developer Experience**: Simple abstractions for complex infrastructure (Crossplane compositions)
-- 💰 **Cost-Optimized**: SPOT instances, efficient monitoring, right-sized resources
-
-## Architecture Overview
+## Architecture
 
 ![Platform Architecture](docs/architecture/img/platform-overview.png)
 
 > Editable source: [`docs/architecture/platform-overview.drawio`](docs/architecture/platform-overview.drawio)
 
-The platform is organized in three bands:
+Three bands: **AWS managed services** on the left (Route 53, ELB, IAM via EKS Pod Identity, S3,
+KMS), the **EKS cluster** in the centre in four tiers (GitOps & composition, compute &
+networking, security & identity, observability), and **applications & data** on the right. Flux
+reconciles the repository; Tailscale provides private access; OpenBao holds the secrets and the
+PKI. The self-hosted LLM platform is opt-in and off by default.
 
-1. **AWS Managed Services** (left): Route 53, ELB, IAM (via EKS Pod Identity), S3, KMS — all provisioned by Crossplane `provider-aws` (could be any cloud with these basic managed services).
-2. **EKS Cluster** (center): Cilium eBPF CNI on Karpenter-managed nodes, in four tiers — GitOps & composition (Flux, Crossplane, the App/SQLInstance/EPI compositions), compute & networking (Cilium, Gateway API, ExternalDNS, Karpenter + KEDA), security & identity (External Secrets, cert-manager, Kyverno, ZITADEL), and observability (VictoriaMetrics/Logs/Traces, Grafana).
-3. **Applications & Data** (right): App Wizard, Harbor, demo apps, runlore, plus the CloudNativePG / Valkey / S3 data stores the App and SQLInstance compositions provision. The self-hosted LLM platform is opt-in and off by default.
-
-**GitOps**: Flux reconciles the repo; **private access**: Tailscale zero-trust VPN; **secrets & PKI**: OpenBao (open-source Vault fork). CI runs on self-hosted GitHub Actions runners (disabled by default).
+Every subsystem is explained at
+[cnref.ogenki.io/docs/platform](https://cnref.ogenki.io/docs/platform/).
 
 ## Quickstart
 
-Get a complete platform running in **under 30 minutes**.
-
-### Prerequisites
-
-Ensure you have these tools and accounts ready:
-
-- ✅ **AWS Account** with admin permissions
-- ✅ **Tools**: [OpenTofu](https://opentofu.org/), [Terramate](https://terramate.io/), kubectl, jq
-- ✅ **GitHub Account** for GitOps (personal access token or GitHub App)
-- ✅ **Tailscale Account** for VPN access
-- ✅ **Domain**: Registered domain for Route53 DNS
-
-**Detailed prerequisites**: [OpenTofu Deployment Guide](docs/opentofu.md#prerequisites)
-
-### Deployment Steps
-
-**1. Configure Global Variables**
-
-Edit `opentofu/config.tm.hcl` with your environment:
-
-```hcl
-globals {
-  region           = "eu-west-3"
-  eks_cluster_name = "mycluster-0"
-
-  # Helm versions for EKS bootstrap
-  cilium_version        = "1.19.0"
-  flux_operator_version = "0.43.0"
-  flux_instance_version = "0.43.0"
-
-  # Flux sync and OpenBao configuration
-  flux_sync_repository_url = "https://github.com/YOUR_ORG/cloud-native-ref.git"
-  openbao_url              = "https://bao.priv.cloud.example.com:8200"
-}
-```
-
-**2. Set Secrets**
+Roughly 30 minutes end to end. You need an AWS account with admin permissions, a registered
+domain in Route53, a Tailscale account, and a GitHub App or token for Flux. Full prerequisites
+and the annotated walkthrough are in
+[Get Started](https://cnref.ogenki.io/docs/get-started/).
 
 ```bash
-export TF_VAR_tailscale_api_key=<YOUR_TAILSCALE_API_KEY>
-```
+# 1. Point the platform at your environment
+$EDITOR opentofu/config.tm.hcl        # region, cluster name, domains, chart versions
 
-**3. Deploy Infrastructure**
+# 2. Provide the one secret that is not in AWS Secrets Manager
+export TF_VAR_tailscale_api_key=<your-tailscale-api-key>
 
-```bash
-# Deploy network and OpenBao
-cd opentofu
-terramate script run deploy
+# 3. Network, then OpenBao (~15 min)
+cd opentofu && terramate script run deploy
 
-# Deploy EKS (two-stage: cluster + Cilium/Flux)
+# 4. EKS — two stages: cluster on a temporary CNI, then Cilium + Flux (~15 min)
 cd eks/init && terramate script run deploy
-```
 
-This deploys in order:
-1. **Network**: VPC, subnets, Route53, Tailscale VPN (~5 min)
-2. **OpenBao**: 5-node HA cluster for secrets/PKI (~10 min)
-3. **EKS**: Kubernetes with Cilium CNI and Flux (~15 min)
-
-**4. Verify Deployment**
-
-```bash
-# Network access
-tailscale status
-
-# OpenBao
-export VAULT_ADDR=https://bao.priv.cloud.example.com:8200
-export VAULT_SKIP_VERIFY=true
-bao status
-
-# Kubernetes
+# 5. Get a kubeconfig
 aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
-kubectl get nodes
+
+# 6. Watch Flux build the rest of the platform
 flux get all
 ```
 
-**Flux automatically deploys**: Security (External Secrets, cert-manager), Infrastructure (Cilium, Gateway API), Observability (VictoriaMetrics, Grafana), and Tooling (Harbor, Headlamp, Homepage).
-
-**Full deployment guide**: [OpenTofu Documentation](docs/opentofu.md)
-
-## Platform Dashboard
-
-Once deployed, access the **Homepage dashboard** for a unified view of all platform services:
-
-![Homepage UI](.assets/homepage.png)
-
-
-Homepage provides:
-- Quick links to all platform tools (Grafana, Harbor, Headlamp)
-- Kubernetes cluster metrics
-- Service health status
-- Documentation bookmarks
-
-## Core Concepts
-
-### Progressive Complexity
-
-This platform embraces **progressive complexity**: start simple, grow sophisticated without platform migrations.
-
-**Example**: Deploy an application with just a container image:
-```yaml
-apiVersion: cloud.ogenki.io/v1alpha1
-kind: App
-metadata:
-  name: xplane-myapp
-  namespace: apps
-spec:
-  image:
-    repository: ghcr.io/myorg/myapp
-    tag: v1.0.0
-```
-
-As needs grow, add databases, caching, autoscaling, HA—all through the same interface. No rewriting, no migration.
-
-**Learn more**: [Crossplane App Composition](docs/crossplane.md)
-
-### GitOps Everything
-
-**Git is the source of truth** for infrastructure and applications:
-
-- Commit to Git → Flux detects change → Reconciles to cluster
-- No manual `kubectl apply`
-- Complete audit trail
-- Easy rollback (revert Git commit)
-
-**Learn more**: [GitOps with Flux](docs/gitops.md)
-
-### Security by Design
-
-Security is built-in, not bolted-on:
-
-- 🔐 **Private PKI**: OpenBao three-tier CA for TLS certificates
-- 🛡️ **Zero-Trust**: Cilium Network Policies for micro-segmentation
-- 🔑 **Secrets Management**: External Secrets syncs from AWS Secrets Manager/OpenBao
-- 🚪 **Private Access**: Platform tools only via Tailscale VPN
-- 👤 **Identity**: ZITADEL for authentication, EKS Pod Identity for AWS access
-
-**Learn more**: [Ingress and Network Access](docs/ingress.md)
+Flux takes over from there: security (External Secrets, cert-manager, Kyverno), infrastructure
+(Cilium, Gateway API, ExternalDNS, Karpenter), observability (VictoriaMetrics, VictoriaLogs,
+Grafana) and tooling (Harbor, Headlamp, Homepage).
 
 ## Documentation
 
-### Getting Started
+Full documentation — deploy guides, platform internals, concepts, and the
+architecture decision records — is published at **[cnref.ogenki.io](https://cnref.ogenki.io)**.
 
-- 📖 [OpenTofu Deployment](docs/opentofu.md) - Infrastructure deployment guide
-- 🔄 [GitOps with Flux](docs/gitops.md) - How continuous delivery works
-- 🏗️ [Crossplane](docs/crossplane.md) - Infrastructure compositions
-- 🧩 [Authoring KCL compositions](docs/crossplane-kcl-authoring.md) - composition authoring rules and gotchas
+- [Get Started](https://cnref.ogenki.io/docs/get-started/) — deploy the platform in about 30 minutes
+- [Platform](https://cnref.ogenki.io/docs/platform/) — every domain, what runs and why
+- [Concepts](https://cnref.ogenki.io/docs/concepts/) — the ideas the platform is built on
+- [Guides](https://cnref.ogenki.io/docs/guides/) — fork and adapt, add an application, troubleshoot
+- [Reference](https://cnref.ogenki.io/docs/reference/) — technology stack, commands, repository layout
+- [Decisions](https://cnref.ogenki.io/docs/decisions/) — what was chosen, and what over
 
-### Platform Services
-
-- 🔐 [Ingress and Network Access](docs/ingress.md) - Gateway API, TLS, Tailscale
-- 👁️ [Observability](docs/observability.md) - Metrics, logs, tracing, alerting, dashboards
-
-### Development and Operations
-
-- 🧪 [CI/CD Workflows](docs/ci-workflows.md) - GitHub Actions, security scanning, validation
-- 🛠️ [Technology Choices](docs/technology-choices.md) - Why we chose each technology
-
-### Deep Dives
-
-- [App Composition Detailed Guide](https://github.com/Smana/crossplane-configuration/blob/main/apis/app/kcl/README.md) - Complete reference (507 lines!)
-- [OpenBao PKI Setup](opentofu/openbao/cluster/docs/getting_started.md) - Certificate authority configuration
-- [cert-manager Integration](opentofu/openbao/management/docs/cert-manager.md) - Automated TLS certificates
-
-## Real Production Patterns
-
-- ✅ High availability (multi-AZ, HA databases, Raft consensus)
-- ✅ Disaster recovery (S3 backups, snapshot automation)
-- ✅ Security hardening (private endpoints, least privilege IAM)
-- ✅ Cost optimization (SPOT instances, efficient monitoring)
-- ✅ Operational excellence (alerting, runbooks, observability)
-
-## Optional: Self-Hosted LLM Platform (foundation, not replacement)
-
-A reference deployment of self-hosted, open-weights LLM serving on EKS — GitOps-deployed, always-warm (`min=1` per model), with semantic routing and jailbreak guardrails wired across an OSS model fleet.
-
-- 🧠 **Models**: Qwen2.5-Coder-7B, Qwen3-8B, LlamaGuard 3-1B, Qwen2.5-Coder-1.5B (FIM) — vLLM-served, fp8.
-- 🧩 **LoRA adapters**: `xplane-qwen-coder` (composition v0.6.0+) loads two HF-published adapters (`xplane-qwen-coder-sql-dpo`, `xplane-qwen-coder-securecode`) on the same L4 pod — N specializations, one base, one GPU. See [`clusters/mycluster-0-llm-platform/README.md`](clusters/mycluster-0-llm-platform/README.md#invoking-a-lora-adapter).
-- 🚪 **Gateway**: Envoy AI Gateway with header-match routing; API-key authentication (Envoy Gateway `SecurityPolicy`, keys sourced from AWS Secrets Manager).
-- 🎯 **Routing**: [Semantic Router](https://github.com/vllm-project/semantic-router) runs as an Envoy `ext_proc` gRPC filter. On `model: MoM` it classifies the prompt and rewrites it to a concrete model (code → coder, math/physics → reasoner, multilingual/else → general). Jailbreak prompts are **blocked** in-pod by `prompt_guard`, not routed anywhere.
-- 🔌 **Clients**: OpenAI-compatible at `https://llm.priv.cloud.ogenki.io/v1` (Bearer-token auth) — OpenWebUI for chat, OpenCode + Continue for IDE.
-- 💾 **Storage**: model weights on Amazon S3 Files (POSIX over S3), shared across pods.
-- ⚡ **Scaling**: GPU L4 spot NodePool via Karpenter; all 4 models default `min=1` (always warm). KEDA `ScaledObject` with three leading vLLM saturation triggers (`running/max-num-seqs` ratio, `kv_cache_usage_perc`, `num_requests_waiting`) reacts ahead of queue formation. See [SPEC-001](docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md).
-
-**Honest framing**: the models shipped here are mid-tier open-weights — sufficient to demonstrate the architecture and exercise the cascade, **not a drop-in replacement for frontier proprietary coding tools** (Claude Code on Sonnet 4.6 / Opus 4.7, GitHub Copilot, Cursor). The composition (`InferenceService` Crossplane XR) is designed so swapping in any vLLM-compatible model is a one-claim change. As the open-weights ecosystem closes the gap with frontier APIs, the foundation is in place. Upgrade paths in [`docs/llm-platform-future-paths.md`](docs/llm-platform-future-paths.md).
-
-**Cost**: warm-fleet steady state is 4× L4 spot (one per model at `min=1`); ~$0.30–1.20/hr active demo on top. **Opt-in by default** (two gates):
-
-```bash
-# 1. AWS side (S3 Files + IAM)
-TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy
-
-# 2. Cluster side (Flux umbrella)
-flux resume kustomization llm-platform -n flux-system
-```
-
-**Learn more**: [AI/ML Platform](docs/ai.md) · [Coding Clients](docs/coding-clients.md) · [Future Paths](docs/llm-platform-future-paths.md) · [Architecture Diagrams](docs/architecture/)
+The blog posts that explain several of these components in long form are collected under
+[Further reading](https://cnref.ogenki.io/docs/reference/further-reading/).
 
 ## Repository Structure
 
 ```
 .
-├── docs/                          # 📚 Documentation (you are here)
 ├── opentofu/                      # 🔧 Infrastructure as Code
 │   ├── network/                   # VPC, Tailscale VPN
-│   ├── openbao/                   # Secrets management
+│   ├── openbao/                   # Secrets management and PKI
 │   └── eks/                       # Kubernetes cluster (two-stage)
 │       ├── init/                  # Stage 1: EKS + bootstrap addons
 │       └── configure/             # Stage 2: Cilium + Flux
 ├── flux/                          # 🚀 Flux operator and configuration
 ├── clusters/mycluster-0/          # Cluster-specific Kustomizations
 ├── infrastructure/                # 🏗️ Platform infrastructure
-│   └── base/crossplane/           # Crossplane compositions
 ├── security/                      # 🔒 Security components
 ├── observability/                 # 👁️ Monitoring and logging
 ├── tooling/                       # 🛠️ Platform tools
+├── apps/                          # 📦 Applications, as App claims
 ├── crds/                          # Custom Resource Definitions
-└── scripts/                       # Automation scripts
+├── website/                       # 📚 The documentation site (Hugo + Hextra)
+├── docs/                          # Architecture diagrams, specs, design artifacts
+└── scripts/                       # Automation and validation
 ```
-
-## Technology Stack
-
-| Technology | Purpose |
-|------------|---------|
-| **Kubernetes (EKS)** | Container orchestration platform |
-| **Crossplane** | Infrastructure composition and abstraction |
-| **OpenTofu** | Infrastructure as Code (Terraform alternative) |
-| **Terramate** | OpenTofu orchestration and stack management |
-| **Flux** | GitOps continuous delivery |
-| **Cilium** | eBPF-based networking and security |
-| **Gateway API** | Modern ingress and traffic routing |
-| **OpenBao** | Secrets management and private PKI |
-| **VictoriaMetrics** | High-performance metrics and monitoring |
-| **VictoriaLogs** | Log aggregation and search |
-| **Grafana** | Dashboards and visualization |
-| **CloudNativePG** | PostgreSQL operator with HA |
-| **Harbor** | Container and Helm registry |
-| **Tailscale** | Zero-config VPN for private access |
-| **ZITADEL** | Identity and access management |
-| **Karpenter** | Kubernetes node autoscaling |
-| **KEDA** | Event-driven workload autoscaling on custom metrics (Prometheus, KEDA scalers) |
-
-**Full stack with rationale**: [Technology Choices](docs/technology-choices.md)
-
-## Learning Resources
-
-### Blog Posts
-
-This repository is documented through a series of blog posts:
-
-- [Agentic Coding: concepts and hands-on Platform Engineering use cases](https://blog.ogenki.io/post/series/agentic_ai/ai-coding-agent/)
-- [Crossplane: Compositions and Functions](https://blog.ogenki.io/post/crossplane_composition_functions/)
-- [TLS with Gateway API and Private PKI](https://blog.ogenki.io/post/pki-gapi/)
-- [Tailscale: Simplifying Cloud Access](https://blog.ogenki.io/post/tailscale/)
-- [VictoriaMetrics and Grafana Operators](https://blog.ogenki.io/post/series/observability/metrics)
-- [Effective Alerting with VictoriaMetrics](https://blog.ogenki.io/post/series/observability/alerts/)
-- [Dagger: The Missing Piece of Developer Experience](https://blog.ogenki.io/post/dagger-intro/)
-
-### External Resources
-
-- [Crossplane Documentation](https://docs.crossplane.io/)
-- [Flux Documentation](https://fluxcd.io/)
-- [Gateway API](https://gateway-api.sigs.k8s.io/)
-- [Cilium Documentation](https://docs.cilium.io/)
-- [VictoriaMetrics Documentation](https://docs.victoriametrics.com/)
 
 ## AI-Assisted Development
 
-This repository leverages a coding agent for various development tasks including code generation, troubleshooting, and documentation. The [CLAUDE.md](CLAUDE.md) file provides project context and platform-specific knowledge to help the agent understand the codebase. For non-trivial changes we use the [Superpowers](https://github.com/obra/superpowers) workflow — a design document is brainstormed and approved, turned into an implementation plan, then executed task by task, with every artifact committed under [docs/superpowers/](docs/superpowers/). A [platform constitution](docs/platform-constitution.md) states the non-negotiable rules every design is checked against. The agent also integrates with observability tools via MCP servers (VictoriaMetrics, VictoriaLogs, Flux) for real-time debugging directly from the development environment.
+This repository leverages a coding agent for code generation, troubleshooting, and
+documentation. [CLAUDE.md](CLAUDE.md) provides project context and platform-specific knowledge.
+Non-trivial changes go through the [Superpowers](https://github.com/obra/superpowers) workflow —
+a design document is brainstormed and approved, turned into an implementation plan, then
+executed task by task, with every artifact committed under
+[docs/superpowers/](docs/superpowers/). A [platform constitution](docs/platform-constitution.md)
+states the non-negotiable rules every design is checked against. The agent also integrates with
+observability tools via MCP servers (VictoriaMetrics, VictoriaLogs, Flux) for real-time
+debugging directly from the development environment.
 
 ## Contributing and Community
 
@@ -309,7 +114,8 @@ We welcome contributions, feedback, and questions!
 - 🐛 **[Issues](https://github.com/Smana/cloud-native-ref/issues)**: Bug reports and feature requests
 - 📅 **[Project Board](https://github.com/users/Smana/projects/1)**: Task tracking and priorities
 
-**Before contributing**: Review [SECURITY.md](SECURITY.md) for security policy and [CLAUDE.md](CLAUDE.md) for development guidelines.
+**Before contributing**: Review [SECURITY.md](SECURITY.md) for security policy and
+[CLAUDE.md](CLAUDE.md) for development guidelines.
 
 ## License
 
@@ -328,8 +134,6 @@ This platform builds on the excellent work of many open-source projects:
 
 ---
 
-**Ready to get started?** → [OpenTofu Deployment Guide](docs/opentofu.md)
+**Ready to get started?** → [cnref.ogenki.io/docs/get-started](https://cnref.ogenki.io/docs/get-started/)
 
 **Questions?** → [Join our Slack](https://ogenki.slack.com/)
-
-**Exploring?** → [Technology Choices](docs/technology-choices.md)

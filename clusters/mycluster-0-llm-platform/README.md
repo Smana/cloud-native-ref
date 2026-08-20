@@ -27,10 +27,10 @@ Three canonical client surfaces consume the platform. Each has a defined role:
 | Client | Role | Backing model | Migration spec |
 |---|---|---|---|
 | **OpenCode TUI** | Experimental occasional-use coding-agent client (Claude Code stays primary) | `xplane-qwen-coder` (primary); per-subagent dispatch (qwen3-8b for review/plan/Explore) | [`Smana/opencode-config`](https://github.com/Smana/opencode-config) — `docs/2026-05-05-opencode-migration-design.md` |
-| **Continue VSCode** | IDE inline FIM tab-completion + chat | `xplane-qwen-coder-fim` (FIM); `xplane-qwen-coder` (chat) | per-laptop config in [`docs/coding-clients.md`](../../docs/coding-clients.md) |
+| **Continue VSCode** | IDE inline FIM tab-completion + chat | `xplane-qwen-coder-fim` (FIM); `xplane-qwen-coder` (chat) | per-laptop config in [`docs/coding-clients.md`](https://cnref.ogenki.io/docs/platform/ai-platform/coding-clients/) |
 | **OpenWebUI** | Web chat for non-coding general questions | `MoM` (SR cascade routes by domain) | configured via `apps/base/openwebui/app.yaml` |
 
-Once enabled, see [`docs/coding-clients.md`](../../docs/coding-clients.md)
+Once enabled, see [`docs/coding-clients.md`](https://cnref.ogenki.io/docs/platform/ai-platform/coding-clients/)
 for copy-paste configuration and verification with `curl` (covers
 common failure modes: 404 model-not-found, missing/invalid API key,
 tab-complete falling back to chat).
@@ -152,7 +152,7 @@ S3 bucket data is what they re-mount.
 > select it. Input jailbreak filtering is done by the router's own in-pod
 > `prompt_guard` BERT classifier, which **blocks** rather than routes. LlamaGuard
 > therefore holds one of the four GPUs in the NodePool cap while serving no
-> automatic traffic. Tracked in [docs/ai.md → Known gaps](../../docs/ai.md#known-gaps).
+> automatic traffic. Tracked in [docs/ai.md → Known gaps](https://cnref.ogenki.io/docs/platform/ai-platform/#known-gaps).
 
 > **All models default `min=1`.** The legacy KEDA HTTP add-on (proxy in the data
 > path; request-count trigger) was replaced by a KEDA `ScaledObject` driven by
