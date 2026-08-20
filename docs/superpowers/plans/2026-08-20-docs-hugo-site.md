@@ -118,11 +118,34 @@ That PR 2 leaves content duplicated between `docs/` and `website/content/` is de
 source in the same PR that publishes its replacement makes the diff unreviewable, and PR 3 exists to
 do exactly that deletion under its own review.
 
+### Mounted files are read in two places, so their links must be absolute
+
+`docs/platform-constitution.md` stays in the repository and is *also* published on the site by a
+single-file Hugo mount. That means every link inside it is resolved twice, against two different
+roots:
+
+| Where it is read | How a relative link resolves |
+|---|---|
+| GitHub, at `docs/platform-constitution.md` | against the repository tree |
+| The site, at `/docs/reference/platform-constitution/` | against the URL path |
+
+**No relative path is correct in both.** Links inside a mounted file must therefore be **absolute
+published URLs** — `https://cnref.ogenki.io/docs/decisions/0007-cloud-abstraction-boundaries/` —
+which render correctly in both places and are skipped by `validate-links.sh` by design, so they
+need no allowlist entry.
+
+Derive the URL shape from the built output (`ls website/public/docs/decisions/`) rather than
+guessing: Hugo drops the `.md` and serves a directory-style path with a trailing slash.
+
 ### Moves re-point their own references, in the same task
 
 **A task that moves or deletes a file rewires every inbound reference to it, in that same task.**
 Never defer rewiring to the cleanup task — with the work split across three PRs, a deferred rewire
 means the intermediate PR merges to `main` with a broken link and a failing `links` check.
+
+This includes referrers you were told not to otherwise modify. "Do not edit file X" never means
+"leave X pointing at a file you just deleted" — rewiring a dead link is part of the move, not a
+separate concern.
 
 Find the inbound set before moving anything:
 
@@ -446,6 +469,12 @@ sed -i '2d' website/content/_index.md
 ```
 cnref.ogenki.io
 ```
+
+Keep it for documentation value, but know that **it does not set the custom domain**. A `CNAME`
+file in the artifact configures the domain only for legacy *branch-based* Pages; with
+`actions/deploy-pages` the domain lives in repository settings. Verified after PR 1's first
+successful deploy: the site published while the API still reported `cname=null`. Setting the
+domain is a separate step — see Task 18.
 
 - [ ] **Step 4: Add favicons and the logo**
 
@@ -2250,7 +2279,19 @@ single-file Hugo mount, because 50 files reference its repository path and
 ## Before merge
 
 - [ ] DNS: `cnref.ogenki.io CNAME smana.github.io` in the public `ogenki.io` zone
-- [ ] Repository Settings → Pages → Source = GitHub Actions
+
+GitHub Pages is already enabled with source = GitHub Actions (done in PR 1). Once the DNS record
+resolves, point Pages at the domain — `website/static/CNAME` does **not** do this on its own:
+
+```bash
+gh api repos/Smana/cloud-native-ref/pages -X PUT -f cname=cnref.ogenki.io
+```
+
+Order matters: setting the domain before DNS resolves takes the site offline at *both* URLs,
+because GitHub stops serving the default project path once a domain is set. Until then the site
+is served at `https://blog.ogenki.io/cloud-native-ref/` (the account-level Pages domain plus the
+project path) and renders unstyled there, because `baseURL` is `https://cnref.ogenki.io/` so Hugo
+emits root-relative asset paths. Expected, and self-correcting once the domain is right.
 BODY
 )"
 ```
