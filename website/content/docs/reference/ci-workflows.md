@@ -72,7 +72,8 @@ was scaffolded:
   `relref` because `refLinksErrorLevel: ERROR` is set in `website/hugo.yaml` —
   then runs `./scripts/verify-doc-paths.sh`.
 - **`docs.yml`** runs the same build on push to `main` (same path filter) or
-  on manual dispatch, then publishes `website/public` to GitHub Pages.
+  on manual dispatch, then publishes Hugo's build output — the gitignored
+  website/public directory — to GitHub Pages.
 
 ## Application & image builds
 

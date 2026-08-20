@@ -187,4 +187,4 @@ rescoped to AWS only once that criterion passes, and not before.
 - [gcloud container clusters create](https://docs.cloud.google.com/sdk/gcloud/reference/container/clusters/create) — `--enable-dataplane-v2` is opt-in
 - [cilium#43493](https://github.com/cilium/cilium/issues/43493) — the ENI-mode L7 proxy bug behind the AWS WireGuard workaround
 - Existing Cilium values: `opentofu/eks/init/helm_values/cilium.yaml`
-- Tailscale Gateway setup: `docs/tailscale-gateway-api.md`, `infrastructure/base/gapi/`
+- Tailscale Gateway setup: [Platform → Networking → Private access]({{< relref "/docs/platform/networking/private-access.md" >}}), `infrastructure/base/gapi/`

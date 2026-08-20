@@ -242,7 +242,7 @@ Private services exposed via Tailscale using Gateway API with custom domains (`*
 - **General Gateway** (`tag:k8s`): All Tailscale members. Services: Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics.
 - **Admin Gateway** (`tag:admin`): `group:admin` only. Services: Hubble UI, VictoriaLogs, Grafana OnCall.
 
-Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDNS watches HTTPRoutes to create Route53 records. See `docs/tailscale-gateway-api.md` for setup details.
+Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDNS watches HTTPRoutes to create Route53 records. See [Platform → Networking → Private access](https://cnref.ogenki.io/docs/platform/networking/private-access/) for setup details.
 
 ## Key File Locations
 
