@@ -37,13 +37,19 @@ namespaces, all targeting the one Grafana in `observability`).
 
 ### Folder registry
 
-Six `GrafanaFolder` CRs exist, each defined in the namespace that owns its
-dashboards:
+A repo-wide grep for `kind: GrafanaFolder` finds nine CRs. Eight reconcile onto
+the cluster by default, each defined in the namespace that owns its
+dashboards; the ninth (`llm`, `apps/base/ai/llm/grafana-folder.yaml`) only
+applies once the opt-in LLM platform's suspended umbrella Kustomization is
+resumed (see CLAUDE.md's *Self-Hosted LLM Platform* section) and is out of
+scope for this always-on page:
 
 | Folder | Defined in | Holds |
 |---|---|---|
 | `apps` | `apps` | Demo "all-in-one" RED + trace/log correlation dashboard |
+| `cilium` | `kube-system` | Cilium agent/operator and Hubble dashboards |
 | `databases` | `infrastructure` | CloudNativePG query-performance and query-plan-correlation |
+| `flux` | `flux-system` | Flux cluster and control-plane dashboards |
 | `kubernetes` | `infrastructure` | Kubernetes views, node-exporter, Karpenter |
 | `logs` | `observability` | VictoriaLogs explorer, single/cluster overview |
 | `runlore` | `observability` | RunLore's own dashboard |
@@ -62,6 +68,8 @@ dashboards:
 | `observability-victoria-logs-single` | `logs` | Imported, [dashboard 22084](https://grafana.com/grafana/dashboards/22084/) |
 | `observability-victoria-traces-single` | `traces` | Imported, [dashboard 24136](https://grafana.com/grafana/dashboards/24136/) |
 | `databases-cnpg-query-performance` / `-query-plan-correlation` | `databases` | Authored in-repo — see [PostgreSQL]({{< relref "/docs/platform/observability/postgresql.md" >}}) |
+| `cilium-cilium`, `cilium-operator`, `cilium-hubble{,-dns-namespace,-l7-http-metrics,-network-overview-namespace}` (6 dashboards) | `cilium` | Imported, from the [cilium/cilium](https://github.com/cilium/cilium) upstream dashboard JSON |
+| `flux-cluster`, `flux-control-plane` | `flux` | Imported, from [fluxcd/flux2-monitoring-example](https://github.com/fluxcd/flux2-monitoring-example) |
 
 `victoria-logs` and `victoria-traces` also self-ship a dashboard via their
 own chart's `dashboards.enabled: true, grafanaOperator.enabled: true` values,
@@ -70,7 +78,7 @@ above — two sourcing paths land in the same folder, which is redundant but
 not a conflict (different dashboard names).
 
 The victoria-metrics-k8s-stack chart's own `defaultDashboards` ships into an
-`"observability"` folder (not one of the six `GrafanaFolder` CRs above — it's
+`"observability"` folder (not one of the `GrafanaFolder` CRs above — it's
 created implicitly by the chart's sidecar mechanism, not grafana-operator).
 Its Kubernetes-views duplicates of the `kubernetes` folder's dashboards are
 explicitly disabled in `vm-common-helm-values-configmap.yaml` to avoid
@@ -166,9 +174,14 @@ RunLore's webhook requires a bearer token (its v0.2.0+ fail-closed
 behavior — alert labels/annotations flow into an LLM prompt, so an
 unauthenticated trigger path was judged unacceptable) mirrored between its
 own `runlore-webhook` `ExternalSecret` and this stack's
-`runlore-webhook-token` `ExternalSecret`. The Slack receiver attaches four
-buttons to every message — Runbook, Query (the alert's `GeneratorURL`),
-Dashboard, and Silence — sourced from the firing alert's own annotations.
+`runlore-webhook-token` `ExternalSecret`. The Slack receiver's `actions:`
+list defines five button blocks: Runbook, Query (the alert's
+`GeneratorURL`), Dashboard, and Silence — each sourced from the firing
+alert's own annotations — plus a fifth built from the Monzo template's
+`link_button_text`/`link_url` helpers. Whether that fifth button actually
+renders on every message or only conditionally (e.g. when `link_url` is set)
+can't be determined from this repo — the Monzo template it calls into isn't
+vendored here, only referenced by name.
 
 ## Grafana OnCall: built but not deployed
 

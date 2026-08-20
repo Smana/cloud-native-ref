@@ -126,7 +126,11 @@ Recovery deliberately reads from a **frozen, dated snapshot prefix**
 bad day on the live database (corruption, an accidental `DROP`) can't
 cascade into a poisoned recovery source, at the cost of manually promoting a
 new snapshot when the schema or data changes meaningfully. Credentials
-default to EKS Pod Identity (`inheritFromIAMRole`, no `s3Credentials` block
-and no new Kubernetes Secret); a claim can opt into access-key credentials
-sourced from OpenBao via `ExternalSecret` instead, but that's not the
-default path.
+default to EKS Pod Identity: per SPEC-010's refined credential-mechanism
+clarification (`docs/specs/done/2026-Q3/010-cnpg-barman-cloud-plugin/clarifications.md:125`),
+the rendered `ObjectStore` sets `s3Credentials.inheritFromIAMRole: true` — a
+verbatim carry-over of the pre-migration in-tree config — rather than
+omitting the block; ambient credentials still come from Pod Identity via the
+AWS SDK default chain, and no new Kubernetes Secret is created. A claim can
+opt into access-key credentials sourced from OpenBao via `ExternalSecret`
+instead, but that's not the default path.
