@@ -18,4 +18,8 @@ trivy = "0.74.0"
 # install the schema plugin with: flux plugin install schema
 flux2 = "2.9.4"
 helm = "4.2.4"
+
+# Documentation site (website/). "hugo-extended" is deliberate: mise's plain
+# `hugo` entry resolves to the non-extended build, and Hextra targets extended.
+hugo-extended = "0.156.0"
 kustomize = "5.8.1"
