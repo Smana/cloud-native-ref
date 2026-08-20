@@ -1353,7 +1353,10 @@ core deadlock, not the VPN."
 
 - [ ] **Step 1: Build the section checklist**
 
-`docs/apps-user-guide.md` has twelve numbered sections. Write them out and assign each a destination before editing anything — this checklist is what proves nothing was dropped.
+`docs/apps-user-guide.md` has **fourteen** numbered sections, not twelve. An earlier version of
+this plan said twelve and omitted §13 and §14 entirely — 330 lines that would have been deleted
+with the source file. Write all fourteen out and assign each a destination before editing anything;
+this checklist is what proves nothing was dropped, and it was wrong once already.
 
 | § | Title | Destination |
 |---|---|---|
@@ -1369,6 +1372,8 @@ core deadlock, not the VPN."
 | 10 | Exposing your app and network security | `app.md`, linking to `networking/gateway-api.md` |
 | 11 | Autoscaling and availability | `app.md` |
 | 12 | Observability | `app.md`, linking to `platform/observability/` |
+| 13 | Field reference (241 lines) | `platform/developer-platform/` — reconciled against the XRD in `Smana/crossplane-configuration`, since the `app-definition.yaml` it was generated from no longer exists here |
+| 14 | Troubleshooting (89 lines) | `guides/troubleshooting.md` (Task 13) — CEL rejection messages and claim-level failures |
 
 - [ ] **Step 2: State the compositions boundary prominently**
 
