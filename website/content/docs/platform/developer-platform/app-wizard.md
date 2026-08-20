@@ -186,7 +186,7 @@ aws secretsmanager create-secret --region eu-west-3 \
 In Zitadel (`auth.cloud.ogenki.io`) create a **Web / OIDC** application,
 auth method **Code**, redirect URI
 `https://outline.priv.cloud.ogenki.io/auth/oidc.callback`; copy its client
-ID + secret into the OpenBao KV path apps/outline/secrets above.
+ID + secret into the AWS Secrets Manager path apps/outline/secrets above.
 
 ### Method 1 — fill the form (primary)
 
@@ -202,7 +202,7 @@ Open the wizard → **New app** → stack `demo` → name `outline` (plain — n
 | S3 (`s3Bucket`) | enabled · `readwrite` |
 | Route | enabled · **not** internet-facing · hostname `outline` |
 | Env | `NODE_ENV=production`, `PORT=3000`, `URL=https://outline.priv.cloud.ogenki.io`, `PGSSLMODE=disable`, `FILE_STORAGE=s3`, `AWS_REGION=eu-west-3`, `AWS_S3_UPLOAD_BUCKET_NAME=eu-west-3-ogenki-outline`, `OIDC_AUTH_URI=https://auth.cloud.ogenki.io/oauth/v2/authorize`, `OIDC_TOKEN_URI=https://auth.cloud.ogenki.io/oauth/v2/token`, `OIDC_USERINFO_URI=https://auth.cloud.ogenki.io/oidc/v1/userinfo`, `OIDC_USERNAME_CLAIM=preferred_username`, `OIDC_SCOPES=openid profile email` |
-| External secrets | `outline-secrets` ← OpenBao KV path apps/outline/secrets |
+| External secrets | `outline-secrets` ← AWS Secrets Manager path apps/outline/secrets |
 
 **Do not add** `DATABASE_URL`, `REDIS_URL`, or network-policy egress rules —
 the composition injects all of them (referencing the internal
