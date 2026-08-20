@@ -11,6 +11,8 @@ this repository — infrastructure, security, observability, tooling,
 applications — is described in Git and applied by Flux, never by a human or
 a CI job running `kubectl apply`.
 
+![The Flux dependency graph as the manifests declare it: namespaces feeds crds, which feeds both the Crossplane chain and karpenter; crossplane-configuration feeds eks-pod-identities, which feeds security and joins karpenter at infrastructure; observability and infrastructure both gate tooling, which gates apps; the llm-platform Kustomization is suspended and reconciles nothing](/images/diagrams/flux-dependency-tree.svg)
+
 ## What is GitOps
 
 - **Git is the source of truth.** The desired state of the cluster is

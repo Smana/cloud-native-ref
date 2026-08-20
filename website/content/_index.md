@@ -25,7 +25,7 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
 
 <p style="margin-top:3rem;margin-bottom:0.5rem;font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--ogenki-external)">The whole platform, on one page</p>
 
-![Platform architecture: AWS managed services, the EKS cluster in four tiers, and the applications and data stores on top](images/diagrams/platform-overview.svg)
+![Platform architecture: AWS managed services, the EKS cluster in four tiers, and the applications and data stores on top](/images/diagrams/platform-overview.svg)
 
 <h2 style="margin-top:3.5rem">What this repository is for</h2>
 

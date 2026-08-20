@@ -15,6 +15,8 @@ is the routing model everything runs on top of — `GatewayClass`, `Gateway`,
 is how that model gets used for services that should never be reachable from
 the public internet: two Gateways, split by Tailscale ACL tag.
 
+![Three ways into the cluster, all terminating on the same Cilium-managed Envoy: internet traffic through an AWS NLB into the platform-public Gateway, and two Tailscale paths whose ACL tags decide which of platform-tailscale-general and platform-tailscale-admin a device may reach; each Gateway matches an HTTPRoute onto a backing Service, while cert-manager supplies the certificates and ExternalDNS writes the Route53 records](/images/diagrams/request-path.svg)
+
 {{< cards >}}
   {{< card link="/docs/platform/networking/cilium/" title="Cilium" icon="cube" subtitle="The CNI and kube-proxy replacement: prefix delegation, the load-bearing WireGuard workaround, and the Gateway API CRD startup trap." >}}
   {{< card link="/docs/platform/networking/gateway-api/" title="Gateway API" icon="switch-horizontal" subtitle="GatewayClass, Gateway, and HTTPRoute; the platform's three Gateways; TLS attachment and ExternalDNS." >}}

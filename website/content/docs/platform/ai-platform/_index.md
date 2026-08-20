@@ -69,6 +69,8 @@ entirely.
 
 A request crosses two gateways and up to two filters before it reaches a GPU.
 
+![One OpenAI-compatible request from a laptop to a GPU: the client reaches the Cilium Gateway over Tailscale, the Envoy AI Gateway authenticates it with an API key from AWS Secrets Manager, strips the Authorization header, and routes it through the semantic-router and rate-limit filters onto the vLLM Service backing the requested model](/images/diagrams/llm-platform-1.svg)
+
 **Ingress.** External clients arrive over Tailscale at the Cilium Gateway
 `platform-tailscale-general` and are forwarded to the Envoy AI Gateway data
 plane Service. In-cluster clients (OpenWebUI, the nightly Promptfoo eval)
@@ -121,6 +123,8 @@ classifier blocks jailbreak attempts; it is not a routing decision, and there
 is no automatic guardrail dispatch.
 {{< /callout >}}
 
+![What a single InferenceService claim renders: a vLLM Deployment on the GPU NodePool, its Service and AIServiceBackend, the Envoy AI Gateway route that sends the model's name to it, and the KEDA ScaledObject that scales it — plus the S3-backed weights the pod pulls on start](/images/diagrams/llm-platform-2.svg)
+
 ## The model fleet
 
 Four claims under `apps/base/ai/llm/`, verified against the manifests:
@@ -170,6 +174,8 @@ triggers above, and that spec's own task and review checklists are almost
 entirely unchecked. Treat it as **not shipped** despite living under the
 `done` archive, and re-verify before citing it as delivered.
 {{< /callout >}}
+
+![The three KEDA triggers OR-combined against VictoriaMetrics, the two metric families vLLM exposes, and the dashboards and alerts they feed](/images/diagrams/llm-platform-3.svg)
 
 ## Security posture
 

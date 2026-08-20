@@ -13,6 +13,8 @@ not run on the cluster today. Every other component below does. See
 [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md#grafana-oncall-built-but-not-deployed" >}})
 for what that means in practice.
 
+![Where a metric, a log and a span go: vmagent scrapes Pods, Services and OpenBao into single-node VictoriaMetrics, Vector ships container stdout and Kubernetes Events into VictoriaLogs, and applications push OTLP spans straight to VictoriaTraces; one Grafana reads all three, while VMAlert evaluates PromQL and LogsQL rules from the same VMRule mechanism and Alertmanager fans every surviving alert to both RunLore and Slack](/images/diagrams/observability-flow.svg)
+
 | Component | Deployed via | Documented in |
 |---|---|---|
 | `victoria-metrics-k8s-stack` | `observability-victoria-metrics-k8s-stack` Kustomization | [Metrics]({{< relref "/docs/platform/observability/metrics.md" >}}) |

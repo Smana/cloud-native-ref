@@ -13,6 +13,8 @@ tools, and why three stages rather than one. For the commands and what each
 stage actually creates, see [Get Started]({{< relref "/docs/get-started/_index.md" >}})
 and this section's cloud-specific page.
 
+![Five OpenTofu stacks running in Terramate's dependency order: network creates the VPC, pod subnets, Route53 zones and the Tailscale subnet router; openbao/cluster and openbao/management then build the secrets and PKI layer; eks/init creates the cluster on a temporary VPC-CNI; eks/configure deletes that CNI, installs Cilium and Flux, and hands the rest of the platform to GitOps](/images/diagrams/bootstrap-stages.svg)
+
 ## Why OpenTofu
 
 OpenTofu is the open-source fork of Terraform, created after HashiCorp moved

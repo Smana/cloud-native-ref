@@ -43,3 +43,31 @@
   font-size: 0.8125rem;
   color: var(--ogenki-external);
 }
+
+/* Diagram surface.
+ *
+ * drawio exports SVG with `background: transparent` and paints every label in
+ * slate (#1E293B titles, #64748B legends). Inside a box that reads fine in both
+ * themes — the box brings its own light fill. Outside one it does not: on the
+ * dark theme the title, the subtitle and every legend label would be dark text
+ * on a dark page, i.e. invisible.
+ *
+ * So each diagram gets its own light ground and reads as a card. White in both
+ * themes on purpose, for the same reason the semantic colours above are shared:
+ * a diagram cannot recolour itself with the page, and a palette that half-shifts
+ * is worse than one that does not shift at all.
+ *
+ * color-scheme: light is what makes that stick. drawio stamps
+ * `color-scheme: light dark` on the root <svg>, and the used color-scheme
+ * propagates from this <img> into the SVG document — so on the dark theme the
+ * browser darkens every box fill while the title, subtitle and legend labels
+ * keep the slate they were exported with. The result is a half-inverted diagram
+ * on a white card. Pinning the scheme to light renders it exactly as authored.
+ */
+img[src*="images/diagrams/"] {
+  color-scheme: light;
+  background: #ffffff;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--ogenki-external);
+}
