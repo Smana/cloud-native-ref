@@ -24,7 +24,7 @@ for what that means in practice.
 | `loggen` | `observability` Kustomization | [Logs]({{< relref "/docs/platform/observability/logs.md" >}}) |
 | `victoria-traces` | `observability-victoria-traces` Kustomization | [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md" >}}) |
 | `grafana-operator` | `observability-grafana-operator` Kustomization | [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md" >}}) |
-| `runlore` | `observability` Kustomization | [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md" >}}) |
+| `runlore` | `observability` Kustomization | [SRE agent]({{< relref "/docs/platform/observability/sre-agent.md" >}}) |
 | `grafana-oncall` | **not referenced anywhere** | [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md#grafana-oncall-built-but-not-deployed" >}}) |
 
 CloudNativePG's own metrics, logs, backups, and dashboards are covered
@@ -65,5 +65,6 @@ component's `kustomization.yaml`, not a rewrite.
   {{< card link="/docs/platform/observability/metrics/" title="Metrics" icon="chart-bar" subtitle="VictoriaMetrics single vs cluster mode, metrics-server, and the VMServiceScrape/VMScrapeConfig scrape mechanisms." >}}
   {{< card link="/docs/platform/observability/logs/" title="Logs" icon="document-text" subtitle="VictoriaLogs, Vector as the shipper, kubernetes-event-exporter, loggen, and the LogsQL syntax rules that aren't optional." >}}
   {{< card link="/docs/platform/observability/dashboards-and-alerts/" title="Dashboards & Alerts" icon="bell" subtitle="Grafana Operator's folder/dashboard/datasource model, VictoriaTraces, VMRule alerting, Alertmanager routing to RunLore and Slack, and the undeployed Grafana OnCall." >}}
+  {{< card link="/docs/platform/observability/sre-agent/" title="SRE agent" icon="lightning-bolt" subtitle="RunLore — receives Alertmanager webhooks, investigates read-only against the live cluster, and writes what it learns back to a knowledge-base repository." >}}
   {{< card link="/docs/platform/observability/postgresql/" title="PostgreSQL" icon="database" subtitle="CloudNativePG's pg_stat_statements metrics, the Vector pipeline that parses auto_explain plans, and Barman Cloud plugin backups." >}}
 {{< /cards >}}
