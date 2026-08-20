@@ -17,4 +17,5 @@ self-hosted AI stack.
   {{< card link="/docs/platform/security/" title="Security" icon="lock-closed" subtitle="OpenBao's PKI and secrets engine, cert-manager and External Secrets, Kyverno and CiliumNetworkPolicy defaults." >}}
   {{< card link="/docs/platform/developer-platform/" title="Developer Platform" icon="cube-transparent" subtitle="The App claim, its data services, and the App Wizard — a Crossplane Configuration package pinned from a sibling repo." >}}
   {{< card link="/docs/platform/observability/" title="Observability" icon="chart-bar" subtitle="VictoriaMetrics, VictoriaLogs, and VictoriaTraces under one Grafana, plus the SRE agent that reacts to their alerts." >}}
+  {{< card link="/docs/platform/ai-platform/" title="AI Platform" icon="sparkles" subtitle="An opt-in vLLM serving platform behind Envoy AI Gateway — off by default until two independent gates are both released." >}}
 {{< /cards >}}
