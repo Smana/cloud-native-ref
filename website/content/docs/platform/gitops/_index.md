@@ -57,19 +57,28 @@ namespaces → crds → crossplane-controller → crossplane-providers
 `crds` also has a second, independent consumer — `karpenter` depends on
 `crds` directly, not on the Crossplane chain, because its IAM Pod Identity is
 created by OpenTofu in [Foundations]({{< relref "/docs/platform/foundations/_index.md" >}}),
-not by Crossplane's `EKSPodIdentity` composition.
+not by Crossplane's `EKSPodIdentity` composition. `karpenter` in turn has one
+direct dependent of its own — `karpenter-nodepools` depends on `karpenter`
+directly, applying NodePools and EC2NodeClasses only once Karpenter's CRDs
+exist. It's a leaf: nothing depends on it, and it doesn't feed into
+`infrastructure` or anything below.
 
-`security` is where the graph forks. Five Kustomizations depend on it
-directly and run in parallel once it's healthy:
+`security` is where the graph forks. Exactly five Kustomizations depend on
+it directly and run in parallel once it's healthy: `observability-victoria-metrics-k8s-stack`,
+`flux-operator`, `flux-observability`, `flux-notifications`, and
+`flux-previews`. `infrastructure` reaches its own ready state around the
+same time but is **not** one of them — its `dependsOn` is `karpenter` and
+`eks-pod-identities` — it's in the table below only because it forks at the
+same point in the graph:
 
 | Kustomization | Depends on | What it does after |
 |---|---|---|
-| `observability-victoria-metrics-k8s-stack` | `security` | → `observability-victoria-traces` and `observability-grafana-operator`, both of which feed → `observability` |
-| `infrastructure` | `karpenter`, `eks-pod-identities` | Cilium policies, Gateway API, External DNS, the AWS Load Balancer Controller, EFS CSI, KEDA — it needs Crossplane's EPIs for their IAM roles, not Security's External Secrets/cert-manager/Kyverno |
+| `observability-victoria-metrics-k8s-stack` | `security` | forks into `observability-victoria-traces` (a dead end — nothing depends on it) and `observability-grafana-operator` → `observability` |
 | `flux-operator` | `security` | Flux's own operator lifecycle management |
 | `flux-observability` | `security` | Flux's metrics/dashboards wiring |
 | `flux-notifications` | `security` | Alertmanager and Slack notification wiring |
 | `flux-previews` | `security` | Flux preview-environment wiring |
+| `infrastructure` | `karpenter`, `eks-pod-identities` — **not** `security` | Cilium policies, Gateway API, External DNS, the AWS Load Balancer Controller, EFS CSI, KEDA — it needs Crossplane's EPIs for their IAM roles, not Security's External Secrets/cert-manager/Kyverno |
 
 `zitadel` depends on both `infrastructure` and `security` directly — it
 needs a database (via `infrastructure`'s Crossplane-provisioned resources)
@@ -82,12 +91,16 @@ depends only on `tooling`.
 Two Kustomizations have no `dependsOn` at all and aren't part of this chain:
 `flux-artifact-generators` and `flux-sources`. `flux-artifact-generators`
 sources directly from the `flux-system` `GitRepository` — it has to, since it
-is what creates the `ExternalArtifact`s every other Kustomization in this
-repository (including `flux-sources`) sources from instead. See
+is what creates the `ExternalArtifact`s that `flux-sources` and most other
+Kustomizations in this repository source from instead. The opt-in
+`llm-platform` umbrella (already outside this graph, above) is the only
+other Kustomization that sources from the `GitRepository` directly, for the
+same structural reason: its path falls outside every `ArtifactGenerator`
+glob, so no `ExternalArtifact` exists for it to source from. See
 [Repository Structure]({{< relref "/docs/platform/gitops/repository-structure.md" >}})
-for that mechanism. In practice both run first, just not through
-`dependsOn` — Flux still waits for a Kustomization's `sourceRef` artifact to
-exist before reconciling it.
+for that mechanism. In practice `flux-artifact-generators` and `flux-sources`
+both run first, just not through `dependsOn` — Flux still waits for a
+Kustomization's `sourceRef` artifact to exist before reconciling it.
 
 ## Validation before any of this applies
 
