@@ -133,4 +133,4 @@
 ## Related
 
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
-- ADRs: [docs/decisions/](../../../../decisions/) — ADR-0002 (EKS Pod Identity over IRSA) governs the credential model
+- ADRs: [docs/decisions/](../../../../../website/content/docs/decisions/) — ADR-0002 (EKS Pod Identity over IRSA) governs the credential model

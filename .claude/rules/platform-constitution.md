@@ -85,4 +85,4 @@ Every new composition includes:
 - [ ] Design doc committed under `docs/superpowers/specs/` and linked from the PR
 - [ ] No `[NEEDS CLARIFICATION]` markers left in the approved design
 
-Related ADRs: `docs/decisions/0001-use-kcl-for-crossplane-compositions.md`, `docs/decisions/0002-eks-pod-identity-over-irsa.md`.
+Related ADRs: `website/content/docs/decisions/0001-use-kcl-for-crossplane-compositions.md`, `website/content/docs/decisions/0002-eks-pod-identity-over-irsa.md`.

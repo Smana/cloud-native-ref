@@ -18,7 +18,7 @@ The `EPI` (EKS Pod Identity) composition is live, scoped to `xplane-*` IAM resou
 |------|-------|
 | KCL composition | `infrastructure/base/crossplane/configuration/kcl/eks-pod-identity/main.k`, `main_test.k`, `kcl.mod`, `settings-example.yaml`, `README.md` |
 | Real usage | `security/base/epis/*.yaml` |
-| ADR | `docs/decisions/0002-eks-pod-identity-over-irsa.md` |
+| ADR | `website/content/docs/decisions/0002-eks-pod-identity-over-irsa.md` |
 
 ## Success criteria snapshot
 
@@ -54,4 +54,4 @@ _None — initial implementation matched the plan._
 - Spec: [spec.md](spec.md)
 - Plan: [plan.md](plan.md)
 - Clarifications: [clarifications.md](clarifications.md)
-- ADR: [ADR-0002](../../../../decisions/0002-eks-pod-identity-over-irsa.md)
+- ADR: [ADR-0002](../../../../../website/content/docs/decisions/0002-eks-pod-identity-over-irsa.md)

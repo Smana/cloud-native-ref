@@ -130,4 +130,4 @@
 ## Related
 
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
-- ADRs: [docs/decisions/](../../../../decisions/)
+- ADRs: [docs/decisions/](../../../../../website/content/docs/decisions/)

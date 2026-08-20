@@ -150,4 +150,4 @@ reference them by ID (CL-1, CL-2, ...) once resolved. -->
 - Clarifications: [clarifications.md](clarifications.md)
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
 - Similar spec: [SPEC-002 composition-owned gateway routing](../002-composition-owned-gateway-routing/spec.md)
-- Related ADR: [ADR-0001 KCL for Crossplane compositions](../../../../decisions/0001-use-kcl-for-crossplane-compositions.md)
+- Related ADR: [ADR-0001 KCL for Crossplane compositions](../../../../../website/content/docs/decisions/0001-use-kcl-for-crossplane-compositions.md)

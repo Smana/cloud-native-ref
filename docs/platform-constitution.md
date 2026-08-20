@@ -1,8 +1,15 @@
+---
+title: Platform Constitution
+weight: 60
+description: The non-negotiable rules every design, composition and manifest is checked against.
+lastVerified: 2026-08-20
+---
+
 # Platform Constitution
 
 This document defines the non-negotiable principles that govern all designs and implementations in this platform. Every design MUST comply with these principles.
 
-**Related**: [Architecture Decision Records](./decisions/) | [Development workflow](../CLAUDE.md#development-workflow-superpowers)
+**Related**: [Architecture Decision Records](https://cnref.ogenki.io/docs/decisions/) | [Development workflow](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md#development-workflow-superpowers)
 
 ---
 
@@ -16,7 +23,7 @@ All Crossplane-managed AWS and Kubernetes resources MUST use the `xplane-` prefi
 - `xplane-myapp-sqlinstance` (correct)
 - `myapp-sqlinstance` (incorrect - missing prefix)
 
-**Reference**: [ADR-0002: EKS Pod Identity](decisions/0002-eks-pod-identity-over-irsa.md)
+**Reference**: [ADR-0002: EKS Pod Identity](https://cnref.ogenki.io/docs/decisions/0002-eks-pod-identity-over-irsa/)
 
 ---
 
@@ -54,7 +61,7 @@ if _ready:
 - List comprehensions MUST be single-line
 - CI enforces formatting and will fail otherwise
 
-**Reference**: [ADR-0001: Use KCL for Compositions](decisions/0001-use-kcl-for-crossplane-compositions.md)
+**Reference**: [ADR-0001: Use KCL for Compositions](https://cnref.ogenki.io/docs/decisions/0001-use-kcl-for-crossplane-compositions/)
 
 ---
 
@@ -105,7 +112,7 @@ Use EKS Pod Identity for all AWS access from pods. Do NOT use IRSA.
 - Crossplane controllers have NO deletion permissions for stateful services (S3, IAM, Route53)
 - Use resource-level permissions, not `*` wildcards where possible
 
-**Reference**: [ADR-0002: EKS Pod Identity](decisions/0002-eks-pod-identity-over-irsa.md)
+**Reference**: [ADR-0002: EKS Pod Identity](https://cnref.ogenki.io/docs/decisions/0002-eks-pod-identity-over-irsa/)
 
 ---
 
@@ -169,12 +176,26 @@ All cluster state is defined in Git. Manual `kubectl apply` is prohibited for pe
 
 ### 7.2 Flux Dependency Hierarchy
 
-Resources deploy in this order:
+Broadly, resources deploy in this order:
+
 1. Namespaces → CRDs → Crossplane → EKS Pod Identities
 2. Security (External Secrets, Cert-Manager, Kyverno)
 3. Infrastructure (Cilium, DNS, Load Balancers)
 4. Observability (VictoriaMetrics, Grafana)
 5. Applications
+
+**This is a simplified model, not the dependency graph.** It states the
+principle — foundations before the things that build on them — and is the right
+level for deciding roughly where a new component belongs. It is *not* accurate
+enough to copy a `dependsOn` from. The real graph is wider than a chain: the
+Crossplane stage is three sequential Kustomizations, Karpenter sits outside them,
+`infrastructure` depends on `karpenter` and `eks-pod-identities` rather than on
+`security`, and several `flux/*` self-management Kustomizations run in parallel.
+
+**Before setting `dependsOn` on anything, read the real graph**, derived from the
+manifests and kept current:
+[Platform → GitOps](https://cnref.ogenki.io/docs/platform/gitops/). When the two
+disagree, `clusters/mycluster-0/` wins.
 
 ### 7.3 HelmRelease Patterns
 
@@ -210,7 +231,7 @@ rationale — not just the outcome. Never leave a `[NEEDS CLARIFICATION]` marker
 design; resolve it and write down why.
 
 Specs produced by the retired in-house SDD workflow (2026-Q1 → 2026-Q3) are archived read-only
-under [`docs/specs/`](./specs/).
+under [`docs/specs/`](https://github.com/Smana/cloud-native-ref/tree/main/docs/specs).
 
 ---
 
