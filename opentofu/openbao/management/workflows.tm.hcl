@@ -91,7 +91,9 @@ script "destroy" {
       # Needed even to tear down: the provider still has to configure before it
       # can plan the destroy.
       global.openbao_ca_cmd.args,
-      [global.provisioner, "destroy", "-auto-approve", "-var-file=variables.tfvars"],
+      # Same #3411 race on the way down — mounts and namespaces are deleted
+      # concurrently otherwise. See the apply job below.
+      [global.provisioner, "destroy", "-auto-approve", "-parallelism=1", "-var-file=variables.tfvars"],
     ]
   }
 }
@@ -146,7 +148,26 @@ script "deploy" {
       [global.provisioner, "validate"],
       [global.provisioner, "plan", "-out=out.tfplan", "-lock=false", "-var-file=variables.tfvars"],
       ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
-      [global.provisioner, "apply", "-auto-approve", "-var-file=variables.tfvars",
+      # -parallelism=1 is load-bearing, not caution.
+      #
+      # OpenBao 2.6.x carries openbao/openbao#3411 — inconsistent lock ordering
+      # between the core mounts lock and the namespace lock. When this stack
+      # writes namespaces, auth backends and mounts concurrently, a nested
+      # acquire wedges the core: every write hangs, `bao status` times out even
+      # on 127.0.0.1, and the apply dies with `context deadline exceeded`.
+      #
+      # It needs BOTH concurrency and a small node, which is why it looks
+      # intermittent — reproduced locally against 2.6.2 on file storage, and the
+      # deciding variable is CPU:
+      #
+      #   unconstrained, -parallelism=10  -> applies clean, 0 deadlocks
+      #   1 core + GOMAXPROCS=2, -p=10    -> 3 deadlock markers, core wedged
+      #   1 core + GOMAXPROCS=2, -p=1     -> applies clean, 0 deadlocks
+      #
+      # The dev cluster is a t3.micro, which is exactly the second row. Serialising
+      # this stack removes the race without pinning OpenBao to an old release.
+      # Raise this only after #3411 closes, and re-run the repro before you do.
+      [global.provisioner, "apply", "-auto-approve", "-parallelism=1", "-var-file=variables.tfvars",
         {
           sync_deployment = true
           tofu_plan_file  = "out.tfplan"

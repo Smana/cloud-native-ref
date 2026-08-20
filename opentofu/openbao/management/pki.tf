@@ -32,6 +32,14 @@ resource "vault_pki_secret_backend_intermediate_cert_request" "this" {
 
 # Sign our CSR
 resource "vault_pki_secret_backend_root_sign_intermediate" "this" {
+  # Ordering here was previously luck. Nothing tied this to config_ca, so the
+  # graph was free to call root/sign-intermediate before the root CA bundle had
+  # been imported into the mount. At the old default parallelism the two raced
+  # and config_ca happened to win; serialising the stack (-parallelism=1, see
+  # workflows.tm.hcl) made Terraform pick the other order and it failed with
+  # `no default issuer currently configured` (HTTP 500).
+  depends_on = [vault_pki_secret_backend_config_ca.pki]
+
   backend              = vault_mount.pki.path
   csr                  = vault_pki_secret_backend_intermediate_cert_request.this.csr
   common_name          = var.pki_common_name
