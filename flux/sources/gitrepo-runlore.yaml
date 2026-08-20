@@ -20,8 +20,10 @@ spec:
   # (**.go, Dockerfile, go.{mod,sum}), so not every main commit HAS an image.
   # Tracking the branch would eventually render a chart from a commit with no
   # image, and any later push would move the chart out from under the pinned
-  # digest. The commit pin is what makes the lockstep actually hold. 0ed7806 was
-  # confirmed to have a successful build-image run before pinning.
+  # digest. The commit pin is what makes the lockstep actually hold. f8f01ea was
+  # confirmed to have a successful build-image run before pinning (run 32368291114),
+  # and its rendered chart was replayed through f8f01ea's own config.Load
+  # (KnownFields + Validate): passes.
   #
   # Keep them in lockstep on every bump — bumping one alone is not a partial
   # upgrade, it is an outage.
@@ -44,4 +46,4 @@ spec:
     branch: main
     # The allowlist pragma below is detect-secrets' required inline escape: it reads a
     # 40-char hex string as a high-entropy credential. This one is a public commit SHA.
-    commit: 0ed78066d98997476e6bd34a45d6bb3fa05fe989 # pragma: allowlist secret
+    commit: f8f01eaf52a81acc2309ddcf87f6a0994f90fcf9 # pragma: allowlist secret

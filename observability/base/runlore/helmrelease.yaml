@@ -91,7 +91,7 @@ spec:
       #
       # REVERT to the signed multi-arch release image — tag: "0.14.0", NO leading "v"
       # — once this validation is done.
-      tag: "main@sha256:90be3ab71321177581083f3379d417693cfbd49d28985897658517835d8cd3dc"
+      tag: "main@sha256:d7c3b3f00910e65892fb3113d715fbba1992f8d2291a2d200f32da01d948a1f5"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
