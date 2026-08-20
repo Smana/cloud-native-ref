@@ -67,6 +67,12 @@ menu:
 
 params:
   description: "An opinionated, production-ready Kubernetes platform reference: GitOps with Flux, infrastructure from Kubernetes with Crossplane, zero-trust networking with Cilium, and a private PKI with OpenBao — on AWS EKS today, designed for a second cloud."
+  # Social card. Consumed by layouts/_partials/opengraph.html and
+  # layouts/_partials/twitter_cards.html, both of which absolute-ise it against
+  # baseURL — so it has to stay a site-root path, not a relative one.
+  # Regenerate from scripts/build-og-card.html; see that file's header.
+  images:
+    - /images/og-card.png
   navbar:
     displayTitle: true
     displayLogo: true

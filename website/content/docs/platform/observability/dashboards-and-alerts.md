@@ -133,6 +133,8 @@ for the LogsQL form. PromQL rules live mostly in
   `runbook_url` pointing at RunLore's own docs. A byte-identical
   `PrometheusRule` twin ships alongside it so either metrics backend works;
   the file comments call out that the two must never drift independently.
+  What the agent itself does with an alert is on its own page —
+  [SRE agent]({{< relref "/docs/platform/observability/sre-agent.md" >}}).
 
 ```yaml
 # observability/base/victoria-metrics-k8s-stack/vmrules/runlore.yaml — trimmed

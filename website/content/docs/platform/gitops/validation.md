@@ -13,6 +13,11 @@ tree — before a PR can merge. See [CI Workflows]({{< relref "/docs/reference/c
 for the full pipeline this runs in and [Commands]({{< relref "/docs/reference/commands.md" >}})
 for how to run it locally.
 
+It runs as `Kubernetes validation ☸`, one of the six required checks — the
+hard gate in the middle-left of this pipeline:
+
+![The CI pipeline: a pull request fans into ci.yaml's six jobs, of which Kubernetes validation is the manifest gate, plus three path-filtered workflows that are not required checks; all six required checks gate the merge, after which Flux reconciles the cluster from main](/images/diagrams/ci-pipeline.svg)
+
 ## Why render before validating
 
 A raw `HelmRelease` or a Kustomize patch fragment is not a complete

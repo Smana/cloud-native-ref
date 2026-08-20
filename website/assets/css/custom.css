@@ -51,6 +51,26 @@
   --cnref-stamp: #94a3b8; /* slate-400 — 6.9:1 on the dark page */
 }
 
+/* The accent used for links in this file's own components.
+ *
+ * It is DERIVED, not written down. Hextra builds its primary scale through
+ * Tailwind from the three variables above and uses primary-600 — 0.9 x
+ * lightness — for links; `--color-primary-600` itself is not exposed as a
+ * custom property, so `var(--color-primary-600, <hex>)` silently falls back to
+ * the hex on every page. A hardcoded #4FA6D9 (the DARK theme's blue) therefore
+ * shipped on the light page at 2.69:1, failing AA and Lighthouse's
+ * link-in-text-block at once.
+ *
+ * Deriving it from the same three variables means it tracks both themes with
+ * no second value to keep in sync: light resolves to hsl(204 100% 23.4%)
+ * = #004777 (12.1:1 on white), dark to hsl(204 62% 58.5%) = #4FA6D9
+ * (7.0:1 on #0F172A).
+ */
+:root,
+.dark {
+  --cnref-link: hsl(var(--primary-hue) var(--primary-saturation) calc(var(--primary-lightness) * 0.9));
+}
+
 .cnref-verified {
   margin-top: 3rem;
   padding-top: 1rem;
@@ -129,4 +149,462 @@ html.light .chroma .cs,
 html.light .chroma .cp,
 html.light .chroma .cpf {
   color: #57606a;
+}
+
+/* ── Repository tree ────────────────────────────────────────────────────────
+ *
+ * Rendered by layouts/_shortcodes/repo-tree.html from data/repo-tree.yaml, on
+ * both Platform → GitOps and Reference → Repository Layout.
+ *
+ * A table rather than a grid: the three columns have to line up down the page,
+ * and a per-row grid container sizes its columns independently of its
+ * neighbours, so every row came out a different width.
+ *
+ * The path cell drops the theme's inline-code pill. Twenty-seven grey pills
+ * stacked vertically read as a wall of chips rather than as a tree; plain
+ * monospace at the same weight carries the same "this is a path" signal
+ * without the boxes competing with the row borders.
+ *
+ * Colours: path and description inherit body text, the owner column uses
+ * --cnref-stamp, already measured at 6.9:1 on both themes where it is defined
+ * above. No new token and no new measurement.
+ */
+.cnref-tree {
+  margin: 1.5rem 0;
+  border: 1px solid var(--ogenki-external);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+.cnref-tree table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.cnref-tree th {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cnref-stamp);
+  text-align: left;
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid var(--ogenki-external);
+  white-space: nowrap;
+}
+
+.cnref-tree td {
+  padding: 0.5rem 1rem;
+  vertical-align: baseline;
+  border-top: 1px solid rgb(148 163 184 / 20%);
+}
+
+.cnref-tree tbody tr:first-child td {
+  border-top: 0;
+}
+
+.cnref-tree-path {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cnref-tree-owner {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  color: var(--cnref-stamp);
+}
+
+/* markdownify wraps the owner value in a <p>; strip its margins so the cell
+ * stays on the row's baseline. */
+.cnref-tree-owner p {
+  margin: 0;
+}
+
+/* A child row indents its path only. The description column stays aligned with
+ * its parent's, so the eye reads straight down one column instead of a
+ * staircase — the parent path is already the visual anchor. */
+.cnref-tree-child .cnref-tree-path {
+  padding-left: 2rem;
+  font-weight: 400;
+  color: var(--cnref-stamp);
+}
+
+/* A top-level row after a child group opens a new section of the tree; a
+ * heavier rule marks it without needing a second colour. */
+.cnref-tree-child + tr:not(.cnref-tree-child) td {
+  border-top-color: var(--ogenki-external);
+}
+
+/* ── Technology stack ───────────────────────────────────────────────────────
+ *
+ * Rendered by layouts/_shortcodes/stack-table.html and stack-strip.html from
+ * data/stack.yaml.
+ *
+ * The logo column is a fixed 22px box with object-fit: contain, because the
+ * marks are not one shape: CNCF icons are square, Trivy and Hugo ship
+ * horizontal lockups. A fixed height with free width would make the wide ones
+ * three times the visual weight of the square ones; a fixed box normalises
+ * them without distorting any.
+ */
+.cnref-stack {
+  margin: 1.25rem 0;
+  border: 1px solid var(--ogenki-external);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+.cnref-stack table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.cnref-stack th {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cnref-stamp);
+  text-align: left;
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid var(--ogenki-external);
+  white-space: nowrap;
+}
+
+.cnref-stack td {
+  padding: 0.5rem 1rem;
+  vertical-align: top;
+  border-top: 1px solid rgb(148 163 184 / 20%);
+}
+
+.cnref-stack tbody tr:first-child td {
+  border-top: 0;
+}
+
+/* min-width, not just width. Giving the name cell `width: 100%` collapses every
+ * other column to min-content, and a global `img { max-width: 100% }` then
+ * resolves to 0 inside a zero-width cell — which silently blanked six logos
+ * while leaving the <img> loaded and `display: block`. The mark column has to
+ * reserve its box explicitly. */
+.cnref-stack-mark {
+  width: 22px;
+  min-width: 22px;
+  padding-right: 0;
+}
+
+/* The name column absorbs the table's slack. Without this, `width: 100%` is
+ * split across the columns and the last one trails off into empty space with a
+ * stray border down the middle of it. */
+.cnref-stack-name {
+  width: 100%;
+}
+
+.cnref-stack-name a {
+  font-weight: 500;
+}
+
+.cnref-stack-version code {
+  white-space: nowrap;
+}
+
+.cnref-stack-pin,
+.cnref-stack-note {
+  color: var(--cnref-stamp);
+  font-size: 0.8125rem;
+}
+
+.cnref-stack-note {
+  display: block;
+  margin-top: 0.125rem;
+}
+
+.cnref-stack-note p,
+.cnref-stack-pin p {
+  margin: 0;
+}
+
+.cnref-stack-pinnote {
+  font-size: 0.875rem;
+  color: var(--cnref-stamp);
+}
+
+.cnref-logo {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  max-width: 22px;
+  object-fit: contain;
+  display: block;
+  /* Hextra gives prose images `margin: 16px 0`, which turned a 22px mark into a
+   * 54px cell and made every logo row 71px against 39px for a tile row. These
+   * are UI chrome inside a table, not figures in the prose flow.
+   *
+   * The margin is zeroed by the theme's own `not-prose` escape hatch on the
+   * <img> rather than by a rule here: its prose selector is
+   * `.content :where(img)`, which has the same (0,1,0) specificity as a class,
+   * so whichever stylesheet loads last would win. That is a coin-flip, not a
+   * fix. `margin: 0` stays as belt-and-braces. */
+  margin: 0;
+}
+
+/* The dark variant exists only for marks that are dark ink on transparent —
+ * OpenBao, Trivy, Helm's wordmark — which disappear on the dark page. Scoped
+ * to .cnref-has-dark so a lone mark is never hidden by these rules. */
+.cnref-logo-dark {
+  display: none;
+}
+
+.dark .cnref-has-dark .cnref-logo-light {
+  display: none;
+}
+
+.dark .cnref-has-dark .cnref-logo-dark {
+  display: block;
+}
+
+/* Fallback for a component with no usable mark — see
+ * static/images/logos/LICENSES.md for which, and why borrowing a neighbouring
+ * project's logo was rejected. Indigo is --ogenki-service; white on it measures
+ * 4.8:1, clearing AA for the 12px bold glyph it carries, in both themes.
+ */
+.cnref-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: var(--ogenki-service);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+
+/* Pin paths are long (`observability/base/victoria-metrics-k8s-stack/…`) and an
+ * inline <code> will not break on its own, so the widest row set the table's
+ * width and every group scrolled horizontally. Let the pin column break: it is
+ * a reference, not something anyone types from the page. The version column
+ * keeps `white-space: nowrap` — a version split across two lines is unreadable.
+ */
+.cnref-stack-pin code {
+  overflow-wrap: anywhere;
+}
+
+/* ── Landing page: section headings and the technology strip ────────────────
+ *
+ * The landing page carried its own layout in inline `style` attributes — six
+ * declarations on one <p>, a margin on each <h2>. Fine for one page until it is
+ * not: the values could not be reused, could not respond to the viewport, and
+ * could not be checked for contrast alongside everything else in this file.
+ */
+.cnref-eyebrow {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cnref-stamp);
+}
+
+/* The two landing-page section headings previously rendered with a hand-written
+ * top margin and the theme's default weight, so they read as labels rather than
+ * as the entry point to a section. */
+.cnref-section-title {
+  margin: 3.5rem 0 1.25rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.cnref-strip {
+  margin-top: 3.5rem;
+}
+
+.cnref-strip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cnref-strip-item a {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4375rem 0.75rem;
+  border: 1px solid var(--ogenki-external);
+  border-radius: 999px;
+  font-size: 0.875rem;
+  color: inherit;
+  text-decoration: none;
+  /* Only the border and background move on hover. Transforming a chip inside a
+   * wrapped row nudges its neighbours' perceived baseline. */
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.cnref-strip-item a:hover {
+  border-color: var(--cnref-link);
+  background: rgb(148 163 184 / 10%);
+}
+
+.cnref-strip-more {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: var(--cnref-stamp);
+}
+
+/* ── Card hover ─────────────────────────────────────────────────────────────
+ *
+ * Hextra's feature cards and card grids have no hover state beyond the cursor,
+ * so the landing page's twelve clickable cards give no feedback that they are
+ * clickable. A 1px lift plus the accent border is enough; anything larger
+ * visibly reflows a wrapped grid row.
+ */
+.hextra-feature-card,
+.hextra-card {
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hextra-feature-card:hover,
+.hextra-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--cnref-link);
+  box-shadow: 0 4px 14px rgb(15 23 42 / 8%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hextra-feature-card,
+  .hextra-card,
+  .cnref-strip-item a {
+    transition: none;
+  }
+
+  .hextra-feature-card:hover,
+  .hextra-card:hover {
+    transform: none;
+  }
+}
+
+/* ── Anchor links land under the sticky navbar ──────────────────────────────
+ *
+ * The navbar is position: sticky and 4rem tall, so following an in-page anchor
+ * or an "On this page" entry scrolled the target heading underneath it: the
+ * reader lands one heading too far down and has to scroll back. scroll-margin
+ * fixes it without any code needing to know the navbar's height at runtime.
+ */
+.content h2,
+.content h3,
+.content h4,
+.content h5 {
+  scroll-margin-top: 5rem;
+}
+
+/* Every diagram is already data-zoomable and nothing said so. They are dense —
+ * the Flux dependency graph carries twenty-odd boxes — so a reader who does not
+ * know they can zoom simply squints at it. */
+img[src*="images/diagrams/"] {
+  cursor: zoom-in;
+}
+
+/* Links inside a muted paragraph inherit its muted colour, so "Technology
+ * Stack" and "ADR-0007" on the landing page rendered as plain grey text with no
+ * affordance at all. Restore the accent, and underline on hover — inside a grey
+ * block, colour alone is a weaker signal than it is in body copy. */
+/* Underlined always, not only on hover: these sit inside a muted paragraph, and
+ * WCAG 1.4.1 wants a link in a block of text to be distinguishable by something
+ * other than colour unless it clears 3:1 against the surrounding text. Against
+ * --cnref-stamp it does not. */
+.cnref-strip-more a {
+  color: var(--cnref-link);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+/* ── Footer navigation ──────────────────────────────────────────────────────
+ *
+ * Rendered by layouts/_partials/custom/footer.html. The theme ships a single
+ * copyright line, so the only route out of a leaf page was the sidebar or the
+ * back button — and nothing on the site linked the blog at all.
+ *
+ * auto-fit rather than a fixed column count: three columns on a wide page,
+ * one on a phone, with no breakpoint to keep in sync with the sidebar's.
+ */
+.cnref-footer-nav {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1.5rem 2rem;
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgb(148 163 184 / 30%);
+  font-size: 0.875rem;
+}
+
+.cnref-footer-head {
+  margin: 0 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cnref-stamp);
+}
+
+.cnref-footer-nav ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cnref-footer-nav li + li {
+  margin-top: 0.375rem;
+}
+
+.cnref-footer-nav a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.cnref-footer-nav a:hover {
+  color: var(--cnref-link);
+  text-decoration: underline;
+}
+
+/* ── Hero button, dark theme ────────────────────────────────────────────────
+ *
+ * Hextra's hero button is `text-white` on `bg-primary-600` in BOTH themes. That
+ * works on the light theme, where primary-600 is the brand navy #004777 and
+ * white sits at 12.1:1. On the dark theme primary-600 is #54A2D7 — a light blue
+ * — and white on it measures 2.79:1, failing AA on the single most-clicked
+ * element on the site.
+ *
+ * The button keeps its colour; the label flips to the dark page's own surface,
+ * which measures 7.4:1 against that blue. Inverting the label is the smaller
+ * change: darkening the button instead would pull the primary accent away from
+ * the links and active nav that share the same token.
+ */
+/* Targeted by attribute, not by class name: Hextra's hero-button shortcode
+ * emits only Tailwind utilities (`hx:bg-primary-600 hx:text-white`) with no
+ * semantic hook, and the `hx:` prefix would need escaping as a class selector.
+ */
+.dark a[class*="bg-primary-600"] {
+  color: #0f172a;
+}
+
+/* The search box's "CTRL K" hint. Hextra renders it at 10px in #6A7282, which
+ * is 3.48:1 on the dark navbar — below AA, and it is a keyboard affordance, so
+ * a reader who cannot make it out never learns the shortcut exists. Reusing
+ * --cnref-stamp, already measured on both grounds where it is defined above. */
+.dark .hextra-search-wrapper kbd,
+.dark input[type="search"] + kbd,
+.dark .hextra-search-wrapper + kbd {
+  color: var(--cnref-stamp);
 }

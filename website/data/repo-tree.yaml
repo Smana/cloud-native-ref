@@ -1,0 +1,127 @@
+# The repository tree, rendered by layouts/_shortcodes/repo-tree.html on both
+# Platform -> GitOps (depth 1) and Reference -> Repository Layout (full).
+#
+# It lives here rather than in the pages because both pages need it and a second
+# hand-maintained copy would drift. It replaced Hextra's filetree shortcode,
+# which collapses its folders by default and has no field for a description or
+# for the owning Kustomization.
+#
+# `owner` is the load-bearing column: what reconciles this directory. Either a
+# Flux Kustomization from clusters/mycluster-0/ — verified against its
+# `spec.path` — or "OpenTofu / Terramate" for the half that predates the
+# Kubernetes API, or an em dash for a directory nothing reconciles.
+#
+# Every `path` must exist in the repository. Adding one that does not is caught
+# by the check documented in docs/superpowers/plans/2026-08-20-docs-site-quality.md.
+entries:
+  - path: opentofu/
+    kind: dir
+    desc: Everything that has to exist before a Kubernetes API does
+    owner: OpenTofu / Terramate
+    children:
+      - path: opentofu/network/
+        kind: dir
+        desc: VPC, subnets, Route53, Tailscale VPN
+      - path: opentofu/openbao/
+        kind: dir
+        desc: The OpenBao cluster and its management stack — secrets and the private PKI
+      - path: opentofu/eks/init/
+        kind: dir
+        desc: Stage 1 — EKS cluster, node groups, bootstrap addons, Gateway API CRDs
+      - path: opentofu/eks/configure/
+        kind: dir
+        desc: Stage 2 — Cilium replaces the CNI, the Flux Operator is installed
+      - path: opentofu/llm-platform/
+        kind: dir
+        desc: opt-in — S3 Files and IAM for the self-hosted LLM platform
+
+  - path: clusters/
+    kind: dir
+    desc: The Flux Kustomizations themselves — the entry point the FluxInstance points at
+    owner: flux-system
+    children:
+      - path: clusters/mycluster-0/
+        kind: dir
+        desc: One Kustomization per domain, carrying the dependsOn graph
+      - path: clusters/mycluster-0-llm-platform/
+        kind: dir
+        desc: The suspended LLM umbrella's children, kept a sibling so the recursive sync cannot reach them
+
+  - path: flux/
+    kind: dir
+    desc: Flux managing itself — sources, notifications, previews, and its own dashboards
+    owner: "flux-* (six)"
+    children:
+      - path: flux/operator/
+        kind: dir
+        desc: Flux Operator and the FluxInstance
+      - path: flux/sources/
+        kind: dir
+        desc: Every GitRepository, HelmRepository and OCIRepository — deliberately unsharded
+      - path: flux/artifact-generators/
+        kind: dir
+        desc: The ArtifactGenerator that slices the repository into one ExternalArtifact per domain
+      - path: flux/notifications/
+        kind: dir
+        desc: Alert and Provider resources — reconciliation failures to Slack
+      - path: flux/observability/
+        kind: dir
+        desc: Flux's own Grafana dashboards and alert rules
+      - path: flux/previews/
+        kind: dir
+        desc: ResourceSet-driven preview environments
+
+  - path: namespaces/
+    kind: dir
+    desc: Namespace manifests — first in the dependency chain, because everything else lands in one
+    owner: namespaces
+
+  - path: crds/
+    kind: dir
+    desc: Custom Resource Definitions applied ahead of the controllers that consume them
+    owner: crds
+
+  - path: infrastructure/
+    kind: dir
+    desc: Cilium policies, Crossplane, Karpenter, Gateway API, External DNS, CSI drivers, KEDA
+    owner: "infrastructure, crossplane-*, karpenter"
+
+  - path: security/
+    kind: dir
+    desc: cert-manager, External Secrets, Kyverno, ZITADEL, the EKS Pod Identities, RBAC
+    owner: "security, eks-pod-identities, zitadel"
+
+  - path: observability/
+    kind: dir
+    desc: VictoriaMetrics, VictoriaLogs, VictoriaTraces, Grafana, and the RunLore SRE agent
+    owner: "observability-*"
+
+  - path: tooling/
+    kind: dir
+    desc: Harbor, Headlamp, Homepage, the Dagger engine, self-hosted runners (off by default)
+    owner: tooling
+
+  - path: apps/
+    kind: dir
+    desc: App composition claims — the tenant-facing workload API, and the demo applications
+    owner: apps
+
+  - path: container-images/
+    kind: dir
+    desc: Dockerfiles for the images this repository builds and publishes to ghcr.io
+    owner: "—  built in CI, not reconciled"
+
+  - path: scripts/
+    kind: dir
+    desc: validate-manifests.sh, validate-links.sh, verify-doc-paths.sh, openbao-config.sh, and the rest
+    owner: "—"
+
+  - path: docs/
+    kind: dir
+    desc: Diagram sources, the platform constitution, the superpowers designs and plans, and the read-only spec archive
+    owner: "—"
+
+  - path: website/
+    kind: dir
+    desc: This documentation site — Hugo, Hextra, and the content you are reading
+    owner: "—"
