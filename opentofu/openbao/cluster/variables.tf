@@ -22,18 +22,15 @@ variable "mode" {
 variable "openbao_version" {
   description = "OpenBao version to install"
   type        = string
-  # The whole 2.6 line deadlocks under the management stack's parallel writes
-  # (openbao/openbao#3411, still OPEN): namespace/mount/auth paths take the core
-  # RWMutex in inconsistent order, so a nested acquire wedges the core and every
-  # subsequent request hangs. Seen on 2.6.0 (namespace_store.go) and again on
-  # 2.6.2 (vault/auth.go:78 enableCredentialInternal, 2026-08-20). 2.5.5 is the
-  # last release predating it.
-  #
-  # The bound that actually enforces this is allowedVersions "<2.6.0" in
-  # .github/renovate.json — a comment does not gate a bot, and #1784 bumped
-  # straight past this one. Lift both in the same PR, once #3411 closes.
+  # Kept at the latest release. 2.6.x carries openbao/openbao#3411 (inconsistent
+  # lock ordering across namespaces, mounts and the router, still OPEN), which
+  # deadlocks the core when the management stack writes concurrently — but the
+  # concurrency is ours, not OpenBao's. The management stack now applies with
+  # -parallelism=1 (opentofu/openbao/management/workflows.tm.hcl), which clears
+  # it; see the reproduction recorded there. Do not raise that parallelism while
+  # #3411 is open.
   # renovate: datasource=github-releases depName=openbao/openbao
-  default = "2.5.5"
+  default = "2.6.2"
 }
 
 variable "openbao_data_path" {
