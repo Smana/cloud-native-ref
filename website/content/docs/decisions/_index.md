@@ -24,5 +24,14 @@ amendment requires an ADR to document the change.
 | [0005]({{< relref "/docs/decisions/0005-gke-standard-self-managed-cilium.md" >}}) | GKE Standard with self-managed Cilium (not Dataplane V2, not Autopilot) | Accepted | 2026-08-18 |
 | [0006]({{< relref "/docs/decisions/0006-nap-computeclass-over-karpenter.md" >}}) | GKE node auto-provisioning (ComputeClass) over Karpenter on GCP | Accepted | 2026-08-18 |
 | [0007]({{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}}) | Cloud abstraction boundaries — cloud-shaped platform APIs, neutral developer APIs | Accepted | 2026-08-18 |
+| [0008]({{< relref "/docs/decisions/0008-flux-over-argocd.md" >}}) | Use Flux for GitOps reconciliation | Accepted | 2026-08-21 |
+| [0009]({{< relref "/docs/decisions/0009-cilium-over-vpc-cni.md" >}}) | Use Cilium instead of the AWS VPC CNI | Accepted | 2026-08-21 |
+| [0010]({{< relref "/docs/decisions/0010-victoriametrics-over-prometheus.md" >}}) | Use VictoriaMetrics rather than Prometheus | Accepted | 2026-08-21 |
+| [0011]({{< relref "/docs/decisions/0011-openbao-over-vault.md" >}}) | Use OpenBao rather than HashiCorp Vault | Accepted | 2026-08-21 |
+| [0012]({{< relref "/docs/decisions/0012-crossplane-and-opentofu.md" >}}) | Use Crossplane and OpenTofu, split at the Kubernetes boundary | Accepted | 2026-08-21 |
+| [0013]({{< relref "/docs/decisions/0013-tailscale-over-bastion.md" >}}) | Use Tailscale for private access rather than a bastion | Accepted | 2026-08-21 |
+| [0014]({{< relref "/docs/decisions/0014-opentofu-over-terraform.md" >}}) | Use OpenTofu rather than Terraform | Accepted | 2026-08-21 |
+| [0015]({{< relref "/docs/decisions/0015-gateway-api-over-ingress-nginx.md" >}}) | Use Gateway API rather than Ingress | Accepted | 2026-08-21 |
+| [0016]({{< relref "/docs/decisions/0016-kyverno-over-gatekeeper.md" >}}) | Use Kyverno for admission policy | Accepted | 2026-08-21 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

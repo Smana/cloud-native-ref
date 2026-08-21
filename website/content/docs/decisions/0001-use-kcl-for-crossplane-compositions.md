@@ -1,6 +1,6 @@
 ---
 title: Use KCL for Crossplane Compositions
-linkTitle: ADR-0001
+linkTitle: 0001 · KCL compositions
 weight: 10
 description: Crossplane compositions are authored in KCL rather than patch-and-transform or Go templates, for readable, testable conditional and loop logic.
 lastVerified: 2026-08-20

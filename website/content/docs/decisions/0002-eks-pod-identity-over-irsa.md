@@ -1,6 +1,6 @@
 ---
 title: Use EKS Pod Identity over IRSA
-linkTitle: ADR-0002
+linkTitle: 0002 · EKS Pod Identity
 weight: 20
 description: AWS workloads use EKS Pod Identity instead of IRSA to grant IAM permissions to pods; the decision now scopes to AWS only, per ADR-0007.
 lastVerified: 2026-08-20

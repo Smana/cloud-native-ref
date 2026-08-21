@@ -1,7 +1,7 @@
 ---
 title: ADR Template
 linkTitle: Template
-weight: 80
+weight: 999
 description: Copy this template to start a new Architecture Decision Record.
 lastVerified: 2026-08-20
 ---

@@ -1,6 +1,6 @@
 ---
 title: Use Amazon S3 Files for LLM Model Weights Storage
-linkTitle: ADR-0004
+linkTitle: 0004 · S3 Files for weights
 weight: 40
 description: LLM model weights are mounted from an Amazon S3 Files POSIX file system instead of an init-container sync into emptyDir, dropping per-replica copies and the platform-wide extra disk.
 lastVerified: 2026-08-20

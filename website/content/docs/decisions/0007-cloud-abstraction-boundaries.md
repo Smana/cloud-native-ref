@@ -1,6 +1,6 @@
 ---
 title: Cloud abstraction boundaries — cloud-shaped platform APIs, neutral developer APIs
-linkTitle: ADR-0007
+linkTitle: 0007 · Cloud boundaries
 weight: 70
 description: Platform-facing infrastructure APIs stay cloud-shaped per provider, while developer-facing APIs like App stay cloud-neutral, splitting the abstraction by audience instead of forcing one shape on both.
 lastVerified: 2026-08-20
