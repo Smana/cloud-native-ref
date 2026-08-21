@@ -30,9 +30,10 @@ own advice.
 | P4 | `how-this-is-built` describes a method it never names | The five-step workflow is Superpowers; the page attributes it to nothing, so a reader cannot reproduce it |
 | P5 | `SECURITY.md` is template-grade and partly false | "Uses development-grade certificates" (there is a three-tier private PKI); "Change all default passwords" (they are generated into AWS Secrets Manager). Only the tooling list is accurate |
 | D1 | 10 dead links in published ADRs | `0002/0005/0006/0007` link `../specs/done/2024-Q1/…`, `../superpowers/specs/…`, `../../.claude/rules/…` — all pre-migration `docs/` paths |
-| D2 | The gate that should catch D1 excludes the whole tree | `scripts/validate-links.sh:44` — `files = [f for f in files if not f.startswith('website/content/')]` |
+| D2 | The gate that should catch D1 excludes the whole tree, on a false premise | `scripts/validate-links.sh:44` excludes `website/content/`, justified at lines 22–26 by "Hugo already gates that tree harder than this script could — `refLinksErrorLevel: ERROR`". That setting **is** present (`website/hugo.yaml:10`) but governs only `ref`/`relref` shortcodes; raw Markdown links bypass it. Verified: `hugo --source website --minify` exits 0 with all ten dead links in place |
 | D3 | `technology-stack.md` contradicts the live site | Its closing section calls `technology-choices` "the retired page"; that page is live in Concepts |
 | D4 | ADR-0001/0002 carry invented provenance | Header says `Date: 2024-01-15`, `Deciders: Platform Team`. Both files were added 2026-01-06 in `6583c0ef`; the KCL conversion they describe landed 2024-09-29 (`convert compositions to use kcl function only`). Solo-maintained repository |
+| D5 | The Decisions sidebar is a column of bare identifiers | Every record sets `linkTitle: ADR-000N`, so the navigation reads `ADR-0001 … ADR-0007` and conveys nothing about what each decides. Already unhelpful at seven; unusable at sixteen. Fixed by making `linkTitle` `NNNN · <short noun phrase>` on all sixteen |
 
 ## Decisions taken during design
 
@@ -128,9 +129,23 @@ naming the gate for each, and **real** known limitations replacing the invented 
 
 Linked from `website/content/docs/platform/security/_index.md`.
 
-**Supply chain** — a new section on `platform/security/policies.md` covering Trivy (IaC and
-image), Checkov, `detect-secrets` in pre-commit, Harbor as the registry, and the image-tag policy.
-This is the one security domain the site currently frames only as CI plumbing.
+**Supply chain** — a new section on `platform/security/policies.md`. This is the one security
+domain the site currently frames only as CI plumbing. It must describe what the repository
+actually runs, which is narrower than "supply chain security" usually implies:
+
+- **Trivy** — `scan-type: fs` against the repository, `ignore-unfixed: true`,
+  `severity: CRITICAL,HIGH`. **Not image scanning.** No container image is scanned anywhere in CI.
+- **Checkov** — `soft_fail: true`. It uploads SARIF to GitHub Security and never fails the build.
+  Advisory, not a gate, and the section must say so.
+- **TruffleHog** in CI (`--only-verified`) and **`detect-secrets`** in pre-commit — two different
+  tools at two different points, both currently collapsed into one line in `SECURITY.md`.
+- **Polaris** on the rendered bundle, which *is* a gate.
+- **Harbor** carries no Trivy configuration in `tooling/base/harbor/helmrelease-harbor.yaml`, so
+  its scanner sits at chart defaults. Verify the chart default before claiming the registry scans
+  anything.
+
+Writing this section as though image scanning or Checkov gating exists would repeat exactly the
+failure this workstream is fixing.
 
 ## Workstream 6 — Defects
 
@@ -176,7 +191,7 @@ different review modes, so they split cleanly.
 
 | PR | Contents | Depends on |
 |---|---|---|
-| 1 — The records | ADR-0008…0016; nine rows added to `decisions/_index.md`. Pure additions, no existing page changed | — |
+| 1 — The records | ADR-0008…0016; nine rows added to `decisions/_index.md`; D5 (sidebar `linkTitle` on all sixteen) | — |
 | 2 — Reference and the rule | Delete `technology-choices` and move its four principles into `decisions/_index.md`; rewrite `technology-stack`; the ADR rule in three places; D1, D2, D3 | PR 1 — the stack page's `**Decisions:**` lines cite the new ADRs |
 | 3 — Front door and security | Homepage hero and grid; `how-this-is-built`; `SECURITY.md`; the supply-chain section; D4 | — |
 
