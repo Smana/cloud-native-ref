@@ -25,7 +25,7 @@ own advice.
 | # | Problem | Evidence |
 |---|---|---|
 | P1 | The Technology Stack page is a hand-maintained version table | `website/content/docs/reference/technology-stack.md` — ~45 rows carrying a version number, gated by nothing. Its own closing section says the page exists because its version-less predecessor "drifted" |
-| P2 | Six load-bearing technology choices have no ADR | `concepts/technology-choices.md` § "The ones without records" — Flux, Cilium, VictoriaMetrics, OpenBao, Crossplane, Tailscale, at 2–5 lines each |
+| P2 | Nine load-bearing technology choices have no ADR | `concepts/technology-choices.md` § "The ones without records" lists six — Flux, Cilium, VictoriaMetrics, OpenBao, Crossplane, Tailscale — at 2–5 lines each. Three more are recorded nowhere at all: OpenTofu, Gateway API, Kyverno |
 | P3 | The homepage hero defines the project by what it isn't | `website/content/_index.md` — "Not a slide deck and not a toy cluster", then 40 words before the first concrete noun |
 | P4 | `how-this-is-built` describes a method it never names | The five-step workflow is Superpowers; the page attributes it to nothing, so a reader cannot reproduce it |
 | P5 | `SECURITY.md` is template-grade and partly false | "Uses development-grade certificates" (there is a three-tier private PKI); "Change all default passwords" (they are generated into AWS Secrets Manager). Only the tooling list is accurate |
@@ -38,16 +38,16 @@ own advice.
 
 | Question | Decision | Rationale |
 |---|---|---|
-| How wide is the ADR backfill? | Exactly the six choices already in prose — ADR-0008…0013 | They are the platform's most load-bearing picks and currently get its least page. Broader backfills (OpenTofu, Gateway API, Terramate, Kyverno) produce records for things nothing credible competed with |
+| How wide is the ADR backfill? | Every choice with a namable rejected alternative — ADR-0008…0016 | The six already in prose, plus OpenTofu, Gateway API and Kyverno, which are recorded nowhere. Each has a real alternative that was considered and dropped, so each meets the new rule's own trigger; backfilling only the prose six would leave the rule failing on the repository that introduced it. Terramate and Karpenter are excluded on the same test — nothing credible competed |
 | What replaces the version column? | `Component \| Role in the platform`, plus a per-section intro and a `**Decisions:**` line | Rejected: keeping a `Pinned in` column. It is wrong on a meaningful fraction of rows — `cilium_version` lives in `opentofu/config.tm.hcl` *and* is mirrored as a default in `opentofu/eks/configure/variables.tf`; the VictoriaMetrics stack and VictoriaLogs each span two `HelmRelease` files; GHA runners span three. A multi-file list is the same rot problem in a different column |
 | What survives of `technology-choices`? | Delete the page; move its four principles into `decisions/_index.md` as a preamble | After the backfill it is four principles plus a 13-row table near-duplicating the ADR index. The principles are the meta-decision framework and belong on the Decisions index |
 | Which hero voice? | The README's own opening line, tightened | Same voice on GitHub and on the site, which matters because GitHub is where most readers arrive first |
 | How far does the security work go? | Rewrite `SECURITY.md`; add a Supply chain section to `platform/security/policies.md` | Rejected: renaming `concepts/zero-trust` to "Security model". It churns a URL on a site launched the week before and dilutes a page with one sharp thesis |
 | What triggers the new ADR rule? | A **rejected alternative** | Rejected: "any new technology or concept" (would have demanded ~45 records, most a paragraph long) and "any load-bearing component" (still produces records for uncontested picks). Tying the trigger to a named alternative is self-limiting — an ADR with no alternatives section is a changelog entry |
 
-## Workstream 1 — ADR-0008…0013
+## Workstream 1 — ADR-0008…0016
 
-Six records under `website/content/docs/decisions/`, following `template.md`
+Nine records under `website/content/docs/decisions/`, following `template.md`
 (Context / Options considered / Decision / Consequences), dated 2026-08-21, `Status: Accepted`.
 
 Every record is sourced from what this repository does, not from general knowledge about the
@@ -62,8 +62,16 @@ benefits is marketing.
 | 0011 | OpenBao | HashiCorp Vault | The BUSL licence change as the trigger. Consequences: smaller ecosystem, and the 2.6 write-concurrency deadlock worked around with `-parallelism=1` in the management stack rather than by pinning back to 2.5.5 |
 | 0012 | Crossplane **and** OpenTofu | either alone | Continuous reconciliation versus true-only-at-apply — and why the boundary falls at "below Kubernetes / above Kubernetes" rather than at a tool preference. Explicitly not a claim that Crossplane describes cloud resources better than OpenTofu |
 | 0013 | Tailscale | bastion host / VPN appliance | ACL tags as the authorization primitive; the two-gateway split (`tag:k8s` vs `tag:admin`) that makes admin services unreachable rather than merely unlisted; no host to patch |
+| 0014 | OpenTofu | Terraform | The BUSL relicensing as the trigger, and the fork's provider ecosystem staying compatible. **The honest wrinkle**: `opentofu/openbao/*` is configured with the `hashicorp/vault` provider — the platform left Terraform over the licence and still depends on a HashiCorp-licensed provider to configure the fork it left it for. Verify the provider's current licence before asserting it |
+| 0015 | Gateway API | ingress-nginx | Role separation (`Gateway` owned by the platform, `HTTPRoute` by the application) and one CRD set serving both public and Tailscale-private ingress. Consequences: version lockstep with Cilium as the GatewayClass implementation — Cilium ≤1.19.4 crashes on Gateway API ≥v1.5.0 (cilium#45139) — and the CRDs must be installed before `cilium-operator` starts, because it probes for them exactly once and silently disables its controller for the process lifetime if any are missing |
+| 0016 | Kyverno | OPA Gatekeeper, plain Pod Security Admission, native ValidatingAdmissionPolicy | Policies as YAML rather than Rego; mutation and generation alongside validation, which PSA cannot do. **Consequence that costs something**: `kyverno-policies` installs with `values: {}`, so the enforced policy set *and* its audit-versus-enforce action come from the chart's defaults rather than being chosen here — a deliberate deferral, not an oversight, and it should be recorded as one |
 
-`decisions/_index.md` gains six table rows and the four principles as a preamble.
+`decisions/_index.md` gains nine table rows and the four principles as a preamble.
+
+ADR-0015 and ADR-0016 describe choices with no prose to migrate — `technology-choices.md` never
+mentioned them. Their context has to be reconstructed from the manifests, so both carry a higher
+fabrication risk than 0008–0014 and need their claims checked against source rather than written
+from what is generally true of the tools.
 
 ## Workstream 2 — Technology Stack
 
@@ -140,8 +148,9 @@ This is the one security domain the site currently frames only as CI plumbing.
 
 | Criterion | Evidence |
 |---|---|
-| Six ADRs published and indexed | `decisions/_index.md` lists 0001–0013; each new file renders with Context / Options / Decision / Consequences |
-| Every new ADR names a real cost | Each of 0008–0013 has at least one consequence that is a trade-off accepted, not a benefit gained |
+| Nine ADRs published and indexed | `decisions/_index.md` lists 0001–0016; each new file renders with Context / Options / Decision / Consequences |
+| Every new ADR names a real cost | Each of 0008–0016 has at least one consequence that is a trade-off accepted, not a benefit gained |
+| The backfill satisfies its own rule | No technology on the stack page has a namable rejected alternative and no ADR. Checked by reading, not by a script |
 | No version numbers left on the stack page | `grep -E '\| [0-9]+\.[0-9]+' website/content/docs/reference/technology-stack.md` returns nothing |
 | `technology-choices` fully removed | File deleted, card removed from `concepts/_index.md`, principles present in `decisions/_index.md`, no inbound link anywhere |
 | Dead links fixed and the class gated | `./scripts/validate-links.sh` exits 0 and fails if a raw relative link is reintroduced under `website/content/` |
@@ -153,18 +162,23 @@ This is the one security domain the site currently frames only as CI plumbing.
 
 - Restructuring the site's navigation or section weights.
 - Any change to `platform/`, `guides/`, or `get-started/` content beyond the two security edits.
-- Backfilling ADRs for uncontested picks (OpenTofu, Gateway API, Terramate, Kyverno, Karpenter).
-  The new rule applies going forward; it is not retroactive beyond the six.
+- ADRs for picks where nothing credible competed — Terramate, Karpenter, cert-manager, External
+  Secrets, ExternalDNS, CloudNativePG, Harbor, Headlamp. They fail the rule's own trigger: there is
+  no rejected alternative to name. If one turns out to have had a real contender, it earns a record
+  then.
 - Renaming or moving `concepts/zero-trust.md`.
 
 ## Delivery
 
-Two sequential PRs. PR 2's content does not depend on PR 1, but the stack page cites the new ADRs.
+Three sequential PRs. Nine ADRs plus a page rewrite in one branch is more prose than a single
+review can hold, and the ADRs are pure additions while everything else is edits and deletions —
+different review modes, so they split cleanly.
 
-| PR | Contents |
-|---|---|
-| 1 — Decisions | ADR-0008…0013; delete `technology-choices` and move its principles; rewrite `technology-stack`; the ADR rule in three places; D1, D2, D3 |
-| 2 — Front door and security | Homepage hero and grid; `how-this-is-built`; `SECURITY.md`; the supply-chain section; D4 |
+| PR | Contents | Depends on |
+|---|---|---|
+| 1 — The records | ADR-0008…0016; nine rows added to `decisions/_index.md`. Pure additions, no existing page changed | — |
+| 2 — Reference and the rule | Delete `technology-choices` and move its four principles into `decisions/_index.md`; rewrite `technology-stack`; the ADR rule in three places; D1, D2, D3 | PR 1 — the stack page's `**Decisions:**` lines cite the new ADRs |
+| 3 — Front door and security | Homepage hero and grid; `how-this-is-built`; `SECURITY.md`; the supply-chain section; D4 | — |
 
 ## The rule
 
