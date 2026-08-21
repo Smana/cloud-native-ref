@@ -10,6 +10,8 @@ lastVerified: 2026-08-21
 **Date**: 2026-08-21
 **Deciders**: Smana (Platform Owner)
 **Related Design**: N/A — records a choice predating the design workflow
+**Related**: [ADR-0015](0015-gateway-api-over-ingress-nginx.md) — the
+Gateway API decision that routes through this ADR's `GatewayClass`
 
 ---
 
@@ -201,16 +203,8 @@ one most tempting to write up as a pure win.
     no-op on every deploy after the first.
 - **`cilium-operator` probes for the Gateway API CRDs exactly once, at
   startup, and permanently disables its Gateway API controller if any are
-  missing — no crash, no alert.** Every `GatewayClass` then sits at
-  `Accepted=Unknown`, every `Gateway` stays unprogrammed, `HTTPRoute`s get
-  no `status.parents`, and any `App` claim that owns a route is stuck
-  `READY=False` — a failure that reads as a broken application, not a
-  missing CRD.
-  - *Mitigation*: `kubectl rollout restart -n kube-system
-    deployment/cilium-operator` reruns the probe once the CRD exists;
-    durably, the CRD's URL gets added to the append-only
-    `gateway_api_crds_urls` list so it is present before the next
-    rebuild's probe runs.
+  missing — no crash, no alert.** See
+  [ADR-0015](0015-gateway-api-over-ingress-nginx.md).
 
 ### Neutral
 
@@ -260,7 +254,7 @@ Gateway API controller and its Envoy L7 proxy; `hubble.relay.enabled` and
   prefix-delegation ceiling
 - [ADR-0005](0005-gke-standard-self-managed-cilium.md) — the GCP
   counterpart, where `ipam.mode=kubernetes` means the WireGuard
-  workaround below is expected to be unnecessary
+  workaround above is expected to be unnecessary
 - [CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md)
   — "Cilium Prefix Delegation", "Pod Subnet Tagging", and the Gateway API
   CRD startup-probe entry under Troubleshooting

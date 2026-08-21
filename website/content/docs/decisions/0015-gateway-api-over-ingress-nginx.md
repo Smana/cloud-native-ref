@@ -130,7 +130,7 @@ as its Option 2.
 
 The AWS Load Balancer Controller does run in this repository
 (`infrastructure/base/aws-load-balancer-controller/helmrelease.yaml`,
-chart `aws-load-balancer-controller` 3.5.0), but not as an `Ingress`
+chart `aws-load-balancer-controller`), but not as an `Ingress`
 controller: no manifest under `infrastructure/`, `tooling/`,
 `observability/`, `security/`, or `apps/` sets `ingressClassName` or an
 `alb.ingress.kubernetes.io/*` annotation, and no `kind: Ingress` object
@@ -217,10 +217,11 @@ can run, not chosen freely.
 - **CRDs must exist before `cilium-operator` starts.** It probes for the
   Gateway API CRDs exactly once, at startup, and permanently disables its
   Gateway API controller for the process lifetime if any is missing — no
-  crash, no alert. Every `GatewayClass` then sits at `Accepted=Unknown`
-  and every `HTTPRoute` gets no `status.parents`
-  (`CLAUDE.md`, "Gateways stuck `Waiting for controller`"). This already
-  happened once: the `backendtlspolicies` CRD comment in
+  crash, no alert. Every `GatewayClass` then sits at `Accepted=Unknown`,
+  every `Gateway` stays unprogrammed, every `HTTPRoute` gets no
+  `status.parents`, and any `App` claim that owns a route is stuck
+  `READY=False` (`CLAUDE.md`, "Gateways stuck `Waiting for controller`").
+  This already happened once: the `backendtlspolicies` CRD comment in
   `opentofu/eks/configure/locals.tf` records that its absence "is what
   broke Gateway API on the 2026-08-19 rebuild."
   - *Mitigation*: `kubectl rollout restart -n kube-system

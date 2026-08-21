@@ -34,7 +34,7 @@ pack that implements the Kubernetes Pod Security Standards as
 sourced from a shared `HelmRepository`
 (`flux/sources/helmrepo-kyverno.yaml`); the controller sets `crds.install:
 false`, and its CRDs instead come from a `GitRepository` pin
-(`flux/sources/gitrepo-kyverno.yaml`, tag `v1.18.2`) applied by
+(`flux/sources/gitrepo-kyverno.yaml`) applied by
 `crds/base/kustomization-kyverno.yaml` — one entry among a dozen siblings
 in the `crds` Kustomization (`clusters/mycluster-0/crds.yaml`) that
 installs every CRD-owning component's CRDs ahead of the controller that

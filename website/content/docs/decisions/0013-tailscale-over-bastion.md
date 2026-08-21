@@ -131,16 +131,16 @@ VPC, authenticated via certificates or SAML/IdP federation.
 **Rationale**: The platform's private-access requirement is not just "reach
 the VPC" — it is "expose two classes of Kubernetes-native services with
 different trust levels, plus the private EKS API endpoint, without a
-publicly reachable listener anywhere." Tailscale is the only option that
-satisfies all of that with one mechanism: ACL tags authorize both the
-Gateway API split (general vs. admin) and the subnet router, `tagOwners`
-puts tag assignment solely in the Kubernetes Tailscale Operator's hands so
-no human or other automation can self-escalate, and nothing in the path
-carries a public IP. A bastion solves reachability but not the
-service-level trust split, and reintroduces the exact public-listener and
-SSH-key-rotation costs this decision exists to avoid. AWS Client VPN avoids
-the public listener but keeps network-perimeter trust and buys none of the
-Gateway API integration.
+publicly reachable listener on the private-access path." Tailscale is the
+only option that satisfies all of that with one mechanism: ACL tags
+authorize both the Gateway API split (general vs. admin) and the subnet
+router, `tagOwners` puts tag assignment solely in the Kubernetes Tailscale
+Operator's hands so no human or other automation can self-escalate, and
+nothing in the path carries a public IP. A bastion solves reachability but
+not the service-level trust split, and reintroduces the exact
+public-listener and SSH-key-rotation costs this decision exists to avoid.
+AWS Client VPN avoids the public listener but keeps network-perimeter trust
+and buys none of the Gateway API integration.
 
 ---
 
@@ -230,6 +230,7 @@ private service is the most common way to reach for the wrong one.
 - `opentofu/network/tailscale.tf` — the `tailscale_acl` resource, `tagOwners`, and the subnet-router module block
 - `security/base/tailscale-operator/` — the Kubernetes Tailscale Operator HelmRelease, `ProxyClass`es, and OAuth-client `ExternalSecret`
 - `infrastructure/base/gapi/` — the two Tailscale `Gateway`s and the shared `CiliumGatewayClassConfig`
+- [ADR-0015](0015-gateway-api-over-ingress-nginx.md) — the Gateway API routing mechanics behind the `CiliumGatewayClassConfig` and `loadBalancerClass: tailscale` wiring described here
 - [Tailscale: Simplifying Cloud Access](https://blog.ogenki.io/post/tailscale/) — the platform author's long-form writeup of this same choice
 - [Tailscale ACLs](https://tailscale.com/kb/1018/acls) — the tag/`tagOwners` model this ADR relies on
 - [Tailscale architecture](https://tailscale.com/blog/how-tailscale-works) — the coordination-server dependency behind this ADR's first `### Negative` point

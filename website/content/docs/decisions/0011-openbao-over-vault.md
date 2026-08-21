@@ -10,6 +10,8 @@ lastVerified: 2026-08-21
 **Date**: 2026-08-21
 **Deciders**: Smana (Platform Owner)
 **Related Design**: N/A — records a choice predating the design workflow
+**Related**: [ADR-0014](0014-opentofu-over-terraform.md) — the same
+licence trigger, applied to the toolchain
 
 ---
 
