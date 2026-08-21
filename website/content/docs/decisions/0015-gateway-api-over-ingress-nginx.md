@@ -1,0 +1,298 @@
+---
+title: Use Gateway API rather than Ingress
+linkTitle: 0015 · Gateway API
+weight: 150
+description: Routing uses Gateway API rather than ingress-nginx, separating platform-owned Gateways from application-owned HTTPRoutes and serving public and Tailscale-private ingress from one CRD set — at the cost of version lockstep with Cilium.
+lastVerified: 2026-08-21
+---
+
+**Status**: Accepted
+**Date**: 2026-08-21
+**Deciders**: Smana (Platform Owner)
+**Related Design**: N/A — records a choice predating the design workflow
+**Related**: [ADR-0009](0009-cilium-over-vpc-cni.md) — Cilium is the
+GatewayClass implementation this decision routes through
+
+---
+
+## Context
+
+Every request into this platform, public or private, goes through Gateway
+API — `GatewayClass`, `Gateway`, `HTTPRoute` — never a Kubernetes
+`Ingress`. There is no `kind: Ingress` manifest anywhere in this
+repository, and Cilium's own Ingress controller
+(`ingressController.enabled`) is not turned on in
+`opentofu/eks/init/helm_values/cilium.yaml`; only `gatewayAPI.enabled:
+true` is set. The one literal `ingress-nginx` reference left in the repo
+is a subchart toggle explicitly set to `enabled: false` in
+`observability/base/grafana-oncall/helmrelease-oncall.yaml`, and Grafana
+OnCall itself is wired into no Kustomization, so it does not run.
+
+[ADR-0009](0009-cilium-over-vpc-cni.md) already decided that Cilium
+replaces the VPC CNI, kube-proxy, and the NetworkPolicy engine, and named
+"implements the Gateway API `GatewayClass` this platform's Tailscale and
+public ingress already depend on" as one of its reasons. That ADR's
+Option 2 (`ingress-nginx`) was rejected mainly on CNI-consolidation
+grounds — running a fifth component just for `NetworkPolicy`. This record
+exists to state the routing-model choice on its own terms and name the
+cost that choice carries by itself, independent of the CNI decision:
+Gateway API's version is not free to move independently of Cilium's.
+
+Three resource roles carry the model
+([Gateway API]({{< relref "/docs/platform/networking/gateway-api.md" >}})):
+`GatewayClass` selects the controller, `Gateway` owns listeners,
+hostnames, and TLS, and `HTTPRoute` owns routing rules and attaches to a
+`Gateway` via `parentRefs`. The platform authors every `Gateway` under
+`infrastructure/base/gapi/`; applications own their `HTTPRoute` through
+the `App` Crossplane claim. An `Ingress` has no equivalent split — one
+object carries both concerns, disambiguated only by vendor-specific
+annotations.
+
+---
+
+## Decision Drivers
+
+- **Role separation.** The platform should own listener/TLS/hostname
+  configuration; applications should own routing rules. Mixing both into
+  one `Ingress` object, disambiguated by annotations, does not offer that
+  split.
+- **One mechanism for both public and private ingress.** The two
+  Tailscale-private Gateways (`platform-tailscale-general`,
+  `platform-tailscale-admin`) need `loadBalancerClass: tailscale` on the
+  Service Cilium creates for them — a `CiliumGatewayClassConfig`
+  `parametersRef` on the `GatewayClass`. Reaching the same outcome through
+  `Ingress` would need a second mechanism, since Cilium's own Ingress
+  controller is not enabled here at all.
+- **No new controller.** [ADR-0009](0009-cilium-over-vpc-cni.md) already
+  requires Cilium as the CNI and `CiliumNetworkPolicy` engine; adopting
+  Gateway API turns Cilium's existing `gatewayAPI.enabled: true` setting
+  into the ingress mechanism too, rather than installing a separate
+  controller alongside it.
+- **Native ExternalDNS integration.** ExternalDNS's `gateway-httproute`
+  source watches `HTTPRoute` objects directly
+  (`infrastructure/base/external-dns/helmrelease.yaml`), so a new hostname
+  needs no separate annotation convention.
+
+---
+
+## Considered Options
+
+### Option 1: Gateway API with Cilium as the GatewayClass implementation
+
+Two `GatewayClass`es back three `Gateway`s. `cilium` is created
+automatically once `gatewayAPI.enabled: true` is set in the Cilium Helm
+values (no manifest for it in this repository); `cilium-tailscale` is
+hand-authored in `infrastructure/base/gapi/tailscale-gatewayclass.yaml`
+with a `parametersRef` to a `CiliumGatewayClassConfig`. `platform-public`
+uses `cilium`; `platform-tailscale-general` and `platform-tailscale-admin`
+use `cilium-tailscale`.
+
+**Pros**:
+- Platform-owned `Gateway`, application-owned `HTTPRoute` — no per-app
+  vendor annotations to keep aligned with a shared object.
+- One CRD family covers both the internet-facing gateway and the two
+  Tailscale-private gateways; only the `GatewayClass` differs.
+- Cilium already runs as the CNI and `NetworkPolicy` engine
+  ([ADR-0009](0009-cilium-over-vpc-cni.md)); turning on `gatewayAPI`
+  adds no separate controller.
+- ExternalDNS's `gateway-httproute` source watches `HTTPRoute` natively.
+
+**Cons**:
+- The Gateway API CRD version cannot move independently of the Cilium
+  minor installed — see Consequences.
+- `cilium-operator` only detects new Gateway API CRDs at its own startup
+  — see Consequences.
+- Smaller ecosystem than `Ingress`: fewer worked examples, and some
+  upstream charts still ship only an `ingress:` values stanza with no
+  Gateway API templates (`observability/base/grafana-oncall/helmrelease-oncall.yaml`
+  disables both `ingress` and a bundled `ingress-nginx` subchart it ships
+  with no alternative).
+
+### Option 2: ingress-nginx
+
+The mature, widely deployed `Ingress` controller
+[ADR-0009](0009-cilium-over-vpc-cni.md) already considered and rejected
+as its Option 2.
+
+**Pros** (per ADR-0009's Option 2):
+- Fully community-supported, large install base.
+
+**Cons**:
+- Speaks `Ingress`, not `GatewayClass` — does not satisfy this platform's
+  Gateway-API-only routing model without a shim
+  ([ADR-0009](0009-cilium-over-vpc-cni.md) Option 2).
+- No mechanism comparable to `CiliumGatewayClassConfig`'s
+  `loadBalancerClass: tailscale` for the two private gateways; reaching
+  them through `Ingress` would need a second, ingress-nginx-specific
+  path, not the one CRD family Option 1 uses for all three Gateways.
+
+### Option 3: AWS Load Balancer Controller `Ingress`
+
+The AWS Load Balancer Controller does run in this repository
+(`infrastructure/base/aws-load-balancer-controller/helmrelease.yaml`,
+chart `aws-load-balancer-controller` 3.5.0), but not as an `Ingress`
+controller: no manifest under `infrastructure/`, `tooling/`,
+`observability/`, `security/`, or `apps/` sets `ingressClassName` or an
+`alb.ingress.kubernetes.io/*` annotation, and no `kind: Ingress` object
+exists anywhere in the repository. Its actual job is provisioning the AWS
+NLB behind the one internet-facing `Gateway`, `platform-public`, whose
+`service.beta.kubernetes.io/aws-load-balancer-*` annotations sit under
+`Gateway.spec.infrastructure.annotations`
+(`infrastructure/base/gapi/platform-public-gateway.yaml`) rather than on
+an `Ingress` object.
+
+**Pros**:
+- Deep AWS integration for the load balancer itself (NLB target type,
+  scheme, naming) — already used today, just attached to a `Gateway`
+  instead of an `Ingress`.
+
+**Cons**:
+- Running it as an `Ingress` controller reintroduces the same
+  role-separation loss as Option 2: listener and routing configuration
+  merge into one object, disambiguated by `alb.ingress.kubernetes.io/*`
+  annotations instead of Cilium/Tailscale ones.
+- Still no equivalent to `CiliumGatewayClassConfig`'s
+  `loadBalancerClass: tailscale` for the two private gateways — AWS LBC
+  provisions AWS load balancers, not Tailscale-backed Services, so the
+  Tailscale gateways would still need a wholly separate mechanism.
+
+---
+
+## Decision Outcome
+
+**Chosen option**: "Option 1 — Gateway API with Cilium as the
+GatewayClass implementation"
+
+**Rationale**: Cilium is already required for the CNI, kube-proxy
+replacement, and `NetworkPolicy` engine
+([ADR-0009](0009-cilium-over-vpc-cni.md)), and it already ships a
+`GatewayClass` implementation gated by one Helm value. Adopting Gateway
+API is therefore not a new component, it is switching on a capability
+Cilium already has, while Option 2 and Option 3 would each add one.
+Gateway API's role split also lets `CiliumGatewayClassConfig` carry the
+`loadBalancerClass: tailscale` setting the two private Gateways depend
+on, through the same `GatewayClass`/`Gateway`/`HTTPRoute` triple used for
+the public Gateway — neither `ingress-nginx` nor AWS Load Balancer
+Controller's `Ingress` mode has a comparable path to that outcome without
+a second, ingress-specific mechanism bolted on for the private case. The
+cost is real and is not shared with the CNI decision: this platform's
+Gateway API CRD version is now pinned to what the installed Cilium minor
+can run, not chosen freely.
+
+---
+
+## Consequences
+
+### Positive
+
+- The platform owns every `Gateway` (`infrastructure/base/gapi/`);
+  applications own their `HTTPRoute` through the `App` claim — no vendor
+  annotations on a shared object to keep in sync.
+- One CRD family serves all three Gateways: `platform-public` (internet
+  facing, `cilium`), `platform-tailscale-general` and
+  `platform-tailscale-admin` (Tailscale-private, `cilium-tailscale`).
+- No separate ingress controller to operate — Cilium implements
+  `GatewayClass` as part of the component
+  [ADR-0009](0009-cilium-over-vpc-cni.md) already requires.
+- ExternalDNS's `gateway-httproute` source
+  (`infrastructure/base/external-dns/helmrelease.yaml`) watches
+  `HTTPRoute` directly and, with `policy: sync`, removes Route53 records
+  when a route is deleted — no manual DNS step.
+
+### Negative
+
+- **Version lockstep with Cilium.** Cilium is the `GatewayClass`
+  implementation, so the Gateway API CRD version cannot move
+  independently of it: Cilium ≤1.19.4 crashes on Gateway API ≥v1.5.0
+  (TLSRoute-v1, [cilium#45139](https://github.com/cilium/cilium/issues/45139),
+  fixed in 1.19.5). `gateway_api_version` in
+  `opentofu/eks/configure/variables.tf` (default `v1.6.1`) must equal the
+  tag `flux/sources/gitrepo-gateway-api.yaml` pins Flux's `GitRepository`
+  to — both currently `v1.6.1` — and the installed `cilium_version`
+  (`opentofu/config.tm.hcl`, currently `1.20.0`) must stay at or above
+  the 1.19.5 floor.
+  - *Mitigation*: none automated; the two pins and the Cilium floor are a
+    manual check on every upgrade of either component, not something CI
+    verifies today.
+- **CRDs must exist before `cilium-operator` starts.** It probes for the
+  Gateway API CRDs exactly once, at startup, and permanently disables its
+  Gateway API controller for the process lifetime if any is missing — no
+  crash, no alert. Every `GatewayClass` then sits at `Accepted=Unknown`
+  and every `HTTPRoute` gets no `status.parents`
+  (`CLAUDE.md`, "Gateways stuck `Waiting for controller`"). This already
+  happened once: the `backendtlspolicies` CRD comment in
+  `opentofu/eks/configure/locals.tf` records that its absence "is what
+  broke Gateway API on the 2026-08-19 rebuild."
+  - *Mitigation*: `kubectl rollout restart -n kube-system
+    deployment/cilium-operator` reruns the probe immediately; durably,
+    the CRD's URL is added to the append-only `gateway_api_crds_urls` in
+    `opentofu/eks/configure/locals.tf` so it is present before the next
+    rebuild's probe runs.
+- **Smaller ecosystem than `Ingress`.** Fewer worked examples exist for
+  Gateway API than for `Ingress`, and some upstream charts still ship
+  only an `ingress:` values stanza with no Gateway API template —
+  `observability/base/grafana-oncall/helmrelease-oncall.yaml` turns off
+  both an `ingress:` stanza and a bundled `ingress-nginx` subchart the
+  chart offers as its only routing option.
+  - *Mitigation*: none beyond authoring a standalone `HTTPRoute` next to
+    such a chart, as `tooling/base/homepage/httproute.yaml` already does.
+
+### Neutral
+
+- Moving from `Ingress` to Gateway API did not remove the AWS Load
+  Balancer Controller from the platform. `platform-public` still gets its
+  internet-facing NLB from `aws-load-balancer-controller`
+  (`infrastructure/base/aws-load-balancer-controller/helmrelease.yaml`);
+  only the object carrying the AWS annotations changed, from an
+  `Ingress` to `Gateway.spec.infrastructure.annotations`.
+
+---
+
+## Implementation Notes
+
+`infrastructure/base/gapi/` holds every `Gateway`-related manifest:
+`tailscale-gatewayclass.yaml` (the `cilium-tailscale` `GatewayClass`),
+`tailscale-gatewayclass-config.yaml` (the `CiliumGatewayClassConfig`
+setting `service.type: LoadBalancer`, `loadBalancerClass: tailscale`, and
+JSON Envoy access logs via `spec.telemetry.accessLogs`), and the three
+`Gateway` manifests. `platform-public-gateway.yaml` restricts
+`allowedRoutes` to the `runlore` namespace and carries the AWS NLB
+annotations; the two Tailscale Gateways restrict `allowedRoutes` to a
+namespace allowlist that has to be kept in sync by hand.
+
+Cilium's Gateway API support is turned on entirely through Helm values in
+`opentofu/eks/init/helm_values/cilium.yaml`: `gatewayAPI.enabled: true`
+and `envoy.enabled: true` (the L7 proxy). `ingressController` is not set,
+so Cilium's own `Ingress` support stays off.
+
+The Gateway API CRDs themselves are not chart-managed: `flux/sources/gitrepo-gateway-api.yaml`
+pins a `GitRepository` to `kubernetes-sigs/gateway-api` tag `v1.6.1`, and
+`opentofu/eks/configure/locals.tf`'s `gateway_api_crds_urls` list installs
+the same-versioned experimental CRDs (including `backendtlspolicies` and
+`listenersets`, both required by Cilium ≥1.20) before Cilium's Stage 2
+install, so `cilium-operator`'s startup probe finds them.
+
+---
+
+## References
+
+- [Gateway API]({{< relref "/docs/platform/networking/gateway-api.md" >}})
+  — the resource model, the three Gateways, TLS, and ExternalDNS
+  integration this ADR summarizes
+- [ADR-0009](0009-cilium-over-vpc-cni.md) — Cilium as the CNI and
+  `GatewayClass` implementation this decision depends on
+- [CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md)
+  — "Gateways stuck `Waiting for controller`" troubleshooting entry
+- `opentofu/eks/configure/locals.tf` — `gateway_api_crds_urls`, the
+  append-only CRD list and the `backendtlspolicies` incident comment
+- `opentofu/eks/configure/variables.tf` — `gateway_api_version`
+- `flux/sources/gitrepo-gateway-api.yaml` — the Flux `GitRepository` pin
+  that must match `gateway_api_version`
+- `opentofu/eks/init/helm_values/cilium.yaml` — `gatewayAPI.enabled`,
+  `envoy.enabled`
+- `infrastructure/base/gapi/` — every `GatewayClass`,
+  `CiliumGatewayClassConfig`, and `Gateway` manifest
+- `infrastructure/base/external-dns/helmrelease.yaml` — the
+  `gateway-httproute` source and `policy: sync`
+- [cilium#45139](https://github.com/cilium/cilium/issues/45139) — the
+  Cilium ≤1.19.4 crash on Gateway API ≥v1.5.0 behind the version lockstep
