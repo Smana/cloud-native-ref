@@ -907,9 +907,17 @@ Tasks 11 and 12 are a red-green pair: the gate goes in first and must fail on th
 **Interfaces:**
 - Produces: a `validate-links.sh` that exits 1 while any raw relative Markdown link exists under `website/content/`.
 
-**Why the current exclusion is wrong.** Lines 22–26 justify skipping `website/content/` because "Hugo already gates that tree harder than this script could — `refLinksErrorLevel: ERROR` fails the build on a dead ref". That setting is present (`website/hugo.yaml:10`) and it is true *for `ref`/`relref` shortcodes*. Raw Markdown links bypass it entirely. Verified: `hugo --source website --minify` exits 0 with all ten dead links in place. The comment is not wrong about Hugo; it is wrong about coverage.
+**Why the current exclusion is wrong.** Lines 22–26 justify skipping `website/content/` because "Hugo already gates that tree harder than this script could — `refLinksErrorLevel: ERROR` fails the build on a dead ref". That setting is present (`website/hugo.yaml:10`) and is true *for `ref`/`relref` shortcodes*. Raw Markdown links bypass it entirely. Verified: `hugo --source website --minify` exits 0 with the dead links in place.
 
-The new check does not resolve Hugo links — it asserts the **absence of a construct**. Inside `website/content/`, pages address each other with `relref`, so a raw `](../…)` or `](./…)` is always a mistake.
+**But the naive rule is wrong too, and this was verified against rendered HTML.** Hugo resolves a relative `.md` link whose target is a published page, by page name, even when the relative path is incorrect:
+
+| In source | Rendered `href` | Verdict |
+|---|---|---|
+| `[ADR-0005](0005-gke-standard-self-managed-cilium.md)` | `/docs/decisions/0005-gke-standard-self-managed-cilium/` | works — house precedent, used across the ADRs |
+| `[…](../platform-constitution.md)` from `decisions/` | `/docs/reference/platform-constitution/` | works, despite the path being wrong |
+| `[…](../superpowers/specs/2026-08-18-gcp-support-design.md)` | `../superpowers/specs/2026-08-18-gcp-support-design.md` | **broken** — passed through verbatim, 404s |
+
+So "a raw relative link is always wrong" would flag working links, including the repository's own cross-ADR convention. **The precise rule is: a raw relative link whose resolved target lies outside `website/content/` can never be a Hugo page, so Hugo passes it through and it 404s.** That is exactly the 8 genuinely-dead links. The 2 `../platform-constitution.md` links render correctly and are a clarity problem, not a bug.
 
 - [ ] **Step 1: Confirm the gate currently passes despite the dead links**
 
@@ -926,7 +934,7 @@ Expected: both pass. This is the bug.
 grep -rn "](\.\./\|](\./" website/content --include="*.md" | grep -v relref | wc -l
 ```
 
-Expected: `10`.
+Expected: `10` raw relative links total — but only the **8** that escape `website/content/` are the gate's targets. The 2 `../platform-constitution.md` links resolve correctly and must NOT be flagged; if your gate reports 10, the escape check is not being applied.
 
 - [ ] **Step 3: Replace the exclusion with a two-mode check**
 
@@ -940,9 +948,11 @@ with a split, so the existing resolver keeps its tree and the new rule owns the 
 
 ```python
 # Two trees, two models. Outside website/content, links are file-relative and
-# get resolved. Inside it, pages address each other with `relref`, so a raw
-# relative link is always a mistake — Hugo's refLinksErrorLevel only governs
-# `ref`/`relref` shortcodes and lets raw Markdown links through silently.
+# get resolved against the filesystem. Inside it, Hugo resolves a relative
+# `.md` link to the target page's permalink by name — so an in-tree relative
+# link works even when its path is wrong, and must not be flagged. What Hugo
+# CANNOT resolve is a target that is not a page at all: those it emits
+# verbatim into the href, where they 404.
 hugo_files = [f for f in files if f.startswith('website/content/')]
 files = [f for f in files if not f.startswith('website/content/')]
 ```
@@ -951,6 +961,7 @@ Then, after the existing `for f in files:` loop, add the second loop. It reuses 
 
 ```python
 for f in hugo_files:
+    d = os.path.dirname(f)
     try:
         lines = open(f, encoding='utf-8', errors='replace').read().split('\n')
     except OSError:
@@ -964,8 +975,15 @@ for f in hugo_files:
             continue
         for m in link.finditer(code_span.sub('', line)):
             t = m.group(1)
-            if t.startswith(('../', './')):
-                print(f"{f}\t{t} (raw relative link — use a relref shortcode)")
+            if not t.startswith(('../', './')):
+                continue
+            # Resolve it. Anything landing outside the content tree is not a
+            # page, so Hugo cannot rewrite it and the raw path ships to the
+            # browser. Anything landing inside, Hugo resolves by page name.
+            resolved = os.path.normpath(os.path.join(d, t))
+            if not resolved.startswith('website/content' + os.sep):
+                print(f"{f}\t{t} (escapes website/content — not a page, so Hugo "
+                      f"emits it verbatim; use an absolute GitHub URL)")
 ```
 
 - [ ] **Step 4: Update the header comment**
@@ -976,9 +994,15 @@ Replace lines 22–26 with:
 # `website/content/` is Hugo's tree and gets a different check, not no check.
 # Its internal links are `relref` shortcodes this regex cannot resolve, so the
 # resolver above skips it — but Hugo's `refLinksErrorLevel: ERROR` only governs
-# `ref`/`relref`, and raw Markdown links bypass it silently. So inside that tree
-# this script asserts the absence of a construct instead: a raw `](../…)` or
-# `](./…)` link is always wrong there. Two trees, two models, no gap.
+# `ref`/`relref`, and raw Markdown links bypass it silently.
+#
+# The check that fits: Hugo rewrites a relative `.md` link to the target page's
+# permalink by name, so an in-tree relative link works even with a wrong path
+# (`../platform-constitution.md` from decisions/ still renders as
+# /docs/reference/platform-constitution/). What it cannot rewrite is a target
+# that is not a page — `../superpowers/specs/foo.md` ships verbatim into the
+# href and 404s. So inside this tree we flag exactly one thing: a relative link
+# that resolves outside website/content. Two trees, two models, no gap.
 ```
 
 - [ ] **Step 5: Run it and watch it FAIL**
@@ -987,15 +1011,24 @@ Replace lines 22–26 with:
 ./scripts/validate-links.sh; echo "EXIT=$?"
 ```
 
-Expected: `EXIT=1`, with ten `BROKEN` lines naming `0002`, `0005`, `0006`, `0007` and each raw target. If it exits 0, the check is not wired up — fix before continuing.
+Expected: `EXIT=1`, with **8** `BROKEN` lines naming `0002`, `0005`, `0006`, `0007` and each escaping target. If it exits 0, the check is not wired up — fix before continuing.
 
-- [ ] **Step 6: Verify it does not flag legitimate content**
+- [ ] **Step 6: Verify it does NOT flag the working links**
 
 ```bash
-./scripts/validate-links.sh --list | grep -v "raw relative link" | head
+./scripts/validate-links.sh --list | grep -c "escapes website/content"
+./scripts/validate-links.sh --list | grep "platform-constitution" || echo "correctly not flagged"
 ```
 
-Expected: no output beyond the ten. Any extra hit means the fence or code-span stripping is not being applied — fix before continuing.
+Expected: `8`, then `correctly not flagged`. The two `../platform-constitution.md` links render as `/docs/reference/platform-constitution/` and are not broken — flagging them would be a false positive, and a gate that cries wolf gets disabled.
+
+Also confirm the repository's cross-ADR convention is untouched:
+
+```bash
+./scripts/validate-links.sh --list | grep "](00" || echo "cross-ADR links correctly not flagged"
+```
+
+Bare sibling filenames like `[ADR-0005](0005-gke-standard-self-managed-cilium.md)` are the house precedent and resolve correctly. Flagging them would be wrong.
 
 - [ ] **Step 7: Commit the gate alone**
 
@@ -1024,11 +1057,13 @@ absence rather than trying to resolve Hugo's link model."
 **Interfaces:**
 - Consumes: the failing gate from Task 11.
 
+**Two different jobs here — do not conflate them.** 8 of the 10 links are genuinely broken (they escape `website/content/`, so Hugo emits them verbatim and they 404). The 2 `../platform-constitution.md` links **already render correctly** as `/docs/reference/platform-constitution/` — Hugo resolves `.md` targets to page permalinks by name. Converting those is a readability fix so the source path stops lying, not a bug fix. Say so in the commit message rather than claiming ten broken links.
+
 **Conversion rules:**
 
 | Current target | Becomes | Why |
 |---|---|---|
-| `../platform-constitution.md` | `{{< relref "/docs/reference/platform-constitution.md" >}}` | Published on the site, under `reference/` not `decisions/` |
+| `../platform-constitution.md` | `{{< relref "/docs/reference/platform-constitution.md" >}}` | Renders fine today; the written path is wrong (`reference/`, not a sibling of `decisions/`) and only works via Hugo's name lookup. Clarity, not a fix |
 | `../superpowers/specs/2026-08-18-gcp-support-design.md` | `https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-08-18-gcp-support-design.md` | Lives in the repo, not published to the site |
 | `../specs/done/2024-Q1/0000-eks-pod-identity/spec.md` | `https://github.com/Smana/cloud-native-ref/blob/main/docs/specs/done/2024-Q1/0000-eks-pod-identity/spec.md` | Archived spec, not published |
 | `../../.claude/rules/cilium-network-policies.md` | `https://github.com/Smana/cloud-native-ref/blob/main/.claude/rules/cilium-network-policies.md` | Repo rule file, not published |
@@ -1075,11 +1110,16 @@ A wrong `relref` path fails the build — that is the check on the constitution 
 
 ```bash
 git add website/content/docs/decisions/
-git commit -m "docs(decisions): repoint ten links left over from the docs migration
+git commit -m "docs(decisions): repoint links left over from the docs migration
 
-Four ADRs still linked ../specs/, ../superpowers/ and ../../.claude/ paths
-from the pre-site docs tree. Site-published targets become relref; repo-only
-targets become absolute GitHub URLs."
+Eight links in four ADRs pointed at ../specs/, ../superpowers/ and
+../../.claude/ paths outside the content tree. Hugo cannot resolve a target
+that is not a page, so it emitted them verbatim and they 404ed on the site
+while passing every gate. Those become absolute GitHub URLs.
+
+Two ../platform-constitution.md links are also converted to relref. Those
+rendered correctly — Hugo resolves .md targets by page name — but the written
+path pointed at a sibling of decisions/ that does not exist. Clarity, not a fix."
 ```
 
 ---
