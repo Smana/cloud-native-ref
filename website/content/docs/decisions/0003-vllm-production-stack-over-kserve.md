@@ -1,6 +1,6 @@
 ---
 title: Use vLLM Production Stack over KServe + llm-d for v1 LLM Platform
-linkTitle: ADR-0003
+linkTitle: 0003 · vLLM over KServe
 weight: 30
 description: The self-hosted LLM platform uses the vLLM Production Stack router with LMCache instead of KServe + llm-d, to avoid a second Envoy layer and stay on the existing Crossplane/KCL composition pattern.
 lastVerified: 2026-08-20
