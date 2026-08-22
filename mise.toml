@@ -23,3 +23,10 @@ helm = "4.2.4"
 # `hugo` entry resolves to the non-extended build, and Hextra targets extended.
 hugo-extended = "0.156.0"
 kustomize = "5.8.1"
+
+# Google Cloud SDK — required by the GCP stacks (opentofu/gcp/**) for cluster
+# credentials and for the gcloud-based evidence commands in the GCP runbook.
+# The GKE auth plugin is a separate component and kubectl cannot talk to a GKE
+# cluster without it: install once with
+#   gcloud components install gke-gcloud-auth-plugin
+"asdf:mise-plugins/mise-gcloud" = "581.0.0"
