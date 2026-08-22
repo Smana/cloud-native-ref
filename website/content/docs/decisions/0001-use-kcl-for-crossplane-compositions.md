@@ -7,8 +7,8 @@ lastVerified: 2026-08-20
 ---
 
 **Status**: Accepted
-**Date**: 2024-01-15
-**Deciders**: Platform Team
+**Date**: 2024-09-29 (recorded retrospectively on 2026-01-06)
+**Deciders**: Smana (Platform Owner)
 **Related Spec**: N/A (foundational decision)
 
 ---
