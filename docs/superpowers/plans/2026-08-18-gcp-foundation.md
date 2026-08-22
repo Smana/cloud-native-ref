@@ -16,11 +16,15 @@
 
 ---
 
-## Amendments (2026-08-22 — Phases 0 and 1 executed)
+## Amendments (2026-08-22 — Phases 0–4 executed)
 
-**Phases 0 and 1 are complete. The gate PASSED — see the design doc's
-[*Gate results*](../specs/2026-08-18-gcp-support-design.md) section for the evidence.** Phase 2
-onwards is unstarted.
+**Phases 0 and 1 are complete and the gate PASSED** — see the design doc's
+[*Gate results*](../specs/2026-08-18-gcp-support-design.md) section for the evidence.
+
+**Phases 2, 3 and 4 are written, validated and committed but NOT APPLIED.** All three stacks
+(`opentofu/gcp/network`, `gke/init`, `gke/configure`) pass `tofu validate`, `tofu fmt -check` and
+`trivy config`, and `terramate list` discovers them. Nothing bills yet. Phase 5
+(`clusters/gcp-mycluster-0/`) and Phase 6 (verification, runbook) remain.
 
 ### Settled inputs
 
@@ -98,7 +102,70 @@ Both were found by the gate and must be carried into Task 10's forked
 `kubectl apply --server-side`. **Task 11 applies these CRDs from OpenTofu — the provider must use
 server-side apply**, or Phase 3 hits the same wall.
 
-### Amendment 5 — diagnosis is blind while the CNI is down
+### Amendment 5 — `gateway_api.tf` belongs in `configure`, not `init`
+
+Task 11 places it in `gke/init`. It cannot go there. `opentofu/eks/init/providers.tf` documents why,
+after the AWS side hit it: a kubectl/kubernetes provider configured from the cluster being created
+in the *same apply* cannot be deferred and fails on fresh applies with *"no configuration has been
+provided"*. The AWS side accordingly applies its Gateway API CRDs from `eks/configure`.
+
+`gke/init` therefore declares **no** Kubernetes-facing provider at all, and says so in
+`versions.tf`. Two consequences:
+
+- `gateway_api_version` is a `configure` variable, not an `init` one.
+- The CFT GKE module's `configure_ip_masq` must stay **false** — its ip-masq-agent is a
+  `kubernetes_config_map`, i.e. the same same-apply call. It defaults to false; it is now pinned
+  explicitly with a comment, because flipping it would silently reintroduce the bug.
+
+### Amendment 6 — the tailnet ACL is a singleton owned by the AWS stack
+
+`opentofu/network/tailscale.tf` declares `tailscale_acl` with
+`overwrite_existing_content = true`, plus `tailscale_dns_nameservers` and
+`tailscale_dns_search_paths`. These are **tailnet-wide**, and both clouds share one tailnet.
+
+`opentofu/gcp/network` therefore deliberately declares none of them — a second `tailscale_acl` would
+make each apply silently overwrite the other's, last-apply-wins. It creates only per-device and
+per-domain resources (`tailscale_tailnet_key`, a `tailscale_dns_split_nameservers` for the GCP
+domain, the GCE instance).
+
+The consequence is a genuine cross-stack dependency the plan did not anticipate: the GCP router's
+routes are advertised but neither auto-approved nor permitted until the **AWS-owned** ACL carries
+them, and editing that ACL by hand does not survive the next AWS apply. Resolved by adding a
+`gcp_routes` variable to `opentofu/network` and wiring it into both `acls` and `autoApprovers`.
+
+### Amendment 7 — corrections to the plan's scaffolding snippets
+
+| Plan says | Reality |
+|---|---|
+| `stack.id = "gcp-network"` | Terramate stack IDs in this repo are **UUIDs** |
+| `tailscale ~> 0.17` | The AWS stack pins `~> 0.29` |
+| `google ~> 6.0` | Latest is 7.45; the CFT GKE module requires `>= 7.17, < 8`. Use `~> 7.17` |
+| `alekc/kubectl` (implied) | `eks/configure` uses **`gavinbunney/kubectl ~> 1.14`** |
+| — | `*.tfvars` is gitignored; the AWS ones are force-added. Use `git add -f` |
+| — | The CFT network module also requires the `google-beta` provider to be configured |
+
+### Amendment 8 — Flux's Git credentials come from GCP Secret Manager
+
+This closes a design open question. The AWS cluster reads the GitHub App credentials from AWS
+Secrets Manager; doing the same on GCP would put a hard AWS dependency in the GCP bootstrap, which
+is precisely what a second first-class cloud is meant to avoid.
+
+`gke/configure` reads them from **GCP Secret Manager** instead (`secretmanager.googleapis.com` is
+already enabled). The secret is a **prerequisite**, deliberately not created in OpenTofu — putting
+real credentials in a plan or state violates the platform's no-hardcoded-credentials rule.
+`configure/data.tf` documents the expected JSON shape and the `gcloud secrets create` command.
+Moves to OpenBao once workstream 11 lands.
+
+### Amendment 9 — a CFT module key that looks right and does nothing
+
+`workload_metadata_configuration` inside a `node_pools[]` entry is **not** a key the module reads.
+Node metadata mode comes from the module-level `var.node_metadata` (default `GKE_METADATA`). The
+per-pool key renders no config while looking correct in review. Now set explicitly at module level.
+
+Trivy also reports `GCP-0057` against the module's own `cluster.tf` because it cannot resolve the
+`dynamic "workload_metadata_config"` block — a false positive, annotated as such.
+
+### Amendment 10 — diagnosis is blind while the CNI is down
 
 `kubectl logs` and `kubectl exec` both tunnel through konnectivity, whose agent is a pod needing the
 very CNI that is broken; both return `error dialing backend: No agent available`. A hostNetwork
