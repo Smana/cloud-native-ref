@@ -22,4 +22,22 @@ globals {
 
   # Flux sync configuration
   flux_sync_repository_url = "https://github.com/Smana/cloud-native-ref.git"
+
+  # GCP (dual-cloud — see docs/superpowers/specs/2026-08-18-gcp-support-design.md)
+  # `region` and `eks_cluster_name` above are AWS-specific; these are the GCP peers.
+  # `cilium_version` and `flux_*_version` are deliberately NOT duplicated: they are
+  # shared, so both clouds upgrade together.
+  #
+  # Zonal, not regional: design criterion 9 keeps the static pool in a single zone,
+  # matching the AWS bootstrap node group's single-subnet cost choice. A regional
+  # Standard cluster defaults to nine nodes (three per zone) and bills node-to-node
+  # traffic across zones.
+  #
+  # europe-west4 was chosen on GPU availability, not price: nvidia-l4 exists in all
+  # three of its zones but not at all in europe-west9 (Paris), which would otherwise
+  # have been the geographic match for the AWS eu-west-3 side.
+  gcp_project      = "ogenki-435905"
+  gcp_region       = "europe-west4"
+  gcp_zone         = "europe-west4-a"
+  gke_cluster_name = "gcp-mycluster-0"
 }

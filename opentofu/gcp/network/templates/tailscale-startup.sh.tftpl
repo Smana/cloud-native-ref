@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Tailscale subnet router bootstrap.
+#
+# Idempotent on purpose: `tailscale up` is re-run on every boot with the current
+# route set, so changing advertised routes needs no instance replacement. The
+# instance's lifecycle block ignores changes to this script for the same reason.
+set -euxo pipefail
+
+# Required for subnet routing; the kernel drops forwarded packets without these,
+# and GCP's can_ip_forward alone is not enough -- that only stops the *VPC* from
+# dropping them.
+cat >/etc/sysctl.d/99-tailscale.conf <<'SYSCTL'
+net.ipv4.ip_forward = 1
+net.ipv6.conf.all.forwarding = 1
+SYSCTL
+sysctl -p /etc/sysctl.d/99-tailscale.conf
+
+if ! command -v tailscale >/dev/null 2>&1; then
+  curl -fsSL https://tailscale.com/install.sh | sh
+fi
+
+systemctl enable --now tailscaled
+
+tailscale up \
+  --authkey='${auth_key}' \
+  --hostname='${hostname}' \
+  --advertise-routes='${advertise_routes}' \
+  --accept-dns=false \
+  --ssh \
+  --reset
+
+# Surface the result in the serial console: this is the only diagnostic available
+# if the node has no external IP and the tailnet never sees the device.
+tailscale status || true
