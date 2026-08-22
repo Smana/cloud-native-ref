@@ -72,8 +72,9 @@ platform's secrets architecture as a whole.
 ### Option 1: OpenBao
 
 The Linux Foundation fork of the last MPL-2.0 Vault codebase. Provisioned
-as two stacks: `opentofu/openbao/cluster/` stands up the Raft-backed EC2
-fleet, and `opentofu/openbao/management/` layers namespaces, the PKI and
+as two stacks: `opentofu/openbao/cluster/` stands up the EC2 fleet — one
+node on `file` storage as committed, or a five-node Raft cluster at
+`mode = "ha"` — and `opentofu/openbao/management/` layers namespaces, the PKI and
 AppRole auth on top through the `hashicorp/vault` OpenTofu provider.
 
 **Pros**:
@@ -235,7 +236,7 @@ demonstrate.
 
 ## Implementation Notes
 
-`opentofu/openbao/cluster/` provisions the Raft-backed EC2 fleet and pins
+`opentofu/openbao/cluster/` provisions the EC2 fleet and pins
 the OpenBao release (`openbao_version` in `variables.tf`, currently on
 the 2.6 line); `opentofu/openbao/management/` layers namespaces, the PKI,
 AppRole auth and policies on top through the `hashicorp/vault` provider,
