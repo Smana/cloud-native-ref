@@ -1,6 +1,6 @@
 ---
 title: GKE node auto-provisioning (ComputeClass) over Karpenter on GCP
-linkTitle: ADR-0006
+linkTitle: 0006 · GKE ComputeClass
 weight: 60
 description: GCP nodes autoscale via GKE node auto-provisioning (ComputeClass) rather than Karpenter, because ComputeClass can taint every new node before scheduling, which self-managed Cilium requires.
 lastVerified: 2026-08-20
@@ -8,8 +8,8 @@ lastVerified: 2026-08-20
 
 **Status**: Accepted
 **Date**: 2026-08-18
-**Deciders**: Platform Team
-**Related Design**: [GCP Support — Dual-Cloud Platform Design](../superpowers/specs/2026-08-18-gcp-support-design.md)
+**Deciders**: Smana (Platform Owner)
+**Related Design**: [GCP Support — Dual-Cloud Platform Design](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-08-18-gcp-support-design.md)
 
 ---
 

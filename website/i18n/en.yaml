@@ -1,0 +1,7 @@
+# Footer strings.
+#
+# Hextra reads the footer copyright from i18n, not from hugo.yaml's params, so
+# this file is the only place it can be overridden without forking the theme.
+# Upstream default is "© 2026 Hextra Project." (hextra@v0.12.3, i18n/en.yaml:28)
+# and it shipped on every page of this site until it was overridden here.
+copyright: "© 2026 Smaine Kahlouch · Apache-2.0 · built with Hugo and Hextra"

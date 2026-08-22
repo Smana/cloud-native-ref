@@ -12,6 +12,12 @@ credentials out of it into the cluster; [Policies]({{< relref "/docs/platform/se
 covers what's enforced once a workload is running — Kyverno admission,
 CiliumNetworkPolicy default-deny, and pod security context.
 
+The repository's
+[security policy](https://github.com/Smana/cloud-native-ref/blob/main/SECURITY.md)
+covers reporting, the enforced posture in summary, and the limitations this
+platform accepts as a reference implementation — including the ones it would be
+more comfortable not to mention.
+
 These pages describe how the platform *implements* security. The rules
 themselves — required security-context fields, RBAC conventions, IAM
 scoping — are the [Platform Constitution]({{< relref "/docs/reference/platform-constitution.md" >}});

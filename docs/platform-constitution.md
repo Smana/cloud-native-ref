@@ -253,6 +253,7 @@ Use this checklist when reviewing specs and implementations:
 - [ ] Design doc committed under `docs/superpowers/specs/` and linked from the PR
 - [ ] No `[NEEDS CLARIFICATION]` markers left in the approved design
 - [ ] Design written and approved before implementation
+- [ ] ADR written for any technology chosen over a named alternative
 
 ---
 

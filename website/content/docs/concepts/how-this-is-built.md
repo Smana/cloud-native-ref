@@ -11,6 +11,13 @@ transferable than the YAML.
 
 ## Design before implementation
 
+The sequence below is not homegrown. It comes from
+[Superpowers](https://github.com/obra/superpowers), a plugin declared in this
+repository's `.claude/settings.json`, whose skills trigger on the shape of the
+work rather than on a command someone has to remember to type. That last
+property is what makes it stick: a workflow you have to invoke is a workflow
+you skip when you are in a hurry.
+
 Non-trivial changes go through a fixed sequence:
 
 1. **Brainstorm** — explore the problem and the options before committing to
@@ -29,7 +36,14 @@ part that normally evaporates.
 
 Cross-cutting technology decisions graduate into
 [decision records]({{< relref "/docs/decisions/_index.md" >}}), so a choice
-made once is not relitigated per feature.
+made once is not relitigated per feature. A technology chosen over a named
+alternative needs one before it merges — if you can say what it was picked
+over, that reasoning is worth keeping.
+
+The wider practice this sits inside — how an AI coding agent is actually wired
+into a platform-engineering workflow, and where it earns its keep — is covered
+at length in [Agentic Coding: concepts and hands-on Platform Engineering use
+cases](https://blog.ogenki.io/post/series/agentic_ai/ai-coding-agent/).
 
 ## The constitution
 

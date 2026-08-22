@@ -13,7 +13,7 @@ not run on the cluster today. Every other component below does. See
 [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md#grafana-oncall-built-but-not-deployed" >}})
 for what that means in practice.
 
-![Where a metric, a log and a span go: vmagent scrapes Pods, Services and OpenBao into single-node VictoriaMetrics, Vector ships container stdout and Kubernetes Events into VictoriaLogs, and applications push OTLP spans straight to VictoriaTraces; one Grafana reads all three, while VMAlert evaluates PromQL and LogsQL rules from the same VMRule mechanism and Alertmanager fans every surviving alert to both RunLore and Slack](/images/diagrams/observability-flow.svg)
+![Where a metric, a log and a span go: vmagent scrapes Pods, Services and OpenBao into single-node VictoriaMetrics, Vector ships container stdout and Kubernetes Events into VictoriaLogs, and applications push OTLP spans straight to VictoriaTraces; one Grafana reads all three, while a VMAlert instance per signal evaluates PromQL and LogsQL rules authored through the same VMRule mechanism and Alertmanager fans every surviving alert to both RunLore and Slack](/images/diagrams/observability-flow.svg)
 
 | Component | Deployed via | Documented in |
 |---|---|---|
@@ -24,7 +24,7 @@ for what that means in practice.
 | `loggen` | `observability` Kustomization | [Logs]({{< relref "/docs/platform/observability/logs.md" >}}) |
 | `victoria-traces` | `observability-victoria-traces` Kustomization | [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md" >}}) |
 | `grafana-operator` | `observability-grafana-operator` Kustomization | [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md" >}}) |
-| `runlore` | `observability` Kustomization | [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md" >}}) |
+| `runlore` | `observability` Kustomization | [SRE agent]({{< relref "/docs/platform/observability/sre-agent.md" >}}) |
 | `grafana-oncall` | **not referenced anywhere** | [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md#grafana-oncall-built-but-not-deployed" >}}) |
 
 CloudNativePG's own metrics, logs, backups, and dashboards are covered
@@ -40,10 +40,16 @@ Prometheus and Loki — existing dashboards and alerting rules written against
 either wire protocol work unchanged, so adopting them cost nothing on that
 front. The two products share one operator
 (`operator.victoriametrics.com/v1beta1` — `VMRule`, `VMServiceScrape`,
-`VMScrapeConfig`, `VMAlert`) and one Grafana, which is what lets a single
-`VMAlert` evaluate both PromQL rules against VictoriaMetrics and LogsQL rules
-(`type: vlogs`) against VictoriaLogs from the same `ruleSelector` mechanism —
-see [`loggen`'s alert]({{< relref "/docs/platform/observability/logs.md#alerting-on-logs" >}})
+`VMScrapeConfig`, `VMAlert`) and one Grafana, so a rule is a `VMRule` whether
+it is PromQL against VictoriaMetrics or LogsQL (`type: vlogs`) against
+VictoriaLogs — one authoring surface for both signals.
+
+Each signal still runs its **own** `VMAlert` instance, because each needs its
+own datasource: the one bundled with `victoria-metrics-k8s-stack` evaluates
+the PromQL rules, and `vmalert-vlsingle.yaml` defines a second, scoped by
+`ruleSelector.matchLabels.vmlog: "true"`, that evaluates the LogsQL ones. A
+rule missing that label is invisible to it. See
+[`loggen`'s alert]({{< relref "/docs/platform/observability/logs.md#alerting-on-logs" >}})
 for a concrete `type: vlogs` example. No ADR in this repository records the
 comparison against Prometheus/Loki directly; treat this section as the
 current rationale, not a linked decision record.
@@ -65,5 +71,6 @@ component's `kustomization.yaml`, not a rewrite.
   {{< card link="/docs/platform/observability/metrics/" title="Metrics" icon="chart-bar" subtitle="VictoriaMetrics single vs cluster mode, metrics-server, and the VMServiceScrape/VMScrapeConfig scrape mechanisms." >}}
   {{< card link="/docs/platform/observability/logs/" title="Logs" icon="document-text" subtitle="VictoriaLogs, Vector as the shipper, kubernetes-event-exporter, loggen, and the LogsQL syntax rules that aren't optional." >}}
   {{< card link="/docs/platform/observability/dashboards-and-alerts/" title="Dashboards & Alerts" icon="bell" subtitle="Grafana Operator's folder/dashboard/datasource model, VictoriaTraces, VMRule alerting, Alertmanager routing to RunLore and Slack, and the undeployed Grafana OnCall." >}}
+  {{< card link="/docs/platform/observability/sre-agent/" title="SRE agent" icon="lightning-bolt" subtitle="RunLore — receives Alertmanager webhooks, investigates read-only against the live cluster, and writes what it learns back to a knowledge-base repository." >}}
   {{< card link="/docs/platform/observability/postgresql/" title="PostgreSQL" icon="database" subtitle="CloudNativePG's pg_stat_statements metrics, the Vector pipeline that parses auto_explain plans, and Barman Cloud plugin backups." >}}
 {{< /cards >}}

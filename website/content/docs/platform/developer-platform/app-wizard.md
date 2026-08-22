@@ -238,6 +238,14 @@ deploys, the SQLInstance bootstraps from the seeded credentials, Valkey and
 the S3 bucket come up, Outline runs its own migrations, and it's reachable
 at `https://outline.priv.cloud.ogenki.io` (sign in via Zitadel).
 
+{{< callout >}}
+**No screenshots yet.** This page describes the wizard in prose only —
+the five captures it should carry are specified in
+`website/assets/screenshots/app-wizard/README.md` but have not been taken.
+Stated rather than left to be discovered, in line with how the rest of the
+site records what it could not verify.
+{{< /callout >}}
+
 ## Which should I use?
 
 - **New to the platform, or not sure what's available?** Use the

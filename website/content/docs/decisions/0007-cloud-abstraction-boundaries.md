@@ -1,6 +1,6 @@
 ---
 title: Cloud abstraction boundaries — cloud-shaped platform APIs, neutral developer APIs
-linkTitle: ADR-0007
+linkTitle: 0007 · Cloud boundaries
 weight: 70
 description: Platform-facing infrastructure APIs stay cloud-shaped per provider, while developer-facing APIs like App stay cloud-neutral, splitting the abstraction by audience instead of forcing one shape on both.
 lastVerified: 2026-08-20
@@ -8,15 +8,15 @@ lastVerified: 2026-08-20
 
 **Status**: Accepted
 **Date**: 2026-08-18
-**Deciders**: Platform Team
-**Related Design**: [GCP Support — Dual-Cloud Platform Design](../superpowers/specs/2026-08-18-gcp-support-design.md)
+**Deciders**: Smana (Platform Owner)
+**Related Design**: [GCP Support — Dual-Cloud Platform Design](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-08-18-gcp-support-design.md)
 
 ---
 
 ## Context
 
 The platform is adding GCP as a second maintained cloud. Roughly fifteen workstreams are
-affected (see the [design](../superpowers/specs/2026-08-18-gcp-support-design.md) scope split), and almost every one of them raises the
+affected (see the [design](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-08-18-gcp-support-design.md) scope split), and almost every one of them raises the
 same question in a different costume: **do we build one cloud-neutral API, or two honest
 cloud-specific ones?**
 
@@ -180,6 +180,6 @@ constitution requirement, not an AWS detail.
 - [ADR-0002: EKS Pod Identity over IRSA](0002-eks-pod-identity-over-irsa.md) — scope narrowed to AWS by this ADR
 - [ADR-0005](0005-gke-standard-self-managed-cilium.md), [ADR-0006](0006-nap-computeclass-over-karpenter.md)
 - [GKE Workload Identity Federation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) — direct KSA principal binding
-- [GCP support design](../superpowers/specs/2026-08-18-gcp-support-design.md) — the fifteen workstreams this rule applies to
+- [GCP support design](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-08-18-gcp-support-design.md) — the fifteen workstreams this rule applies to
 - `EPI` composition and `App` composition: both in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration),
   pinned here via `infrastructure/base/crossplane/configuration/configuration-packages.yaml`
