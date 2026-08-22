@@ -308,8 +308,11 @@ html.light .chroma .cpf {
   font-weight: 500;
 }
 
-.cnref-stack-version code {
-  white-space: nowrap;
+/* Prose, not a code value — a role reads as a sentence fragment, not
+ * something copy-pasted, so unlike the version column it replaces, it gets
+ * no <code> wrapper and no forced nowrap: it wraps like ordinary text. */
+.cnref-stack-role {
+  max-width: 26rem;
 }
 
 .cnref-stack-pin,
