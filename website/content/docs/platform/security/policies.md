@@ -17,9 +17,11 @@ this page is how the platform implements them.
 Two `HelmRelease`s in `security/base/kyverno/`: the `kyverno` controller
 (3.8.2) and `kyverno-policies` (also 3.8.2, same chart family) — the
 upstream policy pack that implements the Kubernetes Pod Security Standards
-as `ClusterPolicy` resources. Both install with `values: {}` / no policy
-overrides, so the enforced set and its failure action (audit vs. enforce)
-come from the chart's own defaults rather than being hand-picked here.
+as `ClusterPolicy` resources. `kyverno-policies` installs with `values: {}` —
+no policy overrides at all — so the enforced set and its failure action (audit
+vs. enforce) come from the chart's own defaults rather than being hand-picked
+here. The controller release is not empty: it sets `fullnameOverride` and
+`crds.install: false`, and nothing else.
 `crds.install: false` on the controller — the CRDs are managed separately,
 under `crds/base/`, alongside every other CRD this repository installs
 ahead of the controllers that consume them.
@@ -111,6 +113,36 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 1000
 ```
+
+## Supply chain
+
+What runs here is narrower than the phrase usually implies, so it is worth
+being precise about which of these block a merge and which only report. A gate
+that reports is still useful; a gate that reports while everyone believes it
+blocks is worse than none.
+
+| Tool | What it looks at | Blocks a merge? |
+|---|---|---|
+| `flux schema validate` | Every rendered manifest, with `skipMissingSchemas: false` in `.fluxschema.yml` — an unknown Kind **fails** the build rather than being skipped | **Yes** |
+| Polaris | The *rendered* bundle rather than the source tree — the repository holds a handful of raw workloads, the render holds dozens | **Yes** |
+| `detect-secrets` | Staged changes, pre-commit, before the push | **Yes**, locally |
+| Trivy | Filesystem scan of the repository (`scan-type: fs`), `CRITICAL,HIGH`, `ignore-unfixed: true` | No — uploads SARIF to GitHub Security |
+| Checkov | `terraform,secrets` frameworks, `soft_fail: true` | No — advisory |
+| TruffleHog | The push range in CI, `--only-verified` | No — reports verified findings |
+
+Two gaps are worth stating plainly rather than leaving a reader to infer them
+from the table:
+
+**No container image is scanned anywhere in CI.** Trivy is pointed at the
+filesystem, not at images. Harbor is the registry, and it carries no explicit
+Trivy configuration in
+`tooling/base/harbor/helmrelease-harbor.yaml` — whatever the chart defaults to
+is what runs, and nothing here asserts it.
+
+**Checkov never blocks.** `soft_fail: true` means a finding lands in the
+GitHub Security tab and the build stays green. It is a reporting tool in this
+repository, not a gate, and reading the CI job list without reading its
+arguments would give the opposite impression.
 
 ## RBAC
 

@@ -7,8 +7,8 @@ lastVerified: 2026-08-20
 ---
 
 **Status**: Accepted
-**Date**: 2024-01-15
-**Deciders**: Platform Team
+**Date**: 2024-04-15 (recorded retrospectively on 2026-01-06)
+**Deciders**: Smana (Platform Owner)
 **Related Spec**: [SPEC-0000: EKS Pod Identity](https://github.com/Smana/cloud-native-ref/blob/main/docs/specs/done/2024-Q1/0000-eks-pod-identity/spec.md)
 **Scope**: AWS only — narrowed 2026-08-18, see [ADR-0007](0007-cloud-abstraction-boundaries.md)
 

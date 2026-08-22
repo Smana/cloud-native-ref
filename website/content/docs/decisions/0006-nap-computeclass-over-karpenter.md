@@ -8,7 +8,7 @@ lastVerified: 2026-08-20
 
 **Status**: Accepted
 **Date**: 2026-08-18
-**Deciders**: Platform Team
+**Deciders**: Smana (Platform Owner)
 **Related Design**: [GCP Support — Dual-Cloud Platform Design](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-08-18-gcp-support-design.md)
 
 ---
