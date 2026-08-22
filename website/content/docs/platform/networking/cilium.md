@@ -86,7 +86,10 @@ is the only tag these subnets should carry.
 Prefix delegation only benefits nodes **created after** Cilium is running.
 Stage 1 bootstrap nodes predate it, so their ENIs get individually-allocated
 secondary IPs and never convert — a permanent ceiling of roughly 42 pod IPs
-per node instead of the ~240 a Karpenter-provisioned node gets. See
+per node. Prefix delegation gives a Karpenter-provisioned node several hundred
+instead, comfortably more than the 100 pods its `EC2NodeClass` allows, so
+there the `maxPods` limit binds first and IP supply never does. On a bootstrap
+node the IPs run out well below that. See
 [AWS Foundations]({{< relref "/docs/platform/foundations/aws.md#why-eks-bootstrap-is-two-opentofu-stacks" >}})
 for the recycle step that works around it.
 
