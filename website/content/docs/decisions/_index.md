@@ -11,6 +11,32 @@ what it was chosen over, and the trade-off that made the difference.
 
 An ADR records the "why" behind a decision, not just the "what": the context
 that forced a choice, the options considered, and the consequences accepted.
+
+## The principles behind the picks
+
+**Prefer the boring option, except where boring means unsupported.** Most
+choices here are conventional. The exceptions are deliberate, and each has a
+record below.
+
+**Prefer an operator with a CRD to a Helm chart with a values file.** A CRD is
+an API that other things can compose against; a values file is a configuration
+blob that only its own chart understands.
+
+**Prefer open source without a licence cliff.** Several records below are about
+avoiding a rug-pull rather than about technical merit.
+
+**Pay for a choice once.** Where a component is load-bearing it is worth being
+deliberate; where it is replaceable it is not worth agonising over.
+
+## When a choice needs a record
+
+A technology choice with a rejected alternative requires an ADR before merge.
+If you can name what it was chosen over, write the record. If nothing credible
+competed, it is an installation and not a decision — say so in the pull request
+rather than leaving it unsaid. Version bumps, chart-value changes and
+single-file fixes never need one.
+
+## The records
 Specs MUST comply with the [platform constitution]({{< relref "/docs/reference/platform-constitution.md" >}})
 and MAY reference an ADR for context on a technology choice; a constitution
 amendment requires an ADR to document the change.
