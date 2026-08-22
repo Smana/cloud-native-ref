@@ -233,8 +233,6 @@ mechanism referenced above.
   dependency hierarchy re-derived from the cluster's own manifests
 - [Repository Structure]({{< relref "/docs/platform/gitops/repository-structure.md" >}})
   — controller sharding and the `ArtifactGenerator`/`ExternalArtifact` split
-- [Technology choices]({{< relref "/docs/concepts/technology-choices.md" >}})
-  — "Flux over Argo CD" in "The ones without records"
 - `opentofu/eks/configure/main.tf` — Flux Operator and `FluxInstance`
   installed in Stage 2, right after Cilium
 - `tooling/base/headlamp/helmrelease.yaml` — the `headlamp-plugin-flux`

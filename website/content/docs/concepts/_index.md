@@ -20,6 +20,5 @@ reading.
   {{< card link="progressive-complexity" title="Progressive complexity" subtitle="One API that starts at an image and a port and grows to a production application." >}}
   {{< card link="gitops-model" title="The GitOps model" subtitle="Why reconciliation beats deployment, and why the dependency graph is the design." >}}
   {{< card link="zero-trust" title="Zero trust" subtitle="Default-deny at the network, no ambient credentials — and where the model is relaxed." >}}
-  {{< card link="technology-choices" title="Technology choices" subtitle="What each component was chosen over, and what the choice cost." >}}
   {{< card link="how-this-is-built" title="How this is built" subtitle="The design method, the gates that enforce it, and where the process is expensive." >}}
 {{< /cards >}}

@@ -277,6 +277,5 @@ that the metrics-side `VMAlert` does not match.
   `type: vlogs` `VMRule`, evaluated by VictoriaLogs' own `VMAlert`
 - `observability/base/victoria-traces/grafana-datasource.yaml` — the
   Jaeger-compatible datasource type backing trace queries
-- The site's technology-choices notes credit this same trade-off under
-  "The ones without records"; this record supersedes that entry with the
-  full comparison
+- This record supersedes the two-line note the site previously carried under
+  "The ones without records", which is what prompted the backfill

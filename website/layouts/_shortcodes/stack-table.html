@@ -1,10 +1,11 @@
 {{- /*
   Renders one group of website/data/stack.yaml as a table with project logos.
 
-  Replaces seven hand-written Markdown tables. They were accurate, but the same
-  45 versions also have to appear in the landing-page strip, and a second
-  hand-maintained copy of a version table drifts — which is precisely the
-  failure the page's own preamble was written to guard against.
+  This is a Role column, not a version column: a hand-maintained version
+  number rots the moment Renovate merges the next bump, and nothing fails
+  when it does. A role — what the component actually does in this
+  platform — does not go stale the same way, so it is what this table
+  states instead.
 
   Three behaviours are deliberate:
 
@@ -24,6 +25,14 @@
   so each <img> carries alt="" and aria-hidden, and a screen reader is not read
   the same name twice.
 
+  A group's `decisions` list — ADRs relevant to the whole group, not any one
+  row — renders as a line under `pin_note` (or on its own, if the group has
+  no `pin_note`) rather than repeated per item. Each entry is `{id, title}`:
+  `id` is the ADR's filename stem under content/docs/decisions/ (its leading
+  four digits double as the "ADR-NNNN" label, so no separate number field is
+  needed), and `title` is a short parenthetical, not the ADR's full title —
+  "Cilium", not "Use Cilium instead of the AWS VPC CNI".
+
   @param group  the `id` of the group to render.
 */ -}}
 
@@ -39,12 +48,19 @@
 {{- with $group.pin_note }}
 <p class="cnref-stack-pinnote">{{ . | markdownify }}</p>
 {{- end }}
+{{- with $group.decisions }}
+<p class="cnref-stack-pinnote">
+  Decisions:
+  {{- $decisions := . -}}
+  {{- range $i, $d := $decisions }}{{ if $i }},{{ end }} <a href="{{ printf "/docs/decisions/%s/" $d.id | relURL }}">ADR-{{ substr $d.id 0 4 }} ({{ $d.title }})</a>{{- end -}}
+</p>
+{{- end }}
 <div class="cnref-stack">
   <table>
     <thead>
       <tr>
         <th colspan="2">Component</th>
-        <th>Version</th>
+        <th>Role</th>
         {{- if $hasPinColumn }}<th>Pinned in</th>{{ end }}
       </tr>
     </thead>
@@ -65,7 +81,7 @@
           <a href="{{ .url }}" target="_blank" rel="noopener">{{ .name }}</a>
           {{- with .note }}<span class="cnref-stack-note">{{ . | markdownify }}</span>{{ end -}}
         </td>
-        <td class="cnref-stack-version"><code>{{ .version }}</code></td>
+        <td class="cnref-stack-role">{{ .role }}</td>
         {{- if $hasPinColumn }}<td class="cnref-stack-pin">{{ with .pin }}{{ . | markdownify }}{{ else }}—{{ end }}</td>{{ end }}
       </tr>
       {{- end }}

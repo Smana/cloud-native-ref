@@ -1,15 +1,20 @@
 ---
 title: Technology Stack
 weight: 20
-description: What runs, which version, and where that version is pinned in this repository.
-lastVerified: 2026-08-20
+description: What runs on this platform, and what each piece is responsible for.
+lastVerified: 2026-08-22
 ---
 
-Every version below was re-read from the pin in this repository on 2026-08-20
-— `mise.toml`, `opentofu/config.tm.hcl`, an OpenTofu variable default, or a
-`HelmRelease`/`OCIRepository` — not copied from prose. Where a component has
-no version pinned in this repo, that is stated instead of a guessed number.
-For the *why* behind a choice, see [Decisions]({{< relref "/docs/decisions/_index.md" >}}).
+Every component this platform runs, and what it is responsible for — not
+which version. There is no version column below, on purpose: Renovate opens a
+pull request for every upstream release, and CI renders the whole repository
+against it before that pull request can merge. A version number copied into
+this page would be stale the moment that job runs next, and nothing would
+fail to tell us — a hand-maintained version table rots silently, a role does
+not. Where the version actually lives — `mise.toml`, `opentofu/config.tm.hcl`,
+a `HelmRelease`, an `OCIRepository` — is still worth knowing, so the "Pinned
+in" column stays. For the *why* behind a choice, see
+[Decisions]({{< relref "/docs/decisions/_index.md" >}}).
 
 The table is generated from `website/data/stack.yaml`, which is also what
 renders the strip on the [landing page](/) — one source, so the two cannot
@@ -21,7 +26,7 @@ disagree.
 
 ## EKS bootstrap
 
-The versions the cluster is built from, before Flux takes over.
+What the cluster is built from, before Flux takes over.
 
 {{< stack-table group="bootstrap" >}}
 
@@ -43,17 +48,10 @@ The versions the cluster is built from, before Flux takes over.
 
 ## Managed AWS services
 
-No version to pin — these are AWS APIs, not deployed software: Route 53 (DNS),
-Elastic Load Balancing, IAM (via EKS Pod Identity), KMS, and S3.
-
-## What this table intentionally omits
-
-The retired `technology-choices` page carried a flatter, badge-illustrated
-version of this table with no version column at all — every entry there had
-drifted from what actually deploys, which is the reason this page exists. This
-page also drops a few rows that duplicated the
-[Repository Layout]({{< relref "/docs/reference/repository-layout.md" >}})
-page's directory listing without adding version information.
+Not in the table above because there is nothing to install or upgrade: Route
+53 (DNS), Elastic Load Balancing, IAM (via EKS Pod Identity), KMS, and S3 are
+AWS APIs this platform calls, not software this repository deploys and
+Renovate bumps.
 
 A handful of components render a lettered tile rather than a logo. That is
 deliberate: `website/static/images/logos/LICENSES.md` records every mark's
