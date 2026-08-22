@@ -16,6 +16,98 @@
 
 ---
 
+## Amendments (2026-08-22 — Phases 0 and 1 executed)
+
+**Phases 0 and 1 are complete. The gate PASSED — see the design doc's
+[*Gate results*](../specs/2026-08-18-gcp-support-design.md) section for the evidence.** Phase 2
+onwards is unstarted.
+
+### Settled inputs
+
+| Input | Value | Source |
+|---|---|---|
+| Project ID / number | `ogenki-435905` / **`323586397743`** | Task 2 |
+| Billing account | `01169B-F52211-252611` | Task 2 |
+| State bucket | `gs://ogenki-435905-tfstate` (EU, UBLA, PAP enforced, versioned) | Task 2 |
+| **Region** | **`europe-west4`** (Netherlands) | Task 3 |
+| **Topology** | **zonal**, `europe-west4-a` | Task 3 |
+| **Node image** | **`cos_containerd`** — slice 4 must pin the same | Task 3 |
+| GKE version available | `1.35.6-gke.1641000` (floor was `1.33.3-gke.1136000`) | Task 3 |
+
+Region was decided on **GPU availability**, not price: `nvidia-l4` — what the AWS `gpu-l4` pool uses
+and what slice 4 / workstream 14 need — exists in all three `europe-west4` zones, in two
+`europe-west1` zones, and **not at all in `europe-west9`** (Paris, the geographic match for AWS
+`eu-west-3`, which offers only H100/H100-mega). `europe-west4` additionally carries A100, H100,
+H200, B200 and TPUs, so a future accelerator tier needs no region migration.
+
+Zonal follows design criterion 9 ("static-pool nodes … in a single zone") and the AWS bootstrap
+group's single-subnet cost choice. Per GKE docs a regional Standard cluster's default node pool is
+**nine nodes (three per zone)** and *"you are charged for node-to-node traffic across zones"*.
+Accepted trade-off, to be documented not hidden: **a zonal control plane is unavailable during
+upgrades and maintenance.**
+
+> **Still open for Task 18:** the per-cluster management fee split between zonal and regional under
+> GKE Standard edition, and the free-tier credit. The pricing page did not render usefully via
+> fetch, so the run-rate estimate is not yet citable.
+
+### Amendment 1 — use mature upstream modules (user directive)
+
+Phases 2–3 must be written with the Cloud Foundation Toolkit modules rather than hand-rolled
+`google_compute_*` / `google_container_*` resources, mirroring the AWS side
+(`terraform-aws-modules/vpc/aws ~> 6.0`, `terraform-aws-modules/eks/aws ~> 21`):
+
+| Purpose | Module | Latest at time of writing |
+|---|---|---|
+| VPC, subnets, secondary ranges, PGA, firewall | `terraform-google-modules/network/google` | 18.1.2 |
+| GKE cluster + node pools | `terraform-google-modules/kubernetes-engine/google` | 44.3.0 |
+| Cloud Router + NAT | `terraform-google-modules/cloud-nat/google` | verify at Phase 2 |
+| Cloud DNS private zone | `terraform-google-modules/cloud-dns/google` | verify at Phase 2 |
+
+The File Structure table below keeps its filenames; their **bodies** become module blocks. When
+wiring the GKE module: never set `datapath_provider = "ADVANCED_DATAPATH"` (create-time only),
+disable the module's `network_policy` (Cilium is the policy engine), and keep
+`node.cilium.io/agent-not-ready=true:NoSchedule` on the pool at create time.
+
+### Amendment 2 — Task 1 was wrong about `gcloud`
+
+`gcloud` **was** already installed (Arch `/opt/google-cloud-cli`, 581.0.0), contradicting the
+pre-flight note. It is now pinned anyway as `"asdf:mise-plugins/mise-gcloud" = "581.0.0"`, because
+the system package cannot run `gcloud components install`.
+
+**`gke-gcloud-auth-plugin` is a separate component and was absent.** Without it every `kubectl`
+call against GKE fails with `executable gke-gcloud-auth-plugin not found`. Install it into the
+mise-managed SDK: `gcloud components install gke-gcloud-auth-plugin`.
+
+### Amendment 3 — Task 4's Cilium install is missing two mandatory values
+
+Both were found by the gate and must be carried into Task 10's forked
+`helm_values/cilium.yaml`. Full evidence in the design doc.
+
+```
+--set cni.binPath=/home/kubernetes/bin      # /opt/cni/bin is READ-ONLY on COS
+--set ipv4NativeRoutingCIDR=100.65.0.0/16   # mandatory for native + ipam=kubernetes
+```
+
+`gke.enabled=true` does **not** set `cni.binPath` in 1.20.0 — it only toggles
+`enable-endpoint-routes` and `enable-health-check-loadbalancer-ip`.
+
+### Amendment 4 — Gateway API CRDs need server-side apply
+
+`kubectl apply -f experimental-install.yaml` fails on `httproutes` with
+`metadata.annotations: Too long: may not be more than 262144 bytes`. Use
+`kubectl apply --server-side`. **Task 11 applies these CRDs from OpenTofu — the provider must use
+server-side apply**, or Phase 3 hits the same wall.
+
+### Amendment 5 — diagnosis is blind while the CNI is down
+
+`kubectl logs` and `kubectl exec` both tunnel through konnectivity, whose agent is a pod needing the
+very CNI that is broken; both return `error dialing backend: No agent available`. A hostNetwork
+debug pod does not help — `exec` uses the same tunnel. The working route was `gcloud compute ssh`
+reading `/var/log/pods/`. Note `gcloud compute ssh` needs a passphrase-free key or a loaded agent in
+non-interactive use.
+
+---
+
 ## Pre-flight context (verified during plan writing — no action needed)
 
 - **`gcloud` is NOT installed** and is absent from `mise.toml`. Task 1 adds it. Every other tool in this plan is already pinned in `mise.toml` (opentofu 1.12.5, terramate 0.17.2, trivy 0.74.0, flux2 2.9.4, helm 4.2.4, kustomize 5.8.1).
@@ -83,17 +175,17 @@
 **Files:**
 - Modify: `mise.toml`
 
-- [ ] **Step 1: Confirm gcloud is genuinely absent**
+- [x] **Step 1: Confirm gcloud is genuinely absent**
 
 Run: `command -v gcloud || echo ABSENT`
 Expected: `ABSENT`
 
-- [ ] **Step 2: Find the correct mise backend for gcloud**
+- [x] **Step 2: Find the correct mise backend for gcloud**
 
 Run: `mise registry | grep -i gcloud`
 Expected: one or more rows. Record the exact backend string printed (for example `asdf:jthegedus/asdf-gcloud`). **Use what the registry prints — do not guess the backend.** If the registry returns nothing, stop and install the Google Cloud SDK by the official method, then note in `docs/gcp-bootstrap.md` that gcloud is not mise-managed and why.
 
-- [ ] **Step 3: Add the pin**
+- [x] **Step 3: Add the pin**
 
 Add to the `[tools]` table in `mise.toml`, keeping the existing comment block intact, substituting the backend and latest stable version from Step 2:
 
@@ -103,12 +195,12 @@ Add to the `[tools]` table in `mise.toml`, keeping the existing comment block in
 "<backend-from-step-2>" = "<version>"
 ```
 
-- [ ] **Step 4: Verify it installs and runs**
+- [x] **Step 4: Verify it installs and runs**
 
 Run: `mise install && gcloud version`
 Expected: version output, no error.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add mise.toml
@@ -119,7 +211,7 @@ git commit -m "build(mise): pin gcloud for the GCP stacks"
 
 **Files:** none (environment setup; recorded in the runbook by Task 20)
 
-- [ ] **Step 1: Confirm an authenticated project with billing**
+- [x] **Step 1: Confirm an authenticated project with billing**
 
 Run:
 ```bash
@@ -131,7 +223,7 @@ Expected: an active account, a project id, and `True`.
 
 **If billing is not enabled, stop.** Nothing past Task 4 can be verified without a billable project.
 
-- [ ] **Step 2: Enable the required APIs**
+- [x] **Step 2: Enable the required APIs**
 
 Run:
 ```bash
@@ -146,12 +238,12 @@ gcloud services enable \
 ```
 Expected: `Operation ... finished successfully.`
 
-- [ ] **Step 3: Record the project number**
+- [x] **Step 3: Record the project number**
 
 Run: `gcloud projects describe "$(gcloud config get-value project)" --format='value(projectNumber)'`
 Expected: a numeric id. **Save it** — the Workload Identity principal string in Task 9 needs the project **number**, while the pool name needs the project **id**. These are different values in different segments and reversing them produces a binding that is accepted and never matches.
 
-- [ ] **Step 4: Create the GCS state bucket**
+- [x] **Step 4: Create the GCS state bucket**
 
 Run, substituting the project id:
 ```bash
@@ -166,7 +258,7 @@ Expected: bucket created, versioning enabled.
 
 **Files:** none yet (values consumed by Task 5)
 
-- [ ] **Step 1: Print the AWS ranges currently advertised into the tailnet**
+- [x] **Step 1: Print the AWS ranges currently advertised into the tailnet**
 
 Run:
 ```bash
@@ -175,7 +267,7 @@ tailscale status --json | jq -r '.Peer[] | select(.PrimaryRoutes != null) | "\(.
 ```
 Expected: `10.0.0.0/16` and `100.64.0.0/16` from the first command, plus whatever the subnet router actually advertises.
 
-- [ ] **Step 2: Confirm the proposed GCP ranges do not overlap**
+- [x] **Step 2: Confirm the proposed GCP ranges do not overlap**
 
 Run:
 ```bash
@@ -196,14 +288,14 @@ Expected: `no overlap`
 
 **Add any extra ranges the previous step revealed to the `aws` list before trusting this.**
 
-- [ ] **Step 3: Decide zonal vs regional, and record the cost delta**
+- [x] **Step 3: Decide zonal vs regional, and record the cost delta**
 
 Run: `gcloud container get-server-config --region=europe-west1 --format='value(defaultClusterVersion)'`
 Expected: a version string >= `1.33.3-gke.1136000`. If it is lower, pick a different region or channel — the autoscaling plan (slice 4) requires that floor, and `--workload-pool` support is needed here.
 
 Then decide zonal or regional and write one sentence of justification into a scratch note for Task 20. The GKE cluster management fee and free-tier eligibility differ between them; defaulting to regional without stating the cost is not acceptable.
 
-- [ ] **Step 4: Choose the node image type**
+- [x] **Step 4: Choose the node image type**
 
 Decide `cos_containerd` (GKE default, smaller attack surface) or `ubuntu_containerd` (more familiar kernel, easier debugging on an unsupported path). Record the choice and reason for Task 20. Slice 4 must pin the **same** value, so this decision propagates.
 
@@ -217,7 +309,7 @@ Decide `cos_containerd` (GKE default, smaller attack surface) or `ubuntu_contain
 
 **Files:** none (throwaway resources, deleted in Step 8)
 
-- [ ] **Step 1: Create the throwaway cluster**
+- [x] **Step 1: Create the throwaway cluster**
 
 Run, substituting your zone and the image type from Task 3 Step 4:
 ```bash
@@ -232,12 +324,12 @@ gcloud container clusters create cilium-gate \
 ```
 Expected: cluster created. Note `--enable-dataplane-v2` is deliberately **absent**.
 
-- [ ] **Step 2: Confirm the datapath is legacy, not Dataplane V2**
+- [x] **Step 2: Confirm the datapath is legacy, not Dataplane V2**
 
 Run: `gcloud container clusters describe cilium-gate --zone "$ZONE" --format='yaml(networkConfig.datapathProvider)'`
 Expected: the field is absent or not `ADVANCED_DATAPATH`. **If it says `ADVANCED_DATAPATH`, the flavour is not available as designed — stop and reopen ADR-0005.**
 
-- [ ] **Step 3: Install Cilium 1.20.0 in GKE mode**
+- [x] **Step 3: Install Cilium 1.20.0 in GKE mode**
 
 Run:
 ```bash
@@ -267,7 +359,7 @@ kubectl apply -f "https://github.com/kubernetes-sigs/gateway-api/releases/downlo
 match AWS. If you install Cilium first by mistake:
 `kubectl rollout restart -n kube-system deployment/cilium-operator`.
 
-- [ ] **Step 4: CHECK 1 — Cilium's CNI config displaced netd**
+- [x] **Step 4: CHECK 1 — Cilium's CNI config displaced netd**
 
 Run:
 ```bash
@@ -280,7 +372,7 @@ Expected: a Cilium conflist present, and **no active GKE/netd conflist** ahead o
 
 **FAIL CRITERION:** an active non-Cilium `.conflist` sorting before Cilium's. If so, **stop — reopen ADR-0005.**
 
-- [ ] **Step 5: Confirm Cilium is healthy and pods actually get IPs**
+- [x] **Step 5: Confirm Cilium is healthy and pods actually get IPs**
 
 Run:
 ```bash
@@ -291,7 +383,7 @@ kubectl get pods -o wide -l app=gate-probe
 ```
 Expected: `cilium status` OK; 4 pods `Running` with IPs from `100.65.0.0/16`, spread across both nodes.
 
-- [ ] **Step 6: CHECK 2 — cross-node L7 through a Cilium Gateway, no WireGuard**
+- [x] **Step 6: CHECK 2 — cross-node L7 through a Cilium Gateway, no WireGuard**
 
 Run:
 ```bash
@@ -325,17 +417,17 @@ Expected: `100 200` — 100 responses, all HTTP 200, with `encryption` never set
 
 **FAIL CRITERION:** any non-200. That would mean cilium#43493 (or something like it) applies on GKE too. Do **not** paper over it by enabling WireGuard — record the evidence and reopen ADR-0005, because the design's claim that the bug is ENI-specific would be wrong.
 
-- [ ] **Step 7: Record the outcome in the design doc**
+- [x] **Step 7: Record the outcome in the design doc**
 
 Append a short "Gate results (YYYY-MM-DD)" subsection to
 `docs/superpowers/specs/2026-08-18-gcp-support-design.md` under *Verified during design*, stating for each check: pass/fail, the command output, and the cluster version tested. This is the durable evidence that ADR-0005 was validated rather than assumed.
 
-- [ ] **Step 8: Destroy the throwaway cluster**
+- [x] **Step 8: Destroy the throwaway cluster**
 
 Run: `gcloud container clusters delete cilium-gate --zone "$ZONE" --quiet`
 Expected: deleted. **Do not skip — a forgotten GKE cluster is the single most expensive mistake available in this plan.**
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add docs/superpowers/specs/2026-08-18-gcp-support-design.md

@@ -42,6 +42,58 @@ been built on top of them:
 | Can GKE autoscaling satisfy Cilium's taint requirement? | Yes — `ComputeClass` exposes `nodePoolConfig.taints[]` **on auto-created pools**, plus `nodePoolConfig.imageType` to pin the node OS. This was the assumption most likely to break the whole approach | [ComputeClass CRD](https://docs.cloud.google.com/kubernetes-engine/docs/reference/crds/computeclass) |
 | How does GCP workload identity compare to EPI? | Modern GCP binds IAM **directly to the KSA principal** — `principal://iam.googleapis.com/projects/<NUMBER>/locations/global/workloadIdentityPools/<ID>.svc.id.goog/subject/ns/<NS>/sa/<KSA>` — no Google service account, no `iam.gke.io/gcp-service-account` annotation. Structurally the *same* model as EKS Pod Identity, not IRSA | [GKE WIF](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) |
 
+### Gate results (2026-08-22) — ADR-0005 validated on a live cluster
+
+Both load-bearing unknowns are now settled by measurement, not documentation. Run on a throwaway
+zonal GKE Standard cluster (`cilium-gate`, `europe-west4-a`, `1.35.6-gke.1641000`, COS_CONTAINERD,
+2× `e2-standard-4` spot), Cilium 1.20.0, Gateway API v1.6.1 experimental. Cluster destroyed
+immediately afterwards.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Datapath is legacy, not Dataplane V2 | **PASS** | `networkConfig.datapathProvider` absent |
+| **CHECK 1** — Cilium displaces GKE's CNI | **PASS** | On both nodes `/etc/cni/net.d/` holds only `05-cilium.conflist`, with `10-containerd-net.conflist.cilium_bak` renamed by `cni.exclusive` |
+| Cilium healthy, pods get pod-CIDR IPs | **PASS** | `cilium status --brief` → `OK`; cilium + cilium-envoy 2/2 `Running`, 0 restarts; 4 probe pods on `100.65.0.0/16`, 2 per node |
+| **CHECK 2** — cross-node L7, no WireGuard | **PASS** | `Encryption: Disabled`; backends split 2/2 across nodes; 100 requests through a Cilium `Gateway` → **`100 200`**, zero failures |
+
+**Unknown #1 answered:** self-managed Cilium *does* displace GKE's CNI on Standard with the legacy
+datapath. ADR-0005 stands.
+
+**Unknown #2 answered:** WireGuard is **not** required on GCP. cilium#43493 is specific to ENI mode
+with prefix delegation, as the design predicted; `ipam.mode=kubernetes` does not take that path.
+
+#### Two mandatory GKE Helm values the plan omitted
+
+Both are silent-ish failures that cost a debugging cycle each, and both must appear in the forked
+`opentofu/gcp/gke/init/helm_values/cilium.yaml`:
+
+1. **`cni.binPath: /home/kubernetes/bin`** — the chart defaults to `/opt/cni/bin`, which is
+   **read-only on COS**. The `mount-cgroup` init container dies with
+   `cp: cannot create regular file '/hostbin/cilium-mount': Read-only file system` and the agent
+   never starts. `/home/kubernetes/bin` is the writable bin directory GKE's own DaemonSets use
+   (verified via their `kubernetes-bin` hostPath). Note that `gke.enabled=true` does **not** set
+   this in 1.20.0 — it only toggles `enable-endpoint-routes` and
+   `enable-health-check-loadbalancer-ip`.
+2. **`ipv4NativeRoutingCIDR: 100.65.0.0/16`** — mandatory for `routingMode=native` +
+   `ipam.mode=kubernetes`. AWS ENI mode derives it; GKE cannot. Without it the agent exits 255 with
+   `invalid daemon configuration: native routing cidr must be configured with option
+   --ipv4-native-routing-cidr`.
+
+Cilium's own docs gap is tracked upstream in
+[cilium#28656](https://github.com/cilium/cilium/issues/28656) (*"Docs: GKE Helm installation is
+missing important information"*, closed 2023-10-17).
+
+#### Two operational traps worth carrying into the OpenTofu stacks
+
+- **The Gateway API CRD bundle needs `kubectl apply --server-side`.** Client-side apply fails on
+  `httproutes` with `metadata.annotations: Too long: may not be more than 262144 bytes`. Task 11
+  applies these CRDs from OpenTofu — the provider must use server-side apply.
+- **When the CNI is down, the cluster is unreachable for diagnosis.** `kubectl logs` and
+  `kubectl exec` both tunnel through konnectivity, whose agent is itself a pod needing the broken
+  CNI, so both fail with `error dialing backend: No agent available`. A hostNetwork debug pod does
+  not help — `exec` into it uses the same tunnel. The only route to the agent log was
+  `gcloud compute ssh` reading `/var/log/pods/`. Worth knowing before Phase 4 debugging.
+
 ## Framing decisions
 
 Recorded as ADRs so they are not restated per-slice.
@@ -209,7 +261,9 @@ managed. Revisit at cloud three.
 | `ipam.mode` | `eni` | `kubernetes` (host-scope from `spec.podCIDR`; GKE alias IP ranges route natively) |
 | `eni:` block, `cilium-cni-config.tf` | prefix-delegation ConfigMap | **deleted — no counterpart** |
 | `routingMode` | `native` | `native` |
-| `encryption.type` | `wireguard` (cilium#43493) | **expected unnecessary** — verify before removing the CLAUDE.md note |
+| `ipv4NativeRoutingCIDR` | derived from ENI config | **`100.65.0.0/16` — MANDATORY.** Agent exits 255 without it under `routingMode=native` + `ipam=kubernetes` |
+| `cni.binPath` | chart default `/opt/cni/bin` | **`/home/kubernetes/bin` — MANDATORY.** `/opt/cni/bin` is read-only on COS; init container cannot copy `cilium-mount` |
+| `encryption.type` | `wireguard` (cilium#43493) | **omitted — verified unnecessary** (gate CHECK 2, 100/100 HTTP 200 cross-node with encryption disabled) |
 | `kubeProxyReplacement`, `gatewayAPI`, `hubble` | — | port unchanged |
 
 ### Node autoscaling
