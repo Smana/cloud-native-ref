@@ -36,6 +36,16 @@ resource "tailscale_acl" "this" {
         src    = ["autogroup:member"]
         dst    = ["10.0.0.0/16:*"]
       },
+      // Same, for the GCP side. This ACL is a TAILNET-WIDE SINGLETON owned by this
+      // stack (overwrite_existing_content = true), and both clouds share one
+      // tailnet -- so opentofu/gcp/network deliberately does not declare a
+      // tailscale_acl of its own, and its routes have to be permitted from here.
+      // Editing this by hand in the admin console does not survive the next apply.
+      {
+        action = "accept"
+        src    = ["autogroup:member"]
+        dst    = [for cidr in var.gcp_routes : "${cidr}:*"]
+      },
       // Allow all members to access other member devices
       {
         action = "accept"
@@ -60,12 +70,17 @@ resource "tailscale_acl" "this" {
       }
     ]
 
-    // Allow the subnet router to advertise the VPC CIDR.
+    // Allow the subnet routers to advertise their CIDRs. Without an entry here a
+    // route is advertised but stays unapproved, so it silently never carries
+    // traffic -- which looks like a routing bug rather than a policy gap.
     autoApprovers = {
-      routes = {
-        # tflint-ignore: terraform_deprecated_interpolation
-        "${module.vpc.vpc_cidr_block}" = [var.tailscale_config.tailnet]
-      }
+      routes = merge(
+        {
+          # tflint-ignore: terraform_deprecated_interpolation
+          "${module.vpc.vpc_cidr_block}" = [var.tailscale_config.tailnet]
+        },
+        { for cidr in var.gcp_routes : cidr => [var.tailscale_config.tailnet] }
+      )
     }
 
     tagOwners = {
