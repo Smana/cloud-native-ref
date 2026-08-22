@@ -192,8 +192,10 @@ one most tempting to write up as a pure win.
   during bootstrap.** Those nodes exist from Stage 1, before Cilium is
   running in Stage 2, so Cilium hands them individually-allocated
   secondary IPs instead of prefixes and never converts them afterward —
-  a permanent ceiling of roughly 42 pod IPs per node instead of the
-  ~240 a Karpenter-provisioned node gets with prefix delegation. The
+  a permanent ceiling of roughly 42 pod IPs per node. A Karpenter node
+  with prefix delegation has several hundred, more than the 100 pods its
+  `EC2NodeClass` permits — so there scheduling binds first, while a
+  bootstrap node exhausts addresses well below that limit. The
   failure surfaces far from the cause: a DaemonSet pod stuck unable to
   get an IP keeps its rollout in progress, which times out an unrelated
   `HelmRelease`'s `--wait` and reports that HelmRelease `InstallFailed`.

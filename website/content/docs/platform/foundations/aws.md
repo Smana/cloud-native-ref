@@ -76,9 +76,11 @@ script — the second job `cd`s into `../configure` and applies it directly —
 plus a third job that recycles any node-group node whose ENIs predate
 Cilium. Those nodes exist from Stage 1, before Cilium is running, so Cilium
 hands them individually-allocated secondary IPs instead of `/28` prefixes
-and never converts them: a permanent ceiling of roughly 42 pod IPs per node
-instead of the ~240 a Karpenter-provisioned node gets with prefix
-delegation. The failure surfaces far from the cause — a DaemonSet pod that
+and never converts them: a permanent ceiling of roughly 42 pod IPs per node.
+With prefix delegation a Karpenter-provisioned node has several hundred — more
+than the 100 pods its `EC2NodeClass` sets as `maxPods`, so scheduling binds
+before addressing does. A bootstrap node runs out of IPs long before it
+reaches that limit. The failure surfaces far from the cause — a DaemonSet pod that
 can't get an IP keeps its rollout `InProgress`, which times out an unrelated
 HelmRelease's `--wait` and reports that HelmRelease `InstallFailed`. The
 recycle script is idempotent: it inspects each node's `CiliumNode` and only
