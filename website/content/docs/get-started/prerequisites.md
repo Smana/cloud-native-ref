@@ -40,6 +40,71 @@ lane you deploy next.
     --secret-string file://flux-ghapp.json
   ```
 
+## State backend — create this bucket first
+
+**Nothing in this repository can `plan` until this bucket exists.** It is the one
+prerequisite OpenTofu cannot create for you: every stack stores its state in it,
+so a stack that created it would have nowhere to record that it had. That
+chicken-and-egg is why this step is manual, and why it is easy to forget — the
+failure on a fresh clone is a backend error from the first `tofu init`, not a
+message telling you to read this page.
+
+All ten stacks share **one** bucket, in AWS, including the GCP ones. Two reasons:
+
+- State should live outside the blast radius of what it manages. An earlier
+  layout kept GCP state in a GCS bucket inside the very project whose resources
+  it tracked — deleting that project would have destroyed the record of it.
+- One bucket is one undocumented prerequisite instead of one per cloud.
+
+The trade this accepts: running the **GCP** stacks needs AWS credentials as well
+as GCP ones, and an S3 outage blocks GCP applies.
+
+```bash
+BUCKET=demo-smana-remote-backend   # must match the backend blocks; see below
+REGION=eu-west-3
+
+aws s3api create-bucket \
+  --bucket "$BUCKET" --region "$REGION" \
+  --create-bucket-configuration LocationConstraint="$REGION"
+
+# Versioning is the ONLY recovery path if state is corrupted or wrongly
+# overwritten. Turn it on before the first apply, not after.
+aws s3api put-bucket-versioning \
+  --bucket "$BUCKET" \
+  --versioning-configuration Status=Enabled
+
+aws s3api put-bucket-encryption \
+  --bucket "$BUCKET" \
+  --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"aws:kms","KMSMasterKeyID":"alias/aws/s3"}}]}'
+
+aws s3api put-public-access-block \
+  --bucket "$BUCKET" \
+  --public-access-block-configuration \
+  "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+```
+
+State objects contain credentials and private keys in plaintext, so the
+encryption and public-access settings above are not optional hardening — treat
+the bucket as a secret store.
+
+No DynamoDB table is needed. The backends set `use_lockfile = true`, which uses
+native S3 locking via a `.tflock` object; the older DynamoDB locking table that
+Terraform guides describe is obsolete here.
+
+**If you use a different bucket name**, you must edit it in every stack, because
+an OpenTofu `backend` block cannot take a variable. Find them all with:
+
+```bash
+grep -rn 'bucket ' --include=backend.tf opentofu/
+```
+
+Cross-stack readers hardcode it a second time — `terraform_remote_state` data
+sources in `opentofu/gcp/gke/init/data.tf`, `opentofu/gcp/gke/configure/data.tf`
+and `opentofu/aws/llm-platform/data.tf`. Changing the backends and missing those
+leaves the readers pointing at a bucket that no longer receives writes: stale
+reads, no error.
+
 ## Tools
 
 This repository pins every CLI version it depends on in `mise.toml` — install
