@@ -13,7 +13,7 @@
 
 resource "helm_release" "cilium" {
   depends_on = [
-    kubectl_manifest.gateway_api_crds, # Gateway API CRDs must exist before Cilium
+    module.gateway_api_crds, # Gateway API CRDs must exist before Cilium starts
   ]
 
   name             = "cilium"
