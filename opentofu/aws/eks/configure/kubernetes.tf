@@ -107,6 +107,14 @@ resource "kubectl_manifest" "flux_system_secret" {
   })
   server_side_apply = true
   depends_on        = [kubectl_manifest.flux_system_namespace]
+
+  # The GitHub App private key is rendered into yaml_body, so without this it
+  # appears unredacted in every plan diff and in the S3 state object.
+  #
+  # Added alongside the GCP equivalent rather than after it: both stacks build the
+  # same Secret from the same kind of source, and carrying the field on only one
+  # of them is how a fix stops travelling between two copies of one bootstrap.
+  sensitive_fields = ["data"]
 }
 
 # gp3 StorageClass (default) - EBS CSI Driver is deployed as EKS managed add-on
