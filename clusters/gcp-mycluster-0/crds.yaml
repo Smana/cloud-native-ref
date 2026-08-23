@@ -24,3 +24,7 @@ spec:
     name: crds-artifact
   dependsOn:
     - name: namespaces
+    # crds/base pulls CRDs from upstream GitRepositories that flux-sources
+    # defines. Without this edge the crds children race ahead and fail with
+    # `GitRepository ... not found` -- observed on the first GCP deploy.
+    - name: flux-sources

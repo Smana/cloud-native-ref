@@ -1,0 +1,37 @@
+# The GitRepository / HelmRepository sources that CRDs and workloads reference.
+#
+# Required by the `crds` Kustomization: crds/base pulls CRDs straight from
+# upstream repos (grafana-operator, victoria-metrics-operator, external-secrets,
+# kyverno, tailscale, actions-runner-controller, ...), and every one of those is
+# a GitRepository defined here. Without this Kustomization the crds children all
+# fail with:
+#
+#   GitRepository.source.toolkit.fluxcd.io "grafana-operator" not found
+#
+# Found on the first GCP deploy: the initial "minimum viable" tree had only
+# namespaces + crds, and crds cannot stand alone.
+#
+# DIFFERS from clusters/mycluster-0/flux/flux-sources.yaml in one way: the AWS
+# copy carries
+#
+#   postBuild.substituteFrom: [{kind: ConfigMap, name: eks-mycluster-0-vars}]
+#
+# which is created by opentofu/aws/eks/configure. The GCP configure stack has no
+# equivalent ConfigMap, and it is not needed: `grep -rn '${' flux/sources/`
+# returns nothing, so there is no variable to substitute. Adding the block would
+# make this Kustomization fail on a missing ConfigMap for no benefit.
+#
+# If a source ever starts using a substitution variable, this must gain a
+# postBuild block AND gke/configure must create the ConfigMap it names.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-sources
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  path: ./flux/sources
+  sourceRef:
+    kind: ExternalArtifact
+    name: flux-artifact
