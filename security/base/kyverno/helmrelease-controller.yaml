@@ -13,7 +13,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: kyverno
-      version: "3.8.2"
+      version: "3.9.0"
   interval: 10m0s
   install:
     remediation:
@@ -22,4 +22,20 @@ spec:
     fullnameOverride: kyverno
     crds:
       install: false
-# Need to set at least resources limits in a near future
+# No `resources:` override on purpose. The chart already sets requests and a
+# memory limit on every container it renders — admission (init + main),
+# background, cleanup and reports controllers, and the three hook Jobs — so
+# the constitution's requirement is met without pinning numbers here that
+# would then have to be re-tuned by hand on every chart bump.
+#
+# CPU limits are absent on the long-running controllers, and that is the
+# chart's deliberate choice, not an oversight: a CPU limit throttles rather
+# than protects, and throttling an admission webhook adds latency to every
+# matching API call. `.polaris.yaml` scores cpuLimitsMissing as a warning for
+# that reason.
+#
+# Verify after a chart bump by rendering rather than reading values.yaml —
+# several of these live under admissionController.{initContainer,container}
+# rather than a top-level resources key:
+#   helm template kyverno kyverno/kyverno --version <v> \
+#     --set fullnameOverride=kyverno --set crds.install=false

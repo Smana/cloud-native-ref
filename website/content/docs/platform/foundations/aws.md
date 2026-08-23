@@ -13,7 +13,7 @@ command spans several:
 | Stack | Model stage | Owns |
 |---|---|---|
 | `opentofu/aws/network/` | Network | VPC across three AZs, pod subnets on a secondary CIDR for Cilium ENI prefix delegation, a Route53 private zone, the Tailscale subnet router |
-| `opentofu/aws/openbao/cluster/` | Security | A 5-node HA OpenBao cluster on Raft, mostly-equal-weighted SPOT instance pools, RAID-0 NVMe storage, KMS auto-unseal |
+| `opentofu/aws/openbao/cluster/` | Security | OpenBao on EC2 with KMS auto-unseal. Ships as `mode = "dev"` — a single node on `file` storage; `mode = "ha"` builds the five-node Raft cluster on SPOT with RAID-0 NVMe |
 | `opentofu/aws/openbao/management/` | Security | The three-tier PKI (root → intermediate → leaf), the cert-manager AppRole, backup automation |
 | `opentofu/aws/eks/init/` | Kubernetes (Stage 1) | The EKS cluster, managed node groups, bootstrap addons, IAM, the `flux-system` namespace and secrets |
 | `opentofu/aws/eks/configure/` | Kubernetes (Stage 2) | Cilium, Flux Operator + Instance |
@@ -76,9 +76,11 @@ script — the second job `cd`s into `../configure` and applies it directly —
 plus a third job that recycles any node-group node whose ENIs predate
 Cilium. Those nodes exist from Stage 1, before Cilium is running, so Cilium
 hands them individually-allocated secondary IPs instead of `/28` prefixes
-and never converts them: a permanent ceiling of roughly 42 pod IPs per node
-instead of the ~240 a Karpenter-provisioned node gets with prefix
-delegation. The failure surfaces far from the cause — a DaemonSet pod that
+and never converts them: a permanent ceiling of roughly 42 pod IPs per node.
+With prefix delegation a Karpenter-provisioned node has several hundred — more
+than the 100 pods its `EC2NodeClass` sets as `maxPods`, so scheduling binds
+before addressing does. A bootstrap node runs out of IPs long before it
+reaches that limit. The failure surfaces far from the cause — a DaemonSet pod that
 can't get an IP keeps its rollout `InProgress`, which times out an unrelated
 HelmRelease's `--wait` and reports that HelmRelease `InstallFailed`. The
 recycle script is idempotent: it inspects each node's `CiliumNode` and only
@@ -87,19 +89,36 @@ after the first.
 
 ## The OpenBao cluster stack
 
-`opentofu/aws/openbao/cluster/` runs OpenBao on a 5-node Raft cluster rather than
-a single instance, for HA. Every node is priced as ephemeral SPOT capacity
-across several instance pools — an interrupted node comes from a different
-pool and rejoins automatically — with data on a RAID-0 array of instance-store
-NVMe devices for throughput and KMS auto-unseal so a replaced node rejoins
-without a manual `bao operator unseal`. All five ASG overrides carry equal
-`weighted_capacity`, because the ASG reads `desired_capacity` in capacity
-units — unequal weights would make the quorum size depend on which SPOT pool
-happened to win, rather than always being five.
+`opentofu/aws/openbao/cluster/` has two shapes, chosen by one variable. **The
+committed configuration is the smaller one** — `variables.tfvars` sets
+`mode = "dev"`, and that is what a `terramate script run deploy` gives you
+unless you change it.
 
-This is a demo posture, not a production one: the cluster is torn down and
-reprovisioned on every platform test, which is what the SPOT-everywhere,
-RAID-0-with-no-redundancy choices are priced for. `opentofu/aws/openbao/management/`
+| | `mode = "dev"` (committed) | `mode = "ha"` |
+|---|---|---|
+| Nodes | 1 | 5 |
+| Storage backend | `file`, on the root volume | Raft, with `retry_join` auto-discovery by tag |
+| Instances | `t3.micro`, on-demand | SPOT across several pools, mixed-instances policy |
+| Data volume | gp3 root volume | RAID-0 over instance-store NVMe |
+| Unseal | KMS auto-unseal | KMS auto-unseal |
+
+So the default posture is a single node whose OpenBao data *and* server TLS
+private key both sit on one encrypted gp3 root volume. It is enough to
+exercise every path this documentation describes, and it is not highly
+available — a Raft-only command like `bao operator raft list-peers` has
+nothing to talk to.
+
+In `ha` mode, an interrupted SPOT node comes back from a different pool and
+rejoins automatically, and KMS auto-unseal means it does so without a manual
+`bao operator unseal`. All five ASG overrides carry equal `weighted_capacity`,
+because the ASG reads `desired_capacity` in capacity units — unequal weights
+would make the quorum size depend on which SPOT pool happened to win, rather
+than always being five.
+
+Neither shape is a production posture. The cluster is torn down and
+reprovisioned on every platform test, which is what `dev` mode is priced for
+and what the SPOT-everywhere, RAID-0-with-no-redundancy choices in `ha` mode
+are priced for. `opentofu/aws/openbao/management/`
 then layers the three-tier PKI, the cert-manager AppRole, and policies on
 top of the running cluster — see `opentofu/aws/openbao/cluster/README.md` and
 `opentofu/aws/openbao/management/README.md` for the operational detail (unseal

@@ -12,7 +12,7 @@
         <mxCell id="__ts" value="Everything below has to exist before Flux can reconcile anything. Each stack declares what it runs after in its stack.tm.hcl; Terramate topologically sorts the graph. Every box is a module or resource in opentofu/." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">
           <mxGeometry x="60" y="62" width="1300" height="20" as="geometry" />
         </mxCell>
-        <mxCell id="s1" value="&lt;b&gt;opentofu/network&lt;/b&gt;&#xa;no predecessor" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="s1" value="&lt;b&gt;opentofu/aws/network&lt;/b&gt;&#xa;no predecessor" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="40" y="126" width="300" height="78" as="geometry" />
         </mxCell>
         <mxCell id="n0" value="VPC + public/private&#xa;subnets (module vpc)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
@@ -30,7 +30,7 @@
         <mxCell id="n4" value="Tailscale&#xa;subnet router" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="1164" y="139" width="176" height="52" as="geometry" />
         </mxCell>
-        <mxCell id="s2" value="&lt;b&gt;opentofu/openbao/cluster&lt;/b&gt;&#xa;after /opentofu/network" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="s2" value="&lt;b&gt;opentofu/aws/openbao/cluster&lt;/b&gt;&#xa;after /opentofu/aws/network" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="40" y="250" width="300" height="78" as="geometry" />
         </mxCell>
         <mxCell id="b0" value="OpenBao ASG&#xa;+ launch template" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
@@ -42,7 +42,7 @@
         <mxCell id="b2" value="Auto-unseal&#xa;via AWS KMS" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="772" y="263" width="176" height="52" as="geometry" />
         </mxCell>
-        <mxCell id="s3" value="&lt;b&gt;opentofu/openbao/management&lt;/b&gt;&#xa;after /opentofu/openbao/cluster" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="s3" value="&lt;b&gt;opentofu/aws/openbao/management&lt;/b&gt;&#xa;after /opentofu/aws/openbao/cluster" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="40" y="374" width="300" height="78" as="geometry" />
         </mxCell>
         <mxCell id="m0" value="pki_private_issuer&#xa;mount (root ns)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
@@ -57,7 +57,7 @@
         <mxCell id="m3" value="app namespace&#xa;secret/ kv-v2" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="968" y="387" width="176" height="52" as="geometry" />
         </mxCell>
-        <mxCell id="s4" value="&lt;b&gt;opentofu/eks/init&lt;/b&gt;&#xa;after /opentofu/network&#xa;and /opentofu/openbao/management" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="s4" value="&lt;b&gt;opentofu/aws/eks/init&lt;/b&gt;&#xa;after /opentofu/aws/network&#xa;and /opentofu/aws/openbao/management" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="40" y="498" width="300" height="78" as="geometry" />
         </mxCell>
         <mxCell id="i0" value="EKS control plane&#xa;(module eks)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
@@ -75,7 +75,7 @@
         <mxCell id="i4" value="vpc-cni + kube-proxy&#xa;Stage 1 only" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="1164" y="511" width="176" height="52" as="geometry" />
         </mxCell>
-        <mxCell id="s5" value="&lt;b&gt;opentofu/eks/configure&lt;/b&gt;&#xa;after /opentofu/eks/init" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="s5" value="&lt;b&gt;opentofu/aws/eks/configure&lt;/b&gt;&#xa;after /opentofu/aws/eks/init" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="40" y="622" width="300" height="78" as="geometry" />
         </mxCell>
         <mxCell id="c0" value="Cilium&#xa;(helm_release)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
@@ -93,7 +93,7 @@
         <mxCell id="c4" value="Deletes vpc-cni&#xa;and kube-proxy" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="1164" y="635" width="176" height="52" as="geometry" />
         </mxCell>
-        <mxCell id="s6" value="&lt;b&gt;opentofu/llm-platform&lt;/b&gt;&#xa;after /opentofu/eks/init — tagged opt-in" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="s6" value="&lt;b&gt;opentofu/aws/llm-platform&lt;/b&gt;&#xa;after /opentofu/aws/eks/init — tagged opt-in" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="40" y="746" width="300" height="78" as="geometry" />
         </mxCell>
         <mxCell id="l0" value="S3 Files filesystem&#xa;for model weights" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">

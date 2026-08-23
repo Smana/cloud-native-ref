@@ -199,6 +199,13 @@ superpowers:brainstorming        -> docs/superpowers/specs/YYYY-MM-DD-<topic>-de
 | Major Infrastructure | New OpenTofu stack, VPC changes, EKS upgrades |
 | Security Changes | Network policies, RBAC, PKI, secrets |
 | Platform Capabilities | Multi-component features, observability |
+| New Technology | Any component or pattern chosen over a named alternative — needs an [ADR](website/content/docs/decisions/) before merge |
+
+**A technology choice with a rejected alternative requires an ADR before merge.**
+If you can name what it was chosen over, write the record. If nothing credible
+competed, it is an installation and not a decision — say so in the pull request
+rather than leaving it unsaid. Version bumps, chart-value changes and single-file
+fixes never need one.
 
 ### When to Skip
 
@@ -292,6 +299,7 @@ tofu validate
 trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
 ./scripts/validate-manifests.sh   # renders the repo, then gates it (see below)
 ./scripts/validate-links.sh       # resolves every relative Markdown link
+./scripts/validate-doc-claims.sh  # docs still agree with config (.doc-claims.yaml)
 kubectl get nodes && kubectl get pods --all-namespaces
 flux get all
 ```

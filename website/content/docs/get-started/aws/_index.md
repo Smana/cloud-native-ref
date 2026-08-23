@@ -56,8 +56,14 @@ Terramate continues straight into this stage as part of the same command
 above — `openbao/cluster` depends on `network`, and `openbao/management`
 depends on `openbao/cluster`.
 
-Creates a 5-node HA OpenBao cluster on SPOT instances behind a Network Load
-Balancer, then configures it: the cluster is initialized and auto-unsealed
+Creates the OpenBao cluster behind a Network Load Balancer, then configures
+it. As committed, `opentofu/aws/openbao/cluster/variables.tfvars` sets
+`mode = "dev"`: a single `t3.micro` on `file` storage, which is enough to
+follow everything in these guides and is not highly available. Set
+`mode = "ha"` for the five-node Raft cluster on SPOT instances — the same
+configuration steps apply either way.
+
+Either way, the cluster is initialized and auto-unsealed
 via AWS KMS, its root token and recovery keys are written to two separate
 AWS Secrets Manager entries, and a three-tier PKI (root → intermediate →
 leaf) plus the cert-manager AppRole are provisioned — all driven by

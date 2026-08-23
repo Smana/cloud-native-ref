@@ -7,9 +7,9 @@ lastVerified: 2026-08-20
 ---
 
 **Status**: Accepted
-**Date**: 2024-01-15
-**Deciders**: Platform Team
-**Related Spec**: [SPEC-0000: EKS Pod Identity](../specs/done/2024-Q1/0000-eks-pod-identity/spec.md)
+**Date**: 2024-04-15 (recorded retrospectively on 2026-01-06)
+**Deciders**: Smana (Platform Owner)
+**Related Spec**: [SPEC-0000: EKS Pod Identity](https://github.com/Smana/cloud-native-ref/blob/main/docs/specs/done/2024-Q1/0000-eks-pod-identity/spec.md)
 **Scope**: AWS only — narrowed 2026-08-18, see [ADR-0007](0007-cloud-abstraction-boundaries.md)
 
 ---
@@ -20,7 +20,7 @@ lastVerified: 2026-08-20
 >
 > [ADR-0007](0007-cloud-abstraction-boundaries.md) establishes that platform-facing identity APIs
 > stay cloud-shaped, so `EPI` keeps this design and its ten claim manifests unchanged, and GCP gets
-> a sibling `GCPWorkloadIdentity` XRD ([design](../superpowers/specs/2026-08-18-gcp-support-design.md))
+> a sibling `GCPWorkloadIdentity` XRD ([design](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-08-18-gcp-support-design.md))
 > rather than `EPI` being generalised.
 >
 > Worth recording, because it makes the sibling split cheap: modern GCP lets an IAM policy bind

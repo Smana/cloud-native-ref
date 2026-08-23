@@ -1,17 +1,20 @@
-# Every component this platform runs, its version, and where that version is
-# pinned. Rendered by layouts/_shortcodes/stack-table.html on Reference →
-# Technology Stack, and by stack-strip.html on the landing page.
+# Every component this platform runs, and its role in this platform. Rendered
+# by layouts/_shortcodes/stack-table.html on Reference → Technology Stack, and
+# by stack-strip.html on the landing page.
 #
-# Versions were re-read from their pins on 2026-08-20 — mise.toml,
-# opentofu/config.tm.hcl, an OpenTofu variable default, or a HelmRelease /
-# OCIRepository — not copied from prose. Where a component has no version
-# pinned in this repository, `version` says so rather than guessing a number.
+# There is no version column. Renovate opens a pull request for every
+# upstream release, and CI renders the whole repository against it before
+# that PR can merge — a version number copied into prose is stale the moment
+# that job runs next, and nothing fails to tell us. `pin` says where the
+# actual version lives instead, which is the answer that does not rot.
 #
 # Fields
 #   name        display name
 #   short       shorter label for the landing-page strip, where the full name
 #               would not fit a chip; falls back to `name`
-#   version     as pinned, verbatim
+#   role        what this component does IN THIS PLATFORM, one line, no
+#               trailing period — grounded in this repository, not a generic
+#               description of the upstream project
 #   logo        basename under static/images/logos/; omit for a typographic tile
 #   logo_dark   light-ink variant, for marks that vanish on the dark theme
 #   pin         where the version lives (Markdown); omit when the group sets pin_note
@@ -21,158 +24,179 @@
 #
 # Group `pin_note` hoists a pin shared by every row out of the per-row column,
 # which is what stops the CLI table repeating `mise.toml` eleven times.
+#
+# Group `decisions` lists the ADRs relevant to the whole group, as
+# `{id, title}`: `id` is the ADR's filename stem under
+# website/content/docs/decisions/ (its leading four digits double as the
+# "ADR-NNNN" label, so no separate number field is needed), and `title` is a
+# short parenthetical — "Cilium", not "Use Cilium instead of the AWS VPC CNI".
 groups:
   - id: cli
     title: CLI tools
     pin_note: "All pinned in `mise.toml`. Run `mise install` to get exactly these."
+    decisions:
+      - id: 0014-opentofu-over-terraform
+        title: OpenTofu over Terraform
     items:
       - name: OpenTofu
-        version: "1.12.6"
+        role: Provisions every infrastructure stack — network, OpenBao, EKS, LLM platform
         logo: opentofu
         url: https://opentofu.org
         strip: true
       - name: Terramate
-        version: "0.17.2"
+        role: Orchestrates OpenTofu stacks — deploy order, drift detection, opt-in gating
         url: https://terramate.io
         strip: true
       - name: Flux CLI (+ schema plugin)
-        version: "2.9.4"
+        role: Validates the rendered manifest tree in CI; drives Flux day to day
         logo: flux
         url: https://fluxcd.io
       - name: Helm
-        version: "4.2.4"
+        role: Templates every HelmRelease chart for the manifest-validation render bundle
         logo: helm
         logo_dark: helm-dark
         url: https://helm.sh
       - name: Kustomize
-        version: "5.8.1"
+        role: Builds each overlay for validation; the only Flux postRenderer kind used here
         url: https://kustomize.io
       - name: Trivy
-        version: "0.74.0"
+        role: Scans OpenTofu config, the filesystem, and built images for vulnerabilities
         logo: trivy
         logo_dark: trivy-dark
         url: https://trivy.dev
       - name: Go
-        version: "1.27.0"
+        role: Fetches the Hextra theme via Hugo Modules; no app code lives here
         logo: go
         url: https://go.dev
       - name: Node.js
-        version: "22.23.1"
+        role: Runtime pin for markdownlint-cli, currently disabled in pre-commit
         logo: nodejs
         url: https://nodejs.org
       - name: golangci-lint
-        version: "2.12.2"
+        role: Pinned for Go linting; no Go source remains in this repository
         url: https://golangci-lint.run
       - name: pre-commit
-        version: "4.6.2"
+        role: Runs formatting, Terraform, and secret-scanning hooks locally and in CI
         url: https://pre-commit.com
       - name: Hugo (extended)
-        version: "0.156.0"
+        role: Builds this documentation site — Hextra needs the extended build
         logo: hugo
         url: https://gohugo.io
         note: Required for this site — Hextra targets the extended build.
 
   - id: bootstrap
     title: EKS bootstrap
+    decisions:
+      - id: 0008-flux-over-argocd
+        title: Flux
+      - id: 0009-cilium-over-vpc-cni
+        title: Cilium
+      - id: 0015-gateway-api-over-ingress-nginx
+        title: Gateway API
     items:
       - name: Kubernetes (EKS control plane)
         short: Kubernetes
-        version: "1.36"
+        role: The managed control plane Stage 1 creates before Cilium and Flux land
         logo: kubernetes
         url: https://kubernetes.io
         pin: "`opentofu/aws/eks/init/variables.tf` — `kubernetes_version` default, not overridden in `variables.tfvars`"
         strip: true
       - name: Cilium
-        version: "1.20.0"
+        role: eBPF datapath, kube-proxy replacement, NetworkPolicy and GatewayClass in one
         logo: cilium
         url: https://cilium.io
         pin: "`opentofu/config.tm.hcl` — `cilium_version`"
         strip: true
       - name: Flux Operator
         short: Flux
-        version: "0.55.0"
+        role: Installs and manages the Flux Instance's controllers and their upgrades
         logo: flux
         url: https://fluxcd.control-plane.io
         pin: "`opentofu/config.tm.hcl` — `flux_operator_version`"
         strip: true
       - name: Flux Instance
-        version: "0.55.0"
+        role: The CR pointing Flux at this repo's clusters/mycluster-0 path
         logo: flux
         url: https://fluxcd.io
         pin: "`opentofu/config.tm.hcl` — `flux_instance_version`"
       - name: Gateway API CRDs
         short: Gateway API
-        version: "v1.6.1"
+        role: The Gateway/HTTPRoute schema Cilium and Envoy Gateway both implement
         url: https://gateway-api.sigs.k8s.io
         pin: "`opentofu/aws/eks/configure/variables.tf` — `gateway_api_version` default"
         strip: true
 
   - id: infrastructure
     title: Infrastructure
+    decisions:
+      - id: 0001-use-kcl-for-crossplane-compositions
+        title: KCL for compositions
+      - id: 0012-crossplane-and-opentofu
+        title: Crossplane/OpenTofu boundary
     items:
       - name: Crossplane (controller)
         short: Crossplane
-        version: "2.3.4"
+        role: Runs the XRDs and Compositions that back every xplane-* resource
         logo: crossplane
         url: https://crossplane.io
         pin: "`infrastructure/base/crossplane/controller/helmrelease.yaml`"
         strip: true
       - name: Crossplane Configuration package
-        version: "v0.1.0"
+        role: Ships the App, SQLInstance, KVStore and InferenceService compositions as a package
         logo: crossplane
         url: https://github.com/Smana/crossplane-configuration
         pin: "`infrastructure/base/crossplane/configuration/configuration-packages.yaml`"
         note: The compositions themselves are built and released from `Smana/crossplane-configuration`, not from this repository.
       - name: Karpenter
-        version: "1.13.0"
+        role: Provisions spot nodes on demand — the general pool and the GPU pool
         logo: karpenter
         url: https://karpenter.sh
         pin: "`flux/sources/ocirepo-karpenter.yaml`"
         strip: true
       - name: KEDA
-        version: "2.20.2"
+        role: Scales vLLM replicas on saturation, KV-cache, and queue-depth metrics
         logo: keda
         url: https://keda.sh
         pin: "`infrastructure/base/keda/helmrelease.yaml`"
       - name: CloudNativePG (operator)
         short: CloudNativePG
-        version: "0.29.0"
+        role: Provisions the managed Postgres every App's sqlInstance claim requests
         logo: cloudnativepg
         url: https://cloudnative-pg.io
         pin: "`infrastructure/base/cloudnative-pg/helmrelease.yaml`"
         strip: true
       - name: Atlas Operator
-        version: "0.7.11"
+        role: Applies SQL migrations declaratively from Git via GitOps, not app code
         url: https://atlasgo.io
         pin: "`flux/sources/ocirepo-atlas-operator.yaml`"
         note: v0.7.11 does not support `dir.remote` for Git repositories; migrations use the GitOps/ConfigMap pattern instead.
       - name: AWS Load Balancer Controller
-        version: "3.5.0"
+        role: Provisions the NLBs behind this platform's internet-facing Gateways
         url: https://kubernetes-sigs.github.io/aws-load-balancer-controller/
         pin: "`infrastructure/base/aws-load-balancer-controller/helmrelease.yaml`"
       - name: AWS EFS CSI driver
-        version: "4.4.1"
+        role: Mounts S3 Files (POSIX-over-S3) for shared LLM model weights
         url: https://github.com/kubernetes-sigs/aws-efs-csi-driver
         pin: "`infrastructure/base/aws-efs-csi-driver/helmrelease.yaml`"
         note: Chart 4.x ships driver v3.x, needed for S3 Files access points.
       - name: External DNS
-        version: "1.21.1"
+        role: Watches HTTPRoutes and writes the matching Route 53 records
         url: https://kubernetes-sigs.github.io/external-dns/
         pin: "`infrastructure/base/external-dns/helmrelease.yaml`"
       - name: Envoy Gateway
-        version: "1.9.0"
+        role: LLM platform's Gateway API implementation, delegating AI routing to its extension
         logo: envoy
         url: https://gateway.envoyproxy.io
         pin: "`flux/sources/ocirepo-envoy-gateway.yaml`"
         note: LLM platform, opt-in.
       - name: Envoy AI Gateway
-        version: "1.0.0"
+        role: Authenticates and routes LLM requests directly to each model's vLLM Service
         logo: envoy
         url: https://aigateway.envoyproxy.io
         pin: "`flux/sources/ocirepo-envoy-ai-gateway.yaml`"
         note: LLM platform, opt-in.
       - name: vLLM Semantic Router
-        version: "0.2.0"
+        role: "Classifies prompts sent as model: MoM onto the right vLLM model"
         logo: vllm
         url: https://github.com/vllm-project/semantic-router
         pin: "`flux/sources/ocirepo-vllm-semantic-router.yaml`"
@@ -180,85 +204,97 @@ groups:
 
   - id: security
     title: Security
+    decisions:
+      - id: 0002-eks-pod-identity-over-irsa
+        title: EKS Pod Identity
+      - id: 0011-openbao-over-vault
+        title: OpenBao
+      - id: 0013-tailscale-over-bastion
+        title: Tailscale
+      - id: 0016-kyverno-over-gatekeeper
+        title: Kyverno
     items:
       - name: OpenBao
-        version: "2.6.2"
+        role: Private PKI and secrets store — root of the platform's trust chain
         logo: openbao
         logo_dark: openbao-dark
         url: https://openbao.org
         pin: "`opentofu/aws/openbao/cluster/variables.tf` — `openbao_version` default, not overridden in `variables.tfvars`"
         strip: true
       - name: cert-manager
-        version: "v1.21.1"
+        role: Issues and rotates leaf certificates from OpenBao's PKI and Let's Encrypt
         logo: cert-manager
         url: https://cert-manager.io
         pin: "`security/base/cert-manager/helmrelease.yaml`"
         strip: true
       - name: External Secrets Operator
         short: External Secrets
-        version: "2.9.0"
+        role: Syncs every credential from AWS Secrets Manager — nothing hardcoded
         logo: external-secrets
         url: https://external-secrets.io
         pin: "`security/base/external-secrets/helmrelease.yaml`"
         strip: true
       - name: Kyverno
-        version: "3.8.2"
+        role: Enforces the Pod Security Standards as admission ClusterPolicies
         logo: kyverno
         url: https://kyverno.io
         pin: "`security/base/kyverno/helmrelease-controller.yaml`"
         strip: true
       - name: Tailscale Operator
-        version: "1.90.6"
+        role: Tags devices into the general and admin private-access gateways
         logo: tailscale
         url: https://tailscale.com/kb/1236/kubernetes-operator
         pin: "`security/base/tailscale-operator/helmrelease.yaml`"
       - name: ZITADEL
-        version: "10.0.4"
+        role: SSO for the platform — EKS API auth and application OIDC login
         logo: zitadel
         url: https://zitadel.com
         pin: "`security/base/zitadel/helmrelease.yaml`"
 
   - id: observability
     title: Observability
+    decisions:
+      - id: 0010-victoriametrics-over-prometheus
+        title: VictoriaMetrics
     items:
       - name: VictoriaMetrics k8s stack
         short: VictoriaMetrics
-        version: "0.91.0"
+        role: Metrics storage, scraping, and alerting — the kube-prometheus-stack equivalent
         logo: victoriametrics
         url: https://victoriametrics.com
         pin: "`observability/base/victoria-metrics-k8s-stack/helmrelease-vmcluster.yaml`"
         note: The single-node variant pins the same 0.91.0 and is the one actually running.
         strip: true
       - name: VictoriaLogs (cluster mode)
-        version: "0.2.8"
+        role: Dormant clustered variant — the single-mode release below is what runs
         logo: victoriametrics
         url: https://docs.victoriametrics.com/victorialogs/
         pin: "`observability/base/victoria-logs/helmrelease-vlcluster.yaml`"
       - name: VictoriaLogs (single mode)
-        version: "0.13.9"
+        role: Active log storage for the cluster — Vector ships every log here
         logo: victoriametrics
         url: https://docs.victoriametrics.com/victorialogs/
         pin: "`observability/base/victoria-logs/helmrelease-vlsingle.yaml`"
       - name: VictoriaTraces
-        version: "0.1.11"
+        role: Distributed-trace storage, pivoting from a span to its matching logs
         logo: victoriametrics
         url: https://docs.victoriametrics.com/victoriatraces/
         pin: "`observability/base/victoria-traces/helmrelease-vtsingle.yaml`"
       - name: Grafana Operator
         short: Grafana
-        version: "5.24.0"
+        role: Manages dashboards and folders against the metrics stack's bundled Grafana
         logo: grafana
         url: https://grafana.github.io/grafana-operator/
         pin: "`observability/base/grafana-operator/helmrelease.yaml`"
         strip: true
       - name: Grafana OnCall
-        version: "1.16.5"
+        role: Alerting escalation and on-call scheduling for Grafana, if ever wired in
         logo: grafana
         url: https://grafana.com/products/oncall/
         pin: "`observability/base/grafana-oncall/helmrelease-oncall.yaml`"
         note: Built but wired into no Kustomization — it does not run on the cluster.
       - name: metrics-server
-        version: "3.14.0"
+        role: Backs kubectl top and HPA resource metrics cluster-wide
         url: https://github.com/kubernetes-sigs/metrics-server
         pin: "`observability/base/metrics-server/helmrelease.yaml`"
 
@@ -266,38 +302,38 @@ groups:
     title: Data and tooling
     items:
       - name: Harbor
-        version: "1.18.3"
+        role: Self-hosted OCI/Helm registry, S3-backed; no in-repo pipeline publishes to it yet
         logo: harbor
         url: https://goharbor.io
         pin: "`tooling/base/harbor/helmrelease-harbor.yaml`"
         strip: true
       - name: Headlamp
-        version: "0.44.0"
+        role: Kubernetes web UI for every tailnet member, via the general gateway
         logo: headlamp
         url: https://headlamp.dev
         pin: "`tooling/base/headlamp/helmrelease.yaml`"
       - name: Homepage
-        version: "2.1.0"
+        role: Landing-page dashboard linking every service this platform runs
         url: https://gethomepage.dev
         pin: "`tooling/base/homepage/helmrelease.yaml`"
       - name: Dagger engine
-        version: "v0.21.8"
+        role: Shared build engine for self-hosted runners — provisioned, not yet wired live
         logo: dagger
         url: https://dagger.io
         pin: "`tooling/base/dagger-engine/deployment.yaml` — image tag"
       - name: GitHub Actions Runner Controller
-        version: "0.14.2"
+        role: Reconciles self-hosted GitHub Actions runners — off by default
         logo: github-actions
         url: https://github.com/actions/actions-runner-controller
         pin: "`tooling/base/gha-runners/controller-helmrelease.yaml`"
         note: Off by default.
       - name: GHA runner scale sets
-        version: "0.9.3"
+        role: Two runner pools — plain Kubernetes jobs, and Docker-in-Docker for Dagger
         logo: github-actions
         url: https://github.com/actions/actions-runner-controller
         pin: "`tooling/base/gha-runners/default-scale-set-helmrelease.yaml`, `dagger-scale-set-helmrelease.yaml`"
         note: Off by default.
       - name: Valkey
-        version: not pinned in this repo
+        role: Per-tenant cache — kvStore claims for Harbor and this platform's demo apps
         url: https://valkey.io
         note: Provisioned per tenant by the `KVStore` Crossplane composition in `Smana/crossplane-configuration`; the chart version tracks that repository's release, not a pin here.
