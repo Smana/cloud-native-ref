@@ -1343,8 +1343,11 @@ Expected: ten stacks under `opentofu/{aws,gcp,shared}/`, `shared/tailscale` befo
 
 - [ ] **Step 2: Reverse order**
 
-Run: `terramate list --run-order --reverse`
-Expected: the exact inverse. This is what `destroy` sweeps — a wrong `after` destroys a dependency first.
+Run: `terramate run --reverse --disable-safeguards=git-out-of-sync -- echo`
+
+> `--reverse` is a flag on `run` / `script run`, **not** on `list` — `terramate list --run-order --reverse` does not exist. Echoing per stack is a safe way to print the reverse order without executing anything.
+
+Expected: the exact inverse of the forward order. This is what `destroy` sweeps — a wrong `after` destroys a dependency first.
 
 - [ ] **Step 3: State-neutrality criteria 5–7 (requires AWS credentials)**
 
