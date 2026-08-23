@@ -13,21 +13,26 @@ resource "tailscale_acl" "this" {
       "group:admin" = var.admin_users
     }
 
-    acls = concat([
-      { action = "accept", src = ["group:admin"], dst = ["tag:admin:*"] },
-      { action = "accept", src = ["autogroup:member"], dst = ["tag:ci:*"] },
-      { action = "accept", src = ["autogroup:member"], dst = ["tag:k8s:*"] },
-      { action = "accept", src = ["autogroup:member"], dst = ["autogroup:member:*"] },
-      { action = "accept", src = ["tag:k8s-operator"], dst = ["tag:k8s:*", "tag:admin:*"] },
+    acls = concat(
+      [
+        { action = "accept", src = ["group:admin"], dst = ["tag:admin:*"] },
+        { action = "accept", src = ["autogroup:member"], dst = ["tag:ci:*"] },
+        { action = "accept", src = ["autogroup:member"], dst = ["tag:k8s:*"] },
       ],
-      # One rule per cloud, generated from the same map that drives
-      # autoApprovers below, so a route can never be auto-approved yet
-      # unreachable -- the failure mode that looks like a routing bug.
-      [for cidr in flatten(values(var.advertised_routes)) : {
+      # One rule per cloud (map key), not per CIDR -- matches the live AWS
+      # rendering, which has one "autogroup:member" -> [cidrs...] rule per
+      # cloud rather than one rule per CIDR. Map iteration is lexicographic by
+      # key, so this reproduces AWS's aws-then-gcp ordering without hardcoding
+      # it.
+      [for _, cidrs in var.advertised_routes : {
         action = "accept"
         src    = ["autogroup:member"]
-        dst    = ["${cidr}:*"]
-      }]
+        dst    = [for c in cidrs : "${c}:*"]
+      }],
+      [
+        { action = "accept", src = ["autogroup:member"], dst = ["autogroup:member:*"] },
+        { action = "accept", src = ["tag:k8s-operator"], dst = ["tag:k8s:*", "tag:admin:*"] },
+      ]
     )
 
     ssh = [
