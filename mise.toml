@@ -7,7 +7,7 @@ min_version = "2024.11.1"
 
 [tools]
 go = "1.27.0"
-"aqua:golangci/golangci-lint" = "2.12.2"
+"aqua:golangci/golangci-lint" = "2.13.1"
 nodejs = "22.23.1"
 opentofu = "1.12.6"
 pre-commit = "4.6.2"
@@ -27,5 +27,5 @@ helm = "4.2.4"
 
 # Documentation site (website/). "hugo-extended" is deliberate: mise's plain
 # `hugo` entry resolves to the non-extended build, and Hextra targets extended.
-hugo-extended = "0.156.0"
+hugo-extended = "0.165.0"
 kustomize = "5.8.1"
