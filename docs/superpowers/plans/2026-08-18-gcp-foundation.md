@@ -82,6 +82,48 @@ the system package cannot run `gcloud components install`.
 call against GKE fails with `executable gke-gcloud-auth-plugin not found`. Install it into the
 mise-managed SDK: `gcloud components install gke-gcloud-auth-plugin`.
 
+### Amendment 2b — Application Default Credentials are a SEPARATE login
+
+`gcloud auth login` and Application Default Credentials are **two different credential stores**, and
+this bites in a way that looks like a permissions bug rather than an auth one.
+
+Every `gcloud` CLI command uses the *active account* (`gcloud config get-value account`). The
+OpenTofu `google` provider and the GCS backend do **not** — they read
+`~/.config/gcloud/application_default_credentials.json`. Log in with one and not the other and every
+`gcloud` command succeeds while `tofu init` fails at backend initialisation with:
+
+```
+Error: Failed to get existing workspaces: querying Cloud Storage failed: googleapi: Error 403:
+<wrong-identity> does not have storage.objects.list access to the Google Cloud Storage bucket.
+```
+
+Observed live on 2026-08-23: the active account was `smaine.kahlouch@ogenki.io` while the ADC file
+was four months stale and still held a personal gmail identity, which has no access to
+`ogenki-435905`. The 403 names the ADC identity, not the active account — read it carefully, because
+the instinct is to go grant the *active* account more IAM, which changes nothing.
+
+**Required before any `tofu` command against GCP:**
+
+```bash
+gcloud auth application-default login \
+  --scopes=https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/userinfo.email
+gcloud auth application-default set-quota-project ogenki-435905
+```
+
+The explicit `--scopes` matters: the bare form requests a narrower default set and fails with
+`cloud-platform scope is required but not consented` — hit twice on 2026-08-23 before the flag was
+added. The consent screen also lists the scopes as checkboxes; they must be ticked.
+
+Verify the two identities agree before deploying:
+
+```bash
+gcloud config get-value account                                   # CLI identity
+ls -la ~/.config/gcloud/application_default_credentials.json      # ADC: check the date is recent
+```
+
+`set-quota-project` is not cosmetic — without it the provider emits a billing-attribution warning on
+every API call and some APIs refuse the request outright.
+
 ### Amendment 3 — Task 4's Cilium install is missing two mandatory values
 
 Both were found by the gate and must be carried into Task 10's forked

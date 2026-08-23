@@ -33,7 +33,14 @@ resource "tailscale_tailnet_key" "this" {
   reusable      = true
   ephemeral     = false
   preauthorized = true
-  description   = "GCP subnet router (${var.env})"
+
+  # Alphanumerics, spaces and dashes only. Tailscale's key API rejects other
+  # characters with a bare `keys: description had invalid characters (400)` that
+  # names neither the offending character nor the field's accepted charset --
+  # "GCP subnet router (dev)" failed on the parentheses during the first deploy.
+  # The AWS subnet router sets no description at all; this one is kept because it
+  # is what distinguishes the two routers' keys in the tailnet admin console.
+  description = "GCP subnet router - ${var.env}"
 }
 
 data "google_compute_image" "debian" {
