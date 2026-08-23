@@ -13,7 +13,7 @@ spec:
   role: Karpenter-${cluster_name}
   # Container data uses RAID0 NVMe instance store on g6 GPU nodes — fast
   # ephemeral storage with no extra EBS cost. Trades cold-start (no warmup)
-  # for simplicity. EBS snapshot pre-warm (T004) deferred — see docs/ai.md.
+  # for simplicity. EBS snapshot pre-warm (T004) deferred — see https://cnref.ogenki.io/docs/platform/ai-platform/
   instanceStorePolicy: "RAID0"
   blockDeviceMappings:
     - deviceName: /dev/xvda

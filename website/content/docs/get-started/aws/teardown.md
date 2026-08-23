@@ -1,0 +1,103 @@
+---
+title: Teardown
+weight: 30
+description: Tear the platform down safely, in reverse dependency order.
+lastVerified: 2026-08-20
+---
+
+Destroying by hand, stack by stack, is easy to get wrong: the EKS cluster
+holds resources (Gateways, PVC-backed volumes, IAM access keys) that need
+cleaning up in a specific order before OpenTofu can even start deleting.
+
+## EKS only
+
+This is the safe, documented path — always tear the cluster down this way:
+
+```bash
+cd opentofu/eks/init
+terramate script run destroy
+```
+
+Three steps, defined in `opentofu/eks/init/workflows.tm.hcl`:
+
+1. **`prepare-destroy`** — runs `scripts/eks-prepare-destroy.sh` (see below).
+2. **`stage2-destroy-addons`** — destroys the `eks/configure` stack (Cilium, Flux).
+3. **`stage1-destroy-cluster`** — destroys the `eks/init` stack (the cluster itself).
+
+## Full teardown
+
+{{< callout type="warning" >}}
+Do **not** run `terramate script run --reverse destroy` from `opentofu/` on a
+cluster carrying real data or live Karpenter nodes. `eks/configure` is a
+separately registered stack (`after = ["/opentofu/eks/init"]`) with its own
+bare `destroy` script — confirm → `tofu init` → `tofu destroy` — that never
+calls `eks-prepare-destroy.sh`. The reverse dependency walk destroys
+`eks/configure` **first**: Cilium and Flux are torn down raw, with Flux never
+suspended, webhooks never disabled, and PVCs/NodePools/IAM keys never
+cleaned up. Only afterwards does the sweep reach `eks/init`, whose own
+`prepare-destroy` job then runs against a cluster whose networking is
+already gone. This is a known ordering issue, tracked separately — it is not
+fixed today. Use [EKS only](#eks-only) above instead.
+{{< /callout >}}
+
+To tear down every stack — EKS, OpenBao, Network — in one sweep once the
+ordering above is fixed, or on a cluster you are certain holds no data worth
+protecting:
+
+```bash
+cd opentofu
+terramate script run --reverse destroy
+```
+
+Destroys every stack in reverse dependency order with a single confirmation
+prompt (`scripts/terramate-destroy-confirm.sh`), cached for 10 minutes so
+the whole reverse sweep only asks once.
+
+## What `eks-prepare-destroy.sh` does first
+
+Before OpenTofu deletes anything, the script:
+
+- Suspends every Flux Kustomization.
+- Disables Kyverno's and the Cilium operator's blocking admission webhooks —
+  once their pods are evicted with the nodes, every subsequent delete would
+  otherwise fail against a webhook with no live endpoint.
+- Reclaims CSI-provisioned EBS volumes: patches **every** PV's
+  `persistentVolumeReclaimPolicy` to `Delete` — including PVs deliberately
+  set to `Retain` — deletes CloudNativePG `Cluster` resources so the operator
+  releases their PVCs cleanly, scales down every Deployment/StatefulSet that
+  mounts a PVC, deletes remaining PVC-mounting pods, then runs
+  `kubectl delete pvc --all --all-namespaces` and waits up to 300s for
+  reclaim. **This step is unconditional** — nothing in the script gates it,
+  and it deletes PVC data regardless of the reclaim policy a PV was created
+  with. If you need to keep data, back it up out of band *before* running
+  `eks-prepare-destroy.sh`; there is no flag that skips this step.
+- Separately, sweeps EBS volumes **orphaned by earlier teardown runs** —
+  volumes in `available` state, tagged for this cluster, whose PV no longer
+  exists. `EKS_DESTROY_KEEP_VOLUMES=true` skips only this sweep of
+  already-orphaned volumes; it has no effect on the PV/PVC reclaim above.
+- Reclaims the IAM access keys Harbor's S3 registry storage uses — AWS caps
+  `AccessKeysPerUser` at 2, so without this a second or third rebuild's
+  Harbor can fail to start on a full quota.
+- Deletes Karpenter NodePools, Gateway API resources (HTTPRoutes → Gateways →
+  GatewayClasses, with finalizers stripped once controllers are gone), Envoy
+  Gateway / AI Gateway extension resources, InferencePool resources, and EKS
+  Pod Identity associations.
+- Strips finalizers from any Crossplane composite resource stuck terminating,
+  so the namespace delete that follows doesn't hang forever.
+
+## What is not deleted
+
+The platform constitution withholds delete permissions from Crossplane for
+stateful services — so `xplane-*` IAM roles, policies, and S3 buckets outlive
+the cluster. They cost nothing to leave behind and are re-adopted by name on
+the next deploy. To remove them by hand once you are sure you are done:
+
+```bash
+aws iam list-roles --query 'Roles[?starts_with(RoleName, `xplane-`)].RoleName' --output text
+```
+
+## Non-interactive
+
+Both destroy scripts accept `TM_DESTROY_CONFIRMED=true` to skip the
+interactive `y/n` prompt. It exists for CI; skip it on a first manual
+teardown so you get the confirmation.

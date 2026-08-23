@@ -2,9 +2,9 @@
 
 Deploy a OpenBao instance following HashiCorp's best practices. Complete these steps in order:
 
-1. **Server Certificates**: Prepare certificates first and store them in the expected AWS SecretsManager resources. You can provide yours or use the guide: [Public Key Infrastructure (PKI): Requirements](./docs/pki_requirements.md).
+1. **Server Certificates**: Prepare certificates first and store them in the expected AWS SecretsManager resources. You can provide yours or use the guide: [Building the CA chain](https://cnref.ogenki.io/docs/platform/security/pki-and-secrets/#building-the-chain).
 
-2. **OpenBao Instance Setup**: Start your OpenBao instance. See [Getting Started](./docs/getting_started.md) for instructions.
+2. **OpenBao Instance Setup**: Start your OpenBao instance. See [Cluster initialisation](https://cnref.ogenki.io/docs/platform/security/openbao/#cluster-initialisation) for instructions.
 
 3. **Configure OpenBao**: After setting up the cluster, configure it. Switch to the [management](../management/README.md) directory for PKI, roles, etc.
 

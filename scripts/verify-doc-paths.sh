@@ -47,7 +47,19 @@ for f in files:
                 if not p.startswith(TOP):
                     continue
                 # A glob or a placeholder is not a claim about a concrete file.
+                # But it IS a claim about its own parent: `foo/bar/{a,b}/` asserts
+                # that `foo/bar/` exists. Skipping the whole string let a path
+                # survive a directory that had been deleted out from under it, so
+                # check the fixed prefix before the first wildcard instead.
                 if any(c in p for c in '*?<>${}'):
+                    head = re.split(r'[*?<>${}]', p, maxsplit=1)[0]
+                    head = head.rsplit('/', 1)[0]
+                    # head has no trailing slash after the rsplit, so compare
+                    # against TOP with one appended — otherwise a wildcard sitting
+                    # directly under a top-level dir ('docs/*' -> head 'docs')
+                    # never matches TOP and the check silently no-ops.
+                    if (head + '/').startswith(TOP) and not os.path.exists(head):
+                        print(f'{f}:{n}\t{head}/... (parent of a glob)')
                     continue
                 if not os.path.exists(p):
                     print(f'{f}:{n}\t{p}')

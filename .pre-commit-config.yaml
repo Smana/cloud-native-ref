@@ -20,6 +20,16 @@ repos:
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: check-symlinks
+        # opentofu/openbao/management/.tls is a tracked symlink to
+        # ../cluster/.tls, whose *contents* are gitignored (`**/.tls/*`). The
+        # target directory therefore does not exist in a fresh clone or git
+        # worktree, so the link resolves only where the PKI material has been
+        # generated. CI sidesteps this by creating the directory before running
+        # pre-commit (see the "Write required openbao files" step in
+        # .github/workflows/ci.yaml); a local `pre-commit run --all-files` has
+        # nothing equivalent and fails on a link that is deliberate and, in the
+        # checkout that matters, working.
+        exclude: '^opentofu/openbao/management/\.tls$'
       - id: check-executables-have-shebangs
       - id: detect-private-key
 

@@ -67,9 +67,26 @@ menu:
 
 params:
   description: "An opinionated, production-ready Kubernetes platform reference: GitOps with Flux, infrastructure from Kubernetes with Crossplane, zero-trust networking with Cilium, and a private PKI with OpenBao — on AWS EKS today, designed for a second cloud."
+  # Social card. Consumed by layouts/_partials/opengraph.html and
+  # layouts/_partials/twitter_cards.html, both of which absolute-ise it against
+  # baseURL — so it has to stay a site-root path, not a relative one.
+  # Regenerate from scripts/build-og-card.html; see that file's header.
+  images:
+    - /images/og-card.png
   navbar:
     displayTitle: true
-    displayLogo: false
+    displayLogo: true
+    logo:
+      # The Ogenki mark, extracted from the company lockup so the navbar carries
+      # the brand without the wordmark competing with the site's own title.
+      # 448x396 in its own viewBox, so 27x24 keeps it undistorted at navbar height.
+      path: images/ogenki-mark.svg
+      # Brand navy measures 1.92:1 against the dark navbar, under the 3:1 WCAG
+      # asks of a graphical object, so the dark theme gets the white variant
+      # from the same lockup set. Hextra renders both and swaps them with CSS.
+      dark: images/ogenki-mark-white.svg
+      width: 27
+      height: 24
   search:
     enable: true
     type: flexsearch

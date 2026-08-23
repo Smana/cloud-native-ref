@@ -21,7 +21,7 @@
 **Decision**: A — EKS Pod Identity
 **Rationale**: Operational simplicity, shorter token lifetime, eliminates per-cluster OIDC plumbing. Recorded as ADR-0002.
 **Decided by**: Platform team (2024-01)
-**References**: [ADR-0002](../../../../decisions/0002-eks-pod-identity-over-irsa.md), [AWS Pod Identity docs](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html)
+**References**: [ADR-0002](../../../../../website/content/docs/decisions/0002-eks-pod-identity-over-irsa.md), [AWS Pod Identity docs](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html)
 
 ---
 

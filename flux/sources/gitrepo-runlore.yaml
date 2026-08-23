@@ -26,4 +26,4 @@ spec:
   # with the live HelmRelease values and the resulting config replayed through the
   # v0.13.0 binary's own config.Load (KnownFields + Validate): both pass.
   ref:
-    tag: v0.13.0
+    tag: v0.15.0

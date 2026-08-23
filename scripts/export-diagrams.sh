@@ -4,9 +4,13 @@
 #
 # Sources live in docs/architecture/ (one topic per file, kebab-case, ogenki
 # preset). Exports are written where each consumer needs them:
-#   - website/assets/diagrams/         for docs pages
-#   - website/static/images/diagrams/  for the landing page (no asset pipeline)
+#   - website/static/images/diagrams/  every SVG the site embeds
 #   - docs/architecture/img/           PNG, only where GitHub also renders it
+#
+# static/, not assets/. Hugo publishes static/ verbatim; assets/ is the input to
+# the asset pipeline and is only reachable from a template through resources.Get.
+# This site has no such template, so an SVG written to website/assets/diagrams/
+# is never served and every <img> pointing at it 404s.
 #
 # SVG is the site format. The PNG-only rule recorded in docs/architecture/README.md
 # exists because GitHub's sanitizer strips <foreignObject> text from drawio SVG,
@@ -20,12 +24,19 @@ cd "$(dirname "$0")/.."
 command -v drawio >/dev/null || { echo "drawio not on PATH — install the desktop app"; exit 1; }
 
 SRC="docs/architecture"
-ASSETS="website/assets/diagrams"
-STATIC="website/static/images/diagrams"
-mkdir -p "$ASSETS" "$STATIC"
+OUT="website/static/images/diagrams"
+mkdir -p "$OUT"
 
-# Task 16 appends the six new domain diagrams here.
-SINGLE_PAGE=()
+# One SVG per source, one section of the site each opens.
+SINGLE_PAGE=(
+    bootstrap-stages
+    flux-dependency-tree
+    ci-pipeline
+    request-path
+    secrets-and-pki
+    app-claim-expansion
+    observability-flow
+)
 
 # --embed-svg-fonts false is load-bearing, not a micro-optimisation. drawio
 # embeds the full font as base64 by default: platform-overview exports at
@@ -43,13 +54,14 @@ SVGOPTS=(-x -f svg -b 10 --embed-svg-fonts false)
 
 for name in "${SINGLE_PAGE[@]}"; do
     echo "==> $name.svg"
-    drawio "${SVGOPTS[@]}" -o "$ASSETS/$name.svg" "$SRC/$name.drawio"
+    drawio "${SVGOPTS[@]}" -o "$OUT/$name.svg" "$SRC/$name.drawio"
 done
 
 # platform-overview is embedded in both the site and the GitHub README, so it
-# needs both formats and lands in static/ for the home layout.
+# needs both formats — SVG for the site, PNG because GitHub's sanitizer strips
+# the <foreignObject> elements drawio puts every label in.
 echo "==> platform-overview (svg + png)"
-drawio "${SVGOPTS[@]}" -o "$STATIC/platform-overview.svg" "$SRC/platform-overview.drawio"
+drawio "${SVGOPTS[@]}" -o "$OUT/platform-overview.svg" "$SRC/platform-overview.drawio"
 drawio -x -f png -s 2 -b 10 -o "$SRC/img/platform-overview.png" "$SRC/platform-overview.drawio"
 
 # --page-index is 1-based in this drawio CLI (`-p, --page-index <pageIndex>
@@ -60,11 +72,16 @@ drawio -x -f png -s 2 -b 10 -o "$SRC/img/platform-overview.png" "$SRC/platform-o
 for i in 1 2 3; do
     echo "==> llm-platform page $i"
     drawio "${SVGOPTS[@]}" --page-index "$i" \
-        -o "$ASSETS/llm-platform-$i.svg" "$SRC/llm-platform.drawio"
+        -o "$OUT/llm-platform-$i.svg" "$SRC/llm-platform.drawio"
 done
+
+# drawio ends its SVG output without a trailing newline; pre-commit's
+# end-of-file-fixer adds one. Without this, every export leaves the tree dirty
+# by exactly one byte per file and the script is never idempotent.
+find "$OUT" -name '*.svg' -exec sed -i -e '$a\' {} +
 
 echo
 echo "==> Size check (budget: 500 KB per SVG export)"
-find "$ASSETS" "$STATIC" -name '*.svg' -size +500k -printf '    OVER BUDGET: %p (%s bytes)\n' | tee /tmp/oversize
-[ ! -s /tmp/oversize ] || { echo "Reduce embedded raster logos or their resolution."; exit 1; }
+find "$OUT" -name '*.svg' -size +500k -printf '    OVER BUDGET: %p (%s bytes)\n' | tee "${TMPDIR:-/tmp}/oversize"
+[ ! -s "${TMPDIR:-/tmp}/oversize" ] || { echo "Reduce embedded raster logos or their resolution."; exit 1; }
 echo "    all exports within budget"

@@ -164,4 +164,4 @@ Complete this before implementation begins. Each persona enforces non-negotiable
 - Spec: [spec.md](spec.md)
 - Clarifications: [clarifications.md](clarifications.md)
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
-- Related: [SPEC-007](../007-app-composition-workload-types/spec.md), [docs/apps-user-guide.md](../../../../apps-user-guide.md)
+- Related: [SPEC-007](../007-app-composition-workload-types/spec.md), [docs/apps-user-guide.md](https://cnref.ogenki.io/docs/platform/developer-platform/app/)

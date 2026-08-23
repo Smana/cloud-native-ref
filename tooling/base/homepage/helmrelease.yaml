@@ -90,7 +90,7 @@ spec:
         - For Developers:
             - App Wizard Guide:
                 - abbr: WIZ
-                  href: https://github.com/Smana/cloud-native-ref/blob/main/docs/app-wizard.md
+                  href: https://cnref.ogenki.io/docs/platform/developer-platform/app-wizard/
             - App Claim Examples:
                 - abbr: APP
                   href: https://github.com/Smana/cloud-native-ref/tree/main/apps

@@ -10,6 +10,35 @@
 
 **Design:** [2026-08-20-docs-hugo-site-design.md](../specs/2026-08-20-docs-hugo-site-design.md)
 
+**Status: complete, 2026-08-20.** All 18 tasks shipped across the three planned pull requests —
+[#1794](https://github.com/Smana/cloud-native-ref/pull/1794) (site foundation),
+[#1798](https://github.com/Smana/cloud-native-ref/pull/1798) (content and diagrams),
+[#1799](https://github.com/Smana/cloud-native-ref/pull/1799) (retire `docs/`, launch). The site is
+live at [cnref.ogenki.io](https://cnref.ogenki.io): 90 pages, nine diagrams, Lighthouse
+accessibility 100, CLS 0.00.
+
+Three things did not go as written, and the checkboxes above are ticked for what was *done*, not
+for what the step literally said:
+
+- **Exports go to `website/static/images/diagrams/`, not `website/assets/diagrams/`** (Task 2 and
+  Task 16). Hugo serves `static/` verbatim and treats `assets/` as input to the asset pipeline,
+  reachable only through `resources.Get` from a template — and this site has no such template. The
+  three `llm-platform` SVGs written there by PR 1 were never published and every `<img>` pointing at
+  them would have 404'd. `scripts/export-diagrams.sh` and the architecture README name the corrected
+  path.
+- **`docs/` keeps `platform-constitution.md`** (Task 17 Step 3 expected only `architecture`, `specs`
+  and `superpowers`). The constitution is published by a single-file Hugo mount rather than moved,
+  exactly as Task 14 Step 1 requires, so its repository path has to survive. Step 3's expected
+  listing was simply incomplete.
+- **DNS and GitHub Pages were already configured** before Task 18 ran, so the pre-merge step was
+  satisfied on arrival rather than performed.
+
+Two defects found in the final pass are worth remembering rather than rediscovering: drawio stamps
+`color-scheme: light dark` on its SVG root, which makes the dark theme half-invert a diagram unless
+the image pins `color-scheme: light`; and an `<img>` without width and height reserves no space, so
+one unsized diagram was the entire 0.21 CLS of the landing page. Both fixes live in
+`website/assets/css/custom.css` and `website/layouts/_markup/render-image.html`.
+
 ---
 
 ## Global Constraints
@@ -118,11 +147,34 @@ That PR 2 leaves content duplicated between `docs/` and `website/content/` is de
 source in the same PR that publishes its replacement makes the diff unreviewable, and PR 3 exists to
 do exactly that deletion under its own review.
 
+### Mounted files are read in two places, so their links must be absolute
+
+`docs/platform-constitution.md` stays in the repository and is *also* published on the site by a
+single-file Hugo mount. That means every link inside it is resolved twice, against two different
+roots:
+
+| Where it is read | How a relative link resolves |
+|---|---|
+| GitHub, at `docs/platform-constitution.md` | against the repository tree |
+| The site, at `/docs/reference/platform-constitution/` | against the URL path |
+
+**No relative path is correct in both.** Links inside a mounted file must therefore be **absolute
+published URLs** — `https://cnref.ogenki.io/docs/decisions/0007-cloud-abstraction-boundaries/` —
+which render correctly in both places and are skipped by `validate-links.sh` by design, so they
+need no allowlist entry.
+
+Derive the URL shape from the built output (`ls website/public/docs/decisions/`) rather than
+guessing: Hugo drops the `.md` and serves a directory-style path with a trailing slash.
+
 ### Moves re-point their own references, in the same task
 
 **A task that moves or deletes a file rewires every inbound reference to it, in that same task.**
 Never defer rewiring to the cleanup task — with the work split across three PRs, a deferred rewire
 means the intermediate PR merges to `main` with a broken link and a failing `links` check.
+
+This includes referrers you were told not to otherwise modify. "Do not edit file X" never means
+"leave X pointing at a file you just deleted" — rewiring a dead link is part of the move, not a
+separate concern.
 
 Find the inbound set before moving anything:
 
@@ -169,7 +221,7 @@ Conventional commits, `docs(site):` scope for site work, `docs(<lane>):` for con
 - Produces: a `website/` directory where `hugo --minify --gc` exits 0. Every later task depends on this.
 - Produces: `hugo` on `PATH` via mise for local and CI use.
 
-- [ ] **Step 1: Pin Hugo Extended in the root mise.toml**
+- [x] **Step 1: Pin Hugo Extended in the root mise.toml**
 
 Add to the `[tools]` block in `mise.toml`, after `helm`:
 
@@ -179,12 +231,12 @@ Add to the `[tools]` block in `mise.toml`, after `helm`:
 hugo-extended = "0.156.0"
 ```
 
-- [ ] **Step 2: Install it and confirm it is the extended build**
+- [x] **Step 2: Install it and confirm it is the extended build**
 
 Run: `mise install && mise exec -- hugo version`
 Expected: output contains both `v0.156.0` and `+extended`. If `+extended` is absent, the wrong tool name was used — fix Step 1 before continuing.
 
-- [ ] **Step 3: Create the Hugo module**
+- [x] **Step 3: Create the Hugo module**
 
 ```bash
 mkdir -p website/content
@@ -196,7 +248,7 @@ cd ..
 
 Expected: `website/go.mod` exists and contains `github.com/imfing/hextra v0.12.3`.
 
-- [ ] **Step 4: Write `website/hugo.yaml`**
+- [x] **Step 4: Write `website/hugo.yaml`**
 
 ```yaml
 baseURL: https://cnref.ogenki.io/
@@ -291,7 +343,7 @@ params:
     displayToggle: true
 ```
 
-- [ ] **Step 5: Write a placeholder landing page**
+- [x] **Step 5: Write a placeholder landing page**
 
 `website/content/_index.md`:
 
@@ -304,7 +356,7 @@ layout: hextra-home
 Placeholder. Replaced in Task 4.
 ```
 
-- [ ] **Step 6: Ignore Hugo build artifacts**
+- [x] **Step 6: Ignore Hugo build artifacts**
 
 `website/.gitignore`:
 
@@ -314,12 +366,12 @@ Placeholder. Replaced in Task 4.
 /.hugo_build.lock
 ```
 
-- [ ] **Step 7: Build and verify**
+- [x] **Step 7: Build and verify**
 
 Run: `cd website && mise exec -- hugo --minify --gc`
 Expected: exit 0, output reports `Pages` ≥ 1 and no `ERROR` lines.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add mise.toml website/
@@ -347,7 +399,7 @@ failure rather than a silent 404."
 - Consumes: the site from Task 1.
 - Produces: the `lastVerified` footer rendering, which every content task's front matter feeds.
 
-- [ ] **Step 1: Write the palette override**
+- [x] **Step 1: Write the palette override**
 
 Hextra derives its full colour scale from three variables. Its defaults are `:root { --primary-hue: 212deg; --primary-saturation: 100%; --primary-lightness: 50% }` and `.dark { --primary-hue: 204deg; … }`, and it uses `--color-primary-600` for links and active navigation (14 usages, against 7 for `primary-500`).
 
@@ -403,7 +455,7 @@ Hextra derives its full colour scale from three variables. Its defaults are `:ro
 }
 ```
 
-- [ ] **Step 2: Write the `lastVerified` footer partial**
+- [x] **Step 2: Write the `lastVerified` footer partial**
 
 The design's stated norm is that a page says what it was checked against. `website/layouts/_partials/custom/footer.html`:
 
@@ -439,7 +491,7 @@ grep -c "cnref-verified" website/public/index.html   # expected: 1, not 0
 sed -i '2d' website/content/_index.md
 ```
 
-- [ ] **Step 3: Add the CNAME**
+- [x] **Step 3: Add the CNAME**
 
 `website/static/CNAME` — exactly one line, no trailing content:
 
@@ -447,7 +499,13 @@ sed -i '2d' website/content/_index.md
 cnref.ogenki.io
 ```
 
-- [ ] **Step 4: Add favicons and the logo**
+Keep it for documentation value, but know that **it does not set the custom domain**. A `CNAME`
+file in the artifact configures the domain only for legacy *branch-based* Pages; with
+`actions/deploy-pages` the domain lives in repository settings. Verified after PR 1's first
+successful deploy: the site published while the API still reported `cname=null`. Setting the
+domain is a separate step — see Task 18.
+
+- [x] **Step 4: Add favicons and the logo**
 
 Source the ogenki mark from the blog repository and generate the icon set:
 
@@ -465,7 +523,7 @@ Expected: five files created. The four generated icons should each be well under
 source `logo.png` is copied verbatim and is ~108 KB, which is fine — the budget is about the icon
 set, not the logo.
 
-- [ ] **Step 5: Create the diagram export script and export the existing sources**
+- [x] **Step 5: Create the diagram export script and export the existing sources**
 
 Task 4's landing page embeds `platform-overview.svg`. Its `.drawio` source already exists, so PR 1
 must ship the export rather than leave a broken image on the site's front page. Task 16 extends this
@@ -557,7 +615,7 @@ Expected: four SVGs plus the regenerated PNG; the size check passes.
 `platform-overview.svg` should land near **155 KB**. If it comes out over 1 MB, the
 `--embed-svg-fonts false` flag was dropped — that is the only plausible cause.
 
-- [ ] **Step 6: Build and verify the palette applied**
+- [x] **Step 6: Build and verify the palette applied**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -566,7 +624,7 @@ grep -c "primary-lightness: 26%" website/public/css/*.css
 
 Expected: build exits 0; the grep returns at least 1.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add website/assets website/layouts website/static scripts/export-diagrams.sh docs/architecture/img
@@ -593,7 +651,7 @@ against the repository, so a stale page says so on its face."
 **Interfaces:**
 - Produces: `./scripts/verify-doc-paths.sh` — exit 0 when every repository path named in `website/content/**/*.md` exists; exit 1 with a list otherwise. Every content task runs it.
 
-- [ ] **Step 1: Write the path verifier**
+- [x] **Step 1: Write the path verifier**
 
 `scripts/verify-doc-paths.sh`:
 
@@ -670,7 +728,7 @@ fi
 echo "==> Every repository path named in the docs site exists."
 ```
 
-- [ ] **Step 2: Make it executable and run it**
+- [x] **Step 2: Make it executable and run it**
 
 ```bash
 chmod +x scripts/verify-doc-paths.sh
@@ -679,7 +737,7 @@ chmod +x scripts/verify-doc-paths.sh
 
 Expected: `==> Every repository path named in the docs site exists.` (trivially true — no content yet).
 
-- [ ] **Step 3: Write the pull-request gate**
+- [x] **Step 3: Write the pull-request gate**
 
 `.github/workflows/docs-check.yml`:
 
@@ -731,7 +789,7 @@ jobs:
         run: ./scripts/verify-doc-paths.sh
 ```
 
-- [ ] **Step 4: Write the deploy workflow**
+- [x] **Step 4: Write the deploy workflow**
 
 `.github/workflows/docs.yml`:
 
@@ -798,7 +856,7 @@ jobs:
         uses: actions/deploy-pages@v5
 ```
 
-- [ ] **Step 5: Validate both workflows parse**
+- [x] **Step 5: Validate both workflows parse**
 
 ```bash
 mise exec -- yq '.jobs | keys' .github/workflows/docs-check.yml
@@ -807,7 +865,7 @@ mise exec -- yq '.jobs | keys' .github/workflows/docs.yml
 
 Expected: `- build` and `- deploy` respectively.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add .github/workflows/docs-check.yml .github/workflows/docs.yml scripts/verify-doc-paths.sh
@@ -831,7 +889,7 @@ is what makes verify-on-migrate mechanical instead of a promise."
 - Consumes: the palette and footer partial from Task 2.
 - Produces: the six lane index pages that every content task fills. Their `weight` values fix sidebar order: get-started 10, platform 20, concepts 30, guides 40, reference 50, decisions 60.
 
-- [ ] **Step 1: Write the landing page**
+- [x] **Step 1: Write the landing page**
 
 `website/content/_index.md`. The `platform-overview` image reference resolves once Task 16 writes the export; until then the build succeeds and the image 404s in the browser — acceptable, and Task 16 closes it.
 
@@ -896,7 +954,7 @@ for where the platform draws its cloud boundary.
 </p>
 ```
 
-- [ ] **Step 2: Write the docs root index**
+- [x] **Step 2: Write the docs root index**
 
 `website/content/docs/_index.md`:
 
@@ -925,7 +983,7 @@ next depends on what you want from it.
   decision records, including what each choice was made *over*.
 ```
 
-- [ ] **Step 3: Write the six lane index pages**
+- [x] **Step 3: Write the six lane index pages**
 
 Each gets `title`, `weight`, `description`, `lastVerified`, and one paragraph naming what the lane covers. Weights: `get-started` 10, `platform` 20, `concepts` 30, `guides` 40, `reference` 50, `decisions` 60. Child page lists are added by the task that fills each lane.
 
@@ -947,7 +1005,7 @@ Pick your cloud to begin. AWS is implemented and maintained; GCP is designed but
 not yet built.
 ```
 
-- [ ] **Step 4: Build and verify navigation**
+- [x] **Step 4: Build and verify navigation**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -956,12 +1014,12 @@ ls website/public/docs/
 
 Expected: build exits 0; the listing shows all six lane directories plus `index.html`.
 
-- [ ] **Step 5: Inspect the landing page locally**
+- [x] **Step 5: Inspect the landing page locally**
 
 Run: `cd website && mise exec -- hugo server -D`
 Open `http://localhost:1313`. Confirm: hero renders, both button rows render, the six lane cards link correctly, the theme toggle switches light/dark, and links are visibly blue in both modes (this is the check on Task 2's derived lightness).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add website/content
@@ -987,7 +1045,7 @@ reuse it. Lane weights step by ten so pages can be inserted without renumbering.
 - Consumes: the lane index from Task 4.
 - Produces: `/docs/get-started/` targets that the landing page's "Deploy in 30 minutes" button and Task 17's shrunk README both link to.
 
-- [ ] **Step 1: Map source sections to destination pages**
+- [x] **Step 1: Map source sections to destination pages**
 
 | Destination | Source | Cut |
 |---|---|---|
@@ -997,7 +1055,7 @@ reuse it. Lane weights step by ten so pages can be inserted without renumbering.
 | `aws/teardown.md` | `scripts/eks-prepare-destroy.sh` header, `opentofu/workflows.tm.hcl` destroy script | nothing |
 | `first-app.md` | `docs/apps-user-guide.md` §2 Quick start | sections 3–12 (they belong to Task 9) |
 
-- [ ] **Step 2: Verify every version claim before writing**
+- [x] **Step 2: Verify every version claim before writing**
 
 ```bash
 grep -E '^(go|opentofu|flux2|helm|kustomize|trivy|hugo-extended|"ubi:terramate)' mise.toml
@@ -1006,7 +1064,7 @@ grep -E 'cilium_version|flux_version|gateway_api_version' opentofu/config.tm.hcl
 
 Record the values. `prerequisites.md` must state these exact versions, or state `mise install` and name no versions at all. It must not state versions from `docs/opentofu.md`, which was last edited 2026-03-06.
 
-- [ ] **Step 3: Verify every command before writing**
+- [x] **Step 3: Verify every command before writing**
 
 ```bash
 grep -n 'name *=' opentofu/workflows.tm.hcl opentofu/eks/init/workflows.tm.hcl
@@ -1014,7 +1072,7 @@ grep -n 'name *=' opentofu/workflows.tm.hcl opentofu/eks/init/workflows.tm.hcl
 
 Every command shown on `aws/_index.md` and `aws/teardown.md` must appear in that output. A command that does not is cut.
 
-- [ ] **Step 4: Write the pages**
+- [x] **Step 4: Write the pages**
 
 Each with the standard front matter and `lastVerified: 2026-08-20`. Weights: `prerequisites` 10, `aws` 20, `gcp` 30, `first-app` 40; within `aws/`: `_index` 10, `access` 20, `teardown` 30.
 
@@ -1044,11 +1102,11 @@ The design is complete and three decision records frame it:
 The full design lives in the repository at `docs/superpowers/specs/2026-08-18-gcp-support-design.md`.
 ```
 
-- [ ] **Step 5: Add the child list to the lane index**
+- [x] **Step 5: Add the child list to the lane index**
 
 Append to `website/content/docs/get-started/_index.md` a `{{< cards >}}` block linking the four children.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1058,7 +1116,7 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 
 Expected: all three exit 0.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add website/content/docs/get-started
@@ -1084,7 +1142,7 @@ silently assumes AWS."
 **Interfaces:**
 - Produces: `/docs/platform/foundations/` and `/docs/platform/gitops/`, referenced by Get Started and by Task 15's guides.
 
-- [ ] **Step 1: Split `docs/opentofu.md` (739 lines)**
+- [x] **Step 1: Split `docs/opentofu.md` (739 lines)**
 
 | Destination | Sections |
 |---|---|
@@ -1094,14 +1152,14 @@ silently assumes AWS."
 
 The Prerequisites section is **not** duplicated here — it lives in `get-started/prerequisites.md`. Link to it.
 
-- [ ] **Step 2: Split `docs/gitops.md` (767 lines)**
+- [x] **Step 2: Split `docs/gitops.md` (767 lines)**
 
 | Destination | Sections |
 |---|---|
 | `gitops/_index.md` | What is GitOps, Why Flux, the dependency hierarchy |
 | `gitops/repository-structure.md` | Directory Structure, plus the repository-structure section of `README.md` |
 
-- [ ] **Step 3: Verify the dependency hierarchy against the cluster manifests**
+- [x] **Step 3: Verify the dependency hierarchy against the cluster manifests**
 
 ```bash
 ls clusters/mycluster-0/
@@ -1112,7 +1170,7 @@ done
 
 The hierarchy drawn on `gitops/_index.md` must match this output exactly. `docs/gitops.md` was last edited 2026-07-15 and predates at least the `llm-platform` umbrella Kustomization — check whether it appears.
 
-- [ ] **Step 4: Write `gitops/validation.md` from `docs/ci-workflows.md` §"How manifest validation works"**
+- [x] **Step 4: Write `gitops/validation.md` from `docs/ci-workflows.md` §"How manifest validation works"**
 
 Must state, because these are the two load-bearing properties of the SPEC-007 setup:
 
@@ -1126,9 +1184,9 @@ grep -n "skipMissingSchemas" .fluxschema.yml
 grep -c "kind: Deployment" $(git ls-files '*/base/**/*.yaml' | head -200) 2>/dev/null | awk -F: '{s+=$2} END {print s}'
 ```
 
-- [ ] **Step 5: Add child lists to both lane indexes and to `platform/_index.md`**
+- [x] **Step 5: Add child lists to both lane indexes and to `platform/_index.md`**
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1136,7 +1194,7 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 ./scripts/validate-links.sh
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add website/content/docs/platform
@@ -1159,7 +1217,7 @@ clusters/mycluster-0/ rather than trusted."
 **Interfaces:**
 - Produces: `/docs/platform/networking/`, linked from security (TLS termination) and developer-platform (App ingress).
 
-- [ ] **Step 1: Build the overlap inventory before writing anything**
+- [x] **Step 1: Build the overlap inventory before writing anything**
 
 ```bash
 grep -n '^#\{2,3\} ' docs/ingress.md > /tmp/ingress-headings.txt
@@ -1178,7 +1236,7 @@ Both files describe the two Tailscale gateways and the ACL tags. Decide once, pe
 | Adding a new private service | `private-access.md` |
 | eBPF datapath, kube-proxy replacement, prefix delegation, WireGuard | `cilium.md` |
 
-- [ ] **Step 2: Verify the gateway inventory against the manifests**
+- [x] **Step 2: Verify the gateway inventory against the manifests**
 
 ```bash
 ls infrastructure/base/gapi/
@@ -1187,7 +1245,7 @@ mise exec -- yq '.metadata.name, .spec.gatewayClassName' infrastructure/base/gap
 
 The gateway names and classes on `private-access.md` must match this output. `docs/tailscale-gateway-api.md` was last edited 2025-12-24.
 
-- [ ] **Step 3: Write `cilium.md` — new content, no single source**
+- [x] **Step 3: Write `cilium.md` — new content, no single source**
 
 Sources: `opentofu/eks/configure/cilium-cni-config.tf`, `opentofu/eks/init/helm_values/cilium.yaml`, and the Cilium section of `CLAUDE.md`. Must cover, because each is a live trap:
 
@@ -1204,7 +1262,7 @@ grep -n "cniVersion\|encryption\|prefix" opentofu/eks/configure/cilium-cni-confi
 grep -rn "cilium.io/pod-subnet\|role/cni" opentofu/network/
 ```
 
-- [ ] **Step 4: Confirm the merge lost nothing**
+- [x] **Step 4: Confirm the merge lost nothing**
 
 ```bash
 grep -c '^#\{2,3\} ' docs/ingress.md docs/tailscale-gateway-api.md
@@ -1213,7 +1271,7 @@ grep -c '^#\{2,3\} ' website/content/docs/platform/networking/*.md
 
 Walk the source heading list and tick each one off as migrated or deliberately cut. Record deliberate cuts in the commit message.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1221,7 +1279,7 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 ./scripts/validate-links.sh
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add website/content/docs/platform/networking
@@ -1246,7 +1304,7 @@ recorded only in CLAUDE.md and inline comments."
 **Interfaces:**
 - Produces: `/docs/platform/security/`, linked from networking (TLS) and get-started (`bao login`).
 
-- [ ] **Step 1: Inventory what is being promoted**
+- [x] **Step 1: Inventory what is being promoted**
 
 ```bash
 wc -l opentofu/openbao/*/docs/*.md
@@ -1254,7 +1312,7 @@ wc -l opentofu/openbao/*/docs/*.md
 
 Expected: five files, 703 lines total. All five are promoted; none stays behind. The directories are deleted in Task 17, so nothing may be left unmigrated.
 
-- [ ] **Step 2: Assign sources to destinations**
+- [x] **Step 2: Assign sources to destinations**
 
 | Destination | Sources |
 |---|---|
@@ -1262,7 +1320,7 @@ Expected: five files, 703 lines total. All five are promoted; none stays behind.
 | `pki-and-secrets.md` | `cluster/docs/pki_requirements.md`, `management/docs/cert-manager.md`, plus External Secrets from `security/base/` |
 | `policies.md` | New: Kyverno, CiliumNetworkPolicy defaults, pod security standards, from `security/base/` and the platform constitution |
 
-- [ ] **Step 3: Verify the namespace layout claim**
+- [x] **Step 3: Verify the namespace layout claim**
 
 ```bash
 grep -n "namespace\|path" opentofu/openbao/management/namespaces.tf | head -30
@@ -1270,7 +1328,7 @@ grep -n "namespace\|path" opentofu/openbao/management/namespaces.tf | head -30
 
 `openbao.md` must state the layout accurately: shared platform services — the PKI (`pki_private_issuer`), the snapshot AppRole, operator logins — live in the **root** namespace; namespaces are reserved for tenants, and `app` is the only one, holding a `secret/` kv-v2 mount reached through its own AppRole. Cluster-wide endpoints such as `sys/storage/raft/*` are callable only from root.
 
-- [ ] **Step 4: Verify the operator login procedure**
+- [x] **Step 4: Verify the operator login procedure**
 
 ```bash
 grep -rn "userpass\|admin" opentofu/openbao/management/auth.tf
@@ -1278,7 +1336,7 @@ grep -rn "userpass\|admin" opentofu/openbao/management/auth.tf
 
 The documented `bao login -method=userpass username=admin` and the Secrets Manager path `openbao/cloud-native-ref/users/admin` must match. Include `VAULT_CACERT` pointing at `opentofu/openbao/management/.tls/ca.pem` and **not** `VAULT_SKIP_VERIFY` — a security reference that documents skipping verification undercuts itself.
 
-- [ ] **Step 5: Record the version constraint**
+- [x] **Step 5: Record the version constraint**
 
 `openbao.md` must carry a `{{< callout type="warning" >}}` stating that the entire OpenBao 2.6 line is blocked in Renovate: 2.6.0 deadlocks in `namespace_store` and 2.6.2 in `auth.go` (upstream issue #3411, still open), and that a hanging `bao status` on 127.0.0.1 indicates a core deadlock, not a VPN problem. Verify:
 
@@ -1287,7 +1345,7 @@ grep -n "2\.6\|openbao" .github/renovate.json
 grep -rn "openbao_version" opentofu/openbao/cluster/variables.tf
 ```
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1295,7 +1353,7 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 ./scripts/validate-links.sh
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add website/content/docs/platform/security
@@ -1322,9 +1380,12 @@ core deadlock, not the VPN."
 **Interfaces:**
 - Produces: `/docs/platform/developer-platform/`, linked from the landing page, get-started `first-app.md`, and Task 15's `add-an-application.md`.
 
-- [ ] **Step 1: Build the section checklist**
+- [x] **Step 1: Build the section checklist**
 
-`docs/apps-user-guide.md` has twelve numbered sections. Write them out and assign each a destination before editing anything — this checklist is what proves nothing was dropped.
+`docs/apps-user-guide.md` has **fourteen** numbered sections, not twelve. An earlier version of
+this plan said twelve and omitted §13 and §14 entirely — 330 lines that would have been deleted
+with the source file. Write all fourteen out and assign each a destination before editing anything;
+this checklist is what proves nothing was dropped, and it was wrong once already.
 
 | § | Title | Destination |
 |---|---|---|
@@ -1340,8 +1401,10 @@ core deadlock, not the VPN."
 | 10 | Exposing your app and network security | `app.md`, linking to `networking/gateway-api.md` |
 | 11 | Autoscaling and availability | `app.md` |
 | 12 | Observability | `app.md`, linking to `platform/observability/` |
+| 13 | Field reference (241 lines) | `platform/developer-platform/` — reconciled against the XRD in `Smana/crossplane-configuration`, since the `app-definition.yaml` it was generated from no longer exists here |
+| 14 | Troubleshooting (89 lines) | `guides/troubleshooting.md` (Task 13) — CEL rejection messages and claim-level failures |
 
-- [ ] **Step 2: State the compositions boundary prominently**
+- [x] **Step 2: State the compositions boundary prominently**
 
 `_index.md` must open by making clear that **XRDs and Compositions are not in this repository**. They live in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) and ship as a Crossplane Configuration package; this repository pins a version. Verify the pin:
 
@@ -1351,11 +1414,11 @@ mise exec -- yq '.spec.package' infrastructure/base/crossplane/configuration/con
 
 Quote the pinned version on the page. Also state what this repository still owns: `functions.yaml`, `environmentconfig.yaml`, and the provider config.
 
-- [ ] **Step 3: Trim `docs/crossplane.md` of authoring content**
+- [x] **Step 3: Trim `docs/crossplane.md` of authoring content**
 
 Its §"Composition Functions with KCL" and §"Validation Requirements" describe authoring KCL, which now happens in the other repository. Replace with a short pointer paragraph. This is the content that made `docs/crossplane-kcl-authoring.md` redundant; that file is deleted in Task 17.
 
-- [ ] **Step 4: Move the screenshot placeholders**
+- [x] **Step 4: Move the screenshot placeholders**
 
 ```bash
 git mv docs/assets/app-wizard/README.md website/assets/screenshots/app-wizard/README.md
@@ -1363,7 +1426,7 @@ git mv docs/assets/app-wizard/README.md website/assets/screenshots/app-wizard/RE
 
 The five screenshots are still uncaptured. `app-wizard.md` must reference them through the README rather than linking five broken image paths — that is what the five `.linkcheck-allow` entries were papering over, and Task 17 empties that file.
 
-- [ ] **Step 5: Verify the App Wizard version coupling**
+- [x] **Step 5: Verify the App Wizard version coupling**
 
 ```bash
 grep -rn "tag\|version" apps/platform/app-wizard/app.yaml | head
@@ -1371,7 +1434,7 @@ grep -rn "tag\|version" apps/platform/app-wizard/app.yaml | head
 
 `app-wizard.md` must state that the wizard clones the same tag as the pinned Configuration package, and that the two are bumped together.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1381,7 +1444,7 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 
 Then walk the twelve-row table from Step 1 and confirm every section has landed.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add website/content/docs/platform/developer-platform website/assets/screenshots
@@ -1408,7 +1471,7 @@ common source of confusion about this repository."
 **Interfaces:**
 - Produces: `/docs/platform/observability/`, linked from developer-platform §12 and Task 15's troubleshooting guide.
 
-- [ ] **Step 1: Establish what is actually deployed, before reading the stale documents**
+- [x] **Step 1: Establish what is actually deployed, before reading the stale documents**
 
 ```bash
 ls observability/base/
@@ -1418,11 +1481,11 @@ grep -rn "chart:" observability/base/ | grep -o 'name: .*' | sort -u
 
 Write this inventory down first. It is the ground truth. `docs/observability.md` is nine months old and predates at least the SPEC-006 GenAI observability work and the SPEC-010 CNPG Barman plugin migration.
 
-- [ ] **Step 2: Diff the stale document against the inventory**
+- [x] **Step 2: Diff the stale document against the inventory**
 
 Walk `docs/observability.md`'s component list against Step 1's output. Produce three lists: **still true**, **changed**, **gone**. Only the first migrates unedited; the second is rewritten from the manifests; the third is cut.
 
-- [ ] **Step 3: Split into four pages plus PostgreSQL**
+- [x] **Step 3: Split into four pages plus PostgreSQL**
 
 | Destination | Sources |
 |---|---|
@@ -1432,7 +1495,7 @@ Walk `docs/observability.md`'s component list against Step 1's output. Produce t
 | `dashboards-and-alerts.md` | Grafana, dashboard conventions, alerting |
 | `postgresql.md` | `docs/postgresql-monitoring-architecture.md`, re-verified |
 
-- [ ] **Step 4: Carry the LogsQL syntax rules onto `logs.md`**
+- [x] **Step 4: Carry the LogsQL syntax rules onto `logs.md`**
 
 They are correct, non-obvious, and currently only in `.claude/rules/observability.md` where no human reads them:
 
@@ -1440,7 +1503,7 @@ They are correct, non-obvious, and currently only in `.claude/rules/observabilit
 - After `unpack_json`, fields are prefixed `log.` — `log.level`, `log.trace_id`.
 - Grafana dashboard JSON must use `$${var}` (double dollar) to survive Flux `postBuild` substitution.
 
-- [ ] **Step 5: Re-verify the PostgreSQL monitoring page against SPEC-010**
+- [x] **Step 5: Re-verify the PostgreSQL monitoring page against SPEC-010**
 
 ```bash
 grep -rn "barman\|plugin" infrastructure/base/ observability/base/ 2>/dev/null | grep -i cnpg | head
@@ -1449,7 +1512,7 @@ ls docs/specs/done/2026-Q3/010-cnpg-barman-cloud-plugin/
 
 `docs/postgresql-monitoring-architecture.md` predates the Barman plugin migration. Any backup-related content it carries is suspect and must be checked or cut.
 
-- [ ] **Step 6: Mark what could not be verified**
+- [x] **Step 6: Mark what could not be verified**
 
 Anything that survives Step 2 as "cannot tell" goes inside:
 
@@ -1462,7 +1525,7 @@ indicative; check `observability/base/` for what is actually deployed.
 
 Being explicit about an unverified section is acceptable. Carrying it silently is not.
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1470,7 +1533,7 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 ./scripts/validate-links.sh
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add website/content/docs/platform/observability
@@ -1497,7 +1560,7 @@ double-dollar escape for Grafana variables under Flux postBuild."
 **Interfaces:**
 - Produces: `/docs/platform/ai-platform/`.
 
-- [ ] **Step 1: State both opt-in gates on `_index.md`**
+- [x] **Step 1: State both opt-in gates on `_index.md`**
 
 Two independent gates must both be released for an end-to-end deploy. Verify both:
 
@@ -1508,7 +1571,7 @@ grep -n "TM_LLM_PLATFORM_ENABLED" opentofu/llm-platform/workflows.tm.hcl
 
 Expected: `true`, and the env-var guard present. The page states that the default `terramate script run deploy` and the default Flux reconciliation both leave the cluster LLM-free.
 
-- [ ] **Step 2: Drop the shipped paths from the roadmap**
+- [x] **Step 2: Drop the shipped paths from the roadmap**
 
 `docs/llm-platform-future-paths.md` lists seven upgrade paths. At least two have shipped:
 
@@ -1518,11 +1581,11 @@ ls docs/specs/done/2026-Q3/ | grep -i "inferencepool\|saturation"
 
 Path 4 (re-introduce InferencePool + EPP) shipped as SPEC-004 and SPEC-011. Check each of the seven against `docs/specs/done/` and carry forward only those still open. A roadmap listing delivered work as future work is worse than no roadmap.
 
-- [ ] **Step 3: Verify the autoscaling description**
+- [x] **Step 3: Verify the autoscaling description**
 
 The design is KEDA `ScaledObject`s on leading vLLM saturation signals — the `running/max-num-seqs` ratio and `kv_cache_usage_perc` — with `min=1` by default. The legacy KEDA HTTP add-on is **not** used; the AI Gateway routes directly to each vLLM Service. Verify against the pinned composition version and SPEC-001.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1530,7 +1593,7 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 ./scripts/validate-links.sh
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add website/content/docs/platform/ai-platform
@@ -1552,25 +1615,25 @@ reader assumes the default deploy brings up GPUs."
 **Interfaces:**
 - Produces: `/docs/concepts/`, linked from the landing page's second card.
 
-- [ ] **Step 1: Write `architecture.md`**
+- [x] **Step 1: Write `architecture.md`**
 
 From `README.md` §Architecture Overview. Embeds `platform-overview.svg` (written in Task 16) and narrates the three bands: AWS managed services, the EKS cluster in four tiers, applications and data.
 
-- [ ] **Step 2: Write `progressive-complexity.md`**
+- [x] **Step 2: Write `progressive-complexity.md`**
 
 From `README.md` §Progressive Complexity. The `App` composition's ladder: an image-only claim through to a production application with managed PostgreSQL, Redis/Valkey, S3, autoscaling, HA and zero-trust networking. Show the shortest possible claim and the fullest one, and name what each rung adds.
 
-- [ ] **Step 3: Write `gitops-model.md` and `zero-trust.md`**
+- [x] **Step 3: Write `gitops-model.md` and `zero-trust.md`**
 
 `gitops-model.md` from `docs/gitops.md` §§What is GitOps / Why Flux — the *idea*, with the operational hierarchy staying in `platform/gitops/`.
 
 `zero-trust.md` from `README.md` §Security by Design: private EKS endpoint, Tailscale, default-deny CiliumNetworkPolicy, Gateway API TLS termination, EKS Pod Identity, no deletion permissions for stateful services.
 
-- [ ] **Step 4: Write `technology-choices.md`**
+- [x] **Step 4: Write `technology-choices.md`**
 
 From `docs/technology-choices.md` §§Philosophy, Key Technology Decisions, Alternative Considerations. The stack **table** does not come here — it goes to `reference/technology-stack.md` in Task 14. Cross-link each decision to its ADR where one exists.
 
-- [ ] **Step 5: Write `how-this-is-built.md` — new content**
+- [x] **Step 5: Write `how-this-is-built.md` — new content**
 
 The differentiating page. Covers:
 
@@ -1582,7 +1645,7 @@ The differentiating page. Covers:
 
 Link to real examples in `docs/superpowers/specs/` on GitHub rather than reproducing them.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1590,7 +1653,7 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 ./scripts/validate-links.sh
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add website/content/docs/concepts
@@ -1615,7 +1678,7 @@ engineering process, and here it is a large part of what the repository is."
 **Interfaces:**
 - Produces: `/docs/guides/fork-and-adapt/`, which the landing page's fourth card links to directly.
 
-- [ ] **Step 1: Enumerate every environment-specific value**
+- [x] **Step 1: Enumerate every environment-specific value**
 
 ```bash
 cat opentofu/config.tm.hcl
@@ -1625,7 +1688,7 @@ grep -rn "ogenki.io" --include="*.yaml" --include="*.tf" --include="*.hcl" . | g
 
 Every hit is something a forker must change. `fork-and-adapt.md` is only useful if this list is complete.
 
-- [ ] **Step 2: Write `fork-and-adapt.md`**
+- [x] **Step 2: Write `fork-and-adapt.md`**
 
 Sections, in this order:
 
@@ -1635,11 +1698,11 @@ Sections, in this order:
 4. **What it costs** — the shape of the bill: EKS control plane, node groups plus Karpenter capacity, NAT, the OpenBao instances, S3 and Route53. State that figures are indicative and vary by region and usage rather than inventing precise numbers.
 5. **What to do first** — the deploy path, linking to Get Started.
 
-- [ ] **Step 3: Write `add-a-cloud-provider.md`**
+- [x] **Step 3: Write `add-a-cloud-provider.md`**
 
 ADR-0007's rule made operational. State the rule verbatim: **platform-facing APIs stay cloud-shaped, developer-facing APIs stay cloud-neutral.** Then: what a new provider must implement (network stack, cluster stack, identity binding, secrets store), which abstractions gain a sibling XRD rather than a new field, and which must not change at all (`App`, `SQLInstance` claims). Use the GCP work as the worked example.
 
-- [ ] **Step 4: Write `troubleshooting.md`**
+- [x] **Step 4: Write `troubleshooting.md`**
 
 From `CLAUDE.md` §Common Issues and the `.claude/rules/` files. Must include the traps that are non-obvious and have each cost real time:
 
@@ -1650,11 +1713,11 @@ From `CLAUDE.md` §Common Issues and the `.claude/rules/` files. Must include th
 - **Flux source sharding** — this repository shards Flux controllers; a `GitRepository` or `HelmRepository` placed under an application directory inherits `sharding.fluxcd.io/key=apps`, and the default-shard HelmChart then cannot find it. Sources live under `flux-sources`.
 - Always check network policies first when something times out.
 
-- [ ] **Step 5: Write `add-an-application.md`**
+- [x] **Step 5: Write `add-an-application.md`**
 
 The task-oriented path: choose the App Wizard or hand-written YAML, what the claim needs, how to verify it reconciled. Links into `platform/developer-platform/` rather than repeating it.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1662,7 +1725,7 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 ./scripts/validate-links.sh
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add website/content/docs/guides
@@ -1690,7 +1753,7 @@ requirement, and Flux source sharding."
 **Interfaces:**
 - Produces: `/docs/reference/platform-constitution/`, which `.claude/rules/platform-constitution.md` is re-pointed at in Task 17.
 
-- [ ] **Step 1: Publish the constitution by mounting it, not by moving it**
+- [x] **Step 1: Publish the constitution by mounting it, not by moving it**
 
 **Do not `git mv` this file.** It has 50 inbound references — 37 inside the read-only `docs/specs/`
 archive, which was already rewritten for this exact path two weeks ago — and it is the source of
@@ -1718,7 +1781,7 @@ lastVerified: 2026-08-20
 Change nothing else in the file. GitHub renders the front matter as a small table above the content,
 which is cosmetic and harmless; `.claude/rules` reads the file unchanged.
 
-- [ ] **Step 2: Verify nothing broke and the page renders**
+- [x] **Step 2: Verify nothing broke and the page renders**
 
 ```bash
 ./scripts/validate-links.sh
@@ -1728,7 +1791,7 @@ test -f website/public/docs/reference/platform-constitution/index.html && echo "
 
 Expected: link check exits 0 with all 50 references intact, and the page exists in `public/`.
 
-- [ ] **Step 3: Write `technology-stack.md`**
+- [x] **Step 3: Write `technology-stack.md`**
 
 The table from `docs/technology-choices.md` §Technology Stack, with every version re-verified:
 
@@ -1740,7 +1803,7 @@ grep -rhn "version:" --include="helmrelease*.yaml" infrastructure/base observabi
 
 A version table that is wrong is worse than absent. If a version cannot be resolved from the repository, name the source of truth rather than a number.
 
-- [ ] **Step 4: Write `commands.md`**
+- [x] **Step 4: Write `commands.md`**
 
 From `CLAUDE.md` §Common Commands and §Validation Commands. Every command verified to exist:
 
@@ -1749,7 +1812,7 @@ grep -n 'name *=' opentofu/workflows.tm.hcl opentofu/eks/init/workflows.tm.hcl o
 ls scripts/
 ```
 
-- [ ] **Step 5: Write `repository-layout.md` and `ci-workflows.md`**
+- [x] **Step 5: Write `repository-layout.md` and `ci-workflows.md`**
 
 `repository-layout.md` from `README.md` §Repository Structure, using the `{{< filetree/container >}}` shortcode. Verify against `ls`.
 
@@ -1762,11 +1825,11 @@ ls .github/workflows/
 
 Note that the new `docs-check` and `docs` workflows exist and what they gate.
 
-- [ ] **Step 6: Write `glossary.md`**
+- [x] **Step 6: Write `glossary.md`**
 
 Definitions, each one or two sentences: claim, composition, XR, XRD, EPI, stack, reconciliation, drift, tenant, prefix delegation, GitOps, managed resource, Configuration package, shard.
 
-- [ ] **Step 7: Write `further-reading.md`**
+- [x] **Step 7: Write `further-reading.md`**
 
 The destination for the README's §Learning Resources, which Task 17 removes. Two sections:
 
@@ -1786,7 +1849,7 @@ done
 
 Expected: every line reports `200`.
 
-- [ ] **Step 8: Verify**
+- [x] **Step 8: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1794,7 +1857,7 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 ./scripts/validate-links.sh
 ```
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add website/content/docs/reference docs/platform-constitution.md
@@ -1822,7 +1885,7 @@ drifted."
 **Interfaces:**
 - Produces: `/docs/decisions/000N-*/` URLs, referenced from concepts, guides, get-started and the landing page.
 
-- [ ] **Step 1: Enumerate the inbound links before moving anything**
+- [x] **Step 1: Enumerate the inbound links before moving anything**
 
 ```bash
 git grep -l "decisions/000" -- '*.md' | tee /tmp/adr-inbound.txt | wc -l
@@ -1833,7 +1896,7 @@ git grep -l "decisions/000" -- '*.md' | tee /tmp/adr-inbound.txt | wc -l
 that number: run the command and treat its output as the checklist for Step 4. Every hit is rewired;
 none is allowlisted.
 
-- [ ] **Step 2: Move the files**
+- [x] **Step 2: Move the files**
 
 ```bash
 mkdir -p website/content/docs/decisions
@@ -1848,11 +1911,11 @@ git mv docs/decisions/template.md website/content/docs/decisions/
 git mv docs/decisions/README.md website/content/docs/decisions/_index.md
 ```
 
-- [ ] **Step 3: Add front matter to each ADR**
+- [x] **Step 3: Add front matter to each ADR**
 
 `title` is the ADR's H1 without the `ADR-000N: ` prefix; `linkTitle` is `ADR-000N`; `weight` is the ADR number × 10; `description` is the decision in one sentence; `lastVerified: 2026-08-20`. `_index.md` gets `title: Decisions`, `weight: 60`, and a table of all seven with their status.
 
-- [ ] **Step 4: Rewire every inbound link**
+- [x] **Step 4: Rewire every inbound link**
 
 Work through `/tmp/adr-inbound.txt`. Two cases:
 
@@ -1861,7 +1924,7 @@ Work through `/tmp/adr-inbound.txt`. Two cases:
 
 Do **not** add allowlist entries. `./scripts/validate-links.sh` is the gate.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1872,7 +1935,7 @@ git grep -c "docs/decisions/000" -- '*.md' || echo "no stale ADR paths remain"
 
 Expected: all exit 0, and the final grep finds nothing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A website/content/docs/decisions docs CLAUDE.md .claude
@@ -1902,7 +1965,7 @@ repository path."
 - Consumes: the content pages from Tasks 5–14, which reference these image paths.
 - Produces: the SVG assets the landing page and each platform section embed.
 
-- [ ] **Step 1: Extend the export script**
+- [x] **Step 1: Extend the export script**
 
 `scripts/export-diagrams.sh` already exists from Task 2 and handles `platform-overview` and the
 three `llm-platform` pages. Add the six new names to its (currently empty) `SINGLE_PAGE` array:
@@ -1921,7 +1984,7 @@ SINGLE_PAGE=(
 Change nothing else in the script — the export loop, the PNG special case and the 500 KB size check
 are already correct.
 
-- [ ] **Step 2: Confirm the script still runs against the existing sources**
+- [x] **Step 2: Confirm the script still runs against the existing sources**
 
 ```bash
 ./scripts/export-diagrams.sh
@@ -1930,7 +1993,7 @@ are already correct.
 Expected: it fails on the first new name, because no `.drawio` source exists yet. That failure is the
 signal to write them; it is not a bug in the script.
 
-- [ ] **Step 3: Author the six diagrams**
+- [x] **Step 3: Author the six diagrams**
 
 All six use the **ogenki** preset (`~/.drawio-skill/styles/ogenki.json`) via the drawio skill. Conventions, restated from `docs/architecture/README.md` because they are load-bearing:
 
@@ -1948,7 +2011,7 @@ All six use the **ogenki** preset (`~/.drawio-skill/styles/ogenki.json`) via the
 | `app-claim-expansion` | one `App` claim → Deployment, Service, HTTPRoute, HPA, PDB, CiliumNetworkPolicy, SQLInstance, EPI, Bucket | the App composition's rendered output |
 | `observability-flow` | scrape → vmagent → VictoriaMetrics; Vector → VictoriaLogs; Grafana; alerts → OnCall/Slack | `observability/base/` |
 
-- [ ] **Step 4: Export and check sizes**
+- [x] **Step 4: Export and check sizes**
 
 ```bash
 ./scripts/export-diagrams.sh
@@ -1957,15 +2020,15 @@ ls -lh website/assets/diagrams/ website/static/images/diagrams/
 
 Expected: every new SVG under 500 KB; the script exits 0.
 
-- [ ] **Step 5: Embed each diagram in its page**
+- [x] **Step 5: Embed each diagram in its page**
 
 Each `platform/<domain>/_index.md` opens with its diagram, immediately after the front matter and the first paragraph. Every image needs alt text that describes the mechanism, not the picture — `![Bootstrap stages]` is useless; describe what flows where.
 
-- [ ] **Step 6: Update the architecture index**
+- [x] **Step 6: Update the architecture index**
 
 Rewrite `docs/architecture/README.md`: nine sources, the SVG-for-the-site convention and why the old PNG-only rule applied only to GitHub, and `./scripts/export-diagrams.sh` as the single regeneration command replacing the hand-written per-file invocations.
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -1976,7 +2039,7 @@ cd website && mise exec -- hugo --minify --gc && cd ..
 
 Then run `hugo server` and confirm each diagram renders and zooms in both light and dark themes.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add docs/architecture website/assets/diagrams scripts/export-diagrams.sh website/content
@@ -2003,7 +2066,7 @@ the 500 KB budget."
 **Interfaces:**
 - Consumes: every content page from Tasks 5–15. Nothing may be deleted before its content has landed.
 
-- [ ] **Step 1: Prove every source has a destination before deleting anything**
+- [x] **Step 1: Prove every source has a destination before deleting anything**
 
 ```bash
 for f in docs/*.md; do
@@ -2015,7 +2078,7 @@ done
 
 Any source with zero references is either unmigrated or a deliberate deletion. Resolve each one explicitly — do not delete on the assumption it was handled.
 
-- [ ] **Step 2: Delete the migrated and superseded sources**
+- [x] **Step 2: Delete the migrated and superseded sources**
 
 ```bash
 git rm docs/ai.md docs/app-wizard.md docs/apps-user-guide.md docs/ci-workflows.md \
@@ -2028,7 +2091,7 @@ git rm docs/plans/crossplane-validation-improvements.md  # superseded by SPEC-00
 git rm -r opentofu/openbao/cluster/docs opentofu/openbao/management/docs
 ```
 
-- [ ] **Step 3: Confirm what remains**
+- [x] **Step 3: Confirm what remains**
 
 ```bash
 ls docs/
@@ -2036,7 +2099,7 @@ ls docs/
 
 Expected exactly: `architecture`, `specs`, `superpowers`. Anything else is unfinished migration.
 
-- [ ] **Step 4: Confirm the link checker is already scoped**
+- [x] **Step 4: Confirm the link checker is already scoped**
 
 `scripts/validate-links.sh` was scoped in Task 3 — the moment `website/content` gained pages, the
 checker began false-positiving on Hugo's site-root-relative asset paths. Verify it is still in place
@@ -2059,7 +2122,7 @@ files = [f for f in files if not f.startswith('website/content/')]
 
 Update the script's header comment to name the split.
 
-- [ ] **Step 5: Empty the allowlist**
+- [x] **Step 5: Empty the allowlist**
 
 ```bash
 cat > .linkcheck-allow <<'EOF'
@@ -2072,7 +2135,7 @@ cat > .linkcheck-allow <<'EOF'
 EOF
 ```
 
-- [ ] **Step 6: Shrink the README**
+- [x] **Step 6: Shrink the README**
 
 Target roughly 120 lines. Keep: title and one-paragraph pitch, the architecture PNG, a six-command quickstart, the repository structure, licence and acknowledgements. Replace the entire §Documentation section with:
 
@@ -2102,7 +2165,7 @@ grep -c "blog.ogenki.io" website/content/docs/reference/further-reading.md
 
 Expected: at least 7.
 
-- [ ] **Step 7: Re-point the agent-facing files**
+- [x] **Step 7: Re-point the agent-facing files**
 
 ```bash
 git grep -n "docs/tailscale-gateway-api.md\|docs/opentofu.md\|docs/crossplane.md\|docs/observability.md\|docs/ci-workflows.md\|docs/apps-user-guide.md\|docs/gitops.md\|docs/ingress.md\|docs/ai.md" -- CLAUDE.md '.claude/**'
@@ -2114,7 +2177,7 @@ Rewrite each hit to the published URL, e.g. `docs/gitops.md` → `https://cnref.
 by mount in Task 14, not moved; its repository path is deliberately stable and 50 references depend
 on it. If the grep above returns constitution hits, leave them alone.
 
-- [ ] **Step 8: Verify the whole repository**
+- [x] **Step 8: Verify the whole repository**
 
 ```bash
 ./scripts/validate-links.sh
@@ -2125,7 +2188,7 @@ mise exec -- pre-commit run --all-files
 
 Expected: all exit 0. `validate-links.sh` must report `0 allowlisted`.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add -A
@@ -2150,7 +2213,7 @@ the allowlist is empty for the first time."
 **Interfaces:**
 - Consumes: everything.
 
-- [ ] **Step 1: Full gate run**
+- [x] **Step 1: Full gate run**
 
 ```bash
 cd website && mise exec -- hugo --minify --gc && cd ..
@@ -2162,14 +2225,14 @@ mise exec -- pre-commit run --all-files
 
 Expected: every command exits 0. `validate-manifests.sh` must report `Invalid: 0, Skipped: 0` — this migration touched no manifests, so a regression here means something unintended was changed.
 
-- [ ] **Step 2: Confirm no page shipped unverified**
+- [x] **Step 2: Confirm no page shipped unverified**
 
 ```bash
 missing=$(grep -rL "lastVerified" website/content/docs --include="*.md")
 [ -z "$missing" ] && echo "every page carries lastVerified" || { echo "$missing"; exit 1; }
 ```
 
-- [ ] **Step 3: Test search**
+- [x] **Step 3: Test search**
 
 ```bash
 cd website && mise exec -- hugo server
@@ -2186,16 +2249,16 @@ Search each term and confirm the expected first hit:
 | `fork` | `guides/fork-and-adapt` |
 | `EKS Pod Identity` | `decisions/0002-eks-pod-identity-over-irsa` |
 
-- [ ] **Step 4: Check both themes and mobile**
+- [x] **Step 4: Check both themes and mobile**
 
 With the server running: toggle light and dark on the landing page and on one page from each lane. Confirm links are clearly distinguishable from body text in both — this is the check on Task 2's derived lightness values. Then narrow the window to 375 px and confirm the sidebar collapses, no horizontal scroll appears, and diagrams scale down.
 
-- [ ] **Step 5: Lighthouse**
+- [x] **Step 5: Lighthouse**
 
 Run Lighthouse against `http://localhost:1313`.
 Expected: accessibility ≥ 95, performance ≥ 90. The most likely accessibility failure is missing or unhelpful image alt text — fix on the page, not by lowering the bar.
 
-- [ ] **Step 6: Confirm the multi-cloud stubs hold the line**
+- [x] **Step 6: Confirm the multi-cloud stubs hold the line**
 
 ```bash
 grep -rln "aws\|AWS\|EKS" website/content/docs/platform/gitops website/content/docs/platform/observability website/content/docs/concepts
@@ -2203,7 +2266,7 @@ grep -rln "aws\|AWS\|EKS" website/content/docs/platform/gitops website/content/d
 
 Each hit must be a deliberate reference to the current implementation, not an assumption baked into a page that ADR-0007 says should be cloud-neutral. Fix any that are not.
 
-- [ ] **Step 7: Open the final pull request**
+- [x] **Step 7: Open the final pull request**
 
 This is PR 3 of three. PRs 1 and 2 are already merged; see *Three pull requests* in Global
 Constraints for what each carried.
@@ -2249,13 +2312,25 @@ single-file Hugo mount, because 50 files reference its repository path and
 
 ## Before merge
 
-- [ ] DNS: `cnref.ogenki.io CNAME smana.github.io` in the public `ogenki.io` zone
-- [ ] Repository Settings → Pages → Source = GitHub Actions
+- [x] DNS: `cnref.ogenki.io CNAME smana.github.io` in the public `ogenki.io` zone
+
+GitHub Pages is already enabled with source = GitHub Actions (done in PR 1). Once the DNS record
+resolves, point Pages at the domain — `website/static/CNAME` does **not** do this on its own:
+
+```bash
+gh api repos/Smana/cloud-native-ref/pages -X PUT -f cname=cnref.ogenki.io
+```
+
+Order matters: setting the domain before DNS resolves takes the site offline at *both* URLs,
+because GitHub stops serving the default project path once a domain is set. Until then the site
+is served at `https://blog.ogenki.io/cloud-native-ref/` (the account-level Pages domain plus the
+project path) and renders unstyled there, because `baseURL` is `https://cnref.ogenki.io/` so Hugo
+emits root-relative asset paths. Expected, and self-correcting once the domain is right.
 BODY
 )"
 ```
 
-- [ ] **Step 8: After merge, confirm the deploy**
+- [x] **Step 8: After merge, confirm the deploy**
 
 ```bash
 gh run list --workflow=docs.yml --limit 1

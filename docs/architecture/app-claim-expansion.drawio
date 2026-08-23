@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="30.3.6">
+  <diagram name="App claim expansion" id="app-claim-expansion">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" page="1" pageWidth="1580" pageHeight="1040" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="__t" value="One claim in, a whole application out" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="30" width="1100" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="__ts" value="This is what the platform is for. A developer writes the box on the left; the App composition renders everything to the right of it, security defaults included. Example: apps/base/complete/app.yaml." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="62" width="1300" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="claim" value="&lt;b&gt;App — cloud.ogenki.io/v1alpha1&lt;/b&gt;&#xa;name: xplane-image-gallery · ns: apps&#xa;&#xa;  image.repository / tag&#xa;  replicas: 2 · resources&#xa;  service.port: 8080&#xa;  env / envFrom&#xa;&#xa;  route.enabled: true&#xa;  autoscaling.enabled: true&#xa;  pdb.enabled: true&#xa;  networkPolicies.enabled&#xa;  externalSecrets[]&#xa;  observability.metrics.enabled&#xa;  observability.alertingRules.groups[]&#xa;&#xa;  sqlInstance.enabled: true&#xa;  kvStore.enabled: true&#xa;  s3Bucket.enabled: true" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="150" width="330" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="xp" value="&lt;b&gt;Crossplane&lt;/b&gt;&#xa;Composition App, pipeline step&#xa;function-kcl. XRDs and compositions&#xa;ship from Smana/crossplane-configuration&#xa;as a Configuration package — not from&#xa;this repository." style="shape=label;rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;image=data:image/png,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABmJLR0QA/wD/AP+gvaeTAAAEqUlEQVR4nO2aXWgcVRiG3+9sprtJ96+BND+7bQ3+IKSFlFZ7oUK1jaYiURGxoki2ifYieKlQS2QsahAEBUG8UBRB8E6sFEEQLyQUlUqzuDFboW4roYnVkKSbZLK7M8eLuHE3cevuzDdntrjPZc6c9/ved87s/OQADRo0+D9DKost6iduExADFnAfATsBtP89NCuBy4Lk16YQpyOjr/6iqiclASycGj0gLOs1AIeqm0HjUpgnwi+PfetqY3A5AKnrgSXk35VAws50AB8EoT1Pum5w91bEtQCWdL3LQv40gH1OdCTkDz4ND289+foVptbKEG6IXn3jxZCF/Bk4NA8ABLrDLODz3795PMjQ2ibYA5AS5F/RPgXQyySZC/ReoLbwzCdMemWwB5B95aUnCHiQSS7n702f1+Iz+wE5IH+85zEm3XVYfwOkrgeyKKQBuZNBbs38jpk7SypkEA7fTrd+ucqgD4B5BWRReMg98wBANyGb7WfQX4f5ErCeZBCpYL5YAhw11mEOgA47FLi+eQAg2eewRhlsAUhdbwEQdiDx3+YBQKJVTt0VclCnDLYAlrVcxMH06swXyVoxB7XKYAtA5E3N5tScf286WbV5ABA+v81am6W4hIBmO5NK7vM1YAq+E8clZOTztT5T1LbsS7G71v4FV94FqsC+eWa8CKBuzAPqA6gr84DaAOrOPAA0KaqzdquL85ifz2/lkAGgZgXYu9VVIIVY5hkaZnuLdXsFsC77JMUzz1IiapGQHHqAuyuA1XwKscxzNBiRRFEOvSJurQAjsHdqoik+e4BDLIVYZkgkIhaJbRx6pbixAnL+3nTyRjAP8AfAvuzdNA8wXgKBZgO+3ZduKPMAZwCPTkgYBov5nxC/OCwGt7ltHuC8BFaXWe7NKYplVJkH1D0JVsUkxaeHaND1ZV9K3QSQpm4M01Mhi4ST74o1UxcBpKkbI+IoClBrHvDug8g6RfOLnJ95asDTALw2D3gYQD2YB1gDoHy1R6bRjRGyb94ywbZjhC+AZVyr5rCfadf8iO8oFsn+mfcHzFnbkzfAFgDdPX4NwOT1jklRLHOcnvY7WfZSyuTZnv452wIb4P0NIPlOpaEUxTJDlIgY5LP1H5QiQlDFGrb0OMWwoL0P0NmNf05S/NIxOhZleMIbb5nTPnKoUQb7LjH5/cEO+ApfAdgD/HPmGcxPCJ944Ls9h9muf8ClbXIydTAIwxxLoevIkEi0OjSfA/DesqadTPXcm+XqsYirGyUf+fXD6PRibB8s7IBARBKJI/KP+3fn5/pbVpc2Hf9Zy663k77WyySlRRDzgPmbGRTnzt3ct+BWj0r3CgPAyvmxUQvWqatXZmCsrJSNRSOhgY5Db32hsh9PngQFEdo6OxAIOLoh8PTiWWEitHW1w9/sbQievgwJEtje2Y4tfrYNH7X34FnlYgMk0N7V6VkIngcAAEKshaA1bflTeW3VBSshhEAwFJlXXld1wXpDfQCEQqUh6TNNla0AHgQgJaYqDBn+/PaLSpuBBwE0a6tnJJDcNCDxJu0/XvVXJS6UB0A9es6E1gfQxwCmQZiUwAuBC7foqntp0KBBg78AFVZ+7mwdr18AAAAASUVORK5CYII=;imageAlign=left;imageVerticalAlign=middle;imageWidth=24;imageHeight=24;spacingLeft=42;align=left;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="410" y="254" width="300" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="claim" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.28;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="claim" target="xp">
+          <mxGeometry relative="1" as="geometry">
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="naming" value="Every rendered name is prefixed xplane-. The prefix is load-bearing: the Crossplane controller's IAM policies are scoped to xplane-* resources, so a rename is a delete-and-recreate." style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="40" y="592" width="330" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="nodefault" value="&lt;b&gt;No claim writes a security context.&lt;/b&gt; runAsNonRoot, readOnlyRootFilesystem, dropped capabilities and seccompProfile: RuntimeDefault are composition defaults, not fields a developer remembers." style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="410" y="592" width="300" height="96" as="geometry" />
+        </mxCell>
+        <mxCell id="g1" value="Always, for every App" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#94A3B8;verticalAlign=top;fontStyle=1;fontFamily=Helvetica;fontSize=13;fontColor=#1E293B;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="760" y="140" width="780" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="dep" value="&lt;b&gt;Deployment&lt;/b&gt;&#xa;non-root, read-only rootfs" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="780" y="172" width="230" height="58" as="geometry" />
+        </mxCell>
+        <mxCell id="svc" value="&lt;b&gt;Service&lt;/b&gt;&#xa;ClusterIP, port http 8080" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="172" width="230" height="58" as="geometry" />
+        </mxCell>
+        <mxCell id="sa" value="&lt;b&gt;ServiceAccount&lt;/b&gt;&#xa;carries the Pod Identity" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="172" width="230" height="58" as="geometry" />
+        </mxCell>
+        <mxCell id="g2" value="Rendered only when you set the field named under it" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#94A3B8;verticalAlign=top;fontStyle=1;fontFamily=Helvetica;fontSize=13;fontColor=#1E293B;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="760" y="280" width="780" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="rt" value="&lt;b&gt;HTTPRoute&lt;/b&gt;&#xa;route.enabled" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="780" y="312" width="230" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="hpa" value="&lt;b&gt;HorizontalPodAutoscaler&lt;/b&gt;&#xa;autoscaling.enabled" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="312" width="230" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="pdb" value="&lt;b&gt;PodDisruptionBudget&lt;/b&gt;&#xa;pdb.enabled" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="312" width="230" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="cnp" value="&lt;b&gt;CiliumNetworkPolicy&lt;/b&gt;&#xa;networkPolicies.enabled" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="780" y="404" width="230" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="es" value="&lt;b&gt;ExternalSecret&lt;/b&gt;&#xa;externalSecrets[]" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="404" width="230" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="vms" value="&lt;b&gt;VMServiceScrape&lt;/b&gt;&#xa;observability.metrics" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="404" width="230" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="vmr" value="&lt;b&gt;VMRule&lt;/b&gt;&#xa;observability.alertingRules" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="780" y="496" width="230" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" value="&lt;b&gt;Bucket + BucketVersioning&#xa;+ BucketPublicAccessBlock&lt;/b&gt;&#xa;s3Bucket.enabled" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="496" width="230" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="e20" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="xp" target="g1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="735" y="195" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e21" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="xp" target="g2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="735" y="345" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g3" value="Three of them are nested claims, and each expands again" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#94A3B8;verticalAlign=top;fontStyle=1;fontFamily=Helvetica;fontSize=13;fontColor=#1E293B;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="700" width="1500" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="sql" value="&lt;b&gt;SQLInstance&lt;/b&gt;&#xa;sqlInstance.enabled" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="736" width="210" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="sql_r" value="&lt;b&gt;CloudNativePG Cluster&lt;/b&gt;&#xa;postgresql.cnpg.io/v1 — 2 instances,&#xa;backup to S3 via the Barman plugin" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="400" y="736" width="330" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="sql_r2" value="&lt;b&gt;GitRepository + Kustomization&#xa;+ AtlasMigration&lt;/b&gt;&#xa;only when atlasSchema is set" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="800" y="736" width="330" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="e26" value="renders" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="sql" target="sql_r">
+          <mxGeometry relative="1" as="geometry">
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e27" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="sql_r" target="sql_r2">
+          <mxGeometry relative="1" as="geometry">
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="kv" value="&lt;b&gt;KVStore&lt;/b&gt;&#xa;kvStore.enabled" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="816" width="210" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="kv_r" value="&lt;b&gt;HelmRelease&lt;/b&gt;&#xa;the official valkey-helm chart&#xa;(standalone, ephemeral by default)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="400" y="816" width="330" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="kv_r2" value="&lt;b&gt;REDIS_URL is injected&lt;/b&gt;&#xa;redis://&amp;lt;name&amp;gt;-valkey:6379,&#xa;unless the claim sets it" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="800" y="816" width="330" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="e31" value="renders" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="kv" target="kv_r">
+          <mxGeometry relative="1" as="geometry">
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e32" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="kv_r" target="kv_r2">
+          <mxGeometry relative="1" as="geometry">
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="epi" value="&lt;b&gt;EPI&lt;/b&gt;&#xa;s3Bucket.enabled" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="896" width="210" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="epi_r" value="&lt;b&gt;IAM Role + inline policy&lt;/b&gt;&#xa;scoped to that one bucket ARN,&#xa;not to the account" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="400" y="896" width="330" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="epi_r2" value="&lt;b&gt;PodIdentityAssociation&lt;/b&gt;&#xa;binds the role to the ServiceAccount&#xa;— no static keys, ever" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="800" y="896" width="330" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="e36" value="renders" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="epi" target="epi_r">
+          <mxGeometry relative="1" as="geometry">
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e37" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="epi_r" target="epi_r2">
+          <mxGeometry relative="1" as="geometry">
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wired" value="&lt;b&gt;And the wiring is done for you.&lt;/b&gt; DATABASE_URL points at the CloudNativePG connection secret for the first database, REDIS_URL at the Valkey Service, and the bucket name is derived as &amp;lt;region&amp;gt;-ogenki-&amp;lt;app-name&amp;gt;. A developer never types an xplane-* name or a secretKeyRef." style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="748" width="340" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="__lg" value="Legend" style="text;html=1;fontFamily=Helvetica;fontSize=12;fontStyle=1;fontColor=#1E293B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="898" width="340" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgs0" value="" style="rounded=0;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="922" width="26" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgl0" value="workload / routing object" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="1214" y="920" width="306" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgs1" value="" style="rounded=0;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="942" width="26" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgl1" value="security — policy, identity, secret" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="1214" y="940" width="306" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgs2" value="" style="rounded=0;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="962" width="26" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="__lgl2" value="data service" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="1214" y="960" width="306" height="16" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
