@@ -181,7 +181,10 @@ Each of these cost real time and is invisible until it bites.
 2. **Teardown leaks, in three different places**, each breaking a *different* part
    of the next rebuild:
    - **Route53 records** — 20 stale external-dns records blocked the zone
-     replacement with `HostedZoneNotEmpty`.
+     replacement with `HostedZoneNotEmpty`. **Refined at end of day:** running
+     `scripts/eks-prepare-destroy.sh` first PREVENTS this — the clean teardown
+     left the zone with only its NS and SOA. The morning's leak came from a
+     teardown that bypassed the script. Use it; it works.
    - **CNPG WAL archives** — non-empty live prefixes made both recovering
      databases `unrecoverable`. The bucket still holds archives from earlier
      rebuilds (`harbor-20241111`, `zitadel-20260505`, `zitadel-20260719`).
