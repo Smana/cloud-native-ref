@@ -1,9 +1,13 @@
 data "terraform_remote_state" "init" {
-  backend = "gcs"
+  backend = "s3"
 
   config = {
-    bucket = "ogenki-435905-tfstate"
-    prefix = "cloud-native-ref/gcp/gke/init"
+    bucket = "demo-smana-remote-backend"
+    key    = "cloud-native-ref/gcp/gke/init/opentofu.tfstate"
+    # Literal, NOT var.region: this is the S3 bucket's region, while var.region
+    # in this stack is a GCP region (europe-west4). The AWS stacks pass
+    # var.region here because for them the two happen to coincide.
+    region = "eu-west-3"
   }
 }
 

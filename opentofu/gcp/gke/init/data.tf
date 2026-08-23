@@ -15,10 +15,14 @@ data "google_project" "this" {
 # before this cluster exists). Consuming its state keeps one source of truth: a
 # secondary range renamed here rather than there would force cluster replacement.
 data "terraform_remote_state" "network" {
-  backend = "gcs"
+  backend = "s3"
 
   config = {
-    bucket = "ogenki-435905-tfstate"
-    prefix = "cloud-native-ref/gcp/network"
+    bucket = "demo-smana-remote-backend"
+    key    = "cloud-native-ref/gcp/network/opentofu.tfstate"
+    # Literal, NOT var.region: this is the S3 bucket's region, while var.region
+    # in this stack is a GCP region (europe-west4). The AWS stacks pass
+    # var.region here because for them the two happen to coincide.
+    region = "eu-west-3"
   }
 }
