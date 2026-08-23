@@ -29,12 +29,6 @@ variable "region" {
   default     = "europe-west4"
 }
 
-variable "zone" {
-  description = "Zone for the cluster and its static node pool. A single zone mirrors the AWS bootstrap node group's single-subnet choice and avoids cross-zone egress charges"
-  type        = string
-  default     = "europe-west4-a"
-}
-
 variable "cluster_name" {
   description = "GKE cluster name"
   type        = string

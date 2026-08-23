@@ -40,9 +40,6 @@ variable "search_domains" {
   type        = list(string)
 }
 
-#tflint-ignore: terraform_unused_declarations
-variable "split_dns_domains" {
-  description = "Not used here. Split-DNS is per-domain and therefore owned by each cloud's network stack, where the resolver address lives"
-  type        = map(string)
-  default     = {}
-}
+# No split_dns_domains input here on purpose: split-DNS is per-domain, so each
+# cloud's network stack owns its own google_dns_policy / Route53 resolver, which
+# is where the resolver address actually lives.

@@ -16,9 +16,8 @@
 #                                             route pod traffic natively
 #   eni: block           REMOVED              no AWS ENI concept on GCP
 #   cilium-cni-config.tf REMOVED              prefix delegation has no counterpart
-#   devices / egressMasqueradeInterfaces
-#                        eth+ -> ens+         GCE NIC naming, not EC2's
 #   encryption           REMOVED              see below
+#   8 datapath settings  REMOVED              see "DELIBERATELY OMITTED" below
 #   cni.binPath          ADDED                see below
 #   ipv4NativeRoutingCIDR
 #                        ADDED                see below
@@ -51,24 +50,14 @@
 # backends split across two nodes, with `Encryption: Disabled`.
 # Do not add WireGuard here without new evidence.
 
-# GKE COS nodes name the primary NIC `eth0`, NOT `ens4`.
-#
-# Plain GCE VMs on recent images do use ens4, which is where the original `ens+`
-# came from -- but GKE's Container-Optimized OS does not. Verified on a live node:
-# `ls /sys/class/net` -> cilium_net, docker0, eth0, lo. With `ens+` the device
-# selector matched nothing.
-#
-# The AWS values were already correct here; translating eth->ens was an
-# unforced error, and the Phase 1 gate never caught it because the gate installed
-# Cilium with --set flags only and let the chart auto-detect devices.
-#
 # ─── DATAPATH SETTINGS DELIBERATELY OMITTED ─────────────────────────────────────
 #
 # This file previously carried five more datapath settings, translated across from
 # the AWS values. Every one of them broke on GKE, in sequence:
 #
 #   devices: ens+ / egressMasqueradeInterfaces: ens4
-#       GKE COS names the NIC eth0. `ens+` matched nothing.
+#       GKE COS names the NIC eth0, not ens4. Verified on a live node:
+#       `ls /sys/class/net` -> cilium_net, docker0, eth0, lo. `ens+` matched nothing.
 #   installNoConntrackIptablesRules: true
 #       -> "requires the agent to run with enable-bpf-masquerade"
 #   bpf.masquerade: true  (added to satisfy the above)
@@ -112,11 +101,6 @@ ipam:
   mode: kubernetes
 
 kubeProxyReplacement: true
-
-# loadBalancer.mode and socketLB.hostNamespaceOnly are omitted — see the
-# "DATAPATH SETTINGS DELIBERATELY OMITTED" note above. Both are datapath-
-# affecting, neither was exercised by the Phase 1 gate, and this file is
-# deliberately back at the gate-proven baseline.
 
 operator:
   resources:

@@ -121,4 +121,15 @@ resource "helm_release" "flux_instance" {
 
   wait    = true
   timeout = 600
+
+  # Same orphan-release protection as helm_release.flux_operator above, and as
+  # BOTH AWS releases carry. This was missing here purely because the resource was
+  # copy-pasted from AWS before that fix was read across -- exactly the drift that
+  # duplicating a bootstrap across two clouds produces.
+  #
+  # Without it a failed install leaves a `failed` revision that OpenTofu does not
+  # record in state, so every later apply fails with "cannot re-use a name that is
+  # still in use" until the release is uninstalled by hand.
+  atomic          = true
+  cleanup_on_fail = true
 }

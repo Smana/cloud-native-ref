@@ -1,7 +1,6 @@
 env        = "dev"
 project_id = "ogenki-435905"
 region     = "europe-west4"
-zone       = "europe-west4-a"
 
 cluster_name    = "gcp-mycluster-0"
 release_channel = "REGULAR"

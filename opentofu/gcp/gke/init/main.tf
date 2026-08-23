@@ -47,7 +47,7 @@ module "gke" {
   # and bills node-to-node traffic across zones.
   regional = false
   region   = var.region
-  zones    = [var.zone]
+  zones    = [local.net.zone]
 
   network           = local.net.network_name
   subnetwork        = local.net.nodes_subnetwork_name
@@ -147,7 +147,7 @@ module "gke" {
       # breadth coming later from ComputeClass rather than on-demand fallback.
       spot = true
 
-      node_locations = var.zone
+      node_locations = local.net.zone
       min_count      = var.node_count
       max_count      = var.node_max_count
       initial_count  = var.node_count

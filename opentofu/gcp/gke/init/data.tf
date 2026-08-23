@@ -1,7 +1,3 @@
-# The network stack owns the VPC, the secondary range NAMES that GKE binds to,
-# and the control-plane CIDR (which the subnet router must advertise before this
-# cluster exists). Consuming its state keeps one source of truth: a secondary
-# range renamed here rather than there would force cluster replacement.
 # The project NUMBER, derived rather than hand-maintained.
 #
 # It was previously a required variable duplicating a value GCP already knows.
@@ -14,6 +10,10 @@ data "google_project" "this" {
   project_id = var.project_id
 }
 
+# The network stack owns the VPC, the secondary range NAMES that GKE binds to,
+# the zone, and the control-plane CIDR (which the subnet router must advertise
+# before this cluster exists). Consuming its state keeps one source of truth: a
+# secondary range renamed here rather than there would force cluster replacement.
 data "terraform_remote_state" "network" {
   backend = "gcs"
 
