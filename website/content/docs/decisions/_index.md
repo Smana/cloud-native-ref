@@ -33,5 +33,6 @@ amendment requires an ADR to document the change.
 | [0014]({{< relref "/docs/decisions/0014-opentofu-over-terraform.md" >}}) | Use OpenTofu rather than Terraform | Accepted | 2026-08-21 |
 | [0015]({{< relref "/docs/decisions/0015-gateway-api-over-ingress-nginx.md" >}}) | Use Gateway API rather than Ingress | Accepted | 2026-08-21 |
 | [0016]({{< relref "/docs/decisions/0016-kyverno-over-gatekeeper.md" >}}) | Use Kyverno for admission policy | Accepted | 2026-08-21 |
+| [0017]({{< relref "/docs/decisions/0017-multi-cloud-dns-naming.md" >}}) | Multi-cloud DNS naming — cloud-agnostic public, cloud-pinned private | Accepted | 2026-08-23 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

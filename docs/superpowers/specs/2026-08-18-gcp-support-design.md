@@ -426,7 +426,13 @@ Falsifiable, verified against a live cluster.
 **Open questions**
 
 - GCP region and zone topology; zonal vs regional control plane (material cost difference).
-- Private DNS zone naming — `priv.gcp.ogenki.io` sibling, or one zone shared across clouds?
+- ~~Private DNS zone naming — sibling zone, or one zone shared across clouds?~~ **RESOLVED
+  2026-08-23, see [ADR-0017](../../../website/content/docs/decisions/0017-multi-cloud-dns-naming.md).**
+  A shared zone was never possible: a private zone is bound to one cloud's VPC resolver, so
+  each cloud must host its own regardless of which is nominated "home". Sibling zones, renamed
+  on both sides for symmetry — `priv.aws.ogenki.io` and `priv.gcp.ogenki.io`. Public stays
+  cloud-agnostic under `cloud.ogenki.io` on purpose, so a public endpoint can move or fail over
+  between clouds without breaking its contract.
 - Node image type: `cos_containerd` (GKE default) or `ubuntu_containerd` (more familiar kernel for
   debugging an unsupported path)?
 - GCP machine families for the `default`/`io` equivalents; retained static pool size; cluster
