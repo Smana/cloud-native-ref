@@ -9,27 +9,45 @@ variable "region" {
   default     = "eu-west-3"
 }
 
+# The three versions below are deliberately REQUIRED — no defaults.
+#
+# `opentofu/config.tm.hcl` is the single source of truth, and the deploy script
+# in `opentofu/eks/init/workflows.tm.hcl` passes all three explicitly with
+# `-var=`. A default here would be a second copy of a version that lives
+# somewhere else, consulted only when someone runs `tofu` directly in this
+# stack.
+#
+# That is exactly what happened: the defaults said Cilium 1.19.5 and Flux
+# 0.53.0 while config.tm.hcl had moved to 1.20.0 and 0.55.0, so a direct
+# `tofu apply` here would have quietly planned a CNI *downgrade* on a running
+# cluster. The old comment asked for manual sync discipline to prevent it; that
+# discipline failed silently, because nothing checks it.
+#
+# Required variables make the drift impossible instead of merely discouraged:
+# the direct path now fails loudly with "No value for required variable" rather
+# than planning against a stale version. To use it, pass the values from the
+# source of truth, e.g.
+#
+#   tofu plan -var-file=variables.tfvars \
+#     -var="cilium_version=$(hcl2json ../../config.tm.hcl | jq -r .globals.cilium_version)"
+#
+# or simply run the stack the way it is meant to be run:
+#
+#   cd opentofu/eks/init && terramate script run deploy
+
 variable "cilium_version" {
-  description = "Cilium Helm chart version"
+  description = "Cilium Helm chart version. Required: sourced from globals.cilium_version in opentofu/config.tm.hcl."
   type        = string
-  # Default mirrors `cilium_version` in opentofu/config.tm.hcl. The
-  # global Terramate generator passes -var=cilium_version=... at run
-  # time, so the local default is only consulted when running
-  # `tofu plan` directly in this stack — keep the two in sync to
-  # avoid surprises in that path.
-  default = "1.19.5"
 }
 
 variable "flux_operator_version" {
-  description = "Flux Operator Helm chart version"
+  description = "Flux Operator Helm chart version. Required: sourced from globals.flux_operator_version in opentofu/config.tm.hcl."
   type        = string
-  default     = "0.53.0"
 }
 
 variable "flux_instance_version" {
-  description = "Flux Instance Helm chart version"
+  description = "Flux Instance Helm chart version. Required: sourced from globals.flux_instance_version in opentofu/config.tm.hcl."
   type        = string
-  default     = "0.53.0"
 }
 
 variable "flux_sync_url" {
