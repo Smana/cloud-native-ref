@@ -96,20 +96,26 @@ resource "google_service_account" "tailscale_subnet_router" {
   project      = var.project_id
 }
 
-# Two accepted findings on this instance:
+# Two accepted findings on this instance, each raised by BOTH scanners, so each
+# needs a directive in both dialects:
 #
-#   GCP-0043 (IP forwarding) -- IP forwarding IS the function of a subnet router.
-#     Without can_ip_forward the VPC drops every forwarded packet.
-#   GCP-0033 (no CMEK on the boot disk) -- Google-managed encryption is the platform
-#     default, and the disk holds no state: the auth key arrives via metadata and the
-#     routes are re-derived on every boot. A CMEK adds a key to rotate for no gain.
+#   IP forwarding (trivy AVD-GCP-0043 / checkov CKV_GCP_36) -- IP forwarding IS
+#     the function of a subnet router. Without can_ip_forward the VPC drops every
+#     forwarded packet.
+#   No customer-supplied key on the boot disk (AVD-GCP-0033 / CKV_GCP_38) --
+#     Google-managed encryption is the platform default, and the disk holds no
+#     state: the auth key arrives via metadata and the routes are re-derived on
+#     every boot. A customer key adds something to rotate for no gain.
 #
-# The directives below must stay contiguous with the resource -- trivy attaches an
+# The trivy directives must stay contiguous with the resource -- trivy attaches an
 # inline ignore to the block starting on the next line, so a prose comment in
-# between silently voids it.
+# between silently voids it. The checkov ones go INSIDE the block instead, which
+# is where checkov looks; do not "tidy" them to sit together.
 #trivy:ignore:AVD-GCP-0043
 #trivy:ignore:AVD-GCP-0033
 resource "google_compute_instance" "tailscale_subnet_router" {
+  # checkov:skip=CKV_GCP_36:Accepted -- see the note above this resource.
+  # checkov:skip=CKV_GCP_38:Accepted -- see the note above this resource.
   project      = var.project_id
   name         = var.tailscale_config.subnet_router_name
   machine_type = var.tailscale_config.machine_type
@@ -196,8 +202,8 @@ resource "google_compute_instance" "tailscale_subnet_router" {
   # router that never joined the tailnet.
   #
   # Third instance in this stack of a dependency that is real in the API but
-  # invisible to the graph; see also google_project_iam_member.crossplane and the
-  # subnetwork reference above.
+  # invisible to the graph; see also the subnetwork reference above, and the
+  # identity-pool trap recorded in opentofu/gcp/gke/init/iam.tf.
   depends_on = [module.cloud_nat]
 }
 

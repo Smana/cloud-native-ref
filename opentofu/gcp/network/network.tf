@@ -5,6 +5,9 @@
 # and the AWS bootstrap node group is likewise pinned to a single subnet "for
 # costs reasons".
 module "vpc" {
+  # checkov:skip=CKV_TF_1:Pinned by version constraint, not commit hash, matching
+  # every other registry module in this repo including the AWS ones. Changing it
+  # here alone would be inconsistent without being safer.
   source  = "terraform-google-modules/network/google"
   version = "~> 18.1"
 

@@ -6,6 +6,7 @@
 # for no benefit while both clusters are independent. external-dns on the GCP
 # cluster owns records under this zone only.
 module "private_dns" {
+  # checkov:skip=CKV_TF_1:Version-pinned like every other registry module here.
   source  = "terraform-google-modules/cloud-dns/google"
   version = "~> 7.0"
 

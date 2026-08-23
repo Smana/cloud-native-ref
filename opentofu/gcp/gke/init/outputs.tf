@@ -39,10 +39,9 @@ output "workload_pool" {
   value       = module.gke.identity_namespace
 }
 
-output "crossplane_principal" {
-  description = "Crossplane's Workload Identity principal. Surfaced so the NUMBER/ID split is visible in the plan output rather than discovered as a permission error that points nowhere"
-  value       = local.crossplane_principal
-}
+# No crossplane_principal output: the binding it described was removed because
+# Crossplane is not deployed on GCP at all. See iam.tf for the full reasoning and
+# for what slice 5 has to get right when it creates its own.
 
 # gke/configure needs this for Cilium's ipv4NativeRoutingCIDR, which is MANDATORY
 # under routingMode=native + ipam.mode=kubernetes. AWS ENI mode derives it; GKE

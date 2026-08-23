@@ -5,6 +5,7 @@
 #
 # Nodes have no external IPs, so without this they cannot pull a public image.
 module "cloud_nat" {
+  # checkov:skip=CKV_TF_1:Version-pinned like every other registry module here.
   source  = "terraform-google-modules/cloud-nat/google"
   version = "~> 7.0"
 

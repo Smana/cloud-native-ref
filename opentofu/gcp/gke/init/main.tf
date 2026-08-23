@@ -34,6 +34,7 @@ locals {
 #trivy:ignore:AVD-GCP-0060
 #trivy:ignore:AVD-GCP-0057
 module "gke" {
+  # checkov:skip=CKV_TF_1:Version-pinned like every other registry module here.
   source  = "terraform-google-modules/kubernetes-engine/google//modules/private-cluster"
   version = "~> 44.3"
 
