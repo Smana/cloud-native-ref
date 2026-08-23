@@ -1,0 +1,98 @@
+# Documentation claims that must stay true to configuration.
+#
+# Four defects found on 2026-08-21/22 were the same shape: a page asserted
+# something the manifests contradicted, and every automated gate passed. Links
+# resolved, schemas validated, the site built. Nothing checks whether prose is
+# *true*, because nothing can — in general. This file makes it checkable for
+# the specific claims worth pinning.
+#
+# Each entry reads a value from the source of truth and requires the pages that
+# discuss it to agree. The check is bidirectional on purpose: change `mode` in
+# variables.tfvars and this fails until the docs follow; reword the docs away
+# from the committed value and it fails too.
+#
+# Schema
+#   id             stable identifier, used in failure output
+#   why            why this claim is worth pinning — shown when it fails
+#   source.file    the file that decides the answer
+#   source.pattern Python regex; group 1 is captured as {value}
+#                  omit to assert only that the file exists
+#   pages          pages whose prose depends on that value
+#   must_contain   pattern each page must match; {value} interpolates the
+#                  capture, and is regex-escaped before substitution
+#   must_not_contain
+#                  patterns no page may match — for phrasings known to be
+#                  wrong. Prefer must_contain: asserting the correct claim is
+#                  present is stronger than asserting a wrong one is absent,
+#                  and does not break when a fix keeps the words and adds a
+#                  qualifier.
+#
+# Adding an entry is cheap. Do it when a page states something a reader would
+# act on that lives in exactly one place in the repo.
+
+claims:
+  - id: openbao-cluster-mode
+    why: >-
+      `mode` decides node count AND storage backend — dev is one node on the
+      `file` backend, ha is five on Raft. Four pages described the ha shape as
+      though it were deployed while variables.tfvars committed dev, so a reader
+      assessing availability of the secrets store was actively misled.
+    source:
+      file: opentofu/openbao/cluster/variables.tfvars
+      pattern: '^mode\s*=\s*"([a-z]+)"'
+    # Per-page patterns, not a shared one. These pages deliberately document
+    # BOTH modes, so `mode = "{value}"` alone matches whichever value is read
+    # and passes even when the committed mode changes underneath — verified:
+    # flipping variables.tfvars to "ha" did not fail the shared pattern. Each
+    # entry anchors the value to that page's own marker of which mode ships.
+    pages:
+      - path: website/content/docs/platform/foundations/aws.md
+        must_contain: '`variables\.tfvars` sets\s+`mode = "{value}"`'
+        must_not_contain:
+          - '`mode = "(?!{value})[a-z]+"` \(committed\)'
+      - path: website/content/docs/platform/security/openbao.md
+        must_contain: 'as committed \(`mode = "{value}"`\)'
+      - path: website/content/docs/get-started/aws/_index.md
+        must_contain: 'As committed,[^`]*`[^`]*variables\.tfvars` sets\s+`mode = "{value}"`'
+
+  - id: karpenter-max-pods
+    why: >-
+      Pages comparing per-node pod capacity quoted the IP supply prefix
+      delegation provides (~240) as though it were the pod ceiling. maxPods is
+      what actually binds on a Karpenter node, and the distinction is the point
+      of the passage.
+    source:
+      file: infrastructure/base/karpenter-nodepools/default-ec2nc.yaml
+      pattern: 'maxPods:\s*(\d+)'
+    pages:
+      - website/content/docs/platform/networking/cilium.md
+      - website/content/docs/platform/foundations/aws.md
+      - website/content/docs/decisions/0009-cilium-over-vpc-cni.md
+    must_contain: '{value} pods'
+
+  - id: victorialogs-own-vmalert
+    why: >-
+      VictoriaLogs runs its own VMAlert, scoped by ruleSelector, because it
+      needs its own datasource. The overview page claimed a single shared
+      instance evaluated both signals while logs.md said the opposite — the
+      site contradicted itself.
+    source:
+      file: observability/base/victoria-logs/vmalert-vlsingle.yaml
+    pages:
+      - website/content/docs/platform/observability/_index.md
+    must_not_contain:
+      - 'a single `?VMAlert'
+      - 'one shared `?VMAlert'
+
+  - id: kyverno-policies-values
+    why: >-
+      Only the kyverno-policies release ships `values: {}`; the controller sets
+      fullnameOverride and crds.install. Saying "both" made the enforced policy
+      set look chosen rather than inherited from chart defaults.
+    source:
+      file: security/base/kyverno/helmrelease-policies.yaml
+      pattern: '^\s*(values: \{\})\s*$'
+    pages:
+      - website/content/docs/platform/security/policies.md
+    must_not_contain:
+      - 'Both install with'
