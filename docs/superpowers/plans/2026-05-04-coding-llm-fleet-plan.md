@@ -24,7 +24,7 @@ infrastructure follow-up.
 ## Pre-conditions
 
 - Cluster freshly redeployed (post `terramate script run --reverse destroy`).
-- `TM_LLM_PLATFORM_ENABLED=true` set during the redeploy so the `opentofu/aws/llm-platform` stack runs (filesystem + IAM + Pod Identity bindings).
+- `TM_LLM_PLATFORM_ENABLED=true` set during the redeploy so the `opentofu/llm-platform` stack runs (filesystem + IAM + Pod Identity bindings).
 - `flux resume kustomization llm-platform -n flux-system` to lift the umbrella suspend.
 - Hugging Face token at `/platform/llm/hf_token` in AWS Secrets Manager (already in place from previous deployment — only needed for LlamaGuard 3-1B which is gated).
 

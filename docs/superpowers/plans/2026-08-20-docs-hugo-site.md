@@ -663,7 +663,7 @@ against the repository, so a stale page says so on its face."
 #
 # scripts/validate-links.sh resolves Markdown *links*. It cannot see the far more
 # common failure in this repository's prose: a backticked path in running text
-# ("configured in `opentofu/aws/eks/configure/locals.tf`") that silently stops being
+# ("configured in `opentofu/eks/configure/locals.tf`") that silently stops being
 # true after a refactor. This closes that gap, and is what makes the design's
 # "verify-on-migrate" rule mechanical rather than a promise.
 #
@@ -1039,7 +1039,7 @@ reuse it. Lane weights step by ten so pages can be inserted without renumbering.
 - Create: `website/content/docs/get-started/aws/_index.md`, `access.md`, `teardown.md`
 - Create: `website/content/docs/get-started/gcp/_index.md`
 - Create: `website/content/docs/get-started/first-app.md`
-- Read: `README.md`, `docs/opentofu.md`, `opentofu/workflows.tm.hcl`, `opentofu/aws/eks/init/workflows.tm.hcl`, `scripts/eks-prepare-destroy.sh`, `mise.toml`, `docs/apps-user-guide.md`
+- Read: `README.md`, `docs/opentofu.md`, `opentofu/workflows.tm.hcl`, `opentofu/eks/init/workflows.tm.hcl`, `scripts/eks-prepare-destroy.sh`, `mise.toml`, `docs/apps-user-guide.md`
 
 **Interfaces:**
 - Consumes: the lane index from Task 4.
@@ -1067,7 +1067,7 @@ Record the values. `prerequisites.md` must state these exact versions, or state 
 - [x] **Step 3: Verify every command before writing**
 
 ```bash
-grep -n 'name *=' opentofu/workflows.tm.hcl opentofu/aws/eks/init/workflows.tm.hcl
+grep -n 'name *=' opentofu/workflows.tm.hcl opentofu/eks/init/workflows.tm.hcl
 ```
 
 Every command shown on `aws/_index.md` and `aws/teardown.md` must appear in that output. A command that does not is cut.
@@ -1212,7 +1212,7 @@ clusters/mycluster-0/ rather than trusted."
 
 **Files:**
 - Create: `website/content/docs/platform/networking/{_index,cilium,gateway-api,private-access}.md`
-- Read: `docs/ingress.md` (723), `docs/tailscale-gateway-api.md` (291), `infrastructure/base/gapi/`, `opentofu/aws/eks/configure/`, `opentofu/aws/eks/init/helm_values/cilium.yaml`, `CLAUDE.md`
+- Read: `docs/ingress.md` (723), `docs/tailscale-gateway-api.md` (291), `infrastructure/base/gapi/`, `opentofu/eks/configure/`, `opentofu/eks/init/helm_values/cilium.yaml`, `CLAUDE.md`
 
 **Interfaces:**
 - Produces: `/docs/platform/networking/`, linked from security (TLS termination) and developer-platform (App ingress).
@@ -1247,7 +1247,7 @@ The gateway names and classes on `private-access.md` must match this output. `do
 
 - [x] **Step 3: Write `cilium.md` — new content, no single source**
 
-Sources: `opentofu/aws/eks/configure/cilium-cni-config.tf`, `opentofu/aws/eks/init/helm_values/cilium.yaml`, and the Cilium section of `CLAUDE.md`. Must cover, because each is a live trap:
+Sources: `opentofu/eks/configure/cilium-cni-config.tf`, `opentofu/eks/init/helm_values/cilium.yaml`, and the Cilium section of `CLAUDE.md`. Must cover, because each is a live trap:
 
 - Cilium replaces both the CNI and kube-proxy; VPC-CNI is disabled in stage 2.
 - Prefix delegation is enabled, and pods draw from the secondary CIDR `100.64.0.0/16`.
@@ -1258,8 +1258,8 @@ Sources: `opentofu/aws/eks/configure/cilium-cni-config.tf`, `opentofu/aws/eks/in
 Verify each claim:
 
 ```bash
-grep -n "cniVersion\|encryption\|prefix" opentofu/aws/eks/configure/cilium-cni-config.tf opentofu/aws/eks/init/helm_values/cilium.yaml
-grep -rn "cilium.io/pod-subnet\|role/cni" opentofu/aws/network/
+grep -n "cniVersion\|encryption\|prefix" opentofu/eks/configure/cilium-cni-config.tf opentofu/eks/init/helm_values/cilium.yaml
+grep -rn "cilium.io/pod-subnet\|role/cni" opentofu/network/
 ```
 
 - [x] **Step 4: Confirm the merge lost nothing**
@@ -1299,7 +1299,7 @@ recorded only in CLAUDE.md and inline comments."
 
 **Files:**
 - Create: `website/content/docs/platform/security/{_index,openbao,pki-and-secrets,policies}.md`
-- Read: `opentofu/aws/openbao/cluster/docs/{getting_started,pki_requirements}.md`, `opentofu/aws/openbao/management/docs/{cert-manager,approle,backup_restore}.md`, `opentofu/aws/openbao/management/namespaces.tf`, `security/base/`, `CLAUDE.md`
+- Read: `opentofu/openbao/cluster/docs/{getting_started,pki_requirements}.md`, `opentofu/openbao/management/docs/{cert-manager,approle,backup_restore}.md`, `opentofu/openbao/management/namespaces.tf`, `security/base/`, `CLAUDE.md`
 
 **Interfaces:**
 - Produces: `/docs/platform/security/`, linked from networking (TLS) and get-started (`bao login`).
@@ -1307,7 +1307,7 @@ recorded only in CLAUDE.md and inline comments."
 - [x] **Step 1: Inventory what is being promoted**
 
 ```bash
-wc -l opentofu/aws/openbao/*/docs/*.md
+wc -l opentofu/openbao/*/docs/*.md
 ```
 
 Expected: five files, 703 lines total. All five are promoted; none stays behind. The directories are deleted in Task 17, so nothing may be left unmigrated.
@@ -1323,7 +1323,7 @@ Expected: five files, 703 lines total. All five are promoted; none stays behind.
 - [x] **Step 3: Verify the namespace layout claim**
 
 ```bash
-grep -n "namespace\|path" opentofu/aws/openbao/management/namespaces.tf | head -30
+grep -n "namespace\|path" opentofu/openbao/management/namespaces.tf | head -30
 ```
 
 `openbao.md` must state the layout accurately: shared platform services — the PKI (`pki_private_issuer`), the snapshot AppRole, operator logins — live in the **root** namespace; namespaces are reserved for tenants, and `app` is the only one, holding a `secret/` kv-v2 mount reached through its own AppRole. Cluster-wide endpoints such as `sys/storage/raft/*` are callable only from root.
@@ -1331,10 +1331,10 @@ grep -n "namespace\|path" opentofu/aws/openbao/management/namespaces.tf | head -
 - [x] **Step 4: Verify the operator login procedure**
 
 ```bash
-grep -rn "userpass\|admin" opentofu/aws/openbao/management/auth.tf
+grep -rn "userpass\|admin" opentofu/openbao/management/auth.tf
 ```
 
-The documented `bao login -method=userpass username=admin` and the Secrets Manager path `openbao/cloud-native-ref/users/admin` must match. Include `VAULT_CACERT` pointing at `opentofu/aws/openbao/management/.tls/ca.pem` and **not** `VAULT_SKIP_VERIFY` — a security reference that documents skipping verification undercuts itself.
+The documented `bao login -method=userpass username=admin` and the Secrets Manager path `openbao/cloud-native-ref/users/admin` must match. Include `VAULT_CACERT` pointing at `opentofu/openbao/management/.tls/ca.pem` and **not** `VAULT_SKIP_VERIFY` — a security reference that documents skipping verification undercuts itself.
 
 - [x] **Step 5: Record the version constraint**
 
@@ -1342,7 +1342,7 @@ The documented `bao login -method=userpass username=admin` and the Secrets Manag
 
 ```bash
 grep -n "2\.6\|openbao" .github/renovate.json
-grep -rn "openbao_version" opentofu/aws/openbao/cluster/variables.tf
+grep -rn "openbao_version" opentofu/openbao/cluster/variables.tf
 ```
 
 - [x] **Step 6: Verify**
@@ -1360,7 +1360,7 @@ git add website/content/docs/platform/security
 git commit -m "docs(platform): promote the OpenBao documentation into the site
 
 703 lines of real security documentation sat four directories deep under
-opentofu/aws/openbao/*/docs/ and were reachable only by someone already reading
+opentofu/openbao/*/docs/ and were reachable only by someone already reading
 that Terraform. It is the platform's strongest security story and it was the
 least findable thing in the repository.
 
@@ -1566,7 +1566,7 @@ Two independent gates must both be released for an end-to-end deploy. Verify bot
 
 ```bash
 mise exec -- yq '.spec.suspend' clusters/mycluster-0/llm-platform.yaml
-grep -n "TM_LLM_PLATFORM_ENABLED" opentofu/aws/llm-platform/workflows.tm.hcl
+grep -n "TM_LLM_PLATFORM_ENABLED" opentofu/llm-platform/workflows.tm.hcl
 ```
 
 Expected: `true`, and the env-var guard present. The page states that the default `terramate script run deploy` and the default Flux reconciliation both leave the cluster LLM-free.
@@ -1706,7 +1706,7 @@ ADR-0007's rule made operational. State the rule verbatim: **platform-facing API
 
 From `CLAUDE.md` §Common Issues and the `.claude/rules/` files. Must include the traps that are non-obvious and have each cost real time:
 
-- **Gateways stuck "Waiting for controller"** — cilium-operator probes for the Gateway API CRDs **once, at startup**, and permanently disables its Gateway API controller if any are missing. No crash, no alert. Confirm with `kubectl logs -n kube-system -l io.cilium/app=operator | grep "Required GatewayAPI resources"`, recover with `kubectl rollout restart -n kube-system deployment/cilium-operator`, and fix durably by adding the CRD to `gateway_api_crds_urls` in `opentofu/aws/eks/configure/locals.tf`.
+- **Gateways stuck "Waiting for controller"** — cilium-operator probes for the Gateway API CRDs **once, at startup**, and permanently disables its Gateway API controller if any are missing. No crash, no alert. Confirm with `kubectl logs -n kube-system -l io.cilium/app=operator | grep "Required GatewayAPI resources"`, recover with `kubectl rollout restart -n kube-system deployment/cilium-operator`, and fix durably by adding the CRD to `gateway_api_crds_urls` in `opentofu/eks/configure/locals.tf`.
 - **DNS L7 inspection is mandatory for `toFQDNs`** — the kube-dns egress rule must carry `toPorts.rules.dns.matchPattern: "*"`, or Cilium never sees the resolved IPs and every follow-up TCP connection is silently dropped while DNS keeps working.
 - **`matchPattern: "*"` does not span dots** — `*.huggingface.co` does not match `cas-bridge.xet.huggingface.co`.
 - **`toEntities: world` excludes link-local, and `toCIDR` does not match host-network endpoints** — the EKS Pod Identity Agent at `169.254.170.23:80` needs `toEntities: ["host"]`.
@@ -1808,7 +1808,7 @@ A version table that is wrong is worse than absent. If a version cannot be resol
 From `CLAUDE.md` §Common Commands and §Validation Commands. Every command verified to exist:
 
 ```bash
-grep -n 'name *=' opentofu/workflows.tm.hcl opentofu/aws/eks/init/workflows.tm.hcl opentofu/aws/llm-platform/workflows.tm.hcl
+grep -n 'name *=' opentofu/workflows.tm.hcl opentofu/eks/init/workflows.tm.hcl opentofu/llm-platform/workflows.tm.hcl
 ls scripts/
 ```
 
@@ -2004,10 +2004,10 @@ All six use the **ogenki** preset (`~/.drawio-skill/styles/ogenki.json`) via the
 
 | Diagram | Content | Verify against |
 |---|---|---|
-| `bootstrap-stages` | network → OpenBao → EKS init → EKS configure, with what each stage creates and the two-stage CNI swap | `opentofu/*/workflows.tm.hcl`, `opentofu/aws/eks/*/main.tf` |
+| `bootstrap-stages` | network → OpenBao → EKS init → EKS configure, with what each stage creates and the two-stage CNI swap | `opentofu/*/workflows.tm.hcl`, `opentofu/eks/*/main.tf` |
 | `flux-dependency-tree` | namespaces → CRDs → Crossplane → EPIs → security → infrastructure → observability → apps, with the suspended `llm-platform` umbrella dashed | `clusters/mycluster-0/*.yaml` `dependsOn` |
 | `request-path` | internet and Tailscale → the two gateways → HTTPRoute → application, with ExternalDNS and cert-manager alongside | `infrastructure/base/gapi/` |
-| `secrets-and-pki` | root CA → intermediate → leaf; ESO pulling from AWS Secrets Manager and OpenBao into Kubernetes Secrets | `opentofu/aws/openbao/`, `security/base/` |
+| `secrets-and-pki` | root CA → intermediate → leaf; ESO pulling from AWS Secrets Manager and OpenBao into Kubernetes Secrets | `opentofu/openbao/`, `security/base/` |
 | `app-claim-expansion` | one `App` claim → Deployment, Service, HTTPRoute, HPA, PDB, CiliumNetworkPolicy, SQLInstance, EPI, Bucket | the App composition's rendered output |
 | `observability-flow` | scrape → vmagent → VictoriaMetrics; Vector → VictoriaLogs; Grafana; alerts → OnCall/Slack | `observability/base/` |
 
@@ -2061,7 +2061,7 @@ the 500 KB budget."
 **Files:**
 - Modify: `README.md`, `CLAUDE.md`, `.claude/rules/{platform-constitution,superpowers,crossplane-validation,process,observability}.md`, `.claude/skills/spec-research/SKILL.md`
 - Modify: `scripts/validate-links.sh`, `.linkcheck-allow`
-- Delete: `docs/*.md`, `docs/plans/`, `docs/assets/`, `opentofu/aws/openbao/*/docs/`
+- Delete: `docs/*.md`, `docs/plans/`, `docs/assets/`, `opentofu/openbao/*/docs/`
 
 **Interfaces:**
 - Consumes: every content page from Tasks 5–15. Nothing may be deleted before its content has landed.
@@ -2088,7 +2088,7 @@ git rm docs/ai.md docs/app-wizard.md docs/apps-user-guide.md docs/ci-workflows.m
        docs/technology-choices.md
 git rm docs/crossplane-kcl-authoring.md            # content belongs in Smana/crossplane-configuration
 git rm docs/plans/crossplane-validation-improvements.md  # superseded by SPEC-007
-git rm -r opentofu/aws/openbao/cluster/docs opentofu/aws/openbao/management/docs
+git rm -r opentofu/openbao/cluster/docs opentofu/openbao/management/docs
 ```
 
 - [x] **Step 3: Confirm what remains**
@@ -2288,7 +2288,7 @@ Plan: `docs/superpowers/plans/2026-08-20-docs-hugo-site.md`
 
 - `docs/` retires to `architecture/`, `specs/`, `superpowers/` — everything
   reader-facing is now published at cnref.ogenki.io
-- 703 lines of OpenBao documentation promoted out of `opentofu/aws/openbao/*/docs/`
+- 703 lines of OpenBao documentation promoted out of `opentofu/openbao/*/docs/`
 - README shrunk from 335 to ~120 lines; it points at the site rather than
   duplicating it
 - `validate-links.sh` no longer walks `website/content` — internal links there
