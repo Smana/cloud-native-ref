@@ -15,7 +15,7 @@
 globals "openbao_ca_cmd" {
   args = [
     "bash",
-    "../../../scripts/openbao-config.sh",
+    "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
     "ca",
     "--root-ca-secret-name",
     global.root_ca_secret_name,
@@ -112,7 +112,7 @@ script "deploy" {
       # request carries no secret in either direction.
       [
         "bash",
-        "../../../scripts/openbao-config.sh",
+        "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
         "init",
         "--url",
         global.openbao_url,
@@ -132,7 +132,7 @@ script "deploy" {
       # disk when `tofu init` runs.
       [
         "bash",
-        "../../../scripts/openbao-config.sh",
+        "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
         "ca",
         "--root-ca-secret-name",
         global.root_ca_secret_name,

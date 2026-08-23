@@ -57,7 +57,7 @@ script "deploy" {
     name        = "stage3-recycle-bootstrap-nodes"
     description = "Recycle node-group nodes whose ENIs predate Cilium (no-op once they use prefix delegation)"
     commands = [
-      ["bash", "-c", "../../../scripts/eks-recycle-bootstrap-nodes.sh --cluster-name ${global.eks_cluster_name} --region ${global.region}"],
+      ["bash", "-c", "${terramate.root.path.fs.absolute}/scripts/eks-recycle-bootstrap-nodes.sh --cluster-name ${global.eks_cluster_name} --region ${global.region}"],
     ]
   }
 }
@@ -112,7 +112,7 @@ script "destroy" {
       [global.provisioner, "init", "-lock-timeout=5m"],
       [
         "bash",
-        "../../../scripts/eks-prepare-destroy.sh",
+        "${terramate.root.path.fs.absolute}/scripts/eks-prepare-destroy.sh",
         "--cluster-name",
         global.eks_cluster_name,
         "--region",
