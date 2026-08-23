@@ -124,6 +124,44 @@ ls -la ~/.config/gcloud/application_default_credentials.json      # ADC: check t
 `set-quota-project` is not cosmetic — without it the provider emits a billing-attribution warning on
 every API call and some APIs refuse the request outright.
 
+### Amendment 2c — findings from the first real deploy (2026-08-23)
+
+Network and stage 1 were applied end to end against `ogenki-435905`, then destroyed.
+Stage 2 was not reached (it needs `tailscaled` running locally for the private endpoint).
+Three defects surfaced that **no amount of `tofu validate`, `trivy` or plan review could catch**:
+
+1. **Tailscale rejects `(` and `)` in a tailnet key description.** `GCP subnet router (dev)` failed
+   at API create time with `keys: description had invalid characters (400)` — an error naming
+   neither the offending character nor the accepted charset. Alphanumerics, spaces and dashes are
+   safe. Note the blast radius: this fired *mid-apply*, after 9 of 11 resources had already been
+   created, which is why applying the network stack before the cluster is the right order.
+2. **ADC vs CLI credentials** — see Amendment 2b.
+3. **`google_project_iam_member.crossplane` needs `depends_on = [module.gke]`.** Its principal is
+   built from variables, so OpenTofu sees no reference to the cluster and schedules the binding in
+   parallel — but the Workload Identity Pool `<project>.svc.id.goog` does not exist until a cluster
+   with `workload_pool` has been created. Fresh applies fail with
+   `Error 400: Identity Pool does not exist`. **It does not reproduce on re-apply**, because by then
+   the pool exists — a fresh-apply-only failure, the same class as the
+   provider-from-same-apply-outputs trap in `opentofu/aws/eks/init/providers.tf`: a dependency that
+   is real but invisible to the graph.
+
+**Teardown gotcha.** `tofu destroy` on the network stack failed with
+`subnetwork ... is already being used by instances/ogenki-gcp` while an audit seconds later showed
+no instances — GCP eventual consistency, the instance delete had returned but the subnet still
+counted it as attached. Re-running succeeded unchanged. Expect this on the
+`terramate script run destroy` path; the first failure is not a real blocker.
+
+### Amendment 2d — cluster naming convention
+
+**`aws-mycluster-0` / `gcp-mycluster-0`** — symmetric cloud prefixes, so neither cloud reads as
+"the" platform, matching the cloud-partitioned `opentofu/` layout.
+
+GCP already uses `gcp-mycluster-0`. **AWS keeps `mycluster-0` until its next from-scratch rebuild**,
+then becomes `aws-mycluster-0`: an EKS cluster name is immutable, so renaming now would mean
+destroying and recreating the live cluster plus touching 144 files. The present asymmetry is
+therefore deliberate and temporary — not an oversight to be "fixed" by someone reading
+`clusters/` later.
+
 ### Amendment 3 — Task 4's Cilium install is missing two mandatory values
 
 Both were found by the gate and must be carried into Task 10's forked
