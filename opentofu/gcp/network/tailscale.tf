@@ -87,8 +87,22 @@ resource "google_compute_instance" "tailscale_subnet_router" {
   }
 
   network_interface {
-    network    = module.vpc.network_name
-    subnetwork = local.subnet_name
+    network = module.vpc.network_name
+
+    # Reference the MODULE OUTPUT, not local.subnet_name. The local is a plain
+    # string, which creates no dependency edge -- and `network_name` only makes
+    # this instance depend on the network, not on the subnet inside it. A fresh
+    # apply then races and fails with:
+    #
+    #   Error 400: Invalid value for field 'networkInterfaces[0].subnetwork':
+    #   ... The referenced subnetwork resource cannot be found.
+    #
+    # Measured on the 2026-08-23 rebuild: the subnet completed at 31s, after the
+    # instance had already tried to attach to it. The first deploy happened to
+    # win the race, which is exactly what makes this class of bug dangerous --
+    # it is intermittent, and passing once proves nothing.
+    subnetwork = module.vpc.subnets_names[0]
+
     # No access_config block => no external IP. Egress to the Tailscale
     # coordination server goes through Cloud NAT.
   }
