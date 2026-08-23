@@ -106,6 +106,21 @@ module "gke" {
   logging_service    = "none"
   monitoring_service = "none"
 
+  # THREE separate toggles, not one. Setting only the two above leaves Google
+  # Managed Prometheus collecting and billing: `monitoring_enable_managed_prometheus`
+  # defaults to null, which GKE reads as enabled.
+  #
+  # Measured on the first deploy: with logging_service and monitoring_service
+  # already "none", the cluster still ran a 3-replica gmp-system/collector
+  # DaemonSet plus gke-metrics-agent and a kube-state-metrics StatefulSet --
+  # a full second metrics pipeline alongside VictoriaMetrics, which is exactly
+  # the duplicate the design's cost lever exists to remove.
+  #
+  # Criterion 10 ("workload Cloud Logging AND Monitoring disabled") is not met
+  # without this line; verifying it in the plan output is not enough, because the
+  # plan shows the two services as "none" and says nothing about GMP.
+  monitoring_enable_managed_prometheus = false
+
   # Must stay false. The module's ip-masq-agent is a kubernetes_config_map, i.e. a
   # call into the very cluster this apply is creating -- the same-apply dependency
   # that opentofu/aws/eks/init/providers.tf documents as unfixable. The module's own

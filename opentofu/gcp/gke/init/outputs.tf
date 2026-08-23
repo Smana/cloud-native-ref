@@ -47,3 +47,36 @@ output "pod_cidr" {
   description = "Pod CIDR, required by Cilium's ipv4NativeRoutingCIDR on GCP"
   value       = local.net.pod_cidr
 }
+
+# The rest are re-exported from the network stack so gke/configure can build the
+# Flux postBuild-substitution ConfigMap without reading a second remote state.
+# That ConfigMap is how cluster-specific values reach shared manifests under
+# infrastructure/, security/ and observability/.
+
+output "project_number" {
+  description = "GCP project number. Distinct from project_id and NOT interchangeable with it"
+  value       = var.project_number
+}
+
+output "network_name" {
+  description = "VPC name"
+  value       = local.net.network_name
+}
+
+output "node_cidr" {
+  description = "Node subnet CIDR"
+  value       = local.net.node_cidr
+}
+
+output "service_cidr" {
+  description = "Service secondary CIDR"
+  value       = local.net.service_cidr
+}
+
+output "private_domain_name" {
+  # $${...} escapes the interpolation: an unescaped ${private_domain_name} here
+  # is read as an HCL variable reference and fails with "Variables not allowed".
+  # Same escaping rule as the Grafana dashboard JSON in this repo.
+  description = "Cloud DNS private zone domain, substituted into manifests as $${private_domain_name}"
+  value       = local.net.private_domain_name
+}

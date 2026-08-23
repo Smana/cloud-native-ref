@@ -51,9 +51,6 @@
 # backends split across two nodes, with `Encryption: Disabled`.
 # Do not add WireGuard here without new evidence.
 
-bandwidthManager:
-  enabled: true
-
 # GKE COS nodes name the primary NIC `eth0`, NOT `ens4`.
 #
 # Plain GCE VMs on recent images do use ens4, which is where the original `ens+`
@@ -65,21 +62,44 @@ bandwidthManager:
 # unforced error, and the Phase 1 gate never caught it because the gate installed
 # Cilium with --set flags only and let the chart auto-detect devices.
 #
-# Explicit selection also keeps Cilium off the tailscale0 interface, whose MTU
-# would otherwise be picked up.
-# See: https://tailscale.com/kb/1236/kubernetes-operator#cilium
-devices: "eth+"
-
-# NO egressMasqueradeInterfaces here, unlike the AWS file.
+# ─── DATAPATH SETTINGS DELIBERATELY OMITTED ─────────────────────────────────────
 #
-# It is mutually exclusive with bpf.masquerade, which this config enables:
+# This file previously carried five more datapath settings, translated across from
+# the AWS values. Every one of them broke on GKE, in sequence:
 #
-#   BPF masquerade does not allow to specify devices via
-#   --egress-masquerade-interfaces (use --devices instead)
+#   devices: ens+ / egressMasqueradeInterfaces: ens4
+#       GKE COS names the NIC eth0. `ens+` matched nothing.
+#   installNoConntrackIptablesRules: true
+#       -> "requires the agent to run with enable-bpf-masquerade"
+#   bpf.masquerade: true  (added to satisfy the above)
+#       -> "BPF masquerade does not allow to specify devices via
+#          --egress-masquerade-interfaces"
+#   devices: eth+ + bpf.masquerade (after removing egressMasqueradeInterfaces)
+#       Agent started, but the host could no longer reach pod IPs: kubelet
+#       liveness/readiness probes timed out and pods crashlooped across four
+#       namespaces (flux-operator, hubble-relay, hubble-ui, gmp collectors,
+#       kube-state-metrics).
 #
-# `devices` above already scopes masquerading to the right interface. AWS can set
-# both because it masquerades via iptables, not BPF -- another case where copying
-# a line across clouds moved it into a combination that does not compose.
+# ROOT CAUSE OF THE WHOLE SEQUENCE: the Phase 1 gate installed Cilium with a
+# minimal --set list and let the chart auto-detect everything else. It proved the
+# GKE datapath works; it never proved THIS file. Each setting above was carried
+# over on the assumption that what AWS needs, GCP needs -- but on AWS they are
+# implied by ENI mode, and on GCP with ipam=kubernetes they are neither implied
+# nor compatible with each other.
+#
+# So this file now matches the gate-proven configuration. Anything datapath-
+# affecting must be added back ONE AT A TIME, each verified on a live cluster
+# against the same criteria the gate used. Do not reintroduce them as a block
+# because "AWS has them".
+#
+# Still absent, and each needs its own validation before returning:
+#   bandwidthManager, bpf.preallocateMaps, bpf.masquerade, devices,
+#   egressMasqueradeInterfaces, installNoConntrackIptablesRules,
+#   loadBalancer.mode: hybrid, socketLB.hostNamespaceOnly
+#
+# socketLB.hostNamespaceOnly is the one with a known functional reason (Tailscale
+# operator pods break without it, tailscale#15478). It is not needed until the
+# Tailscale operator runs on GCP, and must be validated when it is.
 
 cni:
   # /opt/cni/bin is read-only on Container-Optimized OS. See the note above.
@@ -88,39 +108,15 @@ cni:
   # config. Verified on the gate cluster: /etc/cni/net.d/ ends up holding only
   # 05-cilium.conflist, with GKE's renamed 10-containerd-net.conflist.cilium_bak.
 
-# installNoConntrackIptablesRules REQUIRES bpf.masquerade. Without it the agent
-# refuses to start, fatally:
-#
-#   unable to initialize kube-proxy replacement options:
-#   install-no-conntrack-iptables-rules requires the agent to run with
-#   enable-bpf-masquerade
-#
-# On AWS this pairing is implicit -- ENI mode brings BPF masquerading with it --
-# so copying the line across without its prerequisite produced a CrashLoopBackOff
-# that took the whole stage down (Flux Operator then timed out for want of a CNI).
-# Measured on the 2026-08-23 deploy.
-bpf:
-  preallocateMaps: true
-  masquerade: true
-
-installNoConntrackIptablesRules: true
-
 ipam:
   mode: kubernetes
 
 kubeProxyReplacement: true
 
-loadBalancer:
-  enabled: true
-  mode: hybrid
-
-socketLB:
-  enabled: true
-  # IMPORTANT: must be true for Tailscale pods to work properly. When false,
-  # Cilium's socket LB intercepts DNS in pod namespaces, breaking pods that modify
-  # their own networking (like Tailscale).
-  # See: https://github.com/tailscale/tailscale/issues/15478
-  hostNamespaceOnly: true
+# loadBalancer.mode and socketLB.hostNamespaceOnly are omitted — see the
+# "DATAPATH SETTINGS DELIBERATELY OMITTED" note above. Both are datapath-
+# affecting, neither was exercised by the Phase 1 gate, and this file is
+# deliberately back at the gate-proven baseline.
 
 operator:
   resources:

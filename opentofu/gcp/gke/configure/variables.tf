@@ -3,6 +3,17 @@ variable "project_id" {
   type        = string
 }
 
+variable "env" {
+  description = "Environment. Substituted into shared manifests as `environment` via the Flux postBuild ConfigMap"
+  type        = string
+  default     = "dev"
+
+  validation {
+    condition     = contains(["dev", "staging", "prod"], var.env)
+    error_message = "Environment must be one of: dev, staging, prod."
+  }
+}
+
 variable "region" {
   description = "GCP region"
   type        = string

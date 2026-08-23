@@ -11,18 +11,20 @@
 # Found on the first GCP deploy: the initial "minimum viable" tree had only
 # namespaces + crds, and crds cannot stand alone.
 #
-# DIFFERS from clusters/mycluster-0/flux/flux-sources.yaml in one way: the AWS
-# copy carries
+# postBuild.substituteFrom mirrors the AWS copy, pointing at this cluster's vars
+# ConfigMap (created by opentofu/gcp/gke/configure).
 #
-#   postBuild.substituteFrom: [{kind: ConfigMap, name: eks-mycluster-0-vars}]
+# `flux/sources/` happens to use no substitution variables TODAY, so this block
+# is not strictly required yet. It is here anyway, deliberately: substitution is
+# the mechanism by which cluster-specific config reaches shared manifests, and
+# every Kustomization that consumes shared paths needs it wired the same way on
+# both clouds. Leaving it off because "nothing uses it yet" means the first
+# manifest that does adds a variable and gets a raw `${cluster_name}` in its
+# rendered output — Flux substitutes nothing and reports success.
 #
-# which is created by opentofu/aws/eks/configure. The GCP configure stack has no
-# equivalent ConfigMap, and it is not needed: `grep -rn '${' flux/sources/`
-# returns nothing, so there is no variable to substitute. Adding the block would
-# make this Kustomization fail on a missing ConfigMap for no benefit.
-#
-# If a source ever starts using a substitution variable, this must gain a
-# postBuild block AND gke/configure must create the ConfigMap it names.
+# The ConfigMap name differs from AWS (gke-* vs eks-*), but the KEYS it provides
+# deliberately match for everything cloud-neutral, which is what lets one
+# manifest under infrastructure/base/ render on either cloud.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -35,3 +37,7 @@ spec:
   sourceRef:
     kind: ExternalArtifact
     name: flux-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-mycluster-0-vars
