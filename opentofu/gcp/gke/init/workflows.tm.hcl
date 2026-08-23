@@ -123,7 +123,23 @@ script "preview" {
 
 script "destroy" {
   name        = "GKE Full Destroy"
-  description = "Destroy the GKE cluster: addons (Stage 2) first, then the cluster (Stage 1)"
+  description = "Destroy the GKE cluster: attempt addon teardown, delete the cluster, then reconcile stage-2 state"
+
+  # Job order is load-bearing. Stage 2 (Cilium, Flux, Gateway API CRDs) manages
+  # resources that live INSIDE the cluster, so they cease to exist the moment
+  # stage 1 deletes it. Stage 2 teardown is therefore a tidiness step, NOT a
+  # prerequisite -- it used to be sequenced as one, and because the helm and
+  # kubectl providers both need a reachable API server, an unreachable cluster
+  # (private endpoint + tailnet down, or a cluster already broken) failed the
+  # job under `set -e` and stage 1 never ran. The cluster, the only billable
+  # thing here, was left running with no workflow path to remove it. That is
+  # what forced the 2026-08-23 teardown through gcloud by hand.
+  #
+  # So: attempt gracefully, delete the cluster regardless, then reconcile the
+  # stage-2 state -- in that order. Reconciling only AFTER the cluster is
+  # provably gone is what makes dropping those state entries safe; doing it in
+  # the attempt job would empty state for resources that still exist whenever
+  # the cluster destroy itself fails.
 
   job {
     name        = "confirm"
@@ -147,7 +163,7 @@ script "destroy" {
 
   job {
     name        = "stage2-destroy-addons"
-    description = "Destroy Cilium and Flux (configure stack)"
+    description = "Attempt a graceful Cilium and Flux teardown; never blocks the cluster deletion"
     commands = [
       ["bash", "-c", <<-BASH
         if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
@@ -155,9 +171,11 @@ script "destroy" {
           exit 0
         fi
         set -euo pipefail
-        cd ../configure
-        ${global.provisioner} init -lock-timeout=5m
-        ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
+        bash "${terramate.root.path.fs.absolute}/scripts/gke-destroy-stage2.sh" \
+          attempt "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure" \
+          -var='cilium_version=${global.cilium_version}' \
+          -var='flux_operator_version=${global.flux_operator_version}' \
+          -var='flux_instance_version=${global.flux_instance_version}'
       BASH
       ],
     ]
@@ -165,7 +183,7 @@ script "destroy" {
 
   job {
     name        = "stage1-destroy-cluster"
-    description = "Destroy the GKE cluster"
+    description = "Destroy the GKE cluster, its node pool, service account and IAM bindings"
     commands = [
       ["bash", "-c", <<-BASH
         if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
@@ -173,7 +191,27 @@ script "destroy" {
           exit 0
         fi
         set -euo pipefail
+        # No tolerance here, unlike stage 2: this is the billable resource. If it
+        # cannot be destroyed the run must fail loudly rather than move on to the
+        # network stack and strand a live cluster behind a deleted VPC.
         ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars
+      BASH
+      ],
+    ]
+  }
+
+  job {
+    name        = "stage2-reconcile-state"
+    description = "Drop any stage-2 state left behind, now that the cluster holding it is gone"
+    commands = [
+      ["bash", "-c", <<-BASH
+        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
+          echo "[skip] GKE init destroy (stage2-reconcile-state): set TM_GCP_ENABLED=true"
+          exit 0
+        fi
+        set -euo pipefail
+        bash "${terramate.root.path.fs.absolute}/scripts/gke-destroy-stage2.sh" \
+          reconcile "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure"
       BASH
       ],
     ]
