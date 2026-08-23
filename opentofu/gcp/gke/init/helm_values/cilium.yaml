@@ -54,14 +54,32 @@
 bandwidthManager:
   enabled: true
 
-bpf:
-  preallocateMaps: true
-
-# GCE NICs are ens4/ens5, not EC2's eth0. Explicit device selection also keeps
-# Cilium off the tailscale0 interface, whose MTU would otherwise be picked up.
+# GKE COS nodes name the primary NIC `eth0`, NOT `ens4`.
+#
+# Plain GCE VMs on recent images do use ens4, which is where the original `ens+`
+# came from -- but GKE's Container-Optimized OS does not. Verified on a live node:
+# `ls /sys/class/net` -> cilium_net, docker0, eth0, lo. With `ens+` the device
+# selector matched nothing.
+#
+# The AWS values were already correct here; translating eth->ens was an
+# unforced error, and the Phase 1 gate never caught it because the gate installed
+# Cilium with --set flags only and let the chart auto-detect devices.
+#
+# Explicit selection also keeps Cilium off the tailscale0 interface, whose MTU
+# would otherwise be picked up.
 # See: https://tailscale.com/kb/1236/kubernetes-operator#cilium
-devices: "ens+"
-egressMasqueradeInterfaces: ens4
+devices: "eth+"
+
+# NO egressMasqueradeInterfaces here, unlike the AWS file.
+#
+# It is mutually exclusive with bpf.masquerade, which this config enables:
+#
+#   BPF masquerade does not allow to specify devices via
+#   --egress-masquerade-interfaces (use --devices instead)
+#
+# `devices` above already scopes masquerading to the right interface. AWS can set
+# both because it masquerades via iptables, not BPF -- another case where copying
+# a line across clouds moved it into a combination that does not compose.
 
 cni:
   # /opt/cni/bin is read-only on Container-Optimized OS. See the note above.
@@ -69,6 +87,21 @@ cni:
   # exclusive: true is the chart default and is what displaces GKE's own CNI
   # config. Verified on the gate cluster: /etc/cni/net.d/ ends up holding only
   # 05-cilium.conflist, with GKE's renamed 10-containerd-net.conflist.cilium_bak.
+
+# installNoConntrackIptablesRules REQUIRES bpf.masquerade. Without it the agent
+# refuses to start, fatally:
+#
+#   unable to initialize kube-proxy replacement options:
+#   install-no-conntrack-iptables-rules requires the agent to run with
+#   enable-bpf-masquerade
+#
+# On AWS this pairing is implicit -- ENI mode brings BPF masquerading with it --
+# so copying the line across without its prerequisite produced a CrashLoopBackOff
+# that took the whole stage down (Flux Operator then timed out for want of a CNI).
+# Measured on the 2026-08-23 deploy.
+bpf:
+  preallocateMaps: true
+  masquerade: true
 
 installNoConntrackIptablesRules: true
 
