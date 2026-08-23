@@ -31,4 +31,21 @@ resource "google_project_iam_member" "crossplane" {
   project = var.project_id
   role    = "roles/editor"
   member  = local.crossplane_principal
+
+  # REQUIRED. The principal string is built from variables, so OpenTofu sees no
+  # reference to module.gke and schedules this binding in PARALLEL with the
+  # cluster -- but the Workload Identity Pool `<project>.svc.id.goog` does not
+  # exist until a cluster with `workload_pool` has been created. Without this,
+  # a fresh apply fails with:
+  #
+  #   Error 400: Identity Pool does not exist (ogenki-435905.svc.id.goog)
+  #
+  # Measured on the first real deploy, 2026-08-23: the cluster and node pool
+  # created fine and only this binding failed, leaving the stage partially
+  # applied. It does NOT reproduce on a re-apply, because by then the pool
+  # exists -- so it is a fresh-apply-only failure, which is the same class as
+  # the provider-from-same-apply-outputs trap documented in
+  # opentofu/aws/eks/init/providers.tf: a dependency that is real but invisible
+  # to the graph.
+  depends_on = [module.gke]
 }
