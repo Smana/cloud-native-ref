@@ -222,10 +222,23 @@ known rather than predicted.
 
 ### Already cloud-agnostic (verified — do not touch)
 
-OpenBao itself (`openbao/management` uses only the `bao` provider), External Secrets, Envoy Gateway,
-Envoy AI Gateway, VictoriaMetrics/Logs/Traces, Grafana Operator, KEDA, Zitadel, Harbor-the-app,
-CloudNativePG-the-operator, Atlas Operator, Tailscale operator, Headlamp, Homepage, Dagger engine,
-GHA runners, vLLM/`InferenceService`, and Cilium itself modulo the values divergence below.
+External Secrets, Envoy Gateway, Envoy AI Gateway, VictoriaMetrics/Logs/Traces, Grafana Operator,
+KEDA, Zitadel, Harbor-the-app, CloudNativePG-the-operator, Atlas Operator, Tailscale operator,
+Headlamp, Homepage, Dagger engine, GHA runners, vLLM/`InferenceService`, and Cilium itself modulo
+the values divergence below.
+
+> **Correction (2026-08-23).** This list previously opened with *"OpenBao itself
+> (`openbao/management` uses only the `bao` provider)"*. That is **wrong**, and the error mattered
+> because it made the stack look portable when it is not.
+>
+> `opentofu/openbao/management/providers.tf` configures **two** providers, `vault` **and** `aws`,
+> and the stack reads its root token, the cert-manager AppRole and the operator password from **AWS
+> Secrets Manager** (`data.aws_secretsmanager_secret_version.*`). `openbao/cluster` is more
+> AWS-coupled still — ASG, ELB, KMS auto-unseal, Route53.
+>
+> OpenBao *the product* is cloud-agnostic; **our OpenBao stacks are not**. Both stay under `aws/`
+> in the [cloud-partitioned layout](2026-08-23-cloud-partitioned-layout-design.md), and porting
+> them is workstream 11, which is where the Secrets Manager dependency gets replaced.
 
 ---
 
