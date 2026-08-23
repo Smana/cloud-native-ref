@@ -80,4 +80,13 @@ resource "kubectl_manifest" "flux_system_secret" {
     }
   })
   server_side_apply = true
+
+  # The GitHub App private key is rendered into yaml_body, so without this it
+  # appears unredacted in every plan diff and in the GCS state object.
+  #
+  # data.tf's comment says the secret is "deliberately NOT in OpenTofu" -- that is
+  # true of its CREATION (we do not manage the Secret Manager entry) but NOT of
+  # its value, which flows through this resource. Marking the field is what makes
+  # the two statements consistent.
+  sensitive_fields = ["data"]
 }

@@ -21,18 +21,55 @@
 # Task 8 for the required change to opentofu/aws/network/tailscale.tf.
 # ────────────────────────────────────────────────────────────────────────────
 
+# Inbound DNS forwarding, so tailnet clients can resolve the private zone.
+#
+# A Cloud DNS inbound policy allocates a resolver address INSIDE the node subnet,
+# which the subnet router already advertises. That is what makes the split
+# nameserver reachable from a laptop.
+#
+# The obvious-looking alternative -- pointing the split nameserver at the GCE
+# metadata resolver 169.254.169.254 -- does NOT work: it is a link-local address,
+# so a tailnet client sends the query to its OWN link-local interface rather than
+# into the VPC, and *.priv.gcp.cloud.ogenki.io silently fails to resolve. The AWS
+# side gets this right by using cidrhost(vpc_cidr, 2), which is inside its
+# advertised CIDR.
+resource "google_dns_policy" "inbound" {
+  project                   = var.project_id
+  name                      = "${local.network_name}-inbound"
+  enable_inbound_forwarding = true
+
+  networks {
+    network_url = module.vpc.network_self_link
+  }
+}
+
+data "google_compute_addresses" "dns_inbound" {
+  project = var.project_id
+  region  = var.region
+  filter  = "purpose = \"DNS_RESOLVER\""
+
+  depends_on = [google_dns_policy.inbound]
+}
+
 # Per-domain, keyed by domain name -> no collision with the AWS split nameservers.
-# Points the GCP private zone at the VPC's metadata resolver so tailnet devices
-# resolve *.priv.gcp.cloud.ogenki.io through this network.
 resource "tailscale_dns_split_nameservers" "gcp_private" {
-  domain      = var.private_domain_name
-  nameservers = ["169.254.169.254"]
+  domain = var.private_domain_name
+  # The inbound policy allocates one resolver address per subnet in the region;
+  # with a single subnet there is exactly one.
+  nameservers = [for a in data.google_compute_addresses.dns_inbound.addresses : a.address]
 }
 
 resource "tailscale_tailnet_key" "this" {
   reusable      = true
   ephemeral     = false
   preauthorized = true
+
+  # Explicit, long expiry. The provider defaults to 7776000s (90 days) and
+  # recreates a reusable key once it becomes invalid -- so at day 90 OpenTofu
+  # would mint a fresh key into state while the running instance keeps the old
+  # one. The instance would stay up but fail to rejoin on its next reboot, and it
+  # is the ONLY administrative path into this VPC.
+  expiry = 31536000 # 365 days
 
   # Alphanumerics, spaces and dashes only. Tailscale's key API rejects other
   # characters with a bare `keys: description had invalid characters (400)` that
@@ -114,6 +151,21 @@ resource "google_compute_instance" "tailscale_subnet_router" {
     # project-wide keys explicitly means a key added at project level can never
     # grant shell on the one host that bridges the tailnet into the VPC.
     block-project-ssh-keys = "TRUE"
+
+    # The startup script lives HERE rather than in metadata_startup_script, and
+    # there is deliberately no `ignore_changes` on it.
+    #
+    # metadata_startup_script is create-time only, so it was previously paired
+    # with ignore_changes to avoid replacing the instance on every edit. That
+    # combination silently discarded real changes: adding a CIDR to
+    # local.advertised_routes updated nothing -- not by update, not by
+    # replacement -- and planned clean. As `metadata`, it updates in place, so a
+    # route change reaches the instance on the next boot without replacing it.
+    startup-script = templatefile("${path.module}/templates/tailscale-startup.sh.tftpl", {
+      auth_key         = tailscale_tailnet_key.this.key
+      advertise_routes = join(",", local.advertised_routes)
+      hostname         = var.tailscale_config.subnet_router_name
+    })
   }
 
   # Measured boot, kernel-signature verification and a virtual TPM. Cheap to
@@ -125,12 +177,6 @@ resource "google_compute_instance" "tailscale_subnet_router" {
     enable_integrity_monitoring = true
   }
 
-  metadata_startup_script = templatefile("${path.module}/templates/tailscale-startup.sh.tftpl", {
-    auth_key         = tailscale_tailnet_key.this.key
-    advertise_routes = join(",", local.advertised_routes)
-    hostname         = var.tailscale_config.subnet_router_name
-  })
-
   service_account {
     email  = google_service_account.tailscale_subnet_router.email
     scopes = ["cloud-platform"]
@@ -138,11 +184,16 @@ resource "google_compute_instance" "tailscale_subnet_router" {
 
   labels = local.labels
 
-  # The startup script re-runs `tailscale up` idempotently, so a route change
-  # does not need instance replacement.
-  lifecycle {
-    ignore_changes = [metadata_startup_script]
-  }
+  # REQUIRED, and not inferable from any attribute reference. This instance has
+  # no external IP, and the startup script installs Tailscale over HTTPS under
+  # `set -e`. Without Cloud NAT already programmed the curl fails, the script
+  # aborts, and the instance still reports RUNNING -- so the apply SUCCEEDS with a
+  # router that never joined the tailnet.
+  #
+  # Third instance in this stack of a dependency that is real in the API but
+  # invisible to the graph; see also google_project_iam_member.crossplane and the
+  # subnetwork reference above.
+  depends_on = [module.cloud_nat]
 }
 
 # NOTE: there is deliberately no egress firewall rule here.

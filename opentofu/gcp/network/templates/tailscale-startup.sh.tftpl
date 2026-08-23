@@ -15,8 +15,22 @@ net.ipv6.conf.all.forwarding = 1
 SYSCTL
 sysctl -p /etc/sysctl.d/99-tailscale.conf
 
+# Bounded retry: this instance has no external IP, so the install depends on
+# Cloud NAT being programmed. The instance's depends_on covers ordering, but NAT
+# programming is eventually consistent and a bare `curl` under `set -e` turns a
+# transient failure into a permanently unjoined router that still reports RUNNING.
 if ! command -v tailscale >/dev/null 2>&1; then
-  curl -fsSL https://tailscale.com/install.sh | sh
+  for attempt in 1 2 3 4 5; do
+    if curl -fsSL --max-time 60 https://tailscale.com/install.sh | sh; then
+      break
+    fi
+    echo "tailscale install attempt $${attempt} failed; retrying in 15s"
+    sleep 15
+    if [ "$${attempt}" = "5" ]; then
+      echo "FATAL: tailscale install failed after 5 attempts" >&2
+      exit 1
+    fi
+  done
 fi
 
 systemctl enable --now tailscaled

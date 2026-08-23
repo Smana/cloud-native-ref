@@ -10,7 +10,7 @@
 # the plan rather than at runtime.
 locals {
   crossplane_principal = join("", [
-    "principal://iam.googleapis.com/projects/${var.project_number}",
+    "principal://iam.googleapis.com/projects/${data.google_project.this.number}",
     "/locations/global/workloadIdentityPools/${var.project_id}.svc.id.goog",
     "/subject/ns/crossplane-system/sa/crossplane",
   ])

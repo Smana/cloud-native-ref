@@ -4,9 +4,13 @@ output "cluster_name" {
 }
 
 output "cluster_endpoint" {
+  # NOT sensitive. It is an RFC1918 address that gke/configure publishes into a
+  # ConfigMap anyway, and marking it here taints everything downstream: the taint
+  # propagates through yamlencode into the whole Flux vars ConfigMap, hiding that
+  # entire resource's diff from every plan. Hiding a plan diff to protect a
+  # private IP is a bad trade. The CA certificate below stays sensitive.
   description = "Private control-plane endpoint, consumed by gke/configure"
   value       = module.gke.endpoint
-  sensitive   = true
 }
 
 output "cluster_ca_certificate" {
@@ -55,7 +59,7 @@ output "pod_cidr" {
 
 output "project_number" {
   description = "GCP project number. Distinct from project_id and NOT interchangeable with it"
-  value       = var.project_number
+  value       = data.google_project.this.number
 }
 
 output "network_name" {

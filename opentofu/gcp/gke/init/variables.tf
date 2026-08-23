@@ -14,26 +14,14 @@ variable "project_id" {
   type        = string
 }
 
-variable "project_number" {
-  description = <<-EOT
-    GCP project NUMBER, not the ID.
-
-    Required for the Workload Identity principal string, where the two are NOT
-    interchangeable and sit in different segments:
-
-      principal://iam.googleapis.com/projects/<NUMBER>/locations/global/
-        workloadIdentityPools/<PROJECT_ID>.svc.id.goog/subject/ns/<NS>/sa/<KSA>
-
-    Reversed, the API accepts the binding and it simply never matches -- a
-    permission error that points nowhere.
-  EOT
-  type        = string
-
-  validation {
-    condition     = can(regex("^[0-9]+$", var.project_number))
-    error_message = "Project number must be numeric. The project ID is not a substitute."
-  }
-}
+# NOTE: there is deliberately no `project_number` variable.
+#
+# It is derived from data.google_project.this.number (see data.tf). It used to be
+# a required input duplicating a value GCP already knows, which created the
+# opportunity for exactly the mistake this stack warns about elsewhere: the
+# NUMBER and the ID are not interchangeable, they occupy different segments of
+# the Workload Identity principal string, and swapping them produces a binding
+# the API accepts and that silently never matches.
 
 variable "region" {
   description = "GCP region"
