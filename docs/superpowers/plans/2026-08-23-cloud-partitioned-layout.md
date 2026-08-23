@@ -383,9 +383,18 @@ Keep every existing comment in those files. They explain why the two-stage split
 
 Run:
 ```bash
-terramate script run deploy 2>&1 | grep -E "^\[skip\]" | sort -u
+terramate script run --tags=gcp deploy 2>&1 | grep -E "^\[skip\]" | sort -u
 ```
-Expected: three `[skip]` lines, one per GCP stack, and **no** GCP API call. If any AWS stack starts applying, abort immediately — this command is only safe because the AWS stacks are unchanged and this is a plan-writing environment. Prefer `terramate script run --tags=gcp deploy` to test the gate in isolation.
+Expected: three `[skip]` lines, one per GCP stack, and **no** GCP API call.
+
+> **`--tags=gcp` is mandatory here, not a convenience.** At this point in the plan the AWS stacks
+> are still ungated, so a bare `terramate script run deploy` would reach them and **apply AWS
+> infrastructure** — violating this plan's first Global Constraint. Scoping to the GCP tag means no
+> AWS stack is invoked at all.
+>
+> This step therefore proves the GCP stacks no-op; it does not prove the bare root command is safe.
+> That is checked instead in Task 10 Step 1 via `terramate list --run-order`, which shows the GCP
+> stacks are reached and gated without running anything.
 
 - [ ] **Step 6: Verify the tag filter also works**
 
@@ -551,9 +560,25 @@ Run:
 ```bash
 grep -rn "opentofu/\(network\|eks\|openbao\|llm-platform\)" \
   --include="*.md" --include="*.yaml" --include="*.yml" --include="*.sh" --include="*.tf" \
-  . | grep -v "^./.claude/worktrees" | grep -v "^./docs/specs/" | tee /tmp/stale-refs.txt | wc -l
+  . | grep -v "^./.claude/worktrees" \
+    | grep -v "^./docs/specs/" \
+    | grep -v "^./docs/superpowers/plans/" \
+    | tee /tmp/stale-refs.txt | wc -l
 ```
-Expected: a non-zero count. `docs/specs/` is the read-only archive and is excluded deliberately — it records history and must not be rewritten.
+Expected: a non-zero count.
+
+**Two exclusions, both deliberate:**
+
+- `docs/specs/` is the read-only archive of the retired SDD workflow. It records what the paths were
+  at the time and must not be rewritten.
+- `docs/superpowers/plans/` are **execution records**. They describe the repository as it stood when
+  each was written — this plan's own pre-flight section, for instance, states that the `after`
+  references read `/opentofu/network`, which was true and is the reason Task 4 exists. Rewriting
+  them to `/opentofu/aws/network` would describe a before-state that never existed, and would edit
+  this plan while it is being executed.
+
+`docs/superpowers/specs/` **is** rewritten: designs describe the platform as it is meant to be, not
+as it was, and `verify-doc-paths.sh` checks them.
 
 - [ ] **Step 2: Rewrite them**
 
