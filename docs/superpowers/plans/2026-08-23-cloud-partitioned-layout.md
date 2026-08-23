@@ -775,21 +775,37 @@ resource "tailscale_acl" "this" {
       "group:admin" = var.admin_users
     }
 
-    acls = concat([
-      { action = "accept", src = ["group:admin"], dst = ["tag:admin:*"] },
-      { action = "accept", src = ["autogroup:member"], dst = ["tag:ci:*"] },
-      { action = "accept", src = ["autogroup:member"], dst = ["tag:k8s:*"] },
-      { action = "accept", src = ["autogroup:member"], dst = ["autogroup:member:*"] },
-      { action = "accept", src = ["tag:k8s-operator"], dst = ["tag:k8s:*", "tag:admin:*"] },
+    # ORDER AND GROUPING ARE LOAD-BEARING. `acls` is a JSON *array*, so
+    # jsonencode serialises it positionally: a reordered or re-grouped list is a
+    # different string, and `tailscale_acl` diffs on that string. Task 7 adopts
+    # this resource via `import` and gates on a **"0 to change"** plan — the only
+    # cheap way to tell an inert migration from one that silently rewrites the
+    # ACL controlling access to every private endpoint.
+    #
+    # So this must reproduce `opentofu/aws/network/tailscale.tf` exactly:
+    # seven rule objects, with the CIDR rules at positions 4-5 and ONE rule per
+    # cloud (dst = that cloud's CIDR list), not one rule per CIDR.
+    #
+    # `for _, cidrs in var.advertised_routes` iterates a map in lexicographic key
+    # order, and "aws" < "gcp", which reproduces AWS's sequence naturally.
+    acls = concat(
+      [
+        { action = "accept", src = ["group:admin"], dst = ["tag:admin:*"] },
+        { action = "accept", src = ["autogroup:member"], dst = ["tag:ci:*"] },
+        { action = "accept", src = ["autogroup:member"], dst = ["tag:k8s:*"] },
       ],
-      # One rule per cloud, generated from the same map that drives
-      # autoApprovers below, so a route can never be auto-approved yet
-      # unreachable -- the failure mode that looks like a routing bug.
-      [for cidr in flatten(values(var.advertised_routes)) : {
+      # One rule per cloud, from the same map that drives autoApprovers below, so
+      # a route can never be auto-approved yet unreachable — the failure mode that
+      # looks like a routing bug.
+      [for _, cidrs in var.advertised_routes : {
         action = "accept"
         src    = ["autogroup:member"]
-        dst    = ["${cidr}:*"]
-      }]
+        dst    = [for c in cidrs : "${c}:*"]
+      }],
+      [
+        { action = "accept", src = ["autogroup:member"], dst = ["autogroup:member:*"] },
+        { action = "accept", src = ["tag:k8s-operator"], dst = ["tag:k8s:*", "tag:admin:*"] },
+      ]
     )
 
     ssh = [
@@ -874,6 +890,26 @@ search_domains = [
   "priv.gcp.cloud.ogenki.io",
 ]
 ```
+
+- [ ] **Step 6b: Prove the ACL renders identically — by diffing, not by reading**
+
+Semantic equivalence is not enough; the rendered string must match. Reading the two bodies
+side by side is exactly what missed this the first time.
+
+Emit the `jsonencode` output from each stack and diff the two strings:
+
+```bash
+cd opentofu/shared/tailscale && tofu init -backend=false >/dev/null
+tofu console <<'EOF' > /tmp/acl-new.json
+jsonencode(...)   # the same expression as the resource's `acl` argument
+EOF
+cd -
+```
+
+Do the equivalent for `opentofu/aws/network`, then `diff /tmp/acl-aws.json /tmp/acl-new.json`.
+
+Expected: **empty diff**. Any output means Task 7 will plan a change on the ACL, which
+fails its gate — fix the ordering or grouping until the diff is empty.
 
 - [ ] **Step 7: Validate and commit**
 
