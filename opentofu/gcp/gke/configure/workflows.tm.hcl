@@ -7,6 +7,19 @@
 #
 # No trivy step here, matching eks/configure: this stack creates no cloud
 # resources, only in-cluster ones, and has no .trivyignore.yaml.
+#
+# opt-in gate (why override the global scripts at opentofu/workflows.tm.hcl):
+#   Both clouds share one Terramate run order, and the GCP stacks are unproven.
+#   Each job below checks $TM_GCP_ENABLED first and no-ops with a [skip]
+#   message when it's unset or not "true".
+#
+#   The double-`$$` escape keeps Terramate from interpolating `${VAR:-default}`;
+#   the literal `${...}` must reach bash. `${global.provisioner}` interpolations
+#   are intentional (Terramate-evaluated -> "tofu").
+#
+# Usage:
+#   terramate script run deploy                      # skipped
+#   TM_GCP_ENABLED=true terramate script run deploy   # runs
 
 script "deploy" {
   name        = "GKE Configure Deployment (Stage 2)"
@@ -16,9 +29,17 @@ script "deploy" {
     name        = "deploy-configure"
     description = "Apply Cilium and Flux configuration"
     commands = [
-      [global.provisioner, "init"],
-      [global.provisioner, "validate"],
-      [global.provisioner, "apply", "-auto-approve", "-var-file=variables.tfvars"],
+      ["bash", "-c", <<-BASH
+        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
+          echo "[skip] GKE configure deploy: set TM_GCP_ENABLED=true to deploy"
+          exit 0
+        fi
+        set -euo pipefail
+        ${global.provisioner} init
+        ${global.provisioner} validate
+        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars
+      BASH
+      ],
     ]
   }
 }
@@ -29,12 +50,17 @@ script "preview" {
 
   job {
     commands = [
-      [global.provisioner, "init"],
-      [global.provisioner, "validate"],
-      [global.provisioner, "plan", "-out=out.tfplan", "-var-file=variables.tfvars", {
-        sync_preview   = true
-        tofu_plan_file = "out.tfplan"
-      }],
+      ["bash", "-c", <<-BASH
+        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
+          echo "[skip] GKE configure preview: set TM_GCP_ENABLED=true"
+          exit 0
+        fi
+        set -euo pipefail
+        ${global.provisioner} init
+        ${global.provisioner} validate
+        ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars
+      BASH
+      ],
     ]
   }
 }
@@ -45,11 +71,19 @@ script "destroy" {
 
   job {
     commands = [
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
-      # `destroy` is a standalone entrypoint: unlike `deploy` it can be the first
-      # tofu command run in a stack, so it has to init itself.
-      [global.provisioner, "init", "-lock-timeout=5m"],
-      [global.provisioner, "destroy", "-auto-approve", "-var-file=variables.tfvars"],
+      ["bash", "-c", <<-BASH
+        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
+          echo "[skip] GKE configure destroy: set TM_GCP_ENABLED=true"
+          exit 0
+        fi
+        set -euo pipefail
+        bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        # `destroy` is a standalone entrypoint: unlike `deploy` it can be the first
+        # tofu command run in a stack, so it has to init itself.
+        ${global.provisioner} init -lock-timeout=5m
+        ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars
+      BASH
+      ],
     ]
   }
 }
