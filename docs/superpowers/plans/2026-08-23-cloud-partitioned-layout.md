@@ -558,14 +558,29 @@ depth-independent in the previous commit so none needed re-counting."
 
 Run:
 ```bash
-grep -rn "opentofu/\(network\|eks\|openbao\|llm-platform\)" \
+command grep -rn "opentofu/\(network\|eks\|openbao\|llm-platform\)" \
   --include="*.md" --include="*.yaml" --include="*.yml" --include="*.sh" --include="*.tf" \
-  . | grep -v "^./.claude/worktrees" \
-    | grep -v "^./docs/specs/" \
-    | grep -v "^./docs/superpowers/plans/" \
+  . | command grep -v "^\./\.claude/worktrees" \
+    | command grep -v "^\./docs/specs/" \
+    | command grep -v "^\./docs/superpowers/plans/" \
     | tee /tmp/stale-refs.txt | wc -l
 ```
 Expected: a non-zero count.
+
+> **`command grep` is mandatory here, and this is not pedantry — it is the bug that
+> broke this task on the first attempt.** In this environment `grep` is a shell
+> *function* that execs `ugrep --ignore-files --hidden`, not GNU grep. Two behaviours
+> differ and both are silent:
+>
+> 1. Recursing over `.` it emits paths **without** the leading `./`. Every
+>    `grep -v "^./…"` exclusion therefore matches nothing and filters nothing — the
+>    exclusions look present and are inert. That is exactly how the first run rewrote
+>    `docs/specs/` and `docs/superpowers/plans/` while reporting them excluded.
+> 2. `--ignore-files` silently omits gitignored paths, so a discovery sweep can
+>    under-report and still look complete.
+>
+> Check with `type grep`. Use `command grep` for any sweep whose result gates a
+> mutation.
 
 **Two exclusions, both deliberate:**
 
@@ -593,7 +608,7 @@ done
 
 - [ ] **Step 3: Guard against double-rewriting**
 
-Run: `grep -rn "opentofu/aws/aws/\|opentofu/gcp/aws/" . | grep -v "^./.claude/worktrees" | head`
+Run: `command grep -rn "opentofu/aws/aws/\|opentofu/gcp/aws/" . | command grep -v "^\./\.claude/worktrees" | head`
 Expected: no output. If any appear, the sed ran twice on a file — fix those paths by hand.
 
 - [ ] **Step 4: Run both documentation gates**
