@@ -1305,26 +1305,76 @@ Pair each index with the Step 1 key whose self-link ends in that CRD name.
 
 - [ ] **Step 3: Write `moved.tf`**
 
-One block per index, substituting the real keys:
+The keys below were derived on 2026-08-23 with **no cloud credentials of any kind** (Step 1's
+standalone method) and verified against `local.gateway_api_crds_urls`' order. Re-derive them if
+`gateway_api_version` ever changes; otherwise use them as written.
 
 ```hcl
 # Re-key the Gateway API CRDs from this stack's count-indexed list onto the
 # shared module's for_each map.
 #
 # WITHOUT these blocks OpenTofu reads the change as "destroy ten CRDs, create
-# fourteen" -- and destroying a CRD deletes every custom resource of that kind.
+# fifteen" -- and destroying a CRD deletes every custom resource of that kind.
 # On this cluster that is both Tailscale Gateways and every App claim that owns
 # an HTTPRoute.
 #
-# Keys are the manifest self-links printed by the module, not hand-written. A
-# typo here does not fail loudly: it silently leaves one CRD un-moved, which
-# then shows up as a destroy in the plan. That is why the plan gate in Step 5
-# is "0 to destroy", not "looks reasonable".
+# The keys are manifest self-links produced by the module, not hand-written. A
+# typo does not fail loudly: it silently leaves one CRD un-moved, which then
+# appears as a destroy in the plan. That is why Step 5's gate is "0 to destroy",
+# not "looks reasonable".
+#
+# Index order matches local.gateway_api_crds_urls exactly.
 moved {
   from = kubectl_manifest.gateway_api_crds[0]
-  to   = module.gateway_api_crds.kubectl_manifest.this["<self-link-for-gatewayclasses>"]
+  to   = module.gateway_api_crds.kubectl_manifest.this["/apis/apiextensions.k8s.io/v1/customresourcedefinitions/gatewayclasses.gateway.networking.k8s.io"]
 }
-# ... one block per index 0-9, in the same order as local.gateway_api_crds_urls
+moved {
+  from = kubectl_manifest.gateway_api_crds[1]
+  to   = module.gateway_api_crds.kubectl_manifest.this["/apis/apiextensions.k8s.io/v1/customresourcedefinitions/gateways.gateway.networking.k8s.io"]
+}
+moved {
+  from = kubectl_manifest.gateway_api_crds[2]
+  to   = module.gateway_api_crds.kubectl_manifest.this["/apis/apiextensions.k8s.io/v1/customresourcedefinitions/httproutes.gateway.networking.k8s.io"]
+}
+moved {
+  from = kubectl_manifest.gateway_api_crds[3]
+  to   = module.gateway_api_crds.kubectl_manifest.this["/apis/apiextensions.k8s.io/v1/customresourcedefinitions/referencegrants.gateway.networking.k8s.io"]
+}
+moved {
+  from = kubectl_manifest.gateway_api_crds[4]
+  to   = module.gateway_api_crds.kubectl_manifest.this["/apis/apiextensions.k8s.io/v1/customresourcedefinitions/tcproutes.gateway.networking.k8s.io"]
+}
+moved {
+  from = kubectl_manifest.gateway_api_crds[5]
+  to   = module.gateway_api_crds.kubectl_manifest.this["/apis/apiextensions.k8s.io/v1/customresourcedefinitions/tlsroutes.gateway.networking.k8s.io"]
+}
+moved {
+  from = kubectl_manifest.gateway_api_crds[6]
+  to   = module.gateway_api_crds.kubectl_manifest.this["/apis/apiextensions.k8s.io/v1/customresourcedefinitions/udproutes.gateway.networking.k8s.io"]
+}
+moved {
+  from = kubectl_manifest.gateway_api_crds[7]
+  to   = module.gateway_api_crds.kubectl_manifest.this["/apis/apiextensions.k8s.io/v1/customresourcedefinitions/grpcroutes.gateway.networking.k8s.io"]
+}
+moved {
+  from = kubectl_manifest.gateway_api_crds[8]
+  to   = module.gateway_api_crds.kubectl_manifest.this["/apis/apiextensions.k8s.io/v1/customresourcedefinitions/backendtlspolicies.gateway.networking.k8s.io"]
+}
+moved {
+  from = kubectl_manifest.gateway_api_crds[9]
+  to   = module.gateway_api_crds.kubectl_manifest.this["/apis/apiextensions.k8s.io/v1/customresourcedefinitions/listenersets.gateway.networking.k8s.io"]
+}
+```
+
+**Five keys have no `moved` block, deliberately** — they exist in the bundle but not in AWS's
+enumerated list, so they are clean creates and this is the whole point of switching to the bundle:
+
+```
+/apis/admissionregistration.k8s.io/v1/validatingadmissionpolicys/safe-upgrades.gateway.networking.k8s.io
+/apis/admissionregistration.k8s.io/v1/validatingadmissionpolicybindings/safe-upgrades.gateway.networking.k8s.io
+/apis/apiextensions.k8s.io/v1/customresourcedefinitions/xbackends.gateway.networking.x-k8s.io
+/apis/apiextensions.k8s.io/v1/customresourcedefinitions/xbackendtrafficpolicies.gateway.networking.x-k8s.io
+/apis/apiextensions.k8s.io/v1/customresourcedefinitions/xmeshes.gateway.networking.x-k8s.io
 ```
 
 - [ ] **Step 4: Swap the resource for the module**
