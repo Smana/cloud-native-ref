@@ -26,26 +26,35 @@ variable "cluster_name" {
   default     = "gcp-mycluster-0"
 }
 
+# These three are REQUIRED, with no defaults, matching
+# opentofu/aws/eks/configure/variables.tf. `opentofu/config.tm.hcl` is the single
+# source of truth and every script that applies this stack passes all three with
+# `-var=`.
+#
+# A default here would be a second copy of a version that lives somewhere else,
+# consulted only when someone runs `tofu` directly in this directory. AWS had
+# exactly that and got burned: its defaults said Cilium 1.19.5 / Flux 0.53.0
+# while config.tm.hcl had moved to 1.20.0 / 0.55.0, so a direct apply would have
+# quietly planned a CNI *downgrade* on a running cluster. The defaults were
+# removed there for that reason.
+#
+# This file had reintroduced them, under a comment claiming "same pattern, and
+# same reason, as opentofu/aws/eks/configure" -- which was the opposite of true.
+# Required variables make the drift impossible rather than merely discouraged:
+# the direct path now fails loudly with "No value for required variable".
 variable "cilium_version" {
-  description = "Cilium chart version. SHARED with AWS via opentofu/config.tm.hcl so both clouds upgrade together"
+  description = "Cilium chart version. Required: sourced from globals.cilium_version in opentofu/config.tm.hcl, SHARED with AWS so both clouds upgrade together"
   type        = string
-  # Default mirrors `cilium_version` in opentofu/config.tm.hcl. The Terramate
-  # scripts pass -var=cilium_version=... at run time, so this is only consulted
-  # when running tofu directly in this directory. Same pattern, and same reason,
-  # as opentofu/aws/eks/configure/variables.tf.
-  default = "1.20.0"
 }
 
 variable "flux_operator_version" {
-  description = "Flux Operator chart version. Shared with AWS"
+  description = "Flux Operator chart version. Required: sourced from globals.flux_operator_version in opentofu/config.tm.hcl. Shared with AWS"
   type        = string
-  default     = "0.55.0"
 }
 
 variable "flux_instance_version" {
-  description = "Flux Instance chart version. Shared with AWS"
+  description = "Flux Instance chart version. Required: sourced from globals.flux_instance_version in opentofu/config.tm.hcl. Shared with AWS"
   type        = string
-  default     = "0.55.0"
 }
 
 variable "flux_sync_url" {

@@ -2,8 +2,12 @@
 # Tailscale subnet router bootstrap.
 #
 # Idempotent on purpose: `tailscale up` is re-run on every boot with the current
-# route set, so changing advertised routes needs no instance replacement. The
-# instance's lifecycle block ignores changes to this script for the same reason.
+# route set, so changing advertised routes needs no instance replacement.
+#
+# There is deliberately NO lifecycle/ignore_changes on this script. An earlier
+# version ignored it, which silently discarded real edits -- a changed route set
+# reached the instance by no path at all and still planned clean. It now lives in
+# metadata.startup-script, which updates in place.
 set -euxo pipefail
 
 # Required for subnet routing; the kernel drops forwarded packets without these,

@@ -82,7 +82,7 @@ resource "kubectl_manifest" "flux_system_secret" {
   server_side_apply = true
 
   # The GitHub App private key is rendered into yaml_body, so without this it
-  # appears unredacted in every plan diff and in the GCS state object.
+  # appears unredacted in every plan diff and in the S3 state object.
   #
   # data.tf's comment says the secret is "deliberately NOT in OpenTofu" -- that is
   # true of its CREATION (we do not manage the Secret Manager entry) but NOT of

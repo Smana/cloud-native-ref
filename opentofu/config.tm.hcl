@@ -36,8 +36,16 @@ globals {
   # europe-west4 was chosen on GPU availability, not price: nvidia-l4 exists in all
   # three of its zones but not at all in europe-west9 (Paris), which would otherwise
   # have been the geographic match for the AWS eu-west-3 side.
-  gcp_project      = "ogenki-435905"
-  gcp_region       = "europe-west4"
-  gcp_zone         = "europe-west4-a"
-  gke_cluster_name = "gcp-mycluster-0"
+  #
+  # There are deliberately NO gcp_project / gcp_region / gcp_zone / gke_cluster_name
+  # globals to match `region` and `eks_cluster_name` above. Those two exist because
+  # something consumes them: eks-recycle-bootstrap-nodes.sh and the OpenBao
+  # workflows take them as script arguments. GCP has no equivalent imperative step,
+  # so the same globals were pure duplication -- a third copy of values that already
+  # live in each stack's variables.tf defaults and variables.tfvars, and one that
+  # nothing would notice going stale.
+  #
+  # The live values: project/region/zone in opentofu/gcp/network/variables.tfvars,
+  # cluster name in opentofu/gcp/gke/init/variables.tfvars. Add a global here when,
+  # and only when, a script needs to be handed one.
 }

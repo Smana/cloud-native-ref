@@ -52,7 +52,7 @@
 
 # ─── DATAPATH SETTINGS DELIBERATELY OMITTED ─────────────────────────────────────
 #
-# This file previously carried five more datapath settings, translated across from
+# This file previously carried eight more datapath settings, translated across from
 # the AWS values. Every one of them broke on GKE, in sequence:
 #
 #   devices: ens+ / egressMasqueradeInterfaces: ens4

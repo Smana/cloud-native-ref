@@ -37,7 +37,7 @@ script "deploy" {
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
-        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars
+        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
       BASH
       ],
     ]
@@ -58,7 +58,7 @@ script "preview" {
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
-        ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars
+        ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
       BASH
       ],
     ]
@@ -81,7 +81,7 @@ script "destroy" {
         # `destroy` is a standalone entrypoint: unlike `deploy` it can be the first
         # tofu command run in a stack, so it has to init itself.
         ${global.provisioner} init -lock-timeout=5m
-        ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars
+        ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
       BASH
       ],
     ]
