@@ -1,7 +1,7 @@
 # GCP foundation — status and resume plan
 
 **Date:** 2026-08-23
-**Branch:** `worktree-gcp-foundation` · **PR:** [#1818](https://github.com/Smana/cloud-native-ref/pull/1818) (47 commits)
+**Branch:** `worktree-gcp-foundation` · **PR:** [#1818](https://github.com/Smana/cloud-native-ref/pull/1818)
 **Infrastructure:** everything torn down. Nothing running on AWS or GCP.
 
 ---
@@ -90,7 +90,9 @@ flux reconcile source git flux-system
 - **Four Terramate scripts run ungated on GCP** — `init`, `drift detect`,
   `drift reconcile`, `render` have no GCP override, so the opt-in gate is
   incomplete.
-- **Teardown leaks, three found today** (see [Traps](#traps-found-today)).
+- **Orphan load-balancer security groups survive teardown** and block the VPC
+  delete. Belongs in `scripts/eks-prepare-destroy.sh` (see
+  [Traps](#traps-found-today)).
 - **Unreviewed by more than one pair of eyes:** destroy-ordering under every
   failure mode, `depends_on` gaps, and the `clusters/gcp-mycluster-0/` Flux wiring.
   Two review agents produced nothing across repeated asks.
@@ -178,20 +180,24 @@ Each of these cost real time and is invisible until it bites.
 
 1. **A background task's exit code lied.** The EKS deploy reported exit 0 while
    stage 2 had failed. Read the output, not the status line.
-2. **Teardown leaks, in three different places**, each breaking a *different* part
-   of the next rebuild:
-   - **Route53 records** — 20 stale external-dns records blocked the zone
-     replacement with `HostedZoneNotEmpty`. **Refined at end of day:** running
-     `scripts/eks-prepare-destroy.sh` first PREVENTS this — the clean teardown
-     left the zone with only its NS and SOA. The morning's leak came from a
-     teardown that bypassed the script. Use it; it works.
-   - **CNPG WAL archives** — non-empty live prefixes made both recovering
-     databases `unrecoverable`. The bucket still holds archives from earlier
-     rebuilds (`harbor-20241111`, `zitadel-20260505`, `zitadel-20260719`).
-   - **CSI EBS volumes** — previously recorded, unfixed.
+2. **Teardown leaks — one confirmed, two disproved.** Verified by a clean
+   end-of-day teardown that ran `scripts/eks-prepare-destroy.sh` first:
+   - **Orphan security groups — REAL, and unfixed.** The AWS Load Balancer /
+     Cilium Gateway API controllers create `k8s-*` security groups that outlive
+     their load balancers. Three were left (`k8s-traffic-*`,
+     `k8s-security-ciliumga-*`, `k8s-infrastr-ciliumga-*`), and they block the VPC
+     delete with `DependencyViolation`. They can reference each other, so deletion
+     may need more than one pass. **This belongs in eks-prepare-destroy.sh.**
+   - **Route53 records — did NOT recur.** The clean teardown left the zone with
+     only its NS and SOA. The morning's `HostedZoneNotEmpty` came from a teardown
+     that bypassed the prepare script.
+   - **CSI EBS volumes — did NOT recur.** Zero `available` volumes afterwards.
+     The previously recorded leak appears to be handled by the prepare script too.
 
-   These share one root cause worth fixing once, in the teardown scripts, rather
-   than symptom by symptom.
+   The lesson is narrower than "teardown leaks": **run
+   `scripts/eks-prepare-destroy.sh` and it handles almost everything.** The one
+   gap it does not cover is the load-balancer security groups.
+
 3. **A domain rename invalidates leaf certificates, not just names.** Copying the
    CA preserved a *hostname-bound* server cert. Worse, the intermediate that signed
    it had **no private key stored anywhere** — OpenBao issued it, so the key lives
