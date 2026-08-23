@@ -4,21 +4,26 @@
 # WHAT THIS STACK DELIBERATELY DOES *NOT* CREATE
 #
 # Both clouds share ONE tailnet, and several Tailscale resources are tailnet-wide
-# singletons already owned by opentofu/aws/network (the AWS stack):
+# singletons owned by opentofu/shared/tailscale -- which belongs to NEITHER cloud:
 #
-#   tailscale_acl               <- owned by AWS, overwrite_existing_content = true
-#   tailscale_dns_nameservers   <- owned by AWS
-#   tailscale_dns_search_paths  <- owned by AWS
+#   tailscale_acl               <- owned by shared/tailscale
+#   tailscale_dns_nameservers   <- owned by shared/tailscale
+#   tailscale_dns_search_paths  <- owned by shared/tailscale
 #
-# Declaring any of them here would make the two stacks fight: each apply would
-# overwrite the other's version, silently, with the last apply winning. So this
-# stack creates only per-device and per-domain resources.
+# Declaring any of them here would make two stacks fight: each apply overwrites
+# the other's version, silently, last apply winning. That is not hypothetical --
+# opentofu/aws/network declared the same three until this PR, and they had
+# already diverged, so an AWS apply would have deleted priv.gcp.ogenki.io from
+# the tailnet's search paths.
 #
-# CONSEQUENCE, and it is load-bearing: the AWS-owned ACL currently auto-approves
-# and permits ONLY 10.0.0.0/16. Until it also carries the GCP ranges, this
-# router's advertised routes stay unapproved and unreachable. Editing the ACL by
-# hand does not work either -- the next AWS apply overwrites it. See the plan's
-# Task 8 for the required change to opentofu/aws/network/tailscale.tf.
+# So this stack creates only per-device and per-domain resources: the subnet
+# router, its auth key, and the split-DNS entry pointing at a resolver address
+# that exists only inside this VPC.
+#
+# This router's advertised routes are authorised by the shared stack's
+# autoApprovers, via its `advertised_routes` map. Adding a CIDR here means adding
+# it there too -- and NOT by hand in the admin console, which the next apply of
+# the shared stack overwrites.
 # ────────────────────────────────────────────────────────────────────────────
 
 # Inbound DNS forwarding, so tailnet clients can resolve the private zone.

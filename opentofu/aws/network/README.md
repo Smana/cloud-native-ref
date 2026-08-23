@@ -39,12 +39,11 @@ region              = "eu-west-3"
 private_domain_name = "priv.aws.ogenki.io"
 
 tailscale = {
-  subnet_router_name         = "ogenki"
-  tailnet                    = "smainklh@gmail.com"
-  // api_key                    = "tskey-api-<REDACTED>" # Generated in Tailscale Admin console. Sensitive value that should be defined using `export TF_VAR_tailscale_api_key=<key>`
-  prometheus_enabled         = true
-  ssm_enabled                = true
-  overwrite_existing_content = true # Be careful it will replace the existing ACLs
+  subnet_router_name = "ogenki"
+  tailnet            = "smainklh@gmail.com"
+  // api_key            = "tskey-api-<REDACTED>" # Generated in Tailscale Admin console. Sensitive value that should be defined using `export TF_VAR_tailscale_api_key=<key>`
+  prometheus_enabled = true
+  ssm_enabled        = true
 }
 
 tags = {

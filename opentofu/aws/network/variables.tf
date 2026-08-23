@@ -78,29 +78,12 @@ variable "tailscale_config" {
   }
 }
 
-variable "gcp_routes" {
-  description = <<-EOT
-    CIDRs advertised into the shared tailnet by the GCP subnet router
-    (opentofu/gcp/network). Listed here because the tailnet ACL is a tailnet-wide
-    singleton owned by THIS stack, so the GCP stack cannot authorise its own
-    routes without the two stacks overwriting each other's ACL on every apply.
-
-    Must stay in sync with `advertised_routes` output of opentofu/gcp/network:
-    node, pod, service and GKE control-plane ranges.
-  EOT
-  type        = list(string)
-  default = [
-    "10.10.0.0/16",  # nodes
-    "100.65.0.0/16", # pods
-    "10.11.0.0/20",  # services
-    "172.16.0.0/28", # GKE private control plane
-  ]
-
-  validation {
-    condition     = alltrue([for cidr in var.gcp_routes : can(cidrhost(cidr, 0))])
-    error_message = "Every entry in gcp_routes must be a valid IPv4 CIDR block."
-  }
-}
+# No gcp_routes here any more. It existed so this stack's tailnet ACL could
+# authorise the GCP subnet router's routes, on the premise -- stated in its own
+# description -- that the ACL was "a tailnet-wide singleton owned by THIS stack".
+# That premise is gone: opentofu/shared/tailscale owns the ACL now and takes
+# every cloud's routes through its own advertised_routes map, so one cloud no
+# longer has to carry the other's CIDRs to grant them.
 
 variable "tags" {
   description = "A map of tags to add to all resources"

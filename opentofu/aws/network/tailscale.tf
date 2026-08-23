@@ -1,102 +1,17 @@
-resource "tailscale_acl" "this" {
-  // Overwrite the existing content of the ACL.
-  overwrite_existing_content = lookup(var.tailscale_config, "overwrite_existing_content", false)
-
-  acl = jsonencode({
-    // Define groups for access control
-    groups = {
-      "group:admin" = ["smainklh@gmail.com"]
-    }
-
-    // Define access control lists for users, groups, autogroups, tags,
-    // Tailscale IP addresses, and subnet ranges.
-    // Note: Only explicitly allowed connections are permitted (default deny)
-    acls = [
-      // Restrict admin-tagged services (like Hubble) to admin group only
-      {
-        action = "accept"
-        src    = ["group:admin"]
-        dst    = ["tag:admin:*"]
-      },
-      // Allow all members to access CI tagged devices
-      {
-        action = "accept"
-        src    = ["autogroup:member"]
-        dst    = ["tag:ci:*"]
-      },
-      // Allow all members to access k8s general services
-      {
-        action = "accept"
-        src    = ["autogroup:member"]
-        dst    = ["tag:k8s:*"]
-      },
-      // Allow all members to access VPC resources through subnet router
-      {
-        action = "accept"
-        src    = ["autogroup:member"]
-        dst    = ["10.0.0.0/16:*"]
-      },
-      // Same, for the GCP side. This ACL is a TAILNET-WIDE SINGLETON owned by this
-      // stack (overwrite_existing_content = true), and both clouds share one
-      // tailnet -- so opentofu/gcp/network deliberately does not declare a
-      // tailscale_acl of its own, and its routes have to be permitted from here.
-      // Editing this by hand in the admin console does not survive the next apply.
-      {
-        action = "accept"
-        src    = ["autogroup:member"]
-        dst    = [for cidr in var.gcp_routes : "${cidr}:*"]
-      },
-      // Allow all members to access other member devices
-      {
-        action = "accept"
-        src    = ["autogroup:member"]
-        dst    = ["autogroup:member:*"]
-      },
-      // Allow k8s operator to manage its resources
-      {
-        action = "accept"
-        src    = ["tag:k8s-operator"]
-        dst    = ["tag:k8s:*", "tag:admin:*"]
-      }
-    ]
-
-    // Define users and devices that can use Tailscale SSH.
-    ssh = [
-      {
-        action = "check"
-        src    = ["autogroup:member"]
-        dst    = ["autogroup:self"]
-        users  = ["autogroup:nonroot"]
-      }
-    ]
-
-    // Allow the subnet routers to advertise their CIDRs. Without an entry here a
-    // route is advertised but stays unapproved, so it silently never carries
-    // traffic -- which looks like a routing bug rather than a policy gap.
-    autoApprovers = {
-      routes = merge(
-        {
-          # tflint-ignore: terraform_deprecated_interpolation
-          "${module.vpc.vpc_cidr_block}" = [var.tailscale_config.tailnet]
-        },
-        { for cidr in var.gcp_routes : cidr => [var.tailscale_config.tailnet] }
-      )
-    }
-
-    tagOwners = {
-      "tag:ci"           = [var.tailscale_config.tailnet]
-      "tag:k8s"          = ["tag:k8s-operator"]
-      "tag:k8s-operator" = [var.tailscale_config.tailnet]
-      "tag:admin"        = ["tag:k8s-operator"]
-    }
-  })
-}
-
-resource "tailscale_dns_nameservers" "this" {
-  nameservers = [
-    "1.1.1.1" // Cloudflare
-  ]
-}
+# Tailnet-wide singletons are NOT declared here. They live in
+# opentofu/shared/tailscale, which is their single owner.
+#
+# tailscale_acl, tailscale_dns_nameservers and tailscale_dns_search_paths are
+# TAILNET-scoped, not VPC-scoped: one object per tailnet, shared by every cloud.
+# Declaring them here as well as in the shared stack meant two authoritative
+# owners in two states with no common lock, so the last apply won. They had
+# already diverged -- this file rendered 2 search paths while the shared stack
+# renders 3, so an apply here would silently delete priv.gcp.ogenki.io from the
+# tailnet and break GCP private DNS for every device on it.
+#
+# What REMAINS below is correctly per-cloud: split-DNS maps a domain to a
+# resolver address, and that address exists only inside this VPC. Same for the
+# subnet router's own auth key.
 
 resource "tailscale_dns_split_nameservers" "private" {
   domain = var.private_domain_name
@@ -108,13 +23,6 @@ resource "tailscale_dns_split_nameservers" "ec2" {
   domain = "${var.region}.compute.internal"
 
   nameservers = [cidrhost(module.vpc.vpc_cidr_block, 2)]
-}
-
-resource "tailscale_dns_search_paths" "this" {
-  search_paths = [
-    "${var.region}.compute.internal",
-    var.private_domain_name
-  ]
 }
 
 resource "tailscale_tailnet_key" "this" {
