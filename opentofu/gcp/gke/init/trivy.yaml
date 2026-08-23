@@ -5,7 +5,7 @@
 # fixtures, ...). Once `tofu init` has downloaded the module into .terraform,
 # a plain `trivy config .` recurses into those examples and fails on findings
 # in vendored, non-owned files -- not the stack's own code. Same problem,
-# same fix, as opentofu/eks/init/trivy.yaml.
+# same fix, as opentofu/aws/eks/init/trivy.yaml.
 scan:
   skip-dirs:
     # Downloaded Terraform modules

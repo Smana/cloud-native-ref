@@ -44,13 +44,13 @@ This stack is **opt-in** under Terramate orchestration (tag `opt-in` + env-var-g
 
 ```bash
 # Direct (no orchestration):
-cd opentofu/llm-platform
+cd opentofu/aws/llm-platform
 tofu init
 tofu plan -var-file=variables.tfvars
 tofu apply -var-file=variables.tfvars
 
 # Via Terramate (opt-in):
-TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy
+TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
 
 # As part of a full deploy:
 TM_LLM_PLATFORM_ENABLED=true terramate script run deploy

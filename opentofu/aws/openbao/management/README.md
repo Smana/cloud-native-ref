@@ -77,7 +77,7 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
      on disk before `tofu init`:
 
      ```console
-     ../../../scripts/openbao-config.sh ca \
+     ../../../../scripts/openbao-config.sh ca \
        --root-ca-secret-name certificates/priv.cloud.ogenki.io/root-ca \
        --ca-output-file .tls/ca.pem
      ```

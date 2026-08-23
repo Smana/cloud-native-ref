@@ -1,5 +1,5 @@
 # EKS Configure - Stage 2 Terramate scripts
-# Must be run AFTER opentofu/eks/init (Stage 1) completes
+# Must be run AFTER opentofu/aws/eks/init (Stage 1) completes
 #
 # This stage:
 # 1. Disables VPC CNI and kube-proxy via DaemonSet patches

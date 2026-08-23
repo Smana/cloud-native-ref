@@ -136,7 +136,7 @@ variable "admin_credentials_secret_name" {
   default     = "openbao/cloud-native-ref/users/admin"
 }
 
-# Must match `mode` in opentofu/openbao/cluster/variables.tfvars. It duplicates
+# Must match `mode` in opentofu/aws/openbao/cluster/variables.tfvars. It duplicates
 # one fact across two stacks, which is a drift risk, but the alternative is
 # wiring remote state between them for a single flag and this stack has no
 # other cross-stack coupling.

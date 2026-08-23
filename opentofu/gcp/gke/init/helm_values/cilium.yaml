@@ -1,6 +1,6 @@
 # Cilium Helm values — GCP / GKE
 #
-# FORKED from opentofu/eks/init/helm_values/cilium.yaml rather than templated from
+# FORKED from opentofu/aws/eks/init/helm_values/cilium.yaml rather than templated from
 # a shared base. With two clouds and a handful of divergent keys, duplication is
 # cheaper than a merge mechanism that hides what Cilium actually receives — and
 # "we do not fully understand what Cilium does on an unsupported path" is exactly

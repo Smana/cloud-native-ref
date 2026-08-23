@@ -3,7 +3,7 @@
 # These live in `configure`, not `init`, even though the plan originally placed
 # them in `init`. A kubectl provider configured from the cluster created in the
 # same apply cannot be deferred and fails on fresh applies with "no configuration
-# has been provided" -- documented in opentofu/eks/init/providers.tf after the AWS
+# has been provided" -- documented in opentofu/aws/eks/init/providers.tf after the AWS
 # side hit it. `configure` runs against an already-created cluster, so the
 # provider resolves cleanly.
 #

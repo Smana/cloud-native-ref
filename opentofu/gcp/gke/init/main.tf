@@ -108,7 +108,7 @@ module "gke" {
 
   # Must stay false. The module's ip-masq-agent is a kubernetes_config_map, i.e. a
   # call into the very cluster this apply is creating -- the same-apply dependency
-  # that opentofu/eks/init/providers.tf documents as unfixable. The module's own
+  # that opentofu/aws/eks/init/providers.tf documents as unfixable. The module's own
   # description says as much: "IP masquerading uses a kubectl call, so when you
   # have a private cluster, you will need access to the API server."
   # It is also unnecessary here: we use alias IPs, and Cilium owns masquerading.

@@ -4,8 +4,8 @@ stack {
   id          = "eks-init"
 
   after = [
-    "/opentofu/network",
-    "/opentofu/openbao/management"
+    "/opentofu/aws/network",
+    "/opentofu/aws/openbao/management"
   ]
 
   tags = [

@@ -16,7 +16,7 @@ module "eks" {
   ]
 
   # Bootstrap addons: VPC CNI + kube-proxy make nodes Ready
-  # Stage 2 (opentofu/eks/configure/) replaces them with Cilium
+  # Stage 2 (opentofu/aws/eks/configure/) replaces them with Cilium
   addons = {
     # VPC CNI: makes nodes Ready quickly (replaced by Cilium in stage 2)
     # WARM_ENI_TARGET=0 prevents VPC-CNI from creating secondary ENIs.
@@ -65,7 +65,7 @@ module "eks" {
       }]
     }
   }
-  # Stage 2 (opentofu/eks/configure/): Disable VPC CNI + kube-proxy → Install Cilium → Flux
+  # Stage 2 (opentofu/aws/eks/configure/): Disable VPC CNI + kube-proxy → Install Cilium → Flux
 
   enable_cluster_creator_admin_permissions = true
 

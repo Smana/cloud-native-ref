@@ -28,7 +28,7 @@
 #   TM_LLM_PLATFORM_ENABLED=true terramate script run deploy
 #
 #   # target only this stack:
-#   TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy
+#   TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
 #
 #   # CI: skip entirely via tag (no env var needed):
 #   terramate script run --no-tags=opt-in deploy
@@ -49,7 +49,7 @@ script "deploy" {
     commands = [
       ["bash", "-c", <<-SCRIPT
         if [ "$${TM_LLM_PLATFORM_ENABLED:-false}" != "true" ]; then
-          echo "[skip] opentofu/llm-platform: opt-in by setting TM_LLM_PLATFORM_ENABLED=true"
+          echo "[skip] opentofu/aws/llm-platform: opt-in by setting TM_LLM_PLATFORM_ENABLED=true"
           exit 0
         fi
         set -euo pipefail
@@ -74,7 +74,7 @@ script "preview" {
     commands = [
       ["bash", "-c", <<-SCRIPT
         if [ "$${TM_LLM_PLATFORM_ENABLED:-false}" != "true" ]; then
-          echo "[skip] opentofu/llm-platform: opt-in by setting TM_LLM_PLATFORM_ENABLED=true"
+          echo "[skip] opentofu/aws/llm-platform: opt-in by setting TM_LLM_PLATFORM_ENABLED=true"
           exit 0
         fi
         set -euo pipefail
@@ -97,7 +97,7 @@ script "drift" "detect" {
     commands = [
       ["bash", "-c", <<-SCRIPT
         if [ "$${TM_LLM_PLATFORM_ENABLED:-false}" != "true" ]; then
-          echo "[skip] opentofu/llm-platform: opt-in by setting TM_LLM_PLATFORM_ENABLED=true"
+          echo "[skip] opentofu/aws/llm-platform: opt-in by setting TM_LLM_PLATFORM_ENABLED=true"
           exit 0
         fi
         set -euo pipefail
@@ -124,7 +124,7 @@ script "destroy" {
     commands = [
       ["bash", "-c", <<-SCRIPT
         if [ "$${TM_LLM_PLATFORM_ENABLED:-false}" != "true" ]; then
-          echo "[skip] opentofu/llm-platform: opt-in by setting TM_LLM_PLATFORM_ENABLED=true"
+          echo "[skip] opentofu/aws/llm-platform: opt-in by setting TM_LLM_PLATFORM_ENABLED=true"
           exit 0
         fi
         set -euo pipefail

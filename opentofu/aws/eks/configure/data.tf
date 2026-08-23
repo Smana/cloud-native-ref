@@ -5,7 +5,7 @@ data "aws_eks_cluster" "this" {
 data "aws_caller_identity" "this" {}
 
 # Re-derived here (rather than read from eks/init remote state) to keep this
-# stage self-contained. Same tag filters as the VPC created by opentofu/network.
+# stage self-contained. Same tag filters as the VPC created by opentofu/aws/network.
 data "aws_vpc" "selected" {
   filter {
     name   = "tag:project"

@@ -26,7 +26,7 @@ variable "openbao_version" {
   # lock ordering across namespaces, mounts and the router, still OPEN), which
   # deadlocks the core when the management stack writes concurrently — but the
   # concurrency is ours, not OpenBao's. The management stack now applies with
-  # -parallelism=1 (opentofu/openbao/management/workflows.tm.hcl), which clears
+  # -parallelism=1 (opentofu/aws/openbao/management/workflows.tm.hcl), which clears
   # it; see the reproduction recorded there. Do not raise that parallelism while
   # #3411 is open.
   # renovate: datasource=github-releases depName=openbao/openbao

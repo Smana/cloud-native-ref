@@ -4,7 +4,7 @@
 # Stage 2 (configure stack): Disable VPC CNI + kube-proxy -> Install Cilium -> Flux
 #
 # Usage:
-#   cd opentofu/eks/init
+#   cd opentofu/aws/eks/init
 #   terramate script run deploy                                        # Full deployment (both stages)
 #   TF_VAR_flux_git_ref='refs/heads/feature-branch' terramate script run deploy  # With custom ref
 #   terramate script run deploy-stage1                                 # Stage 1 only (infrastructure)

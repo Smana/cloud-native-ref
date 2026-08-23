@@ -65,7 +65,7 @@ variable "identity_providers" {
 # moved there along with the resources.
 
 # Note: Flux configuration (version, sync URL, git ref) is now managed via Terramate globals
-# in opentofu/config.tm.hcl and Helm values in opentofu/eks/helm_values/flux-instance.yaml
+# in opentofu/config.tm.hcl and Helm values in opentofu/aws/eks/init/helm_values/flux-instance.yaml
 
 variable "tags" {
   description = "A map of tags to add to all resources"

@@ -20,7 +20,7 @@
 #
 # Nor could it be: cert-manager and the snapshot CronJob are pods and
 # legitimately need 8200. At the network layer every pod looks alike, and this
-# stack is ordered *before* /opentofu/eks/init, so there is no EKS node
+# stack is ordered *before* /opentofu/aws/eks/init, so there is no EKS node
 # security group to name instead. What actually distinguishes an authorised pod
 # from any other is AppRole authentication and the per-workload
 # CiliumNetworkPolicy — not this security group.

@@ -4,7 +4,7 @@ stack {
   id          = "0a3f6f50-c6e7-4f2a-9b1c-d33ad4ba3a93"
 
   after = [
-    "/opentofu/eks/init",
+    "/opentofu/aws/eks/init",
   ]
 
   tags = [

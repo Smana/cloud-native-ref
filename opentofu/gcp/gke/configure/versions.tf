@@ -10,7 +10,7 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 3.0"
     }
-    # gavinbunney, matching opentofu/eks/configure — one kubectl provider across
+    # gavinbunney, matching opentofu/aws/eks/configure — one kubectl provider across
     # both clouds so behaviour differences are not mistaken for cloud differences.
     kubectl = {
       source  = "gavinbunney/kubectl"

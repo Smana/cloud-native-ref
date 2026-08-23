@@ -4,7 +4,7 @@
 # WHAT THIS STACK DELIBERATELY DOES *NOT* CREATE
 #
 # Both clouds share ONE tailnet, and several Tailscale resources are tailnet-wide
-# singletons already owned by opentofu/network (the AWS stack):
+# singletons already owned by opentofu/aws/network (the AWS stack):
 #
 #   tailscale_acl               <- owned by AWS, overwrite_existing_content = true
 #   tailscale_dns_nameservers   <- owned by AWS
@@ -18,7 +18,7 @@
 # and permits ONLY 10.0.0.0/16. Until it also carries the GCP ranges, this
 # router's advertised routes stay unapproved and unreachable. Editing the ACL by
 # hand does not work either -- the next AWS apply overwrites it. See the plan's
-# Task 8 for the required change to opentofu/network/tailscale.tf.
+# Task 8 for the required change to opentofu/aws/network/tailscale.tf.
 # ────────────────────────────────────────────────────────────────────────────
 
 # Per-domain, keyed by domain name -> no collision with the AWS split nameservers.

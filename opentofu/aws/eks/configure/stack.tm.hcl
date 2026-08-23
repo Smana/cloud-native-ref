@@ -3,7 +3,7 @@ stack {
   description = "Cilium CNI and Flux GitOps (Stage 2)"
   id          = "eks-configure"
 
-  after = ["/opentofu/eks/init"]
+  after = ["/opentofu/aws/eks/init"]
 
   tags = [
     "aws",

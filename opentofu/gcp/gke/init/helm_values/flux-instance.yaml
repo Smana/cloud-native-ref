@@ -2,12 +2,12 @@
 # Dynamic values (sync.url, sync.ref, sync.path) are passed via --set in the Terramate script
 # See: opentofu/gcp/gke/init/workflows.tm.hcl
 #
-# Copied from opentofu/eks/init/helm_values/flux-instance.yaml. The ONLY intended
+# Copied from opentofu/aws/eks/init/helm_values/flux-instance.yaml. The ONLY intended
 # divergence is storage.class: gp3 (AWS EBS) -> standard-rwo (GCP PD). Keep every
 # other value in sync with the AWS file; change one without the other and the two
 # clusters' Flux behaviour drifts silently.
 #
-#   diff opentofu/eks/init/helm_values/flux-instance.yaml \
+#   diff opentofu/aws/eks/init/helm_values/flux-instance.yaml \
 #        opentofu/gcp/gke/init/helm_values/flux-instance.yaml
 #
 # should show only the header and that one line.

@@ -15,7 +15,7 @@ terraform {
 }
 
 # No kubectl/kubernetes/helm provider here on purpose, mirroring
-# opentofu/eks/init/providers.tf: this stage only creates the cluster. A provider
+# opentofu/aws/eks/init/providers.tf: this stage only creates the cluster. A provider
 # configured from module.gke.* outputs would depend on resources created in this
 # same apply, which alekc/kubectl cannot defer -- it fails with "no configuration
 # has been provided" on a fresh apply. Every cluster-internal resource, the
