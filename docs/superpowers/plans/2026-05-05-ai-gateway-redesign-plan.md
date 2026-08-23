@@ -313,11 +313,11 @@ The SR (vllm-semantic-router v0.2.0) is already running and is wired to receive 
 
 ### Task P5.1: Repoint Tailscale HTTPRoute
 
-**Files:** wherever the Tailscale `HTTPRoute` for `llm.priv.cloud.ogenki.io` lives (likely `infrastructure/mycluster-0/tailscale-gateway/` or `apps/base/ai/llm/`).
+**Files:** wherever the Tailscale `HTTPRoute` for `llm.priv.aws.ogenki.io` lives (likely `infrastructure/mycluster-0/tailscale-gateway/` or `apps/base/ai/llm/`).
 
 - [ ] **Step 1: Locate the existing HTTPRoute**: `grep -r 'xplane-llm-ai-gateway\|llm.priv' apps/ infrastructure/`.
 - [ ] **Step 2: Change `backendRefs`** to point at the AI Gateway data-plane Service. Discover the exact name with `kubectl get svc -n <ai-gateway-ns>` after P1 completes — the AI Gateway controller typically names it `<gateway-name>-data-plane` or `eg-<gateway-name>`.
-- [ ] **Step 3: Verify external access** through Tailscale: `curl -sv https://llm.priv.cloud.ogenki.io/v1/models` returns the model list.
+- [ ] **Step 3: Verify external access** through Tailscale: `curl -sv https://llm.priv.aws.ogenki.io/v1/models` returns the model list.
 
 ### Task P5.2: Delete legacy CEC + Service + CNP
 

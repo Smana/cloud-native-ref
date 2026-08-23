@@ -11,6 +11,6 @@ advertised_routes = {
 
 search_domains = [
   "eu-west-3.compute.internal",
-  "priv.cloud.ogenki.io",
-  "priv.gcp.cloud.ogenki.io",
+  "priv.aws.ogenki.io",
+  "priv.gcp.ogenki.io",
 ]

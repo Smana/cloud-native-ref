@@ -112,7 +112,7 @@ variable "control_plane_cidr" {
 variable "private_domain_name" {
   description = "Cloud DNS private zone name for GCP-side records"
   type        = string
-  default     = "priv.gcp.cloud.ogenki.io"
+  default     = "priv.gcp.ogenki.io"
 
   validation {
     condition     = can(regex("^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$", var.private_domain_name))

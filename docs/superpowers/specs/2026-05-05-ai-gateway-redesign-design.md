@@ -266,7 +266,7 @@ Per-claim resources rendered:
 
 ### Tailscale gateway redirect
 
-Update the existing Tailscale `HTTPRoute` for `llm.priv.cloud.ogenki.io` (or equivalent host) to set `backendRefs` → the AI Gateway data-plane Service instead of `xplane-llm-ai-gateway`.
+Update the existing Tailscale `HTTPRoute` for `llm.priv.aws.ogenki.io` (or equivalent host) to set `backendRefs` → the AI Gateway data-plane Service instead of `xplane-llm-ai-gateway`.
 
 ---
 
@@ -297,7 +297,7 @@ Five phases. Each is independently mergeable. The `llm-router-proxy` is fully re
 
 **Changes:**
 - New informational header: `x-ai-eg-backend` reports the InferencePool name (`qwen3-8b-pool` etc.) — useful for observability + blog post diagrams.
-- Hostname unchanged (Tailscale-fronted, e.g., `llm.priv.cloud.ogenki.io`); only the underlying Service the Tailscale Gateway HTTPRoute points to changes.
+- Hostname unchanged (Tailscale-fronted, e.g., `llm.priv.aws.ogenki.io`); only the underlying Service the Tailscale Gateway HTTPRoute points to changes.
 - **OpenWebUI / OpenCode / Continue configs need zero changes** — the OpenAI-compat surface is the contract.
 
 ---

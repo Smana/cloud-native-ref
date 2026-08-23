@@ -60,7 +60,7 @@ variable "gateway_api_version" {
 }
 
 variable "private_domain_name" {
-  description = "Private domain name for internal services (e.g., priv.cloud.ogenki.io)"
+  description = "Private domain name for internal services (e.g., priv.aws.ogenki.io)"
   type        = string
 
   validation {

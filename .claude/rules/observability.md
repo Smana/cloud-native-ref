@@ -9,7 +9,7 @@ globs:
 
 ## VictoriaLogs / LogsQL Syntax
 
-**CLI tool**: `vlogscli -datasource.url='https://vl.priv.cloud.ogenki.io/select/logsql/query'`
+**CLI tool**: `vlogscli -datasource.url='https://vl.priv.aws.ogenki.io/select/logsql/query'`
 
 ### Key Syntax Rules
 

@@ -2,7 +2,7 @@ module "zones" {
   source  = "terraform-aws-modules/route53/aws"
   version = "~> 6.0"
 
-  name    = "priv.cloud.ogenki.io"
+  name    = "priv.aws.ogenki.io"
   comment = "Internal zone for private DNS hosts"
 
   vpc = {

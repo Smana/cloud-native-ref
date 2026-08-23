@@ -1113,9 +1113,9 @@ exposing `/v1/messages` (Anthropic API surface) and translating to
 
 **Changes**:
 - New `apps/base/ai/llm/claude-bridge/` with HelmRelease + CNP +
-  HTTPRoute (`claude.priv.cloud.ogenki.io`).
+  HTTPRoute (`claude.priv.aws.ogenki.io`).
 - README docs section: "Pointing Claude Code at the self-hosted
-  stack" — `ANTHROPIC_BASE_URL=https://claude.priv.cloud.ogenki.io claude`.
+  stack" — `ANTHROPIC_BASE_URL=https://claude.priv.aws.ogenki.io claude`.
 
 **Honest framing**: this is a UX win wrapped around a quality
 compromise. Pointing Claude Code at Qwen2.5-Coder-7B (or even
@@ -1218,7 +1218,7 @@ A reference deployment of self-hosted, open-weights LLM serving on EKS — GitOp
 - 🧠 **Models**: Qwen2.5-Coder-7B, Qwen3-8B, LlamaGuard 3-1B, Qwen2.5-Coder-1.5B (FIM) — vLLM-served, fp8.
 - 🚪 **Gateway**: Envoy AI Gateway with header-match routing; KEDA HTTP add-on for scale-from-zero on the model layer.
 - 🎯 **Routing**: [Semantic Router](https://github.com/vllm-project/semantic-router) classifies prompts and dispatches via a cascade (code → coder, math → reasoner, multilingual → general, jailbreak → guardrail).
-- 🔌 **Clients**: OpenAI-compatible at `https://llm.priv.cloud.ogenki.io/v1` — OpenWebUI for chat, OpenCode + Continue for IDE.
+- 🔌 **Clients**: OpenAI-compatible at `https://llm.priv.aws.ogenki.io/v1` — OpenWebUI for chat, OpenCode + Continue for IDE.
 - 💾 **Storage**: model weights on Amazon S3 Files (POSIX over S3), shared across pods.
 - ⚡ **Scaling**: GPU L4 spot NodePool via Karpenter, 1 always-warm L4 (FIM), all other models scale-from-zero on first request (~60–180s cold-start).
 
@@ -1392,7 +1392,7 @@ for upgrade trajectories.
 - **Phase 3** — `InferenceService` Crossplane composition v0.4.0 (KEDA HTTP add-on scale-from-zero, no EPP at min=0/max=1)
 - **Phase 4** — `xplane-llm-models` S3 bucket + writable preload IAM (S3 Files filesystem, POSIX over S3)
 - **Phase 5** — 4-model fleet (Qwen2.5-Coder-7B, Qwen2.5-Coder-1.5B FIM, Qwen3-8B, LlamaGuard 3-1B), Hybrid SR routing, LlamaGuard pre-filter, public AIGatewayRoute via Tailscale
-- **Phase 6** — OpenWebUI App XR claim → `chat.priv.cloud.ogenki.io`
+- **Phase 6** — OpenWebUI App XR claim → `chat.priv.aws.ogenki.io`
 - **Phase 7-stub** — Promptfoo nightly CronJob, platform VMRules, ADR-0003 (vLLM PS over KServe + llm-d)
 - **Foundation trim** — drop InferencePool/EPP + Phi-4-mini + ext_proc EnvoyExtensionPolicy + the cancelled `llm-router-proxy` Go service; switch to KEDA HTTP add-on universally
 

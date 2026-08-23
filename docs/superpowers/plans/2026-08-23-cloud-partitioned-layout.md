@@ -886,8 +886,8 @@ advertised_routes = {
 
 search_domains = [
   "eu-west-3.compute.internal",
-  "priv.cloud.ogenki.io",
-  "priv.gcp.cloud.ogenki.io",
+  "priv.aws.ogenki.io",
+  "priv.gcp.ogenki.io",
 ]
 ```
 
@@ -1040,7 +1040,7 @@ tofu init -lock-timeout=5m
 tofu plan -var-file=variables.tfvars -out=/tmp/tailscale.tfplan
 cd -
 ```
-Expected: `3 to import, 0 to add, 0 to change, 0 to destroy` — **except** `tailscale_dns_search_paths`, which legitimately shows a change because it gains `priv.gcp.cloud.ogenki.io`. The ACL must show **no change to content**.
+Expected: `3 to import, 0 to add, 0 to change, 0 to destroy` — **except** `tailscale_dns_search_paths`, which legitimately shows a change because it gains `priv.gcp.ogenki.io`. The ACL must show **no change to content**.
 
 **If the ACL shows a diff**, stop and compare it against the original `jsonencode` body. A reordered `acls` list is a real diff to the API and must be reconciled before applying.
 

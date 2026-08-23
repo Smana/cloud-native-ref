@@ -426,7 +426,7 @@ Falsifiable, verified against a live cluster.
 **Open questions**
 
 - GCP region and zone topology; zonal vs regional control plane (material cost difference).
-- Private DNS zone naming — `priv.gcp.cloud.ogenki.io` sibling, or one zone shared across clouds?
+- Private DNS zone naming — `priv.gcp.ogenki.io` sibling, or one zone shared across clouds?
 - Node image type: `cos_containerd` (GKE default) or `ubuntu_containerd` (more familiar kernel for
   debugging an unsupported path)?
 - GCP machine families for the `default`/`io` equivalents; retained static pool size; cluster

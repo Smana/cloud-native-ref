@@ -14,10 +14,10 @@ page and the [Access]({{< relref "/docs/get-started/aws/access.md" >}}) guide
 build on.
 
 One secret predates both stacks: OpenBao's own server certificate — the leaf
-terminating TLS on `bao.priv.cloud.ogenki.io:8200`, see
+terminating TLS on `bao.priv.aws.ogenki.io:8200`, see
 [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md#building-the-chain" >}})
 — is generated offline and read from Secrets Manager at
-`certificates/priv.cloud.ogenki.io/openbao` (the `openbao_certificates_secret_name`
+`certificates/priv.aws.ogenki.io/openbao` (the `openbao_certificates_secret_name`
 default in `opentofu/aws/openbao/cluster/variables.tf`, set explicitly in that
 stack's `variables.tfvars`) by `opentofu/aws/openbao/cluster/` before the
 management stack in this page ever runs.
@@ -65,7 +65,7 @@ provisioned by Terraform (`opentofu/aws/openbao/management/auth.tf`), not create
 by hand:
 
 ```bash
-export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
+export VAULT_ADDR=https://bao.priv.aws.ogenki.io:8200
 export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem   # written by `openbao-config.sh ca`
 bao login -method=userpass username=admin
 ```
@@ -209,7 +209,7 @@ The block below is self-contained — every variable the script needs is
 exported here, not assumed left over from the Operator Login section above:
 
 ```bash
-export VAULT_ADDR="https://bao.priv.cloud.ogenki.io:8200"
+export VAULT_ADDR="https://bao.priv.aws.ogenki.io:8200"
 export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem
 export APPROLE_ROLE_ID=... APPROLE_SECRET_ID=...
 export RECOVERY_KEYS_SECRET_ID="openbao/cloud-native-ref/tokens/recovery"

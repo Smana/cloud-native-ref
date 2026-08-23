@@ -11,7 +11,7 @@ pod_cidr           = "100.65.0.0/16"
 service_cidr       = "10.11.0.0/20"
 control_plane_cidr = "172.16.0.0/28"
 
-private_domain_name = "priv.gcp.cloud.ogenki.io"
+private_domain_name = "priv.gcp.ogenki.io"
 
 tailscale_config = {
   subnet_router_name = "ogenki-gcp"

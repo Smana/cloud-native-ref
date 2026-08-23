@@ -96,7 +96,7 @@ flux resume kustomization --all
 ### OpenBao
 
 ```bash
-export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
+export VAULT_ADDR=https://bao.priv.aws.ogenki.io:8200
 export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem   # written by `openbao-config.sh ca`; prefer this over VAULT_SKIP_VERIFY
 bao status
 
@@ -237,7 +237,7 @@ Two skills cover ground the plugin does not. Both are optional.
 
 ### Tailscale Gateway API Integration
 
-Private services exposed via Tailscale using Gateway API with custom domains (`*.priv.cloud.ogenki.io`). Two separate Gateways enforce ACL-based access control:
+Private services exposed via Tailscale using Gateway API with custom domains (`*.priv.aws.ogenki.io`). Two separate Gateways enforce ACL-based access control:
 
 - **General Gateway** (`tag:k8s`): All Tailscale members. Services: Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics.
 - **Admin Gateway** (`tag:admin`): `group:admin` only. Services: Hubble UI. (VictoriaLogs is on the *general* gateway — both its HTTPRoutes name `platform-tailscale-general`. Grafana OnCall is built under `observability/base/grafana-oncall/` but wired into no Kustomization, so it does not run.)

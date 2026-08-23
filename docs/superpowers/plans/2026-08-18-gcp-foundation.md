@@ -728,7 +728,7 @@ variable "env" {
 variable "private_domain_name" {
   description = "Private DNS zone for GCP platform services"
   type        = string
-  default     = "priv.gcp.cloud.ogenki.io"
+  default     = "priv.gcp.ogenki.io"
 }
 
 variable "node_cidr" {
@@ -779,7 +779,7 @@ variable "labels" {
 project_id          = "<project-id-from-task-2>"
 region              = "europe-west1"
 env                 = "dev"
-private_domain_name = "priv.gcp.cloud.ogenki.io"
+private_domain_name = "priv.gcp.ogenki.io"
 
 node_cidr    = "10.10.0.0/16"
 pod_cidr     = "100.65.0.0/16"

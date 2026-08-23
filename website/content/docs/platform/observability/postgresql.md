@@ -36,7 +36,7 @@ Two dashboards, both in the `databases` Grafana folder
 - **`databases-cnpg-query-plan-correlation`** — drills into one `query_id`:
   execution stats plus every `auto_explain` plan captured for it (see Logs
   below), with a button that copies the latest plan JSON to the clipboard
-  and opens a private [PEV2](https://pev2.priv.cloud.ogenki.io/) instance
+  and opens a private [PEV2](https://pev2.priv.aws.ogenki.io/) instance
   (Postgres Explain Visualizer 2) to paste it into.
 
 {{< callout type="warning" >}}

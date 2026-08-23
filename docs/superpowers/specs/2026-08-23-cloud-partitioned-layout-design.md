@@ -196,7 +196,7 @@ simpler and acyclic.
 auto-approved rather than pending manual approval.
 
 **A live bug this fixes:** `tailscale_dns_search_paths` currently contains only
-`eu-west-3.compute.internal` and `priv.cloud.ogenki.io`. GCP's `priv.gcp.cloud.ogenki.io` is absent,
+`eu-west-3.compute.internal` and `priv.aws.ogenki.io`. GCP's `priv.gcp.ogenki.io` is absent,
 so tailnet devices would not resolve GCP private names even with the router up and its routes
 approved. The shared stack takes both clouds' domains.
 

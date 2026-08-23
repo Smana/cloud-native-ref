@@ -9,7 +9,7 @@ set -euo pipefail
 # Configuration Defaults
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-URL="${URL:-https://image-gallery.priv.cloud.ogenki.io}"
+URL="${URL:-https://image-gallery.priv.aws.ogenki.io}"
 DURATION="${DURATION:-60}"
 CONCURRENCY="${CONCURRENCY:-2}"  # Safe default: 2 workers
 PATTERN="${PATTERN:-mixed}"
@@ -45,7 +45,7 @@ Usage: $0 [OPTIONS]
 Comprehensive benchmark for image-gallery API with all endpoints and error injection.
 
 OPTIONS:
-    --url URL               Base URL (default: https://image-gallery.priv.cloud.ogenki.io)
+    --url URL               Base URL (default: https://image-gallery.priv.aws.ogenki.io)
     -d, --duration TIME     Test duration in seconds (default: 60)
     -c, --concurrency N     Number of parallel clients (default: 2)
     -p, --pattern PATTERN   Workload pattern (default: mixed)

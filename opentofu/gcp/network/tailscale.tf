@@ -30,7 +30,7 @@
 # The obvious-looking alternative -- pointing the split nameserver at the GCE
 # metadata resolver 169.254.169.254 -- does NOT work: it is a link-local address,
 # so a tailnet client sends the query to its OWN link-local interface rather than
-# into the VPC, and *.priv.gcp.cloud.ogenki.io silently fails to resolve. The AWS
+# into the VPC, and *.priv.gcp.ogenki.io silently fails to resolve. The AWS
 # side gets this right by using cidrhost(vpc_cidr, 2), which is inside its
 # advertised CIDR.
 resource "google_dns_policy" "inbound" {

@@ -406,7 +406,7 @@ The `platform` lane in step 3–8 is the largest and is subdivided per domain di
 | `observability.md` (878 lines, stale 9 months) is largely wrong and verification balloons | Verify section by section against the deployed manifests; cut what cannot be verified rather than carry it. If a section needs a rewrite beyond migration scope, publish the verified remainder and record the gap explicitly on the page. |
 | The `docs/decisions/` move breaks links inside the read-only spec archive | 12 inbound references, enumerated above. Rewritten, not allowlisted. `validate-links.sh` is the gate. |
 | Splitting `apps-user-guide.md` (1046 lines) across four destinations loses content | Section-by-section checklist against the original's 12 numbered sections before the source file is deleted. |
-| DNS is outside this repository | `cnref.ogenki.io CNAME smana.github.io` is a manual prerequisite. This repository manages only the private zone `priv.cloud.ogenki.io` (`opentofu/aws/network/route53.tf`). The site builds and deploys to `smana.github.io/cloud-native-ref` until the record exists. |
+| DNS is outside this repository | `cnref.ogenki.io CNAME smana.github.io` is a manual prerequisite. This repository manages only the private zone `priv.aws.ogenki.io` (`opentofu/aws/network/route53.tf`). The site builds and deploys to `smana.github.io/cloud-native-ref` until the record exists. |
 | SVG exports with embedded base64 logos exceed the 1000 KB pre-commit ceiling | 500 KB budget per asset, checked at export time. |
 | Site and repository drift after launch | `refLinksErrorLevel: ERROR` catches internal rot; `validate-links.sh` catches the rest; verify-on-migrate establishes the norm that a page states what it was checked against. |
 

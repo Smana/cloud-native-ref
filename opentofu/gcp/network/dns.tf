@@ -1,6 +1,6 @@
 # Private Cloud DNS zone for GCP-side records.
 #
-# A SIBLING zone to the AWS side's priv.cloud.ogenki.io rather than a shared one:
+# A SIBLING zone to the AWS side's priv.aws.ogenki.io rather than a shared one:
 # the two clouds resolve through different resolvers (Route53 private zone vs
 # Cloud DNS private zone) and sharing a name would need cross-cloud forwarding
 # for no benefit while both clusters are independent. external-dns on the GCP

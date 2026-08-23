@@ -54,4 +54,4 @@ assists:
 
 auth:
   mode: github
-  redirectUrl: https://app-wizard.priv.cloud.ogenki.io/api/auth/callback
+  redirectUrl: https://app-wizard.priv.aws.ogenki.io/api/auth/callback

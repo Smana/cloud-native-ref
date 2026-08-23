@@ -8,7 +8,7 @@ lastVerified: 2026-08-20
 Every internal TLS certificate on this platform — Gateway API listeners,
 service-to-service TLS — traces back to one private PKI hosted in
 [OpenBao]({{< relref "/docs/platform/security/openbao.md" >}}). Nothing here
-is a public CA: `bao.priv.cloud.ogenki.io` and everything it signs is only
+is a public CA: `bao.priv.aws.ogenki.io` and everything it signs is only
 meaningful inside the tailnet.
 
 ## The three-tier chain
@@ -69,7 +69,7 @@ resource "vault_pki_secret_backend_config_ca" "pki" {
 ```
 
 OpenBao's own server certificate (the one terminating TLS on
-`bao.priv.cloud.ogenki.io:8200`) is a leaf signed the same way, generated
+`bao.priv.aws.ogenki.io:8200`) is a leaf signed the same way, generated
 once before the cluster exists and stored in Secrets Manager for
 `opentofu/aws/openbao/cluster/` to consume at bootstrap. Two details worth
 carrying forward if you regenerate it:
@@ -77,7 +77,7 @@ carrying forward if you regenerate it:
 - The key is EC P-256, matching the EC P-384 CAs above, and `openssl` writes
   key files world-readable by default — `chmod 600` it, since this key
   terminates TLS for every OpenBao client.
-- The SAN list has **no IP address**, only `DNS:bao.priv.cloud.ogenki.io`.
+- The SAN list has **no IP address**, only `DNS:bao.priv.aws.ogenki.io`.
   That's why a client connecting to a Raft peer by private IP address
   (rather than through the NLB's DNS name) cannot verify TLS against it.
 
@@ -97,7 +97,7 @@ metadata:
   namespace: security
 spec:
   vault:
-    server: https://bao.priv.cloud.ogenki.io:8200
+    server: https://bao.priv.aws.ogenki.io:8200
     path: pki_private_issuer/sign/ogenki
     caBundleSecretRef:
       name: openbao-ca
@@ -114,7 +114,7 @@ spec:
 Both referenced secrets are `ExternalSecret` objects
 (`security/base/cert-manager/`) pulling from the same AWS Secrets Manager
 entries the OpenTofu management stack writes to — one for the CA chain
-(`certificates/priv.cloud.ogenki.io/root-ca`), one for the AppRole
+(`certificates/priv.aws.ogenki.io/root-ca`), one for the AppRole
 credential (`openbao/cloud-native-ref/approles/cert-manager`). Neither the
 PKI mount nor the AppRole needs a `namespace:` field on the issuer — both
 live in OpenBao's root namespace (see
@@ -132,9 +132,9 @@ spec:
   secretName: foobar-tls
   duration: 2160h # 90d
   renewBefore: 360h # 15d
-  commonName: foobar.priv.cloud.ogenki.io
+  commonName: foobar.priv.aws.ogenki.io
   dnsNames:
-    - foobar.priv.cloud.ogenki.io
+    - foobar.priv.aws.ogenki.io
     - foobar.security.svc.cluster.local
   issuerRef:
     name: openbao

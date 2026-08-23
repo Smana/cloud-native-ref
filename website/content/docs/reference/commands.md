@@ -75,7 +75,7 @@ flux resume kustomization --all
 ## OpenBao
 
 ```bash
-export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
+export VAULT_ADDR=https://bao.priv.aws.ogenki.io:8200
 export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem   # written by openbao-config.sh ca
 bao status
 bao login -method=userpass username=admin

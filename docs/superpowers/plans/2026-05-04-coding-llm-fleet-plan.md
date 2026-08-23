@@ -250,7 +250,7 @@ Copy-paste config snippets for each client. Covers:
   ```toml
   [providers.local]
   type = "openai"
-  base_url = "https://llm.priv.cloud.ogenki.io/v1"
+  base_url = "https://llm.priv.aws.ogenki.io/v1"
   api_key = "noauth"  # pragma: allowlist secret
   default_model = "xplane-qwen-coder"
   ```
@@ -261,14 +261,14 @@ Copy-paste config snippets for each client. Covers:
     - name: Qwen Coder (chat)
       provider: openai
       model: xplane-qwen-coder
-      apiBase: https://llm.priv.cloud.ogenki.io/v1
+      apiBase: https://llm.priv.aws.ogenki.io/v1
       apiKey: noauth  # pragma: allowlist secret
       roles: [chat, edit, apply]
 
     - name: Qwen Coder FIM (autocomplete)
       provider: openai
       model: xplane-qwen-coder-fim
-      apiBase: https://llm.priv.cloud.ogenki.io/v1
+      apiBase: https://llm.priv.aws.ogenki.io/v1
       apiKey: noauth  # pragma: allowlist secret
       roles: [autocomplete]
       template: qwen
@@ -360,7 +360,7 @@ kubectl get pod -n llm -l app.kubernetes.io/name=xplane-qwen-coder-fim \
 
 ### 5.6 — End-to-end via OpenWebUI UI
 
-1. Browse `chat.priv.cloud.ogenki.io`, log in via Zitadel OIDC.
+1. Browse `chat.priv.aws.ogenki.io`, log in via Zitadel OIDC.
 2. Pick `MoM` from the model dropdown, send a code-y prompt → DevTools Network tab shows `x-vsr-selected-model: xplane-qwen-coder`.
 3. Pick `xplane-qwen3-8b` from the dropdown, send a code-y prompt → DevTools shows `x-vsr-selected-model: xplane-qwen3-8b` (or no header for direct model selection).
 4. Open Continue in VSCode against the gateway; type a function signature and verify inline tab-complete suggestion appears in <500ms.

@@ -6,7 +6,7 @@ lastVerified: 2026-08-20
 ---
 
 The cluster exposes an OpenAI-compatible endpoint at
-`https://llm.priv.cloud.ogenki.io/v1` (Tailscale-fronted, `tag:k8s` ACL — see
+`https://llm.priv.aws.ogenki.io/v1` (Tailscale-fronted, `tag:k8s` ACL — see
 [Private Access]({{< relref "/docs/platform/networking/private-access.md" >}})).
 Any client that speaks the OpenAI chat-completions API, or the OpenAI
 completions API for FIM, can talk to it — once both
@@ -70,7 +70,7 @@ OpenCode speaks OpenAI-compatible APIs natively. Edit
 ```toml
 [providers.local]
 type = "openai"
-base_url = "https://llm.priv.cloud.ogenki.io/v1"
+base_url = "https://llm.priv.aws.ogenki.io/v1"
 # OpenCode reads OPENAI_API_KEY from the environment when api_key is unset.
 default_model = "xplane-qwen-coder"
 
@@ -93,7 +93,7 @@ models:
   - name: Qwen Coder (chat / agentic)
     provider: openai
     model: xplane-qwen-coder
-    apiBase: https://llm.priv.cloud.ogenki.io/v1
+    apiBase: https://llm.priv.aws.ogenki.io/v1
     apiKey: ${env:OPENAI_API_KEY}
     roles: [chat, edit, apply]
     defaultCompletionOptions:
@@ -103,7 +103,7 @@ models:
   - name: Qwen Coder FIM (autocomplete)
     provider: openai
     model: xplane-qwen-coder-fim
-    apiBase: https://llm.priv.cloud.ogenki.io/v1
+    apiBase: https://llm.priv.aws.ogenki.io/v1
     apiKey: ${env:OPENAI_API_KEY}
     roles: [autocomplete]
     template: qwen
@@ -127,7 +127,7 @@ out of the box.
 
 ## OpenWebUI
 
-`https://chat.priv.cloud.ogenki.io` (Tailscale, `tag:k8s` ACL). Default model
+`https://chat.priv.aws.ogenki.io` (Tailscale, `tag:k8s` ACL). Default model
 dropdown selection is `xplane-qwen3-8b`. The Semantic Router's `ext_proc`
 filter sits in the chain for every request but only rewrites `body.model`
 when the client sent `MoM` (or the literal `auto`) — naming a model
@@ -145,10 +145,10 @@ classifier cost at all.
 
 ```bash
 # Smoke test — list models (works on any client)
-curl -sS https://llm.priv.cloud.ogenki.io/v1/models | jq '.data[].id'
+curl -sS https://llm.priv.aws.ogenki.io/v1/models | jq '.data[].id'
 
 # Direct chat completion against the coder model (no Semantic Router hop)
-curl -sS -X POST https://llm.priv.cloud.ogenki.io/v1/chat/completions \
+curl -sS -X POST https://llm.priv.aws.ogenki.io/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -d '{
@@ -157,7 +157,7 @@ curl -sS -X POST https://llm.priv.cloud.ogenki.io/v1/chat/completions \
   }'
 
 # FIM completion (Continue-style)
-curl -sS -X POST https://llm.priv.cloud.ogenki.io/v1/completions \
+curl -sS -X POST https://llm.priv.aws.ogenki.io/v1/completions \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -d '{

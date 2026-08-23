@@ -23,7 +23,7 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
      ```console
      export VAULT_TOKEN=<token>
      export VAULT_SKIP_VERIFY=true
-     export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
+     export VAULT_ADDR=https://bao.priv.aws.ogenki.io:8200
      ```
 
    - ℹ️ **Note:** The root token is for bootstrap only. For routine operations use the
@@ -57,12 +57,12 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
    - Example configuration:
 
      ```hcl
-     domain_name      = "priv.cloud.ogenki.io"
+     domain_name      = "priv.aws.ogenki.io"
      pki_country      = "France"
      pki_organization = "Ogenki"
      pki_domains = [
        "cluster.local",
-       "priv.cloud.ogenki.io"
+       "priv.aws.ogenki.io"
      ]
 
      tags = {
@@ -78,7 +78,7 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
 
      ```console
      ../../../../scripts/openbao-config.sh ca \
-       --root-ca-secret-name certificates/priv.cloud.ogenki.io/root-ca \
+       --root-ca-secret-name certificates/priv.aws.ogenki.io/root-ca \
        --ca-output-file .tls/ca.pem
      ```
 
@@ -97,7 +97,7 @@ This repository facilitates the setup of an existing Vault cluster using the Vau
    - Generate a certificate and verify it:
 
      ```console
-     bao write -format=json pki_private_issuer/issue/pki_private_issuer common_name="foobar.priv.cloud.ogenki.io" ttl="720h" > data.json
+     bao write -format=json pki_private_issuer/issue/pki_private_issuer common_name="foobar.priv.aws.ogenki.io" ttl="720h" > data.json
      jq -r '.data.ca_chain[]' data.json > bao_ca_chain.pem
      jq -r '.data.certificate' data.json > foobar-cert.pem
      openssl verify -CAfile bao_ca_chain.pem foobar-cert.pem

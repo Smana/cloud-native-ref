@@ -5,13 +5,13 @@ globals {
   region                           = "eu-west-3"
   profile                          = ""
   eks_cluster_name                 = "mycluster-0"
-  openbao_url                      = "https://bao.priv.cloud.ogenki.io:8200"
+  openbao_url                      = "https://bao.priv.aws.ogenki.io:8200"
   root_token_secret_name = "openbao/cloud-native-ref/tokens/root"
   # Deliberately a different secret from the root token: the recovery keys are
   # what regenerates a lost or revoked root token, so storing both together
   # would make the pair only as strong as one of them.
   recovery_keys_secret_name        = "openbao/cloud-native-ref/tokens/recovery" # pragma: allowlist secret
-  root_ca_secret_name              = "certificates/priv.cloud.ogenki.io/root-ca"
+  root_ca_secret_name              = "certificates/priv.aws.ogenki.io/root-ca"
   cert_manager_approle_secret_name = "openbao/cloud-native-ref/approles/cert-manager"
   cert_manager_approle             = "cert-manager"
 

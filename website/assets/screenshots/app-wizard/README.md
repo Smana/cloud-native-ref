@@ -7,7 +7,7 @@ of this file claimed the five PNGs below "are referenced by `app-wizard.md`";
 they were not, and the page had no image references at all.)
 
 To fill the gap, capture from the running wizard
-(`https://app-wizard.priv.cloud.ogenki.io`, or a local `npm run dev` /
+(`https://app-wizard.priv.aws.ogenki.io`, or a local `npm run dev` /
 container run), drop the PNGs here, and add the embeds to the page. Suggested
 width ~1400px, light theme, matching the ogenki branding.
 
