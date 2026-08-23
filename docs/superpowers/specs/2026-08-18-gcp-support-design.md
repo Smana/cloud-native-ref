@@ -3,7 +3,7 @@
 **Date:** 2026-08-18
 **Status:** design approved, plan pending
 **Branch:** `feat/gcp-support-specs`
-**ADRs:** [0005](../../decisions/0005-gke-standard-self-managed-cilium.md) (GKE flavour), [0006](../../decisions/0006-nap-computeclass-over-karpenter.md) (node autoscaling), [0007](../../decisions/0007-cloud-abstraction-boundaries.md) (abstraction rule), [0002 amended](../../decisions/0002-eks-pod-identity-over-irsa.md) (identity scope)
+**ADRs:** [0005](../../../website/content/docs/decisions/0005-gke-standard-self-managed-cilium.md) (GKE flavour), [0006](../../../website/content/docs/decisions/0006-nap-computeclass-over-karpenter.md) (node autoscaling), [0007](../../../website/content/docs/decisions/0007-cloud-abstraction-boundaries.md) (abstraction rule), [0002 amended](../../../website/content/docs/decisions/0002-eks-pod-identity-over-irsa.md) (identity scope)
 
 ---
 

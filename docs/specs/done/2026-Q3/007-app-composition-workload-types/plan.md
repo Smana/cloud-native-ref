@@ -236,4 +236,4 @@ Complete this before implementation begins. Each persona enforces non-negotiable
 - Clarifications log: [clarifications.md](clarifications.md)
 - Constitution: [docs/platform-constitution.md](../../../../platform-constitution.md)
 - Similar composition: `infrastructure/base/crossplane/configuration/kcl/app/`
-- Related ADR: [ADR-0001](../../../../decisions/0001-use-kcl-for-crossplane-compositions.md)
+- Related ADR: [ADR-0001](../../../../../website/content/docs/decisions/0001-use-kcl-for-crossplane-compositions.md)

@@ -1,0 +1,107 @@
+<!doctype html>
+<!--
+  Source for website/static/images/og-card.png — the 1200x630 social card that
+  every link to cnref.ogenki.io renders with.
+
+  It is HTML rather than a hand-drawn image so that it stays in sync with the
+  site: the palette below is the same ogenki navy as website/assets/css/custom.css,
+  and the component list is the same set the landing-page strip carries.
+
+  REGENERATE:
+    1. Open this file in a browser and set the viewport to exactly 1200x630.
+    2. Screenshot the VIEWPORT (not the full page) to /tmp/og-raw.png. A HiDPI
+       display captures this at 2x, i.e. 2400x1260 and ~1.5 MB — which is both
+       larger than any consumer needs and over pre-commit's 1000 KB
+       check-added-large-files ceiling, so step 3 is not optional.
+    3. magick /tmp/og-raw.png -resize 1200x630 -strip \
+         -define png:compression-level=9 website/static/images/og-card.png
+       optipng -quiet -o5 website/static/images/og-card.png
+    4. Confirm: file website/static/images/og-card.png -> "PNG image data, 1200 x 630"
+       and the file is comfortably under 1000 KB (currently ~300 KB).
+
+  Nothing loads over the network — the mark is inlined below — so this renders
+  identically offline and in CI.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cnref og card</title>
+<style>
+  @font-face { font-family: 'x'; src: local('Inter'); }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    /* Brand navy, deepened toward the site's dark surface (#0F172A) so the card
+       reads as the dark theme rather than as a flat brand block. */
+    background:
+      radial-gradient(120% 90% at 12% 0%, #0A4A79 0%, rgba(10,74,121,0) 62%),
+      radial-gradient(90% 80% at 100% 100%, #12314F 0%, rgba(18,49,79,0) 60%),
+      #0B1220;
+    color: #E2E8F0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 68px 76px;
+    position: relative;
+  }
+  /* Faint grid, the visual nod to infrastructure. Low enough not to fight the
+     text at the small sizes a timeline actually renders this. */
+  body::before {
+    content: ''; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(148,163,184,.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,.055) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  .row { position: relative; }
+  header { display: flex; align-items: center; gap: 16px; }
+  header img { width: 40px; height: 36px; }
+  header span { font-size: 24px; font-weight: 600; letter-spacing: -.01em; color: #F1F5F9; }
+  h1 {
+    font-size: 64px; line-height: 1.08; font-weight: 700;
+    letter-spacing: -.03em; color: #FFFFFF; max-width: 27ch;
+  }
+  h1 em { font-style: normal; color: #4FA6D9; }
+  p.claim {
+    margin-top: 24px; font-size: 24px; line-height: 1.45;
+    color: #94A3B8; max-width: 58ch;
+  }
+  ul {
+    display: flex; flex-wrap: wrap; gap: 10px 12px; list-style: none;
+  }
+  li {
+    font-size: 19px; color: #CBD5E1; padding: 7px 16px;
+    border: 1px solid rgba(148,163,184,.28); border-radius: 999px;
+    background: rgba(148,163,184,.07);
+  }
+  footer { display: flex; justify-content: space-between; align-items: flex-end; }
+  .url { font-size: 22px; color: #4FA6D9; font-weight: 600; letter-spacing: .01em; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <header>
+      <!-- The real mark, by relative path, so the card cannot drift from the
+           navbar's. Rendering is local-file only; nothing is fetched remotely. -->
+      <img src="../website/static/images/ogenki-mark-white.svg" alt="" width="40" height="36">
+      <span>Cloud Native Reference</span>
+    </header>
+  </div>
+
+  <div class="row">
+    <h1>A production-ready platform you can <em>actually deploy</em></h1>
+    <p class="claim">GitOps with Flux · infrastructure from Kubernetes with Crossplane · zero-trust networking with Cilium · a private PKI with OpenBao</p>
+  </div>
+
+  <div class="row">
+    <ul>
+      <li>Flux</li><li>Crossplane</li><li>Cilium</li><li>OpenBao</li>
+      <li>Karpenter</li><li>Gateway API</li><li>VictoriaMetrics</li><li>OpenTofu</li>
+    </ul>
+  </div>
+
+  <footer class="row">
+    <span class="url">cnref.ogenki.io</span>
+    <span style="font-size:18px;color:#64748B">AWS EKS · open source · Apache-2.0</span>
+  </footer>
+</body>
+</html>

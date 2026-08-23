@@ -2,11 +2,11 @@
 
 This repository facilitates the setup of an existing Vault cluster using the Vault provider.
 
-1. **Configuring an Approle**: Learn what is an approle and how to set them up by reading [this](docs/approle.md).
+1. **Configuring an Approle**: Learn what is an approle and how to set them up by reading [AppRole: machine authentication](https://cnref.ogenki.io/docs/platform/security/openbao/#approle-machine-authentication).
 
-2. **Configure cert-manager**: In order to easily provision certificates in Kubernetes you should consider reading [this documentation](./docs/cert-manager.md)
+2. **Configure cert-manager**: In order to easily provision certificates in Kubernetes you should consider reading [cert-manager: issuing from the PKI](https://cnref.ogenki.io/docs/platform/security/pki-and-secrets/#cert-manager-issuing-from-the-pki)
 
-3. **Backup and Restore**: Implement a backup strategy. Follow this guide: [Backup and Restore](./docs/backup_restore.md).
+3. **Backup and Restore**: Implement a backup strategy. Follow this guide: [Backup and restore](https://cnref.ogenki.io/docs/platform/security/openbao/#backup-and-restore).
 
 ## ✅ Requirements
 

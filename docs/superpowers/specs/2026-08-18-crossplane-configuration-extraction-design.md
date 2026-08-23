@@ -4,7 +4,7 @@
 **Status:** design approved, plan pending
 **Branch:** `feat/crossplane-configuration-extraction`
 **Related:** [GCP Support — Dual-Cloud Platform Design](2026-08-18-gcp-support-design.md) workstream 7,
-[ADR-0007](../../decisions/0007-cloud-abstraction-boundaries.md)
+[ADR-0007](../../../website/content/docs/decisions/0007-cloud-abstraction-boundaries.md)
 
 ---
 

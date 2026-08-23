@@ -6,6 +6,10 @@
 # Superpowers git worktrees (superpowers:using-git-worktrees creates these)
 .claude/worktrees/
 
+# Superpowers subagent-driven-development scratch state (progress ledger,
+# task briefs, review packages). Local coordination state, not repo content.
+.superpowers/
+
 # Local .terraform directories
 **/.terraform/*
 

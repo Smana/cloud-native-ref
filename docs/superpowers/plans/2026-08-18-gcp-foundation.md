@@ -211,7 +211,7 @@ Decide `cos_containerd` (GKE default, smaller attack surface) or `ubuntu_contain
 
 ## Phase 1 — THE GATE: prove ADR-0005 on a throwaway cluster
 
-**Do not write any OpenTofu until this phase passes.** If either check fails, stop, reopen [ADR-0005](../../decisions/0005-gke-standard-self-managed-cilium.md), and evaluate Dataplane V2 — which costs a second Gateway API implementation and the loss of the Envoy access-log pipeline. Discovering this after Phase 2–5 is built means throwing away all of it.
+**Do not write any OpenTofu until this phase passes.** If either check fails, stop, reopen [ADR-0005](../../../website/content/docs/decisions/0005-gke-standard-self-managed-cilium.md), and evaluate Dataplane V2 — which costs a second Gateway API implementation and the loss of the Envoy access-log pipeline. Discovering this after Phase 2–5 is built means throwing away all of it.
 
 ### Task 4: Prove Cilium displaces GKE's netd, and that WireGuard is unnecessary
 

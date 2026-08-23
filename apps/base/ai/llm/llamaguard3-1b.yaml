@@ -15,7 +15,7 @@
 # default) — it is NOT cold, whatever an older version of this comment claimed.
 #
 # Resolve it one way or the other: wire an output-side hook and keep it warm, or
-# drop the claim and give the GPU back. Tracked in docs/ai.md "Known gaps".
+# drop the claim and give the GPU back. Tracked at https://cnref.ogenki.io/docs/platform/ai-platform/#known-gaps
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: InferenceService
 metadata:

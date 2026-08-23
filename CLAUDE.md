@@ -58,7 +58,7 @@ Two independent gates govern the self-hosted LLM platform; both must be released
 | AWS (S3 Files filesystem + IAM) | `opentofu/llm-platform/` Terramate stack tagged `opt-in`, `$TM_LLM_PLATFORM_ENABLED` env-var guard in `workflows.tm.hcl` | skipped | `TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy` |
 | Kubernetes (vLLM router, NVIDIA plugin, GPU NodePool, LLM apps, LLM EPI) | `clusters/mycluster-0/llm-platform.yaml` umbrella Flux Kustomization with `spec.suspend: true` | skipped | `flux resume kustomization llm-platform -n flux-system` |
 
-The umbrella Kustomization aggregates 5 children under `clusters/mycluster-0-llm-platform/` (kept a sibling of `clusters/mycluster-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/mycluster-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
+The umbrella Kustomization aggregates 8 children under `clusters/mycluster-0-llm-platform/` (kept a sibling of `clusters/mycluster-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/mycluster-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
 
 **Autoscaling design** (composition v0.5.0+, [SPEC-001](docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)): every model defaults `min=1` with a KEDA `ScaledObject` driven by leading vLLM saturation metrics — `running/max-num-seqs` ratio + `kv_cache_usage_perc`. The legacy KEDA HTTP add-on (proxy in the data path, lagging request-count trigger) is no longer used; AI Gateway routes directly to each vLLM Service.
 
@@ -140,13 +140,21 @@ via its own AppRole. Cluster-wide endpoints such as `sys/storage/raft/*` are cal
 
 ### GitOps with Flux
 
-Flux manages all Kubernetes resources through a dependency hierarchy:
+Flux manages all Kubernetes resources through a dependency hierarchy, broadly:
 
 1. **Namespaces** -> **CRDs** -> **Crossplane** -> **EKS Pod Identities**
 2. **Security** (External Secrets, Cert-Manager, Kyverno)
 3. **Infrastructure** (Cilium, DNS, Load Balancers)
 4. **Observability** (VictoriaMetrics, Grafana)
 5. **Applications** (Harbor, Headlamp, etc.)
+
+> **Simplified model — do not copy a `dependsOn` from it.** The real graph is
+> wider than this chain: Crossplane is three sequential Kustomizations, Karpenter
+> sits outside them, `infrastructure` depends on `karpenter` + `eks-pod-identities`
+> rather than on `security`, and several `flux/*` Kustomizations run in parallel.
+> Read `clusters/mycluster-0/` — or the derived graph at
+> [Platform → GitOps](https://cnref.ogenki.io/docs/platform/gitops/) — before
+> wiring a new component.
 
 ### Crossplane Resources
 
@@ -179,7 +187,7 @@ superpowers:brainstorming        -> docs/superpowers/specs/YYYY-MM-DD-<topic>-de
 
 **Key documents**:
 - [Platform Constitution](docs/platform-constitution.md) — non-negotiable principles (auto-loaded via `.claude/rules/platform-constitution.md`)
-- [Architecture Decision Records](docs/decisions/) — cross-cutting technology choices
+- [Architecture Decision Records](website/content/docs/decisions/) — cross-cutting technology choices
 - [Repo deltas](.claude/rules/superpowers.md) — artifact locations and the gate that applies at each phase
 - [Spec archive](docs/specs/) — output of the in-house SDD workflow retired on 2026-08-18, read-only
 
@@ -191,6 +199,13 @@ superpowers:brainstorming        -> docs/superpowers/specs/YYYY-MM-DD-<topic>-de
 | Major Infrastructure | New OpenTofu stack, VPC changes, EKS upgrades |
 | Security Changes | Network policies, RBAC, PKI, secrets |
 | Platform Capabilities | Multi-component features, observability |
+| New Technology | Any component or pattern chosen over a named alternative — needs an [ADR](website/content/docs/decisions/) before merge |
+
+**A technology choice with a rejected alternative requires an ADR before merge.**
+If you can name what it was chosen over, write the record. If nothing credible
+competed, it is an installation and not a decision — say so in the pull request
+rather than leaving it unsaid. Version bumps, chart-value changes and single-file
+fixes never need one.
 
 ### When to Skip
 
@@ -232,9 +247,9 @@ Two skills cover ground the plugin does not. Both are optional.
 Private services exposed via Tailscale using Gateway API with custom domains (`*.priv.cloud.ogenki.io`). Two separate Gateways enforce ACL-based access control:
 
 - **General Gateway** (`tag:k8s`): All Tailscale members. Services: Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics.
-- **Admin Gateway** (`tag:admin`): `group:admin` only. Services: Hubble UI, VictoriaLogs, Grafana OnCall.
+- **Admin Gateway** (`tag:admin`): `group:admin` only. Services: Hubble UI. (VictoriaLogs is on the *general* gateway — both its HTTPRoutes name `platform-tailscale-general`. Grafana OnCall is built under `observability/base/grafana-oncall/` but wired into no Kustomization, so it does not run.)
 
-Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDNS watches HTTPRoutes to create Route53 records. See `docs/tailscale-gateway-api.md` for setup details.
+Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDNS watches HTTPRoutes to create Route53 records. See [Platform → Networking → Private access](https://cnref.ogenki.io/docs/platform/networking/private-access/) for setup details.
 
 ## Key File Locations
 
@@ -284,6 +299,7 @@ tofu validate
 trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
 ./scripts/validate-manifests.sh   # renders the repo, then gates it (see below)
 ./scripts/validate-links.sh       # resolves every relative Markdown link
+./scripts/validate-doc-claims.sh  # docs still agree with config (.doc-claims.yaml)
 kubectl get nodes && kubectl get pods --all-namespaces
 flux get all
 ```
@@ -305,8 +321,8 @@ Two properties are load-bearing:
 - **`skipMissingSchemas: false`** (`.fluxschema.yml`) — an unknown Kind *fails the build*. It
   does not get skipped. The previous kubeconform setup ran with `-ignore-missing-schemas`, so
   every `cloud.ogenki.io` claim went unvalidated for the life of the repo.
-- **Polaris audits rendered charts, not raw files.** The repo has 2 raw Deployments; the
-  rendered bundle has 70 controllers. Pointing a best-practices gate at the source tree checks
+- **Polaris audits rendered charts, not raw files.** The repo has 1 raw Deployment; the
+  rendered bundle has ~69 controllers. Pointing a best-practices gate at the source tree checks
   almost nothing.
 
 The schema catalog (`.schemas/`) and the bundle (`.bundle/`) are generated on every run and are

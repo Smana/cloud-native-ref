@@ -1,0 +1,107 @@
+baseURL: https://cnref.ogenki.io/
+title: Cloud Native Reference
+languageCode: en-us
+enableRobotsTXT: true
+enableGitInfo: true
+
+# Drift guard: any unresolved internal ref (relref/ref) fails the build rather
+# than shipping a silent 404. This is the site's internal-link gate; the
+# repository-wide gate stays scripts/validate-links.sh.
+refLinksErrorLevel: ERROR
+
+module:
+  hugoVersion:
+    min: "0.146.0"
+  imports:
+    - path: github.com/imfing/hextra
+  # The platform constitution is published here but NOT moved here. It has 50
+  # inbound references, 37 of them in the read-only docs/specs/ archive, and it
+  # is the source of truth loaded by .claude/rules/platform-constitution.md — so
+  # its repository path has to stay stable. A single-file mount publishes it in
+  # full without breaking one link. Verified working on Hugo 0.156.0.
+  #
+  # Declaring any `content` mount REPLACES Hugo's default content mount, so the
+  # first entry below is mandatory, not decorative.
+  mounts:
+    - source: content
+      target: content
+    - source: ../docs/platform-constitution.md
+      target: content/docs/reference/platform-constitution.md
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+  highlight:
+    noClasses: false
+
+menu:
+  main:
+    - name: Get Started
+      pageRef: /docs/get-started
+      weight: 1
+    - name: Platform
+      pageRef: /docs/platform
+      weight: 2
+    - name: Concepts
+      pageRef: /docs/concepts
+      weight: 3
+    - name: Guides
+      pageRef: /docs/guides
+      weight: 4
+    - name: Reference
+      pageRef: /docs/reference
+      weight: 5
+    - name: Decisions
+      pageRef: /docs/decisions
+      weight: 6
+    - name: GitHub
+      weight: 7
+      url: "https://github.com/Smana/cloud-native-ref"
+      params:
+        icon: github
+    - name: Search
+      weight: 8
+      params:
+        type: search
+
+params:
+  description: "An opinionated, production-ready Kubernetes platform reference: GitOps with Flux, infrastructure from Kubernetes with Crossplane, zero-trust networking with Cilium, and a private PKI with OpenBao — on AWS EKS today, designed for a second cloud."
+  # Social card. Consumed by layouts/_partials/opengraph.html and
+  # layouts/_partials/twitter_cards.html, both of which absolute-ise it against
+  # baseURL — so it has to stay a site-root path, not a relative one.
+  # Regenerate from scripts/build-og-card.html; see that file's header.
+  images:
+    - /images/og-card.png
+  navbar:
+    displayTitle: true
+    displayLogo: true
+    logo:
+      # The Ogenki mark, extracted from the company lockup so the navbar carries
+      # the brand without the wordmark competing with the site's own title.
+      # 448x396 in its own viewBox, so 27x24 keeps it undistorted at navbar height.
+      path: images/ogenki-mark.svg
+      # Brand navy measures 1.92:1 against the dark navbar, under the 3:1 WCAG
+      # asks of a graphical object, so the dark theme gets the white variant
+      # from the same lockup set. Hextra renders both and swaps them with CSS.
+      dark: images/ogenki-mark-white.svg
+      width: 27
+      height: 24
+  search:
+    enable: true
+    type: flexsearch
+    flexsearch:
+      index: content
+      tokenize: forward
+  editURL:
+    enable: true
+    base: "https://github.com/Smana/cloud-native-ref/edit/main/website/content"
+  footer:
+    enable: true
+    displayCopyright: true
+    displayPoweredBy: false
+  imageZoom:
+    enable: true
+  theme:
+    default: system
+    displayToggle: true

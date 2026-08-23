@@ -1,0 +1,52 @@
+{{- /*
+  Hextra's own _partials/footer.html invokes this partial with a wrapper dict
+  (dict "context" . "switchesVisible" ... "copyrightVisible" ...), not the
+  page itself — so "." here is that dict, and $ stays bound to it too. Pull
+  the real page out first; .Params.lastVerified / $.GitInfo directly would
+  silently no-op (missing map key -> zero value -> `with` skips, no error).
+*/ -}}
+{{- $page := .context }}
+
+{{- /* The per-page verification stamp. Only pages that record a lastVerified
+       date carry one, which is every content page except the landing page. */ -}}
+{{- with $page.Params.lastVerified }}
+  <p class="cnref-verified">
+    Verified against the repository on
+    <time datetime="{{ . }}">{{ time.Format "2 January 2006" . }}</time>.
+    {{- with $page.GitInfo }}
+      Last edited in
+      <a href="https://github.com/Smana/cloud-native-ref/commit/{{ .Hash }}">{{ .AbbreviatedHash }}</a>.
+    {{- end }}
+  </p>
+{{- end }}
+
+{{- /* Site-wide footer navigation. The theme's footer was a single copyright
+       line, so the only way out of a leaf page was the sidebar or the back
+       button — and nothing anywhere linked the blog, which is where most of
+       this platform's long-form writing actually lives. */ -}}
+<nav class="cnref-footer-nav" aria-label="Footer">
+  <div class="cnref-footer-col">
+    <p class="cnref-footer-head">Documentation</p>
+    <ul>
+      <li><a href="{{ "docs/get-started/" | relURL }}">Get Started</a></li>
+      <li><a href="{{ "docs/platform/" | relURL }}">Platform</a></li>
+      <li><a href="{{ "docs/concepts/" | relURL }}">Concepts</a></li>
+    </ul>
+  </div>
+  <div class="cnref-footer-col">
+    <p class="cnref-footer-head">Reference</p>
+    <ul>
+      <li><a href="{{ "docs/guides/" | relURL }}">Guides</a></li>
+      <li><a href="{{ "docs/reference/" | relURL }}">Reference</a></li>
+      <li><a href="{{ "docs/decisions/" | relURL }}">Decisions</a></li>
+    </ul>
+  </div>
+  <div class="cnref-footer-col">
+    <p class="cnref-footer-head">Elsewhere</p>
+    <ul>
+      <li><a href="https://github.com/Smana/cloud-native-ref">GitHub repository</a></li>
+      <li><a href="https://blog.ogenki.io">blog.ogenki.io</a></li>
+      <li><a href="https://github.com/Smana/cloud-native-ref/blob/main/LICENSE">Apache-2.0 licence</a></li>
+    </ul>
+  </div>
+</nav>

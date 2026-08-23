@@ -1,0 +1,53 @@
+{{- /*
+  Renders website/data/repo-tree.yaml as an always-visible annotated tree.
+
+  Deliberately not Hextra's filetree shortcode. filetree/folder accepts only a
+  `name`, so a description has to be smuggled into the folder label, and its
+  `state` attribute hides children behind a click — which on the Reference page
+  meant seven of thirteen top-level entries rendered as bare one-word rows with
+  every description hidden, and the remaining six used filetree/file, so
+  directories got file icons. On a page whose entire job is "here is the
+  repository", collapsed-by-default is the wrong default.
+
+  A real <table> rather than a grid of rows: three columns have to line up down
+  the page, and a per-row grid container sizes its columns independently, so
+  every row came out a different width. Table layout solves that for free and
+  carries the right semantics without ARIA roles.
+
+  The third column, `owner`, is what the theme has no concept of and what the
+  GitOps page most needs: which Flux Kustomization reconciles this directory.
+
+  @param depth  1 renders top-level entries only (the GitOps page).
+                Omitted renders children too (the Reference page).
+*/ -}}
+
+{{- $depth := int (.Get "depth" | default 9) -}}
+{{- /* Hugo keys data by filename verbatim, so the key is "repo-tree" and a
+       hyphen cannot be dotted in a Go template — site.Data.repoTree silently
+       yields nothing and the tree renders as an empty box with a header row. */ -}}
+{{- $tree := index site.Data "repo-tree" -}}
+<div class="cnref-tree">
+  <table>
+    <thead>
+      <tr><th>Path</th><th>What lives there</th><th>Reconciled by</th></tr>
+    </thead>
+    <tbody>
+      {{- range $tree.entries }}
+      <tr>
+        <td class="cnref-tree-path">{{ .path }}</td>
+        <td>{{ .desc }}</td>
+        <td class="cnref-tree-owner">{{ with .owner }}{{ . | markdownify }}{{ end }}</td>
+      </tr>
+        {{- if ge $depth 2 }}
+          {{- range .children }}
+      <tr class="cnref-tree-child">
+        <td class="cnref-tree-path">{{ .path }}</td>
+        <td>{{ .desc }}</td>
+        <td></td>
+      </tr>
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    </tbody>
+  </table>
+</div>

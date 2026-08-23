@@ -27,7 +27,7 @@ ahead of it. The PR body links the design.
 
 | Phase | Gate |
 |-------|------|
-| Design | [Platform constitution](../../docs/platform-constitution.md) — `xplane-*` naming, default-deny CiliumNetworkPolicy, EKS Pod Identity over IRSA, External Secrets, resource requests + limits |
+| Design | [Platform constitution](../../docs/platform-constitution.md) — `xplane-*` naming, default-deny CiliumNetworkPolicy, EKS Pod Identity over IRSA, External Secrets, resource requests + limits. **Plus:** a technology choice with a rejected alternative requires an ADR on the branch before the PR opens — if you can name what it was chosen over, write the record |
 | Implementation | `kcl-crossplane.md`, `crossplane-validation.md`, `cilium-network-policies.md`, `observability.md`, `opentofu.md` in this directory |
 | Before claiming done | `process.md` in this directory — the evidence table. A fresh command run per claim, output cited inline |
 | After merge | `/verify-spec` for anything with cluster-observable criteria |

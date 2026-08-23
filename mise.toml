@@ -6,16 +6,26 @@
 min_version = "2024.11.1"
 
 [tools]
-go = "1.26.6"
-"aqua:golangci/golangci-lint" = "2.12.2"
+go = "1.27.0"
+"aqua:golangci/golangci-lint" = "2.13.1"
 nodejs = "22.23.1"
 opentofu = "1.12.6"
 pre-commit = "4.6.2"
 trivy = "0.74.0"
+
+# Needed by the `terraform_tflint` pre-commit hook. Pinned here rather than
+# left to whatever is on PATH so CI and a local `pre-commit run -a` lint with
+# the same binary. The *plugin* version is separate — `.tflint.hcl` pins
+# ruleset.aws, which tflint downloads from GitHub releases on `--init`.
+tflint = "0.64.0"
 "ubi:terramate-io/terramate" = "0.17.2"
 
 # Manifest validation (SPEC-007). flux 2.9+ is required for `flux plugin`;
 # install the schema plugin with: flux plugin install schema
 flux2 = "2.9.4"
 helm = "4.2.4"
+
+# Documentation site (website/). "hugo-extended" is deliberate: mise's plain
+# `hugo` entry resolves to the non-extended build, and Hextra targets extended.
+hugo-extended = "0.156.0"
 kustomize = "5.8.1"

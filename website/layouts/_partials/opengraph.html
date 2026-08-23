@@ -1,0 +1,53 @@
+{{- /*
+  Project override of Hextra's opengraph partial (hextra@v0.12.3).
+
+  Why it is worth overriding a theme file for this. The theme emits og:description
+  and og:type as MULTI-LINE HTML attributes — the value sits on its own indented
+  line inside the quotes. `hugo server` renders that correctly, so the bug is
+  invisible in development. But `hugo --minify`, which is what
+  .github/workflows/docs.yml ships, collapses the value to whitespace and then
+  drops the whole attribute: the production landing page carried exactly two
+  og: tags, title and url, and no og:image at all. Every link shared to Slack,
+  LinkedIn or X rendered a bare card.
+
+  The fix is whitespace control, not logic. Each value is resolved into a
+  variable first and emitted inline, so there is no newline inside an attribute
+  for the minifier to collapse. Behaviour is otherwise identical to upstream,
+  minus the taxonomy/series/facebook/audio/video branches this site has no
+  content for.
+
+  When bumping Hextra, diff its _partials/opengraph.html against this file.
+*/ -}}
+
+{{- $description := "" -}}
+{{- with .Description -}}
+  {{- $description = . -}}
+{{- else -}}
+  {{- if .IsPage -}}
+    {{- $description = .Summary -}}
+  {{- else -}}
+    {{- $description = site.Params.description -}}
+  {{- end -}}
+{{- end -}}
+{{- $ogType := cond .IsPage "article" "website" -}}
+{{- $images := or .Params.images site.Params.images -}}
+
+<meta property="og:title" content="{{ .Title }}">
+{{- with $description }}
+<meta property="og:description" content="{{ . | plainify | chomp }}">
+{{- end }}
+<meta property="og:type" content="{{ $ogType }}">
+<meta property="og:url" content="{{ .Permalink }}">
+{{- range first 6 $images }}
+<meta property="og:image" content="{{ . | absURL }}">
+{{- end }}
+{{- with site.Title }}
+<meta property="og:site_name" content="{{ . }}">
+{{- end }}
+{{- if .IsPage }}
+  {{- $iso8601 := "2006-01-02T15:04:05-07:00" }}
+<meta property="article:section" content="{{ .Section }}">
+  {{- with .Lastmod }}
+<meta property="article:modified_time" content="{{ .Format $iso8601 }}">
+  {{- end }}
+{{- end }}

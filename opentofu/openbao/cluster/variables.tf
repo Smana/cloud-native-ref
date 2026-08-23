@@ -22,9 +22,13 @@ variable "mode" {
 variable "openbao_version" {
   description = "OpenBao version to install"
   type        = string
-  # 2.6.0 deadlocks on concurrent namespace creation (openbao/openbao#3411):
-  # the management stack's parallel vault_namespace resources wedge the core
-  # and every subsequent request hangs. Stay on 2.5.5 until a fixed release.
+  # Kept at the latest release. 2.6.x carries openbao/openbao#3411 (inconsistent
+  # lock ordering across namespaces, mounts and the router, still OPEN), which
+  # deadlocks the core when the management stack writes concurrently — but the
+  # concurrency is ours, not OpenBao's. The management stack now applies with
+  # -parallelism=1 (opentofu/openbao/management/workflows.tm.hcl), which clears
+  # it; see the reproduction recorded there. Do not raise that parallelism while
+  # #3411 is open.
   # renovate: datasource=github-releases depName=openbao/openbao
   default = "2.6.2"
 }
