@@ -21,7 +21,7 @@ lane you deploy next.
   you private access to the cluster.
 - **A GitHub App, and its credentials in AWS Secrets Manager** — Flux
   authenticates to pull this repository as a GitHub App, and
-  `opentofu/eks/configure` reads its credentials from Secrets Manager at
+  `opentofu/aws/eks/configure` reads its credentials from Secrets Manager at
   apply time (`var.github_app_secret_name`, default `github/flux-app`); if
   the secret does not exist, Stage 3 of the AWS deploy fails. Create the App
   per the

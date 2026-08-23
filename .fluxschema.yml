@@ -4,7 +4,7 @@ kind: Config
 validate:
   # Order matters: our generated catalog wins, then version-pinned catalogs
   # matching what the cluster actually runs (bump alongside the EKS
-  # kubernetes_version in opentofu/eks/init and the Flux minor), then Flux's
+  # kubernetes_version in opentofu/aws/eks/init and the Flux minor), then Flux's
   # built-in (Gateway API, Flagger, flux-operator), then the hosted CNCF
   # ecosystem catalog (rebuilt daily from upstream releases).
   schemaLocation:

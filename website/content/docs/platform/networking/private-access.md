@@ -20,7 +20,7 @@ and how to expose a new service through them.
 - **`platform-tailscale-admin`** (`tag:admin`) — reachable only by
   `group:admin`.
 
-The rules live in `opentofu/network/tailscale.tf`, applied via the
+The rules live in `opentofu/aws/network/tailscale.tf`, applied via the
 `tailscale_acl` resource (default-deny — only what's listed here is
 permitted):
 
@@ -133,7 +133,7 @@ fails `NotAllowedByListeners` and needs the Gateway manifest updated first.
 The two Gateways expose Kubernetes services. Reaching the VPC directly —
 `kubectl` against the private EKS API endpoint, `bao` against OpenBao's
 Raft peers — goes through a separate mechanism: a Tailscale subnet router,
-an EC2 instance provisioned by `opentofu/network/tailscale.tf` via the
+an EC2 instance provisioned by `opentofu/aws/network/tailscale.tf` via the
 `Smana/tailscale-subnet-router/aws` module, advertising the VPC CIDR:
 
 ```hcl

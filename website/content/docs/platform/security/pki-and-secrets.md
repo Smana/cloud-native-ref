@@ -25,12 +25,12 @@ revocation/rotation scoped to the tier that actually changed.
 
 {{< callout type="warning" >}}
 The Root CA private key is **present in the live `pki_private_issuer`
-mount**, not held offline. `opentofu/openbao/management/pki.tf`'s
+mount**, not held offline. `opentofu/aws/openbao/management/pki.tf`'s
 `vault_pki_secret_backend_root_sign_intermediate` resource signs the
 Intermediate's CSR *inside* OpenBao — keeping the root offline would mean
 the CSR leaves OpenBao, gets signed elsewhere, and comes back, a manual step
 incompatible with `terramate script run deploy`
-(`opentofu/openbao/management/README.md`). This is an accepted trade-off
+(`opentofu/aws/openbao/management/README.md`). This is an accepted trade-off
 **for this reference platform**; do not carry it into a deployment where the
 root CA matters.
 {{< /callout >}}
@@ -55,7 +55,7 @@ openssl x509 -req -in intermediate-ca.csr -CA root-ca.pem -CAkey root-ca-key.pem
 ```
 
 The intermediate's certificate and private key (`bundle`/`ca` in the JSON
-shape below) are what `opentofu/openbao/management/pki.tf` imports into the
+shape below) are what `opentofu/aws/openbao/management/pki.tf` imports into the
 `pki_private_issuer` mount — `vault_pki_secret_backend_config_ca`, followed
 by a CSR/sign/set-signed sequence that makes OpenBao the active issuer for
 that intermediate. The root material itself is read from AWS Secrets
@@ -71,7 +71,7 @@ resource "vault_pki_secret_backend_config_ca" "pki" {
 OpenBao's own server certificate (the one terminating TLS on
 `bao.priv.cloud.ogenki.io:8200`) is a leaf signed the same way, generated
 once before the cluster exists and stored in Secrets Manager for
-`opentofu/openbao/cluster/` to consume at bootstrap. Two details worth
+`opentofu/aws/openbao/cluster/` to consume at bootstrap. Two details worth
 carrying forward if you regenerate it:
 
 - The key is EC P-256, matching the EC P-384 CAs above, and `openssl` writes

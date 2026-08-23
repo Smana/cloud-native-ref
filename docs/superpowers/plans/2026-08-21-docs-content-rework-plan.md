@@ -62,7 +62,7 @@ Each ADR task follows the same shape. Read `website/content/docs/decisions/templ
 **Required claims (each must be checkable against the source above):**
 - `dependsOn` is the ordering primitive the platform's layered bootstrap needs — Namespaces → CRDs → Crossplane → EKS Pod Identities → Security → Infrastructure → Observability → Applications.
 - Flux's controllers are themselves CRDs, so the platform composes against them (the `App` composition emits `HelmRelease`); Argo CD's `Application` is a thinner surface for that.
-- Flux Operator + `FluxInstance` is how the platform installs Flux from OpenTofu Stage 2 (`opentofu/eks/configure/main.tf`), which is what makes the bootstrap single-command.
+- Flux Operator + `FluxInstance` is how the platform installs Flux from OpenTofu Stage 2 (`opentofu/aws/eks/configure/main.tf`), which is what makes the bootstrap single-command.
 
 **Required `### Negative` content (the cost):**
 - Controller sharding is a real operational trap: a `GitRepository`/`HelmRepository` placed under an app directory inherits `sharding.fluxcd.io/key=apps`, and the default-shard `HelmChart` then cannot find it — "source not found" on a source that reports `Ready`. Sources must live under `flux-sources`.
@@ -150,8 +150,8 @@ git commit -m "docs(decisions): record Flux over Argo CD as ADR-0008"
 
 **Source material — read before writing:**
 - `CLAUDE.md` § "Cilium Prefix Delegation (ENABLED — WireGuard is load-bearing)"
-- `opentofu/eks/configure/cilium-cni-config.tf`
-- `opentofu/eks/init/helm_values/cilium.yaml`
+- `opentofu/aws/eks/configure/cilium-cni-config.tf`
+- `opentofu/aws/eks/init/helm_values/cilium.yaml`
 - `website/content/docs/platform/networking/cilium.md`
 - `.claude/rules/cilium-network-policies.md`
 
@@ -162,7 +162,7 @@ git commit -m "docs(decisions): record Flux over Argo CD as ADR-0008"
 
 **Required `### Negative` content — all four, each traceable:**
 1. **cilium#43493** breaks the Gateway API L7 proxy on cross-node traffic under prefix delegation: the BPF ipcache sets `hastunnel` incorrectly for remote pods under native routing. The workaround is `encryption.type: wireguard` — node-to-node tunnels bypass the faulty routing logic. WireGuard is therefore load-bearing as a *workaround*, not chosen for performance, and cannot be disabled or swapped for ztunnel while the bug is open. Source: `CLAUDE.md`.
-2. **`cniVersion` must be bumped by hand on every Cilium minor.** Because the platform sets `cni.configMap`, the chart default never applies. Cilium 1.20 moved it 0.3.1 → 1.0.0. Source: `opentofu/eks/configure/cilium-cni-config.tf` and `CLAUDE.md`.
+2. **`cniVersion` must be bumped by hand on every Cilium minor.** Because the platform sets `cni.configMap`, the chart default never applies. Cilium 1.20 moved it 0.3.1 → 1.0.0. Source: `opentofu/aws/eks/configure/cilium-cni-config.tf` and `CLAUDE.md`.
 3. **Prefix delegation does not apply to bootstrap nodes.** Node-group nodes are created in Stage 1, before Cilium exists in Stage 2, so their ENIs get individual secondary IPs that are never converted — a permanent ~42-IP ceiling instead of ~672. It surfaces as an `InstallFailed` HelmRelease in an unrelated namespace.
 4. **`cilium-operator` probes for the Gateway API CRDs exactly once at startup** and permanently disables its Gateway API controller if any are missing — no crash, no alert. Symptoms cascade to `GatewayClass ACCEPTED=Unknown` and every `App` claim owning a route stuck `READY=False`. Source: `CLAUDE.md` § Troubleshooting.
 
@@ -172,7 +172,7 @@ git commit -m "docs(decisions): record Flux over Argo CD as ADR-0008"
 
 ```bash
 sed -n '/Cilium Prefix Delegation/,/Pod Subnet Tagging/p' CLAUDE.md
-cat opentofu/eks/configure/cilium-cni-config.tf
+cat opentofu/aws/eks/configure/cilium-cni-config.tf
 sed -n '/Gateways stuck/,/only \*after\*/p' CLAUDE.md
 ```
 
@@ -309,14 +309,14 @@ git commit -m "docs(decisions): record VictoriaMetrics over Prometheus as ADR-00
 - Produces: relref target `/docs/decisions/0011-openbao-over-vault.md`, cited by Task 10, Task 13 (security section), and Task 7 (ADR-0014 cross-references the licence reasoning).
 
 **Source material:**
-- `opentofu/openbao/cluster/`, `opentofu/openbao/management/`
+- `opentofu/aws/openbao/cluster/`, `opentofu/aws/openbao/management/`
 - `CLAUDE.md` § OpenBao (namespace layout: shared platform services in root, tenants in namespaces)
 - `website/content/docs/platform/security/openbao.md`
 - Memory: the 2.6 deadlock is our write concurrency, mitigated with `-parallelism=1` in the management stack's workflows — **not** by pinning to 2.5.5. The repo runs 2.6.2.
 
 **Required claims:**
 - The trigger was HashiCorp's BUSL relicensing; OpenBao is the Linux Foundation fork. Frame this as a licence decision, not a technical-superiority claim.
-- API-compatible enough that the `hashicorp/vault` OpenTofu provider configures it — verify in `opentofu/openbao/management/versions.tf` before asserting.
+- API-compatible enough that the `hashicorp/vault` OpenTofu provider configures it — verify in `opentofu/aws/openbao/management/versions.tf` before asserting.
 
 **Required `### Negative`:**
 - Smaller ecosystem; upstream integrations and documentation still assume Vault.
@@ -326,8 +326,8 @@ git commit -m "docs(decisions): record VictoriaMetrics over Prometheus as ADR-00
 - [ ] **Step 1: Read the source material and confirm the provider**
 
 ```bash
-grep -rn "vault" opentofu/openbao/management/versions.tf opentofu/openbao/cluster/versions.tf
-grep -rn "parallelism" opentofu/openbao/
+grep -rn "vault" opentofu/aws/openbao/management/versions.tf opentofu/aws/openbao/cluster/versions.tf
+grep -rn "parallelism" opentofu/aws/openbao/
 sed -n '/### OpenBao/,/Namespace layout/p' CLAUDE.md
 ```
 
@@ -468,7 +468,7 @@ git commit -m "docs(decisions): record the Crossplane/OpenTofu boundary as ADR-0
 **Source material:**
 - `CLAUDE.md` § "Tailscale Gateway API Integration"
 - `website/content/docs/platform/networking/private-access.md`
-- `opentofu/network/` — the subnet router
+- `opentofu/aws/network/` — the subnet router
 - `security/base/tailscale-operator/`
 
 **Required claims:**
@@ -555,7 +555,7 @@ git commit -m "docs(decisions): record Tailscale over a bastion as ADR-0013"
 - Terramate orchestrates it and is tool-agnostic, so the switch did not touch orchestration.
 
 **Required `### Negative` — the honest wrinkle:**
-- `opentofu/openbao/*` is configured with the **`hashicorp/vault` provider**. The platform left Terraform over the licence and still depends on a HashiCorp-licensed provider to configure the fork it left it for. **Verify the provider's current licence before stating what it is** — check the provider repository, and if you cannot confirm it, describe the dependency without characterising the licence.
+- `opentofu/aws/openbao/*` is configured with the **`hashicorp/vault` provider**. The platform left Terraform over the licence and still depends on a HashiCorp-licensed provider to configure the fork it left it for. **Verify the provider's current licence before stating what it is** — check the provider repository, and if you cannot confirm it, describe the dependency without characterising the licence.
 - The registry is different, so provider availability is not automatically identical; the community fork lags on rare providers.
 
 - [ ] **Step 1: Confirm the provider list**
@@ -627,8 +627,8 @@ git commit -m "docs(decisions): record OpenTofu over Terraform as ADR-0014"
 
 **Source material:**
 - `website/content/docs/platform/networking/gateway-api.md`
-- `opentofu/eks/configure/locals.tf` — `gateway_api_crds_urls`
-- `opentofu/eks/configure/variables.tf` — `gateway_api_version`
+- `opentofu/aws/eks/configure/locals.tf` — `gateway_api_crds_urls`
+- `opentofu/aws/eks/configure/variables.tf` — `gateway_api_version`
 - `CLAUDE.md` § "Gateways stuck `Waiting for controller`"
 - Memory: Cilium ≤1.19.4 crashes on Gateway API ≥v1.5.0 (TLSRoute-v1, cilium#45139, fixed in 1.19.5). Keep Cilium ≥1.19.5; `eks/configure` `gateway_api_version` must equal the Flux gitrepo pin.
 
@@ -639,15 +639,15 @@ git commit -m "docs(decisions): record OpenTofu over Terraform as ADR-0014"
 - ExternalDNS watches `HTTPRoute` directly.
 
 **Required `### Negative`:**
-- **Version lockstep with Cilium.** Cilium is the implementation, so the Gateway API CRD version cannot move independently: Cilium ≤1.19.4 crashes on Gateway API ≥v1.5.0 (cilium#45139). `gateway_api_version` in `opentofu/eks/configure` must equal the Flux gitrepo pin.
+- **Version lockstep with Cilium.** Cilium is the implementation, so the Gateway API CRD version cannot move independently: Cilium ≤1.19.4 crashes on Gateway API ≥v1.5.0 (cilium#45139). `gateway_api_version` in `opentofu/aws/eks/configure` must equal the Flux gitrepo pin.
 - **CRDs must exist before `cilium-operator` starts.** It probes exactly once and silently disables its Gateway API controller for the process lifetime if any CRD is missing. The durable fix is adding the CRD to `gateway_api_crds_urls`; `gateway_api_crds_urls` is append-only.
 - Smaller ecosystem than `Ingress`: fewer examples, and some upstream charts still only template an `Ingress`.
 
 - [ ] **Step 1: Read the source material and confirm ingress-nginx is genuinely absent**
 
 ```bash
-cat opentofu/eks/configure/locals.tf | sed -n '/gateway_api_crds_urls/,/]/p'
-grep -rn "gateway_api_version" opentofu/eks/configure/variables.tf
+cat opentofu/aws/eks/configure/locals.tf | sed -n '/gateway_api_crds_urls/,/]/p'
+grep -rn "gateway_api_version" opentofu/aws/eks/configure/variables.tf
 grep -ril "ingress-nginx" --include="*.yaml" . | grep -v website/public
 ```
 
@@ -1539,7 +1539,7 @@ reader could not reproduce it."
 | IAM scoped to `xplane-*` | Crossplane provider policies | `docs/platform-constitution.md` |
 | No delete permission on stateful services | S3, IAM, Route 53 | `docs/platform-constitution.md` |
 | Default-deny pod networking | CiliumNetworkPolicy per workload | `security/base/*/network-policy.yaml` |
-| Private cluster API | Endpoint is private; reachable over Tailscale only | `opentofu/eks/init/` |
+| Private cluster API | Endpoint is private; reachable over Tailscale only | `opentofu/aws/eks/init/` |
 | TLS everywhere internally | Private PKI via OpenBao + cert-manager | `security/base/cert-manager/` |
 | No secrets in Git | External Secrets from AWS Secrets Manager and OpenBao | `security/base/external-secrets/` |
 | Restricted pod security context | Kyverno admission + Polaris on the rendered bundle | `security/base/kyverno/`; `scripts/validate-manifests.sh` |

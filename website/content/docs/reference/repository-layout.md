@@ -50,7 +50,7 @@ lifecycle.
 Two parts of the tree are deliberately inert by default, each gated
 independently of the base/overlay mechanism above:
 
-- **`opentofu/llm-platform/`** — a Terramate stack tagged `opt-in`; its
+- **`opentofu/aws/llm-platform/`** — a Terramate stack tagged `opt-in`; its
   scripts no-op unless `TM_LLM_PLATFORM_ENABLED=true`.
 - **`clusters/mycluster-0-llm-platform/`** — an umbrella Flux `Kustomization`
   (`clusters/mycluster-0/llm-platform.yaml`) with `spec.suspend: true`, kept a

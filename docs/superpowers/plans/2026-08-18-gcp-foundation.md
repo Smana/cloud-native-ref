@@ -104,7 +104,7 @@ server-side apply**, or Phase 3 hits the same wall.
 
 ### Amendment 5 — `gateway_api.tf` belongs in `configure`, not `init`
 
-Task 11 places it in `gke/init`. It cannot go there. `opentofu/eks/init/providers.tf` documents why,
+Task 11 places it in `gke/init`. It cannot go there. `opentofu/aws/eks/init/providers.tf` documents why,
 after the AWS side hit it: a kubectl/kubernetes provider configured from the cluster being created
 in the *same apply* cannot be deferred and fails on fresh applies with *"no configuration has been
 provided"*. The AWS side accordingly applies its Gateway API CRDs from `eks/configure`.
@@ -119,7 +119,7 @@ provided"*. The AWS side accordingly applies its Gateway API CRDs from `eks/conf
 
 ### Amendment 6 — the tailnet ACL is a singleton owned by the AWS stack
 
-`opentofu/network/tailscale.tf` declares `tailscale_acl` with
+`opentofu/aws/network/tailscale.tf` declares `tailscale_acl` with
 `overwrite_existing_content = true`, plus `tailscale_dns_nameservers` and
 `tailscale_dns_search_paths`. These are **tailnet-wide**, and both clouds share one tailnet.
 
@@ -131,7 +131,7 @@ domain, the GCE instance).
 The consequence is a genuine cross-stack dependency the plan did not anticipate: the GCP router's
 routes are advertised but neither auto-approved nor permitted until the **AWS-owned** ACL carries
 them, and editing that ACL by hand does not survive the next AWS apply. Resolved by adding a
-`gcp_routes` variable to `opentofu/network` and wiring it into both `acls` and `autoApprovers`.
+`gcp_routes` variable to `opentofu/aws/network` and wiring it into both `acls` and `autoApprovers`.
 
 ### Amendment 7 — corrections to the plan's scaffolding snippets
 
@@ -178,16 +178,16 @@ non-interactive use.
 ## Pre-flight context (verified during plan writing — no action needed)
 
 - **`gcloud` is NOT installed** and is absent from `mise.toml`. Task 1 adds it. Every other tool in this plan is already pinned in `mise.toml` (opentofu 1.12.5, terramate 0.17.2, trivy 0.74.0, flux2 2.9.4, helm 4.2.4, kustomize 5.8.1).
-- **AWS CIDRs that GCP must not collide with** (`opentofu/network/variables.tf`): VPC `10.0.0.0/16` (`vpc_cidr`), pods `100.64.0.0/16` (`pod_cidr`). Both clusters join the **same tailnet**, so an overlap breaks subnet routing in a way that presents as a Cilium bug.
+- **AWS CIDRs that GCP must not collide with** (`opentofu/aws/network/variables.tf`): VPC `10.0.0.0/16` (`vpc_cidr`), pods `100.64.0.0/16` (`pod_cidr`). Both clusters join the **same tailnet**, so an overlap breaks subnet routing in a way that presents as a Cilium bug.
 - **Terramate globals** live in `opentofu/config.tm.hcl`. `region = "eu-west-3"` and `eks_cluster_name` are AWS-specific; `cilium_version = "1.20.0"` and `flux_operator_version`/`flux_instance_version = "0.55.0"` are **shared** and must stay shared.
-- **The two-stage script pattern** is `opentofu/eks/init/workflows.tm.hcl`: a `deploy` script with one `job` per stage, stage 2 invoked via `["bash", "-c", "cd ../configure && ..."]`, and `trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .` in the chain before apply. `preview` uses `sync_preview = true` + `tofu_plan_file`.
+- **The two-stage script pattern** is `opentofu/aws/eks/init/workflows.tm.hcl`: a `deploy` script with one `job` per stage, stage 2 invoked via `["bash", "-c", "cd ../configure && ..."]`, and `trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .` in the chain before apply. `preview` uses `sync_preview = true` + `tofu_plan_file`.
 - **`eks/init` stage 3 (`eks-recycle-bootstrap-nodes.sh`) has no GCP analogue** — it exists solely for ENI prefix-delegation ordering. Do not port it.
 - **`eks/configure/main.tf` is deliberately `local-exec`-free**; imperative steps live in Terramate jobs. Keep `gke/configure` the same way.
 - **`eks/configure` reads the Cilium values from the init stack**: `values = [file("${path.module}/../init/helm_values/cilium.yaml")]`. Mirror that path convention.
-- **AWS Cilium values to diverge from** (`opentofu/eks/init/helm_values/cilium.yaml`): `ipam.mode: eni`, an `eni:` block, `routingMode: native`, `kubeProxyReplacement: true`, `encryption` (wireguard), `gatewayAPI`, `hubble`.
-- **`opentofu/eks/configure/cilium-cni-config.tf`** is the AWS prefix-delegation ConfigMap. **No GCP counterpart — do not create one.**
-- **EKS bootstrap node group cost posture to match** (`opentofu/eks/init/main.tf:120-149`): `capacity_type = "SPOT"`, `min_size = 2 / max_size = 3`, single subnet with the comment *"Use a single subnet for costs reasons"*, 6 diversified instance types. A GKE node pool takes **one** machine type, so that last technique does not port.
-- **Tailscale tailnet**: `smainklh@gmail.com`, subnet router named `ogenki` (`opentofu/network/variables.tfvars`).
+- **AWS Cilium values to diverge from** (`opentofu/aws/eks/init/helm_values/cilium.yaml`): `ipam.mode: eni`, an `eni:` block, `routingMode: native`, `kubeProxyReplacement: true`, `encryption` (wireguard), `gatewayAPI`, `hubble`.
+- **`opentofu/aws/eks/configure/cilium-cni-config.tf`** is the AWS prefix-delegation ConfigMap. **No GCP counterpart — do not create one.**
+- **EKS bootstrap node group cost posture to match** (`opentofu/aws/eks/init/main.tf:120-149`): `capacity_type = "SPOT"`, `min_size = 2 / max_size = 3`, single subnet with the comment *"Use a single subnet for costs reasons"*, 6 diversified instance types. A GKE node pool takes **one** machine type, so that last technique does not port.
+- **Tailscale tailnet**: `smainklh@gmail.com`, subnet router named `ogenki` (`opentofu/aws/network/variables.tfvars`).
 - **Cilium's current GKE recipe** (docs.cilium.io GKE Clustermesh Prep) requires `--enable-ip-alias`, explicit `--cluster-ipv4-cidr` / `--services-ipv4-cidr`, and `--node-taints node.cilium.io/agent-not-ready=true:NoSchedule`. `--enable-dataplane-v2` is opt-in on Standard, so it is simply **not passed**.
 
 ### Proposed CIDR allocation (verify in Task 3, do not assume)
@@ -329,7 +329,7 @@ Expected: bucket created, versioning enabled.
 
 Run:
 ```bash
-grep -A3 -E 'variable "(vpc_cidr|pod_cidr)"' opentofu/network/variables.tf
+grep -A3 -E 'variable "(vpc_cidr|pod_cidr)"' opentofu/aws/network/variables.tf
 tailscale status --json | jq -r '.Peer[] | select(.PrimaryRoutes != null) | "\(.HostName): \(.PrimaryRoutes | join(", "))"'
 ```
 Expected: `10.0.0.0/16` and `100.64.0.0/16` from the first command, plus whatever the subnet router actually advertises.
@@ -1317,7 +1317,7 @@ Bootstraps Crossplane's own WIF binding, which slice 5 is blocked without."
 
 - [ ] **Step 1: Read the AWS values to diverge from**
 
-Run: `cat opentofu/eks/init/helm_values/cilium.yaml`
+Run: `cat opentofu/aws/eks/init/helm_values/cilium.yaml`
 Expected: the file with `ipam.mode: eni`, an `eni:` block, `encryption`, `routingMode: native`, `kubeProxyReplacement`, `gatewayAPI`, `hubble`.
 
 - [ ] **Step 2: Write the GCP values**
@@ -1327,7 +1327,7 @@ The header comment is not decoration — the fork is a deliberate decision and t
 ```yaml
 # Cilium Helm values — GCP / GKE
 #
-# FORKED from opentofu/eks/init/helm_values/cilium.yaml rather than templated
+# FORKED from opentofu/aws/eks/init/helm_values/cilium.yaml rather than templated
 # from a shared base. With two clouds and ~8 divergent keys, duplication is
 # cheaper than a merge mechanism that hides what Cilium actually receives --
 # and "we do not fully understand what Cilium does on an unsupported path" is
@@ -1430,9 +1430,9 @@ so both clouds upgrade together. Header documents every divergent key."
 - [ ] **Step 1: Read the AWS pin and the trap it encodes**
 
 ```bash
-grep -n "gateway_api_crds_urls" -A 30 opentofu/eks/configure/locals.tf
-grep -rn "gateway_api_version" opentofu/eks/configure/variables.tf
-grep -n "gateway_api_crds" opentofu/eks/configure/main.tf
+grep -n "gateway_api_crds_urls" -A 30 opentofu/aws/eks/configure/locals.tf
+grep -rn "gateway_api_version" opentofu/aws/eks/configure/variables.tf
+grep -n "gateway_api_crds" opentofu/aws/eks/configure/main.tf
 ```
 
 Expected: a URL list with a comment block explaining the startup probe, `depends_on` from the Cilium
@@ -1706,14 +1706,14 @@ resource "helm_release" "flux_instance" {
 
 Create `opentofu/gcp/gke/init/helm_values/flux-instance.yaml` by copying the AWS one and changing **only** the storage class — `gp3` does not exist on GCP:
 
-Run: `cp opentofu/eks/init/helm_values/flux-instance.yaml opentofu/gcp/gke/init/helm_values/flux-instance.yaml`
+Run: `cp opentofu/aws/eks/init/helm_values/flux-instance.yaml opentofu/gcp/gke/init/helm_values/flux-instance.yaml`
 
 Then change `storage.class` from `gp3` to `standard-rwo`, and add this header:
 
 ```yaml
 # Flux Instance values — GCP / GKE
 #
-# Copied from opentofu/eks/init/helm_values/flux-instance.yaml. The ONLY
+# Copied from opentofu/aws/eks/init/helm_values/flux-instance.yaml. The ONLY
 # intended divergence is storage.class: gp3 (AWS EBS) -> standard-rwo (GCP PD).
 # Keep every other value in sync with the AWS file; if you change one, change
 # both, or the two clusters' Flux behaviour silently drifts.
@@ -2087,7 +2087,7 @@ Write the actual command output into `docs/gcp-bootstrap.md` (created in Task 20
 Run:
 ```bash
 git diff --stat origin/main...HEAD -- \
-  opentofu/network opentofu/eks opentofu/openbao opentofu/llm-platform \
+  opentofu/aws/network opentofu/aws/eks opentofu/aws/openbao opentofu/aws/llm-platform \
   clusters/mycluster-0 infrastructure security observability tooling apps
 ```
 Expected: **empty output.** The only permitted exceptions are `mise.toml`, `opentofu/config.tm.hcl`, `CLAUDE.md`, and new files under `opentofu/gcp/`, `clusters/gcp-mycluster-0/`, `docs/`.

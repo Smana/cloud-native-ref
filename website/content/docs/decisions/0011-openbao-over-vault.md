@@ -72,8 +72,8 @@ platform's secrets architecture as a whole.
 ### Option 1: OpenBao
 
 The Linux Foundation fork of the last MPL-2.0 Vault codebase. Provisioned
-as two stacks: `opentofu/openbao/cluster/` stands up the Raft-backed EC2
-fleet, and `opentofu/openbao/management/` layers namespaces, the PKI and
+as two stacks: `opentofu/aws/openbao/cluster/` stands up the Raft-backed EC2
+fleet, and `opentofu/aws/openbao/management/` layers namespaces, the PKI and
 AppRole auth on top through the `hashicorp/vault` OpenTofu provider.
 
 **Pros**:
@@ -81,7 +81,7 @@ AppRole auth on top through the `hashicorp/vault` OpenTofu provider.
   instead of a vendor-controlled source-available one.
 - API-compatible enough that the existing `hashicorp/vault` OpenTofu
   provider configures it unmodified
-  (`opentofu/openbao/management/versions.tf`) — the Terraform/OpenTofu
+  (`opentofu/aws/openbao/management/versions.tf`) — the Terraform/OpenTofu
   code written against Vault's API needed no rewrite to target OpenBao.
 - Same `bao`/`vault` CLI surface and Raft storage backend, so the
   namespace, AppRole and PKI model this platform depends on ported
@@ -173,7 +173,7 @@ demonstrate.
   neutrally-governed codebase, with no single vendor able to change the
   commercial terms this platform depends on.
 - The `hashicorp/vault` OpenTofu provider configures OpenBao unmodified,
-  so every `vault_*` resource in `opentofu/openbao/management/` needed no
+  so every `vault_*` resource in `opentofu/aws/openbao/management/` needed no
   rewrite to target it.
 - OpenBao's role stays narrow and complementary rather than duplicating
   AWS Secrets Manager: the private PKI and namespace-scoped AppRole
@@ -199,7 +199,7 @@ demonstrate.
   concurrently on a small node — `bao status` then hangs even against
   `127.0.0.1`, which is a core deadlock, never a VPN problem.
   - *Mitigation*: `-parallelism=1` on the management stack's `apply` and
-    `destroy` in `opentofu/openbao/management/workflows.tm.hcl`, marked
+    `destroy` in `opentofu/aws/openbao/management/workflows.tm.hcl`, marked
     in-code as load-bearing rather than caution. This serialises the
     stack's own writes; it is not a version pin, and it does not require
     staying off the 2.6 line.
@@ -235,9 +235,9 @@ demonstrate.
 
 ## Implementation Notes
 
-`opentofu/openbao/cluster/` provisions the Raft-backed EC2 fleet and pins
+`opentofu/aws/openbao/cluster/` provisions the Raft-backed EC2 fleet and pins
 the OpenBao release (`openbao_version` in `variables.tf`, currently on
-the 2.6 line); `opentofu/openbao/management/` layers namespaces, the PKI,
+the 2.6 line); `opentofu/aws/openbao/management/` layers namespaces, the PKI,
 AppRole auth and policies on top through the `hashicorp/vault` provider,
 and is the stack the `-parallelism=1` mitigation applies to. The provider
 name is unchanged from the Vault-era code —
@@ -263,11 +263,11 @@ are documented in full on
 - [CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md)
   — the OpenBao command reference and namespace-layout summary under
   "OpenBao"
-- `opentofu/openbao/management/versions.tf` — the `hashicorp/vault`
+- `opentofu/aws/openbao/management/versions.tf` — the `hashicorp/vault`
   provider pin that configures OpenBao
-- `opentofu/openbao/cluster/variables.tf` — the `openbao_version` pin and
+- `opentofu/aws/openbao/cluster/variables.tf` — the `openbao_version` pin and
   the in-code explanation of the 2.6.x deadlock
-- `opentofu/openbao/management/workflows.tm.hcl` — the `-parallelism=1`
+- `opentofu/aws/openbao/management/workflows.tm.hcl` — the `-parallelism=1`
   mitigation and its reproduction notes
 - `security/base/external-secrets/clustersecretstore.yaml` — the AWS
   Secrets Manager `ClusterSecretStore` that External Secrets Operator

@@ -43,7 +43,7 @@ kubectl rollout restart -n kube-system deployment/cilium-operator
 ```
 
 The durable fix is adding the missing CRD to `gateway_api_crds_urls` in
-`opentofu/eks/configure/locals.tf`. Flux applies the full CRD directory, but
+`opentofu/aws/eks/configure/locals.tf`. Flux applies the full CRD directory, but
 only *after* Cilium is already running — which is why the operator can start
 before the CRD exists.
 

@@ -9,7 +9,7 @@ spec:
     # No `namespace`: the PKI mount and the cert-manager AppRole both live in the
     # root namespace now. They were previously in `admin/pki` — a shared platform
     # service nested inside a namespace named for an administrative role. See
-    # opentofu/openbao/management/namespaces.tf for why that layout was dropped.
+    # opentofu/aws/openbao/management/namespaces.tf for why that layout was dropped.
     path: pki_private_issuer/sign/ogenki
     # Was an inline base64 chain pasted into this file. Now synced from the
     # same AWS Secrets Manager entry the OpenTofu management stack builds the

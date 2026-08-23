@@ -342,7 +342,7 @@ Every claim on this page must come from the tree, not from memory:
 
 ```bash
 ls flux/*/ && \
-cat opentofu/eks/init/helm_values/flux-instance.yaml && \
+cat opentofu/aws/eks/init/helm_values/flux-instance.yaml && \
 grep -rn "interval:" clusters/mycluster-0/*.yaml | head -20 && \
 grep -rln "kind: ResourceSet\|kind: Alert\|kind: Provider" flux/
 ```

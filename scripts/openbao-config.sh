@@ -288,7 +288,7 @@ write_ca() {
 
     ca_dir=$(dirname "$CA_OUTPUT_FILE")
     if [ -L "$ca_dir" ]; then
-        # `opentofu/openbao/management/.tls` is a committed symlink to
+        # `opentofu/aws/openbao/management/.tls` is a committed symlink to
         # ../cluster/.tls. On a fresh checkout that target does not exist yet
         # (.tls/ is gitignored), and `mkdir -p` on a dangling symlink fails with
         # "File exists" rather than creating the target. Resolve one level by

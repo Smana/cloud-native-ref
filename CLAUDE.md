@@ -10,9 +10,9 @@ This is a comprehensive cloud-native platform reference repository implementing 
 
 The platform is deployed in three sequential stages:
 
-1. **Network Layer** (`opentofu/network/`): VPC, subnets, Route53, and Tailscale VPN
-2. **Security Layer** (`opentofu/openbao/`): OpenBao cluster for secrets management and PKI
-3. **Kubernetes Layer** (`opentofu/eks/init/` + `opentofu/eks/configure/`): EKS cluster with Flux, Cilium, and Karpenter
+1. **Network Layer** (`opentofu/aws/network/`): VPC, subnets, Route53, and Tailscale VPN
+2. **Security Layer** (`opentofu/aws/openbao/`): OpenBao cluster for secrets management and PKI
+3. **Kubernetes Layer** (`opentofu/aws/eks/init/` + `opentofu/aws/eks/configure/`): EKS cluster with Flux, Cilium, and Karpenter
 
 ### Key Components
 
@@ -31,16 +31,16 @@ Two-stage OpenTofu deployment: Stage 1 creates the EKS cluster with temporary CN
 
 **Why two stages?** Helm provider needs cluster endpoint at plan time, so Stage 2 runs after the cluster exists.
 
-**Deploy**: `cd opentofu/eks/init && terramate script run deploy`
+**Deploy**: `cd opentofu/aws/eks/init && terramate script run deploy`
 
 **Key Files:**
 - `opentofu/config.tm.hcl` - Cilium/Flux versions
-- `opentofu/eks/init/main.tf` - EKS module with bootstrap addons
-- `opentofu/eks/configure/main.tf` - Cilium and Flux helm_releases
-- `opentofu/eks/init/helm_values/cilium.yaml` - Cilium Helm values
+- `opentofu/aws/eks/init/main.tf` - EKS module with bootstrap addons
+- `opentofu/aws/eks/configure/main.tf` - Cilium and Flux helm_releases
+- `opentofu/aws/eks/init/helm_values/cilium.yaml` - Cilium Helm values
 
 **Cilium Prefix Delegation (ENABLED — WireGuard is load-bearing):**
-Pods get IPs from the secondary CIDR (100.64.0.0/16) via prefix delegation, configured by the custom CNI ConfigMap in `opentofu/eks/configure/cilium-cni-config.tf`. Cilium bug #43493 (still open) breaks the Gateway API L7 proxy on cross-node traffic in this mode: the BPF ipcache sets `hastunnel` incorrectly for remote pods under native routing. **The workaround is `encryption.type: wireguard`** — node-to-node tunnels bypass the faulty routing logic. Do not disable WireGuard, and do not swap it for ztunnel transparent encryption, while #43493 is open.
+Pods get IPs from the secondary CIDR (100.64.0.0/16) via prefix delegation, configured by the custom CNI ConfigMap in `opentofu/aws/eks/configure/cilium-cni-config.tf`. Cilium bug #43493 (still open) breaks the Gateway API L7 proxy on cross-node traffic in this mode: the BPF ipcache sets `hastunnel` incorrectly for remote pods under native routing. **The workaround is `encryption.type: wireguard`** — node-to-node tunnels bypass the faulty routing logic. Do not disable WireGuard, and do not swap it for ztunnel transparent encryption, while #43493 is open.
 
 `cniVersion` in `cilium-cni-config.tf` must track the CNI standard version Cilium defaults to (1.20 moved it 0.3.1 → 1.0.0). Because we set `cni.configMap`, the chart default never applies — bump it manually on every Cilium minor upgrade.
 
@@ -55,7 +55,7 @@ Two independent gates govern the self-hosted LLM platform; both must be released
 
 | Layer | Gate | Default | Enable |
 |---|---|---|---|
-| AWS (S3 Files filesystem + IAM) | `opentofu/llm-platform/` Terramate stack tagged `opt-in`, `$TM_LLM_PLATFORM_ENABLED` env-var guard in `workflows.tm.hcl` | skipped | `TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy` |
+| AWS (S3 Files filesystem + IAM) | `opentofu/aws/llm-platform/` Terramate stack tagged `opt-in`, `$TM_LLM_PLATFORM_ENABLED` env-var guard in `workflows.tm.hcl` | skipped | `TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy` |
 | Kubernetes (vLLM router, NVIDIA plugin, GPU NodePool, LLM apps, LLM EPI) | `clusters/mycluster-0/llm-platform.yaml` umbrella Flux Kustomization with `spec.suspend: true` | skipped | `flux resume kustomization llm-platform -n flux-system` |
 
 The umbrella Kustomization aggregates 8 children under `clusters/mycluster-0-llm-platform/` (kept a sibling of `clusters/mycluster-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/mycluster-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
@@ -75,7 +75,7 @@ terramate script run deploy     # Deploy platform
 terramate script run drift detect  # Check drift
 
 # EKS deploy (both stages)
-cd opentofu/eks/init && terramate script run deploy
+cd opentofu/aws/eks/init && terramate script run deploy
 
 # Feature branch testing
 TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy
@@ -97,11 +97,11 @@ flux resume kustomization --all
 
 ```bash
 export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
-export VAULT_CACERT=opentofu/openbao/management/.tls/ca.pem   # written by `openbao-config.sh ca`; prefer this over VAULT_SKIP_VERIFY
+export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem   # written by `openbao-config.sh ca`; prefer this over VAULT_SKIP_VERIFY
 bao status
 
 # Operator login is userpass in the root namespace, managed by
-# opentofu/openbao/management (auth.tf). It carries both the admin and
+# opentofu/aws/openbao/management (auth.tf). It carries both the admin and
 # pki-admin policies.
 bao login -method=userpass username=admin
 
@@ -118,7 +118,7 @@ snapshot AppRole, operator logins — live in the **root** namespace. Namespaces
 reserved for tenants; `app` is the only one, holding a `secret/` kv-v2 mount reachable
 via its own AppRole. Cluster-wide endpoints such as `sys/storage/raft/*` are callable
 *only* from root, which is why anything operational belongs there. See
-`opentofu/openbao/management/namespaces.tf`.
+`opentofu/aws/openbao/management/namespaces.tf`.
 
 ## Development Workflow
 
@@ -136,7 +136,7 @@ via its own AppRole. Cluster-wide endpoints such as `sys/storage/raft/*` are cal
 - `mise.toml`: Tool versions
 - `opentofu/config.tm.hcl`: Global Terramate config (Cilium/Flux versions)
 - `opentofu/workflows.tm.hcl`: Terramate scripts and workflows
-- `opentofu/eks/init/workflows.tm.hcl`: EKS two-stage deployment scripts
+- `opentofu/aws/eks/init/workflows.tm.hcl`: EKS two-stage deployment scripts
 
 ### GitOps with Flux
 
@@ -278,7 +278,7 @@ Use the FluxCD agent-skills plugin for Flux troubleshooting (`/gitops-cluster-de
   `READY=False`. Confirm with
   `kubectl logs -n kube-system -l io.cilium/app=operator | grep "Required GatewayAPI resources"`,
   then `kubectl rollout restart -n kube-system deployment/cilium-operator`. The durable fix is to
-  add the missing CRD to `gateway_api_crds_urls` in `opentofu/eks/configure/locals.tf` — Flux
+  add the missing CRD to `gateway_api_crds_urls` in `opentofu/aws/eks/configure/locals.tf` — Flux
   applies the full CRD directory, but only *after* Cilium is already running.
 
 > **VictoriaLogs and Grafana rules** are in `.claude/rules/observability.md` (loaded automatically when editing observability files).

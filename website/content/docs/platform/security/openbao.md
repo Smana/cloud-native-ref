@@ -8,7 +8,7 @@ lastVerified: 2026-08-20
 [Foundations]({{< relref "/docs/platform/foundations/aws.md#the-openbao-cluster-stack" >}})
 covers how the OpenBao cluster is provisioned — five SPOT nodes on Raft, KMS
 auto-unseal, RAID-0 NVMe. This page covers what runs on top of that cluster:
-`opentofu/openbao/management/` layers namespaces, auth methods, the PKI, and
+`opentofu/aws/openbao/management/` layers namespaces, auth methods, the PKI, and
 policies onto it, and this is the operational surface every other security
 page and the [Access]({{< relref "/docs/get-started/aws/access.md" >}}) guide
 build on.
@@ -18,8 +18,8 @@ terminating TLS on `bao.priv.cloud.ogenki.io:8200`, see
 [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md#building-the-chain" >}})
 — is generated offline and read from Secrets Manager at
 `certificates/priv.cloud.ogenki.io/openbao` (the `openbao_certificates_secret_name`
-default in `opentofu/openbao/cluster/variables.tf`, set explicitly in that
-stack's `variables.tfvars`) by `opentofu/openbao/cluster/` before the
+default in `opentofu/aws/openbao/cluster/variables.tf`, set explicitly in that
+stack's `variables.tfvars`) by `opentofu/aws/openbao/cluster/` before the
 management stack in this page ever runs.
 
 {{< callout type="warning" >}}
@@ -28,7 +28,7 @@ older release.** 2.6.x carries [openbao/openbao#3411](https://github.com/openbao
 (inconsistent lock ordering between the core mounts lock and the namespace
 lock, still open upstream) — but the concurrency that triggers it is the
 management stack's own, not OpenBao's, and the fix is `-parallelism=1` on
-both `apply` and `destroy` in `opentofu/openbao/management/workflows.tm.hcl`,
+both `apply` and `destroy` in `opentofu/aws/openbao/management/workflows.tm.hcl`,
 marked in-code as load-bearing, not a caution. Older notes said "pin back to
 2.5.5" — that's stale; don't repeat it. If you ever see `bao status` hang
 against `127.0.0.1`, that's a **core deadlock**, not a VPN problem — check
@@ -43,7 +43,7 @@ PKI and operator logins under `admin`/`admin/pki`, which didn't hold up: an
 (`sys/storage/raft/*`, audit devices, seal operations) are root-only
 regardless — a snapshot agent parked in a child namespace could never reach
 them. The current layout, verified against
-`opentofu/openbao/management/namespaces.tf`:
+`opentofu/aws/openbao/management/namespaces.tf`:
 
 - **Root namespace** holds every shared platform service: the PKI mount
   (`pki_private_issuer`), the `snapshot-agent` and `cert-manager` AppRoles,
@@ -61,12 +61,12 @@ them. The current layout, verified against
 
 Human operators authenticate with `userpass`, not the root token — the root
 token is retired after initial setup (see below). The backend and user are
-provisioned by Terraform (`opentofu/openbao/management/auth.tf`), not created
+provisioned by Terraform (`opentofu/aws/openbao/management/auth.tf`), not created
 by hand:
 
 ```bash
 export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
-export VAULT_CACERT=opentofu/openbao/management/.tls/ca.pem   # written by `openbao-config.sh ca`
+export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem   # written by `openbao-config.sh ca`
 bao login -method=userpass username=admin
 ```
 
@@ -129,7 +129,7 @@ then synced into the cluster by External Secrets — see
 [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
 The tenant-namespace `app` AppRole has no minted `SecretID`, and so no
 Secrets Manager entry, at all: nothing consumes it yet, and an unused live
-credential is worse than none (`opentofu/openbao/management/auth.tf`) — mint
+credential is worse than none (`opentofu/aws/openbao/management/auth.tf`) — mint
 one by hand with `bao write -f -namespace=app auth/approle/role/app/secret-id`
 only when something needs it.
 
@@ -210,7 +210,7 @@ exported here, not assumed left over from the Operator Login section above:
 
 ```bash
 export VAULT_ADDR="https://bao.priv.cloud.ogenki.io:8200"
-export VAULT_CACERT=opentofu/openbao/management/.tls/ca.pem
+export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem
 export APPROLE_ROLE_ID=... APPROLE_SECRET_ID=...
 export RECOVERY_KEYS_SECRET_ID="openbao/cloud-native-ref/tokens/recovery"
 ./scripts/openbao-snapshot.sh restore -a "${VAULT_ADDR}" \

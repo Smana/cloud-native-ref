@@ -159,7 +159,7 @@ datapath as of 2026-08. So this is not "disable Dataplane V2" — it is "do not 
   mechanism that hides what Cilium actually receives. Revisit at cloud number three.
 - `ipam.mode` diverges: `eni` on AWS, `kubernetes` on GCP (host-scope from `spec.podCIDR`, with
   GKE alias IP ranges providing native VPC routing). The AWS-only
-  `opentofu/eks/configure/cilium-cni-config.tf` prefix-delegation ConfigMap has no GCP
+  `opentofu/aws/eks/configure/cilium-cni-config.tf` prefix-delegation ConfigMap has no GCP
   counterpart.
 
 ---
@@ -186,5 +186,5 @@ rescoped to AWS only once that criterion passes, and not before.
 - [GKE Dataplane V2](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/dataplane-v2) — create-time only; default on Autopilot
 - [gcloud container clusters create](https://docs.cloud.google.com/sdk/gcloud/reference/container/clusters/create) — `--enable-dataplane-v2` is opt-in
 - [cilium#43493](https://github.com/cilium/cilium/issues/43493) — the ENI-mode L7 proxy bug behind the AWS WireGuard workaround
-- Existing Cilium values: `opentofu/eks/init/helm_values/cilium.yaml`
+- Existing Cilium values: `opentofu/aws/eks/init/helm_values/cilium.yaml`
 - Tailscale Gateway setup: [Platform → Networking → Private access]({{< relref "/docs/platform/networking/private-access.md" >}}), `infrastructure/base/gapi/`

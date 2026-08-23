@@ -66,9 +66,9 @@ brings the other along:
 ```bash
 # Gate 1 — AWS side (S3 Files filesystem + IAM). Terramate stack tagged
 # `opt-in`; skipped unless TM_LLM_PLATFORM_ENABLED=true (verified in
-# opentofu/llm-platform/workflows.tm.hcl — unset or != "true" echoes [skip]
+# opentofu/aws/llm-platform/workflows.tm.hcl — unset or != "true" echoes [skip]
 # and exits 0).
-TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy
+TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
 
 # Gate 2 — Kubernetes side. The umbrella Flux Kustomization ships suspended
 # (spec.suspend: true, clusters/mycluster-0/llm-platform.yaml).

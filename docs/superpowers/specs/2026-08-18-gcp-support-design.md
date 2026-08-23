@@ -112,7 +112,7 @@ Recorded as ADRs so they are not restated per-slice.
 ### Cost posture
 
 The AWS side is more cost-optimised than it first appears, and GCP must match the *intent*, not just
-work. `opentofu/eks/init/main.tf` runs even the **bootstrap** node group on `capacity_type = "SPOT"`
+work. `opentofu/aws/eks/init/main.tf` runs even the **bootstrap** node group on `capacity_type = "SPOT"`
 (min 2 / max 3) across 6 diversified instance types, pinned to one subnet with the comment *"Use a
 single subnet for costs reasons"*. All three Karpenter pools are spot-first, `default` is
 spot-**only**, and each carries a hard ceiling (`cpu 60/mem 192Gi`, `cpu 20/mem 64Gi`,
@@ -231,7 +231,7 @@ the values divergence below.
 > (`openbao/management` uses only the `bao` provider)"*. That is **wrong**, and the error mattered
 > because it made the stack look portable when it is not.
 >
-> `opentofu/openbao/management/providers.tf` configures **two** providers, `vault` **and** `aws`,
+> `opentofu/aws/openbao/management/providers.tf` configures **two** providers, `vault` **and** `aws`,
 > and the stack reads its root token, the cert-manager AppRole and the operator password from **AWS
 > Secrets Manager** (`data.aws_secretsmanager_secret_version.*`). `openbao/cluster` is more
 > AWS-coupled still — ASG, ELB, KMS auto-unseal, Route53.

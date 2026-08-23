@@ -259,7 +259,7 @@ This doc is the **load-bearing artifact for "foundations for considering self-ho
 >
 > ```bash
 > # 1. AWS side (S3 Files + IAM)
-> TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy
+> TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
 >
 > # 2. Cluster side (Flux umbrella)
 > flux resume kustomization llm-platform -n flux-system

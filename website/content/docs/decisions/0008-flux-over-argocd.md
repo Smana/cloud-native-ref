@@ -80,7 +80,7 @@ Operator via a `FluxInstance` custom resource.
   Crossplane compositions can render them directly: the `App` claim's
   nested `KVStore` composition renders a `HelmRelease` for the official
   `valkey-helm` chart, the same Kind Flux itself reconciles with.
-- Flux Operator + `FluxInstance` install from `opentofu/eks/configure/main.tf`
+- Flux Operator + `FluxInstance` install from `opentofu/aws/eks/configure/main.tf`
   (Stage 2) right after Cilium, in the same `terramate script run deploy`
   that creates the cluster — the two-stage EKS bootstrap stays one command.
 - GitHub App authentication for pulling this repository.
@@ -210,10 +210,10 @@ already needed, not a verdict that Argo CD is deficient.
 ## Implementation Notes
 
 Flux Operator and `FluxInstance` install as two sequential `helm_release`
-resources in `opentofu/eks/configure/main.tf` (Stage 2), after Cilium is
+resources in `opentofu/aws/eks/configure/main.tf` (Stage 2), after Cilium is
 up and kube-proxy is disabled. `FluxInstance`'s values, including the
 `sharding.key: sharding.fluxcd.io/key` / `shards: ["apps"]` configuration,
-live in `opentofu/eks/init/helm_values/flux-instance.yaml`.
+live in `opentofu/aws/eks/init/helm_values/flux-instance.yaml`.
 
 The dependency graph itself is not hand-maintained prose — it is
 re-derived from `spec.dependsOn` in every `clusters/mycluster-0/**/*.yaml`
@@ -235,7 +235,7 @@ mechanism referenced above.
   — controller sharding and the `ArtifactGenerator`/`ExternalArtifact` split
 - [Technology choices]({{< relref "/docs/concepts/technology-choices.md" >}})
   — "Flux over Argo CD" in "The ones without records"
-- `opentofu/eks/configure/main.tf` — Flux Operator and `FluxInstance`
+- `opentofu/aws/eks/configure/main.tf` — Flux Operator and `FluxInstance`
   installed in Stage 2, right after Cilium
 - `tooling/base/headlamp/helmrelease.yaml` — the `headlamp-plugin-flux`
   init container

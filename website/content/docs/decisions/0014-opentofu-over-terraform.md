@@ -171,7 +171,7 @@ change.
 ### Negative
 
 - **A HashiCorp-published provider still configures the OpenBao stack.**
-  `opentofu/openbao/management/versions.tf` pins
+  `opentofu/aws/openbao/management/versions.tf` pins
   `vault = { source = "hashicorp/vault", version = "~> 5.0" }` — the same
   OpenTofu adoption chosen to leave HashiCorp's terms behind still depends
   on a provider HashiCorp publishes, to configure OpenBao, the fork this
@@ -181,7 +181,7 @@ change.
   project's current licence terms is outside what this repository can
   verify about itself; see References for where to check directly.
   - *Mitigation*: none currently, and the exposure is scoped:
-    `opentofu/openbao/cluster/versions.tf`, the stack that provisions the
+    `opentofu/aws/openbao/cluster/versions.tf`, the stack that provisions the
     actual Raft EC2 fleet, declares no `vault` provider at all — only
     `management`, which layers namespaces, PKI and AppRole auth on top,
     needs it.
@@ -222,7 +222,7 @@ unaffected by any of this: it orchestrates whatever `global.provisioner`
 names, not Terraform specifically.
 
 The `hashicorp/vault` provider dependency in
-`opentofu/openbao/management/versions.tf` predates this decision — it
+`opentofu/aws/openbao/management/versions.tf` predates this decision — it
 configures OpenBao regardless of which tool executes it — and is not
 something adopting OpenTofu introduced or could remove on its own;
 [ADR-0011](0011-openbao-over-vault.md) covers why OpenBao is configured
@@ -246,9 +246,9 @@ through that provider at all.
 - `opentofu/workflows.tm.hcl` — the `init`, `preview`, `deploy`,
   `drift detect`, `drift reconcile` and `destroy` scripts that invoke
   `global.provisioner`
-- `opentofu/openbao/management/versions.tf` — the `hashicorp/vault`
+- `opentofu/aws/openbao/management/versions.tf` — the `hashicorp/vault`
   provider pin this record's Negative section names
-- `opentofu/openbao/cluster/versions.tf` — confirms the `vault` provider is
+- `opentofu/aws/openbao/cluster/versions.tf` — confirms the `vault` provider is
   absent from the cluster stack, scoping the dependency to `management`
   only
 - [OpenTofu Registry](https://search.opentofu.org/) — where current

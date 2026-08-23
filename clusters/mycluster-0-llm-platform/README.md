@@ -47,9 +47,9 @@ After resume, watch the children come up:
 flux get kustomizations -n flux-system | grep llm-platform
 ```
 
-The OpenTofu side (`opentofu/llm-platform/`) is gated separately with
+The OpenTofu side (`opentofu/aws/llm-platform/`) is gated separately with
 `$TM_LLM_PLATFORM_ENABLED=true`. Both gates must be released for an
-end-to-end deploy. See `opentofu/llm-platform/README.md`.
+end-to-end deploy. See `opentofu/aws/llm-platform/README.md`.
 
 ### One-time AWS Secrets Manager bootstrap
 
@@ -101,7 +101,7 @@ flux delete kustomization \
   -n flux-system --silent
 
 # Then drop the AWS-side resources:
-TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run destroy
+TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run destroy
 ```
 
 ## Whole-cluster destroy (including this LLM stack)

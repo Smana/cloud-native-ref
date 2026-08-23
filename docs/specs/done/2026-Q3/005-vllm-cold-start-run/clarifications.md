@@ -40,7 +40,7 @@
 **Decision**: A — phase 1 streams over the existing local PVC path (`--load-format runai_streamer`, `--model` stays `/models/<revision>`). Direct `s3://` streaming (eliminating the preload Job) is an explicit non-goal, deferred to a phase-2 follow-up spec.
 **Rationale**: Delivers the load-time win as a flag with zero new infra, no AWS creds in the vLLM pod, and no CNP/IAM churn. The `s3://`-direct path is a separate infra migration that deserves its own spec; measuring the local-path gain first (SC-005) tells us whether phase 2 is worth it.
 **Decided by**: User (adopt-recos directive, 2026-07-12)
-**References**: Run:ai Model Streamer docs (local + S3/GCS/Azure sources); `opentofu/llm-platform/filesystem.tf` (S3 Files filesystem, not a plain bucket); `apps/base/ai/llm/models-pvc.yaml`
+**References**: Run:ai Model Streamer docs (local + S3/GCS/Azure sources); `opentofu/aws/llm-platform/filesystem.tf` (S3 Files filesystem, not a plain bucket); `apps/base/ai/llm/models-pvc.yaml`
 
 ## CL-3 — 2026-07-12 — How is streamer concurrency exposed on the claim?
 

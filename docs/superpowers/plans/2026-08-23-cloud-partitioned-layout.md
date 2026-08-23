@@ -34,13 +34,13 @@ Every task's requirements implicitly include these.
   1. The GCP stacks carry no `opt-in` tag and no env gate, so `terramate list --run-order` puts `opentofu/gcp/network` **first**, before the AWS network, and a repo-root `deploy` would build GCP.
   2. `opentofu/gcp/gke/configure` has no `workflows.tm.hcl`, so it inherits the root `deploy` script and is applied without the `-var='cilium_version=…'` flags the init stack's stage-2 job passes. Its three version variables have no defaults, so that path fails with "No value for required variable".
   3. Neither GCP stack has a `.trivyignore.yaml`, so the trivy step in their scripts fails with `ignore file not found: ./.trivyignore.yaml`.
-- **The five `after` references** that name AWS stack paths: `eks/init` (→ `/opentofu/network`, `/opentofu/openbao/management`), `eks/configure` (→ `/opentofu/eks/init`), `openbao/cluster` (→ `/opentofu/network`), `openbao/management` (→ `/opentofu/openbao/cluster`), `llm-platform` (→ `/opentofu/eks/init`).
+- **The five `after` references** that name AWS stack paths: `eks/init` (→ `/opentofu/aws/network`, `/opentofu/aws/openbao/management`), `eks/configure` (→ `/opentofu/aws/eks/init`), `openbao/cluster` (→ `/opentofu/aws/network`), `openbao/management` (→ `/opentofu/aws/openbao/cluster`), `llm-platform` (→ `/opentofu/aws/eks/init`).
 - **The five depth-dependent script call sites**: `eks/init/workflows.tm.hcl` lines 60 and 115 (`../../../scripts/eks-recycle-bootstrap-nodes.sh`, `../../../scripts/eks-prepare-destroy.sh`), `openbao/management/workflows.tm.hcl` lines 18, 115, 135 (`../../../scripts/openbao-config.sh`). All other script calls already use `${terramate.root.path.fs.absolute}`, which is depth-independent.
 - **Directories to move:** `opentofu/{network,eks,openbao,llm-platform}` → `opentofu/aws/`. Per-stack `.trivyignore.yaml` files exist in `network`, `eks/init`, `openbao/cluster`, `openbao/management` and `llm-platform` and move with them.
 - **Tailscale singleton IDs are provider-generated UUIDs**, not stable strings: `resource_acl.go` sets `plan.ID = types.StringValue(createUUID())`, and import is `ImportStatePassthroughID` on `id`. The import ID must be **read from live state**, never guessed.
-- **`reset_acl_on_destroy` is Optional and unset** in `opentofu/network/tailscale.tf`, so removing the resource does not reset the tailnet policy. `overwrite_existing_content = true` is set, which the provider documents as "skip requirement to import acl before allowing changes".
+- **`reset_acl_on_destroy` is Optional and unset** in `opentofu/aws/network/tailscale.tf`, so removing the resource does not reset the tailnet policy. `overwrite_existing_content = true` is set, which the provider documents as "skip requirement to import acl before allowing changes".
 - **`kubectl_file_documents.manifests` is keyed by `manifest.GetSelfLink()`**, so `moved` block keys must be read from real output, not constructed by hand.
-- **AWS enumerates 10 Gateway API CRD URLs** in `opentofu/eks/configure/locals.tf`, `count`-indexed, already with `server_side_apply`, `force_conflicts` and `wait = true`.
+- **AWS enumerates 10 Gateway API CRD URLs** in `opentofu/aws/eks/configure/locals.tf`, `count`-indexed, already with `server_side_apply`, `force_conflicts` and `wait = true`.
 
 ---
 
@@ -141,7 +141,7 @@ variable "flux_instance_version" {
 
 - [ ] **Step 5: Create the configure stack's own workflows**
 
-Without this the stack inherits the root `deploy` script and is applied bare. Mirrors `opentofu/eks/configure/workflows.tm.hcl`.
+Without this the stack inherits the root `deploy` script and is applied bare. Mirrors `opentofu/aws/eks/configure/workflows.tm.hcl`.
 
 ```bash
 cat > opentofu/gcp/gke/configure/workflows.tm.hcl <<'EOF'
@@ -237,11 +237,11 @@ Three defects from the foundation commits:
 - [ ] **Step 1: Prove the problem first**
 
 Run: `terramate list --run-order`
-Expected: `opentofu/gcp/network` appears **first**, before `opentofu/network`. That is the defect — a repo-root `deploy` would build GCP before the AWS network exists.
+Expected: `opentofu/gcp/network` appears **first**, before `opentofu/aws/network`. That is the defect — a repo-root `deploy` would build GCP before the AWS network exists.
 
 - [ ] **Step 2: Add the `opt-in` tag to all three GCP stacks**
 
-Append `"opt-in"` to the `tags` list in each of the three `stack.tm.hcl` files, with this comment above it (same wording as `opentofu/llm-platform/stack.tm.hcl`):
+Append `"opt-in"` to the `tags` list in each of the three `stack.tm.hcl` files, with this comment above it (same wording as `opentofu/aws/llm-platform/stack.tm.hcl`):
 
 ```hcl
     # `opt-in` lets `terramate script run --no-tags=opt-in deploy` skip this
@@ -425,7 +425,7 @@ a gate left on is indistinguishable from success."
 Doing this **before** the move means Task 4 does not have to re-count `../` levels, and it stops this breaking again at the next move.
 
 **Files:**
-- Modify: `opentofu/eks/init/workflows.tm.hcl`, `opentofu/openbao/management/workflows.tm.hcl`
+- Modify: `opentofu/aws/eks/init/workflows.tm.hcl`, `opentofu/aws/openbao/management/workflows.tm.hcl`
 
 - [ ] **Step 1: List the depth-dependent call sites**
 
@@ -438,10 +438,10 @@ Expected: exactly five hits — `eks/init/workflows.tm.hcl` ×2, `openbao/manage
 
 ```bash
 sed -i 's|"\.\./\.\./\.\./scripts/|"${terramate.root.path.fs.absolute}/scripts/|g' \
-  opentofu/eks/init/workflows.tm.hcl \
-  opentofu/openbao/management/workflows.tm.hcl
+  opentofu/aws/eks/init/workflows.tm.hcl \
+  opentofu/aws/openbao/management/workflows.tm.hcl
 sed -i 's|\.\./\.\./\.\./scripts/eks-recycle-bootstrap-nodes\.sh|${terramate.root.path.fs.absolute}/scripts/eks-recycle-bootstrap-nodes.sh|g' \
-  opentofu/eks/init/workflows.tm.hcl
+  opentofu/aws/eks/init/workflows.tm.hcl
 ```
 
 - [ ] **Step 3: Verify none remain**
@@ -457,7 +457,7 @@ Expected: nine stacks, then `scripts parse`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add opentofu/eks/init/workflows.tm.hcl opentofu/openbao/management/workflows.tm.hcl
+git add opentofu/aws/eks/init/workflows.tm.hcl opentofu/aws/openbao/management/workflows.tm.hcl
 git commit -m "refactor(terramate): make script call sites depth-independent
 
 Five call sites used ../../../scripts/, which encodes the stack's depth
@@ -494,19 +494,19 @@ Expected: nine backend entries. Keep these files; Task 7 diffs against them.
 
 ```bash
 mkdir -p opentofu/aws
-git mv opentofu/network      opentofu/aws/network
-git mv opentofu/eks          opentofu/aws/eks
-git mv opentofu/openbao      opentofu/aws/openbao
-git mv opentofu/llm-platform opentofu/aws/llm-platform
+git mv opentofu/aws/network      opentofu/aws/network
+git mv opentofu/aws/eks          opentofu/aws/eks
+git mv opentofu/aws/openbao      opentofu/aws/openbao
+git mv opentofu/aws/llm-platform opentofu/aws/llm-platform
 ```
 
 - [ ] **Step 3: Repoint the five `after` references**
 
 ```bash
-sed -i 's|"/opentofu/network"|"/opentofu/aws/network"|g;
-        s|"/opentofu/eks/init"|"/opentofu/aws/eks/init"|g;
-        s|"/opentofu/openbao/cluster"|"/opentofu/aws/openbao/cluster"|g;
-        s|"/opentofu/openbao/management"|"/opentofu/aws/openbao/management"|g' \
+sed -i 's|"/opentofu/aws/network"|"/opentofu/aws/network"|g;
+        s|"/opentofu/aws/eks/init"|"/opentofu/aws/eks/init"|g;
+        s|"/opentofu/aws/openbao/cluster"|"/opentofu/aws/openbao/cluster"|g;
+        s|"/opentofu/aws/openbao/management"|"/opentofu/aws/openbao/management"|g' \
   opentofu/aws/eks/init/stack.tm.hcl \
   opentofu/aws/eks/configure/stack.tm.hcl \
   opentofu/aws/openbao/cluster/stack.tm.hcl \
@@ -573,7 +573,7 @@ Expected: a non-zero count.
   at the time and must not be rewritten.
 - `docs/superpowers/plans/` are **execution records**. They describe the repository as it stood when
   each was written — this plan's own pre-flight section, for instance, states that the `after`
-  references read `/opentofu/network`, which was true and is the reason Task 4 exists. Rewriting
+  references read `/opentofu/aws/network`, which was true and is the reason Task 4 exists. Rewriting
   them to `/opentofu/aws/network` would describe a before-state that never existed, and would edit
   this plan while it is being executed.
 
@@ -584,10 +584,10 @@ as it was, and `verify-doc-paths.sh` checks them.
 
 ```bash
 cut -d: -f1 /tmp/stale-refs.txt | sort -u | while read -r f; do
-  sed -i 's|opentofu/network|opentofu/aws/network|g;
-          s|opentofu/eks|opentofu/aws/eks|g;
-          s|opentofu/openbao|opentofu/aws/openbao|g;
-          s|opentofu/llm-platform|opentofu/aws/llm-platform|g' "$f"
+  sed -i 's|opentofu/aws/network|opentofu/aws/network|g;
+          s|opentofu/aws/eks|opentofu/aws/eks|g;
+          s|opentofu/aws/openbao|opentofu/aws/openbao|g;
+          s|opentofu/aws/llm-platform|opentofu/aws/llm-platform|g' "$f"
 done
 ```
 

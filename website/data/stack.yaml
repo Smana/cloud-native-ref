@@ -80,7 +80,7 @@ groups:
         version: "1.36"
         logo: kubernetes
         url: https://kubernetes.io
-        pin: "`opentofu/eks/init/variables.tf` — `kubernetes_version` default, not overridden in `variables.tfvars`"
+        pin: "`opentofu/aws/eks/init/variables.tf` — `kubernetes_version` default, not overridden in `variables.tfvars`"
         strip: true
       - name: Cilium
         version: "1.20.0"
@@ -104,7 +104,7 @@ groups:
         short: Gateway API
         version: "v1.6.1"
         url: https://gateway-api.sigs.k8s.io
-        pin: "`opentofu/eks/configure/variables.tf` — `gateway_api_version` default"
+        pin: "`opentofu/aws/eks/configure/variables.tf` — `gateway_api_version` default"
         strip: true
 
   - id: infrastructure
@@ -186,7 +186,7 @@ groups:
         logo: openbao
         logo_dark: openbao-dark
         url: https://openbao.org
-        pin: "`opentofu/openbao/cluster/variables.tf` — `openbao_version` default, not overridden in `variables.tfvars`"
+        pin: "`opentofu/aws/openbao/cluster/variables.tf` — `openbao_version` default, not overridden in `variables.tfvars`"
         strip: true
       - name: cert-manager
         version: "v1.21.1"

@@ -23,7 +23,7 @@ reachable once you are connected to the tailnet.
 
 ```bash
 export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
-export VAULT_CACERT=opentofu/openbao/management/.tls/ca.pem   # written by `openbao-config.sh ca`
+export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem   # written by `openbao-config.sh ca`
 bao status
 bao login -method=userpass username=admin
 ```

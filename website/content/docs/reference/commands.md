@@ -24,12 +24,12 @@ tofu apply -var-file=variables.tfvars
 
 ## EKS deploy (two-stage bootstrap)
 
-Defined in `opentofu/eks/init/workflows.tm.hcl`. Stage 1 creates the cluster
+Defined in `opentofu/aws/eks/init/workflows.tm.hcl`. Stage 1 creates the cluster
 with the temporary VPC-CNI; Stage 2 (run from the same script) disables it,
 installs Cilium, then Flux.
 
 ```bash
-cd opentofu/eks/init
+cd opentofu/aws/eks/init
 terramate script run deploy                     # both stages
 terramate script run deploy-stage1               # Stage 1 only
 
@@ -42,7 +42,7 @@ TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy
 
 ## Opt-in stacks
 
-`opentofu/llm-platform/` is tagged `opt-in` (see `opentofu/llm-platform/workflows.tm.hcl`):
+`opentofu/aws/llm-platform/` is tagged `opt-in` (see `opentofu/aws/llm-platform/workflows.tm.hcl`):
 its `deploy`/`preview`/`drift detect`/`destroy` scripts no-op unless enabled.
 
 ```bash
@@ -53,7 +53,7 @@ terramate script run deploy
 TM_LLM_PLATFORM_ENABLED=true terramate script run deploy
 
 # Target only this stack
-TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy
+TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
 
 # CI / audit path — filter by tag, no env var needed
 terramate script run --no-tags=opt-in deploy
@@ -76,7 +76,7 @@ flux resume kustomization --all
 
 ```bash
 export VAULT_ADDR=https://bao.priv.cloud.ogenki.io:8200
-export VAULT_CACERT=opentofu/openbao/management/.tls/ca.pem   # written by openbao-config.sh ca
+export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem   # written by openbao-config.sh ca
 bao status
 bao login -method=userpass username=admin
 

@@ -1,6 +1,6 @@
 # Flux Instance Helm values
 # Dynamic values (sync.url, sync.ref, sync.path) are passed via --set in the Terramate script
-# See: opentofu/eks/workflows.tm.hcl
+# See: opentofu/aws/eks/workflows.tm.hcl
 
 instance:
   distribution:

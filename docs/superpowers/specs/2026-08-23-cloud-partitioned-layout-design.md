@@ -16,7 +16,7 @@ that AWS *is* the platform and GCP is a guest. That asymmetry is not cosmetic. I
 produced three concrete problems:
 
 1. **The tailnet ACL belongs to whichever cloud got there first.** `tailscale_acl` is a
-   tailnet-wide singleton declared in `opentofu/network` with `overwrite_existing_content = true`.
+   tailnet-wide singleton declared in `opentofu/aws/network` with `overwrite_existing_content = true`.
    Both clusters share one tailnet, so the GCP subnet router's routes had to be authorised from the
    AWS stack ([`0451eedb`](https://github.com/Smana/cloud-native-ref/commit/0451eedb)). A second
    `tailscale_acl` in the GCP stack would make each apply silently overwrite the other's.
@@ -46,7 +46,7 @@ is known, and it produced the three problems above.
 | Can the tailnet ACL be adopted by another stack safely? | **Yes.** `reset_acl_on_destroy` is Optional and unset in our config, so removal does not reset the tailnet policy; `overwrite_existing_content = true` "skips requirement to import acl before allowing changes" | provider source, `resource_acl.go` |
 | Do the tailnet singletons support `import`? | **Yes** — `tailscale_acl` and `tailscale_dns_search_paths` both declare `ResourceWithImportState` / `ResourceImportedByID` | provider source |
 | Are the stacks already tagged by cloud? | **Yes.** Every AWS stack carries `aws`, every GCP stack `gcp`. Cloud-scoped runs already work via `--tags`; the directory move is about legibility, not capability | `stack.tm.hcl` ×9 |
-| Is `openbao/management` cloud-agnostic? | **No**, contrary to CLAUDE.md. It configures **both** the `vault` and `aws` providers and reads the root token from AWS Secrets Manager | `opentofu/openbao/management/providers.tf` |
+| Is `openbao/management` cloud-agnostic? | **No**, contrary to CLAUDE.md. It configures **both** the `vault` and `aws` providers and reads the root token from AWS Secrets Manager | `opentofu/aws/openbao/management/providers.tf` |
 | Which relative paths break on a move? | Three call sites: `eks/init/workflows.tm.hcl` (×2), `openbao/management/workflows.tm.hcl` (×3). All use `../../../scripts/`, which is depth-dependent | grep over `opentofu/**/*.hcl` |
 | How many files reference the AWS paths? | 57, including `.github/workflows/ci.yaml`, `.fluxschema.yml`, `CLAUDE.md` and `.claude/rules/opentofu.md` | grep over md/yaml/sh |
 
@@ -162,7 +162,7 @@ never runs it directly.
 
 ### Path repairs the move requires
 
-- **`after` references** — `/opentofu/network` → `/opentofu/aws/network`, and the same for
+- **`after` references** — `/opentofu/aws/network` → `/opentofu/aws/network`, and the same for
   `eks/init`, `openbao/cluster`, `openbao/management`. Five references across five files.
 - **Script call sites** — the three `../../../scripts/…` uses gain a directory level. Rather than
   re-count them, convert all to `${terramate.root.path.fs.absolute}/scripts/…`, which is already
@@ -262,7 +262,7 @@ a `ValidatingAdmissionPolicy` and the `gateway.networking.x-k8s.io` CRDs — whi
 ### Terramate model
 
 - **GCP gating** — the three GCP stacks gain an `opt-in` tag and script overrides guarded on
-  `$TM_GCP_ENABLED`, mirroring `opentofu/llm-platform/workflows.tm.hcl`. Unset or not `"true"` means
+  `$TM_GCP_ENABLED`, mirroring `opentofu/aws/llm-platform/workflows.tm.hcl`. Unset or not `"true"` means
   echo `[skip]` and exit 0, so sibling stacks are unaffected. This keeps the repo-root
   `terramate script run deploy` a safe one-shot for AWS while the GCP side is unproven, and is
   removed once both clouds work.
