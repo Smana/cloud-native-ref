@@ -18,16 +18,23 @@ variable "cluster_name" {
 variable "cilium_version" {
   description = "Cilium chart version. SHARED with AWS via opentofu/config.tm.hcl so both clouds upgrade together"
   type        = string
+  # Default mirrors `cilium_version` in opentofu/config.tm.hcl. The Terramate
+  # scripts pass -var=cilium_version=... at run time, so this is only consulted
+  # when running tofu directly in this directory. Same pattern, and same reason,
+  # as opentofu/aws/eks/configure/variables.tf.
+  default = "1.20.0"
 }
 
 variable "flux_operator_version" {
   description = "Flux Operator chart version. Shared with AWS"
   type        = string
+  default     = "0.55.0"
 }
 
 variable "flux_instance_version" {
   description = "Flux Instance chart version. Shared with AWS"
   type        = string
+  default     = "0.55.0"
 }
 
 variable "flux_sync_url" {
