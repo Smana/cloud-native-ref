@@ -218,3 +218,12 @@ jobs:
       - uses: actions/checkout@v7
       - name: Resolve every relative Markdown link
         run: ./scripts/validate-links.sh
+
+      # Runs in this job rather than its own so the required-check list on
+      # `main` does not have to change. The job name stays "documentation
+      # links" for the same reason; it now gates documentation *claims* too.
+      - name: Install Python dependencies
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
+      - name: Check documentation claims against configuration
+        run: ./scripts/validate-doc-claims.sh
