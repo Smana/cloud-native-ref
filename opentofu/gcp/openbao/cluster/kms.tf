@@ -33,6 +33,10 @@
 # prerequisite -- exactly like the S3 state bucket (see backend.tf) -- and
 # this stack only reads them:
 #
+#   # The API is NOT enabled by default on a fresh project. Without this the
+#   # keyring create fails with PERMISSION_DENIED and an interactive prompt that
+#   # defaults to "no" -- measured 2026-08-25 on ogenki-435905.
+#   gcloud services enable cloudkms.googleapis.com --project ogenki-435905
 #   gcloud kms keyrings create openbao-dev --location europe-west4 --project ogenki-435905
 #   gcloud kms keys create openbao-unseal --location europe-west4 --keyring openbao-dev --purpose encryption --project ogenki-435905
 #
