@@ -69,12 +69,25 @@ resource "tailscale_tailnet_key" "this" {
   ephemeral     = false
   preauthorized = true
 
-  # Explicit, long expiry. The provider defaults to 7776000s (90 days) and
-  # recreates a reusable key once it becomes invalid -- so at day 90 OpenTofu
-  # would mint a fresh key into state while the running instance keeps the old
-  # one. The instance would stay up but fail to rejoin on its next reboot, and it
-  # is the ONLY administrative path into this VPC.
-  expiry = 31536000 # 365 days
+  # 90 days is the CEILING, not a choice: Tailscale's key API rejects anything
+  # longer with
+  #   Error creating tailnet key: expirySeconds must be less than or equal to
+  #   7776000 (400)
+  #
+  # This was previously set to 31536000 (365 days) to stop OpenTofu re-minting
+  # the key at day 90. That reasoning was sound but the remedy is not available,
+  # and the value was never exercised: it was added by review AFTER the only GCP
+  # deploy, so the first apply that reached the API was the rebuild on
+  # 2026-08-24, which failed on it.
+  #
+  # Re-minting at day 90 is now benign anyway, for a reason that landed in the
+  # same review. The key reaches the instance through `metadata.startup-script`,
+  # which updates IN PLACE and no longer carries `ignore_changes` -- so a rotated
+  # key does propagate. The running node keeps its existing node key and stays
+  # connected; the next boot registers with the new auth key. The failure the old
+  # comment feared -- a fresh key in state that the instance never receives --
+  # was a property of ignore_changes, not of the expiry.
+  expiry = 7776000 # 90 days — the API maximum
 
   # Alphanumerics, spaces and dashes only. Tailscale's key API rejects other
   # characters with a bare `keys: description had invalid characters (400)` that
