@@ -67,8 +67,37 @@ script "preview" {
 
 script "destroy" {
   name        = "GKE Configure Destroy"
-  description = "Remove Cilium and Flux (WARNING: will break cluster networking)"
+  description = "Attempt to remove Cilium and Flux; never blocks the cluster teardown"
 
+  # THIS SCRIPT MUST NOT FAIL THE RUN, and that is the whole point of it.
+  #
+  # Everything this stack manages lives INSIDE the cluster that gke/init deletes
+  # moments later, so its teardown is a tidiness step and never a prerequisite.
+  # It used to run a bare `tofu destroy` under `set -euo pipefail`. Because
+  # `terramate script run --reverse destroy` visits this stack BEFORE gke/init,
+  # any failure here aborted the run before the billable resource was touched --
+  # leaving a live GKE cluster with no workflow path to remove it.
+  #
+  # Measured 2026-08-24: a teardown ~63 minutes after cluster creation failed
+  # with
+  #
+  #   Error: flux-system/gke-gcp-mycluster-0-vars failed to delete kubernetes
+  #          resource: Unauthorized
+  #
+  # because the helm and kubectl providers hold a GCP access token acquired at
+  # plan time and it had expired. The cluster and both static nodes were still
+  # RUNNING afterwards. The usual reasons are worse: a broken cluster, or a
+  # private endpoint unreachable because the tailnet is down -- exactly when a
+  # teardown is most needed.
+  #
+  # gke/init's own destroy already solved this with the attempt/reconcile split;
+  # the fix simply never reached the --reverse path, so the hole reopened through
+  # a different door. Same helper, same contract, so the two entry points cannot
+  # drift apart again.
+  #
+  # State is deliberately NOT cleared here. At this point the cluster may still
+  # exist, so state may still be accurate; gke/init's `reconcile` job drops what
+  # is left only after the cluster is provably gone.
   job {
     commands = [
       ["bash", "-c", <<-BASH
@@ -78,27 +107,11 @@ script "destroy" {
         fi
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
-        # `destroy` is a standalone entrypoint: unlike `deploy` it can be the first
-        # tofu command run in a stack, so it has to init itself.
-        ${global.provisioner} init -lock-timeout=5m
-        # -refresh=false is deliberate on DESTROY.
-        #
-        # This stack reads another stack's outputs through
-        # data.terraform_remote_state. Refreshing that data source requires the
-        # upstream state OBJECT to exist -- and once the upstream stack has been
-        # destroyed its state is empty, so no object is written at all and the
-        # read fails hard with
-        #
-        #   Error: Unable to find remote state
-        #   No stored state was found for the given workspace in the given backend.
-        #
-        # A destroy does not need those outputs: everything being destroyed is
-        # already described by THIS stack's state, and the data source's last
-        # value is cached there. Refreshing only adds a way for teardown to fail.
-        #
-        # Hit for real on 2026-08-23, when the network stack was destroyed before
-        # this one and the teardown could not proceed without it.
-        ${global.provisioner} destroy -refresh=false -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
+        bash "${terramate.root.path.fs.absolute}/scripts/gke-destroy-stage2.sh" \
+          attempt "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure" \
+          -var='cilium_version=${global.cilium_version}' \
+          -var='flux_operator_version=${global.flux_operator_version}' \
+          -var='flux_instance_version=${global.flux_instance_version}'
       BASH
       ],
     ]
