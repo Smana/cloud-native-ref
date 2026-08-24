@@ -28,11 +28,23 @@ locals {
 #     var.node_metadata, which trivy cannot resolve statically, so it assumes the
 #     insecure default. node_metadata is set to GKE_METADATA below (and is the
 #     module default); confirm in the plan output before apply.
+#   GCP-0050 (default service account not overridden) -- FALSE POSITIVE, same
+#     shape as GCP-0057. The node pools take `local.service_account`, which the
+#     module computes as
+#       (var.service_account == "" || "create") && var.create_service_account
+#         ? local.service_account_list[0] : var.service_account
+#     so it renders as `(known after apply)` and trivy assumes the default
+#     compute SA. create_service_account defaults to true and we do not override
+#     it, so the module creates a DEDICATED least-privilege account. Confirmed in
+#     the plan 2026-08-24: google_service_account.cluster_service_account[0] is
+#     created, with only metric_writer / node_service_account /
+#     resource_metadata_writer bindings -- not Editor.
 #
 #trivy:ignore:AVD-GCP-0056
 #trivy:ignore:AVD-GCP-0052
 #trivy:ignore:AVD-GCP-0060
 #trivy:ignore:AVD-GCP-0057
+#trivy:ignore:AVD-GCP-0050
 module "gke" {
   # checkov:skip=CKV_TF_1:Version-pinned like every other registry module here.
   source  = "terraform-google-modules/kubernetes-engine/google//modules/private-cluster"
