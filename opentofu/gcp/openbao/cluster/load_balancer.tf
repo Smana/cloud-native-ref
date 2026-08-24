@@ -41,8 +41,16 @@ resource "google_compute_region_backend_service" "openbao" {
   protocol              = "TCP"
   health_checks         = [google_compute_health_check.openbao.id]
 
+  # CONNECTION is not a tuning choice — an INTERNAL backend service rejects the
+  # provider's default UTILIZATION outright:
+  #   Error 400: Invalid value for field 'resource.backends[0].balancingMode':
+  #   'UTILIZATION'. Balancing mode must be CONNECTION for an INTERNAL backend
+  #   service.
+  # Passthrough load balancers distribute connections, not requests, so there is
+  # no utilization signal for them to balance on.
   backend {
-    group = google_compute_instance_group_manager.openbao.instance_group
+    group          = google_compute_instance_group_manager.openbao.instance_group
+    balancing_mode = "CONNECTION"
   }
 }
 
