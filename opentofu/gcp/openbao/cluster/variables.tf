@@ -60,10 +60,18 @@ variable "machine_type" {
 variable "openbao_version" {
   description = "OpenBao version to install on the instance(s)"
   type        = string
+  # Kept at the latest release. 2.6.x carries openbao/openbao#3411 (inconsistent
+  # lock ordering across namespaces, mounts and the router, still OPEN), which
+  # deadlocks the core when the management stack writes concurrently — but the
+  # concurrency is ours, not OpenBao's. Mirror the AWS mitigation
+  # (opentofu/aws/openbao/cluster/variables.tf) if the same symptom shows up
+  # here: apply the management stack with -parallelism=1.
+  # renovate: datasource=github-releases depName=openbao/openbao
+  default = "2.6.2"
 }
 
 variable "data_disk_size_gb" {
-  description = "Size in GB of the persistent disk backing OpenBao's raft storage"
+  description = "Size in GB of the persistent disk backing OpenBao's file storage backend (single-node, storage \"file\" -- not raft)"
   type        = number
   default     = 10
 }
@@ -75,7 +83,7 @@ variable "server_cert_secret_name" {
 }
 
 variable "openbao_data_path" {
-  description = "Path on the instance's data disk where OpenBao stores its raft data"
+  description = "Path on the instance's data disk where OpenBao's file storage backend keeps its data (single-node, storage \"file\" -- not raft)"
   type        = string
   default     = "/opt/openbao/data"
 }
