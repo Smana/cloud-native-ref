@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Tailscale subnet router bootstrap.
+#
+# Idempotent on purpose: `tailscale up` is re-run on every boot with the current
+# route set, so changing advertised routes needs no instance replacement.
+#
+# There is deliberately NO lifecycle/ignore_changes on this script. An earlier
+# version ignored it, which silently discarded real edits -- a changed route set
+# reached the instance by no path at all and still planned clean. It now lives in
+# metadata.startup-script, which updates in place.
+set -euxo pipefail
+
+# Required for subnet routing; the kernel drops forwarded packets without these,
+# and GCP's can_ip_forward alone is not enough -- that only stops the *VPC* from
+# dropping them.
+cat >/etc/sysctl.d/99-tailscale.conf <<'SYSCTL'
+net.ipv4.ip_forward = 1
+net.ipv6.conf.all.forwarding = 1
+SYSCTL
+sysctl -p /etc/sysctl.d/99-tailscale.conf
+
+# Bounded retry: this instance has no external IP, so the install depends on
+# Cloud NAT being programmed. The instance's depends_on covers ordering, but NAT
+# programming is eventually consistent and a bare `curl` under `set -e` turns a
+# transient failure into a permanently unjoined router that still reports RUNNING.
+if ! command -v tailscale >/dev/null 2>&1; then
+  for attempt in 1 2 3 4 5; do
+    if curl -fsSL --max-time 60 https://tailscale.com/install.sh | sh; then
+      break
+    fi
+    echo "tailscale install attempt $${attempt} failed; retrying in 15s"
+    sleep 15
+    if [ "$${attempt}" = "5" ]; then
+      echo "FATAL: tailscale install failed after 5 attempts" >&2
+      exit 1
+    fi
+  done
+fi
+
+systemctl enable --now tailscaled
+
+# SECURITY: xtrace MUST be off across this command.
+#
+# `set -x` echoes every command it runs, and GCE writes that to the serial port
+# console, which is retained and readable by anyone holding
+# compute.instances.getSerialPortOutput. With xtrace on, this line published the
+# full auth key in clear text:
+#
+#   + tailscale up --authkey=tskey-auth-REDACTED... --hostname=ogenki-gcp ...
+#
+# The key is reusable and preauthorized, so anyone reading the console could join
+# arbitrary devices to the tailnet. Found on the 2026-08-23 rebuild by reading
+# the console for an unrelated reason.
+#
+# `set +x` before and `set -x` after keeps tracing for everything else, which is
+# the only diagnostic available on a node with no external IP.
+set +x
+tailscale up \
+  --authkey='${auth_key}' \
+  --hostname='${hostname}' \
+  --advertise-routes='${advertise_routes}' \
+  --accept-dns=false \
+  --ssh \
+  --reset
+set -x
+
+# Surface the result in the serial console: this is the only diagnostic available
+# if the node has no external IP and the tailnet never sees the device.
+tailscale status || true

@@ -5,7 +5,7 @@
 #
 # scripts/validate-links.sh resolves Markdown *links*. It cannot see the far more
 # common failure in this repository's prose: a backticked path in running text
-# ("configured in `opentofu/eks/configure/locals.tf`") that silently stops being
+# ("configured in `opentofu/aws/eks/configure/locals.tf`") that silently stops being
 # true after a refactor. This closes that gap, and is what makes the design's
 # "verify-on-migrate" rule mechanical rather than a promise.
 #

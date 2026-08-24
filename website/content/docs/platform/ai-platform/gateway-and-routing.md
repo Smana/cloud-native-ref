@@ -13,11 +13,11 @@ answered.
 
 ```bash
 # What's available
-curl -sS https://llm.priv.cloud.ogenki.io/v1/models \
+curl -sS https://llm.priv.aws.ogenki.io/v1/models \
   -H "Authorization: Bearer $LLM_API_KEY" | jq '.data[].id'
 
 # Name a model explicitly — skips classification entirely
-curl -sS https://llm.priv.cloud.ogenki.io/v1/chat/completions \
+curl -sS https://llm.priv.aws.ogenki.io/v1/chat/completions \
   -H "Authorization: Bearer $LLM_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -26,7 +26,7 @@ curl -sS https://llm.priv.cloud.ogenki.io/v1/chat/completions \
       }'
 
 # Let the Semantic Router choose from the prompt
-curl -sS https://llm.priv.cloud.ogenki.io/v1/chat/completions \
+curl -sS https://llm.priv.aws.ogenki.io/v1/chat/completions \
   -H "Authorization: Bearer $LLM_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{

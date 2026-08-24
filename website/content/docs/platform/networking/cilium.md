@@ -16,7 +16,7 @@ at least once.
 
 ## Replacing the CNI and kube-proxy
 
-Stage 1 (`opentofu/eks/init/main.tf`) installs the `vpc-cni` and `kube-proxy`
+Stage 1 (`opentofu/aws/eks/init/main.tf`) installs the `vpc-cni` and `kube-proxy`
 EKS addons with `before_compute = true` purely to get nodes `Ready` quickly;
 both are already scheduled for replacement. One detail matters beyond that:
 `vpc-cni` is configured with `WARM_ENI_TARGET=0` —
@@ -38,7 +38,7 @@ vpc-cni = {
 `10.0.x.x` subnets, and Cilium reuses those instead of creating fresh ENIs in
 the `100.64.x.x` pod subnets once it takes over.
 
-Stage 2 (`opentofu/eks/configure/main.tf`) then does three things in order,
+Stage 2 (`opentofu/aws/eks/configure/main.tf`) then does three things in order,
 each patching a DaemonSet's `nodeSelector` to an impossible label rather than
 deleting the EKS addon — declarative, no `local-exec`:
 
@@ -57,7 +57,7 @@ Pods draw their IPs from the secondary CIDR `100.64.0.0/16`, not from the
 VPC's primary range, via AWS prefix delegation:
 
 ```yaml
-# opentofu/eks/init/helm_values/cilium.yaml
+# opentofu/aws/eks/init/helm_values/cilium.yaml
 eni:
   enabled: true
   subnetTagsFilter:
@@ -73,7 +73,7 @@ rule is a hard trap: the `100.64.x.x` subnets **must not** carry the
 `kubernetes.io/role/cni` tag —
 
 ```hcl
-# opentofu/network/network.tf
+# opentofu/aws/network/network.tf
 # NOTE: Do NOT add "kubernetes.io/role/cni" tag here!
 "cilium.io/pod-subnet" = "true" # For future use when Cilium bug #43493 is fixed
 ```
@@ -97,7 +97,7 @@ for the recycle step that works around it.
 
 Cilium reads its ENI settings (`first-interface-index`, `subnet-tags`,
 `disable-prefix-delegation`) from a ConfigMap the platform owns,
-`opentofu/eks/configure/cilium-cni-config.tf`, referenced from the chart via
+`opentofu/aws/eks/configure/cilium-cni-config.tf`, referenced from the chart via
 `cni.configMap: cilium-cni-configuration`. That has a consequence: **setting
 `cni.configMap` means the chart's own `cniVersion` default never applies** —
 this repository's ConfigMap is authoritative, so `cniVersion` has to be
@@ -133,7 +133,7 @@ the workaround for a routing bug, not a security nice-to-have.
 {{< /callout >}}
 
 ```yaml
-# opentofu/eks/init/helm_values/cilium.yaml
+# opentofu/aws/eks/init/helm_values/cilium.yaml
 encryption:
   enabled: true
   type: wireguard
@@ -165,7 +165,7 @@ not a missing CRD.
 
 This isn't hypothetical: on 2026-08-19, Cilium 1.20's new requirement for
 `backendtlspolicies` broke Gateway API on a rebuild because
-`gateway_api_crds_urls` in `opentofu/eks/configure/locals.tf` didn't have it
+`gateway_api_crds_urls` in `opentofu/aws/eks/configure/locals.tf` didn't have it
 yet, and Flux's own CRD directory applied it two seconds too late for the
 operator's one-shot probe to see.
 

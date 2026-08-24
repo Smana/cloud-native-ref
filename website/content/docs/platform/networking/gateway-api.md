@@ -117,7 +117,7 @@ a new hostname. Two settings keep it scoped correctly:
   the `external-dns: enabled` label are watched, which is why every Gateway
   manifest in this repository sets that label.
 - `zoneMatchParent: false` — prefers the more specific hosted zone, so a
-  `*.priv.cloud.ogenki.io` hostname lands in the private zone rather than
+  `*.priv.aws.ogenki.io` hostname lands in the private zone rather than
   the public `cloud.ogenki.io` parent zone it would otherwise also match.
 
 `policy: sync` means ExternalDNS also **deletes** records when their

@@ -62,7 +62,7 @@ The original spec chose **S3 bucket + init-container `aws s3 sync` + local `empt
 
 **Chosen**: **Option 4 (Amazon S3 Files)**, with a bootstrap that bridges Crossplane CRD availability:
 
-- **Today (until Upbound `provider-upjet-aws` v2.6+)**: provision `FileSystem` + `AccessPoint` + IAM role via OpenTofu in a new stack `opentofu/llm-platform/`. Outputs propagate to the cluster via the existing `eks-environment` Crossplane `EnvironmentConfig`.
+- **Today (until Upbound `provider-upjet-aws` v2.6+)**: provision `FileSystem` + `AccessPoint` + IAM role via OpenTofu in a new stack `opentofu/aws/llm-platform/`. Outputs propagate to the cluster via the existing `eks-environment` Crossplane `EnvironmentConfig`.
 - **InferenceService composition** consumes `option("params").ctx["apiextensions.crossplane.io/environment"].llm.fsId` and renders a `PersistentVolumeClaim` against an S3 Files-backed `StorageClass`.
 - **Drop** the init-container `aws s3 sync`. Drop the per-Deployment `models` `emptyDir`. Drop the preload Job's `tmp` `emptyDir`. Mount the same PVC at `/models/<repo>/<revision>/` in both pods.
 - **Drop** the platform-wide xvdb 80 GiB on `default-ec2nc.yaml`.
@@ -99,7 +99,7 @@ The original spec chose **S3 bucket + init-container `aws s3 sync` + local `empt
 
 ### Order of operations
 
-1. **OpenTofu stack** `opentofu/llm-platform/` — `aws_s3files_file_system.llm_models` over the existing bucket; `aws_s3files_access_point` (one shared by default); IAM role `xplane-llm-models-fs-access` with the EKS Pod Identity Agent trust policy. Outputs: `llm_models_fs_id`, `llm_models_fs_dns_name`, `llm_models_fs_role_arn`.
+1. **OpenTofu stack** `opentofu/aws/llm-platform/` — `aws_s3files_file_system.llm_models` over the existing bucket; `aws_s3files_access_point` (one shared by default); IAM role `xplane-llm-models-fs-access` with the EKS Pod Identity Agent trust policy. Outputs: `llm_models_fs_id`, `llm_models_fs_dns_name`, `llm_models_fs_role_arn`.
 2. **EnvironmentConfig refresh** `infrastructure/base/crossplane/configuration/environmentconfig.yaml` — fold the OpenTofu outputs alongside `clusterName` / `region`.
 3. **CSI driver install** — once AWS publishes the K8s integration (TBD: extension of `efs-csi-driver` or a dedicated `s3files-csi-driver`); HelmRelease under `infrastructure/base/`, dependency-ordered after `crossplane-providers`.
 4. **InferenceService composition update** — `weightsBucket` → `weightsFileSystem`; drop init-container; drop `models` `emptyDir`; render PVC referencing the new `StorageClass`.

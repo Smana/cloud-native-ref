@@ -254,12 +254,12 @@ the relevant HelmRelease. Anything that cannot be verified is cut or explicitly 
 | `docs/ci-workflows.md` | 259 | `platform/gitops/validation.md`, `reference/ci-workflows.md` | split: the validation pipeline is platform content, the workflow inventory is reference |
 | `docs/ingress.md` | 723 | `platform/networking/{_index,gateway-api}.md` | **merge** with the file below, de-duplicate |
 | `docs/tailscale-gateway-api.md` | 291 | `platform/networking/private-access.md` | **merge**; last touched 2025-12, heavy overlap with `ingress.md` |
-| *(new)* | — | `platform/networking/cilium.md` | written from `opentofu/eks/configure/`, `helm_values/cilium.yaml` and CLAUDE.md's prefix-delegation / WireGuard notes |
-| `opentofu/openbao/cluster/docs/getting_started.md` | 144 | `platform/security/openbao.md` | **promote** — currently four directories deep |
-| `opentofu/openbao/cluster/docs/pki_requirements.md` | 162 | `platform/security/pki-and-secrets.md` | promote |
-| `opentofu/openbao/management/docs/cert-manager.md` | 218 | `platform/security/pki-and-secrets.md` | promote, merge |
-| `opentofu/openbao/management/docs/approle.md` | 48 | `platform/security/openbao.md` | promote, merge |
-| `opentofu/openbao/management/docs/backup_restore.md` | 131 | `platform/security/openbao.md` | promote, merge |
+| *(new)* | — | `platform/networking/cilium.md` | written from `opentofu/aws/eks/configure/`, `helm_values/cilium.yaml` and CLAUDE.md's prefix-delegation / WireGuard notes |
+| `opentofu/aws/openbao/cluster/docs/getting_started.md` | 144 | `platform/security/openbao.md` | **promote** — currently four directories deep |
+| `opentofu/aws/openbao/cluster/docs/pki_requirements.md` | 162 | `platform/security/pki-and-secrets.md` | promote |
+| `opentofu/aws/openbao/management/docs/cert-manager.md` | 218 | `platform/security/pki-and-secrets.md` | promote, merge |
+| `opentofu/aws/openbao/management/docs/approle.md` | 48 | `platform/security/openbao.md` | promote, merge |
+| `opentofu/aws/openbao/management/docs/backup_restore.md` | 131 | `platform/security/openbao.md` | promote, merge |
 | `docs/crossplane.md` | 670 | `platform/developer-platform/_index.md` | trim the composition-authoring content — it belongs in `Smana/crossplane-configuration` |
 | `docs/apps-user-guide.md` | 1046 | `platform/developer-platform/{app,data-services}.md`, `get-started/first-app.md`, `guides/add-an-application.md` | the largest split; 12 numbered sections redistributed |
 | `docs/app-wizard.md` | 238 | `platform/developer-platform/app-wizard.md` | move |
@@ -406,7 +406,7 @@ The `platform` lane in step 3–8 is the largest and is subdivided per domain di
 | `observability.md` (878 lines, stale 9 months) is largely wrong and verification balloons | Verify section by section against the deployed manifests; cut what cannot be verified rather than carry it. If a section needs a rewrite beyond migration scope, publish the verified remainder and record the gap explicitly on the page. |
 | The `docs/decisions/` move breaks links inside the read-only spec archive | 12 inbound references, enumerated above. Rewritten, not allowlisted. `validate-links.sh` is the gate. |
 | Splitting `apps-user-guide.md` (1046 lines) across four destinations loses content | Section-by-section checklist against the original's 12 numbered sections before the source file is deleted. |
-| DNS is outside this repository | `cnref.ogenki.io CNAME smana.github.io` is a manual prerequisite. This repository manages only the private zone `priv.cloud.ogenki.io` (`opentofu/network/route53.tf`). The site builds and deploys to `smana.github.io/cloud-native-ref` until the record exists. |
+| DNS is outside this repository | `cnref.ogenki.io CNAME smana.github.io` is a manual prerequisite. This repository manages only the private zone `priv.aws.ogenki.io` (`opentofu/aws/network/route53.tf`). The site builds and deploys to `smana.github.io/cloud-native-ref` until the record exists. |
 | SVG exports with embedded base64 logos exceed the 1000 KB pre-commit ceiling | 500 KB budget per asset, checked at export time. |
 | Site and repository drift after launch | `refLinksErrorLevel: ERROR` catches internal rot; `validate-links.sh` catches the rest; verify-on-migrate establishes the norm that a page states what it was checked against. |
 

@@ -56,11 +56,11 @@ controlled entirely by **Tailscale ACL tags** evaluated outside Kubernetes.
 A mesh VPN (WireGuard-based) with identity-backed ACLs. The Kubernetes
 Tailscale Operator (`security/base/tailscale-operator/`) exposes two
 Gateway API `Gateway`s as Tailscale devices; a separate subnet-router EC2
-instance (`opentofu/network/tailscale.tf`) advertises the VPC CIDR for
+instance (`opentofu/aws/network/tailscale.tf`) advertises the VPC CIDR for
 direct access to the EKS API and OpenBao.
 
 **Pros**:
-- Identity-based ACLs (`tailscale_acl` in `opentofu/network/tailscale.tf`)
+- Identity-based ACLs (`tailscale_acl` in `opentofu/aws/network/tailscale.tf`)
   replace network-perimeter trust: a device's tag, not its source IP,
   decides what it can reach.
 - Tailscale SSH (`ssh { action = "check", src = ["autogroup:member"], dst =
@@ -155,7 +155,7 @@ and buys none of the Gateway API integration.
   set `loadBalancerClass: tailscale` through the shared
   `CiliumGatewayClassConfig` (`infrastructure/base/gapi/`), and `tagOwners`
   restricts who can apply either tag to the Kubernetes Tailscale Operator
-  alone (`opentofu/network/tailscale.tf`).
+  alone (`opentofu/aws/network/tailscale.tf`).
 - The two-gateway split makes admin-only services (Hubble UI, and anything
   else parented to `platform-tailscale-admin`) genuinely *unreachable* for
   a non-admin device — not merely unlisted or unlinked. A `tag:k8s`-only
@@ -196,7 +196,7 @@ and buys none of the Gateway API integration.
 ### Neutral
 
 - The subnet router is still a real EC2 instance with its own capacity
-  planning — `opentofu/network/tailscale.tf` pins `t3.micro` explicitly
+  planning — `opentofu/aws/network/tailscale.tf` pins `t3.micro` explicitly
   after an `t3a.micro` capacity failure in `eu-west-3`. Removing the
   bastion did not remove all patchable infrastructure from the access
   path, only the public-IP, SSH-key-fleet version of it.
@@ -213,7 +213,7 @@ and buys none of the Gateway API integration.
 The Kubernetes-side Tailscale Operator (`security/base/tailscale-operator/`)
 owns the two Gateway API `Gateway` devices and nothing else; it does not
 advertise routes into the VPC. The OpenTofu-side subnet router
-(`opentofu/network/tailscale.tf`, module `Smana/tailscale-subnet-router/aws`)
+(`opentofu/aws/network/tailscale.tf`, module `Smana/tailscale-subnet-router/aws`)
 owns VPC-CIDR advertisement and nothing else; it does not front any
 Kubernetes `Service`. Reaching a Kubernetes-native private service always
 goes through a `Gateway`/`HTTPRoute`; reaching the VPC directly (the EKS
@@ -227,7 +227,7 @@ private service is the most common way to reach for the wrong one.
 
 - [Platform → Networking → Private access]({{< relref "/docs/platform/networking/private-access.md" >}}) — the ACL model, the Gateway wiring, and the subnet router in full
 - [Get Started → Access]({{< relref "/docs/get-started/aws/access.md" >}}) — the operator-facing walkthrough this ADR's Negative section references
-- `opentofu/network/tailscale.tf` — the `tailscale_acl` resource, `tagOwners`, and the subnet-router module block
+- `opentofu/aws/network/tailscale.tf` — the `tailscale_acl` resource, `tagOwners`, and the subnet-router module block
 - `security/base/tailscale-operator/` — the Kubernetes Tailscale Operator HelmRelease, `ProxyClass`es, and OAuth-client `ExternalSecret`
 - `infrastructure/base/gapi/` — the two Tailscale `Gateway`s and the shared `CiliumGatewayClassConfig`
 - [ADR-0015](0015-gateway-api-over-ingress-nginx.md) — the Gateway API routing mechanics behind the `CiliumGatewayClassConfig` and `loadBalancerClass: tailscale` wiring described here

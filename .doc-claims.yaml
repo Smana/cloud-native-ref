@@ -38,7 +38,7 @@ claims:
       though it were deployed while variables.tfvars committed dev, so a reader
       assessing availability of the secrets store was actively misled.
     source:
-      file: opentofu/openbao/cluster/variables.tfvars
+      file: opentofu/aws/openbao/cluster/variables.tfvars
       pattern: '^mode\s*=\s*"([a-z]+)"'
     # Per-page patterns, not a shared one. These pages deliberately document
     # BOTH modes, so `mode = "{value}"` alone matches whichever value is read

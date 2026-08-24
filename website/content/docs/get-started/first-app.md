@@ -30,7 +30,7 @@ spec:
     port: 8080
   route:
     enabled: true
-    hostname: hello          # becomes hello.priv.cloud.ogenki.io
+    hostname: hello          # becomes hello.priv.aws.ogenki.io
 ```
 
 Apply it:
@@ -64,7 +64,7 @@ kubectl get deployment,service,httproute -l app.kubernetes.io/name=hello -n demo
 - a **Service** (ClusterIP) exposing port 8080 as a named `http` port;
 - a **ServiceAccount** dedicated to this app, ready to carry cloud
   permissions;
-- an **HTTPRoute** wiring `hello.priv.cloud.ogenki.io` through the platform's
+- an **HTTPRoute** wiring `hello.priv.aws.ogenki.io` through the platform's
   private (Tailscale) gateway.
 
 Drop `route` and you still get the Deployment, Service, and ServiceAccount —

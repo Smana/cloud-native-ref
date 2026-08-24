@@ -1,0 +1,165 @@
+# Cilium Helm values — GCP / GKE
+#
+# FORKED from opentofu/aws/eks/init/helm_values/cilium.yaml rather than templated from
+# a shared base. With two clouds and a handful of divergent keys, duplication is
+# cheaper than a merge mechanism that hides what Cilium actually receives — and
+# "we do not fully understand what Cilium does on an unsupported path" is exactly
+# the risk being managed here. Revisit at cloud number three.
+#
+# `cilium_version` stays a SHARED global in opentofu/config.tm.hcl, so both clouds
+# upgrade Cilium together. Only the keys below differ.
+#
+# ─── DIVERGENCE FROM AWS ────────────────────────────────────────────────────────
+#
+#   ipam.mode            eni -> kubernetes    host-scope, from each node's
+#                                             spec.podCIDR; GKE alias IP ranges
+#                                             route pod traffic natively
+#   eni: block           REMOVED              no AWS ENI concept on GCP
+#   cilium-cni-config.tf REMOVED              prefix delegation has no counterpart
+#   encryption           REMOVED              see below
+#   8 datapath settings  REMOVED              see "DELIBERATELY OMITTED" below
+#   cni.binPath          ADDED                see below
+#   ipv4NativeRoutingCIDR
+#                        ADDED                see below
+#
+# ─── TWO VALUES THAT ARE MANDATORY ON GKE ───────────────────────────────────────
+# Both were found by the Phase 1 gate on a throwaway cluster, and neither appears
+# in Cilium's GKE Helm documentation (upstream docs gap: cilium/cilium#28656).
+#
+# 1. cni.binPath — the chart defaults to /opt/cni/bin, which is READ-ONLY on COS.
+#    The mount-cgroup init container dies with
+#      cp: cannot create regular file '/hostbin/cilium-mount': Read-only file system
+#    and the agent never starts. /home/kubernetes/bin is the writable bin directory
+#    GKE's own DaemonSets use (verified via their `kubernetes-bin` hostPath).
+#    NOTE: gke.enabled=true does NOT set this in 1.20.0 — it only toggles
+#    enable-endpoint-routes and enable-health-check-loadbalancer-ip.
+#
+# 2. ipv4NativeRoutingCIDR — mandatory for routingMode=native + ipam.mode=kubernetes.
+#    AWS ENI mode derives it; GKE cannot. Without it the agent exits 255 with
+#      invalid daemon configuration: native routing cidr must be configured with
+#      option --ipv4-native-routing-cidr
+#    Injected via --set in gke/configure from the network stack's pod_cidr output,
+#    so it cannot drift from the actual secondary range.
+#
+# ─── WIREGUARD IS INTENTIONALLY ABSENT ──────────────────────────────────────────
+# On AWS `encryption.type: wireguard` is load-bearing, working around cilium#43493
+# — but that bug is the BPF ipcache `hastunnel` flag under ENI mode WITH prefix
+# delegation. ipam.mode=kubernetes does not take that path.
+#
+# Verified by the Phase 1 gate: 100/100 HTTP 200 through a Cilium Gateway to
+# backends split across two nodes, with `Encryption: Disabled`.
+# Do not add WireGuard here without new evidence.
+
+# ─── DATAPATH SETTINGS DELIBERATELY OMITTED ─────────────────────────────────────
+#
+# This file previously carried eight more datapath settings, translated across from
+# the AWS values. Every one of them broke on GKE, in sequence:
+#
+#   devices: ens+ / egressMasqueradeInterfaces: ens4
+#       GKE COS names the NIC eth0, not ens4. Verified on a live node:
+#       `ls /sys/class/net` -> cilium_net, docker0, eth0, lo. `ens+` matched nothing.
+#   installNoConntrackIptablesRules: true
+#       -> "requires the agent to run with enable-bpf-masquerade"
+#   bpf.masquerade: true  (added to satisfy the above)
+#       -> "BPF masquerade does not allow to specify devices via
+#          --egress-masquerade-interfaces"
+#   devices: eth+ + bpf.masquerade (after removing egressMasqueradeInterfaces)
+#       Agent started, but the host could no longer reach pod IPs: kubelet
+#       liveness/readiness probes timed out and pods crashlooped across four
+#       namespaces (flux-operator, hubble-relay, hubble-ui, gmp collectors,
+#       kube-state-metrics).
+#
+# ROOT CAUSE OF THE WHOLE SEQUENCE: the Phase 1 gate installed Cilium with a
+# minimal --set list and let the chart auto-detect everything else. It proved the
+# GKE datapath works; it never proved THIS file. Each setting above was carried
+# over on the assumption that what AWS needs, GCP needs -- but on AWS they are
+# implied by ENI mode, and on GCP with ipam=kubernetes they are neither implied
+# nor compatible with each other.
+#
+# So this file now matches the gate-proven configuration. Anything datapath-
+# affecting must be added back ONE AT A TIME, each verified on a live cluster
+# against the same criteria the gate used. Do not reintroduce them as a block
+# because "AWS has them".
+#
+# Still absent, and each needs its own validation before returning:
+#   bandwidthManager, bpf.preallocateMaps, bpf.masquerade, devices,
+#   egressMasqueradeInterfaces, installNoConntrackIptablesRules,
+#   loadBalancer.mode: hybrid, socketLB.hostNamespaceOnly
+#
+# socketLB.hostNamespaceOnly is the one with a known functional reason (Tailscale
+# operator pods break without it, tailscale#15478). It is not needed until the
+# Tailscale operator runs on GCP, and must be validated when it is.
+
+cni:
+  # /opt/cni/bin is read-only on Container-Optimized OS. See the note above.
+  binPath: /home/kubernetes/bin
+  # exclusive: true is the chart default and is what displaces GKE's own CNI
+  # config. Verified on the gate cluster: /etc/cni/net.d/ ends up holding only
+  # 05-cilium.conflist, with GKE's renamed 10-containerd-net.conflist.cilium_bak.
+
+ipam:
+  mode: kubernetes
+
+kubeProxyReplacement: true
+
+operator:
+  resources:
+    limits:
+      cpu: 100m
+      memory: 100Mi
+  rollOutPods: true
+  # Default podRestartSelector is "k8s-app=kube-dns", which only restarts CoreDNS.
+  # Empty restarts ALL unmanaged pods, which on GKE means the managed addons that
+  # started before Cilium owned the CNI.
+  extraArgs:
+    - --pod-restart-selector=
+  unmanagedPodWatcher:
+    intervalSeconds: 15
+    restart: true
+
+# ServiceMonitor stays off here: the CRD is not installed until Flux reconciles
+# the observability stack, which happens after this.
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+
+resources:
+  limits:
+    cpu: 300m
+    memory: 256Mi
+
+routingMode: native
+
+envoy:
+  enabled: true
+  # xdsMode deliberately unset so Cilium >= 1.20 picks its new default, "ads".
+  # Setting `upgradeCompatibility: "1.19"` anywhere would silently pin it back to
+  # the legacy "split" mode.
+  resources:
+    limits:
+      memory: 300Mi
+    requests:
+      cpu: 200m
+      memory: 300Mi
+
+envoyConfig:
+  enabled: true
+
+hubble:
+  metrics:
+    enabled:
+      - dns:query;ignoreAAAA
+      - drop
+      - tcp
+      - flow
+      - icmp
+      - http
+    enableOpenMetrics: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+gatewayAPI:
+  enabled: true

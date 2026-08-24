@@ -61,7 +61,7 @@ limits in practice.
 
 Run a full-precision 30B-class coder on a single L40S 48GB, which needs an
 instance family (`g6e`) not offered in `eu-west-3`. The platform's OpenTofu
-stacks are pinned to `eu-west-3` (`opentofu/llm-platform/backend.tf`) with no
+stacks are pinned to `eu-west-3` (`opentofu/aws/llm-platform/backend.tf`) with no
 second-region stack, so this remains open — and would require a new
 OpenTofu stack, a new Karpenter NodePool, and cross-region routing from the
 AI Gateway.

@@ -5,7 +5,7 @@ metadata:
 spec:
   # Karpenter v1 alias does not support the Bottlerocket NVIDIA variant;
   # SSM parameter is the supported selector. Pinned to EKS 1.35 (see
-  # opentofu/eks/init/variables.tf default). amiFamily is required when
+  # opentofu/aws/eks/init/variables.tf default). amiFamily is required when
   # not using alias.
   amiFamily: Bottlerocket
   amiSelectorTerms:

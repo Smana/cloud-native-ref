@@ -221,7 +221,7 @@ one most tempting to write up as a pure win.
 
 ## Implementation Notes
 
-Stage 2 (`opentofu/eks/configure/main.tf`) performs the CNI swap as three
+Stage 2 (`opentofu/aws/eks/configure/main.tf`) performs the CNI swap as three
 ordered steps, each patching a DaemonSet's `nodeSelector` to an impossible
 label rather than deleting the EKS addon, so the stage stays declarative
 with no `local-exec` step: patch `aws-node` (VPC-CNI) to schedule on no
@@ -232,9 +232,9 @@ automatically afterward, so no manual restart step follows the swap.
 
 Cilium's ENI IPAM settings (`ipam.mode: eni`, `routingMode: native`,
 `eni.awsEnablePrefixDelegation: true`) live in
-`opentofu/eks/init/helm_values/cilium.yaml`. The CNI ConfigMap referenced
+`opentofu/aws/eks/init/helm_values/cilium.yaml`. The CNI ConfigMap referenced
 via `cni.configMap: cilium-cni-configuration` is
-`opentofu/eks/configure/cilium-cni-config.tf`, which owns
+`opentofu/aws/eks/configure/cilium-cni-config.tf`, which owns
 `first-interface-index`, `subnet-tags`, and the `cniVersion` covered
 above. `gatewayAPI.enabled: true` and `envoy.enabled: true` turn on the
 Gateway API controller and its Envoy L7 proxy; `hubble.relay.enabled` and
@@ -263,9 +263,9 @@ Gateway API controller and its Envoy L7 proxy; `hubble.relay.enabled` and
 - [`.claude/rules/cilium-network-policies.md`](https://github.com/Smana/cloud-native-ref/blob/main/.claude/rules/cilium-network-policies.md)
   — `CiliumNetworkPolicy` authoring traps and the Hubble-based diagnostic
   order
-- `opentofu/eks/configure/cilium-cni-config.tf` — the CNI ConfigMap and
+- `opentofu/aws/eks/configure/cilium-cni-config.tf` — the CNI ConfigMap and
   its manually-tracked `cniVersion`
-- `opentofu/eks/init/helm_values/cilium.yaml` — `kubeProxyReplacement`,
+- `opentofu/aws/eks/init/helm_values/cilium.yaml` — `kubeProxyReplacement`,
   ENI IPAM, WireGuard, Gateway API, and Hubble settings
 - [cilium#43493](https://github.com/cilium/cilium/issues/43493) — the
   ENI-mode L7 proxy bug behind the WireGuard workaround

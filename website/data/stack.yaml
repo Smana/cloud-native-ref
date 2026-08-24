@@ -99,7 +99,7 @@ groups:
         role: The managed control plane Stage 1 creates before Cilium and Flux land
         logo: kubernetes
         url: https://kubernetes.io
-        pin: "`opentofu/eks/init/variables.tf` — `kubernetes_version` default, not overridden in `variables.tfvars`"
+        pin: "`opentofu/aws/eks/init/variables.tf` — `kubernetes_version` default, not overridden in `variables.tfvars`"
         strip: true
       - name: Cilium
         role: eBPF datapath, kube-proxy replacement, NetworkPolicy and GatewayClass in one
@@ -123,7 +123,7 @@ groups:
         short: Gateway API
         role: The Gateway/HTTPRoute schema Cilium and Envoy Gateway both implement
         url: https://gateway-api.sigs.k8s.io
-        pin: "`opentofu/eks/configure/variables.tf` — `gateway_api_version` default"
+        pin: "`opentofu/aws/eks/configure/variables.tf` — `gateway_api_version` default"
         strip: true
 
   - id: infrastructure
@@ -219,7 +219,7 @@ groups:
         logo: openbao
         logo_dark: openbao-dark
         url: https://openbao.org
-        pin: "`opentofu/openbao/cluster/variables.tf` — `openbao_version` default, not overridden in `variables.tfvars`"
+        pin: "`opentofu/aws/openbao/cluster/variables.tf` — `openbao_version` default, not overridden in `variables.tfvars`"
         strip: true
       - name: cert-manager
         role: Issues and rotates leaf certificates from OpenBao's PKI and Let's Encrypt

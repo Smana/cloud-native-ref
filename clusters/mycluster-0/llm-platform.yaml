@@ -6,7 +6,7 @@
 # so no LLM resources land in the cluster (no vllm-semantic-router,
 # no NVIDIA device plugin, no GPU NodePool, no LLM apps, no LLM EPI).
 #
-# Mirrors the OpenTofu opt-in (opentofu/llm-platform/workflows.tm.hcl,
+# Mirrors the OpenTofu opt-in (opentofu/aws/llm-platform/workflows.tm.hcl,
 # gated by $TM_LLM_PLATFORM_ENABLED). Together they form the complete
 # opt-in surface for the self-hosted LLM platform.
 #
@@ -24,7 +24,7 @@
 #     llm-platform-security-epi runtimeclass-nvidia vllm-semantic-router \
 #     -n flux-system --silent
 #   # Then delete the OpenTofu-side resources via:
-#   #   TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run destroy
+#   #   TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run destroy
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

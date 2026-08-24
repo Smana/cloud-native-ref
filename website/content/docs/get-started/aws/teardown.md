@@ -14,11 +14,11 @@ cleaning up in a specific order before OpenTofu can even start deleting.
 This is the safe, documented path — always tear the cluster down this way:
 
 ```bash
-cd opentofu/eks/init
+cd opentofu/aws/eks/init
 terramate script run destroy
 ```
 
-Three steps, defined in `opentofu/eks/init/workflows.tm.hcl`:
+Three steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
 
 1. **`prepare-destroy`** — runs `scripts/eks-prepare-destroy.sh` (see below).
 2. **`stage2-destroy-addons`** — destroys the `eks/configure` stack (Cilium, Flux).
@@ -29,7 +29,7 @@ Three steps, defined in `opentofu/eks/init/workflows.tm.hcl`:
 {{< callout type="warning" >}}
 Do **not** run `terramate script run --reverse destroy` from `opentofu/` on a
 cluster carrying real data or live Karpenter nodes. `eks/configure` is a
-separately registered stack (`after = ["/opentofu/eks/init"]`) with its own
+separately registered stack (`after = ["/opentofu/aws/eks/init"]`) with its own
 bare `destroy` script — confirm → `tofu init` → `tofu destroy` — that never
 calls `eks-prepare-destroy.sh`. The reverse dependency walk destroys
 `eks/configure` **first**: Cilium and Flux are torn down raw, with Flux never

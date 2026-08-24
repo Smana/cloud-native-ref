@@ -27,7 +27,7 @@
           <mxGeometry x="80" y="240" width="230" height="60" as="geometry" />
         </mxCell>
 
-        <mxCell id="cgw" value="&lt;b&gt;Cilium Gateway&lt;/b&gt;&#xa;platform-tailscale-general · ns infrastructure&#xa;https :443 — llm.priv.cloud.ogenki.io" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="cgw" value="&lt;b&gt;Cilium Gateway&lt;/b&gt;&#xa;platform-tailscale-general · ns infrastructure&#xa;https :443 — llm.priv.aws.ogenki.io" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="360" width="270" height="80" as="geometry" />
         </mxCell>
 

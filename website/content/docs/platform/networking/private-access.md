@@ -5,7 +5,7 @@ description: The two Tailscale-backed Gateways, the ACL model that separates the
 lastVerified: 2026-08-20
 ---
 
-Every private service in this platform (`*.priv.cloud.ogenki.io`) is reached
+Every private service in this platform (`*.priv.aws.ogenki.io`) is reached
 through one of two [Gateway API]({{< relref "/docs/platform/networking/gateway-api.md" >}})
 `Gateway`s backed by Tailscale — no bastion host, no public IP with an
 allowlist. Access control is enforced by **Tailscale ACLs**, evaluated
@@ -20,7 +20,7 @@ and how to expose a new service through them.
 - **`platform-tailscale-admin`** (`tag:admin`) — reachable only by
   `group:admin`.
 
-The rules live in `opentofu/network/tailscale.tf`, applied via the
+The rules live in `opentofu/aws/network/tailscale.tf`, applied via the
 `tailscale_acl` resource (default-deny — only what's listed here is
 permitted):
 
@@ -87,7 +87,7 @@ for that mechanism. What differs between them beyond the tag is
 | `platform-tailscale-admin` | `kube-system`, `observability`, `flux-system` |
 
 `kube-system` on the admin list is why Hubble UI — a plain `Service` in
-`kube-system` — reaches `hubble-ui-<cluster>.priv.cloud.ogenki.io` through a
+`kube-system` — reaches `hubble-ui-<cluster>.priv.aws.ogenki.io` through a
 normal `HTTPRoute` parented to `platform-tailscale-admin`
 (`infrastructure/base/cilium/hubble-ui-httproute.yaml`), rather than through
 its own dedicated Tailscale device. That's the pattern for everything behind
@@ -114,7 +114,7 @@ Getting the namespace list wrong rejects the route entirely; see
        - name: platform-tailscale-general
          namespace: infrastructure
      hostnames:
-       - "myapp.priv.cloud.ogenki.io"
+       - "myapp.priv.aws.ogenki.io"
      rules:
        - backendRefs:
            - name: myapp
@@ -123,7 +123,7 @@ Getting the namespace list wrong rejects the route entirely; see
 
 3. DNS is automatic — ExternalDNS creates the Route53 record within its
    sync interval, no manual step.
-4. Verify from a Tailscale-connected device: `curl -v https://myapp.priv.cloud.ogenki.io`.
+4. Verify from a Tailscale-connected device: `curl -v https://myapp.priv.aws.ogenki.io`.
 
 If the namespace isn't in the Gateway's `allowedRoutes` selector yet, this
 fails `NotAllowedByListeners` and needs the Gateway manifest updated first.
@@ -133,7 +133,7 @@ fails `NotAllowedByListeners` and needs the Gateway manifest updated first.
 The two Gateways expose Kubernetes services. Reaching the VPC directly —
 `kubectl` against the private EKS API endpoint, `bao` against OpenBao's
 Raft peers — goes through a separate mechanism: a Tailscale subnet router,
-an EC2 instance provisioned by `opentofu/network/tailscale.tf` via the
+an EC2 instance provisioned by `opentofu/aws/network/tailscale.tf` via the
 `Smana/tailscale-subnet-router/aws` module, advertising the VPC CIDR:
 
 ```hcl

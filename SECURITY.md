@@ -25,7 +25,7 @@ generic caveats a template would list.
 | IAM scoped to `xplane-*` | Crossplane provider policies restricted by resource prefix | [Platform constitution](docs/platform-constitution.md) |
 | No delete permission on stateful services | S3, IAM and Route 53 grants exclude deletion | [Platform constitution](docs/platform-constitution.md) |
 | Default-deny pod networking | A `CiliumNetworkPolicy` per pod-running workload, both directions | `security/base/*/network-policy.yaml` |
-| Private cluster API | The EKS endpoint is private; reachable only over Tailscale | [ADR-0013](website/content/docs/decisions/0013-tailscale-over-bastion.md), `opentofu/eks/init/` |
+| Private cluster API | The EKS endpoint is private; reachable only over Tailscale | [ADR-0013](website/content/docs/decisions/0013-tailscale-over-bastion.md), `opentofu/aws/eks/init/` |
 | Admin services unreachable, not merely unlisted | Two Tailscale gateways split by ACL tag (`tag:k8s`, `tag:admin`) | `infrastructure/base/gapi/` |
 | TLS on internal traffic | A private PKI issues every certificate through cert-manager | [ADR-0011](website/content/docs/decisions/0011-openbao-over-vault.md), `security/base/cert-manager/` |
 | No secrets in Git | External Secrets Operator pulls from AWS Secrets Manager and OpenBao at runtime | `security/base/external-secrets/` |

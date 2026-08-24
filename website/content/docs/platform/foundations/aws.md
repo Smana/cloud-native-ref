@@ -12,11 +12,11 @@ command spans several:
 
 | Stack | Model stage | Owns |
 |---|---|---|
-| `opentofu/network/` | Network | VPC across three AZs, pod subnets on a secondary CIDR for Cilium ENI prefix delegation, a Route53 private zone, the Tailscale subnet router |
-| `opentofu/openbao/cluster/` | Security | OpenBao on EC2 with KMS auto-unseal. Ships as `mode = "dev"` — a single node on `file` storage; `mode = "ha"` builds the five-node Raft cluster on SPOT with RAID-0 NVMe |
-| `opentofu/openbao/management/` | Security | The three-tier PKI (root → intermediate → leaf), the cert-manager AppRole, backup automation |
-| `opentofu/eks/init/` | Kubernetes (Stage 1) | The EKS cluster, managed node groups, bootstrap addons, IAM, the `flux-system` namespace and secrets |
-| `opentofu/eks/configure/` | Kubernetes (Stage 2) | Cilium, Flux Operator + Instance |
+| `opentofu/aws/network/` | Network | VPC across three AZs, pod subnets on a secondary CIDR for Cilium ENI prefix delegation, a Route53 private zone, the Tailscale subnet router |
+| `opentofu/aws/openbao/cluster/` | Security | OpenBao on EC2 with KMS auto-unseal. Ships as `mode = "dev"` — a single node on `file` storage; `mode = "ha"` builds the five-node Raft cluster on SPOT with RAID-0 NVMe |
+| `opentofu/aws/openbao/management/` | Security | The three-tier PKI (root → intermediate → leaf), the cert-manager AppRole, backup automation |
+| `opentofu/aws/eks/init/` | Kubernetes (Stage 1) | The EKS cluster, managed node groups, bootstrap addons, IAM, the `flux-system` namespace and secrets |
+| `opentofu/aws/eks/configure/` | Kubernetes (Stage 2) | Cilium, Flux Operator + Instance |
 
 Prerequisites (accounts, tools, `mise install`) are not repeated here — see
 [Prerequisites]({{< relref "/docs/get-started/prerequisites.md" >}}). For the
@@ -29,14 +29,14 @@ Kubernetes cluster and the Cilium/Flux Helm releases running inside it cannot
 be created by the same `tofu apply`, because of how the Helm provider is
 configured — not by design choice, but by a real OpenTofu constraint.
 
-**Stage 1** (`opentofu/eks/init/`) creates the EKS cluster with `terraform-aws-modules/eks/aws`,
+**Stage 1** (`opentofu/aws/eks/init/`) creates the EKS cluster with `terraform-aws-modules/eks/aws`,
 plus a temporary bootstrap CNI: VPC-CNI and kube-proxy get the nodes to
 `Ready` quickly, CoreDNS and the EBS CSI driver come up behind them, and the
 EKS Pod Identity Agent runs from the start (it's needed permanently, not
 just for bootstrap). It also creates the Gateway API CRDs, IAM roles, and the
 `flux-system` namespace and secrets Stage 2 will populate.
 
-**Stage 2** (`opentofu/eks/configure/`) is a separate OpenTofu root module in
+**Stage 2** (`opentofu/aws/eks/configure/`) is a separate OpenTofu root module in
 its own directory. Its providers are configured like this:
 
 ```hcl
@@ -71,7 +71,7 @@ on its own. DaemonSets are patched rather than the EKS addons deleted so the
 whole stage stays declarative, with no `local-exec` step.
 
 One command runs both: the `deploy` script in
-`opentofu/eks/init/workflows.tm.hcl` defines this as two jobs in the same
+`opentofu/aws/eks/init/workflows.tm.hcl` defines this as two jobs in the same
 script — the second job `cd`s into `../configure` and applies it directly —
 plus a third job that recycles any node-group node whose ENIs predate
 Cilium. Those nodes exist from Stage 1, before Cilium is running, so Cilium
@@ -89,7 +89,7 @@ after the first.
 
 ## The OpenBao cluster stack
 
-`opentofu/openbao/cluster/` has two shapes, chosen by one variable. **The
+`opentofu/aws/openbao/cluster/` has two shapes, chosen by one variable. **The
 committed configuration is the smaller one** — `variables.tfvars` sets
 `mode = "dev"`, and that is what a `terramate script run deploy` gives you
 unless you change it.
@@ -118,8 +118,8 @@ than always being five.
 Neither shape is a production posture. The cluster is torn down and
 reprovisioned on every platform test, which is what `dev` mode is priced for
 and what the SPOT-everywhere, RAID-0-with-no-redundancy choices in `ha` mode
-are priced for. `opentofu/openbao/management/`
+are priced for. `opentofu/aws/openbao/management/`
 then layers the three-tier PKI, the cert-manager AppRole, and policies on
-top of the running cluster — see `opentofu/openbao/cluster/README.md` and
-`opentofu/openbao/management/README.md` for the operational detail (unseal
+top of the running cluster — see `opentofu/aws/openbao/cluster/README.md` and
+`opentofu/aws/openbao/management/README.md` for the operational detail (unseal
 keys, AppRole setup, backup and restore).

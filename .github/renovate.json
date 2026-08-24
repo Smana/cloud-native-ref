@@ -40,8 +40,8 @@
       "description": "OpenBao and node_exporter versions in the OpenBao cluster stack. The flux/helm-values/kubernetes managers all ignore `opentofu`, and the terraform manager does not look at variable defaults, so both of these were bumped by hand - node_exporter had been pinned to a July 2024 release since it was written.",
       "customType": "regex",
       "managerFilePatterns": [
-        "/^opentofu/openbao/cluster/variables\\.tf$/",
-        "/^opentofu/openbao/cluster/scripts/startup_script\\.sh$/"
+        "/^opentofu/aws/openbao/cluster/variables\\.tf$/",
+        "/^opentofu/aws/openbao/cluster/scripts/startup_script\\.sh$/"
       ],
       "matchStrings": [
         "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*(?:default\\s*=\\s*\"|NODE_EXPORTER_VERSION=)(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"

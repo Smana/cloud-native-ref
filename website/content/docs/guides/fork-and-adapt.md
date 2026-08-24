@@ -16,16 +16,16 @@ This page enumerates them so you do not have to find them by failing.
 | Value | Currently | Where it lives | Affects |
 |---|---|---|---|
 | AWS region | `eu-west-3` | `opentofu/config.tm.hcl`, each stack's `variables.tfvars` | Everything |
-| Cluster name | `mycluster-0` | `opentofu/config.tm.hcl` (`eks_cluster_name`), `opentofu/eks/init/variables.tfvars` (`name`) | Cluster, IAM, and the `clusters/<name>/` directory Flux syncs |
-| Private domain | `priv.cloud.ogenki.io` | `opentofu/network/variables.tfvars` | Route 53 private zone, every internal hostname, the PKI |
+| Cluster name | `mycluster-0` | `opentofu/config.tm.hcl` (`eks_cluster_name`), `opentofu/aws/eks/init/variables.tfvars` (`name`) | Cluster, IAM, and the `clusters/<name>/` directory Flux syncs |
+| Private domain | `priv.aws.ogenki.io` | `opentofu/aws/network/variables.tfvars` | Route 53 private zone, every internal hostname, the PKI |
 | Public domain | `cloud.ogenki.io` | ExternalDNS and gateway manifests | Public certificates and DNS |
 | Git repository URL | `github.com/Smana/cloud-native-ref` | `opentofu/config.tm.hcl` (`flux_sync_repository_url`) | What Flux reconciles — **change this first**, or your cluster syncs someone else's repo |
-| Tailscale tailnet | `smainklh@gmail.com` | `opentofu/network/variables.tfvars` | VPN, private gateways, ACL tags |
-| Subnet router name | `ogenki` | `opentofu/network/variables.tfvars` | Tailscale device naming |
-| OpenBao URL | `bao.priv.cloud.ogenki.io` | `opentofu/config.tm.hcl` | PKI and secrets endpoints |
-| Secrets Manager paths | `openbao/cloud-native-ref/…`, `certificates/priv.cloud.ogenki.io/…` | `opentofu/config.tm.hcl` | Where root token, recovery keys and CA material are stored |
-| Identity provider | ZITADEL client ID and `auth.cloud.ogenki.io` | `opentofu/eks/init/variables.tfvars` | Cluster OIDC authentication |
-| Tags | `project`, `owner`, `GithubRepo`, `GithubOrg` | `opentofu/network/variables.tfvars`, `opentofu/eks/init/variables.tfvars` | Cost allocation |
+| Tailscale tailnet | `smainklh@gmail.com` | `opentofu/aws/network/variables.tfvars` | VPN, private gateways, ACL tags |
+| Subnet router name | `ogenki` | `opentofu/aws/network/variables.tfvars` | Tailscale device naming |
+| OpenBao URL | `bao.priv.aws.ogenki.io` | `opentofu/config.tm.hcl` | PKI and secrets endpoints |
+| Secrets Manager paths | `openbao/cloud-native-ref/…`, `certificates/priv.aws.ogenki.io/…` | `opentofu/config.tm.hcl` | Where root token, recovery keys and CA material are stored |
+| Identity provider | ZITADEL client ID and `auth.cloud.ogenki.io` | `opentofu/aws/eks/init/variables.tfvars` | Cluster OIDC authentication |
+| Tags | `project`, `owner`, `GithubRepo`, `GithubOrg` | `opentofu/aws/network/variables.tfvars`, `opentofu/aws/eks/init/variables.tfvars` | Cost allocation |
 
 Two more are not in Git at all and must exist before Stage 2 of the cluster
 deploy:
@@ -33,7 +33,7 @@ deploy:
 - the **GitHub App secret** in AWS Secrets Manager (`github/flux-app` by
   default) — see
   [Prerequisites]({{< relref "/docs/get-started/prerequisites.md" >}})
-- a `variables.tfvars` file in the `opentofu/eks/configure` stack, which is
+- a `variables.tfvars` file in the `opentofu/aws/eks/configure` stack, which is
   not committed and which you must create — Stage 2 hard-errors without it
   rather than prompting
 
@@ -49,7 +49,7 @@ None of these are required for a working platform:
 
 | Component | Where | Note |
 |---|---|---|
-| Self-hosted LLM platform | `clusters/mycluster-0-llm-platform/`, `opentofu/llm-platform/` | Already off by default behind two gates — leave it alone rather than deleting it |
+| Self-hosted LLM platform | `clusters/mycluster-0-llm-platform/`, `opentofu/aws/llm-platform/` | Already off by default behind two gates — leave it alone rather than deleting it |
 | App Wizard | `apps/platform/app-wizard/` | Self-service UI; the `App` claim works without it |
 | RunLore | `observability/base/runlore/` | SRE agent; needs its own credentials |
 | Demo applications | `apps/demo/` | Reference claims |

@@ -18,15 +18,15 @@ spans several stages.
    `flux_instance_version`), `flux_sync_repository_url` (point it at your own
    fork), and `openbao_url`.
 2. Create a `variables.tfvars` in each stack directory
-   (`opentofu/network/`, `opentofu/openbao/cluster/`,
-   `opentofu/openbao/management/`, `opentofu/eks/init/`,
-   `opentofu/eks/configure/`) with your environment-specific values.
+   (`opentofu/aws/network/`, `opentofu/aws/openbao/cluster/`,
+   `opentofu/aws/openbao/management/`, `opentofu/aws/eks/init/`,
+   `opentofu/aws/eks/configure/`) with your environment-specific values.
    `eks/configure` is easy to miss — it has no default `variables.tfvars` in
    the repo, and Stage 3 below runs `tofu apply -var-file=variables.tfvars`
    in that directory as its second internal step, which hard-errors if the
    file is absent. At minimum it must set the variables with no default:
    `cluster_name`, `env`, `flux_sync_url`, `private_domain_name`, and
-   `public_domain_name` (see `opentofu/eks/configure/variables.tf`).
+   `public_domain_name` (see `opentofu/aws/eks/configure/variables.tf`).
 3. Export the one secret Terraform needs from the environment rather than a
    file:
 
@@ -57,7 +57,7 @@ above — `openbao/cluster` depends on `network`, and `openbao/management`
 depends on `openbao/cluster`.
 
 Creates the OpenBao cluster behind a Network Load Balancer, then configures
-it. As committed, `opentofu/openbao/cluster/variables.tfvars` sets
+it. As committed, `opentofu/aws/openbao/cluster/variables.tfvars` sets
 `mode = "dev"`: a single `t3.micro` on `file` storage, which is enough to
 follow everything in these guides and is not highly available. Set
 `mode = "ha"` for the five-node Raft cluster on SPOT instances — the same
@@ -73,7 +73,7 @@ required.
 ### Stage 3 — Kubernetes (EKS)
 
 ```bash
-cd opentofu/eks/init
+cd opentofu/aws/eks/init
 terramate script run deploy
 ```
 
@@ -83,7 +83,7 @@ then that gets replaced with Cilium (which also replaces kube-proxy) and the
 Flux Operator + Instance are installed — the point at which the cluster
 starts reconciling the rest of this repository from Git. A third internal
 step recycles any node-group node whose ENIs predate Cilium, so it can pick
-up prefix delegation (see `opentofu/eks/init/workflows.tm.hcl`).
+up prefix delegation (see `opentofu/aws/eks/init/workflows.tm.hcl`).
 
 {{% /steps %}}
 

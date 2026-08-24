@@ -217,7 +217,7 @@ spec:
       readOnly: true
 
   # Private access via Tailscale — NOT internet-facing.
-  # hostname `app-wizard` → app-wizard.priv.cloud.ogenki.io.
+  # hostname `app-wizard` → app-wizard.priv.aws.ogenki.io.
   route:
     enabled: true
     internetFacing: false

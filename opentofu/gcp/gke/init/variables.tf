@@ -1,0 +1,89 @@
+variable "env" {
+  description = "Environment"
+  type        = string
+  default     = "dev"
+
+  validation {
+    condition     = contains(["dev", "staging", "prod"], var.env)
+    error_message = "Environment must be one of: dev, staging, prod."
+  }
+}
+
+variable "project_id" {
+  description = "GCP project ID"
+  type        = string
+}
+
+# NOTE: there is deliberately no `project_number` variable.
+#
+# It is derived from data.google_project.this.number (see data.tf). It used to be
+# a required input duplicating a value GCP already knows, which created the
+# opportunity for exactly the mistake this stack warns about elsewhere: the
+# NUMBER and the ID are not interchangeable, they occupy different segments of
+# the Workload Identity principal string, and swapping them produces a binding
+# the API accepts and that silently never matches.
+
+variable "region" {
+  description = "GCP region"
+  type        = string
+  default     = "europe-west4"
+}
+
+variable "cluster_name" {
+  description = "GKE cluster name"
+  type        = string
+  default     = "gcp-mycluster-0"
+}
+
+variable "kubernetes_version" {
+  description = "GKE control plane version. 'latest' tracks the channel default"
+  type        = string
+  default     = "latest"
+}
+
+variable "release_channel" {
+  description = "GKE release channel"
+  type        = string
+  default     = "REGULAR"
+
+  validation {
+    condition     = contains(["RAPID", "REGULAR", "STABLE", "UNSPECIFIED"], var.release_channel)
+    error_message = "Release channel must be RAPID, REGULAR, STABLE or UNSPECIFIED."
+  }
+}
+
+variable "node_image_type" {
+  description = "Node image. The autoscaling plan (slice 4) must pin the SAME value on every ComputeClass, or autoscaled nodes differ in kernel capability from the static pool"
+  type        = string
+  default     = "COS_CONTAINERD"
+}
+
+variable "node_machine_type" {
+  description = "Static pool machine type. A GKE node pool accepts exactly ONE type, so the AWS 6-way spot diversification does not port -- keep the static pool small and let ComputeClass supply breadth"
+  type        = string
+  default     = "e2-standard-4"
+}
+
+variable "node_count" {
+  description = "Static pool size. Matches the EKS bootstrap group's min_size = 2"
+  type        = number
+  default     = 2
+}
+
+variable "node_max_count" {
+  description = "Static pool ceiling. Matches the EKS bootstrap group's max_size = 3"
+  type        = number
+  default     = 3
+}
+
+variable "node_disk_size_gb" {
+  description = "Boot disk size for static pool nodes"
+  type        = number
+  default     = 50
+}
+
+variable "tags" {
+  description = "Labels applied to resources that support them"
+  type        = map(string)
+  default     = {}
+}

@@ -81,7 +81,7 @@ spec:
 
     env:
       - name: HOMEPAGE_ALLOWED_HOSTS
-        value: "home.priv.cloud.ogenki.io"
+        value: "home.priv.aws.ogenki.io"
 
     config:
       bookmarks:
@@ -127,7 +127,7 @@ spec:
         # alongside Headlamp/Harbor is how self-service goes unused.
         - Ship an App:
             - App Wizard:
-                href: https://app-wizard.priv.cloud.ogenki.io
+                href: https://app-wizard.priv.aws.ogenki.io
                 description: Describe your app in a form — the wizard opens a GitOps pull request for you. No YAML to write.
                 icon: mdi-rocket-launch-#38bdf8
                 namespace: apps
@@ -135,21 +135,21 @@ spec:
 
         - Platform Tools:
             - Headlamp:
-                href: https://headlamp.priv.cloud.ogenki.io
+                href: https://headlamp.priv.aws.ogenki.io
                 description: Kubernetes Web UI
                 icon: headlamp.png
                 namespace: tooling
                 app: headlamp
 
             - Harbor:
-                href: https://harbor.priv.cloud.ogenki.io
+                href: https://harbor.priv.aws.ogenki.io
                 description: Container & Helm Registry
                 icon: harbor.png
                 namespace: tooling
                 app: harbor
 
             - PEV2:
-                href: https://pev2.priv.cloud.ogenki.io
+                href: https://pev2.priv.aws.ogenki.io
                 description: PostgreSQL Execution Plan Visualizer
                 icon: postgres.png
                 namespace: tooling
@@ -163,28 +163,28 @@ spec:
 
         - Observability:
             - Grafana:
-                href: https://grafana.priv.cloud.ogenki.io
+                href: https://grafana.priv.aws.ogenki.io
                 description: Metrics & Dashboards
                 icon: grafana.png
                 namespace: observability
                 app: grafana
 
             - Victoria Metrics:
-                href: https://vm.priv.cloud.ogenki.io/vmui
+                href: https://vm.priv.aws.ogenki.io/vmui
                 description: Time Series Database
                 icon: victoriametrics.png
                 namespace: observability
                 app: vmsingle
 
             - Victoria Logs:
-                href: https://vl.priv.cloud.ogenki.io/select/vmui
+                href: https://vl.priv.aws.ogenki.io/select/vmui
                 description: Log Management
                 icon: victoriametrics.png
                 namespace: observability
                 app: victoria-logs-single
 
             - Victoria Traces:
-                href: https://vt.priv.cloud.ogenki.io/select/vmui
+                href: https://vt.priv.aws.ogenki.io/select/vmui
                 description: Distributed Tracing
                 icon: victoriametrics.png
                 namespace: observability
@@ -199,13 +199,13 @@ spec:
                 app: zitadel
 
             - OpenBao:
-                href: https://bao.priv.cloud.ogenki.io:8200
+                href: https://bao.priv.aws.ogenki.io:8200
                 description: Secrets Management & PKI
                 icon: vault.png
 
         - LLM Platform:
             - Chatbot:
-                href: https://chat.priv.cloud.ogenki.io
+                href: https://chat.priv.aws.ogenki.io
                 description: Self-hosted Qwen models · OpenAI-compatible
                 icon: mdi-robot-happy
                 namespace: apps
@@ -213,14 +213,14 @@ spec:
 
         - Demo Apps:
             - Podinfo:
-                href: https://podinfo.priv.cloud.ogenki.io
+                href: https://podinfo.priv.aws.ogenki.io
                 description: Demo Application
                 icon: mdi-cube
                 namespace: apps
                 app: xplane-podinfo
 
             - Image Gallery:
-                href: https://image-gallery.priv.cloud.ogenki.io
+                href: https://image-gallery.priv.aws.ogenki.io
                 description: Demo Image Gallery
                 icon: mdi-image-multiple
                 namespace: apps

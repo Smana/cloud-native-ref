@@ -16,6 +16,245 @@
 
 ---
 
+## Amendments (2026-08-22 — Phases 0–4 executed)
+
+**Phases 0 and 1 are complete and the gate PASSED** — see the design doc's
+[*Gate results*](../specs/2026-08-18-gcp-support-design.md) section for the evidence.
+
+**Phases 2, 3 and 4 are written, validated and committed but NOT APPLIED.** All three stacks
+(`opentofu/gcp/network`, `gke/init`, `gke/configure`) pass `tofu validate`, `tofu fmt -check` and
+`trivy config`, and `terramate list` discovers them. Nothing bills yet. Phase 5
+(`clusters/gcp-mycluster-0/`) and Phase 6 (verification, runbook) remain.
+
+### Settled inputs
+
+| Input | Value | Source |
+|---|---|---|
+| Project ID / number | `ogenki-435905` / **`323586397743`** | Task 2 |
+| Billing account | `01169B-F52211-252611` | Task 2 |
+| State bucket | `gs://ogenki-435905-tfstate` (EU, UBLA, PAP enforced, versioned) | Task 2 |
+| **Region** | **`europe-west4`** (Netherlands) | Task 3 |
+| **Topology** | **zonal**, `europe-west4-a` | Task 3 |
+| **Node image** | **`cos_containerd`** — slice 4 must pin the same | Task 3 |
+| GKE version available | `1.35.6-gke.1641000` (floor was `1.33.3-gke.1136000`) | Task 3 |
+
+Region was decided on **GPU availability**, not price: `nvidia-l4` — what the AWS `gpu-l4` pool uses
+and what slice 4 / workstream 14 need — exists in all three `europe-west4` zones, in two
+`europe-west1` zones, and **not at all in `europe-west9`** (Paris, the geographic match for AWS
+`eu-west-3`, which offers only H100/H100-mega). `europe-west4` additionally carries A100, H100,
+H200, B200 and TPUs, so a future accelerator tier needs no region migration.
+
+Zonal follows design criterion 9 ("static-pool nodes … in a single zone") and the AWS bootstrap
+group's single-subnet cost choice. Per GKE docs a regional Standard cluster's default node pool is
+**nine nodes (three per zone)** and *"you are charged for node-to-node traffic across zones"*.
+Accepted trade-off, to be documented not hidden: **a zonal control plane is unavailable during
+upgrades and maintenance.**
+
+> **Still open for Task 18:** the per-cluster management fee split between zonal and regional under
+> GKE Standard edition, and the free-tier credit. The pricing page did not render usefully via
+> fetch, so the run-rate estimate is not yet citable.
+
+### Amendment 1 — use mature upstream modules (user directive)
+
+Phases 2–3 must be written with the Cloud Foundation Toolkit modules rather than hand-rolled
+`google_compute_*` / `google_container_*` resources, mirroring the AWS side
+(`terraform-aws-modules/vpc/aws ~> 6.0`, `terraform-aws-modules/eks/aws ~> 21`):
+
+| Purpose | Module | Latest at time of writing |
+|---|---|---|
+| VPC, subnets, secondary ranges, PGA, firewall | `terraform-google-modules/network/google` | 18.1.2 |
+| GKE cluster + node pools | `terraform-google-modules/kubernetes-engine/google` | 44.3.0 |
+| Cloud Router + NAT | `terraform-google-modules/cloud-nat/google` | verify at Phase 2 |
+| Cloud DNS private zone | `terraform-google-modules/cloud-dns/google` | verify at Phase 2 |
+
+The File Structure table below keeps its filenames; their **bodies** become module blocks. When
+wiring the GKE module: never set `datapath_provider = "ADVANCED_DATAPATH"` (create-time only),
+disable the module's `network_policy` (Cilium is the policy engine), and keep
+`node.cilium.io/agent-not-ready=true:NoSchedule` on the pool at create time.
+
+### Amendment 2 — Task 1 was wrong about `gcloud`
+
+`gcloud` **was** already installed (Arch `/opt/google-cloud-cli`, 581.0.0), contradicting the
+pre-flight note. It is now pinned anyway as `"asdf:mise-plugins/mise-gcloud" = "581.0.0"`, because
+the system package cannot run `gcloud components install`.
+
+**`gke-gcloud-auth-plugin` is a separate component and was absent.** Without it every `kubectl`
+call against GKE fails with `executable gke-gcloud-auth-plugin not found`. Install it into the
+mise-managed SDK: `gcloud components install gke-gcloud-auth-plugin`.
+
+### Amendment 2b — Application Default Credentials are a SEPARATE login
+
+`gcloud auth login` and Application Default Credentials are **two different credential stores**, and
+this bites in a way that looks like a permissions bug rather than an auth one.
+
+Every `gcloud` CLI command uses the *active account* (`gcloud config get-value account`). The
+OpenTofu `google` provider and the GCS backend do **not** — they read
+`~/.config/gcloud/application_default_credentials.json`. Log in with one and not the other and every
+`gcloud` command succeeds while `tofu init` fails at backend initialisation with:
+
+```
+Error: Failed to get existing workspaces: querying Cloud Storage failed: googleapi: Error 403:
+<wrong-identity> does not have storage.objects.list access to the Google Cloud Storage bucket.
+```
+
+Observed live on 2026-08-23: the active account was `smaine.kahlouch@ogenki.io` while the ADC file
+was four months stale and still held a personal gmail identity, which has no access to
+`ogenki-435905`. The 403 names the ADC identity, not the active account — read it carefully, because
+the instinct is to go grant the *active* account more IAM, which changes nothing.
+
+**Required before any `tofu` command against GCP:**
+
+```bash
+gcloud auth application-default login \
+  --scopes=https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/userinfo.email
+gcloud auth application-default set-quota-project ogenki-435905
+```
+
+The explicit `--scopes` matters: the bare form requests a narrower default set and fails with
+`cloud-platform scope is required but not consented` — hit twice on 2026-08-23 before the flag was
+added. The consent screen also lists the scopes as checkboxes; they must be ticked.
+
+Verify the two identities agree before deploying:
+
+```bash
+gcloud config get-value account                                   # CLI identity
+ls -la ~/.config/gcloud/application_default_credentials.json      # ADC: check the date is recent
+```
+
+`set-quota-project` is not cosmetic — without it the provider emits a billing-attribution warning on
+every API call and some APIs refuse the request outright.
+
+### Amendment 2c — findings from the first real deploy (2026-08-23)
+
+Network and stage 1 were applied end to end against `ogenki-435905`, then destroyed.
+Stage 2 was not reached (it needs `tailscaled` running locally for the private endpoint).
+Three defects surfaced that **no amount of `tofu validate`, `trivy` or plan review could catch**:
+
+1. **Tailscale rejects `(` and `)` in a tailnet key description.** `GCP subnet router (dev)` failed
+   at API create time with `keys: description had invalid characters (400)` — an error naming
+   neither the offending character nor the accepted charset. Alphanumerics, spaces and dashes are
+   safe. Note the blast radius: this fired *mid-apply*, after 9 of 11 resources had already been
+   created, which is why applying the network stack before the cluster is the right order.
+2. **ADC vs CLI credentials** — see Amendment 2b.
+3. **`google_project_iam_member.crossplane` needs `depends_on = [module.gke]`.** Its principal is
+   built from variables, so OpenTofu sees no reference to the cluster and schedules the binding in
+   parallel — but the Workload Identity Pool `<project>.svc.id.goog` does not exist until a cluster
+   with `workload_pool` has been created. Fresh applies fail with
+   `Error 400: Identity Pool does not exist`. **It does not reproduce on re-apply**, because by then
+   the pool exists — a fresh-apply-only failure, the same class as the
+   provider-from-same-apply-outputs trap in `opentofu/aws/eks/init/providers.tf`: a dependency that
+   is real but invisible to the graph.
+
+**Teardown gotcha.** `tofu destroy` on the network stack failed with
+`subnetwork ... is already being used by instances/ogenki-gcp` while an audit seconds later showed
+no instances — GCP eventual consistency, the instance delete had returned but the subnet still
+counted it as attached. Re-running succeeded unchanged. Expect this on the
+`terramate script run destroy` path; the first failure is not a real blocker.
+
+### Amendment 2d — cluster naming convention
+
+**`aws-mycluster-0` / `gcp-mycluster-0`** — symmetric cloud prefixes, so neither cloud reads as
+"the" platform, matching the cloud-partitioned `opentofu/` layout.
+
+GCP already uses `gcp-mycluster-0`. **AWS keeps `mycluster-0` until its next from-scratch rebuild**,
+then becomes `aws-mycluster-0`: an EKS cluster name is immutable, so renaming now would mean
+destroying and recreating the live cluster plus touching 144 files. The present asymmetry is
+therefore deliberate and temporary — not an oversight to be "fixed" by someone reading
+`clusters/` later.
+
+### Amendment 3 — Task 4's Cilium install is missing two mandatory values
+
+Both were found by the gate and must be carried into Task 10's forked
+`helm_values/cilium.yaml`. Full evidence in the design doc.
+
+```
+--set cni.binPath=/home/kubernetes/bin      # /opt/cni/bin is READ-ONLY on COS
+--set ipv4NativeRoutingCIDR=100.65.0.0/16   # mandatory for native + ipam=kubernetes
+```
+
+`gke.enabled=true` does **not** set `cni.binPath` in 1.20.0 — it only toggles
+`enable-endpoint-routes` and `enable-health-check-loadbalancer-ip`.
+
+### Amendment 4 — Gateway API CRDs need server-side apply
+
+`kubectl apply -f experimental-install.yaml` fails on `httproutes` with
+`metadata.annotations: Too long: may not be more than 262144 bytes`. Use
+`kubectl apply --server-side`. **Task 11 applies these CRDs from OpenTofu — the provider must use
+server-side apply**, or Phase 3 hits the same wall.
+
+### Amendment 5 — `gateway_api.tf` belongs in `configure`, not `init`
+
+Task 11 places it in `gke/init`. It cannot go there. `opentofu/eks/init/providers.tf` documents why,
+after the AWS side hit it: a kubectl/kubernetes provider configured from the cluster being created
+in the *same apply* cannot be deferred and fails on fresh applies with *"no configuration has been
+provided"*. The AWS side accordingly applies its Gateway API CRDs from `eks/configure`.
+
+`gke/init` therefore declares **no** Kubernetes-facing provider at all, and says so in
+`versions.tf`. Two consequences:
+
+- `gateway_api_version` is a `configure` variable, not an `init` one.
+- The CFT GKE module's `configure_ip_masq` must stay **false** — its ip-masq-agent is a
+  `kubernetes_config_map`, i.e. the same same-apply call. It defaults to false; it is now pinned
+  explicitly with a comment, because flipping it would silently reintroduce the bug.
+
+### Amendment 6 — the tailnet ACL is a singleton owned by the AWS stack
+
+`opentofu/network/tailscale.tf` declares `tailscale_acl` with
+`overwrite_existing_content = true`, plus `tailscale_dns_nameservers` and
+`tailscale_dns_search_paths`. These are **tailnet-wide**, and both clouds share one tailnet.
+
+`opentofu/gcp/network` therefore deliberately declares none of them — a second `tailscale_acl` would
+make each apply silently overwrite the other's, last-apply-wins. It creates only per-device and
+per-domain resources (`tailscale_tailnet_key`, a `tailscale_dns_split_nameservers` for the GCP
+domain, the GCE instance).
+
+The consequence is a genuine cross-stack dependency the plan did not anticipate: the GCP router's
+routes are advertised but neither auto-approved nor permitted until the **AWS-owned** ACL carries
+them, and editing that ACL by hand does not survive the next AWS apply. Resolved by adding a
+`gcp_routes` variable to `opentofu/network` and wiring it into both `acls` and `autoApprovers`.
+
+### Amendment 7 — corrections to the plan's scaffolding snippets
+
+| Plan says | Reality |
+|---|---|
+| `stack.id = "gcp-network"` | Terramate stack IDs in this repo are **UUIDs** |
+| `tailscale ~> 0.17` | The AWS stack pins `~> 0.29` |
+| `google ~> 6.0` | Latest is 7.45; the CFT GKE module requires `>= 7.17, < 8`. Use `~> 7.17` |
+| `alekc/kubectl` (implied) | `eks/configure` uses **`gavinbunney/kubectl ~> 1.14`** |
+| — | `*.tfvars` is gitignored; the AWS ones are force-added. Use `git add -f` |
+| — | The CFT network module also requires the `google-beta` provider to be configured |
+
+### Amendment 8 — Flux's Git credentials come from GCP Secret Manager
+
+This closes a design open question. The AWS cluster reads the GitHub App credentials from AWS
+Secrets Manager; doing the same on GCP would put a hard AWS dependency in the GCP bootstrap, which
+is precisely what a second first-class cloud is meant to avoid.
+
+`gke/configure` reads them from **GCP Secret Manager** instead (`secretmanager.googleapis.com` is
+already enabled). The secret is a **prerequisite**, deliberately not created in OpenTofu — putting
+real credentials in a plan or state violates the platform's no-hardcoded-credentials rule.
+`configure/data.tf` documents the expected JSON shape and the `gcloud secrets create` command.
+Moves to OpenBao once workstream 11 lands.
+
+### Amendment 9 — a CFT module key that looks right and does nothing
+
+`workload_metadata_configuration` inside a `node_pools[]` entry is **not** a key the module reads.
+Node metadata mode comes from the module-level `var.node_metadata` (default `GKE_METADATA`). The
+per-pool key renders no config while looking correct in review. Now set explicitly at module level.
+
+Trivy also reports `GCP-0057` against the module's own `cluster.tf` because it cannot resolve the
+`dynamic "workload_metadata_config"` block — a false positive, annotated as such.
+
+### Amendment 10 — diagnosis is blind while the CNI is down
+
+`kubectl logs` and `kubectl exec` both tunnel through konnectivity, whose agent is a pod needing the
+very CNI that is broken; both return `error dialing backend: No agent available`. A hostNetwork
+debug pod does not help — `exec` uses the same tunnel. The working route was `gcloud compute ssh`
+reading `/var/log/pods/`. Note `gcloud compute ssh` needs a passphrase-free key or a loaded agent in
+non-interactive use.
+
+---
+
 ## Pre-flight context (verified during plan writing — no action needed)
 
 - **`gcloud` is NOT installed** and is absent from `mise.toml`. Task 1 adds it. Every other tool in this plan is already pinned in `mise.toml` (opentofu 1.12.5, terramate 0.17.2, trivy 0.74.0, flux2 2.9.4, helm 4.2.4, kustomize 5.8.1).
@@ -83,17 +322,17 @@
 **Files:**
 - Modify: `mise.toml`
 
-- [ ] **Step 1: Confirm gcloud is genuinely absent**
+- [x] **Step 1: Confirm gcloud is genuinely absent**
 
 Run: `command -v gcloud || echo ABSENT`
 Expected: `ABSENT`
 
-- [ ] **Step 2: Find the correct mise backend for gcloud**
+- [x] **Step 2: Find the correct mise backend for gcloud**
 
 Run: `mise registry | grep -i gcloud`
 Expected: one or more rows. Record the exact backend string printed (for example `asdf:jthegedus/asdf-gcloud`). **Use what the registry prints — do not guess the backend.** If the registry returns nothing, stop and install the Google Cloud SDK by the official method, then note in `docs/gcp-bootstrap.md` that gcloud is not mise-managed and why.
 
-- [ ] **Step 3: Add the pin**
+- [x] **Step 3: Add the pin**
 
 Add to the `[tools]` table in `mise.toml`, keeping the existing comment block intact, substituting the backend and latest stable version from Step 2:
 
@@ -103,12 +342,12 @@ Add to the `[tools]` table in `mise.toml`, keeping the existing comment block in
 "<backend-from-step-2>" = "<version>"
 ```
 
-- [ ] **Step 4: Verify it installs and runs**
+- [x] **Step 4: Verify it installs and runs**
 
 Run: `mise install && gcloud version`
 Expected: version output, no error.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add mise.toml
@@ -119,7 +358,7 @@ git commit -m "build(mise): pin gcloud for the GCP stacks"
 
 **Files:** none (environment setup; recorded in the runbook by Task 20)
 
-- [ ] **Step 1: Confirm an authenticated project with billing**
+- [x] **Step 1: Confirm an authenticated project with billing**
 
 Run:
 ```bash
@@ -131,7 +370,7 @@ Expected: an active account, a project id, and `True`.
 
 **If billing is not enabled, stop.** Nothing past Task 4 can be verified without a billable project.
 
-- [ ] **Step 2: Enable the required APIs**
+- [x] **Step 2: Enable the required APIs**
 
 Run:
 ```bash
@@ -146,12 +385,12 @@ gcloud services enable \
 ```
 Expected: `Operation ... finished successfully.`
 
-- [ ] **Step 3: Record the project number**
+- [x] **Step 3: Record the project number**
 
 Run: `gcloud projects describe "$(gcloud config get-value project)" --format='value(projectNumber)'`
 Expected: a numeric id. **Save it** — the Workload Identity principal string in Task 9 needs the project **number**, while the pool name needs the project **id**. These are different values in different segments and reversing them produces a binding that is accepted and never matches.
 
-- [ ] **Step 4: Create the GCS state bucket**
+- [x] **Step 4: Create the GCS state bucket**
 
 Run, substituting the project id:
 ```bash
@@ -166,7 +405,7 @@ Expected: bucket created, versioning enabled.
 
 **Files:** none yet (values consumed by Task 5)
 
-- [ ] **Step 1: Print the AWS ranges currently advertised into the tailnet**
+- [x] **Step 1: Print the AWS ranges currently advertised into the tailnet**
 
 Run:
 ```bash
@@ -175,7 +414,7 @@ tailscale status --json | jq -r '.Peer[] | select(.PrimaryRoutes != null) | "\(.
 ```
 Expected: `10.0.0.0/16` and `100.64.0.0/16` from the first command, plus whatever the subnet router actually advertises.
 
-- [ ] **Step 2: Confirm the proposed GCP ranges do not overlap**
+- [x] **Step 2: Confirm the proposed GCP ranges do not overlap**
 
 Run:
 ```bash
@@ -196,14 +435,14 @@ Expected: `no overlap`
 
 **Add any extra ranges the previous step revealed to the `aws` list before trusting this.**
 
-- [ ] **Step 3: Decide zonal vs regional, and record the cost delta**
+- [x] **Step 3: Decide zonal vs regional, and record the cost delta**
 
 Run: `gcloud container get-server-config --region=europe-west1 --format='value(defaultClusterVersion)'`
 Expected: a version string >= `1.33.3-gke.1136000`. If it is lower, pick a different region or channel — the autoscaling plan (slice 4) requires that floor, and `--workload-pool` support is needed here.
 
 Then decide zonal or regional and write one sentence of justification into a scratch note for Task 20. The GKE cluster management fee and free-tier eligibility differ between them; defaulting to regional without stating the cost is not acceptable.
 
-- [ ] **Step 4: Choose the node image type**
+- [x] **Step 4: Choose the node image type**
 
 Decide `cos_containerd` (GKE default, smaller attack surface) or `ubuntu_containerd` (more familiar kernel, easier debugging on an unsupported path). Record the choice and reason for Task 20. Slice 4 must pin the **same** value, so this decision propagates.
 
@@ -217,7 +456,7 @@ Decide `cos_containerd` (GKE default, smaller attack surface) or `ubuntu_contain
 
 **Files:** none (throwaway resources, deleted in Step 8)
 
-- [ ] **Step 1: Create the throwaway cluster**
+- [x] **Step 1: Create the throwaway cluster**
 
 Run, substituting your zone and the image type from Task 3 Step 4:
 ```bash
@@ -232,12 +471,12 @@ gcloud container clusters create cilium-gate \
 ```
 Expected: cluster created. Note `--enable-dataplane-v2` is deliberately **absent**.
 
-- [ ] **Step 2: Confirm the datapath is legacy, not Dataplane V2**
+- [x] **Step 2: Confirm the datapath is legacy, not Dataplane V2**
 
 Run: `gcloud container clusters describe cilium-gate --zone "$ZONE" --format='yaml(networkConfig.datapathProvider)'`
 Expected: the field is absent or not `ADVANCED_DATAPATH`. **If it says `ADVANCED_DATAPATH`, the flavour is not available as designed — stop and reopen ADR-0005.**
 
-- [ ] **Step 3: Install Cilium 1.20.0 in GKE mode**
+- [x] **Step 3: Install Cilium 1.20.0 in GKE mode**
 
 Run:
 ```bash
@@ -267,7 +506,7 @@ kubectl apply -f "https://github.com/kubernetes-sigs/gateway-api/releases/downlo
 match AWS. If you install Cilium first by mistake:
 `kubectl rollout restart -n kube-system deployment/cilium-operator`.
 
-- [ ] **Step 4: CHECK 1 — Cilium's CNI config displaced netd**
+- [x] **Step 4: CHECK 1 — Cilium's CNI config displaced netd**
 
 Run:
 ```bash
@@ -280,7 +519,7 @@ Expected: a Cilium conflist present, and **no active GKE/netd conflist** ahead o
 
 **FAIL CRITERION:** an active non-Cilium `.conflist` sorting before Cilium's. If so, **stop — reopen ADR-0005.**
 
-- [ ] **Step 5: Confirm Cilium is healthy and pods actually get IPs**
+- [x] **Step 5: Confirm Cilium is healthy and pods actually get IPs**
 
 Run:
 ```bash
@@ -291,7 +530,7 @@ kubectl get pods -o wide -l app=gate-probe
 ```
 Expected: `cilium status` OK; 4 pods `Running` with IPs from `100.65.0.0/16`, spread across both nodes.
 
-- [ ] **Step 6: CHECK 2 — cross-node L7 through a Cilium Gateway, no WireGuard**
+- [x] **Step 6: CHECK 2 — cross-node L7 through a Cilium Gateway, no WireGuard**
 
 Run:
 ```bash
@@ -325,17 +564,17 @@ Expected: `100 200` — 100 responses, all HTTP 200, with `encryption` never set
 
 **FAIL CRITERION:** any non-200. That would mean cilium#43493 (or something like it) applies on GKE too. Do **not** paper over it by enabling WireGuard — record the evidence and reopen ADR-0005, because the design's claim that the bug is ENI-specific would be wrong.
 
-- [ ] **Step 7: Record the outcome in the design doc**
+- [x] **Step 7: Record the outcome in the design doc**
 
 Append a short "Gate results (YYYY-MM-DD)" subsection to
 `docs/superpowers/specs/2026-08-18-gcp-support-design.md` under *Verified during design*, stating for each check: pass/fail, the command output, and the cluster version tested. This is the durable evidence that ADR-0005 was validated rather than assumed.
 
-- [ ] **Step 8: Destroy the throwaway cluster**
+- [x] **Step 8: Destroy the throwaway cluster**
 
 Run: `gcloud container clusters delete cilium-gate --zone "$ZONE" --quiet`
 Expected: deleted. **Do not skip — a forgotten GKE cluster is the single most expensive mistake available in this plan.**
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add docs/superpowers/specs/2026-08-18-gcp-support-design.md
@@ -489,7 +728,7 @@ variable "env" {
 variable "private_domain_name" {
   description = "Private DNS zone for GCP platform services"
   type        = string
-  default     = "priv.gcp.cloud.ogenki.io"
+  default     = "priv.gcp.ogenki.io"
 }
 
 variable "node_cidr" {
@@ -540,7 +779,7 @@ variable "labels" {
 project_id          = "<project-id-from-task-2>"
 region              = "europe-west1"
 env                 = "dev"
-private_domain_name = "priv.gcp.cloud.ogenki.io"
+private_domain_name = "priv.gcp.ogenki.io"
 
 node_cidr    = "10.10.0.0/16"
 pod_cidr     = "100.65.0.0/16"

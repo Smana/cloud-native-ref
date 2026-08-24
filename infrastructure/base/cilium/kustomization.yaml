@@ -2,7 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: kube-system
 
-# Note: cni-configuration.yaml is now managed by OpenTofu (opentofu/eks/kubernetes.tf)
+# Note: cni-configuration.yaml is now managed by OpenTofu (opentofu/aws/eks/kubernetes.tf)
 # It must be created before Cilium installs to configure ENI prefix delegation
 
 resources:

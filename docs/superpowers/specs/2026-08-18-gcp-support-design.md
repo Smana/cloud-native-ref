@@ -42,6 +42,58 @@ been built on top of them:
 | Can GKE autoscaling satisfy Cilium's taint requirement? | Yes — `ComputeClass` exposes `nodePoolConfig.taints[]` **on auto-created pools**, plus `nodePoolConfig.imageType` to pin the node OS. This was the assumption most likely to break the whole approach | [ComputeClass CRD](https://docs.cloud.google.com/kubernetes-engine/docs/reference/crds/computeclass) |
 | How does GCP workload identity compare to EPI? | Modern GCP binds IAM **directly to the KSA principal** — `principal://iam.googleapis.com/projects/<NUMBER>/locations/global/workloadIdentityPools/<ID>.svc.id.goog/subject/ns/<NS>/sa/<KSA>` — no Google service account, no `iam.gke.io/gcp-service-account` annotation. Structurally the *same* model as EKS Pod Identity, not IRSA | [GKE WIF](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) |
 
+### Gate results (2026-08-22) — ADR-0005 validated on a live cluster
+
+Both load-bearing unknowns are now settled by measurement, not documentation. Run on a throwaway
+zonal GKE Standard cluster (`cilium-gate`, `europe-west4-a`, `1.35.6-gke.1641000`, COS_CONTAINERD,
+2× `e2-standard-4` spot), Cilium 1.20.0, Gateway API v1.6.1 experimental. Cluster destroyed
+immediately afterwards.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Datapath is legacy, not Dataplane V2 | **PASS** | `networkConfig.datapathProvider` absent |
+| **CHECK 1** — Cilium displaces GKE's CNI | **PASS** | On both nodes `/etc/cni/net.d/` holds only `05-cilium.conflist`, with `10-containerd-net.conflist.cilium_bak` renamed by `cni.exclusive` |
+| Cilium healthy, pods get pod-CIDR IPs | **PASS** | `cilium status --brief` → `OK`; cilium + cilium-envoy 2/2 `Running`, 0 restarts; 4 probe pods on `100.65.0.0/16`, 2 per node |
+| **CHECK 2** — cross-node L7, no WireGuard | **PASS** | `Encryption: Disabled`; backends split 2/2 across nodes; 100 requests through a Cilium `Gateway` → **`100 200`**, zero failures |
+
+**Unknown #1 answered:** self-managed Cilium *does* displace GKE's CNI on Standard with the legacy
+datapath. ADR-0005 stands.
+
+**Unknown #2 answered:** WireGuard is **not** required on GCP. cilium#43493 is specific to ENI mode
+with prefix delegation, as the design predicted; `ipam.mode=kubernetes` does not take that path.
+
+#### Two mandatory GKE Helm values the plan omitted
+
+Both are silent-ish failures that cost a debugging cycle each, and both must appear in the forked
+`opentofu/gcp/gke/init/helm_values/cilium.yaml`:
+
+1. **`cni.binPath: /home/kubernetes/bin`** — the chart defaults to `/opt/cni/bin`, which is
+   **read-only on COS**. The `mount-cgroup` init container dies with
+   `cp: cannot create regular file '/hostbin/cilium-mount': Read-only file system` and the agent
+   never starts. `/home/kubernetes/bin` is the writable bin directory GKE's own DaemonSets use
+   (verified via their `kubernetes-bin` hostPath). Note that `gke.enabled=true` does **not** set
+   this in 1.20.0 — it only toggles `enable-endpoint-routes` and
+   `enable-health-check-loadbalancer-ip`.
+2. **`ipv4NativeRoutingCIDR: 100.65.0.0/16`** — mandatory for `routingMode=native` +
+   `ipam.mode=kubernetes`. AWS ENI mode derives it; GKE cannot. Without it the agent exits 255 with
+   `invalid daemon configuration: native routing cidr must be configured with option
+   --ipv4-native-routing-cidr`.
+
+Cilium's own docs gap is tracked upstream in
+[cilium#28656](https://github.com/cilium/cilium/issues/28656) (*"Docs: GKE Helm installation is
+missing important information"*, closed 2023-10-17).
+
+#### Two operational traps worth carrying into the OpenTofu stacks
+
+- **The Gateway API CRD bundle needs `kubectl apply --server-side`.** Client-side apply fails on
+  `httproutes` with `metadata.annotations: Too long: may not be more than 262144 bytes`. Task 11
+  applies these CRDs from OpenTofu — the provider must use server-side apply.
+- **When the CNI is down, the cluster is unreachable for diagnosis.** `kubectl logs` and
+  `kubectl exec` both tunnel through konnectivity, whose agent is itself a pod needing the broken
+  CNI, so both fail with `error dialing backend: No agent available`. A hostNetwork debug pod does
+  not help — `exec` into it uses the same tunnel. The only route to the agent log was
+  `gcloud compute ssh` reading `/var/log/pods/`. Worth knowing before Phase 4 debugging.
+
 ## Framing decisions
 
 Recorded as ADRs so they are not restated per-slice.
@@ -60,7 +112,7 @@ Recorded as ADRs so they are not restated per-slice.
 ### Cost posture
 
 The AWS side is more cost-optimised than it first appears, and GCP must match the *intent*, not just
-work. `opentofu/eks/init/main.tf` runs even the **bootstrap** node group on `capacity_type = "SPOT"`
+work. `opentofu/aws/eks/init/main.tf` runs even the **bootstrap** node group on `capacity_type = "SPOT"`
 (min 2 / max 3) across 6 diversified instance types, pinned to one subnet with the comment *"Use a
 single subnet for costs reasons"*. All three Karpenter pools are spot-first, `default` is
 spot-**only**, and each carries a hard ceiling (`cpu 60/mem 192Gi`, `cpu 20/mem 64Gi`,
@@ -170,10 +222,23 @@ known rather than predicted.
 
 ### Already cloud-agnostic (verified — do not touch)
 
-OpenBao itself (`openbao/management` uses only the `bao` provider), External Secrets, Envoy Gateway,
-Envoy AI Gateway, VictoriaMetrics/Logs/Traces, Grafana Operator, KEDA, Zitadel, Harbor-the-app,
-CloudNativePG-the-operator, Atlas Operator, Tailscale operator, Headlamp, Homepage, Dagger engine,
-GHA runners, vLLM/`InferenceService`, and Cilium itself modulo the values divergence below.
+External Secrets, Envoy Gateway, Envoy AI Gateway, VictoriaMetrics/Logs/Traces, Grafana Operator,
+KEDA, Zitadel, Harbor-the-app, CloudNativePG-the-operator, Atlas Operator, Tailscale operator,
+Headlamp, Homepage, Dagger engine, GHA runners, vLLM/`InferenceService`, and Cilium itself modulo
+the values divergence below.
+
+> **Correction (2026-08-23).** This list previously opened with *"OpenBao itself
+> (`openbao/management` uses only the `bao` provider)"*. That is **wrong**, and the error mattered
+> because it made the stack look portable when it is not.
+>
+> `opentofu/aws/openbao/management/providers.tf` configures **two** providers, `vault` **and** `aws`,
+> and the stack reads its root token, the cert-manager AppRole and the operator password from **AWS
+> Secrets Manager** (`data.aws_secretsmanager_secret_version.*`). `openbao/cluster` is more
+> AWS-coupled still — ASG, ELB, KMS auto-unseal, Route53.
+>
+> OpenBao *the product* is cloud-agnostic; **our OpenBao stacks are not**. Both stay under `aws/`
+> in the [cloud-partitioned layout](2026-08-23-cloud-partitioned-layout-design.md), and porting
+> them is workstream 11, which is where the Secrets Manager dependency gets replaced.
 
 ---
 
@@ -209,7 +274,9 @@ managed. Revisit at cloud three.
 | `ipam.mode` | `eni` | `kubernetes` (host-scope from `spec.podCIDR`; GKE alias IP ranges route natively) |
 | `eni:` block, `cilium-cni-config.tf` | prefix-delegation ConfigMap | **deleted — no counterpart** |
 | `routingMode` | `native` | `native` |
-| `encryption.type` | `wireguard` (cilium#43493) | **expected unnecessary** — verify before removing the CLAUDE.md note |
+| `ipv4NativeRoutingCIDR` | derived from ENI config | **`100.65.0.0/16` — MANDATORY.** Agent exits 255 without it under `routingMode=native` + `ipam=kubernetes` |
+| `cni.binPath` | chart default `/opt/cni/bin` | **`/home/kubernetes/bin` — MANDATORY.** `/opt/cni/bin` is read-only on COS; init container cannot copy `cilium-mount` |
+| `encryption.type` | `wireguard` (cilium#43493) | **omitted — verified unnecessary** (gate CHECK 2, 100/100 HTTP 200 cross-node with encryption disabled) |
 | `kubeProxyReplacement`, `gatewayAPI`, `hubble` | — | port unchanged |
 
 ### Node autoscaling
@@ -359,7 +426,13 @@ Falsifiable, verified against a live cluster.
 **Open questions**
 
 - GCP region and zone topology; zonal vs regional control plane (material cost difference).
-- Private DNS zone naming — `priv.gcp.cloud.ogenki.io` sibling, or one zone shared across clouds?
+- ~~Private DNS zone naming — sibling zone, or one zone shared across clouds?~~ **RESOLVED
+  2026-08-23, see [ADR-0017](../../../website/content/docs/decisions/0017-multi-cloud-dns-naming.md).**
+  A shared zone was never possible: a private zone is bound to one cloud's VPC resolver, so
+  each cloud must host its own regardless of which is nominated "home". Sibling zones, renamed
+  on both sides for symmetry — `priv.aws.ogenki.io` and `priv.gcp.ogenki.io`. Public stays
+  cloud-agnostic under `cloud.ogenki.io` on purpose, so a public endpoint can move or fail over
+  between clouds without breaking its contract.
 - Node image type: `cos_containerd` (GKE default) or `ubuntu_containerd` (more familiar kernel for
   debugging an unsupported path)?
 - GCP machine families for the `default`/`io` equivalents; retained static pool size; cluster

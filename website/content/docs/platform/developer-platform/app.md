@@ -245,7 +245,7 @@ Web-only. `hostname` is a prefix; the domain is chosen by
   route:
     enabled: true
     hostname: myapp
-    internetFacing: false     # false -> myapp.priv.cloud.ogenki.io (private, Tailscale)
+    internetFacing: false     # false -> myapp.priv.aws.ogenki.io (private, Tailscale)
                                # true  -> myapp.cloud.ogenki.io (public)
     rules:
       - backendPort: 8080

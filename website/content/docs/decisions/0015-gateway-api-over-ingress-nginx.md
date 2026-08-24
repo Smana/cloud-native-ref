@@ -22,7 +22,7 @@ API — `GatewayClass`, `Gateway`, `HTTPRoute` — never a Kubernetes
 `Ingress`. There is no `kind: Ingress` manifest anywhere in this
 repository, and Cilium's own Ingress controller
 (`ingressController.enabled`) is not turned on in
-`opentofu/eks/init/helm_values/cilium.yaml`; only `gatewayAPI.enabled:
+`opentofu/aws/eks/init/helm_values/cilium.yaml`; only `gatewayAPI.enabled:
 true` is set. The one literal `ingress-nginx` reference left in the repo
 is a subchart toggle explicitly set to `enabled: false` in
 `observability/base/grafana-oncall/helmrelease-oncall.yaml`, and Grafana
@@ -206,7 +206,7 @@ can run, not chosen freely.
   independently of it: Cilium ≤1.19.4 crashes on Gateway API ≥v1.5.0
   (TLSRoute-v1, [cilium#45139](https://github.com/cilium/cilium/issues/45139),
   fixed in 1.19.5). `gateway_api_version` in
-  `opentofu/eks/configure/variables.tf` (default `v1.6.1`) must equal the
+  `opentofu/aws/eks/configure/variables.tf` (default `v1.6.1`) must equal the
   tag `flux/sources/gitrepo-gateway-api.yaml` pins Flux's `GitRepository`
   to — both currently `v1.6.1` — and the installed `cilium_version`
   (`opentofu/config.tm.hcl`, currently `1.20.0`) must stay at or above
@@ -222,12 +222,12 @@ can run, not chosen freely.
   `status.parents`, and any `App` claim that owns a route is stuck
   `READY=False` (`CLAUDE.md`, "Gateways stuck `Waiting for controller`").
   This already happened once: the `backendtlspolicies` CRD comment in
-  `opentofu/eks/configure/locals.tf` records that its absence "is what
+  `opentofu/aws/eks/configure/locals.tf` records that its absence "is what
   broke Gateway API on the 2026-08-19 rebuild."
   - *Mitigation*: `kubectl rollout restart -n kube-system
     deployment/cilium-operator` reruns the probe immediately; durably,
     the CRD's URL is added to the append-only `gateway_api_crds_urls` in
-    `opentofu/eks/configure/locals.tf` so it is present before the next
+    `opentofu/aws/eks/configure/locals.tf` so it is present before the next
     rebuild's probe runs.
 - **Smaller ecosystem than `Ingress`.** Fewer worked examples exist for
   Gateway API than for `Ingress`, and some upstream charts still ship
@@ -262,13 +262,13 @@ annotations; the two Tailscale Gateways restrict `allowedRoutes` to a
 namespace allowlist that has to be kept in sync by hand.
 
 Cilium's Gateway API support is turned on entirely through Helm values in
-`opentofu/eks/init/helm_values/cilium.yaml`: `gatewayAPI.enabled: true`
+`opentofu/aws/eks/init/helm_values/cilium.yaml`: `gatewayAPI.enabled: true`
 and `envoy.enabled: true` (the L7 proxy). `ingressController` is not set,
 so Cilium's own `Ingress` support stays off.
 
 The Gateway API CRDs themselves are not chart-managed: `flux/sources/gitrepo-gateway-api.yaml`
 pins a `GitRepository` to `kubernetes-sigs/gateway-api` tag `v1.6.1`, and
-`opentofu/eks/configure/locals.tf`'s `gateway_api_crds_urls` list installs
+`opentofu/aws/eks/configure/locals.tf`'s `gateway_api_crds_urls` list installs
 the same-versioned experimental CRDs (including `backendtlspolicies` and
 `listenersets`, both required by Cilium ≥1.20) before Cilium's Stage 2
 install, so `cilium-operator`'s startup probe finds them.
@@ -284,12 +284,12 @@ install, so `cilium-operator`'s startup probe finds them.
   `GatewayClass` implementation this decision depends on
 - [CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md)
   — "Gateways stuck `Waiting for controller`" troubleshooting entry
-- `opentofu/eks/configure/locals.tf` — `gateway_api_crds_urls`, the
+- `opentofu/aws/eks/configure/locals.tf` — `gateway_api_crds_urls`, the
   append-only CRD list and the `backendtlspolicies` incident comment
-- `opentofu/eks/configure/variables.tf` — `gateway_api_version`
+- `opentofu/aws/eks/configure/variables.tf` — `gateway_api_version`
 - `flux/sources/gitrepo-gateway-api.yaml` — the Flux `GitRepository` pin
   that must match `gateway_api_version`
-- `opentofu/eks/init/helm_values/cilium.yaml` — `gatewayAPI.enabled`,
+- `opentofu/aws/eks/init/helm_values/cilium.yaml` — `gatewayAPI.enabled`,
   `envoy.enabled`
 - `infrastructure/base/gapi/` — every `GatewayClass`,
   `CiliumGatewayClassConfig`, and `Gateway` manifest

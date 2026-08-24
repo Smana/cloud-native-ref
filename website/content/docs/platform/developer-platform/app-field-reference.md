@@ -204,7 +204,7 @@ Blocks: `liveness`, `readiness`, `startup`. Each block:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | Create an HTTPRoute. |
-| `internetFacing` | boolean | `false` | `false` → `.priv.cloud.ogenki.io` (private), `true` → `.cloud.ogenki.io` (public). |
+| `internetFacing` | boolean | `false` | `false` → `.priv.aws.ogenki.io` (private), `true` → `.cloud.ogenki.io` (public). |
 | `hostname` | string | — (required when enabled) | Hostname prefix (domain auto-added). |
 | `rules[]` | []object | route all to `service.port` at `/` | `backendPort` (**required**), `pathPrefix` (default `/`). Composition default when omitted (`main.k:923-927`). |
 

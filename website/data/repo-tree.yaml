@@ -19,19 +19,19 @@ entries:
     desc: Everything that has to exist before a Kubernetes API does
     owner: OpenTofu / Terramate
     children:
-      - path: opentofu/network/
+      - path: opentofu/aws/network/
         kind: dir
         desc: VPC, subnets, Route53, Tailscale VPN
-      - path: opentofu/openbao/
+      - path: opentofu/aws/openbao/
         kind: dir
         desc: The OpenBao cluster and its management stack — secrets and the private PKI
-      - path: opentofu/eks/init/
+      - path: opentofu/aws/eks/init/
         kind: dir
         desc: Stage 1 — EKS cluster, node groups, bootstrap addons, Gateway API CRDs
-      - path: opentofu/eks/configure/
+      - path: opentofu/aws/eks/configure/
         kind: dir
         desc: Stage 2 — Cilium replaces the CNI, the Flux Operator is installed
-      - path: opentofu/llm-platform/
+      - path: opentofu/aws/llm-platform/
         kind: dir
         desc: opt-in — S3 Files and IAM for the self-hosted LLM platform
 

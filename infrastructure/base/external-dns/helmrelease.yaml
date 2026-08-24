@@ -33,8 +33,8 @@ spec:
       zoneType: ""  # Manage both public and private zones
       batchChangeSize: 1000
       # Prefer more specific zones over parent zones
-      # Prevents home.priv.cloud.ogenki.io from being created in cloud.ogenki.io (public)
-      # when priv.cloud.ogenki.io (private) is more specific
+      # Prevents home.priv.aws.ogenki.io from being created in cloud.ogenki.io (public)
+      # when priv.aws.ogenki.io (private) is more specific
       zoneMatchParent: false
 
     domainFilters: ["${public_domain_name}", "${private_domain_name}"]

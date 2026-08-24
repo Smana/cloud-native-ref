@@ -27,7 +27,7 @@ spec:
   values:
     # SA names match the AWS-published convention; the EKS Pod Identity
     # association binds these SAs to the IAM role created by
-    # opentofu/llm-platform/iam.tf (csi_driver). The role attaches both
+    # opentofu/aws/llm-platform/iam.tf (csi_driver). The role attaches both
     # AmazonEFSCSIDriverPolicy and AmazonS3FilesCSIDriverPolicy.
     controller:
       serviceAccount:

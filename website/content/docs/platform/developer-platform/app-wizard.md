@@ -41,7 +41,7 @@ whenever the Configuration package pin changes.
 ## Option A — App Wizard (assisted)
 
 The wizard is a small web app (private, behind Tailscale at
-`https://app-wizard.priv.cloud.ogenki.io`). Sign in, fill the form, review,
+`https://app-wizard.priv.aws.ogenki.io`). Sign in, fill the form, review,
 and it opens the PR under your own GitHub identity.
 
 ### Signing in
@@ -112,7 +112,7 @@ spec:
     port: 8080
   route:
     enabled: true
-    hostname: demo-api      # → demo-api.priv.cloud.ogenki.io
+    hostname: demo-api      # → demo-api.priv.aws.ogenki.io
 ```
 
 `apps/<stack>/<app_name>/kustomization.yaml`:
@@ -185,7 +185,7 @@ aws secretsmanager create-secret --region eu-west-3 \
 
 In Zitadel (`auth.cloud.ogenki.io`) create a **Web / OIDC** application,
 auth method **Code**, redirect URI
-`https://outline.priv.cloud.ogenki.io/auth/oidc.callback`; copy its client
+`https://outline.priv.aws.ogenki.io/auth/oidc.callback`; copy its client
 ID + secret into the AWS Secrets Manager path apps/outline/secrets above.
 
 ### Method 1 — fill the form (primary)
@@ -201,7 +201,7 @@ Open the wizard → **New app** → stack `demo` → name `outline` (plain — n
 | Key-value (`kvStore`) | enabled · `valkey` |
 | S3 (`s3Bucket`) | enabled · `readwrite` |
 | Route | enabled · **not** internet-facing · hostname `outline` |
-| Env | `NODE_ENV=production`, `PORT=3000`, `URL=https://outline.priv.cloud.ogenki.io`, `PGSSLMODE=disable`, `FILE_STORAGE=s3`, `AWS_REGION=eu-west-3`, `AWS_S3_UPLOAD_BUCKET_NAME=eu-west-3-ogenki-outline`, `OIDC_AUTH_URI=https://auth.cloud.ogenki.io/oauth/v2/authorize`, `OIDC_TOKEN_URI=https://auth.cloud.ogenki.io/oauth/v2/token`, `OIDC_USERINFO_URI=https://auth.cloud.ogenki.io/oidc/v1/userinfo`, `OIDC_USERNAME_CLAIM=preferred_username`, `OIDC_SCOPES=openid profile email` |
+| Env | `NODE_ENV=production`, `PORT=3000`, `URL=https://outline.priv.aws.ogenki.io`, `PGSSLMODE=disable`, `FILE_STORAGE=s3`, `AWS_REGION=eu-west-3`, `AWS_S3_UPLOAD_BUCKET_NAME=eu-west-3-ogenki-outline`, `OIDC_AUTH_URI=https://auth.cloud.ogenki.io/oauth/v2/authorize`, `OIDC_TOKEN_URI=https://auth.cloud.ogenki.io/oauth/v2/token`, `OIDC_USERINFO_URI=https://auth.cloud.ogenki.io/oidc/v1/userinfo`, `OIDC_USERNAME_CLAIM=preferred_username`, `OIDC_SCOPES=openid profile email` |
 | External secrets | `outline-secrets` ← AWS Secrets Manager path apps/outline/secrets |
 
 **Do not add** `DATABASE_URL`, `REDIS_URL`, or network-policy egress rules —
@@ -236,7 +236,7 @@ the one value it tends to guess wrong:** `OIDC_USERINFO_URI` should be
 Either way: **Preview** (render) → **Open PR** → review → merge. Flux
 deploys, the SQLInstance bootstraps from the seeded credentials, Valkey and
 the S3 bucket come up, Outline runs its own migrations, and it's reachable
-at `https://outline.priv.cloud.ogenki.io` (sign in via Zitadel).
+at `https://outline.priv.aws.ogenki.io` (sign in via Zitadel).
 
 {{< callout >}}
 **No screenshots yet.** This page describes the wizard in prose only —

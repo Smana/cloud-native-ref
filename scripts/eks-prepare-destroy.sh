@@ -405,4 +405,82 @@ if kubectl api-resources --api-group=apiextensions.crossplane.io 2>/dev/null | g
 	done
 fi
 
+# Sweep the load-balancer security groups this cluster's controllers created.
+#
+# The AWS Load Balancer Controller creates security groups for the NLBs behind
+# Gateway API / Service type=LoadBalancer, and they OUTLIVE the load balancers
+# they belong to. Nothing in the OpenTofu graph owns them, so `tofu destroy` on
+# opentofu/aws/network then fails at the very last resource with
+#
+#   Error: deleting EC2 VPC (vpc-...): DependencyViolation:
+#   The vpc '...' has dependencies and cannot be deleted.
+#
+# after every other resource in the stack is already gone. Measured on the
+# 2026-08-23 rebuild: three left behind -- k8s-traffic-<cluster>-*,
+# k8s-security-ciliumga-*, k8s-infrastr-ciliumga-*.
+#
+# This runs LAST, and waits for the load balancers to actually disappear first:
+# deleting a Gateway starts LB teardown asynchronously, and a security group
+# still attached to a live LB cannot be deleted.
+#
+# Scoped by the controller's own `elbv2.k8s.aws/cluster` tag, not by an
+# `k8s-*` name match. Those names are not unique to a cluster, and a second
+# cluster sharing this VPC would have its groups swept too -- the same reasoning
+# that keeps the IAM key reclaim above tied to this cluster's own resources.
+echo "Sweeping load-balancer security groups owned by cluster ${CLUSTER_NAME}..."
+if [ "${EKS_DESTROY_KEEP_SECURITY_GROUPS:-false}" = "true" ]; then
+	echo "EKS_DESTROY_KEEP_SECURITY_GROUPS=true — skipping security group sweep."
+else
+	CLUSTER_VPC=$(${AWS_CMD} eks describe-cluster --name "${CLUSTER_NAME}" \
+		--query 'cluster.resourcesVpcConfig.vpcId' --output text 2>/dev/null || echo "")
+
+	if [ -z "${CLUSTER_VPC}" ] || [ "${CLUSTER_VPC}" = "None" ]; then
+		echo "Could not determine the cluster VPC — skipping (cluster may already be gone)."
+	else
+		# Wait for the LBs to go. Their security groups cannot be deleted while
+		# they are attached, and Gateway deletion above only STARTS that teardown.
+		for _ in $(seq 1 30); do
+			LB_COUNT=$(${AWS_CMD} elbv2 describe-load-balancers \
+				--query "length(LoadBalancers[?VpcId=='${CLUSTER_VPC}'])" \
+				--output text 2>/dev/null || echo "0")
+			[ "${LB_COUNT}" = "0" ] && break
+			echo "  waiting for ${LB_COUNT} load balancer(s) to finish deleting..."
+			sleep 10
+		done
+
+		# Several passes: these groups reference each other, so a group can be
+		# undeletable on one pass and deletable on the next once its referrer is
+		# gone. Four passes has been ample; the VPC destroy surfaces anything left.
+		for _ in 1 2 3 4; do
+			mapfile -t ORPHAN_SGS < <(${AWS_CMD} ec2 describe-security-groups \
+				--filters "Name=vpc-id,Values=${CLUSTER_VPC}" \
+				"Name=tag:elbv2.k8s.aws/cluster,Values=${CLUSTER_NAME}" \
+				--query 'SecurityGroups[?GroupName!=`default`].GroupId' \
+				--output text 2>/dev/null | tr '\t' '\n' | grep -v '^[[:space:]]*$' || true)
+			[ ${#ORPHAN_SGS[@]} -eq 0 ] && break
+			for sg in "${ORPHAN_SGS[@]}"; do
+				if ${AWS_CMD} ec2 delete-security-group --group-id "${sg}" >/dev/null 2>&1; then
+					echo "  deleted ${sg}"
+				fi
+			done
+		done
+
+		# Report anything still in the VPC. These are NOT deleted -- they may
+		# belong to something else entirely -- but naming them here turns a
+		# DependencyViolation at the end of `tofu destroy` into a warning that
+		# says which groups to look at.
+		mapfile -t REMAINING_SGS < <(${AWS_CMD} ec2 describe-security-groups \
+			--filters "Name=vpc-id,Values=${CLUSTER_VPC}" \
+			--query 'SecurityGroups[?GroupName!=`default`].[GroupId,GroupName]' \
+			--output text 2>/dev/null | grep -v '^[[:space:]]*$' || true)
+		if [ ${#REMAINING_SGS[@]} -eq 0 ]; then
+			echo "No security groups left in ${CLUSTER_VPC} beyond the default."
+		else
+			echo "WARNING: ${#REMAINING_SGS[@]} non-default security group(s) remain in ${CLUSTER_VPC}."
+			echo "         If the VPC destroy fails with DependencyViolation, start here:"
+			printf '           %s\n' "${REMAINING_SGS[@]}"
+		fi
+	fi
+fi
+
 echo "Cluster cleanup completed successfully"

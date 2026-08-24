@@ -20,10 +20,10 @@ jobs:
 
       - name: Write required openbao files
         run: |
-          mkdir -p opentofu/openbao/cluster/.tls
-          echo 'keep' > opentofu/openbao/cluster/.tls/openbao.pem
-          echo 'keep' > opentofu/openbao/cluster/.tls/openbao-key.pem
-          echo 'keep' > opentofu/openbao/cluster/.tls/ca-chain.pem
+          mkdir -p opentofu/aws/openbao/cluster/.tls
+          echo 'keep' > opentofu/aws/openbao/cluster/.tls/openbao.pem
+          echo 'keep' > opentofu/aws/openbao/cluster/.tls/openbao-key.pem
+          echo 'keep' > opentofu/aws/openbao/cluster/.tls/ca-chain.pem
 
       # Runs pre-commit directly rather than through the pre-commit-tf Dagger
       # module. That module cannot take a secret — its Run() accepts only

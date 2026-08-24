@@ -762,7 +762,7 @@ model. They're addressable as separate model names through the OpenAI
 
 ```bash
 # Base model
-curl https://llm.priv.cloud.ogenki.io/v1/chat/completions \
+curl https://llm.priv.aws.ogenki.io/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "xplane-qwen-coder",
@@ -770,7 +770,7 @@ curl https://llm.priv.cloud.ogenki.io/v1/chat/completions \
   }'
 
 # Adapter A
-curl https://llm.priv.cloud.ogenki.io/v1/chat/completions \
+curl https://llm.priv.aws.ogenki.io/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "<adapter-1-name>",
@@ -973,7 +973,7 @@ kubectl logs -n llm job/<preload-job-name>
 - [ ] **Step 1: Probe the base model (control)**
 
 ```bash
-curl -s https://llm.priv.cloud.ogenki.io/v1/chat/completions \
+curl -s https://llm.priv.aws.ogenki.io/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "xplane-qwen-coder", "messages": [{"role": "user", "content": "Print 1+1."}], "max_tokens": 32}' \
   | jq '.choices[0].message.content'
@@ -986,7 +986,7 @@ Expected: HTTP 200 with a sensible response.
 ```bash
 for adapter in <adapter-1-name> <adapter-2-name>; do
   echo "=== $adapter ==="
-  curl -s https://llm.priv.cloud.ogenki.io/v1/chat/completions \
+  curl -s https://llm.priv.aws.ogenki.io/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d "{\"model\": \"$adapter\", \"messages\": [{\"role\": \"user\", \"content\": \"<adapter-aligned probe prompt>\"}], \"max_tokens\": 64}" \
     | jq '.choices[0].message.content'
@@ -1049,7 +1049,7 @@ Expected: Ready within 180s (SC-2 budget, foundation-showcase). Skip if `xplane-
 `xplane-qwen-coder-fim` is not LoRA-enabled. Quick latency probe:
 
 ```bash
-time curl -s https://llm.priv.cloud.ogenki.io/v1/completions \
+time curl -s https://llm.priv.aws.ogenki.io/v1/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "xplane-qwen-coder-fim", "prompt": "def fibonacci(n):\n    if n <", "max_tokens": 8}' \
   > /dev/null
@@ -1058,7 +1058,7 @@ time curl -s https://llm.priv.cloud.ogenki.io/v1/completions \
 Expected: <200ms p95 over 10 sequential requests (loop or use `hey`).
 
 ```bash
-hey -n 10 -c 1 -m POST -H "Content-Type: application/json" -d '{"model": "xplane-qwen-coder-fim", "prompt": "def f(n):\n    if n <", "max_tokens": 8}' https://llm.priv.cloud.ogenki.io/v1/completions
+hey -n 10 -c 1 -m POST -H "Content-Type: application/json" -d '{"model": "xplane-qwen-coder-fim", "prompt": "def f(n):\n    if n <", "max_tokens": 8}' https://llm.priv.aws.ogenki.io/v1/completions
 ```
 
 Expected: p95 < 200ms.

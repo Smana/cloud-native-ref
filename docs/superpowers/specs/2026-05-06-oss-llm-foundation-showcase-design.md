@@ -126,9 +126,9 @@ client → Tailscale (tag:k8s) → Envoy AI Gateway (envoy-gateway-system)
 
 | Surface | Tool | Endpoint | Model picked |
 |---|---|---|---|
-| **VSCode IDE** | Continue extension | `https://llm.priv.cloud.ogenki.io/v1` | `xplane-qwen-coder-fim` (autocomplete) + `xplane-qwen-coder` (chat / edit / apply) |
+| **VSCode IDE** | Continue extension | `https://llm.priv.aws.ogenki.io/v1` | `xplane-qwen-coder-fim` (autocomplete) + `xplane-qwen-coder` (chat / edit / apply) |
 | **Terminal CLI** | OpenCode (`github.com/sst/opencode`) | same | `xplane-qwen-coder` (default model in `~/.opencode/config.toml`); per-subagent overrides per the `coding-clients.md` table |
-| **Web chat** | OpenWebUI (`chat.priv.cloud.ogenki.io`, already deployed in PR #1434) | same | `MoM` default; user can pick any `xplane-*` from the dropdown |
+| **Web chat** | OpenWebUI (`chat.priv.aws.ogenki.io`, already deployed in PR #1434) | same | `MoM` default; user can pick any `xplane-*` from the dropdown |
 
 **OpenCode is the OSS agent-loop client**, demonstrating "Claude Code-shaped agentic coding without Anthropic." Setup lives in the standalone `Smana/opencode-config` repo (`docs/2026-05-05-opencode-migration-design.md`).
 
@@ -249,7 +249,7 @@ This doc is the **load-bearing artifact for "foundations for considering self-ho
 > 🧠 **Models**: Qwen2.5-Coder-7B, Qwen3-8B, LlamaGuard 3-1B, Qwen2.5-Coder-1.5B (FIM) — vLLM-served, fp8.
 > 🚪 **Gateway**: Envoy AI Gateway with header-match routing, KEDA HTTP add-on for scale-from-zero on the model layer.
 > 🎯 **Routing**: vLLM Semantic Router (Iris) classifies prompts and dispatches via a cascade (code → coder, math → reasoner, multilingual → general, jailbreak → guardrail).
-> 🔌 **Clients**: OpenAI-compatible at `https://llm.priv.cloud.ogenki.io/v1` — OpenWebUI for chat, OpenCode + Continue for IDE.
+> 🔌 **Clients**: OpenAI-compatible at `https://llm.priv.aws.ogenki.io/v1` — OpenWebUI for chat, OpenCode + Continue for IDE.
 > 💾 **Storage**: model weights on Amazon S3 Files, shared across pods.
 > ⚡ **Scaling**: GPU L4 spot NodePool via Karpenter, 1 always-warm L4 (FIM), all other models scale-from-zero on first request (~60–180s cold-start).
 >
@@ -259,7 +259,7 @@ This doc is the **load-bearing artifact for "foundations for considering self-ho
 >
 > ```bash
 > # 1. AWS side (S3 Files + IAM)
-> TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/llm-platform script run deploy
+> TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
 >
 > # 2. Cluster side (Flux umbrella)
 > flux resume kustomization llm-platform -n flux-system
