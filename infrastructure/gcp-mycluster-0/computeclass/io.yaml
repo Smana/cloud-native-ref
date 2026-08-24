@@ -1,0 +1,85 @@
+# IO-optimised ComputeClass — the GCP counterpart to
+# infrastructure/base/karpenter-nodepools/io-nodepool.yaml.
+#
+# For workloads that want local NVMe rather than network-attached disk. The
+# `ogenki/io` taint key is kept IDENTICAL to the AWS NodePool's on purpose: it is
+# a platform convention, not a cloud detail, so a workload's toleration is the
+# one part of its manifest that does not have to change between clouds.
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: io
+spec:
+  # machineType, NOT machineFamily — and that is forced, not stylistic. GKE's
+  # admission webhook rejects the family form outright:
+  #
+  #   compute-class "io" doesn't support local ssd without machine type or
+  #   GPU config
+  #
+  # Local SSD attachment is a per-machine-type property, so the class has to name
+  # the type. The cost is a narrower fallback list than general-purpose gets:
+  # two explicit sizes rather than "any n2".
+  #
+  # localSSDCount is what makes this class different from general-purpose. GCP
+  # attaches Local SSD as fixed 375 GiB devices, so the count is a device count,
+  # not a size.
+  #
+  # MEASURED 2026-08-24, because it was not obvious: the Local SSD does back POD
+  # EPHEMERAL STORAGE, it is not merely a raw block device. A provisioned node
+  # reported 385926528Ki (~368 GiB) of ephemeral-storage capacity on a 50 GB boot
+  # disk, which is the Local SSD and nothing else. So this class does give
+  # ephemeral-hungry pods what they need, and the parity with the AWS io pool
+  # (which uses `instanceStorePolicy: RAID0` to the same end) holds.
+  #
+  # Both entries are n2: the smaller first so a modest IO workload does not
+  # provision a large node, with the larger as the capacity fallback. Sticking to
+  # one family keeps this predictable; c3 would need its distinct `-lssd` machine
+  # types, which is a second thing to get right for no benefit on a test cluster.
+  priorities:
+    - machineType: n2-standard-4
+      spot: true
+      storage:
+        localSSDCount: 1
+    - machineType: n2-standard-8
+      spot: true
+      storage:
+        localSSDCount: 1
+
+  # Same rationale as general-purpose: criterion 14 forbids on-demand fallback,
+  # so exhausted spot leaves pods Pending rather than quietly costing more.
+  whenUnsatisfiable: DoNotScaleUp
+
+  nodePoolConfig:
+    # ┌──────────────────────────────────────────────────────────────────────┐
+    # │ WORKLOADS MUST TOLERATE **BOTH** TAINTS BELOW                        │
+    # └──────────────────────────────────────────────────────────────────────┘
+    #
+    #   tolerations:
+    #     - key: node.cilium.io/agent-not-ready
+    #       operator: Exists
+    #       effect: NoSchedule
+    #     - key: ogenki/io
+    #       operator: Exists
+    #       effect: NoSchedule
+    #
+    # The Cilium taint is not optional — without it nothing scales up. See
+    # general-purpose.yaml and ADR-0006.
+    #
+    # `ogenki/io` is this class's own: it keeps general-purpose workloads off
+    # nodes provisioned for their local disk, which are fewer and dearer.
+    # Identical key and value to the AWS io NodePool, so a workload's
+    # tolerations are portable between clouds.
+    taints:
+      - key: node.cilium.io/agent-not-ready
+        value: "true"
+        effect: NoSchedule
+      - key: ogenki/io
+        value: "true"
+        effect: NoSchedule
+
+    # Must match the static pool and the NAP default — see the image_type note in
+    # opentofu/gcp/gke/init/main.tf for why COS specifically.
+    imageType: cos_containerd
+
+  nodePoolAutoCreation:
+    enabled: true

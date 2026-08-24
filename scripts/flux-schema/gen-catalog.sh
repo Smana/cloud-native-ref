@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the local JSON-Schema catalog consumed by `flux schema validate`.
 #
-# Three sources (SPEC-007 FR-002):
+# Four sources (SPEC-007 FR-002):
 #   1. The repo's own Crossplane XRDs  -> cloud.ogenki.io/*
 #   2. Envoy AI Gateway CRDs           -> aigateway.envoyproxy.io/*
 #      (absent from the hosted ecosystem catalog)
@@ -12,6 +12,9 @@
 #      variant. Generating them here from the same OCI pin Flux installs makes
 #      the local catalog win over the stale ecosystem entry, matching the
 #      deployed CRD exactly.)
+#   4. GKE ComputeClass CRD            -> cloud.google.com/v1 ComputeClass
+#      (VENDORED rather than rendered: unlike the three above, GKE installs this
+#      CRD itself and publishes no chart to render it from.)
 #
 # The catalog is generated, never committed, so it cannot drift from the XRDs.
 #
@@ -188,6 +191,10 @@ echo "==> Extracting JSON Schemas into ${build_dir}/"
 "${FLUX_BIN}" schema extract crd "${tmp}/aigateway-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/karpenter-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/barman-crds.yaml" -d "${build_dir}"
+# GKE ComputeClass. Vendored rather than rendered: unlike the three above, GKE
+# installs this CRD itself and publishes no chart to render it from. See the
+# header of the file for how it was captured and when to refresh it.
+"${FLUX_BIN}" schema extract crd "${REPO_ROOT}/scripts/flux-schema/vendored-crds/gke-computeclass.yaml" -d "${build_dir}"
 
 echo "==> Verifying the catalog is complete"
 for kind in app sqlinstance inferenceservice epi; do

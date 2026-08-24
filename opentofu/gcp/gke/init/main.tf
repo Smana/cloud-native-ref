@@ -136,6 +136,72 @@ module "gke" {
   # `terramate script run destroy` fail rather than protect anything of value.
   deletion_protection = false
 
+  # ── 6. NODE AUTO-PROVISIONING (ADR-0006) ──────────────────────────────────
+  # This is what makes a ComputeClass able to CREATE node pools rather than only
+  # select among existing ones. Without it a ComputeClass with
+  # nodePoolAutoCreation still schedules, but only onto pools that already exist,
+  # so nothing new is ever provisioned and the slice's whole premise is untested.
+  #
+  # The ceiling is design criterion 16: an oversized workload must stay
+  # Unschedulable rather than growing the cluster without bound. Why the specific
+  # numbers are what they are lives on the variables in variables.tf.
+  #
+  # image_type MUST match the static pool's (criterion 14). Cilium's DaemonSet is
+  # built around a writable /home/kubernetes/bin on Container-Optimized OS; an
+  # auto-created node on a different image would fail the same way the very first
+  # GKE deploy did, but only on nodes nobody created by hand.
+  #
+  # OPTIMIZE_UTILIZATION over BALANCED: criterion 17 wants empty auto-created
+  # pools removed on scale-down, and BALANCED is deliberately reluctant to do so.
+  # The trade is more pod churn, which is acceptable here and would not be on a
+  # latency-sensitive platform.
+  cluster_autoscaling = {
+    enabled             = true
+    autoscaling_profile = "OPTIMIZE_UTILIZATION"
+
+    min_cpu_cores = 0
+    max_cpu_cores = var.autoscaling_max_cpu_cores
+    min_memory_gb = 0
+    max_memory_gb = var.autoscaling_max_memory_gb
+
+    # REQUIRED for the gpu-l4 ComputeClass to provision anything. NAP will not
+    # create a node with an accelerator that has no resourceLimits entry, so an
+    # empty list here silently caps GPU autoscaling at zero -- the class applies
+    # cleanly, pods stay Pending, and nothing says why.
+    #
+    # nvidia-l4 only, matching the class and the reason europe-west4 was chosen
+    # (see opentofu/config.tm.hcl). Maximum 2 is a test-cluster ceiling: L4s are
+    # the most expensive thing this repository can provision, and criterion 16
+    # wants an oversized workload to stay Unschedulable rather than scale into a
+    # bill.
+    gpu_resources = [
+      {
+        resource_type = "nvidia-l4"
+        minimum       = 0
+        maximum       = 2
+      },
+    ]
+
+    auto_repair  = true
+    auto_upgrade = true
+
+    image_type = var.node_image_type
+
+    # COST. This is a test cluster that gets rebuilt, so the cheap option wins
+    # wherever it is not actively misleading.
+    #
+    # Both of these are otherwise left on module defaults of 100 GB pd-standard
+    # -- TWICE the static pool's disk, which is the sort of thing that costs
+    # money quietly because nobody set it.
+    #
+    # 50 GB matches the static pool rather than being an independent guess.
+    # pd-standard is the cheapest disk type; the static pool uses pd-balanced,
+    # so if auto-created nodes ever behave worse than hand-created ones under
+    # image pulls or log writes, this asymmetry is the first thing to look at.
+    disk_size = var.node_disk_size_gb
+    disk_type = "pd-standard"
+  }
+
   node_pools = [
     {
       name         = "static"

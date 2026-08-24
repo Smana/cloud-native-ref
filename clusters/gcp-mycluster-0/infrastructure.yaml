@@ -1,0 +1,35 @@
+# GCP-only infrastructure for this cluster.
+#
+# Points at infrastructure/gcp-mycluster-0, NOT at infrastructure/base — that
+# tree is AWS-shaped (Karpenter, aws-load-balancer-controller, EKS Pod
+# Identities) and applying it here would fail on resources whose CRDs do not
+# exist. The GCP tree is deliberately minimal until the design's slices 6-7
+# settle which parts of the shared tree are genuinely cloud-neutral.
+#
+# It sources infra-artifact, which flux/artifact-generators/monorepo-split.yaml
+# already builds from `@repo/infrastructure/**` — so the new directory needs no
+# generator change, only this Kustomization.
+#
+# No dependsOn: crds. The only resource here is a ComputeClass, whose CRD is
+# installed by GKE itself (`cloud.google.com/v1`, present on a fresh cluster)
+# rather than by crds/base. Adding that edge would couple this to a Kustomization
+# it does not need and delay it behind the whole upstream CRD set.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  path: ./infrastructure/gcp-mycluster-0
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  dependsOn:
+    # Currently inert -- a ComputeClass is cluster-scoped and this path holds
+    # nothing namespaced. Kept as future-proofing: this is the GCP cluster's only
+    # infrastructure Kustomization, so the first namespaced resource added here
+    # would otherwise race its namespace, which is a failure that presents as a
+    # dependency cascade rather than as a missing namespace.
+    - name: namespaces

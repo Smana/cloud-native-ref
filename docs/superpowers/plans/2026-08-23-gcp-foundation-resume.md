@@ -97,6 +97,20 @@ flux reconcile source git flux-system
   failure mode, `depends_on` gaps, and the `clusters/gcp-mycluster-0/` Flux wiring.
   Two review agents produced nothing across repeated asks.
 
+### GPU quota — blocks slice 4's last criterion
+
+`GPUS_ALL_REGIONS` on project `ogenki-435905` is **0**, so no GPU node can be
+created at any price. Criterion 15 ("a GPU pod with no `runtimeClassName` sees
+the device via `nvidia-smi`") is therefore blocked rather than failed — the
+`gpu-l4` ComputeClass is proven correct up to the point of provisioning.
+
+Do **not** diagnose this from the regional quota: `NVIDIA_L4_GPUS` in
+`europe-west4` shows a limit of 1, which looks fine and is meaningless while the
+global cap is zero. Spot attempts fail with `GCE out of resources` and on-demand
+with `GCE quota exceeded`; only the second points at the real cause.
+
+Closing it needs a quota increase request to Google, not a retry.
+
 ### ClusterMesh prerequisites (recorded in ADR-0017, not implemented)
 
 - `cluster.id` is unset on both clusters; ClusterMesh needs a unique 1–255 ID.
