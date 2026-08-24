@@ -101,10 +101,35 @@ resource "google_project_iam_custom_role" "crossplane_dns" {
   ]
 }
 
+# The Secret Manager role External Secrets is permitted to receive.
+#
+# Pre-created for the same reason as crossplane_dns: `hasOnly` matches exact
+# role names, so a role the composition names at render time can never be
+# allowlisted. Deterministic name, therefore allowlistable.
+#
+# `versions.access` only. NOT secretmanager.secrets.create/delete — External
+# Secrets READS; anything that writes or destroys a secret is outside its job
+# and outside the platform constitution's "no deletion permissions for stateful
+# services" rule.
+resource "google_project_iam_custom_role" "crossplane_secret_reader" {
+  project     = var.project_id
+  role_id     = "xplane_secret_reader"
+  title       = "Crossplane Secret Manager reader"
+  description = "Read secret payloads for External Secrets. No create, no delete; see opentofu/gcp/gke/init/iam.tf."
+
+  permissions = [
+    "secretmanager.versions.access",
+    "secretmanager.versions.list",
+    "secretmanager.secrets.get",
+    "secretmanager.secrets.list",
+  ]
+}
+
 locals {
   # Roles Crossplane may grant. Keep tight; grow on evidence.
   crossplane_grantable_roles = [
     google_project_iam_custom_role.crossplane_dns.name,
+    google_project_iam_custom_role.crossplane_secret_reader.name,
   ]
 
   # TRAP 1, and it is silent: `projects/` takes the project NUMBER while
