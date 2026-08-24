@@ -357,18 +357,34 @@ Falsifiable, verified against a live cluster.
 certificates and are easy to conflate; they are separable and only one needs
 OpenBao.*
 
-**The split.** Workstream 10 gives **public** certificates — cert-manager's
-clouddns DNS-01 solver against Let's Encrypt, for names under
-`priv.gcp.ogenki.io`. Workstream 11 gives **private** certificates from OpenBao's
-own PKI, the GCP counterpart to what `bao.priv.aws.ogenki.io` serves today. Only
-11 requires running OpenBao, and it depends only on workstream 1 (network), so it
-is not blocked by slice 5.
+**The split.** Workstream 11 gives **private** certificates from OpenBao's own
+PKI, the GCP counterpart to what `bao.priv.aws.ogenki.io` serves today, for names
+under `priv.gcp.ogenki.io`. Workstream 10 covers `external-dns` plus **public**
+certificates, which are for `cloud.ogenki.io` — [ADR-0017](../../../website/content/docs/decisions/0017-multi-cloud-dns-naming.md)
+keeps the public zone cloud-agnostic and `priv.<cloud>.ogenki.io` private.
 
-**Why GCP needs its own OpenBao at all.** Per the 2026-08-23 correction above:
+Only 11 requires running OpenBao, and it depends only on workstream 1 (network),
+so it is not blocked by slice 5.
+
+> **Open question, surfaced 2026-08-24 while writing this section: workstream 10's
+> DNS-01 has nothing to solve against on GCP.** `opentofu/gcp/network/dns.tf`
+> creates a **private** Cloud DNS zone and nothing else, while Let's Encrypt must
+> resolve the `_acme-challenge` TXT record **publicly**. `cloud.ogenki.io` is a
+> Route53 zone that this repository does not even manage — it appears only as a
+> `data` lookup. So "cert-manager clouddns DNS-01" is not yet a complete plan.
+>
+> Three ways out, none chosen: solve DNS-01 against **Route53** from the GCP
+> cluster (works today, but reintroduces exactly the cross-cloud dependency
+> option A was rejected for); **delegate** a public subdomain to a new public
+> Cloud DNS zone (clean, needs a registrar change and a public zone this repo
+> would then own); or serve **no public certificates from GCP at all** and keep
+> public ingress on AWS — which is coherent while GCP has no public endpoints.
+>
+> Worth settling before workstream 10 starts, not during it. Nothing about it
+> affects workstream 11, which is self-contained.
+
+**Why GCP needs its own OpenBao at all.** See the 2026-08-23 correction above:
 OpenBao *the product* is cloud-agnostic, our OpenBao *stacks* are not.
-`openbao/management` configures both the `vault` and `aws` providers and reads
-its root token, the cert-manager AppRole and the operator password from AWS
-Secrets Manager; `openbao/cluster` is ASG, ELB, KMS and Route53 throughout.
 
 #### Options considered
 

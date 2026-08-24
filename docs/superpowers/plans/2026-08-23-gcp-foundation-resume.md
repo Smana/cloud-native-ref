@@ -99,26 +99,21 @@ flux reconcile source git flux-system
 
 ### Private certificates need their own OpenBao on GCP
 
-Decided 2026-08-24, recorded in the design under *Private certificates on GCP*:
-each cloud runs its own OpenBao with its **own root CA** (option B), rather than
-sharing AWS's over the tailnet or cross-signing a common root.
+**Decided 2026-08-24. Rationale and options live in the design under *Private
+certificates on GCP*** — not repeated here, because this file is the one edited
+on resume and the two would drift.
 
-Two workstreams, often conflated and worth keeping apart:
+What matters for sequencing:
 
-- **10** — public certs, cert-manager clouddns DNS-01. Depends on slice 5.
-- **11** — private certs, OpenBao on GCP (MIG + internal LB + Cloud KMS
-  auto-unseal). Depends only on workstream 1, so it is **not blocked by slice 5**
+- **Workstream 11** (private certs, OpenBao on GCP: MIG + internal LB + Cloud KMS
+  auto-unseal) depends only on workstream 1, so it is **not blocked by slice 5**
   and can start whenever.
-
-The deciding argument came from this very rebuild: the domain rename forced a new
-server certificate, and re-issuing under the old chain was impossible because the
-intermediate that signed it had no private key stored anywhere — OpenBao had
-issued it. Cross-cloud PKI ceremony is the first thing to break on a platform
-rebuilt daily, and it breaks at rebuild time.
-
-Carry into workstream 11: tailnet clients must trust both roots; GCP needs its
-own Secret Manager entries for the root token and cert-manager AppRole; Cloud KMS
-auto-unseal is what makes an unattended rebuild possible.
+- **Workstream 10** (external-dns + public certs) is blocked on an open question
+  the design records: GCP has only a *private* Cloud DNS zone, so DNS-01 has
+  nothing publicly resolvable to solve against. Settle that before starting it.
+- The decision is **two OpenBaos, two roots** — so workstream 11 needs its own
+  GCP Secret Manager entries for the root token and cert-manager AppRole, and
+  tailnet clients end up trusting both roots.
 
 ### GPU quota — blocks slice 4's last criterion
 

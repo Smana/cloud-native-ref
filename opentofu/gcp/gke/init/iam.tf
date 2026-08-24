@@ -2,8 +2,24 @@
 #
 # This file previously granted roles/editor project-wide and was REMOVED in
 # #1818, because Crossplane was not deployed on GCP at all and the grant had no
-# consumer. Slice 5 gives it one, so it comes back — deliberately scoped this
-# time, with the two traps that cost real time recorded below.
+# consumer. It comes back for slice 5 — deliberately scoped this time, with
+# everything that was measured rather than assumed recorded below.
+#
+# HONEST CAVEAT: the consumer still does not exist. Crossplane is not yet
+# deployed on GCP, so this binding again lands ahead of the workload it is for,
+# which is the situation #1818 removed the old one over. Two things make that
+# acceptable where roles/editor was not:
+#
+#   - The blast radius is one role. Anyone able to create a ServiceAccount named
+#     `provider-gcp` in crossplane-system could assume this identity, but all it
+#     can then do is grant roles/dns.admin -- not grant itself owner, which is
+#     what editor allowed.
+#   - It is a prerequisite, not a leftover: the GCP provider cannot authenticate
+#     without it, so it has to precede the deployment rather than follow it.
+#
+# If slice 5 stalls, REMOVE THIS AGAIN rather than letting it sit. The reasoning
+# that justified deleting the last one applies to a narrow grant too, just more
+# slowly.
 #
 # ── WHAT IT REPLACES ────────────────────────────────────────────────────────
 #
@@ -43,14 +59,14 @@ locals {
     "principal://iam.googleapis.com/projects/${data.google_project.this.number}",
     "/locations/global/workloadIdentityPools/${var.project_id}.svc.id.goog",
     # sa/provider-gcp, NOT sa/crossplane. The PROVIDER pod makes the cloud API
-    # calls; Crossplane core never talks to GCP. The name is set by the
-    # DeploymentRuntimeConfig's serviceAccountTemplate in
-    # infrastructure/gcp-mycluster-0/crossplane/providers/ and the two MUST agree
-    # -- the AWS side binds crossplane-system/provider-aws for the same reason
-    # (opentofu/aws/eks/init/iam.tf).
+    # calls; Crossplane core never talks to GCP -- the AWS side binds
+    # crossplane-system/provider-aws for the same reason
+    # (opentofu/aws/eks/init/iam.tf:56-57).
     #
-    # Getting this wrong fails exactly like TRAP 1: the binding is accepted, it
-    # simply never matches, and the error points nowhere.
+    # OBLIGATION ON SLICE 5, not a description of something that exists: when the
+    # GCP provider tree is written, its DeploymentRuntimeConfig MUST name this
+    # ServiceAccount `provider-gcp`. Nothing checks that the two agree, and a
+    # mismatch fails in the same silent way as TRAP 1.
     "/subject/ns/crossplane-system/sa/provider-gcp",
   ])
 
@@ -62,8 +78,6 @@ locals {
   # so an expression mixing exact matches with a `startsWith` prefix cannot be
   # written. Measured 2026-08-24, not read in docs.
   #
-  # The consequence is deliberate and recorded below: exact role names only,
-  # therefore no support for dynamically-named custom roles.
   crossplane_grant_condition = join("", [
     "api.getAttribute('iam.googleapis.com/modifiedGrantsByRole', []).hasOnly([",
     join(",", [for r in local.crossplane_grantable_roles : "'${r}'"]),
@@ -106,9 +120,8 @@ resource "google_project_iam_member" "crossplane_iam_admin" {
 # either dropping the condition — restoring the escalation path this file exists
 # to close — or enumerating names that do not exist yet.
 #
-# So the capability is deferred rather than half-granted. Slice 5's actual need
-# (criterion 21: external-dns records and cert-manager's DNS-01 challenge) is
-# served entirely by roles/dns.admin.
+# So the capability is deferred rather than half-granted; the allowlist above
+# covers what slice 5 actually needs.
 #
 # To enable customRole later: add roles/iam.roleAdmin, and either accept an
 # unconditioned projectIamAdmin or pre-create the custom roles in OpenTofu so
