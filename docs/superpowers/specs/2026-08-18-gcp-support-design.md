@@ -299,14 +299,22 @@ kind: GCPWorkloadIdentity
 metadata: { name: external-dns, namespace: infrastructure }
 spec:
   serviceAccount: { name: external-dns, namespace: infrastructure }
-  roles: [roles/dns.admin]              # predefined roles, named as GCP names them
-  customRole:                            # optional — creates + binds a custom role
-    permissions: [dns.resourceRecordSets.create]
+  roles: [projects/ogenki-435905/roles/xplane_dns_editor]
 ```
 
-Renders one **`ProjectIAMMember`** per role, member = the `principal://` KSA string, plus a
-`ProjectIAMCustomRole` when `customRole.permissions` is set. No Google service account, no
-annotation. `xplane-*` prefix owned by the composition.
+Renders one **`ProjectIAMMember`** per role, member = the `principal://` KSA string. No Google
+service account, no annotation. `xplane-*` prefix owned by the composition.
+
+> **`roles:` may only name roles the OpenTofu allowlist permits**, and as of 2026-08-24 that is the
+> single pre-created `xplane_dns_editor` — *not* `roles/dns.admin`, which was the first draft and was
+> dropped for carrying zone deletion and response policies (see `opentofu/gcp/gke/init/iam.tf` for
+> the full reasoning). A claim naming anything else is refused by the IAM condition, not by the
+> composition, so the error surfaces at the provider and names the role.
+>
+> **`customRole.permissions` is unusable on this platform** and should not appear in claims. The
+> condition matches exact role names via `hasOnly`, and a role the composition names at render time
+> cannot be allowlisted in advance. Adding a capability means adding a
+> `google_project_iam_custom_role` in OpenTofu and referencing it — the same two-step every time.
 
 **Two hard constraints, both silent-failure classes:**
 
