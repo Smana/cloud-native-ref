@@ -86,6 +86,19 @@ FIXTURE_VARS = {
     "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com",
     "cluster_endpoint_full": "https://example.eks.amazonaws.com",
     "karpenter_queue_name": "karpenter-foobar",
+    # GCP. Without these, VAR_RE.sub passes the name through verbatim and CI
+    # renders GCP manifests still containing a literal ${project_id}. They pass
+    # gate 1 anyway — every target field is a free-form string — so the GCP
+    # substitution path would be validated without ever being exercised, which is
+    # the silent skip SPEC-007 exists to prevent.
+    "project_id": "ogenki-435905",
+    # Unquoted on purpose: this is what Flux actually substitutes, and a bare
+    # 12-digit number parses as an int downstream. Keeping the fixture faithful
+    # is what lets CI catch a consumer that assumes a string.
+    "project_number": "323586397743",
+    "workload_pool": "ogenki-435905.svc.id.goog",
+    "zone": "europe-west4-a",
+    "network_name": "vpc-foobar",
 }
 
 KUBE_VERSION = "1.31.0"

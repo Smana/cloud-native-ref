@@ -1,0 +1,33 @@
+# Per-cluster values the GCP Compositions read, substituted by Flux from
+# gke-<cluster>-vars (created by opentofu/gcp/gke/configure/kubernetes.tf).
+#
+# Separate from `eks-environment` rather than a shared name with per-cloud keys:
+# a composition reads one EnvironmentConfig by name, and a single name holding
+# whichever cloud's keys happened to be substituted would resolve to empty
+# strings on the wrong cloud instead of failing.
+#
+# projectNumber arrives as an INT, not a string.
+#
+# Flux substitutes into the rendered YAML text, so a 12-digit project number
+# lands as a bare scalar and parses as an integer. Quoting it here does NOT help
+# — kustomize drops quotes it considers unnecessary, so `"${project_number}"`
+# renders back to bare `${project_number}` before substitution ever runs
+# (verified with `kustomize build`, not assumed). Crossplane's EnvironmentConfig
+# accepts it because `data` preserves arbitrary JSON.
+#
+# GCPWorkloadIdentity handles this with `str()` — see `_projectNumber` in that
+# module. The fixture in scripts/flux-schema/render-bundle.py keeps the same
+# unquoted shape so CI exercises the real value rather than a friendlier one.
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: gke-environment
+data:
+  clusterName: ${cluster_name}
+  projectID: ${project_id}
+  projectNumber: ${project_number}
+  workloadPool: ${workload_pool}
+  region: ${region}
+  zone: ${zone}
+  networkName: ${network_name}
+  privateDomainName: ${private_domain_name}

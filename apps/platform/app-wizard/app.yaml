@@ -298,7 +298,7 @@ spec:
   #      (COMPOSITION_PATH/FUNCTIONS_PATH/ENVCONFIG_PATH). Until both are in
   #      place, /api/render-preview returns a friendly error and the form still
   #      works (validation gates are independent). Tracked for the cluster.
-  # Versions mirror infrastructure/base/crossplane/configuration/functions.yaml.
+  # Versions mirror infrastructure/base/crossplane/functions/functions.yaml.
   # ---------------------------------------------------------------------------
   sidecars:
     - name: function-kcl

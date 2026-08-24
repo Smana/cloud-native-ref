@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: crossplane-system
+
+# GCP counterpart to configuration/. What the CLUSTER owns, as opposed to the
+# API contract that ships in a package.
+#
+# NO Configuration package is declared yet, and that is the one real gap in this
+# tree. crossplane-configuration-gcp has to be released from
+# Smana/crossplane-configuration first; pointing at an unpublished OCI tag here
+# would leave the Kustomization failing to pull on every reconcile.
+#
+# Adding it is a two-PR cutover, not a one-line pin — see ../README.md.
+resources:
+  - ../functions
+  - cluster-providerconfig-gcp.yaml
+  - environmentconfig.yaml

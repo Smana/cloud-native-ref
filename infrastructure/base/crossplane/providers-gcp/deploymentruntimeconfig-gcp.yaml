@@ -1,0 +1,16 @@
+# `provider-gcp` MUST match the subject in opentofu/gcp/gke/init/iam.tf. Nothing
+# validates that the two agree; rename either and the binding silently stops
+# matching. That file carries the full explanation.
+#
+# Every GCP provider shares this runtime config, so they all run under one
+# ServiceAccount and one binding — mirroring the AWS side, where five providers
+# share `aws-config` / `provider-aws`.
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: gcp-config
+spec:
+  serviceAccountTemplate:
+    metadata:
+      name: provider-gcp
+  deploymentTemplate: {}
