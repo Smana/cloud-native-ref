@@ -42,7 +42,16 @@ locals {
   crossplane_principal = join("", [
     "principal://iam.googleapis.com/projects/${data.google_project.this.number}",
     "/locations/global/workloadIdentityPools/${var.project_id}.svc.id.goog",
-    "/subject/ns/crossplane-system/sa/crossplane",
+    # sa/provider-gcp, NOT sa/crossplane. The PROVIDER pod makes the cloud API
+    # calls; Crossplane core never talks to GCP. The name is set by the
+    # DeploymentRuntimeConfig's serviceAccountTemplate in
+    # infrastructure/gcp-mycluster-0/crossplane/providers/ and the two MUST agree
+    # -- the AWS side binds crossplane-system/provider-aws for the same reason
+    # (opentofu/aws/eks/init/iam.tf).
+    #
+    # Getting this wrong fails exactly like TRAP 1: the binding is accepted, it
+    # simply never matches, and the error points nowhere.
+    "/subject/ns/crossplane-system/sa/provider-gcp",
   ])
 
   # Grants are limited to the allowlist above, and nothing else.
