@@ -55,15 +55,13 @@ spec:
     #       operator: Exists
     #       effect: NoSchedule
     #
-    # The Cilium one is not optional: without it NOTHING SCALES UP. The
-    # autoscaler simulates against a node carrying the class's taints and judges
-    # an untolerating pod unplaceable, so it never provisions. Measured on
-    # 2026-08-24 with general-purpose — ten minutes Pending, no TriggeredScaleUp
-    # event at all. See ADR-0006 and general-purpose.yaml.
+    # The Cilium taint is not optional — without it nothing scales up. See
+    # general-purpose.yaml and ADR-0006.
     #
-    # `ogenki/io` is the deliberate one: it keeps general-purpose workloads off
-    # nodes provisioned for their local disk, which are more expensive and
-    # fewer. Identical key and value to the AWS io NodePool.
+    # `ogenki/io` is this class's own: it keeps general-purpose workloads off
+    # nodes provisioned for their local disk, which are fewer and dearer.
+    # Identical key and value to the AWS io NodePool, so a workload's
+    # tolerations are portable between clouds.
     taints:
       - key: node.cilium.io/agent-not-ready
         value: "true"
@@ -72,8 +70,8 @@ spec:
         value: "true"
         effect: NoSchedule
 
-    # Must match the static pool and the NAP default. Cilium's DaemonSet needs a
-    # writable /home/kubernetes/bin, which is a Container-Optimized OS path.
+    # Must match the static pool and the NAP default — see the image_type note in
+    # opentofu/gcp/gke/init/main.tf for why COS specifically.
     imageType: cos_containerd
 
   nodePoolAutoCreation:

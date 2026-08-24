@@ -27,4 +27,9 @@ spec:
     kind: ExternalArtifact
     name: infra-artifact
   dependsOn:
+    # Currently inert -- a ComputeClass is cluster-scoped and this path holds
+    # nothing namespaced. Kept as future-proofing: this is the GCP cluster's only
+    # infrastructure Kustomization, so the first namespaced resource added here
+    # would otherwise race its namespace, which is a failure that presents as a
+    # dependency cascade rather than as a missing namespace.
     - name: namespaces

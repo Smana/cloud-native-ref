@@ -143,9 +143,8 @@ module "gke" {
   # so nothing new is ever provisioned and the slice's whole premise is untested.
   #
   # The ceiling is design criterion 16: an oversized workload must stay
-  # Unschedulable rather than growing the cluster without bound. It is set low on
-  # purpose -- this is a reference platform, and the failure mode of a too-high
-  # limit is a bill rather than an error.
+  # Unschedulable rather than growing the cluster without bound. Why the specific
+  # numbers are what they are lives on the variables in variables.tf.
   #
   # image_type MUST match the static pool's (criterion 14). Cilium's DaemonSet is
   # built around a writable /home/kubernetes/bin on Container-Optimized OS; an

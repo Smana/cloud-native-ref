@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # Build the local JSON-Schema catalog consumed by `flux schema validate`.
 #
-# Three sources (SPEC-007 FR-002):
+# Four sources (SPEC-007 FR-002):
 #   1. The repo's own Crossplane XRDs  -> cloud.ogenki.io/*
 #   2. Envoy AI Gateway CRDs           -> aigateway.envoyproxy.io/*
 #      (absent from the hosted ecosystem catalog)
-#   4. GKE ComputeClass CRD            -> cloud.google.com/v1 ComputeClass
-#      (VENDORED, not rendered: GKE installs it and publishes no chart)
 #   3. Karpenter CRDs                  -> karpenter.k8s.aws/*, karpenter.sh/*
 #      (PRESENT in the hosted ecosystem catalog but STALE: it pins an older
 #      provider release that predates fields we use — e.g. EC2NodeClass
@@ -14,6 +12,9 @@
 #      variant. Generating them here from the same OCI pin Flux installs makes
 #      the local catalog win over the stale ecosystem entry, matching the
 #      deployed CRD exactly.)
+#   4. GKE ComputeClass CRD            -> cloud.google.com/v1 ComputeClass
+#      (VENDORED rather than rendered: unlike the three above, GKE installs this
+#      CRD itself and publishes no chart to render it from.)
 #
 # The catalog is generated, never committed, so it cannot drift from the XRDs.
 #

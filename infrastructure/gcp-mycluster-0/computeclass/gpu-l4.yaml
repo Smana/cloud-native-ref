@@ -50,12 +50,11 @@ spec:
     #       operator: Exists
     #       effect: NoSchedule
     #
-    # The Cilium one is not optional: without it NOTHING SCALES UP -- the
-    # autoscaler judges an untolerating pod unplaceable on a node that will carry
-    # the taint and never provisions. Measured 2026-08-24; see ADR-0006.
+    # The Cilium taint is not optional — without it nothing scales up. See
+    # general-purpose.yaml and ADR-0006.
     #
-    # `nvidia.com/gpu` is the conventional accelerator taint and is identical to
-    # the AWS pool's, so a GPU workload's tolerations are portable between clouds
+    # `nvidia.com/gpu` is the conventional accelerator taint, identical to the
+    # AWS pool's, so a GPU workload's tolerations are portable between clouds
     # even though everything under them differs.
     taints:
       - key: node.cilium.io/agent-not-ready
@@ -65,6 +64,8 @@ spec:
         value: "true"
         effect: NoSchedule
 
+    # Must match the static pool and the NAP default — see the image_type note in
+    # opentofu/gcp/gke/init/main.tf for why COS specifically.
     imageType: cos_containerd
 
   nodePoolAutoCreation:
