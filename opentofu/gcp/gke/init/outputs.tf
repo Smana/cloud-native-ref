@@ -4,13 +4,24 @@ output "cluster_name" {
 }
 
 output "cluster_endpoint" {
-  # NOT sensitive. It is an RFC1918 address that gke/configure publishes into a
-  # ConfigMap anyway, and marking it here taints everything downstream: the taint
-  # propagates through yamlencode into the whole Flux vars ConfigMap, hiding that
-  # entire resource's diff from every plan. Hiding a plan diff to protect a
-  # private IP is a bad trade. The CA certificate below stays sensitive.
+  # Deliberately NOT sensitive. It is an RFC1918 address that gke/configure
+  # publishes into a ConfigMap anyway, and marking it taints everything
+  # downstream: the taint propagates through yamlencode into the whole Flux vars
+  # ConfigMap, hiding that entire resource's diff from every plan. Hiding a plan
+  # diff to protect a private IP is a bad trade. The CA certificate stays
+  # sensitive.
+  #
+  # nonsensitive() is REQUIRED, not decoration. The CFT module marks its
+  # `endpoint` output sensitive, and OpenTofu refuses a root output that derives
+  # from a sensitive value unless the intent is explicit:
+  #
+  #   Error: Output refers to sensitive values
+  #
+  # Simply dropping `sensitive = true` is therefore not enough -- which is how
+  # this shipped broken: the review that unmarked it ran after the only GCP
+  # deploy, so the change was never applied until the 2026-08-24 rebuild.
   description = "Private control-plane endpoint, consumed by gke/configure"
-  value       = module.gke.endpoint
+  value       = nonsensitive(module.gke.endpoint)
 }
 
 output "cluster_ca_certificate" {
