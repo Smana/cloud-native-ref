@@ -87,3 +87,9 @@ variable "openbao_data_path" {
   type        = string
   default     = "/opt/openbao/data"
 }
+
+variable "enable_iap_ssh" {
+  description = "Open TCP 22 to Google's IAP forwarding range so an operator can SSH to a node whose boot failed. OFF by default: the tailnet already reaches this subnet, and an always-on admin path is a standing exposure."
+  type        = bool
+  default     = false
+}
