@@ -13,6 +13,7 @@ terraform {
 }
 
 # No google-beta here. Unlike opentofu/gcp/network, this stack consumes no
-# module that declares it -- every resource below (KMS key ring/key, service
-# account, IAM bindings) is a stable google_* resource. Do not add google-beta
-# by reflex; add it only when a resource actually needs it.
+# module that declares it -- the KMS key ring/key are read via data source
+# (see kms.tf), and every resource this stack manages (service account, IAM
+# bindings, the instance template, MIG) is a stable google_* resource. Do not
+# add google-beta by reflex; add it only when a resource actually needs it.

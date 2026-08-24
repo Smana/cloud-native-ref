@@ -1,6 +1,6 @@
 stack {
   name        = "GCP OpenBao Cluster"
-  description = "Cloud KMS auto-unseal key and OpenBao instance service account/IAM, ahead of compute and PKI configuration"
+  description = "Single-node OpenBao compute (instance template, MIG, boot script) plus its service account/IAM and auto-unseal wiring against a pre-existing Cloud KMS key, ahead of the load balancer and PKI configuration"
   id          = "d7c24921-dd6c-495d-ab43-db698e2d4724"
 
   # This stack reads the network stack's outputs via data.terraform_remote_state

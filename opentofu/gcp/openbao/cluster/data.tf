@@ -1,6 +1,8 @@
-# Scaffolding-only: not consumed by any resource in THIS stack yet. Kept for
-# Tasks 5/6 (compute, load balancer, PKI), which need the project number for
-# API calls the project ID alone can't address.
+# Scaffolding-only: not consumed by any resource in THIS stack yet. Task 5
+# (compute) shipped without needing the project number. Kept for Task 6 (load
+# balancer / DNS) or the management stack's PKI work, which may still need it
+# for API calls the project ID alone can't address; remove if neither ends up
+# using it.
 #tflint-ignore: terraform_unused_declarations
 data "google_project" "this" {
   project_id = var.project_id
