@@ -38,6 +38,7 @@ instance:
     size: "5Gi"
   sync:
     kind: GitRepository
+    # checkov:skip=CKV_SECRET_6:Not a secret -- this is the NAME of the Secret holding the Git credentials.
     pullSecret: "flux-system"
   kustomize:
     patches:

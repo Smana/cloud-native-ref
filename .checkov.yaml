@@ -1,0 +1,26 @@
+# Checkov configuration.
+#
+# Inline `checkov:skip=` comments are the preferred mechanism in this repo --
+# they keep the justification next to the code that needs it, and they show up
+# in review. This file is only for decisions that are genuinely REPO-WIDE, where
+# annotating every occurrence would be noise rather than documentation.
+#
+# Keep this list short. A skip here suppresses a rule everywhere, including in
+# code not yet written, so anything resource-specific belongs inline instead.
+
+skip-check:
+  # Terraform module sources use a commit hash.
+  #
+  # Every registry module in this repository is pinned by VERSION CONSTRAINT,
+  # not by commit hash -- the CFT modules on GCP (network, cloud-nat, cloud-dns,
+  # kubernetes-engine) and the terraform-aws-modules ones on AWS alike. That is a
+  # deliberate, uniform choice: version constraints are what the registry is for,
+  # they are readable in review, and Renovate can act on them.
+  #
+  # This is a repo-wide policy, so it belongs here rather than as an annotation
+  # repeated on every module block. `main` currently carries six open alerts of
+  # this rule, which is the same statement made accidentally.
+  #
+  # Revisit if the repo ever adopts commit pinning -- at which point this entry
+  # should be deleted rather than narrowed.
+  - CKV_TF_1
