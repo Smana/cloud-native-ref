@@ -351,16 +351,42 @@ Falsifiable, verified against a live cluster.
 11. A written monthly run-rate estimate exists (cluster fee, static pool, Cloud NAT, Cloud DNS,
     Tailscale instance) stating the zonal-vs-regional choice and its price delta.
 
-**Slice 4 (autoscaling)**
+**Slice 4 (autoscaling)** — *results recorded 2026-08-24, measured on gcp-mycluster-0.
+Four PASS, one partial, one blocked on a GCP quota. Each is annotated below.*
+
 
 12. A **freshly auto-created** node carries `node.cilium.io/agent-not-ready` at registration, and
     Cilium clears it. *This is the criterion the slice exists to test.*
+    - **PASS.** Set via `spec.nodePoolConfig.taints`; after scale-up the nodes retained only GKE's
+      own `cloud.google.com/compute-class` taint. **Unanticipated finding:** every workload
+      targeting a ComputeClass must *tolerate* that taint or NOTHING SCALES UP — the autoscaler
+      judges an untolerating pod unplaceable on a node that will carry it. Ten minutes Pending,
+      no `TriggeredScaleUp` at all. See ADR-0006.
 13. Across 5 scale-up cycles, 0 pods record `FailedCreatePodSandBox` referencing a missing CNI.
+    - **PARTIAL.** As worded it holds — nothing recorded a *missing* CNI. But tolerating pods can
+      land before the Cilium agent is up and log `plugin type="cilium-cni" failed (add) ... EOF`,
+      which is the CNI present with its agent starting. Self-heals (0 restarts);
+      `kube-system/metrics-server` hits the same on any fresh node. The toleration required by
+      criterion 12 is what reopens this window.
 14. `imageType` on every auto-created pool matches the pinned value; general-purpose nodes are
     spot with **zero** on-demand fallback.
+    - **PASS.** Auto-created nodes came up `e2-highcpu-4` with `spot=true` on `cos_containerd`.
+      NAP chose `highcpu` over `standard` unprompted — cheaper per vCPU.
 15. A GPU pod with **no** `runtimeClassName` sees the device via `nvidia-smi`.
+    - **BLOCKED — not failed.** Untestable in this project: `GPUS_ALL_REGIONS` is **0**, so no GPU
+      node can be created at any price. The per-region `NVIDIA_L4_GPUS: 1` is meaningless beneath
+      it — checking only the regional quota would wrongly suggest retrying later.
+      Spot attempt gave `GCE out of resources`; on-demand gave `GCE quota exceeded`.
+      Everything up to the GPU is proven: the class is selected, NAP resolves it to a
+      `g2-standard-4-gpu1` pool and attempts creation — which also confirms
+      `cluster_autoscaling.gpu_resources` is load-bearing (left empty, no scale-up is even
+      attempted). **Needs a GPUS_ALL_REGIONS quota grant from Google to close.**
 16. Cluster `resourceLimits` set; an oversized workload stays `Unschedulable` at the ceiling.
+    - **PASS.** A 64-vCPU pod against a 32-vCPU ceiling held `Pending` for 4 minutes, node count
+      never moved, autoscaler logged `NotTriggerScaleUp`. It refuses rather than grinding.
 17. Empty auto-created pools are removed on scale-down.
+    - **PASS.** All four auto-created nodes were reaped after the probe was deleted; back to the
+      2 static nodes with no intervention. `OPTIMIZE_UTILIZATION` was chosen for this.
 
 **Slice 5 (identity)**
 
