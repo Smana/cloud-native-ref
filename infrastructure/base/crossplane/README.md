@@ -61,9 +61,13 @@ because a `Provider` and a `ManagedResourceActivationPolicy` are cluster-scoped:
 | `providers/` | AWS | 5 provider packages, `aws-config` runtime config, activation policy, extra RBAC. |
 | `configuration/` | AWS | ProviderConfig (`PodIdentity`), `eks-environment`, the Configuration package pin. |
 | `providers-gcp/` | GCP | `provider-gcp-cloudplatform`, `gcp-config` runtime config, activation policy. |
-| `configuration-gcp/` | GCP | ProviderConfig (`InjectedIdentity` + `projectID`), `gke-environment`. No package pin yet. |
+| `configuration-gcp/` | GCP | ProviderConfig (`InjectedIdentity` + `projectID`), `gke-environment`, the Configuration package pin. |
 
-The GCP tree has no Configuration package because `crossplane-configuration-gcp` does not exist
-yet — that is the next piece of slice 5, and adding it is a two-PR cutover with `prune: disabled`
-on the first (packages adopt XRDs, but Flux prune deletes them in between, taking every claim with
-them).
+Both clouds pin their Configuration package by version. Bumping either one is a **two-PR cutover
+with `prune: disabled` on the first** whenever the XRDs it ships already exist on the cluster:
+a package *adopts* existing XRDs and preserves their uids, but Flux prune deletes them in the gap,
+and deleting an XRD destroys every claim it owns (#1774 / #1778).
+
+The GCP pin was introduced without that dance because no `GCPWorkloadIdentity` XRD or claim had ever
+existed on any cluster — nothing to adopt, nothing to destroy. That exemption is specific to a first
+install, and does not carry to the next cluster or the next bump.
