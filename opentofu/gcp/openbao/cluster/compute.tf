@@ -134,4 +134,24 @@ resource "google_compute_instance_group_manager" "openbao" {
     name = "https"
     port = 8200
   }
+
+  # Without this, GCP's default OPPORTUNISTIC update policy applies: the MIG
+  # adopts a new instance_template but does not replace the running instance.
+  # A `tofu apply` that bumps var.openbao_version or edits either boot script
+  # would report success while the node keeps running the OLD template
+  # indefinitely -- there is no second apply, no drift signal, nothing. AWS
+  # hit the analogous trap on its launch template (see
+  # opentofu/aws/openbao/cluster/autoscaling_group.tf around
+  # `update_default_version = true`); this is the MIG-shaped fix for the same
+  # failure mode.
+  #
+  # max_surge_fixed = 0 because this is a single-node MIG (target_size = 1):
+  # there is no second node to surge onto, so the replacement must free the
+  # one slot before creating its successor.
+  update_policy {
+    type                  = "PROACTIVE"
+    minimal_action        = "REPLACE"
+    max_unavailable_fixed = 1
+    max_surge_fixed       = 0
+  }
 }
