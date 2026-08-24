@@ -14,8 +14,6 @@ variable "region" {
   }
 }
 
-# Scaffolding-only: consumed by Task 5 (compute), not by this stack yet.
-#tflint-ignore: terraform_unused_declarations
 variable "zone" {
   description = "GCP zone for the OpenBao instance(s)"
   default     = "europe-west4-a"
@@ -53,23 +51,17 @@ variable "kms_crypto_key_name" {
   default     = "openbao-unseal"
 }
 
-# Scaffolding-only: consumed by Task 5 (compute), not by this stack yet.
-#tflint-ignore: terraform_unused_declarations
 variable "machine_type" {
   description = "GCE machine type for the OpenBao instance(s)"
   type        = string
   default     = "e2-small"
 }
 
-# Scaffolding-only: consumed by Task 5 (compute), not by this stack yet.
-#tflint-ignore: terraform_unused_declarations
 variable "openbao_version" {
   description = "OpenBao version to install on the instance(s)"
   type        = string
 }
 
-# Scaffolding-only: consumed by Task 5 (compute), not by this stack yet.
-#tflint-ignore: terraform_unused_declarations
 variable "data_disk_size_gb" {
   description = "Size in GB of the persistent disk backing OpenBao's raft storage"
   type        = number
@@ -82,8 +74,6 @@ variable "server_cert_secret_name" {
   default     = "openbao-priv-gcp-server-cert"
 }
 
-# Scaffolding-only: consumed by Task 5 (compute), not by this stack yet.
-#tflint-ignore: terraform_unused_declarations
 variable "openbao_data_path" {
   description = "Path on the instance's data disk where OpenBao stores its raft data"
   type        = string
