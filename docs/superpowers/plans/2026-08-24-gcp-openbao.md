@@ -117,7 +117,11 @@ tofu console -var-file=variables.tfvars <<< 'local.crossplane_grant_condition'
 ```
 Expected: output contains both `xplane_dns_editor` and `xplane_secret_reader`.
 If `tofu console` needs credentials and none are present, substitute:
-`grep -c 'google_project_iam_custom_role\.' iam.tf` → expect at least `4` (two definitions, two references).
+`grep -n 'google_project_iam_custom_role\.crossplane_secret_reader' iam.tf` → expect
+exactly one hit, inside the `crossplane_grantable_roles` local. Grep for the
+reference, not a count: `grep -c` counts matching LINES, and the trailing dot in
+that pattern matches only REFERENCES — `resource "google_project_iam_custom_role"`
+declarations use a quote and never match it.
 
 - [ ] **Step 6: Commit**
 
