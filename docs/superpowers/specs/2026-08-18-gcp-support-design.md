@@ -213,8 +213,8 @@ known rather than predicted.
 | 7 | Extract the Crossplane Configuration packages, OCI-released | 3 | **DONE 2026-08-19 (v0.1.0)** |
 | 8 | `objectStore` API migration + `App`/`SQLInstance` branching | 5, 7 | unblocked by 7 |
 | 9 | Object-storage call sites: Harbor (GCS driver), `openbao-snapshot` (GCS + Cloud KMS), CNPG barman (GCS) | 5, 8 |  |
-| 10 | DNS + PKI: `external-dns` google provider, cert-manager clouddns DNS-01 | 5 |  |
-| 11 | OpenBao on GCP: MIG + internal LB + Cloud KMS auto-unseal | 1 |  |
+| 10 | DNS + PKI: `external-dns` google provider, cert-manager clouddns DNS-01 (**public** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 5 |  |
+| 11 | OpenBao on GCP: MIG + internal LB + Cloud KMS auto-unseal (**private** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 1 |  |
 | 12 | Gateway/LB: GCP public-LB annotations, drop `aws-load-balancer-controller` | 3 |  |
 | 13 | Storage: `gp3` → `pd-balanced`/hyperdisk, EFS CSI → Filestore CSI | 3 |  |
 | 14 | GPU + LLM platform: GPU `ComputeClass`, GCS Fuse weights, no `runtimeclass-nvidia` | 4, 9 |  |
@@ -350,6 +350,76 @@ Falsifiable, verified against a live cluster.
     subnet.
 11. A written monthly run-rate estimate exists (cluster fee, static pool, Cloud NAT, Cloud DNS,
     Tailscale instance) stating the zonal-vs-regional choice and its price delta.
+
+### Private certificates on GCP
+
+*Added 2026-08-24, while scoping slice 5. Workstreams 10 and 11 both touch
+certificates and are easy to conflate; they are separable and only one needs
+OpenBao.*
+
+**The split.** Workstream 10 gives **public** certificates — cert-manager's
+clouddns DNS-01 solver against Let's Encrypt, for names under
+`priv.gcp.ogenki.io`. Workstream 11 gives **private** certificates from OpenBao's
+own PKI, the GCP counterpart to what `bao.priv.aws.ogenki.io` serves today. Only
+11 requires running OpenBao, and it depends only on workstream 1 (network), so it
+is not blocked by slice 5.
+
+**Why GCP needs its own OpenBao at all.** Per the 2026-08-23 correction above:
+OpenBao *the product* is cloud-agnostic, our OpenBao *stacks* are not.
+`openbao/management` configures both the `vault` and `aws` providers and reads
+its root token, the cert-manager AppRole and the operator password from AWS
+Secrets Manager; `openbao/cluster` is ASG, ELB, KMS and Route53 throughout.
+
+#### Options considered
+
+**A — Shared OpenBao.** GCP's cert-manager reaches `bao.priv.aws.ogenki.io` over
+the tailnet. No new infrastructure, one CA, one trust anchor. Rejected: it makes
+GCP certificate issuance hard-depend on AWS *and* on the tailnet, in a platform
+whose stated point is that each cloud stands alone. It is the same coupling this
+design already flags as undesirable for the Flux GitHub App secret.
+
+**B — Two OpenBaos, two roots. CHOSEN.** Each cloud runs its own OpenBao with its
+own root CA. Fully independent; matches [ADR-0007](../../../website/content/docs/decisions/0007-cloud-abstraction-boundaries.md)'s
+rule that platform-facing infrastructure stays cloud-shaped. Costs one extra
+trust anchor for tailnet clients.
+
+**C — Two OpenBaos, one shared root.** Each cloud holds its own intermediate,
+both signed by a common root: one trust anchor, independent operation. Rejected
+on operational grounds — it requires either copying the root PRIVATE KEY into GCP
+Secret Manager, doubling exposure of the most sensitive material the platform
+holds, or cross-signing GCP's intermediate at bootstrap, which is a manual
+ceremony **on every rebuild** of a platform whose lifecycle is
+build-validate-destroy.
+
+#### Why B, concretely
+
+The 2026-08-24 rebuild made the argument better than theory could. The private
+domain rename forced a new server certificate, and re-issuing it under the
+existing chain proved impossible: the intermediate that had signed it had **no
+private key stored anywhere**, because OpenBao issued it and the key never left
+OpenBao. A fresh CA was the only way forward.
+
+That is exactly the failure mode option C institutionalises. Cross-cloud PKI
+ceremony is the first thing to break on a platform rebuilt this often, and it
+breaks at rebuild time, which is the worst moment. Two independent roots cost one
+extra trust anchor and remove the entire class.
+
+#### Consequences to carry into workstream 11
+
+- Tailnet clients must trust **both** roots. That is the accepted cost; it is a
+  one-line addition wherever the AWS root is already distributed.
+- GCP needs its own secret store for the root token and the cert-manager AppRole
+  — **GCP Secret Manager**, mirroring what AWS Secrets Manager does today. The
+  `flux-github-app` secret already establishes that pattern on GCP.
+- **Cloud KMS auto-unseal** is the GCP analogue of the AWS KMS unseal, already
+  named in the workstream row. It is what makes an unattended rebuild possible.
+- The GCP PKI issues for `*.priv.gcp.ogenki.io` only; the AWS one keeps
+  `*.priv.aws.ogenki.io`. The per-cloud private domains from
+  [ADR-0017](../../../website/content/docs/decisions/0017-multi-cloud-dns-naming.md)
+  make that split clean — there is no name a client could resolve to either CA.
+- Nothing about this reaches application manifests: workloads request a
+  cert-manager `Certificate`, which is already cloud-neutral. The issuer differs
+  per cloud, the developer-facing API does not — ADR-0007's split by audience.
 
 **Slice 4 (autoscaling)** — *results recorded 2026-08-24, measured on gcp-mycluster-0.
 Four PASS, one partial, one blocked on a GCP quota. Each is annotated below.*
