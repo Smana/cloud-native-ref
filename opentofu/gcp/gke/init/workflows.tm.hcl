@@ -194,7 +194,24 @@ script "destroy" {
         # No tolerance here, unlike stage 2: this is the billable resource. If it
         # cannot be destroyed the run must fail loudly rather than move on to the
         # network stack and strand a live cluster behind a deleted VPC.
-        ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars
+        # -refresh=false is deliberate on DESTROY.
+        #
+        # This stack reads another stack's outputs through
+        # data.terraform_remote_state. Refreshing that data source requires the
+        # upstream state OBJECT to exist -- and once the upstream stack has been
+        # destroyed its state is empty, so no object is written at all and the
+        # read fails hard with
+        #
+        #   Error: Unable to find remote state
+        #   No stored state was found for the given workspace in the given backend.
+        #
+        # A destroy does not need those outputs: everything being destroyed is
+        # already described by THIS stack's state, and the data source's last
+        # value is cached there. Refreshing only adds a way for teardown to fail.
+        #
+        # Hit for real on 2026-08-23, when the network stack was destroyed before
+        # this one and the teardown could not proceed without it.
+        ${global.provisioner} destroy -refresh=false -auto-approve -var-file=variables.tfvars
       BASH
       ],
     ]
@@ -212,6 +229,76 @@ script "destroy" {
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/gke-destroy-stage2.sh" \
           reconcile "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure"
+      BASH
+      ],
+    ]
+  }
+}
+
+script "init" {
+  name        = "GCP Init (opt-in)"
+  description = "Initialize this GCP stack when TM_GCP_ENABLED=true"
+
+  job {
+    commands = [
+      ["bash", "-c", <<-BASH
+        ${global.gcp_gate}
+        set -euo pipefail
+        ${global.provisioner} init
+      BASH
+      ],
+    ]
+  }
+}
+
+script "drift" "detect" {
+  name        = "GCP Drift Check (opt-in)"
+  description = "Detect drift in this GCP stack when TM_GCP_ENABLED=true"
+
+  job {
+    commands = [
+      ["bash", "-c", <<-BASH
+        ${global.gcp_gate}
+        set -euo pipefail
+        ${global.provisioner} init
+        ${global.provisioner} plan -out=drift.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars
+      BASH
+      ],
+    ]
+  }
+}
+
+# The global version of this script runs `tofu apply -auto-approve`. Ungated, a
+# drift reconcile from opentofu/ would BUILD this GCP stack without anyone
+# opting in -- which is the whole reason the missing overrides were a problem
+# rather than an inconsistency.
+script "drift" "reconcile" {
+  name        = "GCP Drift Reconciliation (opt-in)"
+  description = "Reconcile drift in this GCP stack when TM_GCP_ENABLED=true"
+
+  job {
+    commands = [
+      ["bash", "-c", <<-BASH
+        ${global.gcp_gate}
+        set -euo pipefail
+        ${global.provisioner} apply -input=false -auto-approve -lock-timeout=5m -var-file=variables.tfvars drift.tfplan
+      BASH
+      ],
+    ]
+  }
+}
+
+script "opentofu" "render" {
+  name        = "GCP Show Plan (opt-in)"
+  description = "Render this GCP stack's plan when TM_GCP_ENABLED=true"
+
+  job {
+    commands = [
+      ["bash", "-c", <<-BASH
+        ${global.gcp_gate}
+        set -euo pipefail
+        echo "Stack: ${terramate.stack.path.absolute}"
+        ${global.provisioner} show -no-color out.tfplan
       BASH
       ],
     ]
