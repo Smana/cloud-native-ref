@@ -218,6 +218,25 @@ holding `secretmanager.versions.access` — added to `crossplane_grantable_roles
 That is the mechanism working as intended, not an obstacle: adding a capability
 is a deliberate act in OpenTofu, and a claim cannot grant itself one.
 
+**This role is project-wide, and that is the weaker of two options.**
+`GCPWorkloadIdentity` renders `ProjectIAMMember`, so any principal holding
+`xplane_secret_reader` can read *any* Secret Manager secret in the project by
+name — including `openbao-priv-gcp-root-token`,
+`openbao-priv-gcp-recovery-keys`, `openbao-priv-gcp-intermediate-ca` (cert and
+key), and `flux-github-app`, all named a few sections up. Restricting the role
+to `versions.access` alone (dropping `.list`/`secrets.get`/`secrets.list`)
+removes enumeration, not name-based read.
+
+The preferred approach, left for Task 8 to apply: bind
+`roles/secretmanager.secretAccessor` **per secret** with
+`google_secret_manager_secret_iam_member` — exactly what
+`opentofu/gcp/openbao/cluster/iam.tf` already does for the OpenBao server
+certificate — scoped to the two secrets External Secrets actually needs
+(`openbao-priv-gcp-approle-cert-manager`, `openbao-priv-gcp-ca-chain`). That
+would make this project-wide grantable role unnecessary. Not done here: the
+per-secret bindings are OpenTofu in the GKE-consuming stack, which Task 8 has
+not written yet, so the decision belongs there rather than in this allowlist.
+
 ## Success criteria
 
 Falsifiable, verified against a live cluster.

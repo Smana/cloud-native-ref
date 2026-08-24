@@ -856,6 +856,19 @@ Note there is no `namespace` under `serviceAccount` — the composition derives 
 
 A `ClusterSecretStore` with `provider.gcpsm` pointing at project `ogenki-435905`; two `ExternalSecret`s pulling `openbao-priv-gcp-approle-cert-manager` and `openbao-priv-gcp-ca-chain`; and a `ClusterIssuer` with `spec.vault.server: https://bao.priv.gcp.ogenki.io:8200`, `path: pki_private_issuer/sign/ogenki`, `caBundleSecretRef` and AppRole auth — modelled on `security/base/cert-manager/openbao-clusterissuer.yaml`.
 
+**Prefer per-secret bindings over the project-wide `xplane_secret_reader` role
+for these two secrets.** `xplane_secret_reader` (Task 1) grants
+`secretmanager.versions.access` project-wide via `ProjectIAMMember` — anyone
+holding it can read any secret in the project by name, including
+`openbao-priv-gcp-root-token`, `openbao-priv-gcp-recovery-keys` and the
+intermediate CA's private key, not just the two this claim needs. The
+preferred shape is `google_secret_manager_secret_iam_member` bound to exactly
+`openbao-priv-gcp-approle-cert-manager` and `openbao-priv-gcp-ca-chain`,
+mirroring what `opentofu/gcp/openbao/cluster/iam.tf` already does for the
+server certificate — which would make granting `xplane_secret_reader` to
+External Secrets unnecessary. Decide this when writing Task 8's OpenTofu, not
+by defaulting to the allowlisted role because it is already there.
+
 - [ ] **Step 4: Validate the manifests before applying**
 
 Run: `./scripts/validate-manifests.sh`
