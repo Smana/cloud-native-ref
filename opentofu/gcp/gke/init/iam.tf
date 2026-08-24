@@ -119,10 +119,11 @@ locals {
     # crossplane-system/provider-aws for the same reason
     # (opentofu/aws/eks/init/iam.tf:56-57).
     #
-    # OBLIGATION ON SLICE 5, not a description of something that exists: when the
-    # GCP provider tree is written, its DeploymentRuntimeConfig MUST name this
-    # ServiceAccount `provider-gcp`. Nothing checks that the two agree, and a
-    # mismatch fails in the same silent way as TRAP 1.
+    # The other end of this is
+    # infrastructure/base/crossplane/providers-gcp/deploymentruntimeconfig-gcp.yaml,
+    # whose serviceAccountTemplate names the SA `provider-gcp`. Nothing checks
+    # that the two agree, and a mismatch fails in the same silent way as TRAP 1 —
+    # so change them together.
     "/subject/ns/crossplane-system/sa/provider-gcp",
   ])
 

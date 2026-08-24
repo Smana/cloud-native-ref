@@ -7,9 +7,12 @@
 # The controller is the cloud-agnostic part — same chart and values as AWS, via
 # infrastructure/gcp-mycluster-0/crossplane/controller.
 #
-# dependsOn crds: the Crossplane CRDs themselves come from the chart, but
-# crds/base is where this cluster's other CRDs land and the AWS chain takes the
-# same edge. Keeping them identical means the two clusters fail the same way.
+# dependsOn crds is LOAD-BEARING, not symmetry with AWS. Crossplane's own CRDs
+# come from the chart, so the name is misleading — what this edge actually buys
+# is `crds`'s own dependencies: crds -> flux-sources, which defines the
+# `crossplane` HelmRepository this HelmRelease pulls from, and crds -> namespaces,
+# which creates crossplane-system. Drop it and the release fails on a missing
+# source or a missing namespace, at a point that looks unrelated to this file.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

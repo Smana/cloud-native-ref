@@ -2,17 +2,20 @@
 # ships — the Functions (shared with AWS), the ClusterProviderConfig that wires
 # credentials, and the EnvironmentConfig the Compositions read.
 #
-# The XRDs and Compositions are NOT here yet. crossplane-configuration-gcp does
-# not exist; see infrastructure/base/crossplane/configuration-gcp/kustomization.yaml
-# for what has to happen in Smana/crossplane-configuration first, and why adding
-# it is a two-PR cutover rather than a one-line pin.
+# The XRDs and Compositions are NOT here yet — see
+# infrastructure/base/crossplane/configuration-gcp/kustomization.yaml.
 #
-# So this stage currently installs a working provider with no API on top of it.
-# That is deliberate and verifiable on its own: a healthy ClusterProviderConfig
-# proves the Workload Identity binding from opentofu/gcp/gke/init/iam.tf actually
-# authenticates, which is design criterion 18 and the thing most likely to be
-# wrong. Finding that out now is cheaper than finding it out underneath a
-# composition.
+# So this stage lands the wiring with no API on top of it, and lands NO proof
+# that the wiring works. Applying a ClusterProviderConfig does not authenticate
+# anything: Crossplane never contacts GCP to validate credentials, and this
+# Kustomization sets neither `wait: true` nor a healthCheck, so Flux reports
+# Ready the moment the object is accepted.
+#
+# Credentials are first exercised when a managed resource reconciles. The first
+# ProjectIAMMember a GCPWorkloadIdentity claim renders is therefore the real test
+# of the Workload Identity binding in opentofu/gcp/gke/init/iam.tf — criterion 18
+# in docs/superpowers/specs/2026-08-18-gcp-support-design.md. Until then that
+# binding is unverified.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

@@ -6,21 +6,18 @@
 # whichever cloud's keys happened to be substituted would resolve to empty
 # strings on the wrong cloud instead of failing.
 #
-# CONSTRAINT ON THE COMPOSITION: projectNumber arrives as an INT, not a string.
+# projectNumber arrives as an INT, not a string.
 #
 # Flux substitutes into the rendered YAML text, so a 12-digit project number
 # lands as a bare scalar and parses as an integer. Quoting it here does NOT help
-# — kustomize drops quotes it considers unnecessary, and `"${project_number}"`
+# — kustomize drops quotes it considers unnecessary, so `"${project_number}"`
 # renders back to bare `${project_number}` before substitution ever runs
 # (verified with `kustomize build`, not assumed). Crossplane's EnvironmentConfig
 # accepts it because `data` preserves arbitrary JSON.
 #
-# So GCPWorkloadIdentity MUST convert it — `str(projectNumber)` — when building
-# the principal:// string. Concatenating an int in KCL fails the type check; the
-# failure is at least loud, which is the one good thing about it.
-#
-# The AWS accountId has the same shape and the same property. It goes unnoticed
-# there only because nothing concatenates it.
+# GCPWorkloadIdentity handles this with `str()` — see `_projectNumber` in that
+# module. The fixture in scripts/flux-schema/render-bundle.py keeps the same
+# unquoted shape so CI exercises the real value rather than a friendlier one.
 apiVersion: apiextensions.crossplane.io/v1beta1
 kind: EnvironmentConfig
 metadata:
