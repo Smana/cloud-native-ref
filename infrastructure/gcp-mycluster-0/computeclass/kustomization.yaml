@@ -1,5 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# The three classes of design slice 4. general-purpose was proven first, on its
+# own, because it carried the unknown the slice existed to settle (the Cilium
+# taint); io and gpu-l4 follow the pattern it established.
 resources:
   - general-purpose.yaml
+  - io.yaml
+  - gpu-l4.yaml

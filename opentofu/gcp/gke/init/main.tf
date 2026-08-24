@@ -165,9 +165,23 @@ module "gke" {
     min_memory_gb = 0
     max_memory_gb = var.autoscaling_max_memory_gb
 
-    # GPU limits stay empty until the GPU ComputeClass exists. An entry here
-    # would let NAP provision accelerators that nothing yet asks for.
-    gpu_resources = []
+    # REQUIRED for the gpu-l4 ComputeClass to provision anything. NAP will not
+    # create a node with an accelerator that has no resourceLimits entry, so an
+    # empty list here silently caps GPU autoscaling at zero -- the class applies
+    # cleanly, pods stay Pending, and nothing says why.
+    #
+    # nvidia-l4 only, matching the class and the reason europe-west4 was chosen
+    # (see opentofu/config.tm.hcl). Maximum 2 is a test-cluster ceiling: L4s are
+    # the most expensive thing this repository can provision, and criterion 16
+    # wants an oversized workload to stay Unschedulable rather than scale into a
+    # bill.
+    gpu_resources = [
+      {
+        resource_type = "nvidia-l4"
+        minimum       = 0
+        maximum       = 2
+      },
+    ]
 
     auto_repair  = true
     auto_upgrade = true

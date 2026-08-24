@@ -1,0 +1,71 @@
+# GPU ComputeClass — the GCP counterpart to
+# infrastructure/base/karpenter-nodepools-gpu/gpu-l4-nodepool.yaml.
+#
+# NVIDIA L4, matching the AWS pool's accelerator choice and the reason
+# europe-west4 was picked in the first place: opentofu/config.tm.hcl records that
+# nvidia-l4 exists in all three of its zones and NOT AT ALL in europe-west9,
+# which would otherwise have been the geographic match for eu-west-3.
+#
+# NO runtimeClassName IS NEEDED HERE, and that is a real divergence from AWS
+# rather than an omission. On AWS the Bottlerocket NVIDIA variant requires
+# `runtimeClassName: nvidia` and a matching RuntimeClass
+# (infrastructure/base/runtimeclass-nvidia/). GKE installs the driver through its
+# own DaemonSet and wires the default runtime, so a GPU pod just requests
+# `nvidia.com/gpu` and works -- which is exactly design criterion 15: "a GPU pod
+# with NO runtimeClassName sees the device via nvidia-smi".
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: gpu-l4
+spec:
+  # g2 is the only family that carries L4, so there is no fallback tier to list:
+  # either L4 spot capacity exists in this zone or nothing is provisioned.
+  #
+  # count: 1 mirrors the AWS pool's instance-gpu-count ["1"] -- one accelerator
+  # per node keeps the failure domain small and the bill legible, and nothing on
+  # this platform yet needs multi-GPU nodes.
+  priorities:
+    - machineFamily: g2
+      spot: true
+      gpu:
+        type: nvidia-l4
+        count: 1
+
+  # Spot GPUs are markedly scarcer than spot CPU, so this class will sometimes
+  # provision nothing at all. That is the intended behaviour on a test cluster:
+  # an L4 falling back to on-demand is the single most expensive thing this
+  # repository could do by accident.
+  whenUnsatisfiable: DoNotScaleUp
+
+  nodePoolConfig:
+    # ┌──────────────────────────────────────────────────────────────────────┐
+    # │ WORKLOADS MUST TOLERATE **BOTH** TAINTS BELOW                        │
+    # └──────────────────────────────────────────────────────────────────────┘
+    #
+    #   tolerations:
+    #     - key: node.cilium.io/agent-not-ready
+    #       operator: Exists
+    #       effect: NoSchedule
+    #     - key: nvidia.com/gpu
+    #       operator: Exists
+    #       effect: NoSchedule
+    #
+    # The Cilium one is not optional: without it NOTHING SCALES UP -- the
+    # autoscaler judges an untolerating pod unplaceable on a node that will carry
+    # the taint and never provisions. Measured 2026-08-24; see ADR-0006.
+    #
+    # `nvidia.com/gpu` is the conventional accelerator taint and is identical to
+    # the AWS pool's, so a GPU workload's tolerations are portable between clouds
+    # even though everything under them differs.
+    taints:
+      - key: node.cilium.io/agent-not-ready
+        value: "true"
+        effect: NoSchedule
+      - key: nvidia.com/gpu
+        value: "true"
+        effect: NoSchedule
+
+    imageType: cos_containerd
+
+  nodePoolAutoCreation:
+    enabled: true
