@@ -265,6 +265,17 @@ Falsifiable, verified against a live cluster.
   media, a password manager — is an operator decision this document does not
   make. It must be written down somewhere before the first signing ceremony,
   or the property is aspirational.
+- **The Secret Manager grant is project-wide until Task 8 narrows it, and only a
+  code comment says so.** `xplane_secret_reader` holds `secretmanager.versions.access`
+  granted through `ProjectIAMMember`, which is project-scoped: any holder that knows
+  a secret's name can read it, including the OpenBao root token, the recovery keys
+  and the intermediate CA private key. The narrower fix — per-secret
+  `google_secret_manager_secret_iam_member` bindings, the pattern the cluster stack
+  already uses for the server certificate — belongs with Task 8, whose stack does not
+  exist yet. That is a real sequencing constraint rather than a shortcut, but it is
+  recorded here as well as in the code because "deferred to Task 8" with nothing
+  tracking it is how documented debt becomes permanent. **If Task 8 is descoped or
+  slips, this grant must be narrowed or removed, not inherited.**
 - **The interim two-anchor state has no deadline.** AWS migrates "later". If
   that slips indefinitely the platform keeps two trust anchors, which is the
   outcome this design set out to avoid.

@@ -71,7 +71,7 @@ variable "openbao_version" {
 }
 
 variable "data_disk_size_gb" {
-  description = "Size in GB of the persistent disk backing OpenBao's file storage backend (single-node, storage \"file\" -- not raft)"
+  description = "Size in GB of the persistent disk backing OpenBao's file storage backend"
   type        = number
   default     = 10
 }
