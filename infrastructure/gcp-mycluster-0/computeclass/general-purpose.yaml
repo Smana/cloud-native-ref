@@ -48,21 +48,43 @@ spec:
   whenUnsatisfiable: DoNotScaleUp
 
   nodePoolConfig:
-    # THE POINT OF THIS SLICE.
+    # ┌──────────────────────────────────────────────────────────────────────┐
+    # │ EVERY WORKLOAD TARGETING THIS COMPUTE CLASS MUST TOLERATE THIS TAINT │
+    # └──────────────────────────────────────────────────────────────────────┘
     #
-    # The static pool sets this taint through `node_pools_taints` in
-    # opentofu/gcp/gke/init/main.tf. An auto-created pool has no OpenTofu to set
-    # it -- NAP creates the pool, so anything the pool must carry has to be
-    # declared here or it does not exist.
+    #   tolerations:
+    #     - key: node.cilium.io/agent-not-ready
+    #       operator: Exists
+    #       effect: NoSchedule
     #
-    # Without it, a new node registers Ready before Cilium owns its networking
-    # and accepts pods it cannot network. That surfaces as
-    # FailedCreatePodSandBox referencing a missing CNI (design criterion 13),
-    # which points at the CNI rather than at autoscaling -- so the cause is a
-    # long way from the symptom.
+    # NOT optional, and not merely good practice: WITHOUT the toleration nothing
+    # scales up at all. Measured on 2026-08-24 -- three Pending pods, ten
+    # minutes, and NO TriggeredScaleUp event of any kind. The autoscaler
+    # simulates scheduling against a node that will carry this taint, concludes
+    # the pod cannot be placed there, and never provisions one. Adding only the
+    # toleration produced four nodes and all pods Running. GKE's admission
+    # webhook warns about this on apply; the warning is load-bearing, not noise.
     #
-    # Cilium removes the taint once its agent is ready on the node. Nothing else
-    # clears it, which is what makes it a safe gate rather than a deadlock.
+    # WHY THE TAINT IS HERE AT ALL. The static pool sets it via
+    # `node_pools_taints` in opentofu/gcp/gke/init/main.tf. An auto-created pool
+    # has no OpenTofu to set it -- NAP creates the pool -- so anything it must
+    # carry has to be declared here or it simply does not exist. Without it a new
+    # node registers Ready before Cilium owns its networking and accepts pods it
+    # cannot network.
+    #
+    # THE TRADE, ACCEPTED DELIBERATELY. On a static pool this taint is invisible
+    # to workloads; here every consumer must tolerate it, which partly reopens
+    # the window it exists to close -- a tolerating pod can land before the
+    # Cilium agent is up and log
+    #   plugin type="cilium-cni" failed (add): unable to create endpoint ... EOF
+    # That is the CNI present and its agent still starting, NOT a missing CNI,
+    # and it self-heals: measured 0 restarts, pods reached Running unaided.
+    # kube-system/metrics-server hits the same transient on any fresh node.
+    #
+    # Keeping the taint was chosen over dropping it: it still gates the pods that
+    # do NOT opt in, and it keeps auto-created nodes behaving like static ones.
+    # Cilium removes it once its agent is ready; nothing else clears it, so it is
+    # a gate rather than a deadlock.
     taints:
       - key: node.cilium.io/agent-not-ready
         value: "true"

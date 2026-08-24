@@ -125,6 +125,9 @@ arrives. ComputeClass is layered on afterwards, mirroring the AWS sequence.
 - Three `ComputeClass` manifests replace six Karpenter manifests.
 - Cilium's readiness taint is handled declaratively at the pool level rather than by a
   post-provisioning hook.
+  - *Amended 2026-08-24, after measuring it.* This is true but incomplete, and the omission
+    matters: see the toleration requirement under Negative. Declaring the taint works; making it
+    **transparent to workloads** does not.
 
 ### Negative
 
@@ -133,6 +136,26 @@ arrives. ComputeClass is layered on afterwards, mirroring the AWS sequence.
   differ measurably between the two clouds.
   - *Mitigation*: the autoscaling slice ships an explicit written statement of the gap rather
     than leaving it to be discovered. This is a documented divergence, not an abstraction to be faked.
+- **Every workload targeting a ComputeClass must tolerate `node.cilium.io/agent-not-ready`,
+  or nothing scales up at all.** Added 2026-08-24 from a live measurement, because this was not
+  anticipated when the ADR was written.
+
+  The autoscaler simulates scheduling against a node that *will* carry the class's taint. A pod
+  that cannot tolerate it is judged unplaceable, so no node is provisioned — and the symptom is
+  silence: three Pending pods for ten minutes with **no `TriggeredScaleUp` event of any kind**,
+  only `FailedScheduling`. Adding the toleration alone produced four nodes and all pods Running.
+  GKE's admission webhook warns on apply; the warning is load-bearing.
+
+  This is a real divergence from AWS, where the equivalent taint is invisible to workloads
+  because static pools carry it and Karpenter provisions against `NodePool` requirements rather
+  than simulating a tainted node.
+  - *Decision*: keep the taint and require the toleration, rather than dropping it. It still
+    gates every pod that does not opt in, and keeps auto-created nodes behaving like static ones.
+  - *Accepted cost*: a tolerating pod can land before the Cilium agent is up and log
+    `plugin type="cilium-cni" failed (add): unable to create endpoint ... EOF`. That is the CNI
+    present with its agent still starting, **not** a missing CNI, and it self-heals — measured 0
+    restarts, pods reached `Running` unaided. `kube-system/metrics-server` hits the same transient
+    on any fresh node, so it is a property of the platform rather than of this decision.
 - No `min > 0` per auto-created pool, so "always keep N warm" must be expressed differently
   (for example a small static pool alongside the auto-created ones).
 - Karpenter knowledge does not transfer cleanly; operators need to learn a second model.
