@@ -30,6 +30,24 @@ spec:
       gpu:
         type: nvidia-l4
         count: 1
+      storage:
+        # REQUIRED, and the only reason this block exists. NAP's cluster-wide
+        # boot-disk default is `pd-standard` (opentofu/gcp/gke/init/main.tf), and
+        # the G2 series does NOT support it — Google's PD matrix allows only
+        # pd-ssd, pd-balanced and hyperdisk on G2. The CRD says as much:
+        # "available boot disk types depend on the machine family".
+        #
+        # Left unset, this class can never provision: NAP either filters g2 out
+        # as unsatisfiable or the pool create fails on disk type, and with
+        # `whenUnsatisfiable: DoNotScaleUp` no event names the disk. A GPU pod
+        # simply stays Pending — the silent mode the gpu_resources note warns
+        # about. `--dry-run=server` cannot catch it either: it never reaches VM
+        # creation.
+        #
+        # Overridden HERE rather than by changing the cluster-wide default,
+        # because e2 and n2 both support pd-standard and are the common case.
+        # Only GPU nodes pay for the dearer disk.
+        bootDiskType: pd-balanced
 
   # Spot GPUs are markedly scarcer than spot CPU, so this class will sometimes
   # provision nothing at all. That is the intended behaviour on a test cluster:
@@ -56,6 +74,15 @@ spec:
     # `nvidia.com/gpu` is the conventional accelerator taint, identical to the
     # AWS pool's, so a GPU workload's tolerations are portable between clouds
     # even though everything under them differs.
+    #
+    # UNVERIFIED (no GPU node has existed — see the quota note in the design's
+    # criterion 15): GKE applies its own `nvidia.com/gpu=present:NoSchedule` to
+    # GPU nodes, and Kubernetes forbids two taints sharing key+effect. So either
+    # GKE's value wins and the `"true"` below is inaccurate, or the pool create
+    # errors. The toleration shown above uses `operator: Exists`, which survives
+    # both outcomes — use that form, NOT `operator: Equal` with a value. Confirm
+    # the node's real taints on the first successful GPU scale-up and correct
+    # this block.
     taints:
       - key: node.cilium.io/agent-not-ready
         value: "true"

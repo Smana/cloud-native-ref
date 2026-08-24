@@ -98,6 +98,17 @@ variable "tags" {
 #
 # The static pool is 2-3 x e2-standard-4 (4 vCPU / 16 GiB each), so this leaves
 # room for roughly four more comparable nodes before the ceiling bites.
+#
+# IMPORTANT: this ceiling is CLUSTER-WIDE. GKE counts manually created pools
+# toward it, not just auto-provisioned ones, and it is shared across every
+# ComputeClass. With the static pool at its max of 3 nodes (12 vCPU / 48 GiB),
+# only 20 vCPU remain for general-purpose, io and gpu-l4 combined.
+#
+# The consequence worth knowing: `gpu_resources` maximum 2 (2 x g2-standard-4 =
+# 8 vCPU) is reachable only while the other classes stay under 12 vCPU. A GPU
+# scale-up can therefore be starved by CPU scale-up, and the two are
+# indistinguishable from the events -- both simply fail to provision. Raise this
+# ceiling before relying on GPU capacity under load.
 variable "autoscaling_max_cpu_cores" {
   description = "Total vCPU ceiling across all auto-provisioned node pools"
   type        = number

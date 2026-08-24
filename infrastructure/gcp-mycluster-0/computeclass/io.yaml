@@ -22,7 +22,14 @@ spec:
   #
   # localSSDCount is what makes this class different from general-purpose. GCP
   # attaches Local SSD as fixed 375 GiB devices, so the count is a device count,
-  # not a size — one is ample for the ephemeral-storage workloads this exists for.
+  # not a size.
+  #
+  # MEASURED 2026-08-24, because it was not obvious: the Local SSD does back POD
+  # EPHEMERAL STORAGE, it is not merely a raw block device. A provisioned node
+  # reported 385926528Ki (~368 GiB) of ephemeral-storage capacity on a 50 GB boot
+  # disk, which is the Local SSD and nothing else. So this class does give
+  # ephemeral-hungry pods what they need, and the parity with the AWS io pool
+  # (which uses `instanceStorePolicy: RAID0` to the same end) holds.
   #
   # Both entries are n2: the smaller first so a modest IO workload does not
   # provision a large node, with the larger as the capacity fallback. Sticking to
