@@ -14,7 +14,7 @@ a version:
 ```yaml
 # infrastructure/base/crossplane/configuration/configuration-packages.yaml
 spec:
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.1.0
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.2.0
 ```
 
 What stays here: `functions.yaml` (the KCL function runtime, version-pinned

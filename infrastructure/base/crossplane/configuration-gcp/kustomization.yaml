@@ -5,13 +5,14 @@ namespace: crossplane-system
 # GCP counterpart to configuration/. What the CLUSTER owns, as opposed to the
 # API contract that ships in a package.
 #
-# NO Configuration package is declared yet, and that is the one real gap in this
-# tree. crossplane-configuration-gcp has to be released from
-# Smana/crossplane-configuration first; pointing at an unpublished OCI tag here
-# would leave the Kustomization failing to pull on every reconcile.
-#
-# Adding it is a two-PR cutover, not a one-line pin — see ../README.md.
+# The two-PR `prune: disabled` cutover described in ../README.md did NOT apply to
+# this pin, and the reason is worth keeping: that procedure exists because a
+# package ADOPTS existing XRDs while Flux prune deletes them in between, taking
+# every claim with them. No GCPWorkloadIdentity XRD or claim has ever existed on
+# any cluster, so there was nothing to adopt and nothing to destroy. It applies
+# again the moment this package reaches a second cluster.
 resources:
   - ../functions
   - cluster-providerconfig-gcp.yaml
+  - configuration-packages.yaml
   - environmentconfig.yaml
