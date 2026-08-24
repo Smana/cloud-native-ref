@@ -354,6 +354,16 @@ Falsifiable, verified against a live cluster.
 **Slice 4 (autoscaling)** — *results recorded 2026-08-24, measured on gcp-mycluster-0.
 Four PASS, one partial, one blocked on a GCP quota. Each is annotated below.*
 
+*Per-class status: `general-purpose` and `io` are both VERIFIED by live scale-up —
+`io` provisioned an `n2-standard-4` spot node with a 375 GiB Local SSD attached
+(368 GiB ephemeral on a 50 GB boot disk). `gpu-l4` is proven up to the point of
+provisioning and then blocked by `GPUS_ALL_REGIONS: 0` (see criterion 15).*
+
+*A predicted second quota blocker did NOT materialise: `PREEMPTIBLE_LOCAL_SSD_GB`
+reads 0 in `europe-west4`, which looked like it would stop `io` for the same
+reason GPU is stopped. It does not — GKE-managed Local SSD on spot nodes
+provisions regardless. Recorded so nobody re-derives the false alarm.*
+
 
 12. A **freshly auto-created** node carries `node.cilium.io/agent-not-ready` at registration, and
     Cilium clears it. *This is the criterion the slice exists to test.*
