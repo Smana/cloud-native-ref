@@ -42,7 +42,11 @@ usage() {
     echo "  --recovery-keys-secret-name <Secret Name> Secret for the recovery keys (required for init)"
     echo "  --recovery-shares <N>                     Number of recovery key shares (default: ${RECOVERY_SHARES})"
     echo "  --recovery-threshold <N>                  Shares needed to reconstruct (default: ${RECOVERY_THRESHOLD})"
-    echo "  --root-ca-secret-name <Secret Name>       Secret holding the CA chain (required for ca)"
+    echo "  --root-ca-secret-name <Secret Name>       Secret holding the CA chain (required for ca)."
+    echo "                                             On AWS this holds JSON with a '.ca' field."
+    echo "                                             On GCP it receives the CA CHAIN secret"
+    echo "                                             (raw PEM) -- by design no root-CA secret"
+    echo "                                             exists on GCP, only the chain."
     echo "  --ca-output-file <Path>                   Where to write the CA chain (required for ca)"
     echo "  --skip-verify                             Skip TLS verification"
     echo "  --region <Region>                         AWS region (default: ${REGION})"
@@ -54,6 +58,8 @@ usage() {
     echo "  $0 init --url https://openbao:8200 --root-token-secret-name openbao/root-token \\"
     echo "          --recovery-keys-secret-name openbao/recovery-keys"
     echo "  $0 ca --root-ca-secret-name certificates/domain.tld/root-ca --ca-output-file .tls/ca.pem"
+    echo "  $0 ca --cloud gcp --project ogenki-435905 \\"
+    echo "          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem"
 }
 
 parse_args() {
@@ -346,8 +352,36 @@ init_openbao() {
 # Write the CA chain to disk so the Vault provider can verify the server
 # certificate (var.openbao_ca_cert_file in the management stack). A provider
 # block cannot depend on a resource, so this cannot be a local_file.
+#
+# The secret's SHAPE differs by cloud, and that is by design, not an
+# inconsistency to paper over:
+#   - AWS: the root-CA secret (certificates/priv.aws.ogenki.io/root-ca) is
+#     hand-loaded per the manual ceremony in pki-and-secrets.md as JSON with
+#     `.ca` (and `.bundle`) fields.
+#   - GCP: openbao-priv-gcp-ca-chain is raw PEM (`gcloud secrets create
+#     ... --data-file=ca-chain.pem`, plan Task 3 Step 6) -- PEM is the natural
+#     shape for a CA bundle, and the file is consumed directly as
+#     VAULT_CACERT. No root-CA secret exists on GCP at all; only the chain.
+# So the read has to branch on $CLOUD rather than assume one shape for both.
 write_ca() {
-    ca_chain=$(secret_read "$ROOT_CA_SECRET_NAME" | jq -r '.ca // empty')
+    local raw
+    if ! raw=$(secret_read "$ROOT_CA_SECRET_NAME"); then
+        log_message "ERROR" "Failed to retrieve the CA chain from $ROOT_CA_SECRET_NAME"
+        exit 1
+    fi
+
+    if [ "$CLOUD" = "gcp" ]; then
+        ca_chain="$raw"
+    else
+        # Guarded explicitly rather than left to `pipefail`: piping `$raw`
+        # through `jq` and letting a parse failure propagate would still exit
+        # non-zero, but via jq's own stderr rather than this script's error
+        # message, and set -e would kill the script before the friendly
+        # message below ever printed.
+        if ! ca_chain=$(printf '%s' "$raw" | jq -r '.ca // empty' 2>/dev/null); then
+            ca_chain=""
+        fi
+    fi
 
     if [ -z "$ca_chain" ]; then
         log_message "ERROR" "Failed to retrieve the CA chain from $ROOT_CA_SECRET_NAME"
