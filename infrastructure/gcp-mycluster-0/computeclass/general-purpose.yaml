@@ -1,0 +1,78 @@
+# General-purpose ComputeClass — the FIRST and, for now, the ONLY one.
+#
+# ADR-0006 chose GKE node auto-provisioning over Karpenter on GCP. This object is
+# what turns that decision into running nodes: it tells NAP which machine shapes
+# to try, in what order, and lets it CREATE a node pool rather than only pick
+# among existing ones.
+#
+# Deliberately one class, not three. The design's slice 4 exists to settle a
+# single question -- does a freshly auto-created node carry
+# `node.cilium.io/agent-not-ready` at registration, and does Cilium clear it?
+# Writing three classes before that is answered would mean debugging three
+# variants of the same unknown. The `io` and GPU classes follow once this one is
+# proven.
+#
+# WHY THE TAINT QUESTION MATTERS: on GKE, Cilium replaces the CNI. A node that
+# registers Ready before Cilium owns its networking will accept pods it cannot
+# network, which surfaces as FailedCreatePodSandBox referencing a missing CNI
+# rather than as anything pointing at autoscaling. Static pools set the taint in
+# OpenTofu; an auto-created pool has no OpenTofu to set it, which is precisely
+# why this is the criterion the slice is built around.
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: general-purpose
+spec:
+  # Ordered fallback. NAP walks these in sequence and takes the first that can be
+  # provisioned, so the list is a preference order, not a set.
+  #
+  # e2-standard-4 first because it is what the static pool runs -- keeping the
+  # auto-created shape identical to the hand-created one removes a variable from
+  # the taint experiment. n2-standard-4 second as a spot-availability fallback:
+  # a GKE node pool takes ONE machine type, so a single shape concentrates spot
+  # interruption risk, which is the limitation the static pool's own comment
+  # calls out as "breadth coming later from ComputeClass".
+  priorities:
+    - machineFamily: e2
+      spot: true
+    - machineFamily: n2
+      spot: true
+
+  # No on-demand entry, deliberately. Design criterion 14 requires general-purpose
+  # nodes to be spot with ZERO on-demand fallback: this is a reference platform
+  # where an unnoticed fallback to on-demand is a silent cost regression, and the
+  # workloads are all restartable.
+  #
+  # The consequence is honest: when no spot capacity exists in any listed family,
+  # pods stay Pending rather than quietly becoming expensive.
+  whenUnsatisfiable: DoNotScaleUp
+
+  nodePoolConfig:
+    # THE POINT OF THIS SLICE.
+    #
+    # The static pool sets this taint through `node_pools_taints` in
+    # opentofu/gcp/gke/init/main.tf. An auto-created pool has no OpenTofu to set
+    # it -- NAP creates the pool, so anything the pool must carry has to be
+    # declared here or it does not exist.
+    #
+    # Without it, a new node registers Ready before Cilium owns its networking
+    # and accepts pods it cannot network. That surfaces as
+    # FailedCreatePodSandBox referencing a missing CNI (design criterion 13),
+    # which points at the CNI rather than at autoscaling -- so the cause is a
+    # long way from the symptom.
+    #
+    # Cilium removes the taint once its agent is ready on the node. Nothing else
+    # clears it, which is what makes it a safe gate rather than a deadlock.
+    taints:
+      - key: node.cilium.io/agent-not-ready
+        value: "true"
+        effect: NoSchedule
+
+    # Must match the static pool and the NAP-level image_type. Cilium's
+    # DaemonSet depends on a writable /home/kubernetes/bin, which is a
+    # Container-Optimized OS path -- the very first GKE deploy failed on exactly
+    # this, and on an auto-created node it would fail where nobody was looking.
+    imageType: cos_containerd
+
+  nodePoolAutoCreation:
+    enabled: true

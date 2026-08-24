@@ -5,6 +5,8 @@
 #   1. The repo's own Crossplane XRDs  -> cloud.ogenki.io/*
 #   2. Envoy AI Gateway CRDs           -> aigateway.envoyproxy.io/*
 #      (absent from the hosted ecosystem catalog)
+#   4. GKE ComputeClass CRD            -> cloud.google.com/v1 ComputeClass
+#      (VENDORED, not rendered: GKE installs it and publishes no chart)
 #   3. Karpenter CRDs                  -> karpenter.k8s.aws/*, karpenter.sh/*
 #      (PRESENT in the hosted ecosystem catalog but STALE: it pins an older
 #      provider release that predates fields we use — e.g. EC2NodeClass
@@ -188,6 +190,10 @@ echo "==> Extracting JSON Schemas into ${build_dir}/"
 "${FLUX_BIN}" schema extract crd "${tmp}/aigateway-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/karpenter-crds.yaml" -d "${build_dir}"
 "${FLUX_BIN}" schema extract crd "${tmp}/barman-crds.yaml" -d "${build_dir}"
+# GKE ComputeClass. Vendored rather than rendered: unlike the three above, GKE
+# installs this CRD itself and publishes no chart to render it from. See the
+# header of the file for how it was captured and when to refresh it.
+"${FLUX_BIN}" schema extract crd "${REPO_ROOT}/scripts/flux-schema/vendored-crds/gke-computeclass.yaml" -d "${build_dir}"
 
 echo "==> Verifying the catalog is complete"
 for kind in app sqlinstance inferenceservice epi; do

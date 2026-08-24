@@ -136,6 +136,59 @@ module "gke" {
   # `terramate script run destroy` fail rather than protect anything of value.
   deletion_protection = false
 
+  # ── 6. NODE AUTO-PROVISIONING (ADR-0006) ──────────────────────────────────
+  # This is what makes a ComputeClass able to CREATE node pools rather than only
+  # select among existing ones. Without it a ComputeClass with
+  # nodePoolAutoCreation still schedules, but only onto pools that already exist,
+  # so nothing new is ever provisioned and the slice's whole premise is untested.
+  #
+  # The ceiling is design criterion 16: an oversized workload must stay
+  # Unschedulable rather than growing the cluster without bound. It is set low on
+  # purpose -- this is a reference platform, and the failure mode of a too-high
+  # limit is a bill rather than an error.
+  #
+  # image_type MUST match the static pool's (criterion 14). Cilium's DaemonSet is
+  # built around a writable /home/kubernetes/bin on Container-Optimized OS; an
+  # auto-created node on a different image would fail the same way the very first
+  # GKE deploy did, but only on nodes nobody created by hand.
+  #
+  # OPTIMIZE_UTILIZATION over BALANCED: criterion 17 wants empty auto-created
+  # pools removed on scale-down, and BALANCED is deliberately reluctant to do so.
+  # The trade is more pod churn, which is acceptable here and would not be on a
+  # latency-sensitive platform.
+  cluster_autoscaling = {
+    enabled             = true
+    autoscaling_profile = "OPTIMIZE_UTILIZATION"
+
+    min_cpu_cores = 0
+    max_cpu_cores = var.autoscaling_max_cpu_cores
+    min_memory_gb = 0
+    max_memory_gb = var.autoscaling_max_memory_gb
+
+    # GPU limits stay empty until the GPU ComputeClass exists. An entry here
+    # would let NAP provision accelerators that nothing yet asks for.
+    gpu_resources = []
+
+    auto_repair  = true
+    auto_upgrade = true
+
+    image_type = var.node_image_type
+
+    # COST. This is a test cluster that gets rebuilt, so the cheap option wins
+    # wherever it is not actively misleading.
+    #
+    # Both of these are otherwise left on module defaults of 100 GB pd-standard
+    # -- TWICE the static pool's disk, which is the sort of thing that costs
+    # money quietly because nobody set it.
+    #
+    # 50 GB matches the static pool rather than being an independent guess.
+    # pd-standard is the cheapest disk type; the static pool uses pd-balanced,
+    # so if auto-created nodes ever behave worse than hand-created ones under
+    # image pulls or log writes, this asymmetry is the first thing to look at.
+    disk_size = var.node_disk_size_gb
+    disk_type = "pd-standard"
+  }
+
   node_pools = [
     {
       name         = "static"

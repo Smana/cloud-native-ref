@@ -87,3 +87,25 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# ── Node auto-provisioning ceiling ──────────────────────────────────────────
+# Design criterion 16: cluster resourceLimits are set, and an oversized workload
+# stays Unschedulable at the ceiling rather than growing the cluster to fit it.
+#
+# Deliberately small. This is a reference platform that gets rebuilt, so the cost
+# of a limit that is too LOW is an Unschedulable pod and a one-line change; the
+# cost of one that is too HIGH is a bill nobody notices until it arrives.
+#
+# The static pool is 2-3 x e2-standard-4 (4 vCPU / 16 GiB each), so this leaves
+# room for roughly four more comparable nodes before the ceiling bites.
+variable "autoscaling_max_cpu_cores" {
+  description = "Total vCPU ceiling across all auto-provisioned node pools"
+  type        = number
+  default     = 32
+}
+
+variable "autoscaling_max_memory_gb" {
+  description = "Total memory ceiling in GiB across all auto-provisioned node pools"
+  type        = number
+  default     = 128
+}
