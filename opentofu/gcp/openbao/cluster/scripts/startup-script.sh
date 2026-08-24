@@ -20,11 +20,13 @@ echo "OpenBao init"
 
 export DEBIAN_FRONTEND=noninteractive
 
-# jq/wget/gnupg/xfsprogs are not guaranteed present on the stock Ubuntu image;
-# snapd is, on every Canonical cloud image since 16.04, and is what installs
-# the gcloud CLI below.
+# jq/wget/gnupg are not guaranteed present on the stock Ubuntu image; snapd is,
+# on every Canonical cloud image since 16.04, and is what installs the gcloud
+# CLI below. xfsprogs is installed earlier, in setup-local-disks.sh -- it has
+# to exist before that script's mkfs.xfs runs, which is BEFORE this script
+# (compute.tf concatenation order), so installing it here would be too late.
 apt-get update -qq
-apt-get install -y -qq jq wget gnupg xfsprogs
+apt-get install -y -qq jq wget gnupg
 
 # Instance identity from the GCP metadata server (IMDS equivalent).
 PRIVATE_IP=$(curl -fsS -H "Metadata-Flavor: Google" \
