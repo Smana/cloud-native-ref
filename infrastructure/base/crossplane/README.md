@@ -46,11 +46,24 @@ spec:
 
 ## Validating a composition
 
-To validate a composition, such as `sqlinstance`, you can use Crossplane's `render` command with example inputs. Navigate to the Crossplane configuration directory and run the following command:
+**Compositions are not in this repository.** They live in
+[`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) and ship here
+as a Configuration package — see `configuration/configuration-packages.yaml` for the pinned version.
+Render, test and validate them there with `task check`; then bump the pin here.
 
-```console
-cd infrastructure/base/crossplane/configuration
-crossplane render --extra-resources examples/environmentconfig.yaml examples/sqlinstance.yaml sql-instance-composition.yaml functions.yaml
-```
+What this directory still owns is the cluster's side of the wiring, and it is split by cloud
+because a `Provider` and a `ManagedResourceActivationPolicy` are cluster-scoped:
 
-This will render and validate the composition based on the provided example configurations.
+| Directory | Cloud | Contents |
+|---|---|---|
+| `controller/` | both | The Crossplane chart. Nothing cloud-specific. |
+| `functions/` | both | Function packages, version-pinned. Shared so the two clouds cannot drift. |
+| `providers/` | AWS | 5 provider packages, `aws-config` runtime config, activation policy, extra RBAC. |
+| `configuration/` | AWS | ProviderConfig (`PodIdentity`), `eks-environment`, the Configuration package pin. |
+| `providers-gcp/` | GCP | `provider-gcp-cloudplatform`, `gcp-config` runtime config, activation policy. |
+| `configuration-gcp/` | GCP | ProviderConfig (`InjectedIdentity` + `projectID`), `gke-environment`. No package pin yet. |
+
+The GCP tree has no Configuration package because `crossplane-configuration-gcp` does not exist
+yet — that is the next piece of slice 5, and adding it is a two-PR cutover with `prune: disabled`
+on the first (packages adopt XRDs, but Flux prune deletes them in between, taking every claim with
+them).

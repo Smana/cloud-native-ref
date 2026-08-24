@@ -1,0 +1,23 @@
+# GCP providers, kept in a sibling directory rather than mixed into providers/.
+#
+# providers/ is entirely AWS (five provider packages, an AWS DeploymentRuntime-
+# Config, an AWS activation policy). Merging the two clouds there would mean
+# every cluster installing both families, since a ManagedResourceActivationPolicy
+# and a Provider are cluster-scoped and apply to whatever cluster the directory
+# is reconciled onto. The cloud split therefore has to happen at the directory
+# level, not inside a shared kustomization.
+#
+# No additional-rbac.yaml counterpart. The AWS one exists because compositions
+# there render third-party Kinds (keda.sh/scaledobjects, batch/jobs) that the
+# Crossplane SA has no RBAC for. GCPWorkloadIdentity renders only
+# ProjectIAMMember, which is provider-managed and already covered. Add one here
+# the first time a GCP composition writes a Kind no provider owns — the symptom
+# is an XR reconcile loop on `Timeout: failed waiting for ... Informer to sync`,
+# not a permission error.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - activation-policy.yaml
+  - deploymentruntimeconfig-gcp.yaml
+  - provider-cloudplatform.yaml

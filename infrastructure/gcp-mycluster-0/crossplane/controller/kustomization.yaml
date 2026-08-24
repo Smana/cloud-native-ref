@@ -1,0 +1,9 @@
+# The Crossplane controller itself is cloud-agnostic — same chart, same values,
+# same HelmRepository as AWS. This overlay references base/crossplane/controller
+# unchanged, which is the point: the thing that differs per cloud is the
+# providers and their credentials, not the controller.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../base/crossplane/controller

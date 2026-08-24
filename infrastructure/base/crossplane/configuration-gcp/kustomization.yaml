@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: crossplane-system
+
+# GCP counterpart to configuration/. What the CLUSTER owns, as opposed to the
+# API contract that ships in a package.
+#
+# NO Configuration package is declared yet, and that is the one real gap in this
+# tree. The GCP XRDs and Compositions (GCPWorkloadIdentity) do not exist — they
+# belong in Smana/crossplane-configuration and need a new
+# crossplane-configuration-gcp package built and released there first. Pointing
+# at an unpublished OCI tag here would leave the Kustomization failing to pull on
+# every reconcile.
+#
+# When that package exists, adding it is a TWO-PR cutover with `prune: disabled`
+# on the first — a package ADOPTS existing XRDs and preserves their uids, but
+# Flux prune still deletes them in between, and deleting an XRD destroys every
+# claim it owns. See .claude/rules/crossplane-validation.md and the AWS
+# extraction (#1774 / #1778) for the procedure.
+resources:
+  - ../functions
+  - cluster-providerconfig-gcp.yaml
+  - environmentconfig.yaml

@@ -7,13 +7,14 @@ namespace: crossplane-system
 # github.com/Smana/crossplane-configuration.
 #
 # What stays is what the *cluster* owns rather than the API contract:
-#   - functions.yaml            version-pinned here rather than resolved by the
+#   - ../functions              version-pinned there rather than resolved by the
 #                               packages' `dependsOn`, so a package bump cannot
-#                               silently move a function version
+#                               silently move a function version. Shared with
+#                               GCP — see that directory for why.
 #   - environmentconfig.yaml    per-cluster values the Compositions read
 #   - cluster-providerconfig    provider credentials wiring
 resources:
+  - ../functions
   - cluster-providerconfig-aws.yaml
   - configuration-packages.yaml
   - environmentconfig.yaml
-  - functions.yaml

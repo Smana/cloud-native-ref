@@ -1,0 +1,27 @@
+# The ServiceAccount name here is load-bearing and hard-coded elsewhere.
+#
+# `provider-gcp` is the subject in the Workload Identity binding created by
+# opentofu/gcp/gke/init/iam.tf:
+#
+#   principal://iam.googleapis.com/projects/<NUMBER>/locations/global/
+#     workloadIdentityPools/<PROJECT_ID>.svc.id.goog/subject/
+#     ns/crossplane-system/sa/provider-gcp
+#
+# Nothing validates that the two agree. Rename this and the binding silently
+# stops matching: no error at apply time, no event, just permission failures on
+# every managed resource that point at the API being called rather than at the
+# identity. Same silent-failure class as reversing PROJECT_NUMBER and PROJECT_ID
+# in the principal string.
+#
+# Every GCP provider shares this runtime config, so they all run under one
+# ServiceAccount and one binding — mirroring the AWS side, where five providers
+# share `aws-config` / `provider-aws`.
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: gcp-config
+spec:
+  serviceAccountTemplate:
+    metadata:
+      name: provider-gcp
+  deploymentTemplate: {}
