@@ -109,3 +109,56 @@ script "destroy" {
     ]
   }
 }
+
+script "init" {
+  name        = "GCP Init (opt-in)"
+  description = "Initialize this GCP stack when TM_GCP_ENABLED=true"
+
+  job {
+    commands = [
+      ["bash", "-c", <<-BASH
+        ${global.gcp_gate}
+        set -euo pipefail
+        ${global.provisioner} init
+      BASH
+      ],
+    ]
+  }
+}
+
+# The global version of this script runs `tofu apply -auto-approve`. Ungated, a
+# drift reconcile from opentofu/ would BUILD this GCP stack without anyone
+# opting in -- which is the whole reason the missing overrides were a problem
+# rather than an inconsistency.
+script "drift" "reconcile" {
+  name        = "GCP Drift Reconciliation (opt-in)"
+  description = "Reconcile drift in this GCP stack when TM_GCP_ENABLED=true"
+
+  job {
+    commands = [
+      ["bash", "-c", <<-BASH
+        ${global.gcp_gate}
+        set -euo pipefail
+        ${global.provisioner} apply -input=false -auto-approve -lock-timeout=5m -var-file=variables.tfvars drift.tfplan
+      BASH
+      ],
+    ]
+  }
+}
+
+script "opentofu" "render" {
+  name        = "GCP Show Plan (opt-in)"
+  description = "Render this GCP stack's plan when TM_GCP_ENABLED=true"
+
+  job {
+    commands = [
+      ["bash", "-c", <<-BASH
+        ${global.gcp_gate}
+        set -euo pipefail
+        echo "Stack: ${terramate.stack.path.absolute}"
+        ${global.provisioner} show -no-color out.tfplan
+      BASH
+      ],
+    ]
+  }
+}

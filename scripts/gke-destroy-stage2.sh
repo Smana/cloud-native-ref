@@ -53,7 +53,12 @@ case "${mode}" in
 attempt)
   tofu init -lock-timeout=5m
 
-  if tofu destroy -auto-approve -var-file=variables.tfvars "$@"; then
+  # -refresh=false: this stack reads gke/init through terraform_remote_state,
+  # and refreshing that requires the upstream state object to exist. Once
+  # gke/init is destroyed its state is empty and no object is written, so the
+  # read fails hard. A destroy needs only this stack's own state, where the
+  # data source's last value is already cached.
+  if tofu destroy -refresh=false -auto-approve -var-file=variables.tfvars "$@"; then
     echo "[ok] stage 2 destroyed gracefully"
     exit 0
   fi
