@@ -638,12 +638,19 @@ spec:
 # business in. domainFilters is a CLIENT-side filter and not a security
 # boundary; the IAM role is.
 #
-# imageRegistry is reset to the chart default: the base pins public.ecr.aws,
-# which works from GCP but makes every image pull on this cluster depend on an
-# AWS registry.
+# The base's `global.imageRegistry: public.ecr.aws` and its top-level `aws:`
+# block are deliberately NOT touched. Verified against
+# `helm show values external-dns/external-dns --version 1.21.1`: neither is a
+# chart value -- `global` supports only `imagePullSecrets`, and there is no
+# top-level `aws` key. Both are inert on both clouds. Overriding a setting that
+# does nothing, and writing a comment explaining why, would be two lies for the
+# price of one.
 #
-# txtOwnerId is ${cluster_name} on both clouds and they are now distinct (aws-0 /
-# gcp-0), so two clusters sharing a zone could not corrupt each other's registry.
+# GCP settings therefore go through extraArgs, because chart 1.21.1 has no
+# `google:` values block either.
+#
+# txtOwnerId stays at the base's ${cluster_name}. The two clusters are now
+# distinct (aws-0 / gcp-0), so their TXT registries cannot collide.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -651,8 +658,6 @@ metadata:
   namespace: kube-system
 spec:
   values:
-    global:
-      imageRegistry: ""
     provider:
       name: google
     domainFilters:
@@ -847,12 +852,44 @@ Expected: empty. Creating records is the easy half; a registry that never prunes
 
 - [ ] **Step 5: Criterion 7 — the ACL split is real**
 
-The two Gateways differ only by Tailscale tag, and the enforcement is outside Kubernetes. From a tailnet device that is **not** in `group:admin`:
+The two Gateways differ only by Tailscale tag, and the enforcement is outside Kubernetes.
+
+Deploy a second probe on the ADMIN Gateway. It goes in `kube-system` because that
+namespace is in the admin Gateway's `allowedRoutes` while `apps` is not — putting it in
+`apps` gets the route rejected `NotAllowedByListeners`, which reads as a broken app rather
+than a gateway ACL:
+
+```bash
+kubectl create deployment probe-admin --image=nginx:alpine -n kube-system
+kubectl expose deployment probe-admin --port=80 -n kube-system
+kubectl apply -f - <<'EOF'
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: probe-admin
+  namespace: kube-system
+spec:
+  parentRefs:
+    - name: platform-tailscale-admin
+      namespace: infrastructure
+  hostnames:
+    - probe-admin.priv.gcp.ogenki.io
+  rules:
+    - backendRefs:
+        - name: probe-admin
+          port: 80
+EOF
+kubectl wait --for=condition=Accepted httproute/probe-admin -n kube-system --timeout=120s
+```
+
+Then, from a tailnet device that is **not** in `group:admin`:
 
 ```bash
 curl -sS -m 10 -o /dev/null -w 'general:%{http_code}\n' https://probe.priv.gcp.ogenki.io/ ; \
-curl -sS -m 10 -o /dev/null -w 'admin:%{http_code}\n' https://hubble-gcp-0.priv.gcp.ogenki.io/ || echo "admin: unreachable (expected)"
+curl -sS -m 10 -o /dev/null -w 'admin:%{http_code}\n' https://probe-admin.priv.gcp.ogenki.io/ || echo "admin: unreachable (expected)"
 ```
+
+Clean up both probes afterwards (`kubectl delete deployment,service,httproute probe-admin -n kube-system`).
 
 Expected: the general hostname answers; the admin one times out or refuses. If both answer, `tagOwners` or the ACL is not doing what the design claims and that is a finding, not a nuisance.
 
