@@ -70,9 +70,11 @@ spec:
       # gcp.cloud.ogenki.io) is a CHILD of the actual hosted zone
       # (cloud.ogenki.io; gcp-0 has its own name to avoid colliding with
       # aws-0's production certificate, see ADR-0019). external-dns's Route53
-      # provider only matches a zone that is equal to or a PARENT of a filter
-      # entry by default; a child filter matches nothing and the zone is
-      # silently dropped -- the pod stays healthy, the Certificate still
+      # provider by default matches a zone that is equal to, or a CHILD of, a
+      # filter entry -- ours is the other way round, a filter that is a child
+      # of the zone, so the zone matches nothing and is silently dropped.
+      # --aws-zone-match-parent is what adds the parent case. Silently means
+      # silently: the pod stays healthy, the Certificate still
       # issues via cert-manager's own DNS-01 path, and no A/CNAME record is
       # ever created. The only trace is a debug-level "no hosted zone
       # matching" log line, which never prints at this chart's logLevel: info.
