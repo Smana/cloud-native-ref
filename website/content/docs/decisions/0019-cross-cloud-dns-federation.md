@@ -91,8 +91,9 @@ here it does.
 **Chosen option**: Option A. Route53 stays the single authoritative public zone. AWS gets an
 IAM OIDC identity provider trusting the GKE cluster's issuer
 (`https://container.googleapis.com/v1/projects/<project>/locations/<location>/clusters/gcp-0`)
-and one role, `gcp-0-route53-dns`, assumable only by the named ServiceAccount subjects
-`security/cert-manager` and `kube-system/external-dns-public`, scoped to:
+and one role, `gcp-0-route53-dns`, assumable only by two named ServiceAccount subjects —
+`cert-manager` in the `security` namespace, and `external-dns-public` in `kube-system` —
+scoped to:
 
 - `route53:ChangeResourceRecordSets` / `route53:ListResourceRecordSets` on the one hosted zone
 - `route53:GetChange` (required by the ACME polling flow; not scopable to a zone — an AWS API
