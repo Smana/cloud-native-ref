@@ -175,9 +175,22 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.gcp_gate}
         # Deliberately NOT set -e from here on.
-        # Best-effort: without it the provider cannot configure and the destroy
+        #
+        # The fetch is wrapped in a FUNCTION rather than written as
+        # `${"$"}{global.openbao_ca_fetch} || echo ...`. That global is a multi-line
+        # snippet ending in a newline, so appending `||` to the interpolation puts
+        # the operator on its own line: `syntax error near unexpected token ||`.
+        # Measured 2026-08-25 -- it broke the whole `--reverse destroy` and, because
+        # the failure was a bash parse error rather than a tofu error, the run
+        # reported success while every GCP resource was still running.
+        ca_fetch() {
+          ${global.openbao_ca_fetch}
+        }
+        # Best-effort: without the CA the provider cannot configure and the destroy
         # below aborts before touching anything.
-        ${global.openbao_ca_fetch} || echo "[warn] CA fetch failed -- destroy will likely abort at provider configure."
+        if ! ca_fetch; then
+          echo "[warn] CA fetch failed -- destroy will likely abort at provider configure."
+        fi
         if ! ${global.provisioner} destroy -refresh=false -auto-approve -var-file=variables.tfvars; then
           echo "[warn] management destroy failed -- OpenBao is probably already gone."
           echo "[warn] Continuing so the cluster stack's teardown is not blocked."
