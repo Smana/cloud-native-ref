@@ -900,7 +900,8 @@ spec:
 
     env:
       - name: AWS_REGION
-        value: ${region}
+        # NOT ${region} -- see Task 2. That key holds gcp-0's GCP region.
+        value: ${route53_region}
       - name: AWS_ROLE_ARN
         value: ${route53_role_arn}
       - name: AWS_WEB_IDENTITY_TOKEN_FILE
@@ -928,7 +929,9 @@ spec:
         memory: 150Mi
 ```
 
-`AWS_REGION` uses `${region}`, which on this cluster is a **GCP** region. Route53 is global and the SDK only needs a region to compute credential scope, so any valid region works — but if issuance ever fails with a signing-scope error, set it to `eu-west-3` explicitly and note why.
+`AWS_REGION` uses `${route53_region}`, the dedicated AWS-region key Task 2's fix added — **not** `${region}`, which on this cluster holds `europe-west4`.
+
+An earlier draft of this plan used `${region}` here and defended it: Route53 is global, the SDK only needs a region for credential scope, so any valid region works. That reasoning is wrong in the same way it was wrong in Task 2. The region does not only scope Route53 — it configures the shared AWS SDK config, which is what resolves the **STS** endpoint for the `AssumeRoleWithWebIdentity` this whole design depends on. A GCP region there points the token exchange at a host that does not exist, and it fails before Route53 is reached. Neither CI gate can catch it, because the render fixture is AWS-shaped for both clusters.
 
 - [ ] **Step 4: Wire it in**
 
