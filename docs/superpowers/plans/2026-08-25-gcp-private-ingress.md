@@ -723,7 +723,7 @@ kustomize build infrastructure/gcp-0 --load-restrictor=LoadRestrictionsNone \
   | grep -A 3 "provider:"
 ```
 
-Expected: `Invalid: 0, Skipped: 0`, and the rendered values show `provider: {name: google}` with **no** `aws:` block and no `zoneType`.
+Expected: `Invalid: 0, Skipped: 0`, and the rendered values show `provider: {name: google}`. The base's `aws:` block (with its `zoneType`) and `global.imageRegistry` are still present -- the patch replaces only the fields it names (`provider`, `domainFilters`, `extraArgs`), and both are inert on chart 1.21.1 per ruling 2, so leaving them in the render is correct, not a regression to fix.
 
 Confirm the claim validates against the real XRD (this is what `skipMissingSchemas: false` buys):
 

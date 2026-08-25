@@ -96,7 +96,7 @@ shared HelmReleases, and it works because Flux builds kustomizations with
 renders what Flux renders.
 
 GCP supplies its own `ExternalSecret` reading a new GCP Secret Manager entry
-`tailscale-k8s-operator-oauth-gcp`, with `target.name: operator-oauth` — the name the chart
+`tailscale-k8s-operator-oauth`, with `target.name: operator-oauth` — the name the chart
 requires, unchanged.
 
 **No `ProxyGroup`.** AWS runs `ts-proxies`, two egress replicas. Nothing on the GCP cluster

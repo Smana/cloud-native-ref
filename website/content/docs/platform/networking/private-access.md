@@ -81,7 +81,7 @@ shared between `aws-0` and `gcp-0`, and a Tailscale hostname is
 tailnet-unique. Two clusters claiming the same hostname doesn't error —
 Tailscale silently suffixes the second device, so its MagicDNS name stops
 being the one anything expects. `cluster_name` comes from each cluster's
-Flux vars `ConfigMap`, substituted by `postBuild.substitute` at reconcile
+Flux vars `ConfigMap`, substituted by `postBuild.substituteFrom` at reconcile
 time — never hardcode a hostname here.
 
 Both carry the `external-dns: enabled` label so ExternalDNS picks them up —
