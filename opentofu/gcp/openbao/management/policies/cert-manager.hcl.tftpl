@@ -1,0 +1,23 @@
+# Sign leaves through the one role, and nothing else.
+#
+# DELIBERATELY NARROWER THAN AWS, whose copy of this file grants
+# create/read/update/delete/list on `pki_private_issuer/*`. That covers the
+# issuer configuration, the CA endpoints, every role and the tidy/revoke APIs --
+# so a leaked secret_id could rotate the issuer, or add a role allowing any
+# domain, rather than only mint a certificate for the domain this role permits.
+#
+# cert-manager's Vault issuer needs exactly two things at runtime:
+#   - POST auth/approle/login  -- unauthenticated by definition, needs no policy
+#   - POST <mount>/sign/<role> -- this rule
+# Its readiness probe hits sys/health, which is unauthenticated by default.
+#
+# TEMPLATED, unlike the AWS copy, and that is the point of the divergence: the
+# path names the role, the role is what constrains the domain, and a `sign/*`
+# wildcard would re-admit any role added later. Deriving both halves from the
+# resources themselves (policies.tf) means renaming the mount or the role cannot
+# silently leave this policy pointing at a path that no longer exists -- which
+# fails open in the sense that matters: cert-manager gets a 403 and certificates
+# stop renewing, with nothing here to explain why.
+path "${mount}/sign/${role}" {
+  capabilities = ["create", "update"]
+}

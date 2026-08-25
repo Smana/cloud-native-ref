@@ -16,9 +16,14 @@ resource "vault_approle_auth_backend_role" "cert_manager" {
   # cert-manager's ClusterIssuer takes `roleId` as a REQUIRED STRING with no
   # secretRef option (verified against the cert-manager v1.21.1 CRD). AWS
   # therefore plumbs the generated value into a Flux postBuild variable via its
-  # cluster vars ConfigMap. GCP cannot do that: this stack runs AFTER
-  # gke/configure has already written that ConfigMap, so the value would not
-  # exist when Flux needs it.
+  # cluster vars ConfigMap.
+  #
+  # GCP cannot: that ConfigMap is owned by gke/configure, which applies it
+  # server-side as a whole object, and THIS stack has no kubernetes provider at
+  # all (see providers.tf -- google and vault only). A key added here would be
+  # reverted by the next gke/configure apply even if it could be written.
+  # Reversing the two stacks is not an option either; management needs a
+  # reachable, initialised OpenBao at plan time.
   #
   # A role_id is an identifier, not a credential — it is useless without the
   # secret_id, which stays in Secret Manager and reaches the cluster through

@@ -18,11 +18,26 @@ resource "google_compute_firewall" "openbao_health_check" {
   target_service_accounts = [google_service_account.openbao.email]
 }
 
-# Clients reach OpenBao over the tailnet, whose routes the subnet router
-# advertises. Scoped to the advertised ranges rather than the whole VPC: the
-# GKE nodes are in this network too, and they have no business talking to
-# OpenBao's API directly -- their access is via cert-manager, which comes
-# through the same tailnet path.
+# Everything that talks to OpenBao's API.
+#
+# Two distinct callers, and it is worth being precise about them because an
+# earlier version of this comment claimed the rule excluded GKE. It does not,
+# and must not:
+#
+#   - Operators and the management stack, from tailnet devices. The subnet
+#     router SNATs, so that traffic arrives sourced from the router's own
+#     address in `node_cidr` -- not from a 100.64/10 tailnet address.
+#   - cert-manager, from a POD on gcp-mycluster-0, reaching the internal LB
+#     directly inside the VPC. It never traverses the tailnet.
+#
+# `advertised_routes` covers both because it is node + pod + service +
+# control-plane CIDRs (opentofu/gcp/network/locals.tf). Narrowing this rule to
+# exclude the pod range would break every certificate issuance on the cluster,
+# with cert-manager reporting a connection timeout that points at OpenBao rather
+# than at this rule.
+#
+# It is still narrower than the VPC: it is a route list, so a subnet added later
+# for something unrelated is not admitted by default.
 resource "google_compute_firewall" "openbao_api" {
   name    = "openbao-${var.env}-api"
   project = var.project_id
