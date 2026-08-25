@@ -196,6 +196,13 @@ def substitute(text):
     return text.replace("\x00{", "$${")
 
 
+def load_docs_text(text):
+    """Parse a rendered multi-doc YAML string. Mirrors load_docs, which reads
+    from a path — chart extraction now works on kustomize output held in
+    memory rather than on a file."""
+    return [d for d in yaml.safe_load_all(text) if isinstance(d, dict)]
+
+
 def load_docs(path):
     try:
         return [d for d in yaml.load_all(path.read_text(), Loader=YAML_LOADER) if isinstance(d, dict)]
@@ -494,7 +501,21 @@ def clone_git_source(url, ref, dest):
     return None
 
 
+def overlay_slug(overlay):
+    """Stable filename fragment for an overlay path. Shared by the overlay file
+    and its charts so the two are greppable together in the bundle."""
+    return str(overlay).replace("/", "-")
+
+
 def render_overlay(overlay, outdir):
+    """Build one overlay. Returns (error, rendered_text).
+
+    The returned text is postprocessed but NOT substituted, because it feeds
+    two consumers with different needs: the bundle file (substituted, so gate 1
+    sees realistic values) and chart extraction in main(), which wants the
+    HelmRelease exactly as `render_helmrelease` has always received it. Feeding
+    substituted values to `helm template` would change what every chart renders
+    — a behaviour change well beyond fixing the dedupe key."""
     result = subprocess.run(
         [KUSTOMIZE_BIN, "build", str(overlay), "--load-restrictor=LoadRestrictionsNone"],
         capture_output=True,
@@ -502,14 +523,13 @@ def render_overlay(overlay, outdir):
         timeout=300,
     )
     if result.returncode != 0:
-        return _last_line(result, "kustomize build failed")
+        return _last_line(result, "kustomize build failed"), None
     try:
         rendered = postprocess(result.stdout)
     except yaml.YAMLError as exc:
-        return f"postprocess: {exc}"
-    name = "overlay-" + str(overlay).replace("/", "-") + ".yaml"
-    (outdir / name).write_text(substitute(rendered))
-    return None
+        return f"postprocess: {exc}", None
+    (outdir / ("overlay-" + overlay_slug(overlay) + ".yaml")).write_text(substitute(rendered))
+    return None, rendered
 
 
 def _resolve_chart(spec, sources, namespace):
@@ -538,7 +558,14 @@ def effective_namespace(doc, kustomize_namespace):
     return doc["metadata"].get("namespace") or kustomize_namespace or "default"
 
 
-def render_helmrelease(doc, sources, outdir, namespace):
+def render_helmrelease(doc, sources, outdir, namespace, stem):
+    """`stem` is the bundle filename fragment identifying WHICH rendering this
+    is — `<overlay-slug>` for a chart reached through an overlay, or `direct`
+    for a HelmRelease no overlay covers. It exists because one release name can
+    legitimately render twice with different values: aws-0 and gcp-0 both
+    resolve external-dns to kube-system/external-dns, and keying the output on
+    (namespace, name) alone meant only one of them ever reached
+    `helm template`."""
     meta, spec = doc["metadata"], doc["spec"]
     namespace = effective_namespace(doc, namespace)
 
@@ -626,7 +653,7 @@ def render_helmrelease(doc, sources, outdir, namespace):
     except yaml.YAMLError as exc:
         return f"HelmRelease/{namespace}/{meta['name']}: postprocess: {exc}"
 
-    (outdir / f"chart-{namespace}-{meta['name']}.yaml").write_text(substitute(rendered))
+    (outdir / f"chart-{stem}-{namespace}-{meta['name']}.yaml").write_text(substitute(rendered))
     return None
 
 
@@ -698,20 +725,63 @@ def main():
                 )
                 standalone += 1
 
-    # Every render writes its own uniquely-named output file, so the only
-    # shared mutable state is the helm cache (serialized per source URL above).
-    # Futures are drained in submission order to keep error output
-    # deterministic regardless of completion order.
+    # Overlays FIRST, charts second — a deliberate serialization.
+    #
+    # Charts used to be discovered by scanning raw files and deduped by
+    # (effective namespace, name). That key is not unique across clusters: both
+    # aws-0 and gcp-0 resolve external-dns to kube-system/external-dns, so only
+    # ONE set of values ever reached `helm template`. Worse, the GCP variant is
+    # a patch fragment with no `chart:`, so it was never even a candidate and
+    # produced no "duplicate" note — it was skipped in silence. A values-shape
+    # error on that release could not fail the build.
+    #
+    # Rendering from each overlay's OWN output fixes that by construction: the
+    # overlay has already merged base + patches, so what we template is what
+    # that cluster actually gets. The cost is wall-clock — charts consumed by
+    # both clouds now render twice — and a bundle keyed by overlay.
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         overlay_futures = [(o, pool.submit(render_overlay, o, outdir)) for o in overlays]
-        chart_futures = [
-            pool.submit(render_helmrelease, doc, sources, outdir, namespace)
-            for doc, namespace, _ in helmreleases.values()
-        ]
+        overlay_docs = []
         for overlay, future in overlay_futures:
-            error = future.result()
+            error, rendered = future.result()
             if error:
                 errors.append(f"kustomize {overlay}: {error}")
+                continue
+            overlay_docs.append((overlay, rendered))
+
+    # Chart tasks, one per (overlay, namespace, name).
+    chart_tasks = []
+    seen = set()
+    for overlay, rendered in overlay_docs:
+        stem = overlay_slug(overlay)
+        for doc in load_docs_text(rendered):
+            spec = doc.get("spec") or {}
+            if doc.get("kind") != "HelmRelease" or not (spec.get("chart") or spec.get("chartRef")):
+                continue
+            # An overlay's output already carries the kustomization's namespace
+            # transformer, so metadata.namespace is authoritative here.
+            ns = doc["metadata"].get("namespace") or "default"
+            chart_tasks.append((doc, ns, stem))
+            seen.add((ns, doc["metadata"]["name"]))
+
+    # Fallback: a HelmRelease no overlay covers still has to be rendered, or
+    # this change would quietly shrink coverage while looking like a fix. Every
+    # one is logged rather than assumed absent.
+    for (ns, name), (doc, kustomize_ns, _referenced) in helmreleases.items():
+        if (ns, name) in seen:
+            continue
+        print(
+            f"note: HelmRelease/{ns}/{name} is not reached by any overlay; "
+            f"rendering it directly from its source file",
+            file=sys.stderr,
+        )
+        chart_tasks.append((doc, kustomize_ns, "direct"))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        chart_futures = [
+            pool.submit(render_helmrelease, doc, sources, outdir, ns, stem)
+            for doc, ns, stem in chart_tasks
+        ]
         for future in chart_futures:
             error = future.result()
             if error:
