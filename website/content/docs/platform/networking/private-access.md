@@ -71,10 +71,18 @@ sets its own Tailscale tag directly through `infrastructure.annotations`:
 # platform-tailscale-general-gateway.yaml / platform-tailscale-admin-gateway.yaml
 infrastructure:
   annotations:
-    tailscale.com/hostname: "gateway-general-priv" # or gateway-admin-priv
-    tailscale.com/tags: "tag:k8s"                  # or tag:admin
+    tailscale.com/hostname: "gateway-general-priv-${cluster_name}" # or gateway-admin-priv-${cluster_name}
+    tailscale.com/tags: "tag:k8s"                                  # or tag:admin
     tailscale.com/funnel: "false"
 ```
+
+The `-${cluster_name}` suffix is required, not decorative: the tailnet is
+shared between `aws-0` and `gcp-0`, and a Tailscale hostname is
+tailnet-unique. Two clusters claiming the same hostname doesn't error —
+Tailscale silently suffixes the second device, so its MagicDNS name stops
+being the one anything expects. `cluster_name` comes from each cluster's
+Flux vars `ConfigMap`, substituted by `postBuild.substitute` at reconcile
+time — never hardcode a hostname here.
 
 Both carry the `external-dns: enabled` label so ExternalDNS picks them up —
 see [Gateway API]({{< relref "/docs/platform/networking/gateway-api.md#externaldns-and-route53" >}})
