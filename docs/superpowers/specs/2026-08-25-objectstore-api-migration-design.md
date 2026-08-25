@@ -46,6 +46,7 @@ name and two shapes, where CI renders one cloud and the cluster runs the other. 
 | KCL sharing | One `main.k`, cloud pinned per Composition (approach A below) |
 | Location | Read from the EnvironmentConfig, **not** stated in the claim |
 | `sqlInstance` on GCP | A stub Composition fails it explicitly with a reason; CNPG-on-GCP is workstream 9 |
+| GCS grant scope | `GCPWorkloadIdentity` gains optional `bucketRoles`, rendering `StorageBucketIAMMember` — project-scoped storage admin is not acceptable |
 
 ## The contract
 
@@ -157,9 +158,46 @@ first time either EnvironmentConfig gains a field — an explicit key states the
 |---|---|---|
 | Bucket | `Bucket` + `BucketVersioning` (`s3.aws.m.upbound.io`) | `StorageBucket` (`storage.gcp.m.upbound.io`), versioning inline |
 | Identity | `EPI` | `GCPWorkloadIdentity` |
-| Grant | IAM policy JSON, scoped to the bucket ARN | `roles/storage.objectAdmin` on the bucket |
+| Grant | IAM policy JSON, scoped to the bucket ARN | `roles/storage.objectAdmin` via `StorageBucketIAMMember`, scoped to the bucket — see below |
 | Location | `eks-environment.region` | `gke-environment.region` |
 | Naming | `xplane-<name>` | `xplane-<name>` (unchanged — the prefix is load-bearing for IAM scoping on both) |
+
+### `GCPWorkloadIdentity` must gain bucket scope
+
+**Found while writing the implementation plan, and it changes that contract.**
+`GCPWorkloadIdentity` renders `ProjectIAMMember` and nothing else — its own module header says
+so. Granting `roles/storage.objectAdmin` through it would give the app's ServiceAccount admin
+over **every bucket in the project**: OpenBao's snapshots, Harbor's registry storage, and CNPG's
+backups once workstream 9 lands.
+
+The AWS branch scopes its IAM policy to one bucket ARN. Shipping the project-scoped GCP branch
+would make the same claim mean *bucket-scoped* on AWS and *project-wide storage admin* on GCP —
+an asymmetry that renders cleanly, passes every test, and is a real privilege escalation.
+
+So `GCPWorkloadIdentity` gains an optional bucket-scoped binding that renders
+`StorageBucketIAMMember` rather than `ProjectIAMMember`:
+
+```yaml
+spec:
+  serviceAccount:
+    name: my-app
+  roles:                      # unchanged — still project-level
+    - roles/monitoring.viewer
+  bucketRoles:                # new, optional
+    - bucket: xplane-my-app-ogenki-435905
+      role: roles/storage.objectAdmin
+```
+
+The `principal://` member string — which needs the project **NUMBER**, not the ID, and fails as
+an opaque permission error when confused — stays constructed in exactly one place. The
+alternative, having the `App` composition emit `StorageBucketIAMMember` itself, would duplicate
+that construction into a second place where it can drift.
+
+Consequences the plan must carry: `bucketRoles` is additive and optional, so existing
+`GCPWorkloadIdentity` claims are unaffected; `storagebucketiammembers` must be added to the
+`ManagedResourceActivationPolicy` in this repo, or the CRD is never installed and the render
+fails with `no matches for kind`; and the resource-name slugging must cover bucket names as
+well as role names.
 
 GCS bucket names are globally unique across all of GCP, unlike S3 names which are unique per
 partition. The GCP branch therefore suffixes the project ID: `xplane-<name>-<projectID>`. This
