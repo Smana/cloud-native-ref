@@ -1,0 +1,47 @@
+# Gateway API layer: the GatewayClass, both Tailscale Gateways, the wildcard
+# certificate and the L7-proxy network policy.
+#
+# TWO dependsOn edges, both load-bearing, and both learned the hard way in
+# workstream 11:
+#
+#   - security-openbao, because the wildcard Certificate cannot be issued before
+#     the `openbao` ClusterIssuer exists. It is also cert-manager's webhook that
+#     admits the Certificate, and applying a resource in the same reconcile as
+#     the chart that admits it fails with `no endpoints available` and then backs
+#     off exponentially -- while Flux reports Ready.
+#   - security-tailscale, because without the operator both Gateways' Services
+#     sit Pending forever and nothing in their status names the reason.
+#
+# healthChecks on the Gateways rather than the Certificate: a Gateway going
+# Programmed proves the whole chain -- the operator serviced the LoadBalancer,
+# Cilium accepted the GatewayClass, and the TLS secret resolved.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-gapi
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 4m0s
+  retryInterval: 30s
+  timeout: 10m0s
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  path: ./infrastructure/gcp-0/gapi
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    - name: security-openbao
+    - name: security-tailscale
+  healthChecks:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      name: platform-tailscale-general
+      namespace: infrastructure
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      name: platform-tailscale-admin
+      namespace: infrastructure
