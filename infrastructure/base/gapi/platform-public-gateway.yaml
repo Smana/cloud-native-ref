@@ -17,6 +17,8 @@ metadata:
     external-dns: enabled  # required by external-dns's --gateway-label-filter
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
+    cert-manager.io/duration: 2160h # 90d
+    cert-manager.io/renew-before: 360h # 15d
 spec:
   gatewayClassName: cilium
   infrastructure:
@@ -26,8 +28,17 @@ spec:
       service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
       service.beta.kubernetes.io/aws-load-balancer-type: "external"
   listeners:
-    - name: https
-      hostname: "*.${domain_name}"
+    # One listener per public hostname, each with its own TLS secret. NOT a
+    # wildcard: `*.${domain_name}` would put every service under the domain
+    # behind a single private key, so one leaked Secret or compromised pod would
+    # expose all of them. cert-manager's gateway-shim issues one Certificate per
+    # listener, with exactly that hostname in its SAN list.
+    #
+    # Adding a public service means adding a listener. allowedRoutes already
+    # makes publishing a reviewed edit, so this costs nothing extra and turns
+    # the listener list into an auditable inventory of what is internet-facing.
+    - name: runlore
+      hostname: "runlore.${domain_name}"
       port: 443
       protocol: HTTPS
       allowedRoutes:
@@ -42,4 +53,4 @@ spec:
       tls:
         mode: Terminate
         certificateRefs:
-          - name: platform-public-tls
+          - name: runlore-public-tls

@@ -17,7 +17,7 @@ spec:
       service.beta.kubernetes.io/aws-load-balancer-type: "external"
   listeners:
     - name: http
-      hostname: "*.${domain_name}"
+      hostname: "myapp.${domain_name}"   # one listener per hostname; never a wildcard
       port: 443
       protocol: HTTPS
       allowedRoutes:
@@ -32,4 +32,4 @@ spec:
       tls:
         mode: Terminate
         certificateRefs:
-          - name: platform-public-tls
+          - name: myapp-public-tls
