@@ -104,6 +104,13 @@ FIXTURE_VARS = {
     # variable. public_domain_name and route53_public_zone_id above already
     # cover the two AWS-named keys this fixture shares with the AWS ones.
     "route53_role_arn": "arn:aws:iam::123456789012:role/gcp-0-route53-dns",
+    # A dedicated AWS-region hint for the route53 solver, deliberately distinct
+    # from "region" above -- reusing that key would substitute an AWS region on
+    # aws-0's bundle and a GCP region on gcp-0's, and this single fixture map
+    # cannot tell which cluster is rendering. See the comment on
+    # opentofu/gcp/gke/configure's var.route53_region for why the two must
+    # never collapse into one key.
+    "route53_region": "eu-west-3",
 }
 
 KUBE_VERSION = "1.31.0"

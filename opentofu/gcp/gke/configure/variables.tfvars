@@ -28,3 +28,8 @@ flux_github_app_secret_name = "flux-github-app"
 public_domain_name     = "cloud.ogenki.io"
 route53_public_zone_id = "Z002027037R5RFCG05YY6"
 route53_role_arn       = "arn:aws:iam::396740644681:role/gcp-0-route53-dns"
+
+# AWS SDK region hint for the route53 solver -- NOT gcp-0's GCP region (see the
+# comment on var.route53_region). Matches opentofu/shared/aws-gcp-federation's
+# aws_region default and opentofu/aws/eks/configure's region.
+route53_region = "eu-west-3"

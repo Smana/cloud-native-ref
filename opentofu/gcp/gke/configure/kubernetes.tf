@@ -17,13 +17,18 @@
 # fix is a cloud-neutral name provided by both ConfigMaps, not an AWS name faked
 # on GCP.
 #
-# public_domain_name, route53_public_zone_id and route53_role_arn are the
-# deliberate exception (workstream 12): cloud.ogenki.io is one cloud-agnostic
-# public Route53 zone that BOTH clusters write to (ADR-0017, ADR-0019), so
-# these AWS values belong in this GCP ConfigMap on purpose rather than being
-# faked. route53_public_zone_id already matches the key name the AWS ConfigMap
-# uses for the same zone; route53_role_arn has no AWS counterpart because aws-0
-# reaches Route53 with ambient EKS Pod Identity credentials, not federation.
+# public_domain_name, route53_public_zone_id, route53_role_arn and
+# route53_region are the deliberate exception (workstream 12): cloud.ogenki.io
+# is one cloud-agnostic public Route53 zone that BOTH clusters write to
+# (ADR-0017, ADR-0019), so these AWS values belong in this GCP ConfigMap on
+# purpose rather than being faked. route53_public_zone_id already matches the
+# key name the AWS ConfigMap uses for the same zone; route53_role_arn has no
+# AWS counterpart because aws-0 reaches Route53 with ambient EKS Pod Identity
+# credentials, not federation. route53_region is deliberately its own key
+# rather than a reuse of the cloud-neutral `region` above -- that one holds
+# gcp-0's GCP region, and feeding it to the AWS SDK as an AssumeRoleWithWebIdentity
+# credential-scope hint breaks the token exchange this federation depends on.
+# See the comment on var.route53_region.
 resource "kubectl_manifest" "flux_cluster_vars" {
   yaml_body = yamlencode({
     apiVersion = "v1"
@@ -60,6 +65,7 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       public_domain_name     = var.public_domain_name
       route53_public_zone_id = var.route53_public_zone_id
       route53_role_arn       = var.route53_role_arn
+      route53_region         = var.route53_region
     }
   })
   server_side_apply = true

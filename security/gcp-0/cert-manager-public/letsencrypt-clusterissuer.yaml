@@ -29,7 +29,15 @@ spec:
             - "${public_domain_name}"
         dns01:
           route53:
-            region: ${region}
+            # NOT ${region}: that key is gcp-0's GCP region (europe-west4).
+            # cert-manager feeds this field straight into the AWS SDK's shared
+            # config, unvalidated, to compute the STS client's endpoint for the
+            # AssumeRoleWithWebIdentity call that is this whole design's point.
+            # Reusing the GCP value would point STS at a nonexistent
+            # sts.europe-west4.amazonaws.com and break the token exchange
+            # before Route53 is ever reached. route53_region is a dedicated AWS
+            # value for exactly this -- do not "simplify" it back to ${region}.
+            region: ${route53_region}
             hostedZoneID: ${route53_public_zone_id}
             role: ${route53_role_arn}
             auth:

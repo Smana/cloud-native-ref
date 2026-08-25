@@ -106,3 +106,16 @@ variable "route53_role_arn" {
   description = "AWS IAM role the federated ClusterIssuer and external-dns-public assume via AssumeRoleWithWebIdentity. Sourced from opentofu/shared/aws-gcp-federation's route53_role_arn output -- no default"
   type        = string
 }
+
+# NOT var.region: that variable holds gcp-0's GCP region (europe-west4) and has
+# other consumers that need exactly that GCP value. cert-manager's route53
+# solver feeds its `region` field straight into the AWS SDK's shared config,
+# unvalidated, to compute the STS client's endpoint for AssumeRoleWithWebIdentity
+# -- reusing var.region would point that client at a nonexistent
+# sts.europe-west4.amazonaws.com and break the token exchange this whole
+# federation depends on, before Route53 is ever reached. No default, same
+# reasoning as route53_role_arn and route53_public_zone_id above.
+variable "route53_region" {
+  description = "AWS region hint for the federated ClusterIssuer's route53 solver -- an AWS SDK credential-scope value, deliberately separate from var.region (GCP). No default"
+  type        = string
+}
