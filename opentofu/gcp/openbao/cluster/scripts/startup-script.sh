@@ -124,5 +124,33 @@ seal "gcpckms" {
 }
 EOF
 
+# Retry forever, instead of giving up after a few fast failures.
+#
+# This is the fix for the incident recorded in compute.tf: a missing IAM
+# permission made openbao.service fail at seal configuration, systemd hit the
+# packaged unit's start limit -- "Start request repeated too quickly" -- and
+# stopped trying. The instance stayed RUNNING and served nothing, so granting
+# the permission changed nothing; it had to be deleted by hand.
+#
+# StartLimitIntervalSec=0 disables the rate limiter entirely, and RestartSec
+# spaces the attempts out so a genuinely broken config is not a hot loop. The
+# failures OpenBao hits at boot are almost all transient-or-external -- a KMS
+# permission, an API not yet propagated, Secret Manager unreachable -- and every
+# one of them resolves without touching the node, but only if something is still
+# trying.
+#
+# StartLimitIntervalSec belongs in [Unit]; Restart/RestartSec in [Service].
+# Splitting them wrong is silently ignored.
+mkdir -p /etc/systemd/system/openbao.service.d
+cat << 'EOF' > /etc/systemd/system/openbao.service.d/restart.conf
+[Unit]
+StartLimitIntervalSec=0
+
+[Service]
+Restart=on-failure
+RestartSec=30s
+EOF
+systemctl daemon-reload
+
 systemctl start openbao.service
 systemctl enable openbao.service

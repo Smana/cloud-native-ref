@@ -37,12 +37,24 @@ resource "vault_approle_auth_backend_role" "cert_manager" {
   token_ttl     = 600
   token_max_ttl = 1200
 
-  # NOTE: no token_bound_cidrs, unlike AWS.
+  # NOTE: no token_bound_cidrs, unlike AWS. DEFERRED, not impossible.
   #
-  # The AWS role binds to the VPC CIDR. Here the caller is a pod behind Cilium's
-  # masquerading, reaching OpenBao over the tailnet -- the source address it
-  # presents is not something this stack can predict from the network stack's
-  # outputs, and a wrong CIDR fails closed at issuance time with an error that
-  # points at the AppRole rather than the network. Left off deliberately;
-  # revisit once the GKE egress path to the tailnet is pinned down.
+  # An earlier version of this comment said the source address could not be
+  # predicted because the caller reached OpenBao "over the tailnet". That is
+  # wrong, and it contradicted openbao/cluster/firewall.tf: cert-manager is a POD
+  # on gcp-mycluster-0 talking to the internal LB inside the VPC, and never
+  # traverses the tailnet. The candidate ranges are perfectly predictable --
+  # node_cidr and pod_cidr, both already reachable from this stack through the
+  # network remote state.
+  #
+  # What is NOT yet known is WHICH of the two the packet actually presents.
+  # Cilium displaced GKE's CNI here, so whether pod egress to an in-VPC LB is
+  # masqueraded to the node IP or arrives with the pod IP is a measurement
+  # nobody has taken on this cluster. Binding to the wrong one fails closed at
+  # issuance, with an error that names the AppRole and says nothing about the
+  # network.
+  #
+  # So: measure it against a running cluster (`hubble observe` on the
+  # cert-manager pod, or the OpenBao audit log's remote_address), then bind to
+  # what it shows. Do not guess.
 }

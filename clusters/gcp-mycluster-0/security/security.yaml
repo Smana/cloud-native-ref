@@ -8,8 +8,22 @@
 # dependsOn crds, not eks-pod-identities: the AWS copy waits on Pod Identity
 # associations because that is how its controllers get IAM. GKE binds identity
 # by SUBJECT -- the ServiceAccount is already a Google principal the moment it
-# exists -- so the only real prerequisite is that the ExternalSecret and
-# ClusterIssuer CRDs are installed. `crds` itself depends on `namespaces`.
+# exists -- so there is nothing here to wait for on the IAM side. `crds` itself
+# depends on `namespaces`.
+#
+# What `crds` does and does not guarantee, precisely, because the two CRD sets
+# arrive by different routes:
+#   - ClusterIssuer IS guaranteed. crds/base/crds-cert-manager.yaml is a plain
+#     file that the `crds` Kustomization applies itself.
+#   - ExternalSecret / ClusterSecretStore are NOT. They come from
+#     crds/base/kustomization-external-secrets.yaml, a CHILD Flux Kustomization
+#     whose own reconcile `crds` does not wait on.
+#
+# So this Kustomization's first apply on a fresh cluster can hit `no matches for
+# kind "ExternalSecret"` and go NotReady. It converges on the 30s retryInterval
+# rather than being ordered -- an accepted red status during bootstrap, not a
+# guarantee. Tightening it means adding a healthCheck on the crds-external-secrets
+# Kustomization, not adding an edge here.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

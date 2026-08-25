@@ -9,3 +9,10 @@ resources:
   - openbao-approle-externalsecret.yaml
   - openbao-ca-externalsecret.yaml
   - openbao-clusterissuer.yaml
+
+patches:
+  - path: helmrelease.yaml
+    target:
+      group: helm.toolkit.fluxcd.io
+      kind: HelmRelease
+      name: cert-manager
