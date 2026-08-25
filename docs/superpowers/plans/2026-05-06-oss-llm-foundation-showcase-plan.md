@@ -81,7 +81,7 @@ Expected: stages 1 (format) and 2 (syntax) PASS for all 4 modules. Stage 3 (rend
 
 ```bash
 cd /home/smana/Sources/cloud-native-ref
-kustomize build apps/mycluster-0 2>&1 | grep -c '^kind:'
+kustomize build apps/aws-0 2>&1 | grep -c '^kind:'
 ```
 
 Expected: a positive integer. Record it as the baseline kind count.
@@ -811,11 +811,11 @@ The cancellation reason is recorded in the supersession note at the top of `docs
 
 #### Task 23: Validate the subtractive cleanup
 
-- [ ] **Step 1: kustomize build apps/mycluster-0**
+- [ ] **Step 1: kustomize build apps/aws-0**
 
 ```bash
 cd /home/smana/Sources/cloud-native-ref
-kustomize build apps/mycluster-0 2>&1 | tail -20
+kustomize build apps/aws-0 2>&1 | tail -20
 ```
 
 Expected: clean output, exit 0. No errors about missing files.
@@ -1291,13 +1291,13 @@ EOF
 
 #### Task 34: Full repo build
 
-- [ ] **Step 1: kustomize build apps/mycluster-0**
+- [ ] **Step 1: kustomize build apps/aws-0**
 
 ```bash
 cd /home/smana/Sources/cloud-native-ref
-kustomize build apps/mycluster-0 > /tmp/apps-mycluster-0.yaml 2>&1
+kustomize build apps/aws-0 > /tmp/apps-aws-0.yaml 2>&1
 echo "exit=$?"
-grep -c '^kind:' /tmp/apps-mycluster-0.yaml
+grep -c '^kind:' /tmp/apps-aws-0.yaml
 ```
 
 Expected: exit 0; kind count ≥ 13 (the previous baseline minus phi4-mini's claim and the 5 InferencePool + 5 EPP HelmReleases; net `-11` resources from the LLM section, net `+1-2` from the new ReferenceGrant).
@@ -1308,15 +1308,15 @@ Expected: exit 0; kind count ≥ 13 (the previous baseline minus phi4-mini's cla
 kubeconform -summary -ignore-missing-schemas -strict \
   -schema-location default \
   -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-  /tmp/apps-mycluster-0.yaml 2>&1 | tail -10
+  /tmp/apps-aws-0.yaml 2>&1 | tail -10
 ```
 
 Expected: 0 errors. Custom CRDs (InferenceService, EPI, App) skipped is fine.
 
-- [ ] **Step 3: kustomize build tooling/mycluster-0**
+- [ ] **Step 3: kustomize build tooling/aws-0**
 
 ```bash
-kustomize build tooling/mycluster-0 > /tmp/tooling-mycluster-0.yaml 2>&1
+kustomize build tooling/aws-0 > /tmp/tooling-aws-0.yaml 2>&1
 echo "exit=$?"
 ```
 
@@ -1325,9 +1325,9 @@ Expected: exit 0.
 - [ ] **Step 4: kustomize build infrastructure layer**
 
 ```bash
-kustomize build infrastructure/mycluster-0 > /tmp/infra-mycluster-0.yaml 2>&1
+kustomize build infrastructure/aws-0 > /tmp/infra-aws-0.yaml 2>&1
 echo "exit=$?"
-grep -c '^kind:' /tmp/infra-mycluster-0.yaml
+grep -c '^kind:' /tmp/infra-aws-0.yaml
 ```
 
 Expected: exit 0; kind count similar to baseline minus the EnvoyExtensionPolicy.
@@ -1406,7 +1406,7 @@ for upgrade trajectories.
 
 - [x] kcl fmt clean (md5 stable across two runs)
 - [x] kcl test 20/20 PASS (composition v0.4.0)
-- [x] kustomize build apps/mycluster-0 + tooling/mycluster-0 + infrastructure/mycluster-0
+- [x] kustomize build apps/aws-0 + tooling/aws-0 + infrastructure/aws-0
 - [x] kubeconform on rendered manifests
 - [x] trivy config 0 misconfigurations (with documented `AVD-KSV-01010` ignore for `apiKey: router-noauth` placeholder)
 - [x] `./scripts/validate-kcl-compositions.sh` stages 1-2 pass for all 4 modules

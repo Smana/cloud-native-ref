@@ -13,4 +13,4 @@ spec:
       - preview
     limit: 5
   defaultValues:
-    cluster_name: mycluster-0
+    cluster_name: aws-0

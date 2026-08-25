@@ -94,7 +94,7 @@ flux reconcile source git flux-system
   delete. Belongs in `scripts/eks-prepare-destroy.sh` (see
   [Traps](#traps-found-today)).
 - **Unreviewed by more than one pair of eyes:** destroy-ordering under every
-  failure mode, `depends_on` gaps, and the `clusters/gcp-mycluster-0/` Flux wiring.
+  failure mode, `depends_on` gaps, and the `clusters/gcp-0/` Flux wiring.
   Two review agents produced nothing across repeated asks.
 
 ### Private certificates need their own OpenBao on GCP

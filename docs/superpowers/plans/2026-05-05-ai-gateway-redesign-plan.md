@@ -13,7 +13,7 @@
 ## Pre-conditions
 
 - Branch `wip/self-hosted-llm-platform-draft` checked out. Verify: `git -C ~/Sources/cloud-native-ref branch --show-current`.
-- Cluster `mycluster-0` reachable. Verify: `kubectl get nodes`.
+- Cluster `aws-0` reachable. Verify: `kubectl get nodes`.
 - LLM platform fully deployed (Phase 5 of llm-platform initiative, all 5 InferenceService XRs Ready). Verify: `kubectl get inferenceservice.cloud.ogenki.io -n llm` → all `Synced=True Ready=True`.
 - SR running. Verify: `kubectl get pods -n llm -l app.kubernetes.io/name=vllm-semantic-router | grep 1/1`.
 - Existing `llm-router-proxy` deployed and healthy (the safety net). Verify: `kubectl get deploy llm-router-proxy -n llm` → Available.
@@ -64,7 +64,7 @@ tooling/llm-router-proxy/                     # delete entire directory
 .github/workflows/llm-router-proxy.yml        # delete file
 
 # MODIFIED in P5
-clusters/mycluster-0-llm-platform/README.md   # update to reflect new gateway
+clusters/aws-0-llm-platform/README.md   # update to reflect new gateway
 infrastructure/base/tailscale-gateway/        # repoint HTTPRoute backendRefs (exact path resolved in P5.1 via grep)
 ```
 
@@ -133,9 +133,9 @@ infrastructure/base/tailscale-gateway/        # repoint HTTPRoute backendRefs (e
 
 ### Task P1.6: Wire the new kustomizations into the umbrella
 
-**Files:** `clusters/mycluster-0-llm-platform/<files>` (existing — modify to include new infrastructure base).
+**Files:** `clusters/aws-0-llm-platform/<files>` (existing — modify to include new infrastructure base).
 
-- [ ] **Step 1: Identify the umbrella Kustomization manifest** that aggregates llm-platform children (`clusters/mycluster-0/llm-platform.yaml` references children in `clusters/mycluster-0-llm-platform/`).
+- [ ] **Step 1: Identify the umbrella Kustomization manifest** that aggregates llm-platform children (`clusters/aws-0/llm-platform.yaml` references children in `clusters/aws-0-llm-platform/`).
 - [ ] **Step 2: Add a child Kustomization** for `infrastructure/base/envoy-ai-gateway/`. Set dependencies: depends on the namespace + Crossplane base (constitution dependency hierarchy).
 - [ ] **Step 3: Validate** the chain with `flux build kustomization llm-platform --path .`.
 
@@ -155,7 +155,7 @@ infrastructure/base/tailscale-gateway/        # repoint HTTPRoute backendRefs (e
 
 ### Task P1.8: Commit P1
 
-- [ ] `git add infrastructure/base/envoy-ai-gateway/ apps/base/ai/llm/ai-gateway-routes/ clusters/mycluster-0-llm-platform/`
+- [ ] `git add infrastructure/base/envoy-ai-gateway/ apps/base/ai/llm/ai-gateway-routes/ clusters/aws-0-llm-platform/`
 - [ ] Commit message: `feat(ai-gateway): bootstrap Envoy AI Gateway controller + qwen3-8b smoke route`
 
 **SC met by P1:** none yet (smoke only). **Phase gate:** in-cluster curl returns 200 from the new data plane.
@@ -313,7 +313,7 @@ The SR (vllm-semantic-router v0.2.0) is already running and is wired to receive 
 
 ### Task P5.1: Repoint Tailscale HTTPRoute
 
-**Files:** wherever the Tailscale `HTTPRoute` for `llm.priv.aws.ogenki.io` lives (likely `infrastructure/mycluster-0/tailscale-gateway/` or `apps/base/ai/llm/`).
+**Files:** wherever the Tailscale `HTTPRoute` for `llm.priv.aws.ogenki.io` lives (likely `infrastructure/aws-0/tailscale-gateway/` or `apps/base/ai/llm/`).
 
 - [ ] **Step 1: Locate the existing HTTPRoute**: `grep -r 'xplane-llm-ai-gateway\|llm.priv' apps/ infrastructure/`.
 - [ ] **Step 2: Change `backendRefs`** to point at the AI Gateway data-plane Service. Discover the exact name with `kubectl get svc -n <ai-gateway-ns>` after P1 completes — the AI Gateway controller typically names it `<gateway-name>-data-plane` or `eg-<gateway-name>`.
@@ -323,7 +323,7 @@ The SR (vllm-semantic-router v0.2.0) is already running and is wired to receive 
 
 - [ ] `rm -r infrastructure/base/llm-ai-gateway/`
 - [ ] Verify nothing references it: `grep -r 'llm-ai-gateway' . --exclude-dir=docs`. (Docs references are fine — they describe the migration history.)
-- [ ] Remove from `clusters/mycluster-0-llm-platform/` umbrella if listed.
+- [ ] Remove from `clusters/aws-0-llm-platform/` umbrella if listed.
 
 ### Task P5.3: Delete the custom Go proxy
 
@@ -334,7 +334,7 @@ The SR (vllm-semantic-router v0.2.0) is already running and is wired to receive 
 
 ### Task P5.4: Update the umbrella README
 
-**Files:** `clusters/mycluster-0-llm-platform/README.md`.
+**Files:** `clusters/aws-0-llm-platform/README.md`.
 
 - [ ] Update the architecture description to reflect: dedicated Envoy AI Gateway data plane, InferencePool + EPP per model, SR ext_proc as a pre-parser filter.
 - [ ] Remove references to the CEC and `llm-router-proxy`.
@@ -352,7 +352,7 @@ The SR (vllm-semantic-router v0.2.0) is already running and is wired to receive 
   - `chore(llm): delete legacy CEC + llm-ai-gateway directory`
   - `chore(llm): delete tooling/llm-router-proxy + GHCR workflow`
   - `feat(tailscale): repoint llm hostname to Envoy AI Gateway data plane`
-  - `docs(llm): update mycluster-0-llm-platform README — new gateway architecture`
+  - `docs(llm): update aws-0-llm-platform README — new gateway architecture`
 
 **SC met by P5:** SC-05 (proxy removed), all SCs validated end-to-end on the new stack.
 

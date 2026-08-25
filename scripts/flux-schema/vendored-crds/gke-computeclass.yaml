@@ -11,7 +11,7 @@
 #
 # Captured with:
 #   kubectl get crd computeclasses.cloud.google.com -o yaml
-# from gcp-mycluster-0, with cluster-specific metadata (uid, resourceVersion,
+# from gcp-0, with cluster-specific metadata (uid, resourceVersion,
 # managedFields, status) stripped.
 #
 # Provenance is in the annotations below: components.gke.io/component-version

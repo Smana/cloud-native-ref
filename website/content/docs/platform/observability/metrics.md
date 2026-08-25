@@ -21,7 +21,7 @@ of `kustomization.yaml`.
 | Storage | 10Gi RWO | 10Gi (`vmstorage`) + 2Gi (`vminsert`/`vmselect`) gp3 |
 | Alertmanager | `replicaCount` unset (chart default) | `replicaCount: 2` |
 
-`mycluster-0`'s overlay (`observability/mycluster-0/victoria-metrics-k8s-stack/kustomization.yaml`)
+`aws-0`'s overlay (`observability/aws-0/victoria-metrics-k8s-stack/kustomization.yaml`)
 adds no patches — it's a pure passthrough to the base. Common values shared
 by both modes (`vm-common-helm-values-configmap.yaml`, applied via
 `valuesFrom`) disable the control-plane rule groups (`kubernetes-system-apiserver`,

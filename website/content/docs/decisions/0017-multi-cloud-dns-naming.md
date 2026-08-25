@@ -149,6 +149,15 @@ such constraint.
 
 **Chosen option**: Option 3 for private names; public names remain cloud-agnostic and unchanged.
 
+> **Amended 2026-08-25 — cluster names.** This ADR asserted the clusters were named
+> `aws-mycluster-0` and `gcp-mycluster-0`. They were not: AWS ran as `mycluster-0`, with no
+> provider label, so the very asymmetry this ADR rejects for DNS names was live in the cluster
+> names themselves — "absence of a provider label means AWS". They are now **`aws-0`** and
+> **`gcp-0`**: symmetric, and shorter than the form written here because `cluster_name` is
+> embedded in Tailscale device names, IAM role names and external-dns's TXT registry, where
+> the `mycluster` filler carried no information. Applied while both clusters were destroyed,
+> so no immutable cluster name had to be recreated for it.
+
 | Name | Scope | Status |
 |---|---|---|
 | `<svc>.cloud.ogenki.io` | public, cloud-agnostic | unchanged |
@@ -229,7 +238,7 @@ Already satisfied, and not by accident:
 - **Non-overlapping pod CIDRs** — AWS `100.64.0.0/16`, GCP `100.65.0.0/16`. This is
   ClusterMesh's hardest prerequisite and the overlap check is recorded in
   `opentofu/gcp/network/variables.tfvars`.
-- **Distinct cluster names** — `aws-mycluster-0`, `gcp-mycluster-0`.
+- **Distinct cluster names** — `aws-0`, `gcp-0`.
 - **A single tailnet** carrying both clouds' routes.
 
 Known blockers, neither of which is visible until ClusterMesh is attempted:

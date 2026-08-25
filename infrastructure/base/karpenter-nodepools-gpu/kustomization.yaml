@@ -3,7 +3,7 @@ kind: Kustomization
 namespace: karpenter
 
 # GPU NodePool gated by the LLM umbrella Flux Kustomization
-# (see clusters/mycluster-0/llm-platform.yaml). Default: not applied
+# (see clusters/aws-0/llm-platform.yaml). Default: not applied
 # unless the umbrella is resumed with `flux resume kustomization llm-platform`.
 resources:
   - gpu-l4-nodepool.yaml

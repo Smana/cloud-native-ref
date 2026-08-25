@@ -32,7 +32,7 @@ variable "region" {
 variable "cluster_name" {
   description = "GKE cluster name"
   type        = string
-  default     = "gcp-mycluster-0"
+  default     = "gcp-0"
 }
 
 variable "kubernetes_version" {

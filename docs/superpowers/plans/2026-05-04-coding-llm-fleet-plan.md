@@ -276,7 +276,7 @@ Copy-paste config snippets for each client. Covers:
 
 - **OpenWebUI** — already configured via `apps/base/openwebui/app.yaml`. Document the `model: MoM` default + how to pick individual models from the dropdown.
 
-### Step 4.2 — link from `clusters/mycluster-0-llm-platform/README.md`
+### Step 4.2 — link from `clusters/aws-0-llm-platform/README.md`
 
 Cross-reference `docs/coding-clients.md` from the README's "Enable" section.
 

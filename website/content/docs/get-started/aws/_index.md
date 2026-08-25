@@ -90,7 +90,7 @@ up prefix delegation (see `opentofu/aws/eks/init/workflows.tm.hcl`).
 ## Verify
 
 ```bash
-aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
+aws eks update-kubeconfig --region eu-west-3 --name aws-0
 kubectl get nodes
 flux get all
 ```

@@ -34,7 +34,7 @@ Here's how to prepare the secret:
 
 ```hcl
 env          = "dev"
-cluster_name = "mycluster-0"
+cluster_name = "aws-0"
 
 flux_sync_repository_url = "https://github.com/Smana/cloud-native-ref.git"
 

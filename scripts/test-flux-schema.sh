@@ -183,9 +183,9 @@ echo "== nested Flux-path overlays rendered (no silent overlay drop) =="
 # Applied by their own Flux Kustomization (spec.path) but not referenced by a
 # parent kustomization; the old top_most_overlays heuristic dropped them from
 # both render paths.
-for of in overlay-security-mycluster-0-zitadel.yaml \
-          overlay-observability-mycluster-0-victoria-metrics-k8s-stack.yaml \
-          overlay-infrastructure-mycluster-0-crossplane-configuration.yaml; do
+for of in overlay-security-aws-0-zitadel.yaml \
+          overlay-observability-aws-0-victoria-metrics-k8s-stack.yaml \
+          overlay-infrastructure-aws-0-crossplane-configuration.yaml; do
   if [[ -s ".bundle/${of}" ]]; then
     echo "  PASS  nested overlay rendered: ${of}"
   else

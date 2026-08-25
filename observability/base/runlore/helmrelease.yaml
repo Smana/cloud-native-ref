@@ -257,7 +257,7 @@ spec:
       cloud:
         provider: aws
         region: eu-west-3
-        cluster_name: mycluster-0
+        cluster_name: aws-0
       # actions: omitted -> mode "off" (fully read-only on the cluster; only
       # writes are KB PRs/issues on Smana/runlore-kb via the GitHub App).
       # v0.2.0 fails closed (RequireWebhookAuth): with a model configured the

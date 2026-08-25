@@ -19,7 +19,7 @@ variable "filesystem_name" {
 variable "cluster_name" {
   description = "EKS cluster name — used to discover the worker-node security group via tags"
   type        = string
-  default     = "mycluster-0"
+  default     = "aws-0"
 }
 
 variable "tags" {

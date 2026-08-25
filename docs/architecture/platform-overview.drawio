@@ -50,7 +50,7 @@
         <mxCell id="eks" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;html=1;fillColor=#F5F7FF;strokeColor=#6366F1;strokeWidth=1.5;" vertex="1" parent="1">
           <mxGeometry x="380" y="90" width="620" height="830" as="geometry" />
         </mxCell>
-        <mxCell id="ekshdr" value="EKS Cluster · mycluster-0" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=15;fontStyle=1;fontColor=#1E293B;" vertex="1" parent="eks">
+        <mxCell id="ekshdr" value="EKS Cluster · aws-0" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=15;fontStyle=1;fontColor=#1E293B;" vertex="1" parent="eks">
           <mxGeometry x="76" y="12" width="360" height="24" as="geometry" />
         </mxCell>
         <mxCell id="ekssub" value="Cilium eBPF CNI · Karpenter-managed nodes" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;" vertex="1" parent="eks">

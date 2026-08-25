@@ -108,11 +108,11 @@ resource "helm_release" "flux_instance" {
       value = var.flux_git_ref
     },
     {
-      # A SIBLING tree to clusters/mycluster-0, not a shared one. The GCP cluster
+      # A SIBLING tree to clusters/aws-0, not a shared one. The GCP cluster
       # runs a different component set -- no aws-load-balancer-controller, no
       # aws-efs-csi-driver, no Karpenter, no runtimeclass-nvidia.
       #
-      # cluster_name already carries the gcp- prefix ("gcp-mycluster-0"), so this
+      # cluster_name already carries the gcp- prefix ("gcp-0"), so this
       # must NOT add another one.
       name  = "instance.sync.path"
       value = "clusters/${var.cluster_name}"

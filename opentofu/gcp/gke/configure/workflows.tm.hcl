@@ -81,7 +81,7 @@ script "destroy" {
   # Measured 2026-08-24: a teardown ~63 minutes after cluster creation failed
   # with
   #
-  #   Error: flux-system/gke-gcp-mycluster-0-vars failed to delete kubernetes
+  #   Error: flux-system/gke-gcp-0-vars failed to delete kubernetes
   #          resource: Unauthorized
   #
   # because the helm and kubectl providers hold a GCP access token acquired at

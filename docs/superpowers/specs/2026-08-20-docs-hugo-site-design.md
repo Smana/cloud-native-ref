@@ -250,7 +250,7 @@ the relevant HelmRelease. Anything that cannot be verified is cut or explicitly 
 |---|---|---|---|
 | `README.md` (Quickstart, Prerequisites, Platform Dashboard) | — | `get-started/**` | split; verify every command |
 | `docs/opentofu.md` | 739 | `get-started/prerequisites.md`, `platform/foundations/{_index,aws}.md` | split by *why* vs *AWS specifics*; last touched 2026-03, re-verify |
-| `docs/gitops.md` | 767 | `platform/gitops/{_index,repository-structure}.md` | split; verify the dependency hierarchy against `clusters/mycluster-0/` |
+| `docs/gitops.md` | 767 | `platform/gitops/{_index,repository-structure}.md` | split; verify the dependency hierarchy against `clusters/aws-0/` |
 | `docs/ci-workflows.md` | 259 | `platform/gitops/validation.md`, `reference/ci-workflows.md` | split: the validation pipeline is platform content, the workflow inventory is reference |
 | `docs/ingress.md` | 723 | `platform/networking/{_index,gateway-api}.md` | **merge** with the file below, de-duplicate |
 | `docs/tailscale-gateway-api.md` | 291 | `platform/networking/private-access.md` | **merge**; last touched 2025-12, heavy overlap with `ingress.md` |

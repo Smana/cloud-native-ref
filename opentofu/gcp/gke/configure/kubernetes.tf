@@ -13,7 +13,7 @@
 #
 # AWS-only keys are deliberately absent (aws_account_id, oidc_provider_arn,
 # vpc_id, karpenter_queue_name, route53_public_zone_id). The manifests that use
-# them are AWS-specific and are excluded from clusters/gcp-mycluster-0. If a
+# them are AWS-specific and are excluded from clusters/gcp-0. If a
 # shared manifest ever needs one, the right fix is a cloud-neutral name provided
 # by both ConfigMaps, not an AWS name faked on GCP.
 resource "kubectl_manifest" "flux_cluster_vars" {

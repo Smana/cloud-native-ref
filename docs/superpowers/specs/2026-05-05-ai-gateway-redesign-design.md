@@ -280,7 +280,7 @@ Five phases. Each is independently mergeable. The `llm-router-proxy` is fully re
 | **P2 — SR wiring** | Add SR as an ext_proc filter ahead of the AI Gateway body parser via `EnvoyExtensionPolicy`. Verify filter ordering works (gate from §3). Smoke: `model:"MoM"` → classified → routed to qwen3-8b. If ordering doesn't work, drop in Lua fallback. | Yes |
 | **P3 — Full fleet routing** | One `AIGatewayRoute` + `AIServiceBackend` per model (still Service-backed — no InferencePool yet). All 5 models routable by name; SR cascade decisions cover them. | Yes |
 | **P4 — InferencePool + EPP** | Refactor the InferenceService KCL composition to emit InferencePool + EPP per claim. Switch each `AIServiceBackend` from `Service` → `InferencePool`. Drop the per-model `xplane-<model>` Services. Drop the per-claim CNP overrides (task #76). | Yes (per-model migration possible) |
-| **P5 — Demolition** | Delete `infrastructure/base/llm-ai-gateway/`, `tooling/llm-router-proxy/`, the GHCR workflow, the old Tailscale HTTPRoute target. Update `clusters/mycluster-0-llm-platform/README.md`. Delete the GHCR package. Close tasks #76, #78, #108–112. | Yes (final phase) |
+| **P5 — Demolition** | Delete `infrastructure/base/llm-ai-gateway/`, `tooling/llm-router-proxy/`, the GHCR workflow, the old Tailscale HTTPRoute target. Update `clusters/aws-0-llm-platform/README.md`. Delete the GHCR package. Close tasks #76, #78, #108–112. | Yes (final phase) |
 
 **Rollback at each phase:** `flux suspend kustomization <new-kustomization>` brings the cluster back to the prior phase. The `llm-router-proxy` deployment + its CEC stay running until P5 — clients can be cut over at the Tailscale HTTPRoute level (one-line change).
 
@@ -293,7 +293,7 @@ Five phases. Each is independently mergeable. The `llm-router-proxy` is fully re
 - Virtual model `MoM` (or `auto`) triggers SR classification.
 - Explicit model names (`qwen-coder`, `qwen-coder-fim`, `qwen3-8b`, `phi4-mini`, `llamaguard3-1b`) skip classification.
 - Response header `x-vsr-selected-model` reports the chosen model when SR classified; absent for explicit-model requests.
-- **Warm-target constraint:** today only `qwen-coder-fim`, `qwen-coder`, and `qwen3-8b` run with `min=1`. `phi4-mini` and `llamaguard3-1b` stay scale-to-zero, and KEDA's prometheus trigger can't scale them from zero (no pods → no metric → no signal). SR's `general_decision` cascade target was therefore remapped from `phi4-mini` to `qwen3-8b`; the user-facing API surface is unchanged. See `clusters/mycluster-0-llm-platform/README.md` for the always-warm rationale and the planned KEDA HTTP-queue-scaler unblocker.
+- **Warm-target constraint:** today only `qwen-coder-fim`, `qwen-coder`, and `qwen3-8b` run with `min=1`. `phi4-mini` and `llamaguard3-1b` stay scale-to-zero, and KEDA's prometheus trigger can't scale them from zero (no pods → no metric → no signal). SR's `general_decision` cascade target was therefore remapped from `phi4-mini` to `qwen3-8b`; the user-facing API surface is unchanged. See `clusters/aws-0-llm-platform/README.md` for the always-warm rationale and the planned KEDA HTTP-queue-scaler unblocker.
 
 **Changes:**
 - New informational header: `x-ai-eg-backend` reports the InferencePool name (`qwen3-8b-pool` etc.) — useful for observability + blog post diagrams.

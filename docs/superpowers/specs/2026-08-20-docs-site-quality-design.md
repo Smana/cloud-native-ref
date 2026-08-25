@@ -157,7 +157,7 @@ real file in this repository so the reader can go look at it:
 | `FluxInstance` | Flux Operator manages Flux's own lifecycle | `opentofu/aws/eks/init/helm_values/flux-instance.yaml` |
 | `GitRepository` | one source, `flux-system`, GitHub App auth | created by Stage 2 |
 | `ArtifactGenerator` → `ExternalArtifact` | re-slices that one artifact per domain | `flux/artifact-generators/monorepo-split.yaml` |
-| `Kustomization` | applies one domain, with `dependsOn`, `prune`, health checks | `clusters/mycluster-0/*.yaml` |
+| `Kustomization` | applies one domain, with `dependsOn`, `prune`, health checks | `clusters/aws-0/*.yaml` |
 | `HelmRelease` + `HelmRepository`/`OCIRepository` | every upstream chart | `flux/sources/` |
 | `Alert` / `Provider` | reconciliation failures to Slack | `flux/notifications/` |
 | `ResourceSet` | preview environments | `flux/previews/` |

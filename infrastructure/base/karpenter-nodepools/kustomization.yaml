@@ -8,4 +8,4 @@ resources:
   - io-nodepool.yaml
   - io-ec2nc.yaml
   # GPU NodePool (gpu-l4-*.yaml) lives in karpenter-nodepools-gpu/ and is
-  # gated by the LLM umbrella Kustomization (see clusters/mycluster-0/llm-platform.yaml).
+  # gated by the LLM umbrella Kustomization (see clusters/aws-0/llm-platform.yaml).

@@ -23,7 +23,7 @@ variable "region" {
 variable "cluster_name" {
   description = "GKE cluster name"
   type        = string
-  default     = "gcp-mycluster-0"
+  default     = "gcp-0"
 }
 
 # These three are REQUIRED, with no defaults, matching

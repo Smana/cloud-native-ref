@@ -56,9 +56,9 @@ Two independent gates govern the self-hosted LLM platform; both must be released
 | Layer | Gate | Default | Enable |
 |---|---|---|---|
 | AWS (S3 Files filesystem + IAM) | `opentofu/aws/llm-platform/` Terramate stack tagged `opt-in`, `$TM_LLM_PLATFORM_ENABLED` env-var guard in `workflows.tm.hcl` | skipped | `TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy` |
-| Kubernetes (vLLM router, NVIDIA plugin, GPU NodePool, LLM apps, LLM EPI) | `clusters/mycluster-0/llm-platform.yaml` umbrella Flux Kustomization with `spec.suspend: true` | skipped | `flux resume kustomization llm-platform -n flux-system` |
+| Kubernetes (vLLM router, NVIDIA plugin, GPU NodePool, LLM apps, LLM EPI) | `clusters/aws-0/llm-platform.yaml` umbrella Flux Kustomization with `spec.suspend: true` | skipped | `flux resume kustomization llm-platform -n flux-system` |
 
-The umbrella Kustomization aggregates 8 children under `clusters/mycluster-0-llm-platform/` (kept a sibling of `clusters/mycluster-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/mycluster-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
+The umbrella Kustomization aggregates 8 children under `clusters/aws-0-llm-platform/` (kept a sibling of `clusters/aws-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/aws-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
 
 **Autoscaling design** (composition v0.5.0+, [SPEC-001](docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)): every model defaults `min=1` with a KEDA `ScaledObject` driven by leading vLLM saturation metrics — `running/max-num-seqs` ratio + `kv_cache_usage_perc`. The legacy KEDA HTTP add-on (proxy in the data path, lagging request-count trigger) is no longer used; AI Gateway routes directly to each vLLM Service.
 
@@ -87,7 +87,7 @@ cd opentofu/<stack> && tofu plan -var-file=variables.tfvars
 ### EKS Cluster
 
 ```bash
-aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
+aws eks update-kubeconfig --region eu-west-3 --name aws-0
 flux get all
 flux suspend kustomization --all
 flux resume kustomization --all
@@ -152,7 +152,7 @@ Flux manages all Kubernetes resources through a dependency hierarchy, broadly:
 > wider than this chain: Crossplane is three sequential Kustomizations, Karpenter
 > sits outside them, `infrastructure` depends on `karpenter` + `eks-pod-identities`
 > rather than on `security`, and several `flux/*` Kustomizations run in parallel.
-> Read `clusters/mycluster-0/` — or the derived graph at
+> Read `clusters/aws-0/` — or the derived graph at
 > [Platform → GitOps](https://cnref.ogenki.io/docs/platform/gitops/) — before
 > wiring a new component.
 
@@ -256,12 +256,12 @@ Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDN
 ### Infrastructure
 - OpenTofu stacks: `opentofu/{network,eks/init,eks/configure,openbao}`
 - Kubernetes manifests: `{infrastructure,security,observability,tooling}/base/`
-- Cluster-specific overrides: `{infrastructure,security,observability,tooling}/mycluster-0/`
+- Cluster-specific overrides: `{infrastructure,security,observability,tooling}/aws-0/`
 
 ### GitOps
 - Flux configuration: `flux/`
 - Custom Resource Definitions: `crds/base/`
-- Cluster bootstrap: `clusters/mycluster-0/`
+- Cluster bootstrap: `clusters/aws-0/`
 
 ### Scripts
 - EKS cleanup: `scripts/eks-prepare-destroy.sh`

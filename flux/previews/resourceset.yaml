@@ -40,7 +40,7 @@ spec:
         prune: true
         interval: 2m0s
         timeout: 10m0s
-        path: ./apps/mycluster-0
+        path: ./apps/aws-0
         sourceRef:
           kind: GitRepository
           name: preview-pr-<< inputs.id >>

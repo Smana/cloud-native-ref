@@ -54,7 +54,7 @@ Each ADR task follows the same shape. Read `website/content/docs/decisions/templ
 - Produces: the relref target `/docs/decisions/0008-flux-over-argocd.md`, cited by Task 10 (index) and Task 13 (stack page, GitOps section).
 
 **Source material — read before writing:**
-- `clusters/mycluster-0/` — every `Kustomization` and its `dependsOn` edges
+- `clusters/aws-0/` — every `Kustomization` and its `dependsOn` edges
 - `website/content/docs/platform/gitops/_index.md` and `repository-structure.md`
 - `website/content/docs/concepts/gitops-model.md`
 - Memory note: this repo shards Flux controllers (`sharding.fluxcd.io/key=apps`); sources live under `flux-sources` with no shard label
@@ -73,8 +73,8 @@ Each ADR task follows the same shape. Read `website/content/docs/decisions/templ
 - [ ] **Step 1: Read the source material**
 
 ```bash
-ls clusters/mycluster-0/
-grep -rn "dependsOn" clusters/mycluster-0/ | head -30
+ls clusters/aws-0/
+grep -rn "dependsOn" clusters/aws-0/ | head -30
 grep -rln "sharding.fluxcd.io" flux/ clusters/ infrastructure/ tooling/
 sed -n '1,80p' website/content/docs/concepts/gitops-model.md
 ```
@@ -109,7 +109,7 @@ Options to cover in `## Considered Options`: **Option 1: Flux** (chosen), **Opti
 For each factual sentence, name the file that proves it. Delete any sentence you cannot attach to a file.
 
 ```bash
-grep -c "dependsOn" clusters/mycluster-0/*.yaml | grep -v ":0" | head
+grep -c "dependsOn" clusters/aws-0/*.yaml | grep -v ":0" | head
 ```
 
 - [ ] **Step 4: Run the gates**

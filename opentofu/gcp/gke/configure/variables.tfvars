@@ -1,6 +1,6 @@
 project_id   = "ogenki-435905"
 region       = "europe-west4"
-cluster_name = "gcp-mycluster-0"
+cluster_name = "gcp-0"
 
 # Must equal flux/sources/gitrepo-gateway-api.yaml's ref.tag -- one Gateway API
 # surface across both clouds.

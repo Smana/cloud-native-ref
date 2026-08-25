@@ -35,7 +35,7 @@ before a controller can reach a cloud API. Each of these is a `dependsOn`
 edge, and together they form a graph. The constitution gives a five-step
 summary of it — foundations, security, infrastructure, observability,
 applications — but that summary is explicitly simplified: the real graph,
-re-derived from `spec.dependsOn` in every `clusters/mycluster-0/**/*.yaml`
+re-derived from `spec.dependsOn` in every `clusters/aws-0/**/*.yaml`
 Kustomization, is wider. Crossplane's install is three sequential
 Kustomizations, Karpenter depends on `crds` directly rather than on the
 Crossplane chain, and `infrastructure` depends on `karpenter` and
@@ -216,7 +216,7 @@ up and kube-proxy is disabled. `FluxInstance`'s values, including the
 live in `opentofu/aws/eks/init/helm_values/flux-instance.yaml`.
 
 The dependency graph itself is not hand-maintained prose — it is
-re-derived from `spec.dependsOn` in every `clusters/mycluster-0/**/*.yaml`
+re-derived from `spec.dependsOn` in every `clusters/aws-0/**/*.yaml`
 Kustomization. See [GitOps]({{< relref "/docs/platform/gitops/_index.md" >}})
 for its current shape, and
 [Repository Structure]({{< relref "/docs/platform/gitops/repository-structure.md" >}})

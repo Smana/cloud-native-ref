@@ -1,0 +1,21 @@
+# Identical to clusters/aws-0/flux/flux-artifact-generators.yaml.
+#
+# The ArtifactGenerator it applies (flux/artifact-generators/monorepo-split.yaml)
+# is cluster-agnostic: it splits the monorepo into per-directory ExternalArtifacts
+# that both clusters consume. Nothing in it is AWS- or GCP-specific, so this file
+# is a straight copy rather than a fork.
+#
+# It must reconcile first: every other Kustomization in this tree sources an
+# ExternalArtifact that does not exist until this one has run.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-artifact-generators
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  path: ./flux/artifact-generators
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

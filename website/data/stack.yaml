@@ -115,7 +115,7 @@ groups:
         pin: "`opentofu/config.tm.hcl` — `flux_operator_version`"
         strip: true
       - name: Flux Instance
-        role: The CR pointing Flux at this repo's clusters/mycluster-0 path
+        role: The CR pointing Flux at this repo's clusters/aws-0 path
         logo: flux
         url: https://fluxcd.io
         pin: "`opentofu/config.tm.hcl` — `flux_instance_version`"
