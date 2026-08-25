@@ -11,6 +11,22 @@ resource "vault_approle_auth_backend_role" "cert_manager" {
   role_name      = "cert-manager"
   token_policies = [vault_policy.cert_manager.name]
 
+  # PINNED, not generated — and this is a deliberate divergence from AWS.
+  #
+  # cert-manager's ClusterIssuer takes `roleId` as a REQUIRED STRING with no
+  # secretRef option (verified against the cert-manager v1.21.1 CRD). AWS
+  # therefore plumbs the generated value into a Flux postBuild variable via its
+  # cluster vars ConfigMap. GCP cannot do that: this stack runs AFTER
+  # gke/configure has already written that ConfigMap, so the value would not
+  # exist when Flux needs it.
+  #
+  # A role_id is an identifier, not a credential — it is useless without the
+  # secret_id, which stays in Secret Manager and reaches the cluster through
+  # External Secrets. Pinning it lets the ClusterIssuer name it directly and
+  # removes a cross-stack ordering dependency entirely.
+  role_id = "cert-manager-gcp"
+
+
   # Short-lived tokens. cert-manager re-authenticates per issuance, so a long
   # TTL buys nothing and widens the window on a leaked token.
   token_ttl     = 600

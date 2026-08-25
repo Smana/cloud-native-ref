@@ -1,0 +1,46 @@
+# Security layer for gcp-mycluster-0: External Secrets and cert-manager, wired
+# to the GCP OpenBao's PKI.
+#
+# Points at security/gcp-mycluster-0, NOT security/mycluster-0 -- that tree's
+# secret store is AWS Secrets Manager and it pulls in components (kyverno, rbac,
+# tailscale-operator, openbao-snapshot) this cluster does not run yet.
+#
+# dependsOn crds, not eks-pod-identities: the AWS copy waits on Pod Identity
+# associations because that is how its controllers get IAM. GKE binds identity
+# by SUBJECT -- the ServiceAccount is already a Google principal the moment it
+# exists -- so the only real prerequisite is that the ExternalSecret and
+# ClusterIssuer CRDs are installed. `crds` itself depends on `namespaces`.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: security
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 4m0s
+  retryInterval: 30s
+  timeout: 8m0s
+  sourceRef:
+    kind: ExternalArtifact
+    name: security-artifact
+  path: ./security/gcp-mycluster-0
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-mycluster-0-vars
+    # No Secret source here, unlike AWS. The AWS copy substitutes
+    # ${cert_manager_approle_id} out of the very Secret its own ExternalSecret
+    # creates, so the first reconcile of a fresh cluster necessarily fails and
+    # succeeds on a retry. GCP's role_id is pinned in the management stack, so
+    # this Kustomization has no such cycle.
+  dependsOn:
+    - name: crds
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: external-secrets
+      namespace: security
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: cert-manager
+      namespace: security

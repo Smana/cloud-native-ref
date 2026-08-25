@@ -212,30 +212,35 @@ External Secrets needs to read GCP Secret Manager, which means a Google identity
 allowlists **only** `xplane_dns_editor`. A claim requesting Secret Manager access
 is refused at the provider.
 
-So this workstream requires a second pre-created custom role — `xplane_secret_reader`,
+The obvious move is a second pre-created custom role — `xplane_secret_reader`,
 holding `secretmanager.versions.access` — added to `crossplane_grantable_roles`.
+That is the mechanism working as intended: adding a capability is a deliberate
+act in OpenTofu, and a claim cannot grant itself one.
 
-That is the mechanism working as intended, not an obstacle: adding a capability
-is a deliberate act in OpenTofu, and a claim cannot grant itself one.
+**It is also the weaker of two options, and it was rejected.**
+`GCPWorkloadIdentity` renders `ProjectIAMMember`, so any principal holding such
+a role can read *any* Secret Manager secret in the project by name — including
+`openbao-priv-gcp-root-token`, `openbao-priv-gcp-recovery-keys`,
+`openbao-priv-gcp-intermediate-ca` (cert **and** key), and `flux-github-app`,
+all named a few sections up. Restricting the role to `versions.access` alone
+(dropping `.list`/`secrets.get`/`secrets.list`) removes enumeration, not
+name-based read. For a design whose whole point is that the trust anchor is
+unreachable, handing out project-wide read of the intermediate's private key
+gives back most of what the offline root buys.
 
-**This role is project-wide, and that is the weaker of two options.**
-`GCPWorkloadIdentity` renders `ProjectIAMMember`, so any principal holding
-`xplane_secret_reader` can read *any* Secret Manager secret in the project by
-name — including `openbao-priv-gcp-root-token`,
-`openbao-priv-gcp-recovery-keys`, `openbao-priv-gcp-intermediate-ca` (cert and
-key), and `flux-github-app`, all named a few sections up. Restricting the role
-to `versions.access` alone (dropping `.list`/`secrets.get`/`secrets.list`)
-removes enumeration, not name-based read.
+**Resolved: per-secret bindings.**
+[`opentofu/gcp/openbao/management/iam.tf`](../../../opentofu/gcp/openbao/management/iam.tf)
+binds `roles/secretmanager.secretAccessor` to the External Secrets principal on
+exactly two secrets — `openbao-priv-gcp-approle-cert-manager` and
+`openbao-priv-gcp-ca-chain` — the same pattern
+`opentofu/gcp/openbao/cluster/iam.tf` already uses for the OpenBao server
+certificate. `xplane_secret_reader` was therefore never needed and is not in the
+allowlist.
 
-The preferred approach, left for Task 8 to apply: bind
-`roles/secretmanager.secretAccessor` **per secret** with
-`google_secret_manager_secret_iam_member` — exactly what
-`opentofu/gcp/openbao/cluster/iam.tf` already does for the OpenBao server
-certificate — scoped to the two secrets External Secrets actually needs
-(`openbao-priv-gcp-approle-cert-manager`, `openbao-priv-gcp-ca-chain`). That
-would make this project-wide grantable role unnecessary. Not done here: the
-per-secret bindings are OpenTofu in the GKE-consuming stack, which Task 8 has
-not written yet, so the decision belongs there rather than in this allowlist.
+The cost is stated rather than hidden: `GCPWorkloadIdentity` has no consumer on
+this cluster. It remains the right abstraction for a workload whose access is
+genuinely project-shaped — external-dns, whose zone permissions are exactly
+that, is the likely first one.
 
 ## Success criteria
 
@@ -265,17 +270,13 @@ Falsifiable, verified against a live cluster.
   media, a password manager — is an operator decision this document does not
   make. It must be written down somewhere before the first signing ceremony,
   or the property is aspirational.
-- **The Secret Manager grant is project-wide until Task 8 narrows it, and only a
-  code comment says so.** `xplane_secret_reader` holds `secretmanager.versions.access`
-  granted through `ProjectIAMMember`, which is project-scoped: any holder that knows
-  a secret's name can read it, including the OpenBao root token, the recovery keys
-  and the intermediate CA private key. The narrower fix — per-secret
-  `google_secret_manager_secret_iam_member` bindings, the pattern the cluster stack
-  already uses for the server certificate — belongs with Task 8, whose stack does not
-  exist yet. That is a real sequencing constraint rather than a shortcut, but it is
-  recorded here as well as in the code because "deferred to Task 8" with nothing
-  tracking it is how documented debt becomes permanent. **If Task 8 is descoped or
-  slips, this grant must be narrowed or removed, not inherited.**
+- **External Secrets' access is per-secret, so the blast radius moves with the
+  secret list.** Two `google_secret_manager_secret_iam_member` bindings, not a
+  project-wide role — the risk this bullet used to record is closed. What
+  replaces it is smaller and more boring: a third secret External Secrets needs
+  later requires a third binding, and forgetting one fails at sync time with a
+  permission error rather than silently over-granting. That is the trade taken
+  deliberately.
 - **The interim two-anchor state has no deadline.** AWS migrates "later". If
   that slips indefinitely the platform keeps two trust anchors, which is the
   outcome this design set out to avoid.

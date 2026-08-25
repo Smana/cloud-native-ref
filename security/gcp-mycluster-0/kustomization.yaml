@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Security layer for gcp-mycluster-0.
+#
+# Separate from security/mycluster-0/ rather than an overlay on it: that tree
+# pulls in kyverno, rbac, the tailscale-operator and openbao-snapshot, and its
+# External Secrets store speaks to AWS Secrets Manager. This one is deliberately
+# minimal -- just enough to prove the PKI end to end -- and grows as later
+# slices settle which of those are genuinely cloud-neutral.
+#
+# Both controllers themselves ARE shared: the HelmReleases are referenced by
+# file out of security/base/, so a chart bump lands on both clouds at once.
+resources:
+  - external-secrets
+  - cert-manager

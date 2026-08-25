@@ -80,3 +80,21 @@ variable "pki_leaf_max_ttl" {
   type        = number
   default     = 7776000
 }
+
+variable "ca_chain_secret_name" {
+  description = "GCP Secret Manager entry holding the CA chain (root + intermediate certificates, no key). Created by the offline ceremony."
+  type        = string
+  default     = "openbao-priv-gcp-ca-chain"
+}
+
+variable "external_secrets_namespace" {
+  description = "Namespace of the External Secrets controller's ServiceAccount. Part of the Workload Identity subject, so it must match the cluster exactly."
+  type        = string
+  default     = "security"
+}
+
+variable "external_secrets_service_account" {
+  description = "Name of the External Secrets controller's ServiceAccount. Part of the Workload Identity subject; a mismatch produces a binding the API accepts and that never matches."
+  type        = string
+  default     = "external-secrets"
+}

@@ -101,51 +101,28 @@ resource "google_project_iam_custom_role" "crossplane_dns" {
   ]
 }
 
-# The Secret Manager role External Secrets is permitted to receive.
+# NOTE: there is deliberately no Secret Manager role here.
 #
-# Pre-created for the same reason as crossplane_dns: `hasOnly` matches exact
-# role names, so a role the composition names at render time can never be
-# allowlisted. Deterministic name, therefore allowlistable.
+# An `xplane_secret_reader` role existed on this branch and was removed once the
+# workstream it was built for actually wired External Secrets up. The reason is
+# worth keeping: `ProjectIAMMember` -- the only binding the GCPWorkloadIdentity
+# composition renders -- is PROJECT-SCOPED, so ANY secret-reading role granted
+# through it can read EVERY secret in the project by name. In this project that
+# includes OpenBao's root token, its recovery keys and the intermediate CA's
+# private key. Narrowing the role's permission list stops enumeration; it does
+# not stop "knows the name, reads the secret".
 #
-# `secretmanager.versions.access` ONLY. Not `.list`/`secrets.get`/`secrets.list`
-# either: ESO's `gcpsm` provider needs only `versions.access` to read a NAMED
-# secret, which is how the GCP OpenBao workstream's ExternalSecrets are written
-# (docs/superpowers/plans/2026-08-24-gcp-openbao.md, Task 8 — two named
-# ExternalSecrets, not `dataFrom.find`). The three dropped permissions are what
-# `find` needs to enumerate; removing them removes the ability to discover
-# secret names, not just to write/delete them.
-#
-# HONEST CAVEAT — what this role does NOT close: `ProjectIAMMember` is
-# PROJECT-SCOPED (see opentofu/gcp/gke/init/iam.tf's file header). A holder of
-# this role, once granted, can read ANY secret in the project by name — root
-# tokens, recovery keys, the intermediate CA private key, flux-github-app — the
-# same names this design documents in the plan. Scoping stops at "no
-# enumeration"; it does not stop "knows the name, reads the secret".
-#
-# The better fix, left for whoever implements Task 8: bind
-# `roles/secretmanager.secretAccessor` PER SECRET via
-# `google_secret_manager_secret_iam_member`, exactly as
-# opentofu/gcp/openbao/cluster/iam.tf already does for the server-certificate
-# secret. That makes this project-wide grantable role unnecessary for Task 8's
-# two secrets. Not done here because Task 8 is not written yet and per-secret
-# bindings are OpenTofu resources in the GKE-consuming stack, not something
-# this allowlist can express — the decision belongs with that task.
-resource "google_project_iam_custom_role" "crossplane_secret_reader" {
-  project     = var.project_id
-  role_id     = "xplane_secret_reader"
-  title       = "Crossplane Secret Manager reader"
-  description = "Read named secret VERSIONS for External Secrets. No list/enumerate, no create, no delete; still project-wide by name — see opentofu/gcp/gke/init/iam.tf."
-
-  permissions = [
-    "secretmanager.versions.access",
-  ]
-}
+# External Secrets is therefore bound per secret instead, in
+# opentofu/gcp/openbao/management/iam.tf, the same way
+# opentofu/gcp/openbao/cluster/iam.tf binds the OpenBao node to its server
+# certificate. Re-adding a project-wide secret role here needs a workload whose
+# access is genuinely project-shaped, and an argument for why per-secret
+# bindings will not do.
 
 locals {
   # Roles Crossplane may grant. Keep tight; grow on evidence.
   crossplane_grantable_roles = [
     google_project_iam_custom_role.crossplane_dns.name,
-    google_project_iam_custom_role.crossplane_secret_reader.name,
   ]
 
   # TRAP 1, and it is silent: `projects/` takes the project NUMBER while
