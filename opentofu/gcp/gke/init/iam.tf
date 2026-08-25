@@ -269,3 +269,32 @@ resource "google_project_iam_member" "crossplane_role_reader" {
 # actual need. Extend the SAME pattern for anything further: add a
 # google_project_iam_custom_role here, reference it in the allowlist. Do NOT
 # widen the condition.
+
+# External Secrets' access to the Tailscale OAuth client.
+#
+# PER-SECRET, not through GCPWorkloadIdentity, for the same reason
+# opentofu/gcp/openbao/management/iam.tf binds per secret: that composition
+# renders ProjectIAMMember, which is PROJECT-scoped, so any secret-reading role
+# granted through it can read every secret in the project by name -- including
+# OpenBao's root token and the intermediate CA's private key.
+#
+# The subject duplicates the one in openbao/management deliberately rather than
+# being shared: the two stacks have no dependency edge, and a remote-state read
+# purely to avoid restating two strings would create one.
+locals {
+  # TRAP: `projects/` takes the project NUMBER while `workloadIdentityPools/`
+  # takes the project ID. Reversed, the API ACCEPTS the binding and it silently
+  # never matches.
+  external_secrets_principal = join("", [
+    "principal://iam.googleapis.com/projects/${data.google_project.this.number}",
+    "/locations/global/workloadIdentityPools/${var.project_id}.svc.id.goog",
+    "/subject/ns/${var.external_secrets_namespace}/sa/${var.external_secrets_service_account}",
+  ])
+}
+
+resource "google_secret_manager_secret_iam_member" "external_secrets_tailscale_oauth" {
+  project   = var.project_id
+  secret_id = var.tailscale_oauth_secret_name
+  role      = "roles/secretmanager.secretAccessor"
+  member    = local.external_secrets_principal
+}

@@ -128,6 +128,7 @@ via its own AppRole. Cluster-wide endpoints such as `sys/storage/raft/*` are cal
 - AWS CLI configured with appropriate permissions
 - Helm CLI (v3.12+), kubectl, bao CLI, jq
 - Tailscale account and API key
+- **GCP only:** three hand-created prerequisites — state bucket, Cloud KMS key ring, Tailscale OAuth client. See [`docs/gcp-bootstrap.md`](docs/gcp-bootstrap.md).
 
 **Tool versions managed via `mise.toml`**. Run `mise install` to install all required tools.
 
