@@ -10,10 +10,12 @@
 # already builds from `@repo/infrastructure/**` — so the new directory needs no
 # generator change, only this Kustomization.
 #
-# No dependsOn: crds. The only resource here is a ComputeClass, whose CRD is
-# installed by GKE itself (`cloud.google.com/v1`, present on a fresh cluster)
-# rather than by crds/base. Adding that edge would couple this to a Kustomization
-# it does not need and delay it behind the whole upstream CRD set.
+# No dependsOn: crds. This path's ComputeClass CRD is installed by GKE itself
+# (`cloud.google.com/v1`, present on a fresh cluster) rather than by crds/base;
+# the one CRD this path does need from Crossplane (GCPWorkloadIdentity, below)
+# comes from the crossplane-configuration edge instead, so a second edge on
+# `crds` would only delay this Kustomization behind the whole upstream CRD set
+# for no ordering benefit.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -26,10 +28,25 @@ spec:
   sourceRef:
     kind: ExternalArtifact
     name: infra-artifact
+  # external-dns's claim and HelmRelease are the first manifests under this path
+  # to reference ${var} (computeclass/* has none) -- without this, kustomize-
+  # controller applies the literal `${project_id}` text instead of substituting it.
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
   dependsOn:
-    # Currently inert -- a ComputeClass is cluster-scoped and this path holds
-    # nothing namespaced. Kept as future-proofing: this is the GCP cluster's only
-    # infrastructure Kustomization, so the first namespaced resource added here
-    # would otherwise race its namespace, which is a failure that presents as a
-    # dependency cascade rather than as a missing namespace.
+    # namespaces: this path now holds a namespaced HelmRelease (external-dns,
+    # in kube-system) alongside the cluster-scoped ComputeClass, so this edge is
+    # no longer future-proofing -- it is load-bearing for the HelmRelease's
+    # namespace to exist first.
     - name: namespaces
+    # crossplane-configuration: external-dns's GCPWorkloadIdentity claim needs
+    # both the `GCPWorkloadIdentity` CRD and the `gke-environment`
+    # EnvironmentConfig (for the projectID the claim omits), and both come from
+    # the crossplane-configuration-gcp package that Kustomization installs.
+    # Without this edge the claim applies before the package lands and fails
+    # with `no matches for kind "GCPWorkloadIdentity"` until the 1m retry
+    # converges -- self-healing, but a red Kustomization on every fresh deploy
+    # pointing at the wrong layer.
+    - name: crossplane-configuration

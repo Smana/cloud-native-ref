@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kube-system
+
+# The chart release by file -- the base DIRECTORY is AWS-shaped in its values
+# (two domain filters and an inert top-level `aws:` block, per this directory's
+# own helmrelease.yaml), which the patch below replaces rather than augments
+# for the fields it names.
+resources:
+  - ../../base/external-dns/helmrelease.yaml
+  - workloadidentity.yaml
+
+patches:
+  - path: helmrelease.yaml
+    target:
+      group: helm.toolkit.fluxcd.io
+      kind: HelmRelease
+      name: external-dns

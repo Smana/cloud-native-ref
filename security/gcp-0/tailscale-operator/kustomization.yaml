@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tailscale
+
+# The chart and both ProxyClasses come from security/base BY FILE, not by
+# directory. The base directory also carries oauth-client-externalsecret.yaml,
+# whose `key: tailscale/k8s-operator/oauth-client` is an AWS Secrets Manager
+# path -- pulling the directory would bring a store reference that cannot
+# resolve here, and its target Secret name would collide with ours.
+#
+# Referencing the chart by file keeps a version bump landing on both clouds at
+# once. Flux builds with LoadRestrictionsNone, as does
+# scripts/flux-schema/render-bundle.py, so a cross-directory file reference is
+# supported rather than tolerated.
+#
+# NO proxygroup.yaml. AWS runs `ts-proxies`, two EGRESS replicas; nothing on
+# this cluster egresses through the tailnet. Add it when something does.
+#
+# The two ProxyClasses' CRD (`tailscale.com/v1alpha1`) is not guaranteed here,
+# the same gap clusters/gcp-0/security/security-openbao.yaml:25-32 documents for
+# ExternalSecret: it comes from crds-tailscale-operator
+# (crds/base/kustomization-tailscale-operator.yaml), a CHILD Flux Kustomization
+# whose reconcile the parent `crds` does not wait on. A first apply can hit
+# `no matches for kind "ProxyClass"` and converge on the 30s retryInterval.
+# Self-healing, and likely masked by the minutes `security` spends installing
+# two Helm charts first -- recorded here rather than closed, same as the
+# ExternalSecret case.
+resources:
+  - ../../base/tailscale-operator/helmrelease.yaml
+  - ../../base/tailscale-operator/proxyclass-general.yaml
+  - ../../base/tailscale-operator/proxyclass-admin.yaml
+  - oauth-client-externalsecret.yaml

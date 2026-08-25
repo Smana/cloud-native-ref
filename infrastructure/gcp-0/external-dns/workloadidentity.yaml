@@ -1,0 +1,32 @@
+# external-dns's Google identity.
+#
+# This is the GCPWorkloadIdentity composition's FIRST consumer, and the call is
+# deliberately the opposite of workstream 11's. There, External Secrets needed
+# exactly two named secrets, and this composition renders ProjectIAMMember --
+# project-scoped -- which would have granted read of every secret in the project
+# including the intermediate CA's private key. So it was bound per secret and
+# this API was left without a consumer.
+#
+# external-dns's access genuinely IS project-shaped: it must discover which zone
+# owns a name, which needs dns.managedZones.list ACROSS the project. A per-zone
+# google_dns_managed_zone_iam_member cannot express that.
+#
+# xplane_dns_editor (opentofu/gcp/gke/init/iam.tf) holds record and change
+# permissions plus read-only on zones -- no zone create or delete. It is
+# allowlisted in crossplane_grantable_roles; a role outside that list fails at
+# the provider with a message naming it.
+#
+# The claim lives in kube-system because the composition derives the
+# ServiceAccount's namespace from the claim's own, and that is where external-dns
+# runs. No annotation is added to the ServiceAccount: GKE Workload Identity binds
+# by SUBJECT.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: GCPWorkloadIdentity
+metadata:
+  name: xplane-external-dns
+  namespace: kube-system
+spec:
+  serviceAccount:
+    name: external-dns
+  roles:
+    - "projects/${project_id}/roles/xplane_dns_editor"

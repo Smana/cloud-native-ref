@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: infrastructure
+
+# Six of the seven manifests in infrastructure/base/gapi are cloud-neutral and
+# are used verbatim. Referenced BY FILE because the seventh is not:
+#
+#   platform-public-gateway.yaml carries
+#   service.beta.kubernetes.io/aws-load-balancer-* annotations and
+#   cert-manager.io/cluster-issuer: letsencrypt-prod. It is the PUBLIC path,
+#   which this cluster deliberately does not build -- see the design's "What this
+#   deliberately does NOT build". Adding it here would also require solving
+#   DNS-01 against a public zone GCP does not have.
+#
+# platform-private-gateway-certificate.yaml needs no GCP variant at all: it asks
+# the `openbao` ClusterIssuer for *.${private_domain_name}, and workstream 11
+# verified that issuer end to end on this cluster.
+#
+# Using loadBalancerClass: tailscale rather than a GCP forwarding rule means the
+# private gateways incur no cloud load-balancer charges.
+resources:
+  - ../../base/gapi/tailscale-gatewayclass.yaml
+  - ../../base/gapi/tailscale-gatewayclass-config.yaml
+  - ../../base/gapi/platform-tailscale-general-gateway.yaml
+  - ../../base/gapi/platform-tailscale-admin-gateway.yaml
+  - ../../base/gapi/platform-private-gateway-certificate.yaml
+  - ../../base/gapi/allow-gateway-l7-proxy.yaml
