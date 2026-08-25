@@ -67,6 +67,29 @@ required `operator-oauth` Secret — do not rename them.
 **Revoke this client on teardown** if the project is being decommissioned; it is
 the one prerequisite that is a live credential rather than an empty container.
 
+## Credentials your shell needs
+
+Distinct from the three prerequisites above: those are things that must EXIST in
+GCP, these are things that must be in the environment you run `terramate` from.
+Both cost a wasted round trip when missing, because the failure surfaces
+mid-deploy rather than up front.
+
+```bash
+gcloud auth login
+gcloud auth application-default login    # OpenTofu uses ADC, not the CLI credential
+export TF_VAR_tailscale_api_key=<tskey-api-...>
+```
+
+- **`TF_VAR_tailscale_api_key`** — `opentofu/gcp/network` manages the tailnet's
+  split-DNS entry and the subnet router's auth key. The variable has no default,
+  so a missing value stops the apply at the prompt.
+- **AWS credentials** — still needed, but only for `opentofu/shared/*`, whose
+  state remains in S3 because the tailnet belongs to neither cloud. Since
+  ADR-0018 the GCP stacks read GCS and need no AWS session of their own. Before
+  that change a GCP-only deploy failed at `tofu init` with
+  `No valid credential sources found` on an expired AWS SSO token, which is the
+  coupling that ADR removed.
+
 ## What is NOT a prerequisite
 
 The offline root CA and the GCP intermediate. Those come from the signing
