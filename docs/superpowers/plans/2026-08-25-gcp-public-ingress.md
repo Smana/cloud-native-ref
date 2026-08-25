@@ -1090,7 +1090,7 @@ spec:
     - name: platform-public
       namespace: infrastructure
   hostnames:
-    - probe-gcp.cloud.ogenki.io
+    - probe.gcp.cloud.ogenki.io
   rules:
     - backendRefs:
         - name: probe
@@ -1104,7 +1104,7 @@ Expected: `Accepted=True ResolvedRefs=True`. Do **not** use `kubectl wait --for=
 
 ```bash
 aws route53 list-resource-record-sets --hosted-zone-id Z002027037R5RFCG05YY6 \
-  --query "ResourceRecordSets[?contains(Name,'probe-gcp')]" --output json | jq -r '.[] | "\(.Name) \(.Type) \(.ResourceRecords[0].Value)"'
+  --query "ResourceRecordSets[?contains(Name,'probe.gcp')]" --output json | jq -r '.[] | "\(.Name) \(.Type) \(.ResourceRecords[0].Value)"'
 ```
 
 Expected: an `A` record pointing at the Gateway's public IP, and a TXT registry entry containing `external-dns/owner=gcp-0-public`.
@@ -1115,7 +1115,7 @@ The decisive test. It must run **without `--cacert`**, so the system trust store
 
 ```bash
 curl -sS -m 25 -o /dev/null -w 'http=%{http_code} ssl_verify=%{ssl_verify_result}\n' \
-  https://probe-gcp.cloud.ogenki.io/
+  https://probe.gcp.cloud.ogenki.io/
 ```
 
 Expected: `http=200 ssl_verify=0`.
@@ -1123,7 +1123,7 @@ Expected: `http=200 ssl_verify=0`.
 To prove it is genuinely public rather than reachable only via the tailnet, repeat it from a network with no Tailscale — a phone on mobile data, or:
 
 ```bash
-tailscale down && curl -sS -m 25 -o /dev/null -w '%{http_code}\n' https://probe-gcp.cloud.ogenki.io/ ; tailscale up
+tailscale down && curl -sS -m 25 -o /dev/null -w '%{http_code}\n' https://probe.gcp.cloud.ogenki.io/ ; tailscale up
 ```
 
 If neither is possible, record criterion 6 as **partially verified** with the reason, exactly as workstream 10 did for its ACL criterion. Do not claim a public path was proven from inside the tailnet.
@@ -1136,7 +1136,7 @@ aws route53 list-resource-record-sets --hosted-zone-id Z002027037R5RFCG05YY6 \
 kubectl delete httproute probe-public -n infrastructure
 sleep 120
 aws route53 list-resource-record-sets --hosted-zone-id Z002027037R5RFCG05YY6 \
-  --query "ResourceRecordSets[?contains(Name,'probe-gcp')]" --output text
+  --query "ResourceRecordSets[?contains(Name,'probe.gcp')]" --output text
 ```
 
 Expected: empty. Then confirm the record count returned to its pre-probe value and that `aws-0`'s records (`runlore.cloud.ogenki.io` and its TXT) are still present and still owned by `aws-0` — the two external-dns instances writing one zone is the riskiest part of this design, and this is the check that it behaved.
