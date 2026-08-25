@@ -26,6 +26,13 @@ spec:
   sourceRef:
     kind: ExternalArtifact
     name: infra-artifact
+  # external-dns's claim and HelmRelease are the first manifests under this path
+  # to reference ${var} (computeclass/* has none) -- without this, kustomize-
+  # controller applies the literal `${project_id}` text instead of substituting it.
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
   dependsOn:
     # Currently inert -- a ComputeClass is cluster-scoped and this path holds
     # nothing namespaced. Kept as future-proofing: this is the GCP cluster's only
