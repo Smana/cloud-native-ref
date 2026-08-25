@@ -67,6 +67,51 @@ required `operator-oauth` Secret — do not rename them.
 **Revoke this client on teardown** if the project is being decommissioned; it is
 the one prerequisite that is a live credential rather than an empty container.
 
+## Public ingress: apply the federation stack, or cert-manager and external-dns fail opaquely
+
+Different in kind from the three prerequisites above — this one IS managed by OpenTofu, in
+`opentofu/shared/aws-gcp-federation` — but it belongs here because skipping it produces the same
+symptom those items warn about: a deploy that succeeds and a cluster that then fails for a reason
+nothing on GCP names.
+
+`gcp-0`'s `letsencrypt-prod` ClusterIssuer and its `external-dns-public` HelmRelease both assume
+an AWS IAM role over `AssumeRoleWithWebIdentity` — no access key, ever. See
+`website/content/docs/decisions/0019-cross-cloud-dns-federation.md` for the full design. That
+role, and the OIDC provider trusting GKE's issuer, live in `opentofu/shared/aws-gcp-federation`,
+which is **not** part of the GCP stack tree (`opentofu/gcp/**`) and is not gated by
+`TM_GCP_ENABLED`. Apply it explicitly:
+
+```bash
+cd opentofu/shared/aws-gcp-federation
+tofu init
+tofu apply -var-file=variables.tfvars
+```
+
+If it is missing when `gcp-0` reconciles, cert-manager and external-dns-public both fail against
+AWS with an `AccessDenied` or `InvalidIdentityToken` that names neither the missing stack nor the
+role — the Certificate just sits `False`, forever, with no pointer back here.
+
+**Ordering note, not a bug to fix**: this stack deliberately has no Terramate `after` edge to or
+from the GCP stacks (an AWS stack must not depend on a GCP one, and the reverse would be just as
+wrong — see its `stack.tm.hcl`). On a fresh multi-stack `terramate script run deploy`, `gcp-0` can
+therefore come up before this stack is applied. Nothing breaks permanently — cert-manager retries
+and the ClusterIssuer's Let's Encrypt account registration is independent of it — but the first
+few minutes of a brand-new deploy can show `AccessDenied` in both controllers before the role
+exists. If you see that right after a fresh apply, apply this stack (if you have not already) and
+give Flux a couple of reconcile intervals; do not treat it as a stuck deploy.
+
+**Renaming or moving `gcp-0` breaks this stack, not the other way round.** The OIDC provider
+trusts an issuer URL built from the project, location and cluster name
+(`https://container.googleapis.com/v1/projects/<project>/locations/<location>/clusters/gcp-0`).
+Change any of those and the provider has to be recreated — re-apply
+`opentofu/shared/aws-gcp-federation` after any such rename.
+
+**Deliberately left applied across teardowns.** Unlike the GCP stacks, this one is not destroyed
+by a routine `gcp-0` teardown — its `destroy` script is guarded behind
+`TM_FEDERATION_DESTROY=true`, the same pattern `opentofu/shared/tailscale` uses. An IAM role and
+an OIDC provider cost nothing idle, and leaving them applied means a rebuilt `gcp-0` gets public
+ingress working immediately rather than needing this stack re-applied every cycle.
+
 ## Credentials your shell needs
 
 Distinct from the three prerequisites above: those are things that must EXIST in
