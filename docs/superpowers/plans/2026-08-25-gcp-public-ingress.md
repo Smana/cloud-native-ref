@@ -447,7 +447,14 @@ spec:
             - "${public_domain_name}"
         dns01:
           route53:
-            region: ${region}
+            # NOT ${region}: on gcp-0 that key holds a GCP region
+            # (europe-west4), and cert-manager feeds this straight into the AWS
+            # SDK's shared config -- which backs the STS client doing the
+            # AssumeRoleWithWebIdentity. A GCP value here resolves a regional STS
+            # endpoint that does not exist, and the token exchange fails before
+            # Route53 is reached. CI cannot catch it: render-bundle.py's fixture
+            # sets `region` to an AWS region, so the rendered bundle looks fine.
+            region: ${route53_region}
             hostedZoneID: ${route53_public_zone_id}
             role: ${route53_role_arn}
             auth:
