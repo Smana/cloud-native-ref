@@ -1,0 +1,38 @@
+# Public certificates for gcp-0, solved against Route53 with NO static AWS
+# credentials.
+#
+# `auth.kubernetes` makes cert-manager assume the role using a bound
+# ServiceAccount token as the web identity (AssumeRoleWithWebIdentity). There is
+# no access key here, no secretRef, and nothing in GCP Secret Manager -- the
+# token IS the credential, and AWS validates it against the OIDC provider in
+# opentofu/shared/aws-gcp-federation.
+#
+# The AWS cluster's copy of this issuer (security/base/cert-manager/
+# le-clusterissuer-prod.yaml) uses ambient EKS Pod Identity credentials instead,
+# which is why this is a GCP-specific file rather than a shared one.
+#
+# hostedZoneID is pinned so the solver does not need to list zones to find the
+# right one, and cannot wander into another.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    email: smainklh@gmail.com
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: ogenki-issuer-account-key
+    solvers:
+      - selector:
+          dnsZones:
+            - "${public_domain_name}"
+        dns01:
+          route53:
+            region: ${region}
+            hostedZoneID: ${route53_public_zone_id}
+            role: ${route53_role_arn}
+            auth:
+              kubernetes:
+                serviceAccountRef:
+                  name: cert-manager

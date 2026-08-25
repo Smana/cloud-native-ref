@@ -99,6 +99,11 @@ FIXTURE_VARS = {
     "workload_pool": "ogenki-435905.svc.id.goog",
     "zone": "europe-west4-a",
     "network_name": "vpc-foobar",
+    # Federated Route53 path (workstream 12). GCP-only: aws-0 authenticates to
+    # Route53 with ambient EKS Pod Identity credentials and has no equivalent
+    # variable. public_domain_name and route53_public_zone_id above already
+    # cover the two AWS-named keys this fixture shares with the AWS ones.
+    "route53_role_arn": "arn:aws:iam::123456789012:role/gcp-0-route53-dns",
 }
 
 KUBE_VERSION = "1.31.0"

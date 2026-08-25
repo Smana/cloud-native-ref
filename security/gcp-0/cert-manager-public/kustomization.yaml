@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: security
+
+# Separate from security/gcp-0/openbao/, which holds the PRIVATE issuer. Two
+# issuers, two trust chains, two failure modes: the openbao ClusterIssuer signs
+# *.priv.gcp.ogenki.io from an offline root, this one gets publicly-trusted
+# certificates from Let's Encrypt. Keeping them apart means a Route53 outage
+# cannot make the private path look broken.
+resources:
+  - rbac.yaml
+  - letsencrypt-clusterissuer.yaml

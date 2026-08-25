@@ -80,3 +80,29 @@ variable "gateway_api_version" {
   type        = string
   default     = "v1.6.1"
 }
+
+# Federated Route53 path (workstream 12). No defaults on route53_role_arn or
+# route53_public_zone_id: both come from opentofu/shared/aws-gcp-federation's
+# outputs, and a wrong value here does not fail this apply -- it fails later,
+# at certificate issuance, with an AWS error that says nothing about a
+# mistyped tfvars entry. Required + no default turns that into a loud
+# "No value for required variable" instead.
+variable "public_domain_name" {
+  description = "Public zone the federated ClusterIssuer solves DNS-01 against, e.g. cloud.ogenki.io. Same variable name and validation as opentofu/aws/eks/configure -- this is the cloud-agnostic zone both clusters write to"
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$", var.public_domain_name))
+    error_message = "Domain name must be a valid DNS domain name."
+  }
+}
+
+variable "route53_public_zone_id" {
+  description = "Route53 hosted zone ID for public_domain_name. Sourced from opentofu/shared/aws-gcp-federation's public_zone_id output -- no default"
+  type        = string
+}
+
+variable "route53_role_arn" {
+  description = "AWS IAM role the federated ClusterIssuer and external-dns-public assume via AssumeRoleWithWebIdentity. Sourced from opentofu/shared/aws-gcp-federation's route53_role_arn output -- no default"
+  type        = string
+}

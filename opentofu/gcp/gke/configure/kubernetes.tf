@@ -11,11 +11,19 @@
 # infrastructure/base/ render correctly on either cloud. Renaming them here would
 # silently break shared manifests on GCP only.
 #
-# AWS-only keys are deliberately absent (aws_account_id, oidc_provider_arn,
-# vpc_id, karpenter_queue_name, route53_public_zone_id). The manifests that use
-# them are AWS-specific and are excluded from clusters/gcp-0. If a
-# shared manifest ever needs one, the right fix is a cloud-neutral name provided
-# by both ConfigMaps, not an AWS name faked on GCP.
+# AWS-only keys mostly stay absent (aws_account_id, oidc_provider_arn, vpc_id,
+# karpenter_queue_name). The manifests that use them are AWS-specific and are
+# excluded from clusters/gcp-0. If a shared manifest ever needs one, the right
+# fix is a cloud-neutral name provided by both ConfigMaps, not an AWS name faked
+# on GCP.
+#
+# public_domain_name, route53_public_zone_id and route53_role_arn are the
+# deliberate exception (workstream 12): cloud.ogenki.io is one cloud-agnostic
+# public Route53 zone that BOTH clusters write to (ADR-0017, ADR-0019), so
+# these AWS values belong in this GCP ConfigMap on purpose rather than being
+# faked. route53_public_zone_id already matches the key name the AWS ConfigMap
+# uses for the same zone; route53_role_arn has no AWS counterpart because aws-0
+# reaches Route53 with ambient EKS Pod Identity credentials, not federation.
 resource "kubectl_manifest" "flux_cluster_vars" {
   yaml_body = yamlencode({
     apiVersion = "v1"
@@ -44,6 +52,14 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       node_cidr      = local.init.node_cidr
       pod_cidr       = local.pod_cidr
       service_cidr   = local.init.service_cidr
+
+      # Public DNS, for the federated Route53 path (workstream 12). These are
+      # AWS values in a GCP ConfigMap on purpose: cloud.ogenki.io is a single
+      # cloud-agnostic public zone that BOTH clusters write to, which is what
+      # ADR-0017 and ADR-0019 decided.
+      public_domain_name     = var.public_domain_name
+      route53_public_zone_id = var.route53_public_zone_id
+      route53_role_arn       = var.route53_role_arn
     }
   })
   server_side_apply = true
