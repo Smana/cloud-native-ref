@@ -154,4 +154,28 @@ resource "google_compute_instance_group_manager" "openbao" {
     max_unavailable_fixed = 1
     max_surge_fixed       = 0
   }
+
+  # Recycle a node whose OpenBao is dead. Without this, a boot-time failure is
+  # PERMANENT even after its cause is fixed.
+  #
+  # Measured 2026-08-25: a missing IAM permission made openbao.service fail at
+  # seal configuration. systemd retried, hit its start limit -- "Start request
+  # repeated too quickly" -- and gave up for good. The instance stayed RUNNING,
+  # stayed in the MIG, and served nothing. Fixing the IAM changed nothing,
+  # because nothing ever tried again; the instance had to be deleted by hand.
+  #
+  # The health check is the TCP one from load_balancer.tf, so this recycles a
+  # node whose listener is not accepting connections. It deliberately does NOT
+  # recycle a node that is merely SEALED: a sealed OpenBao still accepts
+  # connections, and killing it would destroy the thing an operator is trying to
+  # unseal.
+  #
+  # initial_delay_sec covers the whole boot: package install, binary download
+  # with GPG verification, TLS fetch from Secret Manager, then start. Measured
+  # boot was ~65s; 300 leaves room for a slow apt mirror without letting a
+  # genuinely dead node linger.
+  auto_healing_policies {
+    health_check      = google_compute_health_check.openbao.id
+    initial_delay_sec = 300
+  }
 }
