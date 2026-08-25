@@ -154,4 +154,38 @@ resource "google_compute_instance_group_manager" "openbao" {
     max_unavailable_fixed = 1
     max_surge_fixed       = 0
   }
+
+  # NO auto_healing_policies, deliberately -- and this is a reversal worth
+  # explaining, because the obvious reading of the incident below is that MIG
+  # auto-healing is exactly what was missing.
+  #
+  # Measured 2026-08-25: a missing IAM permission made openbao.service fail at
+  # seal configuration. systemd retried, hit its start limit -- "Start request
+  # repeated too quickly" -- and gave up for good. The instance stayed RUNNING,
+  # stayed in the MIG, and served nothing. Fixing the IAM changed nothing,
+  # because nothing ever tried again; the instance had to be deleted by hand.
+  #
+  # Auto-healing would have replaced that node. It would also DESTROY THE PKI on
+  # any node that had already been initialised. Auto-healing RECREATEs the
+  # instance, the data disk above is `auto_delete = true` with no source, and
+  # OpenBao keeps everything in `storage "file"` on it -- so the successor boots
+  # with a blank disk that setup-local-disks.sh runs mkfs over. What comes back
+  # has no PKI mount, no imported issuer, no AppRole. Worse, the root token in
+  # Secret Manager now belongs to a server that no longer exists, so the
+  # management stack cannot even plan, let alone self-repair.
+  #
+  # The health check is TCP on 8200 with a 30-second unhealthy threshold
+  # (load_balancer.tf), so an OOM on a 2 GB e2-small, or any 30-second stall
+  # after initial_delay_sec, would be enough to trigger it. That converts a
+  # recoverable "restart the service" into unrecoverable data loss, unattended.
+  #
+  # The actual root cause was systemd giving up, not the absence of a node
+  # replacer -- so it is fixed where it happened: scripts/startup-script.sh
+  # installs a drop-in clearing the start limit, and a dead OpenBao now retries
+  # forever instead of needing anything to recycle the node.
+  #
+  # Revisit together with the data disk: once state survives instance
+  # replacement (a standalone google_compute_disk, or raft on a persistent
+  # volume), auto-healing becomes restorative rather than destructive and should
+  # come back.
 }
