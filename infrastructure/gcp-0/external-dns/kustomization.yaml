@@ -3,8 +3,9 @@ kind: Kustomization
 namespace: kube-system
 
 # The chart release by file -- the base DIRECTORY is AWS-shaped in its values
-# (provider aws, two domain filters, an ECR registry), which the patch below
-# replaces rather than augments for the fields it names.
+# (two domain filters and an inert top-level `aws:` block, per this directory's
+# own helmrelease.yaml), which the patch below replaces rather than augments
+# for the fields it names.
 resources:
   - ../../base/external-dns/helmrelease.yaml
   - workloadidentity.yaml
