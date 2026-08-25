@@ -402,10 +402,11 @@ GCP certificate issuance hard-depend on AWS *and* on the tailnet, in a platform
 whose stated point is that each cloud stands alone. It is the same coupling this
 design already flags as undesirable for the Flux GitHub App secret.
 
-**B — Two OpenBaos, two roots. CHOSEN.** Each cloud runs its own OpenBao with its
-own root CA. Fully independent; matches [ADR-0007](../../../website/content/docs/decisions/0007-cloud-abstraction-boundaries.md)'s
+**B — Two OpenBaos, two roots. ~~CHOSEN~~ SUPERSEDED 2026-08-24.** Each cloud runs
+its own OpenBao with its own root CA. Fully independent; matches [ADR-0007](../../../website/content/docs/decisions/0007-cloud-abstraction-boundaries.md)'s
 rule that platform-facing infrastructure stays cloud-shaped. Costs one extra
-trust anchor for tailnet clients.
+trust anchor for tailnet clients — and, as written here, leaves a live root key
+in each cloud.
 
 **C — Two OpenBaos, one shared root.** Each cloud holds its own intermediate,
 both signed by a common root: one trust anchor, independent operation. Rejected
@@ -415,7 +416,23 @@ holds, or cross-signing GCP's intermediate at bootstrap, which is a manual
 ceremony **on every rebuild** of a platform whose lifecycle is
 build-validate-destroy.
 
-#### Why B, concretely
+> **That rejection was wrong, and C is now the chosen shape.** The "ceremony on
+> every rebuild" premise is false: the intermediate lives in Secret Manager
+> independently of OpenBao's lifecycle, which is exactly why AWS's survives
+> rebuilds today. Signing happens once per cloud, ever. Nor does a shared root
+> require copying the root key anywhere — with a genuinely OFFLINE root it is
+> never in any cloud's secret store. See
+> [the OpenBao-on-GCP design](./2026-08-24-gcp-openbao-design.md).
+
+#### Why B was chosen, and why it no longer is
+
+> **Superseded 2026-08-24.** The reasoning below is preserved because the failure
+> it describes is real and worth keeping; the conclusion drawn from it was too
+> narrow. The lesson is that a signing key must be held outside OpenBao — not
+> that each cloud needs its own root. An offline root shared across clouds
+> satisfies the same lesson and additionally keeps the root key off every
+> networked system. The current decision is in
+> [the OpenBao-on-GCP design](./2026-08-24-gcp-openbao-design.md).
 
 The 2026-08-24 rebuild made the argument better than theory could. The private
 domain rename forced a new server certificate, and re-issuing it under the
@@ -430,8 +447,9 @@ extra trust anchor and remove the entire class.
 
 #### Consequences to carry into workstream 11
 
-- Tailnet clients must trust **both** roots. That is the accepted cost; it is a
-  one-line addition wherever the AWS root is already distributed.
+- Tailnet clients trust **two anchors only until AWS migrates** — its existing
+  live-key root, and the new offline root. Under the superseded two-root decision
+  this was permanent; it is now an interim state with a defined end.
 - GCP needs its own secret store for the root token and the cert-manager AppRole
   — **GCP Secret Manager**, mirroring what AWS Secrets Manager does today. The
   `flux-github-app` secret already establishes that pattern on GCP.

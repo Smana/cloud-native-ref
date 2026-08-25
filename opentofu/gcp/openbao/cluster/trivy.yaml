@@ -1,0 +1,11 @@
+# Trivy configuration for the OpenBao cluster OpenTofu stack.
+#
+# Once `tofu init` has downloaded providers into .terraform, a plain
+# `trivy config .` can recurse into that directory. Same problem, same fix, as
+# opentofu/gcp/gke/init/trivy.yaml (which cites the reason in full: vendored
+# module examples full of standalone fixtures trivy would otherwise scan as if
+# they were this stack's own code).
+scan:
+  skip-dirs:
+    # Downloaded Terraform providers
+    - .terraform
