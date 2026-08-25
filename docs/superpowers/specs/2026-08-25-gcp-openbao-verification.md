@@ -3,8 +3,8 @@
 **Date:** 2026-08-25
 **Design:** [`2026-08-24-gcp-openbao-design.md`](./2026-08-24-gcp-openbao-design.md)
 **Plan:** [`../plans/2026-08-24-gcp-openbao.md`](../plans/2026-08-24-gcp-openbao.md)
-**Outcome:** PKI chain proven end to end. Nine findings, four fixed on the branch,
-five recorded here. Torn down to zero billable resources.
+**Outcome:** PKI chain proven end to end. Nine findings, five fixed on the branch,
+four recorded here. Torn down to zero billable resources.
 
 ## Why this document exists
 
@@ -127,7 +127,7 @@ Passthrough load balancers distribute connections, not requests, so there is no
 utilization signal. Not guessable from the field name; the error is recorded
 verbatim in `load_balancer.tf`.
 
-### 7. The network stack's split-DNS is EMPTY on first apply — OPEN, and the worst of these
+### 7. The network stack's split-DNS is EMPTY on first apply — FIXED (`f9222ed8`)
 
 `opentofu/gcp/network/tailscale.tf` creates
 `tailscale_dns_split_nameservers.gcp_private` from
@@ -152,9 +152,17 @@ work — but it blocks reaching OpenBao, so it belongs to this workstream now.
 Verified the VPC side was never at fault: querying the resolver directly
 (`dig @10.10.0.2 bao.priv.gcp.ogenki.io`) returned the right address throughout.
 
-**Follow-up:** make the dependency real rather than declarative — a `time_sleep`
-between the policy and the data read, or an explicit two-phase apply — or read
-the address from something that cannot be empty.
+**Fixed** with two changes, the second mattering more than the first: a 60s
+`time_sleep` between the policy and the data read (the same `hashicorp/time`
+provider the AWS llm-platform stack already uses for EFS mount-target
+propagation), and a `precondition` asserting the address list is non-empty. A
+fixed wait alone would still degrade to the original bug on a slow allocation —
+a successful apply configuring no resolver. The precondition turns that silent
+failure into a loud one naming the consequence, recoverable by re-running.
+
+Not verified against a live first apply: proving it needs another full network
+build and teardown. The precondition means the untested path now fails loudly
+rather than silently, which is the property that was missing.
 
 ### 8. The root-token secret's shape is `{"token": …}` — RECORDED
 
