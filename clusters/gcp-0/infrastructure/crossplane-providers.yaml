@@ -1,0 +1,32 @@
+# Crossplane, stage 2 of 3: the GCP provider, its runtime config, and the
+# activation policy that decides which of the package's 32 CRDs get installed.
+#
+# `wait: true` is load-bearing, exactly as on AWS. Without it this Kustomization
+# reports Ready as soon as the Provider OBJECT is created, and
+# crossplane-configuration proceeds to apply a ClusterProviderConfig whose CRD
+# the provider has not installed yet — failing with `no matches for kind
+# ClusterProviderConfig`. Waiting makes the readiness signal mean "the provider's
+# CRDs exist", which is what stage 3 actually depends on.
+#
+# The 8m timeout matches AWS: a first install pulls the provider image and the
+# family package, which is slow on a cold node.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crossplane-providers
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m30s
+  timeout: 8m0s
+  wait: true
+  path: ./infrastructure/gcp-0/crossplane/providers
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    - name: crossplane-controller

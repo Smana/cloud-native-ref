@@ -13,7 +13,7 @@ the directory tree alone.
 
 ## One `GitRepository`, sliced into `ExternalArtifact`s
 
-Every domain Kustomization under `clusters/mycluster-0/` — `infrastructure`,
+Every domain Kustomization under `clusters/aws-0/` — `infrastructure`,
 `security`, `observability`, `tooling`, `apps`, the `flux/*` self-management
 Kustomizations, `crds`, `namespaces` — sources from an `ExternalArtifact`,
 not from the `flux-system` `GitRepository` directly. All of them are produced
@@ -48,7 +48,7 @@ Two Kustomizations are the exception, necessarily: `flux-artifact-generators`
 (which applies the `ArtifactGenerator` above, so it has to read the
 `GitRepository` directly — the `ExternalArtifact`s don't exist until it
 runs) and the opt-in `llm-platform` umbrella, whose path
-(`clusters/mycluster-0-llm-platform/`) falls outside every `copy.from` glob
+(`clusters/aws-0-llm-platform/`) falls outside every `copy.from` glob
 above.
 
 The `from: "@repo/<dir>/**"` / `to: "@artifact/<dir>/"` shape matters: a

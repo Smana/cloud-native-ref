@@ -22,7 +22,7 @@ metadata:
   namespace: security
 spec:
   clusters:
-    - name: "mycluster-0"
+    - name: "aws-0"
       region: "eu-west-3"
   serviceAccount:
     name: xplane-llm-models-preload

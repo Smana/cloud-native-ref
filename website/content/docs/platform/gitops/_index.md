@@ -45,14 +45,14 @@ here, and each one is a real file in this repository:
 | `FluxInstance` | The Flux Operator manages Flux's own installation and upgrades from this one object — which controllers run, how they are sharded, how they are tuned | `opentofu/aws/eks/init/helm_values/flux-instance.yaml`, applied in Stage 2 |
 | `GitRepository` | The `flux-system` source: this repository, authenticated as a GitHub App. Eleven more point at external repositories | created by the `FluxInstance`; the rest in `flux/sources/` |
 | `ArtifactGenerator` → `ExternalArtifact` | Re-slices the one fetched repository artifact into a narrower artifact per domain, so a change under `security/` does not re-trigger `observability/` | `flux/artifact-generators/monorepo-split.yaml` |
-| `Kustomization` | Applies one domain's overlay, in dependency order, and reports whether it is healthy | `clusters/mycluster-0/` |
+| `Kustomization` | Applies one domain's overlay, in dependency order, and reports whether it is healthy | `clusters/aws-0/` |
 | `HelmRelease` with `HelmRepository` / `OCIRepository` | Every upstream chart. Twenty-four Helm repositories and eight OCI repositories back them | `flux/sources/`, releases under each domain's `base/` |
 | `Alert` + `Provider` | Reconciliation failures out to Slack — three of each | `flux/notifications/` |
 | `ResourceSet` + `ResourceSetInputProvider` | Preview environments generated per pull request | `flux/previews/` |
 
 ### What makes a Kustomization keep things true
 
-`clusters/mycluster-0/security/security.yaml` is a compact example of every
+`clusters/aws-0/security/security.yaml` is a compact example of every
 property that matters:
 
 ```yaml
@@ -65,11 +65,11 @@ spec:
   sourceRef:
     kind: ExternalArtifact # the domain's slice, not the whole repository
     name: security-artifact
-  path: ./security/mycluster-0
+  path: ./security/aws-0
   postBuild:
     substituteFrom:        # cluster-specific values injected at apply time
       - kind: ConfigMap
-        name: eks-mycluster-0-vars
+        name: eks-aws-0-vars
       - kind: Secret
         name: cert-manager-openbao-approle
   dependsOn:
@@ -126,7 +126,7 @@ explains the `ArtifactGenerator` slicing and the sharding trap.
 ![The Flux dependency graph as the manifests declare it: namespaces feeds crds, which feeds both the Crossplane chain and karpenter; crossplane-configuration feeds eks-pod-identities, which feeds security and joins karpenter at infrastructure; observability and infrastructure both gate tooling, which gates apps; the llm-platform Kustomization is suspended and reconciles nothing](/images/diagrams/flux-dependency-tree.svg)
 
 This graph is re-derived from `spec.dependsOn` in every
-`clusters/mycluster-0/**/*.yaml`, not carried over from an earlier
+`clusters/aws-0/**/*.yaml`, not carried over from an earlier
 description of it — the shape has changed more than once.
 
 **The spine**, one Kustomization deep at each step:

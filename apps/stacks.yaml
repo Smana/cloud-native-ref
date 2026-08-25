@@ -10,7 +10,7 @@
 # The wizard READS this file (via STACKS_PATH, default `apps/stacks.yaml`) — it
 # NEVER writes to it. Adding, renaming, or removing a stack (and provisioning
 # the matching namespace under `namespaces/base/` + wiring the parent
-# `apps/mycluster-0/kustomization.yaml`) is a deliberate, platform-reviewed PR.
+# `apps/aws-0/kustomization.yaml`) is a deliberate, platform-reviewed PR.
 # The wizard cannot create stacks or namespaces (SPEC-008 Non-Goals).
 #
 # Each entry:

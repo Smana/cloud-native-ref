@@ -17,7 +17,7 @@
 # THIS file correct across a rename of var.pki_mount_path or var.pki_organization.
 #
 # IT DOES NOT MAKE THE RENAME SAFE. The other half of the pair --
-# security/gcp-mycluster-0/cert-manager/openbao-clusterissuer.yaml -- still
+# security/gcp-0/cert-manager/openbao-clusterissuer.yaml -- still
 # spells `pki_private_issuer/sign/ogenki` as a literal, and nothing in the repo
 # compares the two. Rename either variable and the mount, role and policy all
 # move together while the ClusterIssuer keeps pointing at the old path; with an

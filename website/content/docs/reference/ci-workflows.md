@@ -169,7 +169,7 @@ diagram export budget in `scripts/export-diagrams.sh` is set below.
 ## Self-hosted GitHub runners
 
 Runner scale sets run in-cluster (`tooling/base/gha-runners/`) and are **off
-by default** — commented out of `tooling/mycluster-0/kustomization.yaml`.
+by default** — commented out of `tooling/aws-0/kustomization.yaml`.
 When enabled they give private-endpoint access, lower latency, no egress
 charges for heavy builds, and secrets via External Secrets rather than
 long-lived tokens in a workflow. A second scale set is dedicated to Dagger

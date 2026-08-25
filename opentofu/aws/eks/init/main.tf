@@ -169,7 +169,7 @@ module "eks" {
       # That assumption no longer holds. The deploy script now recycles node-group
       # nodes after Cilium is healthy (scripts/eks-recycle-bootstrap-nodes.sh,
       # stage 3), so their replacements come up with Cilium already running and DO
-      # get prefixes. Verified on mycluster-0: both node-group nodes now report
+      # get prefixes. Verified on aws-0: both node-group nodes now report
       # prefixes=3 after being replaced, alongside every Karpenter node.
       #
       # With prefix delegation applied the ceiling becomes

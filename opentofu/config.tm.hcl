@@ -4,7 +4,7 @@ globals {
   provisioner                      = "tofu"
   region                           = "eu-west-3"
   profile                          = ""
-  eks_cluster_name                 = "mycluster-0"
+  eks_cluster_name                 = "aws-0"
   openbao_url                      = "https://bao.priv.aws.ogenki.io:8200"
   root_token_secret_name = "openbao/cloud-native-ref/tokens/root"
   # Deliberately a different secret from the root token: the recovery keys are

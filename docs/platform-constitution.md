@@ -195,7 +195,7 @@ Crossplane stage is three sequential Kustomizations, Karpenter sits outside them
 **Before setting `dependsOn` on anything, read the real graph**, derived from the
 manifests and kept current:
 [Platform → GitOps](https://cnref.ogenki.io/docs/platform/gitops/). When the two
-disagree, `clusters/mycluster-0/` wins.
+disagree, `clusters/aws-0/` wins.
 
 ### 7.3 HelmRelease Patterns
 

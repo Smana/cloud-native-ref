@@ -42,7 +42,7 @@ resource "vault_approle_auth_backend_role" "cert_manager" {
   # An earlier version of this comment said the source address could not be
   # predicted because the caller reached OpenBao "over the tailnet". That is
   # wrong, and it contradicted openbao/cluster/firewall.tf: cert-manager is a POD
-  # on gcp-mycluster-0 talking to the internal LB inside the VPC, and never
+  # on gcp-0 talking to the internal LB inside the VPC, and never
   # traverses the tailnet. The candidate ranges are perfectly predictable --
   # node_cidr and pod_cidr, both already reachable from this stack through the
   # network remote state.

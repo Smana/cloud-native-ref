@@ -6,9 +6,9 @@ lastVerified: 2026-08-20
 ---
 
 Every deployable domain in this repository follows the same shape:
-`<domain>/base/<component>/` holds the Kubernetes manifests, `<domain>/mycluster-0/`
+`<domain>/base/<component>/` holds the Kubernetes manifests, `<domain>/aws-0/`
 overlays them for this cluster, and a Flux `Kustomization` under
-`clusters/mycluster-0/` (or a sibling `clusters/mycluster-0-*/` for an opt-in
+`clusters/aws-0/` (or a sibling `clusters/aws-0-*/` for an opt-in
 umbrella) wires the overlay into the reconciliation graph. Infrastructure that
 predates Kubernetes — the VPC, EKS itself, OpenBao — lives under `opentofu/`
 instead, orchestrated by Terramate.
@@ -20,15 +20,15 @@ instead, orchestrated by Terramate.
 Within `infrastructure/`, `security/`, `observability/` and `tooling/`, each
 component gets its own directory under `base/` — typically a `HelmRelease` or
 a handful of raw manifests plus a `kustomization.yaml`. The cluster-specific
-`mycluster-0/kustomization.yaml` lists which of those base components are
+`aws-0/kustomization.yaml` lists which of those base components are
 actually included for this cluster; a component present under `base/` but
 absent (or commented out) from the overlay is not deployed. `tooling/base/gha-runners`
 is the clearest example — present under `base/`, commented out in
-`tooling/mycluster-0/kustomization.yaml`, so the self-hosted CI runners stay off
+`tooling/aws-0/kustomization.yaml`, so the self-hosted CI runners stay off
 by default.
 
 A handful of components bypass the shared overlay and get their own top-level
-Flux `Kustomization` directly under `clusters/mycluster-0/<domain>/` instead —
+Flux `Kustomization` directly under `clusters/aws-0/<domain>/` instead —
 `crossplane-controller`, `karpenter`, `grafana-operator`, `victoria-metrics`,
 `victoria-traces` and `zitadel` are wired this way, usually because they need
 their own `dependsOn` ordering rather than sharing the domain's overlay
@@ -40,7 +40,7 @@ lifecycle.
   exist *before* a Kubernetes API server does: the VPC, the EKS cluster
   itself, and the OpenBao cluster. See [Commands]({{< relref "/docs/reference/commands.md" >}}).
 - **Flux / Kustomize** (everything else) reconciles the cluster once it
-  exists. `clusters/mycluster-0/` is the entry point Flux's `FluxInstance`
+  exists. `clusters/aws-0/` is the entry point Flux's `FluxInstance`
   points at; from there the dependency chain runs Namespaces → CRDs →
   Crossplane → EKS Pod Identities → Security → Infrastructure →
   Observability → Applications.
@@ -52,9 +52,9 @@ independently of the base/overlay mechanism above:
 
 - **`opentofu/aws/llm-platform/`** — a Terramate stack tagged `opt-in`; its
   scripts no-op unless `TM_LLM_PLATFORM_ENABLED=true`.
-- **`clusters/mycluster-0-llm-platform/`** — an umbrella Flux `Kustomization`
-  (`clusters/mycluster-0/llm-platform.yaml`) with `spec.suspend: true`, kept a
-  sibling of `clusters/mycluster-0/` specifically so `flux-system`'s recursive
+- **`clusters/aws-0-llm-platform/`** — an umbrella Flux `Kustomization`
+  (`clusters/aws-0/llm-platform.yaml`) with `spec.suspend: true`, kept a
+  sibling of `clusters/aws-0/` specifically so `flux-system`'s recursive
   sync does not pick up its children and bypass the suspend.
 
 Both gates have to be released for an end-to-end LLM platform deploy — see the

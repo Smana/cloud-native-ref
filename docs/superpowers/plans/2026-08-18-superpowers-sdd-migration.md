@@ -47,7 +47,7 @@
 - `.claude/skills/README.md`, `.claude/rules/process.md`
 - `.claude/skills/verify-spec/SKILL.md`, `.claude/skills/spec-research/SKILL.md`
 - `.claude/settings.json`, `.gitignore`
-- `docs/coding-clients.md`, `clusters/mycluster-0-llm-platform/README.md`, `.fluxschema.yml`
+- `docs/coding-clients.md`, `clusters/aws-0-llm-platform/README.md`, `.fluxschema.yml`
 - `infrastructure/base/crossplane/configuration/kcl/{inference-service,kvstore}/README.md`
 - `infrastructure/base/crossplane/configuration/inference-service-definition.yaml` (only if the archive sed matches — its two spec mentions are unnumbered prose, so it may end up untouched; that is fine)
 - `apps/base/ai/llm/vmrule-llm-slo.yaml`, `apps/base/ai/llm/ai-gateway-routes/route.yaml`
@@ -206,7 +206,7 @@ Moves eleven merged spec directories into quarterly buckets and fixes all three 
 **Files:**
 - Move: eleven directories `docs/specs/*/` → `docs/specs/done/{2026-Q2,2026-Q3}/`
 - Modify (scripted): ~40 files under `docs/specs/done/`
-- Modify: `README.md:214`, `CLAUDE.md:63`, `docs/coding-clients.md:143`, `clusters/mycluster-0-llm-platform/README.md:163`, `infrastructure/base/crossplane/configuration/kcl/inference-service/README.md` (8 links), `infrastructure/base/crossplane/configuration/kcl/kvstore/README.md:58`, `infrastructure/base/crossplane/configuration/inference-service-definition.yaml:255`, `apps/base/ai/llm/vmrule-llm-slo.yaml:37`, `apps/base/ai/llm/ai-gateway-routes/route.yaml:19`, `.fluxschema.yml:1`
+- Modify: `README.md:214`, `CLAUDE.md:63`, `docs/coding-clients.md:143`, `clusters/aws-0-llm-platform/README.md:163`, `infrastructure/base/crossplane/configuration/kcl/inference-service/README.md` (8 links), `infrastructure/base/crossplane/configuration/kcl/kvstore/README.md:58`, `infrastructure/base/crossplane/configuration/inference-service-definition.yaml:255`, `apps/base/ai/llm/vmrule-llm-slo.yaml:37`, `apps/base/ai/llm/ai-gateway-routes/route.yaml:19`, `.fluxschema.yml:1`
 - Rewrite: `docs/specs/README.md`
 - Delete: `docs/specs/templates/`, `docs/specs/PHASED.md`
 

@@ -12,7 +12,7 @@
 
 **Spec:** [`docs/superpowers/specs/2026-08-23-cloud-partitioned-layout-design.md`](../specs/2026-08-23-cloud-partitioned-layout-design.md)
 
-**Scope:** The refactor only — design phases 1–4. Building `clusters/gcp-mycluster-0/` and applying GCP are **Phases 5–6 of the [GCP foundation plan](2026-08-18-gcp-foundation.md)**, which resume after this plan lands with their paths updated by Task 8. Do not duplicate them here.
+**Scope:** The refactor only — design phases 1–4. Building `clusters/gcp-0/` and applying GCP are **Phases 5–6 of the [GCP foundation plan](2026-08-18-gcp-foundation.md)**, which resume after this plan lands with their paths updated by Task 8. Do not duplicate them here.
 
 ## Global Constraints
 
@@ -1506,7 +1506,7 @@ run order, so the bare root command is no longer the entrypoint. Records
 the tag-scoped forms and the removal condition for the GCP gate."
 ```
 
-Then resume **Phases 5–6 of the [GCP foundation plan](2026-08-18-gcp-foundation.md)** — `clusters/gcp-mycluster-0/` and the GCP apply — whose paths this refactor has now settled.
+Then resume **Phases 5–6 of the [GCP foundation plan](2026-08-18-gcp-foundation.md)** — `clusters/gcp-0/` and the GCP apply — whose paths this refactor has now settled.
 
 ---
 

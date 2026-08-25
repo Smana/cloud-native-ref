@@ -90,7 +90,7 @@ No page lands in `website/content/` until all four hold. This is the plan's cent
 
 1. Every repository path the page names still exists.
 2. Every command the page shows matches `opentofu/workflows.tm.hcl`, `opentofu/*/workflows.tm.hcl`, `scripts/`, or `CLAUDE.md`.
-3. Every component list matches what Flux actually deploys (`clusters/mycluster-0/`, `*/base/`).
+3. Every component list matches what Flux actually deploys (`clusters/aws-0/`, `*/base/`).
 4. Every version matches `mise.toml`, `opentofu/config.tm.hcl`, or the relevant HelmRelease.
 
 Content that cannot be verified is **cut**, or kept inside a `{{< callout type="warning" >}}` that says explicitly what is unverified. It is never carried over silently.
@@ -1137,7 +1137,7 @@ silently assumes AWS."
 **Files:**
 - Create: `website/content/docs/platform/foundations/{_index,aws,gcp}.md`
 - Create: `website/content/docs/platform/gitops/{_index,repository-structure,validation}.md`
-- Read: `docs/opentofu.md`, `docs/gitops.md`, `docs/ci-workflows.md`, `clusters/mycluster-0/`, `scripts/validate-manifests.sh`, `.fluxschema.yml`
+- Read: `docs/opentofu.md`, `docs/gitops.md`, `docs/ci-workflows.md`, `clusters/aws-0/`, `scripts/validate-manifests.sh`, `.fluxschema.yml`
 
 **Interfaces:**
 - Produces: `/docs/platform/foundations/` and `/docs/platform/gitops/`, referenced by Get Started and by Task 15's guides.
@@ -1162,8 +1162,8 @@ The Prerequisites section is **not** duplicated here — it lives in `get-starte
 - [x] **Step 3: Verify the dependency hierarchy against the cluster manifests**
 
 ```bash
-ls clusters/mycluster-0/
-grep -l "dependsOn" clusters/mycluster-0/*.yaml | while read -r f; do
+ls clusters/aws-0/
+grep -l "dependsOn" clusters/aws-0/*.yaml | while read -r f; do
   echo "== $f"; mise exec -- yq '.spec.dependsOn[].name' "$f" 2>/dev/null
 done
 ```
@@ -1203,7 +1203,7 @@ git commit -m "docs(platform): migrate foundations and GitOps
 opentofu.md split along the cloud boundary ADR-0007 sets: the three-stage model
 and the tooling rationale are cloud-neutral, the stacks and the two-stage EKS
 bootstrap are not. gitops.md's dependency hierarchy re-derived from
-clusters/mycluster-0/ rather than trusted."
+clusters/aws-0/ rather than trusted."
 ```
 
 ---
@@ -1466,7 +1466,7 @@ common source of confusion about this repository."
 
 **Files:**
 - Create: `website/content/docs/platform/observability/{_index,metrics,logs,dashboards-and-alerts,postgresql}.md`
-- Read: `docs/observability.md` (878, stale since 2025-11-02), `docs/postgresql-monitoring-architecture.md` (451, stale since 2025-11-14), `observability/base/`, `observability/mycluster-0/`, `.claude/rules/observability.md`
+- Read: `docs/observability.md` (878, stale since 2025-11-02), `docs/postgresql-monitoring-architecture.md` (451, stale since 2025-11-14), `observability/base/`, `observability/aws-0/`, `.claude/rules/observability.md`
 
 **Interfaces:**
 - Produces: `/docs/platform/observability/`, linked from developer-platform §12 and Task 15's troubleshooting guide.
@@ -1555,7 +1555,7 @@ double-dollar escape for Grafana variables under Flux postBuild."
 
 **Files:**
 - Create: `website/content/docs/platform/ai-platform/{_index,coding-clients,roadmap}.md`
-- Read: `docs/ai.md` (385), `docs/coding-clients.md` (212), `docs/llm-platform-future-paths.md` (194), `clusters/mycluster-0/llm-platform.yaml`, `clusters/mycluster-0-llm-platform/README.md`, `docs/specs/done/2026-Q3/`
+- Read: `docs/ai.md` (385), `docs/coding-clients.md` (212), `docs/llm-platform-future-paths.md` (194), `clusters/aws-0/llm-platform.yaml`, `clusters/aws-0-llm-platform/README.md`, `docs/specs/done/2026-Q3/`
 
 **Interfaces:**
 - Produces: `/docs/platform/ai-platform/`.
@@ -1565,7 +1565,7 @@ double-dollar escape for Grafana variables under Flux postBuild."
 Two independent gates must both be released for an end-to-end deploy. Verify both:
 
 ```bash
-mise exec -- yq '.spec.suspend' clusters/mycluster-0/llm-platform.yaml
+mise exec -- yq '.spec.suspend' clusters/aws-0/llm-platform.yaml
 grep -n "TM_LLM_PLATFORM_ENABLED" opentofu/llm-platform/workflows.tm.hcl
 ```
 
@@ -2005,7 +2005,7 @@ All six use the **ogenki** preset (`~/.drawio-skill/styles/ogenki.json`) via the
 | Diagram | Content | Verify against |
 |---|---|---|
 | `bootstrap-stages` | network → OpenBao → EKS init → EKS configure, with what each stage creates and the two-stage CNI swap | `opentofu/*/workflows.tm.hcl`, `opentofu/eks/*/main.tf` |
-| `flux-dependency-tree` | namespaces → CRDs → Crossplane → EPIs → security → infrastructure → observability → apps, with the suspended `llm-platform` umbrella dashed | `clusters/mycluster-0/*.yaml` `dependsOn` |
+| `flux-dependency-tree` | namespaces → CRDs → Crossplane → EPIs → security → infrastructure → observability → apps, with the suspended `llm-platform` umbrella dashed | `clusters/aws-0/*.yaml` `dependsOn` |
 | `request-path` | internet and Tailscale → the two gateways → HTTPRoute → application, with ExternalDNS and cert-manager alongside | `infrastructure/base/gapi/` |
 | `secrets-and-pki` | root CA → intermediate → leaf; ESO pulling from AWS Secrets Manager and OpenBao into Kubernetes Secrets | `opentofu/openbao/`, `security/base/` |
 | `app-claim-expansion` | one `App` claim → Deployment, Service, HTTPRoute, HPA, PDB, CiliumNetworkPolicy, SQLInstance, EPI, Bucket | the App composition's rendered output |

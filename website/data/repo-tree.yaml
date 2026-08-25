@@ -7,7 +7,7 @@
 # for the owning Kustomization.
 #
 # `owner` is the load-bearing column: what reconciles this directory. Either a
-# Flux Kustomization from clusters/mycluster-0/ — verified against its
+# Flux Kustomization from clusters/aws-0/ — verified against its
 # `spec.path` — or "OpenTofu / Terramate" for the half that predates the
 # Kubernetes API, or an em dash for a directory nothing reconciles.
 #
@@ -40,10 +40,10 @@ entries:
     desc: The Flux Kustomizations themselves — the entry point the FluxInstance points at
     owner: flux-system
     children:
-      - path: clusters/mycluster-0/
+      - path: clusters/aws-0/
         kind: dir
         desc: One Kustomization per domain, carrying the dependsOn graph
-      - path: clusters/mycluster-0-llm-platform/
+      - path: clusters/aws-0-llm-platform/
         kind: dir
         desc: The suspended LLM umbrella's children, kept a sibling so the recursive sync cannot reach them
 

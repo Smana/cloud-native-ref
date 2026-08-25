@@ -16,7 +16,7 @@ This page enumerates them so you do not have to find them by failing.
 | Value | Currently | Where it lives | Affects |
 |---|---|---|---|
 | AWS region | `eu-west-3` | `opentofu/config.tm.hcl`, each stack's `variables.tfvars` | Everything |
-| Cluster name | `mycluster-0` | `opentofu/config.tm.hcl` (`eks_cluster_name`), `opentofu/aws/eks/init/variables.tfvars` (`name`) | Cluster, IAM, and the `clusters/<name>/` directory Flux syncs |
+| Cluster name | `aws-0` | `opentofu/config.tm.hcl` (`eks_cluster_name`), `opentofu/aws/eks/init/variables.tfvars` (`name`) | Cluster, IAM, and the `clusters/<name>/` directory Flux syncs |
 | Private domain | `priv.aws.ogenki.io` | `opentofu/aws/network/variables.tfvars` | Route 53 private zone, every internal hostname, the PKI |
 | Public domain | `cloud.ogenki.io` | ExternalDNS and gateway manifests | Public certificates and DNS |
 | Git repository URL | `github.com/Smana/cloud-native-ref` | `opentofu/config.tm.hcl` (`flux_sync_repository_url`) | What Flux reconciles — **change this first**, or your cluster syncs someone else's repo |
@@ -49,7 +49,7 @@ None of these are required for a working platform:
 
 | Component | Where | Note |
 |---|---|---|
-| Self-hosted LLM platform | `clusters/mycluster-0-llm-platform/`, `opentofu/aws/llm-platform/` | Already off by default behind two gates — leave it alone rather than deleting it |
+| Self-hosted LLM platform | `clusters/aws-0-llm-platform/`, `opentofu/aws/llm-platform/` | Already off by default behind two gates — leave it alone rather than deleting it |
 | App Wizard | `apps/platform/app-wizard/` | Self-service UI; the `App` claim works without it |
 | RunLore | `observability/base/runlore/` | SRE agent; needs its own credentials |
 | Demo applications | `apps/demo/` | Reference claims |

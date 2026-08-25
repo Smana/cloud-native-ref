@@ -1,4 +1,4 @@
-cluster_name = "mycluster-0"
+cluster_name = "aws-0"
 region       = "eu-west-3"
 env          = "dev"
 
