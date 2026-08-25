@@ -1,0 +1,41 @@
+# Public Gateway and its Let's Encrypt certificate.
+#
+# dependsOn security-public-certs, because the Certificate here names the
+# ClusterIssuer that Kustomization creates.
+#
+# healthChecks use healthCheckExprs on `Programmed`, NOT a bare healthChecks
+# entry. A `healthChecks` entry on a Gateway asserts only that the object
+# EXISTS: Gateway API v1 has no Ready condition and no top-level
+# observedGeneration, so kstatus reports Current the moment it is created. That
+# defect shipped in workstream 10 and was caught in review -- see
+# clusters/gcp-0/infrastructure/gapi.yaml for the same form.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-gapi-public
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 4m0s
+  retryInterval: 30s
+  timeout: 15m0s
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  path: ./infrastructure/gcp-0/gapi-public
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    - name: security-public-certs
+  healthChecks:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      name: platform-public
+      namespace: infrastructure
+  healthCheckExprs:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      failed: status.conditions.filter(c, c.type == 'Programmed').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Programmed').all(c, c.status == 'True')

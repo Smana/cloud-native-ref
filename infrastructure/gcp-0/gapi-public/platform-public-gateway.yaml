@@ -1,0 +1,43 @@
+# The one publicly-reachable entry point on gcp-0.
+#
+# NOT reused from infrastructure/base/gapi/platform-public-gateway.yaml: that
+# file carries service.beta.kubernetes.io/aws-load-balancer-* annotations and an
+# allowedRoutes list naming `runlore`, which runs on aws-0. GCP gets its own.
+#
+# Unlike the private Gateways -- which use loadBalancerClass: tailscale and cost
+# no cloud load-balancer charges -- this provisions a real GCP forwarding rule
+# and IS BILLABLE. That is inherent to being publicly reachable, and it is why
+# teardown checks for forwarding rules and reserved addresses specifically.
+#
+# allowedRoutes lists NO application namespace. Adding a public service is a
+# deliberate edit to this file, not a side effect of deploying something -- the
+# same posture as the AWS public Gateway, whose single consumer matches exactly
+# one path and method.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: platform-public
+  labels:
+    external-dns: enabled  # required by external-dns's --gateway-label-filter
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: https
+      hostname: "*.${public_domain_name}"
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                # Intentionally empty of application namespaces. A public
+                # service is added here explicitly, with review.
+                values:
+                  - infrastructure
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: platform-public-tls

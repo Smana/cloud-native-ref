@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: infrastructure
+
+# Separate from infrastructure/gcp-0/gapi/, which holds the PRIVATE Tailscale
+# gateways. Different GatewayClass (cilium vs cilium-tailscale), different trust
+# chain, different exposure, different failure modes -- and a public Gateway is
+# the one thing on this cluster an attacker can reach without the tailnet.
+resources:
+  - platform-public-gateway.yaml
+  - certificate.yaml
