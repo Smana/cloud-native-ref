@@ -266,7 +266,7 @@ Falsifiable, verified against a live cluster, then torn down.
 
 - Parent design: [GCP Support — Dual-Cloud Platform Design](2026-08-18-gcp-support-design.md)
 - Sibling: [GCP OpenBao — private PKI](2026-08-24-gcp-openbao-design.md), merged #1830
-- [ADR-0005 · Cilium on GKE Standard](../../../website/content/docs/decisions/0005-gke-standard-with-cilium.md)
+- [ADR-0005 · Cilium on GKE Standard](../../../website/content/docs/decisions/0005-gke-standard-self-managed-cilium.md)
 - [ADR-0017 · Multi-cloud DNS naming](../../../website/content/docs/decisions/0017-multi-cloud-dns-naming.md)
-- [ADR-0018 · Per-cloud OpenTofu state](../../../website/content/docs/decisions/0018-per-cloud-opentofu-state.md)
+- ADR-0018 · Per-cloud OpenTofu state — `website/content/docs/decisions/0018-per-cloud-opentofu-state.md`, landing with PR #1831; left unlinked here because it is not on this branch yet
 - `website/content/docs/platform/networking/private-access.md` — the AWS-side operator's guide this mirrors
