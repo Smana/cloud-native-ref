@@ -12,8 +12,8 @@
 # fail anything immediately: already-issued certificates keep serving and
 # already-published DNS records keep resolving. It breaks the NEXT thing that
 # needs the role -- the next ACME renewal or the next record change -- with an
-# opaque AWS AccessDenied that says nothing about a missing OIDC provider. That
-# gap between cause and symptom is what the guard is for.
+# STS token-validation error that surfaces in cert-manager's logs as a generic
+# auth failure. That gap between cause and symptom is what the guard is for.
 #
 # This stack is deliberately NOT tagged `opt-in` (unlike the GCP stacks): the
 # OIDC issuer URL is derived, not read from a live cluster (see stack.tm.hcl),

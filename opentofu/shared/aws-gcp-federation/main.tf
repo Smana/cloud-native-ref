@@ -102,12 +102,12 @@ data "aws_iam_policy_document" "route53" {
   }
 
   # GetChange is how ACME polls for propagation. It takes a change ID, not a
-  # zone, so it cannot be scoped further -- this is an AWS API limitation, not
-  # an oversight.
+  # zone, so it cannot be narrowed to this zone's changes -- an AWS API
+  # limitation, not an oversight.
   statement {
     effect    = "Allow"
     actions   = ["route53:GetChange"]
-    resources = ["*"]
+    resources = ["arn:aws:route53:::change/*"]
   }
 
   # external-dns resolves a domain filter to a zone ID at startup. Read-only,

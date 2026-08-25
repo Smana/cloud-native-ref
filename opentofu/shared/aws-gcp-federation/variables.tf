@@ -35,4 +35,9 @@ variable "trusted_service_accounts" {
     "security/cert-manager",
     "kube-system/external-dns-public",
   ]
+
+  validation {
+    condition     = alltrue([for sa in var.trusted_service_accounts : can(regex("^[a-z0-9-]+/[a-z0-9-]+$", sa))])
+    error_message = "Each entry must be exactly `<namespace>/<name>`."
+  }
 }
