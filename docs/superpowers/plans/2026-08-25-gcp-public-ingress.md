@@ -37,23 +37,31 @@
 - Consumes: nothing from earlier tasks.
 - Produces: output `route53_role_arn` — the ARN Tasks 2 and 4 put in `spec.acme.solvers[].dns01.route53.role` and external-dns's `AWS_ROLE_ARN`.
 
-- [ ] **Step 1: Verify GKE actually serves OIDC discovery at the expected URL**
+- [ ] **Step 1: Record the issuer URL as an assumption — the gate moved to Task 5**
 
-The whole design rests on AWS being able to fetch a discovery document from GKE. Prove it before writing IAM that depends on it. A cluster must exist; if none does, deploy the GCP network + GKE stacks first (see Task 5 Step 1 for the commands).
+This task originally verified GKE's OIDC discovery endpoint before writing any
+IAM. It cannot: the endpoint is served per-cluster, and `gcp-0` does not exist
+between deploys — this platform tears down after every verification. Confirmed
+2026-08-25: `curl .../clusters/gcp-0/.well-known/openid-configuration` → HTTP 404
+`Requested entity was not found`, and `gcloud container clusters list` → `[]`.
 
-```bash
-ISSUER="https://container.googleapis.com/v1/projects/ogenki-435905/locations/europe-west4-a/clusters/gcp-0"
-curl -sS "${ISSUER}/.well-known/openid-configuration" | jq -r '.issuer, .jwks_uri'
-```
+**Write the code on the documented assumption**, which `main.tf`'s own comment
+already states: the issuer is a deterministic string built from project,
+location and cluster name, and does not require the cluster to exist.
 
-Expected: the `issuer` echoes `$ISSUER` exactly, and `jwks_uri` is an https URL. If this 404s or the issuer differs, **stop and report** — the federation cannot work and the design needs revisiting.
+**The verification now lives in Task 5 Step 1**, positioned after the GKE deploy
+and before the federation stack is applied. That ordering is not cosmetic:
 
-Also confirm what the tokens actually claim, since the trust policy matches on it:
+`data "tls_certificate"` fetches the TLS certificate of the **host**
+(`container.googleapis.com`), which succeeds for any URL on that host — including
+one whose cluster path 404s. So a wrong project, location or cluster name
+produces an `aws_iam_openid_connect_provider` that applies cleanly and points at
+nothing. Nothing fails until cert-manager presents a token and gets an opaque
+`AccessDenied` with no mention of the issuer.
 
-```bash
-gcloud container clusters describe gcp-0 --zone europe-west4-a --project ogenki-435905 \
-  --format="value(selfLink)"
-```
+Add that reasoning as a comment above `data "tls_certificate" "gke_oidc"` in
+Step 4, so the next reader knows why the apply succeeding proves less than it
+appears to.
 
 - [ ] **Step 2: Create the stack scaffolding**
 
@@ -947,25 +955,59 @@ git commit -m "feat(gcp): external-dns for the public Route53 zone via federated
 
 **This task writes to PRODUCTION DNS.** `cloud.ogenki.io` is a live zone that `aws-0` also uses. Never delete a record you did not create, and check `external-dns/owner` on the TXT registry before removing anything.
 
-- [ ] **Step 1: Deploy**
+- [ ] **Step 1: Deploy, with the OIDC gate in the middle**
+
+Order matters here. The federation stack is applied **after** the cluster exists
+and **after** its discovery endpoint is verified — see Task 1 Step 1 for why an
+unverified issuer produces an OIDC provider that applies cleanly and works never.
 
 ```bash
 git push -u origin "$(git branch --show-current)"
 
-cd opentofu/shared/aws-gcp-federation && terramate script run \
+# 1. GCP network
+cd opentofu/gcp/network && TM_GCP_ENABLED=true terramate script run \
   --disable-check-git-remote --disable-check-git-untracked --disable-check-git-uncommitted deploy
-cd ../../gcp/network && TM_GCP_ENABLED=true terramate script run \
-  --disable-check-git-remote --disable-check-git-untracked --disable-check-git-uncommitted deploy
+
+# 2. GKE, tracking this branch
 cd ../gke && TM_GCP_ENABLED=true TF_VAR_flux_git_ref="refs/heads/$(git branch --show-current)" \
   terramate script run --disable-check-git-remote --disable-check-git-untracked \
   --disable-check-git-uncommitted deploy
 ```
 
-Credentials needed in the shell, both of which have cost a wasted round trip before: AWS (`aws sts get-caller-identity` must succeed) and `TF_VAR_tailscale_api_key`.
+**Now the gate.** Do not proceed until this passes:
 
-The OpenBao stacks are **not** required for this workstream — nothing here uses the private PKI. Skip them to save time and cost.
+```bash
+ISSUER="https://container.googleapis.com/v1/projects/ogenki-435905/locations/europe-west4-a/clusters/gcp-0"
+curl -sS "${ISSUER}/.well-known/openid-configuration" | jq -r '.issuer, .jwks_uri'
+```
 
-**Read the logs, not the exit codes.** Background and wrapped commands in this repository have reported success over real failures repeatedly.
+Expected: `issuer` echoes `$ISSUER` **exactly**, and `jwks_uri` is an https URL.
+
+A 404, or an `issuer` that differs by even a character, means the trust policy
+will never match a real token. **Stop and report** — do not apply the federation
+stack, and do not "fix" it by editing the trust policy to match whatever came
+back without understanding why it differs.
+
+```bash
+# 3. Only now, the federation
+cd ../../shared/aws-gcp-federation && terramate script run \
+  --disable-check-git-remote --disable-check-git-untracked --disable-check-git-uncommitted deploy
+tofu output -raw route53_role_arn
+```
+
+Confirm that ARN equals `arn:aws:iam::396740644681:role/gcp-0-route53-dns`, the
+value Tasks 2 and 4 hardcode. If it differs, the manifests point at a role that
+does not exist and issuance will fail with `AccessDenied`.
+
+Credentials needed in the shell, both of which have cost a wasted round trip
+before: AWS (`aws sts get-caller-identity` must succeed) and
+`TF_VAR_tailscale_api_key`.
+
+The OpenBao stacks are **not** required — nothing here uses the private PKI.
+Skip them to save time and cost.
+
+**Read the logs, not the exit codes.** Background and wrapped commands in this
+repository have reported success over real failures repeatedly.
 
 - [ ] **Step 2: Criteria 1 and 3 — the trust boundary**
 
