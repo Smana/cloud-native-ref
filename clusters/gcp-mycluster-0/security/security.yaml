@@ -1,5 +1,12 @@
-# Security layer for gcp-mycluster-0: External Secrets and cert-manager, wired
-# to the GCP OpenBao's PKI.
+# The security layer's CONTROLLERS: External Secrets and cert-manager.
+#
+# The resources they admit -- ExternalSecrets, the ClusterSecretStore, the
+# ClusterIssuer -- are a separate Kustomization (security-openbao.yaml) that
+# waits on this one's health checks. Both charts ship a validating webhook with
+# failurePolicy: Fail, so a custom resource applied alongside its own chart is
+# admitted against a Service that has no endpoints yet. See
+# security/gcp-mycluster-0/controllers/kustomization.yaml for the measured
+# failure and why the split is deterministic rather than lucky.
 #
 # Points at security/gcp-mycluster-0, NOT security/mycluster-0 -- that tree's
 # secret store is AWS Secrets Manager and it pulls in components (kyverno, rbac,
@@ -10,20 +17,6 @@
 # by SUBJECT -- the ServiceAccount is already a Google principal the moment it
 # exists -- so there is nothing here to wait for on the IAM side. `crds` itself
 # depends on `namespaces`.
-#
-# What `crds` does and does not guarantee, precisely, because the two CRD sets
-# arrive by different routes:
-#   - ClusterIssuer IS guaranteed. crds/base/crds-cert-manager.yaml is a plain
-#     file that the `crds` Kustomization applies itself.
-#   - ExternalSecret / ClusterSecretStore are NOT. They come from
-#     crds/base/kustomization-external-secrets.yaml, a CHILD Flux Kustomization
-#     whose own reconcile `crds` does not wait on.
-#
-# So this Kustomization's first apply on a fresh cluster can hit `no matches for
-# kind "ExternalSecret"` and go NotReady. It converges on the 30s retryInterval
-# rather than being ordered -- an accepted red status during bootstrap, not a
-# guarantee. Tightening it means adding a healthCheck on the crds-external-secrets
-# Kustomization, not adding an edge here.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -37,18 +30,17 @@ spec:
   sourceRef:
     kind: ExternalArtifact
     name: security-artifact
-  path: ./security/gcp-mycluster-0
+  path: ./security/gcp-mycluster-0/controllers
   postBuild:
     substituteFrom:
       - kind: ConfigMap
         name: gke-gcp-mycluster-0-vars
-    # No Secret source here, unlike AWS. The AWS copy substitutes
-    # ${cert_manager_approle_id} out of the very Secret its own ExternalSecret
-    # creates, so the first reconcile of a fresh cluster necessarily fails and
-    # succeeds on a retry. GCP's role_id is pinned in the management stack, so
-    # this Kustomization has no such cycle.
   dependsOn:
     - name: crds
+  # These are what make the split work. A Ready HelmRelease means helm-controller
+  # finished waiting on the release's workloads (install.disableWait defaults to
+  # false), so each chart's webhook Deployment is Available -- and therefore its
+  # Service has endpoints -- before security-openbao is allowed to apply anything.
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
