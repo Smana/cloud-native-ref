@@ -1,5 +1,15 @@
 # The chart normally creates these; it is disabled below because the chart's
 # ServiceAccount would not carry the projected-token volume this needs.
+#
+# `namespaces` is required, not incidental: the chart's own clusterrole.yaml
+# gates this exact rule on gateway sources ("we need to list namespaces
+# cluster-wide to discover Gateways across the cluster"), and the
+# gateway-route source builds a namespace informer at construction time --
+# missing RBAC there is a log.Fatal in external-dns's main, so the pod
+# CrashLoopBackOffs before it ever reaches a Route53 call. Confirmed against
+# this repo's own rendered bundle: the private external-dns on gcp-0 uses
+# chart RBAC and carries this rule; this hand-written copy omitted it until
+# the final-branch review caught it.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -7,6 +17,9 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["services", "endpoints", "pods", "nodes"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
     verbs: ["get", "watch", "list"]
   - apiGroups: ["extensions", "networking.k8s.io"]
     resources: ["ingresses"]
