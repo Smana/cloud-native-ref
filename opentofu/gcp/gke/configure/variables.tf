@@ -111,9 +111,9 @@ variable "route53_role_arn" {
 # other consumers that need exactly that GCP value. cert-manager's route53
 # solver feeds its `region` field straight into the AWS SDK's shared config,
 # unvalidated, to compute the STS client's endpoint for AssumeRoleWithWebIdentity
-# -- reusing var.region would point that client at a nonexistent
-# sts.europe-west4.amazonaws.com and break the token exchange this whole
-# federation depends on, before Route53 is ever reached. No default, same
+# -- reusing var.region would point that client at a region that does not exist
+# in AWS (e.g. sts.europe-west4.amazonaws.com) and break the token exchange this
+# whole federation depends on, before Route53 is ever reached. No default, same
 # reasoning as route53_role_arn and route53_public_zone_id above.
 variable "route53_region" {
   description = "AWS region hint for the federated ClusterIssuer's route53 solver -- an AWS SDK credential-scope value, deliberately separate from var.region (GCP). No default"
