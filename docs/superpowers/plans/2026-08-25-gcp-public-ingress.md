@@ -1149,8 +1149,35 @@ Add a short section to `docs/gcp-bootstrap.md` noting that public ingress requir
 
 - [ ] **Step 8: Tear down and verify**
 
+**Order matters: reclaim DNS BEFORE destroying the cluster.** Task 4's review
+(O1) established why. `policy: sync` only reclaims records while external-dns is
+*running*. A wholesale destroy kills the controller before the Gateway and
+HTTPRoutes are gone, so the `gcp-0-public`-owned A **and** TXT records survive in
+the shared production zone. They are harmless to `aws-0` — different owner ID —
+but they outlive the cluster, and a later gcp-0 rebuild would silently **adopt**
+them by owner ID rather than flag them as strays. This repo has form here: an EKS
+rebuild once left 62 orphaned EBS volumes.
+
+So delete the routes first and let external-dns do its own cleanup:
+
 ```bash
+# 1. Delete the routes; external-dns is still running and will reclaim the records.
+kubectl delete httproute --all -n infrastructure
 kubectl delete deployment,service probe -n infrastructure
+
+# 2. Wait for the reclaim, then confirm it actually happened.
+sleep 90
+aws route53 list-resource-record-sets --hosted-zone-id Z002027037R5RFCG05YY6 \
+  --query "ResourceRecordSets[?contains(to_string(ResourceRecords[].Value|[0]), 'gcp-0-public')]" \
+  --output text
+```
+
+Expected: empty. If anything remains, delete it explicitly by change-batch before
+proceeding — do not destroy the cluster while records it owns are still live, or
+nothing will be able to reclaim them afterwards.
+
+```bash
+# 3. Only now, destroy.
 cd opentofu/gcp && TM_GCP_ENABLED=true TM_DESTROY_CONFIRMED=true terramate script run --reverse \
   --disable-check-git-remote --disable-check-git-untracked --disable-check-git-uncommitted destroy
 ```
@@ -1166,7 +1193,8 @@ aws route53 list-resource-record-sets --hosted-zone-id Z002027037R5RFCG05YY6 \
   --query "ResourceRecordSets[?contains(Name,'gcp')]" --output text
 ```
 
-Expected: all empty. **The forwarding rule and address are the two that cost money** and are exactly what a public Gateway leaves behind.
+Expected: all empty. Read each listing — `gcloud compute instances list` exits 0
+with a warning when nothing matches, so its exit code is not evidence. **The forwarding rule and address are the two that cost money** and are exactly what a public Gateway leaves behind.
 
 **Leave `opentofu/shared/aws-gcp-federation` applied.** It is an IAM role and an OIDC provider — free, and destroying it would mean re-registering the provider on every rebuild. It is the same reasoning as the Cloud KMS key ring: a deliberate survivor, not a leak. Say so in the verification document.
 
