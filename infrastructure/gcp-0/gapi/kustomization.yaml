@@ -6,11 +6,12 @@ namespace: infrastructure
 # are used verbatim. Referenced BY FILE because the seventh is not:
 #
 #   platform-public-gateway.yaml carries
-#   service.beta.kubernetes.io/aws-load-balancer-* annotations and
-#   cert-manager.io/cluster-issuer: letsencrypt-prod. It is the PUBLIC path,
-#   which this cluster deliberately does not build -- see the design's "What this
-#   deliberately does NOT build". Adding it here would also require solving
-#   DNS-01 against a public zone GCP does not have.
+#   service.beta.kubernetes.io/aws-load-balancer-* annotations, which are
+#   meaningless on GCP. This cluster DOES build a public path, but from its own
+#   manifests in infrastructure/gcp-0/gapi-public/ rather than from this AWS
+#   one -- see ADR-0019 and the workstream 12 design. DNS-01 against the public
+#   zone works there because AWS IAM federation lets GKE workloads assume a
+#   Route53 role with no static credentials.
 #
 # platform-private-gateway-certificate.yaml needs no GCP variant at all: it asks
 # the `openbao` ClusterIssuer for *.${private_domain_name}, and workstream 11
