@@ -168,6 +168,32 @@ distinct `txtOwnerId`. The AWS cluster's external-dns also writes this zone, so
 its owner ID must differ from GCP's too — `aws-0` and `gcp-0` already do, since
 `txtOwnerId` is `${cluster_name}`.
 
+## What this unlocks
+
+The immediate deliverable is narrow — `gcp-0` can serve a public name — but the
+shape of the decision is what matters. Because **both clouds obtain certificates
+for the same zone and write records into it**, a public service is no longer
+tied to the cloud it was first deployed on:
+
+- Any `cloud.ogenki.io` name can be served from either cluster, with no DNS
+  delegation, no per-cloud hostname, and no change to the name itself.
+- Moving a public service between clouds becomes a deployment change — an
+  `HTTPRoute` on the other cluster — rather than a DNS migration.
+- The name a browser, an OIDC redirect URI or a Slack callback URL was
+  configured with does not change when the service moves. That is precisely the
+  property [ADR-0017](../../../website/content/docs/decisions/0017-multi-cloud-dns-naming.md)
+  set out to preserve when it kept public names cloud-agnostic, and it is why
+  option B was rejected: a per-cloud public zone would have foreclosed it.
+
+**What it does NOT yet give**, so this is not read as more than it is:
+
+- **One name answering from BOTH clouds at once.** That needs Route53 weighted,
+  latency or failover record policies plus health checks — record-policy work in
+  a zone this repository does not manage, not a cluster change. This design makes
+  it possible; it does not do it.
+- **Stateful services moving safely.** A service that holds local state does not
+  become portable because its DNS did. See the runlore note in *Risks*.
+
 ## Success criteria
 
 Falsifiable, verified against a live cluster, then torn down.
