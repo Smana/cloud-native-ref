@@ -41,7 +41,7 @@ Tasks 1–5 must be released before Task 6 can pin them. Task 6 cuts that releas
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `spec.bucketRoles: [{bucket: str, role: str}]` on `GCPWorkloadIdentity`, rendering one `StorageBucketIAMMember` per entry. Task 4's GCP branch sets it.
+- Produces: `spec.bucketRoles: [{bucket: str, role: str}]` on `GCPWorkloadIdentity`, rendering one `BucketIAMMember` per entry. Task 4's GCP branch sets it.
 
 **Why this task exists.** `GCPWorkloadIdentity` today renders `ProjectIAMMember` and nothing else. Granting `roles/storage.objectAdmin` that way would give an app admin over *every* bucket in the project — OpenBao's snapshots, Harbor's registry storage, CNPG's backups. The AWS branch scopes to one bucket ARN, so without this the same claim would mean bucket-scoped on AWS and project-wide on GCP.
 
@@ -84,10 +84,10 @@ In `apis/gcpworkloadidentity/definition.yaml`, immediately after the `roles:` pr
 Append to `apis/gcpworkloadidentity/kcl/main_test.k`:
 
 ```kcl
-# ---- Test: bucketRoles render StorageBucketIAMMember, not ProjectIAMMember ----
+# ---- Test: bucketRoles render BucketIAMMember, not ProjectIAMMember ----
 test_bucket_roles_are_bucket_scoped = lambda {
-    bucketMembers = [r for r in items if r.kind == "StorageBucketIAMMember"]
-    assert len(bucketMembers) == 1, "expected 1 StorageBucketIAMMember, got {}".format(len(bucketMembers))
+    bucketMembers = [r for r in items if r.kind == "BucketIAMMember"]
+    assert len(bucketMembers) == 1, "expected 1 BucketIAMMember, got {}".format(len(bucketMembers))
     m = bucketMembers[0]
     assert m.spec.forProvider.bucket == "test-bucket", "expected bucket test-bucket, got {}".format(m.spec.forProvider.bucket)
     assert m.spec.forProvider.role == "roles/storage.objectAdmin", "expected roles/storage.objectAdmin, got {}".format(m.spec.forProvider.role)
@@ -97,7 +97,7 @@ test_bucket_roles_are_bucket_scoped = lambda {
 # A second construction of the principal:// string is exactly the drift this
 # contract exists to prevent, so assert both kinds agree.
 test_bucket_role_member_matches_project_member = lambda {
-    bucketMembers = [r for r in items if r.kind == "StorageBucketIAMMember"]
+    bucketMembers = [r for r in items if r.kind == "BucketIAMMember"]
     projectMembers = [r for r in items if r.kind == "ProjectIAMMember"]
     assert bucketMembers[0].spec.forProvider.member == projectMembers[0].spec.forProvider.member, "bucket and project bindings must name the same principal"
 }
@@ -126,14 +126,14 @@ cd /home/smana/Sources/crossplane-configuration/apis/gcpworkloadidentity/kcl
 kcl test . -Y settings-example.yaml
 ```
 
-Expected: FAIL on `test_bucket_roles_are_bucket_scoped` with `expected 1 StorageBucketIAMMember, got 0`.
+Expected: FAIL on `test_bucket_roles_are_bucket_scoped` with `expected 1 BucketIAMMember, got 0`.
 
 - [ ] **Step 5: Render the bucket members**
 
 In `apis/gcpworkloadidentity/kcl/main.k`, find where `_items` is assembled from the ProjectIAMMember comprehension. Add the bucket members as a **separate single-expression list**, then concatenate once — never `+=` into an existing list under a conditional (constraint above; `apis/app/kcl/main.k:529-546` records what happens otherwise):
 
 ```kcl
-# Bucket-scoped bindings. Rendered as StorageBucketIAMMember so the grant
+# Bucket-scoped bindings. Rendered as BucketIAMMember so the grant
 # reaches ONE bucket: a project-level roles/storage.* would reach every bucket
 # in the project, including OpenBao's snapshots and CNPG's backups.
 #
@@ -143,7 +143,7 @@ In `apis/gcpworkloadidentity/kcl/main.k`, find where `_items` is assembled from 
 _bucketMembers = [
     {
         apiVersion = "storage.gcp.m.upbound.io/v1beta1"
-        kind = "StorageBucketIAMMember"
+        kind = "BucketIAMMember"
         metadata = _bindingMetadata(_slug(br.role) + "-" + br.bucket)
         spec = {
             forProvider = {
@@ -188,7 +188,7 @@ cd /home/smana/Sources/crossplane-configuration
 git add apis/gcpworkloadidentity/
 git commit -m "feat(gcp): bucket-scoped grants on GCPWorkloadIdentity
 
-Adds an optional spec.bucketRoles that renders StorageBucketIAMMember per
+Adds an optional spec.bucketRoles that renders BucketIAMMember per
 entry, so a workload can be granted a role on ONE bucket.
 
 Without it the only way to grant storage access is spec.roles, which renders
@@ -407,7 +407,7 @@ arrives with the KCL branch that needs it."
 
 **Interfaces:**
 - Consumes: `spec.objectStore` (Task 2), `GCPWorkloadIdentity.spec.bucketRoles` (Task 1), the `composition*.yaml` routing (Task 3).
-- Produces: an `App` that renders S3+EPI on `aws-0` and StorageBucket+GCPWorkloadIdentity on `gcp-0`.
+- Produces: an `App` that renders S3+EPI on `aws-0` and a GCS `Bucket`+GCPWorkloadIdentity on `gcp-0`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -415,12 +415,16 @@ Append to `apis/app/kcl/main_test.k`:
 
 ```kcl
 # ---- Test: the AWS branch renders S3, not GCS ----
+# DISCRIMINATE BY apiVersion, NOT BY kind. Both providers name the resource
+# `Bucket` -- s3.aws.m.upbound.io/v1beta1 and storage.gcp.m.upbound.io/v1beta2 --
+# so `r.kind == "Bucket"` matches BOTH clouds and this test would pass while
+# rendering the wrong one.
 test_objectstore_aws_branch = lambda {
-    buckets = [r for r in items if r.kind == "Bucket"]
-    gcsBuckets = [r for r in items if r.kind == "StorageBucket"]
+    s3Buckets = [r for r in items if r.kind == "Bucket" and r.apiVersion.startswith("s3.aws")]
+    gcsBuckets = [r for r in items if r.kind == "Bucket" and r.apiVersion.startswith("storage.gcp")]
     epis = [r for r in items if r.kind == "EPI"]
-    assert len(buckets) == 1, "expected 1 S3 Bucket, got {}".format(len(buckets))
-    assert len(gcsBuckets) == 0, "AWS branch must not render StorageBucket"
+    assert len(s3Buckets) == 1, "expected 1 S3 Bucket, got {}".format(len(s3Buckets))
+    assert len(gcsBuckets) == 0, "AWS branch must not render a GCS Bucket"
     assert len(epis) == 1, "expected 1 EPI, got {}".format(len(epis))
 }
 
@@ -429,7 +433,7 @@ test_objectstore_aws_branch = lambda {
 # actually falls back to the EnvironmentConfig rather than rendering an empty
 # prefix, which would produce the bucket name "-ogenki-<app>".
 test_objectstore_location_from_environment = lambda {
-    bucket = [r for r in items if r.kind == "Bucket"][0]
+    bucket = [r for r in items if r.kind == "Bucket" and r.apiVersion.startswith("s3.aws")][0]
     _env = option("params").ctx["apiextensions.crossplane.io/environment"]
     _expected = _env.region + "-ogenki-" + option("params").oxr.metadata.name
     assert bucket.metadata.annotations["crossplane.io/external-name"] == _expected, "expected bucket {}, got {}".format(_expected, bucket.metadata.annotations["crossplane.io/external-name"])
@@ -486,8 +490,8 @@ if oxr.spec.objectStore?.enabled and _cloud == "gcp":
     _gcsName = envConfig.projectID + "-ogenki-" + _name
 
     _gcsBucket = [{
-        apiVersion = "storage.gcp.m.upbound.io/v1beta1"
-        kind = "StorageBucket"
+        apiVersion = "storage.gcp.m.upbound.io/v1beta2"
+        kind = "Bucket"
         metadata = {
             name = _name + "-gcs-bucket"
             namespace = _namespace
@@ -768,14 +772,14 @@ Open a PR, let CI publish, then tag per that repo's release process. Record the 
 
 - [ ] **Step 3: Activate the new managed resource**
 
-`infrastructure/base/crossplane/providers/activation-policy.yaml` gates which provider CRDs are installed. Without an entry the render fails with `no matches for kind "StorageBucketIAMMember"`. Add both plural names to the GCP activation list, matching the file's existing style:
+`infrastructure/base/crossplane/providers/activation-policy.yaml` gates which provider CRDs are installed. Without an entry the render fails with `no matches for kind "BucketIAMMember"`. Add both plural names to the GCP activation list, matching the file's existing style:
 
 ```yaml
-    - storagebuckets.storage.gcp.m.upbound.io
-    - storagebucketiammembers.storage.gcp.m.upbound.io
+    - buckets.storage.gcp.m.upbound.io
+    - bucketiammembers.storage.gcp.m.upbound.io
 ```
 
-Read the file first — if `storagebuckets` is already listed, add only the second.
+Read the file first — if `buckets.storage.gcp.m.upbound.io` is already listed, add only the second.
 
 - [ ] **Step 4: Migrate the two claims**
 
@@ -827,7 +831,7 @@ AWS-shaped field -- the third instance of the cross-cloud substitution hazard
 found on this branch.
 
 Both EnvironmentConfigs gain an explicit cloud: key, and the activation policy
-gains storagebucketiammembers without which the GCP render fails with 'no
+gains bucketiammembers without which the GCP render fails with 'no
 matches for kind'."
 ```
 
@@ -869,7 +873,7 @@ Expected: the copy succeeds; the secret query returns nothing.
 Deploy per `docs/gcp-bootstrap.md`, then apply the same claim, byte-identical apart from namespace:
 
 ```bash
-kubectl get storagebucket -A
+kubectl get buckets.storage.gcp.m.upbound.io -A
 kubectl get gcpworkloadidentity -A -o yaml | grep -A3 bucketRoles
 gcloud storage buckets get-iam-policy gs://<bucket> --project ogenki-435905
 ```

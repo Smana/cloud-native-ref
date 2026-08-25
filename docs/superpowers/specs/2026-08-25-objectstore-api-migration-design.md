@@ -46,7 +46,7 @@ name and two shapes, where CI renders one cloud and the cluster runs the other. 
 | KCL sharing | One `main.k`, cloud pinned per Composition (approach A below) |
 | Location | Read from the EnvironmentConfig, **not** stated in the claim |
 | `sqlInstance` on GCP | A stub Composition fails it explicitly with a reason; CNPG-on-GCP is workstream 9 |
-| GCS grant scope | `GCPWorkloadIdentity` gains optional `bucketRoles`, rendering `StorageBucketIAMMember` — project-scoped storage admin is not acceptable |
+| GCS grant scope | `GCPWorkloadIdentity` gains optional `bucketRoles`, rendering `BucketIAMMember` — project-scoped storage admin is not acceptable |
 
 ## The contract
 
@@ -156,9 +156,9 @@ first time either EnvironmentConfig gains a field — an explicit key states the
 
 | Concern | AWS branch | GCP branch |
 |---|---|---|
-| Bucket | `Bucket` + `BucketVersioning` (`s3.aws.m.upbound.io`) | `StorageBucket` (`storage.gcp.m.upbound.io`), versioning inline |
+| Bucket | `Bucket` + `BucketVersioning` (`s3.aws.m.upbound.io`) | `Bucket` (`storage.gcp.m.upbound.io/v1beta2`), versioning inline |
 | Identity | `EPI` | `GCPWorkloadIdentity` |
-| Grant | IAM policy JSON, scoped to the bucket ARN | `roles/storage.objectAdmin` via `StorageBucketIAMMember`, scoped to the bucket — see below |
+| Grant | IAM policy JSON, scoped to the bucket ARN | `roles/storage.objectAdmin` via `BucketIAMMember`, scoped to the bucket — see below |
 | Location | `eks-environment.region` | `gke-environment.region` |
 | Naming | `xplane-<name>` | `xplane-<name>` (unchanged — the prefix is load-bearing for IAM scoping on both) |
 
@@ -175,7 +175,7 @@ would make the same claim mean *bucket-scoped* on AWS and *project-wide storage 
 an asymmetry that renders cleanly, passes every test, and is a real privilege escalation.
 
 So `GCPWorkloadIdentity` gains an optional bucket-scoped binding that renders
-`StorageBucketIAMMember` rather than `ProjectIAMMember`:
+`BucketIAMMember` rather than `ProjectIAMMember`:
 
 ```yaml
 spec:
@@ -190,11 +190,11 @@ spec:
 
 The `principal://` member string — which needs the project **NUMBER**, not the ID, and fails as
 an opaque permission error when confused — stays constructed in exactly one place. The
-alternative, having the `App` composition emit `StorageBucketIAMMember` itself, would duplicate
+alternative, having the `App` composition emit `BucketIAMMember` itself, would duplicate
 that construction into a second place where it can drift.
 
 Consequences the plan must carry: `bucketRoles` is additive and optional, so existing
-`GCPWorkloadIdentity` claims are unaffected; `storagebucketiammembers` must be added to the
+`GCPWorkloadIdentity` claims are unaffected; `bucketiammembers` must be added to the
 `ManagedResourceActivationPolicy` in this repo, or the CRD is never installed and the render
 fails with `no matches for kind`; and the resource-name slugging must cover bucket names as
 well as role names.
