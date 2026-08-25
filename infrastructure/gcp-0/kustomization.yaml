@@ -14,3 +14,4 @@ kind: Kustomization
 # the shared tree are genuinely cloud-neutral.
 resources:
   - computeclass
+  - external-dns
