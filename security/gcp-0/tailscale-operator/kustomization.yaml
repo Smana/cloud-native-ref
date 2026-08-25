@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tailscale
+
+# The chart and both ProxyClasses come from security/base BY FILE, not by
+# directory. The base directory also carries oauth-client-externalsecret.yaml,
+# whose `key: tailscale/k8s-operator/oauth-client` is an AWS Secrets Manager
+# path -- pulling the directory would bring a store reference that cannot
+# resolve here, and its target Secret name would collide with ours.
+#
+# Referencing the chart by file keeps a version bump landing on both clouds at
+# once. Flux builds with LoadRestrictionsNone, as does
+# scripts/flux-schema/render-bundle.py, so a cross-directory file reference is
+# supported rather than tolerated.
+#
+# NO proxygroup.yaml. AWS runs `ts-proxies`, two EGRESS replicas; nothing on
+# this cluster egresses through the tailnet. Add it when something does.
+resources:
+  - ../../base/tailscale-operator/helmrelease.yaml
+  - ../../base/tailscale-operator/proxyclass-general.yaml
+  - ../../base/tailscale-operator/proxyclass-admin.yaml
+  - oauth-client-externalsecret.yaml
