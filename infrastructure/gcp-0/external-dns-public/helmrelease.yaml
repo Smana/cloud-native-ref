@@ -1,0 +1,97 @@
+# external-dns for the PUBLIC zone, authenticating to AWS with a projected
+# ServiceAccount token -- no access key anywhere.
+#
+# The AWS SDK's web-identity path is driven by three things: AWS_ROLE_ARN,
+# AWS_WEB_IDENTITY_TOKEN_FILE, and a token actually present at that path. The
+# chart does not project a token for an arbitrary audience, so the volume is
+# declared explicitly below. `audience: sts.amazonaws.com` MUST match the
+# client_id_list on the OIDC provider and the `aud` condition in the trust
+# policy; a mismatch fails with AccessDenied and no explanation.
+#
+# AWS_REGION is ${route53_region}, NOT ${region}. On gcp-0, ${region} is a GCP
+# region (europe-west4) -- Task 2 shipped exactly this defect on the
+# ClusterIssuer's route53 solver, because that value is fed straight into the
+# AWS SDK's shared config to compute the STS client endpoint for the same
+# AssumeRoleWithWebIdentity call this HelmRelease also makes. ${route53_region}
+# is the dedicated AWS-shaped key opentofu/gcp/gke/configure's Task 2 fix added
+# for exactly this. Do not "simplify" it back to ${region}.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: external-dns-public
+  namespace: kube-system
+spec:
+  releaseName: external-dns-public
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: external-dns
+      sourceRef:
+        kind: HelmRepository
+        name: external-dns
+        namespace: kube-system
+      version: "1.21.1"
+  interval: 10m0s
+  install:
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: external-dns-public
+
+    serviceAccount:
+      create: false
+      name: external-dns-public
+
+    rbac:
+      create: false
+
+    provider:
+      name: aws
+
+    domainFilters:
+      - ${public_domain_name}
+
+    txtOwnerId: gcp-0-public
+
+    policy: sync
+    logFormat: json
+    logLevel: info
+
+    sources:
+      - gateway-httproute
+
+    extraArgs:
+      - --gateway-namespace=infrastructure
+      - --gateway-label-filter=external-dns=enabled
+      - --min-event-sync-interval=30s
+      - --aws-zone-type=public
+
+    env:
+      - name: AWS_REGION
+        value: ${route53_region}
+      - name: AWS_ROLE_ARN
+        value: ${route53_role_arn}
+      - name: AWS_WEB_IDENTITY_TOKEN_FILE
+        value: /var/run/secrets/aws/token
+
+    extraVolumes:
+      - name: aws-token
+        projected:
+          sources:
+            - serviceAccountToken:
+                path: token
+                expirationSeconds: 3600
+                audience: sts.amazonaws.com
+
+    extraVolumeMounts:
+      - name: aws-token
+        mountPath: /var/run/secrets/aws
+        readOnly: true
+
+    resources:
+      limits:
+        memory: 150Mi
+      requests:
+        cpu: 100m
+        memory: 150Mi
