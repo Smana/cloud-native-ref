@@ -9,8 +9,8 @@ spec:
   gatewayClassName: cilium-tailscale
   infrastructure:
     annotations:
-      # Tailscale-specific annotations for admin services
-      tailscale.com/hostname: "gateway-admin-priv"
+      # Per-cluster hostname -- see platform-tailscale-general-gateway.yaml for why.
+      tailscale.com/hostname: "gateway-admin-priv-${cluster_name}"
       tailscale.com/tags: "tag:admin"
       tailscale.com/funnel: "false"
   listeners:

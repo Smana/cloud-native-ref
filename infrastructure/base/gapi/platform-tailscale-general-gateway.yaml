@@ -9,8 +9,17 @@ spec:
   gatewayClassName: cilium-tailscale
   infrastructure:
     annotations:
-      # Tailscale-specific annotations for general services
-      tailscale.com/hostname: "gateway-general-priv"
+      # Per-cluster, because the tailnet is SHARED between aws-0 and gcp-0 and a
+      # Tailscale hostname is tailnet-unique. Two clusters claiming
+      # "gateway-general-priv" does not error -- Tailscale suffixes the second
+      # device, so its MagicDNS name silently stops being the one anything
+      # expects.
+      #
+      # <role>-<visibility>-<cluster> rather than a suffix that is empty on AWS:
+      # a scheme where one cloud is the unlabelled default is exactly what
+      # ADR-0017 rejects for DNS names, and cluster names were renamed to aws-0 /
+      # gcp-0 in #1832 for the same reason.
+      tailscale.com/hostname: "gateway-general-priv-${cluster_name}"
       tailscale.com/tags: "tag:k8s"
       tailscale.com/funnel: "false"
   listeners:
