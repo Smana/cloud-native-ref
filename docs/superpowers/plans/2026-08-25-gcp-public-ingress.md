@@ -608,7 +608,7 @@ spec:
   gatewayClassName: cilium
   listeners:
     - name: https
-      hostname: "*.${public_domain_name}"
+      hostname: "probe.${public_domain_name}"   # per-hostname, never a wildcard
       port: 443
       protocol: HTTPS
       allowedRoutes:
@@ -630,6 +630,13 @@ spec:
 
 - [ ] **Step 2: The certificate**
 
+> **Superseded 2026-08-25.** The repo no longer ships a standalone Certificate here. Wildcards were
+> dropped — one key covering every service under the subdomain is too much blast radius for one
+> leaked Secret — so the Gateway carries `cert-manager.io/cluster-issuer` plus per-listener
+> `certificateRefs`, and cert-manager's gateway-shim issues one certificate per hostname. The block
+> below is kept for the `duration`/`renewBefore` values, which moved to the Gateway's
+> `cert-manager.io/duration` and `cert-manager.io/renew-before` annotations.
+
 `infrastructure/gcp-0/gapi-public/certificate.yaml`:
 
 ```yaml
@@ -644,9 +651,9 @@ spec:
   secretName: platform-public-tls
   duration: 2160h # 90d
   renewBefore: 360h # 15d
-  commonName: "*.${public_domain_name}"
+  commonName: "probe.${public_domain_name}"
   dnsNames:
-    - "*.${public_domain_name}"
+    - "probe.${public_domain_name}"
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer

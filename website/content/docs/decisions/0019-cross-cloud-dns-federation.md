@@ -114,18 +114,37 @@ exists solely to couple the two clouds, which is what `shared/` already means he
 `opentofu/shared/tailscale` holds the tailnet for the same reason. Filing it under `aws/` would
 present a federation point as AWS's own concern and hide it from anyone reading the GCP tree.
 
+**gcp-0 issues one certificate per hostname, never a wildcard.** Each Gateway listener carries
+its own `certificateRefs` secret, so cert-manager's gateway-shim issues a Certificate whose SAN
+list is exactly that one name. A wildcard would mean a single private key covering every service
+under the subdomain: one compromised pod or leaked Secret would expose all of them at once. Per
+listener, the blast radius of a key compromise is one service.
+
+The cost is that adding a public service means adding a listener. That is the right trade here:
+`allowedRoutes` already restricts routes to the `infrastructure` namespace, so publishing
+something is a reviewed edit either way — and an explicit listener list is an auditable inventory
+of what this cluster serves to the internet. Under a wildcard listener, any HTTPRoute in the
+allowed namespace can claim any hostname with no second look.
+
 **gcp-0's public name is `gcp.cloud.ogenki.io`, not `cloud.ogenki.io`.** Caught in the
-whole-branch final review, not in the original design: `aws-0` already runs a live wildcard
-Certificate for `*.cloud.ogenki.io`. A `gcp-0` Gateway and Certificate requesting that identical
-identifier set would share Let's Encrypt's Duplicate Certificate limit (5 per week for an
+whole-branch final review, not in the original design. The original reason was a collision: as
+first specified, gcp-0 requested the same `*.cloud.ogenki.io` identifier set that `aws-0` already
+holds, which would have shared Let's Encrypt's Duplicate Certificate limit (5 per week for an
 identical hostname set, counted across accounts and **not** exempted for renewals) with `aws-0`'s
-production renewal, and both clusters' cert-managers would race to write the same
-`_acme-challenge.cloud.ogenki.io` TXT record. No delegation is created to fix this — records for
-`*.gcp.cloud.ogenki.io` still live in the same `cloud.ogenki.io` hosted zone
-(`Z002027037R5RFCG05YY6`), so the IAM scoping above is unaffected; only the *name* gcp-0 requests
-within that zone changed. This mirrors a split this repo already made for private domains
-(`priv.aws.ogenki.io` vs `priv.gcp.ogenki.io`) — the public name was the one that had collided,
-not the zone.
+production renewal, and raced it for the single `_acme-challenge.cloud.ogenki.io` TXT record.
+
+*Moving to per-hostname certificates dissolves that specific collision* — distinct names share no
+duplicate-certificate bucket and no challenge record. The per-cloud name is kept anyway, on its
+own merits: it prevents the two clusters claiming the same public hostname, it gives external-dns
+a clean `--domain-filter` boundary per cluster, and it mirrors the split this repo already made
+for private domains (`priv.aws.ogenki.io` vs `priv.gcp.ogenki.io`). It is a naming decision now,
+not a rate-limit mitigation, and it should be read that way.
+
+No delegation is created — records for `gcp.cloud.ogenki.io` still live in the same
+`cloud.ogenki.io` hosted zone (`Z002027037R5RFCG05YY6`), so the IAM scoping above is unaffected;
+only the *name* gcp-0 requests within that zone changed. Because the filter is then a **child** of
+the hosted zone, external-dns needs `--aws-zone-match-parent`, or it discovers zero zones and
+publishes nothing while reporting healthy.
 
 ## Consequences
 
@@ -134,7 +153,8 @@ not the zone.
 - No static AWS credential anywhere on GCP — no access key, no secret in GCP Secret Manager.
 - Public names stay cloud-agnostic at the **zone** level — `cloud.ogenki.io` remains one shared
   Route53 zone, not split per cloud. See Negative for the one place this does not extend to
-  gcp-0's own default wildcard.
+  gcp-0's own hostnames.
+- No wildcard certificate exists on gcp-0: a stolen key buys one service, not the subdomain.
 - The trust is minimal and explicit: two named ServiceAccount subjects, one audience, one zone,
   no delete permissions.
 - The stack is independent of GCP stacks existing — the issuer URL is a deterministic string

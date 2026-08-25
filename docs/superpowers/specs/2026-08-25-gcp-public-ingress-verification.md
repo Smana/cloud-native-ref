@@ -11,6 +11,15 @@ Plan: [`../plans/2026-08-25-gcp-public-ingress.md`](../plans/2026-08-25-gcp-publ
 internet on `ogenki.io`, over a publicly-trusted certificate, with **no static AWS credentials
 anywhere on the cluster**.
 
+> **Superseded in one respect, and this matters for reading criterion 2.** The live run above
+> issued a **wildcard** certificate for `*.gcp.cloud.ogenki.io`. That was changed afterwards, on
+> the grounds that a wildcard means one private key covers every service under the subdomain: the
+> Gateway now carries per-listener `certificateRefs`, so cert-manager's gateway-shim issues one
+> certificate per hostname. **The per-hostname scheme has not been exercised against a live
+> cluster.** Everything else here — the federation, the trust boundary, external-dns, pruning,
+> reachability — is unaffected, because none of it depends on how many names a certificate carries.
+> Re-run criteria 2 and 6 on the next deploy to close this.
+
 ## The gate that runs before any IAM
 
 The plan places this first for a reason recorded in `main.tf`: `data "tls_certificate"` fetches the

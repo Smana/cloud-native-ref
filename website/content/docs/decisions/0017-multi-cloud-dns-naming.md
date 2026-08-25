@@ -161,13 +161,17 @@ such constraint.
 > **Amended 2026-08-25 — gcp-0's public wildcard.** This ADR says public names remain
 > cloud-agnostic, and that encoding the cloud into one "converts a deployment detail into a
 > permanent contract". That still holds for individual service names. It does not hold for
-> `gcp-0`'s own default wildcard: as originally specified, gcp-0 requested
-> `*.cloud.ogenki.io` — the identifier set live `aws-0` already holds. Same ACME server, same
-> Let's Encrypt duplicate-certificate bucket (5/week, counted across accounts and not exempt
-> for renewals), and the same single-valued `_acme-challenge.cloud.ogenki.io` TXT that both
-> cert-managers would UPSERT. gcp-0's wildcard is therefore **`*.gcp.cloud.ogenki.io`**. The
-> zone is still shared and undelegated; only the name differs, exactly as the private names
-> already differ per cloud. See [ADR-0019](0019-cross-cloud-dns-federation.md).
+> `gcp-0`'s own public hostnames, which are **under `gcp.cloud.ogenki.io`**. The zone is still
+> shared and undelegated; only the name differs, exactly as the private names already differ per
+> cloud.
+>
+> The original trigger was a certificate collision — gcp-0 first requested `*.cloud.ogenki.io`,
+> the identifier set live `aws-0` already holds, which would have shared Let's Encrypt's
+> duplicate-certificate bucket and the `_acme-challenge` TXT with aws-0's production renewal.
+> gcp-0 now issues **one certificate per hostname and no wildcard at all**, which dissolves that
+> collision on its own. The per-cloud name is kept for its own reasons: two clusters cannot claim
+> the same public hostname, and external-dns gets a clean per-cluster `--domain-filter`.
+> See [ADR-0019](0019-cross-cloud-dns-federation.md).
 
 | Name | Scope | Status |
 |---|---|---|

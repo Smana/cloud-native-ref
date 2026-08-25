@@ -6,6 +6,8 @@ namespace: infrastructure
 # gateways. Different GatewayClass (cilium vs cilium-tailscale), different trust
 # chain, different exposure, different failure modes -- and a public Gateway is
 # the one thing on this cluster an attacker can reach without the tailnet.
+# No Certificate resource here: cert-manager's gateway-shim creates one per
+# listener from the Gateway's annotations, so the certificate inventory cannot
+# drift from the listener inventory.
 resources:
   - platform-public-gateway.yaml
-  - certificate.yaml
