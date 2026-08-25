@@ -7,7 +7,11 @@ namespace: infrastructure
 #
 #   platform-public-gateway.yaml carries
 #   service.beta.kubernetes.io/aws-load-balancer-* annotations, which are
-#   meaningless on GCP. This cluster DOES build a public path, but from its own
+#   meaningless on GCP, and -- the disqualifying reason, since meaningless
+#   annotations would merely be harmless -- a listener hostname built from
+#   ${domain_name}, a key gcp-0's ConfigMap does not define. Flux substitutes an
+#   undefined variable to empty, so reusing the file would silently yield
+#   `hostname: "*."`. This cluster DOES build a public path, but from its own
 #   manifests in infrastructure/gcp-0/gapi-public/ rather than from this AWS
 #   one -- see ADR-0019 and the workstream 12 design. DNS-01 against the public
 #   zone works there because AWS IAM federation lets GKE workloads assume a

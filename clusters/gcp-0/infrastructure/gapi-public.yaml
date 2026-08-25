@@ -3,12 +3,17 @@
 # dependsOn security-public-certs, because the Certificate here names the
 # ClusterIssuer that Kustomization creates.
 #
-# healthChecks use healthCheckExprs on `Programmed`, NOT a bare healthChecks
-# entry. A `healthChecks` entry on a Gateway asserts only that the object
-# EXISTS: Gateway API v1 has no Ready condition and no top-level
-# observedGeneration, so kstatus reports Current the moment it is created. That
-# defect shipped in workstream 10 and was caught in review -- see
-# clusters/gcp-0/infrastructure/gapi.yaml for the same form.
+# BOTH healthChecks and healthCheckExprs are required -- they are not
+# alternatives. The bare `healthChecks` entry SELECTS the Gateway but asserts
+# only that it EXISTS: Gateway API v1 has no Ready condition and no top-level
+# observedGeneration, so kstatus reports Current the moment it is created.
+# `healthCheckExprs` below is what actually WAITS, on the `Programmed` condition
+# Cilium sets once the Gateway is genuinely serving. Flux evaluates those
+# expressions only for resources named in `healthChecks`, so dropping the entry
+# would leave them never evaluated and this Kustomization health-checking
+# nothing at all -- worse than the workstream 10 defect it guards against, and
+# invisible, because the 15m timeout would silently stop meaning anything.
+# See clusters/gcp-0/infrastructure/gapi.yaml for the same form.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
