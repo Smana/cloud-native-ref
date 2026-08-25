@@ -216,7 +216,7 @@ The tree exists once, three lanes from where it is needed, with seven of thirtee
 # Platform -> GitOps (depth 1) and Reference -> Repository Layout (full).
 #
 # `owner` names what reconciles the directory: a Flux Kustomization from
-# clusters/mycluster-0/, or "OpenTofu / Terramate" for the pre-Kubernetes half.
+# clusters/aws-0/, or "OpenTofu / Terramate" for the pre-Kubernetes half.
 entries:
   - path: opentofu/
     kind: dir
@@ -343,7 +343,7 @@ Every claim on this page must come from the tree, not from memory:
 ```bash
 ls flux/*/ && \
 cat opentofu/eks/init/helm_values/flux-instance.yaml && \
-grep -rn "interval:" clusters/mycluster-0/*.yaml | head -20 && \
+grep -rn "interval:" clusters/aws-0/*.yaml | head -20 && \
 grep -rln "kind: ResourceSet\|kind: Alert\|kind: Provider" flux/
 ```
 

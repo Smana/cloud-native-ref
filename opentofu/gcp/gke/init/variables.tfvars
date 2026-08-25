@@ -2,7 +2,7 @@ env        = "dev"
 project_id = "ogenki-435905"
 region     = "europe-west4"
 
-cluster_name    = "gcp-mycluster-0"
+cluster_name    = "gcp-0"
 release_channel = "REGULAR"
 
 # Slice 4 must pin the SAME image type on every ComputeClass.

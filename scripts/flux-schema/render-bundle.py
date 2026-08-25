@@ -368,8 +368,8 @@ def top_most_overlays():
     A dir is a root when it is filesystem-top-most (no ancestor kustomization)
     OR it is nested but no other kustomization references it — the latter being
     a dir a Flux Kustomization targets directly by `spec.path`
-    (infrastructure/mycluster-0/crossplane/*, security/mycluster-0/zitadel,
-    observability/mycluster-0/victoria-metrics-k8s-stack). The old
+    (infrastructure/aws-0/crossplane/*, security/aws-0/zitadel,
+    observability/aws-0/victoria-metrics-k8s-stack). The old
     `no ancestor kustomization` rule silently dropped that second class from
     both render paths, contradicting SPEC-007's no-silent-skips guarantee.
 

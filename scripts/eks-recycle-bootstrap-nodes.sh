@@ -11,7 +11,7 @@
 # secondary-IP ENI to prefix delegation.
 #
 # The result is a permanent, invisible capacity cliff on exactly the bootstrap
-# nodes. Measured on mycluster-0 (2026-08-02):
+# nodes. Measured on aws-0 (2026-08-02):
 #
 #   node             instance          provisioner   prefixes   usable IPs
 #   ip-10-0-8-142    c7i-flex.xlarge   Karpenter     2          ~240

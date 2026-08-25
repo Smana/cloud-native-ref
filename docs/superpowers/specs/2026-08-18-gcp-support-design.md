@@ -185,7 +185,7 @@ known rather than predicted.
 > **Amendment (2026-08-19) — workstream 7 has SHIPPED.**
 >
 > [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) `v0.1.0` is
-> published and installed on `mycluster-0`; `cloud-native-ref` no longer contains an XRD, a
+> published and installed on `aws-0`; `cloud-native-ref` no longer contains an XRD, a
 > Composition or a KCL module. Cut over in #1774 (install + adopt) and #1778 (delete), with all 35
 > identities — 5 XRDs, 5 CRDs, 5 Compositions, 20 claims — preserved by `uid`.
 >
@@ -255,7 +255,7 @@ opentofu/gcp/
     │              Crossplane WIF binding, Gateway API CRDs, helm_values/cilium.yaml
     └── configure/ Cilium then Flux Operator + Flux Instance
 
-clusters/gcp-mycluster-0/   new sibling of clusters/mycluster-0/
+clusters/gcp-0/   new sibling of clusters/aws-0/
 ```
 
 Two-stage deploy mirrors EKS, for the same reason: the Helm provider needs a cluster endpoint at
@@ -463,7 +463,7 @@ extra trust anchor and remove the entire class.
   cert-manager `Certificate`, which is already cloud-neutral. The issuer differs
   per cloud, the developer-facing API does not — ADR-0007's split by audience.
 
-**Slice 4 (autoscaling)** — *results recorded 2026-08-24, measured on gcp-mycluster-0.
+**Slice 4 (autoscaling)** — *results recorded 2026-08-24, measured on gcp-0.
 Four PASS, one partial, one blocked on a GCP quota. Each is annotated below.*
 
 *Per-class status: `general-purpose` and `io` are both VERIFIED by live scale-up —
@@ -548,7 +548,7 @@ provisions regardless. Recorded so nobody re-derives the false alarm.*
    node image type.
 3. `opentofu/gcp/network/`, then `gke/init/` (including the Crossplane WIF binding), then
    `gke/configure/`.
-4. `clusters/gcp-mycluster-0/` minimum viable Flux tree — excluding `aws-load-balancer-controller`,
+4. `clusters/gcp-0/` minimum viable Flux tree — excluding `aws-load-balancer-controller`,
    `aws-efs-csi-driver`, Karpenter, `runtimeclass-nvidia`.
 5. **Gate again.** One `ComputeClass` proving criterion 12 before writing the other two; fallback is
    static pools + cluster autoscaler (ADR-0006 option 3).

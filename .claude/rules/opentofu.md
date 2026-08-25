@@ -55,7 +55,7 @@ terramate script run --tags=opt-in    deploy   # run only opt-in stacks
 
 Trade-off: opt-in scripts use a single bash heredoc and lose Terramate Cloud sync metadata (`sync_deployment` / `sync_preview`). Acceptable for branch-local stacks.
 
-The LLM platform mirrors this gate on the Flux side via the umbrella Kustomization at `clusters/mycluster-0/llm-platform.yaml` (`spec.suspend: true`). Both gates must be released for an end-to-end deploy — see CLAUDE.md "Self-Hosted LLM Platform" + `clusters/mycluster-0/llm-platform/README.md`.
+The LLM platform mirrors this gate on the Flux side via the umbrella Kustomization at `clusters/aws-0/llm-platform.yaml` (`spec.suspend: true`). Both gates must be released for an end-to-end deploy — see CLAUDE.md "Self-Hosted LLM Platform" + `clusters/aws-0/llm-platform/README.md`.
 
 ## Validation
 

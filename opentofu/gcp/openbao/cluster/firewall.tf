@@ -27,7 +27,7 @@ resource "google_compute_firewall" "openbao_health_check" {
 #   - Operators and the management stack, from tailnet devices. The subnet
 #     router SNATs, so that traffic arrives sourced from the router's own
 #     address in `node_cidr` -- not from a 100.64/10 tailnet address.
-#   - cert-manager, from a POD on gcp-mycluster-0, reaching the internal LB
+#   - cert-manager, from a POD on gcp-0, reaching the internal LB
 #     directly inside the VPC. It never traverses the tailnet.
 #
 # `advertised_routes` covers both because it is node + pod + service +

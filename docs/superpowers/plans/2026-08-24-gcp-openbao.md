@@ -823,8 +823,8 @@ git commit -m "feat(gcp): OpenBao management stack — PKI from an offline root"
 ### Task 8: GKE wiring — External Secrets and cert-manager
 
 **Files:**
-- Create: `security/gcp-mycluster-0/openbao/{gcpworkloadidentity,secretstore,externalsecrets,clusterissuer}.yaml`, `kustomization.yaml`
-- Create: `clusters/gcp-mycluster-0/security/security.yaml`
+- Create: `security/gcp-0/openbao/{gcpworkloadidentity,secretstore,externalsecrets,clusterissuer}.yaml`, `kustomization.yaml`
+- Create: `clusters/gcp-0/security/security.yaml`
 
 **Interfaces:**
 - Consumes: Task 1's `xplane_secret_reader`, Task 7's AppRole secret, Task 3's CA chain.
@@ -896,7 +896,7 @@ Expected: `Ready=True`, and the chain verifies to the offline root. Then `kubect
 - [ ] **Step 6: Commit**
 
 ```bash
-git add security/gcp-mycluster-0/ clusters/gcp-mycluster-0/security/
+git add security/gcp-0/ clusters/gcp-0/security/
 git commit -m "feat(gcp): wire cert-manager to OpenBao via External Secrets"
 ```
 

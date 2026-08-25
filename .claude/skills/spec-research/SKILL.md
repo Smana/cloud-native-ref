@@ -35,7 +35,7 @@ Before going external, exhaust the repo:
 - **Constitution** (`docs/platform-constitution.md`) — which rules apply to this topic?
 - **ADRs** (`docs/decisions/`) — any prior decision constrains this?
 - **Prior designs** (`docs/superpowers/specs/`) and **archived specs** (`docs/specs/done/`) — reuse patterns rather than reinvent.
-- **Runtime examples**: `infrastructure/mycluster-0/`, `security/mycluster-0/`, etc.
+- **Runtime examples**: `infrastructure/aws-0/`, `security/aws-0/`, etc.
 
 ### 3. External sources (in priority order)
 

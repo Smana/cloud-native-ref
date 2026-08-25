@@ -1,0 +1,18 @@
+# Identical to clusters/aws-0/namespaces.yaml — namespaces/base is shared
+# between both clusters and contains nothing cloud-specific.
+#
+# First in the constitution's dependency order (Namespaces -> CRDs -> ...). A
+# Kustomization health-checking a namespaced resource whose namespace is missing
+# wedges its whole dependsOn tree, which is why this runs before anything else.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: namespaces
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  path: ./namespaces/base
+  sourceRef:
+    kind: ExternalArtifact
+    name: namespaces-artifact

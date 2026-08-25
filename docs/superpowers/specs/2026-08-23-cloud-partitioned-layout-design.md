@@ -85,7 +85,7 @@ So changes are split by what they can break:
 | Kind | Examples | Merge bar |
 |---|---|---|
 | **Touches AWS or shared paths** | the `aws/` move, `shared/tailscale`, Gateway API convergence | Criteria 1–7 and 14 (plan-clean on AWS). Does **not** wait on a GCP apply — GCP is inert while gated. Merge **promptly**; this is the piece that conflicts |
-| **Additive GCP only** | `opentofu/gcp/**`, `clusters/gcp-mycluster-0/**` | Criteria 8–10 and 14 (gates hold, nothing applies by default) |
+| **Additive GCP only** | `opentofu/gcp/**`, `clusters/gcp-0/**` | Criteria 8–10 and 14 (gates hold, nothing applies by default) |
 | **Gate removal** | flipping `opt-in` / `$TM_GCP_ENABLED` and the suspended Kustomization | Criteria 11–13 — the full GCP end-to-end apply and clean teardown |
 
 Each slice's bar is a subset of the success criteria below, not the whole list. Only the **final**
@@ -119,7 +119,7 @@ already stopped moving:
 2. The `opentofu/{aws,shared}/` move — large diff, state-neutral
 3. `shared/tailscale` extraction — first live-state migration
 4. Gateway API convergence — second live-state migration, on live CRDs
-5. `clusters/gcp-mycluster-0/` and the GCP apply — first real spend
+5. `clusters/gcp-0/` and the GCP apply — first real spend
 
 Steps 3 and 4 are deliberately after the move so they are written once, in the final layout, rather
 than written and then relocated.

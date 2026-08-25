@@ -38,7 +38,7 @@
 | `apps/base/ai/llm/qwen-coder.yaml` | Modify | Add `loraAdapters: [...]` + bump composition source URL |
 | `apps/base/ai/llm/ai-gateway-routes/route.yaml` | Modify | Add per-adapter AIGatewayRoute matchRules |
 | `tooling/base/promptfoo/eval-suite-configmap.yaml` | Modify | Add 2 eval entries (one per adapter) |
-| `clusters/mycluster-0-llm-platform/README.md` | Modify | Add "Invoking a LoRA adapter" section |
+| `clusters/aws-0-llm-platform/README.md` | Modify | Add "Invoking a LoRA adapter" section |
 | `README.md` | Modify | One-line LoRA mention in LLM Platform section |
 | `docs/llm-platform-future-paths.md` | Modify | Append path 7 paragraph (per-tenant FinOps observability) |
 
@@ -747,7 +747,7 @@ git commit -m "test(promptfoo): probe both LoRA adapters via /v1/chat/completion
 ### Task 15: Document "Invoking a LoRA adapter" in the cluster README
 
 **Files:**
-- Modify: `clusters/mycluster-0-llm-platform/README.md`
+- Modify: `clusters/aws-0-llm-platform/README.md`
 
 - [ ] **Step 1: Add a new subsection**
 
@@ -793,7 +793,7 @@ Replace `<adapter-1-name>` and `<adapter-aligned prompt>` with real values from 
 - [ ] **Step 2: Commit**
 
 ```bash
-git add clusters/mycluster-0-llm-platform/README.md
+git add clusters/aws-0-llm-platform/README.md
 git commit -m "docs(llm-platform): how to invoke a LoRA adapter"
 ```
 
@@ -815,7 +815,7 @@ Insert as a sub-bullet of the existing platform description:
 ```markdown
 - LoRA adapter serving on `xplane-qwen-coder` — two adapters mounted on the
   same base model, each addressable as a separate OpenAI model name. See
-  `clusters/mycluster-0-llm-platform/README.md` § "Invoking a LoRA adapter".
+  `clusters/aws-0-llm-platform/README.md` § "Invoking a LoRA adapter".
 ```
 
 - [ ] **Step 3: Commit**
@@ -895,7 +895,7 @@ git push origin wip/self-hosted-llm-platform-draft
 
 - [ ] **Step 2: Force a Flux reconcile of the LLM platform Kustomization**
 
-Confirm the LLM umbrella is unsuspended (per `clusters/mycluster-0-llm-platform/README.md`):
+Confirm the LLM umbrella is unsuspended (per `clusters/aws-0-llm-platform/README.md`):
 
 ```bash
 kubectl get kustomization llm-platform -n flux-system -o jsonpath='{.spec.suspend}' || echo "(absent)"

@@ -66,7 +66,7 @@ The Kubernetes side of the LLM platform has its own gate — see
 ## EKS cluster
 
 ```bash
-aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
+aws eks update-kubeconfig --region eu-west-3 --name aws-0
 flux get all
 flux suspend kustomization --all
 flux resume kustomization --all

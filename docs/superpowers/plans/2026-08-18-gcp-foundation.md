@@ -4,7 +4,7 @@
 
 **Goal:** Stand up a private GKE Standard cluster on GCP running self-managed Cilium and Flux, reachable over the existing Tailscale tailnet, without moving or modifying any existing AWS file.
 
-**Architecture:** Three new OpenTofu stacks under `opentofu/gcp/` mirroring the existing AWS shape — `network/` (VPC, secondary ranges, Cloud DNS, Tailscale subnet router), `gke/init/` (cluster + static tainted node pool), `gke/configure/` (Cilium then Flux). Two stages because the Helm provider needs a cluster endpoint at plan time, the same reason `eks/init` and `eks/configure` are split. Cilium runs `ipam.mode=kubernetes` over GKE alias IP ranges instead of AWS ENI mode. Flux syncs a **new sibling** tree `clusters/gcp-mycluster-0/`.
+**Architecture:** Three new OpenTofu stacks under `opentofu/gcp/` mirroring the existing AWS shape — `network/` (VPC, secondary ranges, Cloud DNS, Tailscale subnet router), `gke/init/` (cluster + static tainted node pool), `gke/configure/` (Cilium then Flux). Two stages because the Helm provider needs a cluster endpoint at plan time, the same reason `eks/init` and `eks/configure` are split. Cilium runs `ipam.mode=kubernetes` over GKE alias IP ranges instead of AWS ENI mode. Flux syncs a **new sibling** tree `clusters/gcp-0/`.
 
 **Tech Stack:** OpenTofu 1.12.5, Terramate 0.17.2, `hashicorp/google` provider, GKE Standard (legacy datapath), Cilium 1.20.0, Flux Operator 0.55.0, Tailscale, Trivy.
 
@@ -24,7 +24,7 @@
 **Phases 2, 3 and 4 are written, validated and committed but NOT APPLIED.** All three stacks
 (`opentofu/gcp/network`, `gke/init`, `gke/configure`) pass `tofu validate`, `tofu fmt -check` and
 `trivy config`, and `terramate list` discovers them. Nothing bills yet. Phase 5
-(`clusters/gcp-mycluster-0/`) and Phase 6 (verification, runbook) remain.
+(`clusters/gcp-0/`) and Phase 6 (verification, runbook) remain.
 
 ### Settled inputs
 
@@ -161,6 +161,12 @@ then becomes `aws-mycluster-0`: an EKS cluster name is immutable, so renaming no
 destroying and recreating the live cluster plus touching 144 files. The present asymmetry is
 therefore deliberate and temporary — not an oversight to be "fixed" by someone reading
 `clusters/` later.
+
+> **Resolved 2026-08-25.** The deferred condition was met: both clusters were destroyed
+> after workstream 11's verification, so the rebuild this amendment was waiting for arrived.
+> The names chosen were shorter than proposed here — **`aws-0` / `gcp-0`** — because
+> `cluster_name` now also appears inside Tailscale device names and IAM role names, where the
+> `mycluster` filler cost characters for no information. See ADR-0017's amendment.
 
 ### Amendment 3 — Task 4's Cilium install is missing two mandatory values
 
@@ -309,7 +315,7 @@ non-interactive use.
 | `opentofu/gcp/gke/configure/main.tf` | Create | Cilium then Flux Operator + Flux Instance |
 | `opentofu/gcp/gke/configure/{versions,providers,backend,variables,data,locals}.tf` | Create | Stack plumbing |
 | `opentofu/gcp/gke/configure/stack.tm.hcl` | Create | Stack metadata |
-| `clusters/gcp-mycluster-0/**` | Create | New sibling Flux tree, minimum viable set |
+| `clusters/gcp-0/**` | Create | New sibling Flux tree, minimum viable set |
 | `docs/gcp-bootstrap.md` | Create | Bootstrap runbook + monthly run-rate estimate |
 | `CLAUDE.md` | Modify | GCP stacks in architecture; WireGuard note rescoped (Task 21 only, gated) |
 
@@ -603,7 +609,7 @@ Append inside the existing `globals { }` block, below `flux_sync_repository_url`
   gcp_project      = "<project-id-from-task-2>"
   gcp_region       = "europe-west1"
   gcp_zone         = "europe-west1-b"
-  gke_cluster_name = "gcp-mycluster-0"
+  gke_cluster_name = "gcp-0"
 ```
 
 - [ ] **Step 2: Verify Terramate still parses every stack**
@@ -1140,7 +1146,7 @@ variable "zone" {
 variable "cluster_name" {
   description = "GKE cluster name"
   type        = string
-  default     = "gcp-mycluster-0"
+  default     = "gcp-0"
 }
 
 variable "control_plane_cidr" {
@@ -1338,7 +1344,7 @@ project_id     = "<project-id-from-task-2>"
 project_number = "<project-NUMBER-from-task-2-step-3>"
 region         = "europe-west1"
 zone           = "europe-west1-b"
-cluster_name   = "gcp-mycluster-0"
+cluster_name   = "gcp-0"
 ```
 
 - [ ] **Step 7: Validate, scan, apply**
@@ -1356,9 +1362,9 @@ Expected: cluster and node pool created. This takes roughly 10 minutes.
 
 Run:
 ```bash
-gcloud container clusters describe gcp-mycluster-0 --zone europe-west1-b \
+gcloud container clusters describe gcp-0 --zone europe-west1-b \
   --format='yaml(networkConfig.datapathProvider,privateClusterConfig.enablePrivateEndpoint,workloadIdentityConfig,loggingConfig,monitoringConfig)'
-gcloud container node-pools describe static --cluster gcp-mycluster-0 --zone europe-west1-b \
+gcloud container node-pools describe static --cluster gcp-0 --zone europe-west1-b \
   --format='yaml(config.spot,config.imageType,config.taints,locations)'
 ```
 Expected: `datapathProvider` absent or not `ADVANCED_DATAPATH`; `enablePrivateEndpoint: true`; a `workloadPool`; logging and monitoring components **empty**; and on the pool `spot: true`, the pinned `imageType`, the `node.cilium.io/agent-not-ready` taint, one zone.
@@ -1367,7 +1373,7 @@ Expected: `datapathProvider` absent or not `ADVANCED_DATAPATH`; `enablePrivateEn
 
 Run:
 ```bash
-gcloud container clusters get-credentials gcp-mycluster-0 --zone europe-west1-b --internal-ip
+gcloud container clusters get-credentials gcp-0 --zone europe-west1-b --internal-ip
 kubectl get nodes
 ```
 Expected: 2 nodes, both `Ready`... **or `NotReady` — which is correct at this point**, because no CNI is installed yet. What matters is that the API server answers. If the command times out, the tailnet route is the problem, not the cluster.
@@ -1773,7 +1779,7 @@ resource "helm_release" "flux_instance" {
     },
     {
       name  = "instance.sync.path"
-      value = "clusters/gcp-mycluster-0"
+      value = "clusters/gcp-0"
     },
   ]
 
@@ -1816,7 +1822,7 @@ variable "region" {
 variable "cluster_name" {
   description = "GKE cluster name"
   type        = string
-  default     = "gcp-mycluster-0"
+  default     = "gcp-0"
 }
 
 variable "cilium_version" {
@@ -1869,7 +1875,7 @@ git commit -m "feat(gcp): configure stack installing Cilium then Flux
 
 No VPC-CNI/kube-proxy disable step is needed on GKE -- cni.exclusive displaces
 netd and kubeProxyReplacement handles kube-proxy. Stack is local-exec-free,
-matching eks/configure. Flux syncs clusters/gcp-mycluster-0."
+matching eks/configure. Flux syncs clusters/gcp-0."
 ```
 
 ### Task 13: Terramate two-stage deploy scripts
@@ -1983,17 +1989,17 @@ Mirrors eks/init. No stage 3 -- bootstrap-node recycling is ENI-specific."
 
 ## Phase 5 — Flux tree
 
-### Task 14: Minimum viable `clusters/gcp-mycluster-0/`
+### Task 14: Minimum viable `clusters/gcp-0/`
 
 **Files:**
-- Create: `clusters/gcp-mycluster-0/**`
+- Create: `clusters/gcp-0/**`
 
 - [ ] **Step 1: Inspect the AWS cluster tree to mirror its shape**
 
 Run:
 ```bash
-find clusters/mycluster-0 -type f | sort
-cat clusters/mycluster-0/namespaces.yaml
+find clusters/aws-0 -type f | sort
+cat clusters/aws-0/namespaces.yaml
 ```
 Expected: the Kustomization set (`namespaces`, `crds`, `flux/`, `infrastructure/`, `security/`, `observability/`, `tooling.yaml`, `apps.yaml`, `llm-platform.yaml`) and the dependency ordering between them.
 
@@ -2010,7 +2016,7 @@ Create only what a bare working cluster needs, in the constitution's dependency 
 
 - [ ] **Step 3: Verify nothing AWS-specific leaked in**
 
-Run: `grep -rniE 'aws|eks|karpenter|efs|\bs3\b|route53' clusters/gcp-mycluster-0/ || echo CLEAN`
+Run: `grep -rniE 'aws|eks|karpenter|efs|\bs3\b|route53' clusters/gcp-0/ || echo CLEAN`
 Expected: `CLEAN`. Any match is either a mistake or needs a comment saying why it is deliberate.
 
 - [ ] **Step 4: Verify the repo still renders and validates**
@@ -2020,16 +2026,16 @@ Expected: exit 0, and the report shows **`Invalid: 0, Skipped: 0`**. A skipped r
 
 - [ ] **Step 5: Confirm the AWS tree is untouched**
 
-Run: `git status --short clusters/mycluster-0/ && git diff --stat clusters/mycluster-0/`
+Run: `git status --short clusters/aws-0/ && git diff --stat clusters/aws-0/`
 Expected: **no output from either.** If there is any, revert it — this plan is additive.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add clusters/gcp-mycluster-0
-git commit -m "feat(gcp): add clusters/gcp-mycluster-0 Flux tree
+git add clusters/gcp-0
+git commit -m "feat(gcp): add clusters/gcp-0 Flux tree
 
-New sibling of clusters/mycluster-0; no existing AWS file is moved or changed.
+New sibling of clusters/aws-0; no existing AWS file is moved or changed.
 Excludes aws-load-balancer-controller, aws-efs-csi-driver, Karpenter and
 runtimeclass-nvidia -- all AWS-specific."
 ```
@@ -2096,11 +2102,11 @@ Expected: all OK, 0 restarts on every agent, and Hubble returns output (an empty
 
 - [ ] **Step 2: Criterion 2 — netd still displaced on the real cluster**
 
-Repeat Task 4 Step 4 against `gcp-mycluster-0`. The gate proved it on a throwaway cluster with `helm install`; this proves it with the real values file and the real node image.
+Repeat Task 4 Step 4 against `gcp-0`. The gate proved it on a throwaway cluster with `helm install`; this proves it with the real values file and the real node image.
 
 - [ ] **Step 3: Criterion 3 — cross-node L7, no WireGuard**
 
-Repeat Task 4 Step 6 against `gcp-mycluster-0`, then confirm encryption really is off:
+Repeat Task 4 Step 6 against `gcp-0`, then confirm encryption really is off:
 ```bash
 kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium status | grep -i encryption
 ```
@@ -2110,7 +2116,7 @@ Expected: `100 200`, and encryption reported as `Disabled`.
 
 Run:
 ```bash
-gcloud container clusters describe gcp-mycluster-0 --zone europe-west1-b \
+gcloud container clusters describe gcp-0 --zone europe-west1-b \
   --format='value(privateClusterConfig.enablePrivateEndpoint)'
 kubectl get nodes
 tailscale status --json | jq -r '.Peer[] | select(.PrimaryRoutes != null) | "\(.HostName): \(.PrimaryRoutes|join(", "))"'
@@ -2121,9 +2127,9 @@ Expected: `True`; `kubectl` works; and the advertised route list contains no CID
 
 Run:
 ```bash
-gcloud container node-pools describe static --cluster gcp-mycluster-0 --zone europe-west1-b \
+gcloud container node-pools describe static --cluster gcp-0 --zone europe-west1-b \
   --format='yaml(config.spot,config.imageType,locations)'
-gcloud container clusters describe gcp-mycluster-0 --zone europe-west1-b \
+gcloud container clusters describe gcp-0 --zone europe-west1-b \
   --format='yaml(loggingConfig,monitoringConfig)'
 gcloud compute networks subnets describe dev-ogenki-nodes --region europe-west1 \
   --format='value(privateIpGoogleAccess)'
@@ -2168,15 +2174,15 @@ Run:
 ```bash
 git diff --stat origin/main...HEAD -- \
   opentofu/network opentofu/eks opentofu/openbao opentofu/llm-platform \
-  clusters/mycluster-0 infrastructure security observability tooling apps
+  clusters/aws-0 infrastructure security observability tooling apps
 ```
-Expected: **empty output.** The only permitted exceptions are `mise.toml`, `opentofu/config.tm.hcl`, `CLAUDE.md`, and new files under `opentofu/gcp/`, `clusters/gcp-mycluster-0/`, `docs/`.
+Expected: **empty output.** The only permitted exceptions are `mise.toml`, `opentofu/config.tm.hcl`, `CLAUDE.md`, and new files under `opentofu/gcp/`, `clusters/gcp-0/`, `docs/`.
 
 - [ ] **Step 2: Confirm the AWS cluster is still healthy**
 
 Run:
 ```bash
-aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
+aws eks update-kubeconfig --region eu-west-3 --name aws-0
 flux get kustomizations -A | grep -v True || echo "ALL READY"
 ```
 Expected: `ALL READY`
@@ -2212,13 +2218,13 @@ git commit -m "docs(gcp): bootstrap runbook, CIDR plan, and monthly run-rate est
 
 - [ ] **Step 1: Add the GCP stacks to the architecture section**
 
-Document `opentofu/gcp/{network,gke/init,gke/configure}`, the `gcp-mycluster-0` Flux tree, and the two-stage deploy command. Add a line to *Key File Locations* naming the GCP stacks alongside the AWS ones.
+Document `opentofu/gcp/{network,gke/init,gke/configure}`, the `gcp-0` Flux tree, and the two-stage deploy command. Add a line to *Key File Locations* naming the GCP stacks alongside the AWS ones.
 
 - [ ] **Step 2: Commit**
 
 ```bash
 git add CLAUDE.md
-git commit -m "docs: document the GCP stacks and gcp-mycluster-0 Flux tree"
+git commit -m "docs: document the GCP stacks and gcp-0 Flux tree"
 ```
 
 ### Task 20: Rescope the WireGuard note — ONLY if criterion 3 passed
@@ -2289,6 +2295,6 @@ gh pr create --title "feat(gcp): dual-cloud foundation — network, GKE, Cilium,
 
 **Placeholders.** Four `<...>` substitutions remain by design, each with a task that produces the value: project id/number (Task 2), mise backend for `gcloud` (Task 1 Step 2 — deliberately read from `mise registry` rather than guessed), Gateway API version (Task 11 Step 1 — read from the AWS stack so the two clouds match), and the PR body (Task 21). No "TBD", no "add error handling", no "similar to Task N".
 
-**Consistency.** Verified across tasks: `gcp-mycluster-0` as cluster name and Flux path; `10.10.0.0/16` / `100.65.0.0/16` / `10.11.0.0/20` / `172.16.0.0/28` throughout; network outputs (`network_id`, `nodes_subnetwork_id`, `pods_range_name`, `services_range_name`, `node_cidr`) all produced in Tasks 7–9 before being consumed; `node_image_type` set in Task 9 and flagged for slice 4 to reuse; `cilium_version` / `flux_*` passed from globals in Task 13 to the variables declared in Task 12 Step 4.
+**Consistency.** Verified across tasks: `gcp-0` as cluster name and Flux path; `10.10.0.0/16` / `100.65.0.0/16` / `10.11.0.0/20` / `172.16.0.0/28` throughout; network outputs (`network_id`, `nodes_subnetwork_id`, `pods_range_name`, `services_range_name`, `node_cidr`) all produced in Tasks 7–9 before being consumed; `node_image_type` set in Task 9 and flagged for slice 4 to reuse; `cilium_version` / `flux_*` passed from globals in Task 13 to the variables declared in Task 12 Step 4.
 
 **Known gap carried forward deliberately:** Task 9's `roles/editor` for Crossplane is bootstrap breadth, called out inline and again in Task 21 Step 3 so the identity plan must narrow it rather than inherit it silently.
