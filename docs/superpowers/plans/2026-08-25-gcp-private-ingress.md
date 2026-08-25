@@ -713,7 +713,7 @@ resources:
   - external-dns
 ```
 
-external-dns joins the existing `infrastructure` Kustomization rather than getting its own: it degrades gracefully when there is nothing to watch, so it needs no ordering edge. Its claim does need Crossplane, which `infrastructure` already sequences behind.
+external-dns joins the existing `infrastructure` Kustomization rather than getting its own: it degrades gracefully when there is nothing to watch, so it needs no ordering edge of its own. Its `GCPWorkloadIdentity` claim does need Crossplane, though — add `- name: crossplane-configuration` to `infrastructure`'s `dependsOn` (it is not there by default; this is the edge that closes finding 2 of the final review).
 
 - [ ] **Step 5: Validate, including that the AWS provider is gone**
 
