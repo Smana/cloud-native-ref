@@ -1,14 +1,17 @@
-# State lives in S3, not GCS, even though this stack manages GCP resources.
-# See opentofu/gcp/network/backend.tf for the full rationale.
+# GCP state lives in GCS, in a project that holds nothing else.
 #
-# NOTE the hardcoded region. It is the S3 BUCKET's region and has nothing to do
-# with var.region, which in this stack is a GCP region (europe-west4).
+# See opentofu/gcp/network/backend.tf for the full rationale and the bootstrap
+# commands, and ADR-0018 for the decision. In short: GCP stacks now need GCP
+# credentials only, teardown survives an AWS outage, and this stack's state no
+# longer sits where an AWS-side compromise could read it.
+#
+# No `use_lockfile` -- unlike the S3 backend, GCS locks natively.
+#
+# This stack's state is the one that most needed moving: it holds
+# cert-manager's live AppRole secret_id (see secrets.tf, which says so).
 terraform {
-  backend "s3" {
-    bucket       = "demo-smana-remote-backend"
-    key          = "cloud-native-ref/gcp/openbao/management/opentofu.tfstate"
-    region       = "eu-west-3"
-    encrypt      = true
-    use_lockfile = true
+  backend "gcs" {
+    bucket = "ogenki-cloud-native-ref-tfstate"
+    prefix = "cloud-native-ref/gcp/openbao/management"
   }
 }
