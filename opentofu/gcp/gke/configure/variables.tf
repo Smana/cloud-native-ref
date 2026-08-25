@@ -87,8 +87,19 @@ variable "gateway_api_version" {
 # at certificate issuance, with an AWS error that says nothing about a
 # mistyped tfvars entry. Required + no default turns that into a loud
 # "No value for required variable" instead.
+#
+# public_domain_name is `gcp.cloud.ogenki.io`, NOT `cloud.ogenki.io` -- a
+# deliberate departure from the AWS variable of the same name, added after the
+# final-branch review: aws-0 already runs a live wildcard Certificate for
+# `*.cloud.ogenki.io`. A gcp-0 requesting the identical identifier set would
+# share Let's Encrypt's Duplicate Certificate limit (5/week, not exempted for
+# renewals, counted across accounts) with aws-0's production renewal, and both
+# clusters would race to write the same `_acme-challenge.cloud.ogenki.io` TXT
+# record. Giving gcp-0 its own subdomain closes both, and matches the
+# private-domain precedent this repo already set (`priv.aws.ogenki.io` vs
+# `priv.gcp.ogenki.io`) -- only the public name had collided. See ADR-0019.
 variable "public_domain_name" {
-  description = "Public zone the federated ClusterIssuer solves DNS-01 against, e.g. cloud.ogenki.io. Same variable name and validation as opentofu/aws/eks/configure -- this is the cloud-agnostic zone both clusters write to"
+  description = "Public name the federated ClusterIssuer solves DNS-01 against and the Gateway serves: gcp.cloud.ogenki.io, a subdomain of the shared zone -- deliberately NOT the same value as opentofu/aws/eks/configure's variable of the same name. See the comment above and ADR-0019"
   type        = string
 
   validation {
@@ -98,7 +109,7 @@ variable "public_domain_name" {
 }
 
 variable "route53_public_zone_id" {
-  description = "Route53 hosted zone ID for public_domain_name. Sourced from opentofu/shared/aws-gcp-federation's public_zone_id output -- no default"
+  description = "Route53 hosted zone ID of the PARENT zone (cloud.ogenki.io) that contains public_domain_name -- there is no separate delegated zone for the gcp.cloud.ogenki.io subdomain. Sourced from opentofu/shared/aws-gcp-federation's public_zone_id output -- no default"
   type        = string
 }
 

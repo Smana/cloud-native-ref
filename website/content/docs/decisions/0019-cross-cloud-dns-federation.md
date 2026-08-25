@@ -38,7 +38,9 @@ Secret Manager, nothing to rotate.
   access key sitting in GCP Secret Manager.
 - **Cloud-agnostic public names.** [ADR-0017](../0017-multi-cloud-dns-naming.md) already
   decided public names carry no cloud label, so a service can move between clouds without a
-  DNS rename.
+  DNS rename. *Amended below*: gcp-0's own default wildcard turned out to need a per-cloud name
+  after all, for a reason ADR-0017 did not anticipate — see the note under Decision Outcome and
+  the Consequences.
 - **One Gateway implementation per cluster**, consistent with
   [ADR-0005](../0005-gke-standard-self-managed-cilium.md)'s reasoning against a second
   Gateway controller on GKE.
@@ -111,12 +113,27 @@ exists solely to couple the two clouds, which is what `shared/` already means he
 `opentofu/shared/tailscale` holds the tailnet for the same reason. Filing it under `aws/` would
 present a federation point as AWS's own concern and hide it from anyone reading the GCP tree.
 
+**gcp-0's public name is `gcp.cloud.ogenki.io`, not `cloud.ogenki.io`.** Caught in the
+whole-branch final review, not in the original design: `aws-0` already runs a live wildcard
+Certificate for `*.cloud.ogenki.io`. A `gcp-0` Gateway and Certificate requesting that identical
+identifier set would share Let's Encrypt's Duplicate Certificate limit (5 per week for an
+identical hostname set, counted across accounts and **not** exempted for renewals) with `aws-0`'s
+production renewal, and both clusters' cert-managers would race to write the same
+`_acme-challenge.cloud.ogenki.io` TXT record. No delegation is created to fix this — records for
+`*.gcp.cloud.ogenki.io` still live in the same `cloud.ogenki.io` hosted zone
+(`Z002027037R5RFCG05YY6`), so the IAM scoping above is unaffected; only the *name* gcp-0 requests
+within that zone changed. This mirrors a split this repo already made for private domains
+(`priv.aws.ogenki.io` vs `priv.gcp.ogenki.io`) — the public name was the one that had collided,
+not the zone.
+
 ## Consequences
 
 ### Positive
 
 - No static AWS credential anywhere on GCP — no access key, no secret in GCP Secret Manager.
-- Public names stay cloud-agnostic; a service can move between clouds without a DNS rename.
+- Public names stay cloud-agnostic at the **zone** level — `cloud.ogenki.io` remains one shared
+  Route53 zone, not split per cloud. See Negative for the one place this does not extend to
+  gcp-0's own default wildcard.
 - The trust is minimal and explicit: two named ServiceAccount subjects, one audience, one zone,
   no delete permissions.
 - The stack is independent of GCP stacks existing — the issuer URL is a deterministic string
@@ -138,11 +155,22 @@ present a federation point as AWS's own concern and hide it from anyone reading 
 - Renaming `gcp-0`, moving it to another zone, or moving GCP projects changes the issuer URL and
   requires the OIDC provider to be recreated — the federation is pinned to the cluster's
   identity, not just its existence.
+- **gcp-0's public Gateway and Certificate carry a cloud label after all** (`gcp.cloud.ogenki.io`),
+  which the "cloud-agnostic public names" driver did not anticipate needing. Any HTTPRoute
+  attached to that Gateway inherits a `gcp.`-prefixed hostname by construction — Gateway API
+  requires listener/route hostname intersection — so a public service on gcp-0 cannot get a
+  cloud-agnostic name from this Gateway alone. Accepted because the alternative (the identical
+  `*.cloud.ogenki.io` identifier set aws-0 already holds) is a live production hazard, not a
+  style preference — see Decision Outcome.
 
 ### Neutral
 
-- `aws-0` is unaffected: it already authenticates to Route53 directly (same account, no
-  federation needed) and this ADR adds no dependency in that direction.
+- `aws-0` is unaffected by the IAM federation itself — it already authenticates to Route53
+  directly (same account, no federation needed) and this ADR adds no dependency in that
+  direction. It was **not** unaffected by the certificate as originally specified: requesting
+  the identical `*.cloud.ogenki.io` identifier set on gcp-0 would have shared a Let's Encrypt
+  rate limit and a DNS-01 challenge record with `aws-0`'s live production certificate. Fixed by
+  giving gcp-0 its own name — see Decision Outcome.
 
 ## Implementation Notes
 
