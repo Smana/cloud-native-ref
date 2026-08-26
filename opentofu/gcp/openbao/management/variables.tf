@@ -98,3 +98,28 @@ variable "external_secrets_service_account" {
   type        = string
   default     = "external-secrets"
 }
+
+# CONCERN FOR WHOEVER APPLIES THIS (Task 7): GCP Secret Manager secret IDs may
+# only contain letters, numbers, hyphens and underscores -- "/" is invalid.
+# The default below is the AWS Secrets Manager name verbatim (slashes and
+# all), kept because security/base/openbao-snapshot/external-secrets.yaml's
+# `dataFrom.extract.key` is shared, unmodified, across both clouds' overlays
+# and must match whatever secret_id this stack actually creates. Every other
+# secret in this stack (approle_secret_name, ca_chain_secret_name, ...) uses
+# dashes for exactly this reason. Untested against the live API -- `tofu
+# validate` does not catch it, only `tofu apply` will. If it 400s, either
+# rename this variable's default to a dash-separated ID and add a per-cluster
+# ExternalSecret override the way security/gcp-0/openbao/ already does for
+# cert-manager's own approle secret, or confirm the API is more permissive
+# than documented before assuming that path.
+variable "snapshot_approle_secret_name" {
+  description = "GCP Secret Manager entry holding the snapshot agent's AppRole credentials and job configuration. Matches the AWS default (var.snapshot_approle_secret_name in opentofu/aws/openbao/management) because security/base/openbao-snapshot/external-secrets.yaml reads this exact key on both clouds."
+  type        = string
+  default     = "security/openbao/openbao-snapshot"
+}
+
+variable "snapshot_bucket_name" {
+  description = "GCS bucket where raft snapshots are stored. Empty means derive it from region, matching security/gcp-0/openbao-snapshot/gcs-bucket.yaml's crossplane.io/external-name."
+  type        = string
+  default     = ""
+}
