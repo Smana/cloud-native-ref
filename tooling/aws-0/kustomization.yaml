@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - ../base/headlamp
-  - ../base/harbor
+  - ./harbor
   - ../base/homepage
   - ../base/pev2
   # Promptfoo nightly eval CronJob is gated behind the LLM platform

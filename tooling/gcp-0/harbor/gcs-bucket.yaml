@@ -1,0 +1,12 @@
+apiVersion: storage.gcp.m.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: harbor
+  namespace: tooling
+  annotations:
+    crossplane.io/external-name: ${region}-ogenki-harbor
+spec:
+  forProvider:
+    location: ${region}
+    uniformBucketLevelAccess: true
+    forceDestroy: false
