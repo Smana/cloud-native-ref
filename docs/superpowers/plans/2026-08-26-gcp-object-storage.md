@@ -1179,3 +1179,115 @@ python3 scripts/flux-schema/check-substitution.py
 `Invalid: 0, Skipped: 0`. The `aws-0` bundle must still contain the KMS key and the S3 bucket exactly
 once each. Commit Parts A and B separately — the first is a behaviour fix, the second a refactor, and
 a reviewer should be able to reject one without the other.
+
+---
+
+### Task 13: Give GCP the snapshot AppRole and secret the CronJob needs
+
+> Added during execution, from Task 5+12's review. **This is the real blocker for Task 7** — bigger
+> than the CIDR issue Task 12 fixed, because it is not a manifest problem.
+
+**Files:**
+- Create: `opentofu/gcp/openbao/management/policies/snapshot.hcl` (or `.tftpl`, matching the sibling)
+- Modify: `opentofu/gcp/openbao/management/{auth.tf,policies.tf,secrets.tf,iam.tf}`
+- Modify: `security/base/openbao-snapshot/network-policy.yaml` (comments only)
+
+**Interfaces:**
+- Consumes: Task 5's `gcp-0` overlay and Task 12's `openbao_cidr`.
+- Produces: the Secret Manager entry `security/openbao/openbao-snapshot` that Task 7 needs to exist.
+
+**The problem.** `security/base/openbao-snapshot/external-secrets.yaml` pulls
+`security/openbao/openbao-snapshot`, expected to hold `APPROLE_ROLE_ID`, `APPROLE_SECRET_ID`,
+`VAULT_ADDR` and `BUCKET_NAME`. On GCP none of that exists:
+
+- `opentofu/gcp/openbao/management/auth.tf:1-3` states it outright — *"the snapshot role has no GCP
+  consumer because nothing backs up this PKI yet — recorded as a risk in the design rather than solved
+  here."* This workstream is what gives it a consumer, so that risk is now due.
+- `iam.tf` grants the External Secrets service account exactly two per-secret bindings
+  (`approle_cert_manager`, `ca_chain_secret_name`) — nothing for the snapshot.
+- No `google_secret_manager_secret` for it exists anywhere under `opentofu/gcp/`.
+
+Consequence: the `ExternalSecret` never syncs, the Kubernetes Secret the CronJob's `envFrom`
+references never appears, and the Pod fails to start with `CreateContainerConfigError`.
+
+The AWS analogue to mirror is `opentofu/aws/openbao/management/{auth.tf,secrets.tf}` — read both
+before writing anything.
+
+- [ ] **Step 1: Add the snapshot policy**
+
+AWS has `opentofu/aws/openbao/management/policies/snapshot.hcl`. Read it, and add the GCP equivalent
+alongside `policies/cert-manager.hcl.tftpl`, matching whichever form the sibling uses. Wire it into
+`policies.tf` as `vault_policy.snapshot` the same way `cert_manager` is wired.
+
+Note the constraint the AWS `auth.tf` comment records: `sys/storage/raft/*` is callable **only from the
+root namespace**, so this role and its policy take no `namespace` argument. A child-namespace token
+gets `404 unsupported path` regardless of what its policy grants.
+
+- [ ] **Step 2: Add the AppRole role and a generated secret_id**
+
+In `auth.tf`, mirroring `vault_approle_auth_backend_role.cert_manager` but with
+`token_policies = [vault_policy.snapshot.name]`. Then a
+`vault_approle_auth_backend_role_secret_id.snapshot`.
+
+Unlike `cert_manager`, the `role_id` here does **not** need pinning — that pinning exists only because
+cert-manager's ClusterIssuer takes `roleId` as a required literal string. The snapshot job reads both
+values from the Secret, so let them be generated.
+
+- [ ] **Step 3: Update the comment that says there is no consumer**
+
+`auth.tf:1-3` will otherwise keep asserting the snapshot role has no GCP consumer, which this task
+makes false. Rewrite it to say both roles now exist and why. **Do not delete the history** — say that
+it previously had no consumer and that workstream 9 gave it one.
+
+- [ ] **Step 4: Create the Secret Manager secret and its version**
+
+In `secrets.tf`, following the existing per-secret pattern in that file. The payload must be a JSON
+object with exactly the keys the ExternalSecret expects — `APPROLE_ROLE_ID`, `APPROLE_SECRET_ID`,
+`VAULT_ADDR`, `BUCKET_NAME` — matching `opentofu/aws/openbao/management/secrets.tf`'s
+`snapshot_approle_credentials`. Derive `BUCKET_NAME` and the address from locals rather than
+hardcoding, the way its neighbours do.
+
+**Omit `RECOVERY_KEYS_SECRET_ID`.** AWS includes it, and its comment explains why the *CronJob's* role
+cannot read it: "a daily backup pod that can read the material for regenerating a root token is a
+privilege escalation, not a convenience." On GCP the restore path has no manifest-granted identity at
+all, so including the key would imply an access path that does not exist. Add a comment recording that
+GCP's restore therefore remains an operator action needing credentials granted out of band.
+
+- [ ] **Step 5: Grant External Secrets read on exactly that secret**
+
+In `iam.tf`, a third per-secret binding beside the two existing ones. **Per-secret, never project-wide** —
+`security/gcp-0/openbao/clustersecretstore.yaml`'s comment explains that a project-scoped grant would
+hand External Secrets read of every secret in the project, including the intermediate CA's private key.
+
+- [ ] **Step 6: Correct two now-shared comments in the network policy**
+
+`security/base/openbao-snapshot/network-policy.yaml` is now used by both clouds, but two comments still
+describe only AWS:
+- the `toEntities: host` port-80 rule is commented solely as the EKS Pod Identity agent. It is also
+  what lets `gcloud` reach GKE's metadata server at `169.254.169.254`. Say so.
+- the `toEntities: world` 443 rule says "S3 and STS". It is now also what carries `gcloud storage`
+  traffic to Google APIs. Say so.
+
+Comments only — do not change either rule.
+
+- [ ] **Step 7: Validate**
+
+```bash
+tofu -chdir=opentofu/gcp/openbao/management init -backend=false
+tofu -chdir=opentofu/gcp/openbao/management validate
+tofu -chdir=opentofu/gcp/openbao/management fmt -check
+./scripts/validate-manifests.sh
+```
+
+`validate` and `fmt -check` must exit 0, and the manifest gate must still report `Invalid: 0, Skipped: 0`.
+**Do not run `tofu apply`** — Task 7 owns the deploy, and this stack talks to a live OpenBao.
+
+> When Task 7 does apply this stack, use `-parallelism=1`. Concurrent writes against OpenBao 2.6 have
+> deadlocked this repo's management applies before; the mitigation lives in that stack's workflows.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add opentofu/gcp/openbao/management security/base/openbao-snapshot/network-policy.yaml
+git commit -m "feat(gcp): snapshot AppRole and Secret Manager entry for the OpenBao backup job"
+```
