@@ -1,0 +1,28 @@
+# This CronJob only ever runs `openbao-snapshot.sh save` -- see the
+# container `command:` in the base -- so a bucket-scoped grant is all it
+# needs. Deliberately no `roles:` here: GCPWorkloadIdentity's `roles` field
+# renders a project-scoped ProjectIAMMember, which would hand this job read
+# access to every secret in the project, including the intermediate CA's
+# private key (same call the repo already made for external-dns's absence of
+# a per-secret grant here -- see infrastructure/gcp-0/external-dns/
+# workloadidentity.yaml). `RECOVERY_KEYS_SECRET_ID` is read only by the
+# `restore` path, which is an operator action run by hand, not by this
+# CronJob -- so no secret access is granted at all. This leaves gcp-0's
+# restore path needing a human with Secret Manager access, which no manifest
+# in this repo grants today; a real gap, tracked as follow-up rather than
+# fixed here.
+#
+# No KMS grant either, unlike the AWS EPI's AllowKMSUsage statement: the
+# bucket above declares no CMEK, so it's encrypted with Google-managed keys
+# by default and there is nothing to grant.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: GCPWorkloadIdentity
+metadata:
+  name: xplane-openbao-snapshot
+  namespace: security
+spec:
+  serviceAccount:
+    name: openbao-snapshot
+  bucketRoles:
+    - bucket: ${region}-ogenki-openbao-snapshot
+      role: roles/storage.objectAdmin

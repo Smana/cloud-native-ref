@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: security
+
+# Referenced by FILE from security/base/openbao-snapshot/, not the directory.
+# That base directory also carries kms.yaml and s3-bucket.yaml -- AWS
+# Crossplane resources (kms.aws.m.upbound.io, s3.aws.m.upbound.io) that
+# gcp-0 has no provider or activation policy for. Same reasoning as
+# security/gcp-0/controllers/kustomization.yaml: pulling the whole directory
+# would leak the AWS-shaped sibling onto this cluster.
+resources:
+  - ../../base/openbao-snapshot/external-secrets.yaml
+  - ../../base/openbao-snapshot/network-policy.yaml
+  - ../../base/openbao-snapshot/serviceaccount.yaml
+  - ../../base/openbao-snapshot/snapshot-cronjob.yaml
+  - gcs-bucket.yaml
+  - workloadidentity.yaml
+
+patches:
+  - path: snapshot-cronjob-patch.yaml
+    target:
+      group: batch
+      kind: CronJob
+      name: openbao-snapshot

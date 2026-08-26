@@ -1,0 +1,29 @@
+# The OpenBao snapshot CronJob.
+#
+# Its own Kustomization, not folded into `security` or `security-openbao`,
+# for the same reason as security-tailscale.yaml: this directory's
+# ExternalSecret needs the External Secrets webhook running (gated by
+# `security`'s healthChecks), and the CronJob mounts the `openbao-ca` Secret
+# that `security-openbao`'s own ExternalSecret creates. dependsOn
+# security-openbao rather than listing both -- it is the deepest edge and
+# already implies `security` (and `crds` beneath it) is ready.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: security-openbao-snapshot
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 4m0s
+  retryInterval: 30s
+  timeout: 8m0s
+  sourceRef:
+    kind: ExternalArtifact
+    name: security-artifact
+  path: ./security/gcp-0/openbao-snapshot
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    - name: security-openbao
