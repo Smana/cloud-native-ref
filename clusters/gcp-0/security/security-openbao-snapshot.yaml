@@ -1,5 +1,32 @@
 # The OpenBao snapshot CronJob.
 #
+# SUSPENDED, and not because anything here is unfinished.
+#
+# `openbao-snapshot.sh save` calls `bao operator raft snapshot save`, which
+# needs OpenBao's integrated (raft) storage. gcp-0's OpenBao runs single-node
+# `storage "file"` by design -- opentofu/gcp/openbao/cluster/compute.tf says so
+# in its header: "mirrors the AWS stack's 'dev' mode, not 'ha' -- one node,
+# storage "file", no raft join, no quorum ... scaling to a real multi-node raft
+# cluster is future work, not attempted here."
+#
+# So the endpoint does not exist on this cluster. Measured on a live gcp-0
+# during workstream 9, not inferred:
+#
+#   $ bao operator raft snapshot save /tmp/gcp-test.snap
+#     URL: GET https://bao.priv.gcp.ogenki.io:8200/v1/sys/storage/raft/snapshot
+#     Code: 404
+#
+# Everything this Kustomization applies is correct and verified: the AppRole
+# and Secret Manager entry (opentofu/gcp/openbao/management), the bucket-scoped
+# GCPWorkloadIdentity, the GCS bucket, and the CLOUD=gcp branch of the script.
+# The ExternalSecret syncs. Only the raft endpoint is missing.
+#
+# Left active, this would run daily, fail with that 404, and -- worse -- read as
+# backup coverage to anyone not reading the logs. Suspended is the honest state.
+#
+# TO RESUME: move gcp-0's OpenBao to raft storage (workstream 11), then set
+# suspend: false. Nothing in this repo needs to change.
+#
 # Its own Kustomization, not folded into `security` or `security-openbao`,
 # for the same reason as security-tailscale.yaml: this directory's
 # ExternalSecret needs the External Secrets webhook running (gated by
@@ -13,6 +40,7 @@ metadata:
   name: security-openbao-snapshot
   namespace: flux-system
 spec:
+  suspend: true
   prune: true
   interval: 4m0s
   retryInterval: 30s
