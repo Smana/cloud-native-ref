@@ -35,12 +35,15 @@ spec:
         - ports:
             - port: "80"
               protocol: TCP
-    # The OpenBao API, reached through the internal NLB, whose private addresses
-    # sit in the VPC CIDR. The job no longer connects to the raft leader by
-    # private IP — it goes through the NLB and lets standby nodes forward the
-    # request to the active node.
+    # The OpenBao API, reached through the internal load balancer. The job no
+    # longer connects to the raft leader by private IP — it goes through the
+    # LB and lets standby nodes forward the request to the active node.
+    # ${openbao_cidr} differs per cloud: on AWS it's the whole VPC (the
+    # internal NLB's private addresses); on GCP it's the node subnet, where
+    # the internal load balancer lives. See the ConfigMap comment in each
+    # cluster's eks/gke configure stack.
     - toCIDR:
-        - 10.0.0.0/16
+        - ${openbao_cidr}
       toPorts:
         - ports:
             - port: "8200"

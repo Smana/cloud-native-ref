@@ -81,6 +81,10 @@ FIXTURE_VARS = {
     "aws_account_id": "123456789012",
     "vpc_id": "vpc-0123456789abcdef0",
     "vpc_cidr_block": "10.0.0.0/16",
+    # Must match vpc_cidr_block above: both clusters' ConfigMaps set
+    # openbao_cidr from the same CIDR range in this fixture (AWS: whole VPC;
+    # GCP: node subnet), so aws-0 renders byte-identical.
+    "openbao_cidr": "10.0.0.0/16",
     "oidc_provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks",
     "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com",
     "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com",
