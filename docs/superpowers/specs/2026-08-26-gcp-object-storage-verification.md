@@ -258,7 +258,49 @@ theoretical. The hardcoded AWS value would have denied this exact path.
 4. **The IAM-condition trap is worth documenting** wherever GCS buckets get created: a 403 naming a
    permission the role holds means the *condition* rejected the resource name.
 
-## Teardown
+## Teardown — complete, verified against the APIs
 
-Recorded in the section below after destruction, verified against the GCP APIs rather than the
-tool's exit code.
+```
+Destroy complete! Resources: 13 destroyed.
+```
+
+Confirmed against the provider rather than against that message:
+
+| API | Result |
+|---|---|
+| `container clusters list` | empty |
+| `compute instances list` | `Listed 0 items.` |
+| `compute instance-groups managed list` | empty |
+| `compute forwarding-rules list` | `Listed 0 items.` |
+| `compute disks list` | `Listed 0 items.` |
+| `compute addresses list` | `Listed 0 items.` |
+| `compute networks list` | `default` only — GCP's pre-existing auto network; `vpc-europe-west4-dev` gone |
+| `storage buckets list` | `ogenki-435905-tfstate` only |
+
+Zero orphaned disks, which is worth stating because AWS teardowns in this repository have leaked EBS
+volumes before.
+
+### One resource the destroy could not reach
+
+`ogenki-435905-ogenki-openbao-snapshot` survived the OpenTofu destroy and was removed by hand
+(verified empty first). It was created by **Crossplane**, not OpenTofu, so it is not in any OpenTofu
+state — and destroying the cluster removes Crossplane before it can reconcile a delete. Anything a
+composition creates in a cloud outlives a cluster teardown unless something deletes it explicitly.
+
+This is a general property of the platform, not a fault in this workstream: the same would apply to
+Harbor's registry bucket and to CNPG's backup bucket. For those two it is *desirable* — they hold
+data meant to outlive a cluster, which is why they carry `managementPolicies` without `Delete`. For a
+throwaway test bucket it is a leak. Worth a teardown-checklist entry alongside the EBS sweep.
+
+### A teardown trap worth remembering
+
+`terramate script run --reverse destroy` refused to run at first:
+
+```
+Error: repository has untracked files
+```
+
+It **exited 0** while refusing. A caller checking the exit code would conclude teardown had started
+when nothing had, and the cluster would have billed indefinitely. The untracked file was this
+document. Commit before destroying, and verify teardown against the provider — never against the
+command's status.
