@@ -112,6 +112,13 @@ module "gke" {
 
   cluster_resource_labels = local.labels
 
+  # Cloud Storage FUSE CSI driver. The LLM platform's weights mount depends on
+  # this (ADR-0021: Cloud Storage FUSE replaces the S3 Files POSIX mount used on
+  # AWS). Inert for now -- gcp-0's LLM stack ships behind a suspended Flux
+  # umbrella Kustomization, same gating pattern as aws-0, so nothing mounts
+  # through this addon yet. Do not read that as unused.
+  gcs_fuse_csi_driver = true
+
   # ── 5. COST: no duplicate telemetry pipeline ──────────────────────────────
   # VictoriaLogs and VictoriaMetrics already do this job. The GKE defaults bill
   # Cloud Logging and Cloud Monitoring for a pipeline nobody reads. This is one
