@@ -49,14 +49,21 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       }
     }
     data = {
-      cluster_name           = var.cluster_name
-      cluster_endpoint       = replace(data.aws_eks_cluster.this.endpoint, "https://", "")
-      cluster_endpoint_full  = data.aws_eks_cluster.this.endpoint
-      oidc_provider_arn      = data.aws_iam_openid_connect_provider.this.arn
-      oidc_issuer_url        = local.oidc_issuer_url
-      oidc_issuer_host       = local.oidc_issuer_host
-      aws_account_id         = data.aws_caller_identity.this.account_id
-      region                 = var.region
+      cluster_name          = var.cluster_name
+      cluster_endpoint      = replace(data.aws_eks_cluster.this.endpoint, "https://", "")
+      cluster_endpoint_full = data.aws_eks_cluster.this.endpoint
+      oidc_provider_arn     = data.aws_iam_openid_connect_provider.this.arn
+      oidc_issuer_url       = local.oidc_issuer_url
+      oidc_issuer_host      = local.oidc_issuer_host
+      aws_account_id        = data.aws_caller_identity.this.account_id
+      region                = var.region
+      # The cluster's default block-storage class for PVCs. Shared name with
+      # the GCP ConfigMap, different value: EKS's EBS CSI provides gp3, GKE
+      # provides balanced-rwo. Both are SSD-backed and both are consumed as an
+      # opaque string by storageClassName -- nothing derives anything else from
+      # it, which is what makes one shared key honest here where ${region} was
+      # not (see the workstream 13 design).
+      storage_class          = "gp3"
       environment            = var.env
       domain_name            = var.public_domain_name
       private_domain_name    = var.private_domain_name

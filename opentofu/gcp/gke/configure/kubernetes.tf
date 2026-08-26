@@ -54,6 +54,12 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       environment         = var.env
       region              = var.region
       private_domain_name = local.init.private_domain_name
+      # balanced-rwo is pd-balanced, GKE's SSD class and the honest gp3
+      # equivalent. NOT standard-rwo: that is pd-standard (HDD), and the
+      # largest consumer is a VictoriaMetrics cluster whose write path is
+      # I/O-sensitive -- a reference platform running it on HDD would be
+      # unrepresentative of production.
+      storage_class = "balanced-rwo"
 
       # GCP-specific.
       project_id     = var.project_id
