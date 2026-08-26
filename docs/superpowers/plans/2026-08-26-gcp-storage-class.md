@@ -1,5 +1,17 @@
 # Portable Storage Classes Implementation Plan
 
+> **Correction (2026-08-26, post-review):** this plan originally shipped and was executed with
+> `gcp-0`'s value written as `balanced-rwo` throughout — **a class that does not exist on GKE.** Two
+> false premises rode along with it: that `standard-rwo` is GKE's HDD tier (it is pd-**balanced**,
+> SSD — `standard`, the legacy in-tree class, is the HDD one), and, in the Self-Review, that GKE
+> having a class by the corrected name was something "Google guarantees" rather than an assumption
+> to confirm on the next `gcp-0` deploy. All three passed every gate in this repository, because none
+> of them can check whether a GCP class name is real. The body below has since been corrected
+> throughout to `standard-rwo` and the reasoning fixed to match; this header exists so a reader who
+> only skims the top still learns what was wrong, rather than reading a plan that has been quietly
+> made to look like it was always right. See `docs/superpowers/specs/2026-08-26-gcp-storage-class-design.md`
+> for the full correction and its in-repo evidence.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make every PVC in `*/base/` name a storage class its cluster actually has, so shared manifests render correctly on both `aws-0` (`gp3`) and `gcp-0` (`standard-rwo`).

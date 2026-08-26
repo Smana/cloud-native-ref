@@ -177,7 +177,19 @@ $ grep -rln -i 'filestore' website/ docs/ 2>/dev/null | grep -v superpowers
 The roadmap table's Filestore mention was already removed in the same design commit — there is
 nothing left to re-add it from.
 
-**PASS.**
+**One correction to this criterion's own history, recorded rather than left implicit.** An earlier
+draft of this document marked this criterion PASS while `docs/superpowers/specs/2026-08-18-gcp-support-design.md`'s
+roadmap row for this workstream still read `balanced-rwo` — a name that does not exist on GKE (see
+criterion 1). That PASS was accidentally correct: it checked Filestore, which the roadmap did have
+right, and never checked the class name, which it did not. Both are now fixed in the same source
+line (`storage_class: gp3` → `standard-rwo` via a `${storage_class}` var):
+
+```
+$ grep -n 'balanced-rwo\|standard-rwo' docs/superpowers/specs/2026-08-18-gcp-support-design.md
+219:| 13 | Storage: `gp3` → `standard-rwo` via a `${storage_class}` var. **Filestore dropped** — see [2026-08-26-gcp-storage-class-design.md](2026-08-26-gcp-storage-class-design.md) | 3 |  |
+```
+
+**PASS**, and now actually clean on both counts rather than clean on one and unchecked on the other.
 
 ### 6. No change to what `aws-0` renders: the bundle diff for AWS is the substitution only
 
