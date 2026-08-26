@@ -317,6 +317,22 @@ and `postRenderers` — then applies two gates to the result:
 | 1 | `flux schema validate` | structure + CEL, against the repo's own XRDs, the Flux catalog, and the CNCF ecosystem catalog |
 | 2 | `polaris audit` | workload best practices (privilege escalation, capabilities, image tags) |
 
+**A third check runs separately, and catches what neither gate can:**
+`scripts/flux-schema/check-substitution.py` reads the Flux Kustomizations under `clusters/` directly
+and fails when one **applies a `${var}` its own cluster's ConfigMap does not define**. Flux
+substitutes an **empty string** for an undefined variable — schema-valid, and silently wrong — so the
+bundle looks perfect either way. It reads each cluster's real keys from the `flux_cluster_vars`
+resource in `opentofu/*/configure/kubernetes.tf`.
+
+It also fails when a Kustomization applies variables with no `postBuild` wired at all, where Flux
+would apply the literal `${var}`. Covered by `scripts/flux-schema/test-check-substitution.py` — the
+only test any script in `scripts/flux-schema/` has.
+
+> A `substituteFrom` entry may name a **Secret** as well as a ConfigMap (one does:
+> `cert-manager-openbao-approle`, supplying `${cert_manager_approle_id}`). A Secret's keys are created
+> in-cluster at runtime, so they cannot be checked here — those variables are **reported as a note**
+> rather than failed, and rather than silently skipped.
+
 Two properties are load-bearing:
 
 - **`skipMissingSchemas: false`** (`.fluxschema.yml`) — an unknown Kind *fails the build*. It
