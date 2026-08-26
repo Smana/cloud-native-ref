@@ -11,11 +11,11 @@ Run these once per GCP project.
 ## 1. OpenTofu state bucket (ADR-0018)
 
 These steps set up the GCS backend introduced by ADR-0018
-(`website/content/docs/decisions/0018-per-cloud-opentofu-state.md`, PR
-#1831); until that merges, the GCP stacks read the shared S3 bucket named in
-each stack's `backend.tf` instead. Once it lands: state lives in GCS, in a
-project that holds nothing else, so that deleting or suspending the workload
-project cannot take the state describing it too.
+(`website/content/docs/decisions/0018-per-cloud-opentofu-state.md`), which
+merged as PR #1831 on 2026-08-25. GCP state lives in GCS, in a project that
+holds nothing else, so that deleting or suspending the workload project cannot
+take the state describing it too. AWS stacks keep their state in S3; the two
+clouds no longer share a bucket.
 
 ```bash
 gcloud projects create ogenki-tfstate --organization=<org-id>
