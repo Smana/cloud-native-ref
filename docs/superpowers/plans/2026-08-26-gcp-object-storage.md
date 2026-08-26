@@ -982,3 +982,97 @@ limitation in your report rather than claiming more than the test shows.
 git add .github/renovate.json container-images/openbao-snapshot/Dockerfile
 git commit -m "fix(ci): make the Renovate version annotations actually match"
 ```
+
+---
+
+### Task 11: Verify what the image downloads, and stop the Renovate regex from repeating itself
+
+> Added during execution, from the Task 4 + 10 review.
+
+**Files:**
+- Modify: `container-images/openbao-snapshot/Dockerfile`
+- Modify: `.github/renovate.json`
+
+**Interfaces:**
+- Consumes: Tasks 4 and 10.
+- Produces: the image content that gets published by hand for Task 7's verification.
+
+#### Finding A — the Renovate regex excludes `v`-prefixed versions
+
+Task 10's new `customManagers` entry captures `currentValue` as `[0-9]+\.[0-9]+\.[0-9]+`, with no
+optional `v`. But `container-images/pev2/Dockerfile:3` already pins `ARG PEV2_VERSION=v1.17.0`. The
+moment anyone adds a `# renovate:` comment above that line — the natural next use of this manager —
+it matches nothing, silently. That is precisely the defect Task 10 was written to remove, latent one
+directory away.
+
+- [ ] **Step 1: Widen the capture**
+
+Change that entry's `matchStrings` so the `ARG` value tolerates an optional `v` prefix outside the
+capture group: `ARG\s+[A-Z0-9_]+=v?(?<currentValue>[0-9]+\.[0-9]+\.[0-9]+)`. The entry already sets
+`versioningTemplate: semver`, which handles a `v`-prefixed upstream tag.
+
+- [ ] **Step 2: Prove it against the real file**
+
+Re-run the Step 5 snippet from Task 10, adding `container-images/pev2/Dockerfile` to the file list and
+temporarily adding a `# renovate:` comment above its `ARG PEV2_VERSION` line to confirm the widened
+pattern captures `1.17.0` from `v1.17.0`. **Revert that temporary comment** — annotating `pev2` is not
+this task's job. Report the captured value you saw.
+
+#### Finding B — two of three downloads have no integrity check
+
+`bao` and the AWS CLI are fetched over HTTPS and executed with no signature or checksum verification.
+The gcloud install is fine: its apt key is installed scoped with `signed-by=`, so apt verifies every
+package signature thereafter.
+
+This matters more here than for a typical image. This one is injected `APPROLE_ROLE_ID` /
+`APPROLE_SECRET_ID` on every run, and on `restore` reads the secret that reconstructs an OpenBao
+**root token**. A tampered `aws` or `bao` binary runs with exactly the credentials needed to exfiltrate
+those. TLS-only integrity is thin for that blast radius.
+
+- [ ] **Step 3: Verify the `bao` tarball against OpenBao's published checksums**
+
+OpenBao publishes a `SHA256SUMS` asset per release. Fetch it alongside the tarball and check the
+tarball against it before extracting. Fail the build on mismatch — `sha256sum` returns non-zero and
+the `RUN` is already `set -eux`, so do not swallow it.
+
+- [ ] **Step 4: Verify the AWS CLI zip's GPG signature**
+
+AWS publishes a detached `.sig` for each v2 build and a public key for it. Fetch the `.sig`, import the
+key, and `gpg --verify` before unzipping.
+
+**Do not guess the key or its fingerprint.** Look it up in AWS's official installation documentation,
+pin the expected fingerprint in the Dockerfile as a literal, and verify the imported key matches it
+before trusting a signature made with it — an unpinned key fetched over the same channel as the
+artifact adds ceremony without adding trust. Cite the documentation URL you took it from in a comment.
+If you cannot establish the fingerprint from an authoritative source, **stop and report** rather than
+inventing one.
+
+- [ ] **Step 5: Rebuild both architectures and re-run the runtime check**
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t openbao-snapshot:verify container-images/openbao-snapshot
+docker buildx build --load -t openbao-snapshot:local container-images/openbao-snapshot
+docker run --rm --read-only --user 1000:1001 \
+  --tmpfs /tmp --tmpfs /snapshot -e HOME=/snapshot \
+  --entrypoint sh openbao-snapshot:local \
+  -c 'bao version; jq --version; aws --version; gcloud --version | head -1'
+```
+
+All four must still report. A verification step that breaks the build on a legitimate artifact is
+worse than none — it will be deleted by the next person in a hurry.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add container-images/openbao-snapshot/Dockerfile .github/renovate.json
+git commit -m "fix(security): verify the aws and bao downloads, widen the Renovate version capture"
+```
+
+#### Explicitly out of scope
+
+**Digest-pinning the base image.** The review flagged `debian:bookworm-slim` as a floating tag, which
+is a weaker guarantee than an image in the credential path deserves — but `pev2` floats too
+(`nginx:alpine`), so this is a repo-wide pattern gap rather than a defect Task 4 introduced. Changing
+it for one image creates an inconsistency without closing the pattern. Leave it; it belongs in a
+follow-up covering every `container-images/*`.
