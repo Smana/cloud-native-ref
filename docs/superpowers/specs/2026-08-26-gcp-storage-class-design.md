@@ -20,10 +20,32 @@ Eight manifests hardcode `storageClassName: gp3`:
 | `apps/base/openwebui/pvc.yaml` | |
 | `tooling/base/gha-runners/default-scale-set-helmrelease.yaml` | |
 
-All live under `*/base/`, so they are shared between clusters. `gp3` is **not defined in this
-repository** — EKS's EBS CSI driver provides it. GKE provides `standard-rwo`, `balanced-rwo` and
-`premium-rwo` instead. A PVC asking for `gp3` on `gcp-0` binds to nothing and stays `Pending`
-forever, with no error naming the cause.
+All live under `*/base/`, so they are shared between clusters. **This repository creates the `gp3`
+StorageClass object** — `kubectl_manifest.gp3_storageclass` in
+`opentofu/aws/eks/configure/kubernetes.tf:128`, `provisioner: ebs.csi.aws.com`, annotated
+`storageclass.kubernetes.io/is-default-class: "true"`. EKS's EBS CSI managed add-on supplies the
+*provisioner*; the *class* — the named object a PVC actually binds against — is ours. GKE provides
+`standard-rwo`, `balanced-rwo` and `premium-rwo` as built-in classes instead, with no equivalent
+resource anywhere in this repository (see below). A PVC asking for `gp3` on `gcp-0` binds to nothing
+and stays `Pending` forever, with no error naming the cause.
+
+**Consequence this creates, one layer down: `gcp-0` has no `kubectl_manifest`-style resource for
+`balanced-rwo` at all.** `opentofu/gcp/gke/configure/` publishes the *name* via the `storage_class`
+ConfigMap key, but nothing in this repository creates the class itself — the plan relies entirely on
+`balanced-rwo` being a GKE built-in. Both clusters are currently destroyed, so this cannot be
+verified today. **Recorded here as an assumption to confirm on the next `gcp-0` deploy**, with
+`kubectl get storageclass`. If GKE ever stops shipping `balanced-rwo` as a built-in, every PVC on
+`gcp-0` stays `Pending` — the exact failure this workstream exists to prevent, one layer down from
+where this workstream fixed it.
+
+**A related asymmetry this plan does not touch, but should be on record.** The AWS class above is
+marked *default* (`is-default-class: "true"`); GKE's actual default class is `standard-rwo`
+(pd-standard, HDD), not `balanced-rwo`. This has no effect on the eight sites in this workstream —
+every one of them names `storageClassName` explicitly, so neither cluster's default is ever
+consulted. It matters for anything *outside* this workstream's scope: a future PVC that omits
+`storageClassName` gets `gp3` (SSD) on `aws-0` and `standard-rwo`/pd-standard (HDD) on `gcp-0` —
+silently, with no error, the same class of surprise this workstream was written to prevent for the
+eight sites it does cover.
 
 Nothing breaks today only because `gcp-0` deploys just its own overlays — no observability, apps or
 tooling. This is therefore the right moment to fix it: the pattern lands before the workstreams that

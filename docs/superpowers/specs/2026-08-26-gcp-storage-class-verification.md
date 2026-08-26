@@ -41,13 +41,22 @@ in the shared-fixture bundle:
 
 ```
 $ grep -rc 'storageClassName: gp3\|storageClassName: "gp3"' .bundle/ | grep -v ':0' | wc -l
-10
+13
 $ grep -rn '${storage_class}' .bundle/ | wc -l
 0
 ```
 
-(10, not 8, because some sites render into more than one bundle file — e.g. `runlore` appears under
-both its `aws-0` overlay bundle and its `base` chart bundle.)
+(13, not 8, because `render-bundle.py` renders each HelmRelease at least twice by design — once
+inline as part of its top-level Kustomize overlay build, once again as its own dedicated
+`helm template` pass with `spec.values` — and separately again per overlay directory where a
+component has both a `base` and a cluster-specific overlay, e.g. `victoria-traces`. An earlier draft
+of this document pasted `10` here. Re-run now against the same committed tree, twice, both runs give
+13 — the exact multiplication is a `render-bundle.py` architecture detail not worth re-deriving here,
+and Task 4's own changes (comment-only, in `apps/base/openwebui/{app,pvc}.yaml`) did not touch any of
+the 8 `storageClassName` lines, so they cannot explain the difference. The `10` in the earlier draft
+was simply wrong — pasted from a `.bundle/` state that does not reproduce; treat this run as the
+authoritative one. The verdict is unaffected either way: the second command — zero unsubstituted
+literals — is what this criterion actually depends on, and it holds, reproduced twice.)
 
 **PASS.**
 
@@ -142,32 +151,61 @@ nothing left to re-add it from.
 
 ```
 $ git diff origin/main --stat -- observability/ infrastructure/ apps/ tooling/
- apps/base/openwebui/pvc.yaml                                          | 2 +-
- infrastructure/base/vllm-semantic-router/helmrelease.yaml             | 2 +-
- observability/base/grafana-oncall/helmrelease-rabbitmq.yaml           | 2 +-
- observability/base/runlore/helmrelease.yaml                           | 2 +-
- .../base/victoria-metrics-k8s-stack/helmrelease-vmcluster.yaml        | 4 ++--
- observability/base/victoria-traces/helmrelease-vtsingle.yaml          | 2 +-
- tooling/base/gha-runners/default-scale-set-helmrelease.yaml           | 2 +-
- 7 files changed, 8 insertions(+), 8 deletions(-)
+ apps/base/openwebui/app.yaml                                       | 3 ++-
+ apps/base/openwebui/pvc.yaml                                       | 7 ++++---
+ infrastructure/base/vllm-semantic-router/helmrelease.yaml          | 2 +-
+ observability/base/grafana-oncall/helmrelease-rabbitmq.yaml        | 2 +-
+ observability/base/runlore/helmrelease.yaml                        | 2 +-
+ .../base/victoria-metrics-k8s-stack/helmrelease-vmcluster.yaml     | 4 ++--
+ observability/base/victoria-traces/helmrelease-vtsingle.yaml       | 2 +-
+ tooling/base/gha-runners/default-scale-set-helmrelease.yaml        | 2 +-
+ 8 files changed, 13 insertions(+), 11 deletions(-)
 ```
 
-(`origin/main` is the branch's merge base, `04ec429e`; two prior commits on this branch,
-`77868d84`/`014d807b`, are design/plan docs only and are not in this diff's trees.)
+(`origin/main` is the branch's merge base, `04ec429e`; `77868d84`/`014d807b` are design/plan docs
+only, not in these trees. An earlier draft of this document showed 7 files / 8+8 lines, omitting
+`apps/base/openwebui/app.yaml` — that was pasted from before this document's own commit, `48ae2194`,
+landed its two comment rewrites in `app.yaml` and `pvc.yaml`. Re-run now against the committed tree,
+the real count is 8 files / 13 insertions / 11 deletions.)
 
-Every changed line is a pure value token swap, confirmed by inspecting the full diff:
+The diff is now two different kinds of change, and they need to be told apart:
 
 ```
 $ git diff origin/main -- observability/ infrastructure/ apps/ tooling/ | grep '^[+-]' | grep -v '^+++\|^---'
 -  storageClassName: gp3
 +  storageClassName: ${storage_class}
-[... 7 more identical-shape pairs ...]
+[... 7 more identical-shape value pairs, one per call site ...]
+-  # The openwebui-data PVC below is RWO (default gp3 StorageClass).
++  # The openwebui-data PVC below is RWO (the platform's default block
++  # storage class -- gp3 on aws-0, balanced-rwo on gcp-0; either way, RWO).
+-# downloads on startup. gp3 because the workload is small-IOPS read +
+-# occasional write — RWO is fine since we only run a single replica.
++# downloads on startup. The platform's default SSD-backed class (gp3 on
++# aws-0, balanced-rwo on gcp-0) suits this small-IOPS read + occasional
++# write pattern -- RWO is fine since we only run a single replica.
 ```
 
-No line touches anything but the value. Since Task 1's AWS ConfigMap sets `storage_class = "gp3"`
-(the exact prior hardcoded literal) and Task 3's CI fixture also uses `"gp3"`, both the CI-rendered
-bundle and a live `aws-0` Flux substitution reproduce byte-identical `storageClassName: gp3` output
-at all 8 sites — the substitution is a no-op in value, present only in mechanism.
+The 8 `storageClassName`/`storageClass` lines are still pure value-token swaps — that part of the
+claim is unchanged from the earlier draft. What's new is two comment-only rewrites (Task 4, fixing
+the stale-`gp3` comments flagged in review), which are not part of the design's criterion 6 claim at
+all but do land inside the same source trees the `--stat` command scopes to.
+
+Comments have no effect on what Flux applies, and this is checked, not assumed — Kustomize's build
+step re-serializes every resource through its object model, which drops comments. Confirmed directly
+against the rendered bundle for the file that changed:
+
+```
+$ grep -n '#' .bundle/overlay-apps-base-openwebui.yaml
+(no output)
+$ grep -n 'storageClassName' .bundle/overlay-apps-base-openwebui.yaml
+16:  storageClassName: gp3
+```
+
+Zero comment lines in the rendered output; the value line renders `gp3`, unchanged. Since Task 1's
+AWS ConfigMap sets `storage_class = "gp3"` (the exact prior hardcoded literal) and Task 3's CI
+fixture also uses `"gp3"`, both the CI-rendered bundle and a live `aws-0` Flux substitution reproduce
+byte-identical `storageClassName: gp3` output at all 8 sites. `aws-0`'s actual rendered manifests are
+provably unaffected by this document's own commit.
 
 **PASS.**
 
