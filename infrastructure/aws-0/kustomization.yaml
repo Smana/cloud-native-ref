@@ -9,6 +9,6 @@ resources:
   - ./cloudnative-pg
   - ../base/cloudnative-pg-barman-plugin
   - ../base/external-dns
-  - ../base/gapi
+  - ./gapi
   - ../base/keda
   # Karpenter is deployed via separate Flux Kustomization (see clusters/aws-0/infrastructure.yaml)

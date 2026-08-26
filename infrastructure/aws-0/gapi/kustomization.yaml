@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: infrastructure
+
+# The cloud-neutral Gateway API manifests, plus the one that is AWS-only.
+#
+# platform-public-gateway.yaml used to live in ../../base/gapi/ and was the
+# reason infrastructure/gcp-0/gapi/ had to enumerate its six siblings BY FILE
+# rather than reference the directory: it carries
+# service.beta.kubernetes.io/aws-load-balancer-* annotations and a listener
+# hostname built from ${domain_name}, a key gcp-0's vars ConfigMap does not
+# define. Flux substitutes an undefined variable to empty, so reusing it on GCP
+# would silently produce `hostname: "*."`.
+#
+# Cherry-picking by file made that safe but introduced a quieter failure: a new
+# cloud-neutral manifest added to base/gapi reached aws-0 (which took the whole
+# directory) and silently skipped gcp-0. Moving the AWS-only file here lets BOTH
+# clusters reference the base directory whole, which is the same correction
+# security/aws-0/openbao-snapshot/ already applies to kms.yaml and s3-bucket.yaml.
+resources:
+  - ../../base/gapi
+  - platform-public-gateway.yaml
