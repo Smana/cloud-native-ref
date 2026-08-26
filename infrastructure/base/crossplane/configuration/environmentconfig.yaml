@@ -3,6 +3,11 @@ kind: EnvironmentConfig
 metadata:
   name: eks-environment
 data:
+  # Which cloud this cluster runs on. Read by the App Composition to choose
+  # between S3 and GCS. Explicit rather than inferred from which other keys
+  # exist here -- inference works today and breaks the first time this file
+  # gains a field.
+  cloud: aws
   clusterName: ${cluster_name}
   oidcUrl: ${oidc_issuer_url}
   oidcHost: ${oidc_issuer_host}

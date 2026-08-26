@@ -283,10 +283,9 @@ spec:
               - port: "443"
                 protocol: TCP
 
-  # Where the images are pulled from
-  s3Bucket:
+  # Object storage for user uploads
+  objectStore:
     enabled: true
-    region: ${region}
     permissions: readwrite
     versioning: true
     retentionDays: 90

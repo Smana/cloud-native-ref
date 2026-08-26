@@ -167,10 +167,10 @@ fields:
     group: data
     label: Key-value store (Valkey)
     order: 41
-  s3Bucket:
+  objectStore:
     tier: advanced
     group: data
-    label: S3 bucket
+    label: Object storage
     order: 42
   autoscaling:
     tier: advanced
