@@ -50,12 +50,12 @@ esac
 
 usage() {
     cat << EOF
-Backup or restore a OpenBao instance from an S3 bucket
+Backup or restore a OpenBao instance from a bucket in object storage
 
 Usage: ./${SCRIPT_NAME} [save|restore] -s <snapshot_file> -b <bucket_name> -a <VAULT_ADDR> [-d <days>]
       -h | --help               : Show this message
       -s | --snapshot           : OpenBao snapshot file location
-      -b | --bucket             : AWS S3 bucket name
+      -b | --bucket             : Bucket name
       -a | --addr               : OpenBao address in the form "https://<address>:<port>"
       -d | --days               : Number of days for snapshot validation (default: ${DEFAULT_DAYS} days)
 
@@ -99,7 +99,7 @@ if [ -z "${SNAPSHOT_FILE}" ]; then
     exit 1
 fi
 if [ -z "${BUCKET_NAME}" ]; then
-    echo "${err}: The S3 bucket name must be provided (--bucket)!"
+    echo "${err}: The bucket name must be provided (--bucket)!"
     usage
     exit 1
 fi
@@ -194,7 +194,7 @@ authenticate() {
 export VAULT_ADDR
 
 save() {
-    echo "${info}: Starting OpenBao backup to S3..."
+    echo "${info}: Starting OpenBao backup to object storage..."
     check_required_bin
     authenticate
     echo "${info}: Requesting a snapshot via ${VAULT_ADDR}"
