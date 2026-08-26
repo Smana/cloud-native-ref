@@ -39,11 +39,16 @@ verified today. **Recorded here as an assumption to confirm on the next `gcp-0` 
 where this workstream fixed it.
 
 **A related asymmetry this plan does not touch, but should be on record.** The AWS class above is
-marked *default* (`is-default-class: "true"`); GKE's actual default class is `standard-rwo`
-(pd-standard, HDD), not `balanced-rwo`. This has no effect on the eight sites in this workstream —
-every one of them names `storageClassName` explicitly, so neither cluster's default is ever
-consulted. It matters for anything *outside* this workstream's scope: a future PVC that omits
-`storageClassName` gets `gp3` (SSD) on `aws-0` and `standard-rwo`/pd-standard (HDD) on `gcp-0` —
+marked *default* (`is-default-class: "true"`); on `gcp-0` — GKE **Standard**, per ADR-0005, not
+Autopilot — the class carrying the default annotation is the legacy in-tree class literally named
+`standard` (provisioner `kubernetes.io/gce-pd`, pd-standard, HDD), not `balanced-rwo`. `standard-rwo`
+is pre-installed alongside it, but Google marks it default only on **Autopilot** clusters, which this
+repo does not run. As with the `balanced-rwo`-exists assumption above, both clusters are currently
+destroyed, so this is a documented expectation rather than an observed fact — to confirm on the next
+`gcp-0` deploy with `kubectl get storageclass`. This has no effect on the eight sites in this
+workstream — every one of them names `storageClassName` explicitly, so neither cluster's default is
+ever consulted. It matters for anything *outside* this workstream's scope: a future PVC that omits
+`storageClassName` gets `gp3` (SSD) on `aws-0` and `standard`/pd-standard (HDD) on `gcp-0` —
 silently, with no error, the same class of surprise this workstream was written to prevent for the
 eight sites it does cover.
 
