@@ -54,6 +54,17 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       environment         = var.env
       region              = var.region
       private_domain_name = local.init.private_domain_name
+      # standard-rwo is pd-balanced, GKE's SSD class and the honest gp3
+      # equivalent -- despite the name, it is NOT the HDD tier. That is
+      # "standard" (pd-standard), which is cheaper and was considered given
+      # this platform's tear-down-after-every-run posture, but rejected: the
+      # largest consumer is a VictoriaMetrics cluster whose write path is
+      # I/O-sensitive -- a reference platform running it on HDD would be
+      # unrepresentative of production. Corroborated in-repo, not just
+      # asserted: opentofu/gcp/gke/init/helm_values/flux-instance.yaml
+      # already sets Flux's own artifact PVC to storage.class: standard-rwo,
+      # carried through a gcp-0 cluster that deployed successfully.
+      storage_class = "standard-rwo"
 
       # GCP-specific.
       project_id     = var.project_id
