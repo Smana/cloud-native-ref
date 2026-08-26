@@ -15,11 +15,11 @@ spec:
       comment: "Harbor admin user"
       superuser: true
   objectStoreRecovery:
-    bucketName: "eu-west-3-ogenki-cnpg-backups"
+    bucketName: "${region}-ogenki-cnpg-backups"
     path: "harbor-20241111"
   backup:
     schedule: "0 1 * * *"
-    bucketName: "eu-west-3-ogenki-cnpg-backups"
+    bucketName: "${region}-ogenki-cnpg-backups"
   crossplane:
     compositionRef:
       name: xsqlinstances.cloud.ogenki.io

@@ -99,7 +99,7 @@ spec:
       mountPath: /var/lib/runlore/catalog
     persistence:
       enabled: true
-      storageClass: gp3
+      storageClass: ${storage_class}
       accessModes: ["ReadWriteOnce"]
       size: 1Gi
     rbac:

@@ -38,7 +38,7 @@ spec:
       persistentVolume:
         enabled: true
         size: 10Gi
-        storageClassName: gp3
+        storageClassName: ${storage_class}
         accessModes:
           - ReadWriteOnce
 

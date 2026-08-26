@@ -54,6 +54,17 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       environment         = var.env
       region              = var.region
       private_domain_name = local.init.private_domain_name
+      # standard-rwo is pd-balanced, GKE's SSD class and the honest gp3
+      # equivalent -- despite the name, it is NOT the HDD tier. That is
+      # "standard" (pd-standard), which is cheaper and was considered given
+      # this platform's tear-down-after-every-run posture, but rejected: the
+      # largest consumer is a VictoriaMetrics cluster whose write path is
+      # I/O-sensitive -- a reference platform running it on HDD would be
+      # unrepresentative of production. Corroborated in-repo, not just
+      # asserted: opentofu/gcp/gke/init/helm_values/flux-instance.yaml
+      # already sets Flux's own artifact PVC to storage.class: standard-rwo,
+      # carried through a gcp-0 cluster that deployed successfully.
+      storage_class = "standard-rwo"
 
       # GCP-specific.
       project_id     = var.project_id
@@ -64,6 +75,18 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       node_cidr      = local.init.node_cidr
       pod_cidr       = local.pod_cidr
       service_cidr   = local.init.service_cidr
+      # OpenBao's internal load balancer sits in the node subnet on GCP
+      # (opentofu/gcp/openbao/cluster/load_balancer.tf uses
+      # local.subnetwork_self_link, whose range is var.node_cidr) -- unlike
+      # AWS, where it's the whole VPC. Same key as the AWS ConfigMap, same
+      # value as node_cidr above, consumed by
+      # security/base/openbao-snapshot/network-policy.yaml.
+      openbao_cidr = local.init.node_cidr
+      # security/base/openbao-snapshot/external-secrets.yaml's Secret Manager
+      # key. Flat and dash-separated, unlike the AWS ConfigMap's path-style
+      # value -- GCP Secret Manager forbids "/" in a secret ID. Must match
+      # opentofu/gcp/openbao/management's snapshot_approle_secret_name (Task 14).
+      openbao_snapshot_secret = "openbao-priv-gcp-snapshot" # pragma: allowlist secret
 
       # Public DNS, for the federated Route53 path (workstream 12).
       # public_domain_name is gcp.cloud.ogenki.io -- gcp-0's OWN subdomain of

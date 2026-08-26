@@ -76,11 +76,26 @@ FIXTURE_VARS = {
     "cluster_name": "foobar",
     "region": "eu-west-3",
     "environment": "dev",
+    # Both clusters define this; the value differs (gp3 / standard-rwo) but the
+    # SHAPE does not -- it is an opaque string either way, which is why one
+    # fixture is honest here. Contrast "region" above, where a single
+    # AWS-shaped fixture masks a GCP-shaped runtime value.
+    "storage_class": "gp3",
     "cert_manager_approle_id": "random",
     "route53_public_zone_id": "Z0123456789",
     "aws_account_id": "123456789012",
     "vpc_id": "vpc-0123456789abcdef0",
     "vpc_cidr_block": "10.0.0.0/16",
+    # Must match vpc_cidr_block above: both clusters' ConfigMaps set
+    # openbao_cidr from the same CIDR range in this fixture (AWS: whole VPC;
+    # GCP: node subnet), so aws-0 renders byte-identical.
+    "openbao_cidr": "10.0.0.0/16",
+    # AWS value (the GCP ConfigMap carries a different, dash-separated ID --
+    # see Task 14). Without this entry VAR_RE.sub passes the name through
+    # verbatim and the ExternalSecret silently extracts nothing: schema-valid,
+    # useless, and gate 1 would never catch it since the target field is a
+    # free-form string.
+    "openbao_snapshot_secret": "security/openbao/openbao-snapshot",  # pragma: allowlist secret
     "oidc_provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks",
     "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com",
     "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com",

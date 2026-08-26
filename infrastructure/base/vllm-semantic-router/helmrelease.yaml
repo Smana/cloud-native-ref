@@ -425,7 +425,7 @@ spec:
     # AWS EKS. Use the cluster's default class explicitly.
     persistence:
       enabled: true
-      storageClassName: gp3
+      storageClassName: ${storage_class}
 
     # Restrict-PSS hardening with `readOnlyRootFilesystem: true` blocks
     # writes everywhere except mounted volumes. The Rust BERT init (via

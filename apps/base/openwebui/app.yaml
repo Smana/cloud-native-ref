@@ -17,7 +17,8 @@ spec:
   # If durability is needed later, swap to App XR's sqlInstance.enabled.
   replicas: 1
 
-  # The openwebui-data PVC below is RWO (default gp3 StorageClass).
+  # The openwebui-data PVC below is RWO (the platform's default block
+  # storage class -- gp3 on aws-0, standard-rwo on gcp-0; either way, RWO).
   # RollingUpdate's maxSurge would spin up the new pod before the old
   # one releases the volume → `Multi-Attach error for volume` and the
   # rollout stalls. Recreate fully terminates the old pod first.

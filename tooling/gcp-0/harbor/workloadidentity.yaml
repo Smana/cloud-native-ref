@@ -1,0 +1,20 @@
+# Harbor's Google identity. Bucket-scoped, never project-scoped: a
+# roles/storage.* grant at project level would also reach OpenBao's snapshot
+# bucket and CNPG's backup bucket.
+#
+# No annotation on the ServiceAccount -- GKE Workload Identity binds by SUBJECT,
+# and the composition builds the principal:// string. Do not rebuild it here:
+# projects/ takes the project NUMBER while workloadIdentityPools/ takes the
+# project ID, and reversing them yields a binding the API accepts and which
+# silently never matches (see opentofu/gcp/gke/init/iam.tf).
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: GCPWorkloadIdentity
+metadata:
+  name: xplane-harbor
+  namespace: tooling
+spec:
+  serviceAccount:
+    name: harbor
+  bucketRoles:
+    - bucket: ${project_id}-ogenki-harbor
+      role: roles/storage.objectAdmin

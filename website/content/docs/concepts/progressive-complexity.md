@@ -48,7 +48,7 @@ same claim.
 | `route` | An HTTPRoute on the shared private gateway, with DNS and a certificate |
 | `sqlInstance` | A CloudNativePG cluster, and `DATABASE_URL` wired into the pod |
 | `kvStore` | A Valkey instance, and `REDIS_URL` wired in |
-| `bucket` | An S3 bucket plus the IAM role and Pod Identity association to reach it |
+| `objectStore` | A bucket (S3 on `aws-0`, GCS on `gcp-0`) plus the IAM role / Workload Identity association to reach it |
 | `autoscaling` | An HPA, and a PodDisruptionBudget to make scaling safe |
 
 The wiring is the point. A developer who asks for a database does not then
