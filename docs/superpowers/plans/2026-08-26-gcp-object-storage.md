@@ -669,3 +669,94 @@ Clusters, instances and forwarding rules must be empty. Buckets holding real dat
 git add docs/superpowers/specs/2026-08-26-gcp-object-storage-verification.md
 git commit -m "docs: verification for object-storage call sites on GCP"
 ```
+
+---
+
+### Task 8: The CNPG backups bucket leaves the shared base
+
+> Added during execution. Task 1 templated the *consumer* (`bucketName` in five claims) but left the
+> *producer* — the bucket itself — as an AWS-only managed resource inside a `base/` directory that is
+> supposed to be cloud-neutral. Surfaced by Task 1's reviewer, which found the file while checking for
+> a missed sixth occurrence.
+
+**Files:**
+- Move: `infrastructure/base/cloudnative-pg/s3-bucket.yaml` → `infrastructure/aws-0/cloudnative-pg/s3-bucket.yaml`
+- Modify: `infrastructure/base/cloudnative-pg/kustomization.yaml` (drop `s3-bucket.yaml`)
+- Create: `infrastructure/aws-0/cloudnative-pg/kustomization.yaml`
+- Modify: `infrastructure/aws-0/kustomization.yaml` (`../base/cloudnative-pg` → `./cloudnative-pg`)
+
+**Interfaces:**
+- Consumes: Task 1's templated `bucketName`, and the overlay pattern Task 2 establishes for Harbor.
+- Produces: a genuinely cloud-neutral `infrastructure/base/cloudnative-pg/`.
+
+**Scope limit — do NOT create a GCS bucket in this task.** CloudNativePG is not deployed on `gcp-0`
+at all: nothing references `infrastructure/base/cloudnative-pg` outside `infrastructure/aws-0/`. A
+GCS bucket here would be an unused billable resource created for a consumer that does not exist. The
+GCP bucket lands with the workstream that brings CNPG to `gcp-0`. This task only stops a shared base
+from carrying a cloud-specific resource.
+
+- [ ] **Step 1: Confirm the current wiring before moving anything**
+
+```bash
+grep -rn 'cloudnative-pg' --include=kustomization.yaml infrastructure/
+head -12 infrastructure/base/cloudnative-pg/s3-bucket.yaml
+```
+
+Expected: only `infrastructure/aws-0/kustomization.yaml` references it, and the file is an
+`s3.aws.m.upbound.io/v1beta1` Bucket. If anything under `gcp-0` references it, STOP — that is a live
+bug, not a latent one, and it changes this task.
+
+- [ ] **Step 2: Move the file, preserving its comment block**
+
+```bash
+mkdir -p infrastructure/aws-0/cloudnative-pg
+git mv infrastructure/base/cloudnative-pg/s3-bucket.yaml infrastructure/aws-0/cloudnative-pg/s3-bucket.yaml
+```
+
+The file opens with a comment explaining why `managementPolicies` omits `Delete` — postgres backups
+outlive any individual cluster, and a delete attempt hangs the namespace teardown on a finalizer.
+That comment must travel with the file unchanged.
+
+- [ ] **Step 3: Drop it from the base kustomization, and create the overlay**
+
+`infrastructure/aws-0/cloudnative-pg/kustomization.yaml`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base/cloudnative-pg
+  - s3-bucket.yaml
+```
+
+Then change `- ../base/cloudnative-pg` to `- ./cloudnative-pg` in `infrastructure/aws-0/kustomization.yaml`.
+Leave the adjacent `../base/cloudnative-pg-barman-plugin` line alone — the plugin is cloud-neutral.
+
+- [ ] **Step 4: Add a pointer comment in the base kustomization**
+
+So the next reader knows where the bucket went and why:
+
+```yaml
+# The cnpg-backups bucket is NOT here: it is a cloud-specific managed resource
+# and lives in the per-cloud overlay (infrastructure/aws-0/cloudnative-pg/).
+# CloudNativePG is not deployed on gcp-0 yet; its GCS bucket lands with the
+# workstream that brings it there.
+```
+
+- [ ] **Step 5: Prove `aws-0` still renders the bucket**
+
+```bash
+./scripts/validate-manifests.sh
+grep -rn 'kind: Bucket' .bundle/ | grep -c cnpg
+```
+
+Expected: `Invalid: 0, Skipped: 0`, and the `cnpg-backups` Bucket still present exactly once in the
+rendered bundle. A move that silently drops it from `aws-0` is the failure mode here.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A infrastructure/
+git commit -m "refactor(storage): move the CNPG backups bucket out of the shared base"
+```
