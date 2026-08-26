@@ -11,11 +11,31 @@
 # infrastructure/base/ render correctly on either cloud. Renaming them here would
 # silently break shared manifests on GCP only.
 #
-# AWS-only keys are deliberately absent (aws_account_id, oidc_provider_arn,
-# vpc_id, karpenter_queue_name, route53_public_zone_id). The manifests that use
-# them are AWS-specific and are excluded from clusters/gcp-0. If a
-# shared manifest ever needs one, the right fix is a cloud-neutral name provided
-# by both ConfigMaps, not an AWS name faked on GCP.
+# AWS-only keys mostly stay absent (aws_account_id, oidc_provider_arn, vpc_id,
+# karpenter_queue_name). The manifests that use them are AWS-specific and are
+# excluded from clusters/gcp-0. If a shared manifest ever needs one, the right
+# fix is a cloud-neutral name provided by both ConfigMaps, not an AWS name faked
+# on GCP.
+#
+# route53_public_zone_id, route53_role_arn and route53_region are the
+# deliberate exception (workstream 12): AWS values in a GCP ConfigMap on
+# purpose, because cloud.ogenki.io is one Route53 zone BOTH clusters write to
+# (ADR-0017, ADR-0019). route53_public_zone_id matches the key name the AWS
+# ConfigMap uses for that same zone; route53_role_arn has no AWS counterpart
+# because aws-0 reaches Route53 with ambient EKS Pod Identity credentials, not
+# federation. route53_region is deliberately its own key rather than a reuse
+# of the cloud-neutral `region` above -- that one holds gcp-0's GCP region,
+# and feeding it to the AWS SDK as an AssumeRoleWithWebIdentity credential-scope
+# hint breaks the token exchange this federation depends on. See the comment
+# on var.route53_region.
+#
+# public_domain_name is NOT the exception above -- it is GCP-only in VALUE
+# (gcp.cloud.ogenki.io, not cloud.ogenki.io) even though it shares a variable
+# name with the AWS side. Both clusters write into the same zone, but each
+# requests a different name within it, so aws-0's live *.cloud.ogenki.io
+# wildcard Certificate and gcp-0's do not share a Let's Encrypt
+# duplicate-certificate bucket or a `_acme-challenge` TXT record. See the
+# comment on var.public_domain_name and ADR-0019.
 resource "kubectl_manifest" "flux_cluster_vars" {
   yaml_body = yamlencode({
     apiVersion = "v1"
@@ -44,6 +64,17 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       node_cidr      = local.init.node_cidr
       pod_cidr       = local.pod_cidr
       service_cidr   = local.init.service_cidr
+
+      # Public DNS, for the federated Route53 path (workstream 12).
+      # public_domain_name is gcp.cloud.ogenki.io -- gcp-0's OWN subdomain of
+      # the shared zone, not the same name aws-0 uses. The other three are AWS
+      # values in a GCP ConfigMap on purpose: both clusters write into one
+      # Route53 zone, which is what ADR-0017 and ADR-0019 decided. See the
+      # header comment above for why the name itself still differs per cloud.
+      public_domain_name     = var.public_domain_name
+      route53_public_zone_id = var.route53_public_zone_id
+      route53_role_arn       = var.route53_role_arn
+      route53_region         = var.route53_region
     }
   })
   server_side_apply = true

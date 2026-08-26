@@ -80,3 +80,53 @@ variable "gateway_api_version" {
   type        = string
   default     = "v1.6.1"
 }
+
+# Federated Route53 path (workstream 12). No defaults on route53_role_arn or
+# route53_public_zone_id: both come from opentofu/shared/aws-gcp-federation's
+# outputs, and a wrong value here does not fail this apply -- it fails later,
+# at certificate issuance, with an AWS error that says nothing about a
+# mistyped tfvars entry. Required + no default turns that into a loud
+# "No value for required variable" instead.
+#
+# public_domain_name is `gcp.cloud.ogenki.io`, NOT `cloud.ogenki.io` -- a
+# deliberate departure from the AWS variable of the same name, added after the
+# final-branch review: aws-0 already runs a live wildcard Certificate for
+# `*.cloud.ogenki.io`. A gcp-0 requesting the identical identifier set would
+# share Let's Encrypt's Duplicate Certificate limit (5/week, not exempted for
+# renewals, counted across accounts) with aws-0's production renewal, and both
+# clusters would race to write the same `_acme-challenge.cloud.ogenki.io` TXT
+# record. Giving gcp-0 its own subdomain closes both, and matches the
+# private-domain precedent this repo already set (`priv.aws.ogenki.io` vs
+# `priv.gcp.ogenki.io`) -- only the public name had collided. See ADR-0019.
+variable "public_domain_name" {
+  description = "Public name the federated ClusterIssuer solves DNS-01 against and the Gateway serves: gcp.cloud.ogenki.io, a subdomain of the shared zone -- deliberately NOT the same value as opentofu/aws/eks/configure's variable of the same name. See the comment above and ADR-0019"
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$", var.public_domain_name))
+    error_message = "Domain name must be a valid DNS domain name."
+  }
+}
+
+variable "route53_public_zone_id" {
+  description = "Route53 hosted zone ID of the PARENT zone (cloud.ogenki.io) that contains public_domain_name -- there is no separate delegated zone for the gcp.cloud.ogenki.io subdomain. Sourced from opentofu/shared/aws-gcp-federation's public_zone_id output -- no default"
+  type        = string
+}
+
+variable "route53_role_arn" {
+  description = "AWS IAM role the federated ClusterIssuer and external-dns-public assume via AssumeRoleWithWebIdentity. Sourced from opentofu/shared/aws-gcp-federation's route53_role_arn output -- no default"
+  type        = string
+}
+
+# NOT var.region: that variable holds gcp-0's GCP region (europe-west4) and has
+# other consumers that need exactly that GCP value. cert-manager's route53
+# solver feeds its `region` field straight into the AWS SDK's shared config,
+# unvalidated, to compute the STS client's endpoint for AssumeRoleWithWebIdentity
+# -- reusing var.region would point that client at a region that does not exist
+# in AWS (e.g. sts.europe-west4.amazonaws.com) and break the token exchange this
+# whole federation depends on, before Route53 is ever reached. No default, same
+# reasoning as route53_role_arn and route53_public_zone_id above.
+variable "route53_region" {
+  description = "AWS region hint for the federated ClusterIssuer's route53 solver -- an AWS SDK credential-scope value, deliberately separate from var.region (GCP). No default"
+  type        = string
+}

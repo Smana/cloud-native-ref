@@ -99,6 +99,20 @@ FIXTURE_VARS = {
     "workload_pool": "ogenki-435905.svc.id.goog",
     "zone": "europe-west4-a",
     "network_name": "vpc-foobar",
+    # Federated Route53 path (workstream 12). GCP-only: aws-0 authenticates to
+    # Route53 with ambient EKS Pod Identity credentials and has no equivalent
+    # variable. public_domain_name and route53_public_zone_id above already
+    # cover the two AWS-named keys this fixture shares with the AWS ones.
+    "route53_role_arn": "arn:aws:iam::123456789012:role/gcp-0-route53-dns",
+    # A dedicated AWS-region hint for the route53 solver, deliberately distinct
+    # from "region" above -- reusing that key would need the fixture to be an
+    # AWS region for aws-0 and a GCP region for gcp-0, and this single map
+    # cannot tell which cluster is rendering. So it stays AWS-shaped for both,
+    # which means the gcp-0 bundle would render a region that cluster never
+    # substitutes -- the blind spot that let `region: ${region}` reach review.
+    # See opentofu/gcp/gke/configure's var.route53_region for why the two keys
+    # must never collapse into one.
+    "route53_region": "eu-west-3",
 }
 
 KUBE_VERSION = "1.31.0"
