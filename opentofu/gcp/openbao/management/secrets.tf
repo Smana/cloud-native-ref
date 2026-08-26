@@ -65,10 +65,11 @@ resource "google_secret_manager_secret_version" "snapshot_approle_credentials" {
     # No RECOVERY_KEYS_SECRET_ID here, unlike AWS. AWS's own comment on that
     # field carries the principle: "a daily backup pod that can read the
     # material for regenerating a root token is a privilege escalation, not a
-    # convenience." On GCP the restore path has no manifest-granted identity
-    # at all -- there is no equivalent of an EKS Pod Identity role scoped to
-    # this job -- so including the key here would advertise an access path
-    # that does not exist. GCP's restore therefore stays an operator action,
-    # run with credentials granted out of band, not through this stack.
+    # convenience." On GCP the job's identity has no Secret Manager access at
+    # all: security/gcp-0/openbao-snapshot/workloadidentity.yaml grants it a
+    # GCPWorkloadIdentity scoped to the snapshot bucket and nothing else, so
+    # including the key here would advertise an access path that does not
+    # exist. GCP's restore therefore stays an operator action, run with
+    # credentials granted out of band, not through this stack.
   })
 }
