@@ -71,6 +71,11 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # value as node_cidr above, consumed by
       # security/base/openbao-snapshot/network-policy.yaml.
       openbao_cidr = local.init.node_cidr
+      # security/base/openbao-snapshot/external-secrets.yaml's Secret Manager
+      # key. Flat and dash-separated, unlike the AWS ConfigMap's path-style
+      # value -- GCP Secret Manager forbids "/" in a secret ID. Must match
+      # opentofu/gcp/openbao/management's snapshot_approle_secret_name (Task 14).
+      openbao_snapshot_secret = "openbao-priv-gcp-snapshot" # pragma: allowlist secret
 
       # Public DNS, for the federated Route53 path (workstream 12).
       # public_domain_name is gcp.cloud.ogenki.io -- gcp-0's OWN subdomain of

@@ -68,9 +68,16 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # whole VPC (the internal NLB's private addresses); on GCP it is the node
       # subnet, where the internal load balancer lives. Same key, different
       # shape per cloud -- which is exactly why the manifest cannot hardcode it.
-      openbao_cidr           = data.aws_vpc.selected.cidr_block
-      karpenter_queue_name   = local.karpenter_queue_name
-      route53_public_zone_id = data.aws_route53_zone.public.zone_id
+      openbao_cidr = data.aws_vpc.selected.cidr_block
+      # security/base/openbao-snapshot/external-secrets.yaml's Secret Manager
+      # key. Path-style here because AWS Secrets Manager allows "/"; GCP's
+      # ConfigMap (opentofu/gcp/gke/configure/kubernetes.tf) carries a flat
+      # dash-separated ID instead, because GCP Secret Manager forbids "/".
+      # Same key, different shape per cloud -- see opentofu/gcp/openbao/management's
+      # snapshot_approle_secret_name (Task 14).
+      openbao_snapshot_secret = "security/openbao/openbao-snapshot" # pragma: allowlist secret
+      karpenter_queue_name    = local.karpenter_queue_name
+      route53_public_zone_id  = data.aws_route53_zone.public.zone_id
     }
   })
   server_side_apply = true

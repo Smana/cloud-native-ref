@@ -85,6 +85,12 @@ FIXTURE_VARS = {
     # openbao_cidr from the same CIDR range in this fixture (AWS: whole VPC;
     # GCP: node subnet), so aws-0 renders byte-identical.
     "openbao_cidr": "10.0.0.0/16",
+    # AWS value (the GCP ConfigMap carries a different, dash-separated ID --
+    # see Task 14). Without this entry VAR_RE.sub passes the name through
+    # verbatim and the ExternalSecret silently extracts nothing: schema-valid,
+    # useless, and gate 1 would never catch it since the target field is a
+    # free-form string.
+    "openbao_snapshot_secret": "security/openbao/openbao-snapshot",  # pragma: allowlist secret
     "oidc_provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks",
     "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com",
     "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com",

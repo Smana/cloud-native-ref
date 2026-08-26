@@ -99,23 +99,19 @@ variable "external_secrets_service_account" {
   default     = "external-secrets"
 }
 
-# CONCERN FOR WHOEVER APPLIES THIS (Task 7): GCP Secret Manager secret IDs may
-# only contain letters, numbers, hyphens and underscores -- "/" is invalid.
-# The default below is the AWS Secrets Manager name verbatim (slashes and
-# all), kept because security/base/openbao-snapshot/external-secrets.yaml's
-# `dataFrom.extract.key` is shared, unmodified, across both clouds' overlays
-# and must match whatever secret_id this stack actually creates. Every other
-# secret in this stack (approle_secret_name, ca_chain_secret_name, ...) uses
-# dashes for exactly this reason. Untested against the live API -- `tofu
-# validate` does not catch it, only `tofu apply` will. If it 400s, either
-# rename this variable's default to a dash-separated ID and add a per-cluster
-# ExternalSecret override the way security/gcp-0/openbao/ already does for
-# cert-manager's own approle secret, or confirm the API is more permissive
-# than documented before assuming that path.
+# Dash-separated, matching its three siblings (approle_secret_name,
+# ca_chain_secret_name, root_token_secret_name), BECAUSE GCP Secret Manager
+# secret IDs may only contain letters, numbers, hyphens and underscores --
+# unlike AWS Secrets Manager, "/" is invalid here. The AWS stack's equivalent
+# default is a path-style name (`security/openbao/openbao-snapshot`), and
+# both values reach the one shared manifest that needs them --
+# security/base/openbao-snapshot/external-secrets.yaml -- through the
+# `openbao_snapshot_secret` per-cluster substitution variable (Task 14), not
+# by this stack matching AWS's literal string.
 variable "snapshot_approle_secret_name" {
-  description = "GCP Secret Manager entry holding the snapshot agent's AppRole credentials and job configuration. Matches the AWS default (var.snapshot_approle_secret_name in opentofu/aws/openbao/management) because security/base/openbao-snapshot/external-secrets.yaml reads this exact key on both clouds."
+  description = "GCP Secret Manager entry holding the snapshot agent's AppRole credentials and job configuration."
   type        = string
-  default     = "security/openbao/openbao-snapshot"
+  default     = "openbao-priv-gcp-snapshot"
 }
 
 variable "snapshot_bucket_name" {
