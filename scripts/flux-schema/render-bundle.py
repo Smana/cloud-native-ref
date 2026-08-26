@@ -203,10 +203,56 @@ HELM_BIN = resolve_bin("HELM_BIN", "helm")
 KUSTOMIZE_BIN = resolve_bin("KUSTOMIZE_BIN", "kustomize")
 
 
-def substitute(text):
-    """Replace ${var} with fixture values. `$${var}` is Flux's escape - leave it."""
+# Values that genuinely differ per cluster. FIXTURE_VARS above stays the merged
+# map and remains AWS-shaped, because most of the repo is aws-0 and because
+# base/ roots are rendered from it -- they belong to no cluster, appearing as
+# roots only because top_most_overlays() treats a nested-but-unreferenced dir as
+# one, and nothing deploys them.
+#
+# This makes the gcp-0 bundle honest; it does NOT make it a gate. A wrong GCP
+# value is still a string to the schema validator, exactly as a wrong AWS one
+# is. What catches an undefined variable is check-substitution.py, which reads
+# each cluster's real ConfigMap and walks the cluster graph rather than guessing
+# a cluster from a path.
+CLUSTER_FIXTURE_VARS = {
+    # aws-0 needs no overrides: the merged map is already AWS-shaped.
+    "aws-0": {},
+    "gcp-0": {
+        "region": "europe-west4",
+        "private_domain_name": "priv.gcp.cluster.local",
+        # NOT route53_region. That one is AWS-shaped on gcp-0 ON PURPOSE -- it
+        # is the AWS region hint the Route53 solver needs, and gcp-0 really does
+        # substitute an AWS region there. See opentofu/gcp/gke/configure's
+        # var.route53_region, and the comment on route53_region above.
+    },
+}
+
+
+def cluster_of(path):
+    """Cluster a bundle path belongs to, or None for base/ and anything else.
+
+    Paths are `<area>/<cluster>/...` (security/gcp-0/openbao-snapshot) or
+    `<area>/base/...`. Anything unrecognised -- including a new area directory
+    -- returns None and gets the merged map, so an unfamiliar layout degrades to
+    today's behaviour instead of breaking the render.
+    """
+    parts = str(path).replace("\\", "/").split("/")
+    if len(parts) >= 2 and parts[1] in CLUSTER_FIXTURE_VARS:
+        return parts[1]
+    return None
+
+
+def substitute(text, cluster=None):
+    """Replace ${var} with fixture values. `$${var}` is Flux's escape - leave it.
+
+    `cluster` selects the per-cluster overrides; None means the merged map.
+    """
+    fixtures = FIXTURE_VARS
+    overrides = CLUSTER_FIXTURE_VARS.get(cluster) if cluster else None
+    if overrides:
+        fixtures = {**FIXTURE_VARS, **overrides}
     text = text.replace("$${", "\x00{")
-    text = VAR_RE.sub(lambda m: FIXTURE_VARS.get(m.group(1), m.group(0)), text)
+    text = VAR_RE.sub(lambda m: fixtures.get(m.group(1), m.group(0)), text)
     return text.replace("\x00{", "$${")
 
 
@@ -398,7 +444,16 @@ def top_most_overlays():
     the `spec.path` of every Flux Kustomization under clusters/. Deriving roots
     from those directly would be more exact but couples the renderer to the
     cluster's Kustomization graph (base-vs-overlay, suspended siblings, multiple
-    clusters); test-flux-schema.sh pins the known nested cases as a safety net."""
+    clusters).
+
+    NOTHING PINS THE KNOWN NESTED CASES. An earlier version of this docstring
+    said "test-flux-schema.sh pins the known nested cases as a safety net";
+    that file has never existed in this repo. A docstring asserting a safety
+    net that is absent is worse than silence, because it reads as covered and
+    nobody re-checks -- the same shape as a Renovate annotation that matches
+    nothing. test-check-substitution.py covers the undefined-variable gate,
+    not this heuristic. If a nested overlay is ever dropped from the bundle,
+    only the resource count moving will show it."""
     dirs = _kustomization_dirs()
     referenced = _referenced_dirs(dirs)
     roots = []
@@ -542,7 +597,9 @@ def render_overlay(overlay, outdir):
         rendered = postprocess(result.stdout)
     except yaml.YAMLError as exc:
         return f"postprocess: {exc}", None
-    (outdir / ("overlay-" + overlay_slug(overlay) + ".yaml")).write_text(substitute(rendered))
+    (outdir / ("overlay-" + overlay_slug(overlay) + ".yaml")).write_text(
+        substitute(rendered, cluster_of(overlay))
+    )
     return None, rendered
 
 
@@ -667,7 +724,12 @@ def render_helmrelease(doc, sources, outdir, namespace, stem):
     except yaml.YAMLError as exc:
         return f"HelmRelease/{namespace}/{meta['name']}: postprocess: {exc}"
 
-    (outdir / f"chart-{stem}-{namespace}-{meta['name']}.yaml").write_text(substitute(rendered))
+    # stem is overlay_slug(overlay), i.e. the path with "/" replaced by "-".
+    # Restoring the first separator is enough for cluster_of, which only reads
+    # the second segment.
+    (outdir / f"chart-{stem}-{namespace}-{meta['name']}.yaml").write_text(
+        substitute(rendered, cluster_of(stem.replace("-", "/", 1)))
+    )
     return None
 
 
@@ -735,7 +797,7 @@ def main():
                     helmreleases[key] = (doc, kustomize_ns, is_referenced)
             if not in_overlay and docs:
                 (outdir / ("standalone-" + str(path).replace("/", "-"))).write_text(
-                    substitute(path.read_text())
+                    substitute(path.read_text(), cluster_of(path))
                 )
                 standalone += 1
 
