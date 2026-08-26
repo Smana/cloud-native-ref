@@ -9,12 +9,22 @@ export warn="WARNING"
 
 # Replacing array with individual checks
 check_required_bin() {
-    for BIN in bao jq aws; do
+    for BIN in bao jq; do
         if ! type "${BIN}" >/dev/null 2>&1; then
             echo "${err}: ${BIN} binary not found"
             exit 1
         fi
     done
+
+    if [ "${CLOUD}" = "gcp" ]; then
+        CLOUD_BIN=gcloud
+    else
+        CLOUD_BIN=aws
+    fi
+    if ! type "${CLOUD_BIN}" >/dev/null 2>&1; then
+        echo "${err}: ${CLOUD_BIN} binary not found"
+        exit 1
+    fi
 }
 
 export AWS_PAGER=""
@@ -29,6 +39,14 @@ CHECK_PATH="${CHECK_PATH:-secret/check_timestamp}"
 
 # Writable volume
 export HOME=/snapshot
+
+# Which cloud's CLIs to use. Set by the CronJob; defaults to aws so an operator
+# running this by hand against aws-0 needs no new environment.
+CLOUD="${CLOUD:-aws}"
+case "${CLOUD}" in
+    aws|gcp) ;;
+    *) echo "${err}: CLOUD must be 'aws' or 'gcp', got '${CLOUD}'." ; exit 1 ;;
+esac
 
 usage() {
     cat << EOF
@@ -109,11 +127,16 @@ fi
 generate_root_token() {
     if [ -z "${RECOVERY_KEYS_SECRET_ID:-}" ]; then
         echo "${err}: RECOVERY_KEYS_SECRET_ID must be set to run a restore."
-        echo "${err}: It is the AWS Secrets Manager entry holding the OpenBao recovery keys."
+        echo "${err}: It names the secret holding the OpenBao recovery keys --"
+        echo "${err}: an AWS Secrets Manager entry, or a GCP Secret Manager secret."
         exit 1
     fi
 
-    RECOVERY_SECRET=$(aws secretsmanager get-secret-value --secret-id "${RECOVERY_KEYS_SECRET_ID}" | jq -r '.SecretString')
+    if [ "${CLOUD}" = "gcp" ]; then
+        RECOVERY_SECRET=$(gcloud secrets versions access latest --secret="${RECOVERY_KEYS_SECRET_ID}")
+    else
+        RECOVERY_SECRET=$(aws secretsmanager get-secret-value --secret-id "${RECOVERY_KEYS_SECRET_ID}" | jq -r '.SecretString')
+    fi
 
     RECOVERY_THRESHOLD=$(echo "${RECOVERY_SECRET}" | jq -r '.threshold // 1')
     if [ "${RECOVERY_THRESHOLD}" -gt 1 ]; then
@@ -180,28 +203,45 @@ save() {
     # "%Y-%m-%d_%H:%M:%S_%Z" embedded colons (legal in S3, awkward everywhere
     # downstream) and a local timezone abbreviation, so key order broke across a
     # DST change.
-    aws s3 cp "${SNAPSHOT_FILE}" "s3://${BUCKET_NAME}/$(date -u +"%Y-%m-%dT%H%M%SZ").snap"
+    if [ "${CLOUD}" = "gcp" ]; then
+        gcloud storage cp "${SNAPSHOT_FILE}" "gs://${BUCKET_NAME}/$(date -u +"%Y-%m-%dT%H%M%SZ").snap"
+    else
+        aws s3 cp "${SNAPSHOT_FILE}" "s3://${BUCKET_NAME}/$(date -u +"%Y-%m-%dT%H%M%SZ").snap"
+    fi
 }
 
 restore() {
-    echo "${info}: Restoring OpenBao from S3..."
+    echo "${info}: Restoring OpenBao from object storage..."
     check_required_bin
     authenticate
 
-    echo "${info}: Fetching latest backup from S3 bucket ${BUCKET_NAME}"
-    # Sorted by LastModified, not by key name. Key-name ordering would be
-    # actively dangerous during the changeover from the old
-    # "%Y-%m-%d_%H:%M:%S_%Z" format: '_' sorts after 'T', so every old-format
-    # object ranks above every new one and `tail -n1` would keep selecting a
-    # stale snapshot until the 120-day lifecycle rule aged them out.
-    SNAP=$(aws s3api list-objects-v2 --bucket "${BUCKET_NAME}" \
-        --query 'sort_by(Contents, &LastModified)[-1].Key' --output text)
+    echo "${info}: Fetching latest backup from bucket ${BUCKET_NAME}"
+    if [ "${CLOUD}" = "gcp" ]; then
+        # Lexicographic is chronological here, and only here. The AWS bucket
+        # still holds objects in the old "%Y-%m-%d_%H:%M:%S_%Z" format, where
+        # '_' sorts after 'T' so every legacy key ranks above every new one --
+        # hence the LastModified sort below. The GCP bucket was created after
+        # the format change and has only ever held the sortable form.
+        SNAP=$(gcloud storage ls "gs://${BUCKET_NAME}/" | sed 's#.*/##' | grep '\.snap$' | sort | tail -n1)
+    else
+        # Sorted by LastModified, not by key name. Key-name ordering would be
+        # actively dangerous during the changeover from the old
+        # "%Y-%m-%d_%H:%M:%S_%Z" format: '_' sorts after 'T', so every old-format
+        # object ranks above every new one and `tail -n1` would keep selecting a
+        # stale snapshot until the 120-day lifecycle rule aged them out.
+        SNAP=$(aws s3api list-objects-v2 --bucket "${BUCKET_NAME}" \
+            --query 'sort_by(Contents, &LastModified)[-1].Key' --output text)
+    fi
     if [ -z "${SNAP}" ] || [ "${SNAP}" = "None" ]; then
         echo "${err}: No snapshots found in ${BUCKET_NAME}."
         exit 1
     fi
 
-    aws s3 cp "s3://${BUCKET_NAME}/${SNAP}" /tmp/bao.snap
+    if [ "${CLOUD}" = "gcp" ]; then
+        gcloud storage cp "gs://${BUCKET_NAME}/${SNAP}" /tmp/bao.snap
+    else
+        aws s3 cp "s3://${BUCKET_NAME}/${SNAP}" /tmp/bao.snap
+    fi
     echo "${info}: Restoring snapshot ${SNAP}"
 
     VAULT_TOKEN=$(generate_root_token)
