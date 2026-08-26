@@ -56,7 +56,7 @@
         "/^container-images/.+/Dockerfile$/"
       ],
       "matchStrings": [
-        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*ARG\\s+[A-Z0-9_]+=(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*ARG\\s+[A-Z0-9_]+=v?(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
       ],
       "versioningTemplate": "semver"
     }
