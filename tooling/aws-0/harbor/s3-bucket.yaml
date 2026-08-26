@@ -1,3 +1,10 @@
+# Registry image layers are expensive to reconstruct and outlive any single
+# cluster, so Crossplane must never attempt to remove the bucket. Without
+# this it retries s3:DeleteBucket on prune, AWS denies it (no deletion
+# permission for stateful services), and the MR finalizer hangs the
+# namespace teardown. To remove intentionally, use the aws CLI.
+# (Crossplane v2 namespaced MRs do not expose spec.deletionPolicy;
+# managementPolicies is the v2 mechanism.)
 apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
@@ -5,5 +12,6 @@ metadata:
   annotations:
     crossplane.io/external-name: ${region}-ogenki-harbor
 spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
     region: ${region}
