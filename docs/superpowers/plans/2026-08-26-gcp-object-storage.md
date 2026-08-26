@@ -1076,3 +1076,106 @@ is a weaker guarantee than an image in the credential path deserves — but `pev
 (`nginx:alpine`), so this is a repo-wide pattern gap rather than a defect Task 4 introduced. Changing
 it for one image creates an inconsistency without closing the pattern. Leave it; it belongs in a
 follow-up covering every `container-images/*`.
+
+---
+
+### Task 12: The snapshot policy's CIDR, and AWS-only files out of the snapshot base
+
+> Added during execution, from Task 5's report. Part A is a **blocker for Task 7** — without it the
+> live deploy fails as a timeout, not as a clear error.
+
+**Files:**
+- Modify: `security/base/openbao-snapshot/network-policy.yaml`
+- Modify: `opentofu/aws/eks/configure/kubernetes.tf`, `opentofu/gcp/gke/configure/kubernetes.tf`
+- Modify: `scripts/flux-schema/render-bundle.py` (`FIXTURE_VARS`)
+- Move: `security/base/openbao-snapshot/{kms,s3-bucket}.yaml` → `security/aws-0/openbao-snapshot/`
+- Modify: `security/base/openbao-snapshot/kustomization.yaml`, `security/aws-0/kustomization.yaml`, `security/gcp-0/openbao-snapshot/kustomization.yaml`
+- Create: `security/aws-0/openbao-snapshot/kustomization.yaml`
+
+#### Part A — the OpenBao CIDR is hardcoded to the AWS VPC
+
+`network-policy.yaml:43` allows egress to `10.0.0.0/16` on `:8200`, described as "the OpenBao API,
+reached through the internal NLB, whose private addresses sit in the VPC CIDR". On `gcp-0` OpenBao's
+internal load balancer sits in the **node subnet** (`opentofu/gcp/openbao/cluster/load_balancer.tf`
+uses `local.subnetwork_self_link`, whose range is `var.node_cidr`), and GCP's CIDRs are required
+disjoint from the AWS VPC's. So the snapshot job on `gcp-0` cannot reach OpenBao, and the symptom is a
+**connection timeout** — the failure mode this repo's own guidance says to suspect network policy for
+first.
+
+Only one manifest hardcodes this value; `infrastructure/base/crossplane/configuration/environmentconfig.yaml`
+already uses `${vpc_cidr_block}` and is AWS-only. So a narrow, single-purpose variable is right here —
+do not invent a broad "platform CIDR" abstraction for one call site.
+
+- [ ] **Step 1: Add `openbao_cidr` to both clusters' vars ConfigMaps**
+
+In `opentofu/aws/eks/configure/kubernetes.tf`, alongside the existing keys:
+
+```hcl
+      # The CIDR holding OpenBao's internal endpoint, consumed by
+      # security/base/openbao-snapshot/network-policy.yaml. On AWS that is the
+      # whole VPC (the internal NLB's private addresses); on GCP it is the node
+      # subnet, where the internal load balancer lives. Same key, different
+      # shape per cloud -- which is exactly why the manifest cannot hardcode it.
+      openbao_cidr = data.aws_vpc.selected.cidr_block
+```
+
+In `opentofu/gcp/gke/configure/kubernetes.tf`, the same key set to the node CIDR that stack already
+has to hand (match how its neighbouring keys are sourced — do not introduce a new data source).
+
+- [ ] **Step 2: Template the policy**
+
+`network-policy.yaml:43` becomes `- ${openbao_cidr}`. Keep the surrounding comment and extend it to
+say the value differs per cloud.
+
+- [ ] **Step 3: Add the fixture entry**
+
+`FIXTURE_VARS` in `scripts/flux-schema/render-bundle.py` gains `"openbao_cidr": "10.0.0.0/16"`. Without
+it the bundle renders an empty string and the policy silently allows nothing — schema-valid, wrong.
+Note the existing `"vpc_cidr_block": "10.0.0.0/16"` entry: the fixture value must match it, so `aws-0`
+renders byte-identical.
+
+- [ ] **Step 4: Prove `aws-0` is unchanged**
+
+```bash
+./scripts/validate-manifests.sh
+grep -rn -A2 'toCIDR' .bundle/ | grep -c '10.0.0.0/16'
+```
+
+The rendered policy must still read `10.0.0.0/16`, and there must be no literal `${openbao_cidr}`
+anywhere in the bundle.
+
+#### Part B — AWS-only resources leave the shared base
+
+`security/base/openbao-snapshot/` carries `kms.yaml` and `s3-bucket.yaml`, both AWS Crossplane Kinds
+that `gcp-0` has no provider for. Task 5 worked around this by referencing base files individually
+from the `gcp-0` overlay, citing `security/gcp-0/controllers` as precedent. That works, and the
+precedent is real — but it is brittle in a specific way: add a file to the base and `gcp-0` silently
+does not get it. That silent-omission shape is the same one this workstream keeps removing.
+
+Tasks 2 and 8 both moved cloud-specific resources into per-cloud overlays. Do the same here so all
+three read alike.
+
+- [ ] **Step 5: Move the two files and re-point the overlays**
+
+```bash
+mkdir -p security/aws-0/openbao-snapshot
+git mv security/base/openbao-snapshot/kms.yaml security/aws-0/openbao-snapshot/kms.yaml
+git mv security/base/openbao-snapshot/s3-bucket.yaml security/aws-0/openbao-snapshot/s3-bucket.yaml
+```
+
+Drop both from the base `kustomization.yaml`. Create `security/aws-0/openbao-snapshot/kustomization.yaml`
+pulling `../../base/openbao-snapshot` plus the two moved files. Re-point `security/aws-0/kustomization.yaml`
+from `../base/openbao-snapshot` to `./openbao-snapshot`. Then simplify the `gcp-0` overlay to reference
+`../../base/openbao-snapshot` as a directory, replacing its four file-level entries — and replace its
+comment with one saying the base is now cloud-neutral.
+
+- [ ] **Step 6: Validate and commit**
+
+```bash
+./scripts/validate-manifests.sh
+python3 scripts/flux-schema/check-substitution.py
+```
+
+`Invalid: 0, Skipped: 0`. The `aws-0` bundle must still contain the KMS key and the S3 bucket exactly
+once each. Commit Parts A and B separately — the first is a behaviour fix, the second a refactor, and
+a reviewer should be able to reject one without the other.
