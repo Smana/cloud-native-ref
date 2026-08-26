@@ -72,8 +72,25 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       domain_name         = var.public_domain_name
       private_domain_name = var.private_domain_name
       public_domain_name  = var.public_domain_name
-      vpc_id              = data.aws_vpc.selected.id
-      vpc_cidr_block      = data.aws_vpc.selected.cidr_block
+
+      # Where the platform's identity provider actually lives.
+      #
+      # ZITADEL is a SINGLETON: one instance serves both clusters, because two
+      # instances would be two user directories, two session stores and two sets
+      # of OIDC clients with no federation between them (ADR-0022).
+      #
+      # aws-0 hosts it today, so here the URL is derived from this cluster's own
+      # public domain rather than hardcoded -- a cluster that hosts the IdP is
+      # always reachable at auth.<its own domain>. gcp-0 sets the same key to a
+      # LITERAL pointing back here; see opentofu/gcp/gke/configure/kubernetes.tf.
+      #
+      # Consumed by apps/base/openwebui (OIDC discovery) and
+      # tooling/base/homepage (a link). Both hardcoded this host until now,
+      # which is what made "which cloud hosts the IdP" unanswerable from
+      # configuration.
+      identity_provider_url = "https://auth.${var.public_domain_name}"
+      vpc_id                = data.aws_vpc.selected.id
+      vpc_cidr_block        = data.aws_vpc.selected.cidr_block
       # The CIDR holding OpenBao's internal endpoint, consumed by
       # security/base/openbao-snapshot/network-policy.yaml. On AWS that is the
       # whole VPC (the internal NLB's private addresses); on GCP it is the node

@@ -130,3 +130,28 @@ variable "route53_region" {
   description = "AWS region hint for the federated ClusterIssuer's route53 solver -- an AWS SDK credential-scope value, deliberately separate from var.region (GCP). No default"
   type        = string
 }
+
+# The platform's identity provider, which gcp-0 CONSUMES rather than hosts.
+#
+# ZITADEL is a singleton by decision, not by accident: one instance serves both
+# clusters, because two would be two user directories, two session stores and
+# two sets of OIDC clients with nothing federating them. ADR-0022 records the
+# choice and the alternatives considered.
+#
+# The default points at aws-0, which hosts it today. A full URL rather than a
+# hostname because both consumers -- apps/base/openwebui's OIDC discovery
+# document and tooling/base/homepage's link -- need the scheme.
+#
+# This CANNOT be derived from var.public_domain_name the way the AWS stack
+# derives it: that would yield auth.gcp.cloud.ogenki.io, which nothing serves.
+# A cluster can derive this URL only when it is itself the host.
+variable "identity_provider_url" {
+  description = "Base URL of the platform identity provider (ZITADEL). Defaults to the aws-0 instance, which hosts it; see ADR-0022 before changing"
+  type        = string
+  default     = "https://auth.cloud.ogenki.io"
+
+  validation {
+    condition     = can(regex("^https://[a-z0-9][a-z0-9.-]*[a-z0-9]$", var.identity_provider_url))
+    error_message = "identity_provider_url must be an https:// URL with no path or trailing slash."
+  }
+}

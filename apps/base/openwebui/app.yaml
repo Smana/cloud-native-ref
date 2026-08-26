@@ -140,8 +140,12 @@ spec:
       value: "true"
     - name: OAUTH_PROVIDER_NAME
       value: "zitadel"
+    # ${identity_provider_url}, not this cluster's own domain. ZITADEL is a
+    # singleton serving both clusters (ADR-0022), so a consumer must be told
+    # where it lives rather than assume it is local -- on gcp-0 the local guess
+    # would be auth.gcp.cloud.ogenki.io, which nothing serves.
     - name: OPENID_PROVIDER_URL
-      value: "https://auth.cloud.ogenki.io/.well-known/openid-configuration"
+      value: "${identity_provider_url}/.well-known/openid-configuration"
     # Maps Zitadel claim -> OpenWebUI display name. preferred_username
     # avoids dotted-email usernames (e.g. `firstname.lastname`); flip
     # to `email` if you want the email visible in the user picker.
