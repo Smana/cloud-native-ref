@@ -216,7 +216,7 @@ known rather than predicted.
 | 10 | DNS + PKI: `external-dns` google provider, cert-manager clouddns DNS-01 (**public** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 5 |  |
 | 11 | OpenBao on GCP: MIG + internal LB + Cloud KMS auto-unseal (**private** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 1 |  |
 | 12 | Gateway/LB: GCP public-LB annotations, drop `aws-load-balancer-controller` | 3 |  |
-| 13 | Storage: `gp3` → `pd-balanced`/hyperdisk, EFS CSI → Filestore CSI | 3 |  |
+| 13 | Storage: `gp3` → `balanced-rwo` via a `${storage_class}` var. **Filestore dropped** — see [2026-08-26-gcp-storage-class-design.md](2026-08-26-gcp-storage-class-design.md) | 3 |  |
 | 14 | GPU + LLM platform: GPU `ComputeClass`, GCS Fuse weights, no `runtimeclass-nvidia` | 4, 9 |  |
 | 15 | CI: `validate-manifests.sh` renders both clouds; Renovate; per-cloud schema catalogs | 6 |  |
 
