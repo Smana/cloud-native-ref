@@ -222,7 +222,24 @@ restore() {
         # '_' sorts after 'T' so every legacy key ranks above every new one --
         # hence the LastModified sort below. The GCP bucket was created after
         # the format change and has only ever held the sortable form.
-        SNAP=$(gcloud storage ls "gs://${BUCKET_NAME}/" | sed 's#.*/##' | grep '\.snap$' | sort | tail -n1)
+        #
+        # Listing is split from the sed|grep|sort|tail pipeline on purpose:
+        # under `set -e` (no `pipefail` here -- see below), a pipeline's exit
+        # status is its last command's, so a failed `gcloud storage ls`
+        # (expired auth, no bucket permission, network down) would be masked
+        # by `tail -n1` exiting 0 on empty input, and fall through to the
+        # "No snapshots found" guard below -- a misleading diagnosis on the
+        # restore path, during an incident. Testing the listing on its own
+        # keeps that failure loud and distinct from a genuinely empty bucket.
+        # (Not fixed with `set -o pipefail` instead: `grep` exits 1 when it
+        # matches nothing, so pipefail would turn a legitimately empty bucket
+        # into a hard failure too.)
+        if ! LISTING=$(gcloud storage ls "gs://${BUCKET_NAME}/"); then
+            echo "${err}: could not list gs://${BUCKET_NAME} -- see the gcloud error above."
+            echo "${err}: this is a listing failure, NOT an empty bucket."
+            exit 1
+        fi
+        SNAP=$(echo "${LISTING}" | sed 's#.*/##' | grep '\.snap$' | sort | tail -n1)
     else
         # Sorted by LastModified, not by key name. Key-name ordering would be
         # actively dangerous during the changeover from the old
