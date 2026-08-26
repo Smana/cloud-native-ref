@@ -16,3 +16,16 @@ resources:
   - computeclass
   - external-dns
   - external-dns-public
+  # KEDA, from the SHARED base rather than a gcp-0 copy. Verified cloud-neutral
+  # before wiring: no IRSA, no IAM roles, no ARNs, and its CiliumNetworkPolicy
+  # addresses `toEntities: kube-apiserver` rather than a CIDR -- so unlike the
+  # openbao-snapshot policy (workstream 9, Task 12) there is nothing here that
+  # assumes an AWS network shape. It also declares no `${var}` at all, so it
+  # adds no key to this cluster's vars ConfigMap.
+  #
+  # Wired now because the LLM platform needs it: the InferenceService
+  # composition renders a KEDA ScaledObject per claim (SPEC-001), and without
+  # KEDA those never reconcile. That gap is recorded in
+  # clusters/gcp-0-llm-platform/README.md as one of two reasons not to resume
+  # the LLM umbrella; this closes the first of them.
+  - ../base/keda
