@@ -100,7 +100,7 @@ ahead of that bump (SPEC-010, done). Confirmed live in
   Identity Agent (`169.254.170.23:80`, classified as the `host` entity —
   `toCIDR` alone wouldn't match it).
 - The `ObjectStore` CRD, backed by an S3 `Bucket` (`cnpg-backups`,
-  `infrastructure/base/cloudnative-pg/s3-bucket.yaml`) with
+  `infrastructure/aws-0/cloudnative-pg/s3-bucket.yaml`) with
   `managementPolicies` deliberately excluding `Delete` — backups must
   outlive any individual cluster's teardown.
 

@@ -211,12 +211,12 @@ known rather than predicted.
 |---|---|---|---|
 | 6 | Directory refactor to cloud-partitioned layout | 3, **7** | unblocked |
 | 7 | Extract the Crossplane Configuration packages, OCI-released | 3 | **DONE 2026-08-19 (v0.1.0)** |
-| 8 | `objectStore` API migration + `App`/`SQLInstance` branching | 5, 7 | unblocked by 7 |
-| 9 | Object-storage call sites: Harbor (GCS driver), `openbao-snapshot` (GCS + Cloud KMS), CNPG barman (GCS) | 5, 8 |  |
+| 8 | `objectStore` API migration + `App`/`SQLInstance` branching | 5, 7 | **DONE — #1839, merged 2026-08-26 (04ec429e)** |
+| 9 | Object-storage call sites: Harbor (GCS driver), `openbao-snapshot` (GCS + Cloud KMS), CNPG barman (GCS) | 5, 8 | **in flight — `worktree-gcp-object-storage`.** Grew from 7 planned tasks to 14 during execution: reviewers and implementers surfaced real gaps (e.g. Task 8 below) that weren't in the original plan. |
 | 10 | DNS + PKI: `external-dns` google provider, cert-manager clouddns DNS-01 (**public** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 5 |  |
-| 11 | OpenBao on GCP: MIG + internal LB + Cloud KMS auto-unseal (**private** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 1 |  |
-| 12 | Gateway/LB: GCP public-LB annotations, drop `aws-load-balancer-controller` | 3 |  |
-| 13 | Storage: `gp3` → `pd-balanced`/hyperdisk, EFS CSI → Filestore CSI | 3 |  |
+| 11 | OpenBao on GCP: MIG + internal LB + Cloud KMS auto-unseal (**private** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 1 | **DONE — #1827 + #1830, merged 2026-08-25 (f10a2c29, 0b96b435)** |
+| 12 | Gateway/LB: GCP public-LB annotations, drop `aws-load-balancer-controller` | 3 | **DONE — #1833 + #1837, merged 2026-08-25/26 (b0e478b1, 348bc900)** |
+| 13 | Storage: `gp3` → `pd-balanced`/hyperdisk, EFS CSI → Filestore CSI | 3 | **OPEN — PR #1841, not merged** |
 | 14 | GPU + LLM platform: GPU `ComputeClass`, GCS Fuse weights, no `runtimeclass-nvidia` | 4, 9 |  |
 | 15 | CI: `validate-manifests.sh` renders both clouds; Renovate; per-cloud schema catalogs | 6 |  |
 
