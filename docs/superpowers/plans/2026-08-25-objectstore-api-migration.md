@@ -511,12 +511,19 @@ if oxr.spec.objectStore?.enabled and _cloud == "gcp":
                 # Unlike S3, versioning is a field on the bucket itself rather
                 # than a separate resource -- so there is no second resource to
                 # conditionally append, and no function-kcl #285 hazard here.
-                versioning = [{enabled = oxr.spec.objectStore.versioning or False}]
+                versioning = {enabled = oxr.spec.objectStore.versioning or False}  # object, not list
                 uniformBucketLevelAccess = True
                 if oxr.spec.objectStore.retentionDays:
+                    # lifecycleRule is a LIST, but action and condition are plain
+                    # OBJECTS -- both additionalProperties:false, so bracketing
+                    # them is a hard type mismatch at admission. Verified against
+                    # storage.gcp.m.upbound.io/v1beta2 Bucket:
+                    #   lifecycleRule             <[]object>
+                    #   lifecycleRule[].action    <object>
+                    #   lifecycleRule[].condition <object>
                     lifecycleRule = [{
-                        action = [{type = "Delete"}]
-                        condition = [{age = oxr.spec.objectStore.retentionDays}]
+                        action = {type = "Delete"}
+                        condition = {age = oxr.spec.objectStore.retentionDays}
                     }]
             }
         }
