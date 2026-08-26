@@ -65,6 +65,12 @@ What that buys: running or destroying GCP needs GCP credentials only, and an AWS
 outage cannot block a GCP teardown. The cost is one prerequisite bucket per
 cloud instead of one in total.
 
+The block below creates the **AWS** bucket only. If you are deploying GCP, its
+state bucket, KMS key ring and Tailscale OAuth client are three separate
+hand-created prerequisites — the full sequence is in `docs/gcp-bootstrap.md` in
+the repository (bootstrap docs are not published to this site). Doing the AWS
+steps alone leaves a GCP apply with nowhere to write its state.
+
 ```bash
 BUCKET=demo-smana-remote-backend   # must match the backend blocks; see below
 REGION=eu-west-3
