@@ -13,7 +13,7 @@ metadata:
   name: harbor
   namespace: tooling
   annotations:
-    crossplane.io/external-name: ${region}-ogenki-harbor
+    crossplane.io/external-name: ${project_id}-ogenki-harbor
 spec:
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:

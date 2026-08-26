@@ -24,5 +24,5 @@ spec:
   serviceAccount:
     name: openbao-snapshot
   bucketRoles:
-    - bucket: ${region}-ogenki-openbao-snapshot
+    - bucket: ${project_id}-ogenki-openbao-snapshot
       role: roles/storage.objectAdmin

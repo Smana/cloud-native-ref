@@ -36,7 +36,16 @@ resource "google_secret_manager_secret_version" "approle_cert_manager" {
 # snapshot_approle_credentials. Until workstream 9, this had no GCP consumer at
 # all -- see the history note on vault_auth_backend.approle in auth.tf.
 locals {
-  snapshot_bucket_name = var.snapshot_bucket_name == "" ? format("%s-ogenki-openbao-snapshot", var.region) : var.snapshot_bucket_name
+  # PROJECT-prefixed, not region-prefixed, and the difference is load-bearing.
+  # opentofu/gcp/gke/init/iam.tf conditions the Crossplane principal's storage
+  # role on resource.name.startsWith('projects/_/buckets/<project_id>-ogenki-').
+  # A region-prefixed name is a perfectly legal GCS bucket name and fails at
+  # create with a 403 that names storage.buckets.create -- a permission the
+  # custom role does grant, so the error points at the role rather than at the
+  # condition that actually rejected it. Measured on a live cluster, not
+  # inferred. GCS bucket names are also globally unique, so a project prefix is
+  # a stronger uniqueness guarantee than a region one.
+  snapshot_bucket_name = var.snapshot_bucket_name == "" ? format("%s-ogenki-openbao-snapshot", var.project_id) : var.snapshot_bucket_name
 }
 
 resource "google_secret_manager_secret" "snapshot_approle_credentials" {

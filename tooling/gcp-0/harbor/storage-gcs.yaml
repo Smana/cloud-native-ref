@@ -10,5 +10,5 @@ spec:
         # records why this differs from the s3 driver used on aws-0.
         type: gcs
         gcs:
-          bucket: ${region}-ogenki-harbor
+          bucket: ${project_id}-ogenki-harbor
           useWorkloadIdentity: true

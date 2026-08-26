@@ -12,7 +12,7 @@ metadata:
   name: openbao-snapshot
   namespace: security
   annotations:
-    crossplane.io/external-name: ${region}-ogenki-openbao-snapshot
+    crossplane.io/external-name: ${project_id}-ogenki-openbao-snapshot
 spec:
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:

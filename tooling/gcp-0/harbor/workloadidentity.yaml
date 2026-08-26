@@ -16,5 +16,5 @@ spec:
   serviceAccount:
     name: harbor
   bucketRoles:
-    - bucket: ${region}-ogenki-harbor
+    - bucket: ${project_id}-ogenki-harbor
       role: roles/storage.objectAdmin
