@@ -87,6 +87,14 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # value -- GCP Secret Manager forbids "/" in a secret ID. Must match
       # opentofu/gcp/openbao/management's snapshot_approle_secret_name (Task 14).
       openbao_snapshot_secret = "openbao-priv-gcp-snapshot" # pragma: allowlist secret
+      # apps/base/ai/llm/hf-token-externalsecret.yaml's Secret Manager key.
+      # Flat and dash-separated, unlike the AWS ConfigMap's path-style value --
+      # GCP Secret Manager forbids "/" in a secret ID. Same split, same reason,
+      # as openbao_snapshot_secret above. Only required if the LLM platform is
+      # enabled on this cluster (clusters/gcp-0/llm-platform.yaml) -- a hand-
+      # created entry, same as the other gcp-bootstrap.md prerequisites, not
+      # provisioned by OpenTofu on either cloud.
+      llm_hf_token_secret = "llm-platform-hf-token" # pragma: allowlist secret
 
       # Public DNS, for the federated Route53 path (workstream 12).
       # public_domain_name is gcp.cloud.ogenki.io -- gcp-0's OWN subdomain of

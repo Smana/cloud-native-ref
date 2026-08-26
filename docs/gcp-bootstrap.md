@@ -112,6 +112,28 @@ by a routine `gcp-0` teardown — its `destroy` script is guarded behind
 an OIDC provider cost nothing idle, and leaving them applied means a rebuilt `gcp-0` gets public
 ingress working immediately rather than needing this stack re-applied every cycle.
 
+## LLM platform (opt-in): HuggingFace token
+
+Not one of the three prerequisites above — **only needed if the LLM platform is enabled**
+(`clusters/gcp-0/llm-platform.yaml`, `spec.suspend: true` by default). A plain `gcp-0` deploy never
+reads this secret.
+
+`apps/base/ai/llm/hf-token-externalsecret.yaml` extracts a HuggingFace access token from GCP
+Secret Manager, at the key each cluster's vars ConfigMap supplies
+(`llm_hf_token_secret` in `opentofu/gcp/gke/configure/kubernetes.tf`). Like the token on `aws-0`,
+it is **not created by OpenTofu on either cloud** — grepping all of `opentofu/` for `hf_token`
+finds nothing that provisions it. Create it once, by hand:
+
+```bash
+printf '%s' "$HF_TOKEN" \
+  | gcloud secrets create llm-platform-hf-token \
+      --project=ogenki-435905 --replication-policy=automatic --data-file=-
+```
+
+The secret ID must stay flat and dash-separated — GCP Secret Manager forbids `/` in a secret ID,
+which is why this value differs in shape from `aws-0`'s path-style
+`/platform/llm/hf_token` (same split as `openbao_snapshot_secret`, for the same reason).
+
 ## Credentials your shell needs
 
 Distinct from the three prerequisites above: those are things that must EXIST in

@@ -96,6 +96,11 @@ FIXTURE_VARS = {
     # useless, and gate 1 would never catch it since the target field is a
     # free-form string.
     "openbao_snapshot_secret": "security/openbao/openbao-snapshot",  # pragma: allowlist secret
+    # apps/base/ai/llm/hf-token-externalsecret.yaml. AWS value, same reasoning
+    # as openbao_snapshot_secret above: without this entry VAR_RE.sub passes
+    # the name through verbatim and the ExternalSecret extracts nothing --
+    # schema-valid, useless.
+    "llm_hf_token_secret": "/platform/llm/hf_token",  # pragma: allowlist secret
     "oidc_provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks",
     "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com",
     "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com",

@@ -87,8 +87,15 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # Same key, different shape per cloud -- see opentofu/gcp/openbao/management's
       # snapshot_approle_secret_name (Task 14).
       openbao_snapshot_secret = "security/openbao/openbao-snapshot" # pragma: allowlist secret
-      karpenter_queue_name    = local.karpenter_queue_name
-      route53_public_zone_id  = data.aws_route53_zone.public.zone_id
+      # apps/base/ai/llm/hf-token-externalsecret.yaml's Secret Manager key.
+      # Path-style here because AWS Secrets Manager allows "/"; GCP's
+      # ConfigMap (opentofu/gcp/gke/configure/kubernetes.tf) carries a flat
+      # dash-separated ID instead, because GCP Secret Manager forbids "/".
+      # Same key, different shape per cloud -- same split as
+      # openbao_snapshot_secret above, same reason (Task 14).
+      llm_hf_token_secret    = "/platform/llm/hf_token" # pragma: allowlist secret
+      karpenter_queue_name   = local.karpenter_queue_name
+      route53_public_zone_id = data.aws_route53_zone.public.zone_id
     }
   })
   server_side_apply = true
