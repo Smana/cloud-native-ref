@@ -67,15 +67,28 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # nothing derives anything else from it, which is what makes one
       # shared key honest here where ${region} was not (see the
       # workstream 13 design).
-      storage_class          = "gp3"
-      environment            = var.env
-      domain_name            = var.public_domain_name
-      private_domain_name    = var.private_domain_name
-      public_domain_name     = var.public_domain_name
-      vpc_id                 = data.aws_vpc.selected.id
-      vpc_cidr_block         = data.aws_vpc.selected.cidr_block
-      karpenter_queue_name   = local.karpenter_queue_name
-      route53_public_zone_id = data.aws_route53_zone.public.zone_id
+      storage_class       = "gp3"
+      environment         = var.env
+      domain_name         = var.public_domain_name
+      private_domain_name = var.private_domain_name
+      public_domain_name  = var.public_domain_name
+      vpc_id              = data.aws_vpc.selected.id
+      vpc_cidr_block      = data.aws_vpc.selected.cidr_block
+      # The CIDR holding OpenBao's internal endpoint, consumed by
+      # security/base/openbao-snapshot/network-policy.yaml. On AWS that is the
+      # whole VPC (the internal NLB's private addresses); on GCP it is the node
+      # subnet, where the internal load balancer lives. Same key, different
+      # shape per cloud -- which is exactly why the manifest cannot hardcode it.
+      openbao_cidr = data.aws_vpc.selected.cidr_block
+      # security/base/openbao-snapshot/external-secrets.yaml's Secret Manager
+      # key. Path-style here because AWS Secrets Manager allows "/"; GCP's
+      # ConfigMap (opentofu/gcp/gke/configure/kubernetes.tf) carries a flat
+      # dash-separated ID instead, because GCP Secret Manager forbids "/".
+      # Same key, different shape per cloud -- see opentofu/gcp/openbao/management's
+      # snapshot_approle_secret_name (Task 14).
+      openbao_snapshot_secret = "security/openbao/openbao-snapshot" # pragma: allowlist secret
+      karpenter_queue_name    = local.karpenter_queue_name
+      route53_public_zone_id  = data.aws_route53_zone.public.zone_id
     }
   })
   server_side_apply = true

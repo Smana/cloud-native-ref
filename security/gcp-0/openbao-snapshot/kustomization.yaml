@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: security
+
+# The base is now cloud-neutral -- kms.yaml and s3-bucket.yaml moved to
+# security/aws-0/openbao-snapshot/ (Task 12) -- so this references the whole
+# directory rather than cherry-picking files.
+resources:
+  - ../../base/openbao-snapshot
+  - gcs-bucket.yaml
+  - workloadidentity.yaml
+
+patches:
+  - path: snapshot-cronjob-patch.yaml
+    target:
+      group: batch
+      kind: CronJob
+      name: openbao-snapshot

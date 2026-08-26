@@ -1,0 +1,1376 @@
+# Object-Storage Call Sites on GCP — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Make Harbor, `openbao-snapshot` and CNPG backups name object storage their own cluster actually has, so the shared manifests work on `gcp-0` as well as `aws-0`.
+
+**Architecture:** Bucket names become `${region}`-templated (already the convention in `apps/base/complete/app.yaml`). Harbor and `openbao-snapshot` split into cloud-neutral bases with `aws-0` / `gcp-0` overlays supplying the bucket, the identity and the storage-driver config. GCP identities are `GCPWorkloadIdentity` claims using `spec.bucketRoles`. The snapshot script gains a `CLOUD` switch and its image moves in-repo.
+
+**Tech Stack:** Kustomize overlays, Flux `postBuild` substitution, Crossplane v2 (`storage.gcp.m.upbound.io`), `GCPWorkloadIdentity` (`crossplane-configuration-gcp` v0.3.1), Helm (harbor-helm), Bash, Docker.
+
+**Spec:** [`docs/superpowers/specs/2026-08-26-gcp-object-storage-design.md`](../specs/2026-08-26-gcp-object-storage-design.md)
+**ADR:** [`website/content/docs/decisions/0020-harbor-gcs-workload-identity.md`](../../../website/content/docs/decisions/0020-harbor-gcs-workload-identity.md)
+
+## Global Constraints
+
+- **`aws-0`'s rendered output must not change.** It is a live cluster. Verify with a bundle diff, not by inspection.
+- **No new static credentials.** Every GCP call site uses Workload Identity. If a task seems to need a key, stop and raise it.
+- **GCS grants are always `bucketRoles`, never `roles`.** A project-level `roles/storage.*` reaches OpenBao snapshots and CNPG backups.
+- **`bucketRoles` item shape is `{bucket, role}` — `role` is SINGULAR.** Verified in the XRD at tag `v0.3.1`. `roles:` fails schema validation.
+- **Never reconstruct the `principal://` string.** `projects/` takes the project NUMBER, `workloadIdentityPools/` takes the project ID; reversed, the API accepts the binding and it silently never matches. The composition builds it — pass `serviceAccount.name` and let it.
+- **Bucket naming is `${region}-ogenki-<name>`.** No new convention.
+- **`./scripts/validate-manifests.sh` is the gate**, and `Invalid: 0, Skipped: 0` is part of the claim.
+- **Do not touch `Smana/crossplane-configuration`.** `v0.3.1` already provides everything.
+
+---
+
+### Task 1: CNPG bucket names become region-templated
+
+**Files:**
+- Modify: `security/base/zitadel/sqlinstance.yaml:46,50`
+- Modify: `observability/base/grafana-oncall/sqlinstance.yaml:19`
+- Modify: `tooling/base/harbor/sqlinstance.yaml:18,22`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: the `${region}-ogenki-cnpg-backups` spelling that later tasks assume.
+
+- [ ] **Step 1: Confirm the current values and the existing precedent**
+
+```bash
+grep -rn 'bucketName' --include=*.yaml . --exclude-dir=.git --exclude-dir=.bundle
+```
+
+Expected: five `"eu-west-3-ogenki-cnpg-backups"` across the three files above, plus one **already-correct** `"${region}-ogenki-cnpg-backups"` at `apps/base/complete/app.yaml:333`. That last line is the precedent — match it exactly, including the quoting.
+
+- [ ] **Step 2: Replace all five occurrences**
+
+Each becomes:
+
+```yaml
+    bucketName: "${region}-ogenki-cnpg-backups"
+```
+
+Do **not** touch `objectStoreRecovery.path` in `security/base/zitadel/sqlinstance.yaml`. It is `zitadel-20260719`, a frozen snapshot prefix that exists in exactly one bucket on one cloud, and the surrounding comment block explains a migration that must stay accurate.
+
+- [ ] **Step 3: Prove `aws-0` is unchanged**
+
+`${region}` substitutes to `eu-west-3` on `aws-0`, so every one of these must render byte-identical.
+
+```bash
+./scripts/validate-manifests.sh
+grep -rho 'bucketName: [a-z0-9"-]*' .bundle/ | sort | uniq -c
+```
+
+Expected: every rendered `bucketName` reads `eu-west-3-ogenki-cnpg-backups`; no occurrence of a literal `${region}`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add security/base/zitadel/sqlinstance.yaml observability/base/grafana-oncall/sqlinstance.yaml tooling/base/harbor/sqlinstance.yaml
+git commit -m "feat(storage): template the CNPG backup bucket name by region"
+```
+
+---
+
+### Task 2: Harbor splits into cloud-neutral base plus per-cloud overlays
+
+**Files:**
+- Modify: `tooling/base/harbor/kustomization.yaml`
+- Modify: `tooling/base/harbor/helmrelease-harbor.yaml` (remove the storage + registry-credential blocks)
+- Move: `tooling/base/harbor/s3-bucket.yaml` → `tooling/aws-0/harbor/s3-bucket.yaml`
+- Move: `tooling/base/harbor/iam-user.yaml` → `tooling/aws-0/harbor/iam-user.yaml`
+- Create: `tooling/aws-0/harbor/{kustomization.yaml,storage-s3.yaml}`
+- Create: `tooling/gcp-0/harbor/{kustomization.yaml,gcs-bucket.yaml,workloadidentity.yaml,storage-gcs.yaml}`
+- Create: `tooling/gcp-0/kustomization.yaml`
+- Modify: `tooling/aws-0/kustomization.yaml` (`../base/harbor` → `./harbor`)
+
+**Interfaces:**
+- Consumes: Task 1's `sqlinstance.yaml` edit (same directory — rebase, don't revert it).
+- Produces: the `tooling/gcp-0/` overlay root that Task 6 documents.
+
+- [ ] **Step 1: Remove the AWS-specific blocks from the base HelmRelease**
+
+Delete from `tooling/base/harbor/helmrelease-harbor.yaml` the whole `imageChartStorage:` block (currently `type: s3` with `s3.region` / `s3.bucket`) and the `registry.registry.extraEnvVars` list carrying `REGISTRY_STORAGE_S3_ACCESSKEY` / `REGISTRY_STORAGE_S3_SECRETKEY`. Leave `persistence.enabled: true` and `registry.serviceAccountName: harbor` in the base — both are cloud-neutral.
+
+Replace them with a pointer comment so the split is discoverable:
+
+```yaml
+    persistence:
+      enabled: true
+      # imageChartStorage is supplied per cloud:
+      #   tooling/aws-0/harbor/storage-s3.yaml   -- s3 driver + IAM user keys
+      #   tooling/gcp-0/harbor/storage-gcs.yaml  -- gcs driver + Workload Identity
+      # The drivers differ because goharbor#18686 blocks Pod Identity for the S3
+      # driver on AWS but says nothing about GCP, where the chart's gcs driver
+      # takes Workload Identity directly. See ADR-0020.
+```
+
+- [ ] **Step 2: Trim the base kustomization**
+
+`tooling/base/harbor/kustomization.yaml` drops `iam-user.yaml` and `s3-bucket.yaml`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tooling
+
+resources:
+  - externalsecret-admin-password.yaml
+  - externalsecret-valkey-password.yaml
+  - helmrelease-harbor.yaml
+  - serviceaccount-harbor.yaml
+  - httproute.yaml
+  - kvstore.yaml
+  - sqlinstance.yaml
+```
+
+- [ ] **Step 3: Create the `aws-0` overlay, preserving today's behaviour exactly**
+
+```bash
+mkdir -p tooling/aws-0/harbor
+git mv tooling/base/harbor/s3-bucket.yaml tooling/aws-0/harbor/s3-bucket.yaml
+git mv tooling/base/harbor/iam-user.yaml tooling/aws-0/harbor/iam-user.yaml
+```
+
+`tooling/aws-0/harbor/kustomization.yaml`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tooling
+
+resources:
+  - ../../base/harbor
+  - s3-bucket.yaml
+  - iam-user.yaml
+
+patches:
+  - path: storage-s3.yaml
+    target:
+      kind: HelmRelease
+      name: harbor
+```
+
+`tooling/aws-0/harbor/storage-s3.yaml` restores verbatim what Step 1 removed:
+
+```yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: harbor
+spec:
+  values:
+    persistence:
+      imageChartStorage:
+        # EKS Pod Identity does not reach the registry's S3 driver
+        # (goharbor#18686), so this one workload keeps a static key. The EPI in
+        # security/base/epis/harbor.yaml stays for Harbor's other AWS calls.
+        type: s3
+        s3:
+          region: ${region}
+          bucket: ${region}-ogenki-harbor
+    registry:
+      registry:
+        extraEnvVars:
+          - name: REGISTRY_STORAGE_S3_ACCESSKEY
+            valueFrom:
+              secretKeyRef:
+                name: xplane-harbor-access-key
+                key: username
+          - name: REGISTRY_STORAGE_S3_SECRETKEY
+            valueFrom:
+              secretKeyRef:
+                name: xplane-harbor-access-key
+                key: password
+```
+
+- [ ] **Step 4: Point the `aws-0` tooling overlay at the new path**
+
+In `tooling/aws-0/kustomization.yaml`, change `- ../base/harbor` to `- ./harbor`. Leave every other line, including the commented-out entries, untouched.
+
+- [ ] **Step 5: Create the `gcp-0` overlay**
+
+`tooling/gcp-0/kustomization.yaml`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ./harbor
+```
+
+`tooling/gcp-0/harbor/gcs-bucket.yaml`:
+
+```yaml
+apiVersion: storage.gcp.m.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: harbor
+  namespace: tooling
+  annotations:
+    crossplane.io/external-name: ${region}-ogenki-harbor
+spec:
+  forProvider:
+    location: ${region}
+    uniformBucketLevelAccess: true
+    forceDestroy: false
+```
+
+`tooling/gcp-0/harbor/workloadidentity.yaml`:
+
+```yaml
+# Harbor's Google identity. Bucket-scoped, never project-scoped: a
+# roles/storage.* grant at project level would also reach OpenBao's snapshot
+# bucket and CNPG's backup bucket.
+#
+# No annotation on the ServiceAccount -- GKE Workload Identity binds by SUBJECT,
+# and the composition builds the principal:// string. Do not rebuild it here:
+# projects/ takes the project NUMBER while workloadIdentityPools/ takes the
+# project ID, and reversing them yields a binding the API accepts and which
+# silently never matches (see opentofu/gcp/gke/init/iam.tf).
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: GCPWorkloadIdentity
+metadata:
+  name: xplane-harbor
+  namespace: tooling
+spec:
+  serviceAccount:
+    name: harbor
+  bucketRoles:
+    - bucket: ${region}-ogenki-harbor
+      role: roles/storage.objectAdmin
+```
+
+`tooling/gcp-0/harbor/storage-gcs.yaml`:
+
+```yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: harbor
+spec:
+  values:
+    persistence:
+      imageChartStorage:
+        # Native gcs driver with Workload Identity -- no key material. ADR-0020
+        # records why this differs from the s3 driver used on aws-0.
+        type: gcs
+        gcs:
+          bucket: ${region}-ogenki-harbor
+          useWorkloadIdentity: true
+```
+
+`tooling/gcp-0/harbor/kustomization.yaml`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tooling
+
+resources:
+  - ../../base/harbor
+  - gcs-bucket.yaml
+  - workloadidentity.yaml
+
+patches:
+  - path: storage-gcs.yaml
+    target:
+      kind: HelmRelease
+      name: harbor
+```
+
+- [ ] **Step 6: Prove `aws-0` renders byte-identical**
+
+This is the step that matters. Capture the bundle before and after is not possible in one pass, so diff against `origin/main`:
+
+```bash
+./scripts/validate-manifests.sh
+git stash list   # must be untouched; never stash in this repo
+```
+
+Then confirm the rendered Harbor HelmRelease still carries the S3 block and the two env vars:
+
+```bash
+grep -A8 'imageChartStorage' .bundle/*harbor* | head -30
+grep -c 'REGISTRY_STORAGE_S3_ACCESSKEY' .bundle/*harbor*
+```
+
+Expected: `type: s3`, `bucket: eu-west-3-ogenki-harbor`, and exactly one `REGISTRY_STORAGE_S3_ACCESSKEY`. If the rendered AWS output differs in any way other than resource ordering, stop — the split is wrong.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add -A tooling/
+git commit -m "feat(gcp): Harbor storage splits per cloud -- s3 on aws-0, gcs on gcp-0"
+```
+
+---
+
+### Task 3: The snapshot script learns a second cloud
+
+**Files:**
+- Modify: `scripts/openbao-snapshot.sh` (four `aws` call sites: lines ~116, ~183, ~197, ~204)
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: the `CLOUD` contract (`aws` | `gcp`) that Tasks 4 and 5 set.
+
+- [ ] **Step 1: Add the cloud switch near the top of the script**
+
+After the existing variable defaults, before the first function:
+
+```bash
+# Which cloud's CLIs to use. Set by the CronJob; defaults to aws so an operator
+# running this by hand against aws-0 needs no new environment.
+CLOUD="${CLOUD:-aws}"
+case "${CLOUD}" in
+    aws|gcp) ;;
+    *) echo "${err}: CLOUD must be 'aws' or 'gcp', got '${CLOUD}'." ; exit 1 ;;
+esac
+```
+
+- [ ] **Step 2: Branch the recovery-keys lookup**
+
+Replace the single `aws secretsmanager` line in `generate_root_token()`. The error message above it names AWS explicitly and must stop doing so:
+
+```bash
+    if [ -z "${RECOVERY_KEYS_SECRET_ID:-}" ]; then
+        echo "${err}: RECOVERY_KEYS_SECRET_ID must be set to run a restore."
+        echo "${err}: It names the secret holding the OpenBao recovery keys --"
+        echo "${err}: an AWS Secrets Manager entry, or a GCP Secret Manager secret."
+        exit 1
+    fi
+
+    if [ "${CLOUD}" = "gcp" ]; then
+        RECOVERY_SECRET=$(gcloud secrets versions access latest --secret="${RECOVERY_KEYS_SECRET_ID}")
+    else
+        RECOVERY_SECRET=$(aws secretsmanager get-secret-value --secret-id "${RECOVERY_KEYS_SECRET_ID}" | jq -r '.SecretString')
+    fi
+```
+
+Note the asymmetry: the AWS call returns a JSON envelope needing `jq -r '.SecretString'`; `gcloud secrets versions access` returns the payload directly. Both leave `RECOVERY_SECRET` holding the same JSON document, which the following `jq -r '.threshold // 1'` then reads.
+
+- [ ] **Step 3: Branch the save**
+
+```bash
+    if [ "${CLOUD}" = "gcp" ]; then
+        gcloud storage cp "${SNAPSHOT_FILE}" "gs://${BUCKET_NAME}/$(date -u +"%Y-%m-%dT%H%M%SZ").snap"
+    else
+        aws s3 cp "${SNAPSHOT_FILE}" "s3://${BUCKET_NAME}/$(date -u +"%Y-%m-%dT%H%M%SZ").snap"
+    fi
+```
+
+Keep the existing comment about the colon-free sortable UTC format above it — it explains the filename and still applies to both clouds.
+
+- [ ] **Step 4: Branch the restore lookup, and record why the two sorts differ**
+
+```bash
+    if [ "${CLOUD}" = "gcp" ]; then
+        # Lexicographic is chronological here, and only here. The AWS bucket
+        # still holds objects in the old "%Y-%m-%d_%H:%M:%S_%Z" format, where
+        # '_' sorts after 'T' so every legacy key ranks above every new one --
+        # hence the LastModified sort below. The GCP bucket was created after
+        # the format change and has only ever held the sortable form.
+        SNAP=$(gcloud storage ls "gs://${BUCKET_NAME}/" | sed 's#.*/##' | grep '\.snap$' | sort | tail -n1)
+    else
+        SNAP=$(aws s3api list-objects-v2 --bucket "${BUCKET_NAME}" \
+            --query 'sort_by(Contents, &LastModified)[-1].Key' --output text)
+    fi
+```
+
+Leave the existing `if [ -z "${SNAP}" ] || [ "${SNAP}" = "None" ]` guard as-is — `gcloud storage ls` yields an empty string on an empty bucket, which the first test already catches.
+
+- [ ] **Step 5: Branch the restore download**
+
+```bash
+    if [ "${CLOUD}" = "gcp" ]; then
+        gcloud storage cp "gs://${BUCKET_NAME}/${SNAP}" /tmp/bao.snap
+    else
+        aws s3 cp "s3://${BUCKET_NAME}/${SNAP}" /tmp/bao.snap
+    fi
+```
+
+- [ ] **Step 6: Update the two user-facing strings that say S3**
+
+`restore()` prints `Restoring OpenBao from S3...` and `Fetching latest backup from S3 bucket`. Make both cloud-neutral: `Restoring OpenBao from object storage...` and `Fetching latest backup from bucket ${BUCKET_NAME}`.
+
+- [ ] **Step 7: Verify the script still parses and the AWS path is unchanged**
+
+```bash
+bash -n scripts/openbao-snapshot.sh && echo "syntax ok"
+CLOUD=bogus bash scripts/openbao-snapshot.sh save 2>&1 | head -2
+```
+
+Expected: `syntax ok`, then the `CLOUD must be 'aws' or 'gcp'` error and exit 1. Also confirm `check_required_bin` — if it hardcodes a list of binaries, `gcloud` must be required only when `CLOUD=gcp`, and `aws` only when `CLOUD=aws`. Read that function before assuming.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add scripts/openbao-snapshot.sh
+git commit -m "feat(gcp): openbao-snapshot script branches on CLOUD for storage and secrets"
+```
+
+---
+
+### Task 4: The snapshot image moves in-repo
+
+**Files:**
+- Create: `container-images/openbao-snapshot/{Dockerfile,build.sh,README.md}`
+- Move: `scripts/openbao-snapshot.sh` → `container-images/openbao-snapshot/openbao-snapshot.sh`
+- Create: `scripts/openbao-snapshot.sh` as a relative symlink to the moved file
+
+**Interfaces:**
+- Consumes: Task 3's script.
+- Produces: `ghcr.io/smana/openbao-snapshot:<tag>`, which Task 5's CronJob references.
+
+> **Corrected during execution — the original plan was wrong here.** It said to copy the script from
+> `scripts/` and to "check how `pev2/build.sh` sets its context and follow it". Two facts checked
+> afterwards make that impossible:
+>
+> 1. **CI's build context is the image directory, not the repo root.** The matrix builds it as
+>    `"context": ("container-images/" + .)` in `.github/workflows/build-container-images.yml`. A
+>    `COPY scripts/openbao-snapshot.sh` would work locally with a repo-root context and fail in CI,
+>    because the file is outside the context.
+> 2. **The workflow only triggers on `container-images/**`.** A change to `scripts/openbao-snapshot.sh`
+>    would never rebuild the image. It would silently go stale — the same shape as the failure this
+>    workflow already carries a scar for, where a green run published nothing.
+>
+> So the script's canonical home must be inside the image directory. But it is also a documented
+> operator command — `website/content/docs/platform/security/openbao.md:218` runs
+> `./scripts/openbao-snapshot.sh restore -a "${VAULT_ADDR}"`, and it is listed in
+> `website/content/docs/reference/commands.md:111`. A relative symlink at the old path keeps that
+> working, keeps one source of truth, and needs no CI change at all. Docker never sees the symlink:
+> the real file is inside the build context; the symlink points inward from outside it.
+
+- [ ] **Step 1: Read the precedent before writing anything**
+
+```bash
+cat container-images/pev2/Dockerfile container-images/pev2/build.sh container-images/README.md
+```
+
+Match its conventions — base image choice, label scheme, how `build.sh` derives a tag. Do not invent a different shape.
+
+- [ ] **Step 2: Write the Dockerfile**
+
+First move the script and leave a symlink behind:
+
+```bash
+git mv scripts/openbao-snapshot.sh container-images/openbao-snapshot/openbao-snapshot.sh
+ln -s ../container-images/openbao-snapshot/openbao-snapshot.sh scripts/openbao-snapshot.sh
+git add scripts/openbao-snapshot.sh
+```
+
+Verify the symlink resolves before going further — `bash scripts/openbao-snapshot.sh` must still print
+its usage, and pre-commit's broken-symlink hook must pass.
+
+The Dockerfile must provide `bao`, `jq`, `aws` and `gcloud`, and `COPY openbao-snapshot.sh` (a plain
+relative path now that the file is in the context). Run as a non-root user with a read-only root
+filesystem, per the platform constitution.
+
+**The image builds for `linux/amd64` AND `linux/arm64`** — the workflow sets both. This is the part
+most likely to bite: the AWS CLI v2 ships no musl build, so `pip install awscli` or an Alpine base
+will fail or silently give you v1 on one architecture. Choose a base and an install method that
+genuinely produce both architectures, and **state in your report which base you chose and why**. If
+you cannot make both work, say so and stop rather than quietly building amd64 only — a
+single-architecture image is exactly the kind of thing that passes here and fails on a node you did
+not test.
+
+- [ ] **Step 3: Write build.sh and README.md**
+
+`README.md` states what the image is for, that it is consumed by `security/base/openbao-snapshot/snapshot-cronjob.yaml`, and that `CLOUD` selects the cloud.
+
+- [ ] **Step 4: Build locally and verify both CLIs are present**
+
+```bash
+./container-images/openbao-snapshot/build.sh
+docker run --rm --entrypoint sh <image>:<tag> -c 'aws --version; gcloud --version | head -1; bao version; jq --version'
+```
+
+All four must report a version.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add container-images/openbao-snapshot
+git commit -m "feat(gcp): build the openbao-snapshot image in-repo with both cloud CLIs"
+```
+
+---
+
+### Task 5: The snapshot workload splits per cloud
+
+**Files:**
+- Modify: `security/base/openbao-snapshot/snapshot-cronjob.yaml` (image, `CLOUD` env)
+- Modify: `security/base/openbao-snapshot/kustomization.yaml` if the bucket name is defined there
+- Create: `security/gcp-0/openbao-snapshot/{kustomization.yaml,gcs-bucket.yaml,workloadidentity.yaml}`
+- Modify: `security/gcp-0/kustomization.yaml`
+
+**Interfaces:**
+- Consumes: Task 3's `CLOUD` contract, Task 4's image reference.
+- Produces: the `gcp-0` snapshot workload that Task 7 deploys and verifies.
+
+- [ ] **Step 1: Point the base CronJob at the new image and default `CLOUD`**
+
+Replace `image: smana/openbao-snapshot:v0.1.0` with the `ghcr.io/smana/openbao-snapshot` reference and the tag Task 4 published. Add to the container's `env`:
+
+```yaml
+                - name: CLOUD
+                  value: "${cloud}"
+```
+
+If no `cloud` substitution variable exists in either cluster's ConfigMap, do **not** invent one here — instead set `value: "aws"` in the base and patch it to `"gcp"` from the `gcp-0` overlay. Check first:
+
+```bash
+grep -n 'cloud' opentofu/aws/eks/configure/kubernetes.tf opentofu/gcp/gke/configure/kubernetes.tf
+```
+
+- [ ] **Step 2: Confirm the image actually exists in the registry**
+
+```bash
+gh api /users/smana/packages/container/openbao-snapshot/versions --jq '.[].metadata.container.tags[]' | head
+```
+
+`.github/workflows/build-container-images.yml` once emptied its build matrix through a `changed-files` JSON-escaping bug and **still reported success**, which is how `ghcr.io/smana/app-wizard` went unpublished despite green runs. A green workflow is not evidence the image exists. If it is missing, fix the build before wiring the CronJob to it.
+
+- [ ] **Step 3: Create the `gcp-0` overlay**
+
+`security/gcp-0/openbao-snapshot/gcs-bucket.yaml` mirrors Task 2's bucket with `crossplane.io/external-name: ${region}-ogenki-openbao-snapshot`.
+
+`security/gcp-0/openbao-snapshot/workloadidentity.yaml`:
+
+```yaml
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: GCPWorkloadIdentity
+metadata:
+  name: xplane-openbao-snapshot
+  namespace: security
+spec:
+  serviceAccount:
+    name: openbao-snapshot
+  bucketRoles:
+    - bucket: ${region}-ogenki-openbao-snapshot
+      role: roles/storage.objectAdmin
+```
+
+The AWS EPI also grants KMS usage. On GCP the bucket is encrypted with Google-managed keys by default, so no KMS grant is needed unless the bucket declares a CMEK — it does not. Say so in a comment rather than leaving the asymmetry unexplained.
+
+`security/gcp-0/openbao-snapshot/kustomization.yaml` pulls `../../base/openbao-snapshot` plus the two new files, and patches `CLOUD` to `"gcp"` if Step 1 took that route.
+
+- [ ] **Step 4: Wire it into `security/gcp-0/kustomization.yaml`**
+
+Add `- ./openbao-snapshot` alongside the existing entries.
+
+- [ ] **Step 5: Validate**
+
+```bash
+./scripts/validate-manifests.sh
+python3 scripts/flux-schema/check-substitution.py
+```
+
+Both must exit 0, with `Invalid: 0, Skipped: 0`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A security/
+git commit -m "feat(gcp): openbao-snapshot runs on gcp-0 with a bucket-scoped Google identity"
+```
+
+---
+
+### Task 6: Documentation catches up, including the stale roadmap
+
+**Files:**
+- Modify: `docs/superpowers/specs/2026-08-18-gcp-support-design.md` (the workstream table)
+- Modify: `website/content/docs/` pages describing Harbor storage or OpenBao snapshots, if any name S3 unconditionally
+
+**Interfaces:**
+- Consumes: everything above.
+- Produces: nothing.
+
+- [ ] **Step 1: Mark workstream 9, and fix the rows that are already wrong**
+
+The Status column is stale: 11, 12 and 13 are done or in flight and show nothing. This is the live index workstreams 14 and 15 read.
+
+```bash
+sed -n '210,222p' docs/superpowers/specs/2026-08-18-gcp-support-design.md
+git log --oneline origin/main | grep -iE 'workstream 1[123]|#18(2[5-9]|3[0-9]|41)' | head
+```
+
+Set 9 to this workstream's state, and give 11, 12 and 13 statuses that match what actually merged — verify each against `git log` rather than memory.
+
+- [ ] **Step 2: Find any doc page that claims object storage is S3**
+
+```bash
+grep -rln 'S3\|s3://' website/content/docs/ | head
+./scripts/validate-doc-claims.sh
+```
+
+Fix only pages whose claim is now false. A page describing `aws-0` specifically is still correct.
+
+- [ ] **Step 3: Run every documentation gate**
+
+```bash
+./scripts/validate-links.sh
+./scripts/validate-doc-claims.sh
+./scripts/verify-doc-paths.sh
+```
+
+All three exit 0.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A docs/ website/
+git commit -m "docs(gcp): record workstream 9 and correct three stale roadmap statuses"
+```
+
+---
+
+### Task 7: Deploy `gcp-0` and prove the snapshot path, then tear it down
+
+**Files:** none — this task produces evidence.
+
+**Interfaces:**
+- Consumes: Tasks 1–6.
+- Produces: `docs/superpowers/specs/2026-08-26-gcp-object-storage-verification.md`.
+
+> **This task deploys billable infrastructure.** Nothing may be left running. The teardown step is not optional and is not "cleanup at the end" — it is part of the task.
+
+- [ ] **Step 1: Deploy the GCP stack on this branch**
+
+```bash
+TM_GCP_ENABLED=true TF_VAR_flux_git_ref=refs/heads/worktree-gcp-object-storage \
+  terramate -C opentofu/gcp/gke/init script run deploy
+```
+
+Then OpenBao, which workstream 11 already built:
+
+```bash
+TM_GCP_ENABLED=true terramate -C opentofu/gcp/openbao/cluster script run deploy
+TM_GCP_ENABLED=true terramate -C opentofu/gcp/openbao/management script run deploy
+```
+
+- [ ] **Step 2: Wait for Flux and confirm the identity bound**
+
+```bash
+flux get kustomizations
+kubectl get gcpworkloadidentity -A
+kubectl get buckets.storage.gcp.m.upbound.io -A
+```
+
+`GCPWorkloadIdentity` must be `SYNCED=True READY=True`. A binding that renders but never matches is the documented `principal://` failure — if READY is true but the snapshot later gets a 403, that is the trap, and the fix is in the composition, not the claim.
+
+- [ ] **Step 3: Trigger a snapshot and prove the object landed**
+
+```bash
+kubectl create job -n security --from=cronjob/openbao-snapshot snapshot-verify
+kubectl logs -n security job/snapshot-verify
+gcloud storage ls "gs://europe-west4-ogenki-openbao-snapshot/"
+```
+
+Expected: one `.snap` object with a current UTC timestamp. Record its exact name and size — that object is the evidence.
+
+- [ ] **Step 4: Prove the restore path selects it**
+
+Run the restore's selection logic without restoring:
+
+```bash
+kubectl exec -n security job/snapshot-verify -- sh -c \
+  'gcloud storage ls "gs://${BUCKET_NAME}/" | sed "s#.*/##" | grep "\.snap$" | sort | tail -n1'
+```
+
+It must name the object from Step 3.
+
+- [ ] **Step 5: Write the verification document**
+
+`docs/superpowers/specs/2026-08-26-gcp-object-storage-verification.md`. State plainly which criteria were proven on live infrastructure and which were not. Harbor-on-GCS and CNPG-on-GCS have no `gcp-0` consumer and **cannot** be marked PASS — mark them `NOT CHECKABLE BY THE AVAILABLE METHOD` and say why. Paste real command output, not summaries.
+
+- [ ] **Step 6: Destroy everything, and verify against the APIs**
+
+```bash
+TM_GCP_ENABLED=true TM_DESTROY_CONFIRMED=true terramate -C opentofu/gcp script run --reverse destroy
+```
+
+Then confirm against the provider, not against the tool's exit code:
+
+```bash
+gcloud container clusters list
+gcloud compute instances list
+gcloud compute forwarding-rules list
+gcloud storage buckets list --filter='name~ogenki'
+```
+
+Clusters, instances and forwarding rules must be empty. Buckets holding real data are expected to survive — confirm which remain and that their contents are intact, the way the S3 buckets were checked in workstream 8.
+
+- [ ] **Step 7: Commit the verification**
+
+```bash
+git add docs/superpowers/specs/2026-08-26-gcp-object-storage-verification.md
+git commit -m "docs: verification for object-storage call sites on GCP"
+```
+
+---
+
+### Task 8: The CNPG backups bucket leaves the shared base
+
+> Added during execution. Task 1 templated the *consumer* (`bucketName` in five claims) but left the
+> *producer* — the bucket itself — as an AWS-only managed resource inside a `base/` directory that is
+> supposed to be cloud-neutral. Surfaced by Task 1's reviewer, which found the file while checking for
+> a missed sixth occurrence.
+
+**Files:**
+- Move: `infrastructure/base/cloudnative-pg/s3-bucket.yaml` → `infrastructure/aws-0/cloudnative-pg/s3-bucket.yaml`
+- Modify: `infrastructure/base/cloudnative-pg/kustomization.yaml` (drop `s3-bucket.yaml`)
+- Create: `infrastructure/aws-0/cloudnative-pg/kustomization.yaml`
+- Modify: `infrastructure/aws-0/kustomization.yaml` (`../base/cloudnative-pg` → `./cloudnative-pg`)
+
+**Interfaces:**
+- Consumes: Task 1's templated `bucketName`, and the overlay pattern Task 2 establishes for Harbor.
+- Produces: a genuinely cloud-neutral `infrastructure/base/cloudnative-pg/`.
+
+**Scope limit — do NOT create a GCS bucket in this task.** CloudNativePG is not deployed on `gcp-0`
+at all: nothing references `infrastructure/base/cloudnative-pg` outside `infrastructure/aws-0/`. A
+GCS bucket here would be an unused billable resource created for a consumer that does not exist. The
+GCP bucket lands with the workstream that brings CNPG to `gcp-0`. This task only stops a shared base
+from carrying a cloud-specific resource.
+
+- [ ] **Step 1: Confirm the current wiring before moving anything**
+
+```bash
+grep -rn 'cloudnative-pg' --include=kustomization.yaml infrastructure/
+head -12 infrastructure/base/cloudnative-pg/s3-bucket.yaml
+```
+
+Expected: only `infrastructure/aws-0/kustomization.yaml` references it, and the file is an
+`s3.aws.m.upbound.io/v1beta1` Bucket. If anything under `gcp-0` references it, STOP — that is a live
+bug, not a latent one, and it changes this task.
+
+- [ ] **Step 2: Move the file, preserving its comment block**
+
+```bash
+mkdir -p infrastructure/aws-0/cloudnative-pg
+git mv infrastructure/base/cloudnative-pg/s3-bucket.yaml infrastructure/aws-0/cloudnative-pg/s3-bucket.yaml
+```
+
+The file opens with a comment explaining why `managementPolicies` omits `Delete` — postgres backups
+outlive any individual cluster, and a delete attempt hangs the namespace teardown on a finalizer.
+That comment must travel with the file unchanged.
+
+- [ ] **Step 3: Drop it from the base kustomization, and create the overlay**
+
+`infrastructure/aws-0/cloudnative-pg/kustomization.yaml`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base/cloudnative-pg
+  - s3-bucket.yaml
+```
+
+Then change `- ../base/cloudnative-pg` to `- ./cloudnative-pg` in `infrastructure/aws-0/kustomization.yaml`.
+Leave the adjacent `../base/cloudnative-pg-barman-plugin` line alone — the plugin is cloud-neutral.
+
+- [ ] **Step 4: Add a pointer comment in the base kustomization**
+
+So the next reader knows where the bucket went and why:
+
+```yaml
+# The cnpg-backups bucket is NOT here: it is a cloud-specific managed resource
+# and lives in the per-cloud overlay (infrastructure/aws-0/cloudnative-pg/).
+# CloudNativePG is not deployed on gcp-0 yet; its GCS bucket lands with the
+# workstream that brings it there.
+```
+
+- [ ] **Step 5: Prove `aws-0` still renders the bucket**
+
+```bash
+./scripts/validate-manifests.sh
+grep -rn 'kind: Bucket' .bundle/ | grep -c cnpg
+```
+
+Expected: `Invalid: 0, Skipped: 0`, and the `cnpg-backups` Bucket still present exactly once in the
+rendered bundle. A move that silently drops it from `aws-0` is the failure mode here.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A infrastructure/
+git commit -m "refactor(storage): move the CNPG backups bucket out of the shared base"
+```
+
+---
+
+### Task 9: Harbor's buckets get the same delete protection every other stateful bucket has
+
+> Added during execution, from Task 2's review. Neither Harbor bucket sets `managementPolicies`,
+> while `infrastructure/base/cloudnative-pg/s3-bucket.yaml`, `security/base/openbao-snapshot/s3-bucket.yaml`
+> and `apps/base/ai/llm/s3-bucket.yaml` all set `["Observe", "Create", "Update", "LateInitialize"]`.
+> This is pre-existing on the AWS side, not a regression from Task 2 — the byte-identical constraint
+> is exactly why the implementer was right not to add it unilaterally.
+
+**Files:**
+- Modify: `tooling/aws-0/harbor/s3-bucket.yaml`
+- Modify: `tooling/gcp-0/harbor/gcs-bucket.yaml`
+
+**Interfaces:**
+- Consumes: Task 2's overlay layout.
+- Produces: nothing.
+
+**This task deliberately changes `aws-0`'s rendered output, overriding this plan's first Global
+Constraint.** The reasoning, which belongs in the commit message:
+
+- That constraint exists to catch *accidental behavioural regressions* on a live cluster, not to
+  forbid a deliberate safety fix to a file this workstream is already restructuring.
+- `managementPolicies` without `Delete` does not change what the bucket is or how anything reads it.
+  It changes only what Crossplane attempts on prune. It cannot lose data; it prevents an attempt.
+- This repo has already been bitten by the omission. The comment atop the CNPG bucket records it:
+  Crossplane keeps retrying `s3:DeleteBucket`, AWS denies it (the platform grants no deletion
+  permission for stateful services), and the managed resource's finalizer hangs the parent
+  namespace's teardown.
+- Harbor's registry bucket holds image layers, which are among the most expensive data in the
+  platform to reconstruct.
+
+- [ ] **Step 1: Read one of the three existing examples first**
+
+```bash
+sed -n '1,20p' infrastructure/base/cloudnative-pg/s3-bucket.yaml
+```
+
+Match its shape and the spirit of its comment. Do not invent a different field order or a different
+policy list.
+
+- [ ] **Step 2: Add the policy to the AWS bucket**
+
+In `tooling/aws-0/harbor/s3-bucket.yaml`, above `forProvider:`:
+
+```yaml
+  # Registry image layers are expensive to reconstruct and outlive any single
+  # cluster, so Crossplane must never attempt to remove the bucket. Without
+  # this it retries s3:DeleteBucket on prune, AWS denies it (no deletion
+  # permission for stateful services), and the MR finalizer hangs the
+  # namespace teardown. To remove intentionally, use the aws CLI.
+  # (Crossplane v2 namespaced MRs do not expose spec.deletionPolicy;
+  # managementPolicies is the v2 mechanism.)
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+```
+
+- [ ] **Step 3: Add the equivalent to the GCS bucket**
+
+Same list in `tooling/gcp-0/harbor/gcs-bucket.yaml`. Its comment should note that `forceDestroy: false`
+already refuses to delete a non-empty bucket, so the realistic failure this prevents on GCP is the
+same finalizer wedge rather than data loss.
+
+- [ ] **Step 4: Validate, and state the aws-0 delta plainly**
+
+```bash
+./scripts/validate-manifests.sh
+grep -rn -A3 'kind: Bucket' .bundle/overlay-tooling-aws-0.yaml | grep -i managementpolicies
+```
+
+`Invalid: 0, Skipped: 0`. The rendered `aws-0` Bucket now carries `managementPolicies` — that is the
+intended, and only, `aws-0` change in this task. Confirm nothing else moved.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tooling/aws-0/harbor/s3-bucket.yaml tooling/gcp-0/harbor/gcs-bucket.yaml
+git commit -m "fix(storage): stop Crossplane attempting to delete Harbor's buckets"
+```
+
+---
+
+### Task 10: Make the Renovate annotations actually do something
+
+> Added during execution. Task 4 pinned three tool versions and annotated one of them. Checking
+> whether that annotation works revealed it does not — and that a pre-existing one does not either.
+
+**Files:**
+- Modify: `.github/renovate.json`
+- Modify: `container-images/openbao-snapshot/Dockerfile`
+
+**Interfaces:**
+- Consumes: Task 4's Dockerfile.
+- Produces: nothing.
+
+**The problem.** `.github/renovate.json`'s single `customManagers` entry applies to exactly two paths:
+
+```
+"/^opentofu/aws/openbao/cluster/variables\\.tf$/",
+"/^opentofu/aws/openbao/cluster/scripts/startup_script\\.sh$/"
+```
+
+Two `# renovate:` comments in this repo sit outside that list and are therefore **inert** — they
+look maintained and are not:
+
+1. `container-images/openbao-snapshot/Dockerfile:7` (`ARG BAO_VERSION`), added by Task 4. Its path is
+   not listed **and** the existing `matchStrings` expects `default = "` or `NODE_EXPORTER_VERSION=`
+   on the following line, so `ARG BAO_VERSION=` would not match even if the path were added.
+2. `opentofu/gcp/openbao/cluster/variables.tf:69`, pre-existing — copied from the AWS stack during
+   workstream 11 without adding the new path. Its `default = "2.6.2"` **would** match the existing
+   pattern; only the path is missing.
+
+This matters because the config's own description records the failure it is meant to prevent:
+*"node_exporter had been pinned to a July 2024 release since it was written."* An inert annotation
+reproduces exactly that, while looking like it cannot happen.
+
+- [ ] **Step 1: Add the missing GCP path to the existing entry**
+
+Add `"/^opentofu/gcp/openbao/cluster/variables\\.tf$/"` to that entry's `managerFilePatterns`, and
+extend its `description` to say the GCP stack is covered too. One line; the matchString already fits.
+
+- [ ] **Step 2: Add a second `customManagers` entry for container-image Dockerfiles**
+
+A separate entry, because the line shape differs (`ARG NAME=1.2.3`, not `default = "1.2.3"`). Give it
+a `description` explaining that pinned tool versions in `container-images/**` are otherwise bumped by
+hand, and a `managerFilePatterns` of `"/^container-images/.+/Dockerfile$/"` so future images are
+covered without another config change. The `matchStrings` must pair a `# renovate:` comment line with
+the `ARG <NAME>=<semver>` on the line below it.
+
+- [ ] **Step 3: Annotate `AWSCLI_VERSION`**
+
+AWS CLI v2 releases are GitHub releases on `aws/aws-cli` with plain `2.36.31`-style tags:
+
+```dockerfile
+# renovate: datasource=github-releases depName=aws/aws-cli
+ARG AWSCLI_VERSION=2.36.31
+```
+
+- [ ] **Step 4: Say why `GCLOUD_VERSION` has no annotation**
+
+It is an apt package version from Google's own repository (`582.0.0-0`), not a GitHub release, and
+Renovate has no datasource for it. Leave it unannotated and add a comment saying so explicitly, so
+the asymmetry reads as a decision rather than an oversight. An unexplained gap invites someone to
+"fix" it with a datasource that silently matches nothing — which is the very bug this task exists to
+remove.
+
+- [ ] **Step 5: Verify the regex against the real lines**
+
+Renovate is not run here, so verify the pattern the way it will be applied — extract the
+`matchStrings` regex and test it against the actual file content:
+
+```bash
+python3 - <<'PY'
+import json, re, pathlib
+cfg = json.load(open('.github/renovate.json'))
+for m in cfg['customManagers']:
+    for pat in m['matchStrings']:
+        rx = re.compile(pat, re.M)
+        for f in ['container-images/openbao-snapshot/Dockerfile',
+                  'opentofu/gcp/openbao/cluster/variables.tf',
+                  'opentofu/aws/openbao/cluster/variables.tf']:
+            p = pathlib.Path(f)
+            if not p.exists():
+                continue
+            for mt in rx.finditer(p.read_text()):
+                print(f, '->', mt.groupdict())
+PY
+```
+
+Every annotated version in all three files must appear in the output with the right `datasource`,
+`depName` and `currentValue`. **An annotation that produces no match is the bug this task fixes — do
+not leave one behind.** Note this checks the regex, not Renovate's file-pattern matching; state that
+limitation in your report rather than claiming more than the test shows.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add .github/renovate.json container-images/openbao-snapshot/Dockerfile
+git commit -m "fix(ci): make the Renovate version annotations actually match"
+```
+
+---
+
+### Task 11: Verify what the image downloads, and stop the Renovate regex from repeating itself
+
+> Added during execution, from the Task 4 + 10 review.
+
+**Files:**
+- Modify: `container-images/openbao-snapshot/Dockerfile`
+- Modify: `.github/renovate.json`
+
+**Interfaces:**
+- Consumes: Tasks 4 and 10.
+- Produces: the image content that gets published by hand for Task 7's verification.
+
+#### Finding A — the Renovate regex excludes `v`-prefixed versions
+
+Task 10's new `customManagers` entry captures `currentValue` as `[0-9]+\.[0-9]+\.[0-9]+`, with no
+optional `v`. But `container-images/pev2/Dockerfile:3` already pins `ARG PEV2_VERSION=v1.17.0`. The
+moment anyone adds a `# renovate:` comment above that line — the natural next use of this manager —
+it matches nothing, silently. That is precisely the defect Task 10 was written to remove, latent one
+directory away.
+
+- [ ] **Step 1: Widen the capture**
+
+Change that entry's `matchStrings` so the `ARG` value tolerates an optional `v` prefix outside the
+capture group: `ARG\s+[A-Z0-9_]+=v?(?<currentValue>[0-9]+\.[0-9]+\.[0-9]+)`. The entry already sets
+`versioningTemplate: semver`, which handles a `v`-prefixed upstream tag.
+
+- [ ] **Step 2: Prove it against the real file**
+
+Re-run the Step 5 snippet from Task 10, adding `container-images/pev2/Dockerfile` to the file list and
+temporarily adding a `# renovate:` comment above its `ARG PEV2_VERSION` line to confirm the widened
+pattern captures `1.17.0` from `v1.17.0`. **Revert that temporary comment** — annotating `pev2` is not
+this task's job. Report the captured value you saw.
+
+#### Finding B — two of three downloads have no integrity check
+
+`bao` and the AWS CLI are fetched over HTTPS and executed with no signature or checksum verification.
+The gcloud install is fine: its apt key is installed scoped with `signed-by=`, so apt verifies every
+package signature thereafter.
+
+This matters more here than for a typical image. This one is injected `APPROLE_ROLE_ID` /
+`APPROLE_SECRET_ID` on every run, and on `restore` reads the secret that reconstructs an OpenBao
+**root token**. A tampered `aws` or `bao` binary runs with exactly the credentials needed to exfiltrate
+those. TLS-only integrity is thin for that blast radius.
+
+- [ ] **Step 3: Verify the `bao` tarball against OpenBao's published checksums**
+
+OpenBao publishes a `SHA256SUMS` asset per release. Fetch it alongside the tarball and check the
+tarball against it before extracting. Fail the build on mismatch — `sha256sum` returns non-zero and
+the `RUN` is already `set -eux`, so do not swallow it.
+
+- [ ] **Step 4: Verify the AWS CLI zip's GPG signature**
+
+AWS publishes a detached `.sig` for each v2 build and a public key for it. Fetch the `.sig`, import the
+key, and `gpg --verify` before unzipping.
+
+**Do not guess the key or its fingerprint.** Look it up in AWS's official installation documentation,
+pin the expected fingerprint in the Dockerfile as a literal, and verify the imported key matches it
+before trusting a signature made with it — an unpinned key fetched over the same channel as the
+artifact adds ceremony without adding trust. Cite the documentation URL you took it from in a comment.
+If you cannot establish the fingerprint from an authoritative source, **stop and report** rather than
+inventing one.
+
+- [ ] **Step 5: Rebuild both architectures and re-run the runtime check**
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t openbao-snapshot:verify container-images/openbao-snapshot
+docker buildx build --load -t openbao-snapshot:local container-images/openbao-snapshot
+docker run --rm --read-only --user 1000:1001 \
+  --tmpfs /tmp --tmpfs /snapshot -e HOME=/snapshot \
+  --entrypoint sh openbao-snapshot:local \
+  -c 'bao version; jq --version; aws --version; gcloud --version | head -1'
+```
+
+All four must still report. A verification step that breaks the build on a legitimate artifact is
+worse than none — it will be deleted by the next person in a hurry.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add container-images/openbao-snapshot/Dockerfile .github/renovate.json
+git commit -m "fix(security): verify the aws and bao downloads, widen the Renovate version capture"
+```
+
+#### Explicitly out of scope
+
+**Digest-pinning the base image.** The review flagged `debian:bookworm-slim` as a floating tag, which
+is a weaker guarantee than an image in the credential path deserves — but `pev2` floats too
+(`nginx:alpine`), so this is a repo-wide pattern gap rather than a defect Task 4 introduced. Changing
+it for one image creates an inconsistency without closing the pattern. Leave it; it belongs in a
+follow-up covering every `container-images/*`.
+
+---
+
+### Task 12: The snapshot policy's CIDR, and AWS-only files out of the snapshot base
+
+> Added during execution, from Task 5's report. Part A is a **blocker for Task 7** — without it the
+> live deploy fails as a timeout, not as a clear error.
+
+**Files:**
+- Modify: `security/base/openbao-snapshot/network-policy.yaml`
+- Modify: `opentofu/aws/eks/configure/kubernetes.tf`, `opentofu/gcp/gke/configure/kubernetes.tf`
+- Modify: `scripts/flux-schema/render-bundle.py` (`FIXTURE_VARS`)
+- Move: `security/base/openbao-snapshot/{kms,s3-bucket}.yaml` → `security/aws-0/openbao-snapshot/`
+- Modify: `security/base/openbao-snapshot/kustomization.yaml`, `security/aws-0/kustomization.yaml`, `security/gcp-0/openbao-snapshot/kustomization.yaml`
+- Create: `security/aws-0/openbao-snapshot/kustomization.yaml`
+
+#### Part A — the OpenBao CIDR is hardcoded to the AWS VPC
+
+`network-policy.yaml:43` allows egress to `10.0.0.0/16` on `:8200`, described as "the OpenBao API,
+reached through the internal NLB, whose private addresses sit in the VPC CIDR". On `gcp-0` OpenBao's
+internal load balancer sits in the **node subnet** (`opentofu/gcp/openbao/cluster/load_balancer.tf`
+uses `local.subnetwork_self_link`, whose range is `var.node_cidr`), and GCP's CIDRs are required
+disjoint from the AWS VPC's. So the snapshot job on `gcp-0` cannot reach OpenBao, and the symptom is a
+**connection timeout** — the failure mode this repo's own guidance says to suspect network policy for
+first.
+
+Only one manifest hardcodes this value; `infrastructure/base/crossplane/configuration/environmentconfig.yaml`
+already uses `${vpc_cidr_block}` and is AWS-only. So a narrow, single-purpose variable is right here —
+do not invent a broad "platform CIDR" abstraction for one call site.
+
+- [ ] **Step 1: Add `openbao_cidr` to both clusters' vars ConfigMaps**
+
+In `opentofu/aws/eks/configure/kubernetes.tf`, alongside the existing keys:
+
+```hcl
+      # The CIDR holding OpenBao's internal endpoint, consumed by
+      # security/base/openbao-snapshot/network-policy.yaml. On AWS that is the
+      # whole VPC (the internal NLB's private addresses); on GCP it is the node
+      # subnet, where the internal load balancer lives. Same key, different
+      # shape per cloud -- which is exactly why the manifest cannot hardcode it.
+      openbao_cidr = data.aws_vpc.selected.cidr_block
+```
+
+In `opentofu/gcp/gke/configure/kubernetes.tf`, the same key set to the node CIDR that stack already
+has to hand (match how its neighbouring keys are sourced — do not introduce a new data source).
+
+- [ ] **Step 2: Template the policy**
+
+`network-policy.yaml:43` becomes `- ${openbao_cidr}`. Keep the surrounding comment and extend it to
+say the value differs per cloud.
+
+- [ ] **Step 3: Add the fixture entry**
+
+`FIXTURE_VARS` in `scripts/flux-schema/render-bundle.py` gains `"openbao_cidr": "10.0.0.0/16"`. Without
+it the bundle renders an empty string and the policy silently allows nothing — schema-valid, wrong.
+Note the existing `"vpc_cidr_block": "10.0.0.0/16"` entry: the fixture value must match it, so `aws-0`
+renders byte-identical.
+
+- [ ] **Step 4: Prove `aws-0` is unchanged**
+
+```bash
+./scripts/validate-manifests.sh
+grep -rn -A2 'toCIDR' .bundle/ | grep -c '10.0.0.0/16'
+```
+
+The rendered policy must still read `10.0.0.0/16`, and there must be no literal `${openbao_cidr}`
+anywhere in the bundle.
+
+#### Part B — AWS-only resources leave the shared base
+
+`security/base/openbao-snapshot/` carries `kms.yaml` and `s3-bucket.yaml`, both AWS Crossplane Kinds
+that `gcp-0` has no provider for. Task 5 worked around this by referencing base files individually
+from the `gcp-0` overlay, citing `security/gcp-0/controllers` as precedent. That works, and the
+precedent is real — but it is brittle in a specific way: add a file to the base and `gcp-0` silently
+does not get it. That silent-omission shape is the same one this workstream keeps removing.
+
+Tasks 2 and 8 both moved cloud-specific resources into per-cloud overlays. Do the same here so all
+three read alike.
+
+- [ ] **Step 5: Move the two files and re-point the overlays**
+
+```bash
+mkdir -p security/aws-0/openbao-snapshot
+git mv security/base/openbao-snapshot/kms.yaml security/aws-0/openbao-snapshot/kms.yaml
+git mv security/base/openbao-snapshot/s3-bucket.yaml security/aws-0/openbao-snapshot/s3-bucket.yaml
+```
+
+Drop both from the base `kustomization.yaml`. Create `security/aws-0/openbao-snapshot/kustomization.yaml`
+pulling `../../base/openbao-snapshot` plus the two moved files. Re-point `security/aws-0/kustomization.yaml`
+from `../base/openbao-snapshot` to `./openbao-snapshot`. Then simplify the `gcp-0` overlay to reference
+`../../base/openbao-snapshot` as a directory, replacing its four file-level entries — and replace its
+comment with one saying the base is now cloud-neutral.
+
+- [ ] **Step 6: Validate and commit**
+
+```bash
+./scripts/validate-manifests.sh
+python3 scripts/flux-schema/check-substitution.py
+```
+
+`Invalid: 0, Skipped: 0`. The `aws-0` bundle must still contain the KMS key and the S3 bucket exactly
+once each. Commit Parts A and B separately — the first is a behaviour fix, the second a refactor, and
+a reviewer should be able to reject one without the other.
+
+---
+
+### Task 13: Give GCP the snapshot AppRole and secret the CronJob needs
+
+> Added during execution, from Task 5+12's review. **This is the real blocker for Task 7** — bigger
+> than the CIDR issue Task 12 fixed, because it is not a manifest problem.
+
+**Files:**
+- Create: `opentofu/gcp/openbao/management/policies/snapshot.hcl` (or `.tftpl`, matching the sibling)
+- Modify: `opentofu/gcp/openbao/management/{auth.tf,policies.tf,secrets.tf,iam.tf}`
+- Modify: `security/base/openbao-snapshot/network-policy.yaml` (comments only)
+
+**Interfaces:**
+- Consumes: Task 5's `gcp-0` overlay and Task 12's `openbao_cidr`.
+- Produces: the Secret Manager entry `security/openbao/openbao-snapshot` that Task 7 needs to exist.
+
+**The problem.** `security/base/openbao-snapshot/external-secrets.yaml` pulls
+`security/openbao/openbao-snapshot`, expected to hold `APPROLE_ROLE_ID`, `APPROLE_SECRET_ID`,
+`VAULT_ADDR` and `BUCKET_NAME`. On GCP none of that exists:
+
+- `opentofu/gcp/openbao/management/auth.tf:1-3` states it outright — *"the snapshot role has no GCP
+  consumer because nothing backs up this PKI yet — recorded as a risk in the design rather than solved
+  here."* This workstream is what gives it a consumer, so that risk is now due.
+- `iam.tf` grants the External Secrets service account exactly two per-secret bindings
+  (`approle_cert_manager`, `ca_chain_secret_name`) — nothing for the snapshot.
+- No `google_secret_manager_secret` for it exists anywhere under `opentofu/gcp/`.
+
+Consequence: the `ExternalSecret` never syncs, the Kubernetes Secret the CronJob's `envFrom`
+references never appears, and the Pod fails to start with `CreateContainerConfigError`.
+
+The AWS analogue to mirror is `opentofu/aws/openbao/management/{auth.tf,secrets.tf}` — read both
+before writing anything.
+
+- [ ] **Step 1: Add the snapshot policy**
+
+AWS has `opentofu/aws/openbao/management/policies/snapshot.hcl`. Read it, and add the GCP equivalent
+alongside `policies/cert-manager.hcl.tftpl`, matching whichever form the sibling uses. Wire it into
+`policies.tf` as `vault_policy.snapshot` the same way `cert_manager` is wired.
+
+Note the constraint the AWS `auth.tf` comment records: `sys/storage/raft/*` is callable **only from the
+root namespace**, so this role and its policy take no `namespace` argument. A child-namespace token
+gets `404 unsupported path` regardless of what its policy grants.
+
+- [ ] **Step 2: Add the AppRole role and a generated secret_id**
+
+In `auth.tf`, mirroring `vault_approle_auth_backend_role.cert_manager` but with
+`token_policies = [vault_policy.snapshot.name]`. Then a
+`vault_approle_auth_backend_role_secret_id.snapshot`.
+
+Unlike `cert_manager`, the `role_id` here does **not** need pinning — that pinning exists only because
+cert-manager's ClusterIssuer takes `roleId` as a required literal string. The snapshot job reads both
+values from the Secret, so let them be generated.
+
+- [ ] **Step 3: Update the comment that says there is no consumer**
+
+`auth.tf:1-3` will otherwise keep asserting the snapshot role has no GCP consumer, which this task
+makes false. Rewrite it to say both roles now exist and why. **Do not delete the history** — say that
+it previously had no consumer and that workstream 9 gave it one.
+
+- [ ] **Step 4: Create the Secret Manager secret and its version**
+
+In `secrets.tf`, following the existing per-secret pattern in that file. The payload must be a JSON
+object with exactly the keys the ExternalSecret expects — `APPROLE_ROLE_ID`, `APPROLE_SECRET_ID`,
+`VAULT_ADDR`, `BUCKET_NAME` — matching `opentofu/aws/openbao/management/secrets.tf`'s
+`snapshot_approle_credentials`. Derive `BUCKET_NAME` and the address from locals rather than
+hardcoding, the way its neighbours do.
+
+**Omit `RECOVERY_KEYS_SECRET_ID`.** AWS includes it, and its comment explains why the *CronJob's* role
+cannot read it: "a daily backup pod that can read the material for regenerating a root token is a
+privilege escalation, not a convenience." On GCP the restore path has no manifest-granted identity at
+all, so including the key would imply an access path that does not exist. Add a comment recording that
+GCP's restore therefore remains an operator action needing credentials granted out of band.
+
+- [ ] **Step 5: Grant External Secrets read on exactly that secret**
+
+In `iam.tf`, a third per-secret binding beside the two existing ones. **Per-secret, never project-wide** —
+`security/gcp-0/openbao/clustersecretstore.yaml`'s comment explains that a project-scoped grant would
+hand External Secrets read of every secret in the project, including the intermediate CA's private key.
+
+- [ ] **Step 6: Correct two now-shared comments in the network policy**
+
+`security/base/openbao-snapshot/network-policy.yaml` is now used by both clouds, but two comments still
+describe only AWS:
+- the `toEntities: host` port-80 rule is commented solely as the EKS Pod Identity agent. It is also
+  what lets `gcloud` reach GKE's metadata server at `169.254.169.254`. Say so.
+- the `toEntities: world` 443 rule says "S3 and STS". It is now also what carries `gcloud storage`
+  traffic to Google APIs. Say so.
+
+Comments only — do not change either rule.
+
+- [ ] **Step 7: Validate**
+
+```bash
+tofu -chdir=opentofu/gcp/openbao/management init -backend=false
+tofu -chdir=opentofu/gcp/openbao/management validate
+tofu -chdir=opentofu/gcp/openbao/management fmt -check
+./scripts/validate-manifests.sh
+```
+
+`validate` and `fmt -check` must exit 0, and the manifest gate must still report `Invalid: 0, Skipped: 0`.
+**Do not run `tofu apply`** — Task 7 owns the deploy, and this stack talks to a live OpenBao.
+
+> When Task 7 does apply this stack, use `-parallelism=1`. Concurrent writes against OpenBao 2.6 have
+> deadlocked this repo's management applies before; the mitigation lives in that stack's workflows.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add opentofu/gcp/openbao/management security/base/openbao-snapshot/network-policy.yaml
+git commit -m "feat(gcp): snapshot AppRole and Secret Manager entry for the OpenBao backup job"
+```
+
+---
+
+### Task 14: The GCP snapshot secret needs a legal name
+
+> Added during execution, from Task 13's own flagged concern. **Blocker for Task 7** — it fails at
+> `tofu apply`, which is exactly where it costs a cluster spin-up to discover.
+
+**Files:**
+- Modify: `opentofu/gcp/openbao/management/variables.tf`
+- Modify: `security/base/openbao-snapshot/external-secrets.yaml`
+- Modify: `opentofu/aws/eks/configure/kubernetes.tf`, `opentofu/gcp/gke/configure/kubernetes.tf`
+- Modify: `scripts/flux-schema/render-bundle.py` (`FIXTURE_VARS`)
+
+**The problem.** `var.snapshot_approle_secret_name` defaults to `security/openbao/openbao-snapshot`,
+copied from AWS so it matches the shared base ExternalSecret's `dataFrom.extract.key`. GCP Secret
+Manager secret IDs may not contain `/`. `tofu validate` passes — this only fails on apply, with a 400.
+
+Task 13 flagged this rather than guessing, which was right. The evidence that it is real is in this
+repo, not just in documentation: **every existing GCP secret here uses dashes** —
+`openbao-priv-gcp-intermediate-ca`, `openbao-priv-gcp-approle-cert-manager`,
+`openbao-priv-gcp-ca-chain`. Task 13's own inline comment says as much.
+
+**The fix is a substitution variable, not a kustomize patch.** The base manifest carries one string
+that differs per cloud, which is exactly what `storage_class` (workstream 13) and `openbao_cidr`
+(Task 12) already do. That mechanism is checked by `check-substitution.py` and covered by
+`FIXTURE_VARS`; a patch reaching into `dataFrom[0].extract.key` by list index is more fragile and
+invents a second pattern for the same problem.
+
+- [ ] **Step 1: Give the GCP secret a legal, conventional name**
+
+In `opentofu/gcp/openbao/management/variables.tf`, change the default to `openbao-priv-gcp-snapshot`,
+matching its three siblings. Replace Task 13's "untested against the live API" comment with one saying
+the name is dash-separated **because** Secret Manager IDs cannot contain `/`, and that the base
+manifest reaches it through a per-cluster substitution variable. Keep the AWS default untouched.
+
+- [ ] **Step 2: Template the ExternalSecret**
+
+`security/base/openbao-snapshot/external-secrets.yaml`'s `dataFrom.extract.key` becomes
+`${openbao_snapshot_secret}`.
+
+- [ ] **Step 3: Define it on both clusters**
+
+Add the key `openbao_snapshot_secret` to both clusters' vars ConfigMaps, with these values:
+
+| Cluster stack | Value |
+|---|---|
+| `opentofu/aws/eks/configure/kubernetes.tf` | `security/openbao/openbao-snapshot` — the existing AWS entry, unchanged, so `aws-0` renders byte-identical |
+| `opentofu/gcp/gke/configure/kubernetes.tf` | `openbao-priv-gcp-snapshot` |
+
+Comment both, briefly, with the reason the values differ in *shape* and not merely in content: one is
+a path-style Secrets Manager name, the other a flat Secret Manager ID, because GCP forbids `/`.
+
+- [ ] **Step 4: Add the fixture entry**
+
+Add an entry to `FIXTURE_VARS` keyed `openbao_snapshot_secret`, carrying the same AWS value used in
+Step 3, so the rendered bundle is unchanged. Without it the key renders empty and the ExternalSecret
+silently extracts nothing — schema-valid, useless.
+
+> Note for whoever writes this: `detect-secrets`' "Secret Keyword" heuristic fires on a key containing
+> `secret` sitting next to a quoted value, so writing the literal pair in prose trips the pre-commit
+> hook even though it is only a Secret Manager *entry name*. In the actual `.py` and `.tf` files that
+> is fine — the baseline covers them. It is only prose that needs the value described rather than
+> pasted beside the key.
+
+- [ ] **Step 5: Verify**
+
+```bash
+tofu -chdir=opentofu/gcp/openbao/management fmt -check
+tofu -chdir=opentofu/gcp/openbao/management validate
+./scripts/validate-manifests.sh
+grep -rn 'extract' -A2 .bundle/overlay-security-aws-0.yaml | grep -i key
+```
+
+`Invalid: 0, Skipped: 0`; the rendered `aws-0` key must still read `security/openbao/openbao-snapshot`;
+no literal `${openbao_snapshot_secret}` anywhere in `.bundle/`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add opentofu security scripts/flux-schema/render-bundle.py
+git commit -m "fix(gcp): give the snapshot secret a Secret-Manager-legal name"
+```

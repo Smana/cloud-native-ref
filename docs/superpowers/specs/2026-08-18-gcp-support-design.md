@@ -211,12 +211,12 @@ known rather than predicted.
 |---|---|---|---|
 | 6 | Directory refactor to cloud-partitioned layout | 3, **7** | unblocked |
 | 7 | Extract the Crossplane Configuration packages, OCI-released | 3 | **DONE 2026-08-19 (v0.1.0)** |
-| 8 | `objectStore` API migration + `App`/`SQLInstance` branching | 5, 7 | unblocked by 7 |
-| 9 | Object-storage call sites: Harbor (GCS driver), `openbao-snapshot` (GCS + Cloud KMS), CNPG barman (GCS) | 5, 8 |  |
-| 10 | DNS + PKI: `external-dns` google provider, cert-manager clouddns DNS-01 (**public** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 5 |  |
-| 11 | OpenBao on GCP: MIG + internal LB + Cloud KMS auto-unseal (**private** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 1 |  |
-| 12 | Gateway/LB: GCP public-LB annotations, drop `aws-load-balancer-controller` | 3 |  |
-| 13 | Storage: `gp3` → `standard-rwo` via a `${storage_class}` var. **Filestore dropped** — see [2026-08-26-gcp-storage-class-design.md](2026-08-26-gcp-storage-class-design.md) | 3 |  |
+| 8 | `objectStore` API migration + `App`/`SQLInstance` branching | 5, 7 | **DONE — #1839, merged 2026-08-26 (04ec429e)** |
+| 9 | Object-storage call sites: Harbor (GCS driver), `openbao-snapshot` (GCS + Cloud KMS), CNPG barman (GCS) | 5, 8 | **DONE — #1844, merged 2026-08-26.** Grew from 7 planned tasks to 14 during execution: reviewers and implementers surfaced real gaps that weren't in the original plan. **The `gcp-0` snapshot CronJob ships suspended** — `gcp-0`'s OpenBao is single-node `storage "file"` by design, so `sys/storage/raft/snapshot` 404s. Everything around it is built and verified; see the verification doc. |
+| 10 | DNS + PKI: `external-dns` google provider (private zone) **plus a second `external-dns` on the `aws` provider for the public zone**, and cert-manager DNS-01 solved against **Route53, not clouddns** (**public** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) and [ADR-0019](../../../website/content/docs/decisions/0019-cross-cloud-dns-federation.md) | 5 | **DONE — #1833 + #1837, merged 2026-08-25/26 (b0e478b1, 348bc900).** The description above is corrected: this row originally said "cert-manager clouddns DNS-01", which is not what was built. `cloud.ogenki.io` is a Route53 zone, so `gcp-0` federates to AWS with a projected ServiceAccount token rather than moving the zone or delegating a subdomain. |
+| 11 | OpenBao on GCP: MIG + internal LB + Cloud KMS auto-unseal (**private** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 1 | **DONE — #1827 + #1830, merged 2026-08-25 (f10a2c29, 0b96b435)** |
+| 12 | Gateway/LB: GCP public-LB annotations, drop `aws-load-balancer-controller` | 3 | **DONE — #1833 + #1837, merged 2026-08-25/26 (b0e478b1, 348bc900)** |
+| 13 | Storage: `gp3` → `standard-rwo` via a `${storage_class}` var. **Filestore dropped** — see [2026-08-26-gcp-storage-class-design.md](2026-08-26-gcp-storage-class-design.md) | 3 | **DONE — #1841, merged 2026-08-26.** The description above is corrected twice over: the original said `pd-balanced`/hyperdisk, and an earlier draft of this workstream said `balanced-rwo` — a class GKE does not have. GKE Standard provides `standard` (pd-standard, HDD), `standard-rwo` (pd-**balanced**, SSD) and `premium-rwo` (pd-ssd). Filestore was dropped rather than ported. |
 | 14 | GPU + LLM platform: GPU `ComputeClass`, GCS Fuse weights, no `runtimeclass-nvidia` | 4, 9 |  |
 | 15 | CI: `validate-manifests.sh` renders both clouds; Renovate; per-cloud schema catalogs | 6 |  |
 
