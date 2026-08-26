@@ -261,11 +261,19 @@ needs, not where it lands.
 | `enabled` | boolean | `false` | Enable the bucket. |
 | `permissions` | enum `readwrite`\|`readonly`\|`custom` | `readwrite` | Access the workload receives on the bucket. |
 | `versioning` | boolean | `false` | Keep non-current object versions. |
-| `retentionDays` | integer 1–365 | — | Object retention in days. |
+| `retentionDays` | integer 1–365 | — | Object retention in days. **GCP only** — see below. |
 
 There is no top-level `region`: the composition reads it from the cluster's own
 EnvironmentConfig, so the same claim is portable. There is no `providerConfigRef` either — the
 composition knows its own provider.
+
+{{< callout type="warning" >}}
+**`retentionDays` currently takes effect on GCP only.** It renders a GCS lifecycle rule that
+deletes objects past that age. On AWS it is accepted and stored but does nothing — no S3
+lifecycle configuration renders yet, so the same claim's uploads never expire on `aws-0`. This
+is a known asymmetry in a field meant to be cloud-neutral, tracked for an S3 implementation;
+until then, do not rely on `retentionDays` for AWS data retention.
+{{< /callout >}}
 
 #### Cloud-specific knobs
 

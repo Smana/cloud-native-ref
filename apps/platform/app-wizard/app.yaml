@@ -179,6 +179,13 @@ spec:
     # infrastructure/base/crossplane/configuration/configuration-packages.yaml.
     # The form and the render preview would otherwise describe a different API
     # version than the cluster serves. Bump both together.
+    #
+    # This also covers wizard.yaml's compositionPath/xrdPath: they are
+    # filenames INSIDE the tag pinned here, not a separate pin, but they still
+    # go stale silently if a task renames a file in that repo (e.g. Task 3's
+    # composition.yaml -> composition-aws.yaml) without updating wizard.yaml
+    # to match. No gate catches that either -- check wizard.yaml by hand
+    # against `git ls-tree <tag> apis/<api>/` whenever this tag moves.
     - name: fetch-crossplane-configuration
       image: cgr.dev/chainguard/git:latest
       args:

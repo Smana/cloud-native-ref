@@ -1,0 +1,21 @@
+# `storage` is the family member that ships Bucket and BucketIAMMember —
+# verified by unpacking the package rather than inferred from the group name:
+#
+#   buckets.storage.gcp.m.upbound.io            (kind Bucket)
+#   bucketiammembers.storage.gcp.m.upbound.io   (kind BucketIAMMember)
+#
+# Those are the two Kinds the App Composition's objectStore block renders on
+# gcp-0. Added on evidence, same as provider-cloudplatform.yaml — this branch
+# is that evidence.
+#
+# Version tracks the AWS providers and provider-gcp-cloudplatform (v2.6.0).
+# They share the crossplane-contrib release train, so a split would mean two
+# upgrade cadences for one controller.
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-gcp-storage
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-gcp-storage:v2.6.0
+  runtimeConfigRef:
+    name: gcp-config

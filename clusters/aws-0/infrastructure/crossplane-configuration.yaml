@@ -17,3 +17,37 @@ spec:
         name: eks-aws-0-vars
   dependsOn:
     - name: crossplane-providers
+  # Without this, the Kustomization reports Ready as soon as the Configuration
+  # object is APPLIED -- not once the OCI package is pulled, its revision
+  # activated, and the XRD it ships actually updated. clusters/aws-0/apps.yaml
+  # sources a different Flux source (apps-artifact) than this Kustomization's
+  # dependsOn chain, so kustomize-controller's same-source revision gate does
+  # not hold it back either. In that window a claim using a field this pin's
+  # new XRD adds (or an old one it drops) can apply against the STALE XRD:
+  # Crossplane silently prunes the unknown field and garbage-collects whatever
+  # that field used to compose -- for spec.objectStore, the Bucket,
+  # BucketVersioning and EPI, taking the app's live IAM identity with them.
+  #
+  # healthChecks names WHICH object to wait on; healthCheckExprs (no `name`
+  # field -- it's a per-Kind strategy, not a per-object one) says HOW, and
+  # only applies to Kinds also present in healthChecks/wait (Flux docs:
+  # "evaluated only when Wait or HealthChecks are specified").
+  #
+  # The CEL override is required, not cosmetic: a Crossplane package
+  # (Provider or Configuration) never sets a `type: Ready` condition -- it
+  # reports `Installed` then `Healthy`, which is not yet kstatus-compatible
+  # (crossplane/crossplane#2672). A plain healthChecks entry with no matching
+  # healthCheckExprs would look for Ready and never resolve, permanently
+  # stalling this Kustomization -- worse than the race it's meant to close.
+  # Same CEL shape already used for the SQLInstance check in
+  # clusters/aws-0/security/zitadel.yaml. Configuration is cluster-scoped: no
+  # namespace.
+  healthChecks:
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Configuration
+      name: crossplane-configuration-aws
+  healthCheckExprs:
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Configuration
+      current: status.conditions.filter(c, c.type == 'Healthy').all(c, c.status == 'True')
+      failed: status.conditions.filter(c, c.type == 'Healthy').all(c, c.status == 'False')

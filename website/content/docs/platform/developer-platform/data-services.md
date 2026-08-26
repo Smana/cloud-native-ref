@@ -115,6 +115,15 @@ equivalent, so on GCP the composition degrades `custom` to read-only rather than
 silently granting write.
 {{< /callout >}}
 
+{{< callout type="warning" >}}
+**`retentionDays` currently takes effect on GCP only.** The example above sets
+`retentionDays: 90` and it means two different things per cloud today: on `gcp-0`
+it renders a GCS lifecycle rule that deletes objects past that age; on `aws-0` it
+is accepted and stored but does nothing — no S3 lifecycle configuration renders
+yet, so uploads never expire there. Don't rely on it for AWS data retention until
+an S3 implementation lands.
+{{< /callout >}}
+
 See [ADR-0002]({{< relref "/docs/decisions/0002-eks-pod-identity-over-irsa.md" >}})
 for why Pod Identity over IRSA on AWS,
 [ADR-0007]({{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}})

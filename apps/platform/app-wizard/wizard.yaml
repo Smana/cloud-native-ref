@@ -32,7 +32,7 @@ render:
   enabled: true
   # The packaged Composition carries the KCL inlined, so `crossplane render` no
   # longer pulls an OCI module at preview time.
-  compositionPath: crossplane-configuration/apis/app/composition.yaml
+  compositionPath: crossplane-configuration/apis/app/composition-aws.yaml
   functionsPath: infrastructure/base/crossplane/functions/functions.yaml
   envConfigPath: infrastructure/base/crossplane/configuration/environmentconfig.yaml
   # Render via the in-pod function sidecars (CL-8) instead of Docker.
