@@ -1291,3 +1291,86 @@ tofu -chdir=opentofu/gcp/openbao/management fmt -check
 git add opentofu/gcp/openbao/management security/base/openbao-snapshot/network-policy.yaml
 git commit -m "feat(gcp): snapshot AppRole and Secret Manager entry for the OpenBao backup job"
 ```
+
+---
+
+### Task 14: The GCP snapshot secret needs a legal name
+
+> Added during execution, from Task 13's own flagged concern. **Blocker for Task 7** — it fails at
+> `tofu apply`, which is exactly where it costs a cluster spin-up to discover.
+
+**Files:**
+- Modify: `opentofu/gcp/openbao/management/variables.tf`
+- Modify: `security/base/openbao-snapshot/external-secrets.yaml`
+- Modify: `opentofu/aws/eks/configure/kubernetes.tf`, `opentofu/gcp/gke/configure/kubernetes.tf`
+- Modify: `scripts/flux-schema/render-bundle.py` (`FIXTURE_VARS`)
+
+**The problem.** `var.snapshot_approle_secret_name` defaults to `security/openbao/openbao-snapshot`,
+copied from AWS so it matches the shared base ExternalSecret's `dataFrom.extract.key`. GCP Secret
+Manager secret IDs may not contain `/`. `tofu validate` passes — this only fails on apply, with a 400.
+
+Task 13 flagged this rather than guessing, which was right. The evidence that it is real is in this
+repo, not just in documentation: **every existing GCP secret here uses dashes** —
+`openbao-priv-gcp-intermediate-ca`, `openbao-priv-gcp-approle-cert-manager`,
+`openbao-priv-gcp-ca-chain`. Task 13's own inline comment says as much.
+
+**The fix is a substitution variable, not a kustomize patch.** The base manifest carries one string
+that differs per cloud, which is exactly what `storage_class` (workstream 13) and `openbao_cidr`
+(Task 12) already do. That mechanism is checked by `check-substitution.py` and covered by
+`FIXTURE_VARS`; a patch reaching into `dataFrom[0].extract.key` by list index is more fragile and
+invents a second pattern for the same problem.
+
+- [ ] **Step 1: Give the GCP secret a legal, conventional name**
+
+In `opentofu/gcp/openbao/management/variables.tf`, change the default to `openbao-priv-gcp-snapshot`,
+matching its three siblings. Replace Task 13's "untested against the live API" comment with one saying
+the name is dash-separated **because** Secret Manager IDs cannot contain `/`, and that the base
+manifest reaches it through a per-cluster substitution variable. Keep the AWS default untouched.
+
+- [ ] **Step 2: Template the ExternalSecret**
+
+`security/base/openbao-snapshot/external-secrets.yaml`'s `dataFrom.extract.key` becomes
+`${openbao_snapshot_secret}`.
+
+- [ ] **Step 3: Define it on both clusters**
+
+Add the key `openbao_snapshot_secret` to both clusters' vars ConfigMaps, with these values:
+
+| Cluster stack | Value |
+|---|---|
+| `opentofu/aws/eks/configure/kubernetes.tf` | `security/openbao/openbao-snapshot` — the existing AWS entry, unchanged, so `aws-0` renders byte-identical |
+| `opentofu/gcp/gke/configure/kubernetes.tf` | `openbao-priv-gcp-snapshot` |
+
+Comment both, briefly, with the reason the values differ in *shape* and not merely in content: one is
+a path-style Secrets Manager name, the other a flat Secret Manager ID, because GCP forbids `/`.
+
+- [ ] **Step 4: Add the fixture entry**
+
+Add an entry to `FIXTURE_VARS` keyed `openbao_snapshot_secret`, carrying the same AWS value used in
+Step 3, so the rendered bundle is unchanged. Without it the key renders empty and the ExternalSecret
+silently extracts nothing — schema-valid, useless.
+
+> Note for whoever writes this: `detect-secrets`' "Secret Keyword" heuristic fires on a key containing
+> `secret` sitting next to a quoted value, so writing the literal pair in prose trips the pre-commit
+> hook even though it is only a Secret Manager *entry name*. In the actual `.py` and `.tf` files that
+> is fine — the baseline covers them. It is only prose that needs the value described rather than
+> pasted beside the key.
+
+- [ ] **Step 5: Verify**
+
+```bash
+tofu -chdir=opentofu/gcp/openbao/management fmt -check
+tofu -chdir=opentofu/gcp/openbao/management validate
+./scripts/validate-manifests.sh
+grep -rn 'extract' -A2 .bundle/overlay-security-aws-0.yaml | grep -i key
+```
+
+`Invalid: 0, Skipped: 0`; the rendered `aws-0` key must still read `security/openbao/openbao-snapshot`;
+no literal `${openbao_snapshot_secret}` anywhere in `.bundle/`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add opentofu security scripts/flux-schema/render-bundle.py
+git commit -m "fix(gcp): give the snapshot secret a Secret-Manager-legal name"
+```
