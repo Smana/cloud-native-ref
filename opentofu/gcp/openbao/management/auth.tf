@@ -26,10 +26,12 @@ resource "vault_approle_auth_backend_role" "snapshot" {
   # (secrets.tf), so there is no manifest-literal reason to fix this value --
   # let both be generated.
 
-  # NOTE: no token_bound_cidrs, same deferral as cert_manager's below: the
-  # candidate ranges (node_cidr, pod_cidr) are known, but which one the
-  # snapshot CronJob's egress actually presents to the internal LB has not
-  # been measured on this cluster. Bind once that measurement is taken.
+  # Bound now. The deferral this replaced said the ranges were known but which
+  # one the CronJob's egress actually presents had "not been measured on this
+  # cluster" -- it has been, on a live gcp-0 (2026-08-26). See
+  # local.approle_bound_cidrs for the measurement and why both ranges are bound
+  # rather than only the node CIDR the packets currently carry.
+  token_bound_cidrs = local.approle_bound_cidrs
 }
 
 resource "vault_approle_auth_backend_role" "cert_manager" {
@@ -63,24 +65,22 @@ resource "vault_approle_auth_backend_role" "cert_manager" {
   token_ttl     = 600
   token_max_ttl = 1200
 
-  # NOTE: no token_bound_cidrs, unlike AWS. DEFERRED, not impossible.
+  # Bound now, resolving the deferral this comment used to carry.
   #
-  # An earlier version of this comment said the source address could not be
-  # predicted because the caller reached OpenBao "over the tailnet". That is
-  # wrong, and it contradicted openbao/cluster/firewall.tf: cert-manager is a POD
-  # on gcp-0 talking to the internal LB inside the VPC, and never
-  # traverses the tailnet. The candidate ranges are perfectly predictable --
-  # node_cidr and pod_cidr, both already reachable from this stack through the
-  # network remote state.
+  # That deferral was right to exist and right about the diagnosis: cert-manager
+  # is a POD on gcp-0 talking to the internal LB inside the VPC, never over the
+  # tailnet, so the candidate ranges were always node_cidr and pod_cidr. What it
+  # correctly refused to guess was WHICH one the packet presents, since Cilium
+  # displaced GKE's CNI here.
   #
-  # What is NOT yet known is WHICH of the two the packet actually presents.
-  # Cilium displaced GKE's CNI here, so whether pod egress to an in-VPC LB is
-  # masqueraded to the node IP or arrives with the pod IP is a measurement
-  # nobody has taken on this cluster. Binding to the wrong one fails closed at
-  # issuance, with an error that names the AppRole and says nothing about the
-  # network.
+  # It has now been measured on a live gcp-0 (2026-08-26): native routing with
+  # the native-routing CIDR set to the POD range, masquerading on, and the LB
+  # outside that range -- so pod egress is SNATed to the node IP. Details in
+  # local.approle_bound_cidrs.
   #
-  # So: measure it against a running cluster (`hubble observe` on the
-  # cert-manager pod, or the OpenBao audit log's remote_address), then bind to
-  # what it shows. Do not guess.
+  # One correction the deferral also needs: it said both ranges were "already
+  # reachable from this stack through the network remote state". They were not.
+  # That data source lived only in openbao/cluster/data.tf; this stack had none
+  # until it was added alongside this change.
+  token_bound_cidrs = local.approle_bound_cidrs
 }
