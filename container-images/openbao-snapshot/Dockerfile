@@ -21,10 +21,21 @@ ARG BAO_VERSION=2.6.2
 ARG GCLOUD_VERSION=582.0.0-0
 # renovate: datasource=github-releases depName=aws/aws-cli
 ARG AWSCLI_VERSION=2.36.31
-# Expected fingerprint of the AWS CLI signing key below -- not a secret, this
-# is a public key's fingerprint, but its hex shape trips detect-secrets'
-# high-entropy heuristic.
+# Expected fingerprint of the AWS CLI signing key below. NOT a secret: it is a
+# PUBLIC key's fingerprint, published by AWS at the URL cited above the key
+# block, and its whole purpose is to be compared against in the open. Nothing
+# here is weakened by it being readable.
+#
+# It trips two scanners anyway, because 40 hex characters is also the shape of
+# an AWS secret access key, so it needs both suppressions:
+#   - detect-secrets (pre-commit)  -> `pragma: allowlist secret`
+#   - Checkov CKV_SECRET_2 (CI)    -> `checkov:skip`
+# Suppressing a scanner is normally the wrong move; here the finding is a
+# false positive on a value whose exposure is the point, and removing the
+# fingerprint to satisfy the scanner would delete the check that makes the
+# signature verification meaningful.
 # pragma: allowlist secret
+#checkov:skip=CKV_SECRET_2:Public GPG key fingerprint for the AWS CLI signing key, not an AWS access key
 ARG AWS_CLI_KEY_FINGERPRINT=FB5DB77FD5C118B80511ADA8A6310ACC4672475C
 # Set by buildx for each platform in the build matrix (linux/amd64, linux/arm64).
 ARG TARGETARCH
