@@ -60,6 +60,28 @@ Two independent gates govern the self-hosted LLM platform; both must be released
 
 The umbrella Kustomization aggregates 8 children under `clusters/aws-0-llm-platform/` (kept a sibling of `clusters/aws-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/aws-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
 
+#### On `gcp-0` — one gate, six children, and **do not resume it yet**
+
+`gcp-0` has the same platform with three differences, and one warning that matters more than the
+differences:
+
+- **One gate, not two.** There is no `opentofu/gcp/llm-platform/` stack: the weights bucket is a
+  Crossplane claim, not a Terraform-managed filesystem. The only gate is
+  `clusters/gcp-0/llm-platform.yaml` (`spec.suspend: true`).
+- **Six children, not eight.** No `gpu-nodepools` — `infrastructure/gcp-0/computeclass/gpu-l4.yaml`
+  already provisions g2 + L4 on spot. No `runtimeclass-nvidia` — that exists on AWS only because
+  Bottlerocket's NVIDIA AMI crashloops the upstream device plugin; GKE manages GPU drivers itself.
+- **Weights come from a GCS bucket over the Cloud Storage FUSE CSI driver**, not an S3 Files POSIX
+  mount — see [ADR-0021](website/content/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md)
+  for why, including what it gives up.
+
+> **Resuming the GCP umbrella today does not fully work, by design of what is not built yet.**
+> Serving pods cannot read the weights bucket — the FUSE mount authenticates as the mounting pod's
+> own ServiceAccount, and their per-claim read-only identity is rendered by the `InferenceService`
+> composition, which has no GCP support. KEDA is also not installed on `gcp-0`, so no `ScaledObject`
+> reconciles. Both gaps are recorded in `clusters/gcp-0-llm-platform/README.md`. Close them before
+> resuming.
+
 **Autoscaling design** (composition v0.5.0+, [SPEC-001](docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)): every model defaults `min=1` with a KEDA `ScaledObject` driven by leading vLLM saturation metrics — `running/max-num-seqs` ratio + `kv_cache_usage_perc`. The legacy KEDA HTTP add-on (proxy in the data path, lagging request-count trigger) is no longer used; AI Gateway routes directly to each vLLM Service.
 
 **Experimental TUI client:** OpenCode (used occasionally; Claude Code stays primary). Setup design lives in the standalone [`Smana/opencode-config`](https://github.com/Smana/opencode-config) repo at `docs/2026-05-05-opencode-migration-design.md`.

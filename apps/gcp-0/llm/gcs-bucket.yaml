@@ -1,0 +1,33 @@
+# Shared model-weights bucket for ALL InferenceService claims on gcp-0
+# (ADR-0021: Cloud Storage FUSE, not a hydrated Hyperdisk ML volume — the
+# bucket alone is the resting footprint the ADR calls out as costing nothing
+# between teardowns). Mirrors security/gcp-0/openbao-snapshot/gcs-bucket.yaml.
+#
+# External name takes the PROJECT prefix, never the region: the Crossplane
+# principal's storage role is conditioned on
+# `resource.name.startsWith('projects/_/buckets/<project_id>-ogenki-')`
+# (workstream 9, Task 9). A region-prefixed name is refused at create with a
+# 403 naming `storage.buckets.create` -- a permission the role DOES grant --
+# because the failing check is the resource-name condition, not that
+# permission; the error therefore points nowhere near the real cause.
+#
+# `managementPolicies` omits Delete for the same reason as the openbao
+# snapshot bucket and aws-0's llm-models bucket: weights are tens of GB, a
+# fresh HuggingFace preload is ~15 minutes per model, and the bucket is the
+# durable layer that outlives any single cluster build. `forceDestroy: false`
+# already refuses to delete a non-empty bucket; omitting Delete here prevents
+# the same finalizer wedge on prune, not data loss on its own. To remove
+# intentionally, use the gcloud CLI.
+apiVersion: storage.gcp.m.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: llm-models
+  namespace: llm
+  annotations:
+    crossplane.io/external-name: ${project_id}-ogenki-llm-models
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    location: ${region}
+    uniformBucketLevelAccess: true
+    forceDestroy: false

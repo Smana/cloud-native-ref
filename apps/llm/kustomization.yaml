@@ -6,5 +6,5 @@ kind: Kustomization
 # everything else under apps/base/, but only this overlay (and the umbrella
 # child Kustomization that points at it) brings them into a cluster.
 resources:
-  - ../base/ai/llm
+  - ../aws-0/llm
   - ../base/openwebui

@@ -1,0 +1,50 @@
+---
+# LLM Platform — opt-in Flux umbrella (GCP). Mirrors clusters/aws-0/llm-platform.yaml.
+#
+# Default: spec.suspend = true -> none of the LLM-specific Flux Kustomizations
+# under clusters/gcp-0-llm-platform/ are created, so no LLM resources land on
+# this cluster (no Envoy [AI] Gateway, no vLLM Semantic Router, no LLM apps,
+# no weights bucket/PV/identity, no Promptfoo eval).
+#
+# There is no OpenTofu opt-in stack to pair with this, unlike AWS's
+# opentofu/aws/llm-platform/ (gated by $TM_LLM_PLATFORM_ENABLED). That stack
+# exists on AWS because the weights filesystem (S3 Files + IAM) is provisioned
+# outside Kubernetes. On gcp-0 the weights bucket and its preload identity are
+# Crossplane claims (ADR-0021), rendered by this umbrella's own
+# llm-platform-apps / llm-platform-security-wi children -- so this
+# Kustomization is the WHOLE opt-in surface, not half of it.
+#
+# Enable on this cluster:
+#   flux resume kustomization llm-platform -n flux-system
+#
+# Disable again (children stay until you also remove them -- `prune: true`
+# only applies to source removal, not suspend):
+#   flux suspend kustomization llm-platform -n flux-system
+#
+# Full teardown (suspend AND remove children + their resources):
+#   flux suspend kustomization llm-platform -n flux-system
+#   flux delete kustomization \
+#     llm-platform-apps llm-platform-security-wi envoy-ai-gateway envoy-gateway \
+#     vllm-semantic-router llm-platform-promptfoo \
+#     -n flux-system --silent
+#   # The GCS bucket itself is NOT deleted (managementPolicies omits Delete --
+#   # see apps/gcp-0/llm/gcs-bucket.yaml). Remove it intentionally via gcloud
+#   # if that is really what you want.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: llm-platform
+  namespace: flux-system
+spec:
+  suspend: true
+  prune: true
+  interval: 1m0s
+  timeout: 5m0s
+  # MUST be a sibling of clusters/gcp-0/ (not a sub-path), otherwise the
+  # `flux-system` Kustomization that syncs `clusters/gcp-0/` recursively
+  # would auto-discover the child Flux Kustomizations and apply them
+  # directly — bypassing the umbrella's `spec.suspend: true` gate.
+  path: ./clusters/gcp-0-llm-platform
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

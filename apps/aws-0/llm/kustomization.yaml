@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# AWS-only weights resources for the LLM platform: an s3.aws.m.upbound.io Bucket
+# and a PV backed by the EFS CSI driver. Split out of apps/base/ai/llm so the
+# GCP overlay can supply its own (Cloud Storage FUSE, ADR-0021) without a
+# cloud-specific resource sitting in the shared base.
+resources:
+  - ../../base/ai/llm
+  - s3-bucket.yaml
+  - models-pvc.yaml
