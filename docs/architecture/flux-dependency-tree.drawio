@@ -6,7 +6,7 @@
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
 
-        <mxCell id="__t" value="What Flux reconciles, and in what order" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
+        <mxCell id="__t" value="What Flux reconciles on aws-0, and in what order" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
           <mxGeometry x="60" y="30" width="1100" height="30" as="geometry" />
         </mxCell>
         <mxCell id="__ts" value="Every box is a Flux Kustomization in clusters/aws-0/. Arrows are spec.dependsOn — Flux will not apply a Kustomization until every one it points at reports Ready." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">

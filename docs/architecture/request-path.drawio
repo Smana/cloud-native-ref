@@ -6,7 +6,7 @@
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
 
-        <mxCell id="__t" value="How a request reaches a pod — three front doors, one proxy" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
+        <mxCell id="__t" value="How a request reaches a pod on aws-0 — three front doors, one proxy" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
           <mxGeometry x="60" y="30" width="1100" height="30" as="geometry" />
         </mxCell>
         <mxCell id="__ts" value="Cilium implements every GatewayClass here, so all three Gateways are the same Envoy fleet with different listeners and different load balancers in front. Every Gateway lives in the infrastructure namespace." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">
@@ -165,7 +165,7 @@
         <mxCell id="__lgs4" value="" style="rounded=0;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;" vertex="1" parent="1">
           <mxGeometry x="940" y="340" width="26" height="14" as="geometry" />
         </mxCell>
-        <mxCell id="__lgl4" value="AWS load balancer" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+        <mxCell id="__lgl4" value="cloud load balancer" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
           <mxGeometry x="974" y="338" width="266" height="16" as="geometry" />
         </mxCell>
       </root>
