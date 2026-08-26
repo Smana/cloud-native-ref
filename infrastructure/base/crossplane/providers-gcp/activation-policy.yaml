@@ -10,10 +10,9 @@
 # cluster-scoped API and activating it would install namespaced-resource CRDs
 # this platform does not use.
 #
-# One Kind today, deliberately. Grows on evidence, like the grantable-role
-# allowlist in opentofu/gcp/gke/init/iam.tf — adding a Kind here is what makes it
-# available to compositions, so an unexplained entry is a capability nobody asked
-# for.
+# Grows on evidence, like the grantable-role allowlist in
+# opentofu/gcp/gke/init/iam.tf — adding a Kind here is what makes it available
+# to compositions, so an unexplained entry is a capability nobody asked for.
 apiVersion: apiextensions.crossplane.io/v1alpha1
 kind: ManagedResourceActivationPolicy
 metadata:
@@ -22,3 +21,6 @@ spec:
   activate:
     # Cloud Platform / IAM — the only Kind GCPWorkloadIdentity renders.
     - projectiammembers.cloudplatform.gcp.m.upbound.io
+    # Storage — the App Composition's GCS bucket + bucket-scoped grant.
+    - buckets.storage.gcp.m.upbound.io
+    - bucketiammembers.storage.gcp.m.upbound.io

@@ -21,3 +21,4 @@ resources:
   - activation-policy.yaml
   - deploymentruntimeconfig-gcp.yaml
   - provider-cloudplatform.yaml
+  - provider-storage.yaml

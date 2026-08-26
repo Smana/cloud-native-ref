@@ -119,10 +119,74 @@ resource "google_project_iam_custom_role" "crossplane_dns" {
 # access is genuinely project-shaped, and an argument for why per-secret
 # bindings will not do.
 
+# Bucket management for the App Composition's objectStore block (slice 8).
+#
+# `Bucket` (storage.gcp.m.upbound.io) needs full CRUD on the bucket resource
+# itself; `BucketIAMMember` needs get/setIamPolicy to grant the app's own
+# workload identity a role scoped to that one bucket. Neither is covered by
+# roles/resourcemanager.projectIamAdmin above, which is IAM-policy
+# permissions on the PROJECT, not Cloud Storage permissions. No predefined
+# role is this narrow (roles/storage.admin also carries object-level and
+# HMAC-key permissions this platform has no use for), so a custom role, same
+# pattern as crossplane_dns.
+resource "google_project_iam_custom_role" "crossplane_storage" {
+  project     = var.project_id
+  role_id     = "xplane_storage_admin"
+  title       = "Crossplane storage bucket admin"
+  description = "Bucket lifecycle + IAM for the App Composition's per-app buckets. See opentofu/gcp/gke/init/iam.tf."
+
+  permissions = [
+    # Bucket lifecycle: what the Bucket MR's reconcile loop does on every
+    # observe/create/update/delete pass. NOT storage.buckets.list -- Crossplane
+    # (like every Terraform-based provider CRUD path) observes a resource it
+    # already knows the name of via a GET, never by enumerating the project's
+    # buckets and searching. list is also incompatible with the resource.name
+    # condition below: list's resource is the collection endpoint, not a
+    # single bucket name, so a startsWith(bucket-name-prefix) condition can
+    # never match it -- granting it unconditioned would be the one permission
+    # on this role with no bucket-name scoping.
+    "storage.buckets.create",
+    "storage.buckets.delete",
+    "storage.buckets.get",
+    "storage.buckets.update",
+
+    # BucketIAMMember is additive (get current policy, merge in the member,
+    # set it back) -- get is required for the merge, not just set.
+    "storage.buckets.getIamPolicy",
+    "storage.buckets.setIamPolicy",
+  ]
+}
+
 locals {
   # Roles Crossplane may grant. Keep tight; grow on evidence.
   crossplane_grantable_roles = [
     google_project_iam_custom_role.crossplane_dns.name,
+  ]
+
+  # SEPARATE from crossplane_grantable_roles above, deliberately -- N1. The two
+  # lists feed the conditions on two DIFFERENT bindings, at two different
+  # scopes: crossplane_grant_condition gates roles/resourcemanager.projectIamAdmin,
+  # a PROJECT-level setIamPolicy; crossplane_bucket_grant_condition gates
+  # crossplane_storage below, a BUCKET-level one. They were merged into one
+  # list on first pass, which was wrong: modifiedGrantsByRole does not carry
+  # the RESOURCE the grant happened on, only the ROLE, so a role allowlisted
+  # for the bucket-scoped binding was *also* legalised for the project-scoped
+  # one -- a GCPWorkloadIdentity claim setting spec.roles (project-wide, not
+  # bucketRoles) to "roles/storage.objectAdmin" would have passed both the XRD
+  # pattern and this condition, reaching every bucket in the project including
+  # OpenBao's snapshots and CNPG's backups. Exactly what bucketRoles (Task 1)
+  # was built to make impossible. Keep these two lists apart permanently, not
+  # just for this pair of roles.
+  #
+  # storage.objectAdmin / storage.objectViewer are PREDEFINED GCP roles, not
+  # custom ones -- apis/app/kcl/main.k's GCPWorkloadIdentity claim names them
+  # literally (`role = "roles/storage.objectAdmin" if permissions ==
+  # "readwrite" else "roles/storage.objectViewer"`), and hasOnly matches exact
+  # role names, so they belong in this allowlist verbatim, the same way the
+  # custom DNS role's deterministic name does.
+  crossplane_bucket_grantable_roles = [
+    "roles/storage.objectAdmin",
+    "roles/storage.objectViewer",
   ]
 
   # TRAP 1, and it is silent: `projects/` takes the project NUMBER while
@@ -157,6 +221,27 @@ locals {
     join(",", [for r in local.crossplane_grantable_roles : "'${r}'"]),
     "])",
   ])
+
+  # Same hasOnly() shape as above, using the SEPARATE bucket-scoped allowlist
+  # (N1) -- plus a second, independent clause restricting WHICH bucket the
+  # binding reaches at all, conjoined with a plain `&&`. This is NOT the
+  # role-name startsWith the comment above rules out: that one tried to
+  # pattern-match ROLE NAMES inside hasOnly's list via `.all()` and hit the
+  # macro restriction. `resource.name` is a different attribute entirely (the
+  # target object of the API call, not a role), and `&&` is a plain boolean
+  # operator, not a macro -- no restriction applies.
+  #
+  # `_gcsName = envConfig.projectID + "-ogenki-" + _name` in
+  # apis/app/kcl/main.k is the single place every bucket name this platform
+  # creates comes from, so every Crossplane-managed bucket carries this
+  # prefix and nothing else does. GCP's resource-name format for a bucket
+  # under IAM Conditions is "projects/_/buckets/<bucket-name>" -- the
+  # placeholder is a literal "_", not the project ID.
+  crossplane_bucket_grant_condition = join("", [
+    "api.getAttribute('iam.googleapis.com/modifiedGrantsByRole', []).hasOnly([",
+    join(",", [for r in local.crossplane_bucket_grantable_roles : "'${r}'"]),
+    "]) && resource.name.startsWith('projects/_/buckets/${var.project_id}-ogenki-')",
+  ])
 }
 
 # Additive binding, and it must stay that way.
@@ -182,6 +267,36 @@ resource "google_project_iam_member" "crossplane_iam_admin" {
   # cluster with workload_pool has been created. Without this a FRESH apply fails
   # with `Error 400: Identity Pool does not exist`, and it does NOT reproduce on
   # re-apply, because by then the pool exists. Measured 2026-08-23.
+  depends_on = [module.gke]
+}
+
+# Grants Crossplane the bucket-lifecycle + IAM permissions defined in
+# crossplane_storage above.
+resource "google_project_iam_member" "crossplane_storage" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.crossplane_storage.name
+  member  = local.crossplane_principal
+
+  # Its OWN allowlist and condition -- crossplane_bucket_grantable_roles /
+  # crossplane_bucket_grant_condition, NOT the DNS/projectIamAdmin ones above
+  # (N1: they were shared on first pass, which meant adding the storage roles
+  # here also legalised granting them at the PROJECT level through the
+  # unrelated projectIamAdmin binding). Two independent clauses:
+  #   - getIamPolicy/setIamPolicy are gated by hasOnly(bucket-scoped roles) --
+  #     the setIamPolicy-shaped half, same mechanism as the DNS grant.
+  #   - ALL FIVE permissions (including the four that are not setIamPolicy-
+  #     shaped, where modifiedGrantsByRole is undefined and hasOnly alone
+  #     would be vacuously true -- "gap 1" below) are additionally scoped to
+  #     this platform's own bucket-name prefix via resource.name.startsWith,
+  #     so even the unconditioned-by-role verbs (create/delete/get/update)
+  #     cannot reach a bucket outside it.
+  condition {
+    title       = "xplane-scoped-grants-only"
+    description = "Crossplane may act only on xplane-owned buckets, and may set IAM policy on them only for the allowlisted roles. Without this, a compromised provider-gcp could manage or grant an arbitrary role on any bucket in the project."
+    expression  = local.crossplane_bucket_grant_condition
+  }
+
+  # Same fresh-apply race as the other principal bindings -- see TRAP 2.
   depends_on = [module.gke]
 }
 

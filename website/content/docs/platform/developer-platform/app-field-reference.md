@@ -2,7 +2,7 @@
 title: App field reference
 weight: 15
 description: Complete spec field reference for the App claim — every field, type, and default, reconciled against the pinned XRD.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-26
 ---
 
 Complete list of every `App` `spec` field. **Required** fields are marked.
@@ -17,11 +17,11 @@ they live in
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration),
 which this repo pins as a `Configuration` package
 (`infrastructure/base/crossplane/configuration/configuration-packages.yaml`,
-currently `ghcr.io/smana/crossplane-configuration-aws:v0.2.0`). This table was
+currently `ghcr.io/smana/crossplane-configuration-aws:v0.3.1`). This table was
 reconciled by hand against that repository's `apis/app/definition.yaml` (the
 CRD schema — types, enums, CEL rules) and `apis/app/kcl/main.k` (composition
 defaults that never appear in the schema, such as resource requests/limits or
-the gateway/route fallback names) at the commit tagged `v0.2.0`.
+the gateway/route fallback names) at the commit tagged `v0.3.1`.
 
 **To regenerate:** check out `Smana/crossplane-configuration` at the tag
 currently pinned above, and read `apis/app/definition.yaml` +
@@ -69,7 +69,7 @@ does. Re-verify after every pin bump.
 | `networkPolicies` | object | disabled | all | Cilium policies (see below). |
 | `kvStore` | object | disabled | all | Valkey (see below). |
 | `sqlInstance` | object | disabled | all | PostgreSQL (see below). |
-| `s3Bucket` | object | disabled | all | S3 + Pod Identity (see below). |
+| `objectStore` | object | disabled | all | Object storage + workload identity, per cloud (see below). |
 | `externalSecrets` | []object | — | all | AWS Secrets Manager sync (see below). |
 | `observability` | object | disabled | all | Traces/metrics/alerting (see below). |
 
@@ -250,17 +250,56 @@ Blocks: `liveness`, `readiness`, `startup`. Each block:
 | `explain.minDuration` | integer (ms, ≥-1) | `1000` | Minimum query duration to trigger `auto_explain`; `0` logs everything, `-1` disables it. |
 | `logStatement` | enum `none`\|`ddl`\|`mod`\|`all` | `none` | Which SQL statements Postgres logs via `log_statement`. |
 
-### `s3Bucket`
+### `objectStore`
+
+An object-storage bucket, implemented per cloud: **S3 on `aws-0`, GCS on `gcp-0`**, from the
+same claim. The bucket's name and location are owned by the platform — a claim states what it
+needs, not where it lands.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | Enable the bucket. |
-| `providerConfigRef` | object | `{name: default}` | `name` (**required**), `namespace` (**required**). Name falls back to `default` when unset (`main.k:1097`). |
-| `region` | string | env region | AWS region; falls back to the cluster's configured region (`main.k:1101`). |
-| `permissions` | enum `readwrite`\|`readonly`\|`custom` | `readwrite` | Access level. |
-| `customPolicy` | string | — | IAM policy JSON (when `custom`). |
-| `versioning` | boolean | `false` | Enable versioning. |
-| `retentionDays` | integer 1–365 | — | Object retention days. |
+| `permissions` | enum `readwrite`\|`readonly`\|`custom` | `readwrite` | Access the workload receives on the bucket. |
+| `versioning` | boolean | `false` | Keep non-current object versions. |
+| `retentionDays` | integer 1–365 | — | Object retention in days. **GCP only** — see below. |
+
+There is no top-level `region`: the composition reads it from the cluster's own
+EnvironmentConfig, so the same claim is portable. There is no `providerConfigRef` either — the
+composition knows its own provider.
+
+{{< callout type="warning" >}}
+**`retentionDays` currently takes effect on GCP only.** It renders a GCS lifecycle rule that
+deletes objects past that age. On AWS it is accepted and stored but does nothing — no S3
+lifecycle configuration renders yet, so the same claim's uploads never expire on `aws-0`. This
+is a known asymmetry in a field meant to be cloud-neutral, tracked for an S3 implementation;
+until then, do not rely on `retentionDays` for AWS data retention.
+{{< /callout >}}
+
+#### Cloud-specific knobs
+
+Anything with no honest cloud-neutral meaning is quarantined in an optional per-cloud block,
+per [ADR-0007](../../decisions/0007-cloud-abstraction-boundaries.md). Both are ignored on the
+other cloud.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `aws.customPolicy` | string | — | IAM policy JSON. **Required** when `permissions: custom`. |
+| `aws.region` | string | cluster region | Overrides where the bucket lands. Rarely needed. |
+| `gcp.location` | string | cluster region | Overrides where the bucket lands. Rarely needed. |
+| `gcp.storageClass` | enum `STANDARD`\|`NEARLINE`\|`COLDLINE`\|`ARCHIVE` | `STANDARD` | GCS storage class. |
+
+{{< callout type="warning" >}}
+**`permissions: custom` is AWS-only.** A custom policy is IAM JSON, which has no GCP
+equivalent, so the XRD enforces `aws.customPolicy` whenever `permissions: custom` — a claim
+setting `custom` without it is rejected at admission. On GCP the composition degrades `custom`
+to read-only rather than silently granting write.
+{{< /callout >}}
+
+{{< callout type="info" >}}
+**Renamed from `s3Bucket`.** The old field named an AWS service in a cloud-neutral contract,
+and its `region` pattern could not express a GCP region at all. `spec.s3Bucket` no longer
+exists; `customPolicy` moved under `aws`.
+{{< /callout >}}
 
 ### `externalSecrets[]`
 
