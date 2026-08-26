@@ -760,3 +760,82 @@ rendered bundle. A move that silently drops it from `aws-0` is the failure mode 
 git add -A infrastructure/
 git commit -m "refactor(storage): move the CNPG backups bucket out of the shared base"
 ```
+
+---
+
+### Task 9: Harbor's buckets get the same delete protection every other stateful bucket has
+
+> Added during execution, from Task 2's review. Neither Harbor bucket sets `managementPolicies`,
+> while `infrastructure/base/cloudnative-pg/s3-bucket.yaml`, `security/base/openbao-snapshot/s3-bucket.yaml`
+> and `apps/base/ai/llm/s3-bucket.yaml` all set `["Observe", "Create", "Update", "LateInitialize"]`.
+> This is pre-existing on the AWS side, not a regression from Task 2 — the byte-identical constraint
+> is exactly why the implementer was right not to add it unilaterally.
+
+**Files:**
+- Modify: `tooling/aws-0/harbor/s3-bucket.yaml`
+- Modify: `tooling/gcp-0/harbor/gcs-bucket.yaml`
+
+**Interfaces:**
+- Consumes: Task 2's overlay layout.
+- Produces: nothing.
+
+**This task deliberately changes `aws-0`'s rendered output, overriding this plan's first Global
+Constraint.** The reasoning, which belongs in the commit message:
+
+- That constraint exists to catch *accidental behavioural regressions* on a live cluster, not to
+  forbid a deliberate safety fix to a file this workstream is already restructuring.
+- `managementPolicies` without `Delete` does not change what the bucket is or how anything reads it.
+  It changes only what Crossplane attempts on prune. It cannot lose data; it prevents an attempt.
+- This repo has already been bitten by the omission. The comment atop the CNPG bucket records it:
+  Crossplane keeps retrying `s3:DeleteBucket`, AWS denies it (the platform grants no deletion
+  permission for stateful services), and the managed resource's finalizer hangs the parent
+  namespace's teardown.
+- Harbor's registry bucket holds image layers, which are among the most expensive data in the
+  platform to reconstruct.
+
+- [ ] **Step 1: Read one of the three existing examples first**
+
+```bash
+sed -n '1,20p' infrastructure/base/cloudnative-pg/s3-bucket.yaml
+```
+
+Match its shape and the spirit of its comment. Do not invent a different field order or a different
+policy list.
+
+- [ ] **Step 2: Add the policy to the AWS bucket**
+
+In `tooling/aws-0/harbor/s3-bucket.yaml`, above `forProvider:`:
+
+```yaml
+  # Registry image layers are expensive to reconstruct and outlive any single
+  # cluster, so Crossplane must never attempt to remove the bucket. Without
+  # this it retries s3:DeleteBucket on prune, AWS denies it (no deletion
+  # permission for stateful services), and the MR finalizer hangs the
+  # namespace teardown. To remove intentionally, use the aws CLI.
+  # (Crossplane v2 namespaced MRs do not expose spec.deletionPolicy;
+  # managementPolicies is the v2 mechanism.)
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+```
+
+- [ ] **Step 3: Add the equivalent to the GCS bucket**
+
+Same list in `tooling/gcp-0/harbor/gcs-bucket.yaml`. Its comment should note that `forceDestroy: false`
+already refuses to delete a non-empty bucket, so the realistic failure this prevents on GCP is the
+same finalizer wedge rather than data loss.
+
+- [ ] **Step 4: Validate, and state the aws-0 delta plainly**
+
+```bash
+./scripts/validate-manifests.sh
+grep -rn -A3 'kind: Bucket' .bundle/overlay-tooling-aws-0.yaml | grep -i managementpolicies
+```
+
+`Invalid: 0, Skipped: 0`. The rendered `aws-0` Bucket now carries `managementPolicies` — that is the
+intended, and only, `aws-0` change in this task. Confirm nothing else moved.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tooling/aws-0/harbor/s3-bucket.yaml tooling/gcp-0/harbor/gcs-bucket.yaml
+git commit -m "fix(storage): stop Crossplane attempting to delete Harbor's buckets"
+```
