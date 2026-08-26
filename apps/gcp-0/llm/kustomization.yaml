@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# GCP-only weights resources for the LLM platform: a storage.gcp.m.upbound.io
+# Bucket mounted through GKE's managed Cloud Storage FUSE CSI driver
+# (ADR-0021), the static PV/PVC pair pointing at it, and the
+# GCPWorkloadIdentity granting the preload Job write access. Split out of
+# apps/base/ai/llm so the AWS overlay's S3/EFS resources
+# (apps/aws-0/llm) don't have to sit next to a GCP-specific one.
+resources:
+  - ../../base/ai/llm
+  - gcs-bucket.yaml
+  - models-pv.yaml
+  - workloadidentity.yaml
