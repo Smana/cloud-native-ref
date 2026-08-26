@@ -1,0 +1,18 @@
+# GCP override for the shared CronJob: only the CLOUD switch differs.
+# Strategic merge relies on the built-in EnvVar patch-merge-key (`name`), so
+# this replaces just the CLOUD entry -- every other env var, and the AWS
+# image reference set in the base, are left alone.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: openbao-snapshot
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: openbao-snapshot
+              env:
+                - name: CLOUD
+                  value: "gcp"

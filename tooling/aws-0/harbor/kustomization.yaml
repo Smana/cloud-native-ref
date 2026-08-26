@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tooling
+
+resources:
+  - ../../base/harbor
+  - s3-bucket.yaml
+  - iam-user.yaml
+
+patches:
+  - path: storage-s3.yaml
+    target:
+      kind: HelmRelease
+      name: harbor

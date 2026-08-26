@@ -7,8 +7,6 @@ resources:
   - externalsecret-valkey-password.yaml
   - helmrelease-harbor.yaml
   - serviceaccount-harbor.yaml
-  - iam-user.yaml
   - httproute.yaml
   - kvstore.yaml
-  - s3-bucket.yaml
   - sqlinstance.yaml

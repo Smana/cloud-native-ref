@@ -49,22 +49,35 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       }
     }
     data = {
-      cluster_name           = var.cluster_name
-      cluster_endpoint       = replace(data.aws_eks_cluster.this.endpoint, "https://", "")
-      cluster_endpoint_full  = data.aws_eks_cluster.this.endpoint
-      oidc_provider_arn      = data.aws_iam_openid_connect_provider.this.arn
-      oidc_issuer_url        = local.oidc_issuer_url
-      oidc_issuer_host       = local.oidc_issuer_host
-      aws_account_id         = data.aws_caller_identity.this.account_id
-      region                 = var.region
-      environment            = var.env
-      domain_name            = var.public_domain_name
-      private_domain_name    = var.private_domain_name
-      public_domain_name     = var.public_domain_name
-      vpc_id                 = data.aws_vpc.selected.id
-      vpc_cidr_block         = data.aws_vpc.selected.cidr_block
-      karpenter_queue_name   = local.karpenter_queue_name
-      route53_public_zone_id = data.aws_route53_zone.public.zone_id
+      cluster_name          = var.cluster_name
+      cluster_endpoint      = replace(data.aws_eks_cluster.this.endpoint, "https://", "")
+      cluster_endpoint_full = data.aws_eks_cluster.this.endpoint
+      oidc_provider_arn     = data.aws_iam_openid_connect_provider.this.arn
+      oidc_issuer_url       = local.oidc_issuer_url
+      oidc_issuer_host      = local.oidc_issuer_host
+      aws_account_id        = data.aws_caller_identity.this.account_id
+      region                = var.region
+      environment           = var.env
+      domain_name           = var.public_domain_name
+      private_domain_name   = var.private_domain_name
+      public_domain_name    = var.public_domain_name
+      vpc_id                = data.aws_vpc.selected.id
+      vpc_cidr_block        = data.aws_vpc.selected.cidr_block
+      # The CIDR holding OpenBao's internal endpoint, consumed by
+      # security/base/openbao-snapshot/network-policy.yaml. On AWS that is the
+      # whole VPC (the internal NLB's private addresses); on GCP it is the node
+      # subnet, where the internal load balancer lives. Same key, different
+      # shape per cloud -- which is exactly why the manifest cannot hardcode it.
+      openbao_cidr = data.aws_vpc.selected.cidr_block
+      # security/base/openbao-snapshot/external-secrets.yaml's Secret Manager
+      # key. Path-style here because AWS Secrets Manager allows "/"; GCP's
+      # ConfigMap (opentofu/gcp/gke/configure/kubernetes.tf) carries a flat
+      # dash-separated ID instead, because GCP Secret Manager forbids "/".
+      # Same key, different shape per cloud -- see opentofu/gcp/openbao/management's
+      # snapshot_approle_secret_name (Task 14).
+      openbao_snapshot_secret = "security/openbao/openbao-snapshot" # pragma: allowlist secret
+      karpenter_queue_name    = local.karpenter_queue_name
+      route53_public_zone_id  = data.aws_route53_zone.public.zone_id
     }
   })
   server_side_apply = true

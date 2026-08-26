@@ -1,0 +1,14 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: harbor
+spec:
+  values:
+    persistence:
+      imageChartStorage:
+        # Native gcs driver with Workload Identity -- no key material. ADR-0020
+        # records why this differs from the s3 driver used on aws-0.
+        type: gcs
+        gcs:
+          bucket: ${project_id}-ogenki-harbor
+          useWorkloadIdentity: true

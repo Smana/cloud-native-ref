@@ -16,4 +16,4 @@ spec:
       superuser: false
   backup:
     schedule: "0 0 * * *"
-    bucketName: "eu-west-3-ogenki-cnpg-backups"
+    bucketName: "${region}-ogenki-cnpg-backups"

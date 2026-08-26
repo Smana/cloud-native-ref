@@ -98,3 +98,24 @@ variable "external_secrets_service_account" {
   type        = string
   default     = "external-secrets"
 }
+
+# Dash-separated, matching its three siblings (approle_secret_name,
+# ca_chain_secret_name, root_token_secret_name), BECAUSE GCP Secret Manager
+# secret IDs may only contain letters, numbers, hyphens and underscores --
+# unlike AWS Secrets Manager, "/" is invalid here. The AWS stack's equivalent
+# default is a path-style name (`security/openbao/openbao-snapshot`), and
+# both values reach the one shared manifest that needs them --
+# security/base/openbao-snapshot/external-secrets.yaml -- through the
+# `openbao_snapshot_secret` per-cluster substitution variable (Task 14), not
+# by this stack matching AWS's literal string.
+variable "snapshot_approle_secret_name" {
+  description = "GCP Secret Manager entry holding the snapshot agent's AppRole credentials and job configuration."
+  type        = string
+  default     = "openbao-priv-gcp-snapshot"
+}
+
+variable "snapshot_bucket_name" {
+  description = "GCS bucket where raft snapshots are stored. Empty means derive it from region, matching security/gcp-0/openbao-snapshot/gcs-bucket.yaml's crossplane.io/external-name."
+  type        = string
+  default     = ""
+}
