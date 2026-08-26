@@ -351,3 +351,86 @@ All three exit 0.
 git add -A docs/ CLAUDE.md
 git commit -m "docs(gcp): record workstream 14 and the two-cloud LLM platform"
 ```
+
+---
+
+### Task 6: The HuggingFace token key must be legal on both clouds
+
+> Added during execution. Task 1's implementer flagged that
+> `apps/base/ai/llm/hf-token-externalsecret.yaml`'s comment names AWS Secrets Manager. Reading the
+> file showed something sharper than a stale comment.
+
+**Files:**
+- Modify: `apps/base/ai/llm/hf-token-externalsecret.yaml`
+- Modify: `opentofu/aws/eks/configure/kubernetes.tf`, `opentofu/gcp/gke/configure/kubernetes.tf`
+- Modify: `scripts/flux-schema/render-bundle.py` (`FIXTURE_VARS`)
+- Modify: `docs/gcp-bootstrap.md`
+
+**The problem.** The ExternalSecret extracts `key: /platform/llm/hf_token`. That is a **path-style
+name**, and GCP Secret Manager IDs cannot contain `/` — the identical defect workstream 9's Task 14
+fixed for the snapshot credentials. On `gcp-0` this fails, and it fails at *runtime*: the
+ExternalSecret never syncs, the `hf-token` Secret never exists, and every InferenceService claim that
+`envFrom`s it fails to start.
+
+Two things about it are worth noticing:
+
+- **`check-substitution.py` cannot catch this.** The key is a literal string, not a `${var}`. The new
+  gate closes the undefined-variable hole, not the wrong-literal one. This is the same free-form
+  string blind spot that let a non-existent StorageClass through in workstream 13.
+- **The `secretStoreRef` is already portable.** Both clusters have a `ClusterSecretStore` named
+  `clustersecretstore` — `aws-0`'s reads AWS Secrets Manager, `gcp-0`'s reads GCP Secret Manager. Only
+  the key is wrong.
+
+- [ ] **Step 1: Template the key**
+
+`key: ${llm_hf_token_secret}` in the base ExternalSecret. Update the comment: it currently says
+"Pulled from AWS Secrets Manager at /platform/llm/hf_token", which becomes false the moment this is
+shared. Say that each cluster's ConfigMap supplies the name, and why the two differ in shape.
+
+- [ ] **Step 2: Define it on both clusters**
+
+Add the key `llm_hf_token_secret` to both vars ConfigMaps, with these values:
+
+| Cluster stack | Value |
+|---|---|
+| `opentofu/aws/eks/configure/kubernetes.tf` | the existing path-style name, unchanged, so `aws-0` renders byte-identical |
+| `opentofu/gcp/gke/configure/kubernetes.tf` | a flat dash-separated ID, matching the convention its siblings use |
+
+Comment both with the reason the shapes differ: AWS Secrets Manager permits `/`, GCP Secret Manager
+forbids it. Cross-reference `openbao_snapshot_secret`, which carries the same split for the same
+reason.
+
+- [ ] **Step 3: Add the fixture entry**
+
+`FIXTURE_VARS` gains the key with the AWS value, so the rendered bundle is unchanged. Without it the
+key renders **empty** and the ExternalSecret extracts nothing — schema-valid, useless.
+
+> Write the entry as key and value on separate lines or via a comment, not as a literal
+> `"..._secret": "..."` pair in prose: `detect-secrets`' Secret Keyword heuristic fires on a key
+> containing `secret` adjacent to a quoted value. In `.py` and `.tf` files the baseline covers it; it
+> is prose that needs care.
+
+- [ ] **Step 4: Document the GCP prerequisite**
+
+The token is **not created by OpenTofu on either cloud** — it is a hand-created entry, confirmed by
+grepping all of `opentofu/` for `hf_token` and finding nothing. `docs/gcp-bootstrap.md` already lists
+three hand-created GCP prerequisites; this is a fourth, needed only if the LLM platform is enabled.
+Say that last part — it is not required for a plain `gcp-0`.
+
+- [ ] **Step 5: Verify**
+
+```bash
+./scripts/validate-manifests.sh
+python3 scripts/flux-schema/check-substitution.py
+grep -rn 'hf_token\|hf-token' .bundle/ | grep -i 'key:' | sort -u
+```
+
+`Invalid: 0, Skipped: 0`; the check exits 0; the rendered `aws-0` key still reads
+`/platform/llm/hf_token`; and no literal `${llm_hf_token_secret}` survives anywhere in `.bundle/`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "fix(llm): the HuggingFace token key must be legal on both clouds"
+```
