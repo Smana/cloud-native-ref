@@ -56,7 +56,7 @@ spec:
       type: "kubernetes"
       kubernetesModeWorkVolumeClaim:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: "gp3"
+        storageClassName: "${storage_class}"
         resources:
           requests:
             storage: 10Gi

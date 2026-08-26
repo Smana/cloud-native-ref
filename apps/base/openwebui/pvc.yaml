@@ -22,7 +22,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: gp3
+  storageClassName: ${storage_class}
   resources:
     requests:
       storage: 5Gi

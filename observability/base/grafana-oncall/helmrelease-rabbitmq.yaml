@@ -37,7 +37,7 @@ spec:
     resourcesPreset: "nano"
 
     persistence:
-      storageClass: "gp3"
+      storageClass: "${storage_class}"
       size: 8Gi
 
     ingress:
