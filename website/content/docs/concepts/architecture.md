@@ -11,14 +11,19 @@ The platform is best read in three bands, from the cloud account inwards.
 
 ## The three bands
 
-**Cloud managed services.** Route 53, load balancers, IAM, S3, KMS. The
+**Cloud managed services.** DNS, load balancers, workload identity, object
+storage, key management — Route 53 / Cloud DNS, ELB / Cloud Load Balancing,
+Pod Identity / Workload Identity, S3 / Cloud Storage, KMS / Cloud KMS. The
 platform provisions these through Crossplane rather than clicking them into
 existence, but it deliberately leans on managed services for the things a
-cloud does well — DNS, object storage, key management. Nothing here is
-exotic; the set was chosen so that a second cloud can offer equivalents.
+cloud does well. Nothing here is exotic, and that was the point: the set was
+chosen so a second cloud could offer equivalents — which it since has. The
+full mapping is on
+[Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}).
 
-**The cluster.** EKS, with Cilium as the CNI and kube-proxy replacement on
-nodes that Karpenter provisions on demand. Above the datapath sit four
+**The cluster.** EKS on AWS, GKE Standard on GCP, both with Cilium as the CNI
+and kube-proxy replacement, on nodes provisioned on demand by Karpenter (AWS)
+or Node Auto-Provisioning (GCP). Above the datapath sit four
 tiers: GitOps and composition (Flux, Crossplane), compute and networking
 (Cilium, Gateway API, ExternalDNS, Karpenter, KEDA), security and identity
 (External Secrets, cert-manager, Kyverno, ZITADEL), and observability
@@ -44,8 +49,7 @@ Three decisions do most of the work, and each has its own page:
 
 ## Where the boundary between clouds falls
 
-The platform runs on AWS today and is designed for a second cloud. The line
-is drawn deliberately, and it is not where people usually put it:
+The platform runs on AWS and GCP. The line between them is drawn deliberately, and it is not where people usually put it:
 platform-facing APIs stay cloud-shaped and honest, while developer-facing
 APIs stay cloud-neutral. An `App` claim should mean the same thing on any
 cloud; an IAM policy document should not pretend to.

@@ -68,11 +68,14 @@ are what the composition emits regardless, which is how a constitution
 becomes enforcement rather than aspiration.
 
 **The claim stays portable.** `App` is developer-facing, so it is
-deliberately cloud-neutral: the same claim should mean the same thing on a
-second cloud, even though the S3 bucket and the IAM role underneath it
-would not.
+deliberately cloud-neutral: the same claim means the same thing on either
+cloud, even though the S3 bucket and the IAM role underneath it do not. That
+is no longer hypothetical — the same `App` claim renders an S3 bucket plus an
+`EPI` on `aws-0`, and a GCS bucket plus a `GCPWorkloadIdentity` on `gcp-0`.
 [ADR-0007]({{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}})
-draws that line explicitly.
+draws that line explicitly, and
+[Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}})
+shows where it held and where it is still owed work.
 
 ## The cost
 
