@@ -209,11 +209,11 @@ $ git diff origin/main -- observability/ infrastructure/ apps/ tooling/ | grep '
 [... 7 more identical-shape value pairs, one per call site ...]
 -  # The openwebui-data PVC below is RWO (default gp3 StorageClass).
 +  # The openwebui-data PVC below is RWO (the platform's default block
-+  # storage class -- gp3 on aws-0, balanced-rwo on gcp-0; either way, RWO).
++  # storage class -- gp3 on aws-0, standard-rwo on gcp-0; either way, RWO).
 -# downloads on startup. gp3 because the workload is small-IOPS read +
 -# occasional write — RWO is fine since we only run a single replica.
 +# downloads on startup. The platform's default SSD-backed class (gp3 on
-+# aws-0, balanced-rwo on gcp-0) suits this small-IOPS read + occasional
++# aws-0, standard-rwo on gcp-0) suits this small-IOPS read + occasional
 +# write pattern -- RWO is fine since we only run a single replica.
 ```
 

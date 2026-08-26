@@ -76,7 +76,7 @@ FIXTURE_VARS = {
     "cluster_name": "foobar",
     "region": "eu-west-3",
     "environment": "dev",
-    # Both clusters define this; the value differs (gp3 / balanced-rwo) but the
+    # Both clusters define this; the value differs (gp3 / standard-rwo) but the
     # SHAPE does not -- it is an opaque string either way, which is why one
     # fixture is honest here. Contrast "region" above, where a single
     # AWS-shaped fixture masks a GCP-shaped runtime value.

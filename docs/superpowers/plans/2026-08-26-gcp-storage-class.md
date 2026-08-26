@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make every PVC in `*/base/` name a storage class its cluster actually has, so shared manifests render correctly on both `aws-0` (`gp3`) and `gcp-0` (`balanced-rwo`).
+**Goal:** Make every PVC in `*/base/` name a storage class its cluster actually has, so shared manifests render correctly on both `aws-0` (`gp3`) and `gcp-0` (`standard-rwo`).
 
 **Architecture:** A single `storage_class` key is added to each cluster's vars ConfigMap, published by that cluster's `configure` OpenTofu stack. The eight hardcoded `gp3` values become `${storage_class}`, substituted by the `postBuild.substituteFrom` block every consuming Kustomization already declares. No new plumbing.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - **`aws-0`'s rendered output must not change** apart from the substitution itself. It is a live cluster; a different storage class on an existing PVC is not a rename, it is a new volume.
-- **`aws-0` value is `gp3`; `gcp-0` value is `balanced-rwo`.** Exact strings.
+- **`aws-0` value is `gp3`; `gcp-0` value is `standard-rwo`.** Exact strings.
 - **The `FIXTURE_VARS` entry is mandatory.** Without it the bundle renders a literal `${storage_class}`, which passes schema validation because `storageClassName` is a free-form string — the blind spot recorded in workstream 8.
 - **Do not touch `volumeType: gp3`** in `infrastructure/base/karpenter-nodepools/default-ec2nc.yaml` or `karpenter-nodepools-gpu/gpu-l4-ec2nc.yaml`. That is an EC2 node root-volume type on a resource GKE does not have.
 - **Do not touch `infrastructure/base/aws-efs-csi-driver/`.** Filestore is dropped; the EFS driver serves `aws-0` and is out of scope.
@@ -30,7 +30,7 @@
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: a `storage_class` key on `eks-aws-0-vars` (value `gp3`) and on `gke-gcp-0-vars` (value `balanced-rwo`). Task 2's manifests substitute it; Task 3's fixture mirrors it.
+- Produces: a `storage_class` key on `eks-aws-0-vars` (value `gp3`) and on `gke-gcp-0-vars` (value `standard-rwo`). Task 2's manifests substitute it; Task 3's fixture mirrors it.
 
 - [ ] **Step 1: Add the key to the AWS ConfigMap**
 
@@ -38,11 +38,15 @@ In `opentofu/aws/eks/configure/kubernetes.tf`, inside the `data = {` block, add 
 
 ```hcl
       # The cluster's default block-storage class for PVCs. Shared name with
-      # the GCP ConfigMap, different value: EKS's EBS CSI provides gp3, GKE
-      # provides balanced-rwo. Both are SSD-backed and both are consumed as an
-      # opaque string by storageClassName -- nothing derives anything else from
-      # it, which is what makes one shared key honest here where ${region} was
-      # not (see the workstream 13 design).
+      # the GCP ConfigMap, different value: this repo creates the gp3
+      # StorageClass object itself (kubectl_manifest.gp3_storageclass,
+      # below) -- EKS's EBS CSI managed add-on supplies only the
+      # provisioner. GKE's side is standard-rwo, a class GKE auto-installs
+      # (no equivalent kubectl_manifest needed there). Both are SSD-backed
+      # and both are consumed as an opaque string by storageClassName --
+      # nothing derives anything else from it, which is what makes one
+      # shared key honest here where ${region} was not (see the
+      # workstream 13 design).
       storage_class = "gp3"
 ```
 
@@ -53,12 +57,14 @@ Match the surrounding alignment — that block aligns its `=` signs.
 In `opentofu/gcp/gke/configure/kubernetes.tf`, inside the block commented `# Cloud-neutral — names shared with the AWS ConfigMap.`, add after `region`:
 
 ```hcl
-      # balanced-rwo is pd-balanced, GKE's SSD class and the honest gp3
-      # equivalent. NOT standard-rwo: that is pd-standard (HDD), and the
+      # standard-rwo is pd-balanced, GKE's SSD class and the honest gp3
+      # equivalent -- despite the name, it is NOT the HDD tier. That is
+      # "standard" (pd-standard), which is cheaper and was considered given
+      # this platform's tear-down-after-every-run posture, but rejected: the
       # largest consumer is a VictoriaMetrics cluster whose write path is
       # I/O-sensitive -- a reference platform running it on HDD would be
       # unrepresentative of production.
-      storage_class = "balanced-rwo"
+      storage_class = "standard-rwo"
 ```
 
 - [ ] **Step 3: Verify both stacks still parse**
@@ -78,7 +84,7 @@ Remove any `.terraform/` and `.terraform.lock.hcl` the local `init` created, so 
 git add opentofu/aws/eks/configure/kubernetes.tf opentofu/gcp/gke/configure/kubernetes.tf
 git commit -m "feat(storage): publish a storage_class var from both configure stacks
 
-gp3 on aws-0, balanced-rwo on gcp-0. One shared key name, different values --
+gp3 on aws-0, standard-rwo on gcp-0. One shared key name, different values --
 honest here because storageClassName consumes it as an opaque string and
 nothing derives anything else from it, unlike \${region}, which was fed to the
 AWS SDK and broke on a GCP value."
@@ -163,7 +169,7 @@ be a category error."
 In `scripts/flux-schema/render-bundle.py`, add to `FIXTURE_VARS` beside the other cloud-neutral entries:
 
 ```python
-    # Both clusters define this; the value differs (gp3 / balanced-rwo) but the
+    # Both clusters define this; the value differs (gp3 / standard-rwo) but the
     # SHAPE does not -- it is an opaque string either way, which is why one
     # fixture is honest here. Contrast "region" above, where a single
     # AWS-shaped fixture masks a GCP-shaped runtime value.
@@ -247,7 +253,7 @@ grep -n 'storage_class' opentofu/aws/eks/configure/kubernetes.tf
 grep -n 'storage_class' opentofu/gcp/gke/configure/kubernetes.tf
 ```
 
-Expected: `gp3` in the first, `balanced-rwo` in the second. Paste both lines into the verification document — this is the only place the per-cluster difference is asserted, and the single-fixture limitation is precisely why it must be asserted here rather than inferred from the bundle.
+Expected: `gp3` in the first, `standard-rwo` in the second. Paste both lines into the verification document — this is the only place the per-cluster difference is asserted, and the single-fixture limitation is precisely why it must be asserted here rather than inferred from the bundle.
 
 - [ ] **Step 2: Confirm `aws-0` is unchanged**
 
@@ -266,7 +272,7 @@ Expected: only the eight lines from Task 2. Any other changed line in those tree
 grep -rn 'gp3' website/content/docs/ docs/architecture/ 2>/dev/null | grep -v superpowers
 ```
 
-If a page documents `gp3` as the storage class a developer gets, update it to say the class is per-cluster (`gp3` on `aws-0`, `balanced-rwo` on `gcp-0`) and supplied by the platform. If nothing matches, say so in the report — a null result is a finding, not a skipped step. **Do not** edit archived specs under `docs/specs/` or the superpowers directories.
+If a page documents `gp3` as the storage class a developer gets, update it to say the class is per-cluster (`gp3` on `aws-0`, `standard-rwo` on `gcp-0`) and supplied by the platform. If nothing matches, say so in the report — a null result is a finding, not a skipped step. **Do not** edit archived specs under `docs/specs/` or the superpowers directories.
 
 - [ ] **Step 4: Write the verification document**
 
@@ -299,4 +305,4 @@ git commit -m "docs: verification for the portable storage-class change"
 
 **Consistency.** The variable is `storage_class` in the ConfigMaps, `${storage_class}` in manifests, and `"storage_class"` in `FIXTURE_VARS` — one name, three syntaxes, each correct for its context.
 
-**One judgement recorded rather than hidden:** Task 4 deploys no cluster. The change is build-time and the bundle proves it; a deploy would cost real money to demonstrate nothing new. If a reviewer disagrees, the argument to beat is that a rendered `balanced-rwo` in a manifest and a bound PVC on GKE test the same substitution — the latter merely also tests that GKE has a class by that name, which Google guarantees.
+**One judgement recorded rather than hidden:** Task 4 deploys no cluster. The change is build-time and the bundle proves it; a deploy would cost real money to demonstrate nothing new. If a reviewer disagrees, the argument to beat is that a rendered `standard-rwo` in a manifest and a bound PVC on GKE test the same substitution — the latter merely also tests that GKE has a class by that name, which is a separate fact from the substitution mechanism and was not, in fact, guaranteed: an earlier draft of this plan asserted it as one and named a class (`balanced-rwo`) that does not exist on GKE at all. That is exactly the gap a deploy would close and the bundle cannot.
