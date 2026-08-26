@@ -8,7 +8,14 @@ FROM debian:bookworm-slim
 ARG BAO_VERSION=2.6.2
 # Google's apt repo publishes google-cloud-cli for both amd64 and arm64;
 # pinning the exact version keeps the image reproducible.
+#
+# Deliberately left unannotated for Renovate: this is an apt package version
+# from Google's own repo, not a GitHub release, and Renovate has no datasource
+# for it. Bump by hand -- do not add a `# renovate:` comment here, it would
+# silently match nothing (exactly the bug this file's other two ARGs had until
+# Task 10).
 ARG GCLOUD_VERSION=582.0.0-0
+# renovate: datasource=github-releases depName=aws/aws-cli
 ARG AWSCLI_VERSION=2.36.31
 # Set by buildx for each platform in the build matrix (linux/amd64, linux/arm64).
 ARG TARGETARCH

@@ -37,14 +37,26 @@
   },
   "customManagers": [
     {
-      "description": "OpenBao and node_exporter versions in the OpenBao cluster stack. The flux/helm-values/kubernetes managers all ignore `opentofu`, and the terraform manager does not look at variable defaults, so both of these were bumped by hand - node_exporter had been pinned to a July 2024 release since it was written.",
+      "description": "OpenBao and node_exporter versions in the OpenBao cluster stacks (AWS and GCP). The flux/helm-values/kubernetes managers all ignore `opentofu`, and the terraform manager does not look at variable defaults, so both of these were bumped by hand - node_exporter had been pinned to a July 2024 release since it was written.",
       "customType": "regex",
       "managerFilePatterns": [
         "/^opentofu/aws/openbao/cluster/variables\\.tf$/",
-        "/^opentofu/aws/openbao/cluster/scripts/startup_script\\.sh$/"
+        "/^opentofu/aws/openbao/cluster/scripts/startup_script\\.sh$/",
+        "/^opentofu/gcp/openbao/cluster/variables\\.tf$/"
       ],
       "matchStrings": [
         "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*(?:default\\s*=\\s*\"|NODE_EXPORTER_VERSION=)(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "versioningTemplate": "semver"
+    },
+    {
+      "description": "Pinned tool versions in container-images/**/Dockerfile ARGs. Otherwise bumped by hand, same as the openbao_version entry above - GCLOUD_VERSION is deliberately left unannotated there (see the Dockerfile comment): it's an apt package version from Google's own repo, not a GitHub release, and Renovate has no datasource for it.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^container-images/.+/Dockerfile$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*ARG\\s+[A-Z0-9_]+=(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
       ],
       "versioningTemplate": "semver"
     }
