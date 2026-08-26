@@ -418,10 +418,31 @@ git commit -m "feat(gcp): openbao-snapshot script branches on CLOUD for storage 
 
 **Files:**
 - Create: `container-images/openbao-snapshot/{Dockerfile,build.sh,README.md}`
+- Move: `scripts/openbao-snapshot.sh` → `container-images/openbao-snapshot/openbao-snapshot.sh`
+- Create: `scripts/openbao-snapshot.sh` as a relative symlink to the moved file
 
 **Interfaces:**
 - Consumes: Task 3's script.
 - Produces: `ghcr.io/smana/openbao-snapshot:<tag>`, which Task 5's CronJob references.
+
+> **Corrected during execution — the original plan was wrong here.** It said to copy the script from
+> `scripts/` and to "check how `pev2/build.sh` sets its context and follow it". Two facts checked
+> afterwards make that impossible:
+>
+> 1. **CI's build context is the image directory, not the repo root.** The matrix builds it as
+>    `"context": ("container-images/" + .)` in `.github/workflows/build-container-images.yml`. A
+>    `COPY scripts/openbao-snapshot.sh` would work locally with a repo-root context and fail in CI,
+>    because the file is outside the context.
+> 2. **The workflow only triggers on `container-images/**`.** A change to `scripts/openbao-snapshot.sh`
+>    would never rebuild the image. It would silently go stale — the same shape as the failure this
+>    workflow already carries a scar for, where a green run published nothing.
+>
+> So the script's canonical home must be inside the image directory. But it is also a documented
+> operator command — `website/content/docs/platform/security/openbao.md:218` runs
+> `./scripts/openbao-snapshot.sh restore -a "${VAULT_ADDR}"`, and it is listed in
+> `website/content/docs/reference/commands.md:111`. A relative symlink at the old path keeps that
+> working, keeps one source of truth, and needs no CI change at all. Docker never sees the symlink:
+> the real file is inside the build context; the symlink points inward from outside it.
 
 - [ ] **Step 1: Read the precedent before writing anything**
 
@@ -433,7 +454,28 @@ Match its conventions — base image choice, label scheme, how `build.sh` derive
 
 - [ ] **Step 2: Write the Dockerfile**
 
-It must contain `bao`, `jq`, `aws`, and `gcloud`, and copy `scripts/openbao-snapshot.sh`. Build context is the repo root if the script is copied from `scripts/` — check how `pev2/build.sh` sets its context and follow it. Run as a non-root user with no writable root filesystem, per the platform constitution.
+First move the script and leave a symlink behind:
+
+```bash
+git mv scripts/openbao-snapshot.sh container-images/openbao-snapshot/openbao-snapshot.sh
+ln -s ../container-images/openbao-snapshot/openbao-snapshot.sh scripts/openbao-snapshot.sh
+git add scripts/openbao-snapshot.sh
+```
+
+Verify the symlink resolves before going further — `bash scripts/openbao-snapshot.sh` must still print
+its usage, and pre-commit's broken-symlink hook must pass.
+
+The Dockerfile must provide `bao`, `jq`, `aws` and `gcloud`, and `COPY openbao-snapshot.sh` (a plain
+relative path now that the file is in the context). Run as a non-root user with a read-only root
+filesystem, per the platform constitution.
+
+**The image builds for `linux/amd64` AND `linux/arm64`** — the workflow sets both. This is the part
+most likely to bite: the AWS CLI v2 ships no musl build, so `pip install awscli` or an Alpine base
+will fail or silently give you v1 on one architecture. Choose a base and an install method that
+genuinely produce both architectures, and **state in your report which base you chose and why**. If
+you cannot make both work, say so and stop rather than quietly building amd64 only — a
+single-architecture image is exactly the kind of thing that passes here and fails on a node you did
+not test.
 
 - [ ] **Step 3: Write build.sh and README.md**
 
