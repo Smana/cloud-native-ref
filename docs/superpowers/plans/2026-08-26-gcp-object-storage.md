@@ -881,3 +881,104 @@ intended, and only, `aws-0` change in this task. Confirm nothing else moved.
 git add tooling/aws-0/harbor/s3-bucket.yaml tooling/gcp-0/harbor/gcs-bucket.yaml
 git commit -m "fix(storage): stop Crossplane attempting to delete Harbor's buckets"
 ```
+
+---
+
+### Task 10: Make the Renovate annotations actually do something
+
+> Added during execution. Task 4 pinned three tool versions and annotated one of them. Checking
+> whether that annotation works revealed it does not — and that a pre-existing one does not either.
+
+**Files:**
+- Modify: `.github/renovate.json`
+- Modify: `container-images/openbao-snapshot/Dockerfile`
+
+**Interfaces:**
+- Consumes: Task 4's Dockerfile.
+- Produces: nothing.
+
+**The problem.** `.github/renovate.json`'s single `customManagers` entry applies to exactly two paths:
+
+```
+"/^opentofu/aws/openbao/cluster/variables\\.tf$/",
+"/^opentofu/aws/openbao/cluster/scripts/startup_script\\.sh$/"
+```
+
+Two `# renovate:` comments in this repo sit outside that list and are therefore **inert** — they
+look maintained and are not:
+
+1. `container-images/openbao-snapshot/Dockerfile:7` (`ARG BAO_VERSION`), added by Task 4. Its path is
+   not listed **and** the existing `matchStrings` expects `default = "` or `NODE_EXPORTER_VERSION=`
+   on the following line, so `ARG BAO_VERSION=` would not match even if the path were added.
+2. `opentofu/gcp/openbao/cluster/variables.tf:69`, pre-existing — copied from the AWS stack during
+   workstream 11 without adding the new path. Its `default = "2.6.2"` **would** match the existing
+   pattern; only the path is missing.
+
+This matters because the config's own description records the failure it is meant to prevent:
+*"node_exporter had been pinned to a July 2024 release since it was written."* An inert annotation
+reproduces exactly that, while looking like it cannot happen.
+
+- [ ] **Step 1: Add the missing GCP path to the existing entry**
+
+Add `"/^opentofu/gcp/openbao/cluster/variables\\.tf$/"` to that entry's `managerFilePatterns`, and
+extend its `description` to say the GCP stack is covered too. One line; the matchString already fits.
+
+- [ ] **Step 2: Add a second `customManagers` entry for container-image Dockerfiles**
+
+A separate entry, because the line shape differs (`ARG NAME=1.2.3`, not `default = "1.2.3"`). Give it
+a `description` explaining that pinned tool versions in `container-images/**` are otherwise bumped by
+hand, and a `managerFilePatterns` of `"/^container-images/.+/Dockerfile$/"` so future images are
+covered without another config change. The `matchStrings` must pair a `# renovate:` comment line with
+the `ARG <NAME>=<semver>` on the line below it.
+
+- [ ] **Step 3: Annotate `AWSCLI_VERSION`**
+
+AWS CLI v2 releases are GitHub releases on `aws/aws-cli` with plain `2.36.31`-style tags:
+
+```dockerfile
+# renovate: datasource=github-releases depName=aws/aws-cli
+ARG AWSCLI_VERSION=2.36.31
+```
+
+- [ ] **Step 4: Say why `GCLOUD_VERSION` has no annotation**
+
+It is an apt package version from Google's own repository (`582.0.0-0`), not a GitHub release, and
+Renovate has no datasource for it. Leave it unannotated and add a comment saying so explicitly, so
+the asymmetry reads as a decision rather than an oversight. An unexplained gap invites someone to
+"fix" it with a datasource that silently matches nothing — which is the very bug this task exists to
+remove.
+
+- [ ] **Step 5: Verify the regex against the real lines**
+
+Renovate is not run here, so verify the pattern the way it will be applied — extract the
+`matchStrings` regex and test it against the actual file content:
+
+```bash
+python3 - <<'PY'
+import json, re, pathlib
+cfg = json.load(open('.github/renovate.json'))
+for m in cfg['customManagers']:
+    for pat in m['matchStrings']:
+        rx = re.compile(pat, re.M)
+        for f in ['container-images/openbao-snapshot/Dockerfile',
+                  'opentofu/gcp/openbao/cluster/variables.tf',
+                  'opentofu/aws/openbao/cluster/variables.tf']:
+            p = pathlib.Path(f)
+            if not p.exists():
+                continue
+            for mt in rx.finditer(p.read_text()):
+                print(f, '->', mt.groupdict())
+PY
+```
+
+Every annotated version in all three files must appear in the output with the right `datasource`,
+`depName` and `currentValue`. **An annotation that produces no match is the bug this task fixes — do
+not leave one behind.** Note this checks the regex, not Renovate's file-pattern matching; state that
+limitation in your report rather than claiming more than the test shows.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add .github/renovate.json container-images/openbao-snapshot/Dockerfile
+git commit -m "fix(ci): make the Renovate version annotations actually match"
+```
