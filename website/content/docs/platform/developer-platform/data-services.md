@@ -74,35 +74,58 @@ unless you set `REDIS_URL` yourself
 with claims written before the migration off the legacy Bitnami chart.
 {{< /callout >}}
 
-## `s3Bucket` — object storage with Pod Identity
+## `objectStore` — object storage with workload identity
 
-Creates an S3 bucket and an EKS Pod Identity so your pods get scoped AWS
-credentials automatically — no static keys. The bucket name is derived, not
-chosen: `<region>-ogenki-<app-name>`
-(`apis/app/kcl/main.k:1080` in `Smana/crossplane-configuration`):
+Creates a bucket and a scoped workload identity so your pods get credentials
+automatically — no static keys, on either cloud. **The same claim renders S3 on
+`aws-0` and GCS on `gcp-0`**; the composition picks the implementation from the
+cluster's own EnvironmentConfig.
+
+The bucket name is derived, not chosen — `<scope>-ogenki-<app-name>`, where the
+scope is the AWS region or the GCP project ID. The project ID is used on GCP
+because GCS bucket names are globally unique across all of Google Cloud, unlike
+S3 names.
 
 ```yaml
-  s3Bucket:
+  objectStore:
     enabled: true
-    region: eu-west-3
     permissions: readwrite    # readwrite | readonly | custom
     versioning: true
     retentionDays: 90
 ```
 
-With `permissions: custom`, supply your own IAM policy JSON in
-`customPolicy`. Every other permission level renders a scoped inline IAM
-policy against that one bucket's ARN via a nested `EPI` claim
-(`apis/app/kcl/main.k:1131-1150`) — see
-[ADR-0002]({{< relref "/docs/decisions/0002-eks-pod-identity-over-irsa.md" >}})
-for why Pod Identity over IRSA, and
-[EPI]({{< relref "/docs/reference/glossary.md" >}}) in the glossary for what
-that nested claim renders.
+Note there is no `region`. The claim does not say where the bucket lands — that
+comes from the cluster — which is what lets the same manifest deploy to either
+cloud. Override it only if you must, via `aws.region` or `gcp.location`.
+
+| | `aws-0` | `gcp-0` |
+|---|---|---|
+| Bucket | S3 `Bucket` + `BucketVersioning` | GCS `Bucket`, versioning inline |
+| Identity | `EPI` (EKS Pod Identity) | `GCPWorkloadIdentity` |
+| Grant | inline IAM policy scoped to the bucket ARN | `roles/storage.objectAdmin` on that one bucket |
+
+Both grants are **bucket-scoped**, not project- or account-wide. On GCP that
+matters more than it sounds: a project-level `roles/storage.*` would reach every
+bucket in the project, including OpenBao's snapshots and database backups.
+
+{{< callout type="warning" >}}
+**`permissions: custom` is AWS-only.** Supply your IAM policy JSON in
+`aws.customPolicy` — the XRD rejects `custom` without it. IAM JSON has no GCP
+equivalent, so on GCP the composition degrades `custom` to read-only rather than
+silently granting write.
+{{< /callout >}}
+
+See [ADR-0002]({{< relref "/docs/decisions/0002-eks-pod-identity-over-irsa.md" >}})
+for why Pod Identity over IRSA on AWS,
+[ADR-0007]({{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}})
+for why the cloud-specific knobs live in `aws {}` / `gcp {}` blocks, and
+[EPI]({{< relref "/docs/reference/glossary.md" >}}) in the glossary for what the
+nested AWS identity claim renders.
 
 ## Together: an app that uses all three
 
-Toggling `sqlInstance`, `kvStore`, and `s3Bucket` on the same claim wires
-`DATABASE_URL`, `REDIS_URL`, the S3 bucket, and its Pod Identity together
+Toggling `sqlInstance`, `kvStore`, and `objectStore` on the same claim wires
+`DATABASE_URL`, `REDIS_URL`, the bucket, and its workload identity together
 automatically — you never type an `xplane-*` name or a `secretKeyRef`
 yourself. The [App Wizard]({{< relref "/docs/platform/developer-platform/app-wizard.md" >}})
 page walks a full worked example (Outline, a self-hosted wiki) that does
