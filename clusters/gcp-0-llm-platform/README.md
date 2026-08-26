@@ -35,8 +35,9 @@ for why the weights path differs from `aws-0`.
 
 ## Known gap: enabling this today does not fully work
 
-This ships suspended, and **that is a real gate, not a formality** — two things stop the platform
-from serving traffic correctly if resumed as-is:
+This ships suspended, and **that is a real gate, not a formality.** Two things originally stopped the
+platform from serving traffic correctly. **One is now closed** (KEDA, below); one remains, and it is
+the blocking one:
 
 - **Serving pods cannot read the weights bucket.** The Cloud Storage FUSE CSI driver
   authenticates as the *mounting pod's own* Kubernetes ServiceAccount via Workload Identity
@@ -48,16 +49,22 @@ from serving traffic correctly if resumed as-is:
   EPI plays, rendered by the `InferenceService` composition. **The composition has no GCP support
   for this yet.** Until it does, a resumed platform preloads weights fine (the shared preload
   identity in this directory covers that) but vLLM pods fail to mount the bucket for reading.
-- **KEDA is not installed on `gcp-0`.** The `InferenceService` composition renders a KEDA
-  `ScaledObject` per claim (SPEC-001, leading vLLM saturation signals). `aws-0` gets KEDA from the
-  base `infrastructure` umbrella; `gcp-0`'s own `infrastructure` Kustomization
-  (`infrastructure/gcp-0`) is deliberately minimal (external-dns + ComputeClass only) and does not
-  include it. Resuming today would fail each claim's reconcile with `no matches for kind
-  ScaledObject` until KEDA is added to `infrastructure/gcp-0`.
+- ~~**KEDA is not installed on `gcp-0`.**~~ **CLOSED.** `infrastructure/gcp-0/kustomization.yaml`
+  now pulls `../base/keda` — the same shared base `aws-0` uses, verified cloud-neutral first (no
+  IRSA, no IAM roles, no ARNs, and its CiliumNetworkPolicy addresses `toEntities: kube-apiserver`
+  rather than a CIDR). The `InferenceService` composition's per-claim `ScaledObject` (SPEC-001) has
+  a controller to reconcile it.
+
+  One difference from `aws-0` worth knowing: `gcp-0`'s `infrastructure` Kustomization does **not**
+  health-check KEDA's HelmRelease, where `aws-0`'s does. It health-checks nothing today, and adding
+  a check for KEDA alone would make the whole path block on it — a KEDA failure would wedge
+  everything downstream, including resources that do not use it. Worth revisiting when the umbrella
+  is actually resumed.
 
 A README that lists how to enable something without saying it will not work is worse than one
-that says nothing — so: **do not resume `llm-platform` on `gcp-0` until both gaps above are
-closed.**
+that says nothing — so: **do not resume `llm-platform` on `gcp-0` until the serving-pod identity
+gap above is closed.** That one needs GCP support in the `InferenceService` composition
+(`Smana/crossplane-configuration`) and a pin bump here; it cannot be fixed in this repository.
 
 ## Enable
 
