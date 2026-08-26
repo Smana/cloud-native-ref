@@ -9,7 +9,7 @@
 # 5Gi is generous for the SQLite DB itself (~250 KB at 1 admin + few
 # chats) plus the embedded vector store / model-cache files OpenWebUI
 # downloads on startup. The platform's default SSD-backed class (gp3 on
-# aws-0, balanced-rwo on gcp-0) suits this small-IOPS read + occasional
+# aws-0, standard-rwo on gcp-0) suits this small-IOPS read + occasional
 # write pattern -- RWO is fine since we only run a single replica.
 apiVersion: v1
 kind: PersistentVolumeClaim

@@ -85,7 +85,7 @@ External Secret; no credential is ever inlined.
 | Source | `flux/sources/gitrepo-runlore.yaml`, pinned to tag `v0.13.0` |
 | Image | `0.13.0` — signed, multi-arch, SBOM-attested |
 | Workload | `StatefulSet`, `replicaCount: 2`, leader election |
-| Storage | one RWO 1Gi PVC per replica, via `volumeClaimTemplates` — platform default class (`gp3` on aws-0, `balanced-rwo` on gcp-0) |
+| Storage | one RWO 1Gi PVC per replica, via `volumeClaimTemplates` — platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |
 | Identity | EKS Pod Identity `xplane-runlore` bound to the `runlore` ServiceAccount |
 | Kustomization | `observability` |
 

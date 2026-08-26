@@ -11,6 +11,13 @@
 #        opentofu/gcp/gke/init/helm_values/flux-instance.yaml
 #
 # should show only the header and that one line.
+#
+# A second, unrelated GCP storage-class site: opentofu/gcp/gke/configure/kubernetes.tf
+# publishes the same "standard-rwo" name via the storage_class key in the gke-<cluster>-vars
+# ConfigMap, for Flux postBuild substitution into workload PVCs (workstream 13). That is a
+# different mechanism on a different resource -- this file's storage.class above is a static
+# OpenTofu-time Helm value for Flux's own artifact PVC, not Flux-substituted. The two happen to
+# agree today; if GCP's storage classes ever change, update both, in the same direction.
 
 instance:
   distribution:

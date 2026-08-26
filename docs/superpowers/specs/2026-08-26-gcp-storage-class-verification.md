@@ -7,17 +7,35 @@ Implementation: `62e2c0c5` (Task 1, publish `storage_class`), `c7a508da` (Task 2
 
 ## Scope note: no cluster deploy
 
-**Deliberate, not an oversight.** Both `aws-0` and `gcp-0` are torn down. The change is a build-time
-substitution — a Kustomize/Flux `postBuild.substituteFrom` variable resolved at render time — and the
-rendered bundle is the artifact that proves it, byte for byte, the same content Flux would apply on a
-live cluster. A deploy would additionally prove that GKE actually has a StorageClass named
-`balanced-rwo`, which is a fact about GKE's own defaults (Google guarantees it), not about anything
-this change controls. Every criterion below is checked against the rendered bundle and the two
-source-of-truth ConfigMap definitions instead.
+**Deliberate, not an oversight — but see the correction below before reading this claim as settled.**
+Both `aws-0` and `gcp-0` are torn down. The change is a build-time substitution — a Kustomize/Flux
+`postBuild.substituteFrom` variable resolved at render time — and the rendered bundle is the artifact
+that proves *that mechanism*, byte for byte, the same content Flux would apply on a live cluster.
+
+What a deploy would additionally prove is a separate claim this document got wrong on its first pass:
+that GKE actually has a StorageClass named `standard-rwo` (originally written here as `balanced-rwo`,
+which does not exist on GKE at all — see the design doc's "The problem" section for the correction
+and its in-repo evidence). That is not a fact this change controls, and it is **not a guarantee** —
+an earlier draft of this document called it one, which was itself part of the defect: a claim
+checked by a method structurally incapable of checking it, upgraded to a guarantee to explain why no
+other method was needed. It is corroborated in-repo (`opentofu/gcp/gke/init/helm_values/flux-instance.yaml`
+already runs `standard-rwo` successfully on a deployed `gcp-0`), which is materially stronger than an
+assumption, but it is still not verified for *these eight manifests specifically*, and the rendered
+bundle cannot verify it either — see criterion 1. Every criterion below is checked against the
+rendered bundle and the two source-of-truth ConfigMap definitions; criterion 1 says plainly where
+that method's reach ends.
 
 ## Success criteria
 
-### 1. Every affected manifest renders `gp3` in `aws-0`'s bundle and `balanced-rwo` in `gcp-0`'s
+### 1. Every affected manifest renders `gp3` in `aws-0`'s bundle and `standard-rwo` in `gcp-0`'s
+
+**Marked NOT CHECKABLE BY THE AVAILABLE METHOD, not PASS — see the correction below.** An earlier
+draft of this document marked this criterion PASS on the evidence in this section. That was wrong,
+and not only because the value was wrong (`balanced-rwo`, which does not exist on GKE — see the
+design doc's "The problem" section). The criterion's subject is "does the GCP value work" — does it
+name a class GKE actually provides — and no command below, then or now, can answer that. Marking it
+PASS on this evidence is exactly the failure mode criterion 4 exists to name: a claim checked by a
+method structurally incapable of checking it.
 
 `render-bundle.py` uses **one** `FIXTURE_VARS` map for both clusters (see Task 3), so the rendered
 `.bundle/` cannot show a per-cluster difference — it renders whatever the fixture says (`gp3`) for
@@ -26,15 +44,22 @@ ConfigMaps that Flux substitutes from on a real cluster:
 
 ```
 $ grep -n 'storage_class' opentofu/aws/eks/configure/kubernetes.tf
-66:      storage_class          = "gp3"
+70:      storage_class          = "gp3"
 
 $ grep -n 'storage_class' opentofu/gcp/gke/configure/kubernetes.tf
-62:      storage_class = "balanced-rwo"
+67:      storage_class = "standard-rwo"
 ```
 
-`gp3` on `aws-0`, `balanced-rwo` on `gcp-0` — as designed. This is the only place in this document
-(or in CI) that the per-cluster difference is asserted; the bundle's single-fixture limitation is
-exactly why it has to be asserted here rather than inferred from `.bundle/`.
+`gp3` on `aws-0`, `standard-rwo` on `gcp-0` — this is what the ConfigMaps publish today, corrected
+from `balanced-rwo` after review (see `opentofu/gcp/gke/configure/kubernetes.tf`'s comment for the
+in-repo corroboration: `opentofu/gcp/gke/init/helm_values/flux-instance.yaml` already runs
+`standard-rwo` successfully on a deployed `gcp-0`, for a different resource). **This grep only shows
+what the ConfigMap publishes, which is exactly what the branch's own diff already shows — it does not
+independently establish that GKE provides a class by that name.** That fact was, and remains, outside
+what any command in this repository can check while both clusters are destroyed. The bundle's
+single-fixture limitation compounds this — it cannot show a per-cluster difference at all — but even
+a bundle that could would still only show the *name being applied*, not whether GKE *has* a class by
+that name.
 
 Corroborating the fixture side — every one of the 8 call sites renders a real value (not a literal)
 in the shared-fixture bundle:
@@ -55,10 +80,17 @@ of this document pasted `10` here. Re-run now against the same committed tree, t
 and Task 4's own changes (comment-only, in `apps/base/openwebui/{app,pvc}.yaml`) did not touch any of
 the 8 `storageClassName` lines, so they cannot explain the difference. The `10` in the earlier draft
 was simply wrong — pasted from a `.bundle/` state that does not reproduce; treat this run as the
-authoritative one. The verdict is unaffected either way: the second command — zero unsubstituted
-literals — is what this criterion actually depends on, and it holds, reproduced twice.)
+authoritative one.)
 
-**PASS.**
+**Two different sub-claims here, with two different verdicts.** *The substitution mechanism* —
+each of the 8 sites renders a real value pulled from `FIXTURE_VARS`, with zero unsubstituted
+literals — is confirmed working, reproduced twice: **PASS**, and this part is unaffected by which
+GCP name is correct. *The criterion as the design doc states it* — "renders `gp3` in `aws-0`'s
+bundle and `standard-rwo` in `gcp-0`'s", i.e. does the GCP value work — is **NOT CHECKABLE BY THE
+AVAILABLE METHOD**: nothing above establishes that GKE provides a class named `standard-rwo`, only
+that the ConfigMap now says `standard-rwo` instead of `gp3` where it used to (equivalently) say
+`balanced-rwo` instead of `gp3`. Both clusters being destroyed means this half of the criterion has
+no available check in this repository; it is not marked PASS.
 
 ### 2. `./scripts/validate-manifests.sh` passes with `Invalid: 0, Skipped: 0`
 
@@ -244,14 +276,16 @@ All five gates green, run fresh in this session after the documentation fixes ab
 
 | # | Criterion | Result |
 |---|---|---|
-| 1 | Per-cluster values render correctly | PASS |
+| 1 | Per-cluster values render correctly | **NOT CHECKABLE BY THE AVAILABLE METHOD** — substitution mechanism confirmed PASS; whether `standard-rwo` names a real GKE class is outside what any command here can check while both clusters are destroyed (see §1) |
 | 2 | `validate-manifests.sh`: `Invalid: 0, Skipped: 0` | PASS |
 | 3 | `check-substitution.py` passes | PASS |
 | 4 | Mutation test makes a gate fail | **DID NOT hold as literally stated — schema gate passes on the unsubstituted literal; the fixture is the only protection (see §4)** |
 | 5 | Filestore drop recorded, roadmap clean | PASS |
 | 6 | `aws-0` bundle diff is substitution only | PASS |
 
-5 of 6 criteria pass outright; criterion 4's finding is the intended discovery of this workstream's
-own design (the mutation test exists specifically to check whether the gate's coverage is real), not
-a defect introduced by the implementation. No cluster was deployed — deliberate, per the scope note
-above.
+4 of 6 criteria pass outright; criteria 1 and 4 are both honest findings about the limits of this
+repository's own gates, not defects this implementation introduced. Criterion 4's mutation test
+exists specifically to check whether the schema gate's coverage is real; criterion 1's method — a
+rendered bundle and a grep of the ConfigMap literal — was never capable of checking whether a GCP
+class name is real, which is exactly how `balanced-rwo` reached this branch marked PASS in an
+earlier draft. No cluster was deployed — deliberate, per the scope note above.

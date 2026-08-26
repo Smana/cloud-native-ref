@@ -18,7 +18,7 @@ of `kustomization.yaml`.
 |---|---|---|
 | Retention | `1d` — explicitly commented "Minimal retention, for tests only" | `10d` |
 | Replication | `replicaCount: 1` | `replicationFactor: 2`, separate `vmstorage`/`vmselect`/`vminsert` with zone-aware anti-affinity |
-| Storage | 10Gi RWO | 10Gi (`vmstorage`) + 2Gi (`vminsert`/`vmselect`), platform default class (`gp3` on aws-0, `balanced-rwo` on gcp-0) |
+| Storage | 10Gi RWO | 10Gi (`vmstorage`) + 2Gi (`vminsert`/`vmselect`), platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |
 | Alertmanager | `replicaCount` unset (chart default) | `replicaCount: 2` |
 
 `aws-0`'s overlay (`observability/aws-0/victoria-metrics-k8s-stack/kustomization.yaml`)
