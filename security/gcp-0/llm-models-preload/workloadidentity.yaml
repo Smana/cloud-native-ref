@@ -1,8 +1,20 @@
+# Moved out of apps/gcp-0/llm/ (Task 3) into its own directory once the LLM
+# umbrella needed six independently-gated children (Task 4): the GCP analogue
+# of aws-0's security/base/epis-llm, one directory + one Flux Kustomization
+# (llm-platform-security-wi) dedicated to the preload identity, separate from
+# llm-platform-apps (apps/gcp-0/llm: the bucket + PV + InferenceService
+# claims). Same reason AWS keeps its EPI split out: "so it can be gated
+# independently" (security-llm-epi.yaml).
+#
 # Grants the shared preload ServiceAccount (apps/base/ai/llm/preload-
 # serviceaccount.yaml -- the actual K8s SA is `xplane-llm-models-preload`,
 # NOT `llm-models-preload`; spec.serviceAccount.name must match it exactly,
 # same trap as security/gcp-0/openbao-snapshot/workloadidentity.yaml) write
-# access to the one llm-models bucket.
+# access to the one llm-models bucket. Unlike EPI, a GCPWorkloadIdentity claim
+# binds by its OWN namespace (GKE Workload Identity Federation binds the
+# subject `ns/<claim namespace>/sa/<name>`), so this claim's
+# metadata.namespace must stay `llm` -- matching the ServiceAccount's
+# namespace -- even though the file itself now lives under security/gcp-0/.
 #
 # `bucketRoles`, singular `role`, never a project-level `roles:` -- a
 # project-scoped roles/storage.* would also reach OpenBao's snapshot bucket
@@ -30,9 +42,9 @@
 # InferenceService composition once it grows GCP support -- the same place
 # the AWS per-claim EPI is rendered, and equally absent from apps/aws-0/llm
 # today. Deliberately NOT added here: it is composition-owned, per-claim,
-# and out of this static overlay's scope -- and granting objectAdmin to
-# serving pods here to sidestep that would be the credential-scope
-# regression the brief explicitly warns against.
+# and out of this overlay's scope -- and granting objectAdmin to serving pods
+# here to sidestep that would be the credential-scope regression already
+# rejected once.
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: GCPWorkloadIdentity
 metadata:

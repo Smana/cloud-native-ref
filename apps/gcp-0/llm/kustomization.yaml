@@ -3,12 +3,16 @@ kind: Kustomization
 
 # GCP-only weights resources for the LLM platform: a storage.gcp.m.upbound.io
 # Bucket mounted through GKE's managed Cloud Storage FUSE CSI driver
-# (ADR-0021), the static PV/PVC pair pointing at it, and the
-# GCPWorkloadIdentity granting the preload Job write access. Split out of
+# (ADR-0021), plus the static PV/PVC pair pointing at it. Split out of
 # apps/base/ai/llm so the AWS overlay's S3/EFS resources
 # (apps/aws-0/llm) don't have to sit next to a GCP-specific one.
+#
+# The preload identity (GCPWorkloadIdentity) does NOT live here -- it moved to
+# security/gcp-0/llm-models-preload/ (Task 4), its own Flux Kustomization
+# (llm-platform-security-wi) so it can be gated independently of the
+# InferenceService claims applied from this directory, mirroring why aws-0
+# keeps its EPI split out of apps/aws-0/llm too.
 resources:
   - ../../base/ai/llm
   - gcs-bucket.yaml
   - models-pv.yaml
-  - workloadidentity.yaml
