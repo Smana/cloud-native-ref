@@ -54,6 +54,40 @@ spec:
       serverSslCrtSecret: "zitadel-certificate"
       masterkeySecretName: "zitadel-masterkey" # Populated from the zitadel-envvars secret
       configmapConfig:
+        # Keep the EMBEDDED login UI, which is what `login.enabled: false`
+        # above already assumes.
+        #
+        # ZITADEL v4 defaults DefaultInstance.Features.LoginV2.Required to TRUE
+        # (cmd/defaults.yaml). A fresh instance therefore redirects every OIDC
+        # authorize to /ui/v2/login/... -- a path only the separate login v2
+        # deployment serves, and this chart does not deploy it. The result is
+        # that authentication looks configured, the redirect fires correctly,
+        # and the login page itself returns:
+        #
+        #   {"code":5, "message":"Not Found"}
+        #
+        # It only bites a NEWLY BOOTSTRAPPED instance, and the split is
+        # restored-vs-fresh rather than AWS-vs-GCP:
+        #
+        #   aws-0 never creates an instance. Its SQLInstance restores from
+        #   objectStoreRecovery (path zitadel-20260719), so every rebuild brings
+        #   back a July database whose instance row carries the flags of that
+        #   time. DefaultInstance.Features is read at instance CREATION only, so
+        #   aws-0 never consults it.
+        #
+        #   gcp-0 drops objectStoreRecovery -- there is no GCS backup to restore
+        #   -- so it bootstraps empty and the defaults genuinely apply.
+        #
+        # aws-0 would hit this the first time it bootstraps without that backup.
+        # Setting it here protects both.
+        #
+        # Because DefaultInstance applies only at creation, an instance already
+        # carrying the flag must be corrected through the API:
+        #   PUT /v2/features/instance  {"loginV2":{"required":false}}
+        DefaultInstance:
+          Features:
+            LoginV2:
+              Required: false
         Log:
           Formatter:
             Format: json
