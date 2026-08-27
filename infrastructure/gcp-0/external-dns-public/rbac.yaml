@@ -21,6 +21,14 @@ rules:
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "watch", "list"]
+  # Required by the `service` source, which starts an EndpointSlice informer.
+  # Without it external-dns does not degrade -- it dies:
+  #   fatal: failed to sync *v1.EndpointSlice after 1m0s: context deadline exceeded
+  # and crash-loops, so the Deployment sits at 0/1 and no record is ever
+  # published. The failure names the informer, not the missing permission.
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "watch", "list"]
   - apiGroups: ["extensions", "networking.k8s.io"]
     resources: ["ingresses"]
     verbs: ["get", "watch", "list"]
