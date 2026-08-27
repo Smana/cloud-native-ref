@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# A pass-through, exactly like observability/aws-0/victoria-metrics-k8s-stack.
+#
+# The directory exists so the stack gets its own Flux Kustomization — it
+# installs the CRDs (VMCluster, VMRule, VMServiceScrape, …) that everything
+# downstream depends on, so it has to reach Ready before grafana-operator and
+# the rest of observability apply.
+#
+# Nothing is patched: the base is cloud-neutral, and its PVCs read
+# ${storage_class}, which is standard-rwo on this cluster.
+resources:
+  - ../../base/victoria-metrics-k8s-stack
