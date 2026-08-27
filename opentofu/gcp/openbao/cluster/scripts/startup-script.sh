@@ -110,6 +110,32 @@ listener "tcp" {
   cluster_address = "[::]:8201"
   tls_cert_file   = "/opt/openbao/tls/tls.crt"
   tls_key_file    = "/opt/openbao/tls/tls.key"
+
+  # Matches the AWS cluster. Without it /v1/sys/metrics requires a token, and
+  # the VMScrapeConfig does not send one -- it authenticates the SERVER with the
+  # CA and nothing else. The scrape then fails as:
+  #
+  #   cannot scrape target "https://bao.priv.../v1/sys/metrics?format=prometheus"
+  #   ... response body: {"errors":["permission denied"]}
+  #
+  # which surfaces as the OpenBaoDown alert firing CRITICAL while the instance
+  # is healthy and RUNNING -- the alert says "down", the cause is authorization.
+  #
+  # Safe because the listener is reachable only from the VPC and the tailnet:
+  # there is no public route to :8200, and metrics carry no secret material.
+  telemetry {
+    unauthenticated_metrics_access = true
+  }
+}
+
+# Also matching the AWS cluster, and needed for the same scrape to return
+# anything useful: without prometheus_retention_time, OpenBao does not retain
+# metrics for the Prometheus format at all, so /v1/sys/metrics answers but with
+# nothing in it. disable_hostname keeps the instance name out of every metric
+# name, which would otherwise change on each rebuild and break every query.
+telemetry {
+  prometheus_retention_time = "24h"
+  disable_hostname          = true
 }
 
 storage "file" {
