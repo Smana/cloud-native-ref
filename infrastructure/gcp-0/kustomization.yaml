@@ -13,6 +13,7 @@ kind: Kustomization
 # and is deliberately minimal until the design's slices 6-7 settle which parts of
 # the shared tree are genuinely cloud-neutral.
 resources:
+  - cloudnative-pg
   - computeclass
   - external-dns
   - external-dns-public

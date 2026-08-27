@@ -32,7 +32,7 @@ and torn down afterwards.
 | Security (cert-manager, ESO, Kyverno, Tailscale) | ✅ | ✅ |
 | Infrastructure (Cilium, Gateway API, external-dns) | ✅ | ✅ |
 | Observability (VictoriaMetrics, Grafana) | ✅ | ❌ no gcp-0 overlay under `observability/` |
-| Tooling (Harbor) | ✅ | ⚠️ built at `tooling/gcp-0`, not yet wired to a Kustomization |
+| Tooling (Harbor) | ✅ | ✅ Harbor on GCS with Workload Identity |
 | Applications | ✅ | ❌ no `apps/gcp-0` outside the LLM platform |
 | LLM platform | ⏸️ opt-in, suspended | ⏸️ opt-in, suspended — and [one gap remains](#known-gaps) |
 
@@ -101,20 +101,28 @@ including what the dependency costs, is in
 ### Data services
 
 Neither cloud's managed database is used. PostgreSQL is CloudNativePG and
-key/value is Valkey — both self-hosted, both driven by a Crossplane claim. But
-the two claims are at very different stages on GCP, and the difference matters
-if you are planning a workload there:
+key/value is Valkey — both self-hosted, both driven by a Crossplane claim, and
+both now work on either cloud:
 
 | Claim | AWS | GCP |
 |---|---|---|
-| `SQLInstance` (PostgreSQL) | ✅ CloudNativePG, Barman backups to S3 | ❌ **not implemented** — the GCP Composition deliberately fails evaluation rather than silently composing nothing |
+| `SQLInstance` (PostgreSQL) | ✅ CloudNativePG, barman backups to S3 | ✅ CloudNativePG, barman backups to Cloud Storage |
 | `KVStore` (Valkey) | ✅ | ✅ cloud-neutral Composition — no cloud resources, so it works unchanged |
 
-`SQLInstance` failing loudly is a design choice consistent with
+`SQLInstance` was the last claim to reach GCP, and until
+crossplane-configuration v0.4.0 its GCP Composition was a deliberate dead-end —
+it failed evaluation rather than composing nothing, so a claim said why instead
+of hanging `Ready=Unknown`. That was consistent with
 [ADR-0007](../../decisions/0007-cloud-abstraction-boundaries.md): a claim that
-cannot be honoured should say so at reconcile time, not compose an empty result
-that looks like success. The CloudNativePG operator itself is also only deployed
-on `aws-0` today (`infrastructure/aws-0/cloudnative-pg/`).
+cannot be honoured should say so at reconcile time.
+
+It is a real implementation now. Both clouds render from the same KCL module,
+differing in where barman writes (`gs://` with `googleCredentials.gkeEnvironment`
+rather than `s3://` with `s3Credentials.inheritFromIAMRole`) and in the identity
+that writes — one `GCPWorkloadIdentity`, bucket-scoped, in place of four AWS IAM
+resources. The CloudNativePG operator itself is still deployed only on `aws-0`
+(`infrastructure/aws-0/cloudnative-pg/`), so a claim on `gcp-0` needs that
+overlay before it can reconcile.
 
 ## Decisions that shaped the split
 
