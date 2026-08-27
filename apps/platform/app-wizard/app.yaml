@@ -86,6 +86,24 @@ spec:
       value: "/repo"
     - name: WIZARD_CONFIG
       value: "/repo/apps/platform/app-wizard/wizard.yaml"
+    # Overrides auth.redirectUrl from wizard.yaml, which is hardcoded to the AWS
+    # hostname. It has to be an env var rather than a fix in that file, because
+    # wizard.yaml is not applied by Flux -- the initContainer clones `main` from
+    # GitHub and reads it from there, so it never sees ${private_domain_name}
+    # and never sees an unmerged branch either. config.go resolves this with
+    # pick("OAUTH_REDIRECT_URL", fc.Auth.RedirectURL, ...), so env wins.
+    #
+    # Without it, gcp-0's wizard sent GitHub a redirect_uri on
+    # app-wizard.priv.aws.ogenki.io and GitHub refused:
+    #   "The redirect_uri is not associated with this application."
+    #
+    # NOTE: a GitHub OAuth App has exactly ONE authorization callback URL, so
+    # the two clusters cannot share one. gcp-0 needs its own OAuth App, and its
+    # own GITHUB_CLIENT_ID/SECRET in apps-app-wizard-oauth -- unlike the Slack
+    # app or the LLM key, this credential is NOT cloud-agnostic and must not be
+    # copied between clusters.
+    - name: OAUTH_REDIRECT_URL
+      value: "https://app-wizard.${private_domain_name}/api/auth/callback"
 
   # ---------------------------------------------------------------------------
   # OAuth app credentials + session key from AWS Secrets Manager.
