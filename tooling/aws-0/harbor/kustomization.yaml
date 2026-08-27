@@ -6,6 +6,7 @@ resources:
   - ../../base/harbor
   - s3-bucket.yaml
   - iam-user.yaml
+  - sqlinstance.yaml
 
 patches:
   - path: storage-s3.yaml

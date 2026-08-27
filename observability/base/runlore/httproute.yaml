@@ -14,7 +14,7 @@ spec:
     - name: platform-public
       namespace: infrastructure
   hostnames:
-    - "runlore.${domain_name}"
+    - "runlore.${public_domain_name}"
   rules:
     - matches:
         - path:

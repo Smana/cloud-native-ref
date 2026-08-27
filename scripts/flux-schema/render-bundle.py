@@ -70,7 +70,10 @@ NON_MANIFEST_FILES = {
 # Same fixture values CI passed to kubeconform. Substituted so that
 # ${private_domain_name} in a DNS-1123 field validates as a hostname.
 FIXTURE_VARS = {
-    "domain_name": "cluster.local",
+    # No "domain_name": it was removed from the aws-0 ConfigMap, where it was a
+    # second key holding the same value as public_domain_name. A fixture for a
+    # key no cluster defines would let a manifest reference it and still render
+    # here -- which is precisely how the AWS-only usages went unnoticed.
     "private_domain_name": "priv.cluster.local",
     "public_domain_name": "cluster.local",
     "cluster_name": "foobar",
@@ -81,6 +84,11 @@ FIXTURE_VARS = {
     # fixture is honest here. Contrast "region" above, where a single
     # AWS-shaped fixture masks a GCP-shaped runtime value.
     "storage_class": "gp3",
+    # One fixture, and honestly so: ZITADEL is a singleton, so BOTH clusters
+    # carry the same value here -- aws-0 derives it from its own domain because
+    # it hosts the IdP, gcp-0 sets the same literal because it consumes it
+    # (ADR-0022). A per-cluster override would misrepresent the design.
+    "identity_provider_url": "https://auth.cluster.local",
     "cert_manager_approle_id": "random",
     "route53_public_zone_id": "Z0123456789",
     "aws_account_id": "123456789012",

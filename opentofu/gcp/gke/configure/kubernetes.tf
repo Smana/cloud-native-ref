@@ -106,6 +106,22 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       route53_public_zone_id = var.route53_public_zone_id
       route53_role_arn       = var.route53_role_arn
       route53_region         = var.route53_region
+
+      # The platform's identity provider, which this cluster CONSUMES rather
+      # than hosts.
+      #
+      # A literal, not "https://auth.${var.public_domain_name}" like the AWS
+      # stack computes. That would resolve to auth.gcp.cloud.ogenki.io -- a name
+      # nothing serves, because ZITADEL runs on aws-0. The value has to name the
+      # HOST cluster, and this cluster is not it.
+      #
+      # ZITADEL is deliberately a singleton (ADR-0022): one instance for both
+      # clusters, because the alternative is two user directories and two
+      # session stores with no federation. Moving the IdP to gcp-0 means
+      # changing THREE things together -- which overlay includes
+      # security/base/zitadel, this value, and the same key in the AWS stack.
+      # The ADR spells that out; nothing here can enforce it.
+      identity_provider_url = var.identity_provider_url
     }
   })
   server_side_apply = true

@@ -4,7 +4,7 @@ namespace: tailscale
 
 # The chart and both ProxyClasses come from security/base BY FILE, not by
 # directory. The base directory also carries oauth-client-externalsecret.yaml,
-# whose `key: tailscale/k8s-operator/oauth-client` is an AWS Secrets Manager
+# whose `key: tailscale-k8s-operator-oauth-client` is an AWS Secrets Manager
 # path -- pulling the directory would bring a store reference that cannot
 # resolve here, and its target Secret name would collide with ours.
 #

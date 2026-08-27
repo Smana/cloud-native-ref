@@ -57,7 +57,7 @@ spec:
               emptyDir: { sizeLimit: 256Mi }
           containers:
             - name: promptfoo
-              image: ghcr.io/promptfoo/promptfoo:0.122.0@sha256:53d9faa8813d9eecdc91a65dbb3dbdd87dd9e9aab9a9900c5a2cda3276909206
+              image: ghcr.io/promptfoo/promptfoo:0.122.1@sha256:36c7ea4fee2cc30d48a90cc8f3ee2222dd70be8c3ec6d36932c3a96ae33b72cd
               imagePullPolicy: Always
               command: ["/bin/sh", "-c"]
               args:

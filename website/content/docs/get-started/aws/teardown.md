@@ -61,7 +61,9 @@ Before OpenTofu deletes anything, the script:
 - Disables Kyverno's and the Cilium operator's blocking admission webhooks —
   once their pods are evicted with the nodes, every subsequent delete would
   otherwise fail against a webhook with no live endpoint.
-- Reclaims CSI-provisioned EBS volumes: patches **every** PV's
+- Reclaims CSI-provisioned EBS volumes, by calling
+  `scripts/k8s-reclaim-csi-volumes.sh` — the same script the GKE teardown
+  calls, since every step of it is plain Kubernetes. It patches **every** PV's
   `persistentVolumeReclaimPolicy` to `Delete` — including PVs deliberately
   set to `Retain` — deletes CloudNativePG `Cluster` resources so the operator
   releases their PVCs cleanly, scales down every Deployment/StatefulSet that

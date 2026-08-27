@@ -1,0 +1,73 @@
+# Tooling on gcp-0 — Harbor, and only Harbor.
+#
+# tooling/gcp-0/ has existed since workstream 9 (#1844) with a complete Harbor
+# overlay — the GCS bucket, the GCPWorkloadIdentity and the chart's gcs storage
+# driver — but no Kustomization ever applied it. It was built and left unwired.
+#
+# What unblocked it: Harbor declares a SQLInstance (tooling/base/harbor/
+# sqlinstance.yaml), and until crossplane-configuration v0.4.0 the GCP
+# SQLInstance Composition was a stub that failed evaluation on purpose. Wiring
+# this before that release would have produced a permanently red Kustomization.
+#
+# NOT the same set as aws-0's tooling. That one also pulls ../base/headlamp and
+# ../base/homepage; this overlay is Harbor alone, because homepage's dashboard
+# links every service on the cluster and most of them do not run here yet.
+#
+# dependsOn still omits the `observability` edge that aws-0's tooling carries.
+# gcp-0 now has observability Kustomizations, so the original reason for the
+# omission is gone; the edge is left out deliberately until observability is
+# green here, because adding it now would wedge Harbor behind a dependency that
+# is itself waiting on secrets. Add it once that is settled, for parity.
+#
+# ── One manual prerequisite ───────────────────────────────────────────────────
+# Harbor's two ExternalSecrets read `harbor-admin-password` and
+# `harbor-valkey-password` from GCP Secret Manager through `clustersecretstore`
+# (the store is Secrets Manager on aws-0 and GCP Secret Manager here -- the base
+# ClusterSecretStore is overridden in security/gcp-0/openbao). Nothing seeds
+# them, which is true on aws-0 too, where they were written by hand.
+#
+# `./scripts/secret-store.sh check --cloud gcp` lists every key this cluster
+# needs and which are missing, rather than waiting for the ten-minute
+# HelmRelease timeout to say so indirectly.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: tooling
+  namespace: flux-system
+  labels:
+    sharding.fluxcd.io/key: apps
+spec:
+  commonMetadata:
+    labels:
+      sharding.fluxcd.io/key: apps
+  prune: true
+  interval: 4m0s
+  sourceRef:
+    kind: ExternalArtifact
+    name: tooling-artifact
+  path: ./tooling/gcp-0
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    # infrastructure: the HTTPRoute parents platform-tailscale-general in the
+    # infrastructure namespace, and that Gateway comes from
+    # infrastructure/gcp-0/gapi. This edge also transitively covers
+    # crossplane-configuration, which infrastructure already depends on and
+    # which installs the SQLInstance, KVStore and GCPWorkloadIdentity contracts
+    # Harbor claims.
+    - name: infrastructure
+    # security-openbao, NOT security. The `clustersecretstore`
+    # ClusterSecretStore both ExternalSecrets name is created by
+    # ./security/gcp-0/openbao, which security-openbao applies; `security` is
+    # only the controllers path (external-secrets and cert-manager
+    # HelmReleases). security-openbao already dependsOn security, so this one
+    # edge covers both. Without it Harbor's secrets apply before the store
+    # exists and sit unsynced through the retry.
+    - name: security-openbao
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: App
+      failed: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'True')

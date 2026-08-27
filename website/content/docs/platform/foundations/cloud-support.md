@@ -31,10 +31,11 @@ and torn down afterwards.
 | Crossplane | ✅ `provider-aws` | ✅ `provider-gcp` |
 | Security (cert-manager, ESO, Kyverno, Tailscale) | ✅ | ✅ |
 | Infrastructure (Cilium, Gateway API, external-dns) | ✅ | ✅ |
-| Observability (VictoriaMetrics, Grafana) | ✅ | ❌ no gcp-0 overlay under `observability/` |
-| Tooling (Harbor) | ✅ | ⚠️ built at `tooling/gcp-0`, not yet wired to a Kustomization |
-| Applications | ✅ | ❌ no `apps/gcp-0` outside the LLM platform |
-| LLM platform | ⏸️ opt-in, suspended | ⏸️ opt-in, suspended — and [one gap remains](#known-gaps) |
+| Observability (VictoriaMetrics, Grafana) | ✅ | ✅ same stack, minus `runlore` |
+| Tooling (Harbor) | ✅ | ✅ Harbor on GCS with Workload Identity |
+| Applications | ✅ | ✅ podinfo · basic · App Wizard — minus `image-gallery` |
+| LLM platform | ⏸️ opt-in, suspended | ⏸️ opt-in, suspended |
+| Flux extras (alerts, dashboards) | ✅ | ✅ minus `flux-previews` |
 
 ## Matching managed services
 
@@ -101,20 +102,28 @@ including what the dependency costs, is in
 ### Data services
 
 Neither cloud's managed database is used. PostgreSQL is CloudNativePG and
-key/value is Valkey — both self-hosted, both driven by a Crossplane claim. But
-the two claims are at very different stages on GCP, and the difference matters
-if you are planning a workload there:
+key/value is Valkey — both self-hosted, both driven by a Crossplane claim, and
+both now work on either cloud:
 
 | Claim | AWS | GCP |
 |---|---|---|
-| `SQLInstance` (PostgreSQL) | ✅ CloudNativePG, Barman backups to S3 | ❌ **not implemented** — the GCP Composition deliberately fails evaluation rather than silently composing nothing |
+| `SQLInstance` (PostgreSQL) | ✅ CloudNativePG, barman backups to S3 | ✅ CloudNativePG, barman backups to Cloud Storage |
 | `KVStore` (Valkey) | ✅ | ✅ cloud-neutral Composition — no cloud resources, so it works unchanged |
 
-`SQLInstance` failing loudly is a design choice consistent with
+`SQLInstance` was the last claim to reach GCP, and until
+crossplane-configuration v0.4.0 its GCP Composition was a deliberate dead-end —
+it failed evaluation rather than composing nothing, so a claim said why instead
+of hanging `Ready=Unknown`. That was consistent with
 [ADR-0007](../../decisions/0007-cloud-abstraction-boundaries.md): a claim that
-cannot be honoured should say so at reconcile time, not compose an empty result
-that looks like success. The CloudNativePG operator itself is also only deployed
-on `aws-0` today (`infrastructure/aws-0/cloudnative-pg/`).
+cannot be honoured should say so at reconcile time.
+
+It is a real implementation now. Both clouds render from the same KCL module,
+differing in where barman writes (`gs://` with `googleCredentials.gkeEnvironment`
+rather than `s3://` with `s3Credentials.inheritFromIAMRole`) and in the identity
+that writes — one `GCPWorkloadIdentity`, bucket-scoped, in place of four AWS IAM
+resources. The CloudNativePG operator itself is still deployed only on `aws-0`
+(`infrastructure/aws-0/cloudnative-pg/`), so a claim on `gcp-0` needs that
+overlay before it can reconcile.
 
 ## Decisions that shaped the split
 
@@ -142,26 +151,59 @@ Two things belong to neither cloud and are provisioned once:
 
 ## Known gaps
 
-Stated plainly rather than left for a reader to discover:
+`gcp-0` now runs the same layers as `aws-0`. Four components are still
+excluded, and the distinction that matters is **why** — three of them are not
+gaps at all.
 
-- **No observability on `gcp-0`.** `observability/` has a `base/` and an
-  `aws-0/` overlay, and no gcp-0 one — so VictoriaMetrics, VictoriaLogs and
-  Grafana do not run there. The base manifests are cloud-neutral; the overlay is
-  simply not written yet.
-- **Harbor on GCP is built but not deployed.** `tooling/gcp-0/harbor/` has the
-  GCS driver and its `GCPWorkloadIdentity`, but `clusters/gcp-0/` has no
-  `tooling.yaml` applying it.
-- **No general applications on `gcp-0`** beyond the LLM platform's own claims.
-- **The LLM platform's serving pods cannot read the weights bucket on GCP.** The
-  Cloud Storage FUSE driver authenticates as the *mounting pod's* ServiceAccount,
-  and the per-claim identity that would grant it is rendered by the
-  `InferenceService` composition, which has no GCP branch yet. That composition
-  lives in a separate repository, so it cannot be fixed from here. Details in
-  `clusters/gcp-0-llm-platform/README.md`.
+### Excluded by design, not missing
 
-None of these are cloud-abstraction failures — every one is an overlay or a
-composition that has not been written, on a platform whose shared layer already
-reconciles identically on both clouds.
+- **`flux-previews`** — PR preview environments. Running them on both clusters
+  would double-provision every preview and both would write the same public DNS
+  records. Previews belong to one cluster by nature. (It also hardcodes
+  `cluster_name: aws-0` while living in the shared `flux/` tree, which is worth
+  fixing regardless.)
+- **`karpenter` / `karpenter-nodepools`** — GCP uses Node Auto-Provisioning with
+  ComputeClasses instead ([ADR-0006](../../decisions/0006-nap-computeclass-over-karpenter.md)).
+- **`eks-pod-identities`** — `GCPWorkloadIdentity` is the counterpart, a
+  different Kind rather than a second Composition
+  ([ADR-0002](../../decisions/0002-eks-pod-identity-over-irsa.md)).
+- **ZITADEL** — deliberately a singleton on `aws-0`, addressed through an
+  `identity_provider_url` variable so the hosting cloud is a stated value rather
+  than an accident of which overlay includes it.
+
+### Genuinely not portable yet
+
+- **`image-gallery`** — the only application excluded, and not for a manifest
+  reason. It hardcodes `STORAGE_ENDPOINT=s3.eu-west-3.amazonaws.com` in its
+  container environment and talks to it through an S3 SDK. Reaching Cloud
+  Storage means either GCS's S3-compatible XML API with HMAC keys — static
+  credentials this platform avoids wherever a workload identity will do — or a
+  GCS-native client. Both are changes to the *application*.
+- **`runlore`** — the SRE agent reads `${domain_name}`, a key only `aws-0`
+  defines, and drives AWS cloud tools. Flux substitutes an undefined variable to
+  empty, so wiring it would render a hostname with a hole in it rather than
+  fail.
+- **Harbor's database has no backups on `gcp-0`.** The claim side is ready — the
+  Composition renders barman's `ObjectStore` and a bucket-scoped identity as
+  soon as `backup` is set. The cluster side is not: the barman plugin ships a
+  `CiliumNetworkPolicy` whose egress is a `toFQDNs` allowlist of S3 endpoints,
+  so deploying it would let the plugin start and then silently drop every
+  connection to `storage.googleapis.com`.
+
+### Needs a human, on both clouds
+
+Two ExternalSecrets read from OpenBao and nothing seeds them — the same is true
+on `aws-0`, where they were written by hand:
+
+- Harbor's admin and Valkey passwords, at harbor-admin-password
+- Flux's Slack token, at the OpenBao key observability/flux/slack-app
+
+Until they exist, Harbor waits on its secret and Flux alerts are dropped.
+Reconciliation itself is unaffected.
+
+None of the above are cloud-abstraction failures. The shared layer reconciles
+identically on both clouds; what is left is one application with a cloud baked
+into its code, one policy to port, and secrets to seed.
 
 ## Open question: one identity provider, or two?
 

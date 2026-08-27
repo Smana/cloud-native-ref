@@ -61,7 +61,7 @@ discovered, each used somewhere in this repo:
 endpoints. Most charts in this repo render their own via a
 `vmServiceScrape.enabled: true` value (`runlore`, `victoria-traces`,
 `victoria-logs`, `victoria-metrics-k8s-stack` itself); a few are authored
-directly, e.g. `observability/base/victoria-metrics-k8s-stack/vmservicecrapes/karpenter.yaml`
+directly, e.g. `observability/aws-0/victoria-metrics-k8s-stack/vmservicecrapes/karpenter.yaml`
 scrapes the `karpenter` namespace's `http-metrics` port (Karpenter isn't part
 of this stack, but its metrics land in the same VictoriaMetrics — the
 directory name carries an upstream typo, `vmservicecrapes`, not
@@ -116,7 +116,7 @@ histogram_quantile(0.95, sum(rate(runlore_model_request_duration_seconds_bucket[
 ```
 
 The first two are drawn directly from
-`observability/base/victoria-metrics-k8s-stack/vmrules/runlore.yaml` and
+`observability/aws-0/victoria-metrics-k8s-stack/vmrules/runlore.yaml` and
 `infrastructure/base/cloudnative-pg/grafana-dashboard-query-performance.yaml`.
 Standard cAdvisor/kube-state-metrics queries (`container_cpu_usage_seconds_total`,
 `kube_pod_status_phase`, and similar) also work unchanged — they come from

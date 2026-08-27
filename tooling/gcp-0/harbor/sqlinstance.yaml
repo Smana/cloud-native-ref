@@ -1,0 +1,51 @@
+# Harbor's PostgreSQL on gcp-0.
+#
+# Same claim name as the AWS one on purpose: tooling/base/harbor's HelmRelease
+# addresses the database by name — host `xplane-harbor-cnpg-cluster-rw`, secret
+# `xplane-harbor-cnpg-registry` — both derived from this metadata.name. Rename
+# it here and the chart points at a database that does not exist.
+#
+# Three differences from tooling/aws-0/harbor/sqlinstance.yaml, which is why
+# this claim is per-cloud rather than shared from base:
+#
+#   1. compositionRef names the GCP Composition. Both are installed from
+#      different packages — aws-0 gets `xsqlinstances.cloud.ogenki.io` from
+#      crossplane-configuration-aws, gcp-0 gets `xsqlinstances-gcp...` from
+#      -gcp — so a claim naming the AWS one here would find no Composition.
+#
+#   2. No `objectStoreRecovery`. The AWS claim restores from a specific S3
+#      path captured in 2024; there is no GCS equivalent to restore from, and
+#      pointing at an empty bucket would fail the bootstrap rather than start
+#      a fresh database.
+#
+#   3. No `backup`. Deliberate and temporary — see below.
+#
+# WHY NO BACKUP YET: the Composition renders barman's ObjectStore and a
+# bucket-scoped GCPWorkloadIdentity automatically when `backup` is set, so the
+# claim side is ready. What is not ready is the cluster side —
+# infrastructure/base/cloudnative-pg-barman-plugin ships a CiliumNetworkPolicy
+# whose egress is a `toFQDNs` allowlist of AWS S3 endpoints
+# (`*.s3.<region>.amazonaws.com`). Deploying it here would let the plugin start
+# and then silently drop every connection to storage.googleapis.com. Porting
+# that policy is its own change; until then Harbor's database on gcp-0 is
+# unbacked, which is acceptable for a cluster that is torn down after every run
+# and would not be otherwise.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: SQLInstance
+metadata:
+  name: xplane-harbor
+spec:
+  instances: 1
+  size: "small"
+  storageSize: 20Gi
+  postgresVersion: "17"
+  databases:
+    - name: registry
+      owner: harbor
+  roles:
+    - name: harbor
+      comment: "Harbor admin user"
+      superuser: true
+  crossplane:
+    compositionRef:
+      name: xsqlinstances-gcp.cloud.ogenki.io

@@ -67,13 +67,40 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # nothing derives anything else from it, which is what makes one
       # shared key honest here where ${region} was not (see the
       # workstream 13 design).
-      storage_class       = "gp3"
-      environment         = var.env
-      domain_name         = var.public_domain_name
+      storage_class = "gp3"
+      environment   = var.env
+      # `domain_name` used to sit here as a THIRD key holding
+      # var.public_domain_name -- the same value as public_domain_name below,
+      # under a second name. It was removed rather than kept as a harmless
+      # alias, because it was not harmless: gcp-0's ConfigMap never defined it,
+      # so every manifest reaching for ${domain_name} was AWS-only by accident
+      # rather than by design. observability/base/runlore was excluded from
+      # gcp-0 for exactly this reason and nothing else.
+      #
+      # Flux substitutes an undefined variable to EMPTY, so such a manifest does
+      # not fail on GCP -- it renders a hostname with a hole in it. Two keys for
+      # one value is how that happens quietly.
       private_domain_name = var.private_domain_name
       public_domain_name  = var.public_domain_name
-      vpc_id              = data.aws_vpc.selected.id
-      vpc_cidr_block      = data.aws_vpc.selected.cidr_block
+
+      # Where the platform's identity provider actually lives.
+      #
+      # ZITADEL is a SINGLETON: one instance serves both clusters, because two
+      # instances would be two user directories, two session stores and two sets
+      # of OIDC clients with no federation between them (ADR-0022).
+      #
+      # aws-0 hosts it today, so here the URL is derived from this cluster's own
+      # public domain rather than hardcoded -- a cluster that hosts the IdP is
+      # always reachable at auth.<its own domain>. gcp-0 sets the same key to a
+      # LITERAL pointing back here; see opentofu/gcp/gke/configure/kubernetes.tf.
+      #
+      # Consumed by apps/base/openwebui (OIDC discovery) and
+      # tooling/base/homepage (a link). Both hardcoded this host until now,
+      # which is what made "which cloud hosts the IdP" unanswerable from
+      # configuration.
+      identity_provider_url = "https://auth.${var.public_domain_name}"
+      vpc_id                = data.aws_vpc.selected.id
+      vpc_cidr_block        = data.aws_vpc.selected.cidr_block
       # The CIDR holding OpenBao's internal endpoint, consumed by
       # security/base/openbao-snapshot/network-policy.yaml. On AWS that is the
       # whole VPC (the internal NLB's private addresses); on GCP it is the node
