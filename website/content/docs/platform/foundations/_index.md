@@ -72,5 +72,7 @@ implement it are not. Where a page can't be honestly neutral, it isn't:
 makes the same call for the Crossplane compositions — an API that only looks
 cloud-neutral produces worse errors than one that is honestly cloud-shaped —
 so the cloud-specific detail lives on [AWS]({{< relref "/docs/platform/foundations/aws.md" >}})
-(and eventually [GCP]({{< relref "/docs/platform/foundations/gcp.md" >}})),
-not blended in here.
+and [GCP]({{< relref "/docs/platform/foundations/gcp.md" >}}), not blended in
+here. Where the two differ service by service —
+and where they deliberately meet — is on
+[Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}).

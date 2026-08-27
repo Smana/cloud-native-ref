@@ -5,14 +5,24 @@ description: Accounts, access, and tools needed before the first deploy.
 lastVerified: 2026-08-20
 ---
 
-Everything below is cloud-agnostic — the same list applies whichever cloud
-lane you deploy next.
+The tools, the GitHub App and the Tailscale account below apply to **both**
+cloud lanes. The account and state-bucket sections are per cloud.
+
+{{< callout type="info" >}}
+Deploying **GCP**? You still need an AWS account and its credentials. The public
+DNS zone stays on Route 53 for both clouds, and `gcp-0` reaches it by assuming an
+AWS IAM role — no static key, but the account has to exist. See
+[ADR-0019]({{< relref "/docs/decisions/0019-cross-cloud-dns-federation.md" >}}).
+{{< /callout >}}
 
 ## Accounts and access
 
 - **AWS account** with admin-level permissions (VPC, EKS, IAM, S3, Route53,
   Secrets Manager, KMS) and credentials configured locally (`~/.aws/credentials`
-  or environment variables).
+  or environment variables). Required for the AWS lane, and required in a
+  reduced form for the GCP lane's public DNS.
+- **GCP project and organisation** — only for the GCP lane, plus a second
+  project that holds nothing but OpenTofu state. `gcloud` authenticated.
 - **A registered domain** you can delegate to Route53 — OpenTofu creates a
   private hosted zone under it for internal service DNS.
 - **GitHub account** — Flux needs a way to pull this repository: a personal
@@ -65,11 +75,12 @@ What that buys: running or destroying GCP needs GCP credentials only, and an AWS
 outage cannot block a GCP teardown. The cost is one prerequisite bucket per
 cloud instead of one in total.
 
-The block below creates the **AWS** bucket only. If you are deploying GCP, its
-state bucket, KMS key ring and Tailscale OAuth client are three separate
-hand-created prerequisites — the full sequence is in `docs/gcp-bootstrap.md` in
-the repository (bootstrap docs are not published to this site). Doing the AWS
-steps alone leaves a GCP apply with nowhere to write its state.
+The block below creates the **AWS** bucket only. GCP has three hand-created
+prerequisites of its own — a state bucket in its own project, a Cloud KMS key
+ring, and a Tailscale OAuth client — plus a federation stack that must be
+applied explicitly. They are all on
+[Get Started → GCP]({{< relref "/docs/get-started/gcp/_index.md" >}}#prerequisites).
+Doing the AWS steps alone leaves a GCP apply with nowhere to write its state.
 
 ```bash
 BUCKET=demo-smana-remote-backend   # must match the backend blocks; see below
@@ -140,6 +151,9 @@ A few tools mise does **not** manage — install these separately:
 - `jq`
 - the Tailscale client, to check `tailscale status` once Stage 1 is up
 
-With accounts in place and tools installed, continue to
-[AWS]({{< relref "/docs/get-started/aws/_index.md" >}}) — the only cloud
-lane that is implemented today.
+With accounts in place and tools installed, continue to your cloud lane —
+[AWS]({{< relref "/docs/get-started/aws/_index.md" >}}) or
+[GCP]({{< relref "/docs/get-started/gcp/_index.md" >}}). Both are implemented;
+they differ in how much of the platform reconciles on top, which
+[Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}})
+lays out side by side.

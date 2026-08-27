@@ -7,6 +7,11 @@ lastVerified: 2026-08-20
 ---
 
 **Status**: Accepted
+**Scope**: AWS only. The reasoning below repeatedly calls the platform "AWS-only by design",
+which was true when this was written and is not any more.
+[ADR-0021](0021-gcs-fuse-for-model-weights-on-gcp.md) answers the same question for GCP and
+reaches a different conclusion, for reasons this record could not have anticipated — the
+comparison between them is the useful part, so nothing here has been rewritten.
 **Date**: 2026-05-01
 **Deciders**: Smana (Platform Owner)
 **Related Spec**: Self-Hosted LLM Platform with Cascade Routing — pre-SDD draft, removed 2026-08-18; recover with `git log --all -- docs/plans/self-hosted-llm-platform/`

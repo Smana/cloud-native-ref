@@ -1,11 +1,11 @@
 ---
 title: Cloud Native Reference
 layout: hextra-home
-description: "An opinionated, production-ready Kubernetes platform reference. GitOps with Flux, infrastructure from Kubernetes with Crossplane, zero-trust networking with Cilium, a private PKI with OpenBao — on AWS EKS today, designed for a second cloud."
+description: "An opinionated, production-ready Kubernetes platform reference. GitOps with Flux, infrastructure from Kubernetes with Crossplane, zero-trust networking with Cilium, a private PKI with OpenBao — on AWS EKS and GCP GKE."
 ---
 
 {{< hextra/hero-badge >}}
-  Open source · Apache-2.0 · runs on your own AWS account
+  Open source · Apache-2.0 · runs on your own AWS or GCP account
 {{< /hextra/hero-badge >}}
 
 {{< hextra/hero-headline >}}
@@ -16,7 +16,7 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
   Infrastructure as code with OpenTofu and Crossplane, continuous delivery with
   Flux, a private PKI and zero-trust networking, and a developer abstraction
   that turns one small YAML claim into a whole application. Deploy it into your
-  own AWS account in about thirty minutes.
+  own AWS or GCP account in about thirty minutes.
 {{< /hextra/hero-subtitle >}}
 
 {{< hextra/hero-button text="Deploy in 30 minutes" link="docs/get-started/" >}}
@@ -24,13 +24,13 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
 
 <p class="cnref-eyebrow" style="margin-top:3rem">The whole platform, on one page</p>
 
-![Platform architecture: AWS managed services, the EKS cluster in four tiers, and the applications and data stores on top](/images/diagrams/platform-overview.svg)
+![Platform architecture: the cloud's managed services on the left with their AWS and GCP equivalents, the Kubernetes cluster in four tiers, and the applications and data stores on top](/images/diagrams/platform-overview.svg)
 
 <h2 class="cnref-section-title">What's here</h2>
 
 {{< hextra/feature-grid cols="3" >}}
   {{< hextra/feature-card link="docs/get-started/" icon="play" title="Get Started"
-    subtitle="Three sequential stages — network, secrets, Kubernetes — driven by OpenTofu and Terramate. One command per stage, and the cluster comes up with Cilium, Flux and Karpenter already running." >}}
+    subtitle="Three sequential stages — network, secrets, Kubernetes — driven by OpenTofu and Terramate. Two commands on either cloud, and the cluster comes up with Cilium and Flux already reconciling." >}}
   {{< hextra/feature-card link="docs/platform/" icon="server" title="Platform"
     subtitle="Cilium, Flux, Crossplane, OpenBao, VictoriaMetrics, Gateway API, Karpenter, KEDA — each with what it actually buys you here, and what it cost to adopt." >}}
   {{< hextra/feature-card link="docs/concepts/" icon="light-bulb" title="Concepts"
@@ -40,13 +40,17 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
   {{< hextra/feature-card link="docs/reference/" icon="book-open" title="Reference"
     subtitle="Repository layout, the technology stack and what each piece is responsible for, commands, CI, the platform constitution." >}}
   {{< hextra/feature-card link="docs/decisions/" icon="scale" title="Decisions"
-    subtitle="Sixteen architecture decision records — what was chosen, what it was chosen over, and the cost that came with it." >}}
+    subtitle="Twenty-one architecture decision records — what was chosen, what it was chosen over, and the cost that came with it." >}}
 {{< /hextra/feature-grid >}}
 
 {{< stack-strip >}}
 
 <p class="cnref-strip-more" style="margin-top:2.5rem">
-Runs on <strong>AWS EKS</strong> today. A second cloud is designed but not yet
-implemented — see <a href="{{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}}">ADR-0007</a>
-for where the platform draws its cloud boundary.
+Runs on <strong>AWS EKS</strong> and <strong>GCP GKE</strong> from one repository
+and one Flux tree — not a fork each. The two lanes share every Kubernetes-layer
+component and diverge only where the clouds do; see
+<a href="{{< relref "/docs/platform/foundations/cloud-support.md" >}}">Cloud support</a>
+for the side-by-side, and
+<a href="{{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}}">ADR-0007</a>
+for where the platform refuses to pretend they are the same.
 </p>

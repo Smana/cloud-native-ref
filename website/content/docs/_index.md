@@ -5,8 +5,14 @@ description: Everything about building, running and reusing this platform.
 lastVerified: 2026-08-20
 ---
 
-This platform runs on AWS EKS and is reconciled entirely by Flux. Where you go
-next depends on what you want from it.
+This platform runs on **AWS EKS and GCP GKE**, from one repository and one Flux
+tree, and is reconciled entirely by Flux. Where you go next depends on what you
+want from it.
+
+New here and wondering which cloud does what?
+[Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}) is
+the side-by-side: matching managed services, the decisions that made the lanes
+differ, and what is still missing on GCP.
 
 - **[Get Started]({{< relref "/docs/get-started/_index.md" >}})** — deploy it into
   your own account. Prerequisites, three stages, first application, teardown.

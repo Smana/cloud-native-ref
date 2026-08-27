@@ -6,7 +6,7 @@
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
 
-        <mxCell id="__t" value="Bootstrap — five OpenTofu stacks, in the order Terramate runs them" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
+        <mxCell id="__t" value="Bootstrap on AWS — five OpenTofu stacks, in the order Terramate runs them" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
           <mxGeometry x="60" y="30" width="1100" height="30" as="geometry" />
         </mxCell>
         <mxCell id="__ts" value="Everything below has to exist before Flux can reconcile anything. Each stack declares what it runs after in its stack.tm.hcl; Terramate topologically sorts the graph. Every box is a module or resource in opentofu/." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">

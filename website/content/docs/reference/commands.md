@@ -17,9 +17,20 @@ terramate script run deploy          # Deploy platform
 terramate script run drift detect    # Check drift
 
 # Individual stack
-cd opentofu/<stack>   # network, eks/init, eks/configure, openbao/cluster, openbao/management, llm-platform
+cd opentofu/aws/<stack>   # network, eks/init, eks/configure, openbao/{cluster,management}, llm-platform
+cd opentofu/gcp/<stack>   # network, gke/init, gke/configure, openbao/{cluster,management}
+cd opentofu/shared/<stack>  # tailscale, aws-gcp-federation
 tofu plan -var-file=variables.tfvars
 tofu apply -var-file=variables.tfvars
+```
+
+**Every GCP stack is behind an opt-in gate.** `terramate script run deploy` from
+`opentofu/` skips them and exits 0. Both clouds share one Terramate run order,
+and the gate is what stops an AWS deploy building GCP as a side effect:
+
+```bash
+TM_GCP_ENABLED=true terramate script run deploy      # includes the GCP stacks
+terramate script run deploy                          # AWS only; GCP echoes [skip]
 ```
 
 ## EKS deploy (two-stage bootstrap)
@@ -39,6 +50,35 @@ TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy
 
 `EKS Full Destroy` runs the reverse order: `prepare-destroy` →
 `stage2-destroy-addons` → `stage1-destroy-cluster`.
+
+## GKE deploy (two-stage bootstrap)
+
+Defined in `opentofu/gcp/gke/init/workflows.tm.hcl`. Same two-stage shape as EKS
+and for the same provider-graph reason, but Stage 2 has no CNI to disable first —
+Cilium's `cni.exclusive` displaces GKE's config directly.
+
+```bash
+cd opentofu/gcp/gke/init
+TM_GCP_ENABLED=true terramate script run deploy          # both stages
+TM_GCP_ENABLED=true terramate script run deploy-stage1   # Stage 1 only
+
+TM_GCP_ENABLED=true TF_VAR_flux_git_ref='refs/heads/my-branch' \
+  terramate script run deploy
+```
+
+Teardown, then verify against the provider — a Terramate destroy can exit 0
+while refusing to run:
+
+```bash
+cd opentofu
+TM_GCP_ENABLED=true TM_DESTROY_CONFIRMED=true terramate script run --reverse destroy
+
+gcloud container clusters list --project <project>
+gcloud compute instances list --project <project>
+gcloud compute forwarding-rules list --project <project>
+gcloud compute disks list --project <project>
+gcloud compute addresses list --project <project>
+```
 
 ## Opt-in stacks
 
@@ -63,10 +103,19 @@ terramate script run --tags=opt-in    deploy
 The Kubernetes side of the LLM platform has its own gate — see
 [Repository Layout § Opt-in surfaces]({{< relref "/docs/reference/repository-layout.md" >}}).
 
-## EKS cluster
+## Cluster access
+
+Both API endpoints are private, so the Tailscale subnet router has to be up
+first (`tailscale status`).
 
 ```bash
+# aws-0
 aws eks update-kubeconfig --region eu-west-3 --name aws-0
+
+# gcp-0
+gcloud container clusters get-credentials gcp-0 \
+  --zone europe-west4-a --project <project>
+
 flux get all
 flux suspend kustomization --all
 flux resume kustomization --all
