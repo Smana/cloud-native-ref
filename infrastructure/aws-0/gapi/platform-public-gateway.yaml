@@ -29,7 +29,7 @@ spec:
       service.beta.kubernetes.io/aws-load-balancer-type: "external"
   listeners:
     # One listener per public hostname, each with its own TLS secret. NOT a
-    # wildcard: `*.${domain_name}` would put every service under the domain
+    # wildcard: `*.${public_domain_name}` would put every service under the domain
     # behind a single private key, so one leaked Secret or compromised pod would
     # expose all of them. cert-manager's gateway-shim issues one Certificate per
     # listener, with exactly that hostname in its SAN list.
@@ -38,7 +38,7 @@ spec:
     # makes publishing a reviewed edit, so this costs nothing extra and turns
     # the listener list into an auditable inventory of what is internet-facing.
     - name: runlore
-      hostname: "runlore.${domain_name}"
+      hostname: "runlore.${public_domain_name}"
       port: 443
       protocol: HTTPS
       allowedRoutes:

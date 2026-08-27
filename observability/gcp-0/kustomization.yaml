@@ -16,13 +16,29 @@ resources:
 
 # TWO components from aws-0's list are deliberately absent.
 #
-# ../base/runlore — the only observability component that is NOT cloud-neutral.
-# It reads ${domain_name}, a key only aws-0's vars ConfigMap defines (gcp-0 has
-# private_domain_name and public_domain_name, not the bare one). Flux
-# substitutes an undefined variable to EMPTY, so wiring it here would render a
-# hostname with a hole in it rather than fail — the silent-wrong case
-# scripts/flux-schema/check-substitution.py exists to catch. It also drives AWS
-# cloud tools, so a hostname fix alone would not make it useful here.
+# ../base/runlore — still absent, but for a NARROWER reason than before.
+#
+# It used to read ${domain_name}, a key only aws-0's ConfigMap defined. That key
+# is gone: it held the same value as public_domain_name, which both clusters
+# publish, so the HTTPRoute is now cloud-neutral and that blocker is closed.
+#
+# What remains is real and needs a live cluster to settle:
+#   - the HelmRelease hardcodes `cloud: {provider: aws, region, cluster_name}`
+#     and `networkPolicy.awsPodIdentity: true`; a gcp-0 overlay would patch both
+#     to `provider: gcp` / `gcpWorkloadIdentity: true`
+#   - its identity is an EPI (security/base/epis/runlore.yaml); GCP needs a
+#     GCPWorkloadIdentity granting logging.viewer, container.clusterViewer and
+#     compute.viewer — none of which crossplane_grantable_roles in
+#     opentofu/gcp/gke/init/iam.tf allows today. Widening that list is a
+#     deliberate act, per its own comment.
+#   - upstream, the chart's gcpWorkloadIdentity NetworkPolicy uses
+#     `toEntities: host`, which does not reach the GKE metadata server under
+#     Cilium — proven on a live gcp-0 and filed as Smana/runlore#562. Until that
+#     lands, the cloud tools silently disable themselves.
+#
+# Deliberately not wired blind: an overlay written without a cluster to test it
+# on is exactly the kind of "cloud-neutral" claim this repo has been wrong about
+# five times already.
 #
 # ../base/victoria-traces — NOT because it is cloud-specific (it is neutral),
 # but because clusters/gcp-0/observability/observability-victoria-traces.yaml

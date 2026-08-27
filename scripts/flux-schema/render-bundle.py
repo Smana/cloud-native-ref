@@ -70,7 +70,10 @@ NON_MANIFEST_FILES = {
 # Same fixture values CI passed to kubeconform. Substituted so that
 # ${private_domain_name} in a DNS-1123 field validates as a hostname.
 FIXTURE_VARS = {
-    "domain_name": "cluster.local",
+    # No "domain_name": it was removed from the aws-0 ConfigMap, where it was a
+    # second key holding the same value as public_domain_name. A fixture for a
+    # key no cluster defines would let a manifest reference it and still render
+    # here -- which is precisely how the AWS-only usages went unnoticed.
     "private_domain_name": "priv.cluster.local",
     "public_domain_name": "cluster.local",
     "cluster_name": "foobar",
