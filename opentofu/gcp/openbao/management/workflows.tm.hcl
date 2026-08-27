@@ -21,6 +21,41 @@ globals {
   # A bash SNIPPET, not a command list, precisely so it can live INSIDE a gated
   # block. The literal project id matches variables.tfvars; opentofu/gcp has no
   # project global to reference.
+  # Initialise a freshly booted OpenBao, then store its root token and recovery
+  # keys in Secret Manager.
+  #
+  # This is not optional and it is not idempotent-by-luck: a brand-new instance
+  # has empty `file` storage, so it reports initialized=false and every read
+  # returns `503 Vault is sealed`. Cloud KMS auto-unseal does NOT help — there is
+  # nothing to unseal until `bao operator init` creates the storage. The vault
+  # provider configures at PLAN time, so the failure lands before a single
+  # resource is planned.
+  #
+  # It was missing here while opentofu/aws/openbao/management/workflows.tm.hcl
+  # has run the same step as its first job all along, which is why a
+  # from-scratch GCP deploy could never succeed: `terramate script run deploy`
+  # reached this stack and aborted the whole run on a sealed OpenBao. It only
+  # ever worked when someone had run the init by hand, which is how
+  # docs/gcp-bootstrap.md came to mention a root token "written by
+  # openbao-config.sh init" that no workflow wrote.
+  #
+  # Safe to re-run: the script health-checks first and exits 0 when OpenBao is
+  # already initialised and unsealed, so this is a no-op on every deploy after
+  # the first.
+  #
+  # --skip-verify, like the AWS side: this runs against a freshly booted cluster
+  # before anything has vouched for its certificate, and carries no secret in
+  # either direction.
+  openbao_init = <<-EOT
+    bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" init \
+      --url https://bao.priv.gcp.ogenki.io:8200 \
+      --cloud gcp \
+      --project ogenki-435905 \
+      --root-token-secret-name openbao-priv-gcp-root-token \
+      --recovery-keys-secret-name openbao-priv-gcp-recovery-keys \
+      --skip-verify
+  EOT
+
   openbao_ca_fetch = <<-EOT
     bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
       --cloud gcp \
@@ -47,6 +82,7 @@ script "deploy" {
       ["bash", "-c", <<-BASH
         ${global.gcp_gate}
         set -euo pipefail
+        ${global.openbao_init}
         ${global.openbao_ca_fetch}
         # -parallelism=1 is deliberate. OpenBao 2.6.x carries openbao/openbao#3411
         # (inconsistent lock ordering across namespaces, mounts and the router),
