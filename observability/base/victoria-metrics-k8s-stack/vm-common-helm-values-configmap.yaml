@@ -37,6 +37,28 @@ data:
       externalLabels:
         cluster: "${cluster_name}"
 
+    # vmagent's externalLabels are NOT enough, because alerts do not come from
+    # vmagent -- they come from vmalert, and most upstream rules aggregate the
+    # cluster label away. CPUThrottlingHigh, for instance, sums
+    # `by (container, pod, namespace)`, so whatever vmagent attached is gone by
+    # the time the alert fires.
+    #
+    # The result reached Slack as, literally:
+    #
+    #   27.78% throttling of CPU in namespace tooling for container metrics
+    #   in pod xplane-harbor-valkey-... on cluster .
+    #
+    # -- an empty cluster, which is harmless with one cluster and useless with
+    # two. It also silently broke the route's `group_by: [cluster, ...]`:
+    # grouping on a label nothing carries groups everything together.
+    #
+    # vmalert stamps these onto every alert it generates, after rule evaluation,
+    # so no aggregation can drop them.
+    vmalert:
+      spec:
+        externalLabels:
+          cluster: "${cluster_name}"
+
     alertmanager:
       enabled: true
       spec:

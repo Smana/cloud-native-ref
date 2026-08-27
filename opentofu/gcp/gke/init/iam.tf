@@ -161,6 +161,29 @@ locals {
   # Roles Crossplane may grant. Keep tight; grow on evidence.
   crossplane_grantable_roles = [
     google_project_iam_custom_role.crossplane_dns.name,
+
+    # runlore's cloud tools, added on exactly the evidence this comment asks
+    # for: its GCPWorkloadIdentity claim failed with
+    #
+    #   Error 403: Policy update access denied
+    #
+    # naming roles/logging.viewer -- the condition doing its job, not a bug.
+    #
+    # These three are PREDEFINED rather than a custom role, unlike
+    # crossplane_dns above, and the difference is deliberate. That one exists
+    # because roles/dns.admin carries zone DELETION and response policies,
+    # both beyond what external-dns needs and one of them a traffic-hijack
+    # path. There is no equivalent problem here: all three are *.viewer, so
+    # read-only by construction -- no writes, no deletes, nothing that could
+    # modify the project. Writing a custom role to narrow a viewer role would
+    # add a maintenance burden and a guess about which API calls runlore makes,
+    # in exchange for no reduction in blast radius that matters.
+    #
+    # runlore is read-only by design on the cluster too (actions.mode off); its
+    # only writes anywhere are knowledge-base pull requests on GitHub.
+    "roles/logging.viewer",
+    "roles/container.viewer",
+    "roles/monitoring.viewer",
   ]
 
   # SEPARATE from crossplane_grantable_roles above, deliberately -- N1. The two

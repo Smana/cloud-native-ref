@@ -37,3 +37,22 @@ spec:
     config:
       cloud:
         provider: gcp
+        # region and cluster_name are AWS-ONLY keys, and the base sets both.
+        # Left in place, the binary refuses to start -- deliberately:
+        #
+        #   serve: invalid config: cloud.provider is "gcp" but cloud.region
+        #   (use cloud.gcp.location) and cloud.cluster_name (use
+        #   cloud.gcp.cluster_name) set: those keys are AWS-only and would be
+        #   silently ignored, leaving the GKE scope to auto...
+        #
+        # That fail-closed check is the other half of Smana/runlore#563, and it
+        # is why the first attempt at this overlay crash-looped and Flux rolled
+        # the release back to 0.13.0. Nulling them removes the keys from the
+        # merged values rather than passing empty strings.
+        #
+        # Nothing replaces them: on GKE the scope is read from the metadata
+        # server, which is exactly what the gcpWorkloadIdentity policy above
+        # makes reachable. Setting cloud.gcp.* by hand would work too and would
+        # mean the autodetection path never gets exercised.
+        region: null
+        cluster_name: null
