@@ -1,5 +1,26 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Same set as tooling/aws-0, in the same order.
+#
+# This overlay was Harbor-alone for as long as gcp-0 had no identity provider
+# and no observability: homepage links every service on the cluster, and
+# headlamp will not start without an OIDC client. Both of those are now true
+# here, so the reason for the gap is gone.
+#
+# headlamp is the one with a bootstrap ORDER, not just a dependency. The chart
+# mounts `headlamp-envvars` through its externalSecret option, so the pod sits
+# in CreateContainerConfigError until that secret exists -- and the secret holds
+# an OIDC client id and secret, which only exist once ZITADEL is running and a
+# client has been registered against it. The sequence is:
+#
+#   1. cluster up, zitadel Kustomization resumed  (see ADR-0024's two gates)
+#   2. ./scripts/zitadel-oidc-clients.sh sync --cluster gcp-0
+#   3. Flux retries; headlamp goes Ready on its own
+#
+# Nothing here can express step 2, which is why it is written down.
 resources:
+  - ../base/headlamp
   - ./harbor
+  - ../base/homepage
+  - ../base/pev2
