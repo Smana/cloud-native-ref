@@ -21,7 +21,7 @@ entries:
     children:
       - path: opentofu/aws/network/
         kind: dir
-        desc: VPC, subnets, Route53, Tailscale VPN
+        desc: VPC, subnets, Route53, the AWS-side Tailscale subnet router
       - path: opentofu/aws/openbao/
         kind: dir
         desc: The OpenBao cluster and its management stack — secrets and the private PKI
@@ -34,6 +34,27 @@ entries:
       - path: opentofu/aws/llm-platform/
         kind: dir
         desc: opt-in — S3 Files and IAM for the self-hosted LLM platform
+      - path: opentofu/gcp/network/
+        kind: dir
+        desc: VPC, subnets, Cloud DNS, the GCP-side Tailscale subnet router
+      - path: opentofu/gcp/gke/init/
+        kind: dir
+        desc: Stage 1 — GKE Standard cluster with a private-only endpoint
+      - path: opentofu/gcp/gke/configure/
+        kind: dir
+        desc: Stage 2 — Cilium displaces GKE's CNI, the Flux Operator is installed
+      - path: opentofu/gcp/openbao/cluster/
+        kind: dir
+        desc: The GCP OpenBao cluster — same role as its AWS sibling
+      - path: opentofu/gcp/openbao/management/
+        kind: dir
+        desc: The GCP OpenBao management stack — PKI, policies, AppRoles
+      - path: opentofu/shared/tailscale/
+        kind: dir
+        desc: The tailnet itself — ACLs, nameservers, search paths — owned by neither cloud
+      - path: opentofu/shared/aws-gcp-federation/
+        kind: dir
+        desc: Workload Identity Federation letting gcp-0 write Route53 records
 
   - path: clusters/
     kind: dir
@@ -46,6 +67,12 @@ entries:
       - path: clusters/aws-0-llm-platform/
         kind: dir
         desc: The suspended LLM umbrella's children, kept a sibling so the recursive sync cannot reach them
+      - path: clusters/gcp-0/
+        kind: dir
+        desc: Same shape as aws-0 — one Kustomization per domain, over the GCP overlays
+      - path: clusters/gcp-0-llm-platform/
+        kind: dir
+        desc: gcp-0's suspended LLM umbrella children, same sibling pattern
 
   - path: flux/
     kind: dir

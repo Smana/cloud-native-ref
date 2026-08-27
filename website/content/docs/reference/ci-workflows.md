@@ -2,7 +2,7 @@
 title: CI Workflows
 weight: 40
 description: Every GitHub Actions job, what it runs, and which six of them can actually block a merge — verified against .github/workflows and the branch protection API.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 CI never applies changes to a cluster. It validates, scans and publishes;
@@ -23,7 +23,7 @@ Branch protection on `main` requires these six contexts, and nothing else:
 | **Kubernetes validation** ☸ | `./scripts/validate-manifests.sh` | ✅ |
 | **Rendered manifest diff** 📝 | renders head vs merge-base, posts a PR comment | ✅ the *job* must succeed; the diff's **content** never fails it |
 | **Check the shell scripts** 💻 | `shellcheck -x -S warning` over `scripts/**/*.sh` | ✅ |
-| **Check the documentation links** 🔗 | `./scripts/validate-links.sh` | ✅ |
+| **Check the documentation links** 🔗 | `./scripts/validate-links.sh`, then `./scripts/validate-doc-claims.sh` | ✅ |
 
 Two protection settings matter as much as the list:
 
@@ -103,6 +103,11 @@ the repository: `git ls-files '*.md'`, then each `](target)` checked relative
 to the file holding it. `.linkcheck-allow` exists for known pre-existing
 breaks and is **currently empty** — the goal state. Never add an entry to
 route around a break your own change introduced.
+
+The same job then runs `./scripts/validate-doc-claims.sh`, which checks the
+specific claims pinned in `.doc-claims.yaml` against the configuration they
+describe — it lives in this job rather than its own so the required-check
+list on `main` does not have to change.
 
 ## Path-filtered workflows
 

@@ -2,7 +2,7 @@
 title: Troubleshooting
 weight: 40
 description: The failures that actually happen here — silent Gateway API breakage, network policy traps, claim rejections, and cascading dependencies.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Generic Kubernetes advice is available everywhere. This page carries the
@@ -51,6 +51,10 @@ before the CRD exists.
 That list is **append-only**. Entries are indexed by `count`, so removing or
 reordering one causes OpenTofu to destroy and recreate live CRDs.
 {{< /callout >}}
+
+On `gcp-0` neither the list nor the trap exists: the shared
+`opentofu/shared/modules/gateway-api-crds` module applies the full
+experimental bundle keyed by `for_each`, so there is nothing to append.
 
 ## CiliumNetworkPolicy traps
 

@@ -68,7 +68,7 @@
         <mxCell id="a2" value="&lt;b&gt;docs.yml → GitHub Pages&lt;/b&gt;&#xa;same path filter as docs-check,&#xa;builds the site and publishes it&#xa;to cnref.ogenki.io" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="465" y="722" width="360" height="94" as="geometry" />
         </mxCell>
-        <mxCell id="a3" value="&lt;b&gt;build-container-images → ghcr.io&lt;/b&gt;&#xa;pushes &lt;branch&gt;-&lt;sha&gt; plus latest.&#xa;Deployments pin the immutable&#xa;&lt;branch&gt;-&lt;sha&gt; tag, never latest." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="a3" value="&lt;b&gt;build-container-images → ghcr.io&lt;/b&gt;&#xa;pushes &amp;lt;branch&amp;gt;-&amp;lt;sha&amp;gt; plus latest.&#xa;Deployments pin the immutable&#xa;&amp;lt;branch&amp;gt;-&amp;lt;sha&amp;gt; tag, never latest." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="845" y="722" width="350" height="94" as="geometry" />
         </mxCell>
 

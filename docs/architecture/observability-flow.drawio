@@ -81,7 +81,7 @@
         </mxCell>
         <mxCell id="e22" value="remote write" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="vmagent" target="vm">
           <mxGeometry relative="1" as="geometry">
-            <mxPoint x="0" y="-16" as="offset" />
+            <mxPoint x="-28" y="-16" as="offset" />
           </mxGeometry>
         </mxCell>
         <mxCell id="e23" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="vector" target="vl">

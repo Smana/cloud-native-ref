@@ -2,7 +2,7 @@
 title: Glossary
 weight: 50
 description: Terms used across the site — Crossplane, GitOps, and platform-specific vocabulary in one place.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 **Claim** — the Kubernetes object a tenant creates to request infrastructure
@@ -31,8 +31,8 @@ a `(namespace, ServiceAccount)` pair.
 
 **Stack** — a Terramate unit of OpenTofu configuration with its own state:
 `network`, `openbao/cluster`, `openbao/management`, `eks/init`,
-`eks/configure`, `llm-platform`. Terramate orchestrates dependencies and
-ordering across stacks; `tofu` runs within one.
+`eks/configure`, `gke/init`, `gke/configure`, `llm-platform`. Terramate
+orchestrates dependencies and ordering across stacks; `tofu` runs within one.
 
 **Reconciliation** — Flux's continuous loop of comparing the cluster's actual
 state to what Git declares, and applying the difference. "Reconciled" means
@@ -73,8 +73,6 @@ object. This repository consumes one pinned package
 built and released from `Smana/crossplane-configuration`, rather than
 authoring compositions in-tree.
 
-**Shard** — a Flux controller partition. This repository runs two shards
-(default and `apps`, via `sharding.fluxcd.io/key`); a `GitRepository` or
-`HelmRepository` must live in the unsharded `flux-sources` Kustomization so
-both shards can resolve it, or the shard looking for it reports "source not
-found" even though the source is `Ready`.
+**Shard** — a Flux controller partition; this repository runs two (default and
+`apps`, via `sharding.fluxcd.io/key`) — the sharp edge that comes with them is
+on [Repository structure]({{< relref "/docs/platform/gitops/repository-structure.md" >}}).

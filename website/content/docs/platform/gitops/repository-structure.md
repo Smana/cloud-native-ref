@@ -2,7 +2,7 @@
 title: Repository Structure
 weight: 20
 description: How Flux actually assembles what it applies — the ArtifactGenerator/ExternalArtifact split and controller sharding.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 [Repository Layout]({{< relref "/docs/reference/repository-layout.md" >}})
@@ -13,7 +13,7 @@ the directory tree alone.
 
 ## One `GitRepository`, sliced into `ExternalArtifact`s
 
-Every domain Kustomization under `clusters/aws-0/` — `infrastructure`,
+Every domain Kustomization under `clusters/aws-0/` and `clusters/gcp-0/` — `infrastructure`,
 `security`, `observability`, `tooling`, `apps`, the `flux/*` self-management
 Kustomizations, `crds`, `namespaces` — sources from an `ExternalArtifact`,
 not from the `flux-system` `GitRepository` directly. All of them are produced
@@ -47,9 +47,9 @@ Every domain Kustomization then points `sourceRef` at its own slice —
 Two Kustomizations are the exception, necessarily: `flux-artifact-generators`
 (which applies the `ArtifactGenerator` above, so it has to read the
 `GitRepository` directly — the `ExternalArtifact`s don't exist until it
-runs) and the opt-in `llm-platform` umbrella, whose path
-(`clusters/aws-0-llm-platform/`) falls outside every `copy.from` glob
-above.
+runs) and the opt-in `llm-platform` umbrellas, whose paths
+(`clusters/aws-0-llm-platform/`, `clusters/gcp-0-llm-platform/`) fall outside
+every `copy.from` glob above.
 
 The `from: "@repo/<dir>/**"` / `to: "@artifact/<dir>/"` shape matters: a
 trailing `/` on the source instead of `/**` copies `<dir>/` into
@@ -58,7 +58,8 @@ directory's contents into the artifact root.
 
 ## Controller sharding: `apps` vs default
 
-The `FluxInstance` (`opentofu/aws/eks/init/helm_values/flux-instance.yaml`)
+The `FluxInstance` (`opentofu/aws/eks/init/helm_values/flux-instance.yaml`,
+mirrored by its GCP copy under `opentofu/gcp/gke/init/helm_values/`)
 configures one extra shard:
 
 ```yaml

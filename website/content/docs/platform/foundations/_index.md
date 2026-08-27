@@ -2,7 +2,7 @@
 title: Foundations
 weight: 10
 description: Why OpenTofu and Terramate, and the three-stage model every cloud lane implements before Flux takes over.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Everything a Kubernetes API server needs to exist *before* Flux can reconcile
@@ -37,7 +37,8 @@ one OpenTofu root module. Terramate turns the separate stacks into one graph:
 - **DRY configuration** — `opentofu/config.tm.hcl` holds the globals every
   stack reads (region, cluster name, chart versions) instead of five copies
   of the same variable.
-- **Opt-in gating** — a stack tagged `opt-in` (currently `llm-platform`) is
+- **Opt-in gating** — stacks tagged `opt-in` — the AWS `llm-platform` and
+  all five GCP stacks, which additionally gate on `TM_GCP_ENABLED=true` — are
   skipped by default and pulled in with a tag filter or an environment
   variable, without a second orchestration mechanism next to this one.
 

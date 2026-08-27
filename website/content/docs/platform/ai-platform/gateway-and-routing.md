@@ -2,7 +2,7 @@
 title: Gateway & routing
 weight: 30
 description: "How one OpenAI-compatible request crosses two gateways and up to two filters before it reaches a GPU — and what `model: MoM` does."
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 The platform speaks the OpenAI API. A client points at one endpoint, names a
@@ -70,11 +70,11 @@ matches that header and forwards through an `AIServiceBackend` → `Backend` →
 the model's Service on port 8000.
 
 {{< callout type="warning" >}}
-**Gateway routing is half-migrated.** Only `xplane-qwen-coder` has its gateway
-objects composition-owned (`spec.gateway.enabled: true`). The other three
-claims still route through a hand-written
-`apps/base/ai/llm/ai-gateway-routes/route.yaml`. Adding a model today means
-remembering to add its route by hand unless the claim opts in.
+**Gateway routing is half-migrated** — only `xplane-qwen-coder` is
+composition-owned (`spec.gateway.enabled: true`); the other three claims
+route through the hand-written `apps/base/ai/llm/ai-gateway-routes/route.yaml`,
+so adding a model means adding its route by hand unless the claim opts in
+(see [Known gaps]({{< relref "/docs/platform/ai-platform/_index.md#known-gaps" >}})).
 {{< /callout >}}
 
 ## Semantic routing — `model: MoM`
@@ -125,7 +125,7 @@ turning it on would take.
 
 ## Known gaps
 
-- **No distributed tracing.** OTLP export from the AI Gateway extproc is
-  written but not enabled, pending verification against VictoriaTraces.
-- **Route ownership is split** between the composition and a hand-written
-  manifest, as above.
+The platform-wide list lives at
+[AI Platform → Known gaps]({{< relref "/docs/platform/ai-platform/_index.md#known-gaps" >}});
+the two that touch this page are the split route ownership above and the
+unshipped OTLP tracing from the AI Gateway extproc.

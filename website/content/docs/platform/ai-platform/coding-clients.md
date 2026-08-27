@@ -2,7 +2,7 @@
 title: Coding Clients
 weight: 10
 description: Connecting OpenCode, Continue, and OpenWebUI to the self-hosted LLM gateway — authentication, model IDs, and the failure modes their errors actually mean.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 The cluster exposes an OpenAI-compatible endpoint at
@@ -136,7 +136,7 @@ reflects what actually served the request.
 
 All four models default to `minReplicas: 1` (always warm); KEDA scales
 `1→max` on the three leading saturation signals described in
-[AI Platform → Autoscaling]({{< relref "/docs/platform/ai-platform/_index.md#autoscaling" >}}).
+[Autoscaling & GPUs]({{< relref "/docs/platform/ai-platform/autoscaling-and-gpu.md" >}}).
 On `MoM`, first-request latency is dominated by the ~250–300 ms classifier
 round-trip rather than cold start; on a directly-named model there is no
 classifier cost at all.

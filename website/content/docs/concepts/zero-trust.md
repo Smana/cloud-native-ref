@@ -2,7 +2,7 @@
 title: Zero trust
 weight: 40
 description: Default-deny at the network, no ambient credentials, no static secrets — enforced by policy rather than asserted.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 "Zero trust" is easy to claim and hard to check. The useful version of the
@@ -25,17 +25,23 @@ without asking.
 **Identity.** Workloads reach AWS through EKS Pod Identity, never IRSA and
 never static keys — the reasoning is in
 [ADR-0002]({{< relref "/docs/decisions/0002-eks-pod-identity-over-irsa.md" >}}).
+On `gcp-0` the same binding runs through GKE Workload Identity, via the
+sibling `GCPWorkloadIdentity` XRD
+([ADR-0007]({{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}})).
 Policies are scoped to `xplane-*` resources, and Crossplane holds no
 deletion permissions for stateful services, so a compromised controller
 cannot destroy a database or an S3 bucket.
 
 **Secrets.** Nothing sensitive is committed. External Secrets Operator pulls
-from AWS Secrets Manager and OpenBao into Kubernetes Secrets at runtime.
+from the cloud's managed secret store — AWS Secrets Manager on `aws-0`,
+Google Secret Manager on `gcp-0` — into Kubernetes Secrets at runtime;
+OpenBao is scoped to the private PKI, not application secrets
+([ADR-0024]({{< relref "/docs/decisions/0024-cloud-managed-secret-stores.md" >}})).
 
-**Ingress.** The cluster API endpoint is private. Platform services are
-reachable only over Tailscale, and the two private gateways are separated by
-ACL tag so that admin-only services are not merely unlisted but unreachable
-for non-admins.
+**Ingress.** The cluster API endpoint is private and platform services are
+reachable only over Tailscale — on both clouds — and the two private gateways
+are separated by ACL tag so that admin-only services are not merely unlisted
+but unreachable for non-admins.
 
 **Certificates.** A private PKI issues every internal certificate through
 cert-manager, so TLS is not something applications opt into.

@@ -78,10 +78,16 @@ done
 # drawio ends its SVG output without a trailing newline; pre-commit's
 # end-of-file-fixer adds one. Without this, every export leaves the tree dirty
 # by exactly one byte per file and the script is never idempotent.
-find "$OUT" -name '*.svg' -exec sed -i -e '$a\' {} +
+# Portable append (BSD sed reads `-i -e` as backup-suffix "-e" and litters
+# *.svg-e files): only add the newline when the last byte is not already one.
+find "$OUT" -name '*.svg' -exec sh -c '
+    for f; do [ -n "$(tail -c1 "$f")" ] && printf "\n" >> "$f"; done; :
+' _ {} +
 
 echo
 echo "==> Size check (budget: 500 KB per SVG export)"
-find "$OUT" -name '*.svg' -size +500k -printf '    OVER BUDGET: %p (%s bytes)\n' | tee "${TMPDIR:-/tmp}/oversize"
+# -exec ls, not -printf: BSD find (macOS) has no -printf, and this script runs
+# on contributor laptops as well as CI.
+find "$OUT" -name '*.svg' -size +500k -exec sh -c 'printf "    OVER BUDGET: %s (%s bytes)\n" "$1" "$(wc -c < "$1")"' _ {} \; | tee "${TMPDIR:-/tmp}/oversize"
 [ ! -s "${TMPDIR:-/tmp}/oversize" ] || { echo "Reduce embedded raster logos or their resolution."; exit 1; }
 echo "    all exports within budget"

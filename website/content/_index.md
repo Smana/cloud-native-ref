@@ -1,7 +1,7 @@
 ---
 title: Cloud Native Reference
 layout: hextra-home
-description: "An opinionated, production-ready Kubernetes platform reference. GitOps with Flux, infrastructure from Kubernetes with Crossplane, zero-trust networking with Cilium, a private PKI with OpenBao — on AWS EKS and GCP GKE."
+description: "An opinionated, production-ready Kubernetes platform reference: bootstrap a complete platform on your own AWS or GCP account in about thirty minutes, built entirely from open-source cloud-native tools and following platform-engineering and security best practices."
 ---
 
 {{< hextra/hero-badge >}}
@@ -13,10 +13,13 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
 {{< /hextra/hero-headline >}}
 
 {{< hextra/hero-subtitle >}}
-  Infrastructure as code with OpenTofu and Crossplane, continuous delivery with
-  Flux, a private PKI and zero-trust networking, and a developer abstraction
-  that turns one small YAML claim into a whole application. Deploy it into your
-  own AWS or GCP account in about thirty minutes.
+  Bootstrap a complete platform on your own AWS or GCP account in about thirty
+  minutes — built entirely from open-source, cloud-native tools. It follows
+  platform-engineering and security best practices from the first commit:
+  everything as code and reconciled from Git, zero-trust networking,
+  least-privilege identity, secrets never stored in the repository, and a paved
+  road that takes developers from a few lines of YAML to a production-ready
+  application.
 {{< /hextra/hero-subtitle >}}
 
 {{< hextra/hero-button text="Deploy in 30 minutes" link="docs/get-started/" >}}
@@ -40,7 +43,7 @@ description: "An opinionated, production-ready Kubernetes platform reference. Gi
   {{< hextra/feature-card link="docs/reference/" icon="book-open" title="Reference"
     subtitle="Repository layout, the technology stack and what each piece is responsible for, commands, CI, the platform constitution." >}}
   {{< hextra/feature-card link="docs/decisions/" icon="scale" title="Decisions"
-    subtitle="Twenty-one architecture decision records — what was chosen, what it was chosen over, and the cost that came with it." >}}
+    subtitle="Twenty-four architecture decision records — what was chosen, what it was chosen over, and the cost that came with it." >}}
 {{< /hextra/feature-grid >}}
 
 {{< stack-strip >}}

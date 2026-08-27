@@ -2,7 +2,7 @@
 title: SRE agent
 weight: 50
 description: RunLore — an LLM agent that receives Alertmanager webhooks, investigates them read-only against the live cluster, and writes what it learns back to a knowledge-base repository.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 The rest of this section is about producing signals. This page is about the
@@ -82,7 +82,7 @@ External Secret; no credential is ever inlined.
 | | |
 |---|---|
 | Chart | `deploy/helm/runlore` from the `runlore` `GitRepository` |
-| Source | `flux/sources/gitrepo-runlore.yaml`, pinned to tag `v0.13.0` |
+| Source | `flux/sources/gitrepo-runlore.yaml`, pinned to tag `v0.15.0` |
 | Image | `0.13.0` — signed, multi-arch, SBOM-attested |
 | Workload | `StatefulSet`, `replicaCount: 2`, leader election |
 | Storage | one RWO 1Gi PVC per replica, via `volumeClaimTemplates` — platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |

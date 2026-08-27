@@ -2,7 +2,7 @@
 title: GCP
 weight: 30
 description: The five OpenTofu stacks that implement the three-stage model on GCP, and the two places GKE bootstrap is genuinely simpler than EKS.
-lastVerified: 2026-08-26
+lastVerified: 2026-08-27
 ---
 
 GCP instantiates the [three-stage model]({{< relref "/docs/platform/foundations/_index.md" >}})
@@ -111,10 +111,12 @@ short version:
   model weights mount through the Cloud Storage FUSE CSI driver
   ([ADR-0021](../../decisions/0021-gcs-fuse-for-model-weights-on-gcp.md)).
 
-## What does not run here yet
+## What is excluded here, and why
 
-`gcp-0` reconciles namespaces, CRDs, Flux, Crossplane, security and
-infrastructure. It does **not** yet run observability, tooling or general
-applications — those overlays are not written. The
+`gcp-0` reconciles the same layers as `aws-0` — observability, tooling and
+applications included. What it leaves out is deliberate and per-component:
+`runlore` (its chart hardcodes AWS cloud tools and identity), `image-gallery`
+(the application itself speaks S3), `flux-previews` (previews belong to one
+cluster by nature), and tooling's Homepage and Headlamp. The
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}) page
-lists each gap and what it would take to close it.
+has the full map of what runs where, and what closing each exclusion would take.

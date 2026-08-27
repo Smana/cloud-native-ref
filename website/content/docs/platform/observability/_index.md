@@ -2,14 +2,18 @@
 title: Observability
 weight: 40
 description: VictoriaMetrics, VictoriaLogs, and VictoriaTraces under one Grafana, the SRE agent that reacts to their alerts, and why one of nine component directories never actually deploys.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 `observability/base/` holds nine component directories. **Eight are wired
 into Flux; one is not.** `grafana-oncall` is a fully-built HelmRelease pair
 (engine + RabbitMQ, external Postgres and Valkey already provisioned) that no
 `Kustomization` anywhere in `clusters/` or `flux/` ever references — it does
-not run on the cluster today. Every other component below does. See
+not run on the cluster today. Every other component below does — on
+`aws-0`; `gcp-0` runs seven of the eight, because `runlore` stays AWS-only
+for now (its HelmRelease hardcodes `cloud.provider: aws` and its identity is
+an EKS Pod Identity — the header of `observability/gcp-0/kustomization.yaml`
+records what a GCP wiring still needs). See
 [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md#grafana-oncall-built-but-not-deployed" >}})
 for what that means in practice.
 

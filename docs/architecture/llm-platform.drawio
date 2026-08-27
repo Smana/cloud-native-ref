@@ -97,7 +97,9 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e7" value="classify + rewrite body.model" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F59E0B;strokeWidth=1.5;endArrow=classic;endFill=1;startArrow=classic;startFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.3;" edge="1" parent="1" source="f1" target="sr">
-          <mxGeometry relative="1" as="geometry" />
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="-70" y="-14" as="offset" />
+          </mxGeometry>
         </mxCell>
         <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.35;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="dp" target="be">
           <mxGeometry relative="1" as="geometry" />

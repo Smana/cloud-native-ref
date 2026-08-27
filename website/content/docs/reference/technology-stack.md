@@ -2,7 +2,7 @@
 title: Technology Stack
 weight: 20
 description: What runs on this platform, and what each piece is responsible for.
-lastVerified: 2026-08-22
+lastVerified: 2026-08-27
 ---
 
 Every component this platform runs, and what it is responsible for — not
@@ -30,6 +30,13 @@ What the cluster is built from, before Flux takes over.
 
 {{< stack-table group="bootstrap" >}}
 
+## GKE bootstrap
+
+Same shape on GCP — the versions Cilium and Flux run are shared with EKS,
+pinned once in `opentofu/config.tm.hcl`.
+
+{{< stack-table group="bootstrap-gke" >}}
+
 ## Infrastructure
 
 {{< stack-table group="infrastructure" >}}
@@ -46,12 +53,13 @@ What the cluster is built from, before Flux takes over.
 
 {{< stack-table group="tooling" >}}
 
-## Managed AWS services
+## Managed cloud services
 
 Not in the table above because there is nothing to install or upgrade: Route
 53 (DNS), Elastic Load Balancing, IAM (via EKS Pod Identity), KMS, and S3 are
 AWS APIs this platform calls, not software this repository deploys and
-Renovate bumps.
+Renovate bumps. On GCP the same applies to Cloud DNS, GCS, Secret Manager,
+Workload Identity, and Cloud KMS.
 
 A handful of components render a lettered tile rather than a logo. That is
 deliberate: `website/static/images/logos/LICENSES.md` records every mark's
