@@ -195,7 +195,7 @@ gaps at all.
 Two ExternalSecrets read from OpenBao and nothing seeds them — the same is true
 on `aws-0`, where they were written by hand:
 
-- Harbor's admin and Valkey passwords, at harbor/admin/password
+- Harbor's admin and Valkey passwords, at harbor-admin-password
 - Flux's Slack token, at the OpenBao key observability/flux/slack-app
 
 Until they exist, Harbor waits on its secret and Flux alerts are dropped.

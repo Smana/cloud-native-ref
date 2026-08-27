@@ -53,7 +53,7 @@ end-to-end deploy. See `opentofu/aws/llm-platform/README.md`.
 
 ### One-time AWS Secrets Manager bootstrap
 
-The AI Gateway's API keys live in AWS SM at `platform/llm/api-keys`,
+The AI Gateway's API keys live in AWS SM at `platform-llm-api-keys`,
 **deliberately outside of OpenTofu** so they survive cluster teardown +
 recreation (rotating keys would invalidate every coding-client config —
 that pain is worse than the bootstrap step). Three ExternalSecrets
@@ -63,7 +63,7 @@ fan out from this single SM entry:
 - `apps/openwebui-llm-api-key` (OpenWebUI's `OPENAI_API_KEY`)
 - `promptfoo/promptfoo-llm-api-key` (nightly eval CronJob)
 
-If `aws secretsmanager describe-secret --secret-id platform/llm/api-keys`
+If `aws secretsmanager describe-secret --secret-id platform-llm-api-keys`
 returns `ResourceNotFoundException`, seed it once (idempotent — re-running
 fails harmlessly with `ResourceExistsException`):
 
@@ -72,7 +72,7 @@ OPENWEBUI_KEY="sk-$(openssl rand -hex 24)"
 PROMPTFOO_KEY="sk-$(openssl rand -hex 24)"
 aws secretsmanager create-secret \
   --region eu-west-3 \
-  --name platform/llm/api-keys \
+  --name platform-llm-api-keys \
   --description "AI Gateway client API keys (raw, no Bearer prefix). JSON: {openwebui_apikey, promptfoo_apikey}" \
   --secret-string "{\"openwebui_apikey\":\"${OPENWEBUI_KEY}\",\"promptfoo_apikey\":\"${PROMPTFOO_KEY}\"}"
 ```

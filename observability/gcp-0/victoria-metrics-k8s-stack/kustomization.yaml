@@ -12,3 +12,12 @@ kind: Kustomization
 # ${storage_class}, which is standard-rwo on this cluster.
 resources:
   - ../../base/victoria-metrics-k8s-stack
+
+patches:
+  # The OpenBao CA secret is stored raw-PEM under a GCP-valid name here, versus
+  # JSON-with-a-property under an AWS-style slash path on aws-0. See the patch.
+  - path: externalsecret-openbao-ca-patch.yaml
+    target:
+      group: external-secrets.io
+      kind: ExternalSecret
+      name: openbao-ca

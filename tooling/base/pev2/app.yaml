@@ -48,7 +48,7 @@ spec:
   # ============================================================================
   # HTTP Routing - Tailscale Gateway (Private Access)
   # ============================================================================
-  # Accessible only via Tailscale VPN at: https://pev2.priv.aws.ogenki.io
+  # Accessible only via Tailscale VPN at: https://pev2.${private_domain_name}
   route:
     enabled: true
-    hostname: "pev2" # Results in: pev2.priv.aws.ogenki.io
+    hostname: "pev2" # Results in: pev2.${private_domain_name}
