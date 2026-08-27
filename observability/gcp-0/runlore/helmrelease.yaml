@@ -17,6 +17,20 @@ metadata:
   namespace: runlore
 spec:
   values:
+    # The base pins image 0.13.0, which has no GCP cloud provider at all: with
+    # the chart and the policy both correct, the pod still logged NOTHING about
+    # GCP -- not even a resolution failure -- and reported `"cloud":false`. An
+    # absent provider and a broken one look identical from the outside.
+    #
+    # `main` is the only tag published for this image, built 2026-08-27T10:14:22Z,
+    # three minutes after the commit the chart is pinned to (96688ac5). So it is
+    # the image that matches the chart, not a newer guess.
+    #
+    # A moving tag is acceptable only because this cluster is rebuilt from
+    # scratch every run. Pin a released tag alongside the chart's v0.16.0.
+    image:
+      tag: "main"
+      pullPolicy: Always
     networkPolicy:
       awsPodIdentity: false
       gcpWorkloadIdentity: true
