@@ -125,7 +125,7 @@ spec:
     # at its public hostname. Auth flow is Authorization Code + PKCE
     # (configured in the Zitadel application registration); OpenWebUI
     # handles the redirect callback at /oauth/zitadel/callback and
-    # the Tailscale-fronted HTTPRoute at chat.priv.aws.ogenki.io
+    # the Tailscale-fronted HTTPRoute at chat on the cluster private domain
     # exposes both the chat UI and the callback path.
     - name: ENABLE_OAUTH_SIGNUP
       value: "true"
@@ -195,7 +195,7 @@ spec:
         name: openwebui-secrets
         optional: true
 
-  # Default: private gateway (chat.priv.aws.ogenki.io)
+  # Default: private gateway (chat on the cluster private domain)
   route:
     enabled: true
     hostname: "chat"
