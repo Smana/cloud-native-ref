@@ -2,7 +2,7 @@
 title: AWS
 weight: 20
 description: The five OpenTofu stacks that implement the three-stage model on AWS, and why EKS bootstrap needs two of them.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 AWS instantiates the [three-stage model]({{< relref "/docs/platform/foundations/_index.md" >}})
@@ -61,9 +61,9 @@ entire reason this is two OpenTofu stacks and not one.
 
 With the cluster reachable, Stage 2 runs in order: patch the `aws-node`
 (VPC-CNI) DaemonSet's `nodeSelector` so it schedules on no nodes, install
-Cilium (which also replaces kube-proxy — see the
-[repository CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md)
-for the WireGuard requirement this mode carries), patch out the `kube-proxy`
+Cilium (which also replaces kube-proxy — see
+[WireGuard is load-bearing]({{< relref "/docs/platform/networking/cilium.md#wireguard-is-load-bearing-not-an-optimisation" >}})
+for the requirement this mode carries), patch out the `kube-proxy`
 DaemonSet the same way, then install the Flux Operator and a `FluxInstance`
 pointed at this repository — the point at which the cluster starts
 reconciling everything under [GitOps]({{< relref "/docs/platform/gitops/_index.md" >}})
@@ -73,19 +73,12 @@ whole stage stays declarative, with no `local-exec` step.
 One command runs both: the `deploy` script in
 `opentofu/aws/eks/init/workflows.tm.hcl` defines this as two jobs in the same
 script — the second job `cd`s into `../configure` and applies it directly —
-plus a third job that recycles any node-group node whose ENIs predate
-Cilium. Those nodes exist from Stage 1, before Cilium is running, so Cilium
-hands them individually-allocated secondary IPs instead of `/28` prefixes
-and never converts them: a permanent ceiling of roughly 42 pod IPs per node.
-With prefix delegation a Karpenter-provisioned node has several hundred — more
-than the 100 pods its `EC2NodeClass` sets as `maxPods`, so scheduling binds
-before addressing does. A bootstrap node runs out of IPs long before it
-reaches that limit. The failure surfaces far from the cause — a DaemonSet pod that
-can't get an IP keeps its rollout `InProgress`, which times out an unrelated
-HelmRelease's `--wait` and reports that HelmRelease `InstallFailed`. The
-recycle script is idempotent: it inspects each node's `CiliumNode` and only
-acts on ones actually missing prefixes, so it's a no-op on every deploy
-after the first.
+plus a third job that recycles any bootstrap node whose ENIs predate Cilium.
+Those nodes would otherwise keep a permanent ceiling of roughly 42 pod IPs,
+where a Karpenter node's `maxPods` limit of 100 pods binds long before its IP
+supply does. The job is idempotent — a no-op on every deploy after the first —
+and the full mechanics are on
+[Cilium → IPAM]({{< relref "/docs/platform/networking/cilium.md#ipam-prefix-delegation-on-the-secondary-cidr" >}}).
 
 ## The OpenBao cluster stack
 

@@ -104,6 +104,7 @@ hostname, alongside cluster health and documentation links. It is reached the
 same way as every other private service: over Tailscale, through the general
 Gateway.
 
-GCP does not run the tooling layer yet, so there is no dashboard there — see
+GCP runs the tooling layer too, but only Harbor — not Homepage or Headlamp —
+so there is no dashboard there; see
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}})
 for the current split.

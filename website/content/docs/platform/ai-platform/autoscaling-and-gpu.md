@@ -2,7 +2,7 @@
 title: Autoscaling & GPUs
 weight: 40
 description: Three KEDA triggers on leading vLLM signals, why minReplicas is never zero, and the GPU and storage foundation underneath.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Scaling a GPU workload is not scaling a web service. A cold start is 30–90
@@ -91,13 +91,23 @@ An Amazon S3 Files filesystem — POSIX semantics over S3 — is mounted RWX at
 `/models` by both the preload Job and the serving pod, each under its own
 `subPath`.
 
-The consequence worth understanding: **the serving pod needs no IAM identity
-at all.** Weights arrive over the CSI mount rather than being fetched by the
-process, so the serving ServiceAccount carries no role, and only the bounded
-preload Job holds an EKS Pod Identity. That is also why the serving pod's
-egress policy can be kube-dns only, while `world:443` is granted solely to
-the short-lived preload Job — the runtime pod cannot reach HuggingFace even
-in principle.
+One operational must-know: the PV is provisioned out-of-band, with a
+hand-copied `volumeHandle` in `apps/aws-0/llm/models-pvc.yaml` that every
+`tofu apply` of `opentofu/aws/llm-platform/` regenerates. After a rebuild,
+fetch it with `tofu -chdir=opentofu/aws/llm-platform output -raw volume_handle`,
+update that file, and delete the existing PV+PVC so Flux recreates them
+(`volumeHandle` is immutable) — otherwise every mount fails against the old
+filesystem id.
+
+The consequence worth understanding: **the serving pod never fetches
+weights itself.** They arrive over the CSI mount, so each claim's serving
+ServiceAccount carries only a per-claim **read-only** EKS Pod Identity,
+scoped to its own weights prefix and rendered by the composition — write
+access belongs solely to the shared preload Job's identity
+(`xplane-llm-models-preload`). That is also why the serving pod's egress
+policy can be kube-dns only, while `world:443` is granted solely to the
+short-lived preload Job — the runtime pod cannot reach HuggingFace even in
+principle.
 
 [ADR-0004]({{< relref "/docs/decisions/0004-amazon-s3-files-for-model-weights-storage.md" >}})
 records why this replaced an init-container sync, and

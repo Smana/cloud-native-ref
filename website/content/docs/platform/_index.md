@@ -2,7 +2,7 @@
 title: Platform
 weight: 20
 description: Every domain the platform runs — networking, security, GitOps, observability, and the developer-facing abstraction on top.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 One section per domain: what runs, why it was chosen over the alternatives,
@@ -11,7 +11,7 @@ and security, then the developer platform, observability, and the optional
 self-hosted AI stack.
 
 {{< cards >}}
-  {{< card link="/docs/platform/foundations/" title="Foundations" icon="cube" subtitle="OpenTofu, Terramate, and the three-stage model that provisions everything before Flux takes over." >}}
+  {{< card link="/docs/platform/foundations/" title="Foundations" icon="cube" subtitle="OpenTofu, Terramate, and the three-stage model two clouds implement — aws-0 on EKS, gcp-0 on GKE Standard — before Flux takes over; Cloud support maps where they differ." >}}
   {{< card link="/docs/platform/gitops/" title="GitOps" icon="refresh" subtitle="Why Flux, the dependency hierarchy, and how manifests are validated before they merge." >}}
   {{< card link="/docs/platform/networking/" title="Networking" icon="switch-horizontal" subtitle="Cilium as the eBPF data plane, Gateway API as the routing model, and Tailscale for every private service." >}}
   {{< card link="/docs/platform/security/" title="Security" icon="lock-closed" subtitle="OpenBao's PKI and secrets engine, cert-manager and External Secrets, Kyverno and CiliumNetworkPolicy defaults." >}}

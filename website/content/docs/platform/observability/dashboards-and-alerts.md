@@ -2,7 +2,7 @@
 title: Dashboards & Alerts
 weight: 30
 description: Grafana Operator's folder/dashboard/datasource model, VictoriaTraces, VMRule alerting, Alertmanager routing, and the Grafana OnCall integration that isn't actually deployed.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 ## Grafana Operator
@@ -130,14 +130,12 @@ for the LogsQL form. PromQL rules live mostly in
 - `runlore.yaml` — 12 alerts covering the agent's own health (down, no
   leader, split-brain), pipeline behavior (dropped/stalled/erroring
   investigations), and cost (token spend, model latency). Each carries a
-  `runbook_url` pointing at RunLore's own docs. A byte-identical
-  `PrometheusRule` twin ships alongside it so either metrics backend works;
-  the file comments call out that the two must never drift independently.
+  `runbook_url` pointing at RunLore's own docs.
   What the agent itself does with an alert is on its own page —
   [SRE agent]({{< relref "/docs/platform/observability/sre-agent.md" >}}).
 
 ```yaml
-# observability/base/victoria-metrics-k8s-stack/vmrules/runlore.yaml — trimmed
+# observability/aws-0/victoria-metrics-k8s-stack/vmrules/runlore.yaml — trimmed
 - alert: RunloreAgentDown
   expr: absent(runlore_build_info)
   for: 5m

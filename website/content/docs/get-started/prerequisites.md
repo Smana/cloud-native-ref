@@ -54,6 +54,16 @@ as long as it delegates the public zone to Route 53.
     --secret-string file://flux-ghapp.json
   ```
 
+  **GCP lane** — `opentofu/gcp/gke/configure` reads the same credentials from
+  GCP Secret Manager instead (`var.flux_github_app_secret_name`, default
+  `flux-github-app`), so the GCP bootstrap never depends on AWS credentials.
+  Publish the same JSON payload there too:
+
+  ```bash
+  gcloud secrets create flux-github-app --replication-policy=automatic \
+    --project=<your-project> --data-file=flux-ghapp.json
+  ```
+
 ## State backend — create this bucket first
 
 **Nothing in this repository can `plan` until a state bucket exists.** It is the
@@ -74,20 +84,10 @@ Which bucket you need **differs by lane**:
   stack — keep their state in S3, and the GCP lane cannot deploy without them.
 
 State for cloud-owned stacks is **per cloud**: AWS stacks use the S3 bucket,
-GCP stacks the GCS bucket. See
+GCP stacks the GCS bucket. The principle is that state lives outside the blast
+radius of what it manages, without coupling the clouds — the history behind
+that split and its trade-offs are in
 [ADR-0018](../decisions/0018-per-cloud-opentofu-state.md).
-
-The principle is that state lives outside the blast radius of what it manages.
-An earlier layout kept GCP state in a GCS bucket inside the very project whose
-resources it tracked, so deleting that project would have destroyed the record
-of it. The first fix moved GCP state into the shared AWS bucket — which solved
-the blast-radius problem, but by arguing against the wrong thing: the fault was
-the *workload* project, not GCS. A dedicated state project fixes it without
-coupling the clouds.
-
-What that buys: running or destroying GCP's own stacks needs GCP credentials
-only, and an AWS outage cannot block a GCP teardown. The cost is one
-prerequisite bucket per cloud instead of one in total.
 
 ### The AWS bucket
 
@@ -131,11 +131,11 @@ an OpenTofu `backend` block cannot take a variable. Find them all with:
 grep -rn 'bucket ' --include=backend.tf opentofu/
 ```
 
-Cross-stack readers hardcode it a second time — `terraform_remote_state` data
-sources in `opentofu/gcp/gke/init/data.tf`, `opentofu/gcp/gke/configure/data.tf`
-and `opentofu/aws/llm-platform/data.tf`. Changing the backends and missing those
-leaves the readers pointing at a bucket that no longer receives writes: stale
-reads, no error.
+One cross-stack reader hardcodes it a second time — the
+`terraform_remote_state` data source in `opentofu/aws/llm-platform/data.tf`.
+Changing the backends and missing it leaves the reader pointing at a bucket
+that no longer receives writes: stale reads, no error. (The GCS bucket has its
+own pair of hardcoded readers, noted where that bucket is created.)
 
 ## Tools
 
@@ -147,8 +147,9 @@ mise install
 ```
 
 That single command installs OpenTofu, Terramate, the Flux CLI, Helm,
-Kustomize, and Trivy (the config scanner every `preview`/`deploy`/`drift
-detect` script runs) at the exact versions this repository is built against.
+Kustomize, the Google Cloud SDK (`gcloud`), and Trivy (the config scanner
+every `preview`/`deploy`/`drift detect` script runs) at the exact versions
+this repository is built against.
 `mise.toml` is the source of truth for those versions — check it directly
 rather than trusting a number written in prose, here or anywhere else.
 
@@ -156,6 +157,8 @@ A few tools mise does **not** manage — install these separately:
 
 - the AWS CLI, authenticated
 - `kubectl`
+- `gke-gcloud-auth-plugin` (GCP lane) — `gcloud components install
+  gke-gcloud-auth-plugin`; kubectl cannot talk to a GKE cluster without it
 - the OpenBao CLI (`bao`) — see [openbao.org](https://openbao.org/)
 - `jq`
 - the Tailscale client, to check `tailscale status` once Stage 1 is up

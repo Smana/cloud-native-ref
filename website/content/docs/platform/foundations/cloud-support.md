@@ -3,7 +3,7 @@ title: Cloud support
 linkTitle: Cloud support
 weight: 5
 description: What runs on AWS, what runs on GCP, which managed service stands in for which, and the decisions that made the two lanes differ.
-lastVerified: 2026-08-26
+lastVerified: 2026-08-27
 ---
 
 The platform runs on **two clouds**: `aws-0` on EKS and `gcp-0` on GKE Standard.
@@ -36,6 +36,11 @@ and torn down afterwards.
 | Applications | ✅ | ✅ podinfo · basic · App Wizard — minus `image-gallery` |
 | LLM platform | ⏸️ opt-in, suspended | ⏸️ opt-in, suspended |
 | Flux extras (alerts, dashboards) | ✅ | ✅ minus `flux-previews` |
+
+One nuance in the Infrastructure row: Cilium itself is OpenTofu-owned on both
+clouds (Stage 2 of the Kubernetes stack), not Flux-managed — and the Cilium
+extras `aws-0` wires through Flux (`infrastructure/base/cilium`: Hubble UI
+route, dashboards, scrape configs) have no `gcp-0` entry.
 
 ## Matching managed services
 
@@ -72,7 +77,8 @@ where a cloud's own service is unavoidable, and what stands in for what.
 | Workload identity | EKS Pod Identity | GKE Workload Identity Federation | Never IRSA, never a static key ([ADR-0002](../../decisions/0002-eks-pod-identity-over-irsa.md)) |
 | Crossplane claim | `EPI` | `GCPWorkloadIdentity` | Cloud-shaped on purpose ([ADR-0007](../../decisions/0007-cloud-abstraction-boundaries.md)) |
 | Bootstrap secret store | AWS Secrets Manager | Google Secret Manager | Read at apply time by the cluster stack |
-| Runtime secret store | OpenBao | OpenBao | Same PKI model, one instance per cloud |
+| Runtime secret store (ESO) | AWS Secrets Manager | GCP Secret Manager | The one `ClusterSecretStore` every ExternalSecret reads ([ADR-0024]({{< relref "/docs/decisions/0024-cloud-managed-secret-stores.md" >}})) |
+| Private PKI | OpenBao | OpenBao | Same PKI model, one instance per cloud |
 | OpenBao auto-unseal | AWS KMS | Cloud KMS | |
 
 ### DNS and certificates
@@ -121,9 +127,9 @@ It is a real implementation now. Both clouds render from the same KCL module,
 differing in where barman writes (`gs://` with `googleCredentials.gkeEnvironment`
 rather than `s3://` with `s3Credentials.inheritFromIAMRole`) and in the identity
 that writes — one `GCPWorkloadIdentity`, bucket-scoped, in place of four AWS IAM
-resources. The CloudNativePG operator itself is still deployed only on `aws-0`
-(`infrastructure/aws-0/cloudnative-pg/`), so a claim on `gcp-0` needs that
-overlay before it can reconcile.
+resources. The CloudNativePG operator runs on both clouds; `gcp-0` pulls the HelmRelease
+file alone (`infrastructure/gcp-0/cloudnative-pg/`) rather than the whole base
+directory, whose Grafana dashboards need a CRD that cluster does not install.
 
 ## Decisions that shaped the split
 
@@ -192,11 +198,12 @@ gaps at all.
 
 ### Needs a human, on both clouds
 
-Two ExternalSecrets read from OpenBao and nothing seeds them — the same is true
-on `aws-0`, where they were written by hand:
+Two ExternalSecrets read from the cloud's managed secret store and nothing
+seeds them — `./scripts/secret-store.sh check --cloud gcp` (or `aws`) lists
+what is missing, and its `seed` command creates the generatable ones:
 
-- Harbor's admin and Valkey passwords, at harbor-admin-password
-- Flux's Slack token, at the OpenBao key observability/flux/slack-app
+- Harbor's admin and Valkey passwords, at `harbor-admin-password`
+- Flux's Slack token, at `observability/flux/slack-app`
 
 Until they exist, Harbor waits on its secret and Flux alerts are dropped.
 Reconciliation itself is unaffected.
@@ -219,9 +226,9 @@ clients, and no federation between them. For an identity provider that is
 usually the wrong outcome, and it would be reached by default rather than by
 decision.
 
-Today the question is still open rather than urgent, because ZITADEL cannot run
-on `gcp-0` at all — it declares a `SQLInstance`, and that claim has no GCP
-implementation (see the table above). Three models are on the table:
+Today the question is still open rather than urgent, because ZITADEL has no
+`gcp-0` overlay — it is deliberately a singleton on `aws-0` (see the gaps
+above). Three models are on the table:
 
 1. **One instance on `aws-0`**, with `gcp-0` workloads authenticating across the
    cloud boundary. This mirrors the DNS decision — one authoritative service,

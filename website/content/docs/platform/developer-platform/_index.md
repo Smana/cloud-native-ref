@@ -2,7 +2,7 @@
 title: Developer Platform
 weight: 35
 description: The App, SQLInstance, and KVStore claims that let a developer deploy a production-ready service with kubectl basics and no Crossplane knowledge.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 {{< callout type="info" >}}
@@ -14,8 +14,13 @@ a version:
 ```yaml
 # infrastructure/base/crossplane/configuration/configuration-packages.yaml
 spec:
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.3.1
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.4.1
 ```
+
+`gcp-0` serves the same claims from its own package,
+`ghcr.io/smana/crossplane-configuration-gcp:v0.4.1`, pinned in
+`infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml`
+— both clusters currently pin the same release.
 
 What stays here: `functions.yaml` (the KCL function runtime, version-pinned
 rather than resolved by the package's `dependsOn`), `environmentconfig.yaml`

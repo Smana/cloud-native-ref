@@ -2,7 +2,7 @@
 title: AWS
 weight: 20
 description: Deploy the platform on AWS — three sequential stages, about thirty minutes.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 AWS is one of two implemented cloud lanes — see
@@ -22,15 +22,19 @@ a stack expects is to read the file already sitting next to it.
 
 1. Edit `opentofu/config.tm.hcl` — region, EKS cluster name, the Helm chart
    versions used by the bootstrap (`cilium_version`, `flux_operator_version`,
-   `flux_instance_version`), `flux_sync_repository_url` (point it at your own
-   fork), and `openbao_url`.
+   `flux_instance_version`), and `openbao_url`.
 2. Edit the `variables.tfvars` in each stack directory
    (`opentofu/aws/network/`, `opentofu/aws/openbao/cluster/`,
    `opentofu/aws/openbao/management/`, `opentofu/aws/eks/init/`,
    `opentofu/aws/eks/configure/`), replacing the reference values with yours —
-   principally `cluster_name`, `env`, `flux_sync_url`, `private_domain_name`
-   and `public_domain_name`.
-3. Export the one secret Terraform needs from the environment rather than a
+   principally `cluster_name`, `env`, `private_domain_name` and
+   `public_domain_name` — and above all `flux_sync_url` in
+   `opentofu/aws/eks/configure/variables.tfvars`: the URL of *your* fork,
+   which is what Flux actually syncs from.
+3. Edit `opentofu/shared/tailscale/variables.tfvars` — `tailnet` and
+   `admin_users` are the reference tailnet's identity, and this stack is the
+   first thing the root deploy applies; point them at your own tailnet.
+4. Export the one secret Terraform needs from the environment rather than a
    file:
 
    ```bash
@@ -49,9 +53,11 @@ terramate script run deploy
 ```
 
 **One command covers both stages** — there is no second command to run below.
-Terramate resolves the dependency graph and applies `network`, then
-`openbao/cluster`, then `openbao/management`, because each declares the previous
-one in its `after` list.
+Terramate resolves the dependency graph and starts with `shared/tailscale`, the
+tailnet-wide singletons `network` declares in its `after` list, then applies
+`network`, `openbao/cluster` and `openbao/management` in order. The same run
+also applies `opentofu/shared/aws-gcp-federation` — only its `destroy` is
+gated — which the GCP lane needs and which costs nothing idle here.
 
 *Stage 1* creates the VPC across three availability zones, public and private
 subnets, a Route53 private hosted zone, VPC endpoints, and the Tailscale subnet

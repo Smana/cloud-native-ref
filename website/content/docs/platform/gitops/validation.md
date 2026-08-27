@@ -2,7 +2,7 @@
 title: Validation
 weight: 30
 description: Why manifests are validated as Flux's rendered desired state, not as raw source files, and the two properties that make the gate real.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 "Git is the source of truth" only holds if what merges to `main` is actually
@@ -26,15 +26,20 @@ almost nothing, because almost nothing in the source tree is a finished
 manifest. Rendering first, then validating, is what makes the gate check the
 thing that actually reaches the cluster:
 
-1. **`gen-catalog.sh` → `.schemas/`** — builds a JSON Schema catalog from
+1. **`check-substitution.py`** — verifies every Flux Kustomization's variable
+   wiring first, because it is the one check the rendered bundle cannot make:
+   a missing `postBuild` lands literal `${var}` text on the cluster, and a
+   `${var}` the cluster's own ConfigMap does not define substitutes to an
+   empty string — both render schema-valid.
+2. **`gen-catalog.sh` → `.schemas/`** — builds a JSON Schema catalog from
    this repository's own Crossplane XRDs (there is no public schema for
    `cloud.ogenki.io` kinds), plus the Envoy AI Gateway CRDs rendered from the
    exact chart version this repository pins.
-2. **`render-bundle.py` → `.bundle/`** — every top-level Kustomize overlay
+3. **`render-bundle.py` → `.bundle/`** — every top-level Kustomize overlay
    through `kustomize build` with Flux's `postBuild` substitutions applied,
    every `HelmRelease` through `helm template` with its own `spec.values`
    and `postRenderers`, standalone manifests copied verbatim.
-3. **Two gates on `.bundle/`**: `flux schema validate` (structure and
+4. **Two gates on `.bundle/`**: `flux schema validate` (structure and
    `x-kubernetes-validations` CEL rules), then `polaris audit` (workload
    best practices — privilege escalation, capabilities, resource limits,
    image tags).

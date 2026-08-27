@@ -2,7 +2,7 @@
 title: How this is built
 weight: 60
 description: The design method behind the platform, the gates that enforce it, and where the process is expensive.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Most reference repositories show you the result. This one also shows how it
@@ -67,6 +67,7 @@ enforcement here:
 |---|---|
 | `./scripts/validate-manifests.sh` | Renders every overlay and HelmRelease as Flux would, then validates structure and CEL against the repo's own XRDs, and audits the rendered bundle with Polaris |
 | `./scripts/validate-links.sh` | Every relative Markdown link in the repository, resolved rather than grepped |
+| `./scripts/validate-doc-claims.sh` | Pinned prose claims still match the configuration they describe — sources and patterns in `.doc-claims.yaml`; runs inside the links CI job |
 | `./scripts/verify-doc-paths.sh` | Every repository path named in the documentation still exists |
 | `trivy config` | Infrastructure-as-code misconfiguration |
 | pre-commit | Formatting, secret detection, Terraform validation |
@@ -123,6 +124,8 @@ item is added, so nothing tells you the number now lies. Prose explaining
 repository are good at structure — dead links, missing files, invalid
 schemas — and blind to meaning. Every serious defect found while building
 this site was semantic, and every one was found by a person reading source.
+`validate-doc-claims.sh` narrows the gap for the specific claims someone
+chose to pin, but it verifies only those — the general problem stands.
 
 ## Reading on
 
