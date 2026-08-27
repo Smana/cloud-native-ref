@@ -159,6 +159,13 @@ OLD_NAMES=(
     "observability/grafana/oncall-rabbitmq"
     "observability/grafana/oncall-slackapp"
     "observability/grafana/oncall-valkey"
+    # These two live under flux/, not */base, so the original sweep for the
+    # rename never saw them -- it scanned the five */base directories only.
+    # Both work on aws-0 (Secrets Manager takes the slashes) and neither can
+    # exist on gcp-0, which is precisely the flux-ui-oidc ValuesError seen
+    # there.
+    "observability/flux/slack-app"
+    "security/flux/ui-oidc"
     "observability/victoria-metrics-k8s-stack/alertmanager-slack-app"
     "observability/victoria-metrics-k8s-stack/grafana-envvars"
     "openbao/cloud-native-ref/approles/cert-manager"
@@ -202,13 +209,25 @@ cmd_migrate_aws() {
         # one-byte corruption in 1 of 16 secrets is the kind of thing that
         # surfaces months later as an unexplained parse failure.
         #
-        # Piping JSON straight from get-secret-value into create-secret's
-        # --cli-input-json preserves the string exactly.
+        # The payload goes through a private temp file, not a pipe: the AWS CLI
+        # cannot read --cli-input-json from file:///dev/stdin (it needs a
+        # seekable file) and fails with "Invalid JSON received". Piping it looks
+        # cleaner and does not work.
+        #
+        # umask 077 before mktemp so the file is never group- or world-readable,
+        # and it is shredded on every exit path including a failure.
+        local payload
+        payload=$(umask 077 && mktemp -t secret-store-payload.XXXXXX)
+        # shellcheck disable=SC2064  # expand $payload now, not at trap time
+        trap "shred -u '${payload}' 2>/dev/null || rm -f '${payload}'" RETURN
+
         aws_sm get-secret-value --secret-id "$old" --output json \
             | jq --arg name "$new" \
                  --arg desc "Portable name for ${old}. Copied by scripts/secret-store.sh." \
                  '{Name: $name, Description: $desc, SecretString: .SecretString}' \
-            | aws_sm create-secret --cli-input-json file:///dev/stdin >/dev/null
+            > "$payload"
+
+        aws_sm create-secret --cli-input-json "file://${payload}" >/dev/null
         echo "[copied ] $old -> $new"
         copied=$((copied + 1))
     done
