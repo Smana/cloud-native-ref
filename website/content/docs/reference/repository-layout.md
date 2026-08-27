@@ -2,7 +2,7 @@
 title: Repository Layout
 weight: 10
 description: What lives where — top-level directories, the base/overlay pattern, and how a change maps to a domain.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Every deployable domain in this repository follows the same shape:
@@ -41,11 +41,12 @@ overlays simply include fewer base components today. Which ones, and why, is on
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}).
 
 A handful of components bypass the shared overlay and get their own top-level
-Flux `Kustomization` directly under `clusters/aws-0/<domain>/` instead —
-`crossplane-controller`, `karpenter`, `grafana-operator`, `victoria-metrics`,
-`victoria-traces` and `zitadel` are wired this way, usually because they need
-their own `dependsOn` ordering rather than sharing the domain's overlay
-lifecycle.
+Flux `Kustomization` directly under `clusters/<cluster>/<domain>/` instead —
+on `aws-0`: `crossplane-controller`, `karpenter`, `grafana-operator`,
+`victoria-metrics`, `victoria-traces` and `zitadel`; `gcp-0` adds
+`gapi`/`gapi-public` and four `security-*` Kustomizations (OpenBao, its
+snapshots, public certs, Tailscale) — usually because they need their own
+`dependsOn` ordering rather than sharing the domain's overlay lifecycle.
 
 ## Two deployment models in one tree
 
@@ -63,7 +64,7 @@ lifecycle.
 
 ## Opt-in surfaces
 
-Two parts of the tree are deliberately inert by default, each gated
+Several parts of the tree are deliberately inert by default, each gated
 independently of the base/overlay mechanism above:
 
 - **`opentofu/aws/llm-platform/`** — a Terramate stack tagged `opt-in`; its
@@ -72,6 +73,12 @@ independently of the base/overlay mechanism above:
   (`clusters/aws-0/llm-platform.yaml`) with `spec.suspend: true`, kept a
   sibling of `clusters/aws-0/` specifically so `flux-system`'s recursive
   sync does not pick up its children and bypass the suspend.
+- **`clusters/gcp-0-llm-platform/`** — the same suspended-umbrella pattern
+  for `gcp-0`, gated by `clusters/gcp-0/llm-platform.yaml`.
+- **`opentofu/gcp/**`** — every GCP stack's scripts no-op unless
+  `TM_GCP_ENABLED=true`, so an AWS deploy from `opentofu/` never builds GCP
+  as a side effect.
 
-Both gates have to be released for an end-to-end LLM platform deploy — see the
+On `aws-0` both LLM gates have to be released for an end-to-end deploy; on
+`gcp-0` the umbrella is the only LLM gate — see the
 [repository CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md#self-hosted-llm-platform-opt-in).

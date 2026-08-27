@@ -115,7 +115,10 @@ Both referenced secrets are `ExternalSecret` objects
 (`security/base/cert-manager/`) pulling from the same AWS Secrets Manager
 entries the OpenTofu management stack writes to — one for the CA chain
 (`certificates/priv.aws.ogenki.io/root-ca`), one for the AppRole
-credential (`openbao/cloud-native-ref/approles/cert-manager`). Neither the
+credential (`openbao-cloud-native-ref-approles-cert-manager`, the portable
+dash grammar of [ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}});
+the CA-chain key keeps its slash shape as that ADR's documented exception).
+Neither the
 PKI mount nor the AppRole needs a `namespace:` field on the issuer — both
 live in OpenBao's root namespace (see
 [OpenBao]({{< relref "/docs/platform/security/openbao.md#namespace-layout" >}})).
@@ -150,10 +153,10 @@ Gateway picks up the new `Secret` without a redeploy.
 ## External Secrets: the other direction
 
 Where cert-manager pulls certificates *out* of OpenBao's PKI, External
-Secrets Operator pulls arbitrary credentials *out of AWS Secrets Manager* —
-the AppRole `SecretID`s above, the OpenBao admin password, the snapshot
-job's credentials. One `ClusterSecretStore` backs every `ExternalSecret` in
-the cluster:
+Secrets Operator pulls arbitrary credentials *out of the cloud's managed
+secret store* — the AppRole `SecretID`s above, the OpenBao admin password,
+the snapshot job's credentials. One `ClusterSecretStore` backs every
+`ExternalSecret` in the cluster:
 
 ```yaml
 apiVersion: external-secrets.io/v1
@@ -167,9 +170,25 @@ spec:
       service: SecretsManager
 ```
 
+On `gcp-0` the same store name is backed by GCP Secret Manager instead
+(`security/gcp-0/openbao/clustersecretstore.yaml`), with no `auth` block at
+all — deliberately: under GKE Workload Identity the controller's
+ServiceAccount is itself a Google principal, so there is no key to mount,
+rotate, or leak:
+
+```yaml
+spec:
+  provider:
+    gcpsm:
+      projectID: ${project_id}
+```
+
 Why the store of record is the cloud's managed service rather than OpenBao —
 cost, lifecycle, and the bootstrap circularity — is recorded in
-[ADR-0024]({{< relref "/docs/decisions/0024-cloud-managed-secret-stores.md" >}}).
+[ADR-0024]({{< relref "/docs/decisions/0024-cloud-managed-secret-stores.md" >}});
+the shared store name and the dash-grammar keys that let one `ExternalSecret`
+work on both clouds are
+[ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}}).
 
 This is the platform's concrete instance of the constitution's [Secrets
 Management rule]({{< relref "/docs/reference/platform-constitution.md#32-secrets-management" >}}):

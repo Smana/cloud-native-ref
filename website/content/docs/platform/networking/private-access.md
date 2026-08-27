@@ -2,7 +2,7 @@
 title: Private Access
 weight: 30
 description: The two Tailscale-backed Gateways, the ACL model that separates them, and the steps for exposing a new private service.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Every private service in this platform (`*.priv.aws.ogenki.io`) is reached
@@ -20,22 +20,26 @@ and how to expose a new service through them.
 - **`platform-tailscale-admin`** (`tag:admin`) — reachable only by
   `group:admin`.
 
-The rules live in `opentofu/aws/network/tailscale.tf`, applied via the
-`tailscale_acl` resource (default-deny — only what's listed here is
-permitted):
+The rules live in `opentofu/shared/tailscale/main.tf` — a tailnet-wide
+singleton stack, not a per-cloud one: there is exactly one ACL per tailnet,
+and when it lived in the AWS network stack a second `tailscale_acl` anywhere
+else would have silently overwritten it. They apply via the `tailscale_acl`
+resource (default-deny — only what's listed here is permitted), with
+`group:admin` populated from `var.admin_users`:
 
 ```hcl
 acls = [
-  { action = "accept", src = ["group:admin"],        dst = ["tag:admin:*"] },
-  { action = "accept", src = ["autogroup:member"],    dst = ["tag:k8s:*"] },
-  { action = "accept", src = ["tag:k8s-operator"],    dst = ["tag:k8s:*", "tag:admin:*"] },
-  # plus: CI-tagged devices, VPC access via the subnet router (below), and
-  # member-to-member — see the file for the full set.
+  { action = "accept", src = ["group:admin"],       dst = ["tag:admin:*"] },
+  { action = "accept", src = ["autogroup:member"],  dst = ["tag:k8s:*"] },
+  { action = "accept", src = ["tag:k8s-operator"],  dst = ["tag:k8s:*", "tag:admin:*"] },
+  # plus: CI-tagged devices, one generated subnet-route accept rule per
+  # cloud (below), and member-to-member — see the file for the full set.
 ]
 
 tagOwners = {
+  "tag:ci"           = [var.tailnet]
   "tag:k8s"          = ["tag:k8s-operator"]
-  "tag:k8s-operator" = [var.tailscale_config.tailnet]
+  "tag:k8s-operator" = [var.tailnet]
   "tag:admin"        = ["tag:k8s-operator"]
 }
 ```
@@ -85,7 +89,7 @@ Flux vars `ConfigMap`, substituted by `postBuild.substituteFrom` at reconcile
 time — never hardcode a hostname here.
 
 Both carry the `external-dns: enabled` label so ExternalDNS picks them up —
-see [Gateway API]({{< relref "/docs/platform/networking/gateway-api.md#externaldns-and-route53" >}})
+see [Gateway API]({{< relref "/docs/platform/networking/gateway-api.md#externaldns" >}})
 for that mechanism. What differs between them beyond the tag is
 `allowedRoutes`, which namespace-scopes what can attach:
 
@@ -133,8 +137,6 @@ Getting the namespace list wrong rejects the route entirely; see
    sync interval, no manual step.
 4. Verify from a Tailscale-connected device: `curl -v https://myapp.priv.aws.ogenki.io`.
 
-If the namespace isn't in the Gateway's `allowedRoutes` selector yet, this
-fails `NotAllowedByListeners` and needs the Gateway manifest updated first.
 
 ## The subnet router: reaching the VPC itself
 
@@ -154,9 +156,12 @@ module "tailscale_subnet_router" {
 }
 ```
 
-The ACL's `autoApprovers.routes` entry auto-approves that advertisement for
-the tailnet, and `autogroup:member -> 10.0.0.0/16:*` is the accept rule that
-lets any tailnet member actually route through it once approved.
+Back in the shared ACL stack, `var.advertised_routes` maps each cloud to its
+CIDRs, and `opentofu/shared/tailscale/main.tf` generates from it both the
+`autoApprovers.routes` entries that auto-approve each advertisement and one
+`autogroup:member` accept rule per cloud (AWS and GCP alike), so any tailnet
+member can route through either cloud's subnet router once its routes are
+approved.
 
 ## Verification
 

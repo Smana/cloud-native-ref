@@ -203,7 +203,7 @@ seeds them — `./scripts/secret-store.sh check --cloud gcp` (or `aws`) lists
 what is missing, and its `seed` command creates the generatable ones:
 
 - Harbor's admin and Valkey passwords, at `harbor-admin-password`
-- Flux's Slack token, at `observability/flux/slack-app`
+- Flux's Slack token — the key named in `flux/notifications/externalsecret-flux-slack-app.yaml`
 
 Until they exist, Harbor waits on its secret and Flux alerts are dropped.
 Reconciliation itself is unaffected.

@@ -30,7 +30,7 @@ Three properties of the existing platform are load-bearing and constrain the cho
    `loadBalancerClass: tailscale`. ACL separation between `tag:k8s` and `tag:admin` is enforced
    by having two such Gateways.
 3. **`CiliumNetworkPolicy` default-deny is a constitution requirement**
-   ([platform-constitution.md](../platform-constitution.md)), and Envoy L7 access logs from
+   ([platform constitution]({{< relref "/docs/reference/platform-constitution.md" >}})), and Envoy L7 access logs from
    `CiliumGatewayClassConfig.spec.telemetry.accessLogs` (Cilium >= 1.19.6) feed VictoriaLogs.
 
 GKE offers three shapes, and only one preserves all three.

@@ -2,7 +2,7 @@
 title: Policies
 weight: 30
 description: Kyverno admission policies, CiliumNetworkPolicy default-deny, RBAC, and the pod security context baseline enforced on every workload.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Where [OpenBao]({{< relref "/docs/platform/security/openbao.md" >}}) and
@@ -15,7 +15,8 @@ this page is how the platform implements them.
 ## Admission: Kyverno
 
 Two `HelmRelease`s in `security/base/kyverno/`: the `kyverno` controller
-(3.8.2) and `kyverno-policies` (also 3.8.2, same chart family) — the
+(chart 3.9.0) and `kyverno-policies` (chart 3.8.2 — the two charts version
+independently) — the
 upstream policy pack that implements the Kubernetes Pod Security Standards
 as `ClusterPolicy` resources. `kyverno-policies` installs with `values: {}` —
 no policy overrides at all — so the enforced set and its failure action (audit
@@ -48,10 +49,11 @@ of the traps that show up once you write these for real:
 - **DNS egress** needs an explicit rule to `kube-dns` on port 53 before
   anything else can resolve — including the AWS SDK resolving STS and S3
   endpoints.
-- **EKS Pod Identity's agent runs on the node's host network.** Cilium
-  classifies that destination as the `host` entity, not a routable CIDR — a
-  `toCIDR` rule for `169.254.170.23/32` silently fails. Use `toEntities:
-  [host]` scoped to the port instead.
+- **EKS Pod Identity's agent runs on the node's host network — as does
+  GKE's metadata server at `169.254.169.254`.** Cilium classifies both
+  destinations as the `host` entity, not a routable CIDR — a `toCIDR` rule
+  for the link-local address silently fails. Use `toEntities: [host]` scoped
+  to the port instead.
 - **`toEntities: world` on 443 is a deliberate, bounded exception**, not a
   general escape hatch. It's acceptable here only because the workload is a
   one-shot CronJob with a TTL, S3's endpoint topology fans out past what a
@@ -82,9 +84,9 @@ spec:
     - toEntities: [host]
       toPorts:
         - ports: [{ port: "80", protocol: TCP }]   # EKS Pod Identity agent
-    - toCIDR: ["10.0.0.0/16"]
+    - toCIDR: ["${openbao_cidr}"]                  # VPC CIDR on AWS, node subnet on GCP
       toPorts:
-        - ports: [{ port: "8200", protocol: TCP }]  # OpenBao, via the internal NLB
+        - ports: [{ port: "8200", protocol: TCP }]  # OpenBao, via the internal LB
     - toEntities: [world]
       toPorts:
         - ports: [{ port: "443", protocol: TCP }]   # S3 / STS — bounded, see above
@@ -172,7 +174,8 @@ least privilege, no `cluster-admin` for workloads.
 ## IAM
 
 AWS access from a pod is [EKS Pod Identity, never
-IRSA]({{< relref "/docs/decisions/0002-eks-pod-identity-over-irsa.md" >}}),
+IRSA]({{< relref "/docs/decisions/0002-eks-pod-identity-over-irsa.md" >}})
+— on `gcp-0`, GKE Workload Identity fills the same role —
 and every policy is scoped to `xplane-*`-prefixed resources with no deletion
 permission on stateful services (S3, IAM, Route53) — see the constitution's
 [IAM Conventions]({{< relref "/docs/reference/platform-constitution.md#4-iam-conventions" >}}).

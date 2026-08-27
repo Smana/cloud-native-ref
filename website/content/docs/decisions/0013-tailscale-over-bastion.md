@@ -3,7 +3,7 @@ title: Use Tailscale for private access rather than a bastion
 linkTitle: 0013 · Tailscale private access
 weight: 130
 description: Private cluster access runs over Tailscale with ACL tags as the authorization primitive, splitting general and admin gateways, instead of a bastion host or a managed VPN appliance.
-lastVerified: 2026-08-21
+lastVerified: 2026-08-27
 ---
 
 **Status**: Accepted
@@ -60,7 +60,7 @@ instance (`opentofu/aws/network/tailscale.tf`) advertises the VPC CIDR for
 direct access to the EKS API and OpenBao.
 
 **Pros**:
-- Identity-based ACLs (`tailscale_acl` in `opentofu/aws/network/tailscale.tf`)
+- Identity-based ACLs (`tailscale_acl` in `opentofu/shared/tailscale/main.tf`)
   replace network-perimeter trust: a device's tag, not its source IP,
   decides what it can reach.
 - Tailscale SSH (`ssh { action = "check", src = ["autogroup:member"], dst =
@@ -155,7 +155,7 @@ and buys none of the Gateway API integration.
   set `loadBalancerClass: tailscale` through the shared
   `CiliumGatewayClassConfig` (`infrastructure/base/gapi/`), and `tagOwners`
   restricts who can apply either tag to the Kubernetes Tailscale Operator
-  alone (`opentofu/aws/network/tailscale.tf`).
+  alone (`opentofu/shared/tailscale/main.tf`).
 - The two-gateway split makes admin-only services (Hubble UI, and anything
   else parented to `platform-tailscale-admin`) genuinely *unreachable* for
   a non-admin device — not merely unlisted or unlinked. A `tag:k8s`-only
@@ -227,7 +227,8 @@ private service is the most common way to reach for the wrong one.
 
 - [Platform → Networking → Private access]({{< relref "/docs/platform/networking/private-access.md" >}}) — the ACL model, the Gateway wiring, and the subnet router in full
 - [Get Started → Access]({{< relref "/docs/get-started/access.md" >}}) — the operator-facing walkthrough this ADR's Negative section references
-- `opentofu/aws/network/tailscale.tf` — the `tailscale_acl` resource, `tagOwners`, and the subnet-router module block
+- `opentofu/shared/tailscale/main.tf` — the tailnet-wide `tailscale_acl` resource and its `tagOwners`
+- `opentofu/aws/network/tailscale.tf` — the subnet-router module block and the per-VPC split-DNS resources
 - `security/base/tailscale-operator/` — the Kubernetes Tailscale Operator HelmRelease, `ProxyClass`es, and OAuth-client `ExternalSecret`
 - `infrastructure/base/gapi/` — the two Tailscale `Gateway`s and the shared `CiliumGatewayClassConfig`
 - [ADR-0015](0015-gateway-api-over-ingress-nginx.md) — the Gateway API routing mechanics behind the `CiliumGatewayClassConfig` and `loadBalancerClass: tailscale` wiring described here

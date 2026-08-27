@@ -64,6 +64,10 @@ groups:
         logo: trivy
         logo_dark: trivy-dark
         url: https://trivy.dev
+      - name: Google Cloud SDK
+        role: Cluster credentials and teardown verification for the GCP stacks
+        url: https://cloud.google.com/sdk
+        note: "`gcloud components install gke-gcloud-auth-plugin` is a separate required step — kubectl cannot talk to GKE without it (see the comment in `mise.toml`)."
       - name: Go
         role: Fetches the Hextra theme via Hugo Modules; no app code lives here
         logo: go
@@ -115,7 +119,7 @@ groups:
         pin: "`opentofu/config.tm.hcl` — `flux_operator_version`"
         strip: true
       - name: Flux Instance
-        role: The CR pointing Flux at this repo's clusters/aws-0 path
+        role: The CR pointing Flux at each cluster's clusters/<cluster> path
         logo: flux
         url: https://fluxcd.io
         pin: "`opentofu/config.tm.hcl` — `flux_instance_version`"
@@ -125,6 +129,30 @@ groups:
         url: https://gateway-api.sigs.k8s.io
         pin: "`opentofu/aws/eks/configure/variables.tf` — `gateway_api_version` default"
         strip: true
+
+  - id: bootstrap-gke
+    title: GKE bootstrap
+    decisions:
+      - id: 0005-gke-standard-self-managed-cilium
+        title: GKE Standard, self-managed Cilium
+    items:
+      - name: Kubernetes (GKE control plane)
+        short: Kubernetes
+        role: GKE Standard with a private-only endpoint, created by Stage 1 before Cilium and Flux land
+        logo: kubernetes
+        url: https://kubernetes.io
+        pin: "`opentofu/gcp/gke/init/variables.tf` — `kubernetes_version` default (`latest` tracks the release channel)"
+      - name: Cilium
+        role: Same eBPF datapath as aws-0 — `cni.exclusive` displaces GKE's own CNI config
+        logo: cilium
+        url: https://cilium.io
+        pin: "`opentofu/config.tm.hcl` — `cilium_version`, shared with EKS"
+      - name: Flux Operator + Instance
+        short: Flux
+        role: Same Flux install as aws-0 — the Instance points at clusters/gcp-0
+        logo: flux
+        url: https://fluxcd.control-plane.io
+        pin: "`opentofu/config.tm.hcl` — `flux_operator_version` / `flux_instance_version`, shared with EKS"
 
   - id: infrastructure
     title: Infrastructure

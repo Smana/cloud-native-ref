@@ -136,8 +136,8 @@ generate the three files (including the parent-kustomization edit) and run
 the same schema / CEL / secret / render gates — without GitHub or a
 cluster. The binary is built and released by the upstream
 [`Smana/app-wizard`](https://github.com/Smana/app-wizard) repository
-(extracted from this repo in the SPEC-009 split — `container-images/app-wizard/`
-is gone; the deployed image is `ghcr.io/smana/app-wizard`):
+(extracted from this repo in the SPEC-009 split — the wizard no longer builds
+from this repository; the deployed image is `ghcr.io/smana/app-wizard`):
 
 ```bash
 # from the repo root

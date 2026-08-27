@@ -2,7 +2,7 @@
 title: OpenBao
 weight: 10
 description: Namespace layout, operator login, AppRole machine auth, backup and restore, and the 2.6.x concurrency constraint.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 [Foundations]({{< relref "/docs/platform/foundations/aws.md#the-openbao-cluster-stack" >}})
@@ -13,7 +13,8 @@ runs on top of that cluster:
 `opentofu/aws/openbao/management/` layers namespaces, auth methods, the PKI, and
 policies onto it, and this is the operational surface every other security
 page and the [Access]({{< relref "/docs/get-started/access.md" >}}) guide
-build on.
+build on. `gcp-0` runs its own pair of stacks with a handful of deltas — see
+[On GCP](#on-gcp-gcp-0) at the bottom.
 
 One secret predates both stacks: OpenBao's own server certificate — the leaf
 terminating TLS on `bao.priv.aws.ogenki.io:8200`, see
@@ -45,7 +46,9 @@ PKI and operator logins under `admin`/`admin/pki`, which didn't hold up: an
 (`sys/storage/raft/*`, audit devices, seal operations) are root-only
 regardless — a snapshot agent parked in a child namespace could never reach
 them. The current layout, verified against
-`opentofu/aws/openbao/management/namespaces.tf`:
+`opentofu/aws/openbao/management/namespaces.tf` (this is `aws-0`'s layout —
+the GCP management stack has no `namespaces.tf`, so `gcp-0` is
+root-namespace-only):
 
 - **Root namespace** holds every shared platform service: the PKI mount
   (`pki_private_issuer`), the `snapshot-agent` and `cert-manager` AppRoles,
@@ -61,8 +64,9 @@ them. The current layout, verified against
 
 ## Operator login
 
-Human operators authenticate with `userpass`, not the root token — the root
-token is retired after initial setup (see below). The backend and user are
+On `aws-0`, human operators authenticate with `userpass`, not the root
+token — the root token is retired after initial setup (see below); `gcp-0`
+has no `userpass`, see [On GCP](#on-gcp-gcp-0). The backend and user are
 provisioned by Terraform (`opentofu/aws/openbao/management/auth.tf`), not created
 by hand:
 
@@ -124,7 +128,7 @@ Secrets Manager — but not under one shared path pattern per role:
 
 | Role | Secrets Manager entry | Source |
 |---|---|---|
-| `cert-manager` | `openbao/cloud-native-ref/approles/cert-manager` | `variables.tfvars` (`cert_manager_approle_secret_name`) |
+| `cert-manager` | `openbao/cloud-native-ref/approles/cert-manager`, copied by the `migrate-aws` subcommand of `scripts/secret-store.sh` to the portable dash name the in-cluster `ExternalSecret` reads: `openbao-cloud-native-ref-approles-cert-manager` ([ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}})) | `variables.tfvars` (`cert_manager_approle_secret_name`) |
 | `snapshot-agent` | Secrets Manager secret ID "security/openbao/openbao-snapshot" — also carries `VAULT_ADDR` and `BUCKET_NAME`, not just the RoleID/SecretID pair | `variables.tf:112` default (`snapshot_approle_secret_name`), not overridden |
 
 then synced into the cluster by External Secrets — see
@@ -232,3 +236,30 @@ Prerequisites worth stating plainly:
   contents — until there is, treat the restore procedure as a hypothesis.
   The `OpenBaoSnapshotStale` and `OpenBaoSnapshotJobFailed` VMRules at least
   confirm the *backup* half keeps working.
+
+## On GCP (gcp-0)
+
+`gcp-0` runs the same two-stack shape — `opentofu/gcp/openbao/cluster/` and
+`opentofu/gcp/openbao/management/` — against
+`https://bao.priv.gcp.ogenki.io:8200`, with GCP Secret Manager in Secrets
+Manager's role: `openbao-priv-gcp-root-token`, `openbao-priv-gcp-ca-chain`,
+`openbao-priv-gcp-approle-cert-manager`, `openbao-priv-gcp-snapshot` (dash
+names — a GCP secret ID cannot contain `/`). The deltas from everything
+above:
+
+- **Root namespace only, root token as operator access.** The GCP management
+  stack has no `namespaces.tf` and no `userpass` — operators use the root
+  token from `openbao-priv-gcp-root-token`.
+- **The cert-manager AppRole's `role_id` is pinned to `cert-manager-gcp`**
+  (`opentofu/gcp/openbao/management/auth.tf`): the `ClusterIssuer` needs
+  `roleId` as a literal string, and this stack has no Kubernetes provider to
+  plumb a generated value through the cluster's Flux vars the way AWS does.
+- **Snapshots ship to GCS.** `security/gcp-0/openbao-snapshot/` adds a GCS
+  bucket and patches the shared CronJob with `CLOUD=gcp`;
+  `scripts/openbao-snapshot.sh` branches to `gcloud storage` / `gs://` on
+  that switch. The cluster itself is single-node `file` storage today
+  (`opentofu/gcp/openbao/cluster/compute.tf`), so the Raft-only caveat above
+  applies to it unchanged.
+- **`scripts/openbao-config.sh` takes `--cloud gcp`** (plus `--project`), and
+  its `ca` subcommand reads `openbao-priv-gcp-ca-chain` as raw PEM rather
+  than AWS's JSON-shaped root-CA secret.

@@ -45,7 +45,7 @@ key for exactly this:
 ## Decision Drivers
 
 - **No static credentials** where the platform can avoid them — a standing rule in the
-  [platform constitution](https://github.com/Smana/cloud-native-ref/blob/main/docs/platform-constitution.md).
+  [platform constitution]({{< relref "/docs/reference/platform-constitution.md" >}}).
 - **Least privilege on storage.** A grant for Harbor must not reach OpenBao's snapshot bucket or
   CNPG's backup bucket.
 - **Symmetry is worth something, but not everything.** One shared code path across clouds is easier
