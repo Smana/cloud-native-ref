@@ -13,18 +13,22 @@
 # ../base/homepage; this overlay is Harbor alone, because homepage's dashboard
 # links every service on the cluster and most of them do not run here yet.
 #
-# dependsOn differs from aws-0's for a real reason, not an omission: aws-0's
-# tooling waits on `observability` as well as `infrastructure`, and gcp-0 has no
-# observability Kustomization at all. Adding that edge here would wedge this
-# Kustomization on a dependency that never becomes Ready.
+# dependsOn still omits the `observability` edge that aws-0's tooling carries.
+# gcp-0 now has observability Kustomizations, so the original reason for the
+# omission is gone; the edge is left out deliberately until observability is
+# green here, because adding it now would wedge Harbor behind a dependency that
+# is itself waiting on secrets. Add it once that is settled, for parity.
 #
 # ── One manual prerequisite ───────────────────────────────────────────────────
-# Harbor's two ExternalSecrets read `harbor/admin/password` and the Valkey
-# password from this cluster's OpenBao through the `clustersecretstore`
-# ClusterSecretStore. Nothing seeds them — that is true on aws-0 too, where they
-# were written by hand. Until they exist in gcp-0's OpenBao, the ExternalSecrets
-# stay unsynced and the Harbor HelmRelease waits on its secret rather than
-# failing outright. Seed them before expecting this Kustomization to go Ready.
+# Harbor's two ExternalSecrets read `harbor-admin-password` and
+# `harbor-valkey-password` from GCP Secret Manager through `clustersecretstore`
+# (the store is Secrets Manager on aws-0 and GCP Secret Manager here -- the base
+# ClusterSecretStore is overridden in security/gcp-0/openbao). Nothing seeds
+# them, which is true on aws-0 too, where they were written by hand.
+#
+# `./scripts/secret-store.sh check --cloud gcp` lists every key this cluster
+# needs and which are missing, rather than waiting for the ten-minute
+# HelmRelease timeout to say so indirectly.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
