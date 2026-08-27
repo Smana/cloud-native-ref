@@ -26,4 +26,17 @@ spec:
   # with the live HelmRelease values and the resulting config replayed through the
   # v0.13.0 binary's own config.Load (KnownFields + Validate): both pass.
   ref:
-    tag: v0.15.0
+    # Pinned to a COMMIT, not a tag, on purpose.
+    #
+    # runlore's GCP support -- networkPolicy.gcpWorkloadIdentity, which allows
+    # the GKE metadata server by address -- exists only on main. v0.15.0 is the
+    # latest tag and its chart has no gcpWorkloadIdentity at all, so a gcp-0
+    # deployment from it renders an AWS-shaped policy (toEntities: host) that
+    # matches nothing on GKE: every metadata call times out and the failure
+    # reads as a misconfiguration rather than a dropped packet.
+    #
+    # This is the commit that fixed it (Smana/runlore#563), 13 commits ahead of
+    # v0.15.0. Replace with `tag: v0.16.0` once that release exists -- a pin to
+    # an unreleased branch is a temporary state, and this comment is the record
+    # of why it was taken.
+    commit: 96688ac557e846655813fa4ceb1859e9d13197cd # pragma: allowlist secret

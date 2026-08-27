@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Everything else about runlore is shared with aws-0: the chart, the RBAC, the
+# CronJob, the HTTPRoute, the CiliumNetworkPolicy ingress rule and all three
+# ExternalSecrets. Only the cloud provider, the network policy that reaches the
+# metadata server, and the identity differ.
+resources:
+  - ../../base/runlore
+  - workloadidentity.yaml
+
+patches:
+  # No `target:` block, deliberately -- see security/aws-0/zitadel for the same
+  # note. With one, kustomize silently renders the base unpatched.
+  - path: helmrelease.yaml

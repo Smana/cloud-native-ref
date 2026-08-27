@@ -255,9 +255,14 @@ spec:
           installation_id: 141652301
           private_key_env: GITHUB_APP_PRIVATE_KEY  # pragma: allowlist secret
       cloud:
+        # provider stays a literal: it is the one value here that is genuinely
+        # per-cloud rather than per-cluster, and observability/gcp-0/runlore
+        # patches it. region and cluster_name were hardcoded to eu-west-3 and
+        # aws-0 in a SHARED base -- eleventh instance of that pattern -- so on
+        # gcp-0 runlore would have reported on the other cluster by name.
         provider: aws
-        region: eu-west-3
-        cluster_name: aws-0
+        region: ${region}
+        cluster_name: ${cluster_name}
       # actions: omitted -> mode "off" (fully read-only on the cluster; only
       # writes are KB PRs/issues on Smana/runlore-kb via the GitHub App).
       # v0.2.0 fails closed (RequireWebhookAuth): with a model configured the
