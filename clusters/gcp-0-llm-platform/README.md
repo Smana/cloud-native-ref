@@ -33,22 +33,39 @@ for why the weights path differs from `aws-0`.
   `runtimeClassName` at all (see the header comment in `infrastructure/gcp-0/computeclass/gpu-l4.yaml`)
   — there is nothing this child would even be gating.
 
-## Known gap: enabling this today does not fully work
+## Status: the blocker is closed, but this has never actually run
 
-This ships suspended, and **that is a real gate, not a formality.** Two things originally stopped the
-platform from serving traffic correctly. **One is now closed** (KEDA, below); one remains, and it is
-the blocking one:
+Two things once stopped this platform from serving correctly on `gcp-0`. **Both are now closed.**
+What remains is not a gap but an absence of evidence: no part of this has been exercised on a live
+GKE cluster. Resuming is a validation run, not a routine enable.
 
-- **Serving pods cannot read the weights bucket.** The Cloud Storage FUSE CSI driver
-  authenticates as the *mounting pod's own* Kubernetes ServiceAccount via Workload Identity
-  Federation for GKE, not the node's default identity (confirmed against Google's driver docs and
-  this repo's own `GCPWorkloadIdentity` composition — see
-  `security/gcp-0/llm-models-preload/workloadidentity.yaml`'s header). Each InferenceService
-  claim's serving ServiceAccount therefore needs its own read-only `GCPWorkloadIdentity`
-  (`roles/storage.objectViewer`, scoped to this bucket) — the same role AWS's per-claim read-only
-  EPI plays, rendered by the `InferenceService` composition. **The composition has no GCP support
-  for this yet.** Until it does, a resumed platform preloads weights fine (the shared preload
-  identity in this directory covers that) but vLLM pods fail to mount the bucket for reading.
+- ~~**Serving pods cannot read the weights bucket.**~~ **CLOSED at the pinned version.**
+  The constraint itself is real and unchanged: the Cloud Storage FUSE CSI driver authenticates as
+  the *mounting pod's own* Kubernetes ServiceAccount via Workload Identity Federation for GKE, not
+  the node's default identity. So each `InferenceService` claim's serving ServiceAccount needs its
+  own read-only `GCPWorkloadIdentity` — the role AWS's per-claim read-only EPI plays. This README
+  previously said the composition had no GCP support for that. It does, in
+  `crossplane-configuration` **v0.4.1, the version already pinned** in
+  `infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml`. Read back from
+  that tag's own golden fixture (`tests/golden/inferenceservice-gcp.yaml`), a claim renders:
+
+  ```yaml
+  kind: ServiceAccount                       # per-claim, namespace llm
+    name: xplane-<model>
+  kind: Deployment
+    serviceAccountName: xplane-<model>       # the serving pod runs as it
+  kind: GCPWorkloadIdentity
+    name: xplane-<model>-gcs-read
+    bucketRoles:
+      - bucket: <project>-ogenki-llm-models
+        role: roles/storage.objectViewer     # read-only, scoped to this bucket
+    serviceAccount:
+      name: xplane-<model>
+  ```
+
+  No pin bump is needed. **This is a static check against the pinned package, not a cluster
+  result** — the mount has never been performed on a running GKE node, and that is exactly what a
+  first resume tests.
 - ~~**KEDA is not installed on `gcp-0`.**~~ **CLOSED.** `infrastructure/gcp-0/kustomization.yaml`
   now pulls `../base/keda` — the same shared base `aws-0` uses, verified cloud-neutral first (no
   IRSA, no IAM roles, no ARNs, and its CiliumNetworkPolicy addresses `toEntities: kube-apiserver`
@@ -61,10 +78,21 @@ the blocking one:
   everything downstream, including resources that do not use it. Worth revisiting when the umbrella
   is actually resumed.
 
-A README that lists how to enable something without saying it will not work is worse than one
-that says nothing — so: **do not resume `llm-platform` on `gcp-0` until the serving-pod identity
-gap above is closed.** That one needs GCP support in the `InferenceService` composition
-(`Smana/crossplane-configuration`) and a pin bump here; it cannot be fixed in this repository.
+It still ships suspended, because four L4s and a multi-gigabyte HuggingFace preload should be a
+deliberate act rather than a default. But the reason is now cost, not breakage.
+
+**What to watch on the first resume**, in the order it can fail:
+
+1. The `GCPWorkloadIdentity` per claim reaches `Synced=True Ready=True` — the binding exists.
+2. The serving pod actually mounts the bucket. A failure here is the FUSE identity path, and it
+   surfaces as the pod stuck mounting, not as anything naming Workload Identity.
+3. vLLM reads the weights and reports the model ready.
+
+A first resume that gets past (2) is the thing this README could not previously promise.
+
+The full run this belongs to — bootstrap, serve, back runlore with the served model, restore a
+database from backup, prove runlore reads GCP — is
+[`docs/gcp-validation-runbook.md`](../../docs/gcp-validation-runbook.md).
 
 ## Enable
 

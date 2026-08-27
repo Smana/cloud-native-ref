@@ -75,14 +75,20 @@ differences:
   mount — see [ADR-0021](website/content/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md)
   for why, including what it gives up.
 
-> **Resuming the GCP umbrella today does not fully work, by design of what is not built yet.**
-> Serving pods cannot read the weights bucket — the FUSE mount authenticates as the mounting pod's
-> own ServiceAccount, and their per-claim read-only identity is rendered by the `InferenceService`
-> composition, which has no GCP support — and that composition lives in
-> `Smana/crossplane-configuration`, so it cannot be fixed from this repository. (A second gap, KEDA
-> not being installed on `gcp-0`, is now closed — `infrastructure/gcp-0` pulls the shared
-> `base/keda`.) The remaining gap is recorded in `clusters/gcp-0-llm-platform/README.md`. Close it
-> before resuming.
+> **Both known blockers are closed; the umbrella stays suspended on cost, not breakage.**
+> Serving pods need a per-claim read-only identity because the FUSE mount authenticates as the
+> mounting pod's own ServiceAccount. That identity **is** rendered by the `InferenceService`
+> composition as of `crossplane-configuration` v0.4.1 — the version already pinned here — which
+> emits a per-claim ServiceAccount, a Deployment running as it, and a `GCPWorkloadIdentity` granting
+> `roles/storage.objectViewer` scoped to the weights bucket. No pin bump needed. (The second gap,
+> KEDA on `gcp-0`, is also closed — `infrastructure/gcp-0` pulls the shared `base/keda`.)
+> **But none of it has run on a live GKE cluster**: that is a static read of the pinned package's
+> golden fixture, not a cluster result. Treat the first resume as a validation run — what to watch,
+> in failure order, is in `clusters/gcp-0-llm-platform/README.md`.
+>
+> The end-to-end run that would settle all of it — serve a model, back runlore with it, restore a
+> database from a GCS backup, prove runlore reads GCP — is written out in
+> [`docs/gcp-validation-runbook.md`](docs/gcp-validation-runbook.md).
 
 **Autoscaling design** (composition v0.5.0+, [SPEC-001](docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)): every model defaults `min=1` with a KEDA `ScaledObject` driven by leading vLLM saturation metrics — `running/max-num-seqs` ratio + `kv_cache_usage_perc`. The legacy KEDA HTTP add-on (proxy in the data path, lagging request-count trigger) is no longer used; AI Gateway routes directly to each vLLM Service.
 
