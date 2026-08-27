@@ -7,7 +7,7 @@ terraform {
       # >= 7.17 is the floor terraform-google-modules/kubernetes-engine v44 sets.
       # Pinning the same constraint in every GCP stack keeps one provider version
       # across network and gke. Both CFT modules cap at < 8.
-      version = "~> 7.17"
+      version = "~> 8.0"
     }
     google-beta = {
       source  = "hashicorp/google-beta"

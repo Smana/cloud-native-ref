@@ -5,7 +5,7 @@ terraform {
     google = {
       source = "hashicorp/google"
       # >= 7.17 is the floor terraform-google-modules/kubernetes-engine v44 sets.
-      version = "~> 7.17"
+      version = "~> 8.0"
     }
     google-beta = {
       source  = "hashicorp/google-beta"

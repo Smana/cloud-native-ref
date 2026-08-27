@@ -7,7 +7,7 @@ terraform {
       # Same floor and constraint as every other GCP stack in this repo, to keep
       # one provider version across network, gke and openbao. See
       # opentofu/gcp/network/versions.tf for why 7.17 is the floor.
-      version = "~> 7.17"
+      version = "~> 8.0"
     }
   }
 }
