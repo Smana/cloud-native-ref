@@ -1,5 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
+# ec2.yaml moved to observability/aws-0/victoria-metrics-k8s-stack/. It is a
+# VMScrapeConfig built on `ec2SDConfigs` -- AWS EC2 service discovery -- which
+# on GCP would apply cleanly and then fail every discovery round against an API
+# that is not there. Softer than the karpenter rules, which broke the whole
+# Kustomization, but no more correct.
 resources:
-  - ec2.yaml
   - openbao.yaml

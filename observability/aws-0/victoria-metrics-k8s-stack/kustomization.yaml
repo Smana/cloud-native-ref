@@ -1,5 +1,30 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# The shared VictoriaMetrics stack, plus the parts of it that only mean
+# something on AWS.
+#
+# This used to be a bare pass-through to ../../base/victoria-metrics-k8s-stack,
+# with the AWS-only pieces living in that base. They were:
+#
+#   vmrules/karpenter.yaml        VMRule in the `karpenter` namespace
+#   vmservicecrapes/karpenter.yaml VMServiceScrape, same namespace
+#   vmscrapeconfigs/ec2.yaml      VMScrapeConfig using ec2SDConfigs
+#   vmrules/runlore.yaml          alerts for a workload deployed only here
+#
+# Harmless while aws-0 was the only cluster. The moment observability reached
+# gcp-0 the two `karpenter`-namespace objects became a HARD failure — GCP has no
+# Karpenter at all (ADR-0006 chose Node Auto-Provisioning), so the namespace does
+# not exist and the Kustomization died with
+#
+#   VMRule/karpenter/karpenter not found: namespaces "karpenter" not found
+#
+# taking observability-grafana-operator, observability and
+# observability-victoria-traces with it through dependsOn. Found on a live
+# gcp-0, not in review: every manifest here is valid, and nothing renders
+# differently for the cluster that lacks the namespace.
 resources:
   - ../../base/victoria-metrics-k8s-stack
+  - vmrules
+  - vmscrapeconfigs
+  - vmservicecrapes
