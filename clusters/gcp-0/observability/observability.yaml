@@ -1,0 +1,29 @@
+# Observability on gcp-0. Same four Kustomizations as aws-0, same order, same
+# shared base — only the overlay path and the vars ConfigMap differ.
+#
+# The remaining components: kubernetes-event-exporter, VictoriaLogs, loggen and
+# metrics-server. runlore is excluded — it is the one observability component
+# that is not cloud-neutral. The reasoning is in
+# observability/gcp-0/kustomization.yaml.
+#
+# No SQLInstance healthCheckExpr, unlike aws-0's: that one gates on runlore's
+# database, and runlore does not run here.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: observability
+  namespace: flux-system
+spec:
+  interval: 3m0s
+  timeout: 10m0s
+  path: ./observability/gcp-0
+  prune: true
+  sourceRef:
+    kind: ExternalArtifact
+    name: observability-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    - name: observability-grafana-operator

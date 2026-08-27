@@ -1,0 +1,26 @@
+# Flux alerting — Providers and Alerts that push reconciliation failures to
+# Slack. gcp-0 runs notification-controller (see the FluxInstance components in
+# opentofu/gcp/gke/init/helm_values/flux-instance.yaml), so the CRDs exist.
+#
+# ONE manual prerequisite, the same shape as Harbor's: the Slack app token is
+# pulled by an ExternalSecret from `observability/flux/slack-app` in this
+# cluster's OpenBao. Nothing seeds it — until it exists the Provider cannot
+# authenticate and alerts are dropped. Reconciliation itself is unaffected.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-notifications
+  namespace: flux-system
+spec:
+  path: ./flux/notifications
+  interval: 1m0s
+  prune: true
+  sourceRef:
+    kind: ExternalArtifact
+    name: flux-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    - name: security

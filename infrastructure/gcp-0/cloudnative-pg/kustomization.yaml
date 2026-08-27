@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: infrastructure
+
+# The CloudNativePG operator. Nothing here is cloud-specific — the chart sets
+# `crds.create: false` and the CRDs come from crds/base, which this cluster
+# already applies.
+#
+# Referenced BY FILE, not as a directory, and only for as long as it has to be.
+# infrastructure/base/cloudnative-pg/ also carries three GrafanaDashboard
+# objects (grafana.integreatly.org/v1beta1). gcp-0 runs no Grafana operator, so
+# that CRD does not exist here and taking the whole directory would fail the
+# Kustomization with `no matches for kind "GrafanaDashboard"` — the operator
+# itself would never install, for the sake of three dashboards nothing can
+# render. Same reasoning, and same shape, as security/gcp-0/controllers.
+#
+# When observability reaches gcp-0 this becomes `- ../../base/cloudnative-pg`
+# and the dashboards come with it.
+#
+# Why it is needed at all: Harbor claims a SQLInstance, and the Composition
+# renders a CNPG Cluster. Without an operator watching that Kind the Cluster is
+# created and never reconciled — Harbor waits on a database that no controller
+# is building, with nothing naming the missing operator.
+resources:
+  - ../../base/cloudnative-pg/helmrelease.yaml

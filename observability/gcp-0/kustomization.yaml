@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Observability on gcp-0 — the same components aws-0 runs, from the same base.
+#
+# Every one of these was checked for cloud-shape before wiring, not assumed:
+# none names an AWS service, an ARN, an IRSA/Pod-Identity annotation, or a
+# ${var} that only aws-0's ConfigMap defines. Their PVCs already read
+# ${storage_class}, which resolves to standard-rwo here and gp3 on aws-0.
+resources:
+  - ../base/kubernetes-event-exporter
+  - ../base/victoria-logs
+  # Log generator for demo purposes
+  - ../base/loggen
+  - ../base/metrics-server
+
+# TWO components from aws-0's list are deliberately absent.
+#
+# ../base/runlore — the only observability component that is NOT cloud-neutral.
+# It reads ${domain_name}, a key only aws-0's vars ConfigMap defines (gcp-0 has
+# private_domain_name and public_domain_name, not the bare one). Flux
+# substitutes an undefined variable to EMPTY, so wiring it here would render a
+# hostname with a hole in it rather than fail — the silent-wrong case
+# scripts/flux-schema/check-substitution.py exists to catch. It also drives AWS
+# cloud tools, so a hostname fix alone would not make it useful here.
+#
+# ../base/victoria-traces — NOT because it is cloud-specific (it is neutral),
+# but because clusters/gcp-0/observability/observability-victoria-traces.yaml
+# already applies that directory as its own Flux Kustomization, for the
+# ordering it needs. Listing it here as well would put two Kustomizations with
+# prune: true in charge of the same objects, each able to delete what the other
+# owns.
+#
+# Worth noting: observability/aws-0 DOES list ../base/victoria-traces while
+# clusters/aws-0/observability/observability-victoria-traces.yaml applies it
+# too — the double-ownership described above, on the cluster that has been
+# running longest. Not changed here, because unpicking it belongs in its own
+# change where the effect can be watched on a live cluster.

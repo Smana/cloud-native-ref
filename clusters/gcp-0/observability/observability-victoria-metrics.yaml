@@ -1,0 +1,33 @@
+# Observability on gcp-0. Same four Kustomizations as aws-0, same order, same
+# shared base — only the overlay path and the vars ConfigMap differ.
+#
+# The VictoriaMetrics stack goes first: it installs the CRDs (VMCluster, VMRule,
+# VMServiceScrape, VMPodScrape …) that grafana-operator's dashboards and every
+# component's scrape config depend on. Its own Kustomization rather than part of
+# ./observability/gcp-0 so the rest can gate on it being Ready.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: observability-victoria-metrics-k8s-stack
+  namespace: flux-system
+spec:
+  interval: 3m0s
+  timeout: 10m0s
+  path: ./observability/gcp-0/victoria-metrics-k8s-stack
+  prune: true
+  sourceRef:
+    kind: ExternalArtifact
+    name: observability-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    # security: the stack's Ingress-equivalents and any ExternalSecret it pulls
+    # need cert-manager and External Secrets running, same edge aws-0 declares.
+    - name: security
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: victoria-metrics-k8s-stack
+      namespace: observability

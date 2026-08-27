@@ -1,0 +1,40 @@
+# Applications on gcp-0 — podinfo, the basic App example, and the App Wizard.
+#
+# Same shape as clusters/aws-0/apps.yaml: same source, same shard, same
+# dependsOn edge onto tooling, same App health expression. Only the path and
+# the vars ConfigMap differ.
+#
+# image-gallery (apps/base/complete) is excluded — it is the one app with an
+# S3 endpoint compiled into its environment rather than its manifests. The
+# reasoning is in apps/gcp-0/kustomization.yaml.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps
+  namespace: flux-system
+  labels:
+    sharding.fluxcd.io/key: apps
+spec:
+  commonMetadata:
+    labels:
+      sharding.fluxcd.io/key: apps
+  prune: true
+  interval: 1m0s
+  path: ./apps/gcp-0
+  sourceRef:
+    kind: ExternalArtifact
+    name: apps-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    # tooling, for the same reason aws-0 declares it: the App Wizard pushes
+    # images to Harbor, and every app here resolves through the Gateway that
+    # tooling's HTTPRoutes already exercise.
+    - name: tooling
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: App
+      failed: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'True')
