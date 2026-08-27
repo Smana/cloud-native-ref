@@ -186,12 +186,23 @@ cmd_migrate_aws() {
             continue
         fi
 
-        # Read and write in one expansion so the value is never written to disk.
-        aws_sm create-secret \
-            --name "$new" \
-            --description "Portable name for ${old}. Copied by scripts/secret-store.sh." \
-            --secret-string "$(aws_sm get-secret-value \
-                --secret-id "$old" --query SecretString --output text)" >/dev/null
+        # The value never leaves JSON and never touches disk.
+        #
+        # It is tempting to write this as --secret-string "$(… --output text)",
+        # and the first version did. Command substitution strips trailing
+        # newlines, so a secret whose value ends in one is copied a byte short --
+        # which is exactly what happened to zitadel/envvars, and to nothing else,
+        # because it was the only value with a trailing newline. A silent
+        # one-byte corruption in 1 of 16 secrets is the kind of thing that
+        # surfaces months later as an unexplained parse failure.
+        #
+        # Piping JSON straight from get-secret-value into create-secret's
+        # --cli-input-json preserves the string exactly.
+        aws_sm get-secret-value --secret-id "$old" --output json \
+            | jq --arg name "$new" \
+                 --arg desc "Portable name for ${old}. Copied by scripts/secret-store.sh." \
+                 '{Name: $name, Description: $desc, SecretString: .SecretString}' \
+            | aws_sm create-secret --cli-input-json file:///dev/stdin >/dev/null
         echo "[copied ] $old -> $new"
         copied=$((copied + 1))
     done
