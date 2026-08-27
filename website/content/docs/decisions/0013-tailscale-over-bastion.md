@@ -178,7 +178,7 @@ and buys none of the Gateway API integration.
   Tailscale is the sole mechanism (no parallel bastion, no public
   allowlisted IP), a misconfigured ACL, a stalled subnet router, or a
   tailnet-side DNS problem leaves an operator with no alternate route in —
-  the [Get Started → Access]({{< relref "/docs/get-started/aws/access.md" >}})
+  the [Get Started → Access]({{< relref "/docs/get-started/access.md" >}})
   page documents only the working path, not a fallback one.
   - *Mitigation*: the subnet-router module runs `prometheus_enabled` node
     metrics and the platform's own alerting; a stuck router is expected to
@@ -226,7 +226,7 @@ private service is the most common way to reach for the wrong one.
 ## References
 
 - [Platform → Networking → Private access]({{< relref "/docs/platform/networking/private-access.md" >}}) — the ACL model, the Gateway wiring, and the subnet router in full
-- [Get Started → Access]({{< relref "/docs/get-started/aws/access.md" >}}) — the operator-facing walkthrough this ADR's Negative section references
+- [Get Started → Access]({{< relref "/docs/get-started/access.md" >}}) — the operator-facing walkthrough this ADR's Negative section references
 - `opentofu/aws/network/tailscale.tf` — the `tailscale_acl` resource, `tagOwners`, and the subnet-router module block
 - `security/base/tailscale-operator/` — the Kubernetes Tailscale Operator HelmRelease, `ProxyClass`es, and OAuth-client `ExternalSecret`
 - `infrastructure/base/gapi/` — the two Tailscale `Gateway`s and the shared `CiliumGatewayClassConfig`

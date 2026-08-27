@@ -2,7 +2,7 @@
 title: Get Started
 weight: 10
 description: Deploy the platform into your own cloud account — AWS or GCP — in about thirty minutes.
-lastVerified: 2026-08-26
+lastVerified: 2026-08-27
 ---
 
 The platform deploys in three sequential stages: the network, then the secrets
@@ -41,7 +41,8 @@ the page to read first regardless of cloud.
   {{< card link="/docs/get-started/prerequisites/" title="1 · Prerequisites" icon="clipboard-check" subtitle="Start here. Accounts, the hand-created state bucket, and `mise install`." >}}
   {{< card link="/docs/get-started/aws/" title="2a · AWS" icon="cloud" subtitle="EKS with Cilium and Karpenter. Three stages, two commands." >}}
   {{< card link="/docs/get-started/gcp/" title="2b · GCP" icon="cloud" subtitle="GKE Standard with self-managed Cilium. Three stages, two commands." >}}
-  {{< card link="/docs/get-started/first-app/" title="3 · First application" icon="puzzle" subtitle="Deploy an app with one small YAML claim." >}}
+  {{< card link="/docs/get-started/access/" title="3 · Access" icon="key" subtitle="Tailscale is the only door — same model on both clouds. OpenBao, kubectl, dashboard." >}}
+  {{< card link="/docs/get-started/first-app/" title="4 · First application" icon="puzzle" subtitle="Deploy an app with one small YAML claim." >}}
 {{< /cards >}}
 
 The two lanes are not equivalent in coverage. AWS runs the full platform;

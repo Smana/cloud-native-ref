@@ -2,17 +2,20 @@
 title: Prerequisites
 weight: 10
 description: Accounts, access, and tools needed before the first deploy.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 The tools, the GitHub App and the Tailscale account below apply to **both**
 cloud lanes. The account and state-bucket sections are per cloud.
 
 {{< callout type="info" >}}
-Deploying **GCP**? You still need an AWS account and its credentials. The public
-DNS zone stays on Route 53 for both clouds, and `gcp-0` reaches it by assuming an
-AWS IAM role — no static key, but the account has to exist. See
-[ADR-0019]({{< relref "/docs/decisions/0019-cross-cloud-dns-federation.md" >}}).
+**Public DNS needs an AWS account with Route 53, whichever cloud you deploy.**
+The public domain is a cross-cluster concern — one zone for the whole platform,
+not one per cloud — and this reference implementation hosts that zone on
+Route 53; `gcp-0` reaches it by assuming an AWS IAM role
+([ADR-0019]({{< relref "/docs/decisions/0019-cross-cloud-dns-federation.md" >}})).
+The domain itself can be registered anywhere — Route 53, Cloudflare, Gandi… —
+as long as it delegates the public zone to Route 53.
 {{< /callout >}}
 
 ## Accounts and access
@@ -23,7 +26,8 @@ AWS IAM role — no static key, but the account has to exist. See
   reduced form for the GCP lane's public DNS.
 - **GCP project and organisation** — only for the GCP lane, plus a second
   project that holds nothing but OpenTofu state. `gcloud` authenticated.
-- **A registered domain** you can delegate to Route53 — OpenTofu creates a
+- **A registered domain** — any registrar works, as long as its public zone
+  is delegated to Route 53 (see the callout above). OpenTofu also creates a
   private hosted zone under it for internal service DNS.
 - **GitHub account** — Flux needs a way to pull this repository: a personal
   access token or a GitHub App.
@@ -52,15 +56,25 @@ AWS IAM role — no static key, but the account has to exist. See
 
 ## State backend — create this bucket first
 
-**Nothing in this repository can `plan` until this bucket exists.** It is the one
-prerequisite OpenTofu cannot create for you: every stack stores its state in it,
-so a stack that created it would have nowhere to record that it had. That
+**Nothing in this repository can `plan` until a state bucket exists.** It is the
+one prerequisite OpenTofu cannot create for you: every stack stores its state in
+it, so a stack that created it would have nowhere to record that it had. That
 chicken-and-egg is why this step is manual, and why it is easy to forget — the
 failure on a fresh clone is a backend error from the first `tofu init`, not a
 message telling you to read this page.
 
-State is **per cloud**: AWS stacks use an S3 bucket, GCP stacks use a GCS bucket
-in a project that holds nothing else. See
+Which bucket you need **differs by lane**:
+
+- **AWS lane** — one S3 bucket, created below. That is all.
+- **GCP lane** — a GCS bucket in a project that holds nothing else
+  (created on [Get Started → GCP]({{< relref "/docs/get-started/gcp/_index.md" >}}#prerequisites),
+  along with GCP's two other hand-created prerequisites), **plus the S3 bucket
+  below anyway**: the shared stacks that belong to neither cloud — the tailnet
+  singletons in `opentofu/shared/tailscale` and the AWS↔GCP DNS federation
+  stack — keep their state in S3, and the GCP lane cannot deploy without them.
+
+State for cloud-owned stacks is **per cloud**: AWS stacks use the S3 bucket,
+GCP stacks the GCS bucket. See
 [ADR-0018](../decisions/0018-per-cloud-opentofu-state.md).
 
 The principle is that state lives outside the blast radius of what it manages.
@@ -71,16 +85,11 @@ the blast-radius problem, but by arguing against the wrong thing: the fault was
 the *workload* project, not GCS. A dedicated state project fixes it without
 coupling the clouds.
 
-What that buys: running or destroying GCP needs GCP credentials only, and an AWS
-outage cannot block a GCP teardown. The cost is one prerequisite bucket per
-cloud instead of one in total.
+What that buys: running or destroying GCP's own stacks needs GCP credentials
+only, and an AWS outage cannot block a GCP teardown. The cost is one
+prerequisite bucket per cloud instead of one in total.
 
-The block below creates the **AWS** bucket only. GCP has three hand-created
-prerequisites of its own — a state bucket in its own project, a Cloud KMS key
-ring, and a Tailscale OAuth client — plus a federation stack that must be
-applied explicitly. They are all on
-[Get Started → GCP]({{< relref "/docs/get-started/gcp/_index.md" >}}#prerequisites).
-Doing the AWS steps alone leaves a GCP apply with nowhere to write its state.
+### The AWS bucket
 
 ```bash
 BUCKET=demo-smana-remote-backend   # must match the backend blocks; see below

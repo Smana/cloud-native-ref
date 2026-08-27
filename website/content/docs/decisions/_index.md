@@ -2,7 +2,7 @@
 title: Decisions
 weight: 60
 description: Architecture decision records — what was chosen, and what it was chosen over.
-lastVerified: 2026-08-22
+lastVerified: 2026-08-27
 ---
 
 Architecture decision records for the choices that would otherwise need
@@ -62,5 +62,10 @@ single-file fixes never need one.
 | [0017]({{< relref "/docs/decisions/0017-multi-cloud-dns-naming.md" >}}) | Multi-cloud DNS naming — cloud-agnostic public, cloud-pinned private | Accepted | 2026-08-23 |
 | [0018]({{< relref "/docs/decisions/0018-per-cloud-opentofu-state.md" >}}) | Per-cloud OpenTofu state — GCP state in GCS, AWS state in S3 | Accepted | 2026-08-25 |
 | [0019]({{< relref "/docs/decisions/0019-cross-cloud-dns-federation.md" >}}) | Cross-cloud DNS federation — GKE workloads assume an AWS role for Route53 | Accepted | 2026-08-25 |
+| [0020]({{< relref "/docs/decisions/0020-harbor-gcs-workload-identity.md" >}}) | Harbor on GCS — native driver with Workload Identity, not S3-compatible HMAC | Accepted | 2026-08-26 |
+| [0021]({{< relref "/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md" >}}) | Cloud Storage FUSE for LLM model weights on GCP | Accepted | 2026-08-26 |
+| [0022]({{< relref "/docs/decisions/0022-single-identity-provider-across-clouds.md" >}}) | One identity provider across both clouds, hosted on AWS and named by a variable | Accepted | 2026-08-27 |
+| [0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}}) | Secret store keys use a name grammar both clouds accept | Accepted | 2026-08-27 |
+| [0024]({{< relref "/docs/decisions/0024-cloud-managed-secret-stores.md" >}}) | Cloud-managed secret stores as the store of record, OpenBao scoped to the PKI | Accepted | 2026-08-27 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

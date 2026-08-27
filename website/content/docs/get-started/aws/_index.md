@@ -105,7 +105,7 @@ Once Stage 3 finishes, Flux takes over: Security (External Secrets,
 cert-manager, Kyverno), Infrastructure (Cilium policies, Gateway API,
 Karpenter), Observability (VictoriaMetrics, VictoriaLogs, Grafana), and
 Tooling (Harbor, Headlamp, Homepage) all reconcile without any further
-command from you. See [Access]({{< relref "/docs/get-started/aws/access.md" >}})
+command from you. See [Access]({{< relref "/docs/get-started/access.md" >}})
 for how to reach the VPN, OpenBao, the cluster, and the dashboard, and
 [Teardown]({{< relref "/docs/get-started/aws/teardown.md" >}}) when you are
 done.

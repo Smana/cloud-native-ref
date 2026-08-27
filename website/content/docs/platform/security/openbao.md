@@ -12,7 +12,7 @@ NVMe at `mode = "ha"`, with KMS auto-unseal either way. This page covers what
 runs on top of that cluster:
 `opentofu/aws/openbao/management/` layers namespaces, auth methods, the PKI, and
 policies onto it, and this is the operational surface every other security
-page and the [Access]({{< relref "/docs/get-started/aws/access.md" >}}) guide
+page and the [Access]({{< relref "/docs/get-started/access.md" >}}) guide
 build on.
 
 One secret predates both stacks: OpenBao's own server certificate — the leaf

@@ -2,7 +2,7 @@
 title: PKI & Secrets
 weight: 20
 description: The three-tier PKI chain OpenBao issues from, how cert-manager and External Secrets pull from it, and how the chain rotates.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Every internal TLS certificate on this platform — Gateway API listeners,
@@ -166,6 +166,10 @@ spec:
       region: ${region}
       service: SecretsManager
 ```
+
+Why the store of record is the cloud's managed service rather than OpenBao —
+cost, lifecycle, and the bootstrap circularity — is recorded in
+[ADR-0024]({{< relref "/docs/decisions/0024-cloud-managed-secret-stores.md" >}}).
 
 This is the platform's concrete instance of the constitution's [Secrets
 Management rule]({{< relref "/docs/reference/platform-constitution.md#32-secrets-management" >}}):

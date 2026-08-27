@@ -2,7 +2,7 @@
 title: GCP
 weight: 30
 description: Deploy the platform on GKE — four prerequisites, three stages, two commands.
-lastVerified: 2026-08-26
+lastVerified: 2026-08-27
 ---
 
 The GCP lane builds the same three-stage model as
@@ -180,7 +180,9 @@ flux get all
 ```
 
 A healthy result: nodes `Ready` with Cilium as the only CNI, and every
-Kustomization reconciled. If gateways report `Waiting for controller`, see
+Kustomization reconciled. Reaching OpenBao and everything else private works
+the same way as on AWS — see
+[Access]({{< relref "/docs/get-started/access.md" >}}). If gateways report `Waiting for controller`, see
 [Troubleshooting]({{< relref "/docs/guides/troubleshooting.md" >}}) — cilium-operator
 probes the Gateway API CRDs once at startup and disables its controller
 permanently if any are missing.
