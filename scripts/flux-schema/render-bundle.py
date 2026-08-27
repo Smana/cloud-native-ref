@@ -81,6 +81,11 @@ FIXTURE_VARS = {
     # fixture is honest here. Contrast "region" above, where a single
     # AWS-shaped fixture masks a GCP-shaped runtime value.
     "storage_class": "gp3",
+    # One fixture, and honestly so: ZITADEL is a singleton, so BOTH clusters
+    # carry the same value here -- aws-0 derives it from its own domain because
+    # it hosts the IdP, gcp-0 sets the same literal because it consumes it
+    # (ADR-0022). A per-cluster override would misrepresent the design.
+    "identity_provider_url": "https://auth.cluster.local",
     "cert_manager_approle_id": "random",
     "route53_public_zone_id": "Z0123456789",
     "aws_account_id": "123456789012",
