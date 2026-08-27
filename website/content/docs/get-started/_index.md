@@ -1,20 +1,61 @@
 ---
 title: Get Started
 weight: 10
-description: Deploy the platform into your own cloud account in about thirty minutes.
-lastVerified: 2026-08-20
+description: Deploy the platform into your own cloud account — AWS or GCP — in about thirty minutes.
+lastVerified: 2026-08-26
 ---
 
 The platform deploys in three sequential stages: the network, then the secrets
 and PKI layer, then Kubernetes. Each is a separate OpenTofu stack orchestrated
-by Terramate, and each must complete before the next begins.
+by Terramate, and each must complete before the next begins. Once Kubernetes is
+up, Flux takes over and reconciles everything else from Git.
 
-Pick your cloud to begin. AWS is implemented and maintained; GCP is designed but
-not yet built.
+Both cloud lanes are implemented and were each deployed end-to-end before this
+page was written.
+
+## Before you pick a cloud
+
+Three things are worth knowing up front, because none of them is obvious from
+inside a stage.
+
+**This costs real money while it runs.** A managed control plane, several nodes,
+a load balancer and an OpenBao instance are billable from the first apply. The
+committed configuration is deliberately cheap — spot instances, a single-node
+OpenBao, a zonal GKE cluster — but it is not free. Read
+[Teardown](#when-you-are-done) before you start, not after.
+
+**The committed values are a working reference, not a template to fill in.**
+Every stack already has a `variables.tfvars` in Git with values that deploy.
+You are *editing* a working configuration — domain, cluster name, your fork's
+URL — not authoring one from scratch.
+
+**One prerequisite cannot be automated.** Each cloud needs a state bucket
+created by hand before anything can `plan`, because a stack that created it
+would have nowhere to record that it had. GCP needs two more. They are all in
+[Prerequisites]({{< relref "/docs/get-started/prerequisites.md" >}}), which is
+the page to read first regardless of cloud.
+
+## Pick a lane
 
 {{< cards >}}
-  {{< card link="/docs/get-started/prerequisites/" title="Prerequisites" icon="clipboard-check" subtitle="Accounts, access, and tools needed before the first deploy." >}}
-  {{< card link="/docs/get-started/aws/" title="AWS" icon="cloud" subtitle="Three sequential stages, about thirty minutes." >}}
-  {{< card link="/docs/get-started/gcp/" title="GCP" icon="beaker" subtitle="Designed, not yet implemented." >}}
-  {{< card link="/docs/get-started/first-app/" title="First Application" icon="puzzle" subtitle="Deploy your first app with one small YAML claim." >}}
+  {{< card link="/docs/get-started/prerequisites/" title="1 · Prerequisites" icon="clipboard-check" subtitle="Start here. Accounts, the hand-created state bucket, and `mise install`." >}}
+  {{< card link="/docs/get-started/aws/" title="2a · AWS" icon="cloud" subtitle="EKS with Cilium and Karpenter. Three stages, two commands." >}}
+  {{< card link="/docs/get-started/gcp/" title="2b · GCP" icon="cloud" subtitle="GKE Standard with self-managed Cilium. Three stages, two commands." >}}
+  {{< card link="/docs/get-started/first-app/" title="3 · First application" icon="puzzle" subtitle="Deploy an app with one small YAML claim." >}}
 {{< /cards >}}
+
+The two lanes are not equivalent in coverage. AWS runs the full platform;
+GCP runs the foundation, security and infrastructure layers but does not yet
+run observability, tooling or general applications. The exact split is on
+[Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}) —
+worth a look before you choose, if you are evaluating rather than just trying it.
+
+## When you are done
+
+Tearing down matters more than usual here, because the expensive resources are
+the ones that stay up quietly. The AWS lane has a
+[Teardown]({{< relref "/docs/get-started/aws/teardown.md" >}}) page covering the
+order and the resources that outlive a naive `destroy` — orphaned EBS volumes
+and load balancers in particular. On GCP, `terramate script run destroy` with
+`TM_GCP_ENABLED=true` and `TM_DESTROY_CONFIRMED=true` is the equivalent, and the
+GCP lane page covers what to verify afterwards.
