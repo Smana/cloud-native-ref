@@ -67,9 +67,19 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # nothing derives anything else from it, which is what makes one
       # shared key honest here where ${region} was not (see the
       # workstream 13 design).
-      storage_class       = "gp3"
-      environment         = var.env
-      domain_name         = var.public_domain_name
+      storage_class = "gp3"
+      environment   = var.env
+      # `domain_name` used to sit here as a THIRD key holding
+      # var.public_domain_name -- the same value as public_domain_name below,
+      # under a second name. It was removed rather than kept as a harmless
+      # alias, because it was not harmless: gcp-0's ConfigMap never defined it,
+      # so every manifest reaching for ${domain_name} was AWS-only by accident
+      # rather than by design. observability/base/runlore was excluded from
+      # gcp-0 for exactly this reason and nothing else.
+      #
+      # Flux substitutes an undefined variable to EMPTY, so such a manifest does
+      # not fail on GCP -- it renders a hostname with a hole in it. Two keys for
+      # one value is how that happens quietly.
       private_domain_name = var.private_domain_name
       public_domain_name  = var.public_domain_name
 
