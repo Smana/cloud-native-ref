@@ -1,5 +1,22 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# ZITADEL on aws-0. Was a bare pass-through until gcp-0 gained its own instance;
+# the one patch below is what the base had to give up to be shared.
 resources:
   - ../../base/zitadel
+
+patches:
+  # AWS load-balancer annotations, which mean nothing on GKE. See the patch.
+  #
+  # NO `target:` block, deliberately. With one -- even a correct-looking
+  # `group: gateway.networking.k8s.io, kind: Gateway, name: zitadel` -- kustomize
+  # silently rendered the Gateway WITHOUT these four annotations: no error, no
+  # warning, just the base's output. Letting kustomize select by the patch's own
+  # apiVersion/kind/name merges them as intended. Verified by rendering:
+  # `kubectl kustomize security/aws-0/zitadel | grep -c aws-load-balancer` -> 4.
+  #
+  # This failure mode is why the change was checked against the rendered bundle
+  # rather than against "the manifests still validate" -- a dropped annotation
+  # is perfectly valid YAML.
+  - path: gateway-patch.yaml

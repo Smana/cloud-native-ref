@@ -133,20 +133,43 @@ variable "route53_region" {
 
 # The platform's identity provider, which gcp-0 CONSUMES rather than hosts.
 #
-# ZITADEL is a singleton by decision, not by accident: one instance serves both
-# clusters, because two would be two user directories, two session stores and
-# two sets of OIDC clients with nothing federating them. ADR-0022 records the
-# choice and the alternatives considered.
+# The identity provider: hosted here, or consumed from elsewhere.
 #
-# The default points at aws-0, which hosts it today. A full URL rather than a
-# hostname because both consumers -- apps/base/openwebui's OIDC discovery
+# ADR-0024 supersedes ADR-0022. The IdP is no longer a singleton by decision --
+# it is deployable on either cloud, defaulting to AWS, so a GCP-only platform
+# does not need an AWS cluster running to log anyone in. What stays AWS-owned is
+# PUBLIC DNS (Route53, ADR-0019): `auth.<public domain>` on this cluster
+# resolves through the same cross-cloud federation as every other public
+# hostname here.
+#
+# Running an instance per cloud means a user directory per cloud. That is the
+# real cost and it is accepted deliberately: these are throwaway platforms whose
+# ZITADEL bootstraps empty on every rebuild, so there is no long-lived directory
+# to federate. A production two-cloud deployment would want one instance and
+# should set deploy_identity_provider = false.
+#
+# TWO GATES, and they must agree:
+#
+#   1. deploy_identity_provider (here) -- drives identity_provider_url, which
+#      every consumer reads.
+#   2. clusters/gcp-0/security/zitadel.yaml `spec.suspend` -- whether Flux
+#      actually deploys it.
+#
+# Setting this true while the Kustomization stays suspended points every
+# consumer at a hostname this cluster does not serve. Nothing can enforce the
+# pairing from here, which is exactly why the URL is derived from this flag
+# rather than typed twice.
+variable "deploy_identity_provider" {
+  description = "Whether this cluster hosts its own ZITADEL. False consumes the instance named by identity_provider_url. Must be flipped together with spec.suspend on clusters/gcp-0/security/zitadel.yaml; see ADR-0024"
+  type        = bool
+  default     = false
+}
+
+# Only consulted when deploy_identity_provider is false. A full URL rather than
+# a hostname because both consumers -- apps/base/openwebui's OIDC discovery
 # document and tooling/base/homepage's link -- need the scheme.
-#
-# This CANNOT be derived from var.public_domain_name the way the AWS stack
-# derives it: that would yield auth.gcp.cloud.ogenki.io, which nothing serves.
-# A cluster can derive this URL only when it is itself the host.
 variable "identity_provider_url" {
-  description = "Base URL of the platform identity provider (ZITADEL). Defaults to the aws-0 instance, which hosts it; see ADR-0022 before changing"
+  description = "Base URL of the identity provider to CONSUME when this cluster does not host one. Defaults to the aws-0 instance; ignored when deploy_identity_provider is true"
   type        = string
   default     = "https://auth.cloud.ogenki.io"
 

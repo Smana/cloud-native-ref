@@ -6,11 +6,27 @@ description: ZITADEL runs as a single instance on aws-0 and serves both clusters
 lastVerified: 2026-08-27
 ---
 
-**Status**: Accepted
+**Status**: Superseded by [ADR-0024](0024-identity-provider-per-cloud.md)
 **Date**: 2026-08-27
 **Deciders**: Platform Team
 
 ---
+
+{{< callout type="warning" >}}
+**Superseded the same day it was written.**
+[ADR-0024](0024-identity-provider-per-cloud.md) makes ZITADEL deployable on
+either cloud, defaulting to AWS.
+
+What changed is not the reasoning below — two instances really are two user
+directories — but what the singleton *costs*. Pinning the IdP to `aws-0` means a
+GCP-only platform cannot authenticate anyone without an entire second cloud
+running, which made a `gcp-0` validation run depend on building an EKS cluster,
+an OpenBao and an AWS network first.
+
+The `identity_provider_url` variable this ADR introduced survives and is still
+how a cluster names an IdP it does not host. It is now the *consume* half of a
+two-way choice rather than the only half.
+{{< /callout >}}
 
 ## Context
 

@@ -1,0 +1,66 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# ZITADEL on gcp-0 -- its OWN instance, not a route to the one on aws-0.
+#
+# ADR-0024 supersedes ADR-0022 here: the identity provider is now deployable on
+# either cloud, defaulting to AWS, so a GCP-only platform is self-sufficient.
+# Only PUBLIC DNS stays AWS-owned (Route53, ADR-0019) -- `auth.${public_domain_name}`
+# on this cluster resolves through the same cross-cloud federation every other
+# public hostname here uses.
+#
+# Everything is shared with aws-0 except the database claim. The Gateway,
+# Certificate, TLSRoute, CiliumNetworkPolicy, HelmRelease and both
+# ExternalSecrets come straight from base -- the CNP in particular is already
+# cloud-neutral (DNS, world:443, postgres, 8080), and the Gateway became
+# cloud-neutral when its four AWS load-balancer annotations moved to
+# security/aws-0/zitadel/gateway-patch.yaml.
+resources:
+  - ../../base/zitadel
+
+patches:
+  # The database claim, and only the database claim. Three differences, the same
+  # three that tooling/gcp-0/harbor/sqlinstance.yaml documents:
+  #
+  #   1. compositionRef names the GCP Composition. aws-0 gets
+  #      `xsqlinstances.cloud.ogenki.io` from crossplane-configuration-aws;
+  #      gcp-0 gets `xsqlinstances-gcp...` from -gcp. A claim naming the AWS one
+  #      here would find no Composition at all.
+  #
+  #   2. No objectStoreRecovery. The base restores ZITADEL from a specific S3
+  #      path captured in 2026-07. There is nothing equivalent to restore from
+  #      on GCS, and pointing the claim at an empty bucket fails the bootstrap
+  #      instead of starting a fresh database -- which is what this cluster
+  #      wants anyway, since its ZITADEL is its own instance with its own users.
+  #
+  #   3. No backup. Deliberate and temporary, and the same blocker Harbor hit:
+  #      infrastructure/base/cloudnative-pg-barman-plugin ships a
+  #      CiliumNetworkPolicy whose egress is a toFQDNs allowlist of AWS S3
+  #      endpoints (`*.s3.<region>.amazonaws.com`). With backup set, the plugin
+  #      would start and then silently drop every connection to
+  #      storage.googleapis.com. Porting that policy is its own change; until
+  #      then this database is unbacked, which is acceptable only because the
+  #      cluster is torn down after every run.
+  #
+  #   4. instances 2 -> 1, which follows from 3 rather than being a separate
+  #      choice. The XRD enforces `backup.schedule is required for
+  #      multi-instance clusters` as a CEL rule -- a two-instance cluster with
+  #      no backup is a configuration the platform refuses, and rightly: the
+  #      replica is there for availability, and availability without a backup
+  #      is a false sense of one. Dropping to a single instance says plainly
+  #      that this database is disposable. aws-0 keeps 2 and keeps its backup.
+  - target:
+      group: cloud.ogenki.io
+      kind: SQLInstance
+      name: xplane-zitadel
+    patch: |-
+      - op: replace
+        path: /spec/crossplane/compositionRef/name
+        value: xsqlinstances-gcp.cloud.ogenki.io
+      - op: replace
+        path: /spec/instances
+        value: 1
+      - op: remove
+        path: /spec/objectStoreRecovery
+      - op: remove
+        path: /spec/backup
