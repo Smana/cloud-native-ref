@@ -60,6 +60,24 @@ spec:
 
     sources:
       - gateway-httproute
+      # `service` is what publishes ZITADEL's public hostname, and it is needed
+      # here for the same reason aws-0 needs it (infrastructure/base/external-dns
+      # lists it too).
+      #
+      # ZITADEL is not reachable through any of the gateway sources:
+      #   - it is fronted by a TLSRoute (TLS passthrough), not an HTTPRoute, so
+      #     gateway-httproute never sees it;
+      #   - its Gateway lives in `security`, and --gateway-namespace pins the
+      #     gateway sources to `infrastructure`;
+      #   - its Gateway carries no `external-dns: enabled` label, which
+      #     --gateway-label-filter requires.
+      #
+      # Three independent reasons, none of which announce themselves: the
+      # Gateway comes up healthy with a public IP and simply never gets a DNS
+      # record. What does work is the annotation Cilium copies from the
+      # Gateway's infrastructure.annotations onto the LoadBalancer Service --
+      # which only the `service` source reads.
+      - service
 
     extraArgs:
       - --gateway-namespace=infrastructure
