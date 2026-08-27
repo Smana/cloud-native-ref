@@ -42,6 +42,24 @@ fi
 
 echo "Reclaiming CSI-provisioned volumes..."
 
+# 0. Suspend Flux first. Everything below deletes or scales down objects Flux
+#    owns, and a running reconciler puts every one of them straight back --
+#    the PVCs included, so the reclaim would appear to work and leave the
+#    volumes bound.
+#
+#    eks-prepare-destroy.sh already suspends Flux earlier for its own reasons,
+#    so on AWS this is a no-op. It is here because it is a PRECONDITION of the
+#    steps below, not a step of the caller's: a second caller that forgot it
+#    would get a silent, plausible-looking failure.
+if "${KCTL[@]}" api-resources --api-group=kustomize.toolkit.fluxcd.io >/dev/null 2>&1; then
+    echo "Suspending Flux kustomizations..."
+    if [ -n "$CONTEXT" ]; then
+        flux --context "$CONTEXT" suspend kustomization --all 2>/dev/null || true
+    else
+        flux suspend kustomization --all 2>/dev/null || true
+    fi
+fi
+
 # 1. Belt-and-braces: make every PV reclaimable (covers Retain PVs).
 for pv in $("${KCTL[@]}" get pv -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
     "${KCTL[@]}" patch pv "$pv" --type=merge \

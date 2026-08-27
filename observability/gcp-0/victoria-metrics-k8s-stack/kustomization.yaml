@@ -8,8 +8,9 @@ kind: Kustomization
 # downstream depends on, so it has to reach Ready before grafana-operator and
 # the rest of observability apply.
 #
-# Nothing is patched: the base is cloud-neutral, and its PVCs read
-# ${storage_class}, which is standard-rwo on this cluster.
+# The base is otherwise cloud-neutral -- its PVCs read ${storage_class}, which
+# is standard-rwo on this cluster. The single patch below is the one thing that
+# could not be parameterised.
 resources:
   - ../../base/victoria-metrics-k8s-stack
 
