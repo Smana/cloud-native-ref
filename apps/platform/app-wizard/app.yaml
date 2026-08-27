@@ -95,7 +95,7 @@ spec:
   # so it needs no egress to the Pod Identity endpoint (169.254.170.23). ESO
   # materializes the `app-wizard-oauth` Secret; the wizard reads it via envFrom.
   #
-  # The AWS Secrets Manager blob at apps/app-wizard/oauth MUST contain these
+  # The secret-store blob at apps-app-wizard-oauth MUST contain these
   # keys (the composition imports ALL keys from the path via dataFrom → they
   # land as env vars of the same name through envFrom):
   #   GITHUB_CLIENT_ID       — GitHub OAuth app (login; PRs open as the user)
@@ -104,16 +104,16 @@ spec:
   # Missing keys simply don't materialize as env vars. Populating them is a
   # human step (T003).
   #
-  # The LLM assist key lives in its OWN blob (apps/app-wizard/llm, key
+  # The LLM assist key lives in its OWN blob (apps-app-wizard-llm, key
   # LLM_API_KEY) rather than the oauth blob: it is a copy of runlore's GLM key
   # and rotates on that key's lifecycle, not the OAuth apps'. Remove the blob
   # (or the entry below) to switch assists off.
   externalSecrets:
     - name: app-wizard-oauth
-      remoteRef: apps/app-wizard/oauth
+      remoteRef: apps-app-wizard-oauth
       refreshInterval: 1h
     - name: app-wizard-llm
-      remoteRef: apps/app-wizard/llm
+      remoteRef: apps-app-wizard-llm
       refreshInterval: 1h
   envFrom:
     - secretRef:

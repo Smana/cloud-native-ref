@@ -166,6 +166,12 @@ OLD_NAMES=(
     # there.
     "observability/flux/slack-app"
     "security/flux/ui-oidc"
+    # These two are named in an App CLAIM's `secrets[].remoteRef`, not in a
+    # `kind: ExternalSecret` document -- the Composition renders the
+    # ExternalSecret from the claim. Both sweeps for the rename grepped for
+    # ExternalSecret manifests, so both missed them.
+    "apps/app-wizard/oauth"
+    "apps/app-wizard/llm"
     "observability/victoria-metrics-k8s-stack/alertmanager-slack-app"
     "observability/victoria-metrics-k8s-stack/grafana-envvars"
     "openbao/cloud-native-ref/approles/cert-manager"
@@ -268,8 +274,25 @@ GENERATABLE=(
 
 # 32 bytes of urandom, base64, punctuation removed so no consumer has to worry
 # about quoting it in a connection string or an env file.
+# No trailing `head` in the pipeline. `tr` reading /dev/urandom never ends on
+# its own, so `head -c 32` closing the pipe kills it with SIGPIPE -- and under
+# `set -o pipefail` that fails the whole script with exit 141.
+#
+# The old form worked only by timing: tr usually wrote its 32 bytes and exited
+# before the signal landed. A sibling script using the identical idiom failed on
+# its first run, which is what surfaced it here. Truncating with parameter
+# expansion keeps every stage terminating normally.
+# Accumulate until there is genuinely enough, rather than assuming one read
+# yields 32 usable characters. Only 62 of 256 byte values are alphanumeric, so
+# a fixed 128-byte read averages ~31 and silently produced SHORT passwords --
+# 28 and 31 characters were both observed. A password quietly shorter than
+# intended is the kind of defect that never announces itself.
 gen_password() {
-    LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32
+    local s=""
+    while [ "${#s}" -lt 32 ]; do
+        s+=$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9')
+    done
+    printf '%s' "${s:0:32}"
 }
 
 # The JSON body for one generatable secret, on stdout.
