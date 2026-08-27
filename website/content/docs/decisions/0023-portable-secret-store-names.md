@@ -55,11 +55,17 @@ that failed.
 **Shared-base secret keys use a flat, dash-separated name.** Dashes are legal
 in both stores, so one name works on both clouds:
 
-| Before | After |
+Old keys are written unquoted below on purpose: they are store keys, never
+repository paths, and `scripts/verify-doc-paths.sh` reads a backticked
+slash-string beginning with a top-level directory as a claim that the path
+exists. That check earning a false positive here is a fair trade for the one it
+exists to catch.
+
+| Before (AWS-shaped key) | After |
 |---|---|
-| `harbor/admin/password` | `harbor-admin-password` |
-| `observability/victoria-metrics-k8s-stack/grafana-envvars` | `observability-victoria-metrics-k8s-stack-grafana-envvars` |
-| `tailscale/k8s-operator/oauth-client` | `tailscale-k8s-operator-oauth-client` |
+| harbor/admin/password | `harbor-admin-password` |
+| observability/victoria-metrics-k8s-stack/grafana-envvars | `observability-victoria-metrics-k8s-stack-grafana-envvars` |
+| tailscale/k8s-operator/oauth-client | `tailscale-k8s-operator-oauth-client` |
 
 The hierarchy the slashes expressed is kept as a prefix convention, so sorting a
 listing still groups by component. Nothing depended on the slashes being path
