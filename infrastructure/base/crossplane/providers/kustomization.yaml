@@ -3,6 +3,9 @@ kind: Kustomization
 
 resources:
   - activation-policy.yaml
+  # The cloud-neutral aggregate ClusterRoles, shared with providers-gcp.
+  - ../rbac
+  # AWS-only: the provider-aws ClusterRole and its binding.
   - additional-rbac.yaml
   - deploymentruntimeconfig-aws.yaml
   - provider-ec2.yaml

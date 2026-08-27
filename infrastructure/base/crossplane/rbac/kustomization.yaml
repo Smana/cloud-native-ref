@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Referenced by BOTH infrastructure/base/crossplane/providers/ (AWS) and
+# providers-gcp/. Deliberately a directory of its own rather than a file each
+# cloud copies: nothing in it names a cloud API group, and a copy would only be
+# a second place to forget.
+resources:
+  - aggregate-rbac.yaml
