@@ -430,9 +430,53 @@ locals {
   ])
 }
 
-resource "google_secret_manager_secret_iam_member" "external_secrets_tailscale_oauth" {
+# Secrets External Secrets may read, granted PER SECRET.
+#
+# Never project-wide: roles/secretmanager.secretAccessor on the project would
+# also hand ESO openbao-priv-gcp-root-token, the recovery keys and the
+# intermediate CA's private key, which live in the same project. Same reasoning
+# as opentofu/gcp/openbao/cluster/iam.tf.
+#
+# ── WHY THIS LIST IS SHORT, AND WHERE THE REST ARE GRANTED ──────────────────
+#
+# A google_secret_manager_secret_iam_member needs its secret to EXIST. At the
+# point this stack applies, only the hand-created bootstrap prerequisites and
+# whatever opentofu/gcp/openbao created are there. Everything the platform
+# itself needs -- Harbor's passwords, Grafana's admin pair, the Slack apps,
+# runlore's credentials, the OIDC clients -- is created later, some of it only
+# after ZITADEL is running inside the cluster this stack is about to build.
+#
+# Listing them here would fail the apply on a fresh project. They are granted by
+# `scripts/secret-store.sh grant --cloud gcp`, which reads what the cluster's
+# ExternalSecrets actually ask for and grants what exists. Creation and access
+# stay together.
+#
+# Add to external_secrets_additional_secrets only for a secret that reliably
+# exists BEFORE this stack applies.
+locals {
+  external_secrets_secret_names = toset(concat(
+    [var.tailscale_oauth_secret_name],
+    var.external_secrets_additional_secrets,
+  ))
+}
+
+resource "google_secret_manager_secret_iam_member" "external_secrets" {
+  for_each = local.external_secrets_secret_names
+
   project   = var.project_id
-  secret_id = var.tailscale_oauth_secret_name
+  secret_id = each.value
   role      = "roles/secretmanager.secretAccessor"
   member    = local.external_secrets_principal
+}
+
+# Singleton -> for_each is a rename, not a change: same project, same secret,
+# same role, same member. Without this the plan destroys and recreates the
+# binding, and External Secrets loses its Tailscale read for the window in
+# between -- a real outage for a pure refactor.
+#
+# The key is the literal rather than var.tailscale_oauth_secret_name because a
+# moved block's addresses must be static.
+moved {
+  from = google_secret_manager_secret_iam_member.external_secrets_tailscale_oauth
+  to   = google_secret_manager_secret_iam_member.external_secrets["tailscale-k8s-operator-oauth"]
 }

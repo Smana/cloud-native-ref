@@ -133,6 +133,20 @@ variable "external_secrets_service_account" {
   default     = "external-secrets"
 }
 
+# Extra Secret Manager entries External Secrets may read, on top of the
+# Tailscale OAuth client.
+#
+# Only for secrets that reliably exist BEFORE this stack applies -- the IAM
+# member API rejects a grant on a secret that does not exist, so anything
+# created later fails the apply on a fresh project. The platform's own secrets
+# are granted by `scripts/secret-store.sh grant --cloud gcp` instead; see the
+# note above google_secret_manager_secret_iam_member.external_secrets.
+variable "external_secrets_additional_secrets" {
+  description = "Secret Manager entry names External Secrets may read, beyond the Tailscale OAuth client. Must already exist when this stack applies"
+  type        = list(string)
+  default     = []
+}
+
 variable "tailscale_oauth_secret_name" {
   description = "GCP Secret Manager entry holding the Tailscale OAuth client for the Kubernetes operator. Created by hand -- see docs/gcp-bootstrap.md."
   type        = string

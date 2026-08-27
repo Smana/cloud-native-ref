@@ -21,6 +21,13 @@
 #       For every ExternalSecret in the cluster, resolve the key it asks the
 #       store for and report whether it exists. Read-only.
 #
+#   grant --cloud gcp --project ID [--context CTX] [--apply]
+#       Grant External Secrets read access, per secret, to every key the
+#       cluster's ExternalSecrets ask for. GCP only. Dry-run unless --apply.
+#       Needed because most platform secrets are created after gke/init has
+#       applied, so OpenTofu cannot grant them -- see the note in
+#       opentofu/gcp/gke/init/iam.tf.
+#
 #   seed --cloud aws|gcp [--apply]
 #       Create the few secrets this platform GENERATES rather than obtains, if
 #       they are missing. Dry-run unless --apply. Never overwrites an existing
@@ -359,12 +366,76 @@ cmd_seed() {
     fi
 }
 
+# Grant External Secrets read access to every key the cluster actually asks for.
+#
+# GCP only, and per-secret by design: roles/secretmanager.secretAccessor at the
+# PROJECT level would also hand ESO openbao-priv-gcp-root-token, the recovery
+# keys and the intermediate CA's private key.
+#
+# This exists because the grant cannot live entirely in OpenTofu. A
+# google_secret_manager_secret_iam_member needs its secret to exist, and most of
+# the platform's secrets are created after the cluster is up -- the OIDC clients
+# only after ZITADEL is running inside it. gke/init therefore grants the
+# bootstrap prerequisites, and this grants the rest.
+#
+# Skipping it is not a subtle failure but not an obvious one either: every
+# ExternalSecret reports SecretSyncedError, each waiting workload sits in
+# CreateContainerConfigError, and the first thing anyone sees is a HelmRelease
+# timing out ten minutes later naming only itself.
+cmd_grant() {
+    [ "$CLOUD" = "gcp" ] || { echo "grant is GCP-only (AWS uses Pod Identity)" >&2; exit 2; }
+    [ -n "$PROJECT" ] || { echo "--project is required" >&2; exit 2; }
+
+    local number
+    number=$(gcloud projects describe "$PROJECT" --format='value(projectNumber)' 2>/dev/null)
+    [ -n "$number" ] || { echo "could not read the project number for ${PROJECT}" >&2; exit 1; }
+
+    local principal="principal://iam.googleapis.com/projects/${number}/locations/global/workloadIdentityPools/${PROJECT}.svc.id.goog/subject/ns/security/sa/external-secrets"
+
+    local keys
+    keys=$(kctl get externalsecrets.external-secrets.io -A -o json 2>/dev/null \
+        | jq -r '[.items[] | ((.spec.data // [])[]?.remoteRef.key, (.spec.dataFrom // [])[]?.extract.key)]
+                 | map(select(. != null)) | unique | .[]')
+    [ -n "$keys" ] || { echo "no ExternalSecrets found — is the cluster reachable?"; return 0; }
+
+    local granted=0 absent=0 failed=0
+    while read -r key; do
+        [ -z "$key" ] && continue
+        if ! gcloud secrets describe "$key" --project "$PROJECT" >/dev/null 2>&1; then
+            # Not an error here: `check` is what reports missing secrets. A key
+            # containing "/" cannot exist in GCP at all -- see ADR-0023.
+            echo "[absent ] ${key}"
+            absent=$((absent + 1))
+            continue
+        fi
+        if [ "$APPLY" != "true" ]; then
+            echo "[dry-run] ${key}"
+            granted=$((granted + 1))
+            continue
+        fi
+        if gcloud secrets add-iam-policy-binding "$key" --project "$PROJECT" \
+             --member "$principal" --role roles/secretmanager.secretAccessor >/dev/null 2>&1; then
+            echo "[granted] ${key}"
+            granted=$((granted + 1))
+        else
+            echo "[FAILED ] ${key}"
+            failed=$((failed + 1))
+        fi
+    done <<< "$keys"
+
+    echo
+    echo "granted: ${granted}, absent: ${absent}, failed: ${failed}"
+    [ "$APPLY" = "true" ] || echo $'\nThis was a DRY RUN. Re-run with --apply.'
+    [ "$failed" -eq 0 ]
+}
+
 case "$COMMAND" in
     check)       cmd_check ;;
     seed)        cmd_seed ;;
+    grant)       cmd_grant ;;
     migrate-aws) cmd_migrate_aws ;;
     *)
-        sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'
         exit 2
         ;;
 esac
