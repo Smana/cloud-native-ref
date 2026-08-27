@@ -35,7 +35,12 @@ metadata:
   name: zitadel
   namespace: flux-system
 spec:
-  suspend: true
+  # NOTE: false ON THIS BRANCH ONLY, to validate the GCP-hosted IdP end to end.
+  # It MUST go back to true before merge -- AWS is the default host, and a
+  # merged `false` would give every gcp-0 rebuild a second user directory
+  # nobody asked for. `flux resume` is not an alternative: kustomize-controller
+  # owns this field and re-asserts the committed value on its next apply.
+  suspend: false
   prune: true
   interval: 1m0s
   timeout: 10m0s
