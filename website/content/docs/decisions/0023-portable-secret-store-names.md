@@ -110,9 +110,19 @@ base someone writes.
 - `./scripts/secret-store.sh check --cloud aws|gcp` reports which keys a cluster
   needs and which are missing, so an unseeded secret surfaces immediately
   instead of as a ten-minute HelmRelease timeout.
-- The store contents are still **not** created by code on either cloud. This ADR
-  makes them *nameable* from one base; it does not seed them. That remains
-  manual, and is the next gap to close.
+- `seed` creates the three secrets the platform **generates** rather than
+  obtains — the two Harbor passwords and Grafana's admin pair. It never
+  overwrites, so it is safe on a store whose entries were written by hand.
+- Most of the store is still not created by code, and deliberately so. An OIDC
+  client ZITADEL issued, a Slack app, a GitHub App key, a vendor token: a
+  generated placeholder for any of those would produce a secret that exists,
+  syncs, and fails at the point of use — strictly worse than one that is visibly
+  missing and named by `check`.
+- Two secrets are partially generated. `grafana-envvars` also carries
+  `GF_AUTH_GENERIC_OAUTH_CLIENT_{ID,SECRET}` from a ZITADEL registration; Grafana
+  boots without them, so seeding the admin pair alone is what releases the
+  HelmRelease and the four Kustomizations behind it. SSO is configured
+  afterwards.
 
 ## Related
 
