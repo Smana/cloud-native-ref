@@ -130,13 +130,27 @@ store_write() {
 
 # ── zitadel api ───────────────────────────────────────────────────────────────
 
-ZITADEL_ENVVARS_SECRET="zitadel-envvars" # pragma: allowlist secret
+# The admin PAT comes from the CLUSTER, not the secret store.
+#
+# ZITADEL generates it at FirstInstance bootstrap for the `iam-admin` machine
+# user the HelmRelease declares, and the chart writes it to the `iam-admin-pat`
+# Secret. It is not the same thing as
+# ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT in zitadel-envvars: that value
+# belongs to the login client, which is not authorised for the management API
+# and answers every call here with a bare 401 -- no hint that the token is
+# simply the wrong one.
+PAT_NAMESPACE="security"
+PAT_SECRET="iam-admin-pat" # pragma: allowlist secret
 
-PAT="$(store_read "$ZITADEL_ENVVARS_SECRET" | jq -r '.ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT // empty')"
+PAT="$(kubectl get secret "$PAT_SECRET" -n "$PAT_NAMESPACE" \
+        -o jsonpath='{.data.pat}' 2>/dev/null | base64 -d 2>/dev/null)"
 if [ -z "$PAT" ]; then
-    echo "ERROR: no ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT in '${ZITADEL_ENVVARS_SECRET}'." >&2
-    echo "That secret is what bootstraps ZITADEL; without the PAT there is no way to" >&2
-    echo "call its API. Check the secret exists in the ${CLOUD} store for ${CLUSTER}." >&2
+    echo "ERROR: could not read ${PAT_NAMESPACE}/${PAT_SECRET} from the cluster." >&2
+    echo >&2
+    echo "ZITADEL writes that Secret when its FirstInstance bootstrap creates the" >&2
+    echo "iam-admin machine user. If it is missing, ZITADEL has not finished" >&2
+    echo "bootstrapping -- check the setup Job:" >&2
+    echo "  kubectl get jobs -n ${PAT_NAMESPACE} | grep zitadel" >&2
     exit 1
 fi
 
@@ -145,10 +159,22 @@ fi
 : "${IDP_URL:?set IDP_URL to the ZITADEL base URL, e.g. https://auth.gcp.cloud.ogenki.io}"
 : "${PRIVATE_DOMAIN:?set PRIVATE_DOMAIN, e.g. priv.gcp.ogenki.io}"
 
+# Optional escape hatch for split-DNS workstations. The IdP hostname is public,
+# but a machine on the tailnet may resolve *.ogenki.io through a resolver that
+# has not picked up a freshly created record -- 8.8.8.8 answers while the system
+# resolver still returns NXDOMAIN from its negative cache. Setting
+# IDP_RESOLVE=host:443:<ip> pins it for curl only, keeping SNI and certificate
+# verification intact (unlike hitting the IP with a Host header).
+#
+#   IDP_RESOLVE=auth.gcp.cloud.ogenki.io:443:34.158.159.130
+CURL_RESOLVE=()
+[ -n "${IDP_RESOLVE:-}" ] && CURL_RESOLVE=(--resolve "$IDP_RESOLVE")
+
 api() {
     local method="$1" path="$2"
     shift 2
     curl -fsS -X "$method" "${IDP_URL}${path}" \
+        ${CURL_RESOLVE[@]+"${CURL_RESOLVE[@]}"} \
         -H "Authorization: Bearer ${PAT}" \
         -H "Content-Type: application/json" \
         "$@"

@@ -108,7 +108,24 @@ dig +short grafana.priv.gcp.ogenki.io        # private, needs the tailnet
 ## 5. Browse it
 
 Everything private is `*.priv.gcp.ogenki.io` and needs the tailnet. Start at the
-homepage, which links the rest:
+homepage, which links the rest.
+
+{{< callout type="warning" >}}
+**Private services present the OpenBao private CA**, so a browser that does not
+trust it shows a certificate warning, and `curl` fails with "unable to establish
+a secure connection" rather than an HTTP error. That is the PKI working, not a
+broken service — the certificates are real, they are simply not from a public CA.
+
+Trust the chain, or use `curl -k` when you only care whether the service
+answers:
+
+```bash
+curl -sSk -o /dev/null -w '%{http_code}\n' https://grafana.priv.gcp.ogenki.io/login
+```
+
+**ZITADEL is the exception**: it is public, on Route 53, with a Let's Encrypt
+certificate, so it verifies normally and needs no `-k`.
+{{< /callout >}}
 
 | Service | URL |
 |---|---|
