@@ -14,6 +14,26 @@
 # globally unique across all of GCP, so the region is not enough to avoid a
 # collision with someone else's bucket. Same convention as the other three
 # buckets on this cluster (harbor, openbao-snapshot, llm weights).
+# THE BUCKET OUTLIVES THE CLUSTER, AND THAT HAS A CONSEQUENCE ON REBUILD.
+# gcp-0 is destroyed and recreated routinely; this bucket is not, by the
+# managementPolicies above. The recreated CNPG clusters take the SAME names, so
+# they archive into the SAME prefixes — and barman refuses to start archiving
+# into a non-empty one (its expected-empty-archive check). A rebuild onto a
+# bucket left as-is therefore wedges the new cluster, with the failure surfacing
+# as a Kustomization health check rather than as anything naming the archive.
+#
+# So a teardown must leave the live prefixes empty. Two ways, both fine:
+#
+#   # discard — right for a disposable cluster, which this one is
+#   gcloud storage rm -r gs://${project_id}-ogenki-cnpg-backups/'*-cnpg-cluster'
+#
+#   # or keep it as a recovery seed, the pattern security/base/zitadel uses:
+#   gcloud storage mv -r \
+#     gs://.../xplane-zitadel-cnpg-cluster gs://.../zitadel-$(date +%Y%m%d)
+#   # then point the claim's objectStoreRecovery.path at that dated prefix.
+#   # MOVE, not copy: copying leaves the live prefix non-empty and wedges the
+#   # rebuild anyway, which is the whole trap.
+#
 apiVersion: storage.gcp.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
