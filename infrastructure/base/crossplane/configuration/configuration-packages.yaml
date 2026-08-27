@@ -5,11 +5,11 @@
 # (smana-crossplane-configuration-core, not the name in packages/core/crossplane.yaml).
 # Declaring -core here as well would leave two Configuration objects for one package.
 #
-# Functions are NOT left to `dependsOn` either: functions.yaml in this directory keeps
+# Functions are NOT left to `dependsOn` either: ../functions/functions.yaml keeps
 # them cluster-owned and version-pinned, which is why it survives the cutover.
 apiVersion: pkg.crossplane.io/v1
 kind: Configuration
 metadata:
   name: crossplane-configuration-aws
 spec:
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.1.0
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.4.1

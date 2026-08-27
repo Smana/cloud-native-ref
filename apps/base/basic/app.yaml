@@ -14,7 +14,7 @@ spec:
     port: 9898
 
   # HTTP routing (enable external access)
-  # Default: private gateway (podinfo.priv.aws.ogenki.io)
+  # Default: private gateway (podinfo on the cluster private domain)
   route:
     enabled: true
     hostname: "podinfo"

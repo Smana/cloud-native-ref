@@ -179,13 +179,20 @@ spec:
     # infrastructure/base/crossplane/configuration/configuration-packages.yaml.
     # The form and the render preview would otherwise describe a different API
     # version than the cluster serves. Bump both together.
+    #
+    # This also covers wizard.yaml's compositionPath/xrdPath: they are
+    # filenames INSIDE the tag pinned here, not a separate pin, but they still
+    # go stale silently if a task renames a file in that repo (e.g. Task 3's
+    # composition.yaml -> composition-aws.yaml) without updating wizard.yaml
+    # to match. No gate catches that either -- check wizard.yaml by hand
+    # against `git ls-tree <tag> apis/<api>/` whenever this tag moves.
     - name: fetch-crossplane-configuration
       image: cgr.dev/chainguard/git:latest
       args:
         - clone
         - --depth=1
         - --single-branch
-        - --branch=v0.1.0
+        - --branch=v0.4.1
         - https://github.com/Smana/crossplane-configuration.git
         - /repo/crossplane-configuration
       securityContext:
@@ -298,7 +305,7 @@ spec:
   #      (COMPOSITION_PATH/FUNCTIONS_PATH/ENVCONFIG_PATH). Until both are in
   #      place, /api/render-preview returns a friendly error and the form still
   #      works (validation gates are independent). Tracked for the cluster.
-  # Versions mirror infrastructure/base/crossplane/configuration/functions.yaml.
+  # Versions mirror infrastructure/base/crossplane/functions/functions.yaml.
   # ---------------------------------------------------------------------------
   sidecars:
     - name: function-kcl
@@ -322,7 +329,7 @@ spec:
         requests: {cpu: "10m", memory: "32Mi"}
         limits: {cpu: "100m", memory: "128Mi"}
     - name: function-environment-configs
-      image: "xpkg.crossplane.io/crossplane-contrib/function-environment-configs:v0.7.3"
+      image: "xpkg.crossplane.io/crossplane-contrib/function-environment-configs:v0.7.4"
       args: ["--insecure", "--address=:9445"]
       ports:
         - name: fn-envcfg

@@ -49,14 +49,14 @@ spec:
         # The chart still injects env/volumeMounts for this container itself.
         containers:
           - name: runner
-            image: ghcr.io/actions/actions-runner:2.336.0
+            image: ghcr.io/actions/actions-runner:2.337.0
             command: ["/home/runner/run.sh"]
 
     containerMode:
       type: "kubernetes"
       kubernetesModeWorkVolumeClaim:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: "gp3"
+        storageClassName: "${storage_class}"
         resources:
           requests:
             storage: 10Gi

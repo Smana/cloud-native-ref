@@ -1,0 +1,39 @@
+# Crossplane, stage 1 of 3. Mirrors the AWS chain
+# (clusters/aws-0/infrastructure/crossplane-*.yaml) because the ordering
+# constraints are identical: the controller must be running before a Provider
+# can be installed, and a Provider must be healthy before a ProviderConfig or
+# Composition referencing its CRDs will apply.
+#
+# The controller is the cloud-agnostic part — same chart and values as AWS, via
+# infrastructure/gcp-0/crossplane/controller.
+#
+# dependsOn crds is LOAD-BEARING, not symmetry with AWS. Crossplane's own CRDs
+# come from the chart, so the name is misleading — what this edge actually buys
+# is `crds`'s own dependencies: crds -> flux-sources, which defines the
+# `crossplane` HelmRepository this HelmRelease pulls from, and crds -> namespaces,
+# which creates crossplane-system. Drop it and the release fails on a missing
+# source or a missing namespace, at a point that looks unrelated to this file.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crossplane-controller
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m30s
+  timeout: 5m0s
+  path: ./infrastructure/gcp-0/crossplane/controller
+  sourceRef:
+    kind: ExternalArtifact
+    name: infra-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: crossplane
+      namespace: crossplane-system
+  dependsOn:
+    - name: crds

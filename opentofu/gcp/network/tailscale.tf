@@ -48,12 +48,30 @@ resource "google_dns_policy" "inbound" {
   }
 }
 
+# `depends_on` alone is NOT enough here, and the failure it produces is silent.
+#
+# Creating the inbound policy RETURNS before GCP has finished allocating the
+# resolver address. `depends_on` defers the data-source read until after the
+# policy resource is created, which is not the same as after the address exists.
+# So on a FIRST apply the filter matches nothing, the list below is empty, and
+# the split nameserver is written with `nameservers = []`.
+#
+# Nothing fails. The apply reports success, and every tailnet client silently
+# cannot resolve *.priv.gcp.ogenki.io -- the VPC resolver is fine, the zone is
+# fine, there is simply no nameserver configured. A SECOND apply fixes it,
+# because by then the address exists. Measured 2026-08-25: first apply produced
+# `nameservers = []`, re-apply produced `["10.10.0.2"]`.
+resource "time_sleep" "dns_inbound_allocation" {
+  depends_on      = [google_dns_policy.inbound]
+  create_duration = "60s"
+}
+
 data "google_compute_addresses" "dns_inbound" {
   project = var.project_id
   region  = var.region
   filter  = "purpose = \"DNS_RESOLVER\""
 
-  depends_on = [google_dns_policy.inbound]
+  depends_on = [time_sleep.dns_inbound_allocation]
 }
 
 # Per-domain, keyed by domain name -> no collision with the AWS split nameservers.
@@ -62,6 +80,17 @@ resource "tailscale_dns_split_nameservers" "gcp_private" {
   # The inbound policy allocates one resolver address per subnet in the region;
   # with a single subnet there is exactly one.
   nameservers = [for a in data.google_compute_addresses.dns_inbound.addresses : a.address]
+
+  # The wait above makes the empty case unlikely; this makes it impossible to
+  # ship silently. Without this, a slow allocation degrades to exactly the
+  # original bug -- a successful apply that configures no resolver at all.
+  # Failing loudly is recoverable: re-run the deploy.
+  lifecycle {
+    precondition {
+      condition     = length(data.google_compute_addresses.dns_inbound.addresses) > 0
+      error_message = "Cloud DNS inbound forwarding allocated no DNS_RESOLVER address yet, so the Tailscale split nameserver would be configured EMPTY and *.${var.private_domain_name} would silently fail to resolve for every tailnet client. The allocation is eventually consistent; re-run the deploy."
+    }
+  }
 }
 
 resource "tailscale_tailnet_key" "this" {

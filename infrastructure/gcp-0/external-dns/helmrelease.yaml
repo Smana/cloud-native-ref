@@ -1,0 +1,41 @@
+# GCP overrides for the shared external-dns release.
+#
+# provider: google, and ONE domain filter. AWS filters two zones because it owns
+# a public one; this cluster has only the private Cloud DNS zone --
+# cloud.ogenki.io is a Route53 zone this repository does not manage, and public
+# certificates are out of scope by design.
+#
+# --google-zone-visibility=private stops it enumerating public zones it has no
+# business in. domainFilters is a CLIENT-side filter and not a security
+# boundary; the IAM role is.
+#
+# The base's `global.imageRegistry: public.ecr.aws` and its top-level `aws:`
+# block are deliberately NOT touched. Verified against
+# `helm show values external-dns/external-dns --version 1.21.1`: neither is a
+# chart value -- `global` supports only `imagePullSecrets`, and there is no
+# top-level `aws` key. Both are inert on both clouds. Overriding a setting that
+# does nothing, and writing a comment explaining why, would be two lies for the
+# price of one.
+#
+# GCP settings therefore go through extraArgs, because chart 1.21.1 has no
+# `google:` values block either.
+#
+# txtOwnerId stays at the base's ${cluster_name}. The two clusters are now
+# distinct (aws-0 / gcp-0), so their TXT registries cannot collide.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: external-dns
+  namespace: kube-system
+spec:
+  values:
+    provider:
+      name: google
+    domainFilters:
+      - ${private_domain_name}
+    extraArgs:
+      - --google-project=${project_id}
+      - --google-zone-visibility=private
+      - --gateway-namespace=infrastructure
+      - --gateway-label-filter=external-dns=enabled
+      - --min-event-sync-interval=30s

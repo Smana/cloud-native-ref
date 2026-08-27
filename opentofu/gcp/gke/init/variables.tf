@@ -32,7 +32,7 @@ variable "region" {
 variable "cluster_name" {
   description = "GKE cluster name"
   type        = string
-  default     = "gcp-mycluster-0"
+  default     = "gcp-0"
 }
 
 variable "kubernetes_version" {
@@ -119,4 +119,22 @@ variable "autoscaling_max_memory_gb" {
   description = "Total memory ceiling in GiB across all auto-provisioned node pools"
   type        = number
   default     = 128
+}
+
+variable "external_secrets_namespace" {
+  description = "Namespace of the External Secrets controller's ServiceAccount. Part of the Workload Identity subject, so it must match the cluster exactly."
+  type        = string
+  default     = "security"
+}
+
+variable "external_secrets_service_account" {
+  description = "Name of the External Secrets controller's ServiceAccount. Part of the Workload Identity subject; a mismatch produces a binding the API accepts and that never matches."
+  type        = string
+  default     = "external-secrets"
+}
+
+variable "tailscale_oauth_secret_name" {
+  description = "GCP Secret Manager entry holding the Tailscale OAuth client for the Kubernetes operator. Created by hand -- see docs/gcp-bootstrap.md."
+  type        = string
+  default     = "tailscale-k8s-operator-oauth"
 }

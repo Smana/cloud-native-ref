@@ -23,7 +23,7 @@ variable "region" {
 variable "cluster_name" {
   description = "GKE cluster name"
   type        = string
-  default     = "gcp-mycluster-0"
+  default     = "gcp-0"
 }
 
 # These three are REQUIRED, with no defaults, matching
@@ -79,4 +79,79 @@ variable "gateway_api_version" {
   description = "Gateway API release applied before Cilium. MUST equal flux/sources/gitrepo-gateway-api.yaml's ref.tag so both clouds run one Gateway API surface"
   type        = string
   default     = "v1.6.1"
+}
+
+# Federated Route53 path (workstream 12). No defaults on route53_role_arn or
+# route53_public_zone_id: both come from opentofu/shared/aws-gcp-federation's
+# outputs, and a wrong value here does not fail this apply -- it fails later,
+# at certificate issuance, with an AWS error that says nothing about a
+# mistyped tfvars entry. Required + no default turns that into a loud
+# "No value for required variable" instead.
+#
+# public_domain_name is `gcp.cloud.ogenki.io`, NOT `cloud.ogenki.io` -- a
+# deliberate departure from the AWS variable of the same name, added after the
+# final-branch review: aws-0 already runs a live wildcard Certificate for
+# `*.cloud.ogenki.io`. A gcp-0 requesting the identical identifier set would
+# share Let's Encrypt's Duplicate Certificate limit (5/week, not exempted for
+# renewals, counted across accounts) with aws-0's production renewal, and both
+# clusters would race to write the same `_acme-challenge.cloud.ogenki.io` TXT
+# record. Giving gcp-0 its own subdomain closes both, and matches the
+# private-domain precedent this repo already set (`priv.aws.ogenki.io` vs
+# `priv.gcp.ogenki.io`) -- only the public name had collided. See ADR-0019.
+variable "public_domain_name" {
+  description = "Public name the federated ClusterIssuer solves DNS-01 against and the Gateway serves: gcp.cloud.ogenki.io, a subdomain of the shared zone -- deliberately NOT the same value as opentofu/aws/eks/configure's variable of the same name. See the comment above and ADR-0019"
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$", var.public_domain_name))
+    error_message = "Domain name must be a valid DNS domain name."
+  }
+}
+
+variable "route53_public_zone_id" {
+  description = "Route53 hosted zone ID of the PARENT zone (cloud.ogenki.io) that contains public_domain_name -- there is no separate delegated zone for the gcp.cloud.ogenki.io subdomain. Sourced from opentofu/shared/aws-gcp-federation's public_zone_id output -- no default"
+  type        = string
+}
+
+variable "route53_role_arn" {
+  description = "AWS IAM role the federated ClusterIssuer and external-dns-public assume via AssumeRoleWithWebIdentity. Sourced from opentofu/shared/aws-gcp-federation's route53_role_arn output -- no default"
+  type        = string
+}
+
+# NOT var.region: that variable holds gcp-0's GCP region (europe-west4) and has
+# other consumers that need exactly that GCP value. cert-manager's route53
+# solver feeds its `region` field straight into the AWS SDK's shared config,
+# unvalidated, to compute the STS client's endpoint for AssumeRoleWithWebIdentity
+# -- reusing var.region would point that client at a region that does not exist
+# in AWS (e.g. sts.europe-west4.amazonaws.com) and break the token exchange this
+# whole federation depends on, before Route53 is ever reached. No default, same
+# reasoning as route53_role_arn and route53_public_zone_id above.
+variable "route53_region" {
+  description = "AWS region hint for the federated ClusterIssuer's route53 solver -- an AWS SDK credential-scope value, deliberately separate from var.region (GCP). No default"
+  type        = string
+}
+
+# The platform's identity provider, which gcp-0 CONSUMES rather than hosts.
+#
+# ZITADEL is a singleton by decision, not by accident: one instance serves both
+# clusters, because two would be two user directories, two session stores and
+# two sets of OIDC clients with nothing federating them. ADR-0022 records the
+# choice and the alternatives considered.
+#
+# The default points at aws-0, which hosts it today. A full URL rather than a
+# hostname because both consumers -- apps/base/openwebui's OIDC discovery
+# document and tooling/base/homepage's link -- need the scheme.
+#
+# This CANNOT be derived from var.public_domain_name the way the AWS stack
+# derives it: that would yield auth.gcp.cloud.ogenki.io, which nothing serves.
+# A cluster can derive this URL only when it is itself the host.
+variable "identity_provider_url" {
+  description = "Base URL of the platform identity provider (ZITADEL). Defaults to the aws-0 instance, which hosts it; see ADR-0022 before changing"
+  type        = string
+  default     = "https://auth.cloud.ogenki.io"
+
+  validation {
+    condition     = can(regex("^https://[a-z0-9][a-z0-9.-]*[a-z0-9]$", var.identity_provider_url))
+    error_message = "identity_provider_url must be an https:// URL with no path or trailing slash."
+  }
 }

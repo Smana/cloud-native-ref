@@ -1,0 +1,21 @@
+# `cloudplatform` is the family member that ships ProjectIAMMember — verified by
+# unpacking the package rather than inferred from the group name:
+#
+#   projectiammembers.cloudplatform.gcp.m.upbound.io   (kind ProjectIAMMember)
+#
+# That is the single Kind the GCPWorkloadIdentity composition renders. It was
+# the only GCP provider installed until the App Composition's objectStore
+# block started rendering GCS Kinds — see provider-storage.yaml, added on
+# that evidence. Keep adding providers one per service, the way the AWS side
+# does — the family package pulls in only what is declared.
+#
+# Version tracks the AWS providers (v2.6.0). They share the crossplane-contrib
+# release train, so a split would mean two upgrade cadences for one controller.
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-gcp-cloudplatform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-gcp-cloudplatform:v2.6.0
+  runtimeConfigRef:
+    name: gcp-config

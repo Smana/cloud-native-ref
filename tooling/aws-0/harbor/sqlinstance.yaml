@@ -1,0 +1,25 @@
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: SQLInstance
+metadata:
+  name: xplane-harbor
+spec:
+  instances: 1
+  size: "small"
+  storageSize: 20Gi
+  postgresVersion: "17"
+  databases:
+    - name: registry
+      owner: harbor
+  roles:
+    - name: harbor
+      comment: "Harbor admin user"
+      superuser: true
+  objectStoreRecovery:
+    bucketName: "${region}-ogenki-cnpg-backups"
+    path: "harbor-20241111"
+  backup:
+    schedule: "0 1 * * *"
+    bucketName: "${region}-ogenki-cnpg-backups"
+  crossplane:
+    compositionRef:
+      name: xsqlinstances.cloud.ogenki.io

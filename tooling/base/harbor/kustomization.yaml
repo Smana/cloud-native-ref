@@ -7,8 +7,15 @@ resources:
   - externalsecret-valkey-password.yaml
   - helmrelease-harbor.yaml
   - serviceaccount-harbor.yaml
-  - iam-user.yaml
   - httproute.yaml
   - kvstore.yaml
-  - s3-bucket.yaml
-  - sqlinstance.yaml
+  # sqlinstance.yaml is NOT here. Harbor's database claim is cloud-shaped in
+  # three ways -- it pins compositionRef to the AWS Composition by name, its
+  # backup bucketName uses the ${region}-ogenki-* convention that GCP's IAM
+  # condition refuses (GCP requires <project_id>-ogenki-*), and its
+  # objectStoreRecovery points at a specific AWS restore path. Each cloud's
+  # overlay supplies its own: tooling/aws-0/harbor/ and tooling/gcp-0/harbor/.
+  #
+  # The HelmRelease above stays neutral because it addresses the database by
+  # NAME (xplane-harbor-cnpg-cluster-rw, secret xplane-harbor-cnpg-registry),
+  # and both claims keep the same claim name.

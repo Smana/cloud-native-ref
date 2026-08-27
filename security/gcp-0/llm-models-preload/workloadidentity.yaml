@@ -1,0 +1,58 @@
+# Moved out of apps/gcp-0/llm/ (Task 3) into its own directory once the LLM
+# umbrella needed six independently-gated children (Task 4): the GCP analogue
+# of aws-0's security/base/epis-llm, one directory + one Flux Kustomization
+# (llm-platform-security-wi) dedicated to the preload identity, separate from
+# llm-platform-apps (apps/gcp-0/llm: the bucket + PV + InferenceService
+# claims). Same reason AWS keeps its EPI split out: "so it can be gated
+# independently" (security-llm-epi.yaml).
+#
+# Grants the shared preload ServiceAccount (apps/base/ai/llm/preload-
+# serviceaccount.yaml -- the actual K8s SA is `xplane-llm-models-preload`,
+# NOT `llm-models-preload`; spec.serviceAccount.name must match it exactly,
+# same trap as security/gcp-0/openbao-snapshot/workloadidentity.yaml) write
+# access to the one llm-models bucket. Unlike EPI, a GCPWorkloadIdentity claim
+# binds by its OWN namespace (GKE Workload Identity Federation binds the
+# subject `ns/<claim namespace>/sa/<name>`), so this claim's
+# metadata.namespace must stay `llm` -- matching the ServiceAccount's
+# namespace -- even though the file itself now lives under security/gcp-0/.
+#
+# `bucketRoles`, singular `role`, never a project-level `roles:` -- a
+# project-scoped roles/storage.* would also reach OpenBao's snapshot bucket
+# and CNPG's backups (same reasoning as the openbao-snapshot identity).
+#
+# Serving pods do NOT use this identity. The Cloud Storage FUSE CSI driver
+# authenticates as the MOUNTING POD'S OWN KSA via Workload Identity
+# Federation for GKE, not the node's default service account -- confirmed
+# against Google's driver docs ("uses Workload Identity Federation for GKE so
+# you can set fine grained permissions on how your GKE Pods can access data
+# stored in Cloud Storage") and upstream's own static-provisioning example,
+# where the Deployment sets `serviceAccountName` and the
+# `gke-gcsfuse/volumes: "true"` pod annotation. This matches how
+# GCPWorkloadIdentity itself works in this repo (apis/gcpworkloadidentity's
+# main.k: GKE binds by SUBJECT, so the KSA needs no annotation and no
+# mounted credential) -- i.e. the mechanism is the same one, just consumed by
+# the driver instead of application code.
+#
+# Consequence: serving pods DO need their own access to read the bucket
+# through the mount, exactly like aws-0's per-claim read-only EPI
+# (apps/aws-0/llm/s3-bucket.yaml: "Read access ... is granted by the EPI
+# rendered by the InferenceService composition"). On GCP that is a second,
+# read-only GCPWorkloadIdentity (roles/storage.objectViewer, scoped to this
+# bucket, bound to each claim's own serving ServiceAccount) rendered by the
+# InferenceService composition once it grows GCP support -- the same place
+# the AWS per-claim EPI is rendered, and equally absent from apps/aws-0/llm
+# today. Deliberately NOT added here: it is composition-owned, per-claim,
+# and out of this overlay's scope -- and granting objectAdmin to serving pods
+# here to sidestep that would be the credential-scope regression already
+# rejected once.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: GCPWorkloadIdentity
+metadata:
+  name: xplane-llm-models-preload
+  namespace: llm
+spec:
+  serviceAccount:
+    name: xplane-llm-models-preload
+  bucketRoles:
+    - bucket: ${project_id}-ogenki-llm-models
+      role: roles/storage.objectAdmin

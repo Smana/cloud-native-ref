@@ -36,7 +36,7 @@ sourced from a shared `HelmRepository`
 false`, and its CRDs instead come from a `GitRepository` pin
 (`flux/sources/gitrepo-kyverno.yaml`) applied by
 `crds/base/kustomization-kyverno.yaml` — one entry among a dozen siblings
-in the `crds` Kustomization (`clusters/mycluster-0/crds.yaml`) that
+in the `crds` Kustomization (`clusters/aws-0/crds.yaml`) that
 installs every CRD-owning component's CRDs ahead of the controller that
 consumes them.
 
@@ -146,7 +146,7 @@ and is why that chart's `crds: Skip` install mode is set. That is a
 CRD-protection policy shipped by an upstream chart, unrelated to workload
 security policy, and `envoy-gateway` itself is an opt-in component wired
 only into the LLM platform's cluster directory
-(`clusters/mycluster-0-llm-platform/`), not the default cluster.
+(`clusters/aws-0-llm-platform/`), not the default cluster.
 
 **Pros**:
 - No webhook in the request path at all — the check runs inside the API
@@ -256,7 +256,7 @@ recorded below rather than hidden.
 (`flux/sources/helmrepo-kyverno.yaml`). The controller's CRDs come from
 the `kyverno` `GitRepository` (`flux/sources/gitrepo-kyverno.yaml`),
 applied by `crds/base/kustomization-kyverno.yaml`, itself one resource in
-the `crds` Kustomization (`clusters/mycluster-0/crds.yaml`) that runs
+the `crds` Kustomization (`clusters/aws-0/crds.yaml`) that runs
 ahead of `security` in the Flux dependency graph.
 
 Turning `kyverno-policies`'s `values: {}` into a chosen, reviewed policy

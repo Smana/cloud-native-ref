@@ -29,7 +29,7 @@ plain Flux reconciliation both leave the cluster LLM-free.
 | **Autoscaling** | KEDA, three vLLM saturation triggers OR-combined, `min=1` (always warm) |
 | **Weights** | Amazon S3 Files (POSIX over S3), RWX PVC shared by a preload Job and the serving pod |
 | **GPUs** | Karpenter `gpu-l4` NodePool — single-GPU `g6` spot instances, Bottlerocket NVIDIA AMI, capped at 4 GPUs |
-| **Composition** | `crossplane-inference-service` KCL module `0.9.0`, pinned inside `crossplane-configuration-aws:v0.1.0` |
+| **Composition** | `crossplane-inference-service` KCL module `0.9.0`, pinned inside `crossplane-configuration-aws:v0.3.1` |
 
 ## Why self-host at all
 
@@ -71,12 +71,12 @@ brings the other along:
 TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy
 
 # Gate 2 — Kubernetes side. The umbrella Flux Kustomization ships suspended
-# (spec.suspend: true, clusters/mycluster-0/llm-platform.yaml).
+# (spec.suspend: true, clusters/aws-0/llm-platform.yaml).
 flux resume kustomization llm-platform -n flux-system
 ```
 
 The umbrella aggregates **8** child Flux Kustomizations under
-`clusters/mycluster-0-llm-platform/`:
+`clusters/aws-0-llm-platform/`:
 
 | Child | Renders | Path |
 |---|---|---|
@@ -89,8 +89,8 @@ The umbrella aggregates **8** child Flux Kustomizations under
 | `llm-platform-security-epi` | The preload Job's EKS Pod Identity | `security/base/epis-llm` |
 | `llm-platform-promptfoo` | Nightly agent-eval CronJob | `tooling/base/promptfoo` |
 
-That directory is a **sibling** of `clusters/mycluster-0/`, not a child, on
-purpose: `flux-system` syncs `clusters/mycluster-0/` recursively, so a nested
+That directory is a **sibling** of `clusters/aws-0/`, not a child, on
+purpose: `flux-system` syncs `clusters/aws-0/` recursively, so a nested
 path would be auto-discovered and applied — bypassing the suspend gate
 entirely.
 

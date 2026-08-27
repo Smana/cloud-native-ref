@@ -1,0 +1,31 @@
+# Sign leaves through the one role, and nothing else.
+#
+# DELIBERATELY NARROWER THAN AWS, whose copy of this file grants
+# create/read/update/delete/list on `pki_private_issuer/*`. That covers the
+# issuer configuration, the CA endpoints, every role and the tidy/revoke APIs --
+# so a leaked secret_id could rotate the issuer, or add a role allowing any
+# domain, rather than only mint a certificate for the domain this role permits.
+#
+# cert-manager's Vault issuer needs exactly two things at runtime:
+#   - POST auth/approle/login  -- unauthenticated by definition, needs no policy
+#   - POST <mount>/sign/<role> -- this rule
+# Its readiness probe hits sys/health, which is unauthenticated by default.
+#
+# TEMPLATED, unlike the AWS copy: the path names the role, the role is what
+# constrains the domain, and a `sign/*` wildcard would re-admit any role added
+# later. Deriving both halves from the resources themselves (policies.tf) keeps
+# THIS file correct across a rename of var.pki_mount_path or var.pki_organization.
+#
+# IT DOES NOT MAKE THE RENAME SAFE. The other half of the pair --
+# security/gcp-0/cert-manager/openbao-clusterissuer.yaml -- still
+# spells `pki_private_issuer/sign/ogenki` as a literal, and nothing in the repo
+# compares the two. Rename either variable and the mount, role and policy all
+# move together while the ClusterIssuer keeps pointing at the old path; with an
+# exact-path policy there is no wildcard left to absorb it, so every issuance
+# returns 403 with nothing to explain why. Closing that properly means
+# publishing the mount and role into the GCP vars ConfigMap
+# (opentofu/gcp/gke/configure/kubernetes.tf) and substituting them into the
+# manifest.
+path "${mount}/sign/${role}" {
+  capabilities = ["create", "update"]
+}

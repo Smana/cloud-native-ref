@@ -84,6 +84,33 @@ claims:
       - 'a single `?VMAlert'
       - 'one shared `?VMAlert'
 
+  - id: tailscale-gateway-general-hostname
+    why: >-
+      `gateway-general-priv` carries a `-${cluster_name}` suffix because the
+      tailnet is shared between aws-0 and gcp-0 and a Tailscale hostname is
+      tailnet-unique — see the comment in
+      platform-tailscale-general-gateway.yaml. private-access.md quotes this
+      annotation verbatim as the pattern to copy when adding a new Gateway;
+      a stale copy without the suffix reintroduces the exact hostname
+      collision the suffix exists to prevent.
+    source:
+      file: infrastructure/base/gapi/platform-tailscale-general-gateway.yaml
+      pattern: 'tailscale\.com/hostname:\s*"(gateway-general-priv-\$\{cluster_name\})"'
+    pages:
+      - website/content/docs/platform/networking/private-access.md
+    must_contain: '{value}'
+
+  - id: tailscale-gateway-admin-hostname
+    why: >-
+      Same claim as tailscale-gateway-general-hostname, for the admin
+      Gateway's hostname.
+    source:
+      file: infrastructure/base/gapi/platform-tailscale-admin-gateway.yaml
+      pattern: 'tailscale\.com/hostname:\s*"(gateway-admin-priv-\$\{cluster_name\})"'
+    pages:
+      - website/content/docs/platform/networking/private-access.md
+    must_contain: '{value}'
+
   - id: kyverno-policies-values
     why: >-
       Only the kyverno-policies release ships `values: {}`; the controller sets

@@ -200,7 +200,7 @@ spec:
         name: image-gallery-app-config
         optional: true
 
-  # Default: private gateway (image-gallery.priv.aws.ogenki.io)
+  # Default: private gateway (image-gallery on the cluster private domain)
   route:
     enabled: true
     hostname: "image-gallery"
@@ -283,10 +283,9 @@ spec:
               - port: "443"
                 protocol: TCP
 
-  # Where the images are pulled from
-  s3Bucket:
+  # Object storage for user uploads
+  objectStore:
     enabled: true
-    region: ${region}
     permissions: readwrite
     versioning: true
     retentionDays: 90

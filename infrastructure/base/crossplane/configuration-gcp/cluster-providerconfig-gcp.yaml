@@ -1,0 +1,29 @@
+# How the GCP providers authenticate. Two differences from the AWS counterpart,
+# both easy to get wrong by analogy.
+#
+# 1. `InjectedIdentity`, not `PodIdentity`. The GCP ProviderConfig schema has no
+#    PodIdentity value at all — its enum is None, Secret, AccessToken,
+#    ImpersonateServiceAccount, InjectedIdentity, Environment, Filesystem,
+#    Upbound (read from the v2.6.0 family package). InjectedIdentity means "use
+#    ambient Application Default Credentials", which under GKE Workload Identity
+#    resolves to the KSA's federated identity — the same end state PodIdentity
+#    gives on EKS, reached by a different mechanism.
+#
+#    No key is mounted and no `iam.gke.io/gcp-service-account` annotation is set;
+#    that absence is design criterion 18, not an omission.
+#
+# 2. `projectID` is required. AWS derives its account from the caller's
+#    credentials, GCP does not — every API call needs an explicit project. It is
+#    substituted from this cluster's vars ConfigMap, so the same manifest renders
+#    per project rather than pinning one.
+#
+# `default` is the name an XR gets when it declares no providerConfigRef, which
+# is what the compositions rely on.
+apiVersion: gcp.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  projectID: ${project_id}
+  credentials:
+    source: InjectedIdentity

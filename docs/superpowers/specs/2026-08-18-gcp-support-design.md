@@ -185,7 +185,7 @@ known rather than predicted.
 > **Amendment (2026-08-19) — workstream 7 has SHIPPED.**
 >
 > [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration) `v0.1.0` is
-> published and installed on `mycluster-0`; `cloud-native-ref` no longer contains an XRD, a
+> published and installed on `aws-0`; `cloud-native-ref` no longer contains an XRD, a
 > Composition or a KCL module. Cut over in #1774 (install + adopt) and #1778 (delete), with all 35
 > identities — 5 XRDs, 5 CRDs, 5 Compositions, 20 claims — preserved by `uid`.
 >
@@ -209,16 +209,16 @@ known rather than predicted.
 
 | # | Workstream | Depends on | Status |
 |---|---|---|---|
-| 6 | Directory refactor to cloud-partitioned layout | 3, **7** | unblocked |
+| 6 | Directory refactor to cloud-partitioned layout | 3, **7** | **SUPERSEDED — never done as a discrete workstream, and no longer needs to be.** Workstreams 9, 12, 13 and 14 each split their own area as they touched it: `security/`, `tooling/`, `infrastructure/` and `apps/` all now carry `aws-0/` + `gcp-0/` overlays over a cloud-neutral `base/`. Doing it as one sweep would have moved files nobody was working in. If a future area still mixes clouds in `base/`, split that area rather than reviving this row. |
 | 7 | Extract the Crossplane Configuration packages, OCI-released | 3 | **DONE 2026-08-19 (v0.1.0)** |
-| 8 | `objectStore` API migration + `App`/`SQLInstance` branching | 5, 7 | unblocked by 7 |
-| 9 | Object-storage call sites: Harbor (GCS driver), `openbao-snapshot` (GCS + Cloud KMS), CNPG barman (GCS) | 5, 8 |  |
-| 10 | DNS + PKI: `external-dns` google provider, cert-manager clouddns DNS-01 (**public** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 5 |  |
-| 11 | OpenBao on GCP: MIG + internal LB + Cloud KMS auto-unseal (**private** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 1 |  |
-| 12 | Gateway/LB: GCP public-LB annotations, drop `aws-load-balancer-controller` | 3 |  |
-| 13 | Storage: `gp3` → `pd-balanced`/hyperdisk, EFS CSI → Filestore CSI | 3 |  |
-| 14 | GPU + LLM platform: GPU `ComputeClass`, GCS Fuse weights, no `runtimeclass-nvidia` | 4, 9 |  |
-| 15 | CI: `validate-manifests.sh` renders both clouds; Renovate; per-cloud schema catalogs | 6 |  |
+| 8 | `objectStore` API migration + `App`/`SQLInstance` branching | 5, 7 | **DONE — #1839, merged 2026-08-26 (04ec429e)** |
+| 9 | Object-storage call sites: Harbor (GCS driver), `openbao-snapshot` (GCS + Cloud KMS), CNPG barman (GCS) | 5, 8 | **DONE — #1844, merged 2026-08-26.** Grew from 7 planned tasks to 14 during execution: reviewers and implementers surfaced real gaps that weren't in the original plan. **The `gcp-0` snapshot CronJob ships suspended** — `gcp-0`'s OpenBao is single-node `storage "file"` by design, so `sys/storage/raft/snapshot` 404s. Everything around it is built and verified; see the verification doc. |
+| 10 | DNS + PKI: `external-dns` google provider (private zone) **plus a second `external-dns` on the `aws` provider for the public zone**, and cert-manager DNS-01 solved against **Route53, not clouddns** (**public** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) and [ADR-0019](../../../website/content/docs/decisions/0019-cross-cloud-dns-federation.md) | 5 | **DONE — #1833 + #1837, merged 2026-08-25/26 (b0e478b1, 348bc900).** The description above is corrected: this row originally said "cert-manager clouddns DNS-01", which is not what was built. `cloud.ogenki.io` is a Route53 zone, so `gcp-0` federates to AWS with a projected ServiceAccount token rather than moving the zone or delegating a subdomain. |
+| 11 | OpenBao on GCP: MIG + internal LB + Cloud KMS auto-unseal (**private** certs) — see [Private certificates on GCP](#private-certificates-on-gcp) | 1 | **DONE — #1827 + #1830, merged 2026-08-25 (f10a2c29, 0b96b435)** |
+| 12 | Gateway/LB: GCP public-LB annotations, drop `aws-load-balancer-controller` | 3 | **DONE — #1833 + #1837, merged 2026-08-25/26 (b0e478b1, 348bc900)** |
+| 13 | Storage: `gp3` → `standard-rwo` via a `${storage_class}` var. **Filestore dropped** — see [2026-08-26-gcp-storage-class-design.md](2026-08-26-gcp-storage-class-design.md) | 3 | **DONE — #1841, merged 2026-08-26.** The description above is corrected twice over: the original said `pd-balanced`/hyperdisk, and an earlier draft of this workstream said `balanced-rwo` — a class GKE does not have. GKE Standard provides `standard` (pd-standard, HDD), `standard-rwo` (pd-**balanced**, SSD) and `premium-rwo` (pd-ssd). Filestore was dropped rather than ported. |
+| 14 | LLM platform: GCS FUSE weights, no `runtimeclass-nvidia`. (The GPU `ComputeClass` this row also named was delivered by workstream 4 — `infrastructure/gcp-0/computeclass/gpu-l4.yaml`.) See [ADR-0021](../../../website/content/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md) | 4, 9 | **DONE, and it SHIPS SUSPENDED WITH KNOWN GAPS.** Umbrella at `clusters/gcp-0/llm-platform.yaml`, `suspend: true`, six children not eight. **Do not resume it yet:** serving pods cannot read the weights bucket (their per-claim read-only identity is rendered by the `InferenceService` composition, which has no GCP support), (KEDA, the second original gap, is now installed — `infrastructure/gcp-0` pulls the shared `base/keda`.) The remaining gap is recorded in `clusters/gcp-0-llm-platform/README.md` and cannot be closed from this repository. |
+| 15 | CI: per-cluster fixtures so `gcp-0` overlays stop rendering AWS values, **plus a gate that fails when a cluster applies a `${var}` its own ConfigMap does not define** | 6 | **DONE — #1845, merged 2026-08-26.** The row's other two items were deliberately left out and are **not** follow-ups to chase blindly: the per-cloud schema catalogs already have their seam (`gen-catalog.sh` derives the version from the package pin), and Renovate's GCP gap was never measured. The gate is the part that mattered — workstreams 9 and 13 each shipped a variable Flux would have substituted as an empty string, caught only by someone remembering. |
 
 ### Already cloud-agnostic (verified — do not touch)
 
@@ -255,7 +255,7 @@ opentofu/gcp/
     │              Crossplane WIF binding, Gateway API CRDs, helm_values/cilium.yaml
     └── configure/ Cilium then Flux Operator + Flux Instance
 
-clusters/gcp-mycluster-0/   new sibling of clusters/mycluster-0/
+clusters/gcp-0/   new sibling of clusters/aws-0/
 ```
 
 Two-stage deploy mirrors EKS, for the same reason: the Helm provider needs a cluster endpoint at
@@ -402,10 +402,11 @@ GCP certificate issuance hard-depend on AWS *and* on the tailnet, in a platform
 whose stated point is that each cloud stands alone. It is the same coupling this
 design already flags as undesirable for the Flux GitHub App secret.
 
-**B — Two OpenBaos, two roots. CHOSEN.** Each cloud runs its own OpenBao with its
-own root CA. Fully independent; matches [ADR-0007](../../../website/content/docs/decisions/0007-cloud-abstraction-boundaries.md)'s
+**B — Two OpenBaos, two roots. ~~CHOSEN~~ SUPERSEDED 2026-08-24.** Each cloud runs
+its own OpenBao with its own root CA. Fully independent; matches [ADR-0007](../../../website/content/docs/decisions/0007-cloud-abstraction-boundaries.md)'s
 rule that platform-facing infrastructure stays cloud-shaped. Costs one extra
-trust anchor for tailnet clients.
+trust anchor for tailnet clients — and, as written here, leaves a live root key
+in each cloud.
 
 **C — Two OpenBaos, one shared root.** Each cloud holds its own intermediate,
 both signed by a common root: one trust anchor, independent operation. Rejected
@@ -415,7 +416,23 @@ holds, or cross-signing GCP's intermediate at bootstrap, which is a manual
 ceremony **on every rebuild** of a platform whose lifecycle is
 build-validate-destroy.
 
-#### Why B, concretely
+> **That rejection was wrong, and C is now the chosen shape.** The "ceremony on
+> every rebuild" premise is false: the intermediate lives in Secret Manager
+> independently of OpenBao's lifecycle, which is exactly why AWS's survives
+> rebuilds today. Signing happens once per cloud, ever. Nor does a shared root
+> require copying the root key anywhere — with a genuinely OFFLINE root it is
+> never in any cloud's secret store. See
+> [the OpenBao-on-GCP design](./2026-08-24-gcp-openbao-design.md).
+
+#### Why B was chosen, and why it no longer is
+
+> **Superseded 2026-08-24.** The reasoning below is preserved because the failure
+> it describes is real and worth keeping; the conclusion drawn from it was too
+> narrow. The lesson is that a signing key must be held outside OpenBao — not
+> that each cloud needs its own root. An offline root shared across clouds
+> satisfies the same lesson and additionally keeps the root key off every
+> networked system. The current decision is in
+> [the OpenBao-on-GCP design](./2026-08-24-gcp-openbao-design.md).
 
 The 2026-08-24 rebuild made the argument better than theory could. The private
 domain rename forced a new server certificate, and re-issuing it under the
@@ -430,8 +447,9 @@ extra trust anchor and remove the entire class.
 
 #### Consequences to carry into workstream 11
 
-- Tailnet clients must trust **both** roots. That is the accepted cost; it is a
-  one-line addition wherever the AWS root is already distributed.
+- Tailnet clients trust **two anchors only until AWS migrates** — its existing
+  live-key root, and the new offline root. Under the superseded two-root decision
+  this was permanent; it is now an interim state with a defined end.
 - GCP needs its own secret store for the root token and the cert-manager AppRole
   — **GCP Secret Manager**, mirroring what AWS Secrets Manager does today. The
   `flux-github-app` secret already establishes that pattern on GCP.
@@ -445,7 +463,7 @@ extra trust anchor and remove the entire class.
   cert-manager `Certificate`, which is already cloud-neutral. The issuer differs
   per cloud, the developer-facing API does not — ADR-0007's split by audience.
 
-**Slice 4 (autoscaling)** — *results recorded 2026-08-24, measured on gcp-mycluster-0.
+**Slice 4 (autoscaling)** — *results recorded 2026-08-24, measured on gcp-0.
 Four PASS, one partial, one blocked on a GCP quota. Each is annotated below.*
 
 *Per-class status: `general-purpose` and `io` are both VERIFIED by live scale-up —
@@ -530,7 +548,7 @@ provisions regardless. Recorded so nobody re-derives the false alarm.*
    node image type.
 3. `opentofu/gcp/network/`, then `gke/init/` (including the Crossplane WIF binding), then
    `gke/configure/`.
-4. `clusters/gcp-mycluster-0/` minimum viable Flux tree — excluding `aws-load-balancer-controller`,
+4. `clusters/gcp-0/` minimum viable Flux tree — excluding `aws-load-balancer-controller`,
    `aws-efs-csi-driver`, Karpenter, `runtimeclass-nvidia`.
 5. **Gate again.** One `ComputeClass` proving criterion 12 before writing the other two; fallback is
    static pools + cluster autoscaler (ADR-0006 option 3).

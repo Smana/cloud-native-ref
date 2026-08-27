@@ -26,30 +26,36 @@ spec:
               protocol: UDP
             - port: "53"
               protocol: TCP
-    # EKS Pod Identity agent. It runs on the node's host network, so Cilium
-    # classifies the destination as the `host` entity and a toCIDR rule for
-    # 169.254.170.23/32 silently fails - see .claude/rules/cilium-network-policies.md.
+    # EKS Pod Identity agent on AWS; on GCP this is what lets `gcloud` reach
+    # GKE's metadata server at 169.254.169.254. Both run on the node's host
+    # network, so Cilium classifies the destination as the `host` entity and a
+    # toCIDR rule for the link-local address silently fails - see
+    # .claude/rules/cilium-network-policies.md.
     - toEntities:
         - host
       toPorts:
         - ports:
             - port: "80"
               protocol: TCP
-    # The OpenBao API, reached through the internal NLB, whose private addresses
-    # sit in the VPC CIDR. The job no longer connects to the raft leader by
-    # private IP — it goes through the NLB and lets standby nodes forward the
-    # request to the active node.
+    # The OpenBao API, reached through the internal load balancer. The job no
+    # longer connects to the raft leader by private IP — it goes through the
+    # LB and lets standby nodes forward the request to the active node.
+    # ${openbao_cidr} differs per cloud: on AWS it's the whole VPC (the
+    # internal NLB's private addresses); on GCP it's the node subnet, where
+    # the internal load balancer lives. See the ConfigMap comment in each
+    # cluster's eks/gke configure stack.
     - toCIDR:
-        - 10.0.0.0/16
+        - ${openbao_cidr}
       toPorts:
         - ports:
             - port: "8200"
               protocol: TCP
-    # S3 and STS. toFQDNs would be the tighter rule, but S3 endpoint topology
-    # fans out past what a single-segment matchPattern can follow. The blanket
-    # 443 rule is the sanctioned trade for a bounded one-shot job: this is a
-    # CronJob with a TTL, running under restricted PSS with a scoped IAM role,
-    # and every other port stays denied.
+    # S3 and STS on AWS; on GCP this is what carries `gcloud storage` traffic
+    # to Google APIs. toFQDNs would be the tighter rule, but both clouds' object
+    # storage endpoint topology fans out past what a single-segment
+    # matchPattern can follow. The blanket 443 rule is the sanctioned trade for
+    # a bounded one-shot job: this is a CronJob with a TTL, running under
+    # restricted PSS with a scoped IAM role, and every other port stays denied.
     - toEntities:
         - world
       toPorts:

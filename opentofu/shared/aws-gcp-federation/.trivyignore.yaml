@@ -1,0 +1,3 @@
+# Required by the trivy step in the Terramate scripts, which resolves
+# ./.trivyignore.yaml relative to the stack directory.
+misconfigurations: []

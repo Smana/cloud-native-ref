@@ -10,14 +10,15 @@ metadata:
 spec:
   image:
     repository: ghcr.io/open-webui/open-webui
-    tag: "v0.11.0"
+    tag: "v0.11.1"
     pullPolicy: IfNotPresent
 
   # Single replica — SQLite data dir on emptyDir; sessions reset on restart.
   # If durability is needed later, swap to App XR's sqlInstance.enabled.
   replicas: 1
 
-  # The openwebui-data PVC below is RWO (default gp3 StorageClass).
+  # The openwebui-data PVC below is RWO (the platform's default block
+  # storage class -- gp3 on aws-0, standard-rwo on gcp-0; either way, RWO).
   # RollingUpdate's maxSurge would spin up the new pod before the old
   # one releases the volume → `Multi-Attach error for volume` and the
   # rollout stalls. Recreate fully terminates the old pod first.
@@ -124,7 +125,7 @@ spec:
     # at its public hostname. Auth flow is Authorization Code + PKCE
     # (configured in the Zitadel application registration); OpenWebUI
     # handles the redirect callback at /oauth/zitadel/callback and
-    # the Tailscale-fronted HTTPRoute at chat.priv.aws.ogenki.io
+    # the Tailscale-fronted HTTPRoute at chat on the cluster private domain
     # exposes both the chat UI and the callback path.
     - name: ENABLE_OAUTH_SIGNUP
       value: "true"
@@ -139,8 +140,12 @@ spec:
       value: "true"
     - name: OAUTH_PROVIDER_NAME
       value: "zitadel"
+    # ${identity_provider_url}, not this cluster's own domain. ZITADEL is a
+    # singleton serving both clusters (ADR-0022), so a consumer must be told
+    # where it lives rather than assume it is local -- on gcp-0 the local guess
+    # would be auth.gcp.cloud.ogenki.io, which nothing serves.
     - name: OPENID_PROVIDER_URL
-      value: "https://auth.cloud.ogenki.io/.well-known/openid-configuration"
+      value: "${identity_provider_url}/.well-known/openid-configuration"
     # Maps Zitadel claim -> OpenWebUI display name. preferred_username
     # avoids dotted-email usernames (e.g. `firstname.lastname`); flip
     # to `email` if you want the email visible in the user picker.
@@ -190,7 +195,7 @@ spec:
         name: openwebui-secrets
         optional: true
 
-  # Default: private gateway (chat.priv.aws.ogenki.io)
+  # Default: private gateway (chat on the cluster private domain)
   route:
     enabled: true
     hostname: "chat"

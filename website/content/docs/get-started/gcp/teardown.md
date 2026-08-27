@@ -1,0 +1,132 @@
+---
+title: Teardown
+weight: 30
+description: Tear the GCP platform down safely, in reverse dependency order.
+lastVerified: 2026-08-27
+---
+
+Same shape as the [AWS teardown](../aws/teardown.md), with GCP's own traps. Two
+of them cost a manual cleanup on the 2026-08-27 gcp-0 teardown and are now
+handled by the destroy workflow itself.
+
+{{< callout type="warning" >}}
+Every GCP stack is gated on `TM_GCP_ENABLED=true`. Without it each job prints
+`[skip]` and exits 0 — including the destroy jobs. A teardown that appears to
+succeed instantly did nothing at all; check for `[skip]` lines before believing
+the cluster is gone.
+{{< /callout >}}
+
+## GKE only
+
+```bash
+cd opentofu/gcp/gke/init
+TM_GCP_ENABLED=true terramate script run destroy
+```
+
+Four jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
+
+1. **confirm + init** — `scripts/terramate-destroy-confirm.sh`, then `tofu init`.
+   Init runs *before* anything is destroyed on purpose: a lock file predating a
+   new provider must fail here, not once resources have started disappearing.
+2. **`stage2-reclaim-volumes`** — reclaims CSI-provisioned PD disks while the
+   cluster still exists (see below).
+3. **`stage2-destroy-addons`** — destroys the `gke/configure` stack (Gateway API
+   CRDs, Cilium, Flux). Never gates the cluster deletion.
+4. **`stage1-destroy-cluster`** — destroys the cluster itself. This one *is*
+   allowed to fail loudly: it is the billable resource.
+5. **`stage2-reconcile-state`** — drops any stage-2 state left behind, now that
+   the cluster holding those objects is provably gone.
+
+## Full teardown
+
+```bash
+cd opentofu
+TM_GCP_ENABLED=true terramate script run --reverse destroy
+```
+
+Destroys every stack — GKE, OpenBao, Network — in reverse dependency order, with
+a single confirmation cached for 10 minutes.
+
+## The two leaks this workflow now prevents
+
+### Orphaned Persistent Disks
+
+Deleting the cluster with PVCs still bound skips the reclaim entirely: the PD
+CSI controller dies with the cluster, and every PVC-backed disk is orphaned in
+the project with nothing left referencing it. Nothing reports this — `tofu
+destroy` says "Destroy complete" and the disks keep billing. Three survived the
+2026-08-27 teardown (20/10/5 GB), the GCP replay of an EBS leak EKS already had
+a step for.
+
+`stage2-reclaim-volumes` calls `scripts/k8s-reclaim-csi-volumes.sh`, shared with
+the AWS teardown because every step of it is plain Kubernetes. It suspends Flux,
+patches **every** PV to `Delete` — including PVs deliberately set to `Retain` —
+deletes CloudNativePG `Cluster` resources, scales down every workload mounting a
+PVC, then deletes all PVCs and waits up to 300s for reclaim.
+
+{{< callout type="warning" >}}
+**This step deletes PVC data unconditionally**, regardless of the reclaim policy
+a PV was created with. There is no flag that skips it. Back up anything you need
+*before* running the destroy.
+{{< /callout >}}
+
+It never gates the teardown. The control-plane endpoint is private, so the usual
+reason to be running destroy at all is that the cluster or the tailnet is
+unreachable — the script says so and exits 0. Disks it misses stay in the
+project; list them with:
+
+```bash
+gcloud compute disks list --project <project> \
+  --filter="-users:*" --format="table(name,sizeGb,zone)"
+```
+
+### `containerNotEmpty` on the Cloud DNS zone
+
+external-dns writes a record into the private zone for every HTTPRoute, and
+nothing removes them when the cluster goes — the controller that owned them went
+with it. Cloud DNS then refuses to delete a non-empty zone:
+
+```
+Error 400: The container is not empty., containerNotEmpty
+```
+
+which lands at the *end* of the network destroy, after the rest of the VPC is
+already gone, leaving the stack half torn down. On 2026-08-27 that meant deleting
+twelve records by hand.
+
+The network stack's destroy now runs `scripts/gcp-purge-dns-records.sh` first,
+reading the zone name from state rather than re-deriving it. Apex NS and SOA are
+left alone: Cloud DNS will not delete them separately and removes them with the
+zone. Safe to re-run — it exits 0 when the zone is already gone or already empty.
+
+## What is not deleted
+
+Secrets in Secret Manager outlive the cluster, by design — they are what a
+rebuild reads back. See [ADR-0023](../../decisions/0023-portable-secret-store-names.md).
+List and remove them by hand once you are certain:
+
+```bash
+gcloud secrets list --project <project> --format='value(name)'
+```
+
+The three hand-created bootstrap prerequisites — the state bucket, the Cloud KMS
+key ring, and the Tailscale OAuth client — are also left alone. Cloud KMS key
+rings cannot be deleted at all.
+
+## Verifying nothing is left
+
+Teardown is not finished because a script said so. Check the project:
+
+```bash
+gcloud container clusters list --project <project>
+gcloud compute instances list --project <project>
+gcloud compute disks list --project <project>
+gcloud compute addresses list --project <project>
+gcloud dns managed-zones list --project <project>
+gcloud compute networks list --project <project>   # only `default` should remain
+```
+
+## Non-interactive
+
+`TM_DESTROY_CONFIRMED=true` skips the interactive `y/n` prompt. It exists for
+CI; skip it on a first manual teardown so you get the confirmation.

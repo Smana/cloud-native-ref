@@ -270,7 +270,7 @@ that the metrics-side `VMAlert` does not match.
   rationale this record formalizes
 - [`.claude/rules/observability.md`](https://github.com/Smana/cloud-native-ref/blob/main/.claude/rules/observability.md)
   — LogsQL field-naming rules and Grafana dashboard conventions
-- `observability/base/victoria-metrics-k8s-stack/vmrules/karpenter.yaml`,
+- `observability/aws-0/victoria-metrics-k8s-stack/vmrules/karpenter.yaml`,
   `vmservicecrapes/karpenter.yaml` — `VMRule`/`VMServiceScrape` authored
   directly, outside a chart's own `valuesFrom` toggle
 - `observability/base/loggen/demo-vmrule.yaml` — the one deployed

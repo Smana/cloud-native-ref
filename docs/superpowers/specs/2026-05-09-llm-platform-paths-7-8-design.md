@@ -3,7 +3,7 @@
 **Status:** approved (brainstorming session 2026-05-09)
 **Owner:** smana
 **Repo:** `cloud-native-ref` @ branch `wip/self-hosted-llm-platform-draft` — added to PR #1434 (no separate PR)
-**Branches affected:** `infrastructure/base/crossplane/configuration/kcl/inference-service/`, `apps/base/ai/llm/qwen-coder.yaml`, `tooling/base/promptfoo/eval-suite-configmap.yaml`, `clusters/mycluster-0-llm-platform/README.md`, `README.md`, `docs/llm-platform-future-paths.md`
+**Branches affected:** `infrastructure/base/crossplane/configuration/kcl/inference-service/`, `apps/base/ai/llm/qwen-coder.yaml`, `tooling/base/promptfoo/eval-suite-configmap.yaml`, `clusters/aws-0-llm-platform/README.md`, `README.md`, `docs/llm-platform-future-paths.md`
 **Sibling docs:** [`2026-05-06-oss-llm-foundation-showcase-design.md`](./2026-05-06-oss-llm-foundation-showcase-design.md) (the foundation this design extends)
 
 ## Why this design exists
@@ -38,7 +38,7 @@ Path 7 is shipped, so it does **not** go into `docs/llm-platform-future-paths.md
 | SC-7.4 | Two new promptfoo eval entries (one per adapter) confirm each adapter alters output meaningfully. CronJob exits green. |
 | SC-7.5 | No regression in cold-start budget on `xplane-qwen-coder` (foundation-showcase SC-2: ≤180s p95). Measured via promptfoo. |
 | SC-7.6 | No regression in `xplane-qwen-coder-fim` latency (foundation-showcase SC-3: <200ms p95) — confirmed by NOT enabling `--enable-lora` on the FIM claim. |
-| SC-7.7 | `clusters/mycluster-0-llm-platform/README.md` and main `README.md` updated with "How to invoke an adapter" example and adapter-vs-base comparison snippet. |
+| SC-7.7 | `clusters/aws-0-llm-platform/README.md` and main `README.md` updated with "How to invoke an adapter" example and adapter-vs-base comparison snippet. |
 | SC-7.8 | Composition v0.6.0 backward-compatible: existing claims (`xplane-qwen3-8b`, `xplane-qwen-coder-fim`, `xplane-llamaguard3-1b`) render identically against `v0.6.0` with empty `loraAdapters`. Verified by `main_test.k` regression case + `kubeconform` on rendered manifests. |
 
 ### Path 8 success criterion
@@ -161,7 +161,7 @@ Two new AIGatewayRoute matchRules, one per adapter, each pointing to the existin
 
 **E. Docs**
 
-- `clusters/mycluster-0-llm-platform/README.md`: section "Invoking a LoRA adapter" with `curl` example.
+- `clusters/aws-0-llm-platform/README.md`: section "Invoking a LoRA adapter" with `curl` example.
 - Main `README.md` LLM Platform bullet: one-line mention.
 - `docs/llm-platform-future-paths.md`: append the path 8 paragraph (above) as the next numbered entry.
 

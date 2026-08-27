@@ -1,0 +1,43 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The two controllers, and NOTHING they admit.
+#
+# This split is load-bearing, not organisational. Both charts ship a VALIDATING
+# WEBHOOK with failurePolicy: Fail, and both webhooks admit resources that live
+# in ../openbao/ -- ExternalSecret and ClusterSecretStore for external-secrets,
+# ClusterIssuer for cert-manager. Applied in one Kustomization, the custom
+# resources land in the same apply as the chart, before either webhook Service
+# has endpoints, and every admission call fails with:
+#
+#   no endpoints available for service "external-secrets-webhook"
+#
+# Measured on the first GCP deploy (2026-08-25). It is not fatal -- the ESO
+# controller retries -- but controller-runtime backs off exponentially, so the
+# gap had reached 32s and was still doubling toward its 1000s ceiling by the
+# time the webhook was ready. Both ExternalSecrets sat unsynced with EMPTY
+# status columns and no events, while Flux reported the Kustomization Ready.
+# They needed a manual resync to recover.
+#
+# Splitting fixes it deterministically rather than probabilistically: ../openbao
+# is a separate Flux Kustomization that dependsOn this one, and this one's
+# healthChecks gate on both HelmReleases. helm-controller waits for the release's
+# workloads by default (install.disableWait is false), so a Ready HelmRelease
+# means the webhook Deployment is Available -- which means its Service has
+# endpoints before the first ExternalSecret exists.
+#
+# Both HelmReleases are referenced by FILE from security/base/. The base
+# DIRECTORIES also carry AWS-shaped siblings -- a SecretsManager
+# ClusterSecretStore and the Route53 Let's Encrypt issuers -- which would fail
+# here. Referencing the chart alone keeps a version bump landing on both clouds
+# at once.
+resources:
+  - ../../base/external-secrets/helmrelease.yaml
+  - ../../base/cert-manager/helmrelease.yaml
+
+patches:
+  - path: cert-manager-helmrelease.yaml
+    target:
+      group: helm.toolkit.fluxcd.io
+      kind: HelmRelease
+      name: cert-manager

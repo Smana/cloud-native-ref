@@ -42,7 +42,7 @@ aws secretsmanager get-secret-value \
 ## Kubernetes
 
 ```bash
-aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
+aws eks update-kubeconfig --region eu-west-3 --name aws-0
 kubectl get nodes
 flux get all
 ```

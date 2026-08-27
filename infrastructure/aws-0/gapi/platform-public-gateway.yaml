@@ -1,0 +1,56 @@
+# Public gateway for the FEW endpoints that must be reachable from the internet.
+# Deliberately single-purpose: today its only consumer is runlore's Slack
+# interactivity callback (POST /slack/interactions) — Slack posts button clicks /
+# reactions from its own servers, so a private (Tailscale) gateway cannot carry
+# them. Exposure is bounded by construction:
+#   - allowedRoutes restricts attachment to the runlore namespace only;
+#   - the runlore HTTPRoute matches exactly ONE path+method (everything else on
+#     the hostname is a gateway 404);
+#   - every request that reaches the app is HMAC-verified against the Slack
+#     signing secret (±5min replay window) — see runlore's docs/security-model.md.
+# TLS via cert-manager (letsencrypt-prod), internet-facing NLB.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: platform-public
+  labels:
+    external-dns: enabled  # required by external-dns's --gateway-label-filter
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    cert-manager.io/duration: 2160h # 90d
+    cert-manager.io/renew-before: 360h # 15d
+spec:
+  gatewayClassName: cilium
+  infrastructure:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+      service.beta.kubernetes.io/aws-load-balancer-name: "ogenki-platform-public-gateway"
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
+      service.beta.kubernetes.io/aws-load-balancer-type: "external"
+  listeners:
+    # One listener per public hostname, each with its own TLS secret. NOT a
+    # wildcard: `*.${public_domain_name}` would put every service under the domain
+    # behind a single private key, so one leaked Secret or compromised pod would
+    # expose all of them. cert-manager's gateway-shim issues one Certificate per
+    # listener, with exactly that hostname in its SAN list.
+    #
+    # Adding a public service means adding a listener. allowedRoutes already
+    # makes publishing a reviewed edit, so this costs nothing extra and turns
+    # the listener list into an auditable inventory of what is internet-facing.
+    - name: runlore
+      hostname: "runlore.${public_domain_name}"
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - runlore
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: runlore-public-tls

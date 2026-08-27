@@ -45,7 +45,7 @@ cd opentofu && terramate script run deploy
 cd eks/init && terramate script run deploy
 
 # 5. Get a kubeconfig
-aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
+aws eks update-kubeconfig --region eu-west-3 --name aws-0
 
 # 6. Watch Flux build the rest of the platform
 flux get all
@@ -81,7 +81,7 @@ The blog posts that explain several of these components in long form are collect
 │       ├── init/                  # Stage 1: EKS + bootstrap addons
 │       └── configure/             # Stage 2: Cilium + Flux
 ├── flux/                          # 🚀 Flux operator and configuration
-├── clusters/mycluster-0/          # Cluster-specific Kustomizations
+├── clusters/aws-0/          # Cluster-specific Kustomizations
 ├── infrastructure/                # 🏗️ Platform infrastructure
 ├── security/                      # 🔒 Security components
 ├── observability/                 # 👁️ Monitoring and logging

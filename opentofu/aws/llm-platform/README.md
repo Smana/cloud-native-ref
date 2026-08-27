@@ -65,14 +65,14 @@ Outputs:
 tofu output volume_handle
 # → "s3files:fs-xxxxxxxx::fsap-xxxxxxxx" — paste into the InferenceService
 #   composition's PV (or the Crossplane EnvironmentConfig at
-#   clusters/mycluster-0/environment-config.yaml).
+#   clusters/aws-0/environment-config.yaml).
 ```
 
 ## Wiring into the GitOps tree
 
 After apply, copy the outputs into:
 
-1. `clusters/mycluster-0/environment-config.yaml` — the `llm` block:
+1. `clusters/aws-0/environment-config.yaml` — the `llm` block:
    ```yaml
    llm:
      fsId: <filesystem_id>

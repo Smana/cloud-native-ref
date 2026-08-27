@@ -1,0 +1,35 @@
+# GCP providers, kept in a sibling directory rather than mixed into providers/.
+#
+# providers/ is entirely AWS (five provider packages, an AWS DeploymentRuntime-
+# Config, an AWS activation policy). Merging the two clouds there would mean
+# every cluster installing both families, since a ManagedResourceActivationPolicy
+# and a Provider are cluster-scoped and apply to whatever cluster the directory
+# is reconciled onto. The cloud split therefore has to happen at the directory
+# level, not inside a shared kustomization.
+#
+# ../rbac is that "first time a GCP composition writes a Kind no provider owns".
+#
+# This comment used to say there was no additional-rbac.yaml counterpart here,
+# because GCPWorkloadIdentity rendered only ProjectIAMMember -- provider-managed
+# and already covered -- and to add one when that changed. It predicted the
+# symptom exactly: "an XR reconcile loop on `Timeout: failed waiting for ...
+# Informer to sync`, not a permission error."
+#
+# That moment was crossplane-configuration v0.4.0, which gave SQLInstance a GCP
+# Composition. It renders a CNPG Cluster, a Database and ExternalSecrets, none
+# of which any GCP provider owns, and Harbor's claim on a live gcp-0 sat
+# Synced=False with precisely that message.
+#
+# The neutral aggregate ClusterRoles now live in
+# infrastructure/base/crossplane/rbac/ and are referenced by BOTH clouds rather
+# than copied -- they name no cloud API group, so a copy would only be a second
+# place to forget.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - activation-policy.yaml
+  - ../rbac
+  - deploymentruntimeconfig-gcp.yaml
+  - provider-cloudplatform.yaml
+  - provider-storage.yaml

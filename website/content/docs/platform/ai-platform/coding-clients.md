@@ -19,13 +19,13 @@ The Envoy AI Gateway enforces API-key authentication via an Envoy Gateway
 `SecurityPolicy` (`infrastructure/base/envoy-ai-gateway/security-policy.yaml`).
 Clients send the standard `Authorization: Bearer <key>` header; the gateway
 compares the value against the keys defined in the AWS Secrets Manager entry
-`platform/llm/api-keys` (a JSON object keyed by client identity).
+`platform-llm-api-keys` (a JSON object keyed by client identity).
 
 Retrieve a key for personal use:
 
 ```bash
 aws secretsmanager get-secret-value \
-  --secret-id platform/llm/api-keys \
+  --secret-id platform-llm-api-keys \
   --query SecretString --output text | jq -r .openwebui_apikey
 ```
 
@@ -34,7 +34,7 @@ variable and let the tool pick it up via env-var expansion:
 
 ```bash
 export OPENAI_API_KEY=$(aws secretsmanager get-secret-value \
-  --secret-id platform/llm/api-keys \
+  --secret-id platform-llm-api-keys \
   --query SecretString --output text | jq -r .openwebui_apikey)
 ```
 
@@ -171,7 +171,7 @@ curl -sS -X POST https://llm.priv.aws.ogenki.io/v1/completions \
 ## Troubleshooting
 
 - **`401 Unauthorized`** — the `Authorization` header is missing, or its
-  value doesn't match any key in `platform/llm/api-keys`. Verify
+  value doesn't match any key in `platform-llm-api-keys`. Verify
   `echo $OPENAI_API_KEY` is non-empty. New keys take up to 1h to propagate
   (External Secrets refresh); force it with
   `kubectl annotate externalsecret/ai-gateway-api-keys -n envoy-ai-gateway-system force-sync=$(date +%s) --overwrite`.

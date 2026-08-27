@@ -1,0 +1,39 @@
+---
+# Bucket-write identity for the LLM model-weights preload Job -- the GCP
+# analogue of aws-0's llm-platform-security-epi. Split into its own
+# Kustomization, same reason as AWS: gated independently of llm-platform-apps.
+# Depends on crossplane-configuration directly (not on llm-platform-apps),
+# because the CRD it needs (GCPWorkloadIdentity) comes from the
+# crossplane-configuration-gcp package that Kustomization installs, not from
+# anything llm-platform-apps applies.
+#
+# Read security/gcp-0/llm-models-preload/workloadidentity.yaml's own header
+# for what it grants and why serving pods are NOT covered by it.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: llm-platform-security-wi
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 1m0s
+  retryInterval: 30s
+  sourceRef:
+    kind: ExternalArtifact
+    name: security-artifact
+  path: ./security/gcp-0/llm-models-preload
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    # GCPWorkloadIdentity's CRD comes from the crossplane-configuration-gcp
+    # package installed by this edge -- the same source
+    # infrastructure/gcp-0/external-dns's identical claim depends on
+    # transitively via `infrastructure`.
+    - name: crossplane-configuration
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: GCPWorkloadIdentity
+      failed: status.conditions.filter(c, c.type == 'Synced' || c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Synced' || c.type == 'Ready').all(c, c.status == 'True')

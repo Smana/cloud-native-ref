@@ -22,6 +22,16 @@ spec:
     installCRDs: false
 
     operatorConfig:
+      # Per-cluster, same reason as the Gateway hostnames
+      # (infrastructure/base/gapi/platform-tailscale-general-gateway.yaml): the
+      # tailnet is SHARED between aws-0 and gcp-0, and the chart default
+      # ("tailscale-operator", verified via `helm template tailscale/tailscale-
+      # operator --version 1.90.6`) is not tailnet-unique across two clusters
+      # running this same shared HelmRelease. Without this, gcp-0's operator
+      # device collides with aws-0's and Tailscale silently suffixes one of
+      # them. `cluster_name` substitutes on both clouds.
+      hostname: "tailscale-operator-${cluster_name}"
+
       resources:
         limits:
           memory: 256Mi

@@ -3,9 +3,10 @@
 #
 # Runs the same three steps locally and in CI, so "it validates" is a claim
 # backed by a command anyone — human or agent — can reproduce:
-#   1. generate the schema catalog (XRDs + Envoy AI Gateway CRDs)
-#   2. render the repo into a bundle (kustomize + envsubst + helm template)
-#   3. gate the bundle: flux schema validate, then polaris audit
+#   1. check every Flux Kustomization that applies ${vars} declares postBuild
+#   2. generate the schema catalog (XRDs + Envoy AI Gateway CRDs)
+#   3. render the repo into a bundle (kustomize + envsubst + helm template)
+#   4. gate the bundle: flux schema validate, then polaris audit
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,17 +26,24 @@ fi
 
 BUNDLE_DIR="${BUNDLE_DIR:-.bundle}"
 
-echo "==> [1/3] Generating schema catalog"
+# Runs FIRST and fails fast, because it is the one check the bundle cannot make.
+# render-bundle.py substitutes its fixtures unconditionally, so a Kustomization
+# missing postBuild renders correctly in the bundle and lands as literal
+# `${var}` text on the cluster. Measured 2026-08-25; see the script's docstring.
+echo "==> [1/4] Checking Flux variable substitution wiring"
+python3 scripts/flux-schema/check-substitution.py
+
+echo "==> [2/4] Generating schema catalog"
 ./scripts/flux-schema/gen-catalog.sh > /dev/null
 
-echo "==> [2/3] Rendering manifests into ${BUNDLE_DIR}/"
+echo "==> [3/4] Rendering manifests into ${BUNDLE_DIR}/"
 rm -rf "${BUNDLE_DIR}"
 python3 scripts/flux-schema/render-bundle.py "${BUNDLE_DIR}"
 
-echo "==> [3/3] Gate 1 — flux schema validate (structure + CEL)"
+echo "==> [4/4] Gate 1 — flux schema validate (structure + CEL)"
 "${FLUX_BIN}" schema validate "${BUNDLE_DIR}" --config .fluxschema.yml
 
-echo "==> [3/3] Gate 2 — polaris audit (workload best practices)"
+echo "==> [4/4] Gate 2 — polaris audit (workload best practices)"
 polaris audit \
   --audit-path "${BUNDLE_DIR}" \
   --config .polaris.yaml \

@@ -37,7 +37,7 @@ script "deploy" {
   # therefore creates its ENIs filled with individual secondary IPs instead of
   # /28 prefixes, and never converts them — leaving the bootstrap nodes with a
   # permanent ~42-IP ceiling while every Karpenter node gets ~240. Measured on
-  # mycluster-0: two c7i-flex.xlarge MNG nodes at prefixes=0 next to a Karpenter
+  # aws-0: two c7i-flex.xlarge MNG nodes at prefixes=0 next to a Karpenter
   # c7i-flex.xlarge at prefixes=2. Same instance type; the difference is that the
   # MNG nodes predate Cilium.
   #

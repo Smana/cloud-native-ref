@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: infrastructure
+
+# The PRIVATE Tailscale gateways. Every manifest in infrastructure/base/gapi is
+# cloud-neutral, so this references the directory whole.
+#
+# It used to list the six files individually, because the seventh —
+# platform-public-gateway.yaml — was AWS-only: it carries
+# service.beta.kubernetes.io/aws-load-balancer-* annotations and a listener
+# hostname built from ${domain_name}, a key this cluster's ConfigMap does not
+# define, and Flux substitutes an undefined variable to empty (`hostname: "*."`).
+# That file now lives in infrastructure/aws-0/gapi/ where it belongs, so the
+# cherry-picking is no longer needed — and neither is the drift it invited: a
+# new cloud-neutral manifest in base/gapi reached aws-0 automatically and
+# silently skipped this cluster.
+#
+# This cluster DOES build a public path, from its own manifests in
+# infrastructure/gcp-0/gapi-public/ — see ADR-0019. DNS-01 against the public
+# zone works there because AWS IAM federation lets GKE workloads assume a
+# Route53 role with no static credentials.
+#
+# platform-private-gateway-certificate.yaml needs no GCP variant: it asks the
+# `openbao` ClusterIssuer for *.${private_domain_name}, verified end to end on
+# this cluster in workstream 11.
+#
+# Using loadBalancerClass: tailscale rather than a GCP forwarding rule means the
+# private gateways incur no cloud load-balancer charges.
+resources:
+  - ../../base/gapi

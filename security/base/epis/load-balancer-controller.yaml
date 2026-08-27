@@ -5,7 +5,7 @@ metadata:
     namespace: kube-system
 spec:
     clusters:
-        - name: "mycluster-0"
+        - name: "aws-0"
           region: "eu-west-3"
     serviceAccount:
         name: load-balancer-controller

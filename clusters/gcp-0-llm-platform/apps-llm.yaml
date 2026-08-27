@@ -1,0 +1,66 @@
+---
+# LLM apps: 4 InferenceService claims (qwen-coder, qwen-coder-fim, qwen3-8b,
+# llamaguard3-1b), the GCS bucket + static PV/PVC (ADR-0021), and the
+# platform-level Grafana dashboards/alerts -- apps/gcp-0/llm, mirroring
+# aws-0's apps/llm -> apps/aws-0/llm -> apps/base/ai/llm chain. No OpenWebUI
+# here, unlike aws-0's apps/llm (which also pulls in apps/base/openwebui) --
+# out of scope for this workstream; wire it the same way aws-0 does if gcp-0
+# ever needs a chat frontend.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: llm-platform-apps
+  namespace: flux-system
+  labels:
+    sharding.fluxcd.io/key: apps
+spec:
+  commonMetadata:
+    labels:
+      sharding.fluxcd.io/key: apps
+  prune: true
+  interval: 1m0s
+  # Preload Jobs download multi-GB checkpoints from HuggingFace on first
+  # deploy (10-30 min). Default Flux Kustomization timeout (5 min) would
+  # abort the apply mid-Job and create partial-preload retry cycles.
+  timeout: 30m0s
+  path: ./apps/gcp-0/llm
+  sourceRef:
+    kind: ExternalArtifact
+    name: apps-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    # No `apps` edge, unlike aws-0: gcp-0 has no base `apps` Kustomization at
+    # all yet (nothing else under apps/ is wired to this cluster) -- naming
+    # one that does not exist would wedge this Kustomization on a permanent
+    # "dependency not ready".
+    #
+    # InferenceService XR claims need the composition registered first (its
+    # `_defaultIngress` allows the AI Gateway data plane -> vLLM; without it,
+    # traffic is silently dropped by the default-deny CNP). This also
+    # installs the GCPWorkloadIdentity CRD that llm-platform-security-wi
+    # needs, but that Kustomization depends on crossplane-configuration
+    # directly rather than relying on this edge to imply it.
+    - name: crossplane-configuration
+    # AIGatewayRoute claims need the Gateway to exist before they can bind
+    # their parentRef.
+    - name: envoy-ai-gateway
+    # The preload Job's write identity must exist before its Job runs.
+    - name: llm-platform-security-wi
+    # NOT copied from aws-0: aws-0 also depends on `infrastructure` there for
+    # KEDA (the base infrastructure umbrella ships it). gcp-0's own
+    # `infrastructure` Kustomization (infrastructure/gcp-0) does not include
+    # KEDA -- see this directory's README, "Known gap: KEDA autoscaling".
+  # Targets InferenceService, not aws-0's `kind: App` -- that check gates
+  # OpenWebUI's readiness (apps/base/openwebui/app.yaml is the only `App`
+  # claim aws-0's apps/llm applies), and this directory has no App-kind
+  # resource at all. InferenceService carries the same standard Crossplane
+  # XR Ready condition, so the same CEL shape applies to the resource this
+  # directory actually manages.
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: InferenceService
+      failed: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'True')

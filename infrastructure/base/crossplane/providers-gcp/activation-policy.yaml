@@ -1,0 +1,26 @@
+# Crossplane v2 installs only the CRDs named here.
+#
+# The cloudplatform package ships 32 CRDs; without an activation entry a Kind is
+# simply absent, and a composition referencing it fails with
+# `no matches for kind <Kind>` — which reads like a missing package rather than a
+# missing activation. See .claude/rules/crossplane-validation.md, trap 2.
+#
+# Names are the PLURAL CRD names in the v2 `.m.upbound.io` group, not the v1
+# `.upbound.io` one. The package ships both; the v1 pair is the legacy
+# cluster-scoped API and activating it would install namespaced-resource CRDs
+# this platform does not use.
+#
+# Grows on evidence, like the grantable-role allowlist in
+# opentofu/gcp/gke/init/iam.tf — adding a Kind here is what makes it available
+# to compositions, so an unexplained entry is a capability nobody asked for.
+apiVersion: apiextensions.crossplane.io/v1alpha1
+kind: ManagedResourceActivationPolicy
+metadata:
+  name: gcp-resources
+spec:
+  activate:
+    # Cloud Platform / IAM — the only Kind GCPWorkloadIdentity renders.
+    - projectiammembers.cloudplatform.gcp.m.upbound.io
+    # Storage — the App Composition's GCS bucket + bucket-scoped grant.
+    - buckets.storage.gcp.m.upbound.io
+    - bucketiammembers.storage.gcp.m.upbound.io

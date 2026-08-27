@@ -1,0 +1,33 @@
+# Observability on gcp-0. Same four Kustomizations as aws-0, same order, same
+# shared base — only the overlay path and the vars ConfigMap differ.
+#
+# VictoriaTraces, from the shared base.
+#
+# Applied ONLY here, not also listed in ./observability/gcp-0 — two
+# Kustomizations with prune: true over the same objects would each be able to
+# delete what the other owns. (aws-0 currently does both; see the note in
+# observability/gcp-0/kustomization.yaml.)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: observability-victoria-traces
+  namespace: flux-system
+spec:
+  interval: 3m0s
+  timeout: 5m0s
+  path: ./observability/base/victoria-traces
+  prune: true
+  sourceRef:
+    kind: ExternalArtifact
+    name: observability-artifact
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    - name: observability-victoria-metrics-k8s-stack
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: victoria-traces
+      namespace: observability

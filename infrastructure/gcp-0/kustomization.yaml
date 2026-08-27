@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# GCP-only infrastructure for gcp-0.
+#
+# Separate from infrastructure/aws-0/ rather than an overlay on it: that
+# tree is AWS-shaped (Karpenter NodePools, aws-load-balancer-controller,
+# EKS Pod Identities) and shares no resources with this one. A ComputeClass has
+# no AWS counterpart at all -- ADR-0006 chose NAP over Karpenter precisely
+# because the two autoscalers do not share an API.
+#
+# This is the manifest-side counterpart to the opentofu/{aws,gcp,shared} split,
+# and is deliberately minimal until the design's slices 6-7 settle which parts of
+# the shared tree are genuinely cloud-neutral.
+resources:
+  - cloudnative-pg
+  - computeclass
+  - external-dns
+  - external-dns-public
+  # KEDA, from the SHARED base rather than a gcp-0 copy. Verified cloud-neutral
+  # before wiring: no IRSA, no IAM roles, no ARNs, and its CiliumNetworkPolicy
+  # addresses `toEntities: kube-apiserver` rather than a CIDR -- so unlike the
+  # openbao-snapshot policy (workstream 9, Task 12) there is nothing here that
+  # assumes an AWS network shape. It also declares no `${var}` at all, so it
+  # adds no key to this cluster's vars ConfigMap.
+  #
+  # Wired now because the LLM platform needs it: the InferenceService
+  # composition renders a KEDA ScaledObject per claim (SPEC-001), and without
+  # KEDA those never reconcile. That gap is recorded in
+  # clusters/gcp-0-llm-platform/README.md as one of two reasons not to resume
+  # the LLM umbrella; this closes the first of them.
+  - ../base/keda

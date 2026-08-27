@@ -5,28 +5,31 @@ description: Deploy the platform on AWS — three sequential stages, about thirt
 lastVerified: 2026-08-20
 ---
 
-AWS is the only cloud this platform runs on today. Every stage below is an
-OpenTofu stack orchestrated by [Terramate](https://terramate.io/); each stack
-declares the ones it depends on (`after` in its `stack.tm.hcl`), so Terramate
-always applies them in the right order even when you run one command that
-spans several stages.
+AWS is one of two implemented cloud lanes — see
+[GCP]({{< relref "/docs/get-started/gcp/_index.md" >}}) for the other, and
+[Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}) for
+what each one runs. Every stage below is an OpenTofu stack orchestrated by
+[Terramate](https://terramate.io/); each stack declares the ones it depends on
+(`after` in its `stack.tm.hcl`), so Terramate always applies them in the right
+order even when you run one command that spans several stages.
 
 ## Configure before deploying
+
+**Every stack already has a `variables.tfvars` committed**, holding values that
+deploy against the reference environment. You are editing a working
+configuration, not authoring one — which also means the fastest way to see what
+a stack expects is to read the file already sitting next to it.
 
 1. Edit `opentofu/config.tm.hcl` — region, EKS cluster name, the Helm chart
    versions used by the bootstrap (`cilium_version`, `flux_operator_version`,
    `flux_instance_version`), `flux_sync_repository_url` (point it at your own
    fork), and `openbao_url`.
-2. Create a `variables.tfvars` in each stack directory
+2. Edit the `variables.tfvars` in each stack directory
    (`opentofu/aws/network/`, `opentofu/aws/openbao/cluster/`,
    `opentofu/aws/openbao/management/`, `opentofu/aws/eks/init/`,
-   `opentofu/aws/eks/configure/`) with your environment-specific values.
-   `eks/configure` is easy to miss — it has no default `variables.tfvars` in
-   the repo, and Stage 3 below runs `tofu apply -var-file=variables.tfvars`
-   in that directory as its second internal step, which hard-errors if the
-   file is absent. At minimum it must set the variables with no default:
-   `cluster_name`, `env`, `flux_sync_url`, `private_domain_name`, and
-   `public_domain_name` (see `opentofu/aws/eks/configure/variables.tf`).
+   `opentofu/aws/eks/configure/`), replacing the reference values with yours —
+   principally `cluster_name`, `env`, `flux_sync_url`, `private_domain_name`
+   and `public_domain_name`.
 3. Export the one secret Terraform needs from the environment rather than a
    file:
 
@@ -38,25 +41,24 @@ spans several stages.
 
 {{% steps %}}
 
-### Stage 1 — Network
+### Stages 1 and 2 — Network, then OpenBao
 
 ```bash
 cd opentofu
 terramate script run deploy
 ```
 
-Creates the VPC across three availability zones, public and private subnets,
-a Route53 private hosted zone, VPC endpoints, and the Tailscale subnet router
-EC2 instance that gives you private access to everything built after this
+**One command covers both stages** — there is no second command to run below.
+Terramate resolves the dependency graph and applies `network`, then
+`openbao/cluster`, then `openbao/management`, because each declares the previous
+one in its `after` list.
+
+*Stage 1* creates the VPC across three availability zones, public and private
+subnets, a Route53 private hosted zone, VPC endpoints, and the Tailscale subnet
+router EC2 instance that gives you private access to everything built after this
 point.
 
-### Stage 2 — OpenBao
-
-Terramate continues straight into this stage as part of the same command
-above — `openbao/cluster` depends on `network`, and `openbao/management`
-depends on `openbao/cluster`.
-
-Creates the OpenBao cluster behind a Network Load Balancer, then configures
+*Stage 2* creates the OpenBao cluster behind a Network Load Balancer, then configures
 it. As committed, `opentofu/aws/openbao/cluster/variables.tfvars` sets
 `mode = "dev"`: a single `t3.micro` on `file` storage, which is enough to
 follow everything in these guides and is not highly available. Set
@@ -89,8 +91,12 @@ up prefix delegation (see `opentofu/aws/eks/init/workflows.tm.hcl`).
 
 ## Verify
 
+The region and cluster name below are the reference values — use whatever you
+set in `opentofu/config.tm.hcl`. The API endpoint is private, so the Tailscale
+subnet router from Stage 1 must be up first (`tailscale status`).
+
 ```bash
-aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
+aws eks update-kubeconfig --region eu-west-3 --name aws-0
 kubectl get nodes
 flux get all
 ```

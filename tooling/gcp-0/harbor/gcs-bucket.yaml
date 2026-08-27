@@ -1,0 +1,22 @@
+# Registry image layers are expensive to reconstruct and outlive any single
+# cluster, so Crossplane must never attempt to remove the bucket.
+# `forceDestroy: false` below already refuses to delete a non-empty bucket, so
+# the realistic failure this prevents here is the same finalizer wedge as on
+# aws-0, not data loss: without this, Crossplane keeps retrying delete on
+# prune, GCP denies a non-empty-bucket delete, and the MR finalizer hangs the
+# namespace teardown. To remove intentionally, use the gcloud CLI.
+# (Crossplane v2 namespaced MRs do not expose spec.deletionPolicy;
+# managementPolicies is the v2 mechanism.)
+apiVersion: storage.gcp.m.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: harbor
+  namespace: tooling
+  annotations:
+    crossplane.io/external-name: ${project_id}-ogenki-harbor
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    location: ${region}
+    uniformBucketLevelAccess: true
+    forceDestroy: false

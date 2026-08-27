@@ -49,20 +49,78 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       }
     }
     data = {
-      cluster_name           = var.cluster_name
-      cluster_endpoint       = replace(data.aws_eks_cluster.this.endpoint, "https://", "")
-      cluster_endpoint_full  = data.aws_eks_cluster.this.endpoint
-      oidc_provider_arn      = data.aws_iam_openid_connect_provider.this.arn
-      oidc_issuer_url        = local.oidc_issuer_url
-      oidc_issuer_host       = local.oidc_issuer_host
-      aws_account_id         = data.aws_caller_identity.this.account_id
-      region                 = var.region
-      environment            = var.env
-      domain_name            = var.public_domain_name
-      private_domain_name    = var.private_domain_name
-      public_domain_name     = var.public_domain_name
-      vpc_id                 = data.aws_vpc.selected.id
-      vpc_cidr_block         = data.aws_vpc.selected.cidr_block
+      cluster_name          = var.cluster_name
+      cluster_endpoint      = replace(data.aws_eks_cluster.this.endpoint, "https://", "")
+      cluster_endpoint_full = data.aws_eks_cluster.this.endpoint
+      oidc_provider_arn     = data.aws_iam_openid_connect_provider.this.arn
+      oidc_issuer_url       = local.oidc_issuer_url
+      oidc_issuer_host      = local.oidc_issuer_host
+      aws_account_id        = data.aws_caller_identity.this.account_id
+      region                = var.region
+      # The cluster's default block-storage class for PVCs. Shared name with
+      # the GCP ConfigMap, different value: this repo creates the gp3
+      # StorageClass object itself (kubectl_manifest.gp3_storageclass,
+      # below) -- EKS's EBS CSI managed add-on supplies only the
+      # provisioner. GKE's side is standard-rwo, a class GKE auto-installs
+      # (no equivalent kubectl_manifest needed there). Both are SSD-backed
+      # and both are consumed as an opaque string by storageClassName --
+      # nothing derives anything else from it, which is what makes one
+      # shared key honest here where ${region} was not (see the
+      # workstream 13 design).
+      storage_class = "gp3"
+      environment   = var.env
+      # `domain_name` used to sit here as a THIRD key holding
+      # var.public_domain_name -- the same value as public_domain_name below,
+      # under a second name. It was removed rather than kept as a harmless
+      # alias, because it was not harmless: gcp-0's ConfigMap never defined it,
+      # so every manifest reaching for ${domain_name} was AWS-only by accident
+      # rather than by design. observability/base/runlore was excluded from
+      # gcp-0 for exactly this reason and nothing else.
+      #
+      # Flux substitutes an undefined variable to EMPTY, so such a manifest does
+      # not fail on GCP -- it renders a hostname with a hole in it. Two keys for
+      # one value is how that happens quietly.
+      private_domain_name = var.private_domain_name
+      public_domain_name  = var.public_domain_name
+
+      # Where the platform's identity provider actually lives.
+      #
+      # ZITADEL is a SINGLETON: one instance serves both clusters, because two
+      # instances would be two user directories, two session stores and two sets
+      # of OIDC clients with no federation between them (ADR-0022).
+      #
+      # aws-0 hosts it today, so here the URL is derived from this cluster's own
+      # public domain rather than hardcoded -- a cluster that hosts the IdP is
+      # always reachable at auth.<its own domain>. gcp-0 sets the same key to a
+      # LITERAL pointing back here; see opentofu/gcp/gke/configure/kubernetes.tf.
+      #
+      # Consumed by apps/base/openwebui (OIDC discovery) and
+      # tooling/base/homepage (a link). Both hardcoded this host until now,
+      # which is what made "which cloud hosts the IdP" unanswerable from
+      # configuration.
+      identity_provider_url = "https://auth.${var.public_domain_name}"
+      vpc_id                = data.aws_vpc.selected.id
+      vpc_cidr_block        = data.aws_vpc.selected.cidr_block
+      # The CIDR holding OpenBao's internal endpoint, consumed by
+      # security/base/openbao-snapshot/network-policy.yaml. On AWS that is the
+      # whole VPC (the internal NLB's private addresses); on GCP it is the node
+      # subnet, where the internal load balancer lives. Same key, different
+      # shape per cloud -- which is exactly why the manifest cannot hardcode it.
+      openbao_cidr = data.aws_vpc.selected.cidr_block
+      # security/base/openbao-snapshot/external-secrets.yaml's Secret Manager
+      # key. Path-style here because AWS Secrets Manager allows "/"; GCP's
+      # ConfigMap (opentofu/gcp/gke/configure/kubernetes.tf) carries a flat
+      # dash-separated ID instead, because GCP Secret Manager forbids "/".
+      # Same key, different shape per cloud -- see opentofu/gcp/openbao/management's
+      # snapshot_approle_secret_name (Task 14).
+      openbao_snapshot_secret = "security/openbao/openbao-snapshot" # pragma: allowlist secret
+      # apps/base/ai/llm/hf-token-externalsecret.yaml's Secret Manager key.
+      # Path-style here because AWS Secrets Manager allows "/"; GCP's
+      # ConfigMap (opentofu/gcp/gke/configure/kubernetes.tf) carries a flat
+      # dash-separated ID instead, because GCP Secret Manager forbids "/".
+      # Same key, different shape per cloud -- same split as
+      # openbao_snapshot_secret above, same reason (Task 14).
+      llm_hf_token_secret    = "/platform/llm/hf_token" # pragma: allowlist secret
       karpenter_queue_name   = local.karpenter_queue_name
       route53_public_zone_id = data.aws_route53_zone.public.zone_id
     }

@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# A pass-through, exactly like observability/aws-0/victoria-metrics-k8s-stack.
+#
+# The directory exists so the stack gets its own Flux Kustomization — it
+# installs the CRDs (VMCluster, VMRule, VMServiceScrape, …) that everything
+# downstream depends on, so it has to reach Ready before grafana-operator and
+# the rest of observability apply.
+#
+# The base is otherwise cloud-neutral -- its PVCs read ${storage_class}, which
+# is standard-rwo on this cluster. The single patch below is the one thing that
+# could not be parameterised.
+resources:
+  - ../../base/victoria-metrics-k8s-stack
+
+patches:
+  # The OpenBao CA secret is stored raw-PEM under a GCP-valid name here, versus
+  # JSON-with-a-property under an AWS-style slash path on aws-0. See the patch.
+  - path: externalsecret-openbao-ca-patch.yaml
+    target:
+      group: external-secrets.io
+      kind: ExternalSecret
+      name: openbao-ca

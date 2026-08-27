@@ -1,31 +1,47 @@
-# State lives in S3, not GCS, even though this stack manages GCP resources.
+# GCP state lives in GCS, in a project that holds nothing else.
 #
-# One bucket for the whole platform, in the home cloud. Two reasons, the first
-# being the one that matters:
+# It used to live in the AWS S3 bucket alongside every other stack's state. The
+# reason recorded then was sound but argued against the wrong thing: the GCS
+# bucket it replaced sat INSIDE ogenki-435905 -- the very project whose resources
+# it tracked -- so deleting or suspending that project would have taken the state
+# describing it along with it. That is an argument against a state bucket in the
+# workload project, not against GCS. Project `ogenki-tfstate` holds the bucket
+# and nothing else, which closes the loop properly.
 #
-#   1. The GCS bucket it replaced (ogenki-435905-tfstate) sat INSIDE project
-#      ogenki-435905 -- the very project whose resources it tracked. Deleting or
-#      suspending that project would have taken the state describing it along
-#      with it. State belongs outside the blast radius of what it manages.
-#   2. One bucket is one hand-created bootstrap prerequisite instead of two.
-#      Neither bucket is IaC-managed (the usual chicken-and-egg), so each extra
-#      one is another undocumented step before a fresh clone can plan.
+# What the move buys, in order of weight:
 #
-# opentofu/shared/tailscale set this precedent already: its state is here for
-# the same reason, because the tailnet belongs to neither cloud.
+#   1. GCP stacks need GCP credentials ONLY. Under S3, every `tofu plan` here
+#      also required AWS credentials -- the same shape of cross-cloud coupling
+#      this platform rejected elsewhere on principle.
+#   2. Teardown survives an AWS outage. An S3 outage, or a suspended AWS
+#      account, previously blocked GCP `destroy` as well as `apply` -- and
+#      teardown is the operation most needed when something is already wrong.
+#   3. Secrets in state stop crossing clouds. opentofu/gcp/openbao/management's
+#      state contains cert-manager's live AppRole secret_id; with shared state,
+#      an AWS-side compromise handed over a working GCP credential.
 #
-# The accepted cost: running the GCP stacks now requires AWS credentials as well
-# as GCP ones, and an S3 outage blocks GCP applies. A real coupling, taken
-# deliberately for a single-owner platform.
+# The accepted cost is a SECOND hand-created bootstrap prerequisite. Neither
+# bucket is IaC-managed (the usual chicken-and-egg), so this is one more
+# undocumented step before a fresh clone can plan -- documented here and in
+# ADR-0018 rather than left implicit, exactly like the Cloud KMS key ring in
+# opentofu/gcp/openbao/cluster/kms.tf.
 #
-# NOTE the hardcoded region. It is the S3 BUCKET's region and has nothing to do
-# with var.region, which in these stacks is a GCP region (europe-west4).
+#   gcloud projects create ogenki-tfstate --organization=<org-id>
+#   gcloud billing projects link ogenki-tfstate --billing-account=<account-id>
+#   gcloud services enable storage.googleapis.com --project=ogenki-tfstate
+#   gcloud storage buckets create gs://ogenki-cloud-native-ref-tfstate \
+#     --project=ogenki-tfstate --location=europe-west4 \
+#     --uniform-bucket-level-access --public-access-prevention
+#   gcloud storage buckets update gs://ogenki-cloud-native-ref-tfstate --versioning
+#
+# opentofu/shared/* deliberately STAYS in S3: the tailnet belongs to neither
+# cloud, which is the one case the original single-bucket rationale gets right.
+#
+# No `use_lockfile` here -- unlike the S3 backend, GCS locks natively and has
+# always done so.
 terraform {
-  backend "s3" {
-    bucket       = "demo-smana-remote-backend"
-    key          = "cloud-native-ref/gcp/network/opentofu.tfstate"
-    region       = "eu-west-3"
-    encrypt      = true
-    use_lockfile = true # native S3 locking (.tflock object, no DynamoDB)
+  backend "gcs" {
+    bucket = "ogenki-cloud-native-ref-tfstate"
+    prefix = "cloud-native-ref/gcp/network"
   }
 }

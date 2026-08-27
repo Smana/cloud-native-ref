@@ -29,7 +29,7 @@ The wizard clones **two** repositories at startup: this one (for the `App`
 schema, stacks, and its own config) and
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)
 at the tag pinned in `apps/platform/app-wizard/app.yaml`'s
-`fetch-crossplane-configuration` init container — currently `v0.1.0`, the
+`fetch-crossplane-configuration` init container — currently `v0.3.1`, the
 same tag pinned in
 `infrastructure/base/crossplane/configuration/configuration-packages.yaml`.
 This is a deliberate coupling, not an accident: if the wizard's clone drifts
@@ -199,7 +199,7 @@ Open the wizard → **New app** → stack `demo` → name `outline` (plain — n
 | Health probes | liveness / readiness / startup · type `http` · path `/_health` |
 | PostgreSQL (`sqlInstance`) | enabled · database `outline`, owner role `outline` · **leave `postgresql.parameters` empty** |
 | Key-value (`kvStore`) | enabled · `valkey` |
-| S3 (`s3Bucket`) | enabled · `readwrite` |
+| Object storage (`objectStore`) | enabled · `readwrite` |
 | Route | enabled · **not** internet-facing · hostname `outline` |
 | Env | `NODE_ENV=production`, `PORT=3000`, `URL=https://outline.priv.aws.ogenki.io`, `PGSSLMODE=disable`, `FILE_STORAGE=s3`, `AWS_REGION=eu-west-3`, `AWS_S3_UPLOAD_BUCKET_NAME=eu-west-3-ogenki-outline`, `OIDC_AUTH_URI=https://auth.cloud.ogenki.io/oauth/v2/authorize`, `OIDC_TOKEN_URI=https://auth.cloud.ogenki.io/oauth/v2/token`, `OIDC_USERINFO_URI=https://auth.cloud.ogenki.io/oidc/v1/userinfo`, `OIDC_USERNAME_CLAIM=preferred_username`, `OIDC_SCOPES=openid profile email` |
 | External secrets | `outline-secrets` ← AWS Secrets Manager path apps/outline/secrets |

@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Everything that the controllers in ../controllers/ have to ADMIT before it can
+# exist: two ExternalSecrets and a ClusterSecretStore behind the external-secrets
+# webhook, a ClusterIssuer behind cert-manager's.
+#
+# Kept out of ../controllers/ deliberately -- see the note there. Applying these
+# in the same Kustomization as the charts means admitting them against webhooks
+# whose Services have no endpoints yet.
+#
+# Ordering runs the other way too, which is why this is a good boundary rather
+# than a workaround: the ClusterIssuer needs the two Secrets that the
+# ExternalSecrets produce, and those need External Secrets to be running. One
+# group installs controllers; the other configures them.
+resources:
+  - clustersecretstore.yaml
+  - openbao-approle-externalsecret.yaml
+  - openbao-ca-externalsecret.yaml
+  - openbao-clusterissuer.yaml

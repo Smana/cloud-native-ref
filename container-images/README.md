@@ -12,6 +12,11 @@ container-images/
 │   ├── pev2.html
 │   ├── build.sh
 │   └── README.md
+├── openbao-snapshot/        # OpenBao raft snapshot save/restore (aws + gcp CLIs)
+│   ├── Dockerfile
+│   ├── openbao-snapshot.sh
+│   ├── build.sh
+│   └── README.md
 └── README.md               # This file
 ```
 

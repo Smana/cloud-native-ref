@@ -8,8 +8,12 @@
 #
 # 5Gi is generous for the SQLite DB itself (~250 KB at 1 admin + few
 # chats) plus the embedded vector store / model-cache files OpenWebUI
-# downloads on startup. gp3 because the workload is small-IOPS read +
-# occasional write — RWO is fine since we only run a single replica.
+# downloads on startup. storageClassName is set explicitly below
+# (${storage_class}: gp3 on aws-0, standard-rwo on gcp-0), not left to each
+# cluster's own default -- gcp-0's actual default is "standard" (pd-standard,
+# HDD), so omitting this field would silently land on the wrong tier. The
+# SSD-backed class named here suits this small-IOPS read + occasional write
+# pattern -- RWO is fine since we only run a single replica.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -22,7 +26,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: gp3
+  storageClassName: ${storage_class}
   resources:
     requests:
       storage: 5Gi

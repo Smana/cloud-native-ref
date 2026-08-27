@@ -9,7 +9,7 @@
         <mxCell id="__t" value="What Flux reconciles, and in what order" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
           <mxGeometry x="60" y="30" width="1100" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="__ts" value="Every box is a Flux Kustomization in clusters/mycluster-0/. Arrows are spec.dependsOn — Flux will not apply a Kustomization until every one it points at reports Ready." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">
+        <mxCell id="__ts" value="Every box is a Flux Kustomization under clusters/aws-0/ or clusters/gcp-0/. Arrows are spec.dependsOn — Flux will not apply a Kustomization until the ones it points at are Ready. A path written aws-0 · gcp-0 is per-cluster: each cluster applies its own overlay of the same shared base." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">
           <mxGeometry x="60" y="62" width="1300" height="20" as="geometry" />
         </mxCell>
         <mxCell id="ns" value="&lt;b&gt;namespaces&lt;/b&gt;&#xa;./namespaces/base" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
@@ -21,7 +21,7 @@
         <mxCell id="fart" value="&lt;b&gt;flux-artifact-generators&lt;/b&gt;&#xa;./flux/artifact-generators" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="540" y="130" width="210" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="llm" value="&lt;b&gt;llm-platform&lt;/b&gt;&#xa;./clusters/mycluster-0-llm-platform" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="llm" value="&lt;b&gt;llm-platform&lt;/b&gt;&#xa;./clusters/aws-0 · gcp-0 -llm-platform" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="780" y="130" width="210" height="58" as="geometry" />
         </mxCell>
         <mxCell id="crds" value="&lt;b&gt;crds&lt;/b&gt;&#xa;./crds/base" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
@@ -30,25 +30,25 @@
         <mxCell id="xpc" value="&lt;b&gt;crossplane-controller&lt;/b&gt;&#xa;…/crossplane/controller" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="60" y="306" width="210" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="karp" value="&lt;b&gt;karpenter&lt;/b&gt;&#xa;./infrastructure/base/karpenter" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="karp" value="&lt;b&gt;karpenter&lt;/b&gt;&#xa;./infrastructure/base/karpenter&#xa;AWS only — ADR-0006" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="300" y="306" width="210" height="58" as="geometry" />
         </mxCell>
         <mxCell id="xpp" value="&lt;b&gt;crossplane-providers&lt;/b&gt;&#xa;…/crossplane/providers" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="60" y="394" width="210" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="karpn" value="&lt;b&gt;karpenter-nodepools&lt;/b&gt;&#xa;…/karpenter-nodepools" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="karpn" value="&lt;b&gt;karpenter-nodepools&lt;/b&gt;&#xa;…/karpenter-nodepools&#xa;AWS only" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="540" y="394" width="210" height="58" as="geometry" />
         </mxCell>
         <mxCell id="xpcfg" value="&lt;b&gt;crossplane-configuration&lt;/b&gt;&#xa;…/crossplane/configuration" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="60" y="482" width="210" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="epi" value="&lt;b&gt;eks-pod-identities&lt;/b&gt;&#xa;./security/base/epis" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="epi" value="&lt;b&gt;eks-pod-identities&lt;/b&gt;&#xa;./security/base/epis&#xa;AWS only — ADR-0002" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="60" y="570" width="210" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="sec" value="&lt;b&gt;security&lt;/b&gt;&#xa;./security/mycluster-0" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="sec" value="&lt;b&gt;security&lt;/b&gt;&#xa;./security/aws-0 · gcp-0" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="60" y="658" width="210" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="infra" value="&lt;b&gt;infrastructure&lt;/b&gt;&#xa;./infrastructure/mycluster-0" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="infra" value="&lt;b&gt;infrastructure&lt;/b&gt;&#xa;./infrastructure/aws-0 · gcp-0" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="300" y="658" width="210" height="58" as="geometry" />
         </mxCell>
         <mxCell id="fluxfam" value="flux/* — four more, all after security" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#94A3B8;verticalAlign=top;fontStyle=1;fontFamily=Helvetica;fontSize=13;fontColor=#1E293B;align=left;spacingLeft=8;" vertex="1" parent="1">
@@ -69,7 +69,7 @@
         <mxCell id="ovm" value="&lt;b&gt;observability-victoria-metrics-k8s-stack&lt;/b&gt;&#xa;…/victoria-metrics-k8s-stack" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="60" y="830" width="210" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="zit" value="&lt;b&gt;zitadel&lt;/b&gt;&#xa;./security/mycluster-0/zitadel" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="zit" value="&lt;b&gt;zitadel&lt;/b&gt;&#xa;./security/aws-0/zitadel&#xa;one instance — ADR-0022" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="300" y="830" width="210" height="58" as="geometry" />
         </mxCell>
         <mxCell id="ogo" value="&lt;b&gt;observability-grafana-operator&lt;/b&gt;&#xa;./observability/base/grafana-operator" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
@@ -78,13 +78,13 @@
         <mxCell id="ovt" value="&lt;b&gt;observability-victoria-traces&lt;/b&gt;&#xa;./observability/base/victoria-traces" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="300" y="918" width="210" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="obs" value="&lt;b&gt;observability&lt;/b&gt;&#xa;./observability/mycluster-0" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="obs" value="&lt;b&gt;observability&lt;/b&gt;&#xa;./observability/aws-0" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="60" y="1006" width="210" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="tool" value="&lt;b&gt;tooling&lt;/b&gt;&#xa;./tooling/mycluster-0" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="tool" value="&lt;b&gt;tooling&lt;/b&gt;&#xa;./tooling/aws-0 · gcp-0" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="60" y="1094" width="210" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="apps" value="&lt;b&gt;apps&lt;/b&gt;&#xa;./apps/mycluster-0" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="apps" value="&lt;b&gt;apps&lt;/b&gt;&#xa;./apps/aws-0" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="300" y="1094" width="210" height="58" as="geometry" />
         </mxCell>
         <mxCell id="e27" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="ns" target="crds">
@@ -178,7 +178,7 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="llmnote" value="&lt;b&gt;Suspended.&lt;/b&gt; spec.suspend: true, and it is deliberately a sibling of clusters/mycluster-0/ so the flux-system Kustomization's recursive sync cannot reach its five children and apply them behind the suspend. Nothing under it runs until:&#xa;flux resume kustomization llm-platform -n flux-system" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+        <mxCell id="llmnote" value="&lt;b&gt;Suspended.&lt;/b&gt; spec.suspend: true, and it is deliberately a sibling of clusters/aws-0/ so the flux-system Kustomization's recursive sync cannot reach its five children and apply them behind the suspend. Nothing under it runs until:&#xa;flux resume kustomization llm-platform -n flux-system" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
           <mxGeometry x="774" y="200" width="246" height="140" as="geometry" />
         </mxCell>
         <mxCell id="srcnote" value="No dependsOn: sources and artifact generators are what everything else pulls from, so they must reconcile first and depend on nothing." style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
@@ -205,7 +205,7 @@
         <mxCell id="__lgs2" value="" style="rounded=0;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;" vertex="1" parent="1">
           <mxGeometry x="526" y="1170" width="26" height="14" as="geometry" />
         </mxCell>
-        <mxCell id="__lgl2" value="scaling — Karpenter" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+        <mxCell id="__lgl2" value="scaling — Karpenter (AWS)" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
           <mxGeometry x="560" y="1168" width="286" height="16" as="geometry" />
         </mxCell>
         <mxCell id="__lgs3" value="" style="rounded=0;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;dashed=1;" vertex="1" parent="1">

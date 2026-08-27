@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kube-system
+
+# A SECOND external-dns on this cluster, and it has to be.
+#
+# external-dns takes ONE --provider per instance. The existing deployment
+# (infrastructure/gcp-0/external-dns/) is provider: google, filtered to the
+# private Cloud DNS zone; it cannot also write Route53. So the public zone needs
+# its own controller, its own ServiceAccount and its own identity.
+#
+# The two must never fight over a record. They are separated three ways:
+# different providers, non-overlapping domainFilters (private vs public zone),
+# and distinct txtOwnerId. aws-0's external-dns writes this same public zone, so
+# its owner ID must differ too -- hence `gcp-0-public` rather than ${cluster_name},
+# which would collide with nothing today but reads as if it might.
+resources:
+  - serviceaccount.yaml
+  - rbac.yaml
+  - helmrelease.yaml

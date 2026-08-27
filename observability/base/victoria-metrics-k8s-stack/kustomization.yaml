@@ -11,7 +11,8 @@ resources:
   - httproute-vmalertmanager.yaml
   # Victoria Metrics Operator resources
   - vmscrapeconfigs
-  - vmservicecrapes
+  # vmservicecrapes/ moved to observability/aws-0/victoria-metrics-k8s-stack/:
+  # it held one file, a VMServiceScrape in the karpenter namespace.
   - vmrules
   # Common Helm values for both single and cluster
   - vm-common-helm-values-configmap.yaml

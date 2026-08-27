@@ -18,10 +18,10 @@ of `kustomization.yaml`.
 |---|---|---|
 | Retention | `1d` — explicitly commented "Minimal retention, for tests only" | `10d` |
 | Replication | `replicaCount: 1` | `replicationFactor: 2`, separate `vmstorage`/`vmselect`/`vminsert` with zone-aware anti-affinity |
-| Storage | 10Gi RWO | 10Gi (`vmstorage`) + 2Gi (`vminsert`/`vmselect`) gp3 |
+| Storage | 10Gi RWO | 10Gi (`vmstorage`) + 2Gi (`vminsert`/`vmselect`), platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |
 | Alertmanager | `replicaCount` unset (chart default) | `replicaCount: 2` |
 
-`mycluster-0`'s overlay (`observability/mycluster-0/victoria-metrics-k8s-stack/kustomization.yaml`)
+`aws-0`'s overlay (`observability/aws-0/victoria-metrics-k8s-stack/kustomization.yaml`)
 adds no patches — it's a pure passthrough to the base. Common values shared
 by both modes (`vm-common-helm-values-configmap.yaml`, applied via
 `valuesFrom`) disable the control-plane rule groups (`kubernetes-system-apiserver`,
@@ -61,7 +61,7 @@ discovered, each used somewhere in this repo:
 endpoints. Most charts in this repo render their own via a
 `vmServiceScrape.enabled: true` value (`runlore`, `victoria-traces`,
 `victoria-logs`, `victoria-metrics-k8s-stack` itself); a few are authored
-directly, e.g. `observability/base/victoria-metrics-k8s-stack/vmservicecrapes/karpenter.yaml`
+directly, e.g. `observability/aws-0/victoria-metrics-k8s-stack/vmservicecrapes/karpenter.yaml`
 scrapes the `karpenter` namespace's `http-metrics` port (Karpenter isn't part
 of this stack, but its metrics land in the same VictoriaMetrics — the
 directory name carries an upstream typo, `vmservicecrapes`, not
@@ -116,7 +116,7 @@ histogram_quantile(0.95, sum(rate(runlore_model_request_duration_seconds_bucket[
 ```
 
 The first two are drawn directly from
-`observability/base/victoria-metrics-k8s-stack/vmrules/runlore.yaml` and
+`observability/aws-0/victoria-metrics-k8s-stack/vmrules/runlore.yaml` and
 `infrastructure/base/cloudnative-pg/grafana-dashboard-query-performance.yaml`.
 Standard cAdvisor/kube-state-metrics queries (`container_cpu_usage_seconds_total`,
 `kube_pod_status_phase`, and similar) also work unchanged — they come from

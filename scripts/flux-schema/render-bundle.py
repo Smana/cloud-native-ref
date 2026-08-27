@@ -70,22 +70,77 @@ NON_MANIFEST_FILES = {
 # Same fixture values CI passed to kubeconform. Substituted so that
 # ${private_domain_name} in a DNS-1123 field validates as a hostname.
 FIXTURE_VARS = {
-    "domain_name": "cluster.local",
+    # No "domain_name": it was removed from the aws-0 ConfigMap, where it was a
+    # second key holding the same value as public_domain_name. A fixture for a
+    # key no cluster defines would let a manifest reference it and still render
+    # here -- which is precisely how the AWS-only usages went unnoticed.
     "private_domain_name": "priv.cluster.local",
     "public_domain_name": "cluster.local",
     "cluster_name": "foobar",
     "region": "eu-west-3",
     "environment": "dev",
+    # Both clusters define this; the value differs (gp3 / standard-rwo) but the
+    # SHAPE does not -- it is an opaque string either way, which is why one
+    # fixture is honest here. Contrast "region" above, where a single
+    # AWS-shaped fixture masks a GCP-shaped runtime value.
+    "storage_class": "gp3",
+    # One fixture, and honestly so: ZITADEL is a singleton, so BOTH clusters
+    # carry the same value here -- aws-0 derives it from its own domain because
+    # it hosts the IdP, gcp-0 sets the same literal because it consumes it
+    # (ADR-0022). A per-cluster override would misrepresent the design.
+    "identity_provider_url": "https://auth.cluster.local",
     "cert_manager_approle_id": "random",
     "route53_public_zone_id": "Z0123456789",
     "aws_account_id": "123456789012",
     "vpc_id": "vpc-0123456789abcdef0",
     "vpc_cidr_block": "10.0.0.0/16",
+    # Must match vpc_cidr_block above: both clusters' ConfigMaps set
+    # openbao_cidr from the same CIDR range in this fixture (AWS: whole VPC;
+    # GCP: node subnet), so aws-0 renders byte-identical.
+    "openbao_cidr": "10.0.0.0/16",
+    # AWS value (the GCP ConfigMap carries a different, dash-separated ID --
+    # see Task 14). Without this entry VAR_RE.sub passes the name through
+    # verbatim and the ExternalSecret silently extracts nothing: schema-valid,
+    # useless, and gate 1 would never catch it since the target field is a
+    # free-form string.
+    "openbao_snapshot_secret": "security/openbao/openbao-snapshot",  # pragma: allowlist secret
+    # apps/base/ai/llm/hf-token-externalsecret.yaml. AWS value, same reasoning
+    # as openbao_snapshot_secret above: without this entry VAR_RE.sub passes
+    # the name through verbatim and the ExternalSecret extracts nothing --
+    # schema-valid, useless.
+    "llm_hf_token_secret": "/platform/llm/hf_token",  # pragma: allowlist secret
     "oidc_provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks",
     "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com",
     "oidc_issuer_url": "https://oidc.eks.eu-west-3.amazonaws.com",
     "cluster_endpoint_full": "https://example.eks.amazonaws.com",
     "karpenter_queue_name": "karpenter-foobar",
+    # GCP. Without these, VAR_RE.sub passes the name through verbatim and CI
+    # renders GCP manifests still containing a literal ${project_id}. They pass
+    # gate 1 anyway — every target field is a free-form string — so the GCP
+    # substitution path would be validated without ever being exercised, which is
+    # the silent skip SPEC-007 exists to prevent.
+    "project_id": "ogenki-435905",
+    # Unquoted on purpose: this is what Flux actually substitutes, and a bare
+    # 12-digit number parses as an int downstream. Keeping the fixture faithful
+    # is what lets CI catch a consumer that assumes a string.
+    "project_number": "323586397743",
+    "workload_pool": "ogenki-435905.svc.id.goog",
+    "zone": "europe-west4-a",
+    "network_name": "vpc-foobar",
+    # Federated Route53 path (workstream 12). GCP-only: aws-0 authenticates to
+    # Route53 with ambient EKS Pod Identity credentials and has no equivalent
+    # variable. public_domain_name and route53_public_zone_id above already
+    # cover the two AWS-named keys this fixture shares with the AWS ones.
+    "route53_role_arn": "arn:aws:iam::123456789012:role/gcp-0-route53-dns",
+    # A dedicated AWS-region hint for the route53 solver, deliberately distinct
+    # from "region" above -- reusing that key would need the fixture to be an
+    # AWS region for aws-0 and a GCP region for gcp-0, and this single map
+    # cannot tell which cluster is rendering. So it stays AWS-shaped for both,
+    # which means the gcp-0 bundle would render a region that cluster never
+    # substitutes -- the blind spot that let `region: ${region}` reach review.
+    # See opentofu/gcp/gke/configure's var.route53_region for why the two keys
+    # must never collapse into one.
+    "route53_region": "eu-west-3",
 }
 
 KUBE_VERSION = "1.31.0"
@@ -176,11 +231,64 @@ HELM_BIN = resolve_bin("HELM_BIN", "helm")
 KUSTOMIZE_BIN = resolve_bin("KUSTOMIZE_BIN", "kustomize")
 
 
-def substitute(text):
-    """Replace ${var} with fixture values. `$${var}` is Flux's escape - leave it."""
+# Values that genuinely differ per cluster. FIXTURE_VARS above stays the merged
+# map and remains AWS-shaped, because most of the repo is aws-0 and because
+# base/ roots are rendered from it -- they belong to no cluster, appearing as
+# roots only because top_most_overlays() treats a nested-but-unreferenced dir as
+# one, and nothing deploys them.
+#
+# This makes the gcp-0 bundle honest; it does NOT make it a gate. A wrong GCP
+# value is still a string to the schema validator, exactly as a wrong AWS one
+# is. What catches an undefined variable is check-substitution.py, which reads
+# each cluster's real ConfigMap and walks the cluster graph rather than guessing
+# a cluster from a path.
+CLUSTER_FIXTURE_VARS = {
+    # aws-0 needs no overrides: the merged map is already AWS-shaped.
+    "aws-0": {},
+    "gcp-0": {
+        "region": "europe-west4",
+        "private_domain_name": "priv.gcp.cluster.local",
+        # NOT route53_region. That one is AWS-shaped on gcp-0 ON PURPOSE -- it
+        # is the AWS region hint the Route53 solver needs, and gcp-0 really does
+        # substitute an AWS region there. See opentofu/gcp/gke/configure's
+        # var.route53_region, and the comment on route53_region above.
+    },
+}
+
+
+def cluster_of(path):
+    """Cluster a bundle path belongs to, or None for base/ and anything else.
+
+    Paths are `<area>/<cluster>/...` (security/gcp-0/openbao-snapshot) or
+    `<area>/base/...`. Anything unrecognised -- including a new area directory
+    -- returns None and gets the merged map, so an unfamiliar layout degrades to
+    today's behaviour instead of breaking the render.
+    """
+    parts = str(path).replace("\\", "/").split("/")
+    if len(parts) >= 2 and parts[1] in CLUSTER_FIXTURE_VARS:
+        return parts[1]
+    return None
+
+
+def substitute(text, cluster=None):
+    """Replace ${var} with fixture values. `$${var}` is Flux's escape - leave it.
+
+    `cluster` selects the per-cluster overrides; None means the merged map.
+    """
+    fixtures = FIXTURE_VARS
+    overrides = CLUSTER_FIXTURE_VARS.get(cluster) if cluster else None
+    if overrides:
+        fixtures = {**FIXTURE_VARS, **overrides}
     text = text.replace("$${", "\x00{")
-    text = VAR_RE.sub(lambda m: FIXTURE_VARS.get(m.group(1), m.group(0)), text)
+    text = VAR_RE.sub(lambda m: fixtures.get(m.group(1), m.group(0)), text)
     return text.replace("\x00{", "$${")
+
+
+def load_docs_text(text):
+    """Parse a rendered multi-doc YAML string. Mirrors load_docs, which reads
+    from a path — chart extraction now works on kustomize output held in
+    memory rather than on a file."""
+    return [d for d in yaml.safe_load_all(text) if isinstance(d, dict)]
 
 
 def load_docs(path):
@@ -355,8 +463,8 @@ def top_most_overlays():
     A dir is a root when it is filesystem-top-most (no ancestor kustomization)
     OR it is nested but no other kustomization references it — the latter being
     a dir a Flux Kustomization targets directly by `spec.path`
-    (infrastructure/mycluster-0/crossplane/*, security/mycluster-0/zitadel,
-    observability/mycluster-0/victoria-metrics-k8s-stack). The old
+    (infrastructure/aws-0/crossplane/*, security/aws-0/zitadel,
+    observability/aws-0/victoria-metrics-k8s-stack). The old
     `no ancestor kustomization` rule silently dropped that second class from
     both render paths, contradicting SPEC-007's no-silent-skips guarantee.
 
@@ -364,7 +472,16 @@ def top_most_overlays():
     the `spec.path` of every Flux Kustomization under clusters/. Deriving roots
     from those directly would be more exact but couples the renderer to the
     cluster's Kustomization graph (base-vs-overlay, suspended siblings, multiple
-    clusters); test-flux-schema.sh pins the known nested cases as a safety net."""
+    clusters).
+
+    NOTHING PINS THE KNOWN NESTED CASES. An earlier version of this docstring
+    said "test-flux-schema.sh pins the known nested cases as a safety net";
+    that file has never existed in this repo. A docstring asserting a safety
+    net that is absent is worse than silence, because it reads as covered and
+    nobody re-checks -- the same shape as a Renovate annotation that matches
+    nothing. test-check-substitution.py covers the undefined-variable gate,
+    not this heuristic. If a nested overlay is ever dropped from the bundle,
+    only the resource count moving will show it."""
     dirs = _kustomization_dirs()
     referenced = _referenced_dirs(dirs)
     roots = []
@@ -481,7 +598,21 @@ def clone_git_source(url, ref, dest):
     return None
 
 
+def overlay_slug(overlay):
+    """Stable filename fragment for an overlay path. Shared by the overlay file
+    and its charts so the two are greppable together in the bundle."""
+    return str(overlay).replace("/", "-")
+
+
 def render_overlay(overlay, outdir):
+    """Build one overlay. Returns (error, rendered_text).
+
+    The returned text is postprocessed but NOT substituted, because it feeds
+    two consumers with different needs: the bundle file (substituted, so gate 1
+    sees realistic values) and chart extraction in main(), which wants the
+    HelmRelease exactly as `render_helmrelease` has always received it. Feeding
+    substituted values to `helm template` would change what every chart renders
+    — a behaviour change well beyond fixing the dedupe key."""
     result = subprocess.run(
         [KUSTOMIZE_BIN, "build", str(overlay), "--load-restrictor=LoadRestrictionsNone"],
         capture_output=True,
@@ -489,14 +620,15 @@ def render_overlay(overlay, outdir):
         timeout=300,
     )
     if result.returncode != 0:
-        return _last_line(result, "kustomize build failed")
+        return _last_line(result, "kustomize build failed"), None
     try:
         rendered = postprocess(result.stdout)
     except yaml.YAMLError as exc:
-        return f"postprocess: {exc}"
-    name = "overlay-" + str(overlay).replace("/", "-") + ".yaml"
-    (outdir / name).write_text(substitute(rendered))
-    return None
+        return f"postprocess: {exc}", None
+    (outdir / ("overlay-" + overlay_slug(overlay) + ".yaml")).write_text(
+        substitute(rendered, cluster_of(overlay))
+    )
+    return None, rendered
 
 
 def _resolve_chart(spec, sources, namespace):
@@ -525,7 +657,14 @@ def effective_namespace(doc, kustomize_namespace):
     return doc["metadata"].get("namespace") or kustomize_namespace or "default"
 
 
-def render_helmrelease(doc, sources, outdir, namespace):
+def render_helmrelease(doc, sources, outdir, namespace, stem):
+    """`stem` is the bundle filename fragment identifying WHICH rendering this
+    is — `<overlay-slug>` for a chart reached through an overlay, or `direct`
+    for a HelmRelease no overlay covers. It exists because one release name can
+    legitimately render twice with different values: aws-0 and gcp-0 both
+    resolve external-dns to kube-system/external-dns, and keying the output on
+    (namespace, name) alone meant only one of them ever reached
+    `helm template`."""
     meta, spec = doc["metadata"], doc["spec"]
     namespace = effective_namespace(doc, namespace)
 
@@ -613,7 +752,12 @@ def render_helmrelease(doc, sources, outdir, namespace):
     except yaml.YAMLError as exc:
         return f"HelmRelease/{namespace}/{meta['name']}: postprocess: {exc}"
 
-    (outdir / f"chart-{namespace}-{meta['name']}.yaml").write_text(substitute(rendered))
+    # stem is overlay_slug(overlay), i.e. the path with "/" replaced by "-".
+    # Restoring the first separator is enough for cluster_of, which only reads
+    # the second segment.
+    (outdir / f"chart-{stem}-{namespace}-{meta['name']}.yaml").write_text(
+        substitute(rendered, cluster_of(stem.replace("-", "/", 1)))
+    )
     return None
 
 
@@ -681,24 +825,67 @@ def main():
                     helmreleases[key] = (doc, kustomize_ns, is_referenced)
             if not in_overlay and docs:
                 (outdir / ("standalone-" + str(path).replace("/", "-"))).write_text(
-                    substitute(path.read_text())
+                    substitute(path.read_text(), cluster_of(path))
                 )
                 standalone += 1
 
-    # Every render writes its own uniquely-named output file, so the only
-    # shared mutable state is the helm cache (serialized per source URL above).
-    # Futures are drained in submission order to keep error output
-    # deterministic regardless of completion order.
+    # Overlays FIRST, charts second — a deliberate serialization.
+    #
+    # Charts used to be discovered by scanning raw files and deduped by
+    # (effective namespace, name). That key is not unique across clusters: both
+    # aws-0 and gcp-0 resolve external-dns to kube-system/external-dns, so only
+    # ONE set of values ever reached `helm template`. Worse, the GCP variant is
+    # a patch fragment with no `chart:`, so it was never even a candidate and
+    # produced no "duplicate" note — it was skipped in silence. A values-shape
+    # error on that release could not fail the build.
+    #
+    # Rendering from each overlay's OWN output fixes that by construction: the
+    # overlay has already merged base + patches, so what we template is what
+    # that cluster actually gets. The cost is wall-clock — charts consumed by
+    # both clouds now render twice — and a bundle keyed by overlay.
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         overlay_futures = [(o, pool.submit(render_overlay, o, outdir)) for o in overlays]
-        chart_futures = [
-            pool.submit(render_helmrelease, doc, sources, outdir, namespace)
-            for doc, namespace, _ in helmreleases.values()
-        ]
+        overlay_docs = []
         for overlay, future in overlay_futures:
-            error = future.result()
+            error, rendered = future.result()
             if error:
                 errors.append(f"kustomize {overlay}: {error}")
+                continue
+            overlay_docs.append((overlay, rendered))
+
+    # Chart tasks, one per (overlay, namespace, name).
+    chart_tasks = []
+    seen = set()
+    for overlay, rendered in overlay_docs:
+        stem = overlay_slug(overlay)
+        for doc in load_docs_text(rendered):
+            spec = doc.get("spec") or {}
+            if doc.get("kind") != "HelmRelease" or not (spec.get("chart") or spec.get("chartRef")):
+                continue
+            # An overlay's output already carries the kustomization's namespace
+            # transformer, so metadata.namespace is authoritative here.
+            ns = doc["metadata"].get("namespace") or "default"
+            chart_tasks.append((doc, ns, stem))
+            seen.add((ns, doc["metadata"]["name"]))
+
+    # Fallback: a HelmRelease no overlay covers still has to be rendered, or
+    # this change would quietly shrink coverage while looking like a fix. Every
+    # one is logged rather than assumed absent.
+    for (ns, name), (doc, kustomize_ns, _referenced) in helmreleases.items():
+        if (ns, name) in seen:
+            continue
+        print(
+            f"note: HelmRelease/{ns}/{name} is not reached by any overlay; "
+            f"rendering it directly from its source file",
+            file=sys.stderr,
+        )
+        chart_tasks.append((doc, kustomize_ns, "direct"))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        chart_futures = [
+            pool.submit(render_helmrelease, doc, sources, outdir, ns, stem)
+            for doc, ns, stem in chart_tasks
+        ]
         for future in chart_futures:
             error = future.result()
             if error:

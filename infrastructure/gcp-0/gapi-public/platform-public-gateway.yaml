@@ -1,0 +1,57 @@
+# The one internet-reachable surface on this cluster.
+#
+# CERTIFICATES ARE PER-HOSTNAME, NOT WILDCARD, and that is deliberate. A
+# `*.gcp.cloud.ogenki.io` certificate means one private key covers every service
+# under the subdomain, so a single compromised pod or leaked Secret exposes all
+# of them. Each listener below therefore carries its OWN `certificateRefs`
+# secret, which makes cert-manager's gateway-shim issue one Certificate per
+# hostname with exactly that name in its SAN list. Blast radius of a key
+# compromise is one service.
+#
+# Adding a public service means adding a listener here. That is a feature, not
+# friction: `allowedRoutes` already restricts routes to the `infrastructure`
+# namespace, so exposing something publicly is a reviewed edit either way, and
+# an explicit listener list is an auditable inventory of what this cluster
+# serves to the internet. A wildcard listener would let any HTTPRoute in the
+# allowed namespace claim any hostname without review.
+#
+# The shim reads these annotations; `duration`/`renew-before` preserve what the
+# standalone wildcard Certificate used to set explicitly (90d / 15d).
+#
+# BILLABLE: gatewayClassName `cilium` with no `loadBalancerClass: tailscale`
+# provisions a real GCP forwarding rule and external IP, unlike the private
+# gateways next door. Deleting this Gateway is what releases them -- do that
+# BEFORE destroying the cluster, or the load balancer is orphaned.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: platform-public
+  labels:
+    external-dns: enabled # required by external-dns's --gateway-label-filter
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    cert-manager.io/duration: 2160h # 90d
+    cert-manager.io/renew-before: 360h # 15d
+spec:
+  gatewayClassName: cilium
+  listeners:
+    # The cross-cloud demonstration endpoint, and what the workstream 12
+    # verification exercises end to end. Replace or extend with real services;
+    # each one gets its own listener block and its own TLS secret.
+    - name: probe
+      hostname: "probe.${public_domain_name}"
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - infrastructure
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: probe-public-tls

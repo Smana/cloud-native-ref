@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: crossplane-system
+
+# GCP counterpart to configuration/. What the CLUSTER owns, as opposed to the
+# API contract that ships in a package.
+#
+# The two-PR `prune: disabled` cutover described in ../README.md did NOT apply to
+# this pin, and the reason is worth keeping: that procedure exists because a
+# package ADOPTS existing XRDs while Flux prune deletes them in between, taking
+# every claim with them. No GCPWorkloadIdentity XRD or claim has ever existed on
+# any cluster, so there was nothing to adopt and nothing to destroy. It applies
+# again the moment this package reaches a second cluster.
+resources:
+  - ../functions
+  - cluster-providerconfig-gcp.yaml
+  - configuration-packages.yaml
+  - environmentconfig.yaml

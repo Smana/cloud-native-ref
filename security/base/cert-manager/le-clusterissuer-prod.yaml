@@ -11,7 +11,7 @@ spec:
     solvers:
       - selector:
           dnsZones:
-            - "${domain_name}"
+            - "${public_domain_name}"
         dns01:
           route53:
             region: ${region}

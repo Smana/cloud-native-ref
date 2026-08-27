@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base/atlas-operator
+  - ../base/aws-efs-csi-driver
+  - ../base/aws-load-balancer-controller
+  - ../base/cilium
+  - ./cloudnative-pg
+  - ../base/cloudnative-pg-barman-plugin
+  - ../base/external-dns
+  - ./gapi
+  - ../base/keda
+  # Karpenter is deployed via separate Flux Kustomization (see clusters/aws-0/infrastructure.yaml)

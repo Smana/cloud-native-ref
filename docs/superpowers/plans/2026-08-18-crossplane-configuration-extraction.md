@@ -1349,7 +1349,7 @@ is cut over.
 
 This settles the design's highest-severity risk: installing the Configuration packages must
 **adopt** the existing XRDs, not delete and recreate them. Recreating would orphan 37 live claims on
-`mycluster-0`. Prove it on kind, never first on the real cluster.
+`aws-0`. Prove it on kind, never first on the real cluster.
 
 - [ ] **Step 1: Create a throwaway cluster and install Crossplane**
 

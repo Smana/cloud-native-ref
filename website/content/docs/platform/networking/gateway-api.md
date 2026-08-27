@@ -38,7 +38,7 @@ Three roles, three resources:
 | `platform-tailscale-admin` | `cilium-tailscale` | Private services restricted to `group:admin` — see [Private Access]({{< relref "/docs/platform/networking/private-access.md" >}}) |
 | `platform-public` | `cilium` | The few endpoints that must be internet-reachable |
 
-`platform-public` (`infrastructure/base/gapi/platform-public-gateway.yaml`)
+`platform-public` (`infrastructure/aws-0/gapi/platform-public-gateway.yaml`)
 is deliberately narrow, not a general-purpose public entry point. Today its
 only consumer is `runlore`'s Slack interactivity callback — Slack posts
 button clicks from Slack's own servers, so a private Tailscale gateway can't

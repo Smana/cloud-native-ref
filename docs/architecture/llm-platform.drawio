@@ -74,7 +74,7 @@
           <mxGeometry x="220" y="1190" width="370" height="100" as="geometry" />
         </mxCell>
 
-        <mxCell id="wt" value="/models&#xa;S3 Files (POSIX over S3)&#xa;RWX PVC llm-models" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="wt" value="/models&#xa;S3 Files (AWS) · GCS FUSE (GCP)&#xa;RWX PVC llm-models" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="690" y="1180" width="220" height="115" as="geometry" />
         </mxCell>
 
@@ -175,7 +175,7 @@
         <mxCell id="pipe" value="Crossplane composition pipeline" style="rounded=1;absoluteArcSize=1;arcSize=16;shadow=1;verticalAlign=top;container=1;pointerEvents=0;whiteSpace=wrap;html=1;fillColor=#FAFAFF;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=14;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="430" y="140" width="300" height="230" as="geometry" />
         </mxCell>
-        <mxCell id="p1" value="function-environment-configs&#xa;(eks-environment)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="pipe">
+        <mxCell id="p1" value="function-environment-configs&#xa;(eks-environment · gke-environment)" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="pipe">
           <mxGeometry x="20" y="40" width="260" height="50" as="geometry" />
         </mxCell>
         <mxCell id="p2" value="&lt;b&gt;function-kcl&lt;/b&gt;   target: Default&#xa;OCI crossplane-inference-service:0.8.2" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="pipe">
@@ -226,7 +226,7 @@
         <mxCell id="job" value="preload Job&#xa;huggingface-cli download" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="390" y="1080" width="220" height="65" as="geometry" />
         </mxCell>
-        <mxCell id="pv" value="/models&#xa;S3 Files, RWX&#xa;shared by Job and pod" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="pv" value="/models&#xa;S3 Files / GCS FUSE&#xa;shared by Job and pod" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="750" y="1060" width="220" height="105" as="geometry" />
         </mxCell>
         <mxCell id="pod2" value="vLLM serving pod&#xa;egress: kube-dns ONLY&#xa;--model /models/&amp;lt;revision&amp;gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">

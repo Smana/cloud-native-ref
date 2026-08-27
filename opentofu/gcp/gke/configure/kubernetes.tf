@@ -11,11 +11,31 @@
 # infrastructure/base/ render correctly on either cloud. Renaming them here would
 # silently break shared manifests on GCP only.
 #
-# AWS-only keys are deliberately absent (aws_account_id, oidc_provider_arn,
-# vpc_id, karpenter_queue_name, route53_public_zone_id). The manifests that use
-# them are AWS-specific and are excluded from clusters/gcp-mycluster-0. If a
-# shared manifest ever needs one, the right fix is a cloud-neutral name provided
-# by both ConfigMaps, not an AWS name faked on GCP.
+# AWS-only keys mostly stay absent (aws_account_id, oidc_provider_arn, vpc_id,
+# karpenter_queue_name). The manifests that use them are AWS-specific and are
+# excluded from clusters/gcp-0. If a shared manifest ever needs one, the right
+# fix is a cloud-neutral name provided by both ConfigMaps, not an AWS name faked
+# on GCP.
+#
+# route53_public_zone_id, route53_role_arn and route53_region are the
+# deliberate exception (workstream 12): AWS values in a GCP ConfigMap on
+# purpose, because cloud.ogenki.io is one Route53 zone BOTH clusters write to
+# (ADR-0017, ADR-0019). route53_public_zone_id matches the key name the AWS
+# ConfigMap uses for that same zone; route53_role_arn has no AWS counterpart
+# because aws-0 reaches Route53 with ambient EKS Pod Identity credentials, not
+# federation. route53_region is deliberately its own key rather than a reuse
+# of the cloud-neutral `region` above -- that one holds gcp-0's GCP region,
+# and feeding it to the AWS SDK as an AssumeRoleWithWebIdentity credential-scope
+# hint breaks the token exchange this federation depends on. See the comment
+# on var.route53_region.
+#
+# public_domain_name is NOT the exception above -- it is GCP-only in VALUE
+# (gcp.cloud.ogenki.io, not cloud.ogenki.io) even though it shares a variable
+# name with the AWS side. Both clusters write into the same zone, but each
+# requests a different name within it, so aws-0's live *.cloud.ogenki.io
+# wildcard Certificate and gcp-0's do not share a Let's Encrypt
+# duplicate-certificate bucket or a `_acme-challenge` TXT record. See the
+# comment on var.public_domain_name and ADR-0019.
 resource "kubectl_manifest" "flux_cluster_vars" {
   yaml_body = yamlencode({
     apiVersion = "v1"
@@ -34,6 +54,17 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       environment         = var.env
       region              = var.region
       private_domain_name = local.init.private_domain_name
+      # standard-rwo is pd-balanced, GKE's SSD class and the honest gp3
+      # equivalent -- despite the name, it is NOT the HDD tier. That is
+      # "standard" (pd-standard), which is cheaper and was considered given
+      # this platform's tear-down-after-every-run posture, but rejected: the
+      # largest consumer is a VictoriaMetrics cluster whose write path is
+      # I/O-sensitive -- a reference platform running it on HDD would be
+      # unrepresentative of production. Corroborated in-repo, not just
+      # asserted: opentofu/gcp/gke/init/helm_values/flux-instance.yaml
+      # already sets Flux's own artifact PVC to storage.class: standard-rwo,
+      # carried through a gcp-0 cluster that deployed successfully.
+      storage_class = "standard-rwo"
 
       # GCP-specific.
       project_id     = var.project_id
@@ -44,6 +75,53 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       node_cidr      = local.init.node_cidr
       pod_cidr       = local.pod_cidr
       service_cidr   = local.init.service_cidr
+      # OpenBao's internal load balancer sits in the node subnet on GCP
+      # (opentofu/gcp/openbao/cluster/load_balancer.tf uses
+      # local.subnetwork_self_link, whose range is var.node_cidr) -- unlike
+      # AWS, where it's the whole VPC. Same key as the AWS ConfigMap, same
+      # value as node_cidr above, consumed by
+      # security/base/openbao-snapshot/network-policy.yaml.
+      openbao_cidr = local.init.node_cidr
+      # security/base/openbao-snapshot/external-secrets.yaml's Secret Manager
+      # key. Flat and dash-separated, unlike the AWS ConfigMap's path-style
+      # value -- GCP Secret Manager forbids "/" in a secret ID. Must match
+      # opentofu/gcp/openbao/management's snapshot_approle_secret_name (Task 14).
+      openbao_snapshot_secret = "openbao-priv-gcp-snapshot" # pragma: allowlist secret
+      # apps/base/ai/llm/hf-token-externalsecret.yaml's Secret Manager key.
+      # Flat and dash-separated, unlike the AWS ConfigMap's path-style value --
+      # GCP Secret Manager forbids "/" in a secret ID. Same split, same reason,
+      # as openbao_snapshot_secret above. Only required if the LLM platform is
+      # enabled on this cluster (clusters/gcp-0/llm-platform.yaml) -- a hand-
+      # created entry, same as the other gcp-bootstrap.md prerequisites, not
+      # provisioned by OpenTofu on either cloud.
+      llm_hf_token_secret = "llm-platform-hf-token" # pragma: allowlist secret
+
+      # Public DNS, for the federated Route53 path (workstream 12).
+      # public_domain_name is gcp.cloud.ogenki.io -- gcp-0's OWN subdomain of
+      # the shared zone, not the same name aws-0 uses. The other three are AWS
+      # values in a GCP ConfigMap on purpose: both clusters write into one
+      # Route53 zone, which is what ADR-0017 and ADR-0019 decided. See the
+      # header comment above for why the name itself still differs per cloud.
+      public_domain_name     = var.public_domain_name
+      route53_public_zone_id = var.route53_public_zone_id
+      route53_role_arn       = var.route53_role_arn
+      route53_region         = var.route53_region
+
+      # The platform's identity provider, which this cluster CONSUMES rather
+      # than hosts.
+      #
+      # A literal, not "https://auth.${var.public_domain_name}" like the AWS
+      # stack computes. That would resolve to auth.gcp.cloud.ogenki.io -- a name
+      # nothing serves, because ZITADEL runs on aws-0. The value has to name the
+      # HOST cluster, and this cluster is not it.
+      #
+      # ZITADEL is deliberately a singleton (ADR-0022): one instance for both
+      # clusters, because the alternative is two user directories and two
+      # session stores with no federation. Moving the IdP to gcp-0 means
+      # changing THREE things together -- which overlay includes
+      # security/base/zitadel, this value, and the same key in the AWS stack.
+      # The ADR spells that out; nothing here can enforce it.
+      identity_provider_url = var.identity_provider_url
     }
   })
   server_side_apply = true

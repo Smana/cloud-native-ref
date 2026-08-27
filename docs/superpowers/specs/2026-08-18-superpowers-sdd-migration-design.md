@@ -120,7 +120,7 @@ describe the Superpowers artifacts instead. Everything else is unchanged.
 Three classes, all mechanical:
 
 1. **Inbound links** (~15) from `README.md`, `CLAUDE.md`, `docs/coding-clients.md`,
-   `clusters/mycluster-0-llm-platform/README.md`, `infrastructure/base/crossplane/configuration/kcl/inference-service/README.md`,
+   `clusters/aws-0-llm-platform/README.md`, `infrastructure/base/crossplane/configuration/kcl/inference-service/README.md`,
    `infrastructure/base/crossplane/configuration/kcl/kvstore/README.md`, `.fluxschema.yml`,
    `apps/base/ai/llm/ai-gateway-routes/route.yaml`, and the `runbook_url` in
    `apps/base/ai/llm/vmrule-llm-slo.yaml` — repointed at the archived paths. The kvstore

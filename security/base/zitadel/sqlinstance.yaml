@@ -43,11 +43,11 @@ spec:
   # finalize). Add a Flux pre-flight check that fails closed if the
   # configured recovery prefix is empty.
   objectStoreRecovery:
-    bucketName: "eu-west-3-ogenki-cnpg-backups"
+    bucketName: "${region}-ogenki-cnpg-backups"
     path: "zitadel-20260719"
   backup:
     schedule: "0 0 * * *"
-    bucketName: "eu-west-3-ogenki-cnpg-backups"
+    bucketName: "${region}-ogenki-cnpg-backups"
   crossplane:
     compositionRef:
       name: xsqlinstances.cloud.ogenki.io

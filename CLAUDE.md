@@ -56,9 +56,33 @@ Two independent gates govern the self-hosted LLM platform; both must be released
 | Layer | Gate | Default | Enable |
 |---|---|---|---|
 | AWS (S3 Files filesystem + IAM) | `opentofu/aws/llm-platform/` Terramate stack tagged `opt-in`, `$TM_LLM_PLATFORM_ENABLED` env-var guard in `workflows.tm.hcl` | skipped | `TM_LLM_PLATFORM_ENABLED=true terramate -C opentofu/aws/llm-platform script run deploy` |
-| Kubernetes (vLLM router, NVIDIA plugin, GPU NodePool, LLM apps, LLM EPI) | `clusters/mycluster-0/llm-platform.yaml` umbrella Flux Kustomization with `spec.suspend: true` | skipped | `flux resume kustomization llm-platform -n flux-system` |
+| Kubernetes (vLLM router, NVIDIA plugin, GPU NodePool, LLM apps, LLM EPI) | `clusters/aws-0/llm-platform.yaml` umbrella Flux Kustomization with `spec.suspend: true` | skipped | `flux resume kustomization llm-platform -n flux-system` |
 
-The umbrella Kustomization aggregates 8 children under `clusters/mycluster-0-llm-platform/` (kept a sibling of `clusters/mycluster-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/mycluster-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
+The umbrella Kustomization aggregates 8 children under `clusters/aws-0-llm-platform/` (kept a sibling of `clusters/aws-0/` to keep `flux-system`'s recursive sync from auto-applying the children and bypassing the umbrella suspend). See `clusters/aws-0-llm-platform/README.md` for child manifests + teardown procedure. The default `terramate script run deploy` from `opentofu/` and the default Flux reconciliation both leave the cluster LLM-free.
+
+#### On `gcp-0` — one gate, six children, and **do not resume it yet**
+
+`gcp-0` has the same platform with three differences, and one warning that matters more than the
+differences:
+
+- **One gate, not two.** There is no `opentofu/gcp/llm-platform/` stack: the weights bucket is a
+  Crossplane claim, not a Terraform-managed filesystem. The only gate is
+  `clusters/gcp-0/llm-platform.yaml` (`spec.suspend: true`).
+- **Six children, not eight.** No `gpu-nodepools` — `infrastructure/gcp-0/computeclass/gpu-l4.yaml`
+  already provisions g2 + L4 on spot. No `runtimeclass-nvidia` — that exists on AWS only because
+  Bottlerocket's NVIDIA AMI crashloops the upstream device plugin; GKE manages GPU drivers itself.
+- **Weights come from a GCS bucket over the Cloud Storage FUSE CSI driver**, not an S3 Files POSIX
+  mount — see [ADR-0021](website/content/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md)
+  for why, including what it gives up.
+
+> **Resuming the GCP umbrella today does not fully work, by design of what is not built yet.**
+> Serving pods cannot read the weights bucket — the FUSE mount authenticates as the mounting pod's
+> own ServiceAccount, and their per-claim read-only identity is rendered by the `InferenceService`
+> composition, which has no GCP support — and that composition lives in
+> `Smana/crossplane-configuration`, so it cannot be fixed from this repository. (A second gap, KEDA
+> not being installed on `gcp-0`, is now closed — `infrastructure/gcp-0` pulls the shared
+> `base/keda`.) The remaining gap is recorded in `clusters/gcp-0-llm-platform/README.md`. Close it
+> before resuming.
 
 **Autoscaling design** (composition v0.5.0+, [SPEC-001](docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)): every model defaults `min=1` with a KEDA `ScaledObject` driven by leading vLLM saturation metrics — `running/max-num-seqs` ratio + `kv_cache_usage_perc`. The legacy KEDA HTTP add-on (proxy in the data path, lagging request-count trigger) is no longer used; AI Gateway routes directly to each vLLM Service.
 
@@ -87,7 +111,7 @@ cd opentofu/<stack> && tofu plan -var-file=variables.tfvars
 ### EKS Cluster
 
 ```bash
-aws eks update-kubeconfig --region eu-west-3 --name mycluster-0
+aws eks update-kubeconfig --region eu-west-3 --name aws-0
 flux get all
 flux suspend kustomization --all
 flux resume kustomization --all
@@ -128,6 +152,7 @@ via its own AppRole. Cluster-wide endpoints such as `sys/storage/raft/*` are cal
 - AWS CLI configured with appropriate permissions
 - Helm CLI (v3.12+), kubectl, bao CLI, jq
 - Tailscale account and API key
+- **GCP only:** three hand-created prerequisites — state bucket, Cloud KMS key ring, Tailscale OAuth client. See [`docs/gcp-bootstrap.md`](docs/gcp-bootstrap.md).
 
 **Tool versions managed via `mise.toml`**. Run `mise install` to install all required tools.
 
@@ -152,7 +177,7 @@ Flux manages all Kubernetes resources through a dependency hierarchy, broadly:
 > wider than this chain: Crossplane is three sequential Kustomizations, Karpenter
 > sits outside them, `infrastructure` depends on `karpenter` + `eks-pod-identities`
 > rather than on `security`, and several `flux/*` Kustomizations run in parallel.
-> Read `clusters/mycluster-0/` — or the derived graph at
+> Read `clusters/aws-0/` — or the derived graph at
 > [Platform → GitOps](https://cnref.ogenki.io/docs/platform/gitops/) — before
 > wiring a new component.
 
@@ -256,12 +281,12 @@ Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDN
 ### Infrastructure
 - OpenTofu stacks: `opentofu/{network,eks/init,eks/configure,openbao}`
 - Kubernetes manifests: `{infrastructure,security,observability,tooling}/base/`
-- Cluster-specific overrides: `{infrastructure,security,observability,tooling}/mycluster-0/`
+- Cluster-specific overrides: `{infrastructure,security,observability,tooling}/aws-0/`
 
 ### GitOps
 - Flux configuration: `flux/`
 - Custom Resource Definitions: `crds/base/`
-- Cluster bootstrap: `clusters/mycluster-0/`
+- Cluster bootstrap: `clusters/aws-0/`
 
 ### Scripts
 - EKS cleanup: `scripts/eks-prepare-destroy.sh`
@@ -315,6 +340,22 @@ and `postRenderers` — then applies two gates to the result:
 |------|------|---------|
 | 1 | `flux schema validate` | structure + CEL, against the repo's own XRDs, the Flux catalog, and the CNCF ecosystem catalog |
 | 2 | `polaris audit` | workload best practices (privilege escalation, capabilities, image tags) |
+
+**A third check runs separately, and catches what neither gate can:**
+`scripts/flux-schema/check-substitution.py` reads the Flux Kustomizations under `clusters/` directly
+and fails when one **applies a `${var}` its own cluster's ConfigMap does not define**. Flux
+substitutes an **empty string** for an undefined variable — schema-valid, and silently wrong — so the
+bundle looks perfect either way. It reads each cluster's real keys from the `flux_cluster_vars`
+resource in `opentofu/*/configure/kubernetes.tf`.
+
+It also fails when a Kustomization applies variables with no `postBuild` wired at all, where Flux
+would apply the literal `${var}`. Covered by `scripts/flux-schema/test-check-substitution.py` — the
+only test any script in `scripts/flux-schema/` has.
+
+> A `substituteFrom` entry may name a **Secret** as well as a ConfigMap (one does:
+> `cert-manager-openbao-approle`, supplying `${cert_manager_approle_id}`). A Secret's keys are created
+> in-cluster at runtime, so they cannot be checked here — those variables are **reported as a note**
+> rather than failed, and rather than silently skipped.
 
 Two properties are load-bearing:
 

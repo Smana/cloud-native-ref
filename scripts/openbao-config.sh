@@ -4,7 +4,8 @@ set -euo pipefail
 
 # This script is used to configure OpenBao. It supports two operations:
 # - init: Initialize the OpenBao cluster, then store the root token and the
-#         recovery keys in two SEPARATE AWS Secrets Manager entries
+#         recovery keys in two SEPARATE secret store entries (AWS Secrets
+#         Manager or GCP Secret Manager, selected with --cloud)
 # - ca:   Write the CA chain to a local file so the Vault provider can verify
 #         the server certificate instead of running with skip_tls_verify
 #
@@ -24,7 +25,10 @@ RECOVERY_SHARES=1
 RECOVERY_THRESHOLD=1
 SKIP_VERIFY=false
 REGION="eu-west-3"
+REGION_EXPLICIT=false
 PROFILE=""
+CLOUD="aws"
+PROJECT=""
 
 usage() {
     echo "Usage: $0 <command> [options]"
@@ -34,20 +38,28 @@ usage() {
     echo ""
     echo "Common Options:"
     echo "  --url <OpenBao URL>                       OpenBao server URL (required for init)"
-    echo "  --root-token-secret-name <Secret Name>    AWS Secrets Manager secret for the root token (required for init)"
-    echo "  --recovery-keys-secret-name <Secret Name> AWS Secrets Manager secret for the recovery keys (required for init)"
+    echo "  --root-token-secret-name <Secret Name>    Secret for the root token (required for init)"
+    echo "  --recovery-keys-secret-name <Secret Name> Secret for the recovery keys (required for init)"
     echo "  --recovery-shares <N>                     Number of recovery key shares (default: ${RECOVERY_SHARES})"
     echo "  --recovery-threshold <N>                  Shares needed to reconstruct (default: ${RECOVERY_THRESHOLD})"
-    echo "  --root-ca-secret-name <Secret Name>       AWS Secrets Manager secret holding the CA chain (required for ca)"
+    echo "  --root-ca-secret-name <Secret Name>       Secret holding the CA chain (required for ca)."
+    echo "                                             On AWS this holds JSON with a '.ca' field."
+    echo "                                             On GCP it receives the CA CHAIN secret"
+    echo "                                             (raw PEM) -- by design no root-CA secret"
+    echo "                                             exists on GCP, only the chain."
     echo "  --ca-output-file <Path>                   Where to write the CA chain (required for ca)"
     echo "  --skip-verify                             Skip TLS verification"
     echo "  --region <Region>                         AWS region (default: ${REGION})"
     echo "  --profile <Profile>                       AWS profile"
+    echo "  --cloud <aws|gcp>                         Secret backend (default: aws)"
+    echo "  --project <Project ID>                    GCP project (required for --cloud gcp)"
     echo ""
     echo "Example:"
     echo "  $0 init --url https://openbao:8200 --root-token-secret-name openbao/root-token \\"
     echo "          --recovery-keys-secret-name openbao/recovery-keys"
     echo "  $0 ca --root-ca-secret-name certificates/domain.tld/root-ca --ca-output-file .tls/ca.pem"
+    echo "  $0 ca --cloud gcp --project ogenki-435905 \\"
+    echo "          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem"
 }
 
 parse_args() {
@@ -61,8 +73,10 @@ parse_args() {
             --root-ca-secret-name)        ROOT_CA_SECRET_NAME="$2"; shift 2 ;;
             --ca-output-file)             CA_OUTPUT_FILE="$2"; shift 2 ;;
             --skip-verify)                SKIP_VERIFY=true; shift ;;
-            --region)                     REGION="$2"; shift 2 ;;
+            --region)                     REGION="$2"; REGION_EXPLICIT=true; shift 2 ;;
             --profile)                    PROFILE="$2"; shift 2 ;;
+            --cloud)                      CLOUD="$2"; shift 2 ;;
+            --project)                    PROJECT="$2"; shift 2 ;;
             *)
                 echo "Invalid argument: $1"
                 usage
@@ -70,6 +84,31 @@ parse_args() {
                 ;;
         esac
     done
+
+    case "$CLOUD" in
+        aws) ;;
+        gcp)
+            if [ -z "$PROJECT" ]; then
+                echo "Error: --project is required with --cloud gcp" >&2
+                exit 1
+            fi
+            # Fail here rather than at the API call: passing an AWS-only flag to
+            # GCP is a mistake about which cloud you are on, and the API error
+            # would not say so.
+            if [ -n "$PROFILE" ]; then
+                echo "Error: --profile is AWS-only and cannot be used with --cloud gcp" >&2
+                exit 1
+            fi
+            if [ "$REGION_EXPLICIT" = true ]; then
+                echo "Error: --region is AWS-only and cannot be used with --cloud gcp" >&2
+                exit 1
+            fi
+            ;;
+        *)
+            echo "Error: --cloud must be 'aws' or 'gcp' (got '$CLOUD')" >&2
+            exit 1
+            ;;
+    esac
 
     if [ "$COMMAND" = "init" ]; then
         if [ -z "$OPENBAO_URL" ]; then
@@ -104,7 +143,11 @@ parse_args() {
 }
 
 check_prerequisites() {
-    for bin in bao jq aws; do
+    local cloud_bin="aws"
+    if [ "$CLOUD" = "gcp" ]; then
+        cloud_bin="gcloud"
+    fi
+    for bin in bao jq "$cloud_bin"; do
         if ! command -v "$bin" &> /dev/null; then
             echo "Error: $bin is not installed"
             exit 1
@@ -174,27 +217,64 @@ check_openbao_status() {
     return 1
 }
 
-create_or_update_secret() {
-    local aws_cmd=$1
-    local secret_name=$2
-    local secret_value=$3
+# Write a secret value, creating the secret if it does not exist. Dispatches
+# on $CLOUD so init_openbao() and write_ca() don't need to know which backend
+# they're talking to.
+# Usage: secret_write <name> <value>
+secret_write() {
+    local secret_name=$1
+    local secret_value=$2
 
-    if $aws_cmd secretsmanager describe-secret --secret-id "$secret_name" >/dev/null 2>&1; then
-        log_message "INFO" "Secret $secret_name exists, updating it..."
-        if ! $aws_cmd secretsmanager update-secret --secret-id "$secret_name" --secret-string "$secret_value" >/dev/null 2>&1; then
-            log_message "ERROR" "Failed to update secret $secret_name"
-            return 1
+    if [ "$CLOUD" = "gcp" ]; then
+        if gcloud secrets describe "$secret_name" --project "$PROJECT" >/dev/null 2>&1; then
+            log_message "INFO" "Secret $secret_name exists, updating it..."
+            if ! printf '%s' "$secret_value" | gcloud secrets versions add "$secret_name" \
+                --project "$PROJECT" --data-file=- >/dev/null 2>&1; then
+                log_message "ERROR" "Failed to update secret $secret_name"
+                return 1
+            fi
+        else
+            log_message "INFO" "Secret $secret_name does not exist, creating it..."
+            if ! printf '%s' "$secret_value" | gcloud secrets create "$secret_name" \
+                --project "$PROJECT" --replication-policy=automatic --data-file=- >/dev/null 2>&1; then
+                log_message "ERROR" "Failed to create secret $secret_name"
+                return 1
+            fi
         fi
+        log_message "INFO" "Successfully updated GCP Secret Manager entry for $secret_name"
     else
-        log_message "INFO" "Secret $secret_name does not exist, creating it..."
-        if ! $aws_cmd secretsmanager create-secret --name "$secret_name" --secret-string "$secret_value" >/dev/null 2>&1; then
-            log_message "ERROR" "Failed to create secret $secret_name"
-            return 1
+        local aws_cmd; aws_cmd=$(get_aws_cmd)
+        if $aws_cmd secretsmanager describe-secret --secret-id "$secret_name" >/dev/null 2>&1; then
+            log_message "INFO" "Secret $secret_name exists, updating it..."
+            if ! $aws_cmd secretsmanager update-secret --secret-id "$secret_name" --secret-string "$secret_value" >/dev/null 2>&1; then
+                log_message "ERROR" "Failed to update secret $secret_name"
+                return 1
+            fi
+        else
+            log_message "INFO" "Secret $secret_name does not exist, creating it..."
+            if ! $aws_cmd secretsmanager create-secret --name "$secret_name" --secret-string "$secret_value" >/dev/null 2>&1; then
+                log_message "ERROR" "Failed to create secret $secret_name"
+                return 1
+            fi
         fi
+        log_message "INFO" "Successfully updated AWS Secrets Manager entry for $secret_name"
     fi
 
-    log_message "INFO" "Successfully updated AWS Secrets Manager entry for $secret_name"
     return 0
+}
+
+# Read the current value of a secret to stdout.
+# Usage: secret_read <name>
+secret_read() {
+    local secret_name=$1
+
+    if [ "$CLOUD" = "gcp" ]; then
+        gcloud secrets versions access latest --secret "$secret_name" --project "$PROJECT"
+    else
+        local aws_cmd; aws_cmd=$(get_aws_cmd)
+        $aws_cmd secretsmanager get-secret-value --secret-id "$secret_name" \
+            --query SecretString --output text
+    fi
 }
 
 # Initialize OpenBao
@@ -243,22 +323,20 @@ init_openbao() {
         exit 1
     fi
 
-    AWS_CMD=$(get_aws_cmd)
-
-    log_message "INFO" "Storing root token in AWS Secrets Manager..."
+    log_message "INFO" "Storing root token..."
     root_token_value=$(jq -n --arg token "$root_token" '{"token": $token}')
-    if ! create_or_update_secret "$AWS_CMD" "$ROOT_TOKEN_SECRET_NAME" "$root_token_value"; then
-        log_message "ERROR" "Failed to store root token in AWS Secrets Manager"
+    if ! secret_write "$ROOT_TOKEN_SECRET_NAME" "$root_token_value"; then
+        log_message "ERROR" "Failed to store root token"
         exit 1
     fi
 
-    log_message "INFO" "Storing recovery keys in AWS Secrets Manager..."
+    log_message "INFO" "Storing recovery keys..."
     recovery_value=$(jq -n \
         --argjson keys "$recovery_keys" \
         --argjson threshold "$RECOVERY_THRESHOLD" \
         '{"recovery_keys": $keys, "recovery_key": $keys[0], "threshold": $threshold}')
-    if ! create_or_update_secret "$AWS_CMD" "$RECOVERY_KEYS_SECRET_NAME" "$recovery_value"; then
-        log_message "ERROR" "Failed to store recovery keys in AWS Secrets Manager"
+    if ! secret_write "$RECOVERY_KEYS_SECRET_NAME" "$recovery_value"; then
+        log_message "ERROR" "Failed to store recovery keys"
         exit 1
     fi
 
@@ -274,12 +352,36 @@ init_openbao() {
 # Write the CA chain to disk so the Vault provider can verify the server
 # certificate (var.openbao_ca_cert_file in the management stack). A provider
 # block cannot depend on a resource, so this cannot be a local_file.
+#
+# The secret's SHAPE differs by cloud, and that is by design, not an
+# inconsistency to paper over:
+#   - AWS: the root-CA secret (certificates/priv.aws.ogenki.io/root-ca) is
+#     hand-loaded per the manual ceremony in pki-and-secrets.md as JSON with
+#     `.ca` (and `.bundle`) fields.
+#   - GCP: openbao-priv-gcp-ca-chain is raw PEM (`gcloud secrets create
+#     ... --data-file=ca-chain.pem`, plan Task 3 Step 6) -- PEM is the natural
+#     shape for a CA bundle, and the file is consumed directly as
+#     VAULT_CACERT. No root-CA secret exists on GCP at all; only the chain.
+# So the read has to branch on $CLOUD rather than assume one shape for both.
 write_ca() {
-    AWS_CMD=$(get_aws_cmd)
+    local raw
+    if ! raw=$(secret_read "$ROOT_CA_SECRET_NAME"); then
+        log_message "ERROR" "Failed to retrieve the CA chain from $ROOT_CA_SECRET_NAME"
+        exit 1
+    fi
 
-    ca_chain=$($AWS_CMD secretsmanager get-secret-value \
-        --secret-id "$ROOT_CA_SECRET_NAME" \
-        --query "SecretString" --output text | jq -r '.ca // empty')
+    if [ "$CLOUD" = "gcp" ]; then
+        ca_chain="$raw"
+    else
+        # Guarded explicitly rather than left to `pipefail`: piping `$raw`
+        # through `jq` and letting a parse failure propagate would still exit
+        # non-zero, but via jq's own stderr rather than this script's error
+        # message, and set -e would kill the script before the friendly
+        # message below ever printed.
+        if ! ca_chain=$(printf '%s' "$raw" | jq -r '.ca // empty' 2>/dev/null); then
+            ca_chain=""
+        fi
+    fi
 
     if [ -z "$ca_chain" ]; then
         log_message "ERROR" "Failed to retrieve the CA chain from $ROOT_CA_SECRET_NAME"
