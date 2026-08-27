@@ -6,6 +6,7 @@ resources:
   - ../../base/harbor
   - gcs-bucket.yaml
   - workloadidentity.yaml
+  - sqlinstance.yaml
 
 patches:
   - path: storage-gcs.yaml
