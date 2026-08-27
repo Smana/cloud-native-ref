@@ -1,0 +1,74 @@
+# Repoints the Barman Cloud plugin controller's egress from S3 to GCS.
+#
+# WHY A PATCH AND NOT A ${var}: the base rule is
+# `matchName: s3.${region}.amazonaws.com`, and `region` IS defined in
+# gke-gcp-0-vars — so on this cluster it substitutes cleanly to
+# `s3.europe-west4.amazonaws.com`. Valid YAML, valid CNP, resolves to nothing,
+# and every gate stays green: the schema check passes, and
+# check-substitution.py passes because the variable does exist. Nothing would
+# have reported this but a backup silently never completing. The host is not
+# region-shaped on GCP at all, so the rule has to be replaced, not parameterised.
+#
+# CiliumNetworkPolicy has no schema kustomize knows, so this is applied as a
+# JSON merge patch: `spec.egress` is REPLACED wholesale, not merged. Every rule
+# the controller still needs is therefore restated below, including the two that
+# are unchanged from base. Adding a rule to base means adding it here too.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: barman-cloud-plugin
+spec:
+  description: "Barman Cloud CNPG-I plugin controller — GCS backups for CloudNativePG"
+  egress:
+    # DNS — L7 inspection is MANDATORY for toFQDNs to resolve (CNP rule #1):
+    # without rules.dns Cilium never learns the GCS IPs and every TCP follow-up
+    # is silently dropped. Unchanged from base.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # Kubernetes API server. Unchanged from base.
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # GCS backup store. Two forms, mirroring what base allows for S3:
+    # `storage.googleapis.com` is the path-style + JSON API endpoint, and
+    # `<bucket>.storage.googleapis.com` is the virtual-hosted form. The
+    # single-segment matchPattern (CNP rule #2) is sufficient here because,
+    # unlike S3's CDN fan-out, GCS does not put a bucket name containing dots
+    # in front of it — bucket names with dots are domain-verified and this
+    # bucket has none.
+    - toFQDNs:
+        - matchName: storage.googleapis.com
+        - matchPattern: "*.storage.googleapis.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # The GKE metadata server (169.254.169.254:80), which is where the plugin
+    # gets its Workload Identity token — the ObjectStore is rendered with
+    # `googleCredentials.gkeEnvironment: true`, so there is no static key and
+    # this is the whole credential path.
+    #
+    # Same shape as base's rule for the EKS Pod Identity Agent and for the same
+    # underlying reason: the metadata server runs on the node's host network, so
+    # Cilium classifies the destination as the `host` entity and `toCIDR` alone
+    # would silently fail (CNP rule #3).
+    - toEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP

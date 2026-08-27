@@ -14,6 +14,10 @@ kind: Kustomization
 # the shared tree are genuinely cloud-neutral.
 resources:
   - cloudnative-pg
+  # The Barman Cloud plugin, which is what turns a SQLInstance's `backup` block
+  # into an actual ObjectStore. Held back until now because the base ships an
+  # egress allowlist of AWS S3 hostnames; the overlay replaces it with GCS.
+  - cloudnative-pg-barman-plugin
   - computeclass
   - external-dns
   - external-dns-public

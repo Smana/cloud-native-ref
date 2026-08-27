@@ -1,0 +1,29 @@
+# The CNPG backup bucket on gcp-0 — the GCS counterpart of
+# infrastructure/aws-0/cloudnative-pg/s3-bucket.yaml.
+#
+# Postgres backups outlive any individual cluster (point-in-time recovery may
+# need to span a rebuild), so Crossplane must never attempt to remove this.
+# `forceDestroy: false` already refuses to delete a non-empty bucket, so what
+# the missing `Delete` in managementPolicies actually prevents is the finalizer
+# wedge: Crossplane retries the delete on prune, GCP denies it, and the MR
+# finalizer hangs the namespace teardown. To remove intentionally, use gcloud.
+# (Crossplane v2 namespaced MRs do not expose spec.deletionPolicy;
+# managementPolicies is the v2 mechanism.)
+#
+# Named `${project_id}-` rather than aws-0's `${region}-`: GCS bucket names are
+# globally unique across all of GCP, so the region is not enough to avoid a
+# collision with someone else's bucket. Same convention as the other three
+# buckets on this cluster (harbor, openbao-snapshot, llm weights).
+apiVersion: storage.gcp.m.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: cnpg-backups
+  namespace: infrastructure
+  annotations:
+    crossplane.io/external-name: ${project_id}-ogenki-cnpg-backups
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    location: ${region}
+    uniformBucketLevelAccess: true
+    forceDestroy: false

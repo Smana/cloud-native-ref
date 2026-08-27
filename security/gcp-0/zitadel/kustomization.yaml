@@ -33,22 +33,28 @@ patches:
   #      instead of starting a fresh database -- which is what this cluster
   #      wants anyway, since its ZITADEL is its own instance with its own users.
   #
-  #   3. No backup. Deliberate and temporary, and the same blocker Harbor hit:
-  #      infrastructure/base/cloudnative-pg-barman-plugin ships a
-  #      CiliumNetworkPolicy whose egress is a toFQDNs allowlist of AWS S3
-  #      endpoints (`*.s3.<region>.amazonaws.com`). With backup set, the plugin
-  #      would start and then silently drop every connection to
-  #      storage.googleapis.com. Porting that policy is its own change; until
-  #      then this database is unbacked, which is acceptable only because the
-  #      cluster is torn down after every run.
+  #   3. backup.bucketName points at a `${project_id}-` bucket rather than
+  #      base's `${region}-` one. GCS bucket names are globally unique, so the
+  #      region is not what makes one unique. The bucket itself is provisioned
+  #      by infrastructure/gcp-0/cloudnative-pg/gcs-bucket.yaml, and the plugin
+  #      that turns this block into an ObjectStore now runs on this cluster
+  #      (infrastructure/gcp-0/cloudnative-pg-barman-plugin) with a GCS egress
+  #      allowlist in place of the base's AWS S3 one.
   #
-  #   4. instances 2 -> 1, which follows from 3 rather than being a separate
-  #      choice. The XRD enforces `backup.schedule is required for
-  #      multi-instance clusters` as a CEL rule -- a two-instance cluster with
-  #      no backup is a configuration the platform refuses, and rightly: the
-  #      replica is there for availability, and availability without a backup
-  #      is a false sense of one. Dropping to a single instance says plainly
-  #      that this database is disposable. aws-0 keeps 2 and keeps its backup.
+  #   4. instances stays at 1, where before it followed from having no backup.
+  #      The XRD's CEL rule -- `backup.schedule is required for multi-instance
+  #      clusters` -- is satisfied now, so 2 would be allowed. It is still 1
+  #      because this cluster is rebuilt from scratch and torn down after every
+  #      run, and a standby costs a second Postgres for availability nobody is
+  #      here to need. aws-0 keeps 2. Raising it here is a one-line change the
+  #      moment anything on gcp-0 becomes long-lived.
+  #
+  #   5. Still no objectStoreRecovery, and the ordering is not optional: base
+  #      restores from an S3 prefix captured in 2026-07, and no GCS equivalent
+  #      exists until these backups have run at least once. Pointing recovery
+  #      at an empty bucket fails the bootstrap instead of starting fresh --
+  #      which is what this cluster wants anyway, since its ZITADEL is its own
+  #      instance with its own users.
   - target:
       group: cloud.ogenki.io
       kind: SQLInstance
@@ -62,5 +68,6 @@ patches:
         value: 1
       - op: remove
         path: /spec/objectStoreRecovery
-      - op: remove
-        path: /spec/backup
+      - op: replace
+        path: /spec/backup/bucketName
+        value: ${project_id}-ogenki-cnpg-backups
