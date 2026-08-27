@@ -103,6 +103,31 @@ script "destroy" {
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
         ${global.provisioner} init -lock-timeout=5m
+
+        # Empty the private Cloud DNS zone first. external-dns wrote a record for
+        # every HTTPRoute on the cluster and nothing removes them when the
+        # cluster goes -- the controller that owned them went with it. Cloud DNS
+        # then refuses to delete a non-empty zone:
+        #
+        #   Error 400: The container is not empty., containerNotEmpty
+        #
+        # which lands at the END of the destroy, after the rest of the VPC is
+        # already gone, leaving the stack half-torn-down. On 2026-08-27 that meant
+        # deleting twelve records by hand before this stack would destroy.
+        #
+        # Reads the zone name from state rather than re-deriving it, so it cannot
+        # drift from the resource. Tolerated if the zone is already gone: the
+        # script exits 0 when there is nothing to purge, which keeps a re-run of a
+        # partially completed destroy working.
+        zone="$(${global.provisioner} output -raw private_dns_zone_name 2>/dev/null || true)"
+        project="$(${global.provisioner} output -raw project_id 2>/dev/null || true)"
+        if [ -n "$${zone}" ] && [ -n "$${project}" ]; then
+          bash "${terramate.root.path.fs.absolute}/scripts/gcp-purge-dns-records.sh" \\
+            "$${zone}" "$${project}"
+        else
+          echo "[warn] no DNS zone in state; skipping the record purge."
+        fi
+
         ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars
       BASH
       ],

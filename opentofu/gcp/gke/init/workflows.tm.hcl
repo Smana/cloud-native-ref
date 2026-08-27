@@ -162,6 +162,57 @@ script "destroy" {
   }
 
   job {
+    name        = "stage2-reclaim-volumes"
+    description = "Reclaim CSI-provisioned PD disks while the cluster still exists"
+    commands = [
+      ["bash", "-c", <<-BASH
+        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
+          echo "[skip] GKE init destroy (stage2-reclaim-volumes): set TM_GCP_ENABLED=true"
+          exit 0
+        fi
+        set -euo pipefail
+
+        # Deleting the cluster with PVCs still bound skips the reclaim entirely:
+        # the PD CSI controller dies with the cluster and every PVC-backed disk
+        # is orphaned in the project with nothing left referencing it. Nothing
+        # reports it -- destroy says "Destroy complete" and the disks bill on.
+        # The 2026-08-27 gcp-0 teardown left three that way (20/10/5 GB), which
+        # is the GCP replay of an EBS leak EKS already had a step for.
+        #
+        # Runs BEFORE stage2-destroy-addons on purpose: once Cilium is gone the
+        # cluster's networking is unreliable, and the CSI controller needs to be
+        # both running and reachable for a PVC delete to actually detach a disk.
+        #
+        # Never gates the teardown, for the same reason stage 2 does not: the
+        # control-plane endpoint is PRIVATE, so the usual reason to be running
+        # destroy is that the cluster or the tailnet is unreachable. The script
+        # exits 0 when it cannot reach the cluster, and the disks it misses are
+        # caught by the sweep in the network stack's destroy.
+        #
+        # A throwaway KUBECONFIG so a teardown never edits the operator's own
+        # kubeconfig or leaves a context behind for a cluster that is about to
+        # stop existing.
+        KUBECONFIG="$(mktemp -t gke-teardown-kubeconfig.XXXXXX)"
+        export KUBECONFIG
+        trap 'rm -f "$${KUBECONFIG}"' EXIT
+
+        name="$(${global.provisioner} output -raw cluster_name)"
+        location="$(${global.provisioner} output -raw cluster_location)"
+        project="$(${global.provisioner} output -raw project_id)"
+
+        if gcloud container clusters get-credentials "$${name}" \
+             --location "$${location}" --project "$${project}" 2>/dev/null; then
+          bash "${terramate.root.path.fs.absolute}/scripts/k8s-reclaim-csi-volumes.sh" || true
+        else
+          echo "[warn] could not fetch credentials for $${name}; skipping the in-cluster"
+          echo "       reclaim. Any orphaned disks are swept by the network stack destroy."
+        fi
+      BASH
+      ],
+    ]
+  }
+
+  job {
     name        = "stage2-destroy-addons"
     description = "Attempt a graceful Cilium and Flux teardown; never blocks the cluster deletion"
     commands = [
