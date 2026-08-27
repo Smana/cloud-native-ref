@@ -90,10 +90,6 @@ deliberate act rather than a default. But the reason is now cost, not breakage.
 
 A first resume that gets past (2) is the thing this README could not previously promise.
 
-The full run this belongs to — bootstrap, serve, back runlore with the served model, restore a
-database from backup, prove runlore reads GCP — is
-[`docs/gcp-validation-runbook.md`](../../docs/gcp-validation-runbook.md).
-
 ## Enable
 
 ```bash

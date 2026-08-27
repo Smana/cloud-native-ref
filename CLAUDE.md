@@ -85,10 +85,6 @@ differences:
 > **But none of it has run on a live GKE cluster**: that is a static read of the pinned package's
 > golden fixture, not a cluster result. Treat the first resume as a validation run — what to watch,
 > in failure order, is in `clusters/gcp-0-llm-platform/README.md`.
->
-> The end-to-end run that would settle all of it — serve a model, back runlore with it, restore a
-> database from a GCS backup, prove runlore reads GCP — is written out in
-> [`docs/gcp-validation-runbook.md`](docs/gcp-validation-runbook.md).
 
 **Autoscaling design** (composition v0.5.0+, [SPEC-001](docs/specs/done/2026-Q2/0001-llm-platform-prometheus-autoscaling/spec.md)): every model defaults `min=1` with a KEDA `ScaledObject` driven by leading vLLM saturation metrics — `running/max-num-seqs` ratio + `kv_cache_usage_perc`. The legacy KEDA HTTP add-on (proxy in the data path, lagging request-count trigger) is no longer used; AI Gateway routes directly to each vLLM Service.
 
