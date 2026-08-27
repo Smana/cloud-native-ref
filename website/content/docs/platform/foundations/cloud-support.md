@@ -31,7 +31,7 @@ and torn down afterwards.
 | Crossplane | ✅ `provider-aws` | ✅ `provider-gcp` |
 | Security (cert-manager, ESO, Kyverno, Tailscale) | ✅ | ✅ |
 | Infrastructure (Cilium, Gateway API, external-dns) | ✅ | ✅ |
-| Observability (VictoriaMetrics, Grafana) | ✅ | ❌ no `observability/gcp-0` overlay |
+| Observability (VictoriaMetrics, Grafana) | ✅ | ❌ no gcp-0 overlay under `observability/` |
 | Tooling (Harbor) | ✅ | ⚠️ built at `tooling/gcp-0`, not yet wired to a Kustomization |
 | Applications | ✅ | ❌ no `apps/gcp-0` outside the LLM platform |
 | LLM platform | ⏸️ opt-in, suspended | ⏸️ opt-in, suspended — and [one gap remains](#known-gaps) |
@@ -144,9 +144,10 @@ Two things belong to neither cloud and are provisioned once:
 
 Stated plainly rather than left for a reader to discover:
 
-- **No observability on `gcp-0`.** There is no `observability/gcp-0` overlay, so
-  VictoriaMetrics, VictoriaLogs and Grafana do not run there. The base manifests
-  are cloud-neutral; the overlay is simply not written yet.
+- **No observability on `gcp-0`.** `observability/` has a `base/` and an
+  `aws-0/` overlay, and no gcp-0 one — so VictoriaMetrics, VictoriaLogs and
+  Grafana do not run there. The base manifests are cloud-neutral; the overlay is
+  simply not written yet.
 - **Harbor on GCP is built but not deployed.** `tooling/gcp-0/harbor/` has the
   GCS driver and its `GCPWorkloadIdentity`, but `clusters/gcp-0/` has no
   `tooling.yaml` applying it.

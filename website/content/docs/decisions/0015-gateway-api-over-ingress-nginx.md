@@ -138,7 +138,7 @@ exists anywhere in the repository. Its actual job is provisioning the AWS
 NLB behind the one internet-facing `Gateway`, `platform-public`, whose
 `service.beta.kubernetes.io/aws-load-balancer-*` annotations sit under
 `Gateway.spec.infrastructure.annotations`
-(`infrastructure/base/gapi/platform-public-gateway.yaml`) rather than on
+(`infrastructure/aws-0/gapi/platform-public-gateway.yaml`) rather than on
 an `Ingress` object.
 
 **Pros**:
