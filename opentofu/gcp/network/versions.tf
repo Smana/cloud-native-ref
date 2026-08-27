@@ -21,7 +21,7 @@ terraform {
     # the AWS llm-platform stack uses for EFS mount-target propagation.
     time = {
       source  = "hashicorp/time"
-      version = "~> 0.11"
+      version = "~> 0.14"
     }
   }
 }
