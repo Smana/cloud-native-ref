@@ -69,7 +69,7 @@ cluster-scoped equivalents.
 **Configuration package** — a Crossplane package (an OCI artifact) that
 ships a set of XRDs and Compositions together, installed via a `Configuration`
 object. This repository consumes one pinned package
-(`infrastructure/base/crossplane/configuration/configuration-packages.yaml`)
+(`infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`)
 built and released from `Smana/crossplane-configuration`, rather than
 authoring compositions in-tree.
 

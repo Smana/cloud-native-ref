@@ -22,7 +22,7 @@ for why the weights path differs from `aws-0`.
 ## Two absences, not oversights
 
 - **No `gpu-nodepools` child.** `infrastructure/gcp-0/computeclass/gpu-l4.yaml` already
-  provisions `g2` + `nvidia-l4` on spot (workstream 4), applied by the always-on `infrastructure`
+  provisions `g2` + `nvidia-l4` on spot, applied by the always-on `infrastructure`
   Kustomization in `clusters/gcp-0/`. There is nothing GPU-capacity-related left for this umbrella
   to gate — the LLM apps just consume a ComputeClass that exists regardless of whether this
   umbrella is suspended.

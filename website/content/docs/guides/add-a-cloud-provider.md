@@ -50,6 +50,60 @@ Let's Encrypt to resolve a challenge. That is
 and it is the one place the platform accepted a deliberate cross-cloud
 dependency.
 
+## The variable contract a new cloud must satisfy
+
+Each cloud's `configure` stack publishes a ConfigMap in `flux-system` that every
+Flux Kustomization substitutes from. The keys both clouds define are the real
+portability interface — **a manifest in `base/` may only read one of these**:
+
+| Key | Example (`aws-0` / `gcp-0`) |
+|---|---|
+| `cluster_name` | `aws-0` / `gcp-0` |
+| `cluster_endpoint` | the API server host |
+| `region` | `eu-west-3` / `europe-west4` |
+| `environment` | `dev` |
+| `storage_class` | `gp3` / `standard-rwo` |
+| `private_domain_name` | `priv.aws.ogenki.io` / `priv.gcp.ogenki.io` |
+| `public_domain_name` | `cloud.ogenki.io` / `gcp.cloud.ogenki.io` |
+| `identity_provider_url` | where ZITADEL actually lives ([ADR-0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}})) |
+| `openbao_cidr` | the CIDR holding OpenBao's internal endpoint |
+| `openbao_snapshot_secret` | secret-store key, per-cloud grammar ([ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}})) |
+| `llm_hf_token_secret` | as above |
+| `route53_public_zone_id` | the one public zone both clouds write to ([ADR-0019]({{< relref "/docs/decisions/0019-cross-cloud-dns-federation.md" >}})) |
+
+Everything else each stack publishes is **cloud-shaped and stays in that cloud's
+overlays** — `aws_account_id`, `oidc_provider_arn`, `vpc_id`, `karpenter_queue_name`
+on one side; `project_id`, `project_number`, `workload_pool`, `pod_cidr` on the
+other. A third cloud adds its own such keys freely; it must supply every key in
+the table above.
+
+The table is derived, not authoritative. To regenerate it from the stacks
+themselves:
+
+```python
+# python3, from the repo root
+import importlib.util
+spec = importlib.util.spec_from_file_location("cs", "scripts/flux-schema/check-substitution.py")
+cs = importlib.util.module_from_spec(spec); spec.loader.exec_module(cs)
+aws, gcp = map(set, (cs.configmap_keys("eks-aws-0-vars"), cs.configmap_keys("gke-gcp-0-vars")))
+print(sorted(aws & gcp))          # the portability interface
+print(sorted(aws ^ gcp))          # cloud-shaped, stays in overlays
+```
+
+{{< callout type="warning" >}}
+**Flux substitutes an undefined variable to the empty string.** A `base/`
+manifest reading a key your cloud does not define does not fail — it renders a
+hostname with a hole in it. `scripts/flux-schema/check-substitution.py` runs in
+CI against this: it reads each cluster's real keys from the `flux_cluster_vars`
+resource in `opentofu/*/configure/kubernetes.tf` and fails when a Kustomization
+applies a variable **its own cluster** never defines.
+
+Note the limit of that check — it is per-cluster, not an intersection. A
+manifest in `base/` that reads an AWS-only key still passes for as long as only
+`aws-0` references the directory; the failure surfaces the day a second cluster
+wires it up. Keeping `base/` to the table above is a convention, not yet a gate.
+{{< /callout >}}
+
 ## What gains a sibling, not a field
 
 When an API is genuinely cloud-shaped, add a **sibling XRD** rather than a
@@ -78,8 +132,7 @@ right interim failure mode, since a claim that cannot be honoured should say
 so at reconcile time. Both clouds now render from the same KCL module,
 differing only in where barman writes its backups (Cloud Storage rather than
 S3) and the identity that writes them, and the CloudNativePG operator runs on
-both clusters — `infrastructure/gcp-0/cloudnative-pg` deploys it without the
-Grafana dashboards, which need an operator `gcp-0` does not run.
+both clusters from the same base — dashboards included.
 {{< /callout >}}
 
 Where a genuinely cloud-specific knob is unavoidable, it belongs in a

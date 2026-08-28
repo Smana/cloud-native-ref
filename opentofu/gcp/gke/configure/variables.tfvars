@@ -2,10 +2,6 @@ project_id   = "ogenki-435905"
 region       = "europe-west4"
 cluster_name = "gcp-0"
 
-# Must equal flux/sources/gitrepo-gateway-api.yaml's ref.tag -- one Gateway API
-# surface across both clouds.
-gateway_api_version = "v1.6.1"
-
 flux_sync_url = "https://github.com/Smana/cloud-native-ref.git"
 
 # GCP Secret Manager, not AWS Secrets Manager: reading Flux's Git credentials from
@@ -13,11 +9,12 @@ flux_sync_url = "https://github.com/Smana/cloud-native-ref.git"
 # expected JSON shape and how to create it.
 flux_github_app_secret_name = "flux-github-app"
 
-# cilium_version, flux_operator_version and flux_instance_version are deliberately
-# NOT set here. They are passed via -var from the shared Terramate globals in
-# opentofu/config.tm.hcl, so both clouds upgrade together.
+# cilium_version, flux_operator_version, flux_instance_version and
+# gateway_api_version are deliberately NOT set here. They are passed via -var
+# from the shared Terramate globals in opentofu/config.tm.hcl, so both clouds
+# upgrade together.
 
-# Federated Route53 path (workstream 12). route53_public_zone_id and
+# Federated Route53 path (ADR-0019). route53_public_zone_id and
 # route53_role_arn are opentofu/shared/aws-gcp-federation's outputs, copied here
 # literally rather than read via terraform_remote_state. Both are fully
 # determined by that stack's own code (a fixed role name + the confirmed AWS

@@ -76,12 +76,11 @@ variable "flux_github_app_secret_name" {
 }
 
 variable "gateway_api_version" {
-  description = "Gateway API release applied before Cilium. MUST equal flux/sources/gitrepo-gateway-api.yaml's ref.tag so both clouds run one Gateway API surface"
+  description = "Gateway API release applied before Cilium. Required: sourced from globals.gateway_api_version in opentofu/config.tm.hcl, SHARED with AWS and with flux/sources/gitrepo-gateway-api.yaml's ref.tag"
   type        = string
-  default     = "v1.6.1"
 }
 
-# Federated Route53 path (workstream 12). No defaults on route53_role_arn or
+# Federated Route53 path (ADR-0019). No defaults on route53_role_arn or
 # route53_public_zone_id: both come from opentofu/shared/aws-gcp-federation's
 # outputs, and a wrong value here does not fail this apply -- it fails later,
 # at certificate issuance, with an AWS error that says nothing about a

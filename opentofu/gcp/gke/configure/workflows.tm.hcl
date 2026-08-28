@@ -37,7 +37,7 @@ script "deploy" {
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
-        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
+        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
       BASH
       ],
     ]
@@ -58,7 +58,7 @@ script "preview" {
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
-        ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
+        ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
       BASH
       ],
     ]
@@ -110,6 +110,7 @@ script "destroy" {
         bash "${terramate.root.path.fs.absolute}/scripts/gke-destroy-stage2.sh" \
           attempt "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure" \
           -var='cilium_version=${global.cilium_version}' \
+          -var='gateway_api_version=${global.gateway_api_version}' \
           -var='flux_operator_version=${global.flux_operator_version}' \
           -var='flux_instance_version=${global.flux_instance_version}'
       BASH

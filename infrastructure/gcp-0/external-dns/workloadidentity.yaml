@@ -1,7 +1,7 @@
 # external-dns's Google identity.
 #
 # This is the GCPWorkloadIdentity composition's FIRST consumer, and the call is
-# deliberately the opposite of workstream 11's. There, External Secrets needed
+# deliberately the opposite of the External Secrets binding. That one needed
 # exactly two named secrets, and this composition renders ProjectIAMMember --
 # project-scoped -- which would have granted read of every secret in the project
 # including the intermediate CA's private key. So it was bound per secret and

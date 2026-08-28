@@ -1,7 +1,7 @@
 ---
 title: Cloud-managed secret stores as the store of record, OpenBao scoped to the PKI
-linkTitle: 0024 · Managed secret stores
-weight: 240
+linkTitle: 0025 · Managed secret stores
+weight: 250
 description: Platform secrets live in AWS Secrets Manager / GCP Secret Manager rather than OpenBao, because the store of record must be always-on and outlive the platform, and this reference cannot afford a long-running self-hosted instance — OpenBao remains the target, scoped today to the private PKI and the tenancy model.
 lastVerified: 2026-08-27
 ---
@@ -20,7 +20,7 @@ grammar that keeps the store swappable
 
 Every credential this platform consumes resolves through External Secrets
 Operator from a single `ClusterSecretStore`
-(`security/base/external-secrets/clustersecretstore.yaml`) — and that store is
+(`security/aws-0/openbao/clustersecretstore.yaml`) — and that store is
 the **cloud's managed secret manager**: AWS Secrets Manager on `aws-0`, GCP
 Secret Manager on `gcp-0`. OpenBao, the platform's self-hosted secrets engine,
 holds none of them. It owns the private PKI and a worked example of
@@ -206,10 +206,11 @@ name grammar matters beyond GCP.
 
 ## Implementation Notes
 
-`security/base/external-secrets/clustersecretstore.yaml` defines the AWS
-Secrets Manager store every `ExternalSecret` names;
-`security/gcp-0/openbao/clustersecretstore.yaml` overrides it with GCP
-Secret Manager on `gcp-0`. Both authenticate through the cloud's native
+`security/aws-0/openbao/clustersecretstore.yaml` defines the AWS
+Secrets Manager store every `ExternalSecret` on `aws-0` names;
+`security/gcp-0/openbao/clustersecretstore.yaml` is its `gcp-0` sibling,
+backed by GCP Secret Manager. Neither derives from the other — the two
+providers share no fields worth factoring into a base. Both authenticate through the cloud's native
 workload identity (EKS Pod Identity / Workload Identity) — no static store
 credential exists. OpenBao's scope — the `pki_private_issuer` mount, the
 AppRoles, the `app` tenant namespace — is provisioned by
@@ -229,6 +230,6 @@ AppRoles, the `app` tenant namespace — is provisioned by
   — how External Secrets and cert-manager consume the two stores
 - [OpenBao]({{< relref "/docs/platform/security/openbao.md" >}}) — what the
   self-hosted engine owns: namespaces, AppRoles, the PKI
-- `security/base/external-secrets/clustersecretstore.yaml` — the AWS store
+- `security/aws-0/openbao/clustersecretstore.yaml` — the AWS store
   of record; `security/gcp-0/openbao/clustersecretstore.yaml` — the GCP
   override

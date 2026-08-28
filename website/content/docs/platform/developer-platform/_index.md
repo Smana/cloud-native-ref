@@ -12,7 +12,7 @@ and ship as a Crossplane `Configuration` package; this repository only pins
 a version:
 
 ```yaml
-# infrastructure/base/crossplane/configuration/configuration-packages.yaml
+# infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml
 spec:
   package: ghcr.io/smana/crossplane-configuration-aws:v0.4.3
 ```

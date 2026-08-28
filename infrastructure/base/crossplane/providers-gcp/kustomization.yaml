@@ -1,6 +1,6 @@
-# GCP providers, kept in a sibling directory rather than mixed into providers/.
+# GCP providers, kept in a sibling directory rather than mixed into providers-aws/.
 #
-# providers/ is entirely AWS (five provider packages, an AWS DeploymentRuntime-
+# providers-aws/ is entirely AWS (five provider packages, an AWS DeploymentRuntime-
 # Config, an AWS activation policy). Merging the two clouds there would mean
 # every cluster installing both families, since a ManagedResourceActivationPolicy
 # and a Provider are cluster-scoped and apply to whatever cluster the directory

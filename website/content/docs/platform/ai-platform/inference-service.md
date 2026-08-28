@@ -95,7 +95,7 @@ workload, and — when `gateway.enabled` is set — the `AIGatewayRoute`,
 ## Field reference
 
 Against the `InferenceService` XRD shipped in the Crossplane Configuration
-package pinned at `infrastructure/base/crossplane/configuration/configuration-packages.yaml`.
+package pinned at `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`.
 
 ### `spec.model` — required
 

@@ -123,3 +123,27 @@ claims:
       - website/content/docs/platform/security/policies.md
     must_not_contain:
       - 'Both install with'
+
+  - id: gateway-api-version
+    why: >-
+      Two files pin the Gateway API release. `globals.gateway_api_version` in
+      `opentofu/config.tm.hcl` is what both clouds' `configure` stacks install
+      the experimental-channel bundle from (passed by -var, exactly like
+      `cilium_version`), and `flux/sources/gitrepo-gateway-api.yaml` re-applies
+      that same directory after bootstrap from its own tag. A skew installs one
+      CRD set at bootstrap and a different one once Flux reconciles.
+      cilium-operator probes for these CRDs once at startup and permanently
+      disables its Gateway API controller if one is missing -- no crash, no
+      alert -- so the symptom is Gateways stuck `Waiting for controller` with
+      nothing naming a version. ADR-0015 recorded the mitigation as "none
+      automated"; this claim is that automation. Note the first `page` here is
+      a config file, not prose: the check is source-to-source, which the schema
+      already supports because a page is just a path and a pattern.
+    source:
+      file: opentofu/config.tm.hcl
+      pattern: '\n\s*gateway_api_version\s*=\s*"(v[0-9]+\.[0-9]+\.[0-9]+)"'
+    pages:
+      - path: flux/sources/gitrepo-gateway-api.yaml
+        must_contain: '\n\s*tag:\s*{value}\s*\n'
+      - path: website/content/docs/decisions/0015-gateway-api-over-ingress-nginx.md
+        must_contain: 'both currently `{value}`'

@@ -19,8 +19,8 @@ resources:
   - ../../base/zitadel
 
 patches:
-  # The database claim, and only the database claim. Three differences, the same
-  # three that tooling/gcp-0/harbor/sqlinstance.yaml documents:
+  # The database claim, and only the database claim. Four differences, the same
+  # ones tooling/gcp-0/harbor/sqlinstance.yaml documents:
   #
   #   1. compositionRef names the GCP Composition. aws-0 gets
   #      `xsqlinstances.cloud.ogenki.io` from crossplane-configuration-aws;
@@ -48,13 +48,6 @@ patches:
   #      run, and a standby costs a second Postgres for availability nobody is
   #      here to need. aws-0 keeps 2. Raising it here is a one-line change the
   #      moment anything on gcp-0 becomes long-lived.
-  #
-  #   5. Still no objectStoreRecovery, and the ordering is not optional: base
-  #      restores from an S3 prefix captured in 2026-07, and no GCS equivalent
-  #      exists until these backups have run at least once. Pointing recovery
-  #      at an empty bucket fails the bootstrap instead of starting fresh --
-  #      which is what this cluster wants anyway, since its ZITADEL is its own
-  #      instance with its own users.
   - target:
       group: cloud.ogenki.io
       kind: SQLInstance

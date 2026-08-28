@@ -34,7 +34,7 @@ Foundation, continuing under the original permissive licence.
 
 This is not the platform's only secrets store. External Secrets
 Operator's `ClusterSecretStore`
-(`security/base/external-secrets/clustersecretstore.yaml`) already reads
+(`security/aws-0/openbao/clustersecretstore.yaml`) already reads
 from AWS Secrets Manager, and even OpenBao's own bootstrap material — the
 root token, the recovery keys, the operator password, every minted
 AppRole credential — is published there rather than kept inside OpenBao
@@ -270,7 +270,7 @@ are documented in full on
   the in-code explanation of the 2.6.x deadlock
 - `opentofu/aws/openbao/management/workflows.tm.hcl` — the `-parallelism=1`
   mitigation and its reproduction notes
-- `security/base/external-secrets/clustersecretstore.yaml` — the AWS
+- `security/aws-0/openbao/clustersecretstore.yaml` — the AWS
   Secrets Manager `ClusterSecretStore` that External Secrets Operator
   reads from, alongside OpenBao
 - [openbao/openbao#3411](https://github.com/openbao/openbao/issues/3411)

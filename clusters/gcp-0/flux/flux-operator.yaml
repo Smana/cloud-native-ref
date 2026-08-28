@@ -20,4 +20,8 @@ spec:
       - kind: ConfigMap
         name: gke-gcp-0-vars
   dependsOn:
-    - name: security
+    # security-openbao, NOT security: externalsecret-flux-ui-oidc.yaml reads
+    # through the `clustersecretstore` ClusterSecretStore, which on this
+    # cluster is created by ./security/gcp-0/openbao. `security` here is
+    # ./security/gcp-0/controllers and creates no store at all.
+    - name: security-openbao

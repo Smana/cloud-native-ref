@@ -4,8 +4,7 @@
 # platform-level Grafana dashboards/alerts -- apps/gcp-0/llm, mirroring
 # aws-0's apps/llm -> apps/aws-0/llm -> apps/base/ai/llm chain. No OpenWebUI
 # here, unlike aws-0's apps/llm (which also pulls in apps/base/openwebui) --
-# out of scope for this workstream; wire it the same way aws-0 does if gcp-0
-# ever needs a chat frontend.
+# wire it the same way aws-0 does if gcp-0 ever needs a chat frontend.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

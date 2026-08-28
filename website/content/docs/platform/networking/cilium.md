@@ -168,18 +168,22 @@ owns a route is stuck `READY=False` — a failure that reads as a broken app,
 not a missing CRD.
 
 This isn't hypothetical: on 2026-08-19, Cilium 1.20's new requirement for
-`backendtlspolicies` broke Gateway API on a rebuild because
-`gateway_api_crds_urls` in `opentofu/aws/eks/configure/locals.tf` didn't have it
-yet, and Flux's own CRD directory applied it two seconds too late for the
-operator's one-shot probe to see.
+`backendtlspolicies` broke Gateway API on a rebuild because the hand-written CRD
+list `opentofu/aws/eks/configure` then used didn't have it yet, and Flux's own
+CRD directory applied it two seconds too late for the operator's one-shot probe
+to see.
 
 **Recover**: `kubectl rollout restart -n kube-system deployment/cilium-operator`
-reruns the probe. **Fix durably (AWS)**: add the missing CRD's URL to
-`gateway_api_crds_urls`. That list is append-only — the `count` index of the
-existing entries must not shift, or `tofu` destroys and recreates every live
-CRD, taking every Gateway and HTTPRoute with it. On GKE the list cannot drift
-in the first place: `opentofu/shared/modules/gateway-api-crds` applies the
-whole experimental-channel bundle, keyed with `for_each` per manifest. See
+reruns the probe. **Fix durably**: nothing, in the common case — that
+enumeration is gone. Both clouds now install these CRDs from
+`opentofu/shared/modules/gateway-api-crds`, which applies the whole
+experimental-channel bundle keyed with `for_each` per manifest, so the set
+cannot drift from what Cilium expects. If Cilium starts wanting a CRD a *newer*
+Gateway API release introduced, bump `gateway_api_version` in
+`opentofu/config.tm.hcl`'s `globals` — one value for both clouds, passed by
+`-var` like `cilium_version` — and the `ref.tag` in
+`flux/sources/gitrepo-gateway-api.yaml`. Both must name the same tag, and
+`./scripts/validate-doc-claims.sh` fails when they do not. See
 [Gateway API]({{< relref "/docs/platform/networking/gateway-api.md" >}}) for
 the resource model these CRDs back.
 

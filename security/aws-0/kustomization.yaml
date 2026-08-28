@@ -1,10 +1,24 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# The controllers, and NOTHING they admit.
+#
+# ../base/cert-manager and ../base/external-secrets are chart-only directories:
+# the ClusterIssuers, ClusterSecretStore and ExternalSecrets their webhooks
+# admit live in ./openbao and ./cert-manager-public, applied by the
+# `security-openbao` and `security-public-certs` Kustomizations. Applying those
+# in the same Kustomization as the charts races the webhook Services having
+# endpoints -- see security/gcp-0/controllers/kustomization.yaml for the
+# measured failure.
+#
+# ./openbao-snapshot and ../base/tailscale-operator moved out for the same
+# reason -- each renders an ExternalSecret that needs the ClusterSecretStore
+# from ./openbao -- and are now applied by `security-openbao-snapshot` and
+# `security-tailscale`.
+#
+# kyverno and rbac stay: neither renders anything either webhook admits.
 resources:
   - ../base/kyverno
-  - ../base/cert-manager
-  - ./openbao-snapshot
   - ../base/rbac
-  - ../base/tailscale-operator
+  - ../base/cert-manager
   - external-secrets
