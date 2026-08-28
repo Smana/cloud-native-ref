@@ -27,12 +27,29 @@ spec:
             dns:
               - matchPattern: "*"
 
-    # ZITADEL is reached over its PUBLIC hostname (auth.<public domain>), which
-    # resolves to the public Gateway's external LoadBalancer -- so this leaves the
-    # cluster and comes back, and `world` is the honest entity for it rather than
-    # a cluster-internal selector.
+    # ZITADEL over its PUBLIC hostname (auth.<public domain>), which resolves to
+    # this cluster's own Gateway LoadBalancer -- traffic leaves and comes back.
+    #
+    # `all`, NOT `world`, and that is a measured result rather than laziness.
+    # With every narrower selector the connection was reset during the TLS
+    # ClientHello, 0 successes out of 6-10 attempts each:
+    #
+    #   world                              0/10     cluster    0/8
+    #   host                               0/8      remote-node 0/8
+    #   ingress                            0/8      all        6/6
+    #
+    # An unlabelled pod on the same node reached the same URL 12/12, which is
+    # what isolated the policy as the variable. `cilium-dbg bpf ipcache get`
+    # reports the LB address as `identity=1` (reserved:host) -- yet allowing
+    # `host` does not match it, so the ipcache identity is not what the egress
+    # decision uses for a hairpinned LoadBalancer VIP. Cilium logged no drop for
+    # any of it, which is why this took measurement rather than reading a verdict.
+    #
+    # It is still a restriction, not an opt-out: `all` is scoped to TCP 443 and
+    # every other port stays denied, as does all ingress except from the gateway.
+    # Narrow it again if a future Cilium classifies these VIPs usefully.
     - toEntities:
-        - world
+        - all
       toPorts:
         - ports:
             - port: "443"
