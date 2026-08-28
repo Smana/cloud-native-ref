@@ -38,6 +38,52 @@ script "deploy" {
   description = "Deploy the GKE cluster (Stage 1) and Cilium + Flux (Stage 2)"
 
   job {
+    name        = "stage0-seed-secrets"
+    description = "Create the generated secrets BEFORE anything can consume them"
+    commands = [
+      ["bash", "-c", <<-BASH
+        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
+          echo "[skip] GKE init stage0-seed-secrets: set TM_GCP_ENABLED=true"
+          exit 0
+        fi
+        set -euo pipefail
+
+        # FIRST, and deliberately before the cluster exists.
+        #
+        # `seed` touches only the secret store -- it iterates a static list and
+        # talks to gcloud, never to Kubernetes -- so nothing forces it to wait
+        # for a cluster. What DOES force it to run early is CNPG: the operator
+        # applies a superuser password when it CREATES a Postgres cluster and
+        # never rewrites the role afterwards. Seed after Flux has reconciled the
+        # SQLInstance claim and the database is already born with a password
+        # nobody holds; the ExternalSecret then syncs a credential the server
+        # rejects, and no amount of fixing the secret later reaches it.
+        #
+        # That is not theoretical. On gcp-0, 2026-08-28: `zitadel init` failed
+        # `password authentication failed for user "postgres"` on repeat, and
+        # recovery needed an ALTER USER against the running database because the
+        # secret had been created an hour too late.
+        #
+        # Harbor's role credential has the same shape, and both are unspellable
+        # by hand: they carry a username as well as a password, and their key
+        # separator differs per cloud.
+        #
+        # Not fatal if it fails -- a store that already holds these is the normal
+        # case and seed skips them -- but a warning here is worth reading.
+        PROJECT="$(awk -F'"' '/^project_id/{print $2}' variables.tfvars)"
+        if [ -z "$${PROJECT}" ]; then
+          echo "[warn] could not read project_id from variables.tfvars; skipping seed."
+        else
+          bash "${terramate.root.path.fs.absolute}/scripts/secret-store.sh" \
+            seed --cloud gcp --project "$${PROJECT}" --apply || \
+            echo "[warn] seed failed; re-run it by hand before Flux reconciles the databases"
+        fi
+      BASH
+      ],
+    ]
+  }
+
+  job {
     name        = "stage1-cluster"
     description = "Deploy the GKE cluster, static spot node pool and Workload Identity"
     commands = [
@@ -137,8 +183,27 @@ script "deploy" {
 
         # Only when this cluster hosts the IdP. Consuming another cluster's
         # ZITADEL means its clients are registered there, not here.
-        if [ "$${TF_VAR_deploy_identity_provider:-false}" != "true" ]; then
+        # Read the flag from the tfvars FILE, with the environment as an
+        # override -- not the other way round.
+        #
+        # This used to test only $TF_VAR_deploy_identity_provider. That variable
+        # is how you override the setting for one invocation; the setting itself
+        # lives in ../configure/variables.tfvars, exactly like public_domain_name
+        # two lines up, which is already read that way. So the normal case --
+        # the flag committed to the file, no env var in the shell -- read as
+        # false and skipped registration, while printing a line that looks like
+        # a deliberate decision.
+        #
+        # gcp-0 shipped with `deploy_identity_provider = true` and no OIDC client
+        # ever registered. Every SSO consumer failed at the authorize step with a
+        # client_id ZITADEL had never heard of, and the deploy reported success.
+        DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-}"
+        if [ -z "$${DEPLOY_IDP}" ]; then
+          DEPLOY_IDP="$(awk -F'=' '/^[[:space:]]*deploy_identity_provider/{gsub(/[[:space:]"]/,"",$$2); print $$2}' ../configure/variables.tfvars)"
+        fi
+        if [ "$${DEPLOY_IDP}" != "true" ]; then
           echo "== skipping OIDC clients: deploy_identity_provider is not true"
+          echo "   (file: ../configure/variables.tfvars, override: TF_VAR_deploy_identity_provider)"
           exit 0
         fi
 
