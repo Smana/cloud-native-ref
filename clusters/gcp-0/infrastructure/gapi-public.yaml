@@ -11,8 +11,8 @@
 # Cilium sets once the Gateway is genuinely serving. Flux evaluates those
 # expressions only for resources named in `healthChecks`, so dropping the entry
 # would leave them never evaluated and this Kustomization health-checking
-# nothing at all -- worse than the workstream 10 defect it guards against, and
-# invisible, because the 15m timeout would silently stop meaning anything.
+# nothing at all -- and invisibly, because the 15m timeout below would silently
+# stop meaning anything.
 # See clusters/gcp-0/infrastructure/gapi.yaml for the same form.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization

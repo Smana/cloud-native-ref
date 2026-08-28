@@ -50,6 +50,41 @@ Let's Encrypt to resolve a challenge. That is
 and it is the one place the platform accepted a deliberate cross-cloud
 dependency.
 
+## The variable contract a new cloud must satisfy
+
+Each cloud's `configure` stack publishes a ConfigMap in `flux-system` that every
+Flux Kustomization substitutes from. The keys both clouds define are the real
+portability interface — **a manifest in `base/` may only read one of these**:
+
+| Key | Example (`aws-0` / `gcp-0`) |
+|---|---|
+| `cluster_name` | `aws-0` / `gcp-0` |
+| `cluster_endpoint` | the API server host |
+| `region` | `eu-west-3` / `europe-west4` |
+| `environment` | `dev` |
+| `storage_class` | `gp3` / `standard-rwo` |
+| `private_domain_name` | `priv.aws.ogenki.io` / `priv.gcp.ogenki.io` |
+| `public_domain_name` | `cloud.ogenki.io` / `gcp.cloud.ogenki.io` |
+| `identity_provider_url` | where ZITADEL actually lives ([ADR-0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}})) |
+| `openbao_cidr` | the CIDR holding OpenBao's internal endpoint |
+| `openbao_snapshot_secret` | secret-store key, per-cloud grammar ([ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}})) |
+| `llm_hf_token_secret` | as above |
+
+Everything else each stack publishes is **cloud-shaped and stays in that cloud's
+overlays** — `aws_account_id`, `oidc_provider_arn`, `vpc_id`, `karpenter_queue_name`
+on one side; `project_id`, `project_number`, `workload_pool`, `pod_cidr` on the
+other. A third cloud adds its own such keys freely; it must supply all eleven
+above.
+
+{{< callout type="warning" >}}
+**Flux substitutes an undefined variable to the empty string.** A `base/`
+manifest reading a key your cloud does not define does not fail — it renders a
+hostname with a hole in it. `scripts/flux-schema/check-substitution.py` catches
+exactly this and runs in CI: it reads each cluster's real keys from the
+`flux_cluster_vars` resource in `opentofu/*/configure/kubernetes.tf` and fails
+when a Kustomization applies a variable its own cluster never defines.
+{{< /callout >}}
+
 ## What gains a sibling, not a field
 
 When an API is genuinely cloud-shaped, add a **sibling XRD** rather than a

@@ -1,14 +1,8 @@
 # GCP-only infrastructure for this cluster.
 #
-# Points at infrastructure/gcp-0, NOT at infrastructure/base — that
-# tree is AWS-shaped (Karpenter, aws-load-balancer-controller, EKS Pod
-# Identities) and applying it here would fail on resources whose CRDs do not
-# exist. The GCP tree is deliberately minimal until the design's slices 6-7
-# settle which parts of the shared tree are genuinely cloud-neutral.
-#
-# It sources infra-artifact, which flux/artifact-generators/monorepo-split.yaml
-# already builds from `@repo/infrastructure/**` — so the new directory needs no
-# generator change, only this Kustomization.
+# Points at infrastructure/gcp-0, NOT at infrastructure/base — that tree holds
+# AWS-shaped components (Karpenter, aws-load-balancer-controller) whose CRDs do
+# not exist here. The gcp-0 overlay pulls the neutral pieces of base by name.
 #
 # No dependsOn: crds. This path's ComputeClass CRD is installed by GKE itself
 # (`cloud.google.com/v1`, present on a fresh cluster) rather than by crds/base;

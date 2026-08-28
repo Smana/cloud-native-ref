@@ -35,7 +35,7 @@ metadata:
 spec:
   gatewayClassName: cilium
   listeners:
-    # The cross-cloud demonstration endpoint, and what the workstream 12
+    # The cross-cloud demonstration endpoint, and what the cross-cloud DNS federation
     # verification exercises end to end. Replace or extend with real services;
     # each one gets its own listener block and its own TLS secret.
     - name: probe

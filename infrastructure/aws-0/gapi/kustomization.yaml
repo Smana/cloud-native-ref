@@ -4,19 +4,14 @@ namespace: infrastructure
 
 # The cloud-neutral Gateway API manifests, plus the one that is AWS-only.
 #
-# platform-public-gateway.yaml used to live in ../../base/gapi/ and was the
-# reason infrastructure/gcp-0/gapi/ had to enumerate its six siblings BY FILE
-# rather than reference the directory: it carries
-# service.beta.kubernetes.io/aws-load-balancer-* annotations and a listener
-# hostname built from ${domain_name}, a key gcp-0's vars ConfigMap does not
-# define. Flux substitutes an undefined variable to empty, so reusing it on GCP
-# would silently produce `hostname: "*."`.
+# platform-public-gateway.yaml lives HERE, not in ../../base/gapi, because it
+# carries service.beta.kubernetes.io/aws-load-balancer-* annotations that mean
+# nothing on GKE. Keeping it out of the base is what lets both clusters
+# reference that directory whole — so a new cloud-neutral manifest added there
+# reaches both, instead of only whichever overlay does not cherry-pick.
 #
-# Cherry-picking by file made that safe but introduced a quieter failure: a new
-# cloud-neutral manifest added to base/gapi reached aws-0 (which took the whole
-# directory) and silently skipped gcp-0. Moving the AWS-only file here lets BOTH
-# clusters reference the base directory whole, which is the same correction
-# security/aws-0/openbao-snapshot/ already applies to kms.yaml and s3-bucket.yaml.
+# gcp-0 builds its public path from its own manifests in
+# infrastructure/gcp-0/gapi-public/ (ADR-0019).
 resources:
   - ../../base/gapi
   - platform-public-gateway.yaml

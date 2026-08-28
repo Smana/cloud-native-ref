@@ -3,7 +3,7 @@ kind: Kustomization
 namespace: security
 
 # The base is now cloud-neutral -- kms.yaml and s3-bucket.yaml moved to
-# security/aws-0/openbao-snapshot/ (Task 12) -- so this references the whole
+# security/aws-0/openbao-snapshot/ -- so this references the whole
 # directory rather than cherry-picking files.
 resources:
   - ../../base/openbao-snapshot

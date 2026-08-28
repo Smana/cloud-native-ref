@@ -10,7 +10,7 @@
 # cluster is future work, not attempted here."
 #
 # So the endpoint does not exist on this cluster. Measured on a live gcp-0
-# during workstream 9, not inferred:
+# on a live gcp-0, not inferred:
 #
 #   $ bao operator raft snapshot save /tmp/gcp-test.snap
 #     URL: GET https://bao.priv.gcp.ogenki.io:8200/v1/sys/storage/raft/snapshot
@@ -24,7 +24,7 @@
 # Left active, this would run daily, fail with that 404, and -- worse -- read as
 # backup coverage to anyone not reading the logs. Suspended is the honest state.
 #
-# TO RESUME: move gcp-0's OpenBao to raft storage (workstream 11), then set
+# TO RESUME: move gcp-0's OpenBao to raft storage, then set
 # suspend: false. Nothing in this repo needs to change.
 #
 # Its own Kustomization, not folded into `security` or `security-openbao`,
