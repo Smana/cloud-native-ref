@@ -42,10 +42,13 @@ Recover:
 kubectl rollout restart -n kube-system deployment/cilium-operator
 ```
 
-The durable fix is adding the missing CRD to `gateway_api_crds_urls` in
-`opentofu/aws/eks/configure/locals.tf`. Flux applies the full CRD directory, but
-only *after* Cilium is already running — which is why the operator can start
-before the CRD exists.
+Both clouds install these CRDs from `opentofu/shared/modules/gateway-api-crds`,
+which applies the entire experimental-channel bundle — so a CRD Cilium wants
+cannot be missing because someone forgot to list it. If the fix is a *newer*
+Gateway API release, bump `gateway_api_version` in the stack's `variables.tfvars`
+and `flux/sources/gitrepo-gateway-api.yaml` together. Flux applies the full CRD
+directory too, but only *after* Cilium is already running — which is why the
+operator can start before the CRD exists.
 
 {{< callout type="warning" >}}
 That list is **append-only**. Entries are indexed by `count`, so removing or

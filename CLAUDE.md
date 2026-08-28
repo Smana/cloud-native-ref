@@ -311,9 +311,12 @@ Use the FluxCD agent-skills plugin for Flux troubleshooting (`/gitops-cluster-de
   HTTPRoutes with no `status.parents`, and every `App` claim that owns a route stuck
   `READY=False`. Confirm with
   `kubectl logs -n kube-system -l io.cilium/app=operator | grep "Required GatewayAPI resources"`,
-  then `kubectl rollout restart -n kube-system deployment/cilium-operator`. The durable fix is to
-  add the missing CRD to `gateway_api_crds_urls` in `opentofu/aws/eks/configure/locals.tf` — Flux
-  applies the full CRD directory, but only *after* Cilium is already running.
+  then `kubectl rollout restart -n kube-system deployment/cilium-operator`. Both clouds install
+  these CRDs from `opentofu/shared/modules/gateway-api-crds`, which applies the whole
+  experimental-channel bundle keyed by `for_each` — so a CRD Cilium wants can no longer be missing
+  from an enumeration. If a *newer Gateway API release* is the fix, bump `gateway_api_version` in
+  both `variables.tfvars` and `flux/sources/gitrepo-gateway-api.yaml` together. Flux applies the
+  full CRD directory too, but only *after* Cilium is already running.
 
 > **VictoriaLogs and Grafana rules** are in `.claude/rules/observability.md` (loaded automatically when editing observability files).
 

@@ -225,10 +225,10 @@ can run, not chosen freely.
   `opentofu/aws/eks/configure/locals.tf` records that its absence "is what
   broke Gateway API on the 2026-08-19 rebuild."
   - *Mitigation*: `kubectl rollout restart -n kube-system
-    deployment/cilium-operator` reruns the probe immediately; durably,
-    the CRD's URL is added to the append-only `gateway_api_crds_urls` in
-    `opentofu/aws/eks/configure/locals.tf` so it is present before the next
-    rebuild's probe runs.
+    deployment/cilium-operator` reruns the probe immediately. Durably, that
+    enumeration was retired — both clouds install the whole
+    experimental-channel bundle via `opentofu/shared/modules/gateway-api-crds`,
+    so the installed set cannot be a subset of what Cilium probes for.
 - **Smaller ecosystem than `Ingress`.** Fewer worked examples exist for
   Gateway API than for `Ingress`, and some upstream charts still ship
   only an `ingress:` values stanza with no Gateway API template —
@@ -268,10 +268,11 @@ so Cilium's own `Ingress` support stays off.
 
 The Gateway API CRDs themselves are not chart-managed: `flux/sources/gitrepo-gateway-api.yaml`
 pins a `GitRepository` to `kubernetes-sigs/gateway-api` tag `v1.6.1`, and
-`opentofu/aws/eks/configure/locals.tf`'s `gateway_api_crds_urls` list installs
-the same-versioned experimental CRDs (including `backendtlspolicies` and
-`listenersets`, both required by Cilium ≥1.20) before Cilium's Stage 2
-install, so `cilium-operator`'s startup probe finds them.
+`opentofu/shared/modules/gateway-api-crds` installs the same-versioned
+experimental-channel bundle — every CRD in the release, `backendtlspolicies` and
+`listenersets` included — before Cilium's Stage 2 install, so
+`cilium-operator`'s startup probe finds them. Both clouds use that one module,
+so the two clusters cannot present Cilium with different Gateway API surfaces.
 
 ---
 
@@ -284,8 +285,8 @@ install, so `cilium-operator`'s startup probe finds them.
   `GatewayClass` implementation this decision depends on
 - [CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md)
   — "Gateways stuck `Waiting for controller`" troubleshooting entry
-- `opentofu/aws/eks/configure/locals.tf` — `gateway_api_crds_urls`, the
-  append-only CRD list and the `backendtlspolicies` incident comment
+- `opentofu/shared/modules/gateway-api-crds` — the bundle install both
+  clouds use, and the `backendtlspolicies` incident that motivated it
 - `opentofu/aws/eks/configure/variables.tf` — `gateway_api_version`
 - `flux/sources/gitrepo-gateway-api.yaml` — the Flux `GitRepository` pin
   that must match `gateway_api_version`

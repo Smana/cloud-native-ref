@@ -39,8 +39,3 @@ data "aws_secretsmanager_secret_version" "github_app" {
 data "aws_secretsmanager_secret_version" "cert_manager_approle" {
   secret_id = var.cert_manager_approle_secret_name
 }
-
-data "http" "gateway_api_crds" {
-  count = length(local.gateway_api_crds_urls)
-  url   = local.gateway_api_crds_urls[count.index]
-}

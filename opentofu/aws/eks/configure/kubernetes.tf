@@ -9,20 +9,7 @@
 # provider from the module in v20. Here the cluster already exists
 # (data.aws_eks_cluster.this + exec auth), so the providers configure cleanly.
 
-# Install Gateway API CRDs. Requirement to be installed before Cilium is running.
-# `force_conflicts = true` because Flux's `crds-gateway-api` Kustomization
-# (kube-system) takes over field-managership after the cluster is up — on
-# subsequent re-deploys Tofu would otherwise fail with SSA conflicts on
-# .spec.versions and the api-approved annotation. Tofu wins on apply,
-# Flux re-claims on its next reconcile (~1 min) — the CRD content is
-# identical (same upstream URL) so there's no flap.
-resource "kubectl_manifest" "gateway_api_crds" {
-  count             = length(local.gateway_api_crds_urls)
-  yaml_body         = data.http.gateway_api_crds[count.index].response_body
-  server_side_apply = true
-  force_conflicts   = true
-  wait              = true
-}
+# The Gateway API CRDs moved to gateway_api.tf, which uses the shared module.
 
 # Create flux-system namespace first (required for secrets and ConfigMap)
 resource "kubectl_manifest" "flux_system_namespace" {

@@ -45,7 +45,7 @@ resource "helm_release" "cilium" {
   depends_on = [
     kubectl_manifest.disable_vpc_cni,
     kubectl_manifest.cilium_cni_config,
-    kubectl_manifest.gateway_api_crds, # Gateway API CRDs must exist before Cilium
+    module.gateway_api_crds, # Gateway API CRDs must exist before Cilium
   ]
 
   name             = "cilium"
