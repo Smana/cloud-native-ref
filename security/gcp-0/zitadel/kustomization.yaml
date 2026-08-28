@@ -47,6 +47,36 @@ patches:
   #      Rotate the seed the way base documents for aws-0: take a one-shot
   #      Backup, copy the cluster prefix to a new dated one, update `path` here.
   #
+  #      ── RESTORING REQUIRES CLEARING THE LIVE ARCHIVE FIRST ──────────────
+  #
+  #      VALIDATED end to end on 2026-08-28 by deleting the CNPG Cluster AND its
+  #      PVC and letting Crossplane rebuild: the restored instance came back with
+  #      the same 3 users, 5 OIDC apps, 4 roles, admin grant and Google IdP.
+  #
+  #      It failed three times first, and the reason is structural rather than
+  #      incidental. CNPG refuses to start a restored cluster whose DESTINATION
+  #      WAL archive is non-empty -- a restore opens a new timeline and would
+  #      collide with the existing WALs:
+  #
+  #        barman-cloud-check-wal-archive: WAL archive check failed for server
+  #        xplane-zitadel-cnpg-cluster: Expected empty archive
+  #
+  #      The bucket is deliberately durable (infrastructure/gcp-0/cloudnative-pg/
+  #      gcs-bucket.yaml: "backups outlive any individual cluster"), so on EVERY
+  #      rebuild the destination still holds the previous cluster's archive and
+  #      the restore refuses. Before a restore-bootstrap, clear it:
+  #
+  #        gcloud storage rm --recursive \
+  #          gs://<project>-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/
+  #
+  #      Safe only because the seed under zitadel-<date>/ is a full copy -- take
+  #      and freeze the seed BEFORE clearing anything.
+  #
+  #      The durable fix is a per-generation `serverName` in the SQLInstance
+  #      Composition, which would remove this step on both clouds. Until then the
+  #      manual step is required, and aws-0 carries the same exposure -- see the
+  #      note in security/base/zitadel/sqlinstance.yaml.
+  #
   #   3. backup.bucketName points at a `${project_id}-` bucket rather than
   #      base's `${region}-` one. GCS bucket names are globally unique, so the
   #      region is not what makes one unique. The bucket itself is provisioned

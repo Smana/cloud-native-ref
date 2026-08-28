@@ -42,6 +42,27 @@ spec:
   # S3 (root cause unknown — suspect cluster destroy raced backup
   # finalize). Add a Flux pre-flight check that fails closed if the
   # configured recovery prefix is empty.
+  # UNTESTED ON THIS CLOUD, and it will not work as written on a rebuild.
+  #
+  # gcp-0 exercised the equivalent path on 2026-08-28 -- the first time a restore
+  # from object storage has actually been performed anywhere in this repository.
+  # It works, and it needs one step nobody had written down: CNPG refuses to
+  # start a restored cluster whose DESTINATION WAL archive is non-empty --
+  #
+  #   barman-cloud-check-wal-archive: WAL archive check failed for server
+  #   xplane-zitadel-cnpg-cluster: Expected empty archive
+  #
+  # -- because a restore opens a new timeline that would collide with the WALs
+  # already there. This bucket outlives the cluster by design, so on every
+  # aws-0 rebuild `xplane-zitadel-cnpg-cluster/` still holds the LAST cluster's
+  # archive and the bootstrap will refuse, exactly as it did on GCP.
+  #
+  # aws-0 has not hit it only because nothing has rebuilt since zitadel-20260719
+  # was frozen. Before the next rebuild, either clear the live prefix --
+  #   aws s3 rm --recursive \
+  #     s3://<region>-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/
+  # -- having first confirmed the dated seed is complete, or fix it properly with
+  # a per-generation serverName in the SQLInstance Composition.
   objectStoreRecovery:
     bucketName: "${region}-ogenki-cnpg-backups"
     path: "zitadel-20260719"
