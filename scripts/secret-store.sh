@@ -428,10 +428,24 @@ cmd_migrate_aws() {
 # Not seeded, though it is pure generation: observability-grafana-oncall-*.
 # grafana-oncall is built under observability/base but wired into no
 # Kustomization, so it runs nowhere on either cluster.
+#
+# The two cnpg entries are database credentials the SQLInstance Composition asks
+# for, and their separator is cloud-specific for the same reason it is in the
+# Composition itself: a GCP Secret Manager ID must match [A-Za-z0-9_-]+, so the
+# AWS spelling `cnpg/<instance>/roles/<owner>` names a secret that CANNOT exist
+# on GCP. That mismatch shipped, and the symptom named neither the key nor the
+# cloud: External Secrets said `could not get secret data from provider` while
+# harbor-core sat in CreateContainerConfigError naming a Kubernetes Secret.
+# Fixed in crossplane-configuration v0.4.2; seeded here so a rebuild does not
+# depend on someone remembering.
+_cnpg_sep=$([ "$CLOUD" = "gcp" ] && printf -- "-" || printf -- "/")
+
 GENERATABLE=(
     "harbor-admin-password"
     "harbor-valkey-password"
     "observability-victoria-metrics-k8s-stack-grafana-envvars"
+    "cnpg${_cnpg_sep}xplane-harbor${_cnpg_sep}roles${_cnpg_sep}harbor"
+    "cnpg${_cnpg_sep}xplane-zitadel${_cnpg_sep}superuser"
 )
 
 # 32 bytes of urandom, base64, punctuation removed so no consumer has to worry
@@ -467,6 +481,22 @@ seed_body() {
         observability-victoria-metrics-k8s-stack-grafana-envvars)
             jq -n --arg p "$(gen_password)" \
                 '{GF_SECURITY_ADMIN_USER: "admin", GF_SECURITY_ADMIN_PASSWORD: $p}' ;;
+        # Globs, so one arm serves both spellings: `cnpg/...` on AWS and
+        # `cnpg-...` on GCP. The username is not decoration -- the ExternalSecret
+        # reads `property: username` as well as `password`, so a body carrying
+        # only a password syncs a Secret missing a key the workload mounts.
+        cnpg?xplane-harbor?roles?harbor)
+            # Must match spec.roles[].name on the claim: CNPG creates the role
+            # under that name and Harbor connects as it.
+            jq -n --arg p "$(gen_password)" '{username: "harbor", password: $p}' ;;
+        cnpg?xplane-zitadel?superuser)
+            # `postgres`, because the cluster sets enableSuperuserAccess: true
+            # alongside an explicit superuserSecret -- so CNPG expects US to
+            # supply the pair rather than generating <cluster>-superuser itself.
+            # Observed on gcp-0: superuser access enabled and no such secret
+            # anywhere, leaving it configured and unusable while failing nothing
+            # visibly.
+            jq -n --arg p "$(gen_password)" '{username: "postgres", password: $p}' ;;
         *)
             echo "no generator for $1" >&2; return 1 ;;
     esac
