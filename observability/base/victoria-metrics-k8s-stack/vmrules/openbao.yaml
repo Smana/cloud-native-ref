@@ -138,7 +138,7 @@ spec:
               Note that `bao operator raft snapshot save` only works against raft
               storage — in dev mode the cluster runs the file backend and this
               job cannot succeed at all.
-            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/opentofu/aws/openbao/management/docs/backup_restore.md"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/container-images/openbao-snapshot/README.md"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
 
         # Two arms on purpose. kube-state-metrics only emits
@@ -162,5 +162,5 @@ spec:
               disaster-recovery position is degrading silently — a backup with no
               freshness signal is not a backup, and one that has never run is not
               a backup at all.
-            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/opentofu/aws/openbao/management/docs/backup_restore.md"
+            runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/container-images/openbao-snapshot/README.md"
             dashboard: "https://grafana.${private_domain_name}/dashboards"

@@ -142,37 +142,54 @@ spec:
       # NAMES and not secret material -- which is the whole point of being able
       # to answer "which key is it asking for, and does it exist?".
       resourceSpecRules:
-        # ── the chart's shipped ten, verbatim ──────────────────────────────
+        # ── the chart's shipped ten, with `list` added ─────────────────────
+        #
+        # The rules are the chart's; the verbs are not. It ships `["get"]` only,
+        # which serves resource_spec (fetch one named object) and leaves
+        # list_resources denied on all 28 shipped types. An investigation on
+        # 2026-08-28 reported exactly that, twice, having already been granted
+        # the kinds:
+        #
+        #   list_resources on VMRule in observability  -> FORBIDDEN
+        #   list_resources on CronJobs in security     -> FORBIDDEN
+        #
+        # while `kubectl auth can-i` confirmed get=yes, list=no for every one of
+        # them. The five platform rules below were added with get AND list and
+        # never hit this, which is what made the asymmetry visible.
+        #
+        # "Is there a CronJob in this namespace at all?" is a listing question,
+        # and answering it from an ABSENT resource_spec result is guesswork
+        # dressed as evidence. Still no Secret kind anywhere in this grant.
         - apiGroups: [""]
           resources: ["services", "persistentvolumeclaims", "persistentvolumes", "nodes", "namespaces"]
-          verbs: ["get"]
+          verbs: ["get", "list"]
         - apiGroups: ["apps"]
           resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
-          verbs: ["get"]
+          verbs: ["get", "list"]
         - apiGroups: ["batch"]
           resources: ["jobs", "cronjobs"]
-          verbs: ["get"]
+          verbs: ["get", "list"]
         - apiGroups: ["networking.k8s.io"]
           resources: ["ingresses", "networkpolicies", "ingressclasses"]
-          verbs: ["get"]
+          verbs: ["get", "list"]
         - apiGroups: ["autoscaling"]
           resources: ["horizontalpodautoscalers"]
-          verbs: ["get"]
+          verbs: ["get", "list"]
         - apiGroups: ["policy"]
           resources: ["poddisruptionbudgets"]
-          verbs: ["get"]
+          verbs: ["get", "list"]
         - apiGroups: ["storage.k8s.io"]
           resources: ["volumeattachments"]
-          verbs: ["get"]
+          verbs: ["get", "list"]
         - apiGroups: ["apiextensions.k8s.io"]
           resources: ["customresourcedefinitions"]
-          verbs: ["get"]
+          verbs: ["get", "list"]
         - apiGroups: ["operator.victoriametrics.com"]
           resources: ["vmservicescrapes", "vmpodscrapes", "vmscrapeconfigs", "vmrules", "vmagents", "vmalerts"]
-          verbs: ["get"]
+          verbs: ["get", "list"]
         - apiGroups: ["monitoring.coreos.com"]
           resources: ["servicemonitors", "podmonitors", "prometheusrules", "probes"]
-          verbs: ["get"]
+          verbs: ["get", "list"]
         # ── this platform's own operators ─────────────────────────────────
         # Named in the data gaps above. A SecretSyncedError is unreadable
         # without the ExternalSecret's spec: the remoteRef key IS the diagnosis.
