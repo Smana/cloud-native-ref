@@ -267,8 +267,60 @@ ensure_project() {
         echo "DRYRUN-PROJECT"
         return
     fi
-    api POST /management/v1/projects -d "$(jq -n --arg n "$ZITADEL_PROJECT_NAME" '{name:$n}')" \
+    api POST /management/v1/projects -d "$(jq -n --arg n "$ZITADEL_PROJECT_NAME" \
+        '{name:$n, projectRoleAssertion:true}')" \
         | jq -r '.id'
+}
+
+# "Assert Roles on Authentication", and it is the flag every SSO consumer on this
+# platform silently depends on.
+#
+# ZITADEL defaults it to FALSE. With it off, project roles are attached to NO
+# token -- and the damage is not limited to the standard roles claim:
+# `ctx.v1.user.grants` is EMPTY inside a token action, so
+# zitadel-actions/groups-from-roles.js takes its no-grants early return and never
+# sets `groups` or `roles` at all. The action still logs "action run succeeded".
+#
+# On 2026-08-28 that one flag produced three unrelated-looking failures:
+#
+#   Flux UI   failed to evaluate the CEL expression 'claims.groups':
+#             no such key: groups
+#   Headlamp  [AuthFailure] Invalid authentication via OAuth2: unauthorized
+#             (oauth2-proxy's --allowed-group=admin matching nothing)
+#   Grafana   every user silently landing on the Viewer fallback
+#
+# Every other setting looked right: the user held an ACTIVE admin grant on this
+# project, the project was in the token's `aud`, and all five apps had
+# idTokenUserinfoAssertion and idTokenRoleAssertion true. None of that matters
+# while the project itself refuses to assert roles.
+#
+# Set on an EXISTING project too, not only at creation -- gcp-0's was created
+# before this was understood, and a project that predates this function must be
+# repaired rather than left to a manual console click nobody remembers.
+ensure_project_role_assertion() {
+    local project_id="$1" current
+    [ -n "$project_id" ] || return 0
+    [ "$project_id" = "DRYRUN-PROJECT" ] && { echo "[dry-run] would ensure projectRoleAssertion=true"; return 0; }
+
+    current="$(api GET "/management/v1/projects/${project_id}" 2>/dev/null \
+               | jq -r '.project.projectRoleAssertion // false')"
+    if [ "$current" = "true" ]; then
+        echo "[skip   ] projectRoleAssertion already true"
+        return 0
+    fi
+    if [ "$APPLY" != "true" ]; then
+        echo "[dry-run] would set projectRoleAssertion=true (currently ${current})"
+        return 0
+    fi
+
+    # The PUT is a full replace: omitting a field resets it to its zero value, so
+    # the other three are restated at their current defaults rather than dropped.
+    jq -n --arg n "$ZITADEL_PROJECT_NAME" \
+        '{name:$n, projectRoleAssertion:true, projectRoleCheck:false,
+          hasProjectCheck:false,
+          privateLabelingSetting:"PRIVATE_LABELING_SETTING_UNSPECIFIED"}' \
+        | api PUT "/management/v1/projects/${project_id}" -d @- >/dev/null
+    echo "[updated] projectRoleAssertion=true"
 }
 
 app_id_by_name() {
@@ -333,6 +385,7 @@ cmd_sync() {
     project_id="$(ensure_project)"
     [ -n "$project_id" ] || { echo "could not resolve or create the ZITADEL project" >&2; exit 1; }
 
+    ensure_project_role_assertion "$project_id"
     ensure_project_roles "$project_id"
 
     local created=0 skipped=0
