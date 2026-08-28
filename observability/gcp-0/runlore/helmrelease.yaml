@@ -17,20 +17,25 @@ metadata:
   namespace: runlore
 spec:
   values:
-    # The base pins image 0.13.0, which has no GCP cloud provider at all: with
-    # the chart and the policy both correct, the pod still logged NOTHING about
-    # GCP -- not even a resolution failure -- and reported `"cloud":false`. An
-    # absent provider and a broken one look identical from the outside.
+    # NO image override here any more, deliberately.
     #
-    # `main` is the only tag published for this image, built 2026-08-27T10:14:22Z,
-    # three minutes after the commit the chart is pinned to (96688ac5). So it is
-    # the image that matches the chart, not a newer guess.
+    # This used to pin `tag: "main"` with pullPolicy: Always, because the GCP
+    # cloud provider existed only on that branch. It is in 0.16.0 now, which the
+    # base pins, so one pin serves both clouds and there is nothing per-cloud
+    # left to say about the image.
     #
-    # A moving tag is acceptable only because this cluster is rebuilt from
-    # scratch every run. Pin a released tag alongside the chart's v0.16.0.
-    image:
-      tag: "main"
-      pullPolicy: Always
+    # Worth keeping the reason the override was harmful, because it defended
+    # itself as "acceptable, this cluster is rebuilt every run":
+    #
+    #   runlore_build_info{version="main-26372b4"}   <- the binary that ran
+    #   chart pinned to 80d4b50                      <- the config it was given
+    #
+    # The Build Image run for 80d4b50 FAILED on 2026-08-27, so `main` never moved
+    # past its predecessor and gcp-0 spent a day running a binary one commit
+    # behind its own chart. Nothing reported it: a failed build is silent, a
+    # stale tag has no status, and the drift is invisible from inside the
+    # cluster. `main` is a rolling single-arch VALIDATION image from
+    # build-image.yml -- it was never meant to be deployed.
     networkPolicy:
       awsPodIdentity: false
       gcpWorkloadIdentity: true

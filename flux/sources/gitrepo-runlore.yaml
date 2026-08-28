@@ -26,17 +26,24 @@ spec:
   # with the live HelmRelease values and the resulting config replayed through the
   # v0.13.0 binary's own config.Load (KnownFields + Validate): both pass.
   ref:
-    # Pinned to a COMMIT, not a tag, on purpose.
+    # v0.16.0 is the release the previous commit pin was waiting for: it is the
+    # first tag carrying runlore's GCP support -- networkPolicy.gcpWorkloadIdentity,
+    # which allows the GKE metadata server by address (Smana/runlore#563).
+    # v0.15.0's chart has no gcpWorkloadIdentity at all, so a gcp-0 deployment
+    # from it renders an AWS-shaped policy (toEntities: host) that matches
+    # nothing on GKE: every metadata call times out and the failure reads as a
+    # misconfiguration rather than a dropped packet.
     #
-    # runlore's GCP support -- networkPolicy.gcpWorkloadIdentity, which allows
-    # the GKE metadata server by address -- exists only on main. v0.15.0 is the
-    # latest tag and its chart has no gcpWorkloadIdentity at all, so a gcp-0
-    # deployment from it renders an AWS-shaped policy (toEntities: host) that
-    # matches nothing on GKE: every metadata call times out and the failure
-    # reads as a misconfiguration rather than a dropped packet.
+    # WHY THE COMMIT PIN HAD TO GO, beyond being temporary. A commit pin here is
+    # only half a pin: the chart follows the commit, but the IMAGE followed the
+    # mutable `main` tag, and the two are only in step while every build
+    # succeeds. On 2026-08-27 the Build Image run for that exact commit FAILED,
+    # so `main` never moved past its predecessor. gcp-0 then ran a binary one
+    # commit behind the chart it was configured by -- reported by the pod's own
+    # runlore_build_info as main-26372b4 against a chart pinned to 80d4b509 --
+    # and nothing anywhere said so. A failed build is silent; a stale tag has no
+    # status.
     #
-    # This is the commit that fixed it (Smana/runlore#563), 13 commits ahead of
-    # v0.15.0. Replace with `tag: v0.16.0` once that release exists -- a pin to
-    # an unreleased branch is a temporary state, and this comment is the record
-    # of why it was taken.
-    commit: 80d4b50996863aff30db4d00ca1320fb5b8eda77 # pragma: allowlist secret
+    # A released tag closes that: chart and image are cut from the same commit by
+    # the same release, and the image is immutable.
+    tag: v0.16.0
