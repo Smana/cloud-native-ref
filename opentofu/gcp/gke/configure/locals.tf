@@ -10,6 +10,20 @@ locals {
   # mismatch would not fail loudly, it would just misroute pod traffic.
   pod_cidr = local.init.pod_cidr
 
+  # This cluster's default block-storage class, defined ONCE and consumed twice:
+  # Flux's own artifact PVC via the shared flux-instance template, and the
+  # storage_class key in the Flux vars ConfigMap that postBuild substitutes into
+  # workload PVCs. GKE auto-installs the class itself, so unlike AWS there is no
+  # StorageClass object to create here.
+  #
+  # standard-rwo is pd-balanced, GKE's SSD class and the honest gp3 equivalent --
+  # despite the name it is NOT the HDD tier. That is "standard" (pd-standard),
+  # which is cheaper and was considered given this platform's
+  # tear-down-after-every-run posture, but rejected: the largest consumer is a
+  # VictoriaMetrics cluster whose write path is I/O-sensitive, and a reference
+  # platform running it on HDD would be unrepresentative of production.
+  storage_class = "standard-rwo"
+
   github_app_secret = jsondecode(data.google_secret_manager_secret_version.flux_github_app.secret_data)
 
   # Hosting the IdP means serving it on THIS cluster's public domain; consuming

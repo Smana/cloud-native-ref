@@ -44,17 +44,13 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       oidc_issuer_host      = local.oidc_issuer_host
       aws_account_id        = data.aws_caller_identity.this.account_id
       region                = var.region
-      # The cluster's default block-storage class for PVCs. Shared name with
-      # the GCP ConfigMap, different value: this repo creates the gp3
-      # StorageClass object itself (kubectl_manifest.gp3_storageclass,
-      # below) -- EKS's EBS CSI managed add-on supplies only the
-      # provisioner. GKE's side is standard-rwo, a class GKE auto-installs
-      # (no equivalent kubectl_manifest needed there). Both are SSD-backed
-      # and both are consumed as an opaque string by storageClassName --
-      # nothing derives anything else from it, which is what makes one
-      # shared key honest here where ${region} was not (see the
-      # workstream 13 design).
-      storage_class = "gp3"
+      # The cluster's default block-storage class for PVCs. Shared key name with
+      # the GCP ConfigMap, different value: GKE's side is standard-rwo, a class
+      # GKE auto-installs. Both are SSD-backed and both are consumed as an
+      # opaque string by storageClassName -- nothing derives anything else from
+      # it, which is what makes one shared key honest here where ${region} was
+      # not (see the workstream 13 design).
+      storage_class = local.storage_class
       environment   = var.env
       # `domain_name` used to sit here as a THIRD key holding
       # var.public_domain_name -- the same value as public_domain_name below,
@@ -168,7 +164,7 @@ resource "kubectl_manifest" "gp3_storageclass" {
     apiVersion: storage.k8s.io/v1
     kind: StorageClass
     metadata:
-      name: gp3
+      name: ${local.storage_class}
       annotations:
         storageclass.kubernetes.io/is-default-class: "true"
     provisioner: ebs.csi.aws.com

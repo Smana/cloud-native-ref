@@ -42,7 +42,7 @@ here, and each one is a real file in this repository:
 
 | Resource | What it does here | Where |
 |---|---|---|
-| `FluxInstance` | The Flux Operator manages Flux's own installation and upgrades from this one object — which controllers run, how they are sharded, how they are tuned | `opentofu/aws/eks/init/helm_values/flux-instance.yaml` (GCP copy: `opentofu/gcp/gke/init/helm_values/`), applied in Stage 2 |
+| `FluxInstance` | The Flux Operator manages Flux's own installation and upgrades from this one object — which controllers run, how they are sharded, how they are tuned | `opentofu/shared/helm_values/flux-instance.yaml.tftpl` — one template both clouds render, applied in Stage 2 |
 | `GitRepository` | The `flux-system` source: this repository, authenticated as a GitHub App. Eleven more point at external repositories | created by the `FluxInstance`; the rest in `flux/sources/` |
 | `ArtifactGenerator` → `ExternalArtifact` | Re-slices the one fetched repository artifact into a narrower artifact per domain, so a change under `security/` does not re-trigger `observability/` | `flux/artifact-generators/monorepo-split.yaml` |
 | `Kustomization` | Applies one domain's overlay, in dependency order, and reports whether it is healthy | `clusters/aws-0/`, `clusters/gcp-0/` |

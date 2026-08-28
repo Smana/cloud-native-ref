@@ -213,7 +213,7 @@ Flux Operator and `FluxInstance` install as two sequential `helm_release`
 resources in `opentofu/aws/eks/configure/main.tf` (Stage 2), after Cilium is
 up and kube-proxy is disabled. `FluxInstance`'s values, including the
 `sharding.key: sharding.fluxcd.io/key` / `shards: ["apps"]` configuration,
-live in `opentofu/aws/eks/init/helm_values/flux-instance.yaml`.
+live in `opentofu/shared/helm_values/flux-instance.yaml.tftpl`.
 
 The dependency graph itself is not hand-maintained prose — it is
 re-derived from `spec.dependsOn` in every `clusters/aws-0/**/*.yaml`

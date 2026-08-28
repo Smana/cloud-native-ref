@@ -173,7 +173,9 @@ resource "helm_release" "flux_instance" {
   namespace        = "flux-system"
   create_namespace = false
 
-  values = [file("${path.module}/../init/helm_values/flux-instance.yaml")]
+  values = [templatefile("${path.module}/../../../shared/helm_values/flux-instance.yaml.tftpl", {
+    storage_class = local.storage_class
+  })]
 
   set = [
     {
