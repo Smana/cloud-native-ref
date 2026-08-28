@@ -123,22 +123,52 @@ module "gke" {
   # VictoriaLogs and VictoriaMetrics already do this job. The GKE defaults bill
   # Cloud Logging and Cloud Monitoring for a pipeline nobody reads. This is one
   # of the two GCP-only cost levers in the design, and it is awkward to retrofit.
-  logging_service    = "none"
-  monitoring_service = "none"
+  #
+  # This is expressed through the *_enabled_components variables, NOT through
+  # `logging_service`/`monitoring_service = "none"`, which is what this stack
+  # used to say and which silently did nothing. The module:
+  #
+  #   logmon_config_is_set = length(logging_enabled_components) > 0
+  #                       || length(monitoring_enabled_components) > 0
+  #                       || monitoring_enable_managed_prometheus != null
+  #   logging_service    = logmon_config_is_set ? null : var.logging_service
+  #   monitoring_service = logmon_config_is_set ? null : var.monitoring_service
+  #
+  # Setting `monitoring_enable_managed_prometheus = false` -- the line added to
+  # close the Managed Prometheus gap -- makes that local TRUE, which nulls BOTH
+  # `_service` fields. Monitoring still came out disabled because a
+  # `monitoring_config` block is emitted regardless with an empty
+  # componentConfig. Logging did not: the module emits `logging_config` only
+  # when `logging_enabled_components` is non-empty, so with the default `[]` no
+  # block was written and GKE fell back to its own default.
+  #
+  # Measured on the live cluster on 2026-08-28, six deploys in:
+  #   loggingService: logging.googleapis.com/kubernetes
+  #   enableComponents: [SYSTEM_COMPONENTS, WORKLOADS]
+  # WORKLOADS is every container log on every node, shipped and billed, next to
+  # a VictoriaLogs collecting the same lines. Criterion 10 of the design was
+  # never met, and nothing reported it: the plan showed "none" and the cluster
+  # ignored it.
+  #
+  # SYSTEM_COMPONENTS rather than nothing at all, deliberately. `[]` is the
+  # module's "do not set this" sentinel, so it cannot express "no logging" --
+  # it is what produced this bug. System logs are a small fraction of the
+  # volume and are the ones worth having when GKE itself misbehaves; WORKLOADS
+  # is the expensive half and is what goes.
+  logging_enabled_components = ["SYSTEM_COMPONENTS"]
 
-  # THREE separate toggles, not one. Setting only the two above leaves Google
-  # Managed Prometheus collecting and billing: `monitoring_enable_managed_prometheus`
-  # defaults to null, which GKE reads as enabled.
-  #
-  # Measured on the first deploy: with logging_service and monitoring_service
-  # already "none", the cluster still ran a 3-replica gmp-system/collector
-  # DaemonSet plus gke-metrics-agent and a kube-state-metrics StatefulSet --
-  # a full second metrics pipeline alongside VictoriaMetrics, which is exactly
-  # the duplicate the design's cost lever exists to remove.
-  #
-  # Criterion 10 ("workload Cloud Logging AND Monitoring disabled") is not met
-  # without this line; verifying it in the plan output is not enough, because the
-  # plan shows the two services as "none" and says nothing about GMP.
+  # Left at its default `[]`. That is NOT the same sentinel problem as logging:
+  # because managed_prometheus below is non-null, a `monitoring_config` block is
+  # emitted anyway, and an empty componentConfig inside it means no monitoring.
+  # Verified on the cluster: `monitoringService: none`.
+  monitoring_enabled_components = []
+
+  # THREE separate toggles, not one -- and this is the one that makes the other
+  # two behave as described above. Without it, `monitoring_enable_managed_prometheus`
+  # defaults to null, which GKE reads as enabled: the first deploy ran a
+  # 3-replica gmp-system/collector DaemonSet plus gke-metrics-agent and a
+  # kube-state-metrics StatefulSet -- a full second metrics pipeline alongside
+  # VictoriaMetrics.
   monitoring_enable_managed_prometheus = false
 
   # Must stay false. The module's ip-masq-agent is a kubernetes_config_map, i.e. a
