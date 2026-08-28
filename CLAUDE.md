@@ -78,7 +78,7 @@ differences:
 > **Both known blockers are closed; the umbrella stays suspended on cost, not breakage.**
 > Serving pods need a per-claim read-only identity because the FUSE mount authenticates as the
 > mounting pod's own ServiceAccount. That identity **is** rendered by the `InferenceService`
-> composition as of `crossplane-configuration` v0.4.3 — the version already pinned here — which
+> composition as of `crossplane-configuration` v0.4.4 — the version already pinned here — which
 > emits a per-claim ServiceAccount, a Deployment running as it, and a `GCPWorkloadIdentity` granting
 > `roles/storage.objectViewer` scoped to the weights bucket. No pin bump needed. (The second gap,
 > KEDA on `gcp-0`, is also closed — `infrastructure/gcp-0` pulls the shared `base/keda`.)

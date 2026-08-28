@@ -17,11 +17,11 @@ they live in
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration),
 which this repo pins as a `Configuration` package
 (`infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`,
-currently `ghcr.io/smana/crossplane-configuration-aws:v0.4.3`). This table was
+currently `ghcr.io/smana/crossplane-configuration-aws:v0.4.4`). This table was
 reconciled by hand against that repository's `apis/app/definition.yaml` (the
 CRD schema — types, enums, CEL rules) and `apis/app/kcl/main.k` (composition
 defaults that never appear in the schema, such as resource requests/limits or
-the gateway/route fallback names) at the commit tagged `v0.4.3`.
+the gateway/route fallback names) at the commit tagged `v0.4.4`.
 
 **To regenerate:** check out `Smana/crossplane-configuration` at the tag
 currently pinned above, and read `apis/app/definition.yaml` +

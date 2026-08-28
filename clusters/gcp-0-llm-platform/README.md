@@ -45,7 +45,7 @@ GKE cluster. Resuming is a validation run, not a routine enable.
   the node's default identity. So each `InferenceService` claim's serving ServiceAccount needs its
   own read-only `GCPWorkloadIdentity` — the role AWS's per-claim read-only EPI plays. This README
   previously said the composition had no GCP support for that. It does, in
-  `crossplane-configuration` **v0.4.3, the version already pinned** in
+  `crossplane-configuration` **v0.4.4, the version already pinned** in
   `infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml`. Read back from
   that tag's own golden fixture (`tests/golden/inferenceservice-gcp.yaml`), a claim renders:
 

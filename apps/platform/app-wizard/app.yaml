@@ -219,7 +219,7 @@ spec:
         - clone
         - --depth=1
         - --single-branch
-        - --branch=v0.4.3
+        - --branch=v0.4.4
         - https://github.com/Smana/crossplane-configuration.git
         - /repo/crossplane-configuration
       securityContext:
