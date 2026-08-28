@@ -39,4 +39,4 @@ spec:
     # v0.15.0. Replace with `tag: v0.16.0` once that release exists -- a pin to
     # an unreleased branch is a temporary state, and this comment is the record
     # of why it was taken.
-    commit: 96688ac557e846655813fa4ceb1859e9d13197cd # pragma: allowlist secret
+    commit: 80d4b50996863aff30db4d00ca1320fb5b8eda77 # pragma: allowlist secret
