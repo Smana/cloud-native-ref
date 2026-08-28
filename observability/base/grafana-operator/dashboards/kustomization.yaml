@@ -4,7 +4,6 @@ kind: Kustomization
 resources:
   - app-all-in-one.yaml
   - runlore.yaml
-  - kubernetes-karpenter.yaml
   - kubernetes-node-exporter-full.yaml
 
 # The four kubernetes-views-* dashboards were here until 2026-08-28 and are gone
@@ -24,3 +23,9 @@ resources:
 #
 # kubernetes-node-exporter-full stays: the chart's equivalent is gated on a
 # clusterMetric and is not deployed here, so ours is the only one.
+#
+# kubernetes-karpenter moved to observability/aws-0/grafana-operator/ on
+# 2026-08-28. Karpenter is the EKS node autoscaler; gcp-0 runs none (GKE node
+# auto-provisioning + infrastructure/gcp-0/computeclass), so the dashboard drew
+# empty panels on a cluster that can never fill them. Moved rather than patched
+# away per-cluster, so what remains here is genuinely cloud-neutral.
