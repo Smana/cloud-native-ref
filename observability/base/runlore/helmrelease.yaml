@@ -75,7 +75,7 @@ spec:
       # crashlooped on `field sweeps not found in type config.Curate`. Before this
       # bump the v0.13.0 chart was rendered with these exact values and the resulting
       # config replayed through the v0.13.0 binary's own config.Load: both pass.
-      # 0.16.0, in lockstep with the GitRepository's `tag: v0.16.0`.
+      # 0.16.1, in lockstep with the GitRepository's `tag: v0.16.1`.
       #
       # This was "0.13.0" while the source had already moved to a COMMIT pin far
       # past v0.13.0 -- exactly the drift the paragraphs above warn about, and it
@@ -83,7 +83,7 @@ spec:
       # torn down. The lockstep rule is not decoration: config parsing uses
       # KnownFields(true), so a chart newer than its binary fails closed on a key
       # the binary has never heard of.
-      tag: "0.16.0"
+      tag: "0.16.1"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
@@ -333,6 +333,23 @@ spec:
               protocol: TCP
             - port: 9428   # VictoriaLogs — logs.url
               protocol: TCP
+        # Hubble Relay, for the network_drops tool below. Relay lives in
+        # kube-system, not observability, so it needs its own rule.
+        #
+        # Port 80 is Relay's PLAINTEXT gRPC listener -- the one hubble-ui's
+        # backend already uses. `hubble-disable-tls=false` in cilium-config
+        # refers to the Relay-to-agent mTLS, not this client port, so `tls: true`
+        # here would fail against a listener that speaks no TLS.
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+              podSelector:
+                matchLabels:
+                  k8s-app: hubble-relay
+          ports:
+            - port: 80
+              protocol: TCP
     vmServiceScrape:
       enabled: true
       interval: 30s
@@ -485,4 +502,25 @@ spec:
         url: http://vmsingle-victoria-metrics-k8s-stack.observability.svc:8428
       logs:
         url: http://victoria-logs-victoria-logs-single-server.observability.svc:9428
-      # network: deferred (needs a Hubble/flow-log provider choice).
+      # Network-flow signal, enabling the network_drops tool.
+      #
+      # Deferred until 2026-08-28 pending "a Hubble/flow-log provider choice".
+      # Hubble is the answer on both clusters: they run Cilium, Relay is already
+      # deployed and serving hubble-ui, and the alternatives (aws-vpc-flow-logs,
+      # gcp-firewall-logs) are per-cloud and would need two configurations to say
+      # the same thing.
+      #
+      # Earned its place the hard way. Debugging oauth2-proxy on 2026-08-28 cost
+      # hours because a CiliumNetworkPolicy silently dropped egress to the
+      # cluster's own Gateway VIP: `cilium-dbg monitor --type drop` logged NOTHING
+      # and the answer had to be measured by A/B'ing the policy. A drop-flow
+      # source is exactly the evidence that was missing, and runlore had already
+      # reported "no tool available to check per-node Cilium health" as a data gap.
+      #
+      # `provider` AND `hubble.url` both matter: the provider selects the
+      # implementation, the URL is Relay's gRPC address. A bare `network: {url}`
+      # still works but warns at startup, so the explicit form is used.
+      network:
+        provider: hubble
+        hubble:
+          url: hubble-relay.kube-system:80
