@@ -15,4 +15,6 @@ spec:
       - kind: ConfigMap
         name: eks-aws-0-vars
   dependsOn:
-    - name: security
+    # security-openbao, NOT security: externalsecret-flux-slack-app.yaml reads
+    # through the ClusterSecretStore that ./security/aws-0/openbao creates.
+    - name: security-openbao

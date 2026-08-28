@@ -1,0 +1,30 @@
+# OpenBao's snapshot CronJob, its S3 bucket, KMS key and network policy.
+#
+# Split out of `security` alongside security-openbao, and dependsOn it rather
+# than on `security`: the CronJob's ExternalSecret reads through the
+# `clustersecretstore` ClusterSecretStore, which security-openbao creates.
+# Applied any earlier, the ExternalSecret is admitted (or not) before the store
+# it names exists and sits unsynced through the retry.
+#
+# Mirrors clusters/gcp-0/security/security-openbao-snapshot.yaml, minus that
+# one's suspend.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: security-openbao-snapshot
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 4m0s
+  retryInterval: 30s
+  timeout: 8m0s
+  sourceRef:
+    kind: ExternalArtifact
+    name: security-artifact
+  path: ./security/aws-0/openbao-snapshot
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+  dependsOn:
+    - name: security-openbao

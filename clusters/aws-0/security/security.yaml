@@ -1,3 +1,10 @@
+# The security controllers, and nothing their webhooks admit.
+#
+# cert-manager and external-secrets both ship a validating webhook with
+# failurePolicy: Fail. The ClusterIssuers, ClusterSecretStore and
+# ExternalSecrets those webhooks admit are applied by `security-openbao`, which
+# dependsOn this one; the tailscale operator and the OpenBao snapshot job
+# follow it in turn. See security/aws-0/openbao/kustomization.yaml.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -16,8 +23,6 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: eks-aws-0-vars
-      - kind: Secret
-        name: cert-manager-openbao-approle
   dependsOn:
     - name: eks-pod-identities
   healthChecks:

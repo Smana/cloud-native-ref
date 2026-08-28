@@ -11,7 +11,9 @@ spec:
     kind: ExternalArtifact
     name: flux-artifact
   dependsOn:
-    - name: security
+    # security-openbao, NOT security: externalsecret-flux-ui-oidc.yaml reads
+    # through the ClusterSecretStore that ./security/aws-0/openbao creates.
+    - name: security-openbao
   postBuild:
     substituteFrom:
       - kind: ConfigMap

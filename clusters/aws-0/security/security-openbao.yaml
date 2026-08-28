@@ -1,0 +1,41 @@
+# The OpenBao-backed configuration the `security` controllers admit:
+# a ClusterSecretStore, two ExternalSecrets and three ClusterIssuers.
+#
+# Separate from `security` so these are not applied in the same pass as the
+# cert-manager and external-secrets charts, whose validating webhooks
+# (failurePolicy: Fail) have no Service endpoints yet at that point. The
+# dependsOn below is what converts "the charts are installed" into a real
+# ordering: `security` health-checks both HelmReleases, and helm-controller
+# waits for a release's workloads by default, so a Ready HelmRelease means the
+# webhook Deployment is Available.
+#
+# Mirrors clusters/gcp-0/security/security-openbao.yaml.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: security-openbao
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 4m0s
+  retryInterval: 30s
+  timeout: 8m0s
+  sourceRef:
+    kind: ExternalArtifact
+    name: security-artifact
+  path: ./security/aws-0/openbao
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+      # ${cert_manager_approle_id} for the openbao ClusterIssuer's roleId.
+      # cert-manager takes roleId as a plain string with no secretRef option, so
+      # a generated value has to arrive through substitution.
+      - kind: Secret
+        name: cert-manager-openbao-approle
+  dependsOn:
+    - name: security
+  healthChecks:
+    - apiVersion: cert-manager.io/v1
+      kind: ClusterIssuer
+      name: openbao

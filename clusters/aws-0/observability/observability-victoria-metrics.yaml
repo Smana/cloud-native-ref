@@ -16,7 +16,10 @@ spec:
       - kind: ConfigMap
         name: eks-aws-0-vars
   dependsOn:
-    - name: security
+    # security-openbao, NOT security: this path renders four ExternalSecrets,
+    # and the `clustersecretstore` ClusterSecretStore they read is created by
+    # ./security/aws-0/openbao. That Kustomization already dependsOn security.
+    - name: security-openbao
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease

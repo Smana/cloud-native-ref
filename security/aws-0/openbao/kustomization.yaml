@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Everything the controllers in ../ have to ADMIT before it can exist: a
+# ClusterSecretStore and two ExternalSecrets behind the external-secrets
+# webhook, three ClusterIssuers behind cert-manager's.
+#
+# Kept out of the `security` Kustomization deliberately, and this mirrors
+# security/gcp-0/openbao. Both charts ship a validating webhook with
+# failurePolicy: Fail. Applied in one Kustomization, these custom resources land
+# in the same apply as the charts, before either webhook Service has endpoints,
+# and every admission call fails with:
+#
+#   no endpoints available for service "external-secrets-webhook"
+#
+# It is not fatal -- the ESO controller retries -- but controller-runtime backs
+# off exponentially, so the gap grows toward a 1000s ceiling while Flux reports
+# the Kustomization Ready. That was measured on gcp-0's first deploy
+# (2026-08-25) and fixed there; aws-0 kept the racy arrangement because a
+# long-running cluster already has its webhooks up, so it only bites a cold
+# rebuild.
+#
+# Ordering runs the other way too, which is why this is a good boundary rather
+# than a workaround: the openbao ClusterIssuer needs the two Secrets that the
+# ExternalSecrets produce, and those need External Secrets running. One group
+# installs controllers; the other configures them.
+#
+# Referenced BY FILE from ../../base/, not as directories -- the base
+# directories bundle these custom resources together with the very HelmReleases
+# they must not be applied alongside.
+resources:
+  - ../../base/external-secrets/clustersecretstore.yaml
+  - ../../base/cert-manager/le-clusterissuer-prod.yaml
+  - ../../base/cert-manager/le-clusterissuer-staging.yaml
+  - ../../base/cert-manager/openbao-approle-externalsecret.yaml
+  - ../../base/cert-manager/openbao-ca-externalsecret.yaml
+  - ../../base/cert-manager/openbao-clusterissuer.yaml
