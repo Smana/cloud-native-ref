@@ -184,6 +184,11 @@ locals {
     "roles/logging.viewer",
     "roles/container.viewer",
     "roles/monitoring.viewer",
+    # GKE node pools are Compute managed instance groups, so container.viewer
+    # stops at the node-pool boundary. Without this, cloud_resource_health can
+    # see the cluster but not the machines under it and reports a data gap --
+    # observed 2026-08-28. Read-only, and the narrowest role that covers MIGs.
+    "roles/compute.viewer",
   ]
 
   # SEPARATE from crossplane_grantable_roles above, deliberately -- N1. The two
