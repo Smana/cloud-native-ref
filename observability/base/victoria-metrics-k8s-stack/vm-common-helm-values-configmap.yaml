@@ -144,15 +144,47 @@ data:
             # Place VictoriaMetrics dashboards in "observability" folder
             folder: "observability"
       dashboards:
-        # Disable duplicate Kubernetes dashboards (already managed manually in infrastructure namespace)
-        k8s-views-global:
+        # THE KEY IS THE RENDERED NAME'S SUFFIX, and getting it wrong fails
+        # SILENTLY. Each dashboard becomes
+        # `victoria-metrics-k8s-stack-dashboard-<key>`, so read the key off a live
+        # object: `kubectl get grafanadashboard -n observability`. A key matching
+        # no dashboard is accepted, written into the sync-job ConfigMap, and does
+        # nothing -- there is no error and no warning.
+        #
+        # That is not hypothetical. Four entries here were `k8s-views-*` while the
+        # chart's keys are `kubernetes-views-*`, so the block below did NOTHING for
+        # as long as it existed, and its own comment ("already managed manually in
+        # infrastructure namespace") described a de-duplication that never
+        # happened: both copies shipped, fighting over one Grafana UID.
+        # Resolved on 2026-08-28 the other way round -- the hand-maintained copies
+        # in observability/base/grafana-operator were dropped and the chart's
+        # vendored ones kept -- so those four entries are gone rather than
+        # corrected.
+        #
+        # Operating systems this platform does not run. Every node on both clusters
+        # is Linux (Bottlerocket on aws-0, Container-Optimized OS on gcp-0), so
+        # these seven drew empty panels and made up 7 of 63 dashboards.
+        #
+        # Disabled HERE and not via a HelmRelease postRenderer: these are created
+        # at RUNTIME by the chart's sync-job (labelled `managed-by: sync-job`, owned
+        # by its ServiceAccount), not rendered by `helm template`. A postRenderer
+        # sees nothing to delete -- tried, and it was a silent no-op.
+        k8s-resources-windows-cluster:
           enabled: false
-        k8s-views-namespaces:
+        k8s-resources-windows-namespace:
           enabled: false
-        k8s-views-nodes:
+        k8s-resources-windows-pod:
           enabled: false
-        k8s-views-pods:
+        k8s-windows-cluster-rsrc-use:
           enabled: false
+        k8s-windows-node-rsrc-use:
+          enabled: false
+        nodes-aix:
+          enabled: false
+        nodes-darwin:
+          enabled: false
+        # Ours, from observability/base/grafana-operator, is the only
+        # node-exporter-full deployed -- this key is correct and effective.
         node-exporter-full:
           enabled: false
         # Enable VictoriaMetrics-specific dashboards
