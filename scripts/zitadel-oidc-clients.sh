@@ -71,6 +71,17 @@ ZITADEL_PROJECT_NAME="platform"
 # and nothing anywhere said so -- login worked, authorisation silently did not.
 ZITADEL_PROJECT_ROLES=(admin backend frontend data)
 
+# --grant-admin <email>: give an EXISTING user the `admin` project role.
+#
+# Separate from role creation because the two cannot happen at the same time. A
+# human user does not exist in ZITADEL until their FIRST LOGIN -- the Google IdP
+# auto-creates them -- so there is nobody to grant to at bootstrap. The sequence
+# is unavoidably: register clients -> configure the IdP -> log in once -> grant.
+#
+# It is here rather than in a console because a role granted by hand is a role
+# nobody can reproduce, which is how gcp-0 ended up with no groups claim at all.
+GRANT_ADMIN=""
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --cluster) CLUSTER="$2"; shift 2 ;;
@@ -78,6 +89,7 @@ while [ $# -gt 0 ]; do
         --region)  REGION="$2"; shift 2 ;;
         --project) GCP_PROJECT="$2"; shift 2 ;;
         --apply)   APPLY="true"; shift ;;
+        --grant-admin) GRANT_ADMIN="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -297,6 +309,41 @@ ensure_project() {
 # Set on an EXISTING project too, not only at creation -- gcp-0's was created
 # before this was understood, and a project that predates this function must be
 # repaired rather than left to a manual console click nobody remembers.
+grant_admin_role() {
+    local email="$1" project_id="$2" user_id existing
+    [ -n "$email" ] || return 0
+    [ -n "$project_id" ] || return 0
+    if [ "$project_id" = "DRYRUN-PROJECT" ]; then
+        echo "[dry-run] would grant 'admin' to ${email}"
+        return 0
+    fi
+
+    user_id="$(api POST /management/v1/users/_search -d '{"query":{"limit":200}}' 2>/dev/null \
+               | jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' | head -1)"
+    if [ -z "$user_id" ]; then
+        echo "[FAILED ] no ZITADEL user for ${email}." >&2
+        echo "           A human user exists only AFTER their first login through the" >&2
+        echo "           Google IdP (isAutoCreation). Log in once, then re-run this." >&2
+        return 1
+    fi
+
+    existing="$(api POST /management/v1/users/grants/_search -d '{"query":{"limit":200}}' 2>/dev/null \
+                | jq -r --arg u "$user_id" --arg p "$project_id" \
+                    '.result[]? | select(.userId == $u and .projectId == $p) | .roleKeys[]?' || true)"
+    if grep -qx "admin" <<< "$existing"; then
+        echo "[skip   ] ${email} already holds 'admin'"
+        return 0
+    fi
+    if [ "$APPLY" != "true" ]; then
+        echo "[dry-run] would grant 'admin' to ${email} (${user_id})"
+        return 0
+    fi
+
+    jq -n --arg p "$project_id" '{projectId: $p, roleKeys: ["admin"]}' \
+        | api POST "/management/v1/users/${user_id}/grants" -d @- >/dev/null
+    echo "[granted] 'admin' to ${email} (${user_id})"
+}
+
 ensure_project_role_assertion() {
     local project_id="$1" current
     [ -n "$project_id" ] || return 0
@@ -387,6 +434,7 @@ cmd_sync() {
 
     ensure_project_role_assertion "$project_id"
     ensure_project_roles "$project_id"
+    grant_admin_role "$GRANT_ADMIN" "$project_id"
 
     local created=0 skipped=0
     for entry in "${CONSUMERS[@]}"; do
