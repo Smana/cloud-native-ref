@@ -440,6 +440,41 @@ script "destroy" {
   }
 
   job {
+    name        = "stage2-sweep-orphaned-disks"
+    description = "Delete PD disks the in-cluster reclaim could not finish; runs after the cluster is gone"
+    commands = [
+      ["bash", "-c", <<-BASH
+        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
+          echo "[skip] GKE init destroy (stage2-sweep-orphaned-disks): set TM_GCP_ENABLED=true"
+          exit 0
+        fi
+        set -euo pipefail
+        # The backstop k8s-reclaim-csi-volumes.sh has always CLAIMED to have.
+        #
+        # That script reclaims PVs while the cluster still exists -- the only
+        # moment the CSI controller can -- and when it runs out of time it warns
+        # and exits 0, saying a cloud-side sweep would catch the rest. No such
+        # sweep existed, and "the next destroy run" cannot help either: a later
+        # run is a different cluster whose PVs do not reference these disks.
+        #
+        # So the leak was real and repeating: 3 disks on the 2026-08-27 teardown,
+        # 8 (43 GB) on 2026-08-28.
+        #
+        # AFTER stage1-destroy-cluster deliberately. Before it, a disk still
+        # attached to a draining node is not yet unattached and would be skipped;
+        # after it, everything that leaked is unattached and visible.
+        #
+        # Never fails the teardown -- see the script's closing comment.
+        bash "${terramate.root.path.fs.absolute}/scripts/gcp-sweep-orphaned-disks.sh" \
+          --project "$(cd "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/init" && \
+            awk -F'=' '/^[[:space:]]*project_id/{gsub(/[[:space:]"]/,"",$2); print $2}' variables.tfvars)" \
+          --apply
+      BASH
+      ],
+    ]
+  }
+
+  job {
     name        = "stage2-reconcile-state"
     description = "Drop any stage-2 state left behind, now that the cluster holding it is gone"
     commands = [
