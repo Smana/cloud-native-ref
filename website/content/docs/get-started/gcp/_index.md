@@ -95,8 +95,9 @@ projected ServiceAccount token — no access key
 That role and its OIDC provider live outside the GCP stack tree and are **not**
 gated by `TM_GCP_ENABLED` — which cuts both ways: the root
 `terramate script run deploy` from `opentofu/` includes this stack (only its
-`destroy` is guarded), so after a full deploy you only need to verify it
-applied. Apply it standalone if you deploy from `opentofu/gcp/**` directly:
+`destroy` is guarded), and the `--no-tags=aws` deploy below includes it, so
+normally you only need to verify it applied. Apply it standalone only if you are
+deploying a single stack directly:
 
 ```bash
 cd opentofu/shared/aws-gcp-federation
@@ -141,47 +142,64 @@ You are editing a working configuration, not writing one:
 
 ## Deploy
 
-{{% steps %}}
-
-### Stages 1 and 2 — Network, then OpenBao
+One command. Terramate owns the dependency graph — that is what it is for — and
+runs every stack in order.
 
 ```bash
 cd opentofu
-TM_GCP_ENABLED=true terramate script run deploy
+TM_GCP_ENABLED=true terramate script run --no-tags=aws deploy
 ```
 
-**One command covers both stages.** Terramate resolves the dependency graph:
-`shared/tailscale` first — `network` declares it in its `after` list — then
-`network`, `openbao/cluster` and `openbao/management`.
+`--no-tags=aws` is the whole trick, and it is not optional. `TM_GCP_ENABLED`
+gates only the GCP stacks; the six AWS ones carry no equivalent guard, so a bare
+`terramate script run deploy` here builds `aws-0` as well. The `aws` tag marks
+the AWS *cluster lane*, so excluding it leaves exactly what a GCP deploy needs:
 
-Stage 1 creates the VPC with its node, pod, service and control-plane ranges, a
-**private Cloud DNS zone**, and the Tailscale subnet router that gives you access
-to everything built afterwards. Stage 2 brings up OpenBao on Compute Engine
-behind an internal load balancer, auto-unsealed via the Cloud KMS key you created
-above, then layers on the three-tier PKI and the cert-manager and snapshot
-AppRoles.
-
-### Stage 3 — Kubernetes (GKE)
-
-```bash
-cd opentofu/gcp/gke/init
-TM_GCP_ENABLED=true terramate script run deploy
+```
+shared/tailscale            shared/aws-gcp-federation
+gcp/network                 gcp/openbao/cluster        gcp/openbao/management
+gcp/gke/init                gcp/gke/configure
 ```
 
-A separate command because this stack runs a two-stage bootstrap internally, for
-the same provider-graph reason as EKS. Stage 1 creates the GKE cluster with a
-private control plane and the static spot node pool; stage 2 installs Cilium —
-which displaces GKE's CNI via `cni.exclusive` and replaces kube-proxy — then the
-Flux Operator and a `FluxInstance` pointed at your fork.
+Confirm the selection before applying anything — `terramate list --no-tags=aws`
+prints those seven and nothing else.
 
-To test a feature branch, add `TF_VAR_flux_git_ref`:
+What that runs, in order:
+
+- **`shared/tailscale`** first, because `gcp/network` names it in `after`. It
+  owns the tailnet ACL both clouds share.
+- **`gcp/network`** — the VPC with its node, pod, service and control-plane
+  ranges, a **private Cloud DNS zone**, and the Tailscale subnet router that
+  gives you access to everything built afterwards.
+- **`gcp/openbao/{cluster,management}`** — OpenBao on Compute Engine behind an
+  internal load balancer, auto-unsealed via the Cloud KMS key from the
+  prerequisites, then the three-tier PKI and the cert-manager and snapshot
+  AppRoles.
+- **`gcp/gke/init`**, whose own script drives the GKE bootstrap end to end:
+  stage 1 creates the cluster with a private control plane and the static spot
+  node pool; stage 2 installs Cilium — which displaces GKE's CNI via
+  `cni.exclusive` and replaces kube-proxy — then the Flux Operator and a
+  `FluxInstance` pointed at your fork; stage 3 seeds secrets and OIDC.
+- **`shared/aws-gcp-federation`** has no ordering edge in either direction,
+  by design, so Terramate is free to place it anywhere in the run. See
+  prerequisite 4 above for why an early `AccessDenied` is expected rather than a
+  stuck deploy.
+
+{{< callout type="info" >}}
+`gcp/gke/configure` is applied twice — once by `gke/init`'s stage 2, which shells
+into it, and once as its own stack when Terramate reaches it. The second apply is
+a no-op, so this is waste rather than breakage, but it is why the run reports one
+more stack than you might expect.
+{{< /callout >}}
+
+`flux_git_ref` defaults to `refs/heads/main`. Only override it to test an
+unmerged branch — and remember the branch is deleted when its PR merges, which
+404s the cluster's Git source until you restore it:
 
 ```bash
 TM_GCP_ENABLED=true TF_VAR_flux_git_ref='refs/heads/my-branch' \
-  terramate script run deploy
+  terramate script run --no-tags=aws deploy
 ```
-
-{{% /steps %}}
 
 ## Verify
 
