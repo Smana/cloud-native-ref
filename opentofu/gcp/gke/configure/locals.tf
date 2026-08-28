@@ -11,4 +11,11 @@ locals {
   pod_cidr = local.init.pod_cidr
 
   github_app_secret = jsondecode(data.google_secret_manager_secret_version.flux_github_app.secret_data)
+
+  # Hosting the IdP means serving it on THIS cluster's public domain; consuming
+  # it means naming whichever cluster does. Derived in one place so the two
+  # cannot disagree -- a literal in the vars ConfigMap is what let "which cloud
+  # hosts the IdP" become unanswerable from configuration in the first place.
+  # See ADR-0024 and the two-gate note on var.deploy_identity_provider.
+  identity_provider_url = var.deploy_identity_provider ? "https://auth.${var.public_domain_name}" : var.identity_provider_url
 }

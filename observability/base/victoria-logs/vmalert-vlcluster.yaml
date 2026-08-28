@@ -8,6 +8,11 @@ metadata:
   name: victoria-logs
   namespace: observability
 spec:
+  # Matches vmalert-vlsingle.yaml. Set here too even though this file is
+  # commented out of the kustomization (single mode is what runs): whoever
+  # switches to cluster mode should not rediscover empty cluster labels.
+  externalLabels:
+    cluster: "${cluster_name}"
   ruleSelector:
     matchLabels:
       vmlog: "true"

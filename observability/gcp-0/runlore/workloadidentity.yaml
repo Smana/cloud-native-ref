@@ -1,0 +1,22 @@
+# runlore's GCP identity: read-only, and deliberately so.
+#
+# The AWS side binds an EKS Pod Identity (security/base/epis/runlore.yaml); this
+# is its GKE counterpart. A DIRECT PRINCIPAL binding, not GSA impersonation --
+# the chart's own docs warn that setting iam.gke.io/gcp-service-account is the
+# other model and would make a missing binding look like a bare 403.
+#
+# Three viewer roles, no writers. runlore's actions.mode is off: the only writes
+# it makes are knowledge-base pull requests on GitHub, never to the cloud
+# account. Its cloud tools read Cloud Logging, the Container API and metrics.
+apiVersion: cloud.ogenki.io/v1alpha1
+kind: GCPWorkloadIdentity
+metadata:
+  name: xplane-runlore
+  namespace: runlore
+spec:
+  serviceAccount:
+    name: runlore
+  roles:
+    - "roles/logging.viewer"
+    - "roles/container.viewer"
+    - "roles/monitoring.viewer"

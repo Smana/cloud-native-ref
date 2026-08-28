@@ -73,6 +73,111 @@ script "deploy" {
       ],
     ]
   }
+
+  job {
+    name        = "stage3-secrets-and-oidc"
+    description = "Grant External Secrets its per-secret access, and register the OIDC clients if this cluster hosts the IdP"
+    commands = [
+      ["bash", "-c", <<-BASH
+        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
+          echo "[skip] GKE init stage3-secrets-and-oidc: set TM_GCP_ENABLED=true"
+          exit 0
+        fi
+        set -euo pipefail
+
+        # Two bootstrap steps that cannot be expressed as manifests, for the same
+        # reason openbao_init cannot: they need the cluster to already be running.
+        #
+        #   1. External Secrets' IAM grants. gke/init grants only the bootstrap
+        #      prerequisites, because a google_secret_manager_secret_iam_member
+        #      needs its secret to EXIST and most of the platform's do not yet.
+        #      Skipped, every ExternalSecret fails PermissionDenied and the first
+        #      symptom is a HelmRelease timing out ten minutes later naming only
+        #      itself.
+        #
+        #   2. The OIDC clients, when this cluster hosts its own ZITADEL. They
+        #      live in ZITADEL's database, so a cluster that bootstraps fresh
+        #      has none -- while their client ids sit stale in Secret Manager.
+        #      Headlamp then never starts (CreateContainerConfigError on
+        #      headlamp-envvars) and every SSO login fails.
+        #
+        # Both are idempotent: the grant re-applies existing bindings, and the
+        # OIDC script skips apps that already exist rather than recreating them
+        # (ZITADEL returns a client secret exactly once, so recreating would
+        # rotate it and break a running consumer).
+        #
+        # Neither failing should fail the deploy -- the cluster is up and useful,
+        # and both are re-runnable by hand -- so this job reports and continues.
+        ROOT="${terramate.root.path.fs.absolute}"
+        PROJECT="$(${global.provisioner} output -raw project_id)"
+        NAME="$(${global.provisioner} output -raw cluster_name)"
+        LOCATION="$(${global.provisioner} output -raw cluster_location)"
+        PRIVATE_DOMAIN="$(${global.provisioner} output -raw private_domain_name)"
+        # public_domain_name belongs to the CONFIGURE stack (it is a variable
+        # there, not an output here), so read it from that stack's tfvars rather
+        # than inventing an output. Empty would silently build "https://auth."
+        # and every client would be registered against a hostname that does not
+        # exist, so this is checked rather than defaulted.
+        PUBLIC_DOMAIN="$(awk -F'"' '/^public_domain_name/{print $2}' ../configure/variables.tfvars)"
+
+        KUBECONFIG="$(mktemp -t gke-bootstrap-kubeconfig.XXXXXX)"
+        export KUBECONFIG
+        trap 'rm -f "$${KUBECONFIG}"' EXIT
+
+        if ! gcloud container clusters get-credentials "$${NAME}" \
+               --location "$${LOCATION}" --project "$${PROJECT}" 2>/dev/null; then
+          echo "[warn] could not fetch credentials for $${NAME}; skipping stage 3."
+          echo "       Re-run by hand: scripts/secret-store.sh grant --cloud gcp --project $${PROJECT} --apply"
+          exit 0
+        fi
+
+        echo "== granting External Secrets access to the keys this cluster asks for"
+        bash "$${ROOT}/scripts/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || \
+          echo "[warn] grant failed; re-run it by hand"
+
+        # Only when this cluster hosts the IdP. Consuming another cluster's
+        # ZITADEL means its clients are registered there, not here.
+        if [ "$${TF_VAR_deploy_identity_provider:-false}" != "true" ]; then
+          echo "== skipping OIDC clients: deploy_identity_provider is not true"
+          exit 0
+        fi
+
+        if [ -z "$${PUBLIC_DOMAIN}" ]; then
+          echo "[warn] could not read public_domain_name from ../configure/variables.tfvars;"
+          echo "       skipping OIDC registration rather than registering clients against"
+          echo "       an empty hostname."
+          exit 0
+        fi
+
+        echo "== waiting for ZITADEL (up to 15m)"
+        deadline=$$(( SECONDS + 900 ))
+        while [ "$$SECONDS" -lt "$$deadline" ]; do
+          if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -ge 1 ] 2>/dev/null; then
+            break
+          fi
+          sleep 20
+        done
+
+        if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -lt 1 ] 2>/dev/null; then
+          echo "[warn] ZITADEL not ready in 15m; skipping OIDC client registration."
+          echo "       Re-run by hand once it is up:"
+          echo "         IDP_URL=https://auth.$${PUBLIC_DOMAIN} PRIVATE_DOMAIN=$${PRIVATE_DOMAIN} \\"
+          echo "         scripts/zitadel-oidc-clients.sh sync --cluster $${NAME} --cloud gcp --project $${PROJECT} --apply"
+          exit 0
+        fi
+
+        echo "== registering the OIDC clients"
+        IDP_URL="https://auth.$${PUBLIC_DOMAIN}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
+          bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
+            --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" --apply || \
+          echo "[warn] OIDC registration failed; re-run it by hand"
+
+        echo "== granting access to the secrets it just created"
+        bash "$${ROOT}/scripts/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || true
+      BASH
+      ],
+    ]
+  }
 }
 
 script "deploy-stage1" {

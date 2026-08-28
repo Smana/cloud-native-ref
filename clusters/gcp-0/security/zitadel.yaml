@@ -1,0 +1,67 @@
+# ZITADEL on gcp-0 -- this cluster's own identity provider.
+#
+# ADR-0024 supersedes ADR-0022: the IdP is deployable on either cloud, default
+# AWS, so a GCP-only platform does not depend on an AWS cluster being up to log
+# anyone in. Only public DNS stays AWS-owned (Route53, ADR-0019).
+#
+# Same edges as clusters/aws-0/security/zitadel.yaml and for the same reasons:
+#
+#   infrastructure -- the Gateway needs a GatewayClass and the Crossplane
+#     provider that reconciles the SQLInstance claim; both come from there.
+#   security -- the two ExternalSecrets need the External Secrets webhook
+#     running, and the Certificate needs cert-manager.
+#
+# The healthCheckExprs on SQLInstance matter more here than on aws-0: without
+# objectStoreRecovery this database bootstraps EMPTY, so a first deploy is the
+# slow path -- CNPG initdb, then ZITADEL's own migrations -- and a plain
+# HelmRelease health check would go Ready before the database is usable. The
+# 10m timeout is deliberately longer than aws-0's 5m for the same reason.
+#
+# ── SUSPENDED BY DEFAULT ──────────────────────────────────────────────────────
+# AWS is the default host, so this cluster consumes aws-0's instance unless it
+# is told otherwise. Deploying an IdP here takes TWO gates, and they must agree:
+#
+#   1. tofu:  deploy_identity_provider = true   (opentofu/gcp/gke/configure)
+#             -- drives identity_provider_url, which every consumer reads
+#   2. flux:  flux resume kustomization zitadel -n flux-system
+#             -- or drop the suspend below
+#
+# Gate 1 alone points every consumer at auth.<gcp public domain>, which nothing
+# serves. Gate 2 alone runs a ZITADEL that no consumer is configured to use.
+# Neither half can enforce the other; see ADR-0024.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: zitadel
+  namespace: flux-system
+spec:
+  # NOTE: false ON THIS BRANCH ONLY, to validate the GCP-hosted IdP end to end.
+  # It MUST go back to true before merge -- AWS is the default host, and a
+  # merged `false` would give every gcp-0 rebuild a second user directory
+  # nobody asked for. `flux resume` is not an alternative: kustomize-controller
+  # owns this field and re-asserts the committed value on its next apply.
+  suspend: false
+  prune: true
+  interval: 1m0s
+  timeout: 10m0s
+  sourceRef:
+    kind: ExternalArtifact
+    name: security-artifact
+  path: ./security/gcp-0/zitadel
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: gke-gcp-0-vars
+  dependsOn:
+    - name: infrastructure
+    - name: security
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: zitadel
+      namespace: security
+  healthCheckExprs:
+    - apiVersion: cloud.ogenki.io/v1alpha1
+      kind: SQLInstance
+      failed: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'False')
+      current: status.conditions.filter(c, c.type == 'Ready').all(c, c.status == 'True')

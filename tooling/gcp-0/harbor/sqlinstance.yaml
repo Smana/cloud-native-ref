@@ -18,18 +18,23 @@
 #      pointing at an empty bucket would fail the bootstrap rather than start
 #      a fresh database.
 #
-#   3. No `backup`. Deliberate and temporary — see below.
+#   3. `backup.bucketName` names a `${project_id}-` bucket, not a `${region}-`
+#      one. GCS bucket names are globally unique, so the region is not what
+#      makes one unique — the same convention as this cluster's other buckets
+#      (harbor, openbao-snapshot, llm weights). The schedule matches aws-0's.
 #
-# WHY NO BACKUP YET: the Composition renders barman's ObjectStore and a
-# bucket-scoped GCPWorkloadIdentity automatically when `backup` is set, so the
-# claim side is ready. What is not ready is the cluster side —
-# infrastructure/base/cloudnative-pg-barman-plugin ships a CiliumNetworkPolicy
-# whose egress is a `toFQDNs` allowlist of AWS S3 endpoints
-# (`*.s3.<region>.amazonaws.com`). Deploying it here would let the plugin start
-# and then silently drop every connection to storage.googleapis.com. Porting
-# that policy is its own change; until then Harbor's database on gcp-0 is
-# unbacked, which is acceptable for a cluster that is torn down after every run
-# and would not be otherwise.
+# The plugin that makes `backup` mean anything now runs here:
+# infrastructure/gcp-0/cloudnative-pg-barman-plugin installs it with an egress
+# allowlist of GCS hostnames in place of the base's AWS S3 ones, and
+# infrastructure/gcp-0/cloudnative-pg/gcs-bucket.yaml provisions the bucket the
+# name below resolves to. The Composition renders barman's ObjectStore and a
+# bucket-scoped GCPWorkloadIdentity from this block on its own.
+#
+# Still NO objectStoreRecovery, and that ordering is not optional: aws-0
+# restores from a prefix captured in 2024, and nothing equivalent exists on GCS
+# until these backups have actually run. Pointing recovery at an empty bucket
+# fails the bootstrap instead of starting a fresh database.
+
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: SQLInstance
 metadata:
@@ -46,6 +51,9 @@ spec:
     - name: harbor
       comment: "Harbor admin user"
       superuser: true
+  backup:
+    schedule: "0 1 * * *"
+    bucketName: "${project_id}-ogenki-cnpg-backups"
   crossplane:
     compositionRef:
       name: xsqlinstances-gcp.cloud.ogenki.io

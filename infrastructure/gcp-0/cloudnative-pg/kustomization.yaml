@@ -23,3 +23,6 @@ namespace: infrastructure
 # is building, with nothing naming the missing operator.
 resources:
   - ../../base/cloudnative-pg/helmrelease.yaml
+  # The backup bucket. Cloud-specific by definition, which is why
+  # infrastructure/base/cloudnative-pg carries neither cloud's.
+  - gcs-bucket.yaml

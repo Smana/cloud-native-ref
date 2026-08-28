@@ -7,6 +7,16 @@ metadata:
   name: victoria-logs
   namespace: observability
 spec:
+  # Same reason as the VM stack's vmalert (see
+  # observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml):
+  # every alert this instance generates needs to say which cluster it came from,
+  # and no rule expression can be relied on to carry the label through.
+  #
+  # This one is easy to miss because it is a SECOND VMAlert in the same
+  # namespace. Fixing only the stack's leaves every log-based alert --
+  # TooManyLogs among them -- still arriving with an empty cluster.
+  externalLabels:
+    cluster: "${cluster_name}"
   ruleSelector:
     matchLabels:
       vmlog: "true"

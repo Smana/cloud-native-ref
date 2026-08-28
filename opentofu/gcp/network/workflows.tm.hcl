@@ -122,8 +122,13 @@ script "destroy" {
         zone="$(${global.provisioner} output -raw private_dns_zone_name 2>/dev/null || true)"
         project="$(${global.provisioner} output -raw project_id 2>/dev/null || true)"
         if [ -n "$${zone}" ] && [ -n "$${project}" ]; then
-          bash "${terramate.root.path.fs.absolute}/scripts/gcp-purge-dns-records.sh" \\
-            "$${zone}" "$${project}"
+          # One line deliberately. A `\` continuation inside this heredoc reaches
+          # bash as a literal backslash, so the script was invoked with that
+          # backslash as its ONLY argument -- it printed usage, exited 2, and
+          # `set -e` killed the destroy before tofu ran. The stack then looked
+          # torn down (terramate exits non-zero at the very end) while the VPC,
+          # the NAT and the Tailscale router were all still billing.
+          bash "${terramate.root.path.fs.absolute}/scripts/gcp-purge-dns-records.sh" "$${zone}" "$${project}"
         else
           echo "[warn] no DNS zone in state; skipping the record purge."
         fi

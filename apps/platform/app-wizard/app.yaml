@@ -86,6 +86,24 @@ spec:
       value: "/repo"
     - name: WIZARD_CONFIG
       value: "/repo/apps/platform/app-wizard/wizard.yaml"
+    # Overrides auth.redirectUrl from wizard.yaml, which is hardcoded to the AWS
+    # hostname. It has to be an env var rather than a fix in that file, because
+    # wizard.yaml is not applied by Flux -- the initContainer clones `main` from
+    # GitHub and reads it from there, so it never sees ${private_domain_name}
+    # and never sees an unmerged branch either. config.go resolves this with
+    # pick("OAUTH_REDIRECT_URL", fc.Auth.RedirectURL, ...), so env wins.
+    #
+    # Without it, gcp-0's wizard sent GitHub a redirect_uri on
+    # app-wizard.priv.aws.ogenki.io and GitHub refused:
+    #   "The redirect_uri is not associated with this application."
+    #
+    # NOTE: a GitHub OAuth App has exactly ONE authorization callback URL, so
+    # the two clusters cannot share one. gcp-0 needs its own OAuth App, and its
+    # own GITHUB_CLIENT_ID/SECRET in apps-app-wizard-oauth -- unlike the Slack
+    # app or the LLM key, this credential is NOT cloud-agnostic and must not be
+    # copied between clusters.
+    - name: OAUTH_REDIRECT_URL
+      value: "https://app-wizard.${private_domain_name}/api/auth/callback"
 
   # ---------------------------------------------------------------------------
   # OAuth app credentials + session key from AWS Secrets Manager.
@@ -95,7 +113,7 @@ spec:
   # so it needs no egress to the Pod Identity endpoint (169.254.170.23). ESO
   # materializes the `app-wizard-oauth` Secret; the wizard reads it via envFrom.
   #
-  # The AWS Secrets Manager blob at apps/app-wizard/oauth MUST contain these
+  # The secret-store blob at apps-app-wizard-oauth MUST contain these
   # keys (the composition imports ALL keys from the path via dataFrom → they
   # land as env vars of the same name through envFrom):
   #   GITHUB_CLIENT_ID       — GitHub OAuth app (login; PRs open as the user)
@@ -104,16 +122,16 @@ spec:
   # Missing keys simply don't materialize as env vars. Populating them is a
   # human step (T003).
   #
-  # The LLM assist key lives in its OWN blob (apps/app-wizard/llm, key
+  # The LLM assist key lives in its OWN blob (apps-app-wizard-llm, key
   # LLM_API_KEY) rather than the oauth blob: it is a copy of runlore's GLM key
   # and rotates on that key's lifecycle, not the OAuth apps'. Remove the blob
   # (or the entry below) to switch assists off.
   externalSecrets:
     - name: app-wizard-oauth
-      remoteRef: apps/app-wizard/oauth
+      remoteRef: apps-app-wizard-oauth
       refreshInterval: 1h
     - name: app-wizard-llm
-      remoteRef: apps/app-wizard/llm
+      remoteRef: apps-app-wizard-llm
       refreshInterval: 1h
   envFrom:
     - secretRef:

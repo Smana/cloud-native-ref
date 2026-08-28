@@ -1,0 +1,24 @@
+# The AWS load-balancer annotations for ZITADEL's Gateway.
+#
+# These were in security/base/zitadel/gateway.yaml until gcp-0 gained its own
+# ZITADEL. They are meaningless on GKE -- Cilium's GatewayClass provisions the
+# LoadBalancer Service there, and no controller reads a
+# service.beta.kubernetes.io/aws-load-balancer-* key -- so they are aws-0's,
+# not the base's.
+#
+# Behaviour on aws-0 is unchanged: the same four annotations, same values, just
+# applied from the overlay that is entitled to them.
+#
+# `infrastructure.annotations` is a map, so a strategic merge adds these to the
+# external-dns hostname the base still sets rather than replacing it.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: zitadel
+spec:
+  infrastructure:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-name: "ogenki-zitadel-gateway"
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+      service.beta.kubernetes.io/aws-load-balancer-type: "external"

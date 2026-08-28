@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: infrastructure
+
+# The Barman Cloud CNPG-I plugin on gcp-0.
+#
+# Everything except the network policy is cloud-neutral: the plugin is a Flux
+# Kustomization over a pinned upstream GitRepository (already synced on this
+# cluster, v0.14.0, in this namespace), its ObjectStore CRD comes from
+# crds/base, and its plugin<->operator mTLS comes from cert-manager — all three
+# already present here. Only the egress allowlist named AWS, and
+# network-policy-patch.yaml replaces it.
+resources:
+  - ../../base/cloudnative-pg-barman-plugin
+
+patches:
+  - path: network-policy-patch.yaml

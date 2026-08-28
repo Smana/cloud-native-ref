@@ -1,0 +1,73 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# ZITADEL on gcp-0 -- its OWN instance, not a route to the one on aws-0.
+#
+# ADR-0024 supersedes ADR-0022 here: the identity provider is now deployable on
+# either cloud, defaulting to AWS, so a GCP-only platform is self-sufficient.
+# Only PUBLIC DNS stays AWS-owned (Route53, ADR-0019) -- `auth.${public_domain_name}`
+# on this cluster resolves through the same cross-cloud federation every other
+# public hostname here uses.
+#
+# Everything is shared with aws-0 except the database claim. The Gateway,
+# Certificate, TLSRoute, CiliumNetworkPolicy, HelmRelease and both
+# ExternalSecrets come straight from base -- the CNP in particular is already
+# cloud-neutral (DNS, world:443, postgres, 8080), and the Gateway became
+# cloud-neutral when its four AWS load-balancer annotations moved to
+# security/aws-0/zitadel/gateway-patch.yaml.
+resources:
+  - ../../base/zitadel
+
+patches:
+  # The database claim, and only the database claim. Three differences, the same
+  # three that tooling/gcp-0/harbor/sqlinstance.yaml documents:
+  #
+  #   1. compositionRef names the GCP Composition. aws-0 gets
+  #      `xsqlinstances.cloud.ogenki.io` from crossplane-configuration-aws;
+  #      gcp-0 gets `xsqlinstances-gcp...` from -gcp. A claim naming the AWS one
+  #      here would find no Composition at all.
+  #
+  #   2. No objectStoreRecovery. The base restores ZITADEL from a specific S3
+  #      path captured in 2026-07. There is nothing equivalent to restore from
+  #      on GCS, and pointing the claim at an empty bucket fails the bootstrap
+  #      instead of starting a fresh database -- which is what this cluster
+  #      wants anyway, since its ZITADEL is its own instance with its own users.
+  #
+  #   3. backup.bucketName points at a `${project_id}-` bucket rather than
+  #      base's `${region}-` one. GCS bucket names are globally unique, so the
+  #      region is not what makes one unique. The bucket itself is provisioned
+  #      by infrastructure/gcp-0/cloudnative-pg/gcs-bucket.yaml, and the plugin
+  #      that turns this block into an ObjectStore now runs on this cluster
+  #      (infrastructure/gcp-0/cloudnative-pg-barman-plugin) with a GCS egress
+  #      allowlist in place of the base's AWS S3 one.
+  #
+  #   4. instances stays at 1, where before it followed from having no backup.
+  #      The XRD's CEL rule -- `backup.schedule is required for multi-instance
+  #      clusters` -- is satisfied now, so 2 would be allowed. It is still 1
+  #      because this cluster is rebuilt from scratch and torn down after every
+  #      run, and a standby costs a second Postgres for availability nobody is
+  #      here to need. aws-0 keeps 2. Raising it here is a one-line change the
+  #      moment anything on gcp-0 becomes long-lived.
+  #
+  #   5. Still no objectStoreRecovery, and the ordering is not optional: base
+  #      restores from an S3 prefix captured in 2026-07, and no GCS equivalent
+  #      exists until these backups have run at least once. Pointing recovery
+  #      at an empty bucket fails the bootstrap instead of starting fresh --
+  #      which is what this cluster wants anyway, since its ZITADEL is its own
+  #      instance with its own users.
+  - target:
+      group: cloud.ogenki.io
+      kind: SQLInstance
+      name: xplane-zitadel
+    patch: |-
+      - op: replace
+        path: /spec/crossplane/compositionRef/name
+        value: xsqlinstances-gcp.cloud.ogenki.io
+      - op: replace
+        path: /spec/instances
+        value: 1
+      - op: remove
+        path: /spec/objectStoreRecovery
+      - op: replace
+        path: /spec/backup/bucketName
+        value: ${project_id}-ogenki-cnpg-backups

@@ -229,7 +229,7 @@ spec:
                 namespace: apps
                 app: xplane-image-gallery
 
-        - "Cluster: aws-0":
+        - "Cluster: ${cluster_name}":
             - Flux UI:
                 href: https://flux-ui-${cluster_name}.${private_domain_name}
                 description: Flux GitOps Dashboard
@@ -256,7 +256,7 @@ spec:
               cpu: true
               memory: true
               showLabel: true
-              label: "aws-0"
+              label: "${cluster_name}"
             nodes:
               show: false
 
@@ -318,6 +318,6 @@ spec:
           Demo Apps:
             style: row
             columns: 2
-          "Cluster: aws-0":
+          "Cluster: ${cluster_name}":
             style: row
             columns: 3

@@ -6,10 +6,14 @@ spec:
   gatewayClassName: cilium
   infrastructure:
     annotations:
-      service.beta.kubernetes.io/aws-load-balancer-name: "ogenki-zitadel-gateway"
-      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
-      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-      service.beta.kubernetes.io/aws-load-balancer-type: "external"
+      # Cloud-neutral. The four service.beta.kubernetes.io/aws-load-balancer-*
+      # annotations that used to sit here are AWS-only and now live in
+      # security/aws-0/zitadel/gateway-patch.yaml -- they named an NLB by name
+      # and set its scheme and target type, which means nothing on GKE, where
+      # Cilium's GatewayClass provisions the LoadBalancer itself.
+      #
+      # Leaving them in a shared base is the pattern that has bitten this repo
+      # repeatedly: valid YAML on both clouds, meaningful on one.
       external-dns.alpha.kubernetes.io/hostname: "auth.${public_domain_name}"
   listeners:
     - name: auth

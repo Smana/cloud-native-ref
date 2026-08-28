@@ -13,6 +13,9 @@ resources:
   # Log generator for demo purposes
   - ../base/loggen
   - ../base/metrics-server
+  # ./runlore, not ../base/runlore: the overlay patches the cloud provider, the
+  # metadata-server network policy and the identity. See the directory.
+  - ./runlore
 
 # TWO components from aws-0's list are deliberately absent.
 #

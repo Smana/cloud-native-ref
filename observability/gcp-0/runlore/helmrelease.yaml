@@ -1,0 +1,58 @@
+# runlore on gcp-0. Only what genuinely differs by cloud.
+#
+# networkPolicy is the load-bearing part. On EKS the Pod Identity agent really
+# does run on the node's host network, so `toEntities: [host]` is correct there.
+# On GKE, Cilium does not classify 169.254.169.254 as the host entity, so the
+# same rule matches NOTHING and every metadata call is dropped -- and the
+# failure surfaces as "gcp: project is required (autodetection found none)",
+# which reads as a configuration mistake rather than a dropped packet.
+#
+# The chart's gcpWorkloadIdentity option emits toCIDR instead. It exists only on
+# runlore main, which is why flux/sources/gitrepo-runlore.yaml pins a commit
+# rather than v0.15.0.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: runlore
+  namespace: runlore
+spec:
+  values:
+    # The base pins image 0.13.0, which has no GCP cloud provider at all: with
+    # the chart and the policy both correct, the pod still logged NOTHING about
+    # GCP -- not even a resolution failure -- and reported `"cloud":false`. An
+    # absent provider and a broken one look identical from the outside.
+    #
+    # `main` is the only tag published for this image, built 2026-08-27T10:14:22Z,
+    # three minutes after the commit the chart is pinned to (96688ac5). So it is
+    # the image that matches the chart, not a newer guess.
+    #
+    # A moving tag is acceptable only because this cluster is rebuilt from
+    # scratch every run. Pin a released tag alongside the chart's v0.16.0.
+    image:
+      tag: "main"
+      pullPolicy: Always
+    networkPolicy:
+      awsPodIdentity: false
+      gcpWorkloadIdentity: true
+    config:
+      cloud:
+        provider: gcp
+        # region and cluster_name are AWS-ONLY keys, and the base sets both.
+        # Left in place, the binary refuses to start -- deliberately:
+        #
+        #   serve: invalid config: cloud.provider is "gcp" but cloud.region
+        #   (use cloud.gcp.location) and cloud.cluster_name (use
+        #   cloud.gcp.cluster_name) set: those keys are AWS-only and would be
+        #   silently ignored, leaving the GKE scope to auto...
+        #
+        # That fail-closed check is the other half of Smana/runlore#563, and it
+        # is why the first attempt at this overlay crash-looped and Flux rolled
+        # the release back to 0.13.0. Nulling them removes the keys from the
+        # merged values rather than passing empty strings.
+        #
+        # Nothing replaces them: on GKE the scope is read from the metadata
+        # server, which is exactly what the gcpWorkloadIdentity policy above
+        # makes reachable. Setting cloud.gcp.* by hand would work too and would
+        # mean the autodetection path never gets exercised.
+        region: null
+        cluster_name: null

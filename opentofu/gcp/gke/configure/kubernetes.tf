@@ -107,21 +107,23 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       route53_role_arn       = var.route53_role_arn
       route53_region         = var.route53_region
 
-      # The platform's identity provider, which this cluster CONSUMES rather
-      # than hosts.
+      # The platform's identity provider, which this cluster may either HOST or
+      # CONSUME. ADR-0024 supersedes ADR-0022: the IdP is deployable on either
+      # cloud, default AWS, so a GCP-only platform is self-sufficient rather
+      # than dependent on an AWS cluster being up to log anyone in.
       #
-      # A literal, not "https://auth.${var.public_domain_name}" like the AWS
-      # stack computes. That would resolve to auth.gcp.cloud.ogenki.io -- a name
-      # nothing serves, because ZITADEL runs on aws-0. The value has to name the
-      # HOST cluster, and this cluster is not it.
+      # Derived rather than hand-set, because the two halves of that choice must
+      # agree and a literal is what let them drift:
       #
-      # ZITADEL is deliberately a singleton (ADR-0022): one instance for both
-      # clusters, because the alternative is two user directories and two
-      # session stores with no federation. Moving the IdP to gcp-0 means
-      # changing THREE things together -- which overlay includes
-      # security/base/zitadel, this value, and the same key in the AWS stack.
-      # The ADR spells that out; nothing here can enforce it.
-      identity_provider_url = var.identity_provider_url
+      #   deploy_identity_provider = true   -> auth.<this cluster's public domain>
+      #   deploy_identity_provider = false  -> var.identity_provider_url, whose
+      #                                       default names the aws-0 instance
+      #
+      # Setting it true while leaving the Flux Kustomization suspended points
+      # every consumer at a hostname this cluster does not serve, which is why
+      # local.identity_provider_url is computed in one place and both halves are
+      # documented together in variables.tf.
+      identity_provider_url = local.identity_provider_url
     }
   })
   server_side_apply = true

@@ -16,3 +16,109 @@ resources:
   - ../../base/ai/llm
   - gcs-bucket.yaml
   - models-pv.yaml
+
+# ---------------------------------------------------------------------------
+# gcp-0 serves ONE model. aws-0 keeps the full four-model fleet.
+# ---------------------------------------------------------------------------
+# `gcp-0` exists to validate GCP support, not to run a model fleet. Each claim
+# holds one L4 from the gpu-l4 ComputeClass and each preload pulls its weights
+# from HuggingFace, so the base's four claims cost four GPUs and roughly an hour
+# before anything serves — on a cluster that is torn down after every run.
+#
+# `qwen3-8b` is kept because it is the only one that can carry the test:
+# `routing.tier: medium`, `specialty: general`, and `toolCallParser: hermes`.
+# runlore needs tool calling, and pointing runlore at a self-hosted model is the
+# step that proves the platform end to end. The two coder models and the
+# guardrail prove nothing here that it does not.
+#
+# Deleted rather than selected file-by-file so `../../base/ai/llm` stays the
+# source of truth: a shared resource added to the base still reaches this
+# cluster. What is dropped is stated explicitly, which is the point.
+#
+# To serve the full fleet here, delete this block — nothing else changes.
+patches:
+  # The three claims.
+  - target: {group: cloud.ogenki.io, kind: InferenceService, name: xplane-qwen-coder}
+    patch: |-
+      $patch: delete
+      apiVersion: cloud.ogenki.io/v1alpha1
+      kind: InferenceService
+      metadata:
+        name: xplane-qwen-coder
+        namespace: llm
+  - target: {group: cloud.ogenki.io, kind: InferenceService, name: xplane-qwen-coder-fim}
+    patch: |-
+      $patch: delete
+      apiVersion: cloud.ogenki.io/v1alpha1
+      kind: InferenceService
+      metadata:
+        name: xplane-qwen-coder-fim
+        namespace: llm
+  - target: {group: cloud.ogenki.io, kind: InferenceService, name: xplane-llamaguard3-1b}
+    patch: |-
+      $patch: delete
+      apiVersion: cloud.ogenki.io/v1alpha1
+      kind: InferenceService
+      metadata:
+        name: xplane-llamaguard3-1b
+        namespace: llm
+
+  # The gateway objects those claims fed. Left behind, each Backend resolves an
+  # FQDN for a Service that is never created, and the AIGatewayRoute keeps two
+  # rules dispatching to AIServiceBackends with no endpoints — a 503 route that
+  # looks configured. `xplane-qwen-coder` needs no entry here: its route is
+  # rendered BY the composition from `gateway.enabled` on the claim (SPEC-002),
+  # so deleting the claim removes it too.
+  - target: {group: gateway.envoyproxy.io, kind: Backend, name: xplane-qwen-coder-fim-direct}
+    patch: |-
+      $patch: delete
+      apiVersion: gateway.envoyproxy.io/v1alpha1
+      kind: Backend
+      metadata:
+        name: xplane-qwen-coder-fim-direct
+        namespace: llm
+  - target: {group: gateway.envoyproxy.io, kind: Backend, name: xplane-llamaguard3-1b-direct}
+    patch: |-
+      $patch: delete
+      apiVersion: gateway.envoyproxy.io/v1alpha1
+      kind: Backend
+      metadata:
+        name: xplane-llamaguard3-1b-direct
+        namespace: llm
+  - target: {group: aigateway.envoyproxy.io, kind: AIServiceBackend, name: xplane-qwen-coder-fim}
+    patch: |-
+      $patch: delete
+      apiVersion: aigateway.envoyproxy.io/v1alpha1
+      kind: AIServiceBackend
+      metadata:
+        name: xplane-qwen-coder-fim
+        namespace: llm
+  - target: {group: aigateway.envoyproxy.io, kind: AIServiceBackend, name: xplane-llamaguard3-1b}
+    patch: |-
+      $patch: delete
+      apiVersion: aigateway.envoyproxy.io/v1alpha1
+      kind: AIServiceBackend
+      metadata:
+        name: xplane-llamaguard3-1b
+        namespace: llm
+
+  # AIGatewayRoute has no schema kustomize knows, so this lands as a JSON merge
+  # patch and `spec.rules` is REPLACED wholesale rather than merged — which is
+  # what removes the two dead rules. Restating the qwen3-8b rule is therefore
+  # mandatory, not redundant: omit it and the route dispatches nothing.
+  - target: {group: aigateway.envoyproxy.io, kind: AIGatewayRoute, name: llm-fleet}
+    patch: |-
+      apiVersion: aigateway.envoyproxy.io/v1alpha1
+      kind: AIGatewayRoute
+      metadata:
+        name: llm-fleet
+        namespace: llm
+      spec:
+        rules:
+          - matches:
+              - headers:
+                  - type: Exact
+                    name: x-ai-eg-model
+                    value: xplane-qwen3-8b
+            backendRefs:
+              - name: xplane-qwen3-8b
