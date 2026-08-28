@@ -52,6 +52,25 @@ GCP_PROJECT=""
 APPLY="false"
 ZITADEL_PROJECT_NAME="platform"
 
+# The project roles the platform's OWN RBAC already refers to. These are not a
+# guess: each name is read back out of a manifest in this repo, through the
+# groups/roles claim that zitadel-actions/groups-from-roles.js builds.
+#
+#   admin      security/base/rbac/admin.yaml   Group admin    -> cluster-admin
+#              flux-ui ClusterRoleBinding       Group admin    -> cluster-admin
+#              Grafana role_attribute_path      'admin'        -> Admin
+#   backend    flux-ui ClusterRoleBinding       Group backend  -> edit
+#              Grafana role_attribute_path      'backend'      -> Editor
+#   data       flux-ui ClusterRoleBinding       Group data     -> edit
+#              Grafana role_attribute_path      'data'         -> Editor
+#   frontend   Grafana role_attribute_path      'frontend'     -> Editor
+#
+# Without them the whole chain is inert: ZITADEL has no role to grant, so the
+# Action emits no claim, so every binding above matches nobody and Grafana falls
+# through to Viewer. gcp-0 came up on 2026-08-28 with zero roles on the project
+# and nothing anywhere said so -- login worked, authorisation silently did not.
+ZITADEL_PROJECT_ROLES=(admin backend frontend data)
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --cluster) CLUSTER="$2"; shift 2 ;;
@@ -192,7 +211,43 @@ CONSUMERS=(
   "grafana|https://grafana.${PRIVATE_DOMAIN}/login/generic_oauth|observability-victoria-metrics-k8s-stack-grafana-envvars"
   "headlamp|https://headlamp.${PRIVATE_DOMAIN}/oidc-callback|headlamp-envvars"
   "flux-ui|https://flux-ui-${CLUSTER}.${PRIVATE_DOMAIN}/oauth2/callback|security-flux-ui-oidc"
+  # gcp-0 only in practice, and harmless on aws-0 where nothing consumes it.
+  # GKE cannot be told to trust ZITADEL, so Headlamp there sits behind
+  # oauth2-proxy and the PROXY holds the OIDC client -- a second client for the
+  # same hostname, on the proxy's own callback path. ADR-0026.
+  "headlamp-proxy|https://headlamp.${PRIVATE_DOMAIN}/oauth2/callback|headlamp-oauth2-proxy"
 )
+
+# Roles are additive and idempotent: ZITADEL rejects a duplicate roleKey, so an
+# existing role is left alone rather than rewritten. Granting a role to a USER is
+# deliberately NOT done here -- a user exists only after their first login, and
+# guessing who should be admin is not this script's business.
+ensure_project_roles() {
+    local project_id="$1" role existing
+    [ -n "$project_id" ] || return 0
+
+    if [ "$project_id" = "DRYRUN-PROJECT" ]; then
+        echo "[dry-run] would ensure roles: ${ZITADEL_PROJECT_ROLES[*]}"
+        return 0
+    fi
+
+    existing="$(api POST "/management/v1/projects/${project_id}/roles/_search" -d '{"query":{"limit":100}}' 2>/dev/null \
+                | jq -r '.result[]?.key' || true)"
+
+    for role in "${ZITADEL_PROJECT_ROLES[@]}"; do
+        if grep -qx "$role" <<< "$existing"; then
+            echo "[skip   ] role '${role}' already exists"
+            continue
+        fi
+        if [ "$APPLY" != "true" ]; then
+            echo "[dry-run] would create role '${role}'"
+            continue
+        fi
+        jq -n --arg k "$role" --arg d "$role" '{roleKey: $k, displayName: $d}' \
+            | api POST "/management/v1/projects/${project_id}/roles" -d @- >/dev/null
+        echo "[created] role '${role}'"
+    done
+}
 
 ensure_project() {
     local id
@@ -235,6 +290,19 @@ merge_secret() {
         flux-ui)
             jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
                '$base + {clientID: $id, clientSecret: $sec}' ;;
+        headlamp-proxy)
+            # Hyphenated keys, deliberately: the oauth2-proxy chart's
+            # `config.existingSecret` reads exactly client-id / client-secret /
+            # cookie-secret, so the blob is shaped to be consumed by a whole-blob
+            # ExternalSecret extract with no remapping.
+            #
+            # The cookie secret is generated here and then PRESERVED across runs
+            # by the `// $ck` fallback -- regenerating it on every sync would
+            # silently log every user out and look like a broken login.
+            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
+               --arg ck "$(openssl rand -base64 32 | tr -d '\n')" \
+               '$base + {"client-id": $id, "client-secret": $sec,
+                         "cookie-secret": ($base["cookie-secret"] // $ck)}' ;;
     esac
 }
 
@@ -247,6 +315,8 @@ cmd_sync() {
     local project_id
     project_id="$(ensure_project)"
     [ -n "$project_id" ] || { echo "could not resolve or create the ZITADEL project" >&2; exit 1; }
+
+    ensure_project_roles "$project_id"
 
     local created=0 skipped=0
     for entry in "${CONSUMERS[@]}"; do

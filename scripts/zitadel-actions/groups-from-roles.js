@@ -1,5 +1,15 @@
 /**
- * groups-from-roles — flatten ZITADEL's project roles into a `groups` claim.
+ * groupsFromRoles — flatten ZITADEL's project roles into `groups` and `roles`.
+ *
+ * THE FUNCTION NAME BELOW IS THE ACTION NAME, AND VICE VERSA. ZITADEL v1 does
+ * not take an entrypoint: it looks up a function named after the action and
+ * calls it. Rename one without the other and ZITADEL stores it happily, then
+ * fails EVERY token request with "action run failed: function not found" --
+ * which reaches the user as Grafana's "Failed to get token from provider" and
+ * nothing at all in the ZITADEL UI. The action was created as
+ * "groups-from-roles" on 2026-08-28; a hyphen cannot appear in a JS identifier,
+ * so no function could ever have matched it. zitadel-idp.sh now refuses to run
+ * when the two disagree.
  *
  * WHY THIS EXISTS
  *
@@ -81,5 +91,17 @@ function groupsFromRoles(ctx, api) {
     return;
   }
 
+  // TWO CLAIMS, ONE LIST, because the consumers on this platform disagree about
+  // the name and both are already deployed:
+  //
+  //   groups   Headlamp, Flux UI      (OIDC groups claim)
+  //   roles    Grafana                (role_attribute_path: contains(roles[*], 'admin') ...)
+  //
+  // Grafana's mapping is in the shared vm-common-helm-values ConfigMap and reads
+  // roles[*]. Emitting only `groups` left it matching nothing and falling through
+  // to its 'Viewer' default -- a silent failure, since everyone still logged in,
+  // just never as Admin. Setting both is one line here; renaming the claim would
+  // mean changing consumers on two clusters at once.
   api.v1.claims.setClaim('groups', groups);
+  api.v1.claims.setClaim('roles', groups);
 }

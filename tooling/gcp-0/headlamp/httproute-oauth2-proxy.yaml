@@ -1,0 +1,49 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: headlamp
+  namespace: tooling
+spec:
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        # THE SECURITY PROPERTY THIS WHOLE DESIGN RESTS ON.
+        #
+        # Headlamp now believes whoever X-Forwarded-User says it is, and grants
+        # that identity its ServiceAccount's permissions. If a client could set
+        # those headers itself, it would authenticate as anyone -- Headlamp's own
+        # documentation says so plainly: "a client could spoof these headers and
+        # impersonate another user if Headlamp is reachable without that
+        # protection at the edge."
+        #
+        # So the edge removes them from every inbound request, before oauth2-proxy
+        # sets its own. `remove` runs on the request as it enters the gateway, so a
+        # client-supplied value cannot survive to the backend, and oauth2-proxy
+        # adds them downstream of this filter.
+        #
+        # X-Auth-Request-* are stripped too: --set-xauthrequest emits them, and a
+        # future Headlamp flag pointed at one must not be spoofable either.
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            remove:
+              - X-Forwarded-User
+              - X-Forwarded-Email
+              - X-Forwarded-Groups
+              - X-Forwarded-Group
+              - X-Forwarded-Id-Token
+              - X-Auth-Request-User
+              - X-Auth-Request-Email
+              - X-Auth-Request-Groups
+              - X-Auth-Request-Access-Token
+      backendRefs:
+        # Traffic now enters oauth2-proxy, which authenticates against ZITADEL and
+        # then proxies to headlamp:80 itself (its --upstream). The Headlamp Service
+        # keeps existing and is still reachable in-cluster -- the CiliumNetworkPolicy
+        # beside this file is what stops anything but the proxy using it.
+        - group: ""
+          kind: Service
+          name: headlamp-oauth2-proxy
+          port: 80
