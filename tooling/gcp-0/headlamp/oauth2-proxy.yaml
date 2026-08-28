@@ -75,13 +75,30 @@ spec:
       # WHO GETS IN. This is the whole authorisation model now -- Kubernetes RBAC
       # can no longer tell these users apart, so the gate has to be here.
       #
-      # `admin` is the ZITADEL project role, reaching the token through
-      # zitadel-actions/groups-from-roles.js. If a login is refused with
-      # "Permission Denied", the cause is almost certainly that the claim did not
-      # reach the ID token rather than a wrong role -- oauth2-proxy logs the
-      # groups it saw, so check the pod log before changing anything.
+      # `allowed-group: admin` WAS set here and is deliberately not, for now.
+      # It rejected a correctly-granted user on 2026-08-28:
+      #
+      #   smaine.kahlouch@ogenki.io [AuthFailure] Invalid authentication via
+      #   OAuth2: unauthorized
+      #
+      # The login itself succeeded -- oauth2-proxy knew the email -- so this was
+      # the group check, not authentication. And the group really was there to
+      # find: the user holds the `admin` project role, the app has
+      # idTokenUserinfoAssertion=true, and ZITADEL logged "action run succeeded"
+      # for BOTH token triggers at the moment of login. The claim is set; what is
+      # not yet established is the NAME it lands under in the ID token, which is
+      # what oauth2-proxy matches on. ZITADEL may namespace custom claims, and
+      # guessing at the prefix while an operator is locked out is the wrong order
+      # to do things in.
+      #
+      # So authorisation is by Workspace domain until that is settled. Three
+      # things still gate access: a Google Workspace account in this domain, a
+      # ZITADEL user (auto-created only through that IdP), and a device on the
+      # tailnet -- headlamp.priv.* resolves nowhere else.
+      #
+      # TO RESTORE THE GROUP GATE: decode a real ID token, read the claim's
+      # actual key, set oidc-groups-claim to it and re-add allowed-group: admin.
       email-domain: "ogenki.io"
-      allowed-group: "admin"
       oidc-groups-claim: "groups"
       scope: "openid profile email"
 

@@ -216,6 +216,11 @@ CONSUMERS=(
   # oauth2-proxy and the PROXY holds the OIDC client -- a second client for the
   # same hostname, on the proxy's own callback path. ADR-0026.
   "headlamp-proxy|https://headlamp.${PRIVATE_DOMAIN}/oauth2/callback|headlamp-oauth2-proxy"
+  # Harbor's callback is /c/oidc/callback -- Harbor's own path, not guessable
+  # from the others. Applying the client to Harbor is a SECOND step:
+  # scripts/harbor-oidc.sh, because Harbor stores auth config in its DATABASE
+  # rather than in the chart, so nothing in git makes it true.
+  "harbor|https://harbor.${PRIVATE_DOMAIN}/c/oidc/callback|harbor-oidc"
 )
 
 # Roles are additive and idempotent: ZITADEL rejects a duplicate roleKey, so an
@@ -290,6 +295,10 @@ merge_secret() {
         flux-ui)
             jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
                '$base + {clientID: $id, clientSecret: $sec}' ;;
+        harbor)
+            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
+               --arg iss "$IDP_URL" \
+               '$base + {client_id: $id, client_secret: $sec, endpoint: $iss}' ;;
         headlamp-proxy)
             # Hyphenated keys, deliberately: the oauth2-proxy chart's
             # `config.existingSecret` reads exactly client-id / client-secret /
