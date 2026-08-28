@@ -75,30 +75,28 @@ spec:
       # WHO GETS IN. This is the whole authorisation model now -- Kubernetes RBAC
       # can no longer tell these users apart, so the gate has to be here.
       #
-      # `allowed-group: admin` WAS set here and is deliberately not, for now.
-      # It rejected a correctly-granted user on 2026-08-28:
+      # `admin` is the ZITADEL project role, reaching the token through
+      # zitadel-actions/groups-from-roles.js.
+      #
+      # This gate was briefly REMOVED on 2026-08-28 because it rejected a
+      # correctly-granted user:
       #
       #   smaine.kahlouch@ogenki.io [AuthFailure] Invalid authentication via
       #   OAuth2: unauthorized
       #
-      # The login itself succeeded -- oauth2-proxy knew the email -- so this was
-      # the group check, not authentication. And the group really was there to
-      # find: the user holds the `admin` project role, the app has
-      # idTokenUserinfoAssertion=true, and ZITADEL logged "action run succeeded"
-      # for BOTH token triggers at the moment of login. The claim is set; what is
-      # not yet established is the NAME it lands under in the ID token, which is
-      # what oauth2-proxy matches on. ZITADEL may namespace custom claims, and
-      # guessing at the prefix while an operator is locked out is the wrong order
-      # to do things in.
+      # That was not this flag's fault. `projectRoleAssertion` was false on the
+      # ZITADEL project, so no token carried roles at all AND `ctx.v1.user.grants`
+      # was empty inside the action -- it early-returned and set no claim, while
+      # logging success. Fixed at the project (see ensure_project_role_assertion
+      # in scripts/zitadel-oidc-clients.sh), so the claim now exists and the gate
+      # is meaningful again rather than a filter on nothing.
       #
-      # So authorisation is by Workspace domain until that is settled. Three
-      # things still gate access: a Google Workspace account in this domain, a
-      # ZITADEL user (auto-created only through that IdP), and a device on the
-      # tailnet -- headlamp.priv.* resolves nowhere else.
-      #
-      # TO RESTORE THE GROUP GATE: decode a real ID token, read the claim's
-      # actual key, set oidc-groups-claim to it and re-add allowed-group: admin.
+      # IF A LOGIN IS REFUSED HERE, read the pod log before changing this: it
+      # names the user and the decision. The Flux Operator UI is the better probe
+      # though -- it logs the ENTIRE decoded ID token on failure, which is what
+      # identified the real cause in the first place.
       email-domain: "ogenki.io"
+      allowed-group: "admin"
       oidc-groups-claim: "groups"
       scope: "openid profile email"
 
