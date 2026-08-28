@@ -299,8 +299,16 @@ merge_secret() {
             # The cookie secret is generated here and then PRESERVED across runs
             # by the `// $ck` fallback -- regenerating it on every sync would
             # silently log every user out and look like a broken login.
+            #
+            # EXACTLY 32 CHARACTERS. `openssl rand -base64 32` alone emits 44,
+            # and oauth2-proxy refuses to start on it:
+            #   cookie_secret must be 16, 24, or 32 bytes to create an AES
+            #   cipher, but is 44 bytes
+            # It measures the STRING, not the decoded bytes, so the base64 has to
+            # be truncated to the cipher length rather than sized to decode into
+            # it. `head -c 32` is the recipe the chart's own values.yaml gives.
             jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
-               --arg ck "$(openssl rand -base64 32 | tr -d '\n')" \
+               --arg ck "$(openssl rand -base64 32 | head -c 32)" \
                '$base + {"client-id": $id, "client-secret": $sec,
                          "cookie-secret": ($base["cookie-secret"] // $ck)}' ;;
     esac
