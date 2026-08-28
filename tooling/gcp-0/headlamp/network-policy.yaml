@@ -27,33 +27,41 @@ spec:
             dns:
               - matchPattern: "*"
 
-    # ZITADEL over its PUBLIC hostname (auth.<public domain>), which resolves to
-    # this cluster's own Gateway LoadBalancer -- traffic leaves and comes back.
+    # ZITADEL over its PUBLIC hostname, which resolves to THIS cluster's own
+    # Gateway LoadBalancer. No port restriction, and no narrower selector, and
+    # that is a measured result rather than laziness.
     #
-    # `all`, NOT `world`, and that is a measured result rather than laziness.
-    # With every narrower selector the connection was reset during the TLS
-    # ClientHello, 0 successes out of 6-10 attempts each:
+    # Cilium's Gateway API Service has no real backend: its EndpointSlice is the
+    # sentinel 192.192.192.192:9999, meaning "the L7 proxy handles this". Socket
+    # load-balancing rewrites the destination BEFORE policy is evaluated, to an
+    # Envoy listener whose port is allocated at runtime -- so a rule naming a
+    # port cannot match, whatever entity it names.
     #
-    #   world                              0/10     cluster    0/8
-    #   host                               0/8      remote-node 0/8
-    #   ingress                            0/8      all        6/6
+    # Measured on gcp-0, 6-10 attempts each, from a pod on a node that does NOT
+    # run the zitadel pod (co-located pods succeed regardless, which is what made
+    # this look like a node problem first):
     #
-    # An unlabelled pod on the same node reached the same URL 12/12, which is
-    # what isolated the policy as the variable. `cilium-dbg bpf ipcache get`
-    # reports the LB address as `identity=1` (reserved:host) -- yet allowing
-    # `host` does not match it, so the ipcache identity is not what the egress
-    # decision uses for a hairpinned LoadBalancer VIP. Cilium logged no drop for
-    # any of it, which is why this took measurement rather than reading a verdict.
+    #   world / cluster / host / remote-node / ingress, port 443     0
+    #   all, port 443                                                0
+    #   all, ports 443 + 9999 (the sentinel port)                    0
+    #   toServices: cilium-gateway-zitadel                           0
+    #   all, NO toPorts                                              6/6
+    #   no policy at all                                             6/6
     #
-    # It is still a restriction, not an opt-out: `all` is scoped to TCP 443 and
-    # every other port stays denied, as does all ingress except from the gateway.
-    # Narrow it again if a future Cilium classifies these VIPs usefully.
+    # Cilium logged no drop for any of the failures, so there is no verdict to
+    # read -- only A/B measurement finds this.
+    #
+    # What still constrains this pod: ingress only from the gateway, egress to
+    # kube-dns under L7 DNS inspection, and egress to headlamp on 4466. It holds
+    # no cloud credentials and no kubeconfig; its ServiceAccount is the default.
+    #
+    # The narrow fix is to stop traversing the public VIP at all -- ZITADEL's own
+    # Service is ClusterIP :8080, so that needs the issuer URL to keep :443,
+    # which means split-horizon DNS (the repo already has the idea as
+    # IDP_RESOLVE in scripts/zitadel-*.sh). Worth doing when something else needs
+    # it too; not worth it for one pod.
     - toEntities:
         - all
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
 
     # The upstream it proxies to.
     - toEndpoints:
