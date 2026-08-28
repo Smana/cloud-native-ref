@@ -75,7 +75,15 @@ spec:
       # crashlooped on `field sweeps not found in type config.Curate`. Before this
       # bump the v0.13.0 chart was rendered with these exact values and the resulting
       # config replayed through the v0.13.0 binary's own config.Load: both pass.
-      tag: "0.13.0"
+      # 0.16.0, in lockstep with the GitRepository's `tag: v0.16.0`.
+      #
+      # This was "0.13.0" while the source had already moved to a COMMIT pin far
+      # past v0.13.0 -- exactly the drift the paragraphs above warn about, and it
+      # went unnoticed because gcp-0's overlay pinned `main` on top and aws-0 was
+      # torn down. The lockstep rule is not decoration: config parsing uses
+      # KnownFields(true), so a chart newer than its binary fails closed on a key
+      # the binary has never heard of.
+      tag: "0.16.0"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true
