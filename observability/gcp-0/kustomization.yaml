@@ -11,11 +11,30 @@ resources:
   - ../base/victoria-logs
   # Log generator for demo purposes
   - ../base/loggen
-  - ../base/metrics-server
   # ./runlore, not ../base/runlore: the overlay patches the three things that
   # genuinely differ by cloud — the provider block, the network policy that
   # reaches the metadata server, and the identity. See the directory.
   - ./runlore
+
+# ../base/metrics-server is deliberately NOT listed. GKE SHIPS ONE.
+#
+# It was listed until 2026-08-28, and it did nothing except fight the addon.
+# GKE runs `metrics-server-v1.35.1` as a managed addon, and the Service our chart
+# installs is the SAME OBJECT: it carries GKE's `addonmanager.kubernetes.io/mode:
+# Reconcile` and `kubernetes.io/cluster-service: true` labels alongside Helm's,
+# because the release adopted the one the addon manager had already created.
+#
+# So the two wrote over each other forever. The HelmRelease sat permanently at
+#     Ready=Unknown  correcting cluster drift
+#     DriftDetected: ClusterRole/system:metrics-server changed
+# with DriftDetected/DriftCorrected events repeating every few minutes.
+#
+# And our copy served nothing the whole time. The Service selects
+# `k8s-app: metrics-server`; our Deployment's pods are labelled
+# `app.kubernetes.io/name: metrics-server`, so the only endpoint behind
+# v1beta1.metrics.k8s.io was always GKE's pod. Two replicas, zero traffic.
+#
+# aws-0 still lists it, correctly -- EKS ships no metrics-server.
 
 # ../base/victoria-traces is deliberately NOT listed.
 # clusters/gcp-0/observability/observability-victoria-traces.yaml applies that
