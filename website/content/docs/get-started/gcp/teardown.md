@@ -112,6 +112,39 @@ The three hand-created bootstrap prerequisites — the state bucket, the Cloud K
 key ring, and the Tailscale OAuth client — are also left alone. Cloud KMS key
 rings cannot be deleted at all.
 
+### Everything Crossplane created
+
+`tofu destroy` does not remove these, and it cannot: Crossplane is *in* the
+cluster, so it dies with it. Anything it provisioned in GCP is simply orphaned.
+On the 2026-08-28 gcp-0 teardown that was **3 Buckets, 7 BucketIAMMembers and 5
+ProjectIAMMembers**.
+
+The buckets survive on purpose rather than by oversight — their
+`managementPolicies` are `[Observe, Create, Update, LateInitialize]` with **no
+`Delete`**, which is the constitution's "no deletion permissions for stateful
+services" applied to object storage. Deleting the claim does not delete the
+bucket; nothing does, except a human.
+
+```bash
+gcloud storage buckets list --project <project> --format='value(name)'
+```
+
+The IAM members cost nothing and reference principals that no longer exist, so
+they are noise rather than a leak. The buckets bill.
+
+{{< callout type="warning" >}}
+**Keep `<project>-ogenki-cnpg-backups`.** It holds the dated restore seed —
+`zitadel-<date>/` — that `security/gcp-0/zitadel` bootstraps the next cluster's
+ZITADEL from. Delete it and the rebuild starts with an EMPTY identity provider,
+losing what no script can recreate: the Google IdP's user links, and any human
+user, which exists only after a first interactive login. It is ~100 MB.
+{{< /callout >}}
+
+The other two are a judgement call. `<project>-ogenki-llm-models` held 18.1 GB of
+model weights after one preload — keeping it makes a later LLM run skip the
+HuggingFace download entirely; deleting it saves a few tens of cents a month.
+`<project>-ogenki-harbor` is empty unless images were pushed.
+
 ## Verifying nothing is left
 
 Teardown is not finished because a script said so. Check the project:
@@ -123,6 +156,11 @@ gcloud compute disks list --project <project>
 gcloud compute addresses list --project <project>
 gcloud dns managed-zones list --project <project>
 gcloud compute networks list --project <project>   # only `default` should remain
+
+# Expected to REMAIN, not to be empty: the Crossplane-created buckets and the
+# bootstrap prerequisites. Confirm the list matches what you meant to keep --
+# in particular that <project>-ogenki-cnpg-backups is still there.
+gcloud storage buckets list --project <project> --format='value(name)'
 ```
 
 ## Non-interactive
