@@ -490,13 +490,39 @@ seed_body() {
             # under that name and Harbor connects as it.
             jq -n --arg p "$(gen_password)" '{username: "harbor", password: $p}' ;;
         cnpg?xplane-zitadel?superuser)
-            # `postgres`, because the cluster sets enableSuperuserAccess: true
-            # alongside an explicit superuserSecret -- so CNPG expects US to
-            # supply the pair rather than generating <cluster>-superuser itself.
-            # Observed on gcp-0: superuser access enabled and no such secret
-            # anywhere, leaving it configured and unusable while failing nothing
-            # visibly.
-            jq -n --arg p "$(gen_password)" '{username: "postgres", password: $p}' ;;
+            # DERIVED, not generated -- the one arm here that reads rather than
+            # rolls, and the reason is that this credential has two owners.
+            #
+            # ZITADEL authenticates as `postgres` using
+            # ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD out of the zitadel-envvars
+            # blob. CNPG sets the `postgres` role's password from THIS secret,
+            # because the cluster carries enableSuperuserAccess: true alongside
+            # an explicit superuserSecret. Two secrets, one credential. Generate
+            # a fresh value here and they disagree by construction, on every
+            # cluster, forever -- which is exactly what happened on gcp-0 on
+            # 2026-08-28: `zitadel init` failed `password authentication failed
+            # for user "postgres"`, waited out its 5m AWAITINITIALCONN, and the
+            # Job's 300s activeDeadlineSeconds killed it. On repeat. The symptom
+            # is a HelmRelease stuck on a pre-install hook and a Job whose pod is
+            # deleted before anyone can read its logs.
+            #
+            # So zitadel-envvars is the single source and this is a copy of it.
+            #
+            # ORDER MATTERS, and it is not enforceable from here: CNPG applies
+            # this password when it CREATES the cluster and does not rewrite the
+            # role afterwards. Seed before the SQLInstance claim reconciles, or
+            # the database keeps whatever password it was born with and no amount
+            # of fixing the secret afterwards reaches it.
+            local _admin
+            _admin=$(store_value "zitadel-envvars" 2>/dev/null \
+                | jq -r '.ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD // empty')
+            if [ -z "$_admin" ]; then
+                echo "cannot derive $1: zitadel-envvars is absent or has no" >&2
+                echo "ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD. Load that blob first --" >&2
+                echo "generating a password here would silently disagree with it." >&2
+                return 1
+            fi
+            jq -n --arg p "$_admin" '{username: "postgres", password: $p}' ;;
         *)
             echo "no generator for $1" >&2; return 1 ;;
     esac
