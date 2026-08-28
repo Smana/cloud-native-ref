@@ -1,7 +1,7 @@
 ---
 title: Cloud-managed secret stores as the store of record, OpenBao scoped to the PKI
-linkTitle: 0024 · Managed secret stores
-weight: 240
+linkTitle: 0025 · Managed secret stores
+weight: 250
 description: Platform secrets live in AWS Secrets Manager / GCP Secret Manager rather than OpenBao, because the store of record must be always-on and outlive the platform, and this reference cannot afford a long-running self-hosted instance — OpenBao remains the target, scoped today to the private PKI and the tenancy model.
 lastVerified: 2026-08-27
 ---

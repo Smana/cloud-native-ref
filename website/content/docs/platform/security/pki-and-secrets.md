@@ -185,7 +185,7 @@ spec:
 
 Why the store of record is the cloud's managed service rather than OpenBao —
 cost, lifecycle, and the bootstrap circularity — is recorded in
-[ADR-0024]({{< relref "/docs/decisions/0024-cloud-managed-secret-stores.md" >}});
+[ADR-0025]({{< relref "/docs/decisions/0025-cloud-managed-secret-stores.md" >}});
 the shared store name and the dash-grammar keys that let one `ExternalSecret`
 work on both clouds are
 [ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}}).

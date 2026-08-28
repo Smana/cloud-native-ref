@@ -31,7 +31,7 @@ and torn down afterwards.
 | Crossplane | ✅ `provider-aws` | ✅ `provider-gcp` |
 | Security (cert-manager, ESO, Kyverno, Tailscale) | ✅ | ✅ |
 | Infrastructure (Cilium, Gateway API, external-dns) | ✅ | ✅ |
-| Observability (VictoriaMetrics, Grafana) | ✅ | ✅ same stack, minus `runlore` |
+| Observability (VictoriaMetrics, Grafana, RunLore) | ✅ | ✅ same stack |
 | Tooling (Harbor) | ✅ | ✅ Harbor on GCS with Workload Identity |
 | Applications | ✅ | ✅ podinfo · basic · App Wizard — minus `image-gallery` |
 | LLM platform | ⏸️ opt-in, suspended | ⏸️ opt-in, suspended |
@@ -77,7 +77,7 @@ where a cloud's own service is unavoidable, and what stands in for what.
 | Workload identity | EKS Pod Identity | GKE Workload Identity Federation | Never IRSA, never a static key ([ADR-0002](../../decisions/0002-eks-pod-identity-over-irsa.md)) |
 | Crossplane claim | `EPI` | `GCPWorkloadIdentity` | Cloud-shaped on purpose ([ADR-0007](../../decisions/0007-cloud-abstraction-boundaries.md)) |
 | Bootstrap secret store | AWS Secrets Manager | Google Secret Manager | Read at apply time by the cluster stack |
-| Runtime secret store (ESO) | AWS Secrets Manager | GCP Secret Manager | The one `ClusterSecretStore` every ExternalSecret reads ([ADR-0024]({{< relref "/docs/decisions/0024-cloud-managed-secret-stores.md" >}})) |
+| Runtime secret store (ESO) | AWS Secrets Manager | GCP Secret Manager | The one `ClusterSecretStore` every ExternalSecret reads ([ADR-0025]({{< relref "/docs/decisions/0025-cloud-managed-secret-stores.md" >}})) |
 | Private PKI | OpenBao | OpenBao | Same PKI model, one instance per cloud |
 | OpenBao auto-unseal | AWS KMS | Cloud KMS | |
 
@@ -173,9 +173,8 @@ gaps at all.
 - **`eks-pod-identities`** — `GCPWorkloadIdentity` is the counterpart, a
   different Kind rather than a second Composition
   ([ADR-0002](../../decisions/0002-eks-pod-identity-over-irsa.md)).
-- **ZITADEL** — deliberately a singleton on `aws-0`, addressed through an
-  `identity_provider_url` variable so the hosting cloud is a stated value rather
-  than an accident of which overlay includes it.
+ZITADEL is no longer on this list — it is deployable on either cloud and
+`gcp-0` runs its own instance. See [the section below](#one-identity-provider-or-two--settled).
 
 ### Genuinely not portable yet
 
@@ -185,10 +184,6 @@ gaps at all.
   Storage means either GCS's S3-compatible XML API with HMAC keys — static
   credentials this platform avoids wherever a workload identity will do — or a
   GCS-native client. Both are changes to the *application*.
-- **`runlore`** — the SRE agent reads `${domain_name}`, a key only `aws-0`
-  defines, and drives AWS cloud tools. Flux substitutes an undefined variable to
-  empty, so wiring it would render a hostname with a hole in it rather than
-  fail.
 - **Harbor's database has no backups on `gcp-0`.** The claim side is ready — the
   Composition renders barman's `ObjectStore` and a bucket-scoped identity as
   soon as `backup` is set. The cluster side is not: the barman plugin ships a
@@ -212,37 +207,32 @@ None of the above are cloud-abstraction failures. The shared layer reconciles
 identically on both clouds; what is left is one application with a cloud baked
 into its code, one policy to port, and secrets to seed.
 
-## Open question: one identity provider, or two?
+## One identity provider, or two? — settled
 
 ZITADEL is exposed at `auth.${public_domain_name}`, and that variable is
-per-cluster — `cloud.ogenki.io` on `aws-0`, `gcp.cloud.ogenki.io` on `gcp-0`.
-So the same manifest would render `auth.cloud.ogenki.io` on one cloud and
-`auth.gcp.cloud.ogenki.io` on the other. **There is no DNS collision**, which is
-the reassuring half of the answer.
+per-cluster — `cloud.ogenki.io` on `aws-0`, `gcp.cloud.ogenki.io` on `gcp-0` —
+so there is no DNS collision either way.
 
-The unresolved half is what that would mean. Two hostnames is two independent
-ZITADEL instances: two user directories, two session stores, two sets of OIDC
-clients, and no federation between them. For an identity provider that is
-usually the wrong outcome, and it would be reached by default rather than by
-decision.
+[ADR-0022](../../decisions/0022-single-identity-provider-across-clouds.md) first
+made ZITADEL a singleton on `aws-0`, reachable across the cloud boundary.
+[ADR-0024](../../decisions/0024-identity-provider-per-cloud.md) superseded it:
+the IdP is now a **per-cloud deployable component**, defaulting to AWS, so a
+GCP-only platform can authenticate without an AWS cluster running. The accepted
+cost is one user directory per cloud, with no federation between them. Only
+public DNS stays AWS-owned ([ADR-0019](../../decisions/0019-cross-cloud-dns-federation.md)).
 
-Today the question is still open rather than urgent, because ZITADEL has no
-`gcp-0` overlay — it is deliberately a singleton on `aws-0` (see the gaps
-above). Three models are on the table:
+`gcp-0` takes that opt-out today and runs its own instance. Doing so requires
+two gates that must agree, because neither can enforce the other:
 
-1. **One instance on `aws-0`**, with `gcp-0` workloads authenticating across the
-   cloud boundary. This mirrors the DNS decision — one authoritative service,
-   reachable from the other cloud — and would be the platform's *second*
-   deliberate cross-cloud dependency.
-2. **Two independent instances**, which is what the current naming produces by
-   default. Operationally simple, but the two clusters become separate identity
-   islands.
-3. **An external identity provider**, hosted by neither cloud.
+| Gate | Where | Value on `gcp-0` |
+|---|---|---|
+| 1 · which URL consumers read | `deploy_identity_provider` in `opentofu/gcp/gke/configure/variables.tfvars` | `true` |
+| 2 · whether an instance runs | `spec.suspend` in `clusters/gcp-0/security/zitadel.yaml` | `false` |
 
-No decision has been recorded yet. When one is, it belongs in an ADR alongside
-[ADR-0019](../../decisions/0019-cross-cloud-dns-federation.md), for the same
-reason that one exists: a dependency that crosses clouds should be argued for in
-writing, not absorbed silently.
+Gate 1 alone points every consumer at a hostname nothing serves. Gate 2 alone
+runs an IdP no consumer is configured to use — and that half fails *silently*,
+since ZITADEL is up and every consumer is healthy while pointed at the other
+cluster. Flip them in the same commit.
 
 ## Adding a third cloud
 

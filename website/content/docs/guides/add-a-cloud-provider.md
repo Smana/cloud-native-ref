@@ -78,8 +78,7 @@ right interim failure mode, since a claim that cannot be honoured should say
 so at reconcile time. Both clouds now render from the same KCL module,
 differing only in where barman writes its backups (Cloud Storage rather than
 S3) and the identity that writes them, and the CloudNativePG operator runs on
-both clusters — `infrastructure/gcp-0/cloudnative-pg` deploys it without the
-Grafana dashboards, which need an operator `gcp-0` does not run.
+both clusters from the same base — dashboards included.
 {{< /callout >}}
 
 Where a genuinely cloud-specific knob is unavoidable, it belongs in a
