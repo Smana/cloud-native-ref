@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The PUBLIC certificate issuers: ACME against Let's Encrypt with a Route53
+# dns01 solver. Nothing here touches OpenBao or the private PKI -- the two
+# issuer families exist to fail independently, which is why they are separate
+# Kustomizations rather than one.
+#
+# Mirrors security/gcp-0/cert-manager-public. That overlay carries an extra
+# rbac.yaml because its solver assumes a federated AWS role; aws-0 reaches
+# Route53 with an EKS Pod Identity instead, so it needs no equivalent.
+#
+# Staging is kept alongside prod deliberately: it is the issuer to switch a
+# Certificate to while debugging an issuance problem, and Let's Encrypt's
+# duplicate-certificate limit makes retrying against prod expensive.
+resources:
+  - le-clusterissuer-prod.yaml
+  - le-clusterissuer-staging.yaml

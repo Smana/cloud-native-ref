@@ -17,29 +17,34 @@
 # HelmRelease health check would go Ready before the database is usable. The
 # 10m timeout is deliberately longer than aws-0's 5m for the same reason.
 #
-# ── SUSPENDED BY DEFAULT ──────────────────────────────────────────────────────
-# AWS is the default host, so this cluster consumes aws-0's instance unless it
-# is told otherwise. Deploying an IdP here takes TWO gates, and they must agree:
+# ── ACTIVE: gcp-0 hosts its own instance ──────────────────────────────────────
+# ADR-0024 makes AWS the *default* host, but this cluster opts out of that
+# default so a GCP-only platform can log people in with aws-0 torn down.
 #
-#   1. tofu:  deploy_identity_provider = true   (opentofu/gcp/gke/configure)
-#             -- drives identity_provider_url, which every consumer reads
-#   2. flux:  flux resume kustomization zitadel -n flux-system
-#             -- or drop the suspend below
+# That takes TWO gates, and they must always agree:
+#
+#   1. tofu:  deploy_identity_provider = true   (opentofu/gcp/gke/configure/
+#             variables.tfvars) -- drives identity_provider_url, which every
+#             consumer reads
+#   2. flux:  spec.suspend = false              (below)
 #
 # Gate 1 alone points every consumer at auth.<gcp public domain>, which nothing
-# serves. Gate 2 alone runs a ZITADEL that no consumer is configured to use.
-# Neither half can enforce the other; see ADR-0024.
+# serves. Gate 2 alone runs a ZITADEL that no consumer is configured to use --
+# and that failure is silent, because ZITADEL is up and the consumers are
+# healthy, they are simply pointed at another cluster's IdP. Neither half can
+# enforce the other; see ADR-0024. To consume aws-0's instance instead, flip
+# both back in one commit.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: zitadel
   namespace: flux-system
 spec:
-  # NOTE: false ON THIS BRANCH ONLY, to validate the GCP-hosted IdP end to end.
-  # It MUST go back to true before merge -- AWS is the default host, and a
-  # merged `false` would give every gcp-0 rebuild a second user directory
-  # nobody asked for. `flux resume` is not an alternative: kustomize-controller
-  # owns this field and re-asserts the committed value on its next apply.
+  # Gate 2 of the two above, and it must keep agreeing with gate 1
+  # (deploy_identity_provider = true in opentofu/gcp/gke/configure/
+  # variables.tfvars). `flux suspend` is not a way to flip this durably --
+  # kustomize-controller owns the field and re-asserts the committed value on
+  # its next apply. Change it here, in the same commit as gate 1.
   suspend: false
   prune: true
   interval: 1m0s
@@ -54,7 +59,15 @@ spec:
         name: gke-gcp-0-vars
   dependsOn:
     - name: infrastructure
-    - name: security
+    # Two edges, for two different prerequisites this path renders:
+    #   - security-openbao creates the `clustersecretstore` the two
+    #     ExternalSecrets in ../../base/zitadel read through.
+    #   - security-public-certs creates the `letsencrypt-prod` ClusterIssuer
+    #     that base's certificate.yaml names.
+    # Both already dependOn `security`, so cert-manager and External Secrets
+    # being up is covered transitively.
+    - name: security-openbao
+    - name: security-public-certs
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease

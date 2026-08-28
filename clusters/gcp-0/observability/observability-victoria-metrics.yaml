@@ -23,9 +23,10 @@ spec:
       - kind: ConfigMap
         name: gke-gcp-0-vars
   dependsOn:
-    # security: the stack's Ingress-equivalents and any ExternalSecret it pulls
-    # need cert-manager and External Secrets running, same edge aws-0 declares.
-    - name: security
+    # security-openbao, NOT security: externalsecret-openbao-ca-patch.yaml reads
+    # through the `clustersecretstore` ClusterSecretStore, which on this
+    # cluster is created by ./security/gcp-0/openbao. Same edge aws-0 declares.
+    - name: security-openbao
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease

@@ -92,7 +92,7 @@ under `/<claim-name>/`.
 
 When Upbound publishes `s3files.aws.m.upbound.io/v1beta1` CRDs:
 
-1. Add the resources to `infrastructure/base/crossplane/providers/activation-policy.yaml`.
+1. Add the resources to `infrastructure/base/crossplane/providers-aws/activation-policy.yaml`.
 2. Re-render the same resources as managed resources under
    `infrastructure/base/llm-models-fs/` (or as a Crossplane composition).
 3. Remove this stack — the EnvironmentConfig keys stay the same.

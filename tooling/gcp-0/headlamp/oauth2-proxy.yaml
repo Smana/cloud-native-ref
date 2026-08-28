@@ -1,0 +1,124 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: headlamp-oauth2-proxy
+  namespace: tooling
+spec:
+  interval: 30m
+  driftDetection:
+    mode: enabled
+  chart:
+    spec:
+      chart: oauth2-proxy
+      version: "10.7.0"
+      sourceRef:
+        kind: HelmRepository
+        name: oauth2-proxy
+      interval: 12h
+
+  # THE FIRST INSTALL WILL TIME OUT AT BOOTSTRAP, and without this it stays dead.
+  #
+  # oauth2-proxy cannot start until `headlamp-oauth2-proxy` exists in the secret
+  # store AND External Secrets has been granted access to it -- both of which
+  # happen after this HelmRelease first reconciles, by
+  # zitadel-oidc-clients.sh and `secret-store.sh grant`. So the Deployment sits
+  # in CreateContainerConfigError, Helm times out, and Flux records
+  #     Stalled=True RetriesExceeded: Failed to install after 1 attempt(s)
+  # and never tries again -- the exact state this hit on 2026-08-28, which needed
+  # a manual `flux reconcile --force` to clear.
+  #
+  # retries: 3 is the same shape cert-manager, kyverno and crossplane use here.
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+
+  values:
+    # Without this the chart names everything <release>-<chart>, i.e.
+    # `headlamp-oauth2-proxy-oauth2-proxy`, and the HTTPRoute beside this file
+    # would point at a Service that does not exist. Rendered and checked rather
+    # than assumed.
+    fullnameOverride: headlamp-oauth2-proxy
+
+    # Credentials come from the store, written by zitadel-oidc-clients.sh. The
+    # chart expects exactly these three keys, which is why the payload function
+    # in that script emits `client-id` / `client-secret` / `cookie-secret`
+    # verbatim rather than the OAUTH2_PROXY_* env names.
+    config:
+      existingSecret: headlamp-oauth2-proxy  # pragma: allowlist secret
+
+    extraArgs:
+      provider: oidc
+      oidc-issuer-url: "${identity_provider_url}"
+      redirect-url: "https://headlamp.${private_domain_name}/oauth2/callback"
+      upstream: "http://headlamp.tooling.svc.cluster.local:80"
+
+      # THE HEADER CONTRACT WITH HEADLAMP, and the half of it that is easy to get
+      # wrong. --pass-user-headers makes oauth2-proxy set X-Forwarded-User and
+      # X-Forwarded-Email, and the group header it emits is X-Forwarded-GroupS,
+      # PLURAL. Headlamp's -proxy-auth-group-header defaults to the SINGULAR
+      # X-Forwarded-Group, so left alone the two never meet: login succeeds, the
+      # user has no groups, and nothing logs an error. The Headlamp side names
+      # the plural form explicitly -- see headlamp-proxy-auth.yaml.
+      pass-user-headers: "true"
+      set-xauthrequest: "true"
+
+      # No Authorization header upstream. Headlamp must NOT receive a bearer
+      # token here: it authenticates to the API server with its own ServiceAccount
+      # (see the patch), and a stray Authorization header would be a second,
+      # unintended credential path.
+      pass-basic-auth: "false"
+      pass-authorization-header: "false"
+
+      # WHO GETS IN. This is the whole authorisation model now -- Kubernetes RBAC
+      # can no longer tell these users apart, so the gate has to be here.
+      #
+      # `admin` is the ZITADEL project role, reaching the token through
+      # zitadel-actions/groups-from-roles.js.
+      #
+      # This gate was briefly REMOVED on 2026-08-28 because it rejected a
+      # correctly-granted user:
+      #
+      #   smaine.kahlouch@ogenki.io [AuthFailure] Invalid authentication via
+      #   OAuth2: unauthorized
+      #
+      # That was not this flag's fault. `projectRoleAssertion` was false on the
+      # ZITADEL project, so no token carried roles at all AND `ctx.v1.user.grants`
+      # was empty inside the action -- it early-returned and set no claim, while
+      # logging success. Fixed at the project (see ensure_project_role_assertion
+      # in scripts/zitadel-oidc-clients.sh), so the claim now exists and the gate
+      # is meaningful again rather than a filter on nothing.
+      #
+      # IF A LOGIN IS REFUSED HERE, read the pod log before changing this: it
+      # names the user and the decision. The Flux Operator UI is the better probe
+      # though -- it logs the ENTIRE decoded ID token on failure, which is what
+      # identified the real cause in the first place.
+      email-domain: "ogenki.io"
+      allowed-group: "admin"
+      oidc-groups-claim: "groups"
+      scope: "openid profile email"
+
+      cookie-secure: "true"
+
+    # The chart's own defaults are already restricted-PSS compliant here
+    # (seccompProfile RuntimeDefault, caps dropped, non-root, read-only rootfs),
+    # so this restates only what it leaves open.
+    securityContext:
+      enabled: true
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      capabilities:
+        drop:
+          - ALL
+      seccompProfile:
+        type: RuntimeDefault
+
+    resources:
+      limits:
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi

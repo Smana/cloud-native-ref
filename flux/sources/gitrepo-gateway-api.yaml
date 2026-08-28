@@ -1,10 +1,24 @@
+# The Gateway API release Flux re-applies the CRDs from, AFTER cilium-operator is
+# already running. opentofu/shared/modules/gateway-api-crds installs the same
+# bundle at bootstrap, which is what the operator's one-shot startup probe
+# actually finds; this exists to converge the cluster back if someone edits a CRD
+# by hand.
+#
+# `tag` must equal globals.gateway_api_version in opentofu/config.tm.hcl.
+# ./scripts/validate-doc-claims.sh fails when they disagree.
+#
+# interval is 1h, not minutes: the ref is a PINNED TAG, so there is nothing for a
+# faster poll to discover. Bumping the tag edits this file, which Flux's own sync
+# picks up and re-reconciles immediately -- the interval never gates a version
+# change. Both this and crds-gateway-api force conflicts, so a short interval
+# only bought a field-manager tug-of-war with OpenTofu over ~1.4 MB of CRD YAML.
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
   name: gateway-api
   namespace: kube-system
 spec:
-  interval: 5m0s
+  interval: 1h
   url: https://github.com/kubernetes-sigs/gateway-api
   ref:
     tag: v1.6.1

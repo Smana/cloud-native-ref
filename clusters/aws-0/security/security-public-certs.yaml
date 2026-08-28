@@ -1,0 +1,33 @@
+# The public certificate issuers.
+#
+# dependsOn security (not security-openbao): this needs cert-manager RUNNING,
+# which security's healthChecks already gate on. It has no relationship to the
+# private PKI -- deliberately, since the two issuers exist to fail independently.
+#
+# No healthCheck on the ClusterIssuers. cert-manager marks an ACME issuer Ready
+# only after it has registered an account with Let's Encrypt, which is a live
+# network call to a rate-limited third party. Gating a Kustomization on that
+# would make an unrelated LE outage look like a GitOps failure. The public
+# Gateway's Certificate is where issuance is actually proven.
+#
+# Mirrors clusters/gcp-0/security/security-public-certs.yaml.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: security-public-certs
+  namespace: flux-system
+spec:
+  prune: true
+  interval: 4m0s
+  retryInterval: 30s
+  timeout: 8m0s
+  sourceRef:
+    kind: ExternalArtifact
+    name: security-artifact
+  path: ./security/aws-0/cert-manager-public
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: eks-aws-0-vars
+  dependsOn:
+    - name: security

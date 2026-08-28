@@ -36,7 +36,7 @@ cannot destroy a database or an S3 bucket.
 from the cloud's managed secret store — AWS Secrets Manager on `aws-0`,
 Google Secret Manager on `gcp-0` — into Kubernetes Secrets at runtime;
 OpenBao is scoped to the private PKI, not application secrets
-([ADR-0024]({{< relref "/docs/decisions/0024-cloud-managed-secret-stores.md" >}})).
+([ADR-0025]({{< relref "/docs/decisions/0025-cloud-managed-secret-stores.md" >}})).
 
 **Ingress.** The cluster API endpoint is private and platform services are
 reachable only over Tailscale — on both clouds — and the two private gateways

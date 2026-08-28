@@ -3,9 +3,10 @@ kind: Kustomization
 namespace: infrastructure
 
 # The cnpg-backups bucket is NOT here: it is a cloud-specific managed resource
-# and lives in the per-cloud overlay (infrastructure/aws-0/cloudnative-pg/).
-# CloudNativePG is not deployed on gcp-0 yet; its GCS bucket lands with the
-# workstream that brings it there.
+# and lives in each per-cloud overlay — s3-bucket.yaml under
+# infrastructure/aws-0/cloudnative-pg/, gcs-bucket.yaml under
+# infrastructure/gcp-0/cloudnative-pg/. Everything else, dashboards included, is
+# neutral, so both overlays reference this directory whole.
 
 resources:
   - grafana-dashboard.yaml

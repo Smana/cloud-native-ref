@@ -1,9 +1,17 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
+# The chart, and nothing its webhook admits.
+#
+# cert-manager ships a validating webhook with `failurePolicy: Fail`, so a
+# ClusterIssuer applied in the same Kustomization as the chart races the webhook
+# Service having endpoints. Keeping this directory chart-only means referencing
+# it whole is always safe -- there is nothing here to race.
+#
+# The issuers each cloud needs live in that cloud's overlay, not here, because
+# they are not shared: the OpenBao issuer differs per cluster (its own CA, its
+# own AppRole) and the ACME issuer differs per solver (Route53 on aws-0, the
+# same zone via a federated role on gcp-0). See security/{aws-0,gcp-0}/openbao/
+# and security/{aws-0,gcp-0}/cert-manager-public/.
 resources:
-  - le-clusterissuer-prod.yaml
-  - le-clusterissuer-staging.yaml
   - helmrelease.yaml
-  - openbao-clusterissuer.yaml
-  - openbao-approle-externalsecret.yaml
-  - openbao-ca-externalsecret.yaml

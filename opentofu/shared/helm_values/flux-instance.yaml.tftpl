@@ -1,6 +1,16 @@
-# Flux Instance Helm values
-# Dynamic values (sync.url, sync.ref, sync.path) are passed via --set in the Terramate script
-# See: opentofu/aws/eks/workflows.tm.hcl
+# Flux Instance Helm values — shared by both clouds.
+#
+# Rendered with templatefile() from opentofu/aws/eks/configure/main.tf and
+# opentofu/gcp/gke/configure/main.tf. Dynamic values (sync.url, sync.ref,
+# sync.path) are passed via --set in each stack's Terramate script.
+#
+# $${storage_class} is the ONLY per-cloud value; each stack passes its own
+# local.storage_class. Anything else genuinely per-cloud belongs in a --set, not
+# a second copy of this file.
+#
+# NOTE the $$ escape above: templatefile() interpolates $${...} everywhere in
+# the file, comments included, so an unescaped reference here would render as
+# the value rather than the name.
 
 instance:
   distribution:
@@ -24,11 +34,13 @@ instance:
     shards:
       - "apps"
   storage:
-    class: "gp3"
+    class: "${storage_class}"
     size: "5Gi"
   sync:
     kind: GitRepository
-    pullSecret: "flux-system"
+    # Not a secret -- the NAME of the Secret holding the Git credentials.
+    # checkov:skip=CKV_SECRET_6:see above
+    pullSecret: "flux-system" # pragma: allowlist secret
   kustomize:
     patches:
       # Add GitHub provider to GitRepository

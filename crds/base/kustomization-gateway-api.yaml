@@ -1,10 +1,14 @@
+# Re-applies the experimental-channel CRDs from the pinned tag, as a converger
+# against manual edits. OpenTofu already installed the identical bundle before
+# Cilium started -- see flux/sources/gitrepo-gateway-api.yaml for why both exist
+# and why the interval is an hour rather than minutes.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: crds-gateway-api
   namespace: kube-system
 spec:
-  interval: 10m
+  interval: 1h
   targetNamespace: kube-system
   sourceRef:
     kind: GitRepository

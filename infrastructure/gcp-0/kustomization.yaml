@@ -13,6 +13,17 @@ kind: Kustomization
 # and is deliberately minimal until the design's slices 6-7 settle which parts of
 # the shared tree are genuinely cloud-neutral.
 resources:
+  # Cilium's EXTRAS, not Cilium itself -- the agent is installed by
+  # opentofu/gcp/gke/configure, exactly as on AWS. This directory carries the
+  # Grafana dashboards and folder, the VMRules, the VMServiceScrapes, and the
+  # Hubble UI HTTPRoute.
+  #
+  # Missing until 2026-08-28, which is why hubble-ui-gcp-0.priv.* resolved to
+  # nothing while the hubble-ui pod had been Running for hours: the workload was
+  # there, the route was not. Nothing is AWS-shaped in here -- the route is
+  # parameterised on ${cluster_name} / ${private_domain_name} and attaches to
+  # platform-tailscale-admin, which this cluster has.
+  - ../base/cilium
   - cloudnative-pg
   # The Barman Cloud plugin, which is what turns a SQLInstance's `backup` block
   # into an actual ObjectStore. Held back until now because the base ships an
@@ -24,8 +35,8 @@ resources:
   # KEDA, from the SHARED base rather than a gcp-0 copy. Verified cloud-neutral
   # before wiring: no IRSA, no IAM roles, no ARNs, and its CiliumNetworkPolicy
   # addresses `toEntities: kube-apiserver` rather than a CIDR -- so unlike the
-  # openbao-snapshot policy (workstream 9, Task 12) there is nothing here that
-  # assumes an AWS network shape. It also declares no `${var}` at all, so it
+  # openbao-snapshot policy, there is nothing here that assumes an AWS
+  # network shape. It also declares no `${var}` at all, so it
   # adds no key to this cluster's vars ConfigMap.
   #
   # Wired now because the LLM platform needs it: the InferenceService

@@ -1,8 +1,7 @@
 # Gateway API layer: the GatewayClass, both Tailscale Gateways, the wildcard
 # certificate and the L7-proxy network policy.
 #
-# TWO dependsOn edges, both load-bearing, and both learned the hard way in
-# workstream 11:
+# TWO dependsOn edges, both load-bearing:
 #
 #   - security-openbao, because the wildcard Certificate cannot be issued before
 #     the `openbao` ClusterIssuer exists. It is also cert-manager's webhook that

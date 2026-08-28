@@ -1,5 +1,5 @@
-# Moved out of apps/gcp-0/llm/ (Task 3) into its own directory once the LLM
-# umbrella needed six independently-gated children (Task 4): the GCP analogue
+# Moved out of apps/gcp-0/llm/ into its own directory once the LLM
+# umbrella needed six independently-gated children: the GCP analogue
 # of aws-0's security/base/epis-llm, one directory + one Flux Kustomization
 # (llm-platform-security-wi) dedicated to the preload identity, separate from
 # llm-platform-apps (apps/gcp-0/llm: the bucket + PV + InferenceService

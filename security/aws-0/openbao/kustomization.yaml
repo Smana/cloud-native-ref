@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Everything the controllers in ../ have to ADMIT before it can exist: a
+# ClusterSecretStore and two ExternalSecrets behind the external-secrets
+# webhook, one ClusterIssuer behind cert-manager's.
+#
+# Kept out of the `security` Kustomization deliberately, and this now mirrors
+# security/gcp-0/openbao file for file. See that directory's kustomization.yaml
+# for the measured failure -- it is where the race was reproduced (gcp-0's first
+# deploy, 2026-08-25). aws-0 kept the racy arrangement longer because a
+# long-running cluster already has its webhooks up, so it only bites a cold
+# rebuild.
+#
+# Ordering runs the other way too, which is why this is a good boundary rather
+# than a workaround: the openbao ClusterIssuer needs the two Secrets that the
+# ExternalSecrets produce, and those need External Secrets running. One group
+# installs controllers; the other configures them.
+#
+# The Let's Encrypt issuers used to be in this directory. They are ACME/Route53
+# and have nothing to do with OpenBao, so they moved to
+# ../cert-manager-public/, applied by `security-public-certs` -- the same split
+# gcp-0 already had.
+resources:
+  - clustersecretstore.yaml
+  - openbao-approle-externalsecret.yaml
+  - openbao-ca-externalsecret.yaml
+  - openbao-clusterissuer.yaml

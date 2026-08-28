@@ -115,6 +115,41 @@ spec:
       # Read-only: no patch rights on Flux resources. actions.mode stays off.
       allowActions: false
       actionNamespaces: []
+
+      # Namespaces where runlore may read POD LOGS. The chart defaults to
+      # [flux-system] alone, which is the GitOps controllers and nothing the
+      # platform actually runs.
+      #
+      # Added after an investigation on 2026-08-28 that diagnosed a crash-looping
+      # oauth2-proxy in `tooling` and had to report:
+      #
+      #   pod_logs (previous=true) returned RBAC denial: 'pods/log is forbidden
+      #   for system:serviceaccount:runlore:runlore' -- could not read the
+      #   last-terminated container's crash output directly
+      #
+      # It reached the right answer through VictoriaLogs instead, but a
+      # crash-looping pod's PREVIOUS container output is the single most direct
+      # evidence there is, and it was reasoning around it.
+      #
+      # These are the namespaces this platform's own workloads run in. Deliberately
+      # NOT included: kube-system (Cilium, GKE addons -- node-level components whose
+      # logs runlore has no mandate over), and the gke-managed-* namespaces.
+      # `config.investigation.pod_log_namespaces` auto-tracks this list, so the
+      # app-layer allowlist follows without drifting.
+      #
+      # This is a real widening: pod logs can contain anything an application
+      # prints, including values read from Secrets. It is accepted because runlore
+      # is read-only on the cluster and its only write path anywhere is a
+      # knowledge-base pull request.
+      controllerLogNamespaces:
+        - flux-system
+        - crossplane-system
+        - security
+        - infrastructure
+        - observability
+        - tooling
+        - apps
+        - runlore
       # resource_spec / list_resources allowlist.
       #
       # WHY THIS IS RESTATED IN FULL: the chart ships this list POPULATED with

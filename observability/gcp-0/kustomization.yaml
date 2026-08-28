@@ -3,55 +3,41 @@ kind: Kustomization
 
 # Observability on gcp-0 — the same components aws-0 runs, from the same base.
 #
-# Every one of these was checked for cloud-shape before wiring, not assumed:
-# none names an AWS service, an ARN, an IRSA/Pod-Identity annotation, or a
-# ${var} that only aws-0's ConfigMap defines. Their PVCs already read
-# ${storage_class}, which resolves to standard-rwo here and gp3 on aws-0.
+# Nothing listed here names an AWS service, an ARN, a Pod-Identity annotation,
+# or a ${var} only aws-0's ConfigMap defines. Their PVCs read ${storage_class},
+# which resolves to standard-rwo here and gp3 on aws-0.
 resources:
   - ../base/kubernetes-event-exporter
   - ../base/victoria-logs
   # Log generator for demo purposes
   - ../base/loggen
-  - ../base/metrics-server
-  # ./runlore, not ../base/runlore: the overlay patches the cloud provider, the
-  # metadata-server network policy and the identity. See the directory.
+  # ./runlore, not ../base/runlore: the overlay patches the three things that
+  # genuinely differ by cloud — the provider block, the network policy that
+  # reaches the metadata server, and the identity. See the directory.
   - ./runlore
 
-# TWO components from aws-0's list are deliberately absent.
+# ../base/metrics-server is deliberately NOT listed. GKE SHIPS ONE.
 #
-# ../base/runlore — still absent, but for a NARROWER reason than before.
+# It was listed until 2026-08-28, and it did nothing except fight the addon.
+# GKE runs `metrics-server-v1.35.1` as a managed addon, and the Service our chart
+# installs is the SAME OBJECT: it carries GKE's `addonmanager.kubernetes.io/mode:
+# Reconcile` and `kubernetes.io/cluster-service: true` labels alongside Helm's,
+# because the release adopted the one the addon manager had already created.
 #
-# It used to read ${domain_name}, a key only aws-0's ConfigMap defined. That key
-# is gone: it held the same value as public_domain_name, which both clusters
-# publish, so the HTTPRoute is now cloud-neutral and that blocker is closed.
+# So the two wrote over each other forever. The HelmRelease sat permanently at
+#     Ready=Unknown  correcting cluster drift
+#     DriftDetected: ClusterRole/system:metrics-server changed
+# with DriftDetected/DriftCorrected events repeating every few minutes.
 #
-# What remains is real and needs a live cluster to settle:
-#   - the HelmRelease hardcodes `cloud: {provider: aws, region, cluster_name}`
-#     and `networkPolicy.awsPodIdentity: true`; a gcp-0 overlay would patch both
-#     to `provider: gcp` / `gcpWorkloadIdentity: true`
-#   - its identity is an EPI (security/base/epis/runlore.yaml); GCP needs a
-#     GCPWorkloadIdentity granting logging.viewer, container.clusterViewer and
-#     compute.viewer — none of which crossplane_grantable_roles in
-#     opentofu/gcp/gke/init/iam.tf allows today. Widening that list is a
-#     deliberate act, per its own comment.
-#   - upstream, the chart's gcpWorkloadIdentity NetworkPolicy uses
-#     `toEntities: host`, which does not reach the GKE metadata server under
-#     Cilium — proven on a live gcp-0 and filed as Smana/runlore#562. Until that
-#     lands, the cloud tools silently disable themselves.
+# And our copy served nothing the whole time. The Service selects
+# `k8s-app: metrics-server`; our Deployment's pods are labelled
+# `app.kubernetes.io/name: metrics-server`, so the only endpoint behind
+# v1beta1.metrics.k8s.io was always GKE's pod. Two replicas, zero traffic.
 #
-# Deliberately not wired blind: an overlay written without a cluster to test it
-# on is exactly the kind of "cloud-neutral" claim this repo has been wrong about
-# five times already.
-#
-# ../base/victoria-traces — NOT because it is cloud-specific (it is neutral),
-# but because clusters/gcp-0/observability/observability-victoria-traces.yaml
-# already applies that directory as its own Flux Kustomization, for the
-# ordering it needs. Listing it here as well would put two Kustomizations with
-# prune: true in charge of the same objects, each able to delete what the other
-# owns.
-#
-# Worth noting: observability/aws-0 DOES list ../base/victoria-traces while
-# clusters/aws-0/observability/observability-victoria-traces.yaml applies it
-# too — the double-ownership described above, on the cluster that has been
-# running longest. Not changed here, because unpicking it belongs in its own
-# change where the effect can be watched on a live cluster.
+# aws-0 still lists it, correctly -- EKS ships no metrics-server.
+
+# ../base/victoria-traces is deliberately NOT listed.
+# clusters/gcp-0/observability/observability-victoria-traces.yaml applies that
+# directory as its own Flux Kustomization, for the ordering it needs. Listing it
+# here as well would put two Kustomizations with prune: true in charge of the
+# same objects, each able to delete what the other owns.

@@ -20,7 +20,9 @@ kind: Kustomization
 #
 # Nothing here can express step 2, which is why it is written down.
 resources:
-  - ../base/headlamp
+  # NOT ../base/headlamp: on GKE Headlamp is fronted by an auth proxy, because
+  # the cluster cannot be told to trust ZITADEL. See ./headlamp and ADR-0026.
+  - ./headlamp
   - ./harbor
   - ../base/homepage
   - ../base/pev2

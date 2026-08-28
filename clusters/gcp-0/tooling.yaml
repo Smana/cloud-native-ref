@@ -1,30 +1,19 @@
 # Tooling on gcp-0 — Harbor, and only Harbor.
 #
-# tooling/gcp-0/ has existed since workstream 9 (#1844) with a complete Harbor
-# overlay — the GCS bucket, the GCPWorkloadIdentity and the chart's gcs storage
-# driver — but no Kustomization ever applied it. It was built and left unwired.
+# NOT the same set as aws-0's tooling, which also pulls ../base/headlamp and
+# ../base/homepage. Homepage's dashboard links every service on the cluster and
+# most of them do not run here, so it would render mostly dead links.
 #
-# What unblocked it: Harbor declares a SQLInstance (tooling/base/harbor/
-# sqlinstance.yaml), and until crossplane-configuration v0.4.0 the GCP
-# SQLInstance Composition was a stub that failed evaluation on purpose. Wiring
-# this before that release would have produced a permanently red Kustomization.
-#
-# NOT the same set as aws-0's tooling. That one also pulls ../base/headlamp and
-# ../base/homepage; this overlay is Harbor alone, because homepage's dashboard
-# links every service on the cluster and most of them do not run here yet.
-#
-# dependsOn still omits the `observability` edge that aws-0's tooling carries.
-# gcp-0 now has observability Kustomizations, so the original reason for the
-# omission is gone; the edge is left out deliberately until observability is
-# green here, because adding it now would wedge Harbor behind a dependency that
-# is itself waiting on secrets. Add it once that is settled, for parity.
+# dependsOn omits the `observability` edge aws-0's tooling carries, deliberately:
+# adding it wedges Harbor behind a dependency that is itself waiting on secrets.
+# Add it for parity once observability is reliably green here.
 #
 # ── One manual prerequisite ───────────────────────────────────────────────────
 # Harbor's two ExternalSecrets read `harbor-admin-password` and
 # `harbor-valkey-password` from GCP Secret Manager through `clustersecretstore`
-# (the store is Secrets Manager on aws-0 and GCP Secret Manager here -- the base
+# (Secrets Manager on aws-0, GCP Secret Manager here -- the base
 # ClusterSecretStore is overridden in security/gcp-0/openbao). Nothing seeds
-# them, which is true on aws-0 too, where they were written by hand.
+# them, on either cloud.
 #
 # `./scripts/secret-store.sh check --cloud gcp` lists every key this cluster
 # needs and which are missing, rather than waiting for the ten-minute

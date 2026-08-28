@@ -5,9 +5,25 @@
 # the chart's own docs warn that setting iam.gke.io/gcp-service-account is the
 # other model and would make a missing binding look like a bare 403.
 #
-# Three viewer roles, no writers. runlore's actions.mode is off: the only writes
+# Four viewer roles, no writers. runlore's actions.mode is off: the only writes
 # it makes are knowledge-base pull requests on GitHub, never to the cloud
-# account. Its cloud tools read Cloud Logging, the Container API and metrics.
+# account. Its cloud tools read Cloud Logging, the Container API, metrics and
+# Compute.
+#
+# compute.viewer was added on 2026-08-28 after an investigation reported:
+#
+#   cloud_resource_health returned permission denied for GKE node group details
+#   (missing roles/compute.viewer) -- could not check managed-instance-group
+#   errors or specific node health
+#
+# GKE node pools ARE Compute managed instance groups, so container.viewer alone
+# stops at the node-pool boundary: runlore could see the cluster and not the
+# machines under it, which is exactly where node-level incidents live.
+#
+# TWO-SIDED CONTRACT: this role must ALSO appear in crossplane_grantable_roles in
+# opentofu/gcp/gke/init/iam.tf. The IAM Condition there gates which roles
+# provider-gcp may grant at all, and GCP reports a condition denial as a bare
+# "Access denied." naming neither the condition nor the role.
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: GCPWorkloadIdentity
 metadata:
@@ -20,3 +36,4 @@ spec:
     - "roles/logging.viewer"
     - "roles/container.viewer"
     - "roles/monitoring.viewer"
+    - "roles/compute.viewer"

@@ -43,9 +43,11 @@ wrong. `substitute` (inline key/values in postBuild, as opposed to
 `substituteFrom`) is a separate mechanism and is not checked here.
 
 A `substituteFrom` entry may also name a `kind: Secret` (one such case exists
-repo-wide: `clusters/aws-0/security/security.yaml`'s `cert_manager_approle_id`,
-supplied by `cert-manager-openbao-approle`, populated at runtime by External
-Secrets from OpenBao). A Secret's keys are not on disk, so they cannot be
+repo-wide: `${cert_manager_approle_id}`, supplied by the
+`cert-manager-openbao-approle` Secret, populated at runtime by External Secrets
+from OpenBao -- the run prints which Kustomization carries it, so this sentence
+does not have to name a path that moves). A Secret's keys are not on disk, so
+they cannot be
 checked the way a ConfigMap's can. A Kustomization whose `substituteFrom` is
 ConfigMap-only still fails strictly on a missing key; one that also names a
 Secret gets a printed note instead of a failure when a variable is missing
@@ -276,12 +278,13 @@ def main():
         if missing_unattributable:
             # See classify_missing's docstring for why these are reported
             # rather than failed or silently skipped: exactly one Secret ref
-            # exists today -- cert-manager-openbao-approle on
-            # clusters/aws-0/security/security.yaml, supplying
+            # exists today -- cert-manager-openbao-approle, supplying
             # ${cert_manager_approle_id} (see
             # security/gcp-0/openbao/openbao-clusterissuer.yaml's own
             # comment) -- and standing down without a word would quietly
             # remove coverage from one of the repo's largest Kustomizations.
+            # The Kustomization that carries it is printed below rather than
+            # named here; it has already moved once.
             secrets = [r["name"] for r in refs if r.get("kind") == "Secret"]
             unattributable.append(
                 f"  Kustomization/{k['name']} ({k['path']}): "

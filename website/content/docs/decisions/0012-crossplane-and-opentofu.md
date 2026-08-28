@@ -36,7 +36,7 @@ manifest, not a new OpenTofu stack.
 Compositions themselves are not written in this repository. They live in
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)
 and ship as a versioned Configuration package that this repository pins in
-`infrastructure/base/crossplane/configuration/configuration-packages.yaml`.
+`infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`.
 That split is a consequence of the boundary this record states, not the
 subject of it: what matters here is which tool owns a resource at all, not
 where the Crossplane half of that answer is implemented.
@@ -226,7 +226,7 @@ Crossplane; this ADR decides whether it belongs to Crossplane at all.
   together.** Compositions live in
   [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration),
   not here, so a schema change needs a release there before the pin in
-  `infrastructure/base/crossplane/configuration/configuration-packages.yaml`
+  `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`
   can move. The App Wizard clones that same package tag to render its claim
   preview against the API version the cluster actually serves — bumping
   one pin without the other means the wizard describes a schema the
@@ -284,7 +284,7 @@ schemas through `./scripts/validate-manifests.sh`.
   package
 - [`.claude/rules/crossplane-validation.md`](https://github.com/Smana/cloud-native-ref/blob/main/.claude/rules/crossplane-validation.md)
   — the v2 namespacing, activation-policy, and aggregate-ClusterRole traps
-- `infrastructure/base/crossplane/configuration/configuration-packages.yaml`
+- `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`
   — the pinned Configuration package
 - `apps/platform/app-wizard/app.yaml` — the version-coupling note between
   the package pin and the App Wizard's cloned tag

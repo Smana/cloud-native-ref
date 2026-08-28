@@ -31,7 +31,7 @@ schema, stacks, and its own config) and
 at the tag pinned in `apps/platform/app-wizard/app.yaml`'s
 `fetch-crossplane-configuration` init container — currently `v0.4.3`, the
 same tag pinned in
-`infrastructure/base/crossplane/configuration/configuration-packages.yaml`.
+`infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`.
 This is a deliberate coupling, not an accident: if the wizard's clone drifts
 from the package the cluster actually serves, the form and its live
 validation describe a schema the cluster doesn't run. **Bump both together**

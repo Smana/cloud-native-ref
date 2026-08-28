@@ -8,22 +8,13 @@
 #
 #   GitRepository.source.toolkit.fluxcd.io "grafana-operator" not found
 #
-# Found on the first GCP deploy: the initial "minimum viable" tree had only
-# namespaces + crds, and crds cannot stand alone.
-#
-# postBuild.substituteFrom mirrors the AWS copy, pointing at this cluster's vars
-# ConfigMap (created by opentofu/gcp/gke/configure).
-#
-# `flux/sources/` happens to use no substitution variables TODAY, so this block
-# is not strictly required yet. It is here anyway, deliberately: substitution is
-# the mechanism by which cluster-specific config reaches shared manifests, and
-# every Kustomization that consumes shared paths needs it wired the same way on
-# both clouds. Leaving it off because "nothing uses it yet" means the first
-# manifest that does adds a variable and gets a raw `${cluster_name}` in its
-# rendered output — Flux substitutes nothing and reports success.
+# `flux/sources/` uses no substitution variables today, so the postBuild block
+# below is not strictly required yet. It is wired anyway: the first manifest
+# here that does add one would otherwise render a raw `${cluster_name}` while
+# Flux reports success. Cheaper to wire now than to debug then.
 #
 # The ConfigMap name differs from AWS (gke-* vs eks-*), but the KEYS it provides
-# deliberately match for everything cloud-neutral, which is what lets one
+# deliberately match for everything cloud-neutral — that is what lets one
 # manifest under infrastructure/base/ render on either cloud.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization

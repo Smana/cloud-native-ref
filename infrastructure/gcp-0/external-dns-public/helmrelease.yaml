@@ -9,12 +9,12 @@
 # policy; a mismatch fails with AccessDenied and no explanation.
 #
 # AWS_REGION is ${route53_region}, NOT ${region}. On gcp-0, ${region} is a GCP
-# region (europe-west4) -- Task 2 shipped exactly this defect on the
-# ClusterIssuer's route53 solver, because that value is fed straight into the
-# AWS SDK's shared config to compute the STS client endpoint for the same
-# AssumeRoleWithWebIdentity call this HelmRelease also makes. ${route53_region}
-# is the dedicated AWS-shaped key opentofu/gcp/gke/configure's Task 2 fix added
-# for exactly this. Do not "simplify" it back to ${region}.
+# region (europe-west4), and it is fed straight into the AWS SDK's shared config
+# to compute the STS client endpoint for the AssumeRoleWithWebIdentity call this
+# HelmRelease makes -- so ${region} here produces a nonexistent STS endpoint.
+# ${route53_region} is the dedicated AWS-shaped key that
+# opentofu/gcp/gke/configure publishes for exactly this. The ClusterIssuer's
+# route53 solver has already shipped this defect once. Do not "simplify" it back.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:

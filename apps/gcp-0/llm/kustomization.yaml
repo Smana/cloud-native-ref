@@ -8,7 +8,7 @@ kind: Kustomization
 # (apps/aws-0/llm) don't have to sit next to a GCP-specific one.
 #
 # The preload identity (GCPWorkloadIdentity) does NOT live here -- it moved to
-# security/gcp-0/llm-models-preload/ (Task 4), its own Flux Kustomization
+# security/gcp-0/llm-models-preload/, its own Flux Kustomization
 # (llm-platform-security-wi) so it can be gated independently of the
 # InferenceService claims applied from this directory, mirroring why aws-0
 # keeps its EPI split out of apps/aws-0/llm too.
