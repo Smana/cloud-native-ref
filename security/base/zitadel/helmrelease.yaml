@@ -7,7 +7,26 @@ spec:
   timeout: 45m
   install:
     remediation:
-      retries: 5
+      # Unbounded, and the distinction from `upgrade` below is the point.
+      #
+      # This chart's pre-install hook, Job/zitadel-init, waits for the database
+      # to accept connections. On a FIRST bootstrap that database does not exist
+      # yet: the SQLInstance claim has to reach Crossplane, render a CNPG
+      # Cluster, pull images and (on a cold cluster) wait for a node to be
+      # scaled up for it. Observed on gcp-0 on 2026-08-28 -- the init Job failed
+      # `timed out waiting for the condition`, five retries burned in minutes,
+      # and the release parked on RetriesExceeded permanently.
+      #
+      # Nothing recovers from that on its own. The database came up healthy
+      # twenty minutes later and the release stayed Failed, so the Kustomization
+      # health check failed every interval and paged Slack every interval, until
+      # a human ran `flux reconcile --reset`. A finite count here is a bet on how
+      # long a cold bootstrap takes, and it is a bet this repo keeps losing.
+      #
+      # An install racing its dependencies is a timing problem and retrying is
+      # the correct answer. An UPGRADE failing repeatedly is a regression and
+      # should stop and be looked at -- so that one stays finite.
+      retries: -1
   upgrade:
     remediation:
       retries: 3
