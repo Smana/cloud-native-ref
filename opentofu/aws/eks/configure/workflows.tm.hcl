@@ -25,6 +25,7 @@ script "deploy" {
       # cluster. The defaults are gone; these flags are now required.
       [global.provisioner, "apply", "-auto-approve", "-var-file=variables.tfvars",
         "-var=cilium_version=${global.cilium_version}",
+        "-var=gateway_api_version=${global.gateway_api_version}",
         "-var=flux_operator_version=${global.flux_operator_version}",
       "-var=flux_instance_version=${global.flux_instance_version}"],
     ]
@@ -41,6 +42,7 @@ script "preview" {
       [global.provisioner, "validate"],
       [global.provisioner, "plan", "-out=out.tfplan", "-var-file=variables.tfvars",
         "-var=cilium_version=${global.cilium_version}",
+        "-var=gateway_api_version=${global.gateway_api_version}",
         "-var=flux_operator_version=${global.flux_operator_version}",
         "-var=flux_instance_version=${global.flux_instance_version}", {
           sync_preview   = true
@@ -68,6 +70,7 @@ script "destroy" {
       # variable to be set on destroy as well as on apply.
       [global.provisioner, "destroy", "-auto-approve", "-var-file=variables.tfvars",
         "-var=cilium_version=${global.cilium_version}",
+        "-var=gateway_api_version=${global.gateway_api_version}",
         "-var=flux_operator_version=${global.flux_operator_version}",
       "-var=flux_instance_version=${global.flux_instance_version}"],
     ]

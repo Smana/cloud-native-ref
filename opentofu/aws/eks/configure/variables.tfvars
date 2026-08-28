@@ -12,7 +12,9 @@ public_domain_name  = "cloud.ogenki.io"
 # outputs (alekc/kubectl can't defer → "no configuration has been provided").
 cert_manager_approle_secret_name = "openbao/cloud-native-ref/approles/cert-manager"
 # github_app_secret_name defaults to github/flux-app
-# gateway_api_version defaults to v1.6.1 (must match flux/sources/gitrepo-gateway-api.yaml ref)
+# gateway_api_version is NOT set here: it is shared with GCP and passed via
+# -var from globals.gateway_api_version in opentofu/config.tm.hcl, the same way
+# cilium_version is.
 
 # Flux sync configuration
 flux_sync_url = "https://github.com/Smana/cloud-native-ref.git"

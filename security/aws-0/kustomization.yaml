@@ -3,12 +3,13 @@ kind: Kustomization
 
 # The controllers, and NOTHING they admit.
 #
-# cert-manager and external-secrets are referenced BY FILE: their base
-# directories also carry the ClusterIssuers, ExternalSecrets and
-# ClusterSecretStore their own webhooks admit, and applying those in the same
-# Kustomization as the charts races the webhook Services having endpoints. Those
-# live in ./openbao, applied by the `security-openbao` Kustomization which
-# dependsOn this one. See that directory for the measured failure.
+# ../base/cert-manager and ../base/external-secrets are chart-only directories:
+# the ClusterIssuers, ClusterSecretStore and ExternalSecrets their webhooks
+# admit live in ./openbao and ./cert-manager-public, applied by the
+# `security-openbao` and `security-public-certs` Kustomizations. Applying those
+# in the same Kustomization as the charts races the webhook Services having
+# endpoints -- see security/gcp-0/controllers/kustomization.yaml for the
+# measured failure.
 #
 # ./openbao-snapshot and ../base/tailscale-operator moved out for the same
 # reason -- each renders an ExternalSecret that needs the ClusterSecretStore
@@ -19,5 +20,5 @@ kind: Kustomization
 resources:
   - ../base/kyverno
   - ../base/rbac
-  - ../base/cert-manager/helmrelease.yaml
+  - ../base/cert-manager
   - external-secrets

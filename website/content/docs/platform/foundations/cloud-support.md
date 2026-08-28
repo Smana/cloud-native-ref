@@ -173,8 +173,6 @@ gaps at all.
 - **`eks-pod-identities`** — `GCPWorkloadIdentity` is the counterpart, a
   different Kind rather than a second Composition
   ([ADR-0002](../../decisions/0002-eks-pod-identity-over-irsa.md)).
-ZITADEL is no longer on this list — it is deployable on either cloud and
-`gcp-0` runs its own instance. See [the section below](#one-identity-provider-or-two--settled).
 
 ### Genuinely not portable yet
 

@@ -173,7 +173,7 @@ groups:
         role: Ships the App, SQLInstance, KVStore and InferenceService compositions as a package
         logo: crossplane
         url: https://github.com/Smana/crossplane-configuration
-        pin: "`infrastructure/base/crossplane/configuration/configuration-packages.yaml`"
+        pin: "`infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`"
         note: The compositions themselves are built and released from `Smana/crossplane-configuration`, not from this repository.
       - name: Karpenter
         role: Provisions spot nodes on demand — the general pool and the GPU pool

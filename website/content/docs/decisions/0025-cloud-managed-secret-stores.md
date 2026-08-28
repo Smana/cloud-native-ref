@@ -20,7 +20,7 @@ grammar that keeps the store swappable
 
 Every credential this platform consumes resolves through External Secrets
 Operator from a single `ClusterSecretStore`
-(`security/base/external-secrets/clustersecretstore.yaml`) — and that store is
+(`security/aws-0/openbao/clustersecretstore.yaml`) — and that store is
 the **cloud's managed secret manager**: AWS Secrets Manager on `aws-0`, GCP
 Secret Manager on `gcp-0`. OpenBao, the platform's self-hosted secrets engine,
 holds none of them. It owns the private PKI and a worked example of
@@ -206,10 +206,11 @@ name grammar matters beyond GCP.
 
 ## Implementation Notes
 
-`security/base/external-secrets/clustersecretstore.yaml` defines the AWS
-Secrets Manager store every `ExternalSecret` names;
-`security/gcp-0/openbao/clustersecretstore.yaml` overrides it with GCP
-Secret Manager on `gcp-0`. Both authenticate through the cloud's native
+`security/aws-0/openbao/clustersecretstore.yaml` defines the AWS
+Secrets Manager store every `ExternalSecret` on `aws-0` names;
+`security/gcp-0/openbao/clustersecretstore.yaml` is its `gcp-0` sibling,
+backed by GCP Secret Manager. Neither derives from the other — the two
+providers share no fields worth factoring into a base. Both authenticate through the cloud's native
 workload identity (EKS Pod Identity / Workload Identity) — no static store
 credential exists. OpenBao's scope — the `pki_private_issuer` mount, the
 AppRoles, the `app` tenant namespace — is provisioned by
@@ -229,6 +230,6 @@ AppRoles, the `app` tenant namespace — is provisioned by
   — how External Secrets and cert-manager consume the two stores
 - [OpenBao]({{< relref "/docs/platform/security/openbao.md" >}}) — what the
   self-hosted engine owns: namespaces, AppRoles, the PKI
-- `security/base/external-secrets/clustersecretstore.yaml` — the AWS store
+- `security/aws-0/openbao/clustersecretstore.yaml` — the AWS store
   of record; `security/gcp-0/openbao/clustersecretstore.yaml` — the GCP
   override

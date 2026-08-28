@@ -16,7 +16,7 @@ data "google_client_config" "default" {}
 # AWS dependency in the GCP bootstrap -- the GCP cluster could not come up without
 # working AWS credentials, which defeats the point of a second first-class cloud.
 # The design flags this as an open question; GCP Secret Manager is the answer for
-# now, and it moves to OpenBao once workstream 11 lands.
+# now; moving it to OpenBao is future work.
 #
 # PREREQUISITE, not created here: the secret must already exist and hold the same
 # JSON shape the AWS side stores, i.e. the GitHub App keys Flux expects

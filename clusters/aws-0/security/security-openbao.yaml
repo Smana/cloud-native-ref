@@ -1,9 +1,12 @@
-# The OpenBao-backed configuration the `security` controllers admit:
-# a ClusterSecretStore, two ExternalSecrets and three ClusterIssuers.
+# The OpenBao-backed configuration the `security` controllers admit: a
+# ClusterSecretStore, two ExternalSecrets and the `openbao` ClusterIssuer. The
+# Let's Encrypt issuers are NOT here -- they are ACME/Route53, unrelated to
+# OpenBao, and belong to `security-public-certs`.
 #
 # Separate from `security` so these are not applied in the same pass as the
 # cert-manager and external-secrets charts, whose validating webhooks
-# (failurePolicy: Fail) have no Service endpoints yet at that point. The
+# (failurePolicy: Fail) have no Service endpoints yet at that point. See
+# security/gcp-0/controllers/kustomization.yaml for the measured failure. The
 # dependsOn below is what converts "the charts are installed" into a real
 # ordering: `security` health-checks both HelmReleases, and helm-controller
 # waits for a release's workloads by default, so a Ready HelmRelease means the

@@ -314,9 +314,12 @@ Use the FluxCD agent-skills plugin for Flux troubleshooting (`/gitops-cluster-de
   then `kubectl rollout restart -n kube-system deployment/cilium-operator`. Both clouds install
   these CRDs from `opentofu/shared/modules/gateway-api-crds`, which applies the whole
   experimental-channel bundle keyed by `for_each` — so a CRD Cilium wants can no longer be missing
-  from an enumeration. If a *newer Gateway API release* is the fix, bump `gateway_api_version` in
-  both `variables.tfvars` and `flux/sources/gitrepo-gateway-api.yaml` together. Flux applies the
-  full CRD directory too, but only *after* Cilium is already running.
+  from an enumeration. If a *newer Gateway API release* is the fix, bump the two pins together:
+  `gateway_api_version` in `opentofu/config.tm.hcl`'s `globals` (one value, both clouds — it is
+  passed by `-var` like `cilium_version`) and the `ref.tag` in
+  `flux/sources/gitrepo-gateway-api.yaml`. `./scripts/validate-doc-claims.sh` fails when they
+  disagree (claim `gateway-api-version`). Flux applies the full CRD directory too, but only
+  *after* Cilium is already running.
 
 > **VictoriaLogs and Grafana rules** are in `.claude/rules/observability.md` (loaded automatically when editing observability files).
 

@@ -5,8 +5,8 @@
 #
 # External name takes the PROJECT prefix, never the region: the Crossplane
 # principal's storage role is conditioned on
-# `resource.name.startsWith('projects/_/buckets/<project_id>-ogenki-')`
-#. A region-prefixed name is refused at create with a
+# `resource.name.startsWith('projects/_/buckets/<project_id>-ogenki-')`.
+# A region-prefixed name is refused at create with a
 # 403 naming `storage.buckets.create` -- a permission the role DOES grant --
 # because the failing check is the resource-name condition, not that
 # permission; the error therefore points nowhere near the real cause.

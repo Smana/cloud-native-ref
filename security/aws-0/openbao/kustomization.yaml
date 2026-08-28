@@ -3,20 +3,12 @@ kind: Kustomization
 
 # Everything the controllers in ../ have to ADMIT before it can exist: a
 # ClusterSecretStore and two ExternalSecrets behind the external-secrets
-# webhook, three ClusterIssuers behind cert-manager's.
+# webhook, one ClusterIssuer behind cert-manager's.
 #
-# Kept out of the `security` Kustomization deliberately, and this mirrors
-# security/gcp-0/openbao. Both charts ship a validating webhook with
-# failurePolicy: Fail. Applied in one Kustomization, these custom resources land
-# in the same apply as the charts, before either webhook Service has endpoints,
-# and every admission call fails with:
-#
-#   no endpoints available for service "external-secrets-webhook"
-#
-# It is not fatal -- the ESO controller retries -- but controller-runtime backs
-# off exponentially, so the gap grows toward a 1000s ceiling while Flux reports
-# the Kustomization Ready. That was measured on gcp-0's first deploy
-# (2026-08-25) and fixed there; aws-0 kept the racy arrangement because a
+# Kept out of the `security` Kustomization deliberately, and this now mirrors
+# security/gcp-0/openbao file for file. See that directory's kustomization.yaml
+# for the measured failure -- it is where the race was reproduced (gcp-0's first
+# deploy, 2026-08-25). aws-0 kept the racy arrangement longer because a
 # long-running cluster already has its webhooks up, so it only bites a cold
 # rebuild.
 #
@@ -25,13 +17,12 @@ kind: Kustomization
 # ExternalSecrets produce, and those need External Secrets running. One group
 # installs controllers; the other configures them.
 #
-# Referenced BY FILE from ../../base/, not as directories -- the base
-# directories bundle these custom resources together with the very HelmReleases
-# they must not be applied alongside.
+# The Let's Encrypt issuers used to be in this directory. They are ACME/Route53
+# and have nothing to do with OpenBao, so they moved to
+# ../cert-manager-public/, applied by `security-public-certs` -- the same split
+# gcp-0 already had.
 resources:
-  - ../../base/external-secrets/clustersecretstore.yaml
-  - ../../base/cert-manager/le-clusterissuer-prod.yaml
-  - ../../base/cert-manager/le-clusterissuer-staging.yaml
-  - ../../base/cert-manager/openbao-approle-externalsecret.yaml
-  - ../../base/cert-manager/openbao-ca-externalsecret.yaml
-  - ../../base/cert-manager/openbao-clusterissuer.yaml
+  - clustersecretstore.yaml
+  - openbao-approle-externalsecret.yaml
+  - openbao-ca-externalsecret.yaml
+  - openbao-clusterissuer.yaml

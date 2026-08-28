@@ -1,29 +1,27 @@
 # The Gateway API CRDs, from the same shared module gcp/gke/configure uses.
-#
-# This stack used to apply a hand-written list of ten individual CRD URLs, which
-# is exactly the arrangement the module was written to retire: cilium-operator
-# probes for these CRDs once at startup and permanently disables its Gateway API
-# controller if any is missing -- no crash, no alert, only the leader replica
-# logs it. That fired on 2026-08-19 over a missing BackendTLSPolicy. A bundle
-# cannot drift from what Cilium expects; a list can, and did.
-#
-# The module applies the whole experimental bundle, so this also picks up the
-# three x-k8s.io CRDs and the two safe-upgrade ValidatingAdmissionPolicy objects
-# the enumeration never carried.
+# Why a bundle rather than a list: see the module's own header.
 module "gateway_api_crds" {
   source = "../../../shared/modules/gateway-api-crds"
 
   gateway_api_version = var.gateway_api_version
 }
 
-# State migration: count-indexed resources -> the module's for_each map.
+# ONE-SHOT STATE MIGRATION -- DELETE THIS WHOLE BLOCK, and the module's
+# `manifest_keys` output, once aws-0 has applied once. After that apply the ten
+# `kubectl_manifest.gateway_api_crds[N]` addresses no longer exist in state and
+# every block below is a permanent no-op.
 #
-# Without these, OpenTofu destroys ten live CRDs and recreates them, taking
-# every Gateway, HTTPRoute and TLSRoute on the cluster with them. The keys are
-# the manifest self-links produced by kubectl_file_documents, read from the
-# module's `manifest_keys` output rather than constructed by hand.
+# It has to exist for exactly one apply: without it OpenTofu destroys ten live
+# CRDs and recreates them, taking every Gateway, HTTPRoute and TLSRoute on the
+# cluster with them. The keys are the manifest self-links produced by
+# kubectl_file_documents, read from the module's `manifest_keys` output rather
+# than constructed by hand. Indices match the order of the old
+# local.gateway_api_crds_urls list.
 #
-# Indices match the order of the old local.gateway_api_crds_urls list.
+# They are also pinned to Gateway API v1.6.1's CRD names. If gateway_api_version
+# is bumped before this block is deleted, check every `to` address still names a
+# key the bundle produces -- upstream has already moved ListenerSet between
+# gateway.networking.k8s.io and gateway.networking.x-k8s.io once.
 moved {
   from = kubectl_manifest.gateway_api_crds[0]
   to   = module.gateway_api_crds.kubectl_manifest.this["/apis/apiextensions.k8s.io/v1/customresourcedefinitions/gatewayclasses.gateway.networking.k8s.io"]

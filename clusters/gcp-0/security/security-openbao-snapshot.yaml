@@ -9,8 +9,8 @@
 # storage "file", no raft join, no quorum ... scaling to a real multi-node raft
 # cluster is future work, not attempted here."
 #
-# So the endpoint does not exist on this cluster. Measured on a live gcp-0
-# on a live gcp-0, not inferred:
+# So the endpoint does not exist on this cluster. Measured on a live gcp-0,
+# not inferred:
 #
 #   $ bao operator raft snapshot save /tmp/gcp-test.snap
 #     URL: GET https://bao.priv.gcp.ogenki.io:8200/v1/sys/storage/raft/snapshot

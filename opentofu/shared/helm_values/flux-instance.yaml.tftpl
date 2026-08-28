@@ -4,19 +4,13 @@
 # opentofu/gcp/gke/configure/main.tf. Dynamic values (sync.url, sync.ref,
 # sync.path) are passed via --set in each stack's Terramate script.
 #
-# This was two files. Stripped of comments they were 80 lines each and differed
-# on exactly one: storage.class. The GCP copy carried an instruction to keep
-# them in sync by hand -- "change one without the other and the two clusters'
-# Flux behaviour drifts silently" -- which is the job a variable does reliably
-# and a comment does not.
+# $${storage_class} is the ONLY per-cloud value; each stack passes its own
+# local.storage_class. Anything else genuinely per-cloud belongs in a --set, not
+# a second copy of this file.
 #
-# ${storage_class} is the ONLY per-cloud value here. Each stack passes its own
-# local.storage_class, the same local that populates the storage_class key in
-# that cluster's Flux vars ConfigMap, so Flux's own artifact PVC and every
-# workload PVC substituted by postBuild can no longer disagree.
-#
-# Anything genuinely per-cloud beyond this belongs in a --set, not a second copy
-# of the file.
+# NOTE the $$ escape above: templatefile() interpolates $${...} everywhere in
+# the file, comments included, so an unescaped reference here would render as
+# the value rather than the name.
 
 instance:
   distribution:

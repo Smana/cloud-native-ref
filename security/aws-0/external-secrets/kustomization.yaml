@@ -1,11 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# The chart alone. ../../base/external-secrets also carries
-# clustersecretstore.yaml, which this cluster applies from ../openbao instead --
-# the ClusterSecretStore is admitted by the webhook this very chart installs.
+# This overlay exists only to patch the chart; ../../base/external-secrets is
+# chart-only, so referencing it whole is safe. The ClusterSecretStore the chart's
+# webhook admits is applied from ../openbao.
 resources:
-  - ../../base/external-secrets/helmrelease.yaml
+  - ../../base/external-secrets
 
 patches:
   - path: helmrelease.yaml

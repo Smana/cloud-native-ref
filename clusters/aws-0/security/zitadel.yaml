@@ -17,11 +17,15 @@ spec:
         name: eks-aws-0-vars
   dependsOn:
     - name: infrastructure
-    # security-openbao, NOT security. This path renders two ExternalSecrets and
-    # a Certificate; the ClusterSecretStore and ClusterIssuer they name are
-    # created by ./security/aws-0/openbao. security-openbao already dependsOn
-    # security, so this one edge covers both.
+    # Two edges, for two different prerequisites this path renders:
+    #   - security-openbao creates the `clustersecretstore` the two
+    #     ExternalSecrets read through.
+    #   - security-public-certs creates the `letsencrypt-prod` ClusterIssuer
+    #     that certificate.yaml names.
+    # Both already dependOn `security`, so cert-manager and External Secrets
+    # being up is covered transitively.
     - name: security-openbao
+    - name: security-public-certs
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease

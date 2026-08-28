@@ -20,6 +20,15 @@ globals {
   flux_operator_version = "0.55.0"
   flux_instance_version = "0.55.0"
 
+  # Gateway API release. Shared for the same reason as cilium_version: Cilium is
+  # the GatewayClass implementation, so the CRD set cannot move independently of
+  # it, and both clouds install the bundle from opentofu/shared/modules/
+  # gateway-api-crds. This must equal flux/sources/gitrepo-gateway-api.yaml's
+  # ref.tag -- Flux re-applies the same directory after bootstrap, so a skew
+  # installs one CRD set at bootstrap and a different one on reconcile.
+  # ./scripts/validate-doc-claims.sh fails when the two disagree.
+  gateway_api_version = "v1.6.1"
+
   # Flux sync configuration
   flux_sync_repository_url = "https://github.com/Smana/cloud-native-ref.git"
 

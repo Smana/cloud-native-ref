@@ -23,4 +23,7 @@ spec:
       - kind: ConfigMap
         name: gke-gcp-0-vars
   dependsOn:
-    - name: security
+    # security-openbao, NOT security: externalsecret-flux-slack-app.yaml reads
+    # through the `clustersecretstore` ClusterSecretStore, which on this
+    # cluster is created by ./security/gcp-0/openbao.
+    - name: security-openbao

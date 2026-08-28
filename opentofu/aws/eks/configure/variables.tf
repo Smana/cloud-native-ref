@@ -72,9 +72,8 @@ variable "env" {
 }
 
 variable "gateway_api_version" {
-  description = "Gateway API CRDs version — must match flux/sources/gitrepo-gateway-api.yaml ref"
+  description = "Gateway API release installed before Cilium. Required: sourced from globals.gateway_api_version in opentofu/config.tm.hcl, SHARED with GCP and with flux/sources/gitrepo-gateway-api.yaml's ref.tag"
   type        = string
-  default     = "v1.6.1"
 }
 
 variable "private_domain_name" {

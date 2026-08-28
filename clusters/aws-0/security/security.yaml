@@ -3,8 +3,39 @@
 # cert-manager and external-secrets both ship a validating webhook with
 # failurePolicy: Fail. The ClusterIssuers, ClusterSecretStore and
 # ExternalSecrets those webhooks admit are applied by `security-openbao`, which
-# dependsOn this one; the tailscale operator and the OpenBao snapshot job
-# follow it in turn. See security/aws-0/openbao/kustomization.yaml.
+# dependsOn this one; the Let's Encrypt issuers, the tailscale operator and the
+# OpenBao snapshot job follow it in turn. See
+# security/aws-0/openbao/kustomization.yaml.
+#
+# ---------------------------------------------------------------------------
+# ONE-TIME MIGRATION on the first reconcile after this split lands. Delete this
+# block once aws-0 has reconciled it.
+#
+# This Kustomization has prune: true, and its path no longer renders the
+# tailscale operator, the openbao-snapshot resources or the Let's Encrypt
+# issuers. It reconciles BEFORE the Kustomizations that now own them
+# (security-openbao -> security-tailscale / security-openbao-snapshot, and
+# security-public-certs), so on a live cluster it garbage-collects them first
+# and they are recreated a few minutes later. Flux reads its
+# `kustomize.toolkit.fluxcd.io/prune: disabled` opt-out from the LIVE object,
+# so it cannot be added by the same commit that moves the files.
+#
+# What that costs if nothing is done: helm uninstalls the tailscale operator,
+# so *.priv.aws.ogenki.io drops until security-tailscale is Ready; the
+# ProxyGroup can wedge in Terminating with its operator gone. Run this ONCE
+# before merging, then let Flux converge:
+#
+#   for r in helmrelease/tailscale-operator proxygroup/ts-proxies; do
+#     kubectl annotate -n tailscale $r kustomize.toolkit.fluxcd.io/prune=disabled
+#   done
+#   kubectl annotate -n security bucket/openbao-snapshot key/xplane-openbao-snapshot \
+#     alias/xplane-openbao-snapshot clusterissuer/letsencrypt-prod \
+#     clusterissuer/letsencrypt-staging kustomize.toolkit.fluxcd.io/prune=disabled
+#
+# Then remove the annotations after the new Kustomizations report Ready. The
+# KMS pair is the one that cannot self-heal without help even so -- see the
+# IAM note in security/aws-0/openbao-snapshot/kms.yaml.
+# ---------------------------------------------------------------------------
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

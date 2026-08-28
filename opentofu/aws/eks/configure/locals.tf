@@ -1,9 +1,8 @@
 locals {
-  # This cluster's default block-storage class, defined ONCE and consumed three
-  # times: the StorageClass object below (this repo creates gp3 itself -- the
-  # EBS CSI managed add-on supplies only the provisioner), Flux's own artifact
-  # PVC via the shared flux-instance template, and the storage_class key in the
-  # Flux vars ConfigMap that postBuild substitutes into workload PVCs.
+  # This cluster's default block-storage class, defined once here so Flux's own
+  # artifact PVC and every postBuild-substituted workload PVC cannot disagree.
+  # Unlike GKE, this repo creates the StorageClass itself (kubernetes.tf) -- the
+  # EBS CSI managed add-on supplies only the provisioner.
   storage_class = "gp3"
 
   cert_manager_approle = jsondecode(data.aws_secretsmanager_secret_version.cert_manager_approle.secret_string)

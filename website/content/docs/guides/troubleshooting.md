@@ -45,8 +45,11 @@ kubectl rollout restart -n kube-system deployment/cilium-operator
 Both clouds install these CRDs from `opentofu/shared/modules/gateway-api-crds`,
 which applies the entire experimental-channel bundle — so a CRD Cilium wants
 cannot be missing because someone forgot to list it. If the fix is a *newer*
-Gateway API release, bump `gateway_api_version` in the stack's `variables.tfvars`
-and `flux/sources/gitrepo-gateway-api.yaml` together. Flux applies the full CRD
+Gateway API release, bump the two pins together: `gateway_api_version` in
+`opentofu/config.tm.hcl`'s `globals` — one value for both clouds — and the
+`ref.tag` in `flux/sources/gitrepo-gateway-api.yaml`.
+`./scripts/validate-doc-claims.sh` fails when they disagree, so a partial bump
+does not reach a cluster. Flux applies the full CRD
 directory too, but only *after* Cilium is already running — which is why the
 operator can start before the CRD exists.
 

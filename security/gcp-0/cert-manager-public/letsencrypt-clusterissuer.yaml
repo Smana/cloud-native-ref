@@ -7,9 +7,10 @@
 # token IS the credential, and AWS validates it against the OIDC provider in
 # opentofu/shared/aws-gcp-federation.
 #
-# The AWS cluster's copy of this issuer (security/base/cert-manager/
-# le-clusterissuer-prod.yaml) uses ambient EKS Pod Identity credentials instead,
-# which is why this is a GCP-specific file rather than a shared one.
+# The AWS cluster's copy of this issuer
+# (security/aws-0/cert-manager-public/le-clusterissuer-prod.yaml) uses ambient
+# EKS Pod Identity credentials instead, which is why each cloud keeps its own
+# file rather than sharing one from security/base/.
 #
 # hostedZoneID is pinned so the solver does not need to list zones to find the
 # right one, and cannot wander into another.

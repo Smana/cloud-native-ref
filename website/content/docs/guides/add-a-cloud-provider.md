@@ -69,20 +69,39 @@ portability interface — **a manifest in `base/` may only read one of these**:
 | `openbao_cidr` | the CIDR holding OpenBao's internal endpoint |
 | `openbao_snapshot_secret` | secret-store key, per-cloud grammar ([ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}})) |
 | `llm_hf_token_secret` | as above |
+| `route53_public_zone_id` | the one public zone both clouds write to ([ADR-0019]({{< relref "/docs/decisions/0019-cross-cloud-dns-federation.md" >}})) |
 
 Everything else each stack publishes is **cloud-shaped and stays in that cloud's
 overlays** — `aws_account_id`, `oidc_provider_arn`, `vpc_id`, `karpenter_queue_name`
 on one side; `project_id`, `project_number`, `workload_pool`, `pod_cidr` on the
-other. A third cloud adds its own such keys freely; it must supply all eleven
-above.
+other. A third cloud adds its own such keys freely; it must supply every key in
+the table above.
+
+The table is derived, not authoritative. To regenerate it from the stacks
+themselves:
+
+```python
+# python3, from the repo root
+import importlib.util
+spec = importlib.util.spec_from_file_location("cs", "scripts/flux-schema/check-substitution.py")
+cs = importlib.util.module_from_spec(spec); spec.loader.exec_module(cs)
+aws, gcp = map(set, (cs.configmap_keys("eks-aws-0-vars"), cs.configmap_keys("gke-gcp-0-vars")))
+print(sorted(aws & gcp))          # the portability interface
+print(sorted(aws ^ gcp))          # cloud-shaped, stays in overlays
+```
 
 {{< callout type="warning" >}}
 **Flux substitutes an undefined variable to the empty string.** A `base/`
 manifest reading a key your cloud does not define does not fail — it renders a
-hostname with a hole in it. `scripts/flux-schema/check-substitution.py` catches
-exactly this and runs in CI: it reads each cluster's real keys from the
-`flux_cluster_vars` resource in `opentofu/*/configure/kubernetes.tf` and fails
-when a Kustomization applies a variable its own cluster never defines.
+hostname with a hole in it. `scripts/flux-schema/check-substitution.py` runs in
+CI against this: it reads each cluster's real keys from the `flux_cluster_vars`
+resource in `opentofu/*/configure/kubernetes.tf` and fails when a Kustomization
+applies a variable **its own cluster** never defines.
+
+Note the limit of that check — it is per-cluster, not an intersection. A
+manifest in `base/` that reads an AWS-only key still passes for as long as only
+`aws-0` references the directory; the failure surfaces the day a second cluster
+wires it up. Keeping `base/` to the table above is a convention, not yet a gate.
 {{< /callout >}}
 
 ## What gains a sibling, not a field

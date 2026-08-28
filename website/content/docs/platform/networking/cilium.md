@@ -179,9 +179,11 @@ enumeration is gone. Both clouds now install these CRDs from
 `opentofu/shared/modules/gateway-api-crds`, which applies the whole
 experimental-channel bundle keyed with `for_each` per manifest, so the set
 cannot drift from what Cilium expects. If Cilium starts wanting a CRD a *newer*
-Gateway API release introduced, bump `gateway_api_version` in the stack's
-`variables.tfvars` and `flux/sources/gitrepo-gateway-api.yaml` together — they
-must name the same tag. See
+Gateway API release introduced, bump `gateway_api_version` in
+`opentofu/config.tm.hcl`'s `globals` — one value for both clouds, passed by
+`-var` like `cilium_version` — and the `ref.tag` in
+`flux/sources/gitrepo-gateway-api.yaml`. Both must name the same tag, and
+`./scripts/validate-doc-claims.sh` fails when they do not. See
 [Gateway API]({{< relref "/docs/platform/networking/gateway-api.md" >}}) for
 the resource model these CRDs back.
 

@@ -59,8 +59,7 @@ directory's contents into the artifact root.
 ## Controller sharding: `apps` vs default
 
 The `FluxInstance` (`opentofu/shared/helm_values/flux-instance.yaml.tftpl`,
-mirrored by its GCP copy under `opentofu/gcp/gke/init/helm_values/`)
-configures one extra shard:
+rendered by both clouds) configures one extra shard:
 
 ```yaml
 sharding:

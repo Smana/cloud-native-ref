@@ -9,8 +9,6 @@
 # provider from the module in v20. Here the cluster already exists
 # (data.aws_eks_cluster.this + exec auth), so the providers configure cleanly.
 
-# The Gateway API CRDs moved to gateway_api.tf, which uses the shared module.
-
 # Create flux-system namespace first (required for secrets and ConfigMap)
 resource "kubectl_manifest" "flux_system_namespace" {
   yaml_body = yamlencode({
@@ -44,12 +42,10 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       oidc_issuer_host      = local.oidc_issuer_host
       aws_account_id        = data.aws_caller_identity.this.account_id
       region                = var.region
-      # The cluster's default block-storage class for PVCs. Shared key name with
-      # the GCP ConfigMap, different value: GKE's side is standard-rwo, a class
-      # GKE auto-installs. Both are SSD-backed and both are consumed as an
-      # opaque string by storageClassName -- nothing derives anything else from
-      # it, which is what makes one shared key honest here where ${region} was
-      # not (see the workstream 13 design).
+      # See local.storage_class for the value. One shared ConfigMap key with a
+      # different value per cloud is honest here -- unlike ${region} was --
+      # because both values are consumed as an opaque storageClassName and
+      # nothing derives anything else from them.
       storage_class = local.storage_class
       environment   = var.env
       # `domain_name` used to sit here as a THIRD key holding
@@ -66,21 +62,18 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       private_domain_name = var.private_domain_name
       public_domain_name  = var.public_domain_name
 
-      # Where the platform's identity provider actually lives.
+      # Where the platform's identity provider lives.
       #
-      # ZITADEL is a SINGLETON: one instance serves both clusters, because two
-      # instances would be two user directories, two session stores and two sets
-      # of OIDC clients with no federation between them (ADR-0022).
-      #
-      # aws-0 hosts it today, so here the URL is derived from this cluster's own
-      # public domain rather than hardcoded -- a cluster that hosts the IdP is
-      # always reachable at auth.<its own domain>. gcp-0 sets the same key to a
-      # LITERAL pointing back here; see opentofu/gcp/gke/configure/kubernetes.tf.
+      # ADR-0024 supersedes ADR-0022: the IdP is deployable on either cloud,
+      # defaulting to AWS, so a GCP-only platform is self-sufficient. aws-0
+      # hosts it, so the URL is derived from this cluster's own public domain
+      # rather than hardcoded -- a cluster that hosts the IdP is always
+      # reachable at auth.<its own domain>. gcp-0 runs its own instance and
+      # derives its own from deploy_identity_provider; see
+      # opentofu/gcp/gke/configure/locals.tf.
       #
       # Consumed by apps/base/openwebui (OIDC discovery) and
-      # tooling/base/homepage (a link). Both hardcoded this host until now,
-      # which is what made "which cloud hosts the IdP" unanswerable from
-      # configuration.
+      # tooling/base/homepage (a link).
       identity_provider_url = "https://auth.${var.public_domain_name}"
       vpc_id                = data.aws_vpc.selected.id
       vpc_cidr_block        = data.aws_vpc.selected.cidr_block
@@ -90,22 +83,16 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # subnet, where the internal load balancer lives. Same key, different
       # shape per cloud -- which is exactly why the manifest cannot hardcode it.
       openbao_cidr = data.aws_vpc.selected.cidr_block
-      # security/base/openbao-snapshot/external-secrets.yaml's Secret Manager
-      # key. Path-style here because AWS Secrets Manager allows "/"; GCP's
-      # ConfigMap (opentofu/gcp/gke/configure/kubernetes.tf) carries a flat
-      # dash-separated ID instead, because GCP Secret Manager forbids "/".
-      # Same key, different shape per cloud -- see opentofu/gcp/openbao/management's
-      # snapshot_approle_secret_name (Task 14).
+      # Secret Manager keys for the two ExternalSecrets that need one:
+      # security/base/openbao-snapshot/external-secrets.yaml and
+      # apps/base/ai/llm/hf-token-externalsecret.yaml. Both are PATH-STYLE here
+      # because AWS Secrets Manager permits "/"; gcp-0's ConfigMap carries flat
+      # dash-separated IDs instead, because GCP Secret Manager forbids it. Same
+      # keys, different shape per cloud -- ADR-0023.
       openbao_snapshot_secret = "security/openbao/openbao-snapshot" # pragma: allowlist secret
-      # apps/base/ai/llm/hf-token-externalsecret.yaml's Secret Manager key.
-      # Path-style here because AWS Secrets Manager allows "/"; GCP's
-      # ConfigMap (opentofu/gcp/gke/configure/kubernetes.tf) carries a flat
-      # dash-separated ID instead, because GCP Secret Manager forbids "/".
-      # Same key, different shape per cloud -- same split as
-      # openbao_snapshot_secret above, same reason (Task 14).
-      llm_hf_token_secret    = "/platform/llm/hf_token" # pragma: allowlist secret
-      karpenter_queue_name   = local.karpenter_queue_name
-      route53_public_zone_id = data.aws_route53_zone.public.zone_id
+      llm_hf_token_secret     = "/platform/llm/hf_token"            # pragma: allowlist secret
+      karpenter_queue_name    = local.karpenter_queue_name
+      route53_public_zone_id  = data.aws_route53_zone.public.zone_id
     }
   })
   server_side_apply = true

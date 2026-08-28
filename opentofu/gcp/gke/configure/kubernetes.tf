@@ -18,7 +18,7 @@
 # on GCP.
 #
 # route53_public_zone_id, route53_role_arn and route53_region are the
-# deliberate exception (workstream 12): AWS values in a GCP ConfigMap on
+# deliberate exception: AWS values in a GCP ConfigMap on
 # purpose, because cloud.ogenki.io is one Route53 zone BOTH clusters write to
 # (ADR-0017, ADR-0019). route53_public_zone_id matches the key name the AWS
 # ConfigMap uses for that same zone; route53_role_arn has no AWS counterpart
@@ -74,21 +74,22 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # value as node_cidr above, consumed by
       # security/base/openbao-snapshot/network-policy.yaml.
       openbao_cidr = local.init.node_cidr
-      # security/base/openbao-snapshot/external-secrets.yaml's Secret Manager
-      # key. Flat and dash-separated, unlike the AWS ConfigMap's path-style
-      # value -- GCP Secret Manager forbids "/" in a secret ID. Must match
-      # opentofu/gcp/openbao/management's snapshot_approle_secret_name (Task 14).
+      # Secret Manager keys for the two ExternalSecrets that need one:
+      # security/base/openbao-snapshot/external-secrets.yaml and
+      # apps/base/ai/llm/hf-token-externalsecret.yaml. Both are FLAT and
+      # dash-separated, unlike the AWS ConfigMap's path-style values, because
+      # GCP Secret Manager forbids "/" in a secret ID -- ADR-0023. The first
+      # must match opentofu/gcp/openbao/management's
+      # snapshot_approle_secret_name.
+      #
+      # llm_hf_token_secret is only required if the LLM platform is enabled on
+      # this cluster (clusters/gcp-0/llm-platform.yaml), and is a hand-created
+      # entry like the other gcp-bootstrap.md prerequisites -- not provisioned
+      # by OpenTofu on either cloud.
       openbao_snapshot_secret = "openbao-priv-gcp-snapshot" # pragma: allowlist secret
-      # apps/base/ai/llm/hf-token-externalsecret.yaml's Secret Manager key.
-      # Flat and dash-separated, unlike the AWS ConfigMap's path-style value --
-      # GCP Secret Manager forbids "/" in a secret ID. Same split, same reason,
-      # as openbao_snapshot_secret above. Only required if the LLM platform is
-      # enabled on this cluster (clusters/gcp-0/llm-platform.yaml) -- a hand-
-      # created entry, same as the other gcp-bootstrap.md prerequisites, not
-      # provisioned by OpenTofu on either cloud.
-      llm_hf_token_secret = "llm-platform-hf-token" # pragma: allowlist secret
+      llm_hf_token_secret     = "llm-platform-hf-token"     # pragma: allowlist secret
 
-      # Public DNS, for the federated Route53 path (workstream 12).
+      # Public DNS, for the federated Route53 path.
       # public_domain_name is gcp.cloud.ogenki.io -- gcp-0's OWN subdomain of
       # the shared zone, not the same name aws-0 uses. The other three are AWS
       # values in a GCP ConfigMap on purpose: both clusters write into one
