@@ -107,6 +107,93 @@ spec:
       # Read-only: no patch rights on Flux resources. actions.mode stays off.
       allowActions: false
       actionNamespaces: []
+      # resource_spec / list_resources allowlist.
+      #
+      # WHY THIS IS RESTATED IN FULL: the chart ships this list POPULATED with
+      # ten rules, and a Helm values list is REPLACED, not merged. Setting only
+      # the additions below would silently drop 28 resource types -- Services,
+      # Deployments, Jobs, HPAs, PDBs, CRDs, the VictoriaMetrics and Prometheus
+      # kinds -- and every one of those questions would come back "forbidden"
+      # while the suite stayed green. The first ten rules are therefore the
+      # chart's own, verbatim; only the block after them is ours.
+      #
+      # WHY THE ADDITIONS: an investigation of the harbor HelmRelease failure on
+      # gcp-0 on 2026-08-28 reported these as DATA GAPS, in its own words --
+      # "RBAC denied reading ExternalSecret objects in tooling" and "RBAC denied
+      # reading the CNPG Cluster resource". Those are the two objects that
+      # actually explained the outage. runlore reached the right conclusion from
+      # kube_events instead, but it reasoned around the evidence rather than
+      # from it, and a denial is reported to the agent as a denial rather than
+      # as an absent object -- so it knows it is blind, and says so.
+      #
+      # Granted get AND list: the gap named list_resources and resource_spec
+      # failing together. The chart's own ten keep the verbs it ships them with.
+      #
+      # No Secret kind here, deliberately. An ExternalSecret's spec names the
+      # store KEYS it reads, never their values, so this grant exposes secret
+      # NAMES and not secret material -- which is the whole point of being able
+      # to answer "which key is it asking for, and does it exist?".
+      resourceSpecRules:
+        # ── the chart's shipped ten, verbatim ──────────────────────────────
+        - apiGroups: [""]
+          resources: ["services", "persistentvolumeclaims", "persistentvolumes", "nodes", "namespaces"]
+          verbs: ["get"]
+        - apiGroups: ["apps"]
+          resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+          verbs: ["get"]
+        - apiGroups: ["batch"]
+          resources: ["jobs", "cronjobs"]
+          verbs: ["get"]
+        - apiGroups: ["networking.k8s.io"]
+          resources: ["ingresses", "networkpolicies", "ingressclasses"]
+          verbs: ["get"]
+        - apiGroups: ["autoscaling"]
+          resources: ["horizontalpodautoscalers"]
+          verbs: ["get"]
+        - apiGroups: ["policy"]
+          resources: ["poddisruptionbudgets"]
+          verbs: ["get"]
+        - apiGroups: ["storage.k8s.io"]
+          resources: ["volumeattachments"]
+          verbs: ["get"]
+        - apiGroups: ["apiextensions.k8s.io"]
+          resources: ["customresourcedefinitions"]
+          verbs: ["get"]
+        - apiGroups: ["operator.victoriametrics.com"]
+          resources: ["vmservicescrapes", "vmpodscrapes", "vmscrapeconfigs", "vmrules", "vmagents", "vmalerts"]
+          verbs: ["get"]
+        - apiGroups: ["monitoring.coreos.com"]
+          resources: ["servicemonitors", "podmonitors", "prometheusrules", "probes"]
+          verbs: ["get"]
+        # ── this platform's own operators ─────────────────────────────────
+        # Named in the data gaps above. A SecretSyncedError is unreadable
+        # without the ExternalSecret's spec: the remoteRef key IS the diagnosis.
+        - apiGroups: ["external-secrets.io"]
+          resources: ["externalsecrets", "clustersecretstores", "secretstores"]
+          verbs: ["get", "list"]
+        # Also named. Half this platform's workloads wait on a CNPG Cluster, and
+        # its .status.phase is the difference between "still bootstrapping" and
+        # "wedged" -- the exact question asked twice today.
+        - apiGroups: ["postgresql.cnpg.io"]
+          resources: ["clusters", "backups", "scheduledbackups", "poolers"]
+          verbs: ["get", "list"]
+        # The claims everything here is composed FROM. Without these an agent
+        # can see a broken Deployment and never reach the App or SQLInstance
+        # that rendered it, which is where the cause lives.
+        - apiGroups: ["cloud.ogenki.io"]
+          resources: ["apps", "sqlinstances", "inferenceservices", "kvstores", "epis", "gcpworkloadidentities"]
+          verbs: ["get", "list"]
+        # Policy is the first suspect for any timeout on this platform -- it is
+        # what .claude/rules tells a human to check first, and three separate
+        # failures on 2026-08-28 were an allowlist naming the wrong cloud.
+        - apiGroups: ["cilium.io"]
+          resources: ["ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies"]
+          verbs: ["get", "list"]
+        # How everything is exposed; an unprogrammed Gateway or a route with no
+        # status.parents is a whole class of "the service is up but unreachable".
+        - apiGroups: ["gateway.networking.k8s.io"]
+          resources: ["gateways", "httproutes", "tlsroutes", "gatewayclasses"]
+          verbs: ["get", "list"]
     networkPolicy:
       enabled: true
       # Renders a CiliumNetworkPolicy allowing egress to the EKS Pod Identity
