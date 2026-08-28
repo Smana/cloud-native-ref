@@ -219,6 +219,47 @@ spec:
         - apiGroups: ["gateway.networking.k8s.io"]
           resources: ["gateways", "httproutes", "tlsroutes", "gatewayclasses"]
           verbs: ["get", "list"]
+        # ── the layer BELOW the claims ────────────────────────────────────
+        #
+        # Added after an investigation that got the answer right and said so
+        # honestly. Diagnosing a stuck ScheduledBackup on 2026-08-28, runlore
+        # reached "barman-cloud gets 403 storage.buckets.get on the GCS bucket"
+        # at 0.78 confidence -- correct, and a real bug -- but listed as gaps:
+        #
+        #   Cannot read Bucket resource status ... cannot confirm whether the
+        #   GCS bucket actually exists in GCP or was created by Crossplane
+        #   Cannot read BucketIAMMember status ... cannot confirm whether the
+        #   IAM binding has propagated
+        #   Cannot read ObjectStore ... cannot inspect the plugin's bucket config
+        #
+        # Its open question was exactly the ambiguity in GCP's error text: a 403
+        # on buckets.get means "no permission" OR "no bucket", and only the
+        # Bucket MR's status separates them. Granted these, that stops being an
+        # open question.
+        #
+        # The claims were already granted (cloud.ogenki.io above); these are the
+        # managed resources those claims COMPOSE INTO, which is where a
+        # Crossplane failure actually shows itself -- a claim can read Ready
+        # while the MR underneath carries the provider's real error.
+        - apiGroups: ["storage.gcp.m.upbound.io"]
+          resources: ["buckets", "bucketiammembers"]
+          verbs: ["get", "list"]
+        - apiGroups: ["cloudplatform.gcp.m.upbound.io"]
+          resources: ["projectiammembers", "serviceaccounts"]
+          verbs: ["get", "list"]
+        # The barman plugin's own CR. postgresql.cnpg.io above covers Cluster
+        # and Backup; ObjectStore is a DIFFERENT group shipped by the plugin,
+        # and it holds the bucket path and credential mode -- the two fields
+        # that decide whether archiving can work at all.
+        - apiGroups: ["barmancloud.cnpg.io"]
+          resources: ["objectstores"]
+          verbs: ["get", "list"]
+        # Crossplane's own plumbing. A claim stuck "Creating" is usually a
+        # provider that never installed or a CRD never activated, and neither is
+        # visible from the claim.
+        - apiGroups: ["pkg.crossplane.io"]
+          resources: ["providers", "providerrevisions", "configurations", "functions"]
+          verbs: ["get", "list"]
     networkPolicy:
       enabled: true
       # Renders a CiliumNetworkPolicy allowing egress to the EKS Pod Identity
