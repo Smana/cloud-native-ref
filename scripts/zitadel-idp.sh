@@ -65,7 +65,20 @@ APPLY="false"
 
 IDP_NAME="Google Workspace"
 IDP_SECRET_KEY="zitadel-google-idp" # pragma: allowlist secret
-ACTION_NAME="groups-from-roles"
+# THE ACTION NAME IS NOT A LABEL. ZITADEL v1 looks up a function in the script
+# BY THIS NAME and runs it, so it must be a valid JS identifier and must match
+# the function in ACTION_FILE exactly.
+#
+# It was "groups-from-roles" for one day. Hyphens cannot appear in a JS
+# identifier, so no function could ever carry that name, and ZITADEL logged
+#     action run failed: function not found
+# on every token request. With allowedToFail=false that FAILS TOKEN ISSUANCE --
+# which surfaces in Grafana as "Failed to get token from provider" and in the
+# ZITADEL UI as nothing at all. Nothing in the API rejects the mismatched name;
+# it is accepted, stored, and only ever fails at runtime.
+#
+# assert_action_name_matches_function() below makes that unrepeatable.
+ACTION_NAME="groupsFromRoles"
 ACTION_FILE="$(cd "$(dirname "$0")" && pwd)/zitadel-actions/groups-from-roles.js"
 
 while [ $# -gt 0 ]; do
@@ -210,6 +223,79 @@ ensure_idp() {
     echo "[created] IdP '${IDP_NAME}' (${id}, client ${client_id})"
 }
 
+# The check that would have caught the day-long outage described at ACTION_NAME:
+# a mismatch is invisible until a real user tries to log in, so it is worth
+# failing the script over rather than discovering it in a browser.
+assert_action_name_matches_function() {
+    if ! grep -qE "^[[:space:]]*function[[:space:]]+${ACTION_NAME}[[:space:]]*\\(" "$ACTION_FILE"; then
+        echo "[FAILED ] ${ACTION_FILE##*/} defines no 'function ${ACTION_NAME}('." >&2
+        echo "           ZITADEL calls the function NAMED AFTER THE ACTION. If they" >&2
+        echo "           disagree it stores fine and then fails every token request" >&2
+        echo "           with 'action run failed: function not found'." >&2
+        echo "           Found instead:" >&2
+        grep -nE "^[[:space:]]*function[[:space:]]+[A-Za-z_$][A-Za-z0-9_$]*" "$ACTION_FILE" >&2 || true
+        return 1
+    fi
+}
+
+# -- the login policy ---------------------------------------------------------
+#
+# CREATING AN IDP DOES NOT ENABLE IT. This is the step whose absence produced
+# "User not found" on gcp-0 while every field of the provider read correct.
+#
+# In ZITADEL an IdP template and the login policy are separate objects. The
+# template says how to talk to Google; the LOGIN POLICY says which providers the
+# login UI may offer. With the template present and the policy empty, ZITADEL
+# renders no Google button, so an email typed at the login screen is resolved as
+# a LOCAL username -- and on a fresh instance no such user exists. The error is
+# therefore literally true and points at entirely the wrong thing: the IdP is
+# fine, autoCreation is on, and the user cannot reach any of it.
+#
+# Nothing warns about this. `allowExternalIdp: true` is the instance default and
+# stays true with zero providers attached, so the policy reads "external login
+# allowed" while allowing none.
+#
+# INSTANCE policy (/admin/v1), matching the IdP's own scope. An org whose policy
+# is still the default inherits this; an org that has overridden its login
+# policy does not, and that case is reported below rather than silently assumed.
+login_policy_has_idp() {
+    local idp_id="$1"
+    api GET /admin/v1/policies/login 2>/dev/null \
+        | jq -e --arg id "$idp_id" '.policy.idps[]? | select(.idpId == $id)' >/dev/null 2>&1
+}
+
+ensure_login_policy_idp() {
+    local idp_id="$1"
+
+    if [ -z "$idp_id" ]; then
+        echo "[dry-run] would add the IdP to the instance login policy"
+        return 0
+    fi
+
+    if login_policy_has_idp "$idp_id"; then
+        echo "[skip   ] IdP already on the instance login policy"
+    elif [ "$APPLY" != "true" ]; then
+        echo "[dry-run] would add IdP ${idp_id} to the instance login policy"
+        return 0
+    else
+        jq -n --arg id "$idp_id" \
+            '{idpId: $id, ownerType: "IDP_OWNER_TYPE_SYSTEM"}' \
+            | api POST /admin/v1/policies/login/idps -d @- >/dev/null
+        echo "[added  ] IdP ${idp_id} to the instance login policy"
+    fi
+
+    # An org that has customised its login policy does NOT inherit the instance
+    # one. Report rather than guess: silently writing an org policy would create
+    # the override this platform does not want.
+    local is_default
+    is_default="$(api GET /management/v1/policies/login 2>/dev/null | jq -r '.policy.isDefault // "unknown"')"
+    if [ "$is_default" != "true" ]; then
+        echo "[WARN   ] the org login policy is NOT the instance default (isDefault=${is_default})." >&2
+        echo "           It will not inherit the provider added above; add it there too via" >&2
+        echo "           POST /management/v1/policies/login/idps with idpId ${idp_id}" >&2
+    fi
+}
+
 # ── the groups action ─────────────────────────────────────────────────────────
 #
 # v1 Actions are ORG-level, with no instance-level equivalent -- so unlike the
@@ -290,6 +376,14 @@ echo "scope:    instance (/admin/v1) for the IdP, org (/management/v1) for the a
 echo
 
 ensure_idp
+
+# Re-read rather than threading a return value out of ensure_idp: that function
+# has three exit paths (skip / dry-run / create) and only one of them knows an
+# id. Looking it up once here is the same answer in every case.
+ensure_login_policy_idp "$(idp_id_by_name || true)"
+
+# Fails the run if the action name and the JS function disagree -- see ACTION_NAME.
+assert_action_name_matches_function
 
 ACTION_ID="$(ensure_action | tail -1)"
 if [ -n "$ACTION_ID" ]; then
