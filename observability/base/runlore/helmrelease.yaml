@@ -206,6 +206,23 @@ spec:
           # https://runlore.<domain>/slack/interactions.
           signing_secret_env: SLACK_SIGNING_SECRET  # pragma: allowlist secret
           feedback_buttons: true
+          # 🔕, a third control beside 👍/👎: suppress re-investigating THIS
+          # trigger for a chosen window. Gated independently of feedback_buttons,
+          # but its escape hatch is a 👎 (newest human wins), so it only makes
+          # sense with a feedback control enabled somewhere -- which the line
+          # above provides. Runlore warns at startup otherwise.
+          #
+          # A silence is not a mute: it ends early on a CRITICAL, on a 👎, or when
+          # the incident resolves. Until then there is no model call, no
+          # notification and no ledger open -- which is the point, because the
+          # alert this exists for is the one that fires forty times.
+          silence_button: true
+        # Shared presets for the control above. windows[0] is the fallback
+        # wherever no duration can be carried. Requires outcome.ledger_path,
+        # which is set below.
+        silence:
+          windows: [1h, 4h, 24h]
+          max_window: 24h
       telemetry:
         metrics_enabled: true
       model:
