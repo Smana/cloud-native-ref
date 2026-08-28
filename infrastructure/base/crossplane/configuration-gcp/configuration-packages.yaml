@@ -13,4 +13,4 @@ kind: Configuration
 metadata:
   name: crossplane-configuration-gcp
 spec:
-  package: ghcr.io/smana/crossplane-configuration-gcp:v0.4.4
+  package: ghcr.io/smana/crossplane-configuration-gcp:v0.4.5
