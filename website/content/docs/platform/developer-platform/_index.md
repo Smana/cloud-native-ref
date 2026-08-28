@@ -14,11 +14,11 @@ a version:
 ```yaml
 # infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml
 spec:
-  package: ghcr.io/smana/crossplane-configuration-aws:v0.4.4
+  package: ghcr.io/smana/crossplane-configuration-aws:v0.4.5
 ```
 
 `gcp-0` serves the same claims from its own package,
-`ghcr.io/smana/crossplane-configuration-gcp:v0.4.4`, pinned in
+`ghcr.io/smana/crossplane-configuration-gcp:v0.4.5`, pinned in
 `infrastructure/base/crossplane/configuration-gcp/configuration-packages.yaml`
 — both clusters currently pin the same release.
 
