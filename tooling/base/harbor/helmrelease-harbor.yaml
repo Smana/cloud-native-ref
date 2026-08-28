@@ -16,7 +16,17 @@ spec:
   interval: 10m0s
   install:
     remediation:
-      retries: 3
+      # Unbounded on INSTALL only -- see the same change on
+      # security/base/zitadel/helmrelease.yaml for the full reasoning.
+      #
+      # Harbor waits on its own database the same way, and hit this on gcp-0 on
+      # 2026-08-28: the install timed out while the CNPG cluster was blocked on
+      # a secret, three retries were spent long before the database existed, and
+      # the release stayed InstallFailed after every pod had gone Running.
+      #
+      # An install racing its dependencies is a timing problem. An upgrade
+      # failing repeatedly is a regression, so that one is left finite.
+      retries: -1
   # The harbor chart renders `strategy.rollingUpdate: null` on every Deployment
   # even when updateStrategy.type=Recreate, which the API server rejects
   # ("rollingUpdate may not be specified when type is Recreate") on the RWO
