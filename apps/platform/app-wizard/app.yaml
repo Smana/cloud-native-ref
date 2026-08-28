@@ -38,7 +38,7 @@ spec:
     # Bump to the newest release tag. Do NOT use `v0.2` or `latest` — those float
     # by design and would let a reconcile change what is deployed.
     repository: ghcr.io/smana/app-wizard
-    tag: "v0.2.1"
+    tag: "v0.2.2"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
