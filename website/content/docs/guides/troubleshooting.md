@@ -51,13 +51,11 @@ directory too, but only *after* Cilium is already running — which is why the
 operator can start before the CRD exists.
 
 {{< callout type="warning" >}}
-That list is **append-only**. Entries are indexed by `count`, so removing or
-reordering one causes OpenTofu to destroy and recreate live CRDs.
+The module keys its manifests with `for_each` on the manifest self-link, not
+`count`. Keep it that way: a `count`-indexed list makes OpenTofu destroy and
+recreate live CRDs whenever the set is reordered, and destroying a Gateway API
+CRD deletes every Gateway and HTTPRoute of that kind on the cluster.
 {{< /callout >}}
-
-On `gcp-0` neither the list nor the trap exists: the shared
-`opentofu/shared/modules/gateway-api-crds` module applies the full
-experimental bundle keyed by `for_each`, so there is nothing to append.
 
 ## CiliumNetworkPolicy traps
 
@@ -169,7 +167,7 @@ in provider-aws v2; add `metadata.namespace`.
 
 **`no matches for kind <Kind>`** — the CRD is not activated. Provider packages
 ship many CRDs but only those listed in
-`infrastructure/base/crossplane/providers/activation-policy.yaml` are
+`infrastructure/base/crossplane/providers-aws/activation-policy.yaml` are
 installed.
 
 **XR reconcile loops on `failed waiting for … Informer to sync`** — the

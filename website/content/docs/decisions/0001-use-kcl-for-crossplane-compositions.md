@@ -127,7 +127,7 @@ Using KCL (Kusion Configuration Language) via `function-kcl` for composition log
 
 - KCL modules located in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)
   (extracted from this repo 2026-08-19); this repo pins a release in
-  `infrastructure/base/crossplane/configuration/configuration-packages.yaml`
+  `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`
 - Modules published to `ghcr.io/smana/cloud-native-ref/crossplane-<name>:<version>`
 - Validation via `task check` in Smana/crossplane-configuration (formatting, syntax, rendering)
 - Three stages: `kcl fmt` → `kcl run` → `crossplane render`
@@ -140,4 +140,4 @@ Using KCL (Kusion Configuration Language) via `function-kcl` for composition log
 - [function-kcl GitHub](https://github.com/crossplane-contrib/function-kcl)
 - [KCL Mutation Bug #285](https://github.com/crossplane-contrib/function-kcl/issues/285)
 - [Blog: Going Further with Crossplane](https://blog.ogenki.io/post/crossplane_composition_functions/)
-- Existing compositions: when this decision was taken they lived under infrastructure/base/crossplane/configuration/kcl/ in this repository. They were extracted in 2026-08 and now live in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration), which this repository pins a released version of.
+- Existing compositions: when this decision was taken they lived under infrastructure/base/crossplane/configuration-aws/kcl/ in this repository. They were extracted in 2026-08 and now live in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration), which this repository pins a released version of.

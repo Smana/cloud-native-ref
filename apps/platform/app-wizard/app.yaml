@@ -203,7 +203,7 @@ spec:
     # so an absolute path to a separate mount would not resolve.
     #
     # VERSION COUPLING: this tag must match the package tag in
-    # infrastructure/base/crossplane/configuration/configuration-packages.yaml.
+    # infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml.
     # The form and the render preview would otherwise describe a different API
     # version than the cluster serves. Bump both together.
     #

@@ -151,6 +151,6 @@ Store AWS access keys in Kubernetes secrets.
 - [AWS EKS Pod Identity Documentation](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html)
 - [AWS Blog: EKS Pod Identity](https://aws.amazon.com/blogs/containers/amazon-eks-pod-identity-a-new-way-for-applications-on-eks-to-obtain-iam-credentials/)
 - [IRSA vs Pod Identity Comparison](https://docs.aws.amazon.com/eks/latest/userguide/service-accounts.html)
-- EPI Composition: [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration), pinned here via `infrastructure/base/crossplane/configuration/configuration-packages.yaml`
+- EPI Composition: [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration), pinned here via `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`
 - [ADR-0007: Cloud abstraction boundaries](0007-cloud-abstraction-boundaries.md) — narrows this ADR's scope to AWS
 - [GKE Workload Identity Federation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) — the GCP counterpart

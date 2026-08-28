@@ -34,7 +34,7 @@ render:
   # longer pulls an OCI module at preview time.
   compositionPath: crossplane-configuration/apis/app/composition-aws.yaml
   functionsPath: infrastructure/base/crossplane/functions/functions.yaml
-  envConfigPath: infrastructure/base/crossplane/configuration/environmentconfig.yaml
+  envConfigPath: infrastructure/base/crossplane/configuration-aws/environmentconfig.yaml
   # Render via the in-pod function sidecars (CL-8) instead of Docker.
   functionsDevTargets: "function-kcl=localhost:9443,function-auto-ready=localhost:9444,function-environment-configs=localhost:9445"
 

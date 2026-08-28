@@ -86,7 +86,7 @@ fi
 # the cluster actually serves, and bumping the package bumps the catalog with it.
 # The tag is read from the `package:` image reference, which is v-prefixed and
 # identical to the git tag the release was cut from.
-XPKG_SOURCE="infrastructure/base/crossplane/configuration/configuration-packages.yaml"
+XPKG_SOURCE="infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml"
 XPKG_VERSION="$(sed -nE 's#^[[:space:]]*package:[[:space:]]*"?[^":[:space:]]+:(v?[0-9][^"[:space:]]*)"?[[:space:]]*$#\1#p' "${XPKG_SOURCE}" | head -n1 || true)"
 
 if [[ -z "${XPKG_VERSION}" ]]; then

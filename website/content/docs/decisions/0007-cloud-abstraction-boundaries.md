@@ -182,4 +182,4 @@ constitution requirement, not an AWS detail.
 - [GKE Workload Identity Federation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) — direct KSA principal binding
 - [GCP support design](https://github.com/Smana/cloud-native-ref/blob/main/docs/superpowers/specs/2026-08-18-gcp-support-design.md) — the fifteen workstreams this rule applies to
 - `EPI` composition and `App` composition: both in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration),
-  pinned here via `infrastructure/base/crossplane/configuration/configuration-packages.yaml`
+  pinned here via `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`

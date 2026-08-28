@@ -105,7 +105,7 @@ The original spec chose **S3 bucket + init-container `aws s3 sync` + local `empt
 ### Order of operations
 
 1. **OpenTofu stack** `opentofu/aws/llm-platform/` — `aws_s3files_file_system.llm_models` over the existing bucket; `aws_s3files_access_point` (one shared by default); IAM role `xplane-llm-models-fs-access` with the EKS Pod Identity Agent trust policy. Outputs: `llm_models_fs_id`, `llm_models_fs_dns_name`, `llm_models_fs_role_arn`.
-2. **EnvironmentConfig refresh** `infrastructure/base/crossplane/configuration/environmentconfig.yaml` — fold the OpenTofu outputs alongside `clusterName` / `region`.
+2. **EnvironmentConfig refresh** `infrastructure/base/crossplane/configuration-aws/environmentconfig.yaml` — fold the OpenTofu outputs alongside `clusterName` / `region`.
 3. **CSI driver install** — once AWS publishes the K8s integration (TBD: extension of `efs-csi-driver` or a dedicated `s3files-csi-driver`); HelmRelease under `infrastructure/base/`, dependency-ordered after `crossplane-providers`.
 4. **InferenceService composition update** — `weightsBucket` → `weightsFileSystem`; drop init-container; drop `models` `emptyDir`; render PVC referencing the new `StorageClass`.
 5. **Cilium egress** — drop the temporary `toEntities: world` on TCP 443 once preload no longer hits the HF Xet CDN; replace with a tight `huggingface.co` API allowlist.

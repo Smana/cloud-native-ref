@@ -2,7 +2,7 @@
 description: Atlas Operator database migration integration with SQLInstance composition
 globs:
   - "apps/**/*.yaml"
-  - "infrastructure/base/crossplane/configuration/**"
+  - "infrastructure/base/crossplane/configuration-aws/**"
 ---
 
 # Database Migrations with Atlas Operator

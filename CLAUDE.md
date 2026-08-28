@@ -185,7 +185,7 @@ Flux manages all Kubernetes resources through a dependency hierarchy, broadly:
 
 ### Crossplane Resources
 
-- **XRDs and Compositions live in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)**, not here. This repo installs them as a Crossplane Configuration package — see `infrastructure/base/crossplane/configuration/configuration-packages.yaml` for the pinned version. Edit the KCL, run the validators and cut a release **in that repo**; then bump the pin here.
+- **XRDs and Compositions live in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)**, not here. This repo installs them as a Crossplane Configuration package — see `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml` for the pinned version. Edit the KCL, run the validators and cut a release **in that repo**; then bump the pin here.
 - **App Composition**: Platform abstraction supporting progressive complexity (image-only to production-ready with managed PostgreSQL, Redis/Valkey, S3, autoscaling, HA, zero-trust networking)
 - **EPI (EKS Pod Identity)**: IAM roles for service accounts in `security/base/epis/`
 - **Resource naming**: All Crossplane-managed resources prefixed with `xplane-`
