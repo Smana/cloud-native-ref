@@ -142,10 +142,33 @@ Both cost a wasted round trip when missing, because the failure surfaces
 mid-deploy rather than up front.
 
 ```bash
-gcloud auth login
-gcloud auth application-default login    # OpenTofu uses ADC, not the CLI credential
+gcloud auth login                        # the CLI identity: gcloud, and kubectl via gke-gcloud-auth-plugin
+
+# ADC: a SEPARATE store, and what the google provider AND the GCS backend read.
+# The bare `gcloud auth application-default login` requests a narrower default
+# set and fails with `cloud-platform scope is required but not consented`, so
+# the scopes are explicit. Tick every box on the consent screen.
+gcloud auth application-default login \
+  --scopes=https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/userinfo.email
+gcloud auth application-default set-quota-project ogenki-435905
+
 export TF_VAR_tailscale_api_key=<tskey-api-...>
 ```
+
+Both stores expire together in practice — the same Workspace reauthentication
+policy governs them — but they are independent, so test rather than re-running
+blindly:
+
+```bash
+gcloud auth print-access-token                     >/dev/null 2>&1 || gcloud auth login
+gcloud auth application-default print-access-token >/dev/null 2>&1 || echo "ADC stale — re-run the ADC login above"
+```
+
+Refreshing only one is the failure worth knowing: every `gcloud` command keeps
+working while `tofu` fails with a 403 naming the **ADC** identity, not the active
+account. The instinct is to grant the active account more IAM, which changes
+nothing. Observed live on 2026-08-23, when a four-month-stale ADC file still held
+a personal gmail identity.
 
 - **`TF_VAR_tailscale_api_key`** — `opentofu/gcp/network` manages the tailnet's
   split-DNS entry and the subnet router's auth key. The variable has no default,
