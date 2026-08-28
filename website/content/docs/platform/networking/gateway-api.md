@@ -2,7 +2,7 @@
 title: Gateway API
 weight: 20
 description: The GatewayClass/Gateway/HTTPRoute model this platform routes with, the three Gateways it runs, and how TLS and DNS attach to them.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Every request into this platform — public or private — goes through Gateway
@@ -24,8 +24,11 @@ Three roles, three resources:
   class, `envoy-ai-gateway`, coexists for the opt-in LLM platform's own
   data plane and is out of scope here.
 - **`Gateway`** — listeners, hostnames, and TLS, owned by the platform.
-  Every Gateway in this repository lives in the `infrastructure` namespace
-  and is defined under `infrastructure/base/gapi/`.
+  Every Gateway lives in the `infrastructure` namespace. The two Tailscale
+  Gateways — with the `GatewayClass` and its config, the shared private
+  certificate, and the L7-proxy allow policy — are shared base
+  (`infrastructure/base/gapi/`); `platform-public` is per-cluster
+  (`infrastructure/aws-0/gapi/`, `infrastructure/gcp-0/gapi-public/`).
 - **`HTTPRoute`** — routing rules, owned by whatever creates the backend
   Service. `HTTPRoute`s attach to a Gateway via `parentRefs` and only take
   effect if the Gateway's `allowedRoutes` permits the route's namespace.
@@ -51,6 +54,13 @@ the one Gateway that does **not** use OpenBao's private PKI), and the AWS
 Load Balancer annotations on `infrastructure.annotations` make it an
 internet-facing NLB rather than the Tailscale `loadBalancerClass` the other
 two use.
+
+`gcp-0` runs its own `platform-public`
+(`infrastructure/gcp-0/gapi-public/platform-public-gateway.yaml`) on the same
+pattern: one listener per public hostname — today just the cross-cloud `probe`
+endpoint — each with its own certificate issued through cert-manager's
+gateway-shim annotations, and `allowedRoutes` pinned to the `infrastructure`
+namespace.
 
 ### `allowedRoutes` is a namespace allowlist — and a real trap
 
@@ -106,24 +116,31 @@ without a redeploy — no coordination needed between them. See
 [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}})
 for the certificate chain, the `ClusterIssuer`, and rotation.
 
-## ExternalDNS and Route53
+## ExternalDNS
 
 ExternalDNS watches Gateways and `HTTPRoute`s (`sources: [service, ingress,
 gateway-httproute]` in `infrastructure/base/external-dns/helmrelease.yaml`)
-and creates matching Route53 records automatically — no manual DNS step for
-a new hostname. Two settings keep it scoped correctly:
+and creates matching DNS records automatically — Route53 on `aws-0`, no
+manual DNS step for a new hostname. Two `extraArgs` keep it scoped correctly:
 
-- `--gateway-label-filter=external-dns=enabled` — only Gateways carrying
-  the `external-dns: enabled` label are watched, which is why every Gateway
-  manifest in this repository sets that label.
-- `zoneMatchParent: false` — prefers the more specific hosted zone, so a
-  `*.priv.aws.ogenki.io` hostname lands in the private zone rather than
-  the public `cloud.ogenki.io` parent zone it would otherwise also match.
+- `--gateway-namespace=infrastructure` — only the platform's own namespace
+  is watched for Gateways.
+- `--gateway-label-filter=external-dns=enabled` — and within it, only
+  Gateways carrying the `external-dns: enabled` label, which is why every
+  Gateway manifest in this repository sets that label.
 
 `policy: sync` means ExternalDNS also **deletes** records when their
 `HTTPRoute` is deleted, not just creates them. IAM comes from EKS Pod
-Identity, per the [platform constitution]({{< relref "/docs/reference/platform-constitution.md#4-iam-conventions" >}}) —
+Identity on `aws-0`, per the [platform constitution]({{< relref "/docs/reference/platform-constitution.md#4-iam-conventions" >}}) —
 no static AWS credentials.
+
+On `gcp-0`, two instances run instead of one:
+`infrastructure/gcp-0/external-dns/` overrides the shared release to
+`provider: google` against the private Cloud DNS zone
+(`--google-zone-visibility=private`), and
+`infrastructure/gcp-0/external-dns-public/` is a second release that assumes
+the AWS Route53 role over federated web identity to manage the public zone —
+see [ADR-0019]({{< relref "/docs/decisions/0019-cross-cloud-dns-federation.md" >}}).
 
 ## Routing rules
 

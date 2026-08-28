@@ -2,7 +2,7 @@
 title: GCP
 weight: 30
 description: Deploy the platform on GKE — four prerequisites, three stages, two commands.
-lastVerified: 2026-08-26
+lastVerified: 2026-08-27
 ---
 
 The GCP lane builds the same three-stage model as
@@ -43,7 +43,10 @@ gcloud storage buckets update gs://ogenki-cloud-native-ref-tfstate --versioning
 ```
 
 Turn versioning on **before** the first apply. It is the only recovery path for a
-truncated state file, and painful to add afterwards.
+truncated state file, and painful to add afterwards. If you pick a different
+bucket name, edit it in every GCP `backend` block **and** in the two
+`terraform_remote_state` readers that hardcode it —
+`opentofu/gcp/gke/init/data.tf` and `opentofu/gcp/gke/configure/data.tf`.
 
 ### 2 · Cloud KMS key ring for OpenBao auto-unseal
 
@@ -90,7 +93,10 @@ while cert-manager and external-dns fail against AWS with `AccessDenied` or
 projected ServiceAccount token — no access key
 ([ADR-0019]({{< relref "/docs/decisions/0019-cross-cloud-dns-federation.md" >}})).
 That role and its OIDC provider live outside the GCP stack tree and are **not**
-gated by `TM_GCP_ENABLED`, so apply them explicitly:
+gated by `TM_GCP_ENABLED` — which cuts both ways: the root
+`terramate script run deploy` from `opentofu/` includes this stack (only its
+`destroy` is guarded), so after a full deploy you only need to verify it
+applied. Apply it standalone if you deploy from `opentofu/gcp/**` directly:
 
 ```bash
 cd opentofu/shared/aws-gcp-federation
@@ -101,8 +107,8 @@ tofu apply -var-file=variables.tfvars
 This stack has no Terramate ordering edge to the GCP stacks on purpose — an AWS
 stack must not depend on a GCP one, nor the reverse. So on a fresh deploy `gcp-0`
 can come up before it is applied, and you may see `AccessDenied` in both
-controllers for the first few minutes. That is not a stuck deploy: apply this
-stack and give Flux a couple of reconcile intervals.
+controllers for the first few minutes. That is not a stuck deploy: once this
+stack is applied, give Flux a couple of reconcile intervals.
 
 It is also left applied across teardowns (its `destroy` is guarded behind
 `TM_FEDERATION_DESTROY=true`). An IAM role and an OIDC provider cost nothing
@@ -117,11 +123,21 @@ re-apply it after any such change.
 Every stack already ships a `variables.tfvars` in Git with values that deploy.
 You are editing a working configuration, not writing one:
 
-1. `opentofu/gcp/config.tm.hcl` — project, region/zone, cluster name, chart
-   versions, and the URL of *your* fork for Flux to sync.
+1. The root `opentofu/config.tm.hcl` — the Helm chart versions used by the
+   bootstrap (`cilium_version`, `flux_operator_version`,
+   `flux_instance_version`), shared with the AWS lane.
+   (`opentofu/gcp/config.tm.hcl` holds only the `TM_GCP_ENABLED` gate — there
+   is nothing to edit there.)
 2. Each stack's `variables.tfvars` under `opentofu/gcp/` — the committed values
    point at the reference project (`europe-west4-a`, `COS_CONTAINERD`,
-   2 × `e2-standard-4` spot). Change the project ID and domains to yours.
+   2 × `e2-standard-4` spot). Project, region/zone and the private domain live
+   in `opentofu/gcp/network/variables.tfvars`, the cluster name in
+   `opentofu/gcp/gke/init/variables.tfvars`, and the URL of *your* fork
+   (`flux_sync_url`) in `opentofu/gcp/gke/configure/variables.tfvars`. Change
+   the project ID and domains to yours.
+3. `opentofu/shared/tailscale/variables.tfvars` — `tailnet` and `admin_users`
+   are the reference tailnet's identity, and this stack is the first thing the
+   root deploy applies; point them at your own tailnet.
 
 ## Deploy
 
@@ -135,7 +151,8 @@ TM_GCP_ENABLED=true terramate script run deploy
 ```
 
 **One command covers both stages.** Terramate resolves the dependency graph:
-`network` first, then `openbao/cluster`, then `openbao/management`.
+`shared/tailscale` first — `network` declares it in its `after` list — then
+`network`, `openbao/cluster` and `openbao/management`.
 
 Stage 1 creates the VPC with its node, pod, service and control-plane ranges, a
 **private Cloud DNS zone**, and the Tailscale subnet router that gives you access
@@ -180,21 +197,25 @@ flux get all
 ```
 
 A healthy result: nodes `Ready` with Cilium as the only CNI, and every
-Kustomization reconciled. If gateways report `Waiting for controller`, see
+Kustomization reconciled. Reaching OpenBao and everything else private works
+the same way as on AWS — see
+[Access]({{< relref "/docs/get-started/access.md" >}}). If gateways report `Waiting for controller`, see
 [Troubleshooting]({{< relref "/docs/guides/troubleshooting.md" >}}) — cilium-operator
 probes the Gateway API CRDs once at startup and disables its controller
 permanently if any are missing.
 
 ## What Flux reconciles here
 
-Less than on AWS, and knowingly so. `gcp-0` brings up namespaces, CRDs, Flux,
+Slightly less than on AWS. `gcp-0` brings up namespaces, CRDs, Flux,
 Crossplane with `provider-gcp`, the security layer (cert-manager, External
-Secrets, Kyverno, Tailscale) and the infrastructure layer (Cilium policies,
-Gateway API, both external-dns instances, ComputeClasses).
+Secrets, Kyverno, Tailscale), the infrastructure layer (Cilium policies,
+Gateway API, both external-dns instances, ComputeClasses), the observability
+stack, tooling (Harbor) and the applications.
 
-It does **not** yet run observability, tooling or general applications — those
-overlays are not written. The full comparison, including what each gap needs, is
-on [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}).
+What it does **not** run: `image-gallery`, `runlore`, `flux-previews`, and the
+Homepage and Headlamp dashboards. The full comparison, including what each gap
+needs, is on
+[Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}).
 
 ## Teardown
 

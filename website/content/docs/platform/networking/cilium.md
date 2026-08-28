@@ -2,14 +2,16 @@
 title: Cilium
 weight: 10
 description: The eBPF data plane that replaces the CNI and kube-proxy, its non-default IPAM and encryption settings, and the startup trap that silently disables Gateway API.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Cilium is this platform's CNI, its kube-proxy replacement, and the Gateway
 API data plane — one component doing all three jobs. It installs in Stage 2
 of the [EKS bootstrap]({{< relref "/docs/platform/foundations/aws.md#why-eks-bootstrap-is-two-opentofu-stacks" >}}),
 after Stage 1's temporary VPC-CNI and kube-proxy have already gotten the
-nodes to `Ready`. None of what follows has a source document anywhere else
+nodes to `Ready`. Except where labelled otherwise, this page describes the
+AWS (`aws-0`) install — `gcp-0`'s deltas are collected
+[at the bottom](#on-gke-gcp-0). None of what follows has a source document anywhere else
 in the repository — it lives only in `CLAUDE.md`, Helm values comments, and
 OpenTofu resource comments, and every item here has cost real debugging time
 at least once.
@@ -148,9 +150,11 @@ for defense in depth.
 
 This is AWS-specific. [ADR-0005]({{< relref "/docs/decisions/0005-gke-standard-self-managed-cilium.md" >}})
 rescopes it for the GKE port: with `ipam.mode=kubernetes` there instead of
-`eni`, the code path #43493 lives in is never taken, so WireGuard is expected
-to be unnecessary there — pending the empirical cross-node L7 test that
-confirms it.
+`eni`, the code path #43493 lives in is never taken, so WireGuard is left out
+of the GKE values entirely — confirmed by ADR-0005's Phase 1 gate, which
+recorded 100/100 HTTP 200 through a Cilium Gateway to backends split across
+two nodes with encryption disabled
+(`opentofu/gcp/gke/init/helm_values/cilium.yaml`).
 
 ## The Gateway API CRD startup-probe trap
 
@@ -170,10 +174,12 @@ yet, and Flux's own CRD directory applied it two seconds too late for the
 operator's one-shot probe to see.
 
 **Recover**: `kubectl rollout restart -n kube-system deployment/cilium-operator`
-reruns the probe. **Fix durably**: add the missing CRD's URL to
+reruns the probe. **Fix durably (AWS)**: add the missing CRD's URL to
 `gateway_api_crds_urls`. That list is append-only — the `count` index of the
 existing entries must not shift, or `tofu` destroys and recreates every live
-CRD, taking every Gateway and HTTPRoute with it. See
+CRD, taking every Gateway and HTTPRoute with it. On GKE the list cannot drift
+in the first place: `opentofu/shared/modules/gateway-api-crds` applies the
+whole experimental-channel bundle, keyed with `for_each` per manifest. See
 [Gateway API]({{< relref "/docs/platform/networking/gateway-api.md" >}}) for
 the resource model these CRDs back.
 
@@ -188,6 +194,23 @@ the resource model these CRDs back.
 - **`envoy.xdsMode` is deliberately left unset** so Cilium ≥ 1.20 picks its
   new default, `ads`, instead of the legacy `split` mode. Setting
   `upgradeCompatibility: "1.19"` anywhere would silently pin it back.
+
+## On GKE (gcp-0)
+
+The GKE Helm values (`opentofu/gcp/gke/init/helm_values/cilium.yaml`) are a
+deliberate fork of the AWS file, and its header comments are the source for
+the deltas. Three matter most:
+
+- **`cni.binPath: /home/kubernetes/bin`** — the chart default `/opt/cni/bin`
+  is read-only on Container-Optimized OS, so the init container dies and the
+  agent never starts (`gke.enabled=true` does *not* set this).
+- **`ipv4NativeRoutingCIDR` is mandatory** under `routingMode: native` +
+  `ipam.mode: kubernetes` — ENI mode derives it, GKE cannot, and without it
+  the agent exits 255. It's injected from the network stack's pod-CIDR output
+  so it can't drift.
+- **Gateway API CRDs come from `opentofu/shared/modules/gateway-api-crds`**,
+  the whole-bundle module described above — no hand-maintained URL list to
+  fall behind what Cilium probes for.
 
 ## Related
 

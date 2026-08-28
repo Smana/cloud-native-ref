@@ -2,12 +2,12 @@
 title: Architecture
 weight: 10
 description: The platform in three bands — cloud managed services, the cluster that consumes them, and the applications on top.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 The platform is best read in three bands, from the cloud account inwards.
 
-![Platform architecture: AWS managed services on the left, the EKS cluster in four tiers in the centre, and applications and data stores on the right](/images/diagrams/platform-overview.svg)
+![Platform architecture: AWS and GCP managed services on the left, the aws-0 (EKS, Karpenter) and gcp-0 (GKE, Node Auto-Provisioning) clusters in four tiers in the centre, and applications and data stores on the right](/images/diagrams/platform-overview.svg)
 
 ## The three bands
 
@@ -17,8 +17,10 @@ Pod Identity / Workload Identity, S3 / Cloud Storage, KMS / Cloud KMS. The
 platform provisions these through Crossplane rather than clicking them into
 existence, but it deliberately leans on managed services for the things a
 cloud does well. Nothing here is exotic, and that was the point: the set was
-chosen so a second cloud could offer equivalents — which it since has. The
-full mapping is on
+chosen so a second cloud could offer equivalents — which it since has. One
+asymmetry is deliberate: public DNS is Route 53 for both clouds
+([ADR-0019]({{< relref "/docs/decisions/0019-cross-cloud-dns-federation.md" >}})),
+while Cloud DNS serves only `gcp-0`'s private zone. The full mapping is on
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}).
 
 **The cluster.** EKS on AWS, GKE Standard on GCP, both with Cilium as the CNI
@@ -30,8 +32,8 @@ tiers: GitOps and composition (Flux, Crossplane), compute and networking
 (VictoriaMetrics, VictoriaLogs, VictoriaTraces, Grafana).
 
 **Applications and data.** The workloads a developer actually ships, plus
-the PostgreSQL, Valkey and S3 instances the compositions provision for
-them. The self-hosted LLM platform lives here too, and is off by default.
+the PostgreSQL, Valkey and object storage (S3 or GCS) the compositions
+provision for them. The self-hosted LLM platform lives here too, and is off by default.
 
 ## Why it is shaped this way
 

@@ -2,7 +2,7 @@
 title: App field reference
 weight: 15
 description: Complete spec field reference for the App claim — every field, type, and default, reconciled against the pinned XRD.
-lastVerified: 2026-08-26
+lastVerified: 2026-08-27
 ---
 
 Complete list of every `App` `spec` field. **Required** fields are marked.
@@ -17,11 +17,11 @@ they live in
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration),
 which this repo pins as a `Configuration` package
 (`infrastructure/base/crossplane/configuration/configuration-packages.yaml`,
-currently `ghcr.io/smana/crossplane-configuration-aws:v0.3.1`). This table was
+currently `ghcr.io/smana/crossplane-configuration-aws:v0.4.1`). This table was
 reconciled by hand against that repository's `apis/app/definition.yaml` (the
 CRD schema — types, enums, CEL rules) and `apis/app/kcl/main.k` (composition
 defaults that never appear in the schema, such as resource requests/limits or
-the gateway/route fallback names) at the commit tagged `v0.3.1`.
+the gateway/route fallback names) at the commit tagged `v0.4.1`.
 
 **To regenerate:** check out `Smana/crossplane-configuration` at the tag
 currently pinned above, and read `apis/app/definition.yaml` +
@@ -204,7 +204,7 @@ Blocks: `liveness`, `readiness`, `startup`. Each block:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | Create an HTTPRoute. |
-| `internetFacing` | boolean | `false` | `false` → `.priv.aws.ogenki.io` (private), `true` → `.cloud.ogenki.io` (public). |
+| `internetFacing` | boolean | `false` | `false` → private, `true` → public. Domains are per-cluster, read from the EnvironmentConfig: `aws-0` uses `.priv.aws.ogenki.io` / `.cloud.ogenki.io`, `gcp-0` uses `.priv.gcp.ogenki.io` / `.gcp.cloud.ogenki.io`. |
 | `hostname` | string | — (required when enabled) | Hostname prefix (domain auto-added). |
 | `rules[]` | []object | route all to `service.port` at `/` | `backendPort` (**required**), `pathPrefix` (default `/`). Composition default when omitted (`main.k:923-927`). |
 

@@ -23,7 +23,7 @@ cd opentofu/gcp/gke/init
 TM_GCP_ENABLED=true terramate script run destroy
 ```
 
-Four jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
+Five jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
 
 1. **confirm + init** — `scripts/terramate-destroy-confirm.sh`, then `tofu init`.
    Init runs *before* anything is destroyed on purpose: a lock file predating a
@@ -59,10 +59,9 @@ destroy` says "Destroy complete" and the disks keep billing. Three survived the
 a step for.
 
 `stage2-reclaim-volumes` calls `scripts/k8s-reclaim-csi-volumes.sh`, shared with
-the AWS teardown because every step of it is plain Kubernetes. It suspends Flux,
-patches **every** PV to `Delete` — including PVs deliberately set to `Retain` —
-deletes CloudNativePG `Cluster` resources, scales down every workload mounting a
-PVC, then deletes all PVCs and waits up to 300s for reclaim.
+the AWS teardown because every step of it is plain Kubernetes — what it does,
+step by step, is on the
+[AWS teardown]({{< relref "/docs/get-started/aws/teardown.md#what-eks-prepare-destroysh-does-first" >}}).
 
 {{< callout type="warning" >}}
 **This step deletes PVC data unconditionally**, regardless of the reclaim policy

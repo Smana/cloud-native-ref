@@ -2,7 +2,7 @@
 title: AI Platform
 weight: 50
 description: An OpenAI-compatible vLLM serving platform behind Envoy AI Gateway, declared one model per Crossplane claim — off by default until two independent gates are both released.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 An OpenAI-compatible inference platform on EKS: vLLM on L4 spot GPUs, fronted
@@ -23,13 +23,13 @@ plain Flux reconciliation both leave the cluster LLM-free.
 | | |
 |---|---|
 | **Engine** | vLLM, one Deployment per model, port 8000 |
-| **Gateway** | Envoy Gateway + Envoy AI Gateway `1.0.0` |
+| **Gateway** | Envoy Gateway + Envoy AI Gateway `1.1.0` |
 | **Routing** | `AIGatewayRoute`, keyed on the `x-ai-eg-model` header |
 | **Prompt routing** | vLLM Semantic Router, as a gRPC `ext_proc` filter — only acts on `model: MoM` |
 | **Autoscaling** | KEDA, three vLLM saturation triggers OR-combined, `min=1` (always warm) |
 | **Weights** | Amazon S3 Files (POSIX over S3), RWX PVC shared by a preload Job and the serving pod |
 | **GPUs** | Karpenter `gpu-l4` NodePool — single-GPU `g6` spot instances, Bottlerocket NVIDIA AMI, capped at 4 GPUs |
-| **Composition** | `crossplane-inference-service` KCL module `0.9.0`, pinned inside `crossplane-configuration-aws:v0.3.1` |
+| **Composition** | `crossplane-inference-service` KCL module `0.9.0`, pinned inside `crossplane-configuration-aws:v0.4.1` |
 
 ## Why self-host at all
 
@@ -50,13 +50,10 @@ platform exists for the things a hosted API cannot give you:
   ext_proc-filtered gateway exercise parts of this platform that a stateless
   web app never touches.
 
-And the honest side of the ledger: **four models at `minReplicas: 1` hold
-four L4 GPUs continuously**, whether or not anyone sends a request. There is
-no scale-to-zero, and
+And the honest side of the ledger: there is **no scale-to-zero** — see
 [Autoscaling & GPUs]({{< relref "/docs/platform/ai-platform/autoscaling-and-gpu.md" >}})
-explains why that is a deadlock rather than a missing feature. Anyone
-adopting this should price four always-on `g6.xlarge` spot instances before
-anything else.
+for the four-GPU cost floor that implies, and why it is a deadlock rather
+than a missing feature.
 
 ## Turning it on
 
@@ -85,7 +82,7 @@ The umbrella aggregates **8** child Flux Kustomizations under
 | `llm-platform-gpu-nodepools` | Karpenter `gpu-l4` NodePool + EC2NodeClass | `infrastructure/base/karpenter-nodepools-gpu` |
 | `envoy-gateway` | Envoy Gateway controller | `infrastructure/base/envoy-gateway` |
 | `envoy-ai-gateway` | Envoy AI Gateway + the Semantic Router `EnvoyPatchPolicy` | `infrastructure/base/envoy-ai-gateway` |
-| `llm-platform-apps` | The `InferenceService` claims + OpenWebUI | `apps/base/ai/llm` |
+| `llm-platform-apps` | The `InferenceService` claims + OpenWebUI | `apps/llm` |
 | `llm-platform-security-epi` | The preload Job's EKS Pod Identity | `security/base/epis-llm` |
 | `llm-platform-promptfoo` | Nightly agent-eval CronJob | `tooling/base/promptfoo` |
 
@@ -93,6 +90,20 @@ That directory is a **sibling** of `clusters/aws-0/`, not a child, on
 purpose: `flux-system` syncs `clusters/aws-0/` recursively, so a nested
 path would be auto-discovered and applied — bypassing the suspend gate
 entirely.
+
+### On `gcp-0`
+
+`gcp-0` has **one gate, not two**: the weights bucket is a Crossplane claim
+rather than an OpenTofu stack, so there is no `TM_LLM_PLATFORM_ENABLED` —
+the only gate is the umbrella Kustomization `clusters/gcp-0/llm-platform.yaml`
+(`spec.suspend: true`). Weights are served from a GCS bucket over the Cloud
+Storage FUSE CSI driver instead of an S3 Files POSIX mount — see
+[ADR-0021]({{< relref "/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md" >}})
+for why, including what it gives up. **Do not resume that umbrella yet**:
+serving pods have no per-claim GCP read identity (the `InferenceService`
+composition renders none for GCP), so vLLM pods cannot read the weights
+bucket — the gap is recorded in `clusters/gcp-0-llm-platform/README.md` and
+must be closed first.
 
 ## Security posture
 
@@ -103,9 +114,10 @@ entirely.
 - **No credentials in Git.** API keys and the HuggingFace token come from AWS
   Secrets Manager through External Secrets — see
   [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
-- **No IAM on the serving pod.** Weights arrive over the CSI mount, so the
-  serving ServiceAccount carries no role. Only the preload Job carries an
-  EKS Pod Identity.
+- **Read-only IAM on the serving pod.** Each claim's serving
+  ServiceAccount carries a per-claim EKS Pod Identity scoped to *read* its
+  own weights prefix, rendered by the composition; only the shared preload
+  Job's identity can write to the bucket.
 - **Private ingress only.** Reachable exclusively from the tailnet — see
   [Private Access]({{< relref "/docs/platform/networking/private-access.md" >}}).
 

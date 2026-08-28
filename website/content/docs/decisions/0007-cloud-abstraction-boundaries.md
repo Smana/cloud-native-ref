@@ -176,7 +176,7 @@ constitution requirement, not an AWS detail.
 
 ## References
 
-- [Platform Constitution](../platform-constitution.md) — `xplane-*` naming, KCL patterns, security defaults
+- [Platform Constitution]({{< relref "/docs/reference/platform-constitution.md" >}}) — `xplane-*` naming, KCL patterns, security defaults
 - [ADR-0002: EKS Pod Identity over IRSA](0002-eks-pod-identity-over-irsa.md) — scope narrowed to AWS by this ADR
 - [ADR-0005](0005-gke-standard-self-managed-cilium.md), [ADR-0006](0006-nap-computeclass-over-karpenter.md)
 - [GKE Workload Identity Federation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) — direct KSA principal binding

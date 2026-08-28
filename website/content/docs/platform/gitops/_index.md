@@ -2,7 +2,7 @@
 title: GitOps
 weight: 20
 description: What GitOps means here, the Flux resources this repository actually uses, the tree Flux reconciles, and the dependency graph re-derived from the manifests.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Once [Foundations]({{< relref "/docs/platform/foundations/_index.md" >}})
@@ -42,10 +42,10 @@ here, and each one is a real file in this repository:
 
 | Resource | What it does here | Where |
 |---|---|---|
-| `FluxInstance` | The Flux Operator manages Flux's own installation and upgrades from this one object — which controllers run, how they are sharded, how they are tuned | `opentofu/aws/eks/init/helm_values/flux-instance.yaml`, applied in Stage 2 |
+| `FluxInstance` | The Flux Operator manages Flux's own installation and upgrades from this one object — which controllers run, how they are sharded, how they are tuned | `opentofu/aws/eks/init/helm_values/flux-instance.yaml` (GCP copy: `opentofu/gcp/gke/init/helm_values/`), applied in Stage 2 |
 | `GitRepository` | The `flux-system` source: this repository, authenticated as a GitHub App. Eleven more point at external repositories | created by the `FluxInstance`; the rest in `flux/sources/` |
 | `ArtifactGenerator` → `ExternalArtifact` | Re-slices the one fetched repository artifact into a narrower artifact per domain, so a change under `security/` does not re-trigger `observability/` | `flux/artifact-generators/monorepo-split.yaml` |
-| `Kustomization` | Applies one domain's overlay, in dependency order, and reports whether it is healthy | `clusters/aws-0/` |
+| `Kustomization` | Applies one domain's overlay, in dependency order, and reports whether it is healthy | `clusters/aws-0/`, `clusters/gcp-0/` |
 | `HelmRelease` with `HelmRepository` / `OCIRepository` | Every upstream chart. Twenty-four Helm repositories and eight OCI repositories back them | `flux/sources/`, releases under each domain's `base/` |
 | `Alert` + `Provider` | Reconciliation failures out to Slack — three of each | `flux/notifications/` |
 | `ResourceSet` + `ResourceSetInputProvider` | Preview environments generated per pull request | `flux/previews/` |
@@ -172,6 +172,13 @@ and run in parallel once it is healthy:
 a database and Security's secrets and certificates. Everything converges at
 the bottom: `tooling` depends on `observability` and `infrastructure`; `apps`
 — the tenant-facing `App` claims — depends only on `tooling`.
+
+This is `aws-0`'s graph. `gcp-0` reconciles the same domains but not the same
+edges: `security` depends on `crds` rather than `eks-pod-identities`, four more
+Kustomizations split out of security (`openbao`, `openbao-snapshot`,
+`public-certs`, `tailscale`), and there is no `karpenter`, `eks-pod-identities`,
+`zitadel` or `flux-previews` at all — see
+[Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}).
 
 ## Observing and operating
 

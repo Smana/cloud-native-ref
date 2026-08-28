@@ -2,7 +2,7 @@
 title: The InferenceService claim
 weight: 20
 description: One model, one YAML file — the complete claim, what it renders, and every field it accepts.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 A model on this platform is one file. No Deployment, no Service, no HPA, no
@@ -168,9 +168,9 @@ Four claims, read from the manifests:
 | `xplane-llamaguard3-1b` | `meta-llama/Llama-Guard-3-1B` | fp16 | 8k | 64 | 1 / 3 | hand-written route |
 
 Every model defaults to `minReplicas: 1` — there is no scale-to-zero — and the
-`gpu-l4` NodePool caps the fleet at `nvidia.com/gpu: "4"`. Those four `min=1`
-models are therefore a hard cost floor, not a soft one: the platform is running
-four GPUs whether or not anyone sends a request.
+`gpu-l4` NodePool caps the fleet at `nvidia.com/gpu: "4"`; see
+[Autoscaling & GPUs]({{< relref "/docs/platform/ai-platform/autoscaling-and-gpu.md" >}})
+for the cost floor that implies.
 
 ## Adding a model
 

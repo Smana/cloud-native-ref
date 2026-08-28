@@ -2,7 +2,7 @@
 title: The App claim
 weight: 10
 description: Workers, cron jobs, config and secrets, sidecars, persistent storage, health probes, routing, autoscaling, and observability on the App claim.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 This page covers everything on an `App` claim past the minimal web service in
@@ -254,7 +254,9 @@ Web-only. `hostname` is a prefix; the domain is chosen by
         pathPrefix: /
 ```
 
-`hostname` is required when `route.enabled` is true. Without `rules`, all
+`hostname` is required when `route.enabled` is true. The domains are
+per-cluster, read from the cluster's EnvironmentConfig — `gcp-0`'s are
+`.priv.gcp.ogenki.io` and `.gcp.cloud.ogenki.io`. Without `rules`, all
 traffic routes to the service port at `/`. See
 [Gateway API]({{< relref "/docs/platform/networking/gateway-api.md" >}}) for
 how these routes attach, and

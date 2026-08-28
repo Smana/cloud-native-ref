@@ -2,7 +2,7 @@
 title: Get Started
 weight: 10
 description: Deploy the platform into your own cloud account — AWS or GCP — in about thirty minutes.
-lastVerified: 2026-08-26
+lastVerified: 2026-08-27
 ---
 
 The platform deploys in three sequential stages: the network, then the secrets
@@ -41,12 +41,14 @@ the page to read first regardless of cloud.
   {{< card link="/docs/get-started/prerequisites/" title="1 · Prerequisites" icon="clipboard-check" subtitle="Start here. Accounts, the hand-created state bucket, and `mise install`." >}}
   {{< card link="/docs/get-started/aws/" title="2a · AWS" icon="cloud" subtitle="EKS with Cilium and Karpenter. Three stages, two commands." >}}
   {{< card link="/docs/get-started/gcp/" title="2b · GCP" icon="cloud" subtitle="GKE Standard with self-managed Cilium. Three stages, two commands." >}}
-  {{< card link="/docs/get-started/first-app/" title="3 · First application" icon="puzzle" subtitle="Deploy an app with one small YAML claim." >}}
+  {{< card link="/docs/get-started/access/" title="3 · Access" icon="key" subtitle="Tailscale is the only door — same model on both clouds. OpenBao, kubectl, dashboard." >}}
+  {{< card link="/docs/get-started/first-app/" title="4 · First application" icon="puzzle" subtitle="Deploy an app with one small YAML claim." >}}
 {{< /cards >}}
 
 The two lanes are not equivalent in coverage. AWS runs the full platform;
-GCP runs the foundation, security and infrastructure layers but does not yet
-run observability, tooling or general applications. The exact split is on
+GCP runs everything except a handful of components — `image-gallery`,
+`runlore`, `flux-previews`, and the Homepage and Headlamp dashboards.
+The exact split is on
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}) —
 worth a look before you choose, if you are evaluating rather than just trying it.
 
@@ -56,6 +58,6 @@ Tearing down matters more than usual here, because the expensive resources are
 the ones that stay up quietly. The AWS lane has a
 [Teardown]({{< relref "/docs/get-started/aws/teardown.md" >}}) page covering the
 order and the resources that outlive a naive `destroy` — orphaned EBS volumes
-and load balancers in particular. On GCP, `terramate script run destroy` with
-`TM_GCP_ENABLED=true` and `TM_DESTROY_CONFIRMED=true` is the equivalent, and the
-GCP lane page covers what to verify afterwards.
+and load balancers in particular. The GCP lane has its own
+[Teardown]({{< relref "/docs/get-started/gcp/teardown.md" >}}) page, with GCP's
+own traps and what to verify afterwards.

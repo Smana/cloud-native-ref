@@ -2,13 +2,13 @@
 title: Metrics
 weight: 10
 description: VictoriaMetrics single vs cluster mode, metrics-server, and the VMServiceScrape/VMScrapeConfig mechanisms that feed both.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 ## VictoriaMetrics k8s stack
 
 `observability/base/victoria-metrics-k8s-stack/` deploys the
-`victoria-metrics-k8s-stack` chart (0.91.0) — the kube-prometheus-stack
+`victoria-metrics-k8s-stack` chart (0.91.2) — the kube-prometheus-stack
 equivalent: VictoriaMetrics itself, vmagent, Alertmanager, a bundled Grafana
 subchart, and the default recording/alerting rule set. Only `vmsingle` is
 active; `vmcluster` sits in the same directory, fully valued, commented out
@@ -21,8 +21,12 @@ of `kustomization.yaml`.
 | Storage | 10Gi RWO | 10Gi (`vmstorage`) + 2Gi (`vminsert`/`vmselect`), platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |
 | Alertmanager | `replicaCount` unset (chart default) | `replicaCount: 2` |
 
-`aws-0`'s overlay (`observability/aws-0/victoria-metrics-k8s-stack/kustomization.yaml`)
-adds no patches — it's a pure passthrough to the base. Common values shared
+`aws-0`'s overlay (`observability/aws-0/victoria-metrics-k8s-stack/`)
+carries the AWS-only pieces on top of the base — `vmrules/` (Karpenter and
+RunLore alerts), `vmservicecrapes/karpenter.yaml`, and
+`vmscrapeconfigs/ec2.yaml` — moved out of the base because the `karpenter`
+namespace does not exist on `gcp-0`, where they failed the whole
+Kustomization. Common values shared
 by both modes (`vm-common-helm-values-configmap.yaml`, applied via
 `valuesFrom`) disable the control-plane rule groups (`kubernetes-system-apiserver`,
 `-controller-manager`, `-scheduler`) — EKS runs these as a managed service
@@ -90,8 +94,10 @@ path: /v1/sys/metrics
 OpenBao is scraped by DNS name over HTTPS with a real CA, not EC2 service
 discovery — the instance security group only admits the internal NLB on
 8200, and the server certificate carries a single DNS SAN, so scraping
-individual instance IPs could never verify TLS. `ec2.yaml` in the same
-directory is the EC2-SD counterpart, used for node-exporter (tag
+individual instance IPs could never verify TLS. `ec2.yaml`
+(in `aws-0`'s overlay, `observability/aws-0/victoria-metrics-k8s-stack/vmscrapeconfigs/`
+— EC2 service discovery is AWS-only) is the EC2-SD counterpart, used for
+node-exporter (tag
 `observability:node-exporter=true`, port 9100) where per-instance scraping is
 fine.
 

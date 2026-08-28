@@ -2,7 +2,7 @@
 title: Data services
 weight: 20
 description: PostgreSQL, Valkey, and S3 — provisioned inline with an App claim and wired automatically, no xplane-* name or secretKeyRef to write by hand.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Three infrastructure blocks on an `App` claim are orthogonal to
@@ -109,19 +109,10 @@ matters more than it sounds: a project-level `roles/storage.*` would reach every
 bucket in the project, including OpenBao's snapshots and database backups.
 
 {{< callout type="warning" >}}
-**`permissions: custom` is AWS-only.** Supply your IAM policy JSON in
-`aws.customPolicy` — the XRD rejects `custom` without it. IAM JSON has no GCP
-equivalent, so on GCP the composition degrades `custom` to read-only rather than
-silently granting write.
-{{< /callout >}}
-
-{{< callout type="warning" >}}
-**`retentionDays` currently takes effect on GCP only.** The example above sets
-`retentionDays: 90` and it means two different things per cloud today: on `gcp-0`
-it renders a GCS lifecycle rule that deletes objects past that age; on `aws-0` it
-is accepted and stored but does nothing — no S3 lifecycle configuration renders
-yet, so uploads never expire there. Don't rely on it for AWS data retention until
-an S3 implementation lands.
+Two cloud asymmetries apply here: `retentionDays` currently takes effect on
+**GCP only**, and `permissions: custom` is **AWS-only** (requires
+`aws.customPolicy`; degraded to read-only on GCP) — details in the
+[field reference]({{< relref "/docs/platform/developer-platform/app-field-reference.md#objectstore" >}}).
 {{< /callout >}}
 
 See [ADR-0002]({{< relref "/docs/decisions/0002-eks-pod-identity-over-irsa.md" >}})

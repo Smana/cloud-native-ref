@@ -2,7 +2,7 @@
 title: Add an application
 weight: 20
 description: From an image to a running, routed, monitored application — via the wizard or by hand.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Two paths, same result: an `App` claim committed to Git and reconciled by
@@ -55,8 +55,12 @@ Two conventions the platform depends on:
 ## Committing it
 
 The claim goes under `apps/<stack>/<name>/`, with a `kustomization.yaml`
-alongside it and the parent kustomization updated to include the directory.
-Flux picks it up on the next reconciliation of the `apps` Kustomization.
+alongside it and the stack's kustomization updated to include the directory.
+The `<stack>` must be declared in `apps/stacks.yaml`, wired into the
+per-cluster parent — `apps/aws-0/kustomization.yaml`,
+`apps/gcp-0/kustomization.yaml`, or both — and its namespace must already
+exist under `namespaces/base/`. Flux picks it up on the next reconciliation
+of the `apps` Kustomization.
 
 ## Verifying it reconciled
 

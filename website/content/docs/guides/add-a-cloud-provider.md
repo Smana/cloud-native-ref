@@ -2,7 +2,7 @@
 title: Add a cloud provider
 weight: 30
 description: ADR-0007's rule made operational — what a new provider must implement, and what must not change.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 The platform runs on AWS **and GCP**, and the second cloud was an addition
@@ -17,17 +17,10 @@ something.
 ## The rule
 
 **Platform-facing APIs stay cloud-shaped. Developer-facing APIs stay
-cloud-neutral.**
-
-The line is drawn by audience, not by layer. A platform engineer already
-knows which cloud they are configuring, so an API they consume should be
-honest about it. An application developer should not have to know, so an API
-they consume should not expose it.
-
+cloud-neutral.** The line is drawn by audience, not by layer —
 [ADR-0007]({{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}})
-records the reasoning, including the option that was rejected: one neutral
-abstraction over both, whose most important field would inevitably have been
-a free-form cloud-specific blob.
+records the reasoning, including the rejected option: one neutral abstraction
+over both.
 
 ## What a new provider must implement
 
@@ -60,16 +53,11 @@ dependency.
 ## What gains a sibling, not a field
 
 When an API is genuinely cloud-shaped, add a **sibling XRD** rather than a
-discriminated union.
-
-`EPI` is the clearest case. Its central field is inline AWS IAM JSON. GCP's
-equivalent is a list of predefined roles or a custom role's permissions.
-There is no neutral form of that field, and an API carrying both shapes and
-choosing at render time is two APIs sharing a name — with worse error
-messages than either would have alone.
-
-So: `EPI` for AWS, `GCPWorkloadIdentity` for GCP — the sibling now exists —
-both consumed internally by the developer-facing compositions.
+discriminated union: `EPI` for AWS, `GCPWorkloadIdentity` for GCP, both
+consumed internally by the developer-facing compositions.
+[ADR-0007]({{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}})
+works the case through `EPI`, whose central field — inline AWS IAM JSON — has
+no neutral form.
 
 ## What must not change
 
@@ -82,15 +70,16 @@ bucket and the IAM role becomes a workload identity binding. It means the
 artifact. `App` holds this today: the same claim renders an S3 bucket plus an
 `EPI` on one cloud and a GCS bucket plus a `GCPWorkloadIdentity` on the other.
 
-{{< callout type="warning" >}}
-**A neutral claim is a promise the compositions have to keep, and one is
-outstanding.** `SQLInstance` has no GCP implementation — its GCP Composition
-deliberately fails evaluation rather than composing nothing. That is the right
-failure mode (a claim that cannot be honoured should say so at reconcile time),
-but it means "the same claim means the same thing on either cloud" is currently
-an aspiration for `SQLInstance` and a fact for `App`. Neutrality at the API
-costs implementation work per cloud; skipping it does not make the API less
-neutral, it makes it dishonest.
+{{< callout type="info" >}}
+**A neutral claim is a promise the compositions have to keep — and
+`SQLInstance` now keeps it.** Until crossplane-configuration v0.4.0 its GCP
+Composition deliberately failed evaluation rather than composing nothing — the
+right interim failure mode, since a claim that cannot be honoured should say
+so at reconcile time. Both clouds now render from the same KCL module,
+differing only in where barman writes its backups (Cloud Storage rather than
+S3) and the identity that writes them, and the CloudNativePG operator runs on
+both clusters — `infrastructure/gcp-0/cloudnative-pg` deploys it without the
+Grafana dashboards, which need an operator `gcp-0` does not run.
 {{< /callout >}}
 
 Where a genuinely cloud-specific knob is unavoidable, it belongs in a
@@ -98,16 +87,12 @@ clearly-marked optional sub-block, not spread through the API.
 
 ## The test to apply
 
-Before adding an abstraction, ask who reads it:
-
-- **A platform engineer configuring one cloud?** Keep it cloud-shaped and
-  honest. Portability buys nothing here and costs indirection.
-- **An application developer who should not care?** Keep it neutral, and put
-  the cloud-specific part in the composition where it belongs.
-
-An API that looks neutral but is not produces worse failures than one that is
-visibly cloud-specific, because the error arrives later and further from its
-cause.
+Before adding an abstraction, ask who reads it: a platform engineer
+configuring one cloud gets a cloud-shaped API, an application developer who
+should not care gets a neutral one.
+[ADR-0007]({{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}})
+spells out the test — and why an API that only looks neutral fails worse than
+one that is visibly cloud-specific.
 
 ## Reading on
 

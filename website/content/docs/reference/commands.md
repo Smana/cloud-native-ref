@@ -2,7 +2,7 @@
 title: Commands
 weight: 30
 description: The commands used day to day, verified to exist against the scripts and Terramate workflows in this repository.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 Every command below is either a Terramate script defined in a `workflows.tm.hcl`
@@ -33,11 +33,13 @@ TM_GCP_ENABLED=true terramate script run deploy      # includes the GCP stacks
 terramate script run deploy                          # AWS only; GCP echoes [skip]
 ```
 
-## EKS deploy (two-stage bootstrap)
+## EKS deploy (two-stage bootstrap, three jobs)
 
 Defined in `opentofu/aws/eks/init/workflows.tm.hcl`. Stage 1 creates the cluster
 with the temporary VPC-CNI; Stage 2 (run from the same script) disables it,
-installs Cilium, then Flux.
+installs Cilium, then Flux; a final `stage3-recycle-bootstrap-nodes` job
+recycles the Stage 1 node-group nodes whose ENIs predate Cilium — a no-op once
+they use prefix delegation.
 
 ```bash
 cd opentofu/aws/eks/init
@@ -124,6 +126,7 @@ flux resume kustomization --all
 ## OpenBao
 
 ```bash
+# aws-0
 export VAULT_ADDR=https://bao.priv.aws.ogenki.io:8200
 export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem   # written by openbao-config.sh ca
 bao status
@@ -135,6 +138,16 @@ aws secretsmanager get-secret-value \
   --query SecretString --output text | jq
 ```
 
+```bash
+# gcp-0 — no userpass here; authenticate with the root token itself
+export VAULT_ADDR=https://bao.priv.gcp.ogenki.io:8200
+export VAULT_CACERT=opentofu/gcp/openbao/management/.tls/ca.pem
+bao status
+
+gcloud secrets versions access latest \
+  --secret openbao-priv-gcp-root-token --project <project> | jq -r .token
+```
+
 ## Validation (run these before claiming anything is done)
 
 ```bash
@@ -142,6 +155,7 @@ tofu validate
 trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
 ./scripts/validate-manifests.sh   # renders the repo the way Flux does, then gates it
 ./scripts/validate-links.sh       # resolves every relative Markdown link
+./scripts/validate-doc-claims.sh  # docs still agree with config (.doc-claims.yaml)
 kubectl get nodes && kubectl get pods --all-namespaces
 flux get all
 ```
@@ -155,11 +169,17 @@ each gate actually checks.
 |--------|---------|
 | `validate-manifests.sh` | Renders the repo (Kustomize + `helm template`) and gates it with `flux schema validate` + Polaris |
 | `validate-links.sh` | Resolves every relative Markdown link in the repository |
+| `validate-doc-claims.sh` | Checks the claims pinned in `.doc-claims.yaml` against the configuration they describe |
 | `verify-doc-paths.sh` | Checks the documentation site's structural conventions |
 | `openbao-config.sh` | OpenBao CA / config helper (`ca`, and other subcommands) |
 | `openbao-snapshot.sh` | OpenBao Raft snapshot automation |
-| `eks-prepare-destroy.sh` | Pre-destroy cleanup (drains leaked CSI volumes, etc.) before an EKS teardown |
+| `secret-store.sh` | Inspects and seeds the cloud secret store backing External Secrets (`check`, `seed`, `migrate-aws`) |
+| `terramate-destroy-confirm.sh` | Single y/n prompt every stack's destroy script calls first, cached so `--reverse destroy` asks once |
+| `eks-prepare-destroy.sh` | Pre-destroy EKS cleanup — suspends Flux, disables blocking webhooks, sweeps orphaned EBS volumes; the CSI volume reclaim itself moved to `k8s-reclaim-csi-volumes.sh` |
 | `eks-recycle-bootstrap-nodes.sh` | Recycles Stage 1 node-group nodes so they pick up Cilium prefix delegation |
+| `k8s-reclaim-csi-volumes.sh` | Reclaims CSI-provisioned volumes before a cluster destroy — cloud-neutral, called by both teardown paths |
+| `gke-destroy-stage2.sh` | Graceful-then-reconcile teardown of the `gke/configure` stack, never gating the cluster delete |
+| `gcp-purge-dns-records.sh` | Empties a Cloud DNS zone of external-dns leftovers so `tofu destroy` can delete it |
 | `export-diagrams.sh` | Exports `.drawio` architecture diagrams to PNG |
 | `cleanup-benchmark-images.sh` | Cleans up images left behind by the image-gallery/benchmark scripts |
 | `image-gallery-benchmark.sh` | Benchmarks the image-gallery demo path |

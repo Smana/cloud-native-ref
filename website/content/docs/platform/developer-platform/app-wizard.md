@@ -2,7 +2,7 @@
 title: App Wizard
 weight: 30
 description: A guided form that opens the same PR a hand-written App claim would, with live validation, a render preview, and an AI-assisted describe mode.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-27
 ---
 
 There are **two ways** to declare an application on this platform. Both end
@@ -29,7 +29,7 @@ The wizard clones **two** repositories at startup: this one (for the `App`
 schema, stacks, and its own config) and
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)
 at the tag pinned in `apps/platform/app-wizard/app.yaml`'s
-`fetch-crossplane-configuration` init container — currently `v0.3.1`, the
+`fetch-crossplane-configuration` init container — currently `v0.4.1`, the
 same tag pinned in
 `infrastructure/base/crossplane/configuration/configuration-packages.yaml`.
 This is a deliberate coupling, not an accident: if the wizard's clone drifts
@@ -46,16 +46,12 @@ and it opens the PR under your own GitHub identity.
 
 ### Signing in
 
-You authenticate with **Zitadel (SSO)** — the same single sign-on used
-elsewhere on the platform. Because every pull request opens as *you* on
-GitHub, you also **connect your GitHub account once**: after signing in,
-the wizard shows a "Connect GitHub" prompt; follow it, authorize, and it's
-remembered for future sessions. Until GitHub is connected, "Open PR" stays
-disabled — everything else (the form, live validation, preview) works
-without it.
-
-> In local/dev deployments the wizard may run in a plain GitHub-login mode
-> instead; there is no separate connect step there.
+You sign in with **GitHub** (`auth.mode: github` in
+`apps/platform/app-wizard/wizard.yaml`). Because every pull request opens
+as *you* on GitHub, the sign-in doubles as the authorization the wizard
+needs — there is no separate "connect" step, and it's remembered for future
+sessions. The binary ships GitHub and a local `dev` auth mode only; there
+is no SSO integration.
 
 The first screen shows only the essentials — name, stack, image, and how
 the app is exposed — with everything else (database, cache, autoscaling,
@@ -138,7 +134,10 @@ and [Data services]({{< relref "/docs/platform/developer-platform/data-services.
 The `app-wizard` binary can do the boring, error-prone parts for you —
 generate the three files (including the parent-kustomization edit) and run
 the same schema / CEL / secret / render gates — without GitHub or a
-cluster:
+cluster. The binary is built and released by the upstream
+[`Smana/app-wizard`](https://github.com/Smana/app-wizard) repository
+(extracted from this repo in the SPEC-009 split — the wizard no longer builds
+from this repository; the deployed image is `ghcr.io/smana/app-wizard`):
 
 ```bash
 # from the repo root
