@@ -207,9 +207,29 @@ locals {
   # "readwrite" else "roles/storage.objectViewer"`), and hasOnly matches exact
   # role names, so they belong in this allowlist verbatim, the same way the
   # custom DNS role's deterministic name does.
+  #
+  # legacyBucketReader is here for ONE permission: storage.buckets.get. The
+  # barman-cloud plugin calls it before every archive, objectAdmin does not
+  # carry it, and without it every WAL push and base backup on gcp-0 returned
+  # `403 storage.buckets.get denied (or it may not exist)` -- ambiguous between
+  # "no permission" and "no bucket", which is why it read as a missing bucket.
+  #
+  # Adding it to the allowlist widens what Crossplane may grant by exactly that
+  # one permission, and by nothing else. Measured, not assumed: every other
+  # permission legacyBucketReader carries (objects.list, folders.get/list,
+  # managedFolders.get/list, multipartUploads.list) is ALREADY inside
+  # objectAdmin, which is on this list. Reading a bucket's metadata is strictly
+  # weaker than the object read/write/delete already grantable here, and the
+  # `resource.name.startsWith` clause below still confines it to ogenki- buckets.
+  #
+  # A custom role holding storage.buckets.get alone would be narrower still, by
+  # objects.list. Not worth it: the composition would have to interpolate a
+  # project-scoped role name, which means a release and a pin bump to change one
+  # permission that objectAdmin's objects.list already implies you can enumerate.
   crossplane_bucket_grantable_roles = [
     "roles/storage.objectAdmin",
     "roles/storage.objectViewer",
+    "roles/storage.legacyBucketReader",
   ]
 
   # TRAP 1, and it is silent: `projects/` takes the project NUMBER while
