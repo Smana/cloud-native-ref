@@ -46,4 +46,4 @@ spec:
     #
     # A released tag closes that: chart and image are cut from the same commit by
     # the same release, and the image is immutable.
-    tag: v0.16.0
+    tag: v0.16.1

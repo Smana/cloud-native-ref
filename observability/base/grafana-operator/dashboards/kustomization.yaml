@@ -6,7 +6,21 @@ resources:
   - runlore.yaml
   - kubernetes-karpenter.yaml
   - kubernetes-node-exporter-full.yaml
-  - kubernetes-views-global.yaml
-  - kubernetes-views-namespaces.yaml
-  - kubernetes-views-nodes.yaml
-  - kubernetes-views-pods.yaml
+
+# The four kubernetes-views-* dashboards were here until 2026-08-28 and are gone
+# because victoria-metrics-k8s-stack ALREADY SHIPS THEM, and shipping them twice
+# is worse than shipping them once.
+#
+# They are the same dashboards -- dotdc/grafana-dashboards-kubernetes -- and they
+# carried the same Grafana UIDs (k8s_views_global, …). Two GrafanaDashboard CRs
+# with one UID do not coexist: both reported "Dashboard was successfully applied
+# to 1 instances" while overwriting each other on every reconcile, so what the UI
+# showed depended on which reconciled last.
+#
+# The chart's copy wins on merit, not seniority: it is VENDORED as inline JSON and
+# version-matched to the stack, while these fetched raw.githubusercontent.com at
+# runtime from dotdc's `master` -- an unpinned external dependency in the
+# reconcile path, on a branch that can change under us.
+#
+# kubernetes-node-exporter-full stays: the chart's equivalent is gated on a
+# clusterMetric and is not deployed here, so ours is the only one.
