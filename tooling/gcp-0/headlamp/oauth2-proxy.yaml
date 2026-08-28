@@ -15,6 +15,26 @@ spec:
         kind: HelmRepository
         name: oauth2-proxy
       interval: 12h
+
+  # THE FIRST INSTALL WILL TIME OUT AT BOOTSTRAP, and without this it stays dead.
+  #
+  # oauth2-proxy cannot start until `headlamp-oauth2-proxy` exists in the secret
+  # store AND External Secrets has been granted access to it -- both of which
+  # happen after this HelmRelease first reconciles, by
+  # zitadel-oidc-clients.sh and `secret-store.sh grant`. So the Deployment sits
+  # in CreateContainerConfigError, Helm times out, and Flux records
+  #     Stalled=True RetriesExceeded: Failed to install after 1 attempt(s)
+  # and never tries again -- the exact state this hit on 2026-08-28, which needed
+  # a manual `flux reconcile --force` to clear.
+  #
+  # retries: 3 is the same shape cert-manager, kyverno and crossplane use here.
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+
   values:
     # Without this the chart names everything <release>-<chart>, i.e.
     # `headlamp-oauth2-proxy-oauth2-proxy`, and the HTTPRoute beside this file
