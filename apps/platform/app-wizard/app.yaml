@@ -24,20 +24,21 @@ spec:
     # the SPEC-009 split). The image ships neutral; wizard.yaml supplies this
     # platform's config.
     #
-    # Immutable <branch>-<short-sha> tag from Smana/app-wizard's build workflow.
-    # It understands wizard.yaml (config-file layer), derives the claim GVK from
-    # the XRD, and ships github+dev auth only. Bump to the newest main-<short-sha>
-    # when the upstream wizard changes.
+    # Release tag from Smana/app-wizard. The wizard understands wizard.yaml
+    # (config-file layer), derives the claim GVK from the XRD, and ships
+    # github+dev auth only.
     #
-    # Pinned by SHA rather than by the v0.2.0 semver tag on purpose: upstream
-    # derives that tag from a Dockerfile ARG on every main build, so it gets
-    # reassigned to a new image whenever someone forgets to bump it (v0.1.0 moved
-    # from the July image to the August one exactly that way). main-<sha> is the
-    # only genuinely immutable tag it publishes.
+    # Now pinned to the semver tag rather than main-<sha>. The previous comment
+    # here warned that upstream derived its semver tag from a Dockerfile ARG on
+    # every main build — so it was reassigned whenever someone forgot to bump it,
+    # and v0.1.0 silently moved from the July image to the August one. That is
+    # fixed upstream: a semver tag is now produced ONLY by a `v*` git tag push, so
+    # vX.Y.Z can only ever name the commit that was tagged.
     #
-    # main-61abd7d == release v0.2.0.
+    # Bump to the newest release tag. Do NOT use `v0.2` or `latest` — those float
+    # by design and would let a reconcile change what is deployed.
     repository: ghcr.io/smana/app-wizard
-    tag: "main-61abd7d"
+    tag: "v0.2.1"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
