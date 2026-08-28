@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tooling
+
+# Headlamp on GKE, authenticated by a proxy instead of by the cluster.
+#
+# aws-0 uses the plain base: EKS is told to trust ZITADEL, Headlamp forwards the
+# user's id_token, and per-user Kubernetes RBAC works. GKE offers no equivalent,
+# and the feature that used to (Identity Service for GKE) is deprecated as of
+# 2026-07-01 and gone in 1.37+. ADR-0026 records the choice and what it costs.
+#
+# The pieces only make sense together:
+#   oauth2-proxy.yaml            authenticates the human against ZITADEL
+#   headlamp-proxy-auth.yaml     Headlamp trusts its headers, drops OIDC
+#   httproute-oauth2-proxy.yaml  routes via the proxy AND strips spoofable headers
+#   network-policy.yaml          makes the proxy the only path to Headlamp
+resources:
+  - ../../base/headlamp
+  - externalsecret-oauth2-proxy.yaml
+  - oauth2-proxy.yaml
+  - network-policy.yaml
+
+patches:
+  - path: headlamp-proxy-auth.yaml
+    target:
+      group: helm.toolkit.fluxcd.io
+      kind: HelmRelease
+      name: headlamp
+  - path: httproute-oauth2-proxy.yaml
+    target:
+      group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: headlamp

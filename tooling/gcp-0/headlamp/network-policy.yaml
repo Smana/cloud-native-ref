@@ -1,0 +1,81 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: headlamp-oauth2-proxy
+  namespace: tooling
+spec:
+  description: "Headlamp's auth proxy: in from the gateway, out to ZITADEL and headlamp"
+  endpointSelector:
+    matchLabels:
+      k8s:app.kubernetes.io/name: oauth2-proxy
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          # L7 DNS inspection, without which no toFQDNs rule anywhere can work.
+          # Not needed by the rules below -- they use toEntities -- but omitting
+          # it is the trap documented in .claude/rules/cilium-network-policies.md,
+          # so it stays even though nothing here depends on it yet.
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    # ZITADEL is reached over its PUBLIC hostname (auth.<public domain>), which
+    # resolves to the public Gateway's external LoadBalancer -- so this leaves the
+    # cluster and comes back, and `world` is the honest entity for it rather than
+    # a cluster-internal selector.
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # The upstream it proxies to.
+    - toEndpoints:
+        - matchLabels:
+            k8s:app.kubernetes.io/name: headlamp
+      toPorts:
+        - ports:
+            - port: "4466"
+              protocol: TCP
+
+  ingress:
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "4180"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: headlamp
+  namespace: tooling
+spec:
+  # The other half of the design: with -proxy-auth Headlamp trusts identity
+  # headers, so anything that can reach it directly can claim to be anyone. The
+  # HTTPRoute strips those headers at the edge; this makes sure the edge is the
+  # only way in, by allowing ingress ONLY from the proxy. Without it the gateway
+  # filter is a fence with the gate left open beside it -- any pod in the cluster
+  # could call headlamp:4466 with an X-Forwarded-User of its choosing.
+  description: "Headlamp accepts traffic only from its auth proxy"
+  endpointSelector:
+    matchLabels:
+      k8s:app.kubernetes.io/name: headlamp
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:app.kubernetes.io/name: oauth2-proxy
+      toPorts:
+        - ports:
+            - port: "4466"
+              protocol: TCP

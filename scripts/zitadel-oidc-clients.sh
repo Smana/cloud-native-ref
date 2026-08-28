@@ -211,6 +211,11 @@ CONSUMERS=(
   "grafana|https://grafana.${PRIVATE_DOMAIN}/login/generic_oauth|observability-victoria-metrics-k8s-stack-grafana-envvars"
   "headlamp|https://headlamp.${PRIVATE_DOMAIN}/oidc-callback|headlamp-envvars"
   "flux-ui|https://flux-ui-${CLUSTER}.${PRIVATE_DOMAIN}/oauth2/callback|security-flux-ui-oidc"
+  # gcp-0 only in practice, and harmless on aws-0 where nothing consumes it.
+  # GKE cannot be told to trust ZITADEL, so Headlamp there sits behind
+  # oauth2-proxy and the PROXY holds the OIDC client -- a second client for the
+  # same hostname, on the proxy's own callback path. ADR-0026.
+  "headlamp-proxy|https://headlamp.${PRIVATE_DOMAIN}/oauth2/callback|headlamp-oauth2-proxy"
 )
 
 # Roles are additive and idempotent: ZITADEL rejects a duplicate roleKey, so an
@@ -285,6 +290,19 @@ merge_secret() {
         flux-ui)
             jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
                '$base + {clientID: $id, clientSecret: $sec}' ;;
+        headlamp-proxy)
+            # Hyphenated keys, deliberately: the oauth2-proxy chart's
+            # `config.existingSecret` reads exactly client-id / client-secret /
+            # cookie-secret, so the blob is shaped to be consumed by a whole-blob
+            # ExternalSecret extract with no remapping.
+            #
+            # The cookie secret is generated here and then PRESERVED across runs
+            # by the `// $ck` fallback -- regenerating it on every sync would
+            # silently log every user out and look like a broken login.
+            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
+               --arg ck "$(openssl rand -base64 32 | tr -d '\n')" \
+               '$base + {"client-id": $id, "client-secret": $sec,
+                         "cookie-secret": ($base["cookie-secret"] // $ck)}' ;;
     esac
 }
 
