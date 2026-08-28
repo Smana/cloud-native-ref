@@ -104,8 +104,8 @@ done
 if [ "${pv_count:-0}" != "0" ]; then
     echo "WARNING: ${pv_count} PV(s) not reclaimed — their backing volumes may be orphaned:"
     "${KCTL[@]}" get pv -o jsonpath='{range .items[*]}{.metadata.name}{" -> "}{.spec.csi.volumeHandle}{"\n"}{end}' 2>/dev/null || true
-    echo "The cloud-side sweep is the backstop; anything still attached to a draining"
-    echo "node is caught by the NEXT destroy run."
+    echo "The cloud-side sweep (stage2-sweep-orphaned-disks) deletes these after the"
+    echo "cluster is gone. On AWS there is no equivalent step yet -- check manually."
 else
     echo "All PersistentVolumes reclaimed."
 fi

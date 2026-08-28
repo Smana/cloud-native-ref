@@ -63,6 +63,39 @@ the AWS teardown because every step of it is plain Kubernetes — what it does,
 step by step, is on the
 [AWS teardown]({{< relref "/docs/get-started/aws/teardown.md#what-eks-prepare-destroysh-does-first" >}}).
 
+**It is not sufficient on its own, and used to claim otherwise.** The reclaim can
+only run while the cluster exists, and when it runs out of time it warns and
+exits 0 — it used to say a "cloud-side sweep" would catch the rest, and no such
+step existed. The leak therefore repeated: 3 disks on 2026-08-27, **8 disks /
+43 GB** on 2026-08-28, on a cluster with more stateful workloads (two CNPG
+databases, VictoriaMetrics, VictoriaLogs, runlore, Harbor).
+
+`stage2-sweep-orphaned-disks` is that backstop, made real. It runs **after** the
+cluster is deleted — before then, a disk still attached to a draining node is not
+yet unattached and would be skipped — and removes only disks that are both
+unattached **and** carry the GKE CSI driver's own marker in their description:
+
+```
+"storage.gke.io/created-by": "pd.csi.storage.gke.io"
+```
+
+so a hand-made disk is never touched. It logs each deletion with the PVC it came
+from, and never fails the teardown.
+
+Run it by hand against any project at any time:
+
+```bash
+./scripts/gcp-sweep-orphaned-disks.sh --project <project>          # dry run
+./scripts/gcp-sweep-orphaned-disks.sh --project <project> --apply
+```
+
+{{< callout type="warning" >}}
+**AWS has the same leak and no equivalent step.** `eks-prepare-destroy.sh` shares
+the same in-cluster reclaim and the same failure mode, and 62 EBS volumes
+(~518 GB) were swept by hand after a 2026-07-21 rebuild. Nothing sweeps them
+automatically yet.
+{{< /callout >}}
+
 {{< callout type="warning" >}}
 **This step deletes PVC data unconditionally**, regardless of the reclaim policy
 a PV was created with. There is no flag that skips it. Back up anything you need
