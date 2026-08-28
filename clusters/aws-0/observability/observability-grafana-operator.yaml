@@ -6,7 +6,8 @@ metadata:
 spec:
   interval: 3m0s
   timeout: 3m0s
-  path: ./observability/base/grafana-operator
+  # NOT base/: this overlay adds the Karpenter dashboard, which is EKS-only.
+  path: ./observability/aws-0/grafana-operator
   prune: true
   sourceRef:
     kind: ExternalArtifact

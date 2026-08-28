@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# grafana-operator on aws-0: the shared base, plus the one dashboard that is
+# genuinely AWS-only.
+#
+# This overlay exists because of `dashboards/kubernetes-karpenter.yaml`. Karpenter
+# is the EKS node autoscaler; gcp-0 has none -- GKE uses node auto-provisioning
+# and `infrastructure/gcp-0/computeclass`, so 0 Karpenter pods run there and the
+# dashboard rendered a panel of empty graphs on a cluster that can never fill it.
+#
+# It moved OUT of base/ rather than being deleted from gcp-0 with a `$patch:
+# delete`, so `observability/base/grafana-operator` is now genuinely
+# cloud-neutral and gcp-0 simply does not list this. A base that needs a subtractive
+# patch to be usable is a base that is lying about being shared -- the same
+# reasoning that moved the AWS load-balancer annotations out of
+# security/base/zitadel and the Route53 issuers out of base/cert-manager-public.
+#
+# aws-0's rendered output is UNCHANGED by this move: the same GrafanaDashboard,
+# from the same file, reached through one more directory.
+resources:
+  - ../../base/grafana-operator
+  - dashboards/kubernetes-karpenter.yaml
