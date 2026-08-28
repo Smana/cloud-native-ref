@@ -27,11 +27,25 @@ patches:
   #      gcp-0 gets `xsqlinstances-gcp...` from -gcp. A claim naming the AWS one
   #      here would find no Composition at all.
   #
-  #   2. No objectStoreRecovery. The base restores ZITADEL from a specific S3
-  #      path captured in 2026-07. There is nothing equivalent to restore from
-  #      on GCS, and pointing the claim at an empty bucket fails the bootstrap
-  #      instead of starting a fresh database -- which is what this cluster
-  #      wants anyway, since its ZITADEL is its own instance with its own users.
+  #   2. objectStoreRecovery points at a GCS seed, not base's S3 one. This block
+  #      previously REMOVED the field entirely, on the grounds that "there is
+  #      nothing equivalent to restore from on GCS". That was true until
+  #      2026-08-28 and is not any more: gcp-0 now writes real backups, so a seed
+  #      was frozen the same way aws-0's is --
+  #
+  #        gcloud storage cp --recursive \
+  #          gs://<project>-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/* \
+  #          gs://<project>-ogenki-cnpg-backups/zitadel-20260828/
+  #
+  #      It matters more here than the old comment allowed. A ZITADEL that
+  #      bootstraps EMPTY loses, on every rebuild, everything
+  #      scripts/zitadel-*.sh cannot recreate: the Google IdP's user links, and
+  #      any human user -- which exists only after a first interactive login.
+  #      Restoring is what makes "the platform comes back" true rather than "the
+  #      platform is rebuilt and you log in again to re-earn your grants".
+  #
+  #      Rotate the seed the way base documents for aws-0: take a one-shot
+  #      Backup, copy the cluster prefix to a new dated one, update `path` here.
   #
   #   3. backup.bucketName points at a `${project_id}-` bucket rather than
   #      base's `${region}-` one. GCS bucket names are globally unique, so the
@@ -59,8 +73,12 @@ patches:
       - op: replace
         path: /spec/instances
         value: 1
-      - op: remove
-        path: /spec/objectStoreRecovery
+      - op: replace
+        path: /spec/objectStoreRecovery/bucketName
+        value: ${project_id}-ogenki-cnpg-backups
+      - op: replace
+        path: /spec/objectStoreRecovery/path
+        value: zitadel-20260828
       - op: replace
         path: /spec/backup/bucketName
         value: ${project_id}-ogenki-cnpg-backups
