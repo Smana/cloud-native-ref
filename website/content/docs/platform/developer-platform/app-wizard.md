@@ -29,7 +29,7 @@ The wizard clones **two** repositories at startup: this one (for the `App`
 schema, stacks, and its own config) and
 [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)
 at the tag pinned in `apps/platform/app-wizard/app.yaml`'s
-`fetch-crossplane-configuration` init container — currently `v0.4.5`, the
+`fetch-crossplane-configuration` init container — currently `v0.4.6`, the
 same tag pinned in
 `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`.
 This is a deliberate coupling, not an accident: if the wizard's clone drifts
