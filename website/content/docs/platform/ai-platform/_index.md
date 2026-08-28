@@ -29,7 +29,7 @@ plain Flux reconciliation both leave the cluster LLM-free.
 | **Autoscaling** | KEDA, three vLLM saturation triggers OR-combined, `min=1` (always warm) |
 | **Weights** | Amazon S3 Files (POSIX over S3), RWX PVC shared by a preload Job and the serving pod |
 | **GPUs** | Karpenter `gpu-l4` NodePool — single-GPU `g6` spot instances, Bottlerocket NVIDIA AMI, capped at 4 GPUs |
-| **Composition** | `crossplane-inference-service` KCL module `0.9.0`, pinned inside `crossplane-configuration-aws:v0.4.3` |
+| **Composition** | `crossplane-inference-service` KCL module `0.9.0`, pinned inside `crossplane-configuration-aws:v0.4.4` |
 
 ## Why self-host at all
 
