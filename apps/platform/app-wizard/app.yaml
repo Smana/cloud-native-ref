@@ -28,8 +28,16 @@ spec:
     # It understands wizard.yaml (config-file layer), derives the claim GVK from
     # the XRD, and ships github+dev auth only. Bump to the newest main-<short-sha>
     # when the upstream wizard changes.
+    #
+    # Pinned by SHA rather than by the v0.2.0 semver tag on purpose: upstream
+    # derives that tag from a Dockerfile ARG on every main build, so it gets
+    # reassigned to a new image whenever someone forgets to bump it (v0.1.0 moved
+    # from the July image to the August one exactly that way). main-<sha> is the
+    # only genuinely immutable tag it publishes.
+    #
+    # main-61abd7d == release v0.2.0.
     repository: ghcr.io/smana/app-wizard
-    tag: "main-a23e28f"
+    tag: "main-61abd7d"
     pullPolicy: IfNotPresent
 
   # Single stateless replica — the wizard holds no persistent state (sessions
