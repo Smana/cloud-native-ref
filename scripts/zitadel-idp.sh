@@ -57,6 +57,10 @@ set -o pipefail
 # gcloud must run as the identity OpenTofu uses, not the CLI account.
 # shellcheck source=scripts/lib/gcloud-adc.sh
 . "$(dirname "$0")/lib/gcloud-adc.sh"
+# shellcheck source=scripts/lib/cloud-secret-store.sh
+. "$(dirname "$0")/lib/cloud-secret-store.sh"
+# shellcheck source=scripts/lib/zitadel-pat.sh
+. "$(dirname "$0")/lib/zitadel-pat.sh"
 
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
@@ -101,38 +105,9 @@ done
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
 [ -r "$ACTION_FILE" ] || { echo "cannot read ${ACTION_FILE}" >&2; exit 1; }
 
-# ── secret store ──────────────────────────────────────────────────────────────
-
-store_read() {
-    case "$CLOUD" in
-        aws) aws secretsmanager get-secret-value \
-                 ${REGION:+--region "$REGION"} \
-                 --secret-id "$1" --query SecretString --output text 2>/dev/null ;;
-        gcp) gcp_gcloud secrets versions access latest \
-                 ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
-                 --secret="$1" 2>/dev/null ;;
-    esac
-}
-
 # ── zitadel api ───────────────────────────────────────────────────────────────
-#
-# The admin PAT comes from the CLUSTER, not the secret store: ZITADEL generates
-# it at FirstInstance bootstrap for the `iam-admin` machine user and the chart
-# writes it to this Secret. It is NOT
-# ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT from zitadel-envvars -- that token
-# belongs to the login client, is not authorised for the management API, and
-# answers every call here with a bare 401 that says nothing about why.
-PAT_NAMESPACE="security"
-PAT_SECRET="iam-admin-pat" # pragma: allowlist secret
 
-PAT="$(kubectl get secret "$PAT_SECRET" -n "$PAT_NAMESPACE" \
-        -o jsonpath='{.data.pat}' 2>/dev/null | base64 -d 2>/dev/null)"
-if [ -z "$PAT" ]; then
-    echo "ERROR: could not read ${PAT_NAMESPACE}/${PAT_SECRET} from the cluster." >&2
-    echo "ZITADEL writes it during FirstInstance bootstrap; if it is missing the" >&2
-    echo "setup Job has not finished:  kubectl get jobs -n ${PAT_NAMESPACE}" >&2
-    exit 1
-fi
+PAT="$(resolve_zitadel_pat)" || exit 1
 
 : "${IDP_URL:?set IDP_URL to the ZITADEL base URL, e.g. https://auth.gcp.cloud.ogenki.io}"
 

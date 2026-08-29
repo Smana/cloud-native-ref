@@ -45,6 +45,10 @@ set -o pipefail
 # gcloud must run as the identity OpenTofu uses, not the CLI account.
 # shellcheck source=scripts/lib/gcloud-adc.sh
 . "$(dirname "$0")/lib/gcloud-adc.sh"
+# shellcheck source=scripts/lib/cloud-secret-store.sh
+. "$(dirname "$0")/lib/cloud-secret-store.sh"
+# shellcheck source=scripts/lib/zitadel-pat.sh
+. "$(dirname "$0")/lib/zitadel-pat.sh"
 
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
@@ -101,113 +105,15 @@ done
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
 
-# ── secret store ──────────────────────────────────────────────────────────────
-
-store_read() {
-    case "$CLOUD" in
-        aws) aws secretsmanager get-secret-value \
-                 ${REGION:+--region "$REGION"} \
-                 --secret-id "$1" --query SecretString --output text 2>/dev/null ;;
-        gcp) gcp_gcloud secrets versions access latest \
-                 ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
-                 --secret="$1" 2>/dev/null ;;
-    esac
-}
-
-store_exists() {
-    case "$CLOUD" in
-        aws) aws secretsmanager describe-secret ${REGION:+--region "$REGION"} \
-                 --secret-id "$1" >/dev/null 2>&1 ;;
-        gcp) gcp_gcloud secrets describe "$1" ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
-                 >/dev/null 2>&1 ;;
-    esac
-}
-
-# Write JSON on stdin to secret $1, creating or adding a version.
-# Goes through a private temp file: the AWS CLI cannot read --cli-input-json
-# from a pipe (it needs a seekable file) and fails with "Invalid JSON received".
-store_write() {
-    local name="$1" payload
-    payload=$(umask 077 && mktemp -t zitadel-oidc.XXXXXX)
-    # shellcheck disable=SC2064
-    trap "shred -u '${payload}' 2>/dev/null || rm -f '${payload}'" RETURN
-    cat > "$payload"
-
-    case "$CLOUD" in
-        aws)
-            local body
-            body=$(umask 077 && mktemp -t zitadel-oidc-body.XXXXXX)
-            if store_exists "$name"; then
-                jq --arg id "$name" '{SecretId: $id, SecretString: (. | tostring)}' \
-                    < "$payload" > "$body"
-                aws secretsmanager put-secret-value ${REGION:+--region "$REGION"} \
-                    --cli-input-json "file://${body}" >/dev/null
-            else
-                jq --arg n "$name" --arg d "OIDC client for ${CLUSTER}. Written by zitadel-oidc-clients.sh." \
-                   '{Name: $n, Description: $d, SecretString: (. | tostring)}' \
-                    < "$payload" > "$body"
-                aws secretsmanager create-secret ${REGION:+--region "$REGION"} \
-                    --cli-input-json "file://${body}" >/dev/null
-            fi
-            shred -u "$body" 2>/dev/null || rm -f "$body"
-            ;;
-        gcp)
-            store_exists "$name" || gcp_gcloud secrets create "$name" \
-                ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
-                --replication-policy=automatic \
-                --labels=managed-by=zitadel-oidc-clients >/dev/null
-            gcp_gcloud secrets versions add "$name" \
-                ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
-                --data-file="$payload" >/dev/null
-            ;;
-    esac
-}
+# Provenance for secrets this script writes, read by cloud-secret-store.sh's
+# store_write. Preserves what this script wrote before the store/PAT logic
+# moved into shared libraries.
+STORE_WRITE_DESCRIPTION="OIDC client for ${CLUSTER}. Written by zitadel-oidc-clients.sh."
+STORE_WRITE_LABEL="zitadel-oidc-clients"
 
 # ── zitadel api ───────────────────────────────────────────────────────────────
 
-# The admin PAT comes from the CLUSTER, not the secret store.
-#
-# ZITADEL generates it at FirstInstance bootstrap for the `iam-admin` machine
-# user the HelmRelease declares, and the chart writes it to the `iam-admin-pat`
-# Secret. It is not the same thing as
-# ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT in zitadel-envvars: that value
-# belongs to the login client, which is not authorised for the management API
-# and answers every call here with a bare 401 -- no hint that the token is
-# simply the wrong one.
-PAT_NAMESPACE="security"
-PAT_SECRET="iam-admin-pat" # pragma: allowlist secret
-
-# Read in two steps, and never inside a pipeline. `set -e` + `pipefail` kill the
-# script the instant `kubectl get secret` fails on a missing Secret, so the
-# assignment aborts and every friendly message below becomes unreachable. With
-# kubectl's own stderr suppressed the operator gets a silent exit 1 and no clue
-# -- which is exactly how this landed on 2026-08-29.
-PAT=""
-if _pat_b64="$(kubectl get secret "$PAT_SECRET" -n "$PAT_NAMESPACE" \
-                 -o jsonpath='{.data.pat}' 2>/dev/null)"; then
-    PAT="$(printf '%s' "$_pat_b64" | base64 -d 2>/dev/null || true)"
-fi
-
-if [ -z "$PAT" ]; then
-    echo "ERROR: could not read ${PAT_NAMESPACE}/${PAT_SECRET} from the cluster." >&2
-    echo "       (context: $(kubectl config current-context 2>/dev/null || echo unknown))" >&2
-    echo >&2
-    echo "ZITADEL writes that Secret when its FirstInstance bootstrap creates the" >&2
-    echo "iam-admin machine user." >&2
-    echo >&2
-    echo "A RESTORED ZITADEL NEVER RUNS FIRSTINSTANCE, so a cluster whose database" >&2
-    echo "was bootstrapped from a backup has no such Secret and never will --" >&2
-    echo "nothing is broken and waiting will not fix it. That is the usual cause" >&2
-    echo "on aws-0, which restores from a frozen seed. Mint a PAT for the" >&2
-    echo "iam-admin machine user in the ZITADEL console and create the Secret:" >&2
-    echo >&2
-    echo "  kubectl create secret generic ${PAT_SECRET} -n ${PAT_NAMESPACE} \\" >&2
-    echo "    --from-literal=pat=<the token>" >&2
-    echo >&2
-    echo "Otherwise ZITADEL has not finished bootstrapping -- check the setup Job:" >&2
-    echo "  kubectl get jobs -n ${PAT_NAMESPACE} | grep zitadel" >&2
-    exit 1
-fi
+PAT="$(resolve_zitadel_pat)" || exit 1
 
 # The IdP base URL. Derived the same way the platform derives it, so a mismatch
 # here is a mismatch everywhere.

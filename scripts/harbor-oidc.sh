@@ -39,6 +39,8 @@ set -o pipefail
 # gcloud must run as the identity OpenTofu uses, not the CLI account.
 # shellcheck source=scripts/lib/gcloud-adc.sh
 . "$(dirname "$0")/lib/gcloud-adc.sh"
+# shellcheck source=scripts/lib/cloud-secret-store.sh
+. "$(dirname "$0")/lib/cloud-secret-store.sh"
 
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
@@ -65,7 +67,7 @@ done
 
 [ "$COMMAND" = "sync" ] || { echo "usage: harbor-oidc.sh sync --cluster <name> --cloud <aws|gcp> [--apply]" >&2; exit 2; }
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
-[ -n "$CLOUD" ]   || { echo "--cloud is required" >&2; exit 2; }
+case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
 
 : "${PRIVATE_DOMAIN:?set PRIVATE_DOMAIN, e.g. priv.gcp.ogenki.io}"
 
@@ -80,17 +82,6 @@ if [ -z "$HARBOR_PASSWORD" ]; then
     echo "ERROR: could not read tooling/harbor-admin-password from the cluster." >&2
     exit 1
 fi
-
-store_read() {
-    case "$CLOUD" in
-        aws) aws secretsmanager get-secret-value --secret-id "$1" \
-                 ${REGION:+--region "$REGION"} \
-                 --query SecretString --output text 2>/dev/null ;;
-        gcp) gcp_gcloud secrets versions access latest --secret="$1" \
-                 ${GCP_PROJECT:+--project "$GCP_PROJECT"} 2>/dev/null ;;
-        *)   echo "unknown cloud: $CLOUD" >&2; return 1 ;;
-    esac
-}
 
 api() {
     local method="$1" path="$2"
