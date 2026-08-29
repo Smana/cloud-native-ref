@@ -99,8 +99,36 @@ spec:
       app.kubernetes.io/name: keda-operator-metrics-apiserver
   ingress:
     # kube-apiserver calls the aggregated external.metrics.k8s.io API.
+    #
+    # On EKS this is enough: the control plane's ENIs live in the VPC, so Cilium
+    # sees the real apiserver and `kube-apiserver` matches.
+    #
+    # On GKE it is not, and the failure is silent. A private control plane reaches
+    # pods through konnectivity-agent, which is an ordinary pod in kube-system --
+    # so Cilium attributes the connection to THAT pod's identity, the
+    # `kube-apiserver` entity never matches, and the SYN is dropped:
+    #
+    #   kube-system/konnectivity-agent-… <> keda/keda-operator-metrics-apiserver:6443
+    #   policy-verdict:none INGRESS DENIED … Policy denied DROPPED (TCP Flags: SYN)
+    #
+    # The visible symptom is nowhere near the cause: every kubectl call prints
+    # `external.metrics.k8s.io/v1beta1: the server is currently unable to handle
+    # the request`, the metrics apiserver is Running and answers /healthz 200 on a
+    # port-forward, and KEDA silently does not autoscale. It is not a firewall
+    # rule -- a rule opening 6443 from the master CIDR changes nothing, because
+    # the traffic never carries the master's address.
     - fromEntities:
         - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+    # Inert on EKS, which runs no konnectivity-agent, so this stays in the shared
+    # base rather than becoming a gcp-0 overlay of an otherwise identical file.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: konnectivity-agent
       toPorts:
         - ports:
             - port: "6443"
