@@ -17,6 +17,25 @@ spec:
   values:
     config:
       pluginsDir: /build/plugins
+
+      # The chart's externalSecret path emits exactly three OIDC flags --
+      # -oidc-client-id, -oidc-client-secret, -oidc-idp-issuer-url -- and no
+      # others, whatever else is configured. `config.oidc.scopes` is silently
+      # ignored on this path (it only takes effect when the chart generates the
+      # Secret itself), so OIDC_SCOPES sat in the Secret being read by nobody and
+      # headlamp fell back to its built-in default, `openid profile email`.
+      #
+      # Consequence: no `groups` scope, so ZITADEL issued no groups claim, so the
+      # flatRoles action's output never reached the token and headlamp had no
+      # roles to authorize against. Nothing logged this -- the login simply
+      # failed at the end of an otherwise healthy OIDC round trip.
+      #
+      # extraArgs appends after the chart's own flags; $(OIDC_SCOPES) resolves
+      # from the same envFrom Secret, so the value stays in the secret store with
+      # the rest of the OIDC config rather than being duplicated here.
+      extraArgs:
+        - -oidc-scopes=$(OIDC_SCOPES)
+
       oidc:
         secret:
           create: false

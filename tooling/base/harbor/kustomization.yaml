@@ -4,6 +4,7 @@ namespace: tooling
 
 resources:
   - externalsecret-admin-password.yaml
+  - externalsecret-oidc.yaml
   - externalsecret-valkey-password.yaml
   - helmrelease-harbor.yaml
   - serviceaccount-harbor.yaml

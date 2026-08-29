@@ -476,15 +476,21 @@ gen_password() {
 }
 
 # The JSON body for one generatable secret, on stdout.
+#
+# Every generated/derived password goes into jq on STDIN via `-Rs`, never as
+# --arg -- --arg puts it on jq's argv, readable by any process on the box via
+# /proc/<pid>/cmdline for as long as jq runs. Same class of leak closed in
+# zitadel-idp.sh and zitadel-oidc-clients.sh; this is the same fix applied to
+# every password this function seeds.
 seed_body() {
     case "$1" in
         harbor-admin-password)
-            jq -n --arg p "$(gen_password)" '{password: $p}' ;;
+            printf '%s' "$(gen_password)" | jq -Rs '{password: .}' ;;
         harbor-valkey-password)
-            jq -n --arg p "$(gen_password)" '{REDIS_PASSWORD: $p}' ;;
+            printf '%s' "$(gen_password)" | jq -Rs '{REDIS_PASSWORD: .}' ;;
         observability-victoria-metrics-k8s-stack-grafana-envvars)
-            jq -n --arg p "$(gen_password)" \
-                '{GF_SECURITY_ADMIN_USER: "admin", GF_SECURITY_ADMIN_PASSWORD: $p}' ;;
+            printf '%s' "$(gen_password)" | jq -Rs \
+                '{GF_SECURITY_ADMIN_USER: "admin", GF_SECURITY_ADMIN_PASSWORD: .}' ;;
         # Globs, so one arm serves both spellings: `cnpg/...` on AWS and
         # `cnpg-...` on GCP. The username is not decoration -- the ExternalSecret
         # reads `property: username` as well as `password`, so a body carrying
@@ -492,7 +498,7 @@ seed_body() {
         cnpg?xplane-harbor?roles?harbor)
             # Must match spec.roles[].name on the claim: CNPG creates the role
             # under that name and Harbor connects as it.
-            jq -n --arg p "$(gen_password)" '{username: "harbor", password: $p}' ;;
+            printf '%s' "$(gen_password)" | jq -Rs '{username: "harbor", password: .}' ;;
         cnpg?xplane-zitadel?superuser)
             # DERIVED, not generated -- the one arm here that reads rather than
             # rolls, and the reason is that this credential has two owners.
@@ -526,7 +532,7 @@ seed_body() {
                 echo "generating a password here would silently disagree with it." >&2
                 return 1
             fi
-            jq -n --arg p "$_admin" '{username: "postgres", password: $p}' ;;
+            printf '%s' "$_admin" | jq -Rs '{username: "postgres", password: .}' ;;
         *)
             echo "no generator for $1" >&2; return 1 ;;
     esac

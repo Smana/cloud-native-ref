@@ -27,17 +27,7 @@ Everything below is machinery in service of those three.
 
 ## The chain
 
-```
-Google Workspace          the source of truth for who you are
-        │  OIDC
-        ▼
-ZITADEL                   the broker: user, project roles, claims
-        │  OIDC + a `groups` / `roles` claim
-        ├──────────────► Grafana        (direct OIDC)
-        ├──────────────► Flux UI        (direct OIDC + impersonation)
-        ├──────────────► Harbor         (direct OIDC, DB-configured)
-        └──────────────► Headlamp       (differs by cloud — see below)
-```
+![One Google Workspace account is the only user directory; ZITADEL brokers it, creating a user on first login through isAutoCreation, holding the platform project with its admin, backend, frontend and data roles, and running the flatRoles Action that flattens those roles into the groups claim Headlamp and the Flux UI read and the roles claim Grafana reads; the token it issues carries every client of the project plus the project id in its audience, which is what the EKS OIDC provider is pinned to; Grafana, the Flux UI, Harbor and Headlamp each consume that token, and the two clouds diverge at the Kubernetes API, where EKS trusts ZITADEL directly and turns the groups claim into real Kubernetes groups while GKE cannot and puts oauth2-proxy in front of Headlamp instead](/images/diagrams/authentication-chain.svg)
 
 ### Google Workspace → ZITADEL
 
@@ -92,10 +82,15 @@ every Grafana user silently landing on `Viewer`.
 | **Harbor** | direct OIDC | `oidc_auth` mode, auto-onboard on first login |
 | **Headlamp** | **differs by cloud** | see below |
 
-Harbor is worth one note: its authentication is **not chart configuration**.
-`auth_mode`, the endpoint, the client and the scopes live in Harbor's *database*
-and are written through its API at runtime, so no manifest can express them —
-`scripts/harbor-oidc.sh` applies them.
+Harbor is worth one note: it stores `auth_mode` and the OIDC settings in its own
+*database*, not in a config file — but the chart can still set them
+declaratively. `core.configureUserSettings` renders into the `CONFIG_OVERWRITE_JSON`
+env var Harbor's core container reads at startup, which writes those fields to
+the database itself and locks them read-only thereafter. The client id and
+secret reach it the same way every other consumer gets theirs — an
+`ExternalSecret` synced from the `harbor-oidc` store entry — via the
+`HelmRelease`'s `valuesFrom`. See
+[ADR-0028]({{< relref "/docs/decisions/0028-harbor-oidc-config-overwrite-json.md" >}}).
 
 ## Reaching the Kubernetes API
 
@@ -109,6 +104,7 @@ EKS accepts an OIDC identity provider directly:
 ```hcl
 identity_providers = {
   zitadel = {
+    client_id      = "388445486190712688" # the platform PROJECT id, not an app
     issuer_url     = "https://auth.cloud.ogenki.io"
     username_claim = "email"
     groups_claim   = "groups"
@@ -119,6 +115,27 @@ identity_providers = {
 So a token issued by ZITADEL *is* a Kubernetes identity. The `groups` claim
 becomes real Kubernetes groups, and `security/base/rbac/admin.yaml` binds the
 `admin` group to `cluster-admin`. Headlamp simply forwards the user's token.
+
+{{< callout type="warning" >}}
+**`client_id` is a project id, and that is deliberate.** EKS compares it against
+the token's `aud`, and ZITADEL issues an audience holding *every* client of the
+project plus the project id itself:
+
+```
+[grafana, flux-ui, harbor, headlamp, headlamp-proxy, 388445486190712688]
+```
+
+Pin the project id and any client in `platform` is accepted, so adding a
+consumer needs no change here. Pin one application's client id and that one app
+works while every other is rejected — after a completely healthy OIDC round
+trip, with no error logged by ZITADEL, by the consumer, or by the API server.
+That was live on `aws-0` until 2026-08-29 and cost an evening to find.
+
+Correcting it is not a plan-and-apply: an EKS identity provider config is
+immutable, so it must be disassociated and re-associated — roughly 20 minutes
+each way, with OIDC auth to the API server down in between. IAM authentication,
+which `aws eks get-token` kubeconfigs use, keeps working throughout.
+{{< /callout >}}
 
 ### gcp-0 — it does not, and cannot
 

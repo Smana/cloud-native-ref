@@ -51,6 +51,19 @@ spec:
                 path: /spec/strategy
                 value:
                   type: Recreate
+  # Harbor's auth_mode/OIDC settings live in its database, not its config
+  # file -- core.configureUserSettings renders CONFIG_OVERWRITE_JSON, which
+  # Harbor writes to that database itself at container startup. `literal:
+  # true` is required: the value is a JSON blob, and without it valuesFrom
+  # would run the string through Helm's `--set` parser (commas, colons and
+  # quotes would be reinterpreted as --set syntax rather than taken as-is).
+  # See ADR-0028; the ExternalSecret is externalsecret-oidc.yaml.
+  valuesFrom:
+    - kind: Secret
+      name: harbor-oidc-config
+      valuesKey: config-overwrite-json
+      targetPath: core.configureUserSettings
+      literal: true
   values:
     fullnameOverride: "harbor"
     expose:

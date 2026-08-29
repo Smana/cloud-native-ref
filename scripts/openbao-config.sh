@@ -332,17 +332,23 @@ init_openbao() {
     fi
 
     log_message "INFO" "Storing root token..."
-    root_token_value=$(jq -n --arg token "$root_token" '{"token": $token}')
+    # On STDIN via `-Rs`, not --arg -- --arg puts the root token on jq's argv,
+    # readable by any process on the box via /proc/<pid>/cmdline for as long
+    # as jq runs. Same class of leak closed in zitadel-idp.sh and
+    # zitadel-oidc-clients.sh.
+    root_token_value=$(printf '%s' "$root_token" | jq -Rs '{"token": .}')
     if ! secret_write "$ROOT_TOKEN_SECRET_NAME" "$root_token_value"; then
         log_message "ERROR" "Failed to store root token"
         exit 1
     fi
 
     log_message "INFO" "Storing recovery keys..."
-    recovery_value=$(jq -n \
-        --argjson keys "$recovery_keys" \
-        --argjson threshold "$RECOVERY_THRESHOLD" \
-        '{"recovery_keys": $keys, "recovery_key": $keys[0], "threshold": $threshold}')
+    # Same fix, on the array this time: $recovery_keys is already a JSON
+    # array (from `jq -c` above), so it goes in on STDIN as `.` rather than
+    # via --argjson. $RECOVERY_THRESHOLD is a plain integer, not a secret --
+    # it stays a normal --argjson.
+    recovery_value=$(printf '%s' "$recovery_keys" | jq --argjson threshold "$RECOVERY_THRESHOLD" \
+        '{"recovery_keys": ., "recovery_key": .[0], "threshold": $threshold}')
     if ! secret_write "$RECOVERY_KEYS_SECRET_NAME" "$recovery_value"; then
         log_message "ERROR" "Failed to store recovery keys"
         exit 1
