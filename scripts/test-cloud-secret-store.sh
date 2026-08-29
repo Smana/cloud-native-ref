@@ -134,7 +134,10 @@ check_log "gcp write new -> STORE_WRITE_LABEL honoured" '--labels=managed-by=uni
 # trap never fires and the payload temp file is left on disk with the secret
 # still in it. Exercised in a nested `bash -c` with errexit on, matching how
 # every real caller (zitadel-oidc-clients.sh, zitadel-idp.sh, harbor-oidc.sh)
-# actually runs this: none of them run without errexit.
+# actually runs this: all three set errexit, nounset AND pipefail. All three
+# options matter here -- two fixes for this leak passed a version of this test
+# that set errexit alone, because it is `nounset` that turns the trap's own
+# variable expansion into a fatal error. Do not weaken this line.
 FAILSTUB="$(mktemp -d)"
 cat > "$FAILSTUB/aws" <<'EOF'
 #!/usr/bin/env bash
@@ -151,7 +154,7 @@ FAILTMP="$(mktemp -d)"
 
 set +e
 PATH="$FAILSTUB:$PATH" TMPDIR="$FAILTMP" bash -c '
-    set -o errexit
+    set -o errexit -o nounset -o pipefail
     # shellcheck source=scripts/lib/cloud-secret-store.sh
     . "'"$HERE"'/lib/cloud-secret-store.sh"
     CLOUD=aws REGION=eu-west-3 GCP_PROJECT=""
@@ -163,6 +166,29 @@ check "failed write still propagates the CLI's exit code" "254" "$fail_exit"
 
 leftover="$(find "$FAILTMP" -maxdepth 1 -name 'cloud-secret*' | head -1)"
 check "failed write leaves no temp file behind" "" "$leftover"
+# Same failed write, called with a herestring instead of a pipe. A pipeline runs
+# store_write in its own subshell, which keeps the function's locals alive long
+# enough for an EXIT trap to expand them -- so the pipe case above passes even
+# against a trap that is broken. A herestring does not: errexit pops the locals
+# first, and a trap expanding $payload at fire time then dies under nounset,
+# taking its own `|| rm -f` fallback with it. zitadel-pat.sh seeds the admin PAT
+# with exactly this call form, so it is the one that matters most here.
+FAILTMP2="$(mktemp -d)"
+set +e
+PATH="$FAILSTUB:$PATH" TMPDIR="$FAILTMP2" bash -c '
+    set -o errexit -o nounset -o pipefail
+    # shellcheck source=scripts/lib/cloud-secret-store.sh
+    . "'"$HERE"'/lib/cloud-secret-store.sh"
+    CLOUD=aws REGION=eu-west-3 GCP_PROJECT=""
+    store_write probe-secret <<< "{\"pat\":\"should-never-survive-on-disk\"}"
+'
+fail_exit2=$?
+set -e
+check "herestring write propagates the CLI's exit code" "254" "$fail_exit2"
+leftover2="$(find "$FAILTMP2" -maxdepth 1 -name 'cloud-secret*' | head -1)"
+check "herestring write leaves no temp file behind" "" "$leftover2"
+rm -rf "$FAILTMP2"
+
 rm -rf "$FAILSTUB" "$FAILTMP"
 
 exit $fail

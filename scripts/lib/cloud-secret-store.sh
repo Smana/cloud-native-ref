@@ -59,7 +59,14 @@ store_write() {
         local payload body
         payload=$(umask 077 && mktemp -t cloud-secret.XXXXXX)
         body=$(umask 077 && mktemp -t cloud-secret-body.XXXXXX)
-        trap 'shred -u "$payload" "$body" 2>/dev/null || rm -f "$payload" "$body"' EXIT
+        # Paths are baked into the trap string at trap-SET time, not expanded when
+        # it fires. Two earlier attempts used '...$payload...': on an errexit abort
+        # bash pops the function's locals before running the EXIT trap, so under the
+        # `set -o nounset` every caller here uses, the trap itself died on
+        # "payload: unbound variable" -- taking the `|| rm -f` fallback with it and
+        # leaving the plaintext payload on disk. mktemp paths never contain quotes.
+        # shellcheck disable=SC2064
+        trap "shred -u '$payload' '$body' 2>/dev/null || rm -f '$payload' '$body'" EXIT
         cat > "$payload"
 
         case "$CLOUD" in
