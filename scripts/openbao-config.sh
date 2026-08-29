@@ -217,6 +217,47 @@ check_openbao_status() {
     return 1
 }
 
+# Run gcloud as the SAME identity OpenTofu uses.
+#
+# Everything else in the GCP lane authenticates with Application Default
+# Credentials -- the google provider, the GCS state backend, the GKE calls. This
+# script was the one exception: it shelled out to plain `gcloud`, which uses the
+# *CLI account* (`gcloud config get-value account`) instead. Two identities, one
+# deploy, and nothing says so until one of them is missing a grant.
+#
+# That is exactly how it failed on 2026-08-29. A fresh `gcloud auth login` left
+# the CLI account without `secretmanager.versions.access` on ogenki-435905, so
+# `openbao-config.sh ca` died with PERMISSION_DENIED reading the CA chain --
+# while ADC could read the very same secret (HTTP 200). The deploy had already
+# created the network, the OpenBao VM and GKE using ADC, so "no permission" was
+# true and misleading at the same time.
+#
+# CLOUDSDK_AUTH_ACCESS_TOKEN makes gcloud use a token we hand it. If ADC is not
+# configured we fall back to the CLI account, which is the old behaviour and
+# still right on a workstation that only ever uses `gcloud auth login`.
+# The log lines below go to STDERR deliberately: gcp_gcloud is called from
+# secret_read, whose STDOUT *is* the secret value. Logging to stdout here put
+# a timestamped log line inside .tls/ca.pem, which then fails TLS verification
+# in a way that points at the certificate rather than at this function.
+_gcloud_adc_token=""
+_gcloud_adc_resolved="false"
+gcp_gcloud() {
+    if [ "$_gcloud_adc_resolved" = "false" ]; then
+        _gcloud_adc_token=$(gcloud auth application-default print-access-token 2>/dev/null || true)
+        _gcloud_adc_resolved="true"
+        if [ -n "$_gcloud_adc_token" ]; then
+            log_message "INFO" "Using Application Default Credentials for Secret Manager (same identity as OpenTofu)" >&2
+        else
+            log_message "INFO" "No Application Default Credentials; falling back to the gcloud CLI account" >&2
+        fi
+    fi
+    if [ -n "$_gcloud_adc_token" ]; then
+        CLOUDSDK_AUTH_ACCESS_TOKEN="$_gcloud_adc_token" gcloud "$@"
+    else
+        gcloud "$@"
+    fi
+}
+
 # Write a secret value, creating the secret if it does not exist. Dispatches
 # on $CLOUD so init_openbao() and write_ca() don't need to know which backend
 # they're talking to.
@@ -226,16 +267,16 @@ secret_write() {
     local secret_value=$2
 
     if [ "$CLOUD" = "gcp" ]; then
-        if gcloud secrets describe "$secret_name" --project "$PROJECT" >/dev/null 2>&1; then
+        if gcp_gcloud secrets describe "$secret_name" --project "$PROJECT" >/dev/null 2>&1; then
             log_message "INFO" "Secret $secret_name exists, updating it..."
-            if ! printf '%s' "$secret_value" | gcloud secrets versions add "$secret_name" \
+            if ! printf '%s' "$secret_value" | gcp_gcloud secrets versions add "$secret_name" \
                 --project "$PROJECT" --data-file=- >/dev/null 2>&1; then
                 log_message "ERROR" "Failed to update secret $secret_name"
                 return 1
             fi
         else
             log_message "INFO" "Secret $secret_name does not exist, creating it..."
-            if ! printf '%s' "$secret_value" | gcloud secrets create "$secret_name" \
+            if ! printf '%s' "$secret_value" | gcp_gcloud secrets create "$secret_name" \
                 --project "$PROJECT" --replication-policy=automatic --data-file=- >/dev/null 2>&1; then
                 log_message "ERROR" "Failed to create secret $secret_name"
                 return 1
@@ -269,7 +310,7 @@ secret_read() {
     local secret_name=$1
 
     if [ "$CLOUD" = "gcp" ]; then
-        gcloud secrets versions access latest --secret "$secret_name" --project "$PROJECT"
+        gcp_gcloud secrets versions access latest --secret "$secret_name" --project "$PROJECT"
     else
         local aws_cmd; aws_cmd=$(get_aws_cmd)
         $aws_cmd secretsmanager get-secret-value --secret-id "$secret_name" \
