@@ -46,6 +46,10 @@ installs Cilium, then Flux; a final `stage3-recycle-bootstrap-nodes` job
 recycles the Stage 1 node-group nodes whose ENIs predate Cilium — a no-op once
 they use prefix delegation.
 
+`terramate script run deploy` from `opentofu/` already covers this stack, so
+these are the targeted forms — useful for re-running one stage after a failure,
+never required by the normal flow:
+
 ```bash
 cd opentofu/aws/eks/init
 terramate script run deploy                     # both stages

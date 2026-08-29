@@ -43,61 +43,69 @@ a stack expects is to read the file already sitting next to it.
 
 ## Deploy
 
-{{% steps %}}
-
-### Stages 1 and 2 — Network, then OpenBao
-
 ```bash
 cd opentofu
 terramate script run deploy
 ```
 
-No cloud flag: `TM_CLOUD` defaults to `aws`, so this builds the AWS lane and
-skips GCP. Set `TM_CLOUD=aws,gcp` (or `all`) to build both in one run — see
-[Commands]({{< relref "/docs/reference/commands.md" >}}).
+**That is the whole deploy.** One command, from `opentofu/`, for all three
+stages — that is what Terramate is for. It resolves the dependency graph and
+applies every stack in order; there is no second command, and no stage you have
+to drive by hand.
 
-**One command covers both stages** — there is no second command to run below.
-Terramate resolves the dependency graph and starts with `shared/tailscale`, the
-tailnet-wide singletons `network` declares in its `after` list, then applies
-`network`, `openbao/cluster` and `openbao/management` in order. The same run
-also applies `opentofu/shared/aws-gcp-federation` — only its `destroy` is
-gated — which the GCP lane needs and which costs nothing idle here.
+No cloud flag either: `TM_CLOUD` defaults to `aws`, so this builds the AWS lane
+and skips GCP. Set `TM_CLOUD=aws,gcp` (or `all`) to build both clouds in the same
+run — see [Commands]({{< relref "/docs/reference/commands.md" >}}).
 
-*Stage 1* creates the VPC across three availability zones, public and private
-subnets, a Route53 private hosted zone, VPC endpoints, and the Tailscale subnet
-router EC2 instance that gives you private access to everything built after this
-point.
+What that one command does, in order:
 
-*Stage 2* creates the OpenBao cluster behind a Network Load Balancer, then configures
-it. As committed, `opentofu/aws/openbao/cluster/variables.tfvars` sets
-`mode = "dev"`: a single `t3.micro` on `file` storage, which is enough to
-follow everything in these guides and is not highly available. Set
-`mode = "ha"` for the five-node Raft cluster on SPOT instances — the same
-configuration steps apply either way.
+**`shared/tailscale`** first — the tailnet-wide singletons `network` declares in
+its `after` list. The same run also applies `shared/aws-gcp-federation`, which
+belongs to the `shared` lane rather than either cloud: the GCP lane needs it and
+it costs nothing idle here.
 
-Either way, the cluster is initialized and auto-unsealed
-via AWS KMS, its root token and recovery keys are written to two separate
-AWS Secrets Manager entries, and a three-tier PKI (root → intermediate →
-leaf) plus the cert-manager AppRole are provisioned — all driven by
-`scripts/openbao-config.sh`, no manual `bao operator init`/`unseal` step
-required.
+**Stage 1 — the network.** A VPC across three availability zones, public and
+private subnets, a Route53 private hosted zone, VPC endpoints, and the Tailscale
+subnet router EC2 instance that gives you private access to everything built
+after this point.
 
-### Stage 3 — Kubernetes (EKS)
+**Stage 2 — OpenBao.** The cluster behind a Network Load Balancer, then its
+configuration. As committed, `opentofu/aws/openbao/cluster/variables.tfvars` sets
+`mode = "dev"`: a single `t3.micro` on `file` storage, enough to follow these
+guides and not highly available. Set `mode = "ha"` for the five-node Raft cluster
+on spot instances — the same configuration steps apply either way.
+
+Either way the cluster is initialized and auto-unsealed via AWS KMS, its root
+token and recovery keys are written to two separate AWS Secrets Manager entries,
+and a three-tier PKI (root → intermediate → leaf) plus the cert-manager AppRole
+are provisioned — all driven by `scripts/openbao-config.sh`, with no manual
+`bao operator init` / `unseal` step.
+
+**Stage 3 — Kubernetes.** `aws/eks/init` runs a two-stage bootstrap internally:
+the EKS cluster comes up with the temporary VPC-CNI bootstrap addon, then that is
+replaced with Cilium (which also replaces kube-proxy) and the Flux Operator and
+Instance are installed — the point at which the cluster starts reconciling the
+rest of this repository from Git. A third internal step recycles any node-group
+node whose ENIs predate Cilium so it can pick up prefix delegation (see
+`opentofu/aws/eks/init/workflows.tm.hcl`).
+
+{{< callout type="info" >}}
+`aws/eks/configure` is applied twice — once by `eks/init`'s stage 2, which shells
+into it, and once as its own stack when Terramate reaches it. The second apply is
+a no-op, so this is waste rather than breakage, but it is why the run reports one
+more stack than you might expect. GKE does the same thing.
+{{< /callout >}}
+
+### Deploying one stack on its own
+
+Rarely needed, and never required by the flow above — but each stack's script
+also runs from its own directory, which is useful when re-running a single stage
+after a failure:
 
 ```bash
 cd opentofu/aws/eks/init
-terramate script run deploy
+terramate script run deploy          # just the Kubernetes stage
 ```
-
-A separate command because this stack runs a two-stage bootstrap internally:
-first the EKS cluster comes up with the temporary VPC-CNI bootstrap addon,
-then that gets replaced with Cilium (which also replaces kube-proxy) and the
-Flux Operator + Instance are installed — the point at which the cluster
-starts reconciling the rest of this repository from Git. A third internal
-step recycles any node-group node whose ENIs predate Cilium, so it can pick
-up prefix delegation (see `opentofu/aws/eks/init/workflows.tm.hcl`).
-
-{{% /steps %}}
 
 ## Verify
 
