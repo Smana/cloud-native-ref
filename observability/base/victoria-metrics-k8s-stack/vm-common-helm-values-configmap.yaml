@@ -221,7 +221,6 @@ data:
       "grafana.ini":
         feature_toggles:
           enable: externalServiceAccounts
-          accessControlOnCall: 'false'
         server:
           root_url: "https://grafana.${private_domain_name}"
           domain: "grafana.${private_domain_name}"
@@ -244,17 +243,6 @@ data:
         userKey: "GF_SECURITY_ADMIN_USER"
         passwordKey: "GF_SECURITY_ADMIN_PASSWORD"
       envFromSecret: "victoria-metrics-k8s-stack-grafana-envvars"
-      extraVolumes:
-        - name: "plugin-provisioning-oncall"
-          configMap:
-            name: "grafana-provisioning"
-            items:
-              - key: "plugin-oncall.yaml"
-                path: "plugin-oncall.yaml"
-      extraVolumeMounts:
-        - name: "plugin-provisioning-oncall"
-          mountPath: "/etc/grafana/provisioning/plugins/oncall.yaml"
-          subPath: "plugin-oncall.yaml"
     # Do not scrape controlplane components as it is a managed service on EKS
     kubeApiServer:
       enabled: false
