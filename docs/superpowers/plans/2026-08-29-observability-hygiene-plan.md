@@ -707,6 +707,7 @@ git commit -m "docs(adr): record RunLore-over-OnCall, Vector-as-shipper, and the
 ### Task 13: Docs — update everything this branch changed
 
 **Files (grep-verify the full list first):**
+- Modify: `CLAUDE.md` (line ~279 says OnCall "is built under observability/base/grafana-oncall/ … does not run" — now a deleted path; reword to "was removed on 2026-08-29, see ADR-0029". Also fix its Grafana-OnCall mention in the Tailscale gateway section if present.)
 - Modify: `website/content/docs/platform/observability/_index.md`
 - Modify: `website/content/docs/platform/observability/dashboards-and-alerts.md`
 - Modify: `website/content/docs/platform/observability/logs.md`
