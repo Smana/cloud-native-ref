@@ -80,4 +80,32 @@ bound_empty="$(jq -r --arg t "4" --arg a "act1" \
     '.flow.triggerActions[]? | select(.triggerType.id == $t) | .actions[]?.id | select(. == $a)' <<< '{}')"
 check "flow: empty document -> not bound, no error" "" "$bound_empty"
 
+# ── round 1 fix: the client secret must not reach jq's argv ─────────────────
+#
+# Static, not behavioural: a functional round-trip test can't tell "the
+# secret went in via stdin" from "the secret went in via --arg" -- both jq
+# constructions produce byte-identical JSON for a normal secret. Only reading
+# the source distinguishes them, so that's what this checks, against the real
+# file rather than a restatement of it.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+leaks="$(grep -n -- '--arg[[:space:]]\+cs\b' "$HERE/zitadel-idp.sh" || true)"
+check "no client secret passed as a jq argv value" "" "$leaks"
+
+# Functional companion: google_idp_payload's actual construction (restated,
+# same caveat as the top of this file) round-trips a secret containing
+# characters that would be easy to mis-escape.
+IDP_NAME="Google Workspace"
+google_idp_payload() {
+    local ci="$1" cs="$2"
+    printf '%s' "$cs" | jq -Rs --arg n "$IDP_NAME" --arg ci "$ci" \
+        '{name: $n, clientId: $ci, clientSecret: .,
+          scopes: ["openid","profile","email"],
+          providerOptions: {isLinkingAllowed: true, isCreationAllowed: true,
+                            isAutoCreation: true, isAutoUpdate: true}}'
+}
+tricky_secret='we!rd"secret\1`with`backtick\and\\backslash'
+payload="$(google_idp_payload "client-123" "$tricky_secret")"
+check "payload: clientId preserved"     "client-123"     "$(jq -r '.clientId' <<< "$payload")"
+check "payload: tricky secret round-trips" "$tricky_secret" "$(jq -r '.clientSecret' <<< "$payload")"
+
 exit "$fail"

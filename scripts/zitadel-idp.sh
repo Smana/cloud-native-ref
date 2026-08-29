@@ -186,6 +186,29 @@ idp_id_by_name() {
 # the delete+recreate the old comment warned against, it does not touch user
 # links -- those are keyed off the IdP's id, which an in-place update leaves
 # untouched.
+# The secret goes in via stdin (-Rs reads it as one raw string, so `.` is the
+# secret), never as a jq --arg -- argv is world-readable for the life of the
+# process via /proc/<pid>/cmdline, and a Google OAuth client secret is exactly
+# the kind of credential that rule exists for. Shared by CREATE and UPDATE on
+# purpose: two copies of this construction is how one of them quietly stops
+# matching the other.
+#
+# isAutoCreation/isAutoUpdate: a Workspace user logging in for the first time
+# gets a ZITADEL user created from their Google profile, and later profile
+# changes follow. Without them the login succeeds and then dead-ends on "user
+# not found", which is the least helpful possible outcome.
+#
+# isLinkingAllowed lets an existing local user attach Google rather than
+# ending up with two accounts for one human.
+google_idp_payload() {
+    local ci="$1" cs="$2"
+    printf '%s' "$cs" | jq -Rs --arg n "$IDP_NAME" --arg ci "$ci" \
+        '{name: $n, clientId: $ci, clientSecret: .,
+          scopes: ["openid","profile","email"],
+          providerOptions: {isLinkingAllowed: true, isCreationAllowed: true,
+                            isAutoCreation: true, isAutoUpdate: true}}'
+}
+
 ensure_idp() {
     local blob client_id client_secret template existing existing_client_id
 
@@ -207,6 +230,11 @@ ensure_idp() {
     existing="$(jq -r '.id // empty' <<< "${template:-null}")"
 
     if [ -n "$existing" ]; then
+        # clientId only -- ZITADEL never echoes a stored clientSecret back on
+        # a GET or a search result (same reason this script never prints one),
+        # so a secret-only rotation (same clientId, regenerated secret) is
+        # invisible to this comparison. That is an API constraint, not a gap:
+        # there is nothing here to read and compare it against.
         existing_client_id="$(jq -r '.config.google.clientId // empty' <<< "$template")"
         if [ "$existing_client_id" = "$client_id" ]; then
             echo "[ok     ] IdP '${IDP_NAME}' (${existing}), client id correct"
@@ -218,11 +246,7 @@ ensure_idp() {
             echo "           would update in place (client secret untouched on screen, user links kept)"
             return 0
         fi
-        jq -n --arg n "$IDP_NAME" --arg ci "$client_id" --arg cs "$client_secret" \
-            '{name: $n, clientId: $ci, clientSecret: $cs,
-              scopes: ["openid","profile","email"],
-              providerOptions: {isLinkingAllowed: true, isCreationAllowed: true,
-                                isAutoCreation: true, isAutoUpdate: true}}' \
+        google_idp_payload "$client_id" "$client_secret" \
             | api PUT "/admin/v1/idps/google/${existing}" -d @- >/dev/null
         echo "[updated] IdP '${IDP_NAME}' (${existing}) client id -> ${client_id}"
         return 0
@@ -233,20 +257,8 @@ ensure_idp() {
         return 0
     fi
 
-    # isAutoCreation/isAutoUpdate: a Workspace user logging in for the first time
-    # gets a ZITADEL user created from their Google profile, and later profile
-    # changes follow. Without them the login succeeds and then dead-ends on "user
-    # not found", which is the least helpful possible outcome.
-    #
-    # isLinkingAllowed lets an existing local user attach Google rather than
-    # ending up with two accounts for one human.
     local resp id
-    resp="$(jq -n --arg n "$IDP_NAME" --arg ci "$client_id" --arg cs "$client_secret" \
-        '{name: $n, clientId: $ci, clientSecret: $cs,
-          scopes: ["openid","profile","email"],
-          providerOptions: {isLinkingAllowed: true, isCreationAllowed: true,
-                            isAutoCreation: true, isAutoUpdate: true}}' \
-        | api POST /admin/v1/idps/google -d @-)"
+    resp="$(google_idp_payload "$client_id" "$client_secret" | api POST /admin/v1/idps/google -d @-)"
     id="$(jq -r '.id // empty' <<< "$resp")"
     if [ -z "$id" ]; then
         echo "[FAILED ] IdP creation returned no id: $(jq -c '.' <<< "$resp" | head -c 200)" >&2
