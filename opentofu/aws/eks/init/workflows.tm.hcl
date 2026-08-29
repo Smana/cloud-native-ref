@@ -126,15 +126,27 @@ script "destroy" {
     ]
   }
 
+  # Attempts a graceful teardown and NEVER gates the cluster deletion. Everything
+  # this stack manages lives inside the cluster stage 1 deletes moments later, so
+  # a failure here costs nothing -- while treating it as fatal costs the one
+  # billable resource, which is left running with no workflow path to remove it.
+  #
+  # Measured on 2026-08-29: a teardown reached this job with the cluster already
+  # deleted, so every in-cluster delete returned `the server has asked for the
+  # client to provide credentials` against an endpoint that no longer resolved in
+  # DNS. Errors about objects that had ceased to exist, failing the run. GKE hit
+  # the same wall on 2026-08-23 from the other direction (an access token that
+  # expired mid-destroy) and grew this helper; AWS kept the bare `tofu destroy`
+  # until it bit here too.
+  #
+  # The version variables carry no defaults (see configure/variables.tf), and
+  # OpenTofu requires every variable to be set on destroy as well as on apply.
   job {
     name        = "stage2-destroy-addons"
-    description = "Destroy Cilium and Flux (configure stack)"
+    description = "Attempt a graceful Cilium and Flux teardown; never blocks the cluster deletion"
     commands = [
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
-      # The three version variables carry no defaults (see configure/variables.tf),
-      # so they must be supplied here too: OpenTofu requires every variable to be
-      # set on destroy, not just on apply.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
+        "bash '${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh' attempt '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure' -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
     ]
   }
 
@@ -178,6 +190,23 @@ script "destroy" {
         global.profile,
         "--apply",
       ],
+    ]
+  }
+
+  # Runs LAST, and only here. Anything still in the configure stack's state
+  # describes an object that lived in the cluster stage 1 has now provably
+  # deleted, so it cannot exist any more and state should stop claiming it.
+  #
+  # Clearing state inside stage 2 would be wrong in the other direction: if the
+  # cluster destroy then failed, state would have been emptied for resources that
+  # are still there. Only after the cluster is confirmed gone is dropping them
+  # safe both ways.
+  job {
+    name        = "stage4-reconcile-state"
+    description = "Drop stage-2 state entries whose cluster no longer exists"
+    commands = [
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
+        "bash '${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh' reconcile '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure'"],
     ]
   }
 }

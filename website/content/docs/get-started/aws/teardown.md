@@ -18,13 +18,18 @@ cd opentofu/aws/eks/init
 terramate script run destroy
 ```
 
-Four steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
+Five steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
 
 1. **`prepare-destroy`** — runs `scripts/eks-prepare-destroy.sh` (see below).
-2. **`stage2-destroy-addons`** — destroys the `eks/configure` stack (Cilium, Flux).
+2. **`stage2-destroy-addons`** — *attempts* to destroy the `eks/configure` stack
+   (Cilium, Flux) via `scripts/destroy-stage2.sh` in its `attempt` mode. Never fatal: everything
+   that stack manages lives inside the cluster step 3 deletes anyway, so a failure
+   here must not strand the one billable resource ([why](#stage-2-never-gates-the-cluster)).
 3. **`stage1-destroy-cluster`** — destroys the `eks/init` stack (the cluster itself).
 4. **`stage3-sweep-orphaned-volumes`** — deletes the EBS volumes that were still
    detaching when step 1 swept ([why](#the-sweep-after-the-destroy)).
+5. **`stage4-reconcile-state`** — drops any stage-2 state entries left behind, now
+   that the cluster holding those objects is provably gone.
 
 ## Full teardown
 
@@ -92,6 +97,34 @@ Before OpenTofu deletes anything, the script:
   Pod Identity associations.
 - Strips finalizers from any Crossplane composite resource stuck terminating,
   so the namespace delete that follows doesn't hang forever.
+
+## Stage 2 never gates the cluster
+
+The `eks/configure` stack manages Cilium, the Flux Operator and the Flux Instance —
+all of them objects *inside* the cluster that stage 1 deletes moments later. Its
+teardown is therefore tidiness, never a prerequisite, and `scripts/destroy-stage2.sh`
+enforces that: `attempt` reports a failure and exits 0.
+
+Both clouds proved why the hard version is wrong:
+
+- **2026-08-23, GKE** — the helm and kubectl providers held an access token acquired
+  at plan time. It expired mid-destroy, stage 2 failed `Unauthorized`, and the cluster
+  and both nodes were still `RUNNING` afterwards. Finished by hand, which diverged
+  state and needed `tofu state rm`.
+- **2026-08-29, EKS** — a teardown reached stage 2 with the cluster already deleted.
+  Every in-cluster delete returned `the server has asked for the client to provide
+  credentials`, against an endpoint that no longer resolved in DNS. Errors about
+  objects that had ceased to exist, failing the run.
+
+The usual reason to be running a destroy at all is that the cluster is broken, or its
+private endpoint is unreachable because the tailnet is down — exactly when stage 2
+cannot succeed and exactly when you most need the cluster gone.
+
+`stage4-reconcile-state` cleans up afterwards. It runs **last**, once stage 1 has
+provably deleted the cluster: anything still in stage 2's state describes an object
+that lived there, so it cannot exist any more. Clearing state earlier would be unsafe
+in the other direction — if the cluster destroy then failed, state would have been
+emptied for resources that still exist.
 
 ## The sweep after the destroy
 

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 #
-# Stage-2 (gke/configure) teardown helper for the GKE destroy workflow.
+# Stage-2 (<cloud>/*/configure) teardown helper. Shared by the EKS and GKE
+# destroy workflows -- the problem it solves is identical on both, and so is
+# every line of the solution: it is pure `tofu`, with nothing cloud-specific.
 #
-# Everything the configure stack manages -- the Gateway API CRDs, Cilium, the
+# Everything a configure stack manages -- the Gateway API CRDs, Cilium, the
 # Flux Operator and the Flux Instance -- lives INSIDE the cluster that stage 1
 # deletes moments later. A graceful `tofu destroy` is preferred: on a healthy
 # cluster it uninstalls the Helm releases cleanly and leaves state empty.
@@ -12,9 +14,20 @@
 # destroy at all is that the cluster is broken, or its PRIVATE endpoint is
 # unreachable because the tailnet is down. When stage 2 is a hard prerequisite,
 # that combination leaves the one billable resource -- the cluster -- running
-# with no workflow path to remove it. That is how the 2026-08-23 teardown ended
-# up being finished by hand with gcloud, which then diverged state from reality
-# and had to be repaired with `tofu state rm`.
+# with no workflow path to remove it.
+#
+# Both clouds have now proved it:
+#
+#   2026-08-23, GKE: the helm and kubectl providers held a GCP access token
+#   acquired at plan time; it expired mid-destroy and stage 2 failed with
+#   `Unauthorized`. The cluster and both nodes were still RUNNING afterwards.
+#   Finished by hand with gcloud, which diverged state and needed `tofu state rm`.
+#
+#   2026-08-29, EKS: a teardown that had already deleted the cluster still had
+#   in-cluster objects to remove, so every delete came back `the server has
+#   asked for the client to provide credentials` -- against an API endpoint that
+#   no longer resolved in DNS. Errors for objects that had ceased to exist,
+#   reported as a failed run.
 #
 # Hence two modes, deliberately split around the cluster deletion:
 #
@@ -53,11 +66,19 @@ case "${mode}" in
 attempt)
   tofu init -lock-timeout=5m
 
-  # -refresh=false: this stack reads gke/init through terraform_remote_state,
-  # and refreshing that requires the upstream state object to exist. Once
-  # gke/init is destroyed its state is empty and no object is written, so the
-  # read fails hard. A destroy needs only this stack's own state, where the
-  # data source's last value is already cached.
+  # -refresh=false, for a reason on each cloud:
+  #
+  #   GKE: this stack reads gke/init through terraform_remote_state, and
+  #   refreshing that requires the upstream state object to exist. Once
+  #   gke/init is destroyed its state is empty and no object is written, so
+  #   the read fails hard.
+  #
+  #   EKS: eks/configure reads `data.aws_eks_cluster`, which refreshing
+  #   resolves against a cluster that may already be deleted -- the exact
+  #   situation this helper exists to survive.
+  #
+  # A destroy needs only this stack's own state, where the data source's last
+  # value is already cached.
   if tofu destroy -refresh=false -auto-approve -var-file=variables.tfvars "$@"; then
     echo "[ok] stage 2 destroyed gracefully"
     exit 0
@@ -87,7 +108,7 @@ reconcile)
     echo "[error] could not read the stage-2 state." >&2
     echo "[error] Refusing to assume it is empty: that would leave real drift" >&2
     echo "[error] behind and report success. Fix the backend, then re-run:" >&2
-    echo "[error]   bash scripts/gke-destroy-stage2.sh reconcile ${dir}" >&2
+    echo "[error]   bash scripts/destroy-stage2.sh reconcile ${dir}" >&2
     exit 1
   fi
 
