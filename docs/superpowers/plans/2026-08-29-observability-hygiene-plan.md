@@ -723,6 +723,7 @@ rg -n "nine component|eight are wired|seven of the eight|AWS-only" website/conte
 rg -n "loggen" website/content/docs/ | rg -v decisions
 rg -n "load-vl-ds-plugin|load-vm-ds-plugin|initContainer|v0.14.0|latest" website/content/docs/platform/observability/dashboards-and-alerts.md
 rg -n "No ADR in this repository records" website/content/docs/
+rg -n "aws-0/victoria-metrics-k8s-stack/vmrules" website/content/docs/   # runlore rule moved to base (known: dashboards-and-alerts.md:138, metrics.md:125)
 ```
 
 - [ ] **Step 2: `_index.md`** — rewrite the opening: eight component directories, all wired (grafana-oncall removed 2026-08-29 → ADR-0029); runlore runs on BOTH clusters (EKS Pod Identity on aws-0, GCPWorkloadIdentity on gcp-0); drop `grafana-oncall` from the component table; replace "No ADR in this repository records the comparison…" with a link to ADR-0010; update the retention sentence (single-node VictoriaMetrics now `14d`, VictoriaLogs `7d` capped, deliberate values with a pointer to the units trap); note loggen is aws-0-only; update the frontmatter `description:` (it currently advertises "why one of nine component directories never actually deploys") and `lastVerified: 2026-08-29`.
