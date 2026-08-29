@@ -13,6 +13,7 @@
 ## Global Constraints
 
 - **Shell**: `set -o errexit -o nounset -o pipefail` in every script; `shellcheck -S warning` must pass clean.
+- **Checking a script that sources a library**: pass `-x`, or list every file in the source chain. Shellcheck follows a `source` into a file only when that file is also on the command line, and it does not follow the *second* hop implicitly. `test-zitadel-pat.sh` sources `zitadel-pat.sh`, which sources `cloud-secret-store.sh`, which is what consumes `REGION`/`GCP_PROJECT` — so checking only the first two files reports SC2034 for variables that are demonstrably used. `shellcheck -S warning -x <script>` is the reliable form; the false positive is in the invocation, not the code.
 - **Never print a credential.** Tokens and client secrets go from source to sink without passing through stdout. Log statuses and lengths, never values.
 - **Log to stderr inside any function whose stdout is captured as data.** `log` to stdout from a function used in `$(...)` puts the log line inside the value — this already put a timestamped line inside `.tls/ca.pem`.
 - **Secret naming is per cloud**: AWS uses `/` (`zitadel/iam-admin-pat`), GCP forbids it and uses `-` (`zitadel-iam-admin-pat`).
