@@ -230,6 +230,15 @@ CONSUMERS=(
   "harbor|https://harbor.${PRIVATE_DOMAIN}/c/oidc/callback|harbor-oidc"
 )
 
+# The one non-secret OIDC field known to have drifted in practice: headlamp
+# needs `groups` in scope to get a groups claim at all, without which it can
+# authorize nobody. A single named source of truth for both merge_secret
+# (new app) and converge_secret (existing app, below) -- defect 4 was two
+# independent copies of this exact literal, one corrected by hand on
+# 2026-08-29 and the other never reached because nothing wrote to an existing
+# app's stored secret at all.
+HEADLAMP_OIDC_SCOPES="profile,email,groups"
+
 # Roles are additive and idempotent: ZITADEL rejects a duplicate roleKey, so an
 # existing role is left alone rather than rewritten. Granting a role to a USER is
 # deliberately NOT done here -- a user exists only after their first login, and
@@ -377,11 +386,11 @@ app_id_by_name() {
     jq -r --arg n "$2" '.result[]? | select(.name == $n) | .id' <<< "$resp" | head -1
 }
 
-# The redirect URIs an existing app currently has, one per line.
-app_redirect_uris() {
-    local resp
-    resp="$(api_or_fail GET "/management/v1/projects/$1/apps/$2")" || return 1
-    jq -r '.app.oidcConfig.redirectUris[]? // empty' <<< "$resp"
+# The whole app entry, once -- redirectUris for the staleness check below and
+# (defect 4) clientId for converging an existing app's secret payload. One
+# call rather than two separate reads of the same object.
+app_get() {
+    api_or_fail GET "/management/v1/projects/$1/apps/$2"
 }
 
 # Point an existing app at the redirect URI it is supposed to have.
@@ -454,13 +463,13 @@ merge_secret() {
         printf '%s\n' "$existing"
         printf '%s' "$client_secret" | jq -Rs .
         printf '%s' "$cookie_secret" | jq -Rs .
-    } | jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" '
+    } | jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" '
         input as $base | input as $sec | input as $ck |
         if $name == "grafana" then
             $base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id, GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: $sec}
         elif $name == "headlamp" then
             $base + {OIDC_CLIENT_ID: $id, OIDC_CLIENT_SECRET: $sec, OIDC_ISSUER_URL: $iss,
-                     OIDC_SCOPES: "profile,email,groups",
+                     OIDC_SCOPES: $scopes,
                      OIDC_VALIDATOR_CLIENT_ID: $id, OIDC_VALIDATOR_ISSUER_URL: $iss}
         elif $name == "flux-ui" then
             $base + {clientID: $id, clientSecret: $sec}
@@ -472,6 +481,52 @@ merge_secret() {
             empty
         end
     '
+}
+
+# DEFECT 4: converge the NON-SECRET fields of an EXISTING app's stored
+# payload. merge_secret above only ever ran when an app was CREATED --
+# cmd_sync's existing-app branch checked the redirect URI against ZITADEL and
+# stopped there, never looking at what $key currently held. So a field this
+# script's own literal changed after an app already existed never reached
+# it: OIDC_SCOPES gaining `groups` on 2026-08-29 is why this exists. Every
+# run against an already-registered headlamp printed
+#   [ok     ] headlamp -- app exists (...), redirect correct
+# and converge_secret was never even called -- the store kept the old value
+# forever.
+#
+# What is converged, and why each one is safe to overwrite: client id and the
+# issuer URL are read back FROM ZITADEL itself, not guessed, so they can only
+# ever correct drift; the scopes string is this script's own literal, and
+# stale copies of it are exactly the bug being closed. NEVER converged: the
+# client secret (ZITADEL returns it exactly once, at creation, so this path
+# has no correct value to put there even if it wanted to) and, for
+# headlamp-proxy, the cookie secret (regenerating it on a routine sync would
+# silently log out every user). Both are simply absent from every branch's
+# overlay object below, so jq's `+` leaves whatever $existing already had.
+#
+# $existing travels in on stdin, not --argjson, for the same reason
+# merge_secret keeps it off jq's argv: it can carry fields this script does
+# not own (grafana's admin credentials), and putting the whole blob on argv
+# would expose those too, not just the OIDC fields being converged here.
+converge_secret() {
+    local name="$1" client_id="$2" existing="$3"
+    jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" '
+        input as $base |
+        if $name == "grafana" then
+            $base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id}
+        elif $name == "headlamp" then
+            $base + {OIDC_CLIENT_ID: $id, OIDC_ISSUER_URL: $iss, OIDC_SCOPES: $scopes,
+                     OIDC_VALIDATOR_CLIENT_ID: $id, OIDC_VALIDATOR_ISSUER_URL: $iss}
+        elif $name == "flux-ui" then
+            $base + {clientID: $id}
+        elif $name == "harbor" then
+            $base + {client_id: $id, endpoint: $iss}
+        elif $name == "headlamp-proxy" then
+            $base + {"client-id": $id}
+        else
+            empty
+        end
+    ' <<< "$existing"
 }
 
 cmd_sync() {
@@ -497,7 +552,7 @@ cmd_sync() {
     ensure_project_roles "$project_id"
     grant_admin_role "$GRANT_ADMIN" "$project_id"
 
-    local created=0 skipped=0 updated=0
+    local created=0 skipped=0 updated=0 converged=0
     for entry in "${CONSUMERS[@]}"; do
         IFS='|' read -r name redirect key <<< "$entry"
 
@@ -525,26 +580,61 @@ cmd_sync() {
             # cloud split moved it to priv.aws.ogenki.io. Every login failed with
             #   "The requested redirect_uri is missing in the client configuration"
             # and re-running this script cheerfully skipped all five.
-            local current
-            current="$(app_redirect_uris "$project_id" "$existing_id")" || exit 1
+            local app_json current client_id
+            app_json="$(app_get "$project_id" "$existing_id")" || exit 1
+            current="$(jq -r '.app.oidcConfig.redirectUris[]? // empty' <<< "$app_json")"
+            client_id="$(jq -r '.app.oidcConfig.clientId // empty' <<< "$app_json")"
+            if [ -z "$client_id" ]; then
+                echo "[FAILED ] ${name}: app ${existing_id} has no oidcConfig.clientId in ZITADEL's response" >&2
+                exit 1
+            fi
 
             if grep -Fxq "$redirect" <<< "$current"; then
                 echo "[ok     ] ${name} -- app exists (${existing_id}), redirect correct"
                 skipped=$((skipped + 1))
-                continue
+            else
+                echo "[STALE  ] ${name} (${existing_id})"
+                echo "           has:  ${current:-<none>}"
+                echo "           want: ${redirect}"
+                if [ "$APPLY" != "true" ]; then
+                    echo "           would update the redirect URI (client secret untouched)"
+                else
+                    app_set_redirect "$project_id" "$existing_id" "$redirect"
+                    echo "[updated] ${name} -> ${redirect} (client secret untouched)"
+                fi
+                updated=$((updated + 1))
             fi
 
-            echo "[STALE  ] ${name} (${existing_id})"
-            echo "           has:  ${current:-<none>}"
-            echo "           want: ${redirect}"
-            if [ "$APPLY" != "true" ]; then
-                echo "           would update the redirect URI (client secret untouched)"
-                updated=$((updated + 1))
-                continue
+            # DEFECT 4: the redirect check above only ever compared ZITADEL's
+            # own state -- it never looked at what $key currently holds, so a
+            # field this script's own literal changed (OIDC_SCOPES gaining
+            # `groups`) never reached a cluster whose app already existed.
+            # This runs regardless of whether the redirect was stale, because
+            # the two can drift independently.
+            if ! store_exists "$key"; then
+                echo "[FAILED ] ${name}: app ${existing_id} exists in ZITADEL but ${key} holds" >&2
+                echo "           no secret. ZITADEL returns a client secret exactly once, at" >&2
+                echo "           creation -- it cannot be recovered from here, so writing the" >&2
+                echo "           client id alone would leave a half payload, worse than the" >&2
+                echo "           missing one. Restore ${key} from a backup, or delete the app" >&2
+                echo "           in ZITADEL and re-run so it is created (and its secret" >&2
+                echo "           captured) fresh." >&2
+                exit 1
             fi
-            app_set_redirect "$project_id" "$existing_id" "$redirect"
-            echo "[updated] ${name} -> ${redirect} (client secret untouched)"
-            updated=$((updated + 1))
+
+            local existing_secret desired
+            existing_secret="$(store_read "$key")"
+            desired="$(converge_secret "$name" "$client_id" "$existing_secret")"
+            if [ "$desired" = "$existing_secret" ]; then
+                echo "[ok     ] ${name} -- ${key} already converged"
+            elif [ "$APPLY" != "true" ]; then
+                echo "[dry-run] ${name} -- would converge non-secret fields in ${key}"
+                converged=$((converged + 1))
+            else
+                printf '%s' "$desired" | store_write "$key"
+                echo "[converged] ${name} -> ${key} (client id ${client_id}, secret untouched)"
+                converged=$((converged + 1))
+            fi
             continue
         fi
 
@@ -585,7 +675,7 @@ cmd_sync() {
     done
 
     echo
-    echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}"
+    echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}, converged: ${converged}"
     if [ "$APPLY" != "true" ]; then
         echo
         echo "This was a DRY RUN. Nothing was created and nothing was written."
