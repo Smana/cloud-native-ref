@@ -161,7 +161,7 @@ ZITADEL's first admin is in `zitadel-envvars`
 
 Setting SSO up is a **deploy** step, not a verification one — it is five ordered
 commands and it has its own page:
-[Set up single sign-on]({{< relref "sso.md" >}}).
+[Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}).
 
 To check it is working, open any of the services above: you should be offered a
 Google button rather than a username field.
