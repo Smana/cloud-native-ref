@@ -124,6 +124,32 @@ unless you pass `--apply`:
 GCP has the same step as `stage2-sweep-orphaned-disks` — see the
 [GCP teardown]({{< relref "/docs/get-started/gcp/teardown.md" >}}).
 
+## Verify against AWS, not against the exit code
+
+A Terramate destroy can exit 0 having destroyed nothing. The safeguards refuse
+silently, a job that fails before `tofu` runs still ends the run, and a
+backgrounded invocation reports the status of whatever came last in the pipeline.
+The GCP side [says the same]({{< relref "/docs/reference/commands.md" >}}) for
+the same reason. Ask the provider:
+
+```bash
+aws eks list-clusters --region eu-west-3
+aws ec2 describe-instances --region eu-west-3 \
+  --filters Name=instance-state-name,Values=running \
+  --query 'Reservations[].Instances[].[InstanceId,Tags[?Key==`Name`].Value|[0]]' --output text
+aws ec2 describe-volumes --region eu-west-3 \
+  --filters Name=status,Values=available --query 'Volumes[].[VolumeId,Size]' --output text
+aws elbv2 describe-load-balancers --region eu-west-3 --query 'LoadBalancers[].LoadBalancerName' --output text
+aws ec2 describe-nat-gateways --region eu-west-3 \
+  --filter Name=state,Values=available --query 'NatGateways[].NatGatewayId' --output text
+aws ec2 describe-addresses --region eu-west-3 --query 'Addresses[].PublicIp' --output text
+```
+
+Empty output from all six is the only thing that means the platform is gone.
+NAT gateways and unattached Elastic IPs bill by the hour whether or not anything
+uses them, and available volumes bill by the GiB-month — those three are what an
+"successful" teardown most often leaves behind.
+
 ## What is not deleted
 
 The platform constitution withholds delete permissions from Crossplane for
