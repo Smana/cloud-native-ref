@@ -109,21 +109,26 @@ terramate script run deploy          # just the Kubernetes stage
 
 ## Verify
 
-The region and cluster name below are the reference values — use whatever you
-set in `opentofu/config.tm.hcl`. The API endpoint is private, so the Tailscale
-subnet router from Stage 1 must be up first (`tailscale status`).
+The API endpoint is private, so the Tailscale subnet router from stage 1 must be
+up first (`tailscale status`):
 
 ```bash
 aws eks update-kubeconfig --region eu-west-3 --name aws-0
 kubectl get nodes
-flux get all
+flux get kustomizations
 ```
 
-Once Stage 3 finishes, Flux takes over: Security (External Secrets,
-cert-manager, Kyverno), Infrastructure (Cilium policies, Gateway API,
-Karpenter), Observability (VictoriaMetrics, VictoriaLogs, Grafana), and
-Tooling (Harbor, Headlamp, Homepage) all reconcile without any further
-command from you. See [Access]({{< relref "/docs/get-started/access.md" >}})
-for how to reach the VPN, OpenBao, the cluster, and the dashboard, and
+Once the deploy finishes, Flux takes over and reconciles the rest without any
+further command from you: Security (External Secrets, cert-manager, Kyverno),
+Infrastructure (Cilium policies, Gateway API, Karpenter), Observability
+(VictoriaMetrics, VictoriaLogs, Grafana) and Tooling (Harbor, Headlamp,
+Homepage).
+
+**That is where a bootstrap actually succeeds or quietly stalls**, so there is a
+page for checking it layer by layer:
+[Verify the cluster]({{< relref "/docs/get-started/aws/verify.md" >}}).
+
+See also [Access]({{< relref "/docs/get-started/access.md" >}}) for reaching the
+VPN, OpenBao, the cluster and the dashboards, and
 [Teardown]({{< relref "/docs/get-started/aws/teardown.md" >}}) when you are
 done.
