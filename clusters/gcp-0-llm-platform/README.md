@@ -33,11 +33,32 @@ for why the weights path differs from `aws-0`.
   `runtimeClassName` at all (see the header comment in `infrastructure/gcp-0/computeclass/gpu-l4.yaml`)
   — there is nothing this child would even be gating.
 
-## Status: the blocker is closed, but this has never actually run
+## Status: it HAS run now, and the run found four blockers
 
-Two things once stopped this platform from serving correctly on `gcp-0`. **Both are now closed.**
-What remains is not a gap but an absence of evidence: no part of this has been exercised on a live
-GKE cluster. Resuming is a validation run, not a routine enable.
+This section used to say two blockers were closed and only an absence of evidence remained.
+The umbrella was resumed for the first time on **2026-08-28**, and that resume found **four more**
+— three in the Composition, one outside Kubernetes entirely. Three are fixed; the fourth is not
+ours to fix.
+
+| Found on the first resume | Status |
+|---|---|
+| Pods carried no `gke-gcsfuse/volumes` annotation, so GKE injected no FUSE sidecar | fixed in `crossplane-configuration` **v0.4.4** |
+| The CiliumNetworkPolicy was AWS-shaped: no egress to the GKE metadata server, so the sidecar could never authenticate | fixed in **v0.4.5** |
+| `runtimeClassName: nvidia` (Bottlerocket-only, and *rejected* by GKE) plus a Karpenter nodeSelector and a missing Cilium toleration | fixed in **v0.4.6** |
+| `GPUS_ALL_REGIONS` quota is **0** on the project | **open** — a Google quota request, nothing in this repo can route around it |
+
+**How far it got.** Steps 1 and 2 of the failure order below both pass: the per-claim
+`GCPWorkloadIdentity` reached `Ready`, the FUSE mount worked, and the preload Job **completed with
+the weights written to GCS**. Step 3 was never reached: the serving pod is created and accepted by
+node auto-provisioning, and then `TriggeredScaleUp` fails with `GCE quota exceeded`.
+
+Worth noting for anyone repeating this: all three Composition defects were already documented in
+this repository *before* the Composition was written — `infrastructure/gcp-0/computeclass/gpu-l4.yaml`
+states the ComputeClass selector, the absent RuntimeClass and both required tolerations. The
+knowledge existed; the code did not read it. A render-time check comparing Composition output against
+that file would have caught all three at once.
+
+### The two original blockers, both still closed
 
 - ~~**Serving pods cannot read the weights bucket.**~~ **CLOSED at the pinned version.**
   The constraint itself is real and unchanged: the Cloud Storage FUSE CSI driver authenticates as
@@ -78,17 +99,26 @@ GKE cluster. Resuming is a validation run, not a routine enable.
   everything downstream, including resources that do not use it. Worth revisiting when the umbrella
   is actually resumed.
 
-It still ships suspended, because four L4s and a multi-gigabyte HuggingFace preload should be a
-deliberate act rather than a default. But the reason is now cost, not breakage.
+It still ships suspended, because an L4 and a multi-gigabyte HuggingFace preload should be a
+deliberate act rather than a default.
 
-**What to watch on the first resume**, in the order it can fail:
+The reason is **cost and an open quota** — not breakage in this repository. Everything the platform
+controls now works up to the GPU; `GPUS_ALL_REGIONS: 0` is what stops it, and until that is raised a
+resume will reach `Pending` on the serving pod and stay there. Nothing bills in that state: the pod
+is rejected before a GPU node is ever provisioned, which is why the failed run cost nothing.
+
+**What to watch on a resume**, in the order it can fail. Steps 1 and 2 are now evidenced on a live
+cluster; step 3 is still unproven:
 
 1. The `GCPWorkloadIdentity` per claim reaches `Synced=True Ready=True` — the binding exists.
 2. The serving pod actually mounts the bucket. A failure here is the FUSE identity path, and it
    surfaces as the pod stuck mounting, not as anything naming Workload Identity.
 3. vLLM reads the weights and reports the model ready.
 
-A first resume that gets past (2) is the thing this README could not previously promise.
+Getting past (2) is the thing this README could not previously promise. It can now: the
+2026-08-28 resume completed the preload and left the weights in
+`gs://<project>-ogenki-llm-models/xplane-qwen3-8b/`. (3) remains unproven, and will stay that way
+until the GPU quota is raised.
 
 ## Enable
 

@@ -201,6 +201,16 @@ TM_GCP_ENABLED=true TF_VAR_flux_git_ref='refs/heads/my-branch' \
   terramate script run --no-tags=aws deploy
 ```
 
+## Single sign-on
+
+The deploy leaves ZITADEL running with **nothing configured in it** — no identity
+provider, no OIDC clients, no roles. Five ordered commands turn that into a
+working Google login for Grafana, Harbor, the Flux UI and Headlamp:
+[Set up single sign-on]({{< relref "sso.md" >}}).
+
+Skipping this is not obvious from the cluster: every workload is healthy and
+every service simply asks for a password nobody has.
+
 ## Verify
 
 The control plane has a **private endpoint**, so the tailnet must be up first.
