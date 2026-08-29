@@ -5,8 +5,9 @@ description: What the platform actually bills on each cloud, measured rather tha
 lastVerified: 2026-08-29
 ---
 
-Roughly **$730/month on AWS** and **$220/month on GCP** for the same platform,
-with the LLM components disabled on both.
+Roughly **$590/month on AWS** and **$220/month on GCP** for the same platform,
+with the LLM components disabled on both — down from $730 on AWS since
+control-plane logging was turned off.
 
 The more useful number is smaller: **$66/month bills on AWS even when every
 cluster is destroyed**, and almost none of it is the platform.
@@ -22,7 +23,7 @@ spend without a BigQuery export — so treat them as ±20%.
 
 | Line | $/month | Notes |
 |---|---:|---|
-| **CloudWatch vended logs** | **144** | **largest single item** — EKS control-plane logging |
+| ~~CloudWatch vended logs~~ | ~~144~~ **0** | EKS control-plane logging, **disabled 2026-08-29** |
 | Spot compute, 6 nodes | 250 | measured spot rates, `eu-west-3` |
 | NAT gateway | 76 | $35 gateway-hours + $41 data processing |
 | EKS control plane | 73 | $0.10/hr, flat |
@@ -88,21 +89,19 @@ same shape, unswept.
 
 ## What is worth attacking
 
-**1. EKS control-plane logging — $144/month, 20% of the AWS bill.** Every cent of
-it is `EUW3-VendedLog-Bytes`, dominated by the audit log, and nothing in this
-repository reads any of it. `opentofu/aws/eks/init/main.tf` turns on **all five**
-types:
+**1. EKS control-plane logging — $144/month. Done.** It was the largest single
+line and 20% of the AWS bill, every cent `EUW3-VendedLog-Bytes` dominated by the
+audit log, and nothing in this repository read any of it. All five types were
+enabled; the module's own default is three.
 
-```hcl
-enabled_log_types = [
-  "api", "audit", "authenticator", "controllerManager", "scheduler"
-]
-```
+`opentofu/aws/eks/init/main.tf` now sets `enabled_log_types = []`, which changes
+nothing about how the platform runs — the platform uses
+[no cloud-provider monitoring on either cloud]({{< relref "/docs/platform/observability/_index.md" >}}).
 
-The module's own default is the first three; `controllerManager` and `scheduler`
-were added on top. Dropping to the types you actually consult — or to `[]` on a
-throwaway cluster — is the single biggest saving available, and changes nothing
-about how the platform runs.
+Audit logs are the one signal the in-cluster stack cannot reconstruct, since the
+API server writes them before anything in the cluster can observe them. If you
+need them for an investigation, turn them on deliberately —
+`enabled_log_types = ["audit"]` — and expect the bill to come back.
 
 **2. The idle floor — $66/month.** Sweep the orphaned secrets and KMS keys, and
 delete the stray stream:
