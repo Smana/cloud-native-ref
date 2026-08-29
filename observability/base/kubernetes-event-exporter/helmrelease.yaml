@@ -65,11 +65,16 @@ spec:
             rules:
               # The VM operator's Prometheus converter turns this PrometheusRule
               # (and the ServiceMonitor above) into VM-native objects.
+              # WatchErrors is registered as a labelless counter (pkg/kube/watcher.go,
+              # WatchErrors.Inc()) — no namespace grouping is possible, so the message
+              # below deliberately doesn't reference $labels.namespace. The cluster
+              # external label is stamped by vmalert, so per-cluster attribution in
+              # Slack still works.
               - alert: KubernetesEventExporterWatchErrors
                 annotations:
-                  message: "kubernetes-event-exporter in {{ `{{` }} $labels.namespace {{ `}}` }} reports watch errors — cluster Events may be missing from VictoriaLogs."
+                  message: "kubernetes-event-exporter reports watch errors — cluster Events may be missing from VictoriaLogs."
                 expr: |
-                  sum by (namespace) (rate(event_exporter_watch_errors[5m])) > 0
+                  sum(rate(event_exporter_watch_errors[5m])) > 0
                 for: 15m
                 labels:
                   severity: warning
