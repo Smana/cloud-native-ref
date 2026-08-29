@@ -90,6 +90,20 @@ This is not an edge case. The backup bucket **outlives the cluster on purpose**
 individual cluster"*), so on every rebuild the destination still holds the
 previous cluster's archive and the bootstrap refuses.
 
+{{< callout type="warning" >}}
+**It applies to clusters that bootstrap *empty* too.** The check is about the
+destination, not about where the data comes from — a brand-new `initdb` cluster
+refuses just as hard if its archive prefix is not empty. On `aws-0` that is
+three clusters, only two of which restore: `xplane-zitadel-cnpg-cluster`,
+`xplane-harbor-cnpg-cluster` and `xplane-image-gallery-cnpg-cluster`. Clear
+every `*-cnpg-cluster/` prefix before a rebuild, not only the ones with a seed.
+{{< /callout >}}
+
+And **"empty" means no objects, not no base backups.** A prefix holding only
+`wals/` still refuses. This bit us on 2026-08-29: preparing an `aws-0` rebuild,
+`xplane-zitadel-cnpg-cluster/` held six WAL objects and no `base/`, and a
+base-backup count called it empty.
+
 `scripts/cnpg-prepare-restore.sh` does this with the guard that makes it safe —
 it refuses unless the dated seed actually holds a base backup, so the live
 archive is never cleared when there would be nothing to restore from:
@@ -109,9 +123,20 @@ On `aws-0` this step has always been done by hand before a rebuild, which is why
 restores work there; the script is the same operation with the check attached:
 
 ```bash
-./scripts/cnpg-prepare-restore.sh --cloud aws --region <region> \
-  --bucket <region>-ogenki-cnpg-backups \
+B=eu-west-3-ogenki-cnpg-backups
+./scripts/cnpg-prepare-restore.sh --cloud aws --region eu-west-3 --bucket $B \
   --cluster xplane-zitadel-cnpg-cluster --seed zitadel-20260719
+./scripts/cnpg-prepare-restore.sh --cloud aws --region eu-west-3 --bucket $B \
+  --cluster xplane-harbor-cnpg-cluster  --seed harbor-20241111
+```
+
+The third one bootstraps empty, so there is no seed to protect it — clearing its
+archive discards that database's only backup. The script refuses to guess, and
+makes you say so:
+
+```bash
+./scripts/cnpg-prepare-restore.sh --cloud aws --region eu-west-3 --bucket $B \
+  --cluster xplane-image-gallery-cnpg-cluster --accept-data-loss
 ```
 
 The durable fix is a per-generation `serverName` in the `SQLInstance`
