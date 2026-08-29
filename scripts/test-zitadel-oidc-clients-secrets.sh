@@ -8,8 +8,7 @@
 # zitadel-oidc-clients.sh is not sourceable -- it parses argv and requires
 # --cluster/--cloud unconditionally at the top of the file -- so this restates
 # merge_secret rather than importing it. Same trade-off test-zitadel-idp-
-# convergence.sh and test-harbor-oidc-convergence.sh document for their own
-# scripts.
+# convergence.sh documents for its own script.
 set -uo pipefail
 fail=0
 check() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"

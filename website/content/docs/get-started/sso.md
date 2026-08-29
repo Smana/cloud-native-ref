@@ -73,18 +73,21 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 #    it, and the action that flattens project roles into a `groups` claim.
 #    Creating the provider without the policy entry gives "User not found".
 IDP_URL=$IDP_URL ./scripts/zitadel-idp.sh sync $CL --apply
-
-# 4. Harbor's auth mode. Harbor stores this in its DATABASE, not in the chart,
-#    so no manifest can express it and a fresh cluster has no SSO button.
-PRIVATE_DOMAIN=$PRIVATE_DOMAIN ./scripts/harbor-oidc.sh sync $CL --apply
 ```
+
+**There is no manual step for Harbor.** Step 1 already wrote its client id and
+secret to the `harbor-oidc` store entry; an `ExternalSecret` syncs that into the
+cluster and Harbor's `HelmRelease` renders it into `CONFIG_OVERWRITE_JSON`
+declaratively — the same shape as every other consumer. It converges on its own
+within the `ExternalSecret` refresh interval and the next `HelmRelease`
+reconcile. See [ADR-0028]({{< relref "/docs/decisions/0028-harbor-oidc-config-overwrite-json.md" >}}).
 
 **Then log in once through Google**, at any consumer. That first login is what
 CREATES your ZITADEL user — the IdP auto-registers it — so there is nobody to
 authorise before it. Afterwards:
 
 ```bash
-# 5. Give yourself the admin role. Group-based RBAC (cluster-admin via the
+# 4. Give yourself the admin role. Group-based RBAC (cluster-admin via the
 #    `admin` group) does nothing until a user actually holds it.
 ./scripts/zitadel-oidc-clients.sh sync $CL --grant-admin you@example.com --apply
 ```
@@ -115,8 +118,9 @@ The per-cloud verify pages cover the rest of the post-deploy checks:
 **A restored ZITADEL can predate its own configuration.** `aws-0` bootstraps its
 database from a frozen backup, so a cluster rebuilt today comes back with
 whatever OIDC clients and roles existed when that seed was taken — not the ones
-this page creates. Re-run steps 1, 3 and 4 after a restore; they are idempotent
-and will fill in whatever the seed is missing. See
+this page creates. Re-run steps 1 and 3 after a restore; they are idempotent
+and will fill in whatever the seed is missing. Harbor needs no re-run — it
+converges from whatever step 1 last wrote to the `harbor-oidc` store entry. See
 [Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}}).
 {{< /callout >}}
 

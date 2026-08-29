@@ -159,9 +159,13 @@ CONSUMERS=(
   # same hostname, on the proxy's own callback path. ADR-0026.
   "headlamp-proxy|https://headlamp.${PRIVATE_DOMAIN}/oauth2/callback|headlamp-oauth2-proxy"
   # Harbor's callback is /c/oidc/callback -- Harbor's own path, not guessable
-  # from the others. Applying the client to Harbor is a SECOND step:
-  # scripts/harbor-oidc.sh, because Harbor stores auth config in its DATABASE
-  # rather than in the chart, so nothing in git makes it true.
+  # from the others. No second imperative step applies it: Harbor stores
+  # auth config in its DATABASE rather than in the chart, but the chart's
+  # core.configureUserSettings renders CONFIG_OVERWRITE_JSON, which Harbor
+  # writes to that database itself at startup and then locks read-only. The
+  # client id/secret this script writes to the "harbor-oidc" store key reach
+  # the HelmRelease via an ExternalSecret + valuesFrom, same as every other
+  # consumer here. See ADR-0028.
   "harbor|https://harbor.${PRIVATE_DOMAIN}/c/oidc/callback|harbor-oidc"
 )
 

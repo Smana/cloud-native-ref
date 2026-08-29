@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Repo-wide guard against the argv-leak class fixed in zitadel-idp.sh,
-# harbor-oidc.sh, zitadel-oidc-clients.sh, secret-store.sh and
-# openbao-config.sh: a secret handed to jq via --arg/--argjson lands on jq's
-# argv, readable by any process on the box via /proc/<pid>/cmdline for as
-# long as jq runs.
+# zitadel-oidc-clients.sh, secret-store.sh and openbao-config.sh (also fixed,
+# at the time, in harbor-oidc.sh -- since removed in favour of a declarative
+# CONFIG_OVERWRITE_JSON, ADR-0028): a secret handed to jq via
+# --arg/--argjson lands on jq's argv, readable by any process on the box via
+# /proc/<pid>/cmdline for as long as jq runs.
 #
 # Each fixed site also has its own file-scoped assertion (grepping for the
-# EXACT flag/variable name that leaked, in test-zitadel-idp-convergence.sh,
-# test-harbor-oidc-convergence.sh and test-zitadel-oidc-clients-secrets.sh) --
-# necessary because a functional round-trip test cannot tell "went in via
-# stdin" from "went in via --arg" apart; both produce byte-identical JSON.
-# Those are file-scoped by construction, and that is exactly how
-# zitadel-oidc-clients.sh's three leaks went unnoticed while the other two
-# scripts were being fixed: the guard only ever looked at the file someone
-# had already opened.
+# EXACT flag/variable name that leaked, in test-zitadel-idp-convergence.sh
+# and test-zitadel-oidc-clients-secrets.sh) -- necessary because a
+# functional round-trip test cannot tell "went in via stdin" from "went in
+# via --arg" apart; both produce byte-identical JSON. Those are file-scoped
+# by construction, and that is exactly how zitadel-oidc-clients.sh's three
+# leaks went unnoticed while the other two scripts were being fixed: the
+# guard only ever looked at the file someone had already opened.
 #
 # This is the pattern-level guard instead: it scans every scripts/*.sh for a
 # jq --arg/--argjson whose VALUE is a variable with a credential-shaped NAME,
@@ -57,7 +57,8 @@ while IFS= read -r -d '' file; do
         [ -z "${lineno:-}" ] && continue
         # Skip comment lines -- a fix's own explanation quoting the old,
         # now-removed pattern verbatim as documentation is not a leak (same
-        # convention test-harbor-oidc-convergence.sh's code_grep uses).
+        # convention this repo's other file-scoped argv-leak assertions use,
+        # e.g. test-zitadel-oidc-clients-secrets.sh's code_grep).
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
         # A source line can carry more than one --arg/--argjson (e.g.

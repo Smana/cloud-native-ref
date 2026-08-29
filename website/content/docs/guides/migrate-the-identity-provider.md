@@ -188,16 +188,25 @@ step 2, and what applies the gate flip from step 5.
 ## 7. Run the setup scripts to converge configuration to the new domain
 
 The database seed carried over identity and the OIDC app rows, but every
-redirect URI, the Google IdP's `clientId`, the action script, and Harbor's
-`oidc_endpoint` still name the *source* cloud's domain. This is exactly the
-convergence this design built: `zitadel-oidc-clients.sh` reconciles redirect
-URIs in place rather than skipping the existing clients (#1919), and
-`zitadel-idp.sh` / `harbor-oidc.sh` now converge drifted fields instead of
-reporting stale objects as fine (this plan's Tasks 4–5). Run all four steps
-from [Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}) with
-the target cluster's values — expect `[STALE]`/`[updated]` on the fields that
-name the old domain, and `[ok]`/`[skip]` on everything else, since client IDs
-and secrets are unchanged by the move.
+redirect URI, the Google IdP's `clientId`, and the action script still name the
+*source* cloud's domain. This is exactly the convergence this design built:
+`zitadel-oidc-clients.sh` reconciles redirect URIs in place rather than
+skipping the existing clients (#1919), and `zitadel-idp.sh` converges drifted
+fields instead of reporting stale objects as fine (this plan's Task 4). Run the
+steps from [Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}})
+with the target cluster's values — expect `[STALE]`/`[updated]` on the fields
+that name the old domain, and `[ok]`/`[skip]` on everything else, since client
+IDs and secrets are unchanged by the move.
+
+Harbor's `oidc_endpoint` still names the source cloud's domain too, but there is
+no script to run for it: `zitadel-oidc-clients.sh`, re-run above against the
+target cluster, already rewrote the `harbor-oidc` store entry with the new
+endpoint. The target cluster's `ExternalSecret` + `HelmRelease` reconcile pick
+that up on their own schedule — see
+[ADR-0028]({{< relref "/docs/decisions/0028-harbor-oidc-config-overwrite-json.md" >}}).
+Force it immediately rather than waiting out the intervals with
+`flux reconcile helmrelease harbor -n tooling --with-source` after confirming
+the `harbor-oidc-config` Secret already holds the new values.
 
 ## 8. Verify a login
 

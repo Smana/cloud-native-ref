@@ -2,10 +2,12 @@
 #
 # Read and write secrets in the hosting cloud's store. Both clouds, one copy.
 #
-# Extracted from zitadel-oidc-clients.sh, zitadel-idp.sh and harbor-oidc.sh,
-# which each carried their own. A fourth copy was about to be written for the
-# PAT resolver, and this repository already knows where that ends -- the GCP
-# opt-in gate became fifteen hand-written copies with four scripts missing it.
+# Extracted from zitadel-oidc-clients.sh, zitadel-idp.sh and harbor-oidc.sh
+# (the latter since removed -- Harbor's OIDC config is now set declaratively,
+# ADR-0028), which each carried their own. A fourth copy was about to be
+# written for the PAT resolver, and this repository already knows where that
+# ends -- the GCP opt-in gate became fifteen hand-written copies with four
+# scripts missing it.
 #
 # Reads CLOUD, REGION and GCP_PROJECT from the caller. store_write also needs
 # jq on PATH.

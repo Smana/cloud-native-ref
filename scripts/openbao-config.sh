@@ -334,8 +334,8 @@ init_openbao() {
     log_message "INFO" "Storing root token..."
     # On STDIN via `-Rs`, not --arg -- --arg puts the root token on jq's argv,
     # readable by any process on the box via /proc/<pid>/cmdline for as long
-    # as jq runs. Same class of leak closed in zitadel-idp.sh, harbor-oidc.sh
-    # and zitadel-oidc-clients.sh.
+    # as jq runs. Same class of leak closed in zitadel-idp.sh and
+    # zitadel-oidc-clients.sh.
     root_token_value=$(printf '%s' "$root_token" | jq -Rs '{"token": .}')
     if ! secret_write "$ROOT_TOKEN_SECRET_NAME" "$root_token_value"; then
         log_message "ERROR" "Failed to store root token"

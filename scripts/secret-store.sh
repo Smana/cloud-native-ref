@@ -480,8 +480,8 @@ gen_password() {
 # Every generated/derived password goes into jq on STDIN via `-Rs`, never as
 # --arg -- --arg puts it on jq's argv, readable by any process on the box via
 # /proc/<pid>/cmdline for as long as jq runs. Same class of leak closed in
-# zitadel-idp.sh, harbor-oidc.sh and zitadel-oidc-clients.sh; this is the same
-# fix applied to every password this function seeds.
+# zitadel-idp.sh and zitadel-oidc-clients.sh; this is the same fix applied to
+# every password this function seeds.
 seed_body() {
     case "$1" in
         harbor-admin-password)

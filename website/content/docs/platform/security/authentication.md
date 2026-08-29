@@ -35,7 +35,7 @@ ZITADEL                   the broker: user, project roles, claims
         │  OIDC + a `groups` / `roles` claim
         ├──────────────► Grafana        (direct OIDC)
         ├──────────────► Flux UI        (direct OIDC + impersonation)
-        ├──────────────► Harbor         (direct OIDC, DB-configured)
+        ├──────────────► Harbor         (direct OIDC, declarative CONFIG_OVERWRITE_JSON)
         └──────────────► Headlamp       (differs by cloud — see below)
 ```
 
@@ -92,10 +92,15 @@ every Grafana user silently landing on `Viewer`.
 | **Harbor** | direct OIDC | `oidc_auth` mode, auto-onboard on first login |
 | **Headlamp** | **differs by cloud** | see below |
 
-Harbor is worth one note: its authentication is **not chart configuration**.
-`auth_mode`, the endpoint, the client and the scopes live in Harbor's *database*
-and are written through its API at runtime, so no manifest can express them —
-`scripts/harbor-oidc.sh` applies them.
+Harbor is worth one note: it stores `auth_mode` and the OIDC settings in its own
+*database*, not in a config file — but the chart can still set them
+declaratively. `core.configureUserSettings` renders into the `CONFIG_OVERWRITE_JSON`
+env var Harbor's core container reads at startup, which writes those fields to
+the database itself and locks them read-only thereafter. The client id and
+secret reach it the same way every other consumer gets theirs — an
+`ExternalSecret` synced from the `harbor-oidc` store entry — via the
+`HelmRelease`'s `valuesFrom`. See
+[ADR-0028]({{< relref "/docs/decisions/0028-harbor-oidc-config-overwrite-json.md" >}}).
 
 ## Reaching the Kubernetes API
 

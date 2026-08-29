@@ -133,9 +133,9 @@ check_log "gcp write new -> STORE_WRITE_LABEL honoured" '--labels=managed-by=uni
 # from INSIDE store_write -- the function never "returns", so a bare RETURN
 # trap never fires and the payload temp file is left on disk with the secret
 # still in it. Exercised in a nested `bash -c` with errexit on, matching how
-# every real caller (zitadel-oidc-clients.sh, zitadel-idp.sh, harbor-oidc.sh)
-# actually runs this: all three set errexit, nounset AND pipefail. All three
-# options matter here -- two fixes for this leak passed a version of this test
+# every real caller (zitadel-oidc-clients.sh, zitadel-idp.sh) actually runs
+# this: both set errexit, nounset AND pipefail. All three options matter --
+# two fixes for this leak passed a version of this test
 # that set errexit alone, because it is `nounset` that turns the trap's own
 # variable expansion into a fatal error. Do not weaken this line.
 FAILSTUB="$(mktemp -d)"
