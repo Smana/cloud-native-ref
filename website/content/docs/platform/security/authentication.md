@@ -104,6 +104,7 @@ EKS accepts an OIDC identity provider directly:
 ```hcl
 identity_providers = {
   zitadel = {
+    client_id      = "388445486190712688" # the platform PROJECT id, not an app
     issuer_url     = "https://auth.cloud.ogenki.io"
     username_claim = "email"
     groups_claim   = "groups"
@@ -114,6 +115,27 @@ identity_providers = {
 So a token issued by ZITADEL *is* a Kubernetes identity. The `groups` claim
 becomes real Kubernetes groups, and `security/base/rbac/admin.yaml` binds the
 `admin` group to `cluster-admin`. Headlamp simply forwards the user's token.
+
+{{< callout type="warning" >}}
+**`client_id` is a project id, and that is deliberate.** EKS compares it against
+the token's `aud`, and ZITADEL issues an audience holding *every* client of the
+project plus the project id itself:
+
+```
+[grafana, flux-ui, harbor, headlamp, headlamp-proxy, 388445486190712688]
+```
+
+Pin the project id and any client in `platform` is accepted, so adding a
+consumer needs no change here. Pin one application's client id and that one app
+works while every other is rejected — after a completely healthy OIDC round
+trip, with no error logged by ZITADEL, by the consumer, or by the API server.
+That was live on `aws-0` until 2026-08-29 and cost an evening to find.
+
+Correcting it is not a plan-and-apply: an EKS identity provider config is
+immutable, so it must be disassociated and re-associated — roughly 20 minutes
+each way, with OIDC auth to the API server down in between. IAM authentication,
+which `aws eks get-token` kubeconfigs use, keeps working throughout.
+{{< /callout >}}
 
 ### gcp-0 — it does not, and cannot
 
