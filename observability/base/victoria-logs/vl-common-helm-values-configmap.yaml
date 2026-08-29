@@ -7,9 +7,15 @@
 #   - securityContext blocks — scripts/flux-schema/render-bundle.py resolves
 #     spec.values only, so Polaris-audited fields must stay inline per variant;
 #   - retention — the two charts spell it differently (server.* vs vlstorage.*);
-#   - sink endpoints — the single-server URLs below are the vlsingle (active)
-#     defaults; helmrelease-vlcluster.yaml overrides all three to vlinsert:9481
-#     via spec.values deep-merge.
+#   - sink endpoints — the shared config carries only the two PG sinks, whose
+#     single-server URIs are the vlsingle (active) defaults;
+#     helmrelease-vlcluster.yaml overrides both to vlinsert:9481 via
+#     spec.values deep-merge;
+#   - the general catch-all sink — it is chart-specific: the single chart's
+#     generated sink is named `vlogs-0` (overridden inline in
+#     helmrelease-vlsingle.yaml with our VL-* headers), while the cluster chart
+#     ships its own `vlogs` sink already pointed at vlinsert. Sharing a
+#     catch-all here would duplicate every general log line in cluster mode.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -317,31 +323,6 @@ data:
                 VL-Stream-Fields: kubernetes.container_name,kubernetes.pod_name,metadata.dropped.component
             healthcheck:
               enabled: false
-
-          # ======================================================================
-          # Sink 3: All Other Logs (Non-PostgreSQL)
-          # ======================================================================
-          # Purpose: Store general Kubernetes logs from all other pods
-          # Input: parser (all logs except PostgreSQL execution plans)
-          # ======================================================================
-          vlogs-0:
-            type: elasticsearch
-            inputs:
-              - parser
-            api_version: v8
-            mode: bulk
-            compression: gzip
-            endpoints:
-              - http://victoria-logs-victoria-logs-single-server-0.victoria-logs-victoria-logs-single-server.observability.svc.cluster.local.:9428/insert/elasticsearch
-            healthcheck:
-              enabled: false
-            request:
-              headers:
-                AccountID: "0"
-                ProjectID: "0"
-                VL-Time-Field: timestamp
-                VL-Msg-Field: message,msg,_msg,log.msg,log.message,log
-                VL-Stream-Fields: stream,kubernetes.pod_name,kubernetes.container_name,kubernetes.pod_namespace
 
         # ========================================================================
         # Vector Unit Tests
