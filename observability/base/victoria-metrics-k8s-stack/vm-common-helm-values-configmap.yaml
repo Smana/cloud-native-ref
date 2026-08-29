@@ -200,7 +200,7 @@ data:
           initDatasources: false
       # dashboards come from grafana-operator CRs and the chart sync-job only — no file-provider sidecar.
       image:
-        # Overrides the grafana subchart's default (13.1.0). The vm-k8s-stack pins
+        # Overrides the grafana subchart's default (13.1.x). The vm-k8s-stack pins
         # `grafana: 12.7.*`, so the Grafana APP version is controlled by that
         # subchart constraint, not by Renovate — security releases (here the
         # 2026-08-18 one) need this explicit tag until the stack bumps its dep.
@@ -208,11 +208,15 @@ data:
       plugins:
         # Signed catalog plugins, pinned. These replaced two curl initContainers:
         # one frozen at v0.14.0 for 16 months, one fetching GitHub "latest" at
-        # every pod start. Space-separated "<id> <version>" = pinned install.
+        # every pod start. The chart maps this list straight to
+        # GF_PLUGINS_PREINSTALL_SYNC, whose pin separator is "@" — a space
+        # (like "id version") is silently split as two bare plugin ids instead,
+        # so the version half becomes a bogus plugin id on a fail-hard preinstall
+        # path and the real plugin installs UNPINNED. Use "<id>@<version>".
         # renovate: datasource=github-releases depName=VictoriaMetrics/victoriametrics-datasource extractVersion=^v(?<version>.+)$
-        - "victoriametrics-metrics-datasource 0.25.2"
+        - "victoriametrics-metrics-datasource@0.25.2"
         # renovate: datasource=github-releases depName=VictoriaMetrics/victorialogs-datasource extractVersion=^v(?<version>.+)$
-        - "victoriametrics-logs-datasource 0.31.0"
+        - "victoriametrics-logs-datasource@0.31.0"
         - "marcusolsson-dynamictext-panel"
       "grafana.ini":
         feature_toggles:
