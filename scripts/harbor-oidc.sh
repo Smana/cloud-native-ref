@@ -36,6 +36,10 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# gcloud must run as the identity OpenTofu uses, not the CLI account.
+# shellcheck source=scripts/lib/gcloud-adc.sh
+. "$(dirname "$0")/lib/gcloud-adc.sh"
+
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
 
@@ -82,7 +86,7 @@ store_read() {
         aws) aws secretsmanager get-secret-value --secret-id "$1" \
                  ${REGION:+--region "$REGION"} \
                  --query SecretString --output text 2>/dev/null ;;
-        gcp) gcloud secrets versions access latest --secret="$1" \
+        gcp) gcp_gcloud secrets versions access latest --secret="$1" \
                  ${GCP_PROJECT:+--project "$GCP_PROJECT"} 2>/dev/null ;;
         *)   echo "unknown cloud: $CLOUD" >&2; return 1 ;;
     esac

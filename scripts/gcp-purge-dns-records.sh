@@ -33,6 +33,10 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# gcloud must run as the identity OpenTofu uses, not the CLI account.
+# shellcheck source=scripts/lib/gcloud-adc.sh
+. "$(dirname "$0")/lib/gcloud-adc.sh"
+
 ZONE="${1:-}"
 PROJECT="${2:-}"
 
@@ -41,13 +45,13 @@ if [ -z "$ZONE" ] || [ -z "$PROJECT" ]; then
     exit 2
 fi
 
-if ! gcloud dns managed-zones describe "$ZONE" --project "$PROJECT" >/dev/null 2>&1; then
+if ! gcp_gcloud dns managed-zones describe "$ZONE" --project "$PROJECT" >/dev/null 2>&1; then
     echo "Cloud DNS zone '${ZONE}' does not exist — nothing to purge."
     exit 0
 fi
 
 # name<TAB>type, apex NS/SOA excluded.
-records=$(gcloud dns record-sets list \
+records=$(gcp_gcloud dns record-sets list \
     --zone "$ZONE" --project "$PROJECT" \
     --format='value[separator="	"](name,type)' 2>/dev/null \
     | awk -F'\t' '$2 != "NS" && $2 != "SOA"')
@@ -63,7 +67,7 @@ echo "Purging ${count} record set(s) from '${ZONE}' so the zone can be destroyed
 failed=0
 while IFS=$'\t' read -r name type; do
     [ -z "$name" ] && continue
-    if gcloud dns record-sets delete "$name" --type "$type" \
+    if gcp_gcloud dns record-sets delete "$name" --type "$type" \
          --zone "$ZONE" --project "$PROJECT" >/dev/null 2>&1; then
         echo "  deleted  ${type} ${name}"
     else
