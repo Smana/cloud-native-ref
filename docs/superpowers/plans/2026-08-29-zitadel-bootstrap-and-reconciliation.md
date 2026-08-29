@@ -551,7 +551,18 @@ git commit -m "refactor(zitadel): setup scripts resolve the PAT from one place"
 - Consumes: `resolve_zitadel_pat`, `api` (already in the script)
 - Produces: no new interface
 
-The IdP's `issuer` and the action's script body both derive from `$IDP_URL`, so a cluster whose domain has changed — or which has moved cloud — needs them corrected, not skipped.
+**Nothing this script manages derives from `$IDP_URL`** — an earlier draft of
+this plan claimed the IdP's issuer and the action's script body both did, and
+both were wrong. A Google-type provider has no caller-set issuer, and
+`scripts/zitadel-actions/groups-from-roles.js` contains no functional domain
+reference (its one `ogenki.io` is an example inside a doc comment).
+
+The drift that is real is different in kind: **objects that exist but no longer
+match what the repository says they should be.** A Google OAuth client can be
+rotated, leaving `clientId` stale. An action's script can be edited in the repo,
+leaving the deployed copy behind. A helper that skips because the object exists
+never notices either. That is what convergence means here — not chasing a
+hostname.
 
 - [ ] **Step 1: Find out whether it converges today**
 
@@ -563,19 +574,31 @@ Read each `ensure_*`. Record for each whether it (a) creates when absent and ret
 
 - [ ] **Step 2: Write the failing check**
 
-For each `ensure_*` that is (a), add a comparison before the early return. The Google IdP is the concrete case — its `issuer` must match `$IDP_URL`:
+For each `ensure_*` that is (a), add a comparison before the early return.
+
+**Do not assume which field drifts — read the API contract first.** An earlier
+draft of this plan asserted the Google IdP's `issuer` drifts with `$IDP_URL`.
+That is wrong: a Google-type provider has **no caller-set issuer**.
+`AddGoogleProvider` / `UpdateGoogleProvider` take `name`, `clientId`,
+`clientSecret`, `scopes` and `providerOptions` — Google's issuer is fixed. What
+actually drifts is **`clientId`**, when the Google OAuth client is rotated or
+replaced, and `PUT /admin/v1/idps/google/{id}` updates it in place so existing
+user links survive.
+
+The shape of a convergence check, using whichever field the contract says can
+drift:
 
 ```bash
-# The IdP's issuer is derived from IDP_URL, so it is wrong on any cluster whose
-# domain changed since the provider was created -- which is every restored
-# cluster, and every cluster the IdP has moved to.
-existing_issuer="$(api GET "/management/v1/idps/${idp_id}" \
-                    | jq -r '.idp.config.oidc.issuer // empty')"
-if [ "$existing_issuer" != "$IDP_URL" ]; then
-    echo "[STALE  ] idp issuer: has ${existing_issuer:-<none>}, want ${IDP_URL}"
-    [ "$APPLY" = "true" ] && update_idp_issuer "$idp_id" "$IDP_URL"
+existing_client_id="$(jq -r '.config.google.clientId // empty' <<< "$template")"
+if [ "$existing_client_id" != "$CLIENT_ID" ]; then
+    echo "[STALE  ] idp clientId: has ${existing_client_id:-<none>}, want ${CLIENT_ID}"
+    [ "$APPLY" = "true" ] && update_google_idp "$existing" "$CLIENT_ID" "$CLIENT_SECRET"
+else
+    echo "[ok     ] idp clientId"
 fi
 ```
+
+Send the client secret on **stdin** (`-d @-`), never as an argument.
 
 - [ ] **Step 3: Run it against a cluster with a PAT and confirm the report**
 
