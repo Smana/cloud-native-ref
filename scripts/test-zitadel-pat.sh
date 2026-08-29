@@ -36,7 +36,28 @@ check "cluster seeds" "token-from-cluster" "$(resolve_zitadel_pat 2>/dev/null)"
 resolve_zitadel_pat >/dev/null 2>&1
 check "persisted"     "token-from-cluster" "$(printf '%s' "$persisted" | jq -r .pat)"
 
-# 3. Neither -> fail, with a diagnosis, and no token on stdout.
+# 3. An awkward token -- embedded double quote, backslash, tab and a newline --
+#    survives the seed-then-read round trip byte-identical. This is the case a
+#    hand-built JSON string (or `jq --arg`, which also puts the token in jq's
+#    argv) would get wrong, and the one nobody would notice broke.
+awkward=$'tok"en\\with\ttabs and\na newline in the middle'
+seeded=""
+store_exists() { return 1; }
+store_read()   { return 1; }
+store_write()  { seeded="$(cat)"; }
+kubectl()      { printf '%s' "$awkward" | base64 -w0; }
+check "awkward token seeds"     "$awkward" "$(resolve_zitadel_pat 2>/dev/null)"
+# A second, unwrapped call so store_write's assignment to $seeded (visible only
+# because the library uses a herestring, not a pipe -- see above) isn't lost
+# inside the command substitution's own subshell the check above just ran in.
+resolve_zitadel_pat >/dev/null 2>&1
+
+store_exists() { return 0; }
+store_read()   { printf '%s' "$seeded"; }
+kubectl()      { echo "KUBECTL MUST NOT BE CALLED" >&2; return 1; }
+check "awkward token reads back" "$awkward" "$(resolve_zitadel_pat 2>/dev/null)"
+
+# 4. Neither -> fail, with a diagnosis, and no token on stdout.
 store_exists() { return 1; }
 store_read()   { return 1; }
 kubectl()      { return 1; }

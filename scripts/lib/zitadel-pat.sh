@@ -65,7 +65,11 @@ resolve_zitadel_pat() {
         token="$(printf '%s' "$b64" | base64 -d 2>/dev/null || true)"
         if [ -n "$token" ]; then
             echo "[persist] capturing the admin PAT into ${name} so it survives a restore" >&2
-            store_write "$name" <<< "$(jq -n --arg pat "$token" '{pat: $pat}')"
+            # jq -Rs reads stdin as one raw string rather than parsing it as
+            # JSON -- unlike `jq --arg pat "$token"`, the token never appears
+            # in an external process's argv (readable via /proc/<pid>/cmdline
+            # for the life of that call), only on stdin.
+            store_write "$name" <<< "$(printf '%s' "$token" | jq -Rs '{pat: .}')"
             printf '%s' "$token"
             return 0
         fi
