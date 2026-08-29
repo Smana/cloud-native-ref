@@ -28,32 +28,33 @@ Four steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
 
 ## Full teardown
 
-{{< callout type="warning" >}}
-Do **not** run `terramate script run --reverse destroy` from `opentofu/` on a
-cluster carrying real data or live Karpenter nodes. `eks/configure` is a
-separately registered stack (`after = ["/opentofu/aws/eks/init"]`) with its own
-bare `destroy` script — confirm → `tofu init` → `tofu destroy` — that never
-calls `eks-prepare-destroy.sh`. The reverse dependency walk destroys
-`eks/configure` **first**: Cilium and Flux are torn down raw, with Flux never
-suspended, webhooks never disabled, and PVCs/NodePools/IAM keys never
-cleaned up. Only afterwards does the sweep reach `eks/init`, whose own
-`prepare-destroy` job then runs against a cluster whose networking is
-already gone. This is a known ordering issue, tracked separately — it is not
-fixed today. Use [EKS only](#eks-only) above instead.
-{{< /callout >}}
-
-To tear down every stack — EKS, OpenBao, Network — in one sweep once the
-ordering above is fixed, or on a cluster you are certain holds no data worth
-protecting:
+Tears down every stack — EKS, OpenBao, Network — in one command:
 
 ```bash
 cd opentofu
-terramate script run --reverse destroy
+terramate script run --reverse destroy          # aws (the default)
+TM_CLOUD=all terramate script run --reverse destroy   # both clouds
 ```
 
-Destroys every stack in reverse dependency order with a single confirmation
-prompt (`scripts/terramate-destroy-confirm.sh`), cached for 10 minutes so
-the whole reverse sweep only asks once.
+Reverse dependency order, with a single confirmation prompt
+(`scripts/terramate-destroy-confirm.sh`) cached for 10 minutes so the whole
+sweep only asks once. `TM_DESTROY_CONFIRMED=true` skips it for CI.
+
+{{< callout type="info" >}}
+**Why `eks/configure` shows `[skip]`.** It is a registered stack
+(`after = ["/opentofu/aws/eks/init"]`), so a reverse walk reaches it *before*
+`eks/init` — the opposite of the order a cluster needs. It used to destroy
+itself there, which brought Cilium and Flux down raw: Flux never suspended,
+admission webhooks left admitting, and PVCs, NodePools and IAM access keys
+never cleaned up. `eks/init`'s `prepare-destroy` then ran against a cluster
+whose networking was already gone, and this page carried a warning telling
+people not to use the command that ought to work.
+
+Its `destroy` script is now a no-op that says so. The stack is still destroyed
+— by `eks/init`'s `stage2-destroy-addons` job, at the point in the sequence
+where it is safe. Ownership of the ordering lives in one place because the
+stack graph cannot express it.
+{{< /callout >}}
 
 ## What `eks-prepare-destroy.sh` does first
 

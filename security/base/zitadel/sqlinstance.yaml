@@ -26,6 +26,17 @@ spec:
   # redirect URIs still name priv.cloud.ogenki.io and mycluster-0, which
   # is exactly the breakage this rotation exists to prevent.
   #
+  # The `-2` is a SECOND rotation the same day, and it supersedes plain
+  # zitadel-20260829: the legacy `Ogenki` project was deleted after that
+  # first snapshot was taken, so restoring from it would bring back seven
+  # apps with dead redirect URIs and role grants on a project nothing uses.
+  # Ordering was verified rather than assumed -- `project.removed` is at
+  # 19:54:29Z in the eventstore and this snapshot's newest base backup is
+  # 20260829T195453, 24s later, so the cleanup is inside it.
+  #
+  # zitadel-20260829 is deliberately left in the bucket as a fallback. Delete
+  # it once a rebuild has actually restored from this one.
+  #
   # NOTE: this was a COPY, so the live prefix is NOT empty. A restore
   # therefore still needs scripts/cnpg-prepare-restore.sh first (see the
   # expected-empty-archive note below). Earlier rotations MOVED the
@@ -77,7 +88,7 @@ spec:
   # which removes the step on both clouds. See docs/guides/restore-a-database.
   objectStoreRecovery:
     bucketName: "${region}-ogenki-cnpg-backups"
-    path: "zitadel-20260829"
+    path: "zitadel-20260829-2"
   backup:
     schedule: "0 0 * * *"
     bucketName: "${region}-ogenki-cnpg-backups"
