@@ -2,7 +2,7 @@
 title: The identity provider is deployable on either cloud, defaulting to AWS
 linkTitle: 0024 · IdP per cloud
 weight: 240
-description: ZITADEL becomes a per-cloud deployable component behind two gates rather than a singleton pinned to aws-0, so a GCP-only platform can authenticate without an AWS cluster running — at the accepted cost of one user directory per cloud. Public DNS stays AWS-owned.
+description: ZITADEL becomes a per-cloud deployable component behind two gates rather than a singleton pinned to aws-0, so a GCP-only platform can authenticate without an AWS cluster running. It stays a singleton — one directory, hosted on the primary cloud, relocating rather than duplicating. Public DNS stays AWS-owned.
 lastVerified: 2026-08-27
 ---
 
@@ -53,6 +53,17 @@ Gate 2 alone runs an instance nothing is configured to use. Neither can enforce
 the other, so `identity_provider_url` is **derived from gate 1** rather than
 typed a second time — the literal is what let "which cloud hosts the IdP"
 become unanswerable from configuration in the first place.
+
+{{< callout type="warning" >}}
+**"Deployable on either cloud" is not "running on both at once."** ZITADEL stays a
+singleton: one directory, hosted on the primary cloud, which relocates for a
+GCP-only platform rather than being duplicated. Two directories running side by
+side is not a smaller version of one — a grant means nothing without knowing which
+directory issued it. See
+[ADR-0027]({{< relref "/docs/decisions/0027-primary-cloud-provider.md" >}}), which
+supplies the framing this record's original "one user directory per cloud" phrasing
+was reaching for.
+{{< /callout >}}
 
 **Public DNS stays AWS-owned.** `auth.<public domain>` on `gcp-0` resolves
 through the same Route53 cross-cloud federation as every other public hostname
