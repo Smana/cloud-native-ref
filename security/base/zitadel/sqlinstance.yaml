@@ -12,15 +12,24 @@ spec:
   # initial provisioning — `bootstrap` is immutable post-create).
   #
   # Frozen-dated-snapshot pattern (matches the prior zitadel-20241202
-  # / zitadel-20251028 / zitadel-20260201 / zitadel-20260505 history):
-  # `zitadel-20260719` is the entire former live prefix
-  # `xplane-zitadel-cnpg-cluster/` moved aside on 2026-07-20 (cluster
-  # stopped first; 140 objects / 57 MiB, base backups + full WAL
-  # chain, verified byte-identical before deleting the source).
-  # Moving — rather than the usual copy — also leaves the live prefix
-  # empty, so the recreated cluster's WAL archiver starts a fresh
-  # timeline there without tripping barman's expected-empty-archive
-  # check.
+  # / zitadel-20251028 / zitadel-20260201 / zitadel-20260505 /
+  # zitadel-20260719 history): `zitadel-20260829` is a copy of the live
+  # prefix `xplane-zitadel-cnpg-cluster/` taken on 2026-08-29 after a
+  # one-shot Backup (108 objects / 46 MiB, base backup + full WAL chain,
+  # object count and byte size verified equal to the source).
+  #
+  # Promoted because the OIDC clients changed materially that day: the
+  # `platform` project and its five clients (grafana, headlamp, flux-ui,
+  # headlamp-proxy, harbor) were created, and the `admin` role granted.
+  # The previous pin, zitadel-20260719, predates all of it -- restoring
+  # from it would have silently reinstated the pre-refactor clients whose
+  # redirect URIs still name priv.cloud.ogenki.io and mycluster-0, which
+  # is exactly the breakage this rotation exists to prevent.
+  #
+  # NOTE: this was a COPY, so the live prefix is NOT empty. A restore
+  # therefore still needs scripts/cnpg-prepare-restore.sh first (see the
+  # expected-empty-archive note below). Earlier rotations MOVED the
+  # prefix and got that clearing for free.
   #
   # The live prefix `xplane-zitadel-cnpg-cluster/` accrues daily
   # ScheduledBackups but is NOT used for recovery — that decoupling
@@ -68,7 +77,7 @@ spec:
   # which removes the step on both clouds. See docs/guides/restore-a-database.
   objectStoreRecovery:
     bucketName: "${region}-ogenki-cnpg-backups"
-    path: "zitadel-20260719"
+    path: "zitadel-20260829"
   backup:
     schedule: "0 0 * * *"
     bucketName: "${region}-ogenki-cnpg-backups"

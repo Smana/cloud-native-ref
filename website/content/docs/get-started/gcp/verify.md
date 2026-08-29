@@ -21,6 +21,34 @@ kubectl get nodes
 ```
 
 {{< callout type="warning" >}}
+**A 403 on `get-credentials` is usually the wrong token, not a missing role.**
+gcloud can hold a credential that is filed under one account but bound to
+another — typically one minted by a different OAuth client (an IDE plugin, an
+older gcloud). `gcloud auth list` and `gcloud config list` then both look
+correct while the token sent to Google belongs to someone else, and the error
+unhelpfully names the account you *expect*. Check what the token really is:
+
+```bash
+curl -s "https://oauth2.googleapis.com/tokeninfo?access_token=$(gcloud auth print-access-token)" | jq -r .email
+```
+
+If that is not your project account, re-authenticate naming it explicitly —
+`gcloud auth login smaine.kahlouch@ogenki.io` — and if it still resolves wrong,
+`gcloud auth revoke <account>` first. Clearing `~/.config/gcloud/access_tokens.db`
+does **not** help: that is only a cache, and the bad credential is in
+`credentials.db`.
+
+Until then, Application Default Credentials are a working fallback, and this is
+exactly what `scripts/lib/gcloud-adc.sh` exists for:
+
+```bash
+export CLOUDSDK_AUTH_ACCESS_TOKEN="$(gcloud auth application-default print-access-token)"
+gcloud container clusters get-credentials gcp-0 --location europe-west4-a --project ogenki-435905
+kubectl get nodes
+```
+{{< /callout >}}
+
+{{< callout type="warning" >}}
 **The control plane is private.** `kubectl` only works from the tailnet, so
 `tailscale status` must show you connected before any of this. A hanging
 `kubectl` with no error is almost always a dropped tailnet, not a broken
