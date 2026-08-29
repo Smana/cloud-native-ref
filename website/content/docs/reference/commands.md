@@ -24,14 +24,19 @@ tofu plan -var-file=variables.tfvars
 tofu apply -var-file=variables.tfvars
 ```
 
-**Every GCP stack is behind an opt-in gate.** `terramate script run deploy` from
-`opentofu/` skips them and exits 0. Both clouds share one Terramate run order,
-and the gate is what stops an AWS deploy building GCP as a side effect:
+**`TM_CLOUD` picks the cloud**, and defaults to `aws`. Both clouds share one
+Terramate run order; this is what stops an AWS deploy building GCP as a side
+effect, and a GCP deploy rebuilding `aws-0`:
 
 ```bash
-TM_GCP_ENABLED=true terramate script run deploy      # includes the GCP stacks
-terramate script run deploy                          # AWS only; GCP echoes [skip]
+terramate script run deploy                    # aws alone (the default)
+TM_CLOUD=gcp     terramate script run deploy   # gcp alone; AWS stacks echo [skip]
+TM_CLOUD=aws,gcp terramate script run deploy   # both
+TM_CLOUD=all     terramate script run deploy   # every lane there is
 ```
+
+A comma list, so a third cloud needs no new keyword. Stacks under
+`opentofu/shared/` are owned by neither cloud and run under every value.
 
 ## EKS deploy (two-stage bootstrap, three jobs)
 
@@ -61,10 +66,10 @@ Cilium's `cni.exclusive` displaces GKE's config directly.
 
 ```bash
 cd opentofu/gcp/gke/init
-TM_GCP_ENABLED=true terramate script run deploy          # both stages
-TM_GCP_ENABLED=true terramate script run deploy-stage1   # Stage 1 only
+TM_CLOUD=gcp terramate script run deploy          # both stages
+TM_CLOUD=gcp terramate script run deploy-stage1   # Stage 1 only
 
-TM_GCP_ENABLED=true TF_VAR_flux_git_ref='refs/heads/my-branch' \
+TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/my-branch' \
   terramate script run deploy
 ```
 
@@ -73,7 +78,7 @@ while refusing to run:
 
 ```bash
 cd opentofu
-TM_GCP_ENABLED=true TM_DESTROY_CONFIRMED=true terramate script run --reverse destroy
+TM_CLOUD=gcp TM_DESTROY_CONFIRMED=true terramate script run --reverse destroy
 
 gcloud container clusters list --project <project>
 gcloud compute instances list --project <project>

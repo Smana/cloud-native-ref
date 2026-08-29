@@ -18,9 +18,10 @@
 #   Both clouds share one Terramate run order, and this stack sorts before the
 #   AWS stacks. Without a guard, `terramate script run deploy` from the
 #   opentofu/ root would build GCP while it's unproven. Each job below checks
-#   $TM_GCP_ENABLED first and no-ops with a [skip] message when it's unset or
-#   not "true" -- jobs run independently within a script, so the guard is
-#   repeated per job rather than once per script.
+#   $TM_CLOUD first and no-ops with a [skip] message when it does not name the
+#   gcp lane -- jobs run independently within a script, so the guard is repeated
+#   per job rather than once per script. It is `${global.cloud_gate}` in every
+#   case now, never a hand-written copy.
 #
 #   The double-`$$` escape keeps Terramate from interpolating `${VAR:-default}`
 #   and `$TF_VAR_flux_git_ref`; the literal `${...}`/`$...` must reach bash.
@@ -29,9 +30,9 @@
 #
 # Usage:
 #   cd opentofu/gcp/gke/init
-#   TM_GCP_ENABLED=true terramate script run deploy
-#   TM_GCP_ENABLED=true TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy
-#   TM_GCP_ENABLED=true terramate script run deploy-stage1
+#   TM_CLOUD=gcp terramate script run deploy
+#   TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy
+#   TM_CLOUD=gcp terramate script run deploy-stage1
 
 script "deploy" {
   name        = "GKE Full Deployment"
@@ -42,10 +43,7 @@ script "deploy" {
     description = "Create the generated secrets BEFORE anything can consume them"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init stage0-seed-secrets: set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
 
         # FIRST, and deliberately before the cluster exists.
@@ -88,10 +86,7 @@ script "deploy" {
     description = "Deploy the GKE cluster, static spot node pool and Workload Identity"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init stage1-cluster: set TM_GCP_ENABLED=true to deploy"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
@@ -107,10 +102,7 @@ script "deploy" {
     description = "Apply the Gateway API CRDs, then install Cilium and Flux"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init stage2-cilium-and-flux: set TM_GCP_ENABLED=true to deploy"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         cd ../configure
         ${global.provisioner} init -lock-timeout=5m
@@ -125,10 +117,7 @@ script "deploy" {
     description = "Grant External Secrets its per-secret access, and register the OIDC clients if this cluster hosts the IdP"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init stage3-secrets-and-oidc: set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
 
         # Two bootstrap steps that cannot be expressed as manifests, for the same
@@ -254,10 +243,7 @@ script "deploy-stage1" {
     description = "Deploy the GKE cluster, static spot node pool and Workload Identity"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init deploy-stage1: set TM_GCP_ENABLED=true to deploy"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
@@ -276,10 +262,7 @@ script "preview" {
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init preview: set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
@@ -316,10 +299,7 @@ script "destroy" {
     description = "Single confirmation prompt, cached so --reverse destroy asks once"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init destroy (confirm): set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
         # Init before anything is torn down: a lock file predating a new provider
@@ -336,10 +316,7 @@ script "destroy" {
     description = "Reclaim CSI-provisioned PD disks while the cluster still exists"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init destroy (stage2-reclaim-volumes): set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
 
         # Deleting the cluster with PVCs still bound skips the reclaim entirely:
@@ -387,10 +364,7 @@ script "destroy" {
     description = "Attempt a graceful Cilium and Flux teardown; never blocks the cluster deletion"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init destroy (stage2-destroy-addons): set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/gke-destroy-stage2.sh" \
           attempt "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure" \
@@ -408,10 +382,7 @@ script "destroy" {
     description = "Destroy the GKE cluster, its node pool, service account and IAM bindings"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init destroy (stage1-destroy-cluster): set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         # No tolerance here, unlike stage 2: this is the billable resource. If it
         # cannot be destroyed the run must fail loudly rather than move on to the
@@ -444,10 +415,7 @@ script "destroy" {
     description = "Delete PD disks the in-cluster reclaim could not finish; runs after the cluster is gone"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init destroy (stage2-sweep-orphaned-disks): set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         # The backstop k8s-reclaim-csi-volumes.sh has always CLAIMED to have.
         #
@@ -479,10 +447,7 @@ script "destroy" {
     description = "Drop any stage-2 state left behind, now that the cluster holding it is gone"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE init destroy (stage2-reconcile-state): set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/gke-destroy-stage2.sh" \
           reconcile "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure"
@@ -494,12 +459,12 @@ script "destroy" {
 
 script "init" {
   name        = "GCP Init (opt-in)"
-  description = "Initialize this GCP stack when TM_GCP_ENABLED=true"
+  description = "Initialize this GCP stack when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
       BASH
@@ -510,12 +475,12 @@ script "init" {
 
 script "drift" "detect" {
   name        = "GCP Drift Check (opt-in)"
-  description = "Detect drift in this GCP stack when TM_GCP_ENABLED=true"
+  description = "Detect drift in this GCP stack when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} plan -out=drift.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars
@@ -531,12 +496,12 @@ script "drift" "detect" {
 # rather than an inconsistency.
 script "drift" "reconcile" {
   name        = "GCP Drift Reconciliation (opt-in)"
-  description = "Reconcile drift in this GCP stack when TM_GCP_ENABLED=true"
+  description = "Reconcile drift in this GCP stack when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} apply -input=false -auto-approve -lock-timeout=5m -var-file=variables.tfvars drift.tfplan
       BASH
@@ -547,12 +512,12 @@ script "drift" "reconcile" {
 
 script "opentofu" "render" {
   name        = "GCP Show Plan (opt-in)"
-  description = "Render this GCP stack's plan when TM_GCP_ENABLED=true"
+  description = "Render this GCP stack's plan when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         echo "Stack: ${terramate.stack.path.absolute}"
         ${global.provisioner} show -no-color out.tfplan

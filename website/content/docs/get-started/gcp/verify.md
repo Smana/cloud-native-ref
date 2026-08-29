@@ -206,7 +206,7 @@ Do not leave it running.
 
 ```bash
 cd opentofu/gcp/gke/init
-TM_GCP_ENABLED=true terramate script run destroy
+TM_CLOUD=gcp terramate script run destroy
 ```
 
 Then the rest, and verify the project is empty — see

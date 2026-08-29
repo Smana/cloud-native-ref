@@ -10,10 +10,21 @@ The GCP lane builds the same three-stage model as
 and PKI, then Kubernetes — on GKE Standard with self-managed Cilium.
 
 {{< callout type="info" >}}
-Every GCP stack is behind an opt-in gate. `terramate script run deploy` from
-`opentofu/` **skips GCP entirely** unless `TM_GCP_ENABLED=true` is set, and exits
-0 while doing so. Both clouds share one Terramate run order, and the gate is what
-keeps an AWS deploy from building GCP as a side effect.
+**One knob picks the cloud: `TM_CLOUD`.** It defaults to `aws`, so
+`terramate script run deploy` from `opentofu/` skips every GCP stack and exits 0
+while doing so. Both clouds share one Terramate run order, and this is what keeps
+an AWS deploy from building GCP as a side effect.
+
+```bash
+terramate script run deploy                    # aws alone (the default)
+TM_CLOUD=gcp     terramate script run deploy   # gcp alone
+TM_CLOUD=aws,gcp terramate script run deploy   # both
+TM_CLOUD=all     terramate script run deploy   # every lane there is
+```
+
+It is a comma list, so a third cloud would need no new keyword. See
+[Repository layout]({{< relref "/docs/reference/repository-layout.md" >}}) for
+how a stack's lane is decided.
 {{< /callout >}}
 
 ## Prerequisites
@@ -92,12 +103,12 @@ while cert-manager and external-dns fail against AWS with `AccessDenied` or
 `gcp-0` reaches the public Route 53 zone by assuming an AWS IAM role with a
 projected ServiceAccount token — no access key
 ([ADR-0019]({{< relref "/docs/decisions/0019-cross-cloud-dns-federation.md" >}})).
-That role and its OIDC provider live outside the GCP stack tree and are **not**
-gated by `TM_GCP_ENABLED` — which cuts both ways: the root
-`terramate script run deploy` from `opentofu/` includes this stack (only its
-`destroy` is guarded), and the `--no-tags=aws` deploy below includes it, so
-normally you only need to verify it applied. Apply it standalone only if you are
-deploying a single stack directly:
+That role and its OIDC provider live outside the GCP stack tree, in
+`opentofu/shared/`, so they belong to the `shared` lane and run under **every**
+value of `TM_CLOUD` — which cuts both ways: a plain AWS deploy applies this stack
+(only its `destroy` is guarded), and so does the GCP deploy below, so normally
+you only need to verify it applied. Apply it standalone only if you are deploying
+a single stack directly:
 
 ```bash
 cd opentofu/shared/aws-gcp-federation
@@ -127,8 +138,8 @@ You are editing a working configuration, not writing one:
 1. The root `opentofu/config.tm.hcl` — the Helm chart versions used by the
    bootstrap (`cilium_version`, `flux_operator_version`,
    `flux_instance_version`), shared with the AWS lane.
-   (`opentofu/gcp/config.tm.hcl` holds only the `TM_GCP_ENABLED` gate — there
-   is nothing to edit there.)
+   (There is no GCP-specific config file to edit; the cloud gate lives in
+   `scripts/tm-provisioner.sh` and applies to both lanes.)
 2. Each stack's `variables.tfvars` under `opentofu/gcp/` — the committed values
    point at the reference project (`europe-west4-a`, `COS_CONTAINERD`,
    2 × `e2-standard-4` spot). Project, region/zone and the private domain live
@@ -147,13 +158,12 @@ runs every stack in order.
 
 ```bash
 cd opentofu
-TM_GCP_ENABLED=true terramate script run --no-tags=aws deploy
+TM_CLOUD=gcp terramate script run deploy
 ```
 
-`--no-tags=aws` is the whole trick, and it is not optional. `TM_GCP_ENABLED`
-gates only the GCP stacks; the six AWS ones carry no equivalent guard, so a bare
-`terramate script run deploy` here builds `aws-0` as well. The `aws` tag marks
-the AWS *cluster lane*, so excluding it leaves exactly what a GCP deploy needs:
+`TM_CLOUD=gcp` selects both directions at once — it turns the GCP stacks on
+*and* the AWS ones off, so there is no second flag to remember. That leaves
+exactly what a GCP deploy needs:
 
 ```
 shared/tailscale            shared/aws-gcp-federation
@@ -161,8 +171,12 @@ gcp/network                 gcp/openbao/cluster        gcp/openbao/management
 gcp/gke/init                gcp/gke/configure
 ```
 
-Confirm the selection before applying anything — `terramate list --no-tags=aws`
-prints those seven and nothing else.
+The two `shared/` stacks are in the list on purpose: they are owned by neither
+cloud, so they run whatever `TM_CLOUD` says.
+
+Confirm the selection before applying anything — `terramate list --tags=gcp`
+prints the five GCP stacks, and a dry `TM_CLOUD=gcp terramate script run init`
+prints a `[skip]` line for each AWS stack it passes over.
 
 What that runs, in order:
 
@@ -197,8 +211,8 @@ unmerged branch — and remember the branch is deleted when its PR merges, which
 404s the cluster's Git source until you restore it:
 
 ```bash
-TM_GCP_ENABLED=true TF_VAR_flux_git_ref='refs/heads/my-branch' \
-  terramate script run --no-tags=aws deploy
+TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/my-branch' \
+  terramate script run deploy
 ```
 
 ## Single sign-on
@@ -249,7 +263,7 @@ needs, is on
 
 ```bash
 cd opentofu
-TM_GCP_ENABLED=true TM_DESTROY_CONFIRMED=true terramate script run --reverse destroy
+TM_CLOUD=gcp TM_DESTROY_CONFIRMED=true terramate script run --reverse destroy
 ```
 
 Then confirm against the provider rather than trusting the exit code — a

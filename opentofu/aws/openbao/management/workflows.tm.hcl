@@ -15,6 +15,9 @@
 globals "openbao_ca_cmd" {
   args = [
     "bash",
+    "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+    "--tm-run",
+    "bash",
     "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
     "ca",
     "--root-ca-secret-name",
@@ -83,7 +86,7 @@ script "destroy" {
     name        = "destroy"
     description = "Opentofu destroy"
     commands = [
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
       # `destroy` is a standalone entrypoint: unlike `deploy` it can be the first
       # tofu command run in a stack, so it has to init itself. Without this a lock
       # file predating a new provider fails the whole `--reverse destroy` sweep.
@@ -112,6 +115,9 @@ script "deploy" {
       # request carries no secret in either direction.
       [
         "bash",
+        "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+        "--tm-run",
+        "bash",
         "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
         "init",
         "--url",
@@ -131,6 +137,9 @@ script "deploy" {
       # evaluated before any resource exists, so the file must already be on
       # disk when `tofu init` runs.
       [
+        "bash",
+        "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+        "--tm-run",
         "bash",
         "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
         "ca",

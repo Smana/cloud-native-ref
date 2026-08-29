@@ -7,9 +7,9 @@
 #   unproven.
 #
 # How the gate works:
-#   $TM_GCP_ENABLED unset or != "true"  -> echo [skip] + exit 0 (success, so
+#   $TM_CLOUD not naming gcp             -> echo [skip] + exit 0 (success, so
 #                                          sibling stacks are unaffected)
-#   $TM_GCP_ENABLED == "true"           -> run the real sequence
+#   $TM_CLOUD=gcp (or a list, or all)    -> run the real sequence
 #
 #   The double-`$$` escape keeps Terramate from interpolating `${VAR:-default}`;
 #   the literal `${...}` must reach bash. `${global.provisioner}` interpolations
@@ -17,7 +17,7 @@
 #
 # Usage:
 #   terramate script run deploy                                   # skipped
-#   TM_GCP_ENABLED=true terramate script run deploy               # runs
+#   TM_CLOUD=gcp terramate script run deploy               # runs
 #   terramate script run --no-tags=opt-in deploy                  # skipped, no env var
 #
 # Trade-off: these overrides lose Terramate Cloud sync metadata
@@ -27,15 +27,12 @@
 
 script "deploy" {
   name        = "GCP OpenBao Cluster Deployment (opt-in)"
-  description = "Deploy the OpenBao cluster stack when TM_GCP_ENABLED=true"
+  description = "Deploy the OpenBao cluster stack when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GCP OpenBao cluster: set TM_GCP_ENABLED=true to deploy"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
@@ -49,15 +46,12 @@ script "deploy" {
 
 script "preview" {
   name        = "GCP OpenBao Cluster Preview (opt-in)"
-  description = "Preview OpenBao cluster changes when TM_GCP_ENABLED=true"
+  description = "Preview OpenBao cluster changes when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GCP OpenBao cluster preview: set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
@@ -71,15 +65,12 @@ script "preview" {
 
 script "drift" "detect" {
   name        = "GCP OpenBao Cluster Drift Check (opt-in)"
-  description = "Detect drift when TM_GCP_ENABLED=true"
+  description = "Detect drift when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GCP OpenBao cluster drift: set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} plan -out=out.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars
@@ -112,15 +103,12 @@ script "drift" "detect" {
 # and this run must stop.
 script "destroy" {
   name        = "GCP OpenBao Cluster Destroy (opt-in)"
-  description = "Destroy the OpenBao cluster stack when TM_GCP_ENABLED=true"
+  description = "Destroy the OpenBao cluster stack when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GCP OpenBao cluster destroy: set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
         ${global.provisioner} init -lock-timeout=5m
@@ -140,12 +128,12 @@ script "destroy" {
 
 script "init" {
   name        = "GCP Init (opt-in)"
-  description = "Initialize this GCP stack when TM_GCP_ENABLED=true"
+  description = "Initialize this GCP stack when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
       BASH
@@ -160,12 +148,12 @@ script "init" {
 # rather than an inconsistency.
 script "drift" "reconcile" {
   name        = "GCP Drift Reconciliation (opt-in)"
-  description = "Reconcile drift in this GCP stack when TM_GCP_ENABLED=true"
+  description = "Reconcile drift in this GCP stack when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} apply -input=false -auto-approve -lock-timeout=5m -var-file=variables.tfvars drift.tfplan
       BASH
@@ -176,12 +164,12 @@ script "drift" "reconcile" {
 
 script "opentofu" "render" {
   name        = "GCP Show Plan (opt-in)"
-  description = "Render this GCP stack's plan when TM_GCP_ENABLED=true"
+  description = "Render this GCP stack's plan when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         echo "Stack: ${terramate.stack.path.absolute}"
         ${global.provisioner} show -no-color out.tfplan

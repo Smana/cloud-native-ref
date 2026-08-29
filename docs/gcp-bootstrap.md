@@ -78,8 +78,9 @@ nothing on GCP names.
 an AWS IAM role over `AssumeRoleWithWebIdentity` — no access key, ever. See
 `website/content/docs/decisions/0019-cross-cloud-dns-federation.md` for the full design. That
 role, and the OIDC provider trusting GKE's issuer, live in `opentofu/shared/aws-gcp-federation`,
-which is **not** part of the GCP stack tree (`opentofu/gcp/**`) and is not gated by
-`TM_GCP_ENABLED`. Apply it explicitly:
+which is **not** part of the GCP stack tree (`opentofu/gcp/**`). It belongs to the `shared`
+lane, so it runs under every value of `TM_CLOUD` rather than being gated by it. Apply it
+explicitly only when deploying this stack on its own:
 
 ```bash
 cd opentofu/shared/aws-gcp-federation

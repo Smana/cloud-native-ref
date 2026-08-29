@@ -15,7 +15,7 @@ stack {
     "security",
     # `opt-in` lets `terramate script run --no-tags=opt-in deploy` skip this
     # stack entirely (CI/audit path). The script overrides in workflows.tm.hcl
-    # additionally guard on $TM_GCP_ENABLED so `terramate script run deploy`
+    # additionally guard on $TM_CLOUD so `terramate script run deploy`
     # from the opentofu/ root is also safe by default -- the script runs but
     # no-ops with a [skip] message.
     #

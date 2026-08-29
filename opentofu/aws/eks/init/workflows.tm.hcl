@@ -28,8 +28,8 @@ script "deploy" {
     name        = "stage2-cilium-and-flux"
     description = "Disable VPC CNI/kube-proxy, install Cilium and Flux"
     commands = [
-      ["bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
-      ["bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var=\"flux_git_ref=$${TF_VAR_flux_git_ref}\"}"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var=\"flux_git_ref=$${TF_VAR_flux_git_ref}\"}"],
     ]
   }
 
@@ -57,7 +57,7 @@ script "deploy" {
     name        = "stage3-recycle-bootstrap-nodes"
     description = "Recycle node-group nodes whose ENIs predate Cilium (no-op once they use prefix delegation)"
     commands = [
-      ["bash", "-c", "${terramate.root.path.fs.absolute}/scripts/eks-recycle-bootstrap-nodes.sh --cluster-name ${global.eks_cluster_name} --region ${global.region}"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "${terramate.root.path.fs.absolute}/scripts/eks-recycle-bootstrap-nodes.sh --cluster-name ${global.eks_cluster_name} --region ${global.region}"],
     ]
   }
 }
@@ -105,12 +105,15 @@ script "destroy" {
     commands = [
       # Single y/n prompt; cached for 10 min so `--reverse destroy` asks once.
       # Bypass with TM_DESTROY_CONFIRMED=true for CI.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
       # Init before anything is torn down: a lock file predating a new provider
       # must fail here, not after Flux has been suspended. Same stack dir as the
       # stage1-destroy-cluster job below, so that job inherits this init.
       [global.provisioner, "init", "-lock-timeout=5m"],
       [
+        "bash",
+        "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+        "--tm-run",
         "bash",
         "${terramate.root.path.fs.absolute}/scripts/eks-prepare-destroy.sh",
         "--cluster-name",
@@ -127,11 +130,11 @@ script "destroy" {
     name        = "stage2-destroy-addons"
     description = "Destroy Cilium and Flux (configure stack)"
     commands = [
-      ["bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
       # The three version variables carry no defaults (see configure/variables.tf),
       # so they must be supplied here too: OpenTofu requires every variable to be
       # set on destroy, not just on apply.
-      ["bash", "-c", "cd ../configure && ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
     ]
   }
 
@@ -162,6 +165,9 @@ script "destroy" {
     description = "Delete EBS volumes that were still detaching when the pre-destroy sweep ran"
     commands = [
       [
+        "bash",
+        "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+        "--tm-run",
         "bash",
         "${terramate.root.path.fs.absolute}/scripts/aws-sweep-orphaned-volumes.sh",
         "--cluster-name",
