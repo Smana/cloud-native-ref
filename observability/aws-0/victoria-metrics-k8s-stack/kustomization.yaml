@@ -10,7 +10,6 @@ kind: Kustomization
 #   vmrules/karpenter.yaml        VMRule in the `karpenter` namespace
 #   vmservicecrapes/karpenter.yaml VMServiceScrape, same namespace
 #   vmscrapeconfigs/ec2.yaml      VMScrapeConfig using ec2SDConfigs
-#   vmrules/runlore.yaml          alerts for a workload deployed only here
 #
 # Harmless while aws-0 was the only cluster. The moment observability reached
 # gcp-0 the two `karpenter`-namespace objects became a HARD failure — GCP has no

@@ -3,21 +3,22 @@ kind: Kustomization
 
 # Only rules that mean something on BOTH clouds.
 #
-# karpenter.yaml and runlore.yaml moved to
-# observability/aws-0/victoria-metrics-k8s-stack/vmrules/. Karpenter's was a
-# hard failure on gcp-0, not merely noise: the VMRule declares
+# karpenter.yaml moved to observability/aws-0/victoria-metrics-k8s-stack/vmrules/.
+# It was a hard failure on gcp-0, not merely noise: the VMRule declares
 # `namespace: karpenter`, and GCP has no Karpenter at all (ADR-0006 chose Node
 # Auto-Provisioning), so the Kustomization died with
 # `VMRule/karpenter/karpenter not found: namespaces "karpenter" not found` and
 # took grafana-operator, observability and victoria-traces down with it through
 # dependsOn.
 #
-# runlore's is softer -- it applies to the observability namespace, which does
-# exist -- but it alerts on a workload that runs only on aws-0, so on gcp-0 it
-# would sit permanently without data.
+# runlore.yaml moved BACK to base on 2026-08-30: runlore has run on both
+# clusters since #1862, but its health alerts had been left behind in the
+# aws-0-only overlay, so gcp-0's agent going dark was invisible — nothing was
+# watching it there.
 #
 # ai-fleet LLM-platform alerts moved to apps/base/ai/llm/vmrule-ai-fleet.yaml so
 # they only deploy when the (opt-in, suspend-by-default) LLM platform is resumed —
 # otherwise LLMPlatformSemanticRouterDown fires forever on an LLM-free cluster.
 resources:
   - openbao.yaml
+  - runlore.yaml

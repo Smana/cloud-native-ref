@@ -1,9 +1,10 @@
-# RunLore alerting rules — VictoriaMetrics Operator (VMRule) flavor.
+# RunLore alerting rules — VMRule flavor of RunLore's upstream rules (the
+# upstream repo also ships a PrometheusRule variant; only this one is
+# vendored here).
 #
-# This is the VMRule variant. The alert logic here is IDENTICAL to the
-# PrometheusRule variant in ./prometheusrule.yaml — only apiVersion/kind differ.
-# RunLore is metrics-backend-agnostic, so we ship both and you apply whichever
-# your cluster uses. Do not let the two drift: change one, change the other.
+# Cloud-neutral on purpose: runlore runs on BOTH clusters since #1862, so its
+# health alerts must too — RunloreAgentDown is absent()-based and only works
+# where the workload is expected to exist.
 #
 # DISCOVERY NOTE — the VictoriaMetrics Operator discovers VMRule objects via the
 # `ruleSelector` / `ruleNamespaceSelector` on the VMAlert CR. By default many

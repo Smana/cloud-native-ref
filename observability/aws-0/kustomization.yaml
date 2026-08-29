@@ -23,5 +23,5 @@ resources:
   - ../base/loggen
   - ../base/metrics-server
   # RunLore SRE agent — consumes Alertmanager + the observability stack;
-  # its dashboard + alerts already live here.
+  # its dashboard + health alerts ship from base on both clusters.
   - ../base/runlore
