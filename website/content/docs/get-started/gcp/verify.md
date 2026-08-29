@@ -129,19 +129,19 @@ certificate, so it verifies normally and needs no `-k`.
 
 | Service | URL |
 |---|---|
-| Homepage | `https://home.priv.gcp.ogenki.io` |
-| Grafana | `https://grafana.priv.gcp.ogenki.io` |
-| Harbor | `https://harbor.priv.gcp.ogenki.io` |
-| Headlamp | `https://headlamp.priv.gcp.ogenki.io` |
-| Flux UI | `https://flux-ui-gcp-0.priv.gcp.ogenki.io` |
+| Homepage | [https://home.priv.gcp.ogenki.io](https://home.priv.gcp.ogenki.io) |
+| Grafana | [https://grafana.priv.gcp.ogenki.io](https://grafana.priv.gcp.ogenki.io) |
+| Harbor | [https://harbor.priv.gcp.ogenki.io](https://harbor.priv.gcp.ogenki.io) |
+| Headlamp | [https://headlamp.priv.gcp.ogenki.io](https://headlamp.priv.gcp.ogenki.io) |
+| Flux UI | [https://flux-ui-gcp-0.priv.gcp.ogenki.io](https://flux-ui-gcp-0.priv.gcp.ogenki.io) |
 | VictoriaMetrics | `https://vm.priv.gcp.ogenki.io/vmui` |
 | VictoriaLogs | `https://vl.priv.gcp.ogenki.io/select/vmui` |
 | VictoriaTraces | `https://vt.priv.gcp.ogenki.io/select/vmui` |
-| Alertmanager | `https://vmalertmanager-gcp-0.priv.gcp.ogenki.io` |
-| pev2 | `https://pev2.priv.gcp.ogenki.io` |
-| podinfo | `https://podinfo.priv.gcp.ogenki.io` |
-| App Wizard | `https://app-wizard.priv.gcp.ogenki.io` |
-| ZITADEL | `https://auth.gcp.cloud.ogenki.io` (**public**) |
+| Alertmanager | [https://vmalertmanager-gcp-0.priv.gcp.ogenki.io](https://vmalertmanager-gcp-0.priv.gcp.ogenki.io) |
+| pev2 | [https://pev2.priv.gcp.ogenki.io](https://pev2.priv.gcp.ogenki.io) |
+| podinfo | [https://podinfo.priv.gcp.ogenki.io](https://podinfo.priv.gcp.ogenki.io) |
+| App Wizard | [https://app-wizard.priv.gcp.ogenki.io](https://app-wizard.priv.gcp.ogenki.io) |
+| ZITADEL | [https://auth.gcp.cloud.ogenki.io](https://auth.gcp.cloud.ogenki.io) (**public**) |
 
 ### Credentials
 
