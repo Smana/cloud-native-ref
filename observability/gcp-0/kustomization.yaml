@@ -9,12 +9,15 @@ kind: Kustomization
 resources:
   - ../base/kubernetes-event-exporter
   - ../base/victoria-logs
-  # Log generator for demo purposes
-  - ../base/loggen
   # ./runlore, not ../base/runlore: the overlay patches the three things that
   # genuinely differ by cloud — the provider block, the network policy that
   # reaches the metadata server, and the identity. See the directory.
   - ./runlore
+
+# ../base/loggen is deliberately NOT listed (2026-08-30). It is a synthetic
+# log generator (2 replicas, ~1.7M lines/day) whose only purpose is demoing
+# the VictoriaLogs alerting path; the demo lives on aws-0 with the rest of
+# the demo app. Nothing on gcp-0 consumed its output.
 
 # ../base/metrics-server is deliberately NOT listed. GKE SHIPS ONE.
 #

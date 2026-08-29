@@ -9,7 +9,7 @@ kind: Kustomization
 resources:
   - ../base/kubernetes-event-exporter
   - ../base/victoria-logs
-  # Log generator for demo purposes
+  # Log generator for demo purposes — aws-0 only, see observability/gcp-0/kustomization.yaml.
   - ../base/loggen
   - ../base/metrics-server
   # RunLore SRE agent — consumes Alertmanager + the observability stack;
