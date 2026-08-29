@@ -61,7 +61,9 @@ getting one wrong silently built the wrong cloud.
 
 **Stage 2** (`eks/configure`): Disable VPC CNI, install Cilium (replaces CNI + kube-proxy), install Flux Operator + Instance.
 
-**Deploy both stages**: `cd opentofu/aws/eks/init && terramate script run deploy`
+**Deploy**: `cd opentofu && terramate script run deploy` covers every stack including
+these two. `cd opentofu/aws/eks/init && terramate script run deploy` re-runs just this
+stack (both its internal stages) — for a failed run, not for the normal flow.
 
 **Feature branch testing**: `TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy`
 

@@ -31,7 +31,9 @@ Two-stage OpenTofu deployment: Stage 1 creates the EKS cluster with temporary CN
 
 **Why two stages?** Helm provider needs cluster endpoint at plan time, so Stage 2 runs after the cluster exists.
 
-**Deploy**: `cd opentofu/aws/eks/init && terramate script run deploy`
+**Deploy**: `cd opentofu && terramate script run deploy` — one command builds the
+whole platform, EKS included. `cd opentofu/aws/eks/init && terramate script run deploy`
+re-runs just this stack, e.g. after a failure.
 
 **Key Files:**
 - `opentofu/config.tm.hcl` - Cilium/Flux versions
@@ -100,7 +102,7 @@ terramate script run preview    # Preview changes
 terramate script run deploy     # Deploy platform
 terramate script run drift detect  # Check drift
 
-# EKS deploy (both stages)
+# The deploy above already includes EKS. To re-run just that stack:
 cd opentofu/aws/eks/init && terramate script run deploy
 
 # Feature branch testing
