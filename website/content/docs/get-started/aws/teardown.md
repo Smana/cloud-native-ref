@@ -18,11 +18,13 @@ cd opentofu/aws/eks/init
 terramate script run destroy
 ```
 
-Three steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
+Four steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
 
 1. **`prepare-destroy`** — runs `scripts/eks-prepare-destroy.sh` (see below).
 2. **`stage2-destroy-addons`** — destroys the `eks/configure` stack (Cilium, Flux).
 3. **`stage1-destroy-cluster`** — destroys the `eks/init` stack (the cluster itself).
+4. **`stage3-sweep-orphaned-volumes`** — deletes the EBS volumes that were still
+   detaching when step 1 swept ([why](#the-sweep-after-the-destroy)).
 
 ## Full teardown
 
@@ -77,6 +79,9 @@ Before OpenTofu deletes anything, the script:
   volumes in `available` state, tagged for this cluster, whose PV no longer
   exists. `EKS_DESTROY_KEEP_VOLUMES=true` skips only this sweep of
   already-orphaned volumes; it has no effect on the PV/PVC reclaim above.
+  This sweep runs *before* the destroy, so it can only see what has finished
+  detaching by then — see [the second sweep](#the-sweep-after-the-destroy) for
+  the rest.
 - Reclaims the IAM access keys Harbor's S3 registry storage uses — AWS caps
   `AccessKeysPerUser` at 2, so without this a second or third rebuild's
   Harbor can fail to start on a full quota.
@@ -86,6 +91,37 @@ Before OpenTofu deletes anything, the script:
   Pod Identity associations.
 - Strips finalizers from any Crossplane composite resource stuck terminating,
   so the namespace delete that follows doesn't hang forever.
+
+## The sweep after the destroy
+
+`terramate script run destroy` ends with `stage3-sweep-orphaned-volumes`, which
+runs `scripts/aws-sweep-orphaned-volumes.sh` once the cluster is gone.
+
+It exists because the pre-destroy sweep above runs at the wrong moment to be
+complete. It fires moments after the PVCs are deleted, so a volume still
+detaching is not yet `available` and is skipped — and the script says so:
+*"may still be detaching — the next run retries"*. The next **run** is the next
+teardown, which is a whole rebuild away, so a volume that detached a second too
+late bills for the entire gap, and forever if the cluster is never rebuilt.
+That is the shape of the accumulation: 62 volumes (~518 GiB) by 2026-07, each
+teardown leaving a few for the following one to find.
+
+After `tofu destroy` returns, every node is terminated, so every volume of this
+cluster is unambiguously detached and there is no in-flight state left to race.
+The same three filters apply — `available`, tagged
+`kubernetes.io/cluster/<name>=owned`, and tagged
+`kubernetes.io/created-for/pvc/name` — so it can neither touch a second live
+cluster's storage nor a hand-made volume.
+
+Run it by hand if you tore the cluster down some other way. It is a dry run
+unless you pass `--apply`:
+
+```bash
+./scripts/aws-sweep-orphaned-volumes.sh --cluster-name aws-0 --region eu-west-3
+```
+
+GCP has the same step as `stage2-sweep-orphaned-disks` — see the
+[GCP teardown]({{< relref "/docs/get-started/gcp/teardown.md" >}}).
 
 ## What is not deleted
 

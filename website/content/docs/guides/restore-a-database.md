@@ -90,18 +90,34 @@ This is not an edge case. The backup bucket **outlives the cluster on purpose**
 individual cluster"*), so on every rebuild the destination still holds the
 previous cluster's archive and the bootstrap refuses.
 
-Having confirmed the dated seed is complete:
+`scripts/cnpg-prepare-restore.sh` does this with the guard that makes it safe —
+it refuses unless the dated seed actually holds a base backup, so the live
+archive is never cleared when there would be nothing to restore from:
 
 ```bash
-gcloud storage rm --recursive \
-  gs://<project>-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/
+./scripts/cnpg-prepare-restore.sh --cloud gcp --project <project> \
+  --bucket <project>-ogenki-cnpg-backups \
+  --cluster xplane-zitadel-cnpg-cluster --seed zitadel-20260828      # dry run
+# ... then --apply
+```
+
+It distinguishes *could not check* from *empty*: if the listing fails — a stale
+credential is the usual cause — it refuses and says so, rather than reporting an
+absent seed and inviting you to proceed.
+
+On `aws-0` this step has always been done by hand before a rebuild, which is why
+restores work there; the script is the same operation with the check attached:
+
+```bash
+./scripts/cnpg-prepare-restore.sh --cloud aws --region <region> \
+  --bucket <region>-ogenki-cnpg-backups \
+  --cluster xplane-zitadel-cnpg-cluster --seed zitadel-20260719
 ```
 
 The durable fix is a per-generation `serverName` in the `SQLInstance`
-Composition, which would remove this step on both clouds. Until then it is
-manual, and **`aws-0` carries the identical exposure** — it restores from
-`zitadel-20260719` into a bucket that also survives its cluster, so its next
-rebuild will refuse in exactly the same way.
+Composition, which would remove the step on both clouds. Until then it is a
+normal part of restoring — on `aws-0` it has always been done, just never
+written down.
 
 ## 3. Force the bootstrap
 

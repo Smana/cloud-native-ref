@@ -11,8 +11,16 @@
 #   AWS  62 EBS volumes (~518Gi) accumulated across rebuilds by 2026-07, and 12
 #        more (~138Gi) from a single 2026-07-21 rebuild.
 #   GCP  3 orphaned PD disks (35Gi) survived the 2026-08-27 gcp-0 teardown --
-#        Harbor's registry, its CNPG cluster and trivy. GKE had no equivalent of
-#        this step at all; it was AWS-only because that is where it first hurt.
+#        Harbor's registry, its CNPG cluster and trivy, then 8 more (43GB) the
+#        next day. GKE had no equivalent of this step at all; it was AWS-only
+#        because that is where it first hurt.
+#
+# The cloud-side sweep this script defers to now runs on both clouds AFTER the
+# cluster is destroyed -- scripts/gcp-sweep-orphaned-disks.sh and
+# scripts/aws-sweep-orphaned-volumes.sh, each wired into its own `destroy`.
+# GCP had no sweep at all before that. AWS had one, but only in prepare-destroy,
+# before the destroy -- so it missed whatever was still detaching, and left it
+# for a teardown a rebuild away.
 #
 # Extracted from scripts/eks-prepare-destroy.sh rather than copied: every step
 # below is plain Kubernetes, and a second copy is a second thing to forget.
@@ -104,8 +112,10 @@ done
 if [ "${pv_count:-0}" != "0" ]; then
     echo "WARNING: ${pv_count} PV(s) not reclaimed — their backing volumes may be orphaned:"
     "${KCTL[@]}" get pv -o jsonpath='{range .items[*]}{.metadata.name}{" -> "}{.spec.csi.volumeHandle}{"\n"}{end}' 2>/dev/null || true
-    echo "The cloud-side sweep (stage2-sweep-orphaned-disks) deletes these after the"
-    echo "cluster is gone. On AWS there is no equivalent step yet -- check manually."
+    echo "The cloud-side sweep deletes these once the cluster is gone, and it now"
+    echo "exists on both clouds -- gcp: stage2-sweep-orphaned-disks, aws:"
+    echo "stage3-sweep-orphaned-volumes. Both run automatically in \`terramate"
+    echo "script run destroy\`; run the script by hand if you destroyed another way."
 else
     echo "All PersistentVolumes reclaimed."
 fi

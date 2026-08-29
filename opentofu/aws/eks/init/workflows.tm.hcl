@@ -142,4 +142,36 @@ script "destroy" {
       [global.provisioner, "destroy", "-auto-approve", "-var-file=variables.tfvars"],
     ]
   }
+
+  # A SECOND sweep, and the moment is the whole point.
+  #
+  # prepare-destroy already sweeps orphaned volumes, but it runs BEFORE the
+  # destroy, moments after deleting the PVCs -- so it only catches what has
+  # finished detaching by then. Its own warning admits the rest ("may still be
+  # detaching -- the next run retries"), and the next run is a whole rebuild
+  # away, so a volume that detached one second late bills until then. That is
+  # how 62 volumes (~518 GiB) accumulated by 2026-07: each teardown leaving a
+  # few for the next one to find.
+  #
+  # Here every node is already terminated, so every volume of this cluster is
+  # unambiguously detached and there is no in-flight state to race. Same three
+  # filters as the earlier sweep -- available + this cluster's tag + the CSI
+  # driver's PVC tag -- so it cannot touch a live cluster or a hand-made volume.
+  job {
+    name        = "stage3-sweep-orphaned-volumes"
+    description = "Delete EBS volumes that were still detaching when the pre-destroy sweep ran"
+    commands = [
+      [
+        "bash",
+        "${terramate.root.path.fs.absolute}/scripts/aws-sweep-orphaned-volumes.sh",
+        "--cluster-name",
+        global.eks_cluster_name,
+        "--region",
+        global.region,
+        "--profile",
+        global.profile,
+        "--apply",
+      ],
+    ]
+  }
 }
