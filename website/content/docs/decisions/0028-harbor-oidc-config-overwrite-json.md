@@ -24,7 +24,7 @@ or Helm values. Nothing in git is imperative.
 Harbor did not fit that shape. `auth_mode`, the OIDC endpoint, the client and
 the scopes are not chart configuration — Harbor writes them into its own
 Postgres database at runtime, through its `/api/v2.0/configurations` API, and
-nothing in `tooling/base/harbor/` could express them. `scripts/harbor-oidc.sh`
+nothing in `tooling/base/harbor/` could express them. `harbor-oidc.sh`
 existed to close that gap: read the client from the store, authenticate to
 Harbor as `admin`, and `PUT` the fields by hand. It worked, and it was
 idempotent — but it was a second script, with its own test file
@@ -94,7 +94,7 @@ returns `Forbidden` for every field.
 
 ## Considered Options
 
-### Option 1: Keep `scripts/harbor-oidc.sh` (status quo)
+### Option 1: Keep `harbor-oidc.sh` (status quo)
 
 **Pros**:
 - Already written, already idempotent, already covers the full field set.
@@ -128,7 +128,7 @@ the same `harbor-oidc` store key the old script read.
   remember to re-run.
 - The client secret never lands in the `HelmRelease` CR's `.spec.values` —
   `valuesFrom` composes it from a `Secret` at render time.
-- Deletes `scripts/harbor-oidc.sh` and its dedicated test file outright.
+- Deletes `harbor-oidc.sh` and its dedicated test file outright.
 
 **Cons**:
 - `readOnlyForAll` locks Harbor's entire system-configuration surface, not
@@ -182,7 +182,7 @@ does not foreclose reverting later if it proves painful in practice.
 - Harbor behaves identically to Grafana, Headlamp and the Flux UI: register
   client → `ExternalSecret` → declarative consumption. The asymmetry that
   prompted this ADR is gone.
-- `scripts/harbor-oidc.sh` and `scripts/test-harbor-oidc-convergence.sh` are
+- `harbor-oidc.sh` and `test-harbor-oidc-convergence.sh` are
   deleted — one less script class to keep passing the repo's argv-leak guard
   and shellcheck.
 - No script reads Harbor's admin password out of the cluster anymore.
