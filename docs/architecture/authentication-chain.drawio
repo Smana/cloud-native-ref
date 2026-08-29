@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="30.3.6">
+  <diagram name="Authentication chain" id="authentication-chain">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" page="1" pageWidth="1520" pageHeight="1180" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="t" value="One identity, from Google to Kubernetes RBAC" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="28" width="1100" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ts" value="A Google Workspace account is the only user directory. ZITADEL brokers it into every service, and turns project roles into the flat groups claim each consumer expects. The two clouds part company at the last step — only EKS can trust ZITADEL directly." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="60" width="1400" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- source of truth -->
+        <mxCell id="google" value="&lt;b&gt;Google Workspace&lt;/b&gt;&#xa;The source of truth for who you are.&#xa;Remove someone here and every service below&#xa;loses them — there is no second directory." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="110" width="360" height="96" as="geometry" />
+        </mxCell>
+
+        <!-- broker -->
+        <mxCell id="zbox" value="ZITADEL — the broker" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#7C3AED;verticalAlign=top;fontStyle=1;fontFamily=Helvetica;fontSize=13;fontColor=#1E293B;align=left;spacingLeft=8;spacingTop=4;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="250" width="1440" height="330" as="geometry" />
+        </mxCell>
+
+        <mxCell id="zuser" value="&lt;b&gt;The user&lt;/b&gt;&#xa;isAutoCreation builds a ZITADEL user from the&#xa;Google profile on first login. That is the ONLY&#xa;way a human user is created — no script can&#xa;seed one, which is why a database restore&#xa;matters more than it looks." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="70" y="290" width="330" height="126" as="geometry" />
+        </mxCell>
+
+        <mxCell id="zproj" value="&lt;b&gt;Project: platform&lt;/b&gt;&#xa;Holds every OIDC client and the four roles:&#xa;admin · backend · frontend · data&#xa;&#xa;Roles are created by zitadel-oidc-clients.sh.&#xa;Granting one to a user stays manual — the&#xa;user only exists after a first login." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="430" y="290" width="330" height="126" as="geometry" />
+        </mxCell>
+
+        <mxCell id="zact" value="&lt;b&gt;Action: flatRoles&lt;/b&gt;&#xa;ZITADEL has no groups — only project roles,&#xa;emitted as a nested object. This Action flattens&#xa;them and sets two claims with one list:&#xa;&#xa;groups → Headlamp, Flux UI&#xa;roles  → Grafana" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="790" y="290" width="330" height="126" as="geometry" />
+        </mxCell>
+
+        <mxCell id="zaud" value="&lt;b&gt;The audience it issues&lt;/b&gt;&#xa;Every client of the project, plus the&#xa;project id itself:&#xa;&#xa;[grafana, flux-ui, harbor, headlamp,&#xa; headlamp-proxy, &lt;b&gt;388445486190712688&lt;/b&gt;]" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="290" width="300" height="126" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ztrap" value="&lt;b&gt;projectRoleAssertion must be true — ZITADEL defaults it to false.&lt;/b&gt;   With it off, no token carries roles AND ctx.v1.user.grants is empty inside the Action, so flatRoles returns early and sets no claim at all — while still logging &quot;action run succeeded&quot;. One flag, three unrelated-looking failures: &quot;no such key: groups&quot; in the Flux UI, &quot;unauthorized&quot; in Headlamp, and every Grafana user silently landing on Viewer." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#DC2626;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="70" y="440" width="1380" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- consumers -->
+        <mxCell id="cgraf" value="&lt;b&gt;Grafana&lt;/b&gt;&#xa;direct OIDC&#xa;&#xa;role_attribute_path matches roles[*]&#xa;→ Admin / Editor / Viewer" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="640" width="330" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="cflux" value="&lt;b&gt;Flux UI&lt;/b&gt;&#xa;direct OIDC + impersonation&#xa;&#xa;Impersonates claims.email with&#xa;claims.groups — Kubernetes RBAC decides" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="410" y="640" width="330" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="charb" value="&lt;b&gt;Harbor&lt;/b&gt;&#xa;direct OIDC, configured declaratively&#xa;&#xa;CONFIG_OVERWRITE_JSON writes auth_mode&#xa;to Harbor's own database at core startup" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="780" y="640" width="330" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="chead" value="&lt;b&gt;Headlamp&lt;/b&gt;&#xa;differs by cloud — see the two lanes below&#xa;&#xa;Needs -oidc-scopes passed explicitly; the&#xa;chart omits it on the externalSecret path" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="640" width="300" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- cloud lanes -->
+        <mxCell id="awsbox" value="aws-0 — the API server trusts ZITADEL" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#059669;verticalAlign=top;fontStyle=1;fontFamily=Helvetica;fontSize=13;fontColor=#1E293B;align=left;spacingLeft=8;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="800" width="700" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="awseks" value="&lt;b&gt;EKS OIDC identity provider&lt;/b&gt;&#xa;issuer_url    https://auth.cloud.ogenki.io&#xa;username_claim  email&#xa;groups_claim    groups&#xa;client_id       the platform PROJECT id" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="70" y="840" width="640" height="106" as="geometry" />
+        </mxCell>
+        <mxCell id="awsrbac" value="A ZITADEL token &lt;b&gt;is&lt;/b&gt; a Kubernetes identity. The groups claim becomes real Kubernetes groups, and rbac/admin.yaml binds the admin group to cluster-admin. Headlamp simply forwards the user's token.&#xa;&#xa;Pin the PROJECT id, not one client id: the project id is in every token the project issues, so a new consumer needs no change. Pinning one app's client id silently rejects all the others — and an EKS provider config is immutable, so fixing it means ~20 minutes of downtime." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="70" y="966" width="640" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gcpbox" value="gcp-0 — it cannot, so a proxy stands in" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#F59E0B;verticalAlign=top;fontStyle=1;fontFamily=Helvetica;fontSize=13;fontColor=#1E293B;align=left;spacingLeft=8;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="780" y="800" width="700" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="gcpproxy" value="&lt;b&gt;oauth2-proxy&lt;/b&gt;&#xa;Authenticates the human against ZITADEL and&#xa;gates on --allowed-group=admin. Headlamp then&#xa;talks to the API server as its OWN ServiceAccount." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="810" y="840" width="640" height="106" as="geometry" />
+        </mxCell>
+        <mxCell id="gcpwhy" value="GKE's managed control plane accepts no equivalent flag. Identity Service for GKE, which used to provide one, is deprecated as of 2026-07-01 and unsupported in 1.37+. Workforce Identity Federation authenticates a client to Google and cannot take a ZITADEL id_token.&#xa;&#xa;The trade is explicit: per-user Kubernetes RBAC is lost, and authorisation moves entirely to the proxy. See ADR-0026 for the alternatives weighed, Pinniped included." style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="810" y="966" width="640" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- edges -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6366F1;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Helvetica;fontSize=11;fontColor=#475569;" edge="1" parent="1" source="google" target="zbox">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1l" value="OIDC" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#475569;align=left;" vertex="1" parent="1">
+          <mxGeometry x="230" y="218" width="80" height="16" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6366F1;strokeWidth=2;endArrow=block;endFill=1;exitX=0.15;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="zbox" target="cgraf">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6366F1;strokeWidth=2;endArrow=block;endFill=1;exitX=0.38;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="zbox" target="cflux">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6366F1;strokeWidth=2;endArrow=block;endFill=1;exitX=0.63;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="zbox" target="charb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6366F1;strokeWidth=2;endArrow=block;endFill=1;exitX=0.88;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="zbox" target="chead">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2l" value="OIDC + a groups / roles claim" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#475569;align=left;" vertex="1" parent="1">
+          <mxGeometry x="240" y="600" width="240" height="16" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#059669;strokeWidth=2;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="cflux" target="awsbox">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#059669;strokeWidth=2;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="chead" target="awsbox">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#F59E0B;strokeWidth=2;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="chead" target="gcpbox">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

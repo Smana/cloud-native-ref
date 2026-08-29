@@ -29,10 +29,20 @@ correct while the token sent to Google belongs to someone else, and the error
 unhelpfully names the account you *expect*. Check what the token really is:
 
 ```bash
-curl -s "https://oauth2.googleapis.com/tokeninfo?access_token=$(gcloud auth print-access-token)" | jq -r .email
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  https://container.googleapis.com/v1/projects/ogenki-435905/zones/europe-west4-a/clusters/gcp-0
 ```
 
-If that is not your project account, re-authenticate naming it explicitly —
+`200` is healthy. `401` means the stored credential is stale or revoked; `403`
+means it authenticated as the wrong Google account.
+
+Do **not** test this with `tokeninfo`'s `.email` — it returns `null` for
+perfectly good tokens too, because the field is only populated when the token
+carries the `userinfo.email` scope, which ADC-issued tokens do not. It reads
+like a failure when nothing is wrong.
+
+If you get a 403, re-authenticate naming the account explicitly —
 `gcloud auth login smaine.kahlouch@ogenki.io` — and if it still resolves wrong,
 `gcloud auth revoke <account>` first. Clearing `~/.config/gcloud/access_tokens.db`
 does **not** help: that is only a cache, and the bad credential is in

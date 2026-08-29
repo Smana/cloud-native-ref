@@ -27,17 +27,7 @@ Everything below is machinery in service of those three.
 
 ## The chain
 
-```
-Google Workspace          the source of truth for who you are
-        │  OIDC
-        ▼
-ZITADEL                   the broker: user, project roles, claims
-        │  OIDC + a `groups` / `roles` claim
-        ├──────────────► Grafana        (direct OIDC)
-        ├──────────────► Flux UI        (direct OIDC + impersonation)
-        ├──────────────► Harbor         (direct OIDC, declarative CONFIG_OVERWRITE_JSON)
-        └──────────────► Headlamp       (differs by cloud — see below)
-```
+![One Google Workspace account is the only user directory; ZITADEL brokers it, creating a user on first login through isAutoCreation, holding the platform project with its admin, backend, frontend and data roles, and running the flatRoles Action that flattens those roles into the groups claim Headlamp and the Flux UI read and the roles claim Grafana reads; the token it issues carries every client of the project plus the project id in its audience, which is what the EKS OIDC provider is pinned to; Grafana, the Flux UI, Harbor and Headlamp each consume that token, and the two clouds diverge at the Kubernetes API, where EKS trusts ZITADEL directly and turns the groups claim into real Kubernetes groups while GKE cannot and puts oauth2-proxy in front of Headlamp instead](/images/diagrams/authentication-chain.svg)
 
 ### Google Workspace → ZITADEL
 
