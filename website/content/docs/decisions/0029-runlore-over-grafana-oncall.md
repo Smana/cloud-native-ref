@@ -17,7 +17,7 @@ lastVerified: 2026-08-30
 This repository carried a complete Grafana OnCall deployment under
 `observability/base/grafana-oncall/`: the `oncall` chart 1.16.5 (engine plus
 Celery workers), a RabbitMQ `HelmRelease`, a `SQLInstance` and a `KVStore`
-claim for its MySQL-compatible database and Valkey cache, four
+claim for its PostgreSQL database and Valkey cache, four
 `ExternalSecret`s, and two `HTTPRoute`s. It was never referenced by any Flux
 Kustomization — every manifest was authored, none ever ran. What *did* run was
 its residue: the `grafana-oncall-app` Grafana plugin, and a provisioning
@@ -26,16 +26,18 @@ exist.
 
 Meanwhile the platform's actual incident flow grew up next to it. Alertmanager
 routes every non-blackholed alert to the RunLore SRE agent's webhook —
-auto-investigation, Slack posts with feedback and silence buttons — with
+auto-investigation per its trigger policy, Slack posts with feedback and
+silence buttons — with
 `continue: true`, so the same alert also lands in the Slack `#alerts` channel
 formatted with the Monzo templates and runbook / query / dashboard / silence
 action buttons. For a one-operator reference platform whose paging requirement
 is "a human reads Slack", that *is* the whole incident flow.
 
 Upstream then decided the question's urgency: Grafana OnCall OSS entered
-maintenance mode on 2025-03-11, and the repository was archived on 2026-03-24 —
-read-only, zero future patches of any severity. The official migration path is
-Grafana Cloud IRM, which is cloud-only.
+maintenance mode on 2025-03-11, development stopped on the announced end date
+of 2026-03-24, and the repository has been archived on GitHub since 2026-06-05
+— read-only, zero future patches of any severity. The official migration path
+is Grafana Cloud IRM, which is cloud-only.
 
 ---
 
@@ -45,7 +47,7 @@ Grafana Cloud IRM, which is cloud-only.
   security patches, ever. Running it as an internet-era web app with a
   database, a message queue and a cache is a standing liability.
 - **Footprint proportional to the requirement.** Engine + Celery + RabbitMQ +
-  MySQL-compatible database + Valkey ≈ five standing workloads, for a platform
+  PostgreSQL database + Valkey ≈ five standing workloads, for a platform
   operated by one person.
 - **What already works.** The RunLore + Slack path is deployed, wired, and
   handling every alert today; OnCall never handled one.
@@ -59,9 +61,11 @@ Grafana Cloud IRM, which is cloud-only.
 ### Option 1: RunLore SRE agent + Slack `#alerts` (the path already running)
 
 **Pros**:
-- Already carries the full flow: auto-investigation on every non-blackholed
-  alert, Slack posts with feedback/silence buttons, Monzo-templated `#alerts`
-  messages with runbook / query / dashboard / silence actions.
+- Already carries the full flow: every non-blackholed alert is delivered to
+  RunLore, which auto-investigates the ones matching its trigger policy
+  (severity=critical today), and posts to Slack with feedback/silence
+  buttons — alongside the Monzo-templated `#alerts` messages with runbook /
+  query / dashboard / silence actions.
 - Zero additional standing workloads — RunLore is deployed on both clusters
   anyway.
 - No archived-upstream exposure.
@@ -83,10 +87,11 @@ authored.
 - The manifests already existed; the marginal authoring cost was zero.
 
 **Cons**:
-- Upstream archived 2026-03-24: read-only, no patches of any severity, for a
-  component that terminates webhooks and holds credentials.
-- Five standing workloads (engine, Celery, RabbitMQ, MySQL-compatible DB,
-  Valkey) to operate for a paging requirement that is "a human reads Slack".
+- Upstream archived since 2026-06-05 (development ended 2026-03-24):
+  read-only, no patches of any severity, for a component that terminates
+  webhooks and holds credentials.
+- Five standing workloads (engine, Celery, RabbitMQ, PostgreSQL DB, Valkey)
+  to operate for a paging requirement that is "a human reads Slack".
 - A dead end by construction — the vendor's own path off of it is cloud-only.
 
 ### Option 3: Grafana Cloud IRM (the official migration path)
@@ -125,8 +130,8 @@ OnCall manifests sat unwired.
 - Five standing workloads are not run, and an archived upstream is not
   operated.
 - The incident flow is the one that was already proven: every non-blackholed
-  alert is auto-investigated by RunLore and lands in Slack with actionable
-  buttons.
+  alert is delivered to RunLore — auto-investigated when it matches the
+  trigger policy — and lands in Slack with actionable buttons.
 - The never-wired estate stopped being a trap for readers: a complete-looking
   `grafana-oncall/` directory strongly implied a running service that did not
   exist.
@@ -145,7 +150,7 @@ OnCall manifests sat unwired.
 
 ### Neutral
 
-- The unwired stack and its live residue were removed on 2026-08-30: the
+- The unwired stack and its live residue were removed on 2026-08-29: the
   `observability/base/grafana-oncall/` directory, the `grafana-oncall-app`
   plugin, the provisioning ConfigMap pointing at the nonexistent
   `oncall-engine:8080`, and the secret-store seeds.
@@ -167,7 +172,8 @@ plus per-cluster overlays.
 ## References
 
 - [Grafana OnCall maintenance-mode announcement](https://grafana.com/blog/2025/03/11/grafana-oncall-maintenance-mode/)
-  (2025-03-11); repository archived 2026-03-24
+  (2025-03-11); development ended 2026-03-24; repository archived on GitHub
+  2026-06-05
 - [ADR-0031](0031-per-cluster-observability-panes.md) — where alerts terminate,
   and the missing dead-man's switch
 - `observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml`

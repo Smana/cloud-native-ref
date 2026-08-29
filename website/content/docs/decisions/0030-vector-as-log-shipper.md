@@ -9,16 +9,19 @@ lastVerified: 2026-08-30
 **Status**: Accepted
 **Date**: 2026-08-30
 **Deciders**: Platform Team
-**Related Design**: N/A — backfill; records a choice made when VictoriaLogs was adopted
+**Related Design**: N/A — backfill; records a choice carried over from the Loki era and re-affirmed at VictoriaLogs adoption
 
 ---
 
 ## Context
 
-**This record is a backfill.** The shipper was chosen when VictoriaLogs was
-adopted; [ADR-0010](0010-victoriametrics-over-prometheus.md) references "Vector
-as the shipper" without ever deciding it. The reasoning below is written down
-after the fact so it stops living only in the configuration.
+**This record is a backfill.** Vector has been the platform's shipper since
+the Loki era (standalone vector-agent, October 2023); when VictoriaLogs
+replaced Loki (May 2025) the choice was re-affirmed and Vector was re-deployed
+as the victoria-logs chart's subchart.
+[ADR-0010](0010-victoriametrics-over-prometheus.md) references "Vector as the
+shipper" without ever deciding it. The reasoning below is written down after
+the fact so it stops living only in the configuration.
 
 Every node needs an agent that tails container logs and ships them to
 VictoriaLogs. The platform runs Vector for this, deployed not as its own
@@ -34,7 +37,7 @@ VictoriaLogs-specific headers. The VRL carries in-file unit tests runnable
 with `vector test`. As of 2026-08-30 the whole pipeline is shared across both
 `victoria-logs` chart variants (single and cluster) via the
 `vl-common-helm-values` ConfigMap, after the cluster variant was found to have
-silently lost it.
+never carried it — it shipped with a stock Vector and no customConfig at all.
 
 ---
 
@@ -92,8 +95,9 @@ silently lost it.
 **Cons**:
 - Loki-shaped: its label model and push protocol are designed for Loki, not
   VictoriaLogs.
-- Deprecated upstream — announced end-of-life in the Loki 3.x era, replaced by
-  Grafana Alloy. Adopting it would have meant starting on a dead branch.
+- By the time of the 2025 re-affirmation, deprecated upstream — announced
+  end-of-life in the Loki 3.x era, replaced by Grafana Alloy. Switching to it
+  then would have meant starting on a dead branch.
 
 ### Option 4: OpenTelemetry Collector
 
@@ -173,8 +177,9 @@ detects auto_explain output, `parse_pg_auto_explain` extracts the plan JSON
 and metadata (VRL, with in-file unit tests), and dedicated sinks ship parsed
 plans and the catch-all stream to VictoriaLogs with the appropriate
 `AccountID`/stream headers. Only the two PG sinks are shared — the cluster
-chart ships its own catch-all sink, and sharing ours doubled every log line
-until that was caught.
+chart ships its own catch-all sink, and sharing ours would have doubled every
+general log line in cluster mode — caught while the cluster variant was still
+on standby.
 
 ---
 
