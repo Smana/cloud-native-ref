@@ -59,8 +59,8 @@ Reading directly from the cloud secret store is simpler, has no ownership confli
 | `scripts/test-zitadel-pat.sh` | **Create.** Exercises resolution order and the failure path. |
 | `scripts/zitadel-oidc-clients.sh` | **Modify.** Source both libs; delete its inline store helpers and PAT block. |
 | `scripts/zitadel-idp.sh` | **Modify.** Same, plus make `ensure_*` converge. |
-| `scripts/harbor-oidc.sh` | **Modify.** Same, plus reconcile Harbor's stored OIDC endpoint. |
-| `scripts/secret-store.sh` | **Modify.** Source the PAT lib only where it needs the token. |
+| `scripts/harbor-oidc.sh` | **Modify.** Store library ONLY — it authenticates to Harbor's own API with `admin:$HARBOR_PASSWORD`, never the ZITADEL PAT. Plus the `--cloud` validation it currently lacks, and (Task 5) reconciling its stored OIDC endpoint. |
+| `scripts/secret-store.sh` | **Untouched.** Its `store_has` / `store_value` / `gcp_secrets` are different functions with different semantics, not copies of the three being extracted. Converting it would be a semantic refactor, out of scope. |
 | `website/content/docs/get-started/sso.md` | **Modify.** The PAT is no longer a manual prerequisite. |
 | `website/content/docs/guides/migrate-the-identity-provider.md` | **Create.** The GCP-only relocation procedure. |
 
@@ -437,10 +437,22 @@ git commit -m "feat(zitadel): persist the admin PAT so it survives a restore"
 ### Task 3: Move the four setup scripts onto the libraries
 
 **Files:**
-- Modify: `scripts/zitadel-oidc-clients.sh` (inline `store_*` ~102–160, PAT block ~174–205)
-- Modify: `scripts/zitadel-idp.sh`
-- Modify: `scripts/harbor-oidc.sh`
-- Modify: `scripts/secret-store.sh`
+- Modify: `scripts/zitadel-oidc-clients.sh` — 3 store helpers + the PAT block
+- Modify: `scripts/zitadel-idp.sh` — 1 store helper + the PAT block
+- Modify: `scripts/harbor-oidc.sh` — 1 store helper, NO PAT, plus the `--cloud` validation
+- **Not** `scripts/secret-store.sh` — see below
+
+**Which script needs what** (verified against the files, not assumed):
+
+| Script | store lib | PAT resolver | why |
+|---|---|---|---|
+| `zitadel-oidc-clients.sh` | yes | yes | calls the ZITADEL management API |
+| `zitadel-idp.sh` | yes | yes | same |
+| `harbor-oidc.sh` | yes | **no** | authenticates to *Harbor's* API with `admin:$HARBOR_PASSWORD` from `tooling/harbor-admin-password`; it never touches the ZITADEL PAT |
+| `secret-store.sh` | **no** | no | its `store_has` / `store_value` / `gcp_secrets` are different functions with different semantics — not duplicates. Leave it alone. |
+
+Sourcing `zitadel-pat.sh` into `harbor-oidc.sh` would make it fail on a cluster
+where the PAT is unavailable, for a credential it does not use.
 
 **Interfaces:**
 - Consumes: `resolve_zitadel_pat` (Task 2), `store_*` (Task 1)
