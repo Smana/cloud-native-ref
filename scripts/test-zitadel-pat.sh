@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Resolution order and the failure path, with store and kubectl stubbed.
+set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+fail=0
+check() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"
+          else printf '  FAIL %s: expected %q got %q\n' "$1" "$2" "$3"; fail=1; fi }
+
+# shellcheck source=scripts/lib/zitadel-pat.sh
+. "$HERE/lib/zitadel-pat.sh"
+
+CLOUD=aws REGION=eu-west-3 GCP_PROJECT=""
+check "aws secret name" "zitadel/iam-admin-pat" "$(zitadel_pat_secret_name)"
+CLOUD=gcp
+check "gcp secret name" "zitadel-iam-admin-pat" "$(zitadel_pat_secret_name)"
+
+CLOUD=aws
+# 1. Store has it -> used, and the cluster is never consulted. The store holds
+#    a JSON object ({"pat": ...}), matching what store_write actually accepts
+#    on its AWS branch (bare strings fail to parse as JSON there).
+store_exists() { return 0; }
+store_read()   { printf '%s' '{"pat":"token-from-store"}'; }
+kubectl()      { echo "KUBECTL MUST NOT BE CALLED" >&2; return 1; }
+check "store wins" "token-from-store" "$(resolve_zitadel_pat)"
+
+# 2. Store empty, cluster has it -> used AND persisted.
+persisted=""
+store_exists() { return 1; }
+store_read()   { return 1; }
+# A stub called via a herestring runs in the CURRENT shell, so this assignment
+# is visible to the test -- called via a pipe it would run in a subshell and
+# vanish, which is also why the library uses `store_write ... <<< "$json"`.
+store_write()  { persisted="$(cat)"; }
+kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
+check "cluster seeds" "token-from-cluster" "$(resolve_zitadel_pat 2>/dev/null)"
+resolve_zitadel_pat >/dev/null 2>&1
+check "persisted"     "token-from-cluster" "$(printf '%s' "$persisted" | jq -r .pat)"
+
+# 3. Neither -> fail, with a diagnosis, and no token on stdout.
+store_exists() { return 1; }
+store_read()   { return 1; }
+kubectl()      { return 1; }
+out="$(resolve_zitadel_pat 2>/dev/null)"; rc=$?
+check "fails"         "1"  "$rc"
+check "silent stdout" ""   "$out"
+err="$(resolve_zitadel_pat 2>&1 >/dev/null)"
+case "$err" in *FIRSTINSTANCE*) printf '  ok   explains FirstInstance\n' ;;
+               *) printf '  FAIL error does not explain the cause\n'; fail=1 ;; esac
+
+exit $fail
