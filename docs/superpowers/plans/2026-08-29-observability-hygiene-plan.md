@@ -52,14 +52,17 @@ with (Renovate annotations included — the catalog install string is `<id> <ver
       plugins:
         # Signed catalog plugins, pinned. These replaced two curl initContainers:
         # one frozen at v0.14.0 for 16 months, one fetching GitHub "latest" at
-        # every pod start. Space-separated "<id> <version>" = pinned install.
+        # every pod start. "<id>@<version>" = pinned install: the grafana chart
+        # (12.7.*) renders this list into GF_PLUGINS_PREINSTALL_SYNC, whose
+        # parser splits entries on "@" (a space-separated pin is silently
+        # dropped AND injects the bare version as a bogus plugin id).
         # renovate: datasource=github-releases depName=VictoriaMetrics/victoriametrics-datasource extractVersion=^v(?<version>.+)$
-        - "victoriametrics-metrics-datasource 0.25.2"
+        - "victoriametrics-metrics-datasource@0.25.2"
         # renovate: datasource=github-releases depName=VictoriaMetrics/victorialogs-datasource extractVersion=^v(?<version>.+)$
-        - "victoriametrics-logs-datasource 0.31.0"
+        - "victoriametrics-logs-datasource@0.31.0"
         - "marcusolsson-dynamictext-panel"
 ```
-(`grafana-oncall-app` is deliberately dropped here — Task 2 removes the rest of the OnCall estate.)
+(`grafana-oncall-app` is deliberately dropped here — Task 2 removes the rest of the OnCall estate. **Format note, post-review:** the chart maps `plugins:` to `GF_PLUGINS_PREINSTALL_SYNC` — pin separator is `@`, never a space; verified against grafana chart 12.7.x `_pod.tpl`/`_config.tpl` and Grafana 13.1.4 `processPreinstallPlugins`.)
 
 - [ ] **Step 3: Delete both `extraInitContainers` entries** (`load-vm-ds-plugin` and `load-vl-ds-plugin`, lines ~261-304 — the whole `extraInitContainers:` key goes away; nothing else uses it).
 
@@ -76,7 +79,7 @@ In `.github/renovate.json`, append to `customManagers` (same annotation pattern 
     "/^observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap\\.yaml$/"
   ],
   "matchStrings": [
-    "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)\\s+extractVersion=(?<extractVersion>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*-\\s*\"[a-z0-9-]+ (?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
+    "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)\\s+extractVersion=(?<extractVersion>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*-\\s*\"[a-z0-9-]+@(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
   ],
   "versioningTemplate": "semver"
 }
@@ -793,7 +796,7 @@ git commit -m "docs(observability): pages match the stack again — OnCall gone,
       version is now the docs' claim too.
     source:
       file: observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml
-      pattern: 'victoriametrics-logs-datasource (\d+\.\d+\.\d+)'
+      pattern: 'victoriametrics-logs-datasource@(\d+\.\d+\.\d+)'
     pages:
       - website/content/docs/platform/observability/dashboards-and-alerts.md
     must_contain: '{value}'
