@@ -57,6 +57,7 @@ static gates; runtime verification is deferred to post-merge `/verify-spec`.
 - `clusters/aws-0/observability/observability.yaml`: delete the vestigial `healthCheckExprs`
   (SQLInstance — nothing under `observability/aws-0/` renders one);
   `clusters/gcp-0/observability/observability.yaml`: delete the phantom-database comment.
+- flux/observability/grafana-dashboards.yaml: pin the two flux2-monitoring-example dashboard URLs to a commit SHA (last floating refs in the repo).
 - VT Kustomization timeout: align both clusters to `5m`.
 - Explicit `storageClassName: ${storage_class}` on vmsingle and vlsingle storage specs.
   **Constraint:** `${storage_class}` (gp3 / standard-rwo) must equal the class the admission
