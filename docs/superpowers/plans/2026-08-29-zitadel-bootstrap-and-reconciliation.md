@@ -15,6 +15,7 @@
 - **Shell**: `set -o errexit -o nounset -o pipefail` in every script; `shellcheck -S warning` must pass clean.
 - **Checking a script that sources a library**: pass `-x`, or list every file in the source chain. Shellcheck follows a `source` into a file only when that file is also on the command line, and it does not follow the *second* hop implicitly. `test-zitadel-pat.sh` sources `zitadel-pat.sh`, which sources `cloud-secret-store.sh`, which is what consumes `REGION`/`GCP_PROJECT` — so checking only the first two files reports SC2034 for variables that are demonstrably used. `shellcheck -S warning -x <script>` is the reliable form; the false positive is in the invocation, not the code.
 - **Never print a credential.** Tokens and client secrets go from source to sink without passing through stdout. Log statuses and lengths, never values.
+- **Never put a credential in a command's arguments.** argv is world-readable via `/proc/<pid>/cmdline` for the life of the process. This applies to helpers as much as to the cloud CLIs — `jq --arg secret "$tok"` leaks exactly as `aws --secret-string "$tok"` would. Use stdin: `printf '%s' "$tok" | jq -Rs '{k: .}'`.
 - **Log to stderr inside any function whose stdout is captured as data.** `log` to stdout from a function used in `$(...)` puts the log line inside the value — this already put a timestamped line inside `.tls/ca.pem`.
 - **Secret naming is per cloud**: AWS uses `/` (`zitadel/iam-admin-pat`), GCP forbids it and uses `-` (`zitadel-iam-admin-pat`).
 - **Idempotent**: re-running any script changes nothing the second time and exits 0.
@@ -387,7 +388,13 @@ resolve_zitadel_pat() {
             # A bare token is not valid JSON -- `printf abc | jq .` exits 5 with
             # a parse error. `{"pat": ...}` also matches how this repo already
             # stores the ZITADEL root token, as `{"token": ...}`.
-            store_write "$name" <<< "$(jq -n --arg p "$token" '{pat: $p}')"
+            # STDIN, not --arg. `jq --arg p "$token"` puts the plaintext token in
+            # jq's argv, where any process on the host can read it from
+            # /proc/<pid>/cmdline for the life of the call -- defeating the exact
+            # property cloud-secret-store.sh enforces with umask/shred/stdin-only,
+            # one call before it takes effect. -R reads stdin as a raw string
+            # instead of parsing it as JSON; -s takes all of stdin as one value.
+            store_write "$name" <<< "$(printf '%s' "$token" | jq -Rs '{pat: .}')"
             printf '%s' "$token"
             return 0
         fi
