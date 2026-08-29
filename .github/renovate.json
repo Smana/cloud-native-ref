@@ -59,6 +59,17 @@
         "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*ARG\\s+[A-Z0-9_]+=v?(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
       ],
       "versioningTemplate": "semver"
+    },
+    {
+      "description": "Grafana datasource plugin pins inside the vm-common-helm-values ConfigMap. They live in a quoted values.yaml string as '<id> <version>' entries, invisible to the flux/helm-values managers; the VM plugin sat frozen at v0.14.0 for 16 months because of this.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap\\.yaml$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)\\s+extractVersion=(?<extractVersion>[^\\s]+)[ \\t]*\\r?\\n[ \\t]*-\\s*\"[a-z0-9-]+ (?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
+      ],
+      "versioningTemplate": "semver"
     }
   ],
   "packageRules": [
