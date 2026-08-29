@@ -42,6 +42,10 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# gcloud must run as the identity OpenTofu uses, not the CLI account.
+# shellcheck source=scripts/lib/gcloud-adc.sh
+. "$(dirname "$0")/lib/gcloud-adc.sh"
+
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
 
@@ -104,7 +108,7 @@ store_read() {
         aws) aws secretsmanager get-secret-value \
                  ${REGION:+--region "$REGION"} \
                  --secret-id "$1" --query SecretString --output text 2>/dev/null ;;
-        gcp) gcloud secrets versions access latest \
+        gcp) gcp_gcloud secrets versions access latest \
                  ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
                  --secret="$1" 2>/dev/null ;;
     esac
@@ -114,7 +118,7 @@ store_exists() {
     case "$CLOUD" in
         aws) aws secretsmanager describe-secret ${REGION:+--region "$REGION"} \
                  --secret-id "$1" >/dev/null 2>&1 ;;
-        gcp) gcloud secrets describe "$1" ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
+        gcp) gcp_gcloud secrets describe "$1" ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
                  >/dev/null 2>&1 ;;
     esac
 }
@@ -148,11 +152,11 @@ store_write() {
             shred -u "$body" 2>/dev/null || rm -f "$body"
             ;;
         gcp)
-            store_exists "$name" || gcloud secrets create "$name" \
+            store_exists "$name" || gcp_gcloud secrets create "$name" \
                 ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
                 --replication-policy=automatic \
                 --labels=managed-by=zitadel-oidc-clients >/dev/null
-            gcloud secrets versions add "$name" \
+            gcp_gcloud secrets versions add "$name" \
                 ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
                 --data-file="$payload" >/dev/null
             ;;
