@@ -167,6 +167,41 @@ api() {
         "$@"
 }
 
+# Wrap a READ-only api() call: on failure, print a diagnostic and return 1
+# instead of letting the caller treat curl's empty stdout as "nothing found".
+#
+# THE DEFECT THIS CLOSES: ensure_project's id lookup used to be
+# `id=$(api ... | jq ... | head -1)`. When the API call failed (403/404/
+# network), the pipeline's non-zero exit did NOT stop the script: `head -1`
+# absorbs pipefail's view of curl's exit code, and even without it, errexit
+# does not reliably fire on a failing assignment buried two command-
+# substitution levels deep -- which this one was, since ensure_project itself
+# is called as `project_id="$(ensure_project)"`. `id` ended up empty either
+# way, indistinguishable from "the project genuinely does not exist", and
+# ensure_project fell through to its DRYRUN-PROJECT sentinel -- printing a
+# clean plan while a 404 sat in the terminal right above it. Observed live:
+#   curl: (22) The requested URL returned error: 404
+#   created: 5, updated: 0, unchanged: 0
+#
+# Every _search/GET call in this script goes through this rather than the
+# `2>/dev/null`/`|| true` each used to swallow the same class of failure.
+# Testing the exit code explicitly works regardless of how many command
+# substitutions deep the call sits, which is what makes it reliable where
+# errexit alone was not.
+api_or_fail() {
+    local resp
+    if ! resp="$(api "$@" 2>&1)"; then
+        echo "[FAILED ] ZITADEL API call failed: ${1:-} ${2:-}" >&2
+        echo "           ${resp}" >&2
+        echo "           Likely cause: the iam-admin machine user lacks ORG_OWNER" >&2
+        echo "           on this org (IAM_OWNER for an /admin/v1 call), or IDP_URL" >&2
+        echo "           / the admin PAT is stale -- NOT the same thing as the" >&2
+        echo "           object being searched for not existing yet." >&2
+        return 1
+    fi
+    printf '%s' "$resp"
+}
+
 # ── the consumers ─────────────────────────────────────────────────────────────
 #
 # name | redirect URI | secret key it lands in
@@ -208,8 +243,9 @@ ensure_project_roles() {
         return 0
     fi
 
-    existing="$(api POST "/management/v1/projects/${project_id}/roles/_search" -d '{"query":{"limit":100}}' 2>/dev/null \
-                | jq -r '.result[]?.key' || true)"
+    local resp
+    resp="$(api_or_fail POST "/management/v1/projects/${project_id}/roles/_search" -d '{"query":{"limit":100}}')" || return 1
+    existing="$(jq -r '.result[]?.key' <<< "$resp")"
 
     for role in "${ZITADEL_PROJECT_ROLES[@]}"; do
         if grep -qx "$role" <<< "$existing"; then
@@ -227,21 +263,26 @@ ensure_project_roles() {
 }
 
 ensure_project() {
-    local id
-    id=$(api POST /management/v1/projects/_search -d '{"queries":[]}' \
-         | jq -r --arg n "$ZITADEL_PROJECT_NAME" \
-             '.result[]? | select(.name == $n) | .id' | head -1)
+    local id resp
+    resp="$(api_or_fail POST /management/v1/projects/_search -d '{"queries":[]}')" || return 1
+    id=$(jq -r --arg n "$ZITADEL_PROJECT_NAME" \
+             '.result[]? | select(.name == $n) | .id' <<< "$resp" | head -1)
     if [ -n "$id" ]; then
         echo "$id"
-        return
+        return 0
     fi
     if [ "$APPLY" != "true" ]; then
         echo "DRYRUN-PROJECT"
-        return
+        return 0
     fi
-    api POST /management/v1/projects -d "$(jq -n --arg n "$ZITADEL_PROJECT_NAME" \
-        '{name:$n, projectRoleAssertion:true}')" \
-        | jq -r '.id'
+    resp="$(api_or_fail POST /management/v1/projects -d "$(jq -n --arg n "$ZITADEL_PROJECT_NAME" \
+        '{name:$n, projectRoleAssertion:true}')")" || return 1
+    id="$(jq -r '.id // empty' <<< "$resp")"
+    if [ -z "$id" ]; then
+        echo "[FAILED ] project creation returned no id: $(jq -c '.' <<< "$resp" | head -c 200)" >&2
+        return 1
+    fi
+    echo "$id"
 }
 
 # "Assert Roles on Authentication", and it is the flag every SSO consumer on this
@@ -270,7 +311,7 @@ ensure_project() {
 # before this was understood, and a project that predates this function must be
 # repaired rather than left to a manual console click nobody remembers.
 grant_admin_role() {
-    local email="$1" project_id="$2" user_id existing
+    local email="$1" project_id="$2" user_id existing resp
     [ -n "$email" ] || return 0
     [ -n "$project_id" ] || return 0
     if [ "$project_id" = "DRYRUN-PROJECT" ]; then
@@ -278,8 +319,8 @@ grant_admin_role() {
         return 0
     fi
 
-    user_id="$(api POST /management/v1/users/_search -d '{"query":{"limit":200}}' 2>/dev/null \
-               | jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' | head -1)"
+    resp="$(api_or_fail POST /management/v1/users/_search -d '{"query":{"limit":200}}')" || return 1
+    user_id="$(jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' <<< "$resp" | head -1)"
     if [ -z "$user_id" ]; then
         echo "[FAILED ] no ZITADEL user for ${email}." >&2
         echo "           A human user exists only AFTER their first login through the" >&2
@@ -287,9 +328,9 @@ grant_admin_role() {
         return 1
     fi
 
-    existing="$(api POST /management/v1/users/grants/_search -d '{"query":{"limit":200}}' 2>/dev/null \
-                | jq -r --arg u "$user_id" --arg p "$project_id" \
-                    '.result[]? | select(.userId == $u and .projectId == $p) | .roleKeys[]?' || true)"
+    resp="$(api_or_fail POST /management/v1/users/grants/_search -d '{"query":{"limit":200}}')" || return 1
+    existing="$(jq -r --arg u "$user_id" --arg p "$project_id" \
+                    '.result[]? | select(.userId == $u and .projectId == $p) | .roleKeys[]?' <<< "$resp")"
     if grep -qx "admin" <<< "$existing"; then
         echo "[skip   ] ${email} already holds 'admin'"
         return 0
@@ -305,12 +346,12 @@ grant_admin_role() {
 }
 
 ensure_project_role_assertion() {
-    local project_id="$1" current
+    local project_id="$1" current resp
     [ -n "$project_id" ] || return 0
     [ "$project_id" = "DRYRUN-PROJECT" ] && { echo "[dry-run] would ensure projectRoleAssertion=true"; return 0; }
 
-    current="$(api GET "/management/v1/projects/${project_id}" 2>/dev/null \
-               | jq -r '.project.projectRoleAssertion // false')"
+    resp="$(api_or_fail GET "/management/v1/projects/${project_id}")" || return 1
+    current="$(jq -r '.project.projectRoleAssertion // false' <<< "$resp")"
     if [ "$current" = "true" ]; then
         echo "[skip   ] projectRoleAssertion already true"
         return 0
@@ -331,14 +372,16 @@ ensure_project_role_assertion() {
 }
 
 app_id_by_name() {
-    api POST "/management/v1/projects/$1/apps/_search" -d '{"queries":[]}' \
-        | jq -r --arg n "$2" '.result[]? | select(.name == $n) | .id' | head -1
+    local resp
+    resp="$(api_or_fail POST "/management/v1/projects/$1/apps/_search" -d '{"queries":[]}')" || return 1
+    jq -r --arg n "$2" '.result[]? | select(.name == $n) | .id' <<< "$resp" | head -1
 }
 
 # The redirect URIs an existing app currently has, one per line.
 app_redirect_uris() {
-    api GET "/management/v1/projects/$1/apps/$2" \
-        | jq -r '.app.oidcConfig.redirectUris[]? // empty'
+    local resp
+    resp="$(api_or_fail GET "/management/v1/projects/$1/apps/$2")" || return 1
+    jq -r '.app.oidcConfig.redirectUris[]? // empty' <<< "$resp"
 }
 
 # Point an existing app at the redirect URI it is supposed to have.
@@ -438,7 +481,16 @@ cmd_sync() {
     echo
 
     local project_id
-    project_id="$(ensure_project)"
+    # DEFECT 1: ensure_project used to be captured the same way but with no
+    # way to tell "it failed" from "it returned the dry-run sentinel" -- both
+    # are non-empty strings, so the `[ -n ... ]` check below let a failed API
+    # call straight through. Checking the command substitution's own exit
+    # status closes that: ensure_project now returns non-zero on a genuine
+    # failure (and has already printed why), so this `if !` catches it before
+    # the emptiness check ever runs.
+    if ! project_id="$(ensure_project)"; then
+        exit 1
+    fi
     [ -n "$project_id" ] || { echo "could not resolve or create the ZITADEL project" >&2; exit 1; }
 
     ensure_project_role_assertion "$project_id"
@@ -450,7 +502,16 @@ cmd_sync() {
         IFS='|' read -r name redirect key <<< "$entry"
 
         local existing_id=""
-        [ "$project_id" != "DRYRUN-PROJECT" ] && existing_id="$(app_id_by_name "$project_id" "$name")"
+        if [ "$project_id" != "DRYRUN-PROJECT" ]; then
+            # NOT `[ ... ] && existing_id=...`: the right-hand side of `&&` is
+            # exempt from errexit by design, so a failed lookup there would
+            # leave existing_id empty and silently fall through to the
+            # create-a-new-app branch below -- recreating an app that
+            # actually exists, which rotates its secret and breaks the
+            # running consumer. An explicit `|| exit 1` cannot be bypassed
+            # that way.
+            existing_id="$(app_id_by_name "$project_id" "$name")" || exit 1
+        fi
 
         if [ -n "$existing_id" ]; then
             # Never RECREATE: ZITADEL returns the client secret once, so
@@ -465,7 +526,7 @@ cmd_sync() {
             #   "The requested redirect_uri is missing in the client configuration"
             # and re-running this script cheerfully skipped all five.
             local current
-            current="$(app_redirect_uris "$project_id" "$existing_id")"
+            current="$(app_redirect_uris "$project_id" "$existing_id")" || exit 1
 
             if grep -Fxq "$redirect" <<< "$current"; then
                 echo "[ok     ] ${name} -- app exists (${existing_id}), redirect correct"
@@ -495,7 +556,7 @@ cmd_sync() {
         fi
 
         local resp client_id client_secret
-        resp=$(api POST "/management/v1/projects/${project_id}/apps/oidc" -d "$(jq -n \
+        resp="$(api_or_fail POST "/management/v1/projects/${project_id}/apps/oidc" -d "$(jq -n \
             --arg n "$name" --arg r "$redirect" '{
               name: $n,
               redirectUris: [$r],
@@ -508,7 +569,7 @@ cmd_sync() {
               idTokenRoleAssertion: true,
               idTokenUserinfoAssertion: true,
               devMode: false
-            }')")
+            }')")" || exit 1
 
         client_id=$(jq -r '.clientId // empty' <<< "$resp")
         client_secret=$(jq -r '.clientSecret // empty' <<< "$resp")
