@@ -36,6 +36,27 @@ check "cluster seeds" "token-from-cluster" "$(resolve_zitadel_pat 2>/dev/null)"
 resolve_zitadel_pat >/dev/null 2>&1
 check "persisted"     "token-from-cluster" "$(printf '%s' "$persisted" | jq -r .pat)"
 
+# 2b. A caller sets STORE_WRITE_DESCRIPTION/LABEL for its OWN secrets (this is
+#     exactly what zitadel-oidc-clients.sh does) and THEN resolves the PAT.
+#     Those globals must not leak into the PAT's write -- resolve_zitadel_pat
+#     owns its own provenance via `local`, which shadows the caller's value
+#     for store_write and leaves the caller's value intact afterwards.
+STORE_WRITE_DESCRIPTION="caller-provenance"
+STORE_WRITE_LABEL="caller-label"
+CLUSTER="aws-0"
+seen_desc="" seen_label=""
+store_exists() { return 1; }
+store_read()   { return 1; }
+store_write()  { seen_desc="$STORE_WRITE_DESCRIPTION"; seen_label="$STORE_WRITE_LABEL"; cat >/dev/null; }
+kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
+resolve_zitadel_pat >/dev/null 2>&1
+check "PAT write ignores caller's Description" \
+    "ZITADEL iam-admin PAT for aws-0. Captured by zitadel-pat.sh." "$seen_desc"
+check "PAT write ignores caller's Label" "zitadel-pat" "$seen_label"
+check "caller's Description survives the call" "caller-provenance" "$STORE_WRITE_DESCRIPTION"
+check "caller's Label survives the call"       "caller-label"      "$STORE_WRITE_LABEL"
+unset STORE_WRITE_DESCRIPTION STORE_WRITE_LABEL CLUSTER
+
 # 3. An awkward token -- embedded double quote, backslash, tab and a newline --
 #    survives the seed-then-read round trip byte-identical. This is the case a
 #    hand-built JSON string (or `jq --arg`, which also puts the token in jq's

@@ -65,6 +65,15 @@ resolve_zitadel_pat() {
         token="$(printf '%s' "$b64" | base64 -d 2>/dev/null || true)"
         if [ -n "$token" ]; then
             echo "[persist] capturing the admin PAT into ${name} so it survives a restore" >&2
+            # Own our provenance rather than trusting whatever the caller set.
+            # store_write reads these as plain globals, and a caller that sets
+            # them for ITS OWN secrets (e.g. zitadel-oidc-clients.sh, for the
+            # OIDC client secrets it writes) leaves them set in the shell that
+            # eventually calls us -- a `local` here shadows that for this call
+            # only, so the PAT gets ITS OWN description/label and the caller's
+            # values are unchanged once we return.
+            local STORE_WRITE_DESCRIPTION="ZITADEL iam-admin PAT for ${CLUSTER:-this cluster}. Captured by zitadel-pat.sh."
+            local STORE_WRITE_LABEL="zitadel-pat"
             # jq -Rs reads stdin as one raw string rather than parsing it as
             # JSON -- unlike `jq --arg pat "$token"`, the token never appears
             # in an external process's argv (readable via /proc/<pid>/cmdline
