@@ -120,6 +120,31 @@ and will fill in whatever the seed is missing. See
 [Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}}).
 {{< /callout >}}
 
+{{< callout type="info" >}}
+**The admin PAT every script above needs is automatic, not a prerequisite.** The
+chart writes it once, into the `iam-admin-pat` Secret in the `security`
+namespace, at `FirstInstance`. The first script run above reads that Secret and
+captures the token into the cloud secret store; every later run — on any
+cluster, restored or not — reads it back from there. Nothing here needs a token
+minted by hand.
+{{< /callout >}}
+
+{{< callout type="warning" >}}
+**Recovery only: a cluster restored before this landed has no PAT anywhere.** If
+every script above fails with `no ZITADEL admin PAT available`, the store was
+never seeded — this cluster's seed predates the capture step above, or its store
+entry was deleted. Mint a PAT for the `iam-admin` machine user in the ZITADEL
+console, then:
+
+```bash
+kubectl create secret generic iam-admin-pat \
+  -n security --from-literal=pat=<token>
+```
+
+and re-run step 1 — it persists the token into the store, so this is a one-time
+recovery rather than a routine step.
+{{< /callout >}}
+
 ## Related
 
 - [Authentication]({{< relref "/docs/platform/security/authentication.md" >}}) —

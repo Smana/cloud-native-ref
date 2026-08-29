@@ -68,24 +68,34 @@ it afterwards.
 
 ## Design
 
-### 1. Persist the admin PAT, rehydrate it on every deploy
+### 1. Persist the admin PAT, resolve it from the store on every run
 
 The chart's `FirstInstance` provisions an `iam-admin` machine user with both a
 `MachineKey` and a `Pat`, each valid to 2029-01-01. Both are written only to a
 Kubernetes Secret, which dies with the cluster.
 
-Persist the PAT to the hosting cloud's secret store as soon as it is created, and
-rehydrate it with an ExternalSecret thereafter:
+Persist the PAT to the hosting cloud's secret store the first time any setup
+script needs it, and have every later run — on any cluster, restored or not —
+read it back from there:
 
 ```
 FirstInstance (fresh DB only)
   └─> chart writes Secret security/iam-admin-pat
-        └─> [new] copied to the cloud secret store, once
-              └─> ExternalSecret rehydrates it on every later deploy
+        └─> first script run captures it into the cloud secret store
+              └─> every later run, on any cluster, reads it from there
 ```
 
+**Not an ExternalSecret.** Nothing running *in* the cluster consumes this
+credential — only the operator scripts do, from outside, over each cloud's own
+CLI — and an ExternalSecret targeting `security/iam-admin-pat` would contend
+with the Helm chart for ownership of the very Secret the chart writes at
+`FirstInstance`: two controllers asserting the same object is how one of them
+starts losing writes. `scripts/lib/zitadel-pat.sh`'s `resolve_zitadel_pat`
+reads the store directly instead, so there is no in-cluster object and no
+ownership question to have.
+
 This works because a restored database still contains the machine user **and its
-token hash**, so a token persisted at first bootstrap remains valid against the
+token hash**, so a token captured at first bootstrap remains valid against the
 restored instance. It is also the pattern every other credential here already
 uses — [ADR-0025](../../../website/content/docs/decisions/0025-cloud-managed-secret-stores.md)
 makes the cloud secret store the store of record precisely because it outlives
@@ -108,17 +118,34 @@ Recorded as available hardening, deliberately not done now.
 on every rebuild of both clouds. Today is a demonstration of what happens to
 manual steps that are not written down.
 
-### 2. The setup scripts become reconcilers
+### 2. The setup scripts became reconcilers
 
-`sync` reconciling redirect URIs (#1919) fixed one script. The rest are
-create-if-missing and must be audited to converge instead:
+`sync` reconciling redirect URIs (#1919) fixed one script before this plan
+started. The rest were create-if-missing, and each was audited end to end
+rather than assumed — the guesses below turned out wrong in both directions,
+some scripts already converging where none was expected and some silently not
+converging where it looked like they did:
 
-| Script | Owns | Today |
+| Script | Owns | Finding |
 |---|---|---|
-| `zitadel-oidc-clients.sh` | clients, redirect URIs, project roles, `projectRoleAssertion` | redirect URIs reconcile as of #1919; roles and the assertion flag need checking |
-| `zitadel-idp.sh` | Google IdP, login-policy entry, `groupsFromRoles` action | `ensure_*` helpers look idempotent; needs confirming they *correct* drift rather than skip |
-| `harbor-oidc.sh` | Harbor's `auth_mode` and OIDC endpoint, stored in Harbor's own database | unknown; Harbor's config is not in git, so drift here is invisible |
-| `secret-store.sh grant` | External Secrets' access to the above (GCP only) | additive; likely fine |
+| `zitadel-oidc-clients.sh` | clients, redirect URIs, project roles, `projectRoleAssertion` | redirect URIs reconcile as of #1919. `ensure_project_role_assertion` and `ensure_project_roles` already read current state and converge correctly — verified directly against the code, not touched by this plan. |
+| `zitadel-idp.sh` | Google IdP, login-policy entry, the `groupsFromRoles` action and its flow trigger | `login_policy_has_idp` already compared and converged; left alone. `ensure_idp` created once and then reported `[skip]` forever — fixed to compare `clientId` and PUT in place on drift (an in-place update, so existing user↔IdP links survive). `ensure_action` and `ensure_flow` always wrote on `--apply` and never reported `[ok]` — fixed to compare against the live object first, both endpoints returning what's needed inline with no extra GET. |
+| `harbor-oidc.sh` | Harbor's `auth_mode` and OIDC endpoint, stored in Harbor's own database | the pre-existing code already compared all three observable fields (`auth_mode`, `oidc_client_id`, `oidc_endpoint`) in one bundled check and only skipped when every one matched — the staleness this row worried about was already caught. What was missing was per-field *reporting*: a dry run couldn't say which field was stale without reading the raw `current:` line by hand. Fixed to report each field independently. The audit also found and closed two pre-existing client-secret argv leaks, unrelated to convergence. |
+| `secret-store.sh grant` | External Secrets' access to the above (GCP only) | additive, as expected; unchanged |
+
+**Where the Google IdP actually drifts.** A Google-type provider has no
+caller-set `issuer` at all — Google's is fixed (`accounts.google.com`), and
+`AddGoogleProvider`/`UpdateGoogleProvider` don't accept one. `zitadel-idp.sh`'s
+`IDP_URL` is never written into any object ZITADEL stores; it is only the base
+URL the script's own API calls use and an operator-facing hint printed at the
+end. So the drift this design set out to close is not a hostname changing
+underneath the IdP — it is **objects that exist but no longer match the
+repository**: a rotated or replaced Google OAuth client leaving `clientId`
+stale, or `scripts/zitadel-actions/groups-from-roles.js` being edited on disk
+after the action was created, leaving the deployed copy behind. Both are now
+checked; a secret-only rotation (same `clientId`, regenerated secret) stays
+invisible to this check, because neither ZITADEL nor Harbor ever echoes a
+stored secret back on GET — there is nothing to compare it against.
 
 Two properties each must hold: **converge, don't skip**, and **never rotate a
 client secret to fix a non-secret field** — the reason `sync` updates
@@ -180,8 +207,10 @@ artifact.
 
 ## Open questions
 
-None blocking. One to settle during implementation: whether the PAT copy is a
-Kubernetes Job in the ZITADEL Kustomization or a step in
-`scripts/zitadel-oidc-clients.sh` invoked at deploy time. A Job keeps it
-declarative and runs without an operator present; a script step is easier to
-debug and matches how the other ZITADEL setup already works.
+None remaining. The one open at design time — whether the PAT copy is a
+Kubernetes Job or a script step — resolved to neither exactly as framed:
+`resolve_zitadel_pat` in `scripts/lib/zitadel-pat.sh` captures the PAT lazily,
+the first time any setup script needs it, rather than as a dedicated step at
+deploy time. No Job, and no separate capture invocation — every script that
+already reads the PAT (`zitadel-oidc-clients.sh`, `zitadel-idp.sh`) gets the
+capture for free by calling the resolver.
