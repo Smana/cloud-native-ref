@@ -498,7 +498,14 @@ Add the validation line to `harbor-oidc.sh` in the same edit that removes its
 store helpers.
 
 
-`zitadel-idp.sh` and `harbor-oidc.sh`: same deletion and same two additions. `secret-store.sh` only needs `store_*`, so source `lib/cloud-secret-store.sh` and delete its own copies.
+`zitadel-idp.sh`: same deletion and same two additions.
+
+`harbor-oidc.sh`: source `lib/cloud-secret-store.sh` ONLY — not the PAT library, per
+the table above — delete its `store_read`, and add the `--cloud` validation.
+
+`secret-store.sh` is **not touched**. Its helpers are different functions, and they
+key on `PROJECT` rather than `GCP_PROJECT` with different failure semantics
+(exit-on-unreachable versus report-as-absent), so they are not copies of anything.
 
 Each script keeps its own provenance on secrets it creates, which the shared
 `store_write` reads from two optional variables. Set them near the top of each,
@@ -529,8 +536,7 @@ Expected: no syntax or shellcheck output; the run still exits 1 on a cluster wit
 - [ ] **Step 5: Commit**
 
 ```bash
-git add scripts/zitadel-oidc-clients.sh scripts/zitadel-idp.sh \
-        scripts/harbor-oidc.sh scripts/secret-store.sh
+git add scripts/zitadel-oidc-clients.sh scripts/zitadel-idp.sh scripts/harbor-oidc.sh
 git commit -m "refactor(zitadel): setup scripts resolve the PAT from one place"
 ```
 
@@ -610,6 +616,31 @@ git commit -m "fix(zitadel): correct a stale IdP issuer instead of skipping it"
 - Produces: no new interface
 
 Harbor stores its OIDC configuration in its own database, so nothing in git makes it true and drift is invisible. Its `oidc_endpoint` derives from the IdP URL and its `oidc_client_id` from the ZITADEL client — both change on a restore or a cloud move.
+
+- [ ] **Step 0: Fix a silent failure in the same file**
+
+`harbor-oidc.sh` reads Harbor's admin password with the pattern that already bit
+`zitadel-oidc-clients.sh` this morning:
+
+```bash
+HARBOR_PASSWORD="$(kubectl get secret harbor-admin-password -n tooling \
+        -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null)"
+if [ -z "$HARBOR_PASSWORD" ]; then
+    echo "ERROR: could not read tooling/harbor-admin-password ..." >&2
+```
+
+Under `set -o errexit -o pipefail` a failing `kubectl` fails the pipeline, which
+fails the assignment, which kills the script **before** that `if` runs. With
+kubectl's own stderr suppressed the operator gets a bare `exit 1` and no reason.
+Read it in two steps so the message is reachable:
+
+```bash
+HARBOR_PASSWORD=""
+if _hp_b64="$(kubectl get secret harbor-admin-password -n tooling \
+                -o jsonpath='{.data.password}' 2>/dev/null)"; then
+    HARBOR_PASSWORD="$(printf '%s' "$_hp_b64" | base64 -d 2>/dev/null || true)"
+fi
+```
 
 - [ ] **Step 1: Read the current configuration**
 
