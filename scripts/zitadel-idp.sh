@@ -212,7 +212,7 @@ google_idp_payload() {
 ensure_idp() {
     local blob client_id client_secret template existing existing_client_id
 
-    blob="$(store_read "$IDP_SECRET_KEY")"
+    blob="$(store_read "$IDP_SECRET_KEY" || true)"
     if [ -z "$blob" ]; then
         echo "[FAILED ] ${IDP_SECRET_KEY} not found in the ${CLOUD} store." >&2
         echo "           Create it from the Google OAuth client's JSON:" >&2
