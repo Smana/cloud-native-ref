@@ -147,3 +147,104 @@ claims:
         must_contain: '\n\s*tag:\s*{value}\s*\n'
       - path: website/content/docs/decisions/0015-gateway-api-over-ingress-nginx.md
         must_contain: 'both currently `{value}`'
+
+  - id: vmsingle-retention
+    why: >-
+      Retention was `1d` — commented "Minimal retention, for tests only" —
+      for the repo's whole life, while the docs discussed metrics look-back
+      without quoting a number. It is now a deliberate `14d`, sized to the
+      10Gi PVC at this fleet's ingest rate, and that value is a real
+      operating constraint a reader needs, not filler.
+    source:
+      file: observability/base/victoria-metrics-k8s-stack/helmrelease-vmsingle.yaml
+      pattern: 'retentionPeriod:\s*"(\d+d)"'
+    pages:
+      - website/content/docs/platform/observability/_index.md
+      - website/content/docs/platform/observability/metrics.md
+    must_contain: '{value}'
+
+  - id: vlsingle-retention
+    why: >-
+      VictoriaLogs retention was unset, so the effective cap was whatever the
+      chart's app default happened to be — silent and unreviewed. It is now
+      an explicit `7d`, capped by `retentionDiskSpaceUsage`, and logs.md must
+      quote the real value rather than describe a policy nobody set.
+    source:
+      file: observability/base/victoria-logs/helmrelease-vlsingle.yaml
+      pattern: 'retentionPeriod:\s*(\d+d)'
+    pages:
+      - website/content/docs/platform/observability/logs.md
+    must_contain: '{value}'
+
+  - id: vtsingle-retention-has-unit
+    why: >-
+      A unit-less `retentionPeriod` is MONTHS in VictoriaMetrics charts, not
+      days — the previous bare `3` (commented "3 days") actually kept three
+      months of traces, 30x the intent. The suffix is the guard: this claim
+      only passes while the committed value still carries a `d`.
+    source:
+      file: observability/base/victoria-traces/helmrelease-vtsingle.yaml
+      pattern: 'retentionPeriod:\s*(\d+d)'
+    pages:
+      - website/content/docs/platform/observability/dashboards-and-alerts.md
+    must_contain: '{value}'
+
+  - id: grafana-plugin-pins
+    why: >-
+      Both Grafana datasource plugins were curl initContainers invisible to
+      Renovate — one frozen at v0.14.0 for 16 months, one fetching GitHub
+      "latest" on every pod start. They are now signed, pinned catalog
+      plugins, and the pinned version is a docs claim like any other
+      dependency.
+    source:
+      file: observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml
+      pattern: 'victoriametrics-logs-datasource@(\d+\.\d+\.\d+)'
+    pages:
+      - website/content/docs/platform/observability/dashboards-and-alerts.md
+    must_contain: '{value}'
+
+  - id: loggen-aws-only
+    why: >-
+      loggen writes ~1.7M synthetic lines/day and used to run on both
+      clouds silently — gcp-0 consumed none of its output. The exclusion is
+      now a comment in gcp-0's kustomization; logs.md must keep saying it is
+      aws-0-only rather than resurrecting it as a shared component.
+    source:
+      file: observability/gcp-0/kustomization.yaml
+      pattern: '\.\./base/(loggen) is deliberately NOT listed'
+    pages:
+      - website/content/docs/platform/observability/logs.md
+    must_contain: 'aws-0`\s*only'
+
+  - id: oncall-removed
+    why: >-
+      Grafana OnCall was built but never wired into a Kustomization, and
+      that "exists but undeployed" story lived in the docs for months. The
+      estate was removed on 2026-08-29 (ADR-0029, RunLore replacing it);
+      these pages must not resurrect the undeployed-OnCall narrative now
+      that there is no OnCall left to be undeployed.
+    source:
+      file: website/content/docs/decisions/0029-runlore-over-grafana-oncall.md
+    pages:
+      - website/content/docs/platform/observability/_index.md
+      - website/content/docs/platform/observability/dashboards-and-alerts.md
+      - website/content/docs/guides/fork-and-adapt.md
+    must_not_contain:
+      - 'built but not deployed'
+      - 'never actually deploys'
+      - 'wired into no Kustomization'
+
+  - id: runlore-alerts-both-clouds
+    why: >-
+      The 12 RunLore health alerts sat in the aws-0 overlay for months
+      after RunLore itself reached gcp-0, so a dead agent there raised
+      nothing. The rule now ships from base to both clusters; sre-agent.md
+      must not describe the alerts as AWS-scoped again.
+    source:
+      file: observability/base/victoria-metrics-k8s-stack/vmrules/runlore.yaml
+    pages:
+      - website/content/docs/platform/observability/sre-agent.md
+    must_not_contain:
+      - 'AWS-only'
+      - 'aws-0 only'
+      - 'stays AWS'
