@@ -131,12 +131,38 @@ PAT="$(resolve_zitadel_pat)" || exit 1
 CURL_RESOLVE=()
 [ -n "${IDP_RESOLVE:-}" ] && CURL_RESOLVE=(--resolve "$IDP_RESOLVE")
 
+# The admin PAT never touches argv. `-H "Authorization: Bearer ${PAT}"` would
+# put the live token in `ps`/`/proc/<pid>/cmdline` for as long as every curl
+# process runs -- the same vulnerability class this repo already closed for
+# jq --arg/--argjson (test-no-secret-argv.sh). curl has no stdin form for a
+# header, so it goes into a `-K` config file instead, created once for this
+# run:
+#
+#   * `umask 077 && mktemp` sets the mode AT CREATION -- creating the file and
+#     chmod-ing it afterward leaves a window where it is world-readable.
+#   * the path is baked into the trap STRING at trap-SET time
+#     (`trap "rm -f '$path'" EXIT`), not left to expand when the trap fires.
+#     Under `nounset`, a trap that expands the variable at fire time dies on
+#     "unbound variable" if the variable is ever unset before it fires, and
+#     cleans up nothing -- the exact bug just fixed in cloud-secret-store.sh's
+#     store_write; same fix, same reasoning, applied here to the config file
+#     itself rather than to a value merely passing through it.
+#   * `"` and `\` in the token are escaped for curl's config-file syntax,
+#     where both are otherwise significant.
+API_CURL_CONFIG="$(umask 077 && mktemp -t zitadel-api-curl.XXXXXX)"
+# shellcheck disable=SC2064
+trap "rm -f '$API_CURL_CONFIG'" EXIT
+pat_escaped="${PAT//\\/\\\\}"
+pat_escaped="${pat_escaped//\"/\\\"}"
+printf 'header = "Authorization: Bearer %s"\n' "$pat_escaped" > "$API_CURL_CONFIG"
+unset pat_escaped
+
 api() {
     local method="$1" path="$2"
     shift 2
     curl -fsS -X "$method" "${IDP_URL}${path}" \
+        -K "$API_CURL_CONFIG" \
         ${CURL_RESOLVE[@]+"${CURL_RESOLVE[@]}"} \
-        -H "Authorization: Bearer ${PAT}" \
         -H "Content-Type: application/json" \
         "$@"
 }
@@ -391,7 +417,7 @@ merge_secret() {
             $base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id, GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: $sec}
         elif $name == "headlamp" then
             $base + {OIDC_CLIENT_ID: $id, OIDC_CLIENT_SECRET: $sec, OIDC_ISSUER_URL: $iss,
-                     OIDC_SCOPES: "openid,profile,email",
+                     OIDC_SCOPES: "profile,email,groups",
                      OIDC_VALIDATOR_CLIENT_ID: $id, OIDC_VALIDATOR_ISSUER_URL: $iss}
         elif $name == "flux-ui" then
             $base + {clientID: $id, clientSecret: $sec}

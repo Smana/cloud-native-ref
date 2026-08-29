@@ -117,12 +117,23 @@ PAT="$(resolve_zitadel_pat)" || exit 1
 CURL_RESOLVE=()
 [ -n "${IDP_RESOLVE:-}" ] && CURL_RESOLVE=(--resolve "$IDP_RESOLVE")
 
+# The admin PAT never touches argv -- see the identical block in
+# zitadel-oidc-clients.sh for the full reasoning (mode-at-creation, trap
+# baked in at SET time, config-file escaping). Same fix, same file shape.
+API_CURL_CONFIG="$(umask 077 && mktemp -t zitadel-api-curl.XXXXXX)"
+# shellcheck disable=SC2064
+trap "rm -f '$API_CURL_CONFIG'" EXIT
+pat_escaped="${PAT//\\/\\\\}"
+pat_escaped="${pat_escaped//\"/\\\"}"
+printf 'header = "Authorization: Bearer %s"\n' "$pat_escaped" > "$API_CURL_CONFIG"
+unset pat_escaped
+
 api() {
     local method="$1" path="$2"
     shift 2
     curl -fsS -X "$method" "${IDP_URL}${path}" \
+        -K "$API_CURL_CONFIG" \
         ${CURL_RESOLVE[@]+"${CURL_RESOLVE[@]}"} \
-        -H "Authorization: Bearer ${PAT}" \
         -H "Content-Type: application/json" \
         "$@"
 }
