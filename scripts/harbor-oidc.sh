@@ -76,8 +76,16 @@ HARBOR_URL="https://harbor.${PRIVATE_DOMAIN}"
 # Harbor's admin password comes from the CLUSTER, the same way zitadel-idp.sh
 # reads ZITADEL's PAT: the chart generates it into a Secret, so the cluster is
 # where it is true.
-HARBOR_PASSWORD="$(kubectl get secret harbor-admin-password -n tooling \
-        -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null)"
+#
+# Read in two steps, not one pipeline. Under `set -o errexit -o pipefail`, a
+# failing `kubectl` inside `kubectl ... | base64 -d` fails the whole pipeline,
+# which fails the assignment, which exits the script BEFORE the emptiness
+# check below ever runs -- with kubectl's own stderr suppressed, that's a bare
+# `exit 1` and no reason. Same pattern zitadel-pat.sh already reads this way.
+_harbor_password_b64="$(kubectl get secret harbor-admin-password -n tooling \
+        -o jsonpath='{.data.password}' 2>/dev/null || true)"
+HARBOR_PASSWORD=""
+[ -n "$_harbor_password_b64" ] && HARBOR_PASSWORD="$(printf '%s' "$_harbor_password_b64" | base64 -d 2>/dev/null || true)"
 if [ -z "$HARBOR_PASSWORD" ]; then
     echo "ERROR: could not read tooling/harbor-admin-password from the cluster." >&2
     exit 1
@@ -118,14 +126,45 @@ cur_client="$(jq -r '.oidc_client_id.value // ""' <<< "$current")"
 cur_endpoint="$(jq -r '.oidc_endpoint.value // ""' <<< "$current")"
 
 echo "current:  auth_mode=${cur_mode} endpoint=${cur_endpoint:-<none>} client=${cur_client:-<none>}"
+echo
 
-if [ "$cur_mode" = "oidc_auth" ] && [ "$cur_client" = "$client_id" ] && [ "$cur_endpoint" = "$endpoint" ]; then
-    echo "[skip   ] Harbor already points at this ZITADEL client"
+# Report each field individually -- matching the [ok]/[STALE] convergence
+# report zitadel-idp.sh and zitadel-oidc-clients.sh already print elsewhere in
+# this repo -- rather than one bundled skip/dry-run line. `oidc_client_secret`
+# is NOT compared here: like ZITADEL, Harbor never echoes a stored secret back
+# on GET, so there is nothing to read and diff it against. It is rewritten
+# unconditionally whenever any of the three fields below are (see the PUT
+# below) -- an API constraint, not a gap in this check.
+stale=0
+
+if [ "$cur_mode" = "oidc_auth" ]; then
+    echo "[ok     ] harbor auth_mode"
+else
+    echo "[STALE  ] harbor auth_mode: has ${cur_mode}, want oidc_auth"
+    stale=1
+fi
+
+if [ "$cur_endpoint" = "$endpoint" ]; then
+    echo "[ok     ] harbor oidc_endpoint"
+else
+    echo "[STALE  ] harbor oidc_endpoint: has ${cur_endpoint:-<none>}, want ${endpoint}"
+    stale=1
+fi
+
+if [ "$cur_client" = "$client_id" ]; then
+    echo "[ok     ] harbor oidc_client_id"
+else
+    echo "[STALE  ] harbor oidc_client_id: has ${cur_client:-<none>}, want ${client_id}"
+    stale=1
+fi
+
+if [ "$stale" -eq 0 ]; then
+    echo
+    echo "[ok     ] Harbor already points at this ZITADEL client"
     exit 0
 fi
 
 if [ "$APPLY" != "true" ]; then
-    echo "[dry-run] would set auth_mode=oidc_auth, endpoint=${endpoint}, client=${client_id}"
     echo
     echo "This was a DRY RUN. Re-run with --apply."
     exit 0
@@ -142,25 +181,36 @@ fi
 #
 # auth_mode is set LAST in this payload for readability only; Harbor applies the
 # whole PUT atomically, so a partial switch is not possible.
-payload="$(jq -n \
-    --arg name "$OIDC_DISPLAY_NAME" \
-    --arg ep "$endpoint" \
-    --arg id "$client_id" \
-    --arg sec "$client_secret" \
-    '{
-        auth_mode: "oidc_auth",
-        oidc_name: $name,
-        oidc_endpoint: $ep,
-        oidc_client_id: $id,
-        oidc_client_secret: $sec,
-        oidc_scope: "openid,profile,email,offline_access",
-        oidc_groups_claim: "groups",
-        oidc_user_claim: "preferred_username",
-        oidc_auto_onboard: true,
-        oidc_verify_cert: true
-     }')"
+#
+# oidc_client_secret goes in via stdin (-Rs reads it as one raw string, `.` is
+# the secret), never as a jq --arg -- argv is world-readable for the life of
+# the process via /proc/<pid>/cmdline, and this IS a credential. Same class of
+# bug Task 4 fixed in zitadel-idp.sh; this call site had it too until now.
+harbor_oidc_payload() {
+    local name="$1" ep="$2" id="$3" secret="$4"
+    printf '%s' "$secret" | jq -Rs --arg name "$name" --arg ep "$ep" --arg id "$id" \
+        '{
+            auth_mode: "oidc_auth",
+            oidc_name: $name,
+            oidc_endpoint: $ep,
+            oidc_client_id: $id,
+            oidc_client_secret: .,
+            oidc_scope: "openid,profile,email,offline_access",
+            oidc_groups_claim: "groups",
+            oidc_user_claim: "preferred_username",
+            oidc_auto_onboard: true,
+            oidc_verify_cert: true
+         }'
+}
 
-http="$(jq -n --argjson b "$payload" '$b' \
+payload="$(harbor_oidc_payload "$OIDC_DISPLAY_NAME" "$endpoint" "$client_id" "$client_secret")"
+
+# Piped straight to curl on stdin -- NOT re-parsed through a second
+# `jq -n --argjson b "$payload"` hop first. That hop was dead weight (an
+# identity transform, `$b`) and, worse, its own argv leak: $payload already
+# contains the plaintext secret at this point, and --argjson would have put
+# the whole thing on this second process's command line too.
+http="$(printf '%s' "$payload" \
     | api PUT /configurations -d @- -o /dev/null -w '%{http_code}')"
 
 case "$http" in
@@ -172,7 +222,7 @@ case "$http" in
 esac
 
 verify="$(api GET /configurations 2>/dev/null || true)"
-echo "now:      auth_mode=$(jq -r '.auth_mode.value // "?"' <<< "$verify") endpoint=$(jq -r '.oidc_endpoint.value // "?"' <<< "$verify")"
+echo "now:      auth_mode=$(jq -r '.auth_mode.value // "?"' <<< "$verify") endpoint=$(jq -r '.oidc_endpoint.value // "?"' <<< "$verify") client=$(jq -r '.oidc_client_id.value // "?"' <<< "$verify")"
 
 echo
 echo "The ZITADEL client's redirect URI must be ${HARBOR_URL}/c/oidc/callback --"
