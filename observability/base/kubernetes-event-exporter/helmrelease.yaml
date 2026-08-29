@@ -30,10 +30,12 @@ spec:
       metricsNamePrefix: "event_exporter_"
       clusterName: "${cluster_name}"
       receivers:
-        - name: "dump"
-          file:
-            path: "/dev/stdout"
-            layout: {}
+        # No "dump" file receiver: with layout: {} (empty-but-present) the fork's
+        # file sink takes the convertLayoutTemplate branch over zero keys and emits
+        # contentless "{}" lines (pkg/sinks/file.go) — every cluster Event became a
+        # noise line that Vector's unfiltered kubernetes_logs source re-ingested
+        # into VictoriaLogs. It was never a fallback either: if the informer stops,
+        # no receiver gets anything. Events now flow solely via the loki receiver.
         - name: "victorialogs"
           loki:
             # vlsingle is the deployed variant (see observability/base/victoria-logs/).
@@ -47,7 +49,6 @@ spec:
       route:
         routes:
           - match:
-              - receiver: "dump"
               - receiver: "victorialogs"
 
     metrics:
@@ -69,7 +70,9 @@ spec:
               # WatchErrors.Inc()) — no namespace grouping is possible, so the message
               # below deliberately doesn't reference $labels.namespace. The cluster
               # external label is stamped by vmalert, so per-cluster attribution in
-              # Slack still works.
+              # Slack still works. The rate(...[5m]) > 0 held for 15m is deliberate:
+              # transient, self-healing informer watch errors don't fire; only a
+              # sustained error stream does, hence severity warning rather than critical.
               - alert: KubernetesEventExporterWatchErrors
                 annotations:
                   message: "kubernetes-event-exporter reports watch errors — cluster Events may be missing from VictoriaLogs."
