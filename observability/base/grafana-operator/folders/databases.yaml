@@ -3,6 +3,11 @@ kind: GrafanaFolder
 metadata:
   name: databases
   namespace: infrastructure
+# Consumed by the CloudNativePG dashboards in infrastructure/base/cloudnative-pg/
+# (grafana-dashboard.yaml, grafana-dashboard-query-performance.yaml,
+# grafana-dashboard-query-plan-correlation.yaml), which set folderRef: "databases".
+# That directory is wired into both aws-0 and gcp-0 (infrastructure/{aws-0,gcp-0}/kustomization.yaml),
+# so this folder is not orphaned even though no observability/ dashboard targets it directly.
 spec:
   allowCrossNamespaceImport: true
   instanceSelector:
