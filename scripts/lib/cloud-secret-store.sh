@@ -40,43 +40,52 @@ store_read() {
 #
 #   * `umask 077 && mktemp` sets the mode AT CREATION. Creating then chmod-ing
 #     leaves a window in which a file holding a secret is world-readable.
-#   * the RETURN trap fires on EVERY exit path, and shred overwrites the bytes.
-#     A trailing `rm -f` runs only when nothing failed.
+#   * both temp files, and the trap that shreds them, live inside a subshell
+#     that does nothing but write and consume them. Its EXIT trap fires on
+#     every way out of that subshell, including a failing `aws`/`gcloud`/`jq`
+#     under the caller's `errexit` -- that aborts the whole shell from inside
+#     the subshell without ever "returning" from it, so a RETURN trap (tried
+#     first) never fires: a stubbed write failure left both files on disk,
+#     plaintext secret and all, because RETURN only covers a function that
+#     actually returns. EXIT does not have that gap, but a plain function-
+#     level EXIT trap would instead overwrite whatever EXIT trap the *caller*
+#     already had (bash keeps one, not a stack) -- the subshell's trap table
+#     is private, so it can't step on the caller's.
 #   * AWS goes through jq into --cli-input-json rather than --secret-string,
 #     which is what lets the payload be an arbitrary JSON document.
 store_write() {
-    local name="$1" payload
-    payload=$(umask 077 && mktemp -t cloud-secret.XXXXXX)
-    # shellcheck disable=SC2064
-    trap "shred -u '${payload}' 2>/dev/null || rm -f '${payload}'" RETURN
-    cat > "$payload"
+    local name="$1"
+    (
+        local payload body
+        payload=$(umask 077 && mktemp -t cloud-secret.XXXXXX)
+        body=$(umask 077 && mktemp -t cloud-secret-body.XXXXXX)
+        trap 'shred -u "$payload" "$body" 2>/dev/null || rm -f "$payload" "$body"' EXIT
+        cat > "$payload"
 
-    case "$CLOUD" in
-        aws)
-            local body
-            body=$(umask 077 && mktemp -t cloud-secret-body.XXXXXX)
-            if store_exists "$name"; then
-                jq --arg id "$name" '{SecretId: $id, SecretString: (. | tostring)}' \
-                    < "$payload" > "$body"
-                aws secretsmanager put-secret-value ${REGION:+--region "$REGION"} \
-                    --cli-input-json "file://${body}" >/dev/null
-            else
-                jq --arg n "$name" --arg d "${STORE_WRITE_DESCRIPTION:-Written by cloud-secret-store.sh}" \
-                   '{Name: $n, Description: $d, SecretString: (. | tostring)}' \
-                    < "$payload" > "$body"
-                aws secretsmanager create-secret ${REGION:+--region "$REGION"} \
-                    --cli-input-json "file://${body}" >/dev/null
-            fi
-            shred -u "$body" 2>/dev/null || rm -f "$body"
-            ;;
-        gcp)
-            store_exists "$name" || gcp_gcloud secrets create "$name" \
-                ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
-                --replication-policy=automatic \
-                --labels=managed-by="${STORE_WRITE_LABEL:-cloud-secret-store}" >/dev/null
-            gcp_gcloud secrets versions add "$name" \
-                ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
-                --data-file="$payload" >/dev/null
-            ;;
-    esac
+        case "$CLOUD" in
+            aws)
+                if store_exists "$name"; then
+                    jq --arg id "$name" '{SecretId: $id, SecretString: (. | tostring)}' \
+                        < "$payload" > "$body"
+                    aws secretsmanager put-secret-value ${REGION:+--region "$REGION"} \
+                        --cli-input-json "file://${body}" >/dev/null
+                else
+                    jq --arg n "$name" --arg d "${STORE_WRITE_DESCRIPTION:-Written by cloud-secret-store.sh}" \
+                       '{Name: $n, Description: $d, SecretString: (. | tostring)}' \
+                        < "$payload" > "$body"
+                    aws secretsmanager create-secret ${REGION:+--region "$REGION"} \
+                        --cli-input-json "file://${body}" >/dev/null
+                fi
+                ;;
+            gcp)
+                store_exists "$name" || gcp_gcloud secrets create "$name" \
+                    ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
+                    --replication-policy=automatic \
+                    --labels=managed-by="${STORE_WRITE_LABEL:-cloud-secret-store}" >/dev/null
+                gcp_gcloud secrets versions add "$name" \
+                    ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
+                    --data-file="$payload" >/dev/null
+                ;;
+        esac
+    )
 }

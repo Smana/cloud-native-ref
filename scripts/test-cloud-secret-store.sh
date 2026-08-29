@@ -127,4 +127,42 @@ check_log "gcp write new -> default label" '--labels=managed-by=cloud-secret-sto
   echo -n secretvalue | store_write notfound-secret )
 check_log "gcp write new -> STORE_WRITE_LABEL honoured" '--labels=managed-by=unit-test' "$STUB_LOG"
 
+# --- store_write: no plaintext survives a failed write (round-1 fix) -------
+#
+# Under a caller's `set -o errexit`, a failing cloud CLI aborts the shell
+# from INSIDE store_write -- the function never "returns", so a bare RETURN
+# trap never fires and the payload temp file is left on disk with the secret
+# still in it. Exercised in a nested `bash -c` with errexit on, matching how
+# every real caller (zitadel-oidc-clients.sh, zitadel-idp.sh, harbor-oidc.sh)
+# actually runs this: none of them run without errexit.
+FAILSTUB="$(mktemp -d)"
+cat > "$FAILSTUB/aws" <<'EOF'
+#!/usr/bin/env bash
+for a in "$@"; do
+    case "$a" in
+        describe-secret) exit 1 ;;            # "not found" -> create path
+        create-secret|put-secret-value) exit 254 ;;   # simulate a live failure
+    esac
+done
+exit 0
+EOF
+chmod +x "$FAILSTUB/aws"
+FAILTMP="$(mktemp -d)"
+
+set +e
+PATH="$FAILSTUB:$PATH" TMPDIR="$FAILTMP" bash -c '
+    set -o errexit
+    # shellcheck source=scripts/lib/cloud-secret-store.sh
+    . "'"$HERE"'/lib/cloud-secret-store.sh"
+    CLOUD=aws REGION=eu-west-3 GCP_PROJECT=""
+    printf "%s" "{\"pat\":\"should-never-survive-on-disk\"}" | store_write probe-secret
+'
+fail_exit=$?
+set -e
+check "failed write still propagates the CLI's exit code" "254" "$fail_exit"
+
+leftover="$(find "$FAILTMP" -maxdepth 1 -name 'cloud-secret*' | head -1)"
+check "failed write leaves no temp file behind" "" "$leftover"
+rm -rf "$FAILSTUB" "$FAILTMP"
+
 exit $fail
