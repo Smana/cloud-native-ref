@@ -57,6 +57,10 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# gcloud must run as the identity OpenTofu uses, not the CLI account.
+# shellcheck source=scripts/lib/gcloud-adc.sh
+. "$(dirname "$0")/lib/gcloud-adc.sh"
+
 CLOUD=""
 CONTEXT=""
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
@@ -85,7 +89,7 @@ aws_sm() {
 }
 
 gcp_sm() {
-    if [ -n "$PROJECT" ]; then gcloud secrets --project "$PROJECT" "$@"; else gcloud secrets "$@"; fi
+    if [ -n "$PROJECT" ]; then gcp_gcloud secrets --project "$PROJECT" "$@"; else gcp_gcloud secrets "$@"; fi
 }
 
 # Does one key exist in the store?
@@ -125,7 +129,7 @@ store_has() {
     echo >&2
     echo "Refusing to continue: an unreachable store is not an empty one." >&2
     [ "$CLOUD" = "aws" ] && echo "Hint: pass --region (aws configure get region is empty here)." >&2
-    [ "$CLOUD" = "gcp" ] && echo "Hint: pass --project, or set one with gcloud config set project." >&2
+    [ "$CLOUD" = "gcp" ] && echo "Hint: pass --project, or set one with gcp_gcloud config set project." >&2
     exit 1
 }
 
@@ -598,7 +602,7 @@ cmd_grant() {
     [ -n "$PROJECT" ] || { echo "--project is required" >&2; exit 2; }
 
     local number
-    number=$(gcloud projects describe "$PROJECT" --format='value(projectNumber)' 2>/dev/null)
+    number=$(gcp_gcloud projects describe "$PROJECT" --format='value(projectNumber)' 2>/dev/null)
     [ -n "$number" ] || { echo "could not read the project number for ${PROJECT}" >&2; exit 1; }
 
     local principal="principal://iam.googleapis.com/projects/${number}/locations/global/workloadIdentityPools/${PROJECT}.svc.id.goog/subject/ns/security/sa/external-secrets"
@@ -612,7 +616,7 @@ cmd_grant() {
     local granted=0 absent=0 failed=0
     while read -r key; do
         [ -z "$key" ] && continue
-        if ! gcloud secrets describe "$key" --project "$PROJECT" >/dev/null 2>&1; then
+        if ! gcp_gcloud secrets describe "$key" --project "$PROJECT" >/dev/null 2>&1; then
             # Not an error here: `check` is what reports missing secrets. A key
             # containing "/" cannot exist in GCP at all -- see ADR-0023.
             echo "[absent ] ${key}"
@@ -624,7 +628,7 @@ cmd_grant() {
             granted=$((granted + 1))
             continue
         fi
-        if gcloud secrets add-iam-policy-binding "$key" --project "$PROJECT" \
+        if gcp_gcloud secrets add-iam-policy-binding "$key" --project "$PROJECT" \
              --member "$principal" --role roles/secretmanager.secretAccessor >/dev/null 2>&1; then
             echo "[granted] ${key}"
             granted=$((granted + 1))
