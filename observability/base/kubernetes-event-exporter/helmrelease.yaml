@@ -25,8 +25,8 @@ spec:
       repository: civitatis/kubernetes-event-exporter
       tag: "1.8"
     config:
-      logLevel: debug
-      logFormat: pretty
+      logLevel: info
+      logFormat: json
       metricsNamePrefix: "event_exporter_"
       clusterName: "${cluster_name}"
       receivers:
@@ -36,8 +36,11 @@ spec:
             layout: {}
         - name: "victorialogs"
           loki:
-            # url: "http://victoria-logs-single-server.victoria-logs.svc.cluster.local:9428/insert/loki/api/v1/push"
-            url: "http://victoria-logs-victoria-logs-cluster-vlinsert.observability.svc.cluster.local:9481/insert/loki/api/v1/push"
+            # vlsingle is the deployed variant (see observability/base/victoria-logs/).
+            # This URL pointed at the vlcluster vlinsert Service from 2025-08-23 to
+            # 2026-08-29 — a Service that never existed here — so direct event push
+            # silently went nowhere the whole time.
+            url: "http://victoria-logs-victoria-logs-single-server.observability.svc.cluster.local:9428/insert/loki/api/v1/push"
             streamLabels:
               source: kubernetes-event-exporter
 
@@ -48,7 +51,7 @@ spec:
               - receiver: "victorialogs"
 
     metrics:
-      enabled: false
+      enabled: true
 
       serviceMonitor:
         enabled: true
@@ -60,11 +63,13 @@ spec:
         groups:
           - name: KubernetesEventExporter
             rules:
-              - alert: KubernetesEventExporterTooManyWatchErrors
+              # The VM operator's Prometheus converter turns this PrometheusRule
+              # (and the ServiceMonitor above) into VM-native objects.
+              - alert: KubernetesEventExporterWatchErrors
                 annotations:
-                  message: "Kubernetes Event Exporter instance in namespace {{ `{{` }} $labels.namespace {{ `}}` }} has reported too many watch errors in 5 minutes."
+                  message: "kubernetes-event-exporter in {{ `{{` }} $labels.namespace {{ `}}` }} reports watch errors — cluster Events may be missing from VictoriaLogs."
                 expr: |
-                  sum(watch_errors{namespace="{{ include "common.names.namespace" . }}"})
-                for: 5m
+                  sum by (namespace) (rate(event_exporter_watch_errors[5m])) > 0
+                for: 15m
                 labels:
-                severity: critical
+                  severity: warning
