@@ -173,14 +173,34 @@ store_write() {
 PAT_NAMESPACE="security"
 PAT_SECRET="iam-admin-pat" # pragma: allowlist secret
 
-PAT="$(kubectl get secret "$PAT_SECRET" -n "$PAT_NAMESPACE" \
-        -o jsonpath='{.data.pat}' 2>/dev/null | base64 -d 2>/dev/null)"
+# Read in two steps, and never inside a pipeline. `set -e` + `pipefail` kill the
+# script the instant `kubectl get secret` fails on a missing Secret, so the
+# assignment aborts and every friendly message below becomes unreachable. With
+# kubectl's own stderr suppressed the operator gets a silent exit 1 and no clue
+# -- which is exactly how this landed on 2026-08-29.
+PAT=""
+if _pat_b64="$(kubectl get secret "$PAT_SECRET" -n "$PAT_NAMESPACE" \
+                 -o jsonpath='{.data.pat}' 2>/dev/null)"; then
+    PAT="$(printf '%s' "$_pat_b64" | base64 -d 2>/dev/null || true)"
+fi
+
 if [ -z "$PAT" ]; then
     echo "ERROR: could not read ${PAT_NAMESPACE}/${PAT_SECRET} from the cluster." >&2
+    echo "       (context: $(kubectl config current-context 2>/dev/null || echo unknown))" >&2
     echo >&2
     echo "ZITADEL writes that Secret when its FirstInstance bootstrap creates the" >&2
-    echo "iam-admin machine user. If it is missing, ZITADEL has not finished" >&2
-    echo "bootstrapping -- check the setup Job:" >&2
+    echo "iam-admin machine user." >&2
+    echo >&2
+    echo "A RESTORED ZITADEL NEVER RUNS FIRSTINSTANCE, so a cluster whose database" >&2
+    echo "was bootstrapped from a backup has no such Secret and never will --" >&2
+    echo "nothing is broken and waiting will not fix it. That is the usual cause" >&2
+    echo "on aws-0, which restores from a frozen seed. Mint a PAT for the" >&2
+    echo "iam-admin machine user in the ZITADEL console and create the Secret:" >&2
+    echo >&2
+    echo "  kubectl create secret generic ${PAT_SECRET} -n ${PAT_NAMESPACE} \\" >&2
+    echo "    --from-literal=pat=<the token>" >&2
+    echo >&2
+    echo "Otherwise ZITADEL has not finished bootstrapping -- check the setup Job:" >&2
     echo "  kubectl get jobs -n ${PAT_NAMESPACE} | grep zitadel" >&2
     exit 1
 fi
@@ -375,6 +395,40 @@ app_id_by_name() {
         | jq -r --arg n "$2" '.result[]? | select(.name == $n) | .id' | head -1
 }
 
+# The redirect URIs an existing app currently has, one per line.
+app_redirect_uris() {
+    api GET "/management/v1/projects/$1/apps/$2" \
+        | jq -r '.app.oidcConfig.redirectUris[]? // empty'
+}
+
+# Point an existing app at the redirect URI it is supposed to have.
+#
+# This updates the OIDC CONFIG, not the app: ZITADEL rotates a client secret only
+# through the separate `_secret` endpoint, so the running consumer keeps working
+# and nothing has to be rewritten into the secret store.
+#
+# The update REPLACES the config rather than patching it, so every field the
+# create call sets has to be sent again -- omitting one silently reverts it to
+# ZITADEL's default, and `accessTokenRoleAssertion`/`idTokenRoleAssertion`
+# reverting to false is the same class of failure as projectRoleAssertion being
+# off: authentication keeps working and every consumer loses its groups.
+app_set_redirect() {
+    local project_id="$1" app_id="$2" redirect="$3"
+    api PUT "/management/v1/projects/${project_id}/apps/${app_id}/oidc_config" \
+        -d "$(jq -n --arg r "$redirect" '{
+          redirectUris: [$r],
+          responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
+          grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE","OIDC_GRANT_TYPE_REFRESH_TOKEN"],
+          appType: "OIDC_APP_TYPE_WEB",
+          authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
+          accessTokenType: "OIDC_TOKEN_TYPE_BEARER",
+          accessTokenRoleAssertion: true,
+          idTokenRoleAssertion: true,
+          idTokenUserinfoAssertion: true,
+          devMode: false
+        }')" >/dev/null
+}
+
 # Merge OIDC fields into a secret without dropping what else is in it.
 merge_secret() {
     local key="$1" name="$2" client_id="$3" client_secret="$4" existing='{}'
@@ -436,7 +490,7 @@ cmd_sync() {
     ensure_project_roles "$project_id"
     grant_admin_role "$GRANT_ADMIN" "$project_id"
 
-    local created=0 skipped=0
+    local created=0 skipped=0 updated=0
     for entry in "${CONSUMERS[@]}"; do
         IFS='|' read -r name redirect key <<< "$entry"
 
@@ -444,10 +498,37 @@ cmd_sync() {
         [ "$project_id" != "DRYRUN-PROJECT" ] && existing_id="$(app_id_by_name "$project_id" "$name")"
 
         if [ -n "$existing_id" ]; then
-            # Never recreate: ZITADEL returns the client secret once, so
+            # Never RECREATE: ZITADEL returns the client secret once, so
             # recreating would rotate it and break the running consumer.
-            echo "[skip   ] ${name} -- app already exists (${existing_id}); leaving it alone"
-            skipped=$((skipped + 1))
+            #
+            # But do not leave it alone either. The redirect URI is derived from
+            # $PRIVATE_DOMAIN, and a cluster restored from a frozen database
+            # comes back with whatever domain was current when the seed was
+            # taken. aws-0 restored from a 19 July seed on 2026-08-29 and every
+            # client still pointed at priv.cloud.ogenki.io, months after the
+            # cloud split moved it to priv.aws.ogenki.io. Every login failed with
+            #   "The requested redirect_uri is missing in the client configuration"
+            # and re-running this script cheerfully skipped all five.
+            local current
+            current="$(app_redirect_uris "$project_id" "$existing_id")"
+
+            if grep -Fxq "$redirect" <<< "$current"; then
+                echo "[ok     ] ${name} -- app exists (${existing_id}), redirect correct"
+                skipped=$((skipped + 1))
+                continue
+            fi
+
+            echo "[STALE  ] ${name} (${existing_id})"
+            echo "           has:  ${current:-<none>}"
+            echo "           want: ${redirect}"
+            if [ "$APPLY" != "true" ]; then
+                echo "           would update the redirect URI (client secret untouched)"
+                updated=$((updated + 1))
+                continue
+            fi
+            app_set_redirect "$project_id" "$existing_id" "$redirect"
+            echo "[updated] ${name} -> ${redirect} (client secret untouched)"
+            updated=$((updated + 1))
             continue
         fi
 
@@ -488,7 +569,7 @@ cmd_sync() {
     done
 
     echo
-    echo "created: ${created}, skipped (already registered): ${skipped}"
+    echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}"
     if [ "$APPLY" != "true" ]; then
         echo
         echo "This was a DRY RUN. Nothing was created and nothing was written."
