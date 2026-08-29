@@ -340,50 +340,65 @@ app_set_redirect() {
 }
 
 # Merge OIDC fields into a secret without dropping what else is in it.
+#
+# $existing, $client_secret and (for headlamp-proxy) the cookie secret all
+# travel into jq on STDIN, never as --arg/--argjson -- either would put the
+# value on jq's argv, readable by any process via /proc/<pid>/cmdline for as
+# long as jq runs. That matters for more than the client secret: $existing is
+# the CURRENT full contents of the target secret, and for grafana that blob
+# also carries the generated Grafana admin credentials, so --argjson base
+# would leak those too. Only client_id and the issuer URL, neither secret, go
+# in as --arg. Three concatenated JSON documents on one stream, pulled out in
+# order with `input` -- the same trick jq's own manual gives for slurping more
+# than one value without `--slurp` swallowing the whole stream into an array.
 merge_secret() {
-    local key="$1" name="$2" client_id="$3" client_secret="$4" existing='{}'
+    local key="$1" name="$2" client_id="$3" client_secret="$4"
+    local existing='{}' cookie_secret=''
     store_exists "$key" && existing="$(store_read "$key")"
     [ -z "$existing" ] && existing='{}'
 
-    case "$name" in
-        grafana)
-            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
-               '$base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id, GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: $sec}' ;;
-        headlamp)
-            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
-               --arg iss "$IDP_URL" \
-               '$base + {OIDC_CLIENT_ID: $id, OIDC_CLIENT_SECRET: $sec, OIDC_ISSUER_URL: $iss,
-                         OIDC_SCOPES: "openid,profile,email",
-                         OIDC_VALIDATOR_CLIENT_ID: $id, OIDC_VALIDATOR_ISSUER_URL: $iss}' ;;
-        flux-ui)
-            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
-               '$base + {clientID: $id, clientSecret: $sec}' ;;
-        harbor)
-            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
-               --arg iss "$IDP_URL" \
-               '$base + {client_id: $id, client_secret: $sec, endpoint: $iss}' ;;
-        headlamp-proxy)
-            # Hyphenated keys, deliberately: the oauth2-proxy chart's
-            # `config.existingSecret` reads exactly client-id / client-secret /
-            # cookie-secret, so the blob is shaped to be consumed by a whole-blob
-            # ExternalSecret extract with no remapping.
-            #
-            # The cookie secret is generated here and then PRESERVED across runs
-            # by the `// $ck` fallback -- regenerating it on every sync would
-            # silently log every user out and look like a broken login.
-            #
-            # EXACTLY 32 CHARACTERS. `openssl rand -base64 32` alone emits 44,
-            # and oauth2-proxy refuses to start on it:
-            #   cookie_secret must be 16, 24, or 32 bytes to create an AES
-            #   cipher, but is 44 bytes
-            # It measures the STRING, not the decoded bytes, so the base64 has to
-            # be truncated to the cipher length rather than sized to decode into
-            # it. `head -c 32` is the recipe the chart's own values.yaml gives.
-            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
-               --arg ck "$(openssl rand -base64 32 | head -c 32)" \
-               '$base + {"client-id": $id, "client-secret": $sec,
-                         "cookie-secret": ($base["cookie-secret"] // $ck)}' ;;
-    esac
+    if [ "$name" = headlamp-proxy ]; then
+        # Hyphenated keys, deliberately: the oauth2-proxy chart's
+        # `config.existingSecret` reads exactly client-id / client-secret /
+        # cookie-secret, so the blob is shaped to be consumed by a whole-blob
+        # ExternalSecret extract with no remapping.
+        #
+        # PRESERVED across runs -- regenerating on every sync would silently
+        # log every user out and look like a broken login.
+        #
+        # EXACTLY 32 CHARACTERS. `openssl rand -base64 32` alone emits 44,
+        # and oauth2-proxy refuses to start on it:
+        #   cookie_secret must be 16, 24, or 32 bytes to create an AES
+        #   cipher, but is 44 bytes
+        # It measures the STRING, not the decoded bytes, so the base64 has to
+        # be truncated to the cipher length rather than sized to decode into
+        # it. `head -c 32` is the recipe the chart's own values.yaml gives.
+        cookie_secret="$(jq -r '."cookie-secret" // empty' <<< "$existing")"
+        [ -n "$cookie_secret" ] || cookie_secret="$(openssl rand -base64 32 | head -c 32)"
+    fi
+
+    {
+        printf '%s\n' "$existing"
+        printf '%s' "$client_secret" | jq -Rs .
+        printf '%s' "$cookie_secret" | jq -Rs .
+    } | jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" '
+        input as $base | input as $sec | input as $ck |
+        if $name == "grafana" then
+            $base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id, GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: $sec}
+        elif $name == "headlamp" then
+            $base + {OIDC_CLIENT_ID: $id, OIDC_CLIENT_SECRET: $sec, OIDC_ISSUER_URL: $iss,
+                     OIDC_SCOPES: "openid,profile,email",
+                     OIDC_VALIDATOR_CLIENT_ID: $id, OIDC_VALIDATOR_ISSUER_URL: $iss}
+        elif $name == "flux-ui" then
+            $base + {clientID: $id, clientSecret: $sec}
+        elif $name == "harbor" then
+            $base + {client_id: $id, client_secret: $sec, endpoint: $iss}
+        elif $name == "headlamp-proxy" then
+            $base + {"client-id": $id, "client-secret": $sec, "cookie-secret": $ck}
+        else
+            empty
+        end
+    '
 }
 
 cmd_sync() {
