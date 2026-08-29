@@ -52,6 +52,10 @@ cd opentofu
 terramate script run deploy
 ```
 
+No cloud flag: `TM_CLOUD` defaults to `aws`, so this builds the AWS lane and
+skips GCP. Set `TM_CLOUD=aws,gcp` (or `all`) to build both in one run — see
+[Commands]({{< relref "/docs/reference/commands.md" >}}).
+
 **One command covers both stages** — there is no second command to run below.
 Terramate resolves the dependency graph and starts with `shared/tailscale`, the
 tailnet-wide singletons `network` declares in its `after` list, then applies

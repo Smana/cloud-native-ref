@@ -60,7 +60,7 @@ script "destroy" {
     commands = [
       # Single y/n prompt; cached for 10 min so `--reverse destroy` asks once.
       # Bypass with TM_DESTROY_CONFIRMED=true for CI.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
       # `destroy` is a standalone entrypoint: unlike `deploy` it can be the first
       # tofu command run in a stack, so it has to init itself. Without this a lock
       # file predating a new provider fails the whole `--reverse destroy` sweep.

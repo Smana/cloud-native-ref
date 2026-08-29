@@ -37,10 +37,12 @@ one OpenTofu root module. Terramate turns the separate stacks into one graph:
 - **DRY configuration** — `opentofu/config.tm.hcl` holds the globals every
   stack reads (region, cluster name, chart versions) instead of five copies
   of the same variable.
-- **Opt-in gating** — stacks tagged `opt-in` — the AWS `llm-platform` and
-  all five GCP stacks, which additionally gate on `TM_GCP_ENABLED=true` — are
-  skipped by default and pulled in with a tag filter or an environment
-  variable, without a second orchestration mechanism next to this one.
+- **Cloud selection** — one variable, `TM_CLOUD`, decides which lanes an
+  invocation may touch (`aws` by default, or `gcp`, `aws,gcp`, `all`). It is
+  enforced in `scripts/tm-provisioner.sh`, the wrapper every stack reaches
+  OpenTofu through, so a single interception point covers the shared scripts and
+  every per-stack override. The AWS `llm-platform` stack keeps its own
+  `TM_LLM_PLATFORM_ENABLED` gate — that is a feature axis, not a cloud one.
 
 The alternative — running `tofu apply` by hand in each stack directory —
 still works; it just loses all four of the above and puts the ordering back

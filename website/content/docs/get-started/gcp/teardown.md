@@ -10,17 +10,17 @@ of them cost a manual cleanup on the 2026-08-27 gcp-0 teardown and are now
 handled by the destroy workflow itself.
 
 {{< callout type="warning" >}}
-Every GCP stack is gated on `TM_GCP_ENABLED=true`. Without it each job prints
-`[skip]` and exits 0 — including the destroy jobs. A teardown that appears to
-succeed instantly did nothing at all; check for `[skip]` lines before believing
-the cluster is gone.
+`TM_CLOUD` defaults to `aws`, and it gates the **destroy** jobs exactly as it
+gates deploy: without `TM_CLOUD=gcp` each one prints `[skip]` and exits 0. A
+teardown that appears to succeed instantly did nothing at all — check for
+`[skip]` lines before believing the cluster is gone.
 {{< /callout >}}
 
 ## GKE only
 
 ```bash
 cd opentofu/gcp/gke/init
-TM_GCP_ENABLED=true terramate script run destroy
+TM_CLOUD=gcp terramate script run destroy
 ```
 
 Five jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
@@ -41,7 +41,7 @@ Five jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
 
 ```bash
 cd opentofu
-TM_GCP_ENABLED=true terramate script run --reverse destroy
+TM_CLOUD=gcp terramate script run --reverse destroy
 ```
 
 Destroys every stack — GKE, OpenBao, Network — in reverse dependency order, with

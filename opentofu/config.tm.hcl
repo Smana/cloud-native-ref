@@ -1,11 +1,38 @@
 # Global variables that are used in all scripts
 # Use your own values for these variables
 globals {
-  provisioner                      = "tofu"
-  region                           = "eu-west-3"
-  profile                          = ""
-  eks_cluster_name                 = "aws-0"
-  openbao_url                      = "https://bao.priv.aws.ogenki.io:8200"
+  # Not `tofu` directly -- a wrapper that gates on TM_CLOUD, then execs tofu.
+  # See scripts/tm-provisioner.sh for why the cloud selector lives here rather
+  # than in a flag or a tag: this is the one point every stack reaches OpenTofu
+  # through, so intercepting it covers the global scripts and every per-stack
+  # override at once, without wrapping commands in bash and losing Terramate
+  # Cloud's sync annotations.
+  provisioner = "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh"
+
+  # Which lane a stack belongs to, read from its own tags. Anything tagged
+  # neither `aws` nor `gcp` -- shared/tailscale, shared/aws-gcp-federation -- is
+  # owned by neither cloud and always runs.
+  stack_cloud = tm_contains(terramate.stack.tags, "gcp") ? "gcp" : (tm_contains(terramate.stack.tags, "aws") ? "aws" : "shared")
+
+  # The same gate, for jobs that run something other than tofu -- gcloud, a repo
+  # script, a bash heredoc. Interpolated as `${global.cloud_gate}` at the top of
+  # such a job, because each Terramate job is its own bash process and the check
+  # cannot be hoisted to the script or stack level.
+  #
+  # It delegates rather than restating the rule: the previous gate was fifteen
+  # hand-copied blocks, and four scripts ended up missing one entirely.
+  cloud_gate = <<-EOT
+    "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-check ${global.stack_cloud} || {
+      echo "[skip] ${global.stack_cloud} stack — TM_CLOUD=$${TM_CLOUD:-aws} does not include it."
+      echo "       Set TM_CLOUD=${global.stack_cloud}, a list like aws,gcp, or all."
+      exit 0
+    }
+  EOT
+
+  region                 = "eu-west-3"
+  profile                = ""
+  eks_cluster_name       = "aws-0"
+  openbao_url            = "https://bao.priv.aws.ogenki.io:8200"
   root_token_secret_name = "openbao/cloud-native-ref/tokens/root"
   # Deliberately a different secret from the root token: the recovery keys are
   # what regenerates a lost or revoked root token, so storing both together

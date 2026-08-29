@@ -11,7 +11,7 @@
 # AWS stack says the same thing at the same place.
 #
 # opt-in gate: see opentofu/gcp/config.tm.hcl. Every command runs inside a
-# ${global.gcp_gate} block. A BARE command list cannot be gated -- each command
+# ${global.cloud_gate} block. A BARE command list cannot be gated -- each command
 # in a Terramate job is its own process, so an `exit 0` in the block before it
 # ends only that block. An ungated `gcloud secrets versions access` here would
 # fire during a plain `terramate script run deploy` from opentofu/, which is the
@@ -72,7 +72,7 @@ script "deploy" {
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
@@ -80,7 +80,7 @@ script "deploy" {
       BASH
       ],
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.openbao_init}
         ${global.openbao_ca_fetch}
@@ -104,7 +104,7 @@ script "preview" {
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
@@ -112,7 +112,7 @@ script "preview" {
       BASH
       ],
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.openbao_ca_fetch}
         ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars
@@ -128,12 +128,12 @@ script "preview" {
 # drift sweep down with it.
 script "drift" "detect" {
   name        = "GCP OpenBao Management Drift Check (opt-in)"
-  description = "Detect drift when TM_GCP_ENABLED=true"
+  description = "Detect drift when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.openbao_ca_fetch}
         ${global.provisioner} plan -out=out.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars
@@ -147,12 +147,12 @@ script "drift" "detect" {
 # from opentofu/ would CONFIGURE a GCP OpenBao without anyone opting in.
 script "drift" "reconcile" {
   name        = "GCP OpenBao Management Drift Reconciliation (opt-in)"
-  description = "Reconcile drift when TM_GCP_ENABLED=true"
+  description = "Reconcile drift when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.openbao_ca_fetch}
         ${global.provisioner} apply -parallelism=1 -input=false -auto-approve -lock-timeout=5m -var-file=variables.tfvars drift.tfplan
@@ -164,12 +164,12 @@ script "drift" "reconcile" {
 
 script "opentofu" "render" {
   name        = "GCP Show Plan (opt-in)"
-  description = "Render this GCP stack's plan when TM_GCP_ENABLED=true"
+  description = "Render this GCP stack's plan when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         echo "Stack: ${terramate.stack.path.absolute}"
         ${global.provisioner} show -no-color out.tfplan
@@ -202,14 +202,14 @@ script "destroy" {
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
         ${global.provisioner} init -lock-timeout=5m
       BASH
       ],
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         # Deliberately NOT set -e from here on.
         #
         # The fetch is wrapped in a FUNCTION rather than written as
@@ -236,7 +236,7 @@ script "destroy" {
       BASH
       ],
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         # Unconditional sweep of the one resource that OUTLIVES OpenBao.
         # Runs whether or not the destroy above succeeded: if it did, this is a
         # no-op; if it aborted at provider configure, this is the only thing
@@ -257,12 +257,12 @@ script "destroy" {
 
 script "init" {
   name        = "GCP Init (opt-in)"
-  description = "Initialize this GCP stack when TM_GCP_ENABLED=true"
+  description = "Initialize this GCP stack when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
       BASH

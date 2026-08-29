@@ -27,6 +27,34 @@ terramate script run deploy    # Deploy platform
 terramate script run drift detect  # Check drift
 ```
 
+## Choosing the cloud — `TM_CLOUD`
+
+One variable, defaulting to `aws`. It is a comma list, so a third cloud needs no
+new keyword:
+
+```bash
+terramate script run deploy                    # aws alone (the default)
+TM_CLOUD=gcp     terramate script run deploy   # gcp alone; AWS stacks echo [skip]
+TM_CLOUD=aws,gcp terramate script run deploy   # both
+TM_CLOUD=all     terramate script run deploy   # every lane
+```
+
+A stack's lane is its directory: `opentofu/aws/**`, `opentofu/gcp/**`, and
+`opentofu/shared/**` which is owned by neither cloud and always runs.
+
+Enforced in `scripts/tm-provisioner.sh`, which `global.provisioner` points at —
+so it wraps every `tofu` call in the shared scripts *and* in every per-stack
+override at once. Jobs that run something other than tofu (a repo script,
+gcloud) carry `${global.cloud_gate}` or `--tm-run`; the destructive ones must,
+since `eks-prepare-destroy.sh` deletes every PVC.
+
+**Why not tags.** A tag filter has no committed default — `--no-tags` has to be
+typed, so a fresh clone or CI would get all 13 stacks, and `drift reconcile`
+runs `tofu apply -auto-approve`. Tags remain right for *listing*
+(`terramate list --tags=gcp`), not for gating. This replaced a two-knob scheme
+(`TM_GCP_ENABLED=true` to turn GCP on, `--no-tags=aws` to turn AWS off) where
+getting one wrong silently built the wrong cloud.
+
 ## EKS Two-Stage Bootstrap
 
 **Stage 1** (`eks/init`): EKS cluster, managed node groups, bootstrap addons (vpc-cni, kube-proxy, coredns, ebs-csi), Gateway API CRDs, IAM, flux-system namespace.

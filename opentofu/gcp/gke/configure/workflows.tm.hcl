@@ -10,7 +10,7 @@
 #
 # opt-in gate (why override the global scripts at opentofu/workflows.tm.hcl):
 #   Both clouds share one Terramate run order, and the GCP stacks are unproven.
-#   Each job below checks $TM_GCP_ENABLED first and no-ops with a [skip]
+#   Each job below checks $TM_CLOUD first and no-ops with a [skip]
 #   message when it's unset or not "true".
 #
 #   The double-`$$` escape keeps Terramate from interpolating `${VAR:-default}`;
@@ -19,7 +19,7 @@
 #
 # Usage:
 #   terramate script run deploy                      # skipped
-#   TM_GCP_ENABLED=true terramate script run deploy   # runs
+#   TM_CLOUD=gcp terramate script run deploy   # runs
 
 script "deploy" {
   name        = "GKE Configure Deployment (Stage 2)"
@@ -30,10 +30,7 @@ script "deploy" {
     description = "Apply Cilium and Flux configuration"
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE configure deploy: set TM_GCP_ENABLED=true to deploy"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
@@ -51,10 +48,7 @@ script "preview" {
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE configure preview: set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} validate
@@ -101,10 +95,7 @@ script "destroy" {
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        if [ "$${TM_GCP_ENABLED:-}" != "true" ]; then
-          echo "[skip] GKE configure destroy: set TM_GCP_ENABLED=true"
-          exit 0
-        fi
+        ${global.cloud_gate}
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
         bash "${terramate.root.path.fs.absolute}/scripts/gke-destroy-stage2.sh" \
@@ -121,12 +112,12 @@ script "destroy" {
 
 script "init" {
   name        = "GCP Init (opt-in)"
-  description = "Initialize this GCP stack when TM_GCP_ENABLED=true"
+  description = "Initialize this GCP stack when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
       BASH
@@ -137,12 +128,12 @@ script "init" {
 
 script "drift" "detect" {
   name        = "GCP Drift Check (opt-in)"
-  description = "Detect drift in this GCP stack when TM_GCP_ENABLED=true"
+  description = "Detect drift in this GCP stack when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
         ${global.provisioner} plan -out=drift.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars
@@ -158,12 +149,12 @@ script "drift" "detect" {
 # rather than an inconsistency.
 script "drift" "reconcile" {
   name        = "GCP Drift Reconciliation (opt-in)"
-  description = "Reconcile drift in this GCP stack when TM_GCP_ENABLED=true"
+  description = "Reconcile drift in this GCP stack when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} apply -input=false -auto-approve -lock-timeout=5m -var-file=variables.tfvars drift.tfplan
       BASH
@@ -174,12 +165,12 @@ script "drift" "reconcile" {
 
 script "opentofu" "render" {
   name        = "GCP Show Plan (opt-in)"
-  description = "Render this GCP stack's plan when TM_GCP_ENABLED=true"
+  description = "Render this GCP stack's plan when TM_CLOUD selects gcp"
 
   job {
     commands = [
       ["bash", "-c", <<-BASH
-        ${global.gcp_gate}
+        ${global.cloud_gate}
         set -euo pipefail
         echo "Stack: ${terramate.stack.path.absolute}"
         ${global.provisioner} show -no-color out.tfplan

@@ -75,9 +75,11 @@ independently of the base/overlay mechanism above:
   sync does not pick up its children and bypass the suspend.
 - **`clusters/gcp-0-llm-platform/`** — the same suspended-umbrella pattern
   for `gcp-0`, gated by `clusters/gcp-0/llm-platform.yaml`.
-- **`opentofu/gcp/**`** — every GCP stack's scripts no-op unless
-  `TM_GCP_ENABLED=true`, so an AWS deploy from `opentofu/` never builds GCP
-  as a side effect.
+- **`opentofu/<lane>/**`** — the directory *is* the cloud selector. Stacks
+  under `aws/` and `gcp/` run only when `TM_CLOUD` names their lane (it defaults
+  to `aws`); anything under `shared/` is owned by neither cloud and always runs.
+  So an AWS deploy from `opentofu/` never builds GCP as a side effect, and a GCP
+  one never rebuilds `aws-0`.
 
 On `aws-0` both LLM gates have to be released for an end-to-end deploy; on
 `gcp-0` the umbrella is the only LLM gate — see the
