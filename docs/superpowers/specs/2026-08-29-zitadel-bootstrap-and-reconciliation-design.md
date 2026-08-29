@@ -188,10 +188,21 @@ artifact.
 ## Success criteria
 
 1. A rebuilt `aws-0` restoring from any seed, however old, ends with every OIDC
-   client's redirect URI matching the current private domain, without manual
-   intervention.
-2. `zitadel-oidc-clients.sh sync` runs successfully on a restored cluster —
-   the `iam-admin-pat` Secret is present without anyone creating it by hand.
+   client's redirect URI matching the current private domain — reachable by
+   running `zitadel-oidc-clients.sh sync --apply` once, the same convergence
+   logic `opentofu/gcp/gke/init/workflows.tm.hcl` already runs automatically
+   after every GCP deploy. AWS's deploy does not call it: `opentofu/aws/` has
+   no invocation of any of the three setup scripts today, so on AWS an
+   operator still runs them by hand after a rebuild. Wiring AWS's deploy to do
+   this the way GCP's already does is follow-up work, not part of this
+   design.
+2. `zitadel-oidc-clients.sh sync` (and the other setup scripts) can
+   authenticate against a restored cluster without anyone re-minting a token
+   by hand — `resolve_zitadel_pat` reads the admin PAT from the cloud secret
+   store, where the first run after `FirstInstance` persisted it. This does
+   *not* mean the in-cluster `security/iam-admin-pat` Secret is present: this
+   design deliberately keeps it absent (see "Not an ExternalSecret" above),
+   and a restored database does not recreate it either.
 3. Client IDs and secrets are unchanged across a rebuild; no consumer restart is
    required.
 4. Re-running any setup script twice changes nothing the second time.
