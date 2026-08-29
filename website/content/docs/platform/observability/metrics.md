@@ -2,7 +2,7 @@
 title: Metrics
 weight: 10
 description: VictoriaMetrics single vs cluster mode, metrics-server, and the VMServiceScrape/VMScrapeConfig mechanisms that feed both.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 ## VictoriaMetrics k8s stack
@@ -16,17 +16,18 @@ of `kustomization.yaml`.
 
 | | vmsingle (active) | vmcluster (standby) |
 |---|---|---|
-| Retention | `1d` — explicitly commented "Minimal retention, for tests only" | `10d` |
+| Retention | `14d` — deliberate as of 2026-08-30; sized to fit the 10Gi PVC at this fleet's ingest rate | `10d` |
 | Replication | `replicaCount: 1` | `replicationFactor: 2`, separate `vmstorage`/`vmselect`/`vminsert` with zone-aware anti-affinity |
 | Storage | 10Gi RWO | 10Gi (`vmstorage`) + 2Gi (`vminsert`/`vmselect`), platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |
 | Alertmanager | `replicaCount` unset (chart default) | `replicaCount: 2` |
 
 `aws-0`'s overlay (`observability/aws-0/victoria-metrics-k8s-stack/`)
-carries the AWS-only pieces on top of the base — `vmrules/` (Karpenter and
-RunLore alerts), `vmservicecrapes/karpenter.yaml`, and
+carries the AWS-only pieces on top of the base — `vmrules/karpenter.yaml`,
+`vmservicecrapes/karpenter.yaml`, and
 `vmscrapeconfigs/ec2.yaml` — moved out of the base because the `karpenter`
 namespace does not exist on `gcp-0`, where they failed the whole
-Kustomization. Common values shared
+Kustomization. (RunLore's alerts used to sit in the same overlay; they moved
+to the base on 2026-08-30, because the agent runs on both clusters.) Common values shared
 by both modes (`vm-common-helm-values-configmap.yaml`, applied via
 `valuesFrom`) disable the control-plane rule groups (`kubernetes-system-apiserver`,
 `-controller-manager`, `-scheduler`) — EKS runs these as a managed service
@@ -34,18 +35,24 @@ this cluster can't scrape, so the chart's default `absent()`-based `*Down`
 alerts would otherwise fire permanently — and disable `kubeProxy` scraping
 for the same reason Cilium replaces it.
 
-{{< callout type="warning" >}}
-1d retention on the active `vmsingle` is a real operational constraint, not a
-typo to "fix": anything you want to compare against last week is gone.
-Cluster mode's 10d retention is one `kustomization.yaml` edit away if that
-becomes a problem, not a re-architecture.
+{{< callout type="info" >}}
+Retention was `1d` — chart-commented "Minimal retention, for tests only" —
+for the repository's entire life until 2026-08-30, when it became a
+deliberate `14d`. VictoriaMetrics OSS has no disk-based retention cap; the
+safety valve is `-storage.minFreeDiskSpaceBytes`, which rejects **new**
+writes below the threshold rather than deleting old data — lossless only
+while vmagent's own disk buffer absorbs the outage, not an unconditional
+guarantee.
 {{< /callout >}}
 
 ## metrics-server
 
 `observability/base/metrics-server/` runs the standard `metrics-server`
 chart (3.14.0) — but into `kube-system`, not `observability`, since it backs
-`kubectl top` and HPA `Resource` metrics cluster-wide. Non-default
+`kubectl top` and HPA `Resource` metrics cluster-wide. On `aws-0` only: GKE
+ships its own managed metrics-server, and running ours beside it did nothing
+but fight the addon manager (the header of
+`observability/gcp-0/kustomization.yaml` has the full story). Non-default
 configuration worth knowing:
 
 - `replicas: 2` with a `PodDisruptionBudget` (`maxUnavailable: 1`) and
@@ -69,7 +76,10 @@ directly, e.g. `observability/aws-0/victoria-metrics-k8s-stack/vmservicecrapes/k
 scrapes the `karpenter` namespace's `http-metrics` port (Karpenter isn't part
 of this stack, but its metrics land in the same VictoriaMetrics — the
 directory name carries an upstream typo, `vmservicecrapes`, not
-`vmservicescrapes`).
+`vmservicescrapes`). KEDA is scraped the same way since 2026-08-30:
+`infrastructure/base/keda/vmservicescrape.yaml` covers both the operator and
+the metrics-apiserver on both clouds — the metrics had been exposed since
+KEDA was installed, but nothing ever scraped them.
 
 **`VMScrapeConfig`** — for targets that aren't a Kubernetes `Service` at all.
 Two examples in `vmscrapeconfigs/`:
@@ -122,7 +132,7 @@ histogram_quantile(0.95, sum(rate(runlore_model_request_duration_seconds_bucket[
 ```
 
 The first two are drawn directly from
-`observability/aws-0/victoria-metrics-k8s-stack/vmrules/runlore.yaml` and
+`observability/base/victoria-metrics-k8s-stack/vmrules/runlore.yaml` and
 `infrastructure/base/cloudnative-pg/grafana-dashboard-query-performance.yaml`.
 Standard cAdvisor/kube-state-metrics queries (`container_cpu_usage_seconds_total`,
 `kube_pod_status_phase`, and similar) also work unchanged — they come from
@@ -131,7 +141,7 @@ anything specific to this repo.
 
 {{< callout type="warning" >}}
 No `CiliumNetworkPolicy` exists in `victoria-metrics-k8s-stack/` or
-`metrics-server/` for either component. Of the nine observability component
+`metrics-server/` for either component. Of the eight observability component
 directories, only `runlore` ships one — see
 [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md" >}})
 for the CiliumNetworkPolicy it does define, and for the CiliumClusterwideNetworkPolicy

@@ -232,12 +232,13 @@ GitOps patterns should not default to.
   fully to metrics and logs, which share `VMRule`-based alerting; traces
   join the same Grafana instance and the same vendor's Helm charts, but
   keep a query interface of their own.
-- The active deployment runs single-node VictoriaMetrics at `1d` retention
+- The active deployment ran single-node VictoriaMetrics at `1d` retention
   — explicitly commented in the chart values as "Minimal retention, for
-  tests only" — so the resource-footprint advantage claimed above is not
-  currently being exercised at production-equivalent retention on this
-  cluster; it becomes a live comparison only once cluster mode (`10d`
-  retention) is switched on.
+  tests only" — for the repository's whole life until 2026-08-30, when
+  retention became a deliberate `14d`. The resource-footprint advantage
+  claimed above is therefore only now being exercised at a
+  production-shaped retention, and still without a side-by-side
+  Prometheus measurement to attach a number to it.
 
 ---
 

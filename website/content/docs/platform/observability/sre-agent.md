@@ -2,7 +2,7 @@
 title: SRE agent
 weight: 50
 description: RunLore — an LLM agent that receives Alertmanager webhooks, investigates them read-only against the live cluster, and writes what it learns back to a knowledge-base repository.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 The rest of this section is about producing signals. This page is about the
@@ -86,7 +86,7 @@ External Secret; no credential is ever inlined.
 | Image | `0.13.0` — signed, multi-arch, SBOM-attested |
 | Workload | `StatefulSet`, `replicaCount: 2`, leader election |
 | Storage | one RWO 1Gi PVC per replica, via `volumeClaimTemplates` — platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |
-| Identity | EKS Pod Identity `xplane-runlore` bound to the `runlore` ServiceAccount |
+| Identity | `aws-0`: EKS Pod Identity `xplane-runlore` bound to the `runlore` ServiceAccount. `gcp-0`: a `GCPWorkloadIdentity` claim (`observability/gcp-0/runlore/workloadidentity.yaml`) — a direct principal binding carrying viewer roles only |
 | Kustomization | `observability` |
 
 {{< callout type="warning" >}}
@@ -139,7 +139,11 @@ carries a Grafana dashboard plus **12 `VMRule` alerts** on its own health:
 `RunloreModelLatencyHigh`, `RunloreSlowResolution` and
 `RunloreInvestigationCostHigh` — the last of which is the one worth having:
 an agent that investigates in a loop is a cost surface, not only a reliability
-one. See [Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md" >}}).
+one. The 12 alerts ship from the base
+(`observability/base/victoria-metrics-k8s-stack/vmrules/runlore.yaml`) to
+**both** clusters — they moved out of the `aws-0` overlay on 2026-08-30,
+having stayed behind when the agent itself went multi-cloud. See
+[Dashboards & Alerts]({{< relref "/docs/platform/observability/dashboards-and-alerts.md" >}}).
 
 ## Known gaps
 
