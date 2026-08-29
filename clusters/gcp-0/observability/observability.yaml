@@ -1,9 +1,10 @@
 # Observability on gcp-0. Same four Kustomizations as aws-0, same order, same
 # shared base — only the overlay path and the vars ConfigMap differ.
 #
-# The remaining components: kubernetes-event-exporter, VictoriaLogs and loggen.
+# The remaining components: kubernetes-event-exporter and VictoriaLogs.
 # NOT metrics-server — GKE ships its own as a managed addon, and ours only fought
-# it. runlore comes from the overlay rather than the base, being the one
+# it. NOT loggen either — the demo generator runs on aws-0 only.
+# runlore comes from the overlay rather than the base, being the one
 # observability component that is not cloud-neutral. Both reasons are in
 # observability/gcp-0/kustomization.yaml.
 #
