@@ -7,9 +7,9 @@
 # observability component that is not cloud-neutral. Both reasons are in
 # observability/gcp-0/kustomization.yaml.
 #
-# No SQLInstance healthCheckExpr, unlike aws-0's: that one gates on runlore's
-# database, and runlore has none here. It DOES run on gcp-0 (runlore-0/-1 in the
-# runlore namespace) -- it is the database that is absent, not the workload.
+# No healthCheckExprs on either cluster: an earlier aws-0 version gated on a
+# SQLInstance that nothing here renders (runlore persists to a PVC, and the
+# only SQLInstance ever in this tree belonged to the removed grafana-oncall).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

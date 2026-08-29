@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 3m0s
-  timeout: 10m0s
+  timeout: 5m0s
   path: ./observability/base/victoria-traces
   prune: true
   sourceRef:
