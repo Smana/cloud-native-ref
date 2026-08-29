@@ -220,7 +220,7 @@ TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/my-branch' \
 The deploy leaves ZITADEL running with **nothing configured in it** — no identity
 provider, no OIDC clients, no roles. Five ordered commands turn that into a
 working Google login for Grafana, Harbor, the Flux UI and Headlamp:
-[Set up single sign-on]({{< relref "sso.md" >}}).
+[Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}).
 
 Skipping this is not obvious from the cluster: every workload is healthy and
 every service simply asks for a password nobody has.

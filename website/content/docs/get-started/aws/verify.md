@@ -169,16 +169,16 @@ certificates issued by the OpenBao PKI:
 
 | Service | URL |
 |---|---|
-| Grafana | `https://grafana.priv.aws.ogenki.io` |
-| Harbor | `https://harbor.priv.aws.ogenki.io` |
-| Headlamp | `https://headlamp.priv.aws.ogenki.io` |
-| Flux UI | `https://flux-ui-aws-0.priv.aws.ogenki.io` |
-| VictoriaMetrics | `https://vm.priv.aws.ogenki.io` |
-| VictoriaLogs | `https://vl.priv.aws.ogenki.io` |
-| VictoriaTraces | `https://vt.priv.aws.ogenki.io` |
-| Hubble UI | `https://hubble-ui-aws-0.priv.aws.ogenki.io` |
-| App Wizard | `https://app-wizard.priv.aws.ogenki.io` |
-| Image gallery | `https://image-gallery.priv.aws.ogenki.io` |
+| Grafana | [https://grafana.priv.aws.ogenki.io](https://grafana.priv.aws.ogenki.io) |
+| Harbor | [https://harbor.priv.aws.ogenki.io](https://harbor.priv.aws.ogenki.io) |
+| Headlamp | [https://headlamp.priv.aws.ogenki.io](https://headlamp.priv.aws.ogenki.io) |
+| Flux UI | [https://flux-ui-aws-0.priv.aws.ogenki.io](https://flux-ui-aws-0.priv.aws.ogenki.io) |
+| VictoriaMetrics | [https://vm.priv.aws.ogenki.io](https://vm.priv.aws.ogenki.io) |
+| VictoriaLogs | [https://vl.priv.aws.ogenki.io](https://vl.priv.aws.ogenki.io) |
+| VictoriaTraces | [https://vt.priv.aws.ogenki.io](https://vt.priv.aws.ogenki.io) |
+| Hubble UI | [https://hubble-ui-aws-0.priv.aws.ogenki.io](https://hubble-ui-aws-0.priv.aws.ogenki.io) |
+| App Wizard | [https://app-wizard.priv.aws.ogenki.io](https://app-wizard.priv.aws.ogenki.io) |
+| Image gallery | [https://image-gallery.priv.aws.ogenki.io](https://image-gallery.priv.aws.ogenki.io) |
 
 Hubble UI is on the **admin** Gateway (`tag:admin`, `group:admin` only);
 everything else is on the general one. A 403 on Hubble while Grafana works is a

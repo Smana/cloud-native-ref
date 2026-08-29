@@ -128,6 +128,11 @@ Homepage).
 page for checking it layer by layer:
 [Verify the cluster]({{< relref "/docs/get-started/aws/verify.md" >}}).
 
+ZITADEL comes up with **nothing configured in it**, so Google login does not work
+until you run the setup steps in
+[Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}) — the same
+steps on both clouds, with different values.
+
 See also [Access]({{< relref "/docs/get-started/access.md" >}}) for reaching the
 VPN, OpenBao, the cluster and the dashboards, and
 [Teardown]({{< relref "/docs/get-started/aws/teardown.md" >}}) when you are

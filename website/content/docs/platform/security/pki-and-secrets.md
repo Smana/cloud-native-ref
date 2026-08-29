@@ -81,6 +81,68 @@ carrying forward if you regenerate it:
   That's why a client connecting to a Raft peer by private IP address
   (rather than through the NLB's DNS name) cannot verify TLS against it.
 
+## Trusting the CA on your machine
+
+Every private service is served with a certificate from this chain, and no
+system trust store knows the offline root. Until you import it, browsers and
+`curl` reject `*.priv.aws.ogenki.io` and `*.priv.gcp.ogenki.io` outright — the
+failure looks like a broken deployment rather than a missing trust anchor.
+
+**This has to be redone whenever the root changes**, which in practice means
+after a cluster rebuild that regenerated the PKI, or when a cluster moves to a
+new private domain.
+
+Fetch the chain with `openbao-config.sh ca` — it knows where the secret lives on
+each cloud, and that AWS stores it as JSON under a `.ca` key while GCP stores raw
+PEM:
+
+```bash
+# aws-0
+./scripts/openbao-config.sh ca --region eu-west-3 \
+  --root-ca-secret-name certificates/priv.aws.ogenki.io/root-ca \
+  --ca-output-file /tmp/ogenki-aws-ca.pem
+
+# gcp-0
+./scripts/openbao-config.sh ca --cloud gcp --project ogenki-435905 \
+  --root-ca-secret-name openbao-priv-gcp-ca-chain \
+  --ca-output-file /tmp/ogenki-gcp-ca.pem
+```
+
+Check you got a certificate and not an error page before importing anything:
+
+```bash
+openssl x509 -in /tmp/ogenki-aws-ca.pem -noout -subject -dates
+```
+
+Then add it to the system trust store:
+
+```bash
+# Arch / Fedora (p11-kit)
+sudo trust anchor --store /tmp/ogenki-aws-ca.pem
+
+# Debian / Ubuntu
+sudo cp /tmp/ogenki-aws-ca.pem /usr/local/share/ca-certificates/ogenki-aws.crt
+sudo update-ca-certificates
+
+# macOS
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain /tmp/ogenki-aws-ca.pem
+```
+
+{{< callout type="info" >}}
+**Firefox does not use the system store.** It keeps its own NSS database, so a
+certificate trusted by `curl` and Chrome is still rejected there. Import it under
+*Settings → Privacy & Security → Certificates → View Certificates → Authorities*.
+{{< /callout >}}
+
+Each cloud has its own offline root — [ADR-0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}})
+— so trusting `aws-0` does nothing for `gcp-0`. Import both if you use both.
+
+Nothing else on your machine needs the file afterwards. The OpenBao management
+stack fetches its own copy into a gitignored `.tls/` directory at apply time —
+that one exists so the Vault provider can verify the server at plan time, not for
+your browser.
+
 ## cert-manager: issuing from the PKI
 
 A `ClusterIssuer` authenticates to OpenBao with the `cert-manager` AppRole
