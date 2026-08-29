@@ -447,7 +447,21 @@ and where `PAT` was assigned:
 PAT="$(resolve_zitadel_pat)" || exit 1
 ```
 
-- [ ] **Step 3: Repeat for the other three**
+- [ ] **Step 3: Repeat for the other three, and close a guard `harbor-oidc.sh` loses**
+
+`harbor-oidc.sh` validates only that `--cloud` is non-empty (line 68), where
+`zitadel-oidc-clients.sh:102` and `zitadel-idp.sh:101` both validate the value:
+
+```bash
+case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
+```
+
+Its only guard against a bad value today is the `*)` arm inside its **own**
+`store_read`, which the shared library does not have. Deleting that copy without
+adding the check above turns `--cloud azure` from an error into a silent no-op.
+Add the validation line to `harbor-oidc.sh` in the same edit that removes its
+store helpers.
+
 
 `zitadel-idp.sh` and `harbor-oidc.sh`: same deletion and same two additions. `secret-store.sh` only needs `store_*`, so source `lib/cloud-secret-store.sh` and delete its own copies.
 
