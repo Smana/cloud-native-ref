@@ -138,9 +138,10 @@ certificate trusted by `curl` and Chrome is still rejected there. Import it unde
 Each cloud has its own offline root — [ADR-0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}})
 — so trusting `aws-0` does nothing for `gcp-0`. Import both if you use both.
 
-Nothing else on your machine needs the file afterwards; the copy under
-`opentofu/aws/openbao/management/.tls/ca.pem` exists for the Vault provider, not
-for you.
+Nothing else on your machine needs the file afterwards. The OpenBao management
+stack fetches its own copy into a gitignored `.tls/` directory at apply time —
+that one exists so the Vault provider can verify the server at plan time, not for
+your browser.
 
 ## cert-manager: issuing from the PKI
 
