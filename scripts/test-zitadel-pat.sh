@@ -36,6 +36,49 @@ check "cluster seeds" "token-from-cluster" "$(resolve_zitadel_pat 2>/dev/null)"
 resolve_zitadel_pat >/dev/null 2>&1
 check "persisted"     "token-from-cluster" "$(printf '%s' "$persisted" | jq -r .pat)"
 
+# 2a. DEFECT 2: store empty, cluster has it, caller is in a DRY RUN
+#     (ZITADEL_PAT_DRY_RUN=true) -> the token is still returned (it is not
+#     lost -- it is right there in the Kubernetes Secret), but store_write
+#     must NOT be called. Live symptom this closes: zitadel-oidc-clients.sh
+#     promises "Dry-run unless --apply" and persisted the PAT into Secrets
+#     Manager anyway, on a plain sync with no --apply, because nothing told
+#     this shared resolver a dry run was in progress.
+#
+# Same two-call shape as test 2's "persisted" check above and for the same
+# reason: the first call's `$(...)` runs resolve_zitadel_pat in a subshell,
+# so a mutation store_write makes there (even via a herestring, which does
+# NOT fork its own subshell) is still lost when THAT subshell exits. The
+# second, bare call runs resolve_zitadel_pat in the CURRENT shell, so
+# store_write_called's mutation (or lack of one) is actually visible here.
+store_write_called=0
+store_exists() { return 1; }
+store_read()   { return 1; }
+store_write()  { store_write_called=1; cat >/dev/null; }
+kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }   # base64 of token-from-cluster
+ZITADEL_PAT_DRY_RUN=true
+check "dry-run: token still returned" "token-from-cluster" "$(resolve_zitadel_pat 2>/dev/null)"
+resolve_zitadel_pat >/dev/null 2>&1
+check "dry-run: store_write NOT called" "0" "$store_write_called"
+err="$(resolve_zitadel_pat 2>&1 >/dev/null)"
+case "$err" in *'[dry-run]'*) printf '  ok   dry-run: prints [dry-run], not [persist]\n' ;;
+               *) printf '  FAIL dry-run: did not print a [dry-run] line\n'; fail=1 ;; esac
+case "$err" in *'[persist]'*) printf '  FAIL dry-run: also printed [persist]\n'; fail=1 ;;
+               *) printf '  ok   dry-run: no [persist] line\n' ;; esac
+unset ZITADEL_PAT_DRY_RUN
+
+# Left unset entirely (no caller opts in) -> unchanged behaviour: still
+# persists. This is the default every caller had before ZITADEL_PAT_DRY_RUN
+# existed, and the one every caller still gets unless it explicitly sets the
+# variable to "true".
+store_write_called=0
+store_exists() { return 1; }
+store_read()   { return 1; }
+store_write()  { store_write_called=1; cat >/dev/null; }
+kubectl()      { printf '%s' "dG9rZW4tZnJvbS1jbHVzdGVy"; }
+check "unset ZITADEL_PAT_DRY_RUN: token returned" "token-from-cluster" "$(resolve_zitadel_pat 2>/dev/null)"
+resolve_zitadel_pat >/dev/null 2>&1
+check "unset ZITADEL_PAT_DRY_RUN: still persists (default false)" "1" "$store_write_called"
+
 # 2b. A caller sets STORE_WRITE_DESCRIPTION/LABEL for its OWN secrets (this is
 #     exactly what zitadel-oidc-clients.sh does) and THEN resolves the PAT.
 #     Those globals must not leak into the PAT's write -- resolve_zitadel_pat

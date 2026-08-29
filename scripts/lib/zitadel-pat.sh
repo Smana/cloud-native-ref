@@ -41,8 +41,25 @@ zitadel_pat_secret_name() {
 
 # Echo the token on stdout. Everything else goes to stderr -- callers capture
 # this in $(...), and a log line on stdout becomes part of the token.
+#
+# ZITADEL_PAT_DRY_RUN is THIS function's own dry-run signal, read fresh on
+# every call rather than assumed. Every caller (zitadel-oidc-clients.sh,
+# zitadel-idp.sh) already tracks its own dry-run state as $APPLY, but reading
+# that directly here would mean this function's behaviour depends on a
+# variable it does not own happening to exist with a name and sense it
+# guesses right -- true today by convention, not by contract, and the kind of
+# accident that breaks silently the day one caller renames or inverts its
+# own flag. A caller that wants dry-run honoured sets THIS variable,
+# explicitly, before calling in. Left unset (any caller that predates this,
+# or a caller that only ever runs applied), the default is "false" --
+# unchanged behaviour, so nothing depends on this without asking for it.
+#
+# Defaulting to "false" also matters for the persist path below: a --apply
+# run must still capture the PAT into the store on its first sight of one,
+# same as before this existed.
 resolve_zitadel_pat() {
     local name stored token b64
+    local dry_run="${ZITADEL_PAT_DRY_RUN:-false}"
     name="$(zitadel_pat_secret_name)"
 
     # 1. The store, which is the only source that survives a restore. Stored as
@@ -64,6 +81,19 @@ resolve_zitadel_pat() {
     if [ -n "$b64" ]; then
         token="$(printf '%s' "$b64" | base64 -d 2>/dev/null || true)"
         if [ -n "$token" ]; then
+            if [ "$dry_run" = "true" ]; then
+                # The header promise ("Dry-run unless --apply") is a promise
+                # about every write this script makes, and persisting the PAT
+                # into the cloud secret store is one -- confirmed live:
+                # zitadel/iam-admin-pat got created in Secrets Manager on a
+                # plain sync with no --apply. Nothing is lost by not writing
+                # it here: the token stays exactly where it already was, in
+                # the Kubernetes Secret this branch just read it from, and
+                # will be captured on the next --apply run the normal way.
+                echo "[dry-run] would capture the admin PAT into ${name} so it survives a restore" >&2
+                printf '%s' "$token"
+                return 0
+            fi
             echo "[persist] capturing the admin PAT into ${name} so it survives a restore" >&2
             # Own our provenance rather than trusting whatever the caller set.
             # store_write reads these as plain globals, and a caller that sets

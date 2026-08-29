@@ -113,6 +113,15 @@ STORE_WRITE_LABEL="zitadel-oidc-clients"
 
 # ── zitadel api ───────────────────────────────────────────────────────────────
 
+# zitadel-pat.sh's OWN dry-run signal, set before calling it rather than
+# trusting it to read this script's $APPLY by accidental name-matching.
+# resolve_zitadel_pat persists a freshly-read PAT into the cloud secret store
+# the first time it sees one -- a WRITE, which breaks this script's own header
+# promise ("Dry-run unless --apply.") on a plain sync. Confirmed live: a sync
+# with no --apply created zitadel/iam-admin-pat in Secrets Manager anyway.
+ZITADEL_PAT_DRY_RUN="true"
+[ "$APPLY" = "true" ] && ZITADEL_PAT_DRY_RUN="false"
+
 PAT="$(resolve_zitadel_pat)" || exit 1
 
 # The IdP base URL. Derived the same way the platform derives it, so a mismatch

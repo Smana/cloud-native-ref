@@ -108,6 +108,14 @@ case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;;
 
 # ── zitadel api ───────────────────────────────────────────────────────────────
 
+# zitadel-pat.sh's OWN dry-run signal -- see the identical block in
+# zitadel-oidc-clients.sh for why this is a variable the library owns rather
+# than this script's $APPLY read directly. Same underlying bug: without this,
+# a plain sync here persists the admin PAT into the cloud secret store even
+# though this script's own header also promises "Dry-run unless --apply."
+ZITADEL_PAT_DRY_RUN="true"
+[ "$APPLY" = "true" ] && ZITADEL_PAT_DRY_RUN="false"
+
 PAT="$(resolve_zitadel_pat)" || exit 1
 
 : "${IDP_URL:?set IDP_URL to the ZITADEL base URL, e.g. https://auth.gcp.cloud.ogenki.io}"
