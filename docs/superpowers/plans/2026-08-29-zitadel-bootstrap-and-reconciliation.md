@@ -355,13 +355,17 @@ zitadel_pat_secret_name() {
 # Echo the token on stdout. Everything else goes to stderr -- callers capture
 # this in $(...), and a log line on stdout becomes part of the token.
 resolve_zitadel_pat() {
-    local name token b64
+    local name token b64 raw
     name="$(zitadel_pat_secret_name)"
 
-    # 1. The store, which is the only source that survives a restore.
-    if store_exists "$name" && token="$(store_read "$name")" && [ -n "$token" ]; then
-        printf '%s' "$token"
-        return 0
+    # 1. The store, which is the only source that survives a restore. The value
+    #    is the JSON object written below, so unwrap it rather than using it raw.
+    if store_exists "$name" && raw="$(store_read "$name")" && [ -n "$raw" ]; then
+        token="$(printf '%s' "$raw" | jq -r '.pat // empty')"
+        if [ -n "$token" ]; then
+            printf '%s' "$token"
+            return 0
+        fi
     fi
 
     # 2. The cluster, where the chart writes it on a fresh bootstrap only. This
@@ -372,7 +376,18 @@ resolve_zitadel_pat() {
         token="$(printf '%s' "$b64" | base64 -d 2>/dev/null || true)"
         if [ -n "$token" ]; then
             echo "[persist] capturing the admin PAT into ${name} so it survives a restore" >&2
-            printf '%s' "$token" | store_write "$name"
+            # A HERESTRING, not a pipe: bash runs the last stage of a pipeline in
+            # a subshell, so `printf ... | store_write` writes from a subshell and
+            # a test stub can never observe it. Verified:
+            #   v=""; f(){ v="$(cat)"; }; printf x | f   -> v is still empty
+            #   f <<< y                                   -> v is y
+            #
+            # And a JSON OBJECT, not a bare token: store_write's AWS branch runs
+            # its payload through `jq '. | tostring'`, which parses stdin as JSON.
+            # A bare token is not valid JSON -- `printf abc | jq .` exits 5 with
+            # a parse error. `{"pat": ...}` also matches how this repo already
+            # stores the ZITADEL root token, as `{"token": ...}`.
+            store_write "$name" <<< "$(jq -n --arg p "$token" '{pat: $p}')"
             printf '%s' "$token"
             return 0
         fi
