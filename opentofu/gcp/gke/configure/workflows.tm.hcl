@@ -98,7 +98,7 @@ script "destroy" {
         ${global.cloud_gate}
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
-        bash "${terramate.root.path.fs.absolute}/scripts/gke-destroy-stage2.sh" \
+        bash "${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh" \
           attempt "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure" \
           -var='cilium_version=${global.cilium_version}' \
           -var='gateway_api_version=${global.gateway_api_version}' \
