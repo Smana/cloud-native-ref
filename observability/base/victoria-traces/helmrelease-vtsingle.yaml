@@ -25,7 +25,9 @@ spec:
     printNotes: false
 
     server:
-      retentionPeriod: 3  # 3 days retention for traces
+      # Unit-less values are MONTHS in VictoriaMetrics charts — the previous
+      # `retentionPeriod: 3  # 3 days` actually kept 3 months, ×30 the intent.
+      retentionPeriod: 3d
 
       resources:
         limits:

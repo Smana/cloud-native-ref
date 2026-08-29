@@ -32,6 +32,16 @@ spec:
           cpu: 500m
           memory: 512Mi
 
+      # Deliberate values (2026-08-30). Retention was previously unset — whatever
+      # the app defaulted to. NOTE the units trap: a unit-less retentionPeriod is
+      # MONTHS in VictoriaMetrics charts; always write the suffix.
+      retentionPeriod: 7d
+      retentionDiskSpaceUsage: 8GiB
+      persistentVolume:
+        enabled: true
+        size: 10Gi
+        storageClassName: ${storage_class}
+
       vmServiceScrape:
         enabled: true
 
