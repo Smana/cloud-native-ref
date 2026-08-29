@@ -20,6 +20,10 @@ spec:
   install:
     remediation:
       retries: 3
+  valuesFrom:
+    - kind: ConfigMap
+      name: vl-common-helm-values
+      valuesKey: values.yaml
   values:
     printNotes: false
 
@@ -183,3 +187,15 @@ spec:
       # Vector tails host log files as root; it never needs to escalate.
       securityContext:
         allowPrivilegeEscalation: false
+
+      # The shared pipeline (vl-common-helm-values) defaults its sinks to the
+      # vlsingle Service; in cluster mode all ingestion goes through vlinsert.
+      customConfig:
+        sinks:
+          victorialogs_pg_plans:
+            uri: http://victoria-logs-victoria-logs-cluster-vlinsert.observability.svc.cluster.local:9481/insert/jsonline
+          victorialogs_pg_parse_failures:
+            uri: http://victoria-logs-victoria-logs-cluster-vlinsert.observability.svc.cluster.local:9481/insert/jsonline
+          vlogs-0:
+            endpoints:
+              - http://victoria-logs-victoria-logs-cluster-vlinsert.observability.svc.cluster.local:9481/insert/elasticsearch
