@@ -76,7 +76,7 @@ Then point the claim at it — `security/gcp-0/zitadel/kustomization.yaml`:
 **Clear the live archive first, or the restore will not start.**
 {{< /callout >}}
 
-CloudNativePG refuses to start a restored cluster whose **destination** WAL
+CloudNativePG refuses to start a **restored** cluster whose destination WAL
 archive is non-empty — a restore opens a new timeline that would collide with the
 WALs already there:
 
@@ -91,12 +91,25 @@ individual cluster"*), so on every rebuild the destination still holds the
 previous cluster's archive and the bootstrap refuses.
 
 {{< callout type="warning" >}}
-**It applies to clusters that bootstrap *empty* too.** The check is about the
-destination, not about where the data comes from — a brand-new `initdb` cluster
-refuses just as hard if its archive prefix is not empty. On `aws-0` that is
-three clusters, only two of which restore: `xplane-zitadel-cnpg-cluster`,
-`xplane-harbor-cnpg-cluster` and `xplane-image-gallery-cnpg-cluster`. Clear
-every `*-cnpg-cluster/` prefix before a rebuild, not only the ones with a seed.
+**A cluster that bootstraps *empty* fails differently, and worse.** The check is
+about the destination, not about where the data comes from — but an `initdb`
+cluster does **not** refuse to start. It starts, reports `Ready`, Flux goes
+green, and only continuous WAL archiving fails:
+
+```
+Initialized=True: Cluster has been bootstrapped
+Ready=True:       Cluster is Ready
+ContinuousArchiving=False: unexpected failure invoking barman-cloud-wal-archive
+```
+
+with the same `Expected empty archive` underneath. The cluster runs happily
+**with no backups**, and nothing surfaces it — so clear every `*-cnpg-cluster/`
+prefix before a rebuild, not only the ones with a seed.
+
+Measured on 2026-08-29. `aws-0` had all three archives cleared and all three
+clusters report `ContinuousArchiving=True`; `gcp-0` had harbor's left in place
+(69 objects) and it alone reports `False`, while looking healthy in every other
+respect.
 {{< /callout >}}
 
 And **"empty" means no objects, not no base backups.** A prefix holding only
