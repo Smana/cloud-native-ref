@@ -2,7 +2,7 @@
 title: GCP
 weight: 30
 description: Deploy the platform on GKE — four prerequisites, three stages, two commands.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 The GCP lane builds the same three-stage model as
@@ -254,9 +254,9 @@ Secrets, Kyverno, Tailscale), the infrastructure layer (Cilium policies,
 Gateway API, both external-dns instances, ComputeClasses), the observability
 stack, tooling (Harbor) and the applications.
 
-What it does **not** run: `image-gallery`, `runlore`, `flux-previews`, and the
-Homepage and Headlamp dashboards. The full comparison, including what each gap
-needs, is on
+What it does **not** run: `image-gallery` (not yet portable) and `flux-previews`
+(excluded by design — previews belong to one cluster). The full comparison,
+including what each gap needs, is on
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}).
 
 ## Teardown

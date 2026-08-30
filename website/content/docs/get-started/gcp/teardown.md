@@ -2,7 +2,7 @@
 title: Teardown
 weight: 30
 description: Tear the GCP platform down safely, in reverse dependency order.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Same shape as the [AWS teardown](../aws/teardown.md), with GCP's own traps. Two
@@ -23,7 +23,7 @@ cd opentofu/gcp/gke/init
 TM_CLOUD=gcp terramate script run destroy
 ```
 
-Five jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
+Six jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
 
 1. **confirm + init** — `scripts/terramate-destroy-confirm.sh`, then `tofu init`.
    Init runs *before* anything is destroyed on purpose: a lock file predating a
@@ -34,7 +34,9 @@ Five jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
    CRDs, Cilium, Flux). Never gates the cluster deletion.
 4. **`stage1-destroy-cluster`** — destroys the cluster itself. This one *is*
    allowed to fail loudly: it is the billable resource.
-5. **`stage2-reconcile-state`** — drops any stage-2 state left behind, now that
+5. **`stage2-sweep-orphaned-disks`** — deletes PD disks the in-cluster reclaim
+   couldn't finish. Runs *after* the cluster is gone (see below).
+6. **`stage2-reconcile-state`** — drops any stage-2 state left behind, now that
    the cluster holding those objects is provably gone.
 
 ## Full teardown

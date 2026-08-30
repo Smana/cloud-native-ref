@@ -2,7 +2,7 @@
 title: Get Started
 weight: 10
 description: Deploy the platform into your own cloud account — AWS or GCP — in about thirty minutes.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 The platform deploys in three sequential stages: the network, then the secrets
@@ -49,10 +49,10 @@ the page to read first regardless of cloud.
   {{< card link="/docs/get-started/first-app/" title="4 · First application" icon="puzzle" subtitle="Deploy an app with one small YAML claim." >}}
 {{< /cards >}}
 
-The two lanes are not equivalent in coverage. AWS runs the full platform;
-GCP runs everything except a handful of components — `image-gallery`,
-`runlore`, `flux-previews`, and the Homepage and Headlamp dashboards.
-The exact split is on
+The two lanes are not equivalent in coverage. AWS runs the full platform; GCP
+runs everything except `image-gallery` (not yet portable — it hardcodes an AWS
+S3 endpoint) and `flux-previews` (excluded by design — previews belong to one
+cluster, not both). The exact split is on
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}) —
 worth a look before you choose, if you are evaluating rather than just trying it.
 
