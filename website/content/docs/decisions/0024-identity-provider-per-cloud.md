@@ -3,7 +3,7 @@ title: The identity provider is deployable on either cloud, defaulting to AWS
 linkTitle: 0024 · IdP per cloud
 weight: 240
 description: ZITADEL becomes a per-cloud deployable component behind two gates rather than a singleton pinned to aws-0, so a GCP-only platform can authenticate without an AWS cluster running. It stays a singleton — one directory, hosted on the primary cloud, relocating rather than duplicating. Public DNS stays AWS-owned.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -118,6 +118,14 @@ the cloud with less of the platform on it today.
   `backup` (blocked by the barman plugin's S3-only CiliumNetworkPolicy), and
   therefore `instances: 1` — the XRD refuses a multi-instance cluster with no
   backup, correctly, since a replica without a backup is a false sense of one.
+  **Update (2026-08-30):** that was true until 2026-08-28 and is not any more
+  (`security/gcp-0/zitadel/kustomization.yaml` carries the same note). `gcp-0`
+  now writes real backups to its own GCS bucket and restores from a frozen
+  seed, so only two differences remain structural — the GCP Composition ref
+  and the GCS bucket name — while `objectStoreRecovery` and `backup` are both
+  now present. `instances: 1` is no longer forced by the absence of a backup
+  (the XRD's CEL rule would now allow 2); it is a standing choice because this
+  cluster is rebuilt and torn down after every run.
 - Two ZITADEL instances mean two sets of OIDC clients. Creating them by hand
   twice is how they drift, so client creation is scripted against the ZITADEL
   API rather than done in the console.

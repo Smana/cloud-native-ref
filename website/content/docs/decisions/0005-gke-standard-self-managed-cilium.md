@@ -3,7 +3,7 @@ title: GKE Standard with self-managed Cilium (not Dataplane V2, not Autopilot)
 linkTitle: 0005 · Cilium on GKE
 weight: 50
 description: GCP clusters run GKE Standard with self-managed Cilium rather than Dataplane V2 or Autopilot, to keep Gateway API, Tailscale ingress, and default-deny CiliumNetworkPolicy unchanged.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -103,9 +103,9 @@ Fully managed nodes.
 - Strong security posture by default.
 
 **Cons**:
-- Everything in Option 2's cons, plus: no self-managed CNI at all, no privileged DaemonSets
-  (breaks `dagger-engine` and node-level exporters), and no node-level control for GPU
-  workloads.
+- Everything in Option 2's cons, plus: no self-managed CNI at all, no privileged pods
+  (breaks the privileged `dagger-engine` Deployment and node-level exporter DaemonSets), and no
+  node-level control for GPU workloads.
 - Turns large parts of `infrastructure/base/` from a port into a replacement.
 
 ---

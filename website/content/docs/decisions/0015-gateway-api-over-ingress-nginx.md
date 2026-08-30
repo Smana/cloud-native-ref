@@ -3,7 +3,7 @@ title: Use Gateway API rather than Ingress
 linkTitle: 0015 · Gateway API
 weight: 150
 description: Routing uses Gateway API rather than ingress-nginx, separating platform-owned Gateways from application-owned HTTPRoutes and serving public and Tailscale-private ingress from one CRD set — at the cost of version lockstep with Cilium.
-lastVerified: 2026-08-21
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -23,10 +23,12 @@ API — `GatewayClass`, `Gateway`, `HTTPRoute` — never a Kubernetes
 repository, and Cilium's own Ingress controller
 (`ingressController.enabled`) is not turned on in
 `opentofu/aws/eks/init/helm_values/cilium.yaml`; only `gatewayAPI.enabled:
-true` is set. The one literal `ingress-nginx` reference left in the repo
-is a subchart toggle explicitly set to `enabled: false` in
-`observability/base/grafana-oncall/helmrelease-oncall.yaml`, and Grafana
-OnCall itself is wired into no Kustomization, so it does not run.
+true` is set. **Update (2026-08-30):** the one literal `ingress-nginx`
+reference this record used to cite — a subchart toggle set to `enabled: false`
+in `observability/base/grafana-oncall/helmrelease-oncall.yaml` — is gone along
+with the rest of the Grafana OnCall estate, removed 2026-08-29
+([ADR-0029](0029-runlore-over-grafana-oncall.md)). Zero literal `ingress-nginx`
+references remain anywhere in this repository's manifests.
 
 [ADR-0009](0009-cilium-over-vpc-cni.md) already decided that Cilium
 replaces the VPC CNI, kube-proxy, and the NetworkPolicy engine, and named
@@ -43,7 +45,9 @@ Three resource roles carry the model
 `GatewayClass` selects the controller, `Gateway` owns listeners,
 hostnames, and TLS, and `HTTPRoute` owns routing rules and attaches to a
 `Gateway` via `parentRefs`. The platform authors every `Gateway` under
-`infrastructure/base/gapi/`; applications own their `HTTPRoute` through
+`infrastructure/base/gapi/` (the AWS-only public Gateway lives in
+`infrastructure/aws-0/gapi/` instead — see Implementation Notes); applications
+own their `HTTPRoute` through
 the `App` Crossplane claim. An `Ingress` has no equivalent split — one
 object carries both concerns, disambiguated only by vendor-specific
 annotations.
@@ -185,7 +189,8 @@ can run, not chosen freely.
 
 ### Positive
 
-- The platform owns every `Gateway` (`infrastructure/base/gapi/`);
+- The platform owns every `Gateway` (`infrastructure/base/gapi/`, plus the
+  AWS-only `platform-public` Gateway in `infrastructure/aws-0/gapi/`);
   applications own their `HTTPRoute` through the `App` claim — no vendor
   annotations on a shared object to keep in sync.
 - One CRD family serves all three Gateways: `platform-public` (internet
@@ -255,15 +260,22 @@ can run, not chosen freely.
 
 ## Implementation Notes
 
-`infrastructure/base/gapi/` holds every `Gateway`-related manifest:
+`infrastructure/base/gapi/` holds the `GatewayClass`/`CiliumGatewayClassConfig`
+plumbing and the two Tailscale `Gateway` manifests:
 `tailscale-gatewayclass.yaml` (the `cilium-tailscale` `GatewayClass`),
 `tailscale-gatewayclass-config.yaml` (the `CiliumGatewayClassConfig`
 setting `service.type: LoadBalancer`, `loadBalancerClass: tailscale`, and
-JSON Envoy access logs via `spec.telemetry.accessLogs`), and the three
-`Gateway` manifests. `platform-public-gateway.yaml` restricts
-`allowedRoutes` to the `runlore` namespace and carries the AWS NLB
-annotations; the two Tailscale Gateways restrict `allowedRoutes` to a
-namespace allowlist that has to be kept in sync by hand.
+JSON Envoy access logs via `spec.telemetry.accessLogs`), and the two
+Tailscale `Gateway` manifests, which restrict `allowedRoutes` to a namespace
+allowlist that has to be kept in sync by hand.
+**Update (2026-08-30):** the third `Gateway`, `platform-public-gateway.yaml`,
+moved to `infrastructure/aws-0/gapi/` on 2026-08-27 — it carries
+`service.beta.kubernetes.io/aws-load-balancer-*` annotations and a
+`${domain_name}`-built hostname that a GCP cluster's vars ConfigMap does not
+define, so leaving it in `base/` risked both clusters referencing it and GCP
+silently rendering an empty hostname. It still restricts `allowedRoutes` to
+the `runlore` namespace and carries the AWS NLB annotations, unchanged from
+what this record originally described.
 
 Cilium's Gateway API support is turned on entirely through Helm values in
 `opentofu/aws/eks/init/helm_values/cilium.yaml`: `gatewayAPI.enabled: true`
@@ -297,7 +309,9 @@ so the two clusters cannot present Cilium with different Gateway API surfaces.
 - `opentofu/aws/eks/init/helm_values/cilium.yaml` — `gatewayAPI.enabled`,
   `envoy.enabled`
 - `infrastructure/base/gapi/` — every `GatewayClass`,
-  `CiliumGatewayClassConfig`, and `Gateway` manifest
+  `CiliumGatewayClassConfig`, and the two Tailscale `Gateway` manifests
+- `infrastructure/aws-0/gapi/` — `platform-public-gateway.yaml`, moved out of
+  `base/` 2026-08-27 for carrying AWS-only annotations
 - `infrastructure/base/external-dns/helmrelease.yaml` — the
   `gateway-httproute` source and `policy: sync`
 - [cilium#45139](https://github.com/cilium/cilium/issues/45139) — the

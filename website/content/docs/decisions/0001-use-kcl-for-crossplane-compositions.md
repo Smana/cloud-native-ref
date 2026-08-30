@@ -3,7 +3,7 @@ title: Use KCL for Crossplane Compositions
 linkTitle: 0001 · KCL compositions
 weight: 10
 description: Crossplane compositions are authored in KCL rather than patch-and-transform or Go templates, for readable, testable conditional and loop logic.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -128,7 +128,7 @@ Using KCL (Kusion Configuration Language) via `function-kcl` for composition log
 - KCL modules located in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration)
   (extracted from this repo 2026-08-19); this repo pins a release in
   `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`
-- Modules published to `ghcr.io/smana/cloud-native-ref/crossplane-<name>:<version>`
+- Modules published to `ghcr.io/smana/crossplane-configuration-<name>:<version>` (one package per lane: `-aws`, `-gcp`, `-core`)
 - Validation via `task check` in Smana/crossplane-configuration (formatting, syntax, rendering)
 - Three stages: `kcl fmt` → `kcl run` → `crossplane render`
 

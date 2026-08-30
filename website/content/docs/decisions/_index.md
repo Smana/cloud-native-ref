@@ -2,7 +2,7 @@
 title: Decisions
 weight: 60
 description: Architecture decision records — what was chosen, and what it was chosen over.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Architecture decision records for the choices that would otherwise need

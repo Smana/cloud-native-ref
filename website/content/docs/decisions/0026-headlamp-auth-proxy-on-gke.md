@@ -3,7 +3,7 @@ title: Headlamp authenticates behind an auth proxy on GKE, not against the clust
 linkTitle: 0026 · Headlamp auth on GKE
 weight: 260
 description: GKE cannot be told to trust ZITADEL, so on gcp-0 Headlamp sits behind oauth2-proxy and talks to the API server as its own ServiceAccount — trading per-user Kubernetes RBAC for an authorisation gate at the proxy. aws-0 keeps real per-user OIDC.
-lastVerified: 2026-08-28
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -82,8 +82,8 @@ Four pieces, none of which is optional:
 
 **Per-user Kubernetes RBAC is gone on `gcp-0`.** Every admitted user acts as the
 `headlamp` ServiceAccount, so the API server cannot tell them apart — the
-`admin` / `backend` / `data` tiers that `flux-ui` still distinguishes collapse to
-one. Authorisation moves entirely to `--allowed-group=admin` on the proxy, which
+`admin` / `backend` / `frontend` / `data` tiers that `flux-ui` still distinguishes
+collapse to one. Authorisation moves entirely to `--allowed-group=admin` on the proxy, which
 is why that flag is load-bearing rather than defence in depth.
 
 **Two things must both hold, or the model fails open.** Headlamp believes

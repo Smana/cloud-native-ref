@@ -3,7 +3,7 @@ title: Use OpenTofu rather than Terraform
 linkTitle: 0014 · OpenTofu over Terraform
 weight: 140
 description: Infrastructure as code runs on OpenTofu after HashiCorp's BUSL relicensing — a drop-in for this repository's provider set, though the OpenBao stack still depends on the hashicorp/vault provider.
-lastVerified: 2026-08-21
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -77,6 +77,10 @@ providers and Terramate orchestration otherwise unchanged.
 - Terramate's scripts (`opentofu/workflows.tm.hcl`) call
   `global.provisioner`, set to `"tofu"` in `opentofu/config.tm.hcl` —
   orchestration needed a one-line global change, not a rewrite.
+  **Update (2026-08-30):** `global.provisioner` was repointed on 2026-08-29 to
+  `scripts/tm-provisioner.sh`, a wrapper that gates on `TM_CLOUD` before
+  `exec`-ing `tofu` — see the Neutral section below for what stayed the same
+  through that change.
 - Linux Foundation governance, the same neutral-governance argument
   [ADR-0011](0011-openbao-over-vault.md) makes for OpenBao.
 
@@ -161,9 +165,9 @@ change.
   substitution.
 - Terramate orchestration required no rewrite: `opentofu/workflows.tm.hcl`'s
   `init`, `preview`, `deploy`, `drift detect`, `drift reconcile` and
-  `destroy` scripts all invoke `global.provisioner`, and only
-  `opentofu/config.tm.hcl`'s single `provisioner = "tofu"` line names the
-  actual binary.
+  `destroy` scripts all invoke `global.provisioner`, which names the
+  actual binary — `opentofu/config.tm.hcl`'s single `provisioner` line, now
+  the `scripts/tm-provisioner.sh` wrapper that execs `tofu`.
 - The same neutral-governance benefit [ADR-0011](0011-openbao-over-vault.md)
   records for OpenBao: no single vendor controls the commercial terms this
   platform's IaC tool runs under.
@@ -204,8 +208,9 @@ change.
   change.
 - The CLI binary name itself changed (`tofu` instead of `terraform`);
   `opentofu/config.tm.hcl`'s `global.provisioner` is the one place that
-  names it, so every Terramate script keeps calling `global.provisioner`
-  regardless of which binary it resolves to.
+  names it — today indirectly, via the `scripts/tm-provisioner.sh` wrapper it
+  points at, whose last line execs `tofu` — so every Terramate script keeps
+  calling `global.provisioner` regardless of which binary it resolves to.
 
 ---
 
@@ -213,8 +218,9 @@ change.
 
 Adoption touched exactly two kinds of file: `mise.toml`, which pins the
 `opentofu` tool version rather than a `terraform` one, and
-`opentofu/config.tm.hcl`, whose `global.provisioner = "tofu"` is the value
-every script in `opentofu/workflows.tm.hcl` invokes. No stack's `versions.tf`
+`opentofu/config.tm.hcl`, whose `global.provisioner` (originally `"tofu"`
+directly; now the `scripts/tm-provisioner.sh` wrapper, see the Update above)
+is the value every script in `opentofu/workflows.tm.hcl` invokes. No stack's `versions.tf`
 or resource HCL needed to change, and Terramate's own stack-ordering,
 drift-detection and opt-in-gating behaviour — documented on
 [Foundations]({{< relref "/docs/platform/foundations/_index.md" >}}) — is
@@ -242,7 +248,8 @@ through that provider at all.
   OpenTofu and Crossplane assumed in this record's Context
 - `mise.toml` — the `opentofu` tool pin and the absence of a `terraform`
   entry
-- `opentofu/config.tm.hcl` — `global.provisioner = "tofu"`
+- `opentofu/config.tm.hcl` — `global.provisioner`, pointing at
+  `scripts/tm-provisioner.sh`, whose last line execs `tofu`
 - `opentofu/workflows.tm.hcl` — the `init`, `preview`, `deploy`,
   `drift detect`, `drift reconcile` and `destroy` scripts that invoke
   `global.provisioner`
