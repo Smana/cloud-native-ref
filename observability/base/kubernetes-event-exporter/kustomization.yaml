@@ -3,3 +3,4 @@ kind: Kustomization
 namespace: observability
 resources:
   - helmrelease.yaml
+  - vmrule.yaml

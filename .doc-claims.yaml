@@ -203,6 +203,18 @@ claims:
       - website/content/docs/platform/observability/dashboards-and-alerts.md
     must_contain: '{value}'
 
+  - id: grafana-metrics-plugin-pin
+    why: >-
+      The metrics datasource plugin is the one that sat frozen at v0.14.0 for
+      16 months — the same Renovate blind spot as its logs sibling. Its pinned
+      version is a docs claim too; a bump the docs don't follow must fail here.
+    source:
+      file: observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml
+      pattern: 'victoriametrics-metrics-datasource@(\d+\.\d+\.\d+)'
+    pages:
+      - website/content/docs/platform/observability/dashboards-and-alerts.md
+    must_contain: '{value}'
+
   - id: loggen-aws-only
     why: >-
       loggen writes ~1.7M synthetic lines/day and used to run on both

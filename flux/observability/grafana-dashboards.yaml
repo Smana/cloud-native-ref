@@ -31,6 +31,5 @@ spec:
   instanceSelector:
     matchLabels:
       dashboards: "grafana"
-  # Pinned to a commit — refs/heads/main made the dashboard mutate whenever
-  # upstream moved, the last unpinned fetch in the repo.
+  # Same pin rationale as flux-cluster above.
   url: "https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/7ab65dc8b90f7a6751d88f18bbb4e1bee33bf334/monitoring/configs/dashboards/control-plane.json"

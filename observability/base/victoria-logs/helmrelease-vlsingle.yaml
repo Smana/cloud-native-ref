@@ -74,10 +74,8 @@ spec:
           # Purpose: Store general Kubernetes logs from all other pods
           # Input: parser (all logs except PostgreSQL execution plans)
           # NOTE: the name `vlogs-0` deliberately OVERRIDES the per-replica
-          # sink the single chart generates; it is single-chart-specific, hence
-          # inline and not shared (the cluster chart generates its own `vlogs`
-          # catch-all already pointed at vlinsert — a shared copy would double
-          # every general log line there).
+          # sink the single chart generates — chart-specific, hence inline; see
+          # the vl-common-helm-values ConfigMap header for why it isn't shared.
           # ======================================================================
           vlogs-0:
             type: elasticsearch

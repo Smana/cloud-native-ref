@@ -123,8 +123,9 @@ Use EKS Pod Identity for all AWS access from pods. Do NOT use IRSA.
 - VictoriaMetrics for all metrics collection
 - Prometheus exposition format required
 - `VMServiceScrape` CRDs for service discovery (the VictoriaMetrics operator also converts
-  `ServiceMonitor`/`PrometheusRule` objects a chart ships natively, so either is acceptable
-  from an upstream chart's own values)
+  `ServiceMonitor` objects a chart ships natively, so chart-native discovery is acceptable
+  from an upstream chart's own values); alert rules are authored as standalone `VMRule`
+  manifests, never embedded in chart values
 
 ### 5.2 Logging
 

@@ -108,10 +108,12 @@ exporter's own operational logs are structured now as well
 (`logFormat: json`, `logLevel: info`).
 
 Its metrics are real for the first time: `metrics.enabled: true` — it was
-`false`, silently discarding the `serviceMonitor.enabled: true` and
-`prometheusRule.enabled: true` nested under it — with a `ServiceMonitor` in
-`observability` and one repaired alert, `KubernetesEventExporterWatchErrors`
-(`severity: warning`, sustained `rate > 0` for 15m). The alert's message
+`false`, silently discarding the `serviceMonitor.enabled: true` nested under
+it — with a chart-native `ServiceMonitor` in `observability` and one repaired
+alert, `KubernetesEventExporterWatchErrors` (`severity: warning`, sustained
+`rate > 0` for 15m), authored as a standalone `VMRule`
+(`observability/base/kubernetes-event-exporter/vmrule.yaml`) like every other
+alert in this repository. The alert's message
 deliberately names no namespace: the fork registers `WatchErrors` as a
 labelless counter, so the previous per-namespace grouping could never have
 matched anything. Image stays overridden to
