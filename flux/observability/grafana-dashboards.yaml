@@ -13,7 +13,9 @@ spec:
   instanceSelector:
     matchLabels:
       dashboards: "grafana"
-  url: "https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/refs/heads/main/monitoring/configs/dashboards/cluster.json"
+  # Pinned to a commit — refs/heads/main made the dashboard mutate whenever
+  # upstream moved, the last unpinned fetch in the repo.
+  url: "https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/7ab65dc8b90f7a6751d88f18bbb4e1bee33bf334/monitoring/configs/dashboards/cluster.json"
 ---
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
@@ -29,4 +31,5 @@ spec:
   instanceSelector:
     matchLabels:
       dashboards: "grafana"
-  url: "https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/refs/heads/main/monitoring/configs/dashboards/control-plane.json"
+  # Same pin rationale as flux-cluster above.
+  url: "https://raw.githubusercontent.com/fluxcd/flux2-monitoring-example/7ab65dc8b90f7a6751d88f18bbb4e1bee33bf334/monitoring/configs/dashboards/control-plane.json"

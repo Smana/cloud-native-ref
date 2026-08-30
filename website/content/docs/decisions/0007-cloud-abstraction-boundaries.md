@@ -3,7 +3,7 @@ title: Cloud abstraction boundaries — cloud-shaped platform APIs, neutral deve
 linkTitle: 0007 · Cloud boundaries
 weight: 70
 description: Platform-facing infrastructure APIs stay cloud-shaped per provider, while developer-facing APIs like App stay cloud-neutral, splitting the abstraction by audience instead of forcing one shape on both.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -30,7 +30,7 @@ Getting this wrong in either direction is expensive:
 
 Rather than relitigate this per workstream, this ADR sets the rule.
 
-The `EPI` composition makes the tension concrete. `EPI` (EKS Pod Identity) has ten claim
+The `EPI` composition makes the tension concrete. `EPI` (EKS Pod Identity) has nine claim
 manifests in `security/base/epis/`, is consumed internally by the `App` and `SQLInstance`
 compositions, and its central field is `spec.policyDocument` — inline AWS IAM JSON. There is no
 neutral form of that field. GCP's equivalent is a list of predefined roles and/or a custom role's
@@ -84,7 +84,7 @@ One XRD per concept, cloud selected by `EnvironmentConfig` / `ProviderConfig`. `
 **Cons**:
 - The abstraction leaks at the field that matters most (`policyDocument`), so it is neutral in
   name only.
-- Renames ten `EPI` manifests and the `xplane-*` resources they own — delete-and-create against
+- Renames nine `EPI` manifests and the `xplane-*` resources they own — delete-and-create against
   live IAM roles for no functional gain.
 - Every provider-specific feature becomes a two-cloud design exercise before anyone can use it.
 
@@ -132,7 +132,7 @@ genuinely differs.
 
 ### Positive
 
-- `EPI` and its ten claim manifests are untouched. No delete-and-create against live IAM.
+- `EPI` and its nine claim manifests are untouched. No delete-and-create against live IAM.
 - [ADR-0002](0002-eks-pod-identity-over-irsa.md) stays valid, with its scope narrowed to AWS.
 - Developer-facing claims stay portable, so the dual-cloud investment is visible to app teams.
 - The rule is reusable: it decides workstreams 8 through 13 without fresh debate.

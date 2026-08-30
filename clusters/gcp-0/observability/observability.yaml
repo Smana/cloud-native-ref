@@ -1,15 +1,16 @@
 # Observability on gcp-0. Same four Kustomizations as aws-0, same order, same
 # shared base — only the overlay path and the vars ConfigMap differ.
 #
-# The remaining components: kubernetes-event-exporter, VictoriaLogs and loggen.
+# The remaining components: kubernetes-event-exporter and VictoriaLogs.
 # NOT metrics-server — GKE ships its own as a managed addon, and ours only fought
-# it. runlore comes from the overlay rather than the base, being the one
+# it. NOT loggen either — the demo generator runs on aws-0 only.
+# runlore comes from the overlay rather than the base, being the one
 # observability component that is not cloud-neutral. Both reasons are in
 # observability/gcp-0/kustomization.yaml.
 #
-# No SQLInstance healthCheckExpr, unlike aws-0's: that one gates on runlore's
-# database, and runlore has none here. It DOES run on gcp-0 (runlore-0/-1 in the
-# runlore namespace) -- it is the database that is absent, not the workload.
+# No healthCheckExprs on either cluster: an earlier aws-0 version gated on a
+# SQLInstance that nothing here renders (runlore persists to a PVC, and the
+# only SQLInstance ever in this tree belonged to the removed grafana-oncall).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

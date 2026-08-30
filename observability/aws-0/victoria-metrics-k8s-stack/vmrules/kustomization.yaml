@@ -4,4 +4,3 @@ kind: Kustomization
 # AWS-only rules. See ../kustomization.yaml for why they are not in base/.
 resources:
   - karpenter.yaml
-  - runlore.yaml

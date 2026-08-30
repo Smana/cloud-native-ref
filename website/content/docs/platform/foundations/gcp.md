@@ -2,7 +2,7 @@
 title: GCP
 weight: 30
 description: The five OpenTofu stacks that implement the three-stage model on GCP, and the two places GKE bootstrap is genuinely simpler than EKS.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 GCP instantiates the [three-stage model]({{< relref "/docs/platform/foundations/_index.md" >}})
@@ -115,8 +115,7 @@ short version:
 
 `gcp-0` reconciles the same layers as `aws-0` — observability, tooling and
 applications included. What it leaves out is deliberate and per-component:
-`runlore` (its chart hardcodes AWS cloud tools and identity), `image-gallery`
-(the application itself speaks S3), `flux-previews` (previews belong to one
-cluster by nature), and tooling's Homepage and Headlamp. The
+`image-gallery` (the application itself speaks S3) and `flux-previews`
+(previews belong to one cluster by nature). The
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}) page
 has the full map of what runs where, and what closing each exclusion would take.

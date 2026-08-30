@@ -2,7 +2,7 @@
 title: Policies
 weight: 30
 description: Kyverno admission policies, CiliumNetworkPolicy default-deny, RBAC, and the pod security context baseline enforced on every workload.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Where [OpenBao]({{< relref "/docs/platform/security/openbao.md" >}}) and
@@ -15,8 +15,7 @@ this page is how the platform implements them.
 ## Admission: Kyverno
 
 Two `HelmRelease`s in `security/base/kyverno/`: the `kyverno` controller
-(chart 3.9.0) and `kyverno-policies` (chart 3.8.2 — the two charts version
-independently) — the
+(chart 3.9.0) and `kyverno-policies` (chart 3.9.0) — the
 upstream policy pack that implements the Kubernetes Pod Security Standards
 as `ClusterPolicy` resources. `kyverno-policies` installs with `values: {}` —
 no policy overrides at all — so the enforced set and its failure action (audit

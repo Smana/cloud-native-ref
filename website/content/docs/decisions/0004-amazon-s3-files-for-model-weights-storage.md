@@ -3,7 +3,7 @@ title: Use Amazon S3 Files for LLM Model Weights Storage
 linkTitle: 0004 · S3 Files for weights
 weight: 40
 description: LLM model weights are mounted from an Amazon S3 Files POSIX file system instead of an init-container sync into emptyDir, dropping per-replica copies and the platform-wide extra disk.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -69,8 +69,16 @@ The original spec chose **S3 bucket + init-container `aws s3 sync` + local `empt
 
 - **Today (until Upbound `provider-upjet-aws` v2.6+)**: provision `FileSystem` + `AccessPoint` + IAM role via OpenTofu in a new stack `opentofu/aws/llm-platform/`. Outputs propagate to the cluster via the existing `eks-environment` Crossplane `EnvironmentConfig`.
 - **InferenceService composition** consumes `option("params").ctx["apiextensions.crossplane.io/environment"].llm.fsId` and renders a `PersistentVolumeClaim` against an S3 Files-backed `StorageClass`.
+  **Update (2026-08-30):** shipped differently. A v2 namespaced XR cannot render a cluster-scoped
+  `PersistentVolume`, so the mount is a single hand-provisioned PV+PVC pair
+  (`apps/aws-0/llm/models-pvc.yaml`) shared by every InferenceService claim via a per-claim
+  `subPath`, with `spec.csi.volumeHandle` copied in by hand from the OpenTofu stack's output after
+  each `tofu apply` (see the TODO in that file to close the loop via Secrets Manager + External
+  Secrets instead).
 - **Drop** the init-container `aws s3 sync`. Drop the per-Deployment `models` `emptyDir`. Drop the preload Job's `tmp` `emptyDir`. Mount the same PVC at `/models/<repo>/<revision>/` in both pods.
 - **Drop** the platform-wide xvdb 80 GiB on `default-ec2nc.yaml`.
+  **Update (2026-08-30):** not done — `infrastructure/base/karpenter-nodepools/default-ec2nc.yaml`
+  still declares the 80 GiB `/dev/xvdb` mapping; the workaround remains in place.
 - **Migrate to native Crossplane CRDs** when Upbound v2.6+ ships them — composition consumer side stays unchanged (still reads FS ID from EnvironmentConfig).
 
 **Rationale**: Aligns with the cluster-ephemeral / S3-as-durable intent. Eliminates all four staging-pattern problems in one move. The OpenTofu interim is consistent with how Network/OpenBao/EKS already bootstrap; migration to native CRDs is a swap with zero composition change.
@@ -104,8 +112,11 @@ The original spec chose **S3 bucket + init-container `aws s3 sync` + local `empt
 
 ### Order of operations
 
-1. **OpenTofu stack** `opentofu/aws/llm-platform/` — `aws_s3files_file_system.llm_models` over the existing bucket; `aws_s3files_access_point` (one shared by default); IAM role `xplane-llm-models-fs-access` with the EKS Pod Identity Agent trust policy. Outputs: `llm_models_fs_id`, `llm_models_fs_dns_name`, `llm_models_fs_role_arn`.
+1. **OpenTofu stack** `opentofu/aws/llm-platform/` — `aws_s3files_file_system.models` over the existing bucket; `aws_s3files_access_point.shared` (one shared by default); IAM roles `llm-models-fs-service` (assumed by the S3 Files service itself) and `llm-models-fs-csi-driver` (assumed by the EFS CSI driver via EKS Pod Identity). Outputs: `filesystem_id`, `filesystem_arn`, `access_point_id`, `access_point_arn`, `csi_driver_role_arn`, `volume_handle`.
 2. **EnvironmentConfig refresh** `infrastructure/base/crossplane/configuration-aws/environmentconfig.yaml` — fold the OpenTofu outputs alongside `clusterName` / `region`.
+   **Update (2026-08-30):** not done. `environmentconfig.yaml` carries no `llm`/`fsId`/filesystem
+   keys; the shipped mechanism is the hand-copied `volumeHandle` in `apps/aws-0/llm/models-pvc.yaml`
+   described above, with a standing TODO to replace the manual step.
 3. **CSI driver install** — once AWS publishes the K8s integration (TBD: extension of `efs-csi-driver` or a dedicated `s3files-csi-driver`); HelmRelease under `infrastructure/base/`, dependency-ordered after `crossplane-providers`.
 4. **InferenceService composition update** — `weightsBucket` → `weightsFileSystem`; drop init-container; drop `models` `emptyDir`; render PVC referencing the new `StorageClass`.
 5. **Cilium egress** — drop the temporary `toEntities: world` on TCP 443 once preload no longer hits the HF Xet CDN; replace with a tight `huggingface.co` API allowlist.

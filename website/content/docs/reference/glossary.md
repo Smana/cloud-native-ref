@@ -2,7 +2,7 @@
 title: Glossary
 weight: 50
 description: Terms used across the site — Crossplane, GitOps, and platform-specific vocabulary in one place.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 **Claim** — the Kubernetes object a tenant creates to request infrastructure
@@ -68,10 +68,11 @@ cluster-scoped equivalents.
 
 **Configuration package** — a Crossplane package (an OCI artifact) that
 ships a set of XRDs and Compositions together, installed via a `Configuration`
-object. This repository consumes one pinned package
-(`infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`)
-built and released from `Smana/crossplane-configuration`, rather than
-authoring compositions in-tree.
+object. This repository consumes two pinned packages, one per cloud
+(`infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`
+and its `configuration-gcp` sibling), each pulling the shared `-core` package
+through its own `dependsOn` — built and released from
+`Smana/crossplane-configuration`, rather than authoring compositions in-tree.
 
 **Shard** — a Flux controller partition; this repository runs two (default and
 `apps`, via `sharding.fluxcd.io/key`) — the sharp edge that comes with them is

@@ -2,7 +2,7 @@
 title: Decisions
 weight: 60
 description: Architecture decision records — what was chosen, and what it was chosen over.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Architecture decision records for the choices that would otherwise need
@@ -71,5 +71,8 @@ single-file fixes never need one.
 | [0026]({{< relref "/docs/decisions/0026-headlamp-auth-proxy-on-gke.md" >}}) | Headlamp authenticates behind an auth proxy on GKE, not against the cluster | Accepted | 2026-08-28 |
 | [0027]({{< relref "/docs/decisions/0027-primary-cloud-provider.md" >}}) | AWS is the primary cloud, and cross-cloud singletons live there | Accepted | 2026-08-29 |
 | [0028]({{< relref "/docs/decisions/0028-harbor-oidc-config-overwrite-json.md" >}}) | Harbor's OIDC config is set declaratively via CONFIG_OVERWRITE_JSON, not a post-install script | Accepted | 2026-08-29 |
+| [0029]({{< relref "/docs/decisions/0029-runlore-over-grafana-oncall.md" >}}) | RunLore and Slack over Grafana OnCall | Accepted | 2026-08-30 |
+| [0030]({{< relref "/docs/decisions/0030-vector-as-log-shipper.md" >}}) | Vector as the log shipper | Accepted | 2026-08-30 |
+| [0031]({{< relref "/docs/decisions/0031-per-cluster-observability-panes.md" >}}) | Per-cluster observability panes; Slack and RunLore are the pager | Accepted | 2026-08-30 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

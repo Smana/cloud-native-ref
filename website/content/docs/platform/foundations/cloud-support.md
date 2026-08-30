@@ -3,7 +3,7 @@ title: Cloud support
 linkTitle: Cloud support
 weight: 5
 description: What runs on AWS, what runs on GCP, which managed service stands in for which, and the decisions that made the two lanes differ.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 The platform runs on **two clouds**: `aws-0` on EKS and `gcp-0` on GKE Standard.
@@ -127,9 +127,13 @@ It is a real implementation now. Both clouds render from the same KCL module,
 differing in where barman writes (`gs://` with `googleCredentials.gkeEnvironment`
 rather than `s3://` with `s3Credentials.inheritFromIAMRole`) and in the identity
 that writes — one `GCPWorkloadIdentity`, bucket-scoped, in place of four AWS IAM
-resources. The CloudNativePG operator runs on both clouds; `gcp-0` pulls the HelmRelease
-file alone (`infrastructure/gcp-0/cloudnative-pg/`) rather than the whole base
-directory, whose Grafana dashboards need a CRD that cluster does not install.
+resources. The CloudNativePG operator runs on both clouds; `gcp-0` pulls the same
+whole base directory `aws-0` does (`infrastructure/gcp-0/cloudnative-pg/`
+references `../../base/cloudnative-pg` plus its own `gcs-bucket.yaml`) — including
+the base's three Grafana dashboards, since both of their preconditions hold on
+`gcp-0` too: `crds/base` installs the `GrafanaDashboard` CRD, and
+`clusters/gcp-0/observability/observability-grafana-operator.yaml` runs the
+operator that reconciles it.
 
 ## Decisions that shaped the split
 

@@ -1,0 +1,28 @@
+# KEDA has exposed Prometheus metrics since it was installed
+# (prometheus.metricServer.enabled / prometheus.operator.enabled in
+# helmrelease.yaml) — but nothing ever scraped them. Both Services expose the
+# metrics on a port literally named "metrics" (8080); keda-operator's other
+# port (metricsservice, 9666) is the gRPC adapter path, not Prometheus.
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: keda-operator
+  namespace: keda
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keda-operator
+  endpoints:
+    - port: metrics
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: keda-metrics-apiserver
+  namespace: keda
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keda-operator-metrics-apiserver
+  endpoints:
+    - port: metrics

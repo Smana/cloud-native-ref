@@ -6,22 +6,12 @@ kind: Kustomization
 # directory as its own Flux Kustomization, for the ordering it needs. Listing it
 # here too put two Kustomizations with prune: true in charge of the same
 # objects, each able to delete what the other owns.
-#
-# ONE-TIME on the first reconcile after this lands, then delete this note:
-# because both Kustomizations have been applying these objects, the
-# `kustomize.toolkit.fluxcd.io/name` label is whichever wrote last. If it reads
-# `observability`, this Kustomization prunes HelmRelease/victoria-traces and its
-# HTTPRoute, dashboard and datasource, and helm-controller uninstalls vtsingle
-# until observability-victoria-traces recreates them (its interval is 3m).
-# Annotating them first avoids the gap:
-#   kubectl annotate -n observability helmrelease/victoria-traces \
-#     kustomize.toolkit.fluxcd.io/prune=disabled
 resources:
   - ../base/kubernetes-event-exporter
   - ../base/victoria-logs
-  # Log generator for demo purposes
+  # Log generator for demo purposes — aws-0 only, see observability/gcp-0/kustomization.yaml.
   - ../base/loggen
   - ../base/metrics-server
-  # RunLore SRE agent — consumes Alertmanager + the observability stack
-  # (sibling of grafana-oncall); its dashboard + alerts already live here.
+  # RunLore SRE agent — consumes Alertmanager + the observability stack;
+  # its dashboard + health alerts ship from base on both clusters.
   - ../base/runlore

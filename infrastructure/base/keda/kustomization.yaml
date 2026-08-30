@@ -5,3 +5,4 @@ resources:
   - namespace.yaml
   - helmrelease.yaml
   - network-policy.yaml
+  - vmservicescrape.yaml

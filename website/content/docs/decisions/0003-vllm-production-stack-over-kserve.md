@@ -3,7 +3,7 @@ title: Use vLLM Production Stack over KServe + llm-d for v1 LLM Platform
 linkTitle: 0003 · vLLM over KServe
 weight: 30
 description: The self-hosted LLM platform uses the vLLM Production Stack router with LMCache instead of KServe + llm-d, to avoid a second Envoy layer and stay on the existing Crossplane/KCL composition pattern.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -15,10 +15,12 @@ lastVerified: 2026-08-20
 
 ## Context
 
-The self-hosted LLM Platform initiative (branch `wip/self-hosted-ai-draft`)
+The self-hosted LLM Platform initiative (branch `wip/self-hosted-llm-platform-draft`)
 needs an inference orchestration layer to:
 
-- Serve four open-weights models (Phi-4 Mini, Qwen3-8B, DeepSeek-R1-Distill-Qwen-7B, LlamaGuard 3-1B)
+- Serve four open-weights models (initially planned as Phi-4 Mini, Qwen3-8B, DeepSeek-R1-Distill-Qwen-7B,
+  LlamaGuard 3-1B; **Update (2026-08-30):** the shipped fleet in `apps/base/ai/llm/` is
+  Qwen2.5-Coder-7B-Instruct, Qwen2.5-Coder-1.5B (FIM), Qwen3-8B, and Llama-Guard-3-1B)
 - Route requests intelligently across tier (small / medium / large) and specialty (general / code / guardrail)
 - Scale individual models to zero when idle (cost control on a single L4 GPU NodePool capped at `nvidia.com/gpu: 4`)
 - Run inside the existing Cilium / Tailscale / Flux GitOps stack
@@ -36,6 +38,10 @@ A decision is needed before Phase 2 (Inference Stack Install) so that the Helm c
 
 - **Operational simplicity** — fewer moving control planes is preferred for a single-cluster lab.
 - **Avoid double-Envoy** — Cilium already runs Envoy as the L7 proxy for Gateway API; adding another Envoy layer (KServe + Inference Gateway) doubles the operational surface.
+  **Update (2026-08-30):** this specific rationale was later superseded — the 2026-05-05 AI Gateway
+  redesign (`docs/superpowers/specs/2026-05-05-ai-gateway-redesign-design.md`) deployed Envoy AI
+  Gateway on a dedicated (non-cilium-envoy) data plane, knowingly accepting the double-Envoy cost
+  it argues against here. The rejection of KServe + llm-d's Knative dependency stands unaffected.
 - **Reuse the existing Crossplane / KCL composition pattern** rather than introducing a new XRD ecosystem (KServe CRDs).
 - **Constitution alignment** — solution must wire through Cilium GW API, External Secrets, EKS Pod Identity, VictoriaMetrics, default-deny CiliumNetworkPolicies.
 - **Roadmap optionality** — easy migration if the multi-tenant or multi-cluster value of llm-d becomes real later.
@@ -141,17 +147,24 @@ becomes a composition rewrite, not a per-claim change.
 ### Neutral
 
 - Prefix caching is per-pod LMCache rather than fleet-global. Acceptable for the v1 model count and traffic profile.
-- The `vllm-production-stack-router` Service exists alongside `vllm-semantic-router` — two router-shaped services. Documented; the public HTTPRoute targets the Semantic Router only.
+- **Update (2026-08-30):** the vLLM Production Stack router was since removed from the architecture.
+  The 2026-05-05 AI Gateway redesign replaced it with per-model vLLM Deployments routed directly by
+  Envoy AI Gateway (`AIGatewayRoute`/`AIServiceBackend`), with `vllm-semantic-router` doing
+  classifier-driven routing as an ext_proc filter ahead of it — there is no
+  `vllm-production-stack-router` Service in the shipped stack.
 
 ---
 
 ## Implementation Notes
 
-The decision is already realised on branch `wip/self-hosted-ai-draft`:
+The decision is already realised on branch `wip/self-hosted-llm-platform-draft`, per the phase
+breakdown in the pre-SDD plan draft (`03-plan-draft.md`, removed 2026-08-18, recover with
+`git log --all -- docs/plans/self-hosted-llm-platform/`). No merge commit in this repo's history
+carries those phase labels, so no commit hashes are cited:
 
-- Phase 2 (`c60df37c`/`8b8c76b4`/`19c6b108`): KEDA HelmRelease, vLLM Production Stack HelmRelease, vLLM Semantic Router HelmRelease (initial classifier-only config).
-- Phase 3 (`5d50245d`): `InferenceService` Crossplane composition that backs each model claim.
-- Phase 5 (`0d569425`): Hybrid routing config (CL-1 C) + post-filter LlamaGuard (CL-2 A) + four-model fleet + public HTTPRoute.
+- Phase 2: KEDA HelmRelease, vLLM Production Stack HelmRelease, vLLM Semantic Router HelmRelease (initial classifier-only config).
+- Phase 3: `InferenceService` Crossplane composition that backs each model claim.
+- Phase 5: Hybrid routing config (CL-1 C) + post-filter LlamaGuard (CL-2 A) + four-model fleet + public HTTPRoute.
 
 **Trigger to revisit this ADR**:
 - The platform grows to multi-cluster or multi-tenant requirements.

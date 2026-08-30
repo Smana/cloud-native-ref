@@ -2,13 +2,13 @@
 title: OpenBao
 weight: 10
 description: Namespace layout, operator login, AppRole machine auth, backup and restore, and the 2.6.x concurrency constraint.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 [Foundations]({{< relref "/docs/platform/foundations/aws.md#the-openbao-cluster-stack" >}})
 covers how the OpenBao cluster is provisioned — a single node on `file`
-storage as committed (`mode = "dev"`), or five SPOT nodes on Raft with RAID-0
-NVMe at `mode = "ha"`, with KMS auto-unseal either way. This page covers what
+storage as committed (`mode = "dev"`), or five nodes on Raft (3 on-demand + 2
+spot) with RAID-0 NVMe at `mode = "ha"`, with KMS auto-unseal either way. This page covers what
 runs on top of that cluster:
 `opentofu/aws/openbao/management/` layers namespaces, auth methods, the PKI, and
 policies onto it, and this is the operational surface every other security
@@ -128,7 +128,7 @@ Secrets Manager — but not under one shared path pattern per role:
 
 | Role | Secrets Manager entry | Source |
 |---|---|---|
-| `cert-manager` | `openbao/cloud-native-ref/approles/cert-manager`, copied by the `migrate-aws` subcommand of `scripts/secret-store.sh` to the portable dash name the in-cluster `ExternalSecret` reads: `openbao-cloud-native-ref-approles-cert-manager` ([ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}})) | `variables.tfvars` (`cert_manager_approle_secret_name`) |
+| `cert-manager` | `openbao/cloud-native-ref/approles/cert-manager` — the in-cluster `ExternalSecret` (`security/aws-0/openbao/openbao-approle-externalsecret.yaml`) reads this slash-form key directly; it's AWS-only, not one of the shared-base keys [ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}}) renamed to a portable dash form | `variables.tfvars` (`cert_manager_approle_secret_name`) |
 | `snapshot-agent` | Secrets Manager secret ID "security/openbao/openbao-snapshot" — also carries `VAULT_ADDR` and `BUCKET_NAME`, not just the RoleID/SecretID pair | `variables.tf:112` default (`snapshot_approle_secret_name`), not overridden |
 
 then synced into the cluster by External Secrets — see

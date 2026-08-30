@@ -2,7 +2,7 @@
 title: PostgreSQL
 weight: 40
 description: CloudNativePG's pg_stat_statements metrics, the Vector pipeline that parses auto_explain plans, and Barman Cloud plugin backups.
-lastVerified: 2026-08-20
+lastVerified: 2026-08-30
 ---
 
 CloudNativePG itself is an infrastructure-layer component
@@ -115,7 +115,7 @@ promotion/recovery cycle against it:
 ```yaml
 objectStoreRecovery:
   bucketName: "eu-west-3-ogenki-cnpg-backups"
-  path: "zitadel-20260719"          # frozen dated snapshot, not the live prefix
+  path: "zitadel-20260829"          # frozen dated snapshot, not the live prefix
 backup:
   schedule: "0 0 * * *"
   bucketName: "eu-west-3-ogenki-cnpg-backups"

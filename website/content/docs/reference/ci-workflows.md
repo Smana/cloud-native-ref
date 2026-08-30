@@ -2,7 +2,7 @@
 title: CI Workflows
 weight: 40
 description: Every GitHub Actions job, what it runs, and which six of them can actually block a merge — verified against .github/workflows and the branch protection API.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 CI never applies changes to a cluster. It validates, scans and publishes;
@@ -18,7 +18,7 @@ Branch protection on `main` requires these six contexts, and nothing else:
 
 | Job (`ci.yaml`) | What it runs | Blocks the merge |
 |---|---|---|
-| **Pre-commit checks** 🛃 | Terraform hooks across every OpenTofu stack, through Dagger | ✅ |
+| **Pre-commit checks** 🛃 | Terraform hooks across every OpenTofu stack | ✅ |
 | **Security scanning** 🔒 | Trivy, Checkov, TruffleHog → SARIF | ✅ |
 | **Kubernetes validation** ☸ | `./scripts/validate-manifests.sh` | ✅ |
 | **Rendered manifest diff** 📝 | renders head vs merge-base, posts a PR comment | ✅ the *job* must succeed; the diff's **content** never fails it |
@@ -42,21 +42,20 @@ Runs on every pull request targeting `main`, with no path filter.
 ### `pre-commit` 🛃
 
 Runs the Terraform pre-commit hooks — `terraform_fmt`, `terraform_validate`,
-`terraform_tflint` — across every OpenTofu stack. It does **not** invoke
-`pre-commit` directly: the job calls
-[`dagger/dagger-for-github`](https://github.com/dagger/dagger-for-github),
-which runs the `github.com/Smana/daggerverse/pre-commit-tf` module with
-`--tf-binary=tofu`. The pipeline is a container definition, so it runs
-identically on a laptop and on a runner.
+`terraform_tflint` — across every OpenTofu stack. `jdx/mise-action` installs
+tool versions from `mise.toml`, then the job calls `pre-commit` directly —
+the same command a contributor runs locally, so there is no separate
+container pipeline to keep in sync.
 
 ```bash
-# Reproduce the hooks locally
+# Reproduce the job locally
+mise install
 pre-commit run --all-files
-
-# Reproduce the job itself, container and all
-dagger call -m github.com/Smana/daggerverse/pre-commit-tf \
-  run --dir "." --tf-binary="tofu"
 ```
+
+`PCT_TFPATH=tofu` tells the pre-commit-terraform hooks to call `tofu` instead
+of `terraform`. `GITHUB_TOKEN` is also set, so `tflint --init` authenticates
+when it fetches its ruleset rather than hitting GitHub's anonymous rate limit.
 
 The job first writes three placeholder certificate files into the OpenBao
 cluster stack's gitignored `.tls/` directory: `tofu validate` needs those
@@ -116,7 +115,7 @@ None of these is a required check. They run only when their paths change.
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `docs-check.yml` | PR touching `website/**`, `docs/architecture/**`, `mise.toml`, `scripts/verify-doc-paths.sh`, or itself | `hugo --minify --gc`, then `./scripts/verify-doc-paths.sh` |
-| `docs.yml` | push to `main` on the same paths, or manual dispatch | same build, then publishes to GitHub Pages at `cnref.ogenki.io` |
+| `docs.yml` | push to `main` touching `website/**`, `docs/architecture/**`, `mise.toml` (a narrower set than `docs-check.yml` — no `scripts/verify-doc-paths.sh`), or manual dispatch | same build, then publishes to GitHub Pages at `cnref.ogenki.io` |
 | `vector-config-validation.yml` | PR or push touching `observability/base/victoria-logs/helmrelease-*.yaml` | validates the Vector VRL log-parsing rules |
 | `build-container-images.yml` | PR or push touching `container-images/**`, or manual dispatch | builds a dynamic matrix over changed image directories |
 
@@ -133,18 +132,21 @@ that build a real gate even though it is not a required check:
   `git ls-files`, so it only sees tracked files — run it after `git add`, or
   a brand-new page passes without ever being checked.
 
-`docs.yml` runs the same build on push and publishes Hugo's output. Its
-`concurrency` group never cancels an in-flight deploy: a half-published site
-is worse than a slightly stale one.
+`docs.yml` runs the same build on push and publishes Hugo's output, but its
+path filter is narrower than `docs-check.yml`'s — a change to
+`scripts/verify-doc-paths.sh` alone triggers the PR check but not a deploy.
+Its `concurrency` group never cancels an in-flight deploy: a half-published
+site is worse than a slightly stale one.
 
 ### Container images
 
-On a pull request `build-container-images.yml` builds and Trivy-scans each
-changed image but does **not** push — validation only. On push to `main` and
-on manual dispatch it pushes to `ghcr.io/smana/<image>`, tagged
-`<branch>-<short-sha>` plus `latest` on the default branch. Deployments pin
-the immutable `<branch>-<sha>` tag; nothing in this repository deploys
-`latest`.
+On a pull request `build-container-images.yml` builds each changed image
+(no push) but does **not** run Trivy — the scan step is gated
+`if: github.event_name != 'pull_request'`, so it runs only on push to `main`
+or manual dispatch. On push to `main` and on manual dispatch it also pushes
+to `ghcr.io/smana/<image>`, tagged `<branch>-<short-sha>` plus `latest` on the
+default branch. Deployments pin the immutable `<branch>-<sha>` tag; nothing in
+this repository deploys `latest`.
 
 ## Disabled workflows
 
@@ -164,7 +166,7 @@ pre-commit run --all-files
 
 | Group | Hooks |
 |-------|-------|
-| General | `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-json`, `check-added-large-files`, `check-merge-conflict` |
+| General | `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-json`, `check-added-large-files`, `check-merge-conflict`, `check-case-conflict`, `check-symlinks`, `check-executables-have-shebangs`, `detect-private-key` |
 | OpenTofu / Terraform | `terraform_fmt`, `terraform_validate`, `terraform_tflint` (`--tf-path=tofu`) |
 | Secrets | `detect-secrets` (baseline: `.secrets.baseline`) |
 

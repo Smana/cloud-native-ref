@@ -2,7 +2,7 @@
 title: Fork and adapt
 weight: 10
 description: Every environment-specific value you must change, what you can remove, and the shape of the running cost.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 This repository is a working platform for one AWS account, one GCP project,
@@ -59,10 +59,9 @@ None of these are required for a working platform:
 |---|---|---|
 | Self-hosted LLM platform | `clusters/aws-0-llm-platform/`, `opentofu/aws/llm-platform/` | Already off by default behind two gates — leave it alone rather than deleting it |
 | App Wizard | `apps/platform/app-wizard/` | Self-service UI; the `App` claim works without it |
-| RunLore | `observability/base/runlore/` | SRE agent; needs its own credentials |
+| RunLore | `observability/base/runlore/`, `observability/gcp-0/runlore/` (wired via `observability/gcp-0/kustomization.yaml`), `security/base/epis/runlore.yaml`, `observability/base/grafana-operator/{dashboards,folders}/runlore.yaml`, `observability/base/victoria-metrics-k8s-stack/vmrules/runlore.yaml` | SRE agent; needs its own credentials |
 | Demo applications | `apps/demo/` | Reference claims |
-| Self-hosted GitHub runners | `.github/workflows-disabled/`, `tooling/base/` | Disabled by default |
-| Grafana OnCall | `observability/base/grafana-oncall/` | Built but wired into no Kustomization — it does not currently run |
+| Self-hosted GitHub runners | `tooling/base/gha-runners/`, commented out of `tooling/aws-0/kustomization.yaml` | Disabled by default |
 
 ## The minimum viable subset
 

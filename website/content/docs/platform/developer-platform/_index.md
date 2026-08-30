@@ -2,7 +2,7 @@
 title: Developer Platform
 weight: 35
 description: The App, SQLInstance, and KVStore claims that let a developer deploy a production-ready service with kubectl basics and no Crossplane knowledge.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 {{< callout type="info" >}}
@@ -31,7 +31,7 @@ other repository. This is the single most common source of confusion about
 this repository: a change to how `App` behaves is never a PR here.
 {{< /callout >}}
 
-![One App claim expanding into a whole application: the composition always renders a Deployment, Service and ServiceAccount, adds an HTTPRoute, autoscaler, PodDisruptionBudget, CiliumNetworkPolicy, ExternalSecret and VictoriaMetrics scrape and rule objects for each spec field that is set, and renders three nested claims — SQLInstance, KVStore and EPI — that expand again into a CloudNativePG cluster, a Valkey release, and an IAM role bound to the ServiceAccount by Pod Identity](/images/diagrams/app-claim-expansion.svg)
+![One App claim expanding into a whole application: the composition always renders a Deployment (a CronJob for type: cron) and ServiceAccount, adds a Service for web workloads only, an HTTPRoute, autoscaler, PodDisruptionBudget, CiliumNetworkPolicy, ExternalSecret and VictoriaMetrics scrape and rule objects for each spec field that is set, and renders three nested claims — SQLInstance, KVStore and EPI — that expand again into a CloudNativePG cluster, a Valkey release, and an IAM role bound to the ServiceAccount by Pod Identity](/images/diagrams/app-claim-expansion.svg)
 
 ## What is an App
 

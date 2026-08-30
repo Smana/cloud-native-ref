@@ -2,7 +2,7 @@
 title: GitOps
 weight: 20
 description: What GitOps means here, the Flux resources this repository actually uses, the tree Flux reconciles, and the dependency graph re-derived from the manifests.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Once [Foundations]({{< relref "/docs/platform/foundations/_index.md" >}})
@@ -47,7 +47,7 @@ here, and each one is a real file in this repository:
 | `ArtifactGenerator` → `ExternalArtifact` | Re-slices the one fetched repository artifact into a narrower artifact per domain, so a change under `security/` does not re-trigger `observability/` | `flux/artifact-generators/monorepo-split.yaml` |
 | `Kustomization` | Applies one domain's overlay, in dependency order, and reports whether it is healthy | `clusters/aws-0/`, `clusters/gcp-0/` |
 | `HelmRelease` with `HelmRepository` / `OCIRepository` | Every upstream chart. Twenty-four Helm repositories and eight OCI repositories back them | `flux/sources/`, releases under each domain's `base/` |
-| `Alert` + `Provider` | Reconciliation failures out to Slack — three of each | `flux/notifications/` |
+| `Alert` + `Provider` | Reconciliation failures out to Slack, GitHub commit statuses and OTel traces — three `Alert`s, three `Provider`s | `flux/notifications/` (all three `Alert`s, two of the three `Provider`s — the third, `otel-traces`, is `flux/observability/otel-provider.yaml`) |
 | `ResourceSet` + `ResourceSetInputProvider` | Preview environments generated per pull request | `flux/previews/` |
 
 ### What makes a Kustomization keep things true
@@ -70,8 +70,6 @@ spec:
     substituteFrom:        # cluster-specific values injected at apply time
       - kind: ConfigMap
         name: eks-aws-0-vars
-      - kind: Secret
-        name: cert-manager-openbao-approle
   dependsOn:
     - name: eks-pod-identities
   healthChecks:            # "applied" is not "ready" — this is the difference
@@ -156,28 +154,29 @@ Four things about the graph are not obvious from that line:
   suspended, and also sources from the `GitRepository` directly — its path
   falls outside every `ArtifactGenerator` glob.
 
-`security` is where the graph forks. Five Kustomizations depend on it directly
-and run in parallel once it is healthy:
+`security` is where the graph forks. Five Kustomizations become eligible once
+it is healthy, though not all at the same hop: two depend on `security`
+directly, and three depend on `security-openbao` — itself one hop downstream
+of `security` — instead:
 
 | Kustomization | Depends on | What it does after |
 |---|---|---|
-| `observability-victoria-metrics-k8s-stack` | `security` | forks into `observability-victoria-traces` (a dead end) and `observability-grafana-operator` → `observability` |
-| `flux-operator` | `security` | Flux's own operator lifecycle management |
+| `observability-victoria-metrics-k8s-stack` | `security-openbao` | forks into `observability-victoria-traces` (a dead end) and `observability-grafana-operator` → `observability` |
+| `flux-operator` | `security-openbao` | Flux's own operator lifecycle management |
 | `flux-observability` | `security` | Flux's metrics and dashboards wiring |
-| `flux-notifications` | `security` | Alertmanager and Slack notification wiring |
+| `flux-notifications` | `security-openbao` | Alertmanager and Slack notification wiring |
 | `flux-previews` | `security` | Flux preview-environment wiring |
 | `infrastructure` | `karpenter`, `eks-pod-identities` — **not** `security` | Cilium policies, Gateway API, External DNS, the AWS Load Balancer Controller, EFS CSI, KEDA |
 
-`zitadel` depends on both `infrastructure` and `security` directly — it needs
-a database and Security's secrets and certificates. Everything converges at
-the bottom: `tooling` depends on `observability` and `infrastructure`; `apps`
-— the tenant-facing `App` claims — depends only on `tooling`.
+`zitadel` depends on `infrastructure`, `security-openbao` and
+`security-public-certs` directly — it needs a database, OpenBao's secrets, and
+the Let's Encrypt issuer. Everything converges at the bottom: `tooling`
+depends on `observability` and `infrastructure`; `apps` — the tenant-facing
+`App` claims — depends only on `tooling`.
 
 This is `aws-0`'s graph. `gcp-0` reconciles the same domains but not the same
-edges: `security` depends on `crds` rather than `eks-pod-identities`, four more
-Kustomizations split out of security (`openbao`, `openbao-snapshot`,
-`public-certs`, `tailscale`), and there is no `karpenter`, `eks-pod-identities`,
-`zitadel` or `flux-previews` at all — see
+edges: `security` depends on `crds` rather than `eks-pod-identities`, and
+there is no `karpenter`, `eks-pod-identities` or `flux-previews` at all — see
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}).
 
 ## Observing and operating

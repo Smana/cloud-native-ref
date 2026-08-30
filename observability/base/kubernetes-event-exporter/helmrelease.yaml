@@ -25,46 +25,43 @@ spec:
       repository: civitatis/kubernetes-event-exporter
       tag: "1.8"
     config:
-      logLevel: debug
-      logFormat: pretty
+      logLevel: info
+      logFormat: json
       metricsNamePrefix: "event_exporter_"
       clusterName: "${cluster_name}"
       receivers:
-        - name: "dump"
-          file:
-            path: "/dev/stdout"
-            layout: {}
+        # No "dump" file receiver: with layout: {} (empty-but-present) the fork's
+        # file sink takes the convertLayoutTemplate branch over zero keys and emits
+        # contentless "{}" lines (pkg/sinks/file.go) — every cluster Event became a
+        # noise line that Vector's unfiltered kubernetes_logs source re-ingested
+        # into VictoriaLogs. It was never a fallback either: if the informer stops,
+        # no receiver gets anything. Events now flow solely via the loki receiver.
         - name: "victorialogs"
           loki:
-            # url: "http://victoria-logs-single-server.victoria-logs.svc.cluster.local:9428/insert/loki/api/v1/push"
-            url: "http://victoria-logs-victoria-logs-cluster-vlinsert.observability.svc.cluster.local:9481/insert/loki/api/v1/push"
+            # vlsingle is the deployed variant (see observability/base/victoria-logs/).
+            # This URL pointed at the vlcluster vlinsert Service from 2025-08-23 to
+            # 2026-08-29 — a Service that never existed here — so direct event push
+            # silently went nowhere the whole time.
+            url: "http://victoria-logs-victoria-logs-single-server.observability.svc.cluster.local:9428/insert/loki/api/v1/push"
             streamLabels:
               source: kubernetes-event-exporter
 
       route:
         routes:
           - match:
-              - receiver: "dump"
               - receiver: "victorialogs"
 
     metrics:
-      enabled: false
+      enabled: true
 
+      # Chart-native discovery object; the VM operator's Prometheus converter
+      # turns it into a VMServiceScrape.
       serviceMonitor:
         enabled: true
         namespace: "observability"
 
+      # The watch-errors alert is platform-authored, not a chart default, so it
+      # lives in ./vmrule.yaml like every other alert in this repo — not as a
+      # values-embedded PrometheusRule.
       prometheusRule:
-        enabled: true
-        namespace: "observability"
-        groups:
-          - name: KubernetesEventExporter
-            rules:
-              - alert: KubernetesEventExporterTooManyWatchErrors
-                annotations:
-                  message: "Kubernetes Event Exporter instance in namespace {{ `{{` }} $labels.namespace {{ `}}` }} has reported too many watch errors in 5 minutes."
-                expr: |
-                  sum(watch_errors{namespace="{{ include "common.names.namespace" . }}"})
-                for: 5m
-                labels:
-                severity: critical
+        enabled: false

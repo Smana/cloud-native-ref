@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-This is a comprehensive cloud-native platform reference repository implementing GitOps practices with Kubernetes. The repository demonstrates production-ready configurations for building, managing, and maintaining a secure, scalable cloud-native platform using AWS EKS.
+This is a comprehensive cloud-native platform reference repository implementing GitOps practices with Kubernetes. The repository demonstrates production-ready configurations for building, managing, and maintaining a secure, scalable cloud-native platform using AWS EKS and GCP GKE.
 
 ## Infrastructure Architecture
 
@@ -276,7 +276,7 @@ Two skills cover ground the plugin does not. Both are optional.
 Private services exposed via Tailscale using Gateway API with custom domains (`*.priv.aws.ogenki.io`). Two separate Gateways enforce ACL-based access control:
 
 - **General Gateway** (`tag:k8s`): All Tailscale members. Services: Harbor, Headlamp, Homepage, Grafana, VictoriaMetrics.
-- **Admin Gateway** (`tag:admin`): `group:admin` only. Services: Hubble UI. (VictoriaLogs is on the *general* gateway — both its HTTPRoutes name `platform-tailscale-general`. Grafana OnCall is built under `observability/base/grafana-oncall/` but wired into no Kustomization, so it does not run.)
+- **Admin Gateway** (`tag:admin`): `group:admin` only. Services: Hubble UI. (VictoriaLogs is on the *general* gateway — both its HTTPRoutes name `platform-tailscale-general`. Grafana OnCall was removed on 2026-08-29 — see ADR-0029; RunLore + Slack carry the incident flow.)
 
 Both use `loadBalancerClass: tailscale` via CiliumGatewayClassConfig. ExternalDNS watches HTTPRoutes to create Route53 records. See [Platform → Networking → Private access](https://cnref.ogenki.io/docs/platform/networking/private-access/) for setup details.
 
@@ -373,8 +373,8 @@ Two properties are load-bearing:
   does not get skipped. The previous kubeconform setup ran with `-ignore-missing-schemas`, so
   every `cloud.ogenki.io` claim went unvalidated for the life of the repo.
 - **Polaris audits rendered charts, not raw files.** The repo has 1 raw Deployment; the
-  rendered bundle has ~69 controllers. Pointing a best-practices gate at the source tree checks
-  almost nothing.
+  rendered bundle has 156 controllers (109 Deployment, 25 Job, 10 StatefulSet, 8 DaemonSet,
+  4 CronJob). Pointing a best-practices gate at the source tree checks almost nothing.
 
 The schema catalog (`.schemas/`) and the bundle (`.bundle/`) are generated on every run and are
 gitignored — a committed catalog drifts from the XRDs it is derived from.

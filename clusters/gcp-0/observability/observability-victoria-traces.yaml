@@ -5,8 +5,8 @@
 #
 # Applied ONLY here, not also listed in ./observability/gcp-0 — two
 # Kustomizations with prune: true over the same objects would each be able to
-# delete what the other owns. (aws-0 currently does both; see the note in
-# observability/gcp-0/kustomization.yaml.)
+# delete what the other owns. (aws-0 did both until 2026-08; both
+# clusters now apply it only here.)
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

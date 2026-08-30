@@ -3,7 +3,7 @@ title: Harbor on GCS — native driver with Workload Identity, not S3-compatible
 linkTitle: 0020 · Harbor GCS Workload Identity
 weight: 200
 description: Harbor's registry on gcp-0 uses the chart's native gcs storage driver with useWorkloadIdentity, rather than pointing the existing S3 driver at Google's S3-compatible endpoint with HMAC keys, so that no static credential is introduced on the GCP side.
-lastVerified: 2026-08-26
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -144,6 +144,10 @@ Identity, at which point both clouds are keyless and this ADR's tension disappea
 - Runtime behaviour is unverified until Harbor runs on `gcp-0`. Mitigation: stated as an assumption
   in the design rather than claimed as tested, and Option 2 remains the documented fallback if the
   driver misbehaves.
+  **Update (2026-08-30):** Harbor has since run on `gcp-0` (2026-08-28, per
+  [ADR-0028](0028-harbor-oidc-config-overwrite-json.md), which describes that boot rather than the
+  GCS driver specifically). The GCS driver's runtime behaviour has not been separately re-verified
+  in this record.
 
 ### Neutral
 
@@ -154,8 +158,8 @@ Identity, at which point both clouds are keyless and this ADR's tension disappea
 ## Implementation Notes
 
 Access is granted through the `GCPWorkloadIdentity` composition's `spec.bucketRoles`, verified
-present in `crossplane-configuration-gcp` at the pinned tag `v0.3.1`. The item shape is
-`{bucket, role}` — `role` is **singular**.
+present in `crossplane-configuration-gcp` as of `v0.3.1` (pin since bumped to `v0.4.6`). The item
+shape is `{bucket, role}` — `role` is **singular**.
 
 The `principal://` member string is built by the composition and must never be reconstructed in a
 manifest: `projects/` takes the project **number** while `workloadIdentityPools/` takes the project

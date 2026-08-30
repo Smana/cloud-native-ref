@@ -2,7 +2,7 @@
 title: Teardown
 weight: 30
 description: Tear the GCP platform down safely, in reverse dependency order.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Same shape as the [AWS teardown](../aws/teardown.md), with GCP's own traps. Two

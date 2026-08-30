@@ -3,7 +3,7 @@ title: Use VictoriaMetrics rather than Prometheus
 linkTitle: 0010 · VictoriaMetrics
 weight: 100
 description: Metrics, logs and traces run on the VictoriaMetrics family rather than Prometheus, Loki and Tempo, for one operator model and one Grafana across all three signals.
-lastVerified: 2026-08-21
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -46,7 +46,11 @@ hypothetical one.
   dashboards and PromQL alerting rules port unchanged.
 - **Resource footprint at the retention the platform actually runs.**
   Every component here — `vmsingle`, `vlsingle`, `vtsingle` — is deployed
-  single-binary, on modest, explicitly-set CPU/memory requests and limits.
+  single-binary. Explicit CPU/memory requests and limits are set where
+  they have been sized — the VictoriaLogs and VictoriaTraces servers, the
+  VictoriaLogs-side `vmalert`, and grafana-operator; `vmsingle`, vmagent,
+  Alertmanager, Grafana and the exporters run on chart defaults, with
+  right-sizing deferred until live usage data exists.
 - **One Grafana, three signals, cross-linked out of the box.** Grafana's
   trace-to-log and trace-to-metric correlation (`tracesToLogs`,
   `tracesToMetrics`, and a `TraceID` derived field on the logs datasource)
@@ -70,11 +74,11 @@ hypothetical one.
   VictoriaLogs); each signal runs its own `VMAlert` instance, but both are
   the same CRD kind read through the same `ruleSelector`-label mechanism,
   not two unrelated alerting systems.
-- Single-binary-first components with modest, explicitly-set resource
-  requests/limits at the retention this cluster actually runs — lower
-  resource consumption at equivalent retention than a comparable
-  Prometheus/Loki/Tempo deployment, though this repository has not run a
-  side-by-side measurement to attach a number to that.
+- Single-binary-first components with a modest footprint at the retention
+  this cluster actually runs — lower resource consumption at equivalent
+  retention than a comparable Prometheus/Loki/Tempo deployment, though this
+  repository has not run a side-by-side measurement to attach a number to
+  that.
 - Existing PromQL dashboards and alerting rules work unchanged, because
   VictoriaMetrics is wire- and query-compatible with Prometheus.
 - Cluster-mode variants for VictoriaMetrics and VictoriaLogs already exist
@@ -212,8 +216,11 @@ GitOps patterns should not default to.
   changed on one side (resources, retention, alerting) and not mirrored on
   the other side goes unnoticed until the cluster variant is switched on.
   VictoriaTraces does not carry this split — it ships single-mode only.
-  - *Mitigation*: none automated today; it is a diff to check by hand
-    before every retention or resource change, not something CI enforces.
+  - *Mitigation*: partial. The Vector pipeline — the block that actually
+    diverged — is now shared between both VictoriaLogs variants via the
+    `vl-common-helm-values` ConfigMap (2026-08-30), so it can no longer
+    drift; the remaining variant-specific values are still a diff to check
+    by hand, not something CI enforces.
 
 ### Neutral
 
@@ -225,12 +232,13 @@ GitOps patterns should not default to.
   fully to metrics and logs, which share `VMRule`-based alerting; traces
   join the same Grafana instance and the same vendor's Helm charts, but
   keep a query interface of their own.
-- The active deployment runs single-node VictoriaMetrics at `1d` retention
+- The active deployment ran single-node VictoriaMetrics at `1d` retention
   — explicitly commented in the chart values as "Minimal retention, for
-  tests only" — so the resource-footprint advantage claimed above is not
-  currently being exercised at production-equivalent retention on this
-  cluster; it becomes a live comparison only once cluster mode (`10d`
-  retention) is switched on.
+  tests only" — for the repository's whole life until 2026-08-30, when
+  retention became a deliberate `14d`. The resource-footprint advantage
+  claimed above is therefore only now being exercised at a
+  production-shaped retention, and still without a side-by-side
+  Prometheus measurement to attach a number to it.
 
 ---
 
@@ -264,7 +272,8 @@ that the metrics-side `VMAlert` does not match.
   VMServiceScrape/VMScrapeConfig scrape mechanisms, and single vs cluster
   mode for VictoriaMetrics
 - [Logs]({{< relref "/docs/platform/observability/logs.md" >}}) — VictoriaLogs,
-  Vector as the shipper, and the LogsQL syntax rules
+  Vector as the shipper (decision recorded in
+  [ADR-0030](0030-vector-as-log-shipper.md)), and the LogsQL syntax rules
 - [Observability]({{< relref "/docs/platform/observability/_index.md" >}}) —
   "Why VictoriaMetrics and VictoriaLogs", and the shared-operator/shared-Grafana
   rationale this record formalizes

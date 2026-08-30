@@ -1,0 +1,23 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: kubernetes-event-exporter
+  namespace: observability
+spec:
+  groups:
+    - name: KubernetesEventExporter
+      rules:
+        # WatchErrors is registered as a labelless counter (pkg/kube/watcher.go,
+        # WatchErrors.Inc()) — no namespace grouping is possible, so the message
+        # below deliberately doesn't reference $labels.namespace. The cluster
+        # external label is stamped by vmalert, so per-cluster attribution in
+        # Slack still works. The rate(...[5m]) > 0 held for 15m is deliberate:
+        # transient, self-healing informer watch errors don't fire; only a
+        # sustained error stream does, hence severity warning rather than critical.
+        - alert: KubernetesEventExporterWatchErrors
+          annotations:
+            message: "kubernetes-event-exporter reports watch errors — cluster Events may be missing from VictoriaLogs."
+          expr: sum(rate(event_exporter_watch_errors[5m])) > 0
+          for: 15m
+          labels:
+            severity: warning

@@ -2,7 +2,7 @@
 title: AWS
 weight: 20
 description: The five OpenTofu stacks that implement the three-stage model on AWS, and why EKS bootstrap needs two of them.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 AWS instantiates the [three-stage model]({{< relref "/docs/platform/foundations/_index.md" >}})
@@ -13,7 +13,7 @@ command spans several:
 | Stack | Model stage | Owns |
 |---|---|---|
 | `opentofu/aws/network/` | Network | VPC across three AZs, pod subnets on a secondary CIDR for Cilium ENI prefix delegation, a Route53 private zone, the Tailscale subnet router |
-| `opentofu/aws/openbao/cluster/` | Security | OpenBao on EC2 with KMS auto-unseal. Ships as `mode = "dev"` — a single node on `file` storage; `mode = "ha"` builds the five-node Raft cluster on SPOT with RAID-0 NVMe |
+| `opentofu/aws/openbao/cluster/` | Security | OpenBao on EC2 with KMS auto-unseal. Ships as `mode = "dev"` — a single node on `file` storage; `mode = "ha"` builds the five-node Raft cluster on a mix of on-demand and SPOT with RAID-0 NVMe |
 | `opentofu/aws/openbao/management/` | Security | The three-tier PKI (root → intermediate → leaf), the cert-manager AppRole, backup automation |
 | `opentofu/aws/eks/init/` | Kubernetes (Stage 1) | The EKS cluster, managed node groups, bootstrap addons, IAM, the `flux-system` namespace and secrets |
 | `opentofu/aws/eks/configure/` | Kubernetes (Stage 2) | Cilium, Flux Operator + Instance |
@@ -91,7 +91,7 @@ unless you change it.
 |---|---|---|
 | Nodes | 1 | 5 |
 | Storage backend | `file`, on the root volume | Raft, with `retry_join` auto-discovery by tag |
-| Instances | `t3.micro`, on-demand | SPOT across several pools, mixed-instances policy |
+| Instances | `t3.micro`, on-demand | 3 on-demand (quorum majority) + 2 ~95% SPOT, mixed-instances policy (`t3.small`/`t3.medium`) |
 | Data volume | gp3 root volume | RAID-0 over instance-store NVMe |
 | Unseal | KMS auto-unseal | KMS auto-unseal |
 
@@ -103,14 +103,17 @@ nothing to talk to.
 
 In `ha` mode, an interrupted SPOT node comes back from a different pool and
 rejoins automatically, and KMS auto-unseal means it does so without a manual
-`bao operator unseal`. All five ASG overrides carry equal `weighted_capacity`,
-because the ASG reads `desired_capacity` in capacity units — unequal weights
-would make the quorum size depend on which SPOT pool happened to win, rather
-than always being five.
+`bao operator unseal`. The two mixed-instances overrides (`t3.small`,
+`t3.medium`) carry no `weighted_capacity` at all — the ASG reads
+`desired_capacity` in capacity units directly, so leaving it unset is what
+makes five mean five nodes regardless of which pool wins (unequal weights
+were the previous, removed approach, and made the quorum size depend on
+pricing). Three of the five are pinned on-demand to hold the quorum
+majority; only the two above that base float on SPOT.
 
 Neither shape is a production posture. The cluster is torn down and
 reprovisioned on every platform test, which is what `dev` mode is priced for
-and what the SPOT-everywhere, RAID-0-with-no-redundancy choices in `ha` mode
+and what the mostly-SPOT, RAID-0-with-no-redundancy choices in `ha` mode
 are priced for. `opentofu/aws/openbao/management/`
 then layers the three-tier PKI, the cert-manager AppRole, and policies on
 top of the running cluster — see `opentofu/aws/openbao/cluster/README.md` and

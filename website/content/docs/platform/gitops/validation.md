@@ -2,7 +2,7 @@
 title: Validation
 weight: 30
 description: Why manifests are validated as Flux's rendered desired state, not as raw source files, and the two properties that make the gate real.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 "Git is the source of truth" only holds if what merges to `main` is actually
@@ -65,8 +65,8 @@ what a passing run means here, not incidental detail.
 this branch by rendering the repository and counting both sides directly:
 the tree has **one** raw `Deployment` manifest
 (`tooling/base/dagger-engine/deployment.yaml`); the rendered bundle has
-**~69 controllers** — 47 `Deployment`, 11 `Job`, 5 `StatefulSet`, 3
-`DaemonSet`, 3 `CronJob` — everything else arrives as a `HelmRelease` and
+**156 controllers** — 109 `Deployment`, 25 `Job`, 10 `StatefulSet`, 8
+`DaemonSet`, 4 `CronJob` — everything else arrives as a `HelmRelease` and
 only becomes a controller after `helm template` runs. A best-practices audit
 pointed at the source tree would check one workload; pointed at the
 rendered bundle, it checks what's actually scheduled.

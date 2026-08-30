@@ -192,9 +192,10 @@ spec:
 
         - Security & Identity:
             - Zitadel:
-                # The IdP is a singleton shared by both clusters (ADR-0022), so
-                # this points wherever it actually runs rather than at the local
-                # cluster's own domain.
+                # The IdP is a singleton that can run on either cloud (ADR-0024,
+                # superseding ADR-0022's aws-0-only version), so this points
+                # wherever it actually runs rather than at the local cluster's
+                # own domain.
                 href: ${identity_provider_url}
                 description: Identity & Access Management
                 icon: zitadel.png

@@ -7,6 +7,9 @@ resources:
   - grafana-dashboard-explorer-local.yaml
   - grafana-datasource.yaml
 
+  # Shared values for BOTH victoria-logs variants below
+  - vl-common-helm-values-configmap.yaml
+
   # Choose between single or cluster helm release
 
   # VL Single

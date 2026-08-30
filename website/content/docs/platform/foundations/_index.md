@@ -2,7 +2,7 @@
 title: Foundations
 weight: 10
 description: Why OpenTofu and Terramate, and the three-stage model every cloud lane implements before Flux takes over.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Everything a Kubernetes API server needs to exist *before* Flux can reconcile
@@ -13,7 +13,7 @@ tools, and why three stages rather than one. For the commands and what each
 stage actually creates, see [Get Started]({{< relref "/docs/get-started/_index.md" >}})
 and this section's cloud-specific page.
 
-![Five OpenTofu stacks running in Terramate's dependency order: network creates the VPC, pod subnets, Route53 zones and the Tailscale subnet router; openbao/cluster and openbao/management then build the secrets and PKI layer; eks/init creates the cluster on a temporary VPC-CNI; eks/configure deletes that CNI, installs Cilium and Flux, and hands the rest of the platform to GitOps](/images/diagrams/bootstrap-stages.svg)
+![Five OpenTofu stacks running in Terramate's dependency order: network creates the VPC, pod subnets, a Route53 zone and the Tailscale subnet router; openbao/cluster and openbao/management then build the secrets and PKI layer; eks/init creates the cluster on a temporary VPC-CNI; eks/configure deletes that CNI, installs Cilium and Flux, and hands the rest of the platform to GitOps](/images/diagrams/bootstrap-stages.svg)
 
 ## Why OpenTofu
 

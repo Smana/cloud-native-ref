@@ -3,7 +3,7 @@ title: Secret store keys use a name grammar both clouds accept
 linkTitle: 0023 · Portable secret names
 weight: 230
 description: Shared-base ExternalSecrets key on flat dash-separated names rather than AWS-style slash paths, because a GCP Secret Manager secret ID matches [A-Za-z0-9_-]+ and a slash path is not a well-formed resource name there — so an AWS-shaped key made every shared base structurally undeployable on gcp-0.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 **Status**: Accepted
@@ -80,8 +80,9 @@ and never deletes a source, so it is re-runnable and reversible.
 The OpenBao CA chain is **not** renamed into the shared base. Its *shape*
 differs by cloud, not just its name: `aws-0` stores a JSON object and selects
 the `ca` property out of it, while `gcp-0` stores raw PEM by deliberate design
-(`scripts/openbao-config.sh`: "certificates, no key"). No rename reconciles
-that, so `observability/gcp-0` patches the whole `spec.data` list instead.
+(`scripts/openbao-config.sh:51`: "by design no root-CA secret exists on GCP,
+only the chain"). No rename reconciles that, so `observability/gcp-0` patches
+the whole `spec.data` list instead.
 
 A naming rule fixes names. Where two clouds genuinely store different things, an
 overlay is the honest expression, not a more clever variable.
@@ -111,14 +112,21 @@ base someone writes.
 - `aws-0`'s store must be migrated before its next deploy. The old names are
   left in place, so the migration is reversible and the two coexist until the
   old ones are removed by hand.
-- Names are longer, and the longest is 56 characters against a 255-character
-  limit in both stores.
+- Names are longer, and the longest is 63 characters
+  (`observability-victoria-metrics-k8s-stack-alertmanager-slack-app`) against a
+  255-character limit in both stores.
 - `./scripts/secret-store.sh check --cloud aws|gcp` reports which keys a cluster
   needs and which are missing, so an unseeded secret surfaces immediately
   instead of as a ten-minute HelmRelease timeout.
 - `seed` creates the three secrets the platform **generates** rather than
   obtains — the two Harbor passwords and Grafana's admin pair. It never
   overwrites, so it is safe on a store whose entries were written by hand.
+  **Update (2026-08-30):** `seed_body` has since grown two more arms: a
+  generated `cnpg/xplane-harbor/roles/harbor` password (#1873), and a
+  `cnpg/xplane-zitadel/superuser` entry that is **derived**, not generated —
+  it copies the admin password out of `zitadel-envvars` rather than rolling a
+  fresh one, so CNPG and ZITADEL never disagree about the `postgres` role's
+  password (#1875).
 - Most of the store is still not created by code, and deliberately so. An OIDC
   client ZITADEL issued, a Slack app, a GitHub App key, a vendor token: a
   generated placeholder for any of those would produce a secret that exists,

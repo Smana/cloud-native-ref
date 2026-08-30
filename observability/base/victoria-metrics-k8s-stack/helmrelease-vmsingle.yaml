@@ -41,7 +41,12 @@ spec:
 
     vmsingle:
       spec:
-        retentionPeriod: "1d" # Minimal retention, for tests only
+        # Deliberate value (2026-08-30): 14d fits the 10Gi PVC at this fleet size.
+        # VictoriaMetrics OSS has no disk-based retention cap — the safety valve is
+        # -storage.minFreeDiskSpaceBytes (existing data is never deleted by it; new
+        # writes are rejected below the threshold — lossless only while vmagent's
+        # own disk buffer absorbs the outage, not an unconditional guarantee).
+        retentionPeriod: "14d"
         replicaCount: 1
         storage:
           accessModes:

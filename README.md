@@ -15,11 +15,13 @@ YAML claim into a whole application.
 
 > Editable source: [`docs/architecture/platform-overview.drawio`](docs/architecture/platform-overview.drawio)
 
-Three bands: **AWS managed services** on the left (Route 53, ELB, IAM via EKS Pod Identity, S3,
-KMS), the **EKS cluster** in the centre in four tiers (GitOps & composition, compute &
-networking, security & identity, observability), and **applications & data** on the right. Flux
-reconciles the repository; Tailscale provides private access; OpenBao holds the secrets and the
-PKI. The self-hosted LLM platform is opt-in and off by default.
+Three bands: the **cloud's managed services** on the left, with their AWS and GCP equivalents
+side by side (Route 53 / Cloud DNS, ELB / Cloud Load Balancing, IAM via EKS Pod Identity / GKE
+Workload Identity, S3 / Cloud Storage, KMS / Cloud KMS), the **Kubernetes cluster** in the centre
+in four tiers (GitOps & composition, compute & networking, security & identity, observability),
+and **applications & data** on the right. Flux reconciles the repository; Tailscale provides
+private access; OpenBao holds the secrets and the PKI. The self-hosted LLM platform is opt-in and
+off by default.
 
 Every subsystem is explained at
 [cnref.ogenki.io/docs/platform](https://cnref.ogenki.io/docs/platform/).
@@ -42,7 +44,7 @@ export TF_VAR_tailscale_api_key=<your-tailscale-api-key>
 cd opentofu && terramate script run deploy
 
 # 4. EKS — two stages: cluster on a temporary CNI, then Cilium + Flux (~15 min)
-cd eks/init && terramate script run deploy
+cd aws/eks/init && terramate script run deploy
 
 # 5. Get a kubeconfig
 aws eks update-kubeconfig --region eu-west-3 --name aws-0
@@ -75,11 +77,20 @@ The blog posts that explain several of these components in long form are collect
 ```
 .
 ├── opentofu/                      # 🔧 Infrastructure as Code
-│   ├── network/                   # VPC, Tailscale VPN
-│   ├── openbao/                   # Secrets management and PKI
-│   └── eks/                       # Kubernetes cluster (two-stage)
-│       ├── init/                  # Stage 1: EKS + bootstrap addons
-│       └── configure/             # Stage 2: Cilium + Flux
+│   ├── aws/                       # AWS stacks
+│   │   ├── network/               # VPC, Tailscale VPN
+│   │   ├── openbao/               # Secrets management and PKI
+│   │   ├── eks/                   # Kubernetes cluster (two-stage)
+│   │   │   ├── init/              # Stage 1: EKS + bootstrap addons
+│   │   │   └── configure/         # Stage 2: Cilium + Flux
+│   │   └── llm-platform/          # Opt-in: S3 Files + IAM for the LLM platform
+│   ├── gcp/                       # GCP stacks
+│   │   ├── network/               # VPC, Tailscale VPN
+│   │   ├── openbao/               # Secrets management and PKI
+│   │   └── gke/                   # Kubernetes cluster (two-stage)
+│   │       ├── init/              # Stage 1: GKE cluster
+│   │       └── configure/         # Stage 2: Cilium + Flux
+│   └── shared/                    # Owned by neither cloud (Tailscale tailnet, AWS↔GCP federation)
 ├── flux/                          # 🚀 Flux operator and configuration
 ├── clusters/aws-0/          # Cluster-specific Kustomizations
 ├── infrastructure/                # 🏗️ Platform infrastructure

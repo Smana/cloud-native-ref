@@ -321,10 +321,6 @@ OLD_NAMES=(
     "harbor/admin/password"
     "harbor/valkey/password"
     "headlamp/envvars"
-    "observability/grafana/oncall-admin"
-    "observability/grafana/oncall-rabbitmq"
-    "observability/grafana/oncall-slackapp"
-    "observability/grafana/oncall-valkey"
     # These two live under flux/, not */base, so the original sweep for the
     # rename never saw them -- it scanned the five */base directories only.
     # Both work on aws-0 (Secrets Manager takes the slashes) and neither can
@@ -428,10 +424,6 @@ cmd_migrate_aws() {
 #   without them -- the SSO button fails, the pod does not -- so seeding the
 #   admin pair alone is what unblocks the HelmRelease, and the four
 #   Kustomizations behind it.
-#
-# Not seeded, though it is pure generation: observability-grafana-oncall-*.
-# grafana-oncall is built under observability/base but wired into no
-# Kustomization, so it runs nowhere on either cluster.
 #
 # The two cnpg entries are database credentials the SQLInstance Composition asks
 # for, and their separator is cloud-specific for the same reason it is in the
