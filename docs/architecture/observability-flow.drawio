@@ -121,9 +121,6 @@
         <mxCell id="slack" value="&lt;b&gt;Slack&lt;/b&gt;&#xa;receiver slack-monitoring" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="990" y="874" width="280" height="56" as="geometry" />
         </mxCell>
-        <mxCell id="oncall" value="&lt;b&gt;Grafana OnCall&lt;/b&gt;&#xa;A complete HelmRelease pair with its&#xa;Postgres and Valkey already provisioned —&#xa;and no Kustomization anywhere references it.&#xa;It does not run on this cluster." style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="1290" y="770" width="200" height="160" as="geometry" />
-        </mxCell>
         <mxCell id="e35" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="vmrule" target="vmalert">
           <mxGeometry relative="1" as="geometry">
           </mxGeometry>

@@ -236,12 +236,31 @@ claims:
       estate was removed on 2026-08-29 (ADR-0029, RunLore replacing it);
       these pages must not resurrect the undeployed-OnCall narrative now
       that there is no OnCall left to be undeployed.
+
+      The diagrams are pinned as well, and both halves of each one: the
+      `.drawio` source AND the committed SVG the site actually serves. They
+      are separate files kept in step by hand, so fixing the source and
+      forgetting to re-export leaves every reader looking at the old
+      picture while a prose-only check reports green -- which is exactly
+      how a dashed "does not run on this cluster" box outlived the estate
+      it described. Banning the word outright is the right strength here:
+      a diagram of this platform has no reason to name a component the
+      platform no longer has, and reintroducing one means updating this
+      claim in the same commit.
     source:
       file: website/content/docs/decisions/0029-runlore-over-grafana-oncall.md
     pages:
       - website/content/docs/platform/observability/_index.md
       - website/content/docs/platform/observability/dashboards-and-alerts.md
       - website/content/docs/guides/fork-and-adapt.md
+      - path: docs/architecture/observability-flow.drawio
+        must_not_contain: ['(?i)oncall']
+      - path: docs/architecture/request-path.drawio
+        must_not_contain: ['(?i)oncall']
+      - path: website/static/images/diagrams/observability-flow.svg
+        must_not_contain: ['(?i)oncall']
+      - path: website/static/images/diagrams/request-path.svg
+        must_not_contain: ['(?i)oncall']
     must_not_contain:
       - 'built but not deployed'
       - 'never actually deploys'
