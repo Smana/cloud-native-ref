@@ -18,7 +18,7 @@ of `kustomization.yaml`.
 |---|---|---|
 | Retention | `14d` — deliberate as of 2026-08-30; sized to fit the 10Gi PVC at this fleet's ingest rate | `10d` |
 | Replication | `replicaCount: 1` | `replicationFactor: 2`, separate `vmstorage`/`vmselect`/`vminsert` with zone-aware anti-affinity |
-| Storage | 10Gi RWO | 10Gi (`vmstorage`) + 2Gi (`vminsert`/`vmselect`), platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |
+| Storage | 10Gi RWO | 10Gi (`vmstorage`) + 2Gi (`vmselect` only — `vminsert` is stateless), platform default class (`gp3` on aws-0, `standard-rwo` on gcp-0) |
 | Alertmanager | `replicaCount` unset (chart default) | `replicaCount: 2` |
 
 `aws-0`'s overlay (`observability/aws-0/victoria-metrics-k8s-stack/`)

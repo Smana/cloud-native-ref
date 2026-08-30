@@ -2,7 +2,7 @@
 title: The InferenceService claim
 weight: 20
 description: One model, one YAML file — the complete claim, what it renders, and every field it accepts.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 A model on this platform is one file. No Deployment, no Service, no HPA, no
@@ -14,7 +14,7 @@ manifest under `apps/base/ai/llm/`.
 
 `apps/base/ai/llm/qwen-coder-fim.yaml` is the most instructive of the four,
 because almost every field in it is a decision rather than a default. Its
-comments are reproduced as written — they are the reasoning, and stripping
+comments are condensed from the file — they are the reasoning, and stripping
 them would leave the least interesting half:
 
 ```yaml

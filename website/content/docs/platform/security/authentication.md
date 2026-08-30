@@ -2,7 +2,7 @@
 title: Authentication
 weight: 15
 description: One Google Workspace identity, brokered by ZITADEL, reaching Grafana, Harbor, the Flux UI, Headlamp and Kubernetes RBAC — and where each cloud differs.
-lastVerified: 2026-08-29
+lastVerified: 2026-08-30
 ---
 
 Every human-facing service on this platform is behind the same identity. You log
@@ -166,7 +166,7 @@ succeeds, the user has no groups, and nothing logs an error.
 ## Setting it up
 
 The five ordered bootstrap steps — and why the order is load-bearing — are in
-[Verify the cluster]({{< relref "/docs/get-started/gcp/verify.md" >}}).
+[Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}).
 
 ## Related
 

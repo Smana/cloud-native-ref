@@ -2,7 +2,7 @@
 title: App field reference
 weight: 15
 description: Complete spec field reference for the App claim — every field, type, and default, reconciled against the pinned XRD.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Complete list of every `App` `spec` field. **Required** fields are marked.
@@ -300,6 +300,19 @@ to read-only rather than silently granting write.
 and its `region` pattern could not express a GCP region at all. `spec.s3Bucket` no longer
 exists; `customPolicy` moved under `aws`.
 {{< /callout >}}
+
+### `secrets`
+
+A map keyed by an arbitrary name you choose; unlike `externalSecrets[]` below,
+each entry mounts straight into the pod as environment variables — no
+separate Kubernetes `Secret` object, no `envFrom` round-trip. Confirmed as a
+distinct field in the pinned XRD schema; no claim in this repository uses it
+today (every live claim goes through `externalSecrets[]` instead).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `path` | string | — (**required**) | Path to the secret in AWS Secrets Manager. |
+| `keys` | []string | — | Keys to fetch from the secret; omit for all keys. |
 
 ### `externalSecrets[]`
 

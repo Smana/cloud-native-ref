@@ -2,7 +2,7 @@
 title: PKI & Secrets
 weight: 20
 description: The three-tier PKI chain OpenBao issues from, how cert-manager and External Secrets pull from it, and how the chain rotates.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Every internal TLS certificate on this platform — Gateway API listeners,
@@ -54,12 +54,13 @@ openssl x509 -req -in intermediate-ca.csr -CA root-ca.pem -CAkey root-ca-key.pem
   -extfile intermediate-ca.cnf -extensions v3_req
 ```
 
-The intermediate's certificate and private key (`bundle`/`ca` in the JSON
-shape below) are what `opentofu/aws/openbao/management/pki.tf` imports into the
-`pki_private_issuer` mount — `vault_pki_secret_backend_config_ca`, followed
-by a CSR/sign/set-signed sequence that makes OpenBao the active issuer for
-that intermediate. The root material itself is read from AWS Secrets
-Manager, not committed to Git:
+The root's certificate and private key (`bundle`/`ca` in the JSON shape
+below) are what `opentofu/aws/openbao/management/pki.tf` imports into the
+`pki_private_issuer` mount via `vault_pki_secret_backend_config_ca`, followed
+by a CSR/sign/set-signed sequence in which OpenBao generates its own
+intermediate key and self-signs it against that imported root, becoming the
+mount's active issuer. That root material is read from AWS Secrets Manager,
+not committed to Git:
 
 ```hcl
 resource "vault_pki_secret_backend_config_ca" "pki" {
@@ -174,12 +175,13 @@ spec:
 ```
 
 Both referenced secrets are `ExternalSecret` objects
-(`security/base/cert-manager/`) pulling from the same AWS Secrets Manager
+(`security/aws-0/openbao/`) pulling from the same AWS Secrets Manager
 entries the OpenTofu management stack writes to — one for the CA chain
 (`certificates/priv.aws.ogenki.io/root-ca`), one for the AppRole
-credential (`openbao-cloud-native-ref-approles-cert-manager`, the portable
-dash grammar of [ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}});
-the CA-chain key keeps its slash shape as that ADR's documented exception).
+credential (`openbao/cloud-native-ref/approles/cert-manager`). Both keep
+their slash shape: this directory is AWS-only, not one of the shared bases
+[ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}})
+renamed to a portable dash grammar.
 Neither the
 PKI mount nor the AppRole needs a `namespace:` field on the issuer — both
 live in OpenBao's root namespace (see

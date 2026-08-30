@@ -7,7 +7,7 @@ lastVerified: 2026-08-30
 
 ## Grafana Operator
 
-`observability/base/grafana-operator/` installs `grafana-operator` (5.24.0),
+`observability/base/grafana-operator/` installs `grafana-operator` (5.25.0),
 but it does not deploy its own Grafana. Its `Grafana` custom resource
 (`grafana-victoriametrics.yaml`) is configured as **external**, pointing at
 the Grafana subchart already bundled inside `victoria-metrics-k8s-stack`:
@@ -59,7 +59,7 @@ scope for this always-on page:
 
 | Dashboard | Folder | Source |
 |---|---|---|
-| `kubernetes-views-{global,namespaces,nodes,pods}` | `kubernetes` | Authored in-repo |
+| `kubernetes-views-{global,namespaces,nodes,pods}` | `observability` | Imported — vendored by the `victoria-metrics-k8s-stack` chart |
 | `kubernetes-node-exporter-full` | `kubernetes` | Authored in-repo |
 | `kubernetes-karpenter` | `kubernetes` | Imported, [grafana.com dashboard 20398](https://grafana.com/grafana/dashboards/20398/) |
 | `app-all-in-one` | `apps` | Authored in-repo |

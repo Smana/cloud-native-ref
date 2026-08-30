@@ -2,7 +2,7 @@
 title: AI Platform
 weight: 50
 description: An OpenAI-compatible vLLM serving platform behind Envoy AI Gateway, declared one model per Crossplane claim — off by default until two independent gates are both released.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 An OpenAI-compatible inference platform on EKS: vLLM on L4 spot GPUs, fronted
@@ -28,7 +28,7 @@ plain Flux reconciliation both leave the cluster LLM-free.
 | **Prompt routing** | vLLM Semantic Router, as a gRPC `ext_proc` filter — only acts on `model: MoM` |
 | **Autoscaling** | KEDA, three vLLM saturation triggers OR-combined, `min=1` (always warm) |
 | **Weights** | Amazon S3 Files (POSIX over S3), RWX PVC shared by a preload Job and the serving pod |
-| **GPUs** | Karpenter `gpu-l4` NodePool — single-GPU `g6` spot instances, Bottlerocket NVIDIA AMI, capped at 4 GPUs |
+| **GPUs** | Karpenter `gpu-l4` NodePool — single-GPU `g6` spot-first instances, Bottlerocket NVIDIA AMI, capped at 4 GPUs |
 | **Composition** | `crossplane-inference-service` KCL module `0.9.0`, pinned inside `crossplane-configuration-aws:v0.4.6` |
 
 ## Why self-host at all
@@ -99,11 +99,15 @@ the only gate is the umbrella Kustomization `clusters/gcp-0/llm-platform.yaml`
 (`spec.suspend: true`). Weights are served from a GCS bucket over the Cloud
 Storage FUSE CSI driver instead of an S3 Files POSIX mount — see
 [ADR-0021]({{< relref "/docs/decisions/0021-gcs-fuse-for-model-weights-on-gcp.md" >}})
-for why, including what it gives up. **Do not resume that umbrella yet**:
-serving pods have no per-claim GCP read identity (the `InferenceService`
-composition renders none for GCP), so vLLM pods cannot read the weights
-bucket — the gap is recorded in `clusters/gcp-0-llm-platform/README.md` and
-must be closed first.
+for why, including what it gives up. **The umbrella stays suspended on cost
+and an open GPU quota, not on missing identity**: each claim's per-claim GCP
+read identity *is* rendered as of `crossplane-configuration` v0.4.6 — the
+version already pinned here. The first resume (2026-08-28) proved as much on
+a live cluster — the per-claim `GCPWorkloadIdentity` reached Ready and the
+preload Job wrote the weights to GCS — and stalled only once it reached the
+GPU itself: `GPUS_ALL_REGIONS` is `0` on the project, a Google quota this
+repository cannot route around. See `clusters/gcp-0-llm-platform/README.md`
+for the full failure-order watch list before the next resume.
 
 ## Security posture
 
