@@ -210,8 +210,9 @@ vendored here, only referenced by name.
 
 ## Grafana OnCall (removed)
 
-`observability/base/grafana-oncall/` — a complete engine + RabbitMQ +
-Postgres + Valkey install that no Flux `Kustomization` ever referenced — was
+The former grafana-oncall directory under `observability/base/` — a complete
+engine + RabbitMQ + Postgres + Valkey install that no Flux `Kustomization`
+ever referenced — was
 removed on 2026-08-29, along with the `grafana-oncall-app` plugin and the
 provisioning ConfigMap that pointed it at an `oncall-engine` Service that
 never existed. Upstream OnCall OSS is archived (read-only on GitHub since

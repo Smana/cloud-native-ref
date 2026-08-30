@@ -14,8 +14,8 @@ lastVerified: 2026-08-30
 
 ## Context
 
-This repository carried a complete Grafana OnCall deployment under
-`observability/base/grafana-oncall/`: the `oncall` chart 1.16.5 (engine plus
+This repository carried a complete Grafana OnCall deployment in a
+grafana-oncall directory under `observability/base/`: the `oncall` chart 1.16.5 (engine plus
 Celery workers), a RabbitMQ `HelmRelease`, a `SQLInstance` and a `KVStore`
 claim for its PostgreSQL database and Valkey cache, four
 `ExternalSecret`s, and two `HTTPRoute`s. It was never referenced by any Flux
@@ -151,7 +151,7 @@ OnCall manifests sat unwired.
 ### Neutral
 
 - The unwired stack and its live residue were removed on 2026-08-29: the
-  `observability/base/grafana-oncall/` directory, the `grafana-oncall-app`
+  grafana-oncall directory under `observability/base/`, the `grafana-oncall-app`
   plugin, the provisioning ConfigMap pointing at the nonexistent
   `oncall-engine:8080`, and the secret-store seeds.
 

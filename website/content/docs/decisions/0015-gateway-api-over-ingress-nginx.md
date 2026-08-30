@@ -25,7 +25,7 @@ repository, and Cilium's own Ingress controller
 `opentofu/aws/eks/init/helm_values/cilium.yaml`; only `gatewayAPI.enabled:
 true` is set. **Update (2026-08-30):** the one literal `ingress-nginx`
 reference this record used to cite — a subchart toggle set to `enabled: false`
-in `observability/base/grafana-oncall/helmrelease-oncall.yaml` — is gone along
+in the OnCall HelmRelease — is gone along
 with the rest of the Grafana OnCall estate, removed 2026-08-29
 ([ADR-0029](0029-runlore-over-grafana-oncall.md)). Zero literal `ingress-nginx`
 references remain anywhere in this repository's manifests.
@@ -108,9 +108,9 @@ use `cilium-tailscale`.
   — see Consequences.
 - Smaller ecosystem than `Ingress`: fewer worked examples, and some
   upstream charts still ship only an `ingress:` values stanza with no
-  Gateway API templates (`observability/base/grafana-oncall/helmrelease-oncall.yaml`
-  disables both `ingress` and a bundled `ingress-nginx` subchart it ships
-  with no alternative).
+  Gateway API templates (the since-removed OnCall HelmRelease —
+  [ADR-0029](0029-runlore-over-grafana-oncall.md) — disabled both `ingress`
+  and a bundled `ingress-nginx` subchart it shipped with no alternative).
 
 ### Option 2: ingress-nginx
 
@@ -241,9 +241,10 @@ can run, not chosen freely.
 - **Smaller ecosystem than `Ingress`.** Fewer worked examples exist for
   Gateway API than for `Ingress`, and some upstream charts still ship
   only an `ingress:` values stanza with no Gateway API template —
-  `observability/base/grafana-oncall/helmrelease-oncall.yaml` turns off
-  both an `ingress:` stanza and a bundled `ingress-nginx` subchart the
-  chart offers as its only routing option.
+  the OnCall HelmRelease (removed 2026-08-29 with the estate,
+  [ADR-0029](0029-runlore-over-grafana-oncall.md)) turned off both an
+  `ingress:` stanza and a bundled `ingress-nginx` subchart the chart
+  offered as its only routing option.
   - *Mitigation*: none beyond authoring a standalone `HTTPRoute` next to
     such a chart, as `tooling/base/homepage/httproute.yaml` already does.
 
