@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'observability/base/victoria-logs/helmrelease-*.yaml'
+      - 'observability/base/victoria-logs/vl-common-helm-values-configmap.yaml'
       - '.github/workflows/vector-config-validation.yml'
   push:
     branches:
@@ -11,11 +12,20 @@ on:
       - feat_*
     paths:
       - 'observability/base/victoria-logs/helmrelease-*.yaml'
+      - 'observability/base/victoria-logs/vl-common-helm-values-configmap.yaml'
 
 jobs:
   validate-vector-config:
     name: Validate Vector Log Parsing Configuration
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both variants must carry the pipeline. vlcluster silently shipped
+        # without it until the shared ConfigMap landed — validating only the
+        # active variant is how that went unnoticed.
+        variant: [vlsingle, vlcluster]
 
     steps:
       - name: Checkout code
@@ -27,23 +37,51 @@ jobs:
       - name: Extract Vector configuration
         id: extract
         run: |
-          echo "Extracting Vector customConfig from HelmRelease..."
+          echo "Composing Helm values for ${{ matrix.variant }}..."
 
-          # Extract the Vector customConfig section from HelmRelease YAML
-          # Creates a standalone Vector configuration file
+          # The Vector pipeline lives in the shared vl-common-helm-values
+          # ConfigMap, which both variants pull in via spec.valuesFrom. Reproduce
+          # what Flux does: shared values first, the HelmRelease's own
+          # spec.values deep-merged on top (maps merge, lists replace) — that is
+          # what supplies the per-variant sink endpoints and catch-all sink.
+          yq '.data."values.yaml"' \
+            observability/base/victoria-logs/vl-common-helm-values-configmap.yaml \
+            > /tmp/vl-common-values.yaml
+
+          yq '.spec.values' \
+            "observability/base/victoria-logs/helmrelease-${{ matrix.variant }}.yaml" \
+            > /tmp/vl-inline-values.yaml
+
+          yq eval-all '. as $item ireduce ({}; . * $item)' \
+            /tmp/vl-common-values.yaml /tmp/vl-inline-values.yaml \
+            > /tmp/vl-values.yaml
+
+          # Extract the Vector customConfig section as a standalone Vector config
           cat > /tmp/vector-extract.yaml << 'EXTRACT_SCRIPT'
           {
-            "sources": .spec.values.vector.customConfig.sources,
-            "transforms": .spec.values.vector.customConfig.transforms,
-            "sinks": .spec.values.vector.customConfig.sinks,
-            "tests": .spec.values.vector.customConfig.tests
+            "sources": .vector.customConfig.sources,
+            "transforms": .vector.customConfig.transforms,
+            "sinks": .vector.customConfig.sinks,
+            "tests": .vector.customConfig.tests
           }
           EXTRACT_SCRIPT
 
           yq eval-all \
             --from-file /tmp/vector-extract.yaml \
-            observability/base/victoria-logs/helmrelease-vlsingle.yaml \
+            /tmp/vl-values.yaml \
             > /tmp/vector-config.yaml
+
+          # Fail loudly on an empty pipeline. Without this, a variant that stops
+          # pulling in the shared values yields a null config and the downstream
+          # `vector test` trivially "passes" with zero test cases.
+          test_count=$(yq '.tests | length' /tmp/vector-config.yaml)
+          if [ "$(yq '.sources // "null"' /tmp/vector-config.yaml)" = "null" ] \
+            || [ "${test_count}" -eq 0 ]; then
+            echo "::error::No Vector pipeline resolved for ${{ matrix.variant }}." \
+              "Does its HelmRelease still reference the vl-common-helm-values" \
+              "ConfigMap in spec.valuesFrom?"
+            exit 1
+          fi
 
           echo "Vector config extracted to /tmp/vector-config.yaml"
 
@@ -55,7 +93,7 @@ jobs:
           echo "Sinks:"
           yq eval '.sinks | keys' /tmp/vector-config.yaml
           echo "Tests:"
-          yq eval '.tests | length' /tmp/vector-config.yaml
+          echo "${test_count}"
 
       - name: Validate Vector configuration syntax
         run: |
@@ -83,7 +121,7 @@ jobs:
       - name: Test coverage summary
         if: success()
         run: |
-          echo "## Vector Configuration Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Vector Configuration Validation Results (${{ matrix.variant }})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Validation Status**: PASSED" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -104,7 +142,7 @@ jobs:
       - name: Report failure
         if: failure()
         run: |
-          echo "## Vector Configuration Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Vector Configuration Validation Results (${{ matrix.variant }})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "❌ **Validation Status**: FAILED" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -115,4 +153,5 @@ jobs:
           echo "- Invalid field references" >> $GITHUB_STEP_SUMMARY
           echo "- Type mismatches in assertions" >> $GITHUB_STEP_SUMMARY
           echo "- Missing or incorrect test data structure" >> $GITHUB_STEP_SUMMARY
+          echo "- A variant no longer pulling in the shared vl-common-helm-values ConfigMap" >> $GITHUB_STEP_SUMMARY
           exit 1
