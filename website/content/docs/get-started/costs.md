@@ -6,8 +6,7 @@ lastVerified: 2026-08-29
 ---
 
 Roughly **$590/month on AWS** and **$220/month on GCP** for the same platform,
-with the LLM components disabled on both — down from $730 on AWS since
-control-plane logging was turned off.
+with the LLM components disabled on both.
 
 The more useful number is smaller: **$66/month bills on AWS even when every
 cluster is destroyed**, and almost none of it is the platform.
@@ -23,8 +22,7 @@ spend without a BigQuery export — so treat them as ±20%.
 
 | Line | $/month | Notes |
 |---|---:|---|
-| ~~CloudWatch vended logs~~ | ~~144~~ **0** | EKS control-plane logging, **disabled 2026-08-29** |
-| Spot compute, 6 nodes | 250 | measured spot rates, `eu-west-3` |
+| **Spot compute, 6 nodes** | **250** | **largest single item** — measured spot rates, `eu-west-3` |
 | NAT gateway | 76 | $35 gateway-hours + $41 data processing |
 | EKS control plane | 73 | $0.10/hr, flat |
 | EBS, 563 GiB gp3 | 54 | 27 volumes |
@@ -35,6 +33,23 @@ spend without a BigQuery export — so treat them as ±20%.
 | Kinesis | 11 | orphaned stream |
 | S3 | 10 | 7 buckets |
 | Route 53 | 1 | 2 hosted zones |
+
+### CloudWatch is absent on purpose
+
+EKS control-plane logging used to be the **largest line on the whole bill** —
+**$144/month**, 20% of AWS, almost entirely `EUW3-VendedLog-Bytes` dominated by
+the audit log. All five log types were on.
+
+Nothing in this repository reads any of it. Observability is
+VictoriaMetrics/VictoriaLogs, and the platform
+[uses no cloud-provider monitoring on either cloud]({{< relref "/docs/platform/observability" >}}).
+So it was $144/month of logs nobody could look at without first going to find
+them in a console. `enabled_log_types` is now empty in
+`opentofu/aws/eks/init/main.tf`.
+
+Turn types back on deliberately if you need them. `audit` is the one worth having
+during a security investigation, and it is also the expensive one — the module's
+own default is `["audit", "api", "authenticator"]`.
 
 Compute is spot throughout — the six nodes measured at $0.0688 (`t3a.xlarge`),
 $0.0747 (`c5.xlarge`), $0.0428 (`c6i.large`), $0.0401 (`m5.large`) and $0.0471
@@ -53,9 +68,14 @@ this line moves the most between runs.
 | GKE control plane | 0 | zonal — assumed covered by the free zonal-cluster tier; **+$73 if not** |
 | Cloud DNS, GCS, Secret Manager | ~3 | 1 zone, 4 buckets, 28 secrets |
 
-GCP runs at roughly **a third of AWS** for the same workload. Very little of that
-gap is compute. It is CloudWatch, NAT data processing, and the accumulated cruft
-below.
+GCP runs at roughly **a third of AWS** for the same workload, and very little of
+that gap is compute — spot nodes cost $250 against $88 largely because AWS is
+running six and GCP three. The rest is the flat EKS control-plane charge GKE
+waives on a zonal cluster, NAT data processing, load balancers, and the
+accumulated cruft below.
+
+Until 2026-08-29 the single biggest contributor was CloudWatch at $144/month.
+Removing it closed a fifth of the gap on its own.
 
 ## The floor you pay for nothing
 
