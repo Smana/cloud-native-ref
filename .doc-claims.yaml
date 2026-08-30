@@ -165,10 +165,11 @@ claims:
 
   - id: vlsingle-retention
     why: >-
-      VictoriaLogs retention was unset, so the effective cap was whatever the
-      chart's app default happened to be — silent and unreviewed. It is now
-      an explicit `7d`, capped by `retentionDiskSpaceUsage`, and logs.md must
-      quote the real value rather than describe a policy nobody set.
+      VictoriaLogs retention was left at the chart default of `1`, which is
+      one MONTH under the unit rule below — a month of logs on a 10Gi PVC,
+      silent and unreviewed. It is now an explicit `7d`, capped by
+      `retentionDiskSpaceUsage`, and logs.md must quote the real value
+      rather than describe a policy nobody set.
     source:
       file: observability/base/victoria-logs/helmrelease-vlsingle.yaml
       pattern: 'retentionPeriod:\s*(\d+d)'

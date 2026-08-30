@@ -49,9 +49,6 @@ spec:
         retentionPeriod: "14d"
         replicaCount: 1
         storage:
-          # Same class the admission controller already defaults (gp3 / standard-rwo),
-          # stated so the manifest stops depending on each cluster's default.
-          storageClassName: ${storage_class}
           accessModes:
             - ReadWriteOnce
           resources:
