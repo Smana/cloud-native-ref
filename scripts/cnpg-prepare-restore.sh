@@ -63,6 +63,12 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# gcloud must run as the identity OpenTofu uses, not the CLI account -- see
+# scripts/lib/gcloud-adc.sh. Without it this script reports "could not list the
+# live archive" for a bucket the deploy writes to happily.
+# shellcheck source=scripts/lib/gcloud-adc.sh
+. "$(dirname "$0")/lib/gcloud-adc.sh"
+
 CLOUD="" BUCKET="" CLUSTER="" SEED="" PROJECT="" PROFILE=""
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 APPLY="false"
@@ -111,7 +117,7 @@ count_bases() {
     local prefix="$1" out rc
     case "$CLOUD" in
         gcp)
-            out=$(gcloud storage ls "gs://${BUCKET}/${prefix}/base/" ${PROJECT:+--project "$PROJECT"} 2>&1)
+            out=$(gcp_gcloud storage ls "gs://${BUCKET}/${prefix}/base/" ${PROJECT:+--project "$PROJECT"} 2>&1)
             rc=$?
             # `ls` on a missing prefix is a legitimate "zero", not a failure.
             if [ "$rc" -ne 0 ]; then
@@ -140,7 +146,7 @@ count_objects() {
     local prefix="$1" out rc
     case "$CLOUD" in
         gcp)
-            out=$(gcloud storage ls "gs://${BUCKET}/${prefix}/**" ${PROJECT:+--project "$PROJECT"} 2>&1)
+            out=$(gcp_gcloud storage ls "gs://${BUCKET}/${prefix}/**" ${PROJECT:+--project "$PROJECT"} 2>&1)
             rc=$?
             if [ "$rc" -ne 0 ]; then
                 if grep -qi "matched no objects\|not found" <<< "$out"; then echo 0; return 0; fi
@@ -208,7 +214,7 @@ if [ "$APPLY" != "true" ]; then
 fi
 
 case "$CLOUD" in
-    gcp) gcloud storage rm --recursive "gs://${BUCKET}/${CLUSTER}/" ${PROJECT:+--project "$PROJECT"} >/dev/null ;;
+    gcp) gcp_gcloud storage rm --recursive "gs://${BUCKET}/${CLUSTER}/" ${PROJECT:+--project "$PROJECT"} >/dev/null ;;
     aws)
         aws_args=(--region "$REGION")
         [ -n "$PROFILE" ] && aws_args+=(--profile "$PROFILE")

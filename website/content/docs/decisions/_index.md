@@ -69,5 +69,7 @@ single-file fixes never need one.
 | [0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}}) | The identity provider is deployable on either cloud, defaulting to AWS | Accepted | 2026-08-27 |
 | [0025]({{< relref "/docs/decisions/0025-cloud-managed-secret-stores.md" >}}) | Cloud-managed secret stores as the store of record, OpenBao scoped to the PKI | Accepted | 2026-08-27 |
 | [0026]({{< relref "/docs/decisions/0026-headlamp-auth-proxy-on-gke.md" >}}) | Headlamp authenticates behind an auth proxy on GKE, not against the cluster | Accepted | 2026-08-28 |
+| [0027]({{< relref "/docs/decisions/0027-primary-cloud-provider.md" >}}) | AWS is the primary cloud, and cross-cloud singletons live there | Accepted | 2026-08-29 |
+| [0028]({{< relref "/docs/decisions/0028-harbor-oidc-config-overwrite-json.md" >}}) | Harbor's OIDC config is set declaratively via CONFIG_OVERWRITE_JSON, not a post-install script | Accepted | 2026-08-29 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

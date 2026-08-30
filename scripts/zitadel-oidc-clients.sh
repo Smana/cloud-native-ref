@@ -42,6 +42,14 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# gcloud must run as the identity OpenTofu uses, not the CLI account.
+# shellcheck source=scripts/lib/gcloud-adc.sh
+. "$(dirname "$0")/lib/gcloud-adc.sh"
+# shellcheck source=scripts/lib/cloud-secret-store.sh
+. "$(dirname "$0")/lib/cloud-secret-store.sh"
+# shellcheck source=scripts/lib/zitadel-pat.sh
+. "$(dirname "$0")/lib/zitadel-pat.sh"
+
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
 
@@ -97,113 +105,24 @@ done
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
 
-# ── secret store ──────────────────────────────────────────────────────────────
-
-store_read() {
-    case "$CLOUD" in
-        aws) aws secretsmanager get-secret-value \
-                 ${REGION:+--region "$REGION"} \
-                 --secret-id "$1" --query SecretString --output text 2>/dev/null ;;
-        gcp) gcloud secrets versions access latest \
-                 ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
-                 --secret="$1" 2>/dev/null ;;
-    esac
-}
-
-store_exists() {
-    case "$CLOUD" in
-        aws) aws secretsmanager describe-secret ${REGION:+--region "$REGION"} \
-                 --secret-id "$1" >/dev/null 2>&1 ;;
-        gcp) gcloud secrets describe "$1" ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
-                 >/dev/null 2>&1 ;;
-    esac
-}
-
-# Write JSON on stdin to secret $1, creating or adding a version.
-# Goes through a private temp file: the AWS CLI cannot read --cli-input-json
-# from a pipe (it needs a seekable file) and fails with "Invalid JSON received".
-store_write() {
-    local name="$1" payload
-    payload=$(umask 077 && mktemp -t zitadel-oidc.XXXXXX)
-    # shellcheck disable=SC2064
-    trap "shred -u '${payload}' 2>/dev/null || rm -f '${payload}'" RETURN
-    cat > "$payload"
-
-    case "$CLOUD" in
-        aws)
-            local body
-            body=$(umask 077 && mktemp -t zitadel-oidc-body.XXXXXX)
-            if store_exists "$name"; then
-                jq --arg id "$name" '{SecretId: $id, SecretString: (. | tostring)}' \
-                    < "$payload" > "$body"
-                aws secretsmanager put-secret-value ${REGION:+--region "$REGION"} \
-                    --cli-input-json "file://${body}" >/dev/null
-            else
-                jq --arg n "$name" --arg d "OIDC client for ${CLUSTER}. Written by zitadel-oidc-clients.sh." \
-                   '{Name: $n, Description: $d, SecretString: (. | tostring)}' \
-                    < "$payload" > "$body"
-                aws secretsmanager create-secret ${REGION:+--region "$REGION"} \
-                    --cli-input-json "file://${body}" >/dev/null
-            fi
-            shred -u "$body" 2>/dev/null || rm -f "$body"
-            ;;
-        gcp)
-            store_exists "$name" || gcloud secrets create "$name" \
-                ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
-                --replication-policy=automatic \
-                --labels=managed-by=zitadel-oidc-clients >/dev/null
-            gcloud secrets versions add "$name" \
-                ${GCP_PROJECT:+--project "$GCP_PROJECT"} \
-                --data-file="$payload" >/dev/null
-            ;;
-    esac
-}
+# Provenance for secrets this script writes, read by cloud-secret-store.sh's
+# store_write. Preserves what this script wrote before the store/PAT logic
+# moved into shared libraries.
+STORE_WRITE_DESCRIPTION="OIDC client for ${CLUSTER}. Written by zitadel-oidc-clients.sh."
+STORE_WRITE_LABEL="zitadel-oidc-clients"
 
 # ── zitadel api ───────────────────────────────────────────────────────────────
 
-# The admin PAT comes from the CLUSTER, not the secret store.
-#
-# ZITADEL generates it at FirstInstance bootstrap for the `iam-admin` machine
-# user the HelmRelease declares, and the chart writes it to the `iam-admin-pat`
-# Secret. It is not the same thing as
-# ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT in zitadel-envvars: that value
-# belongs to the login client, which is not authorised for the management API
-# and answers every call here with a bare 401 -- no hint that the token is
-# simply the wrong one.
-PAT_NAMESPACE="security"
-PAT_SECRET="iam-admin-pat" # pragma: allowlist secret
+# zitadel-pat.sh's OWN dry-run signal, set before calling it rather than
+# trusting it to read this script's $APPLY by accidental name-matching.
+# resolve_zitadel_pat persists a freshly-read PAT into the cloud secret store
+# the first time it sees one -- a WRITE, which breaks this script's own header
+# promise ("Dry-run unless --apply.") on a plain sync. Confirmed live: a sync
+# with no --apply created zitadel/iam-admin-pat in Secrets Manager anyway.
+ZITADEL_PAT_DRY_RUN="true"
+[ "$APPLY" = "true" ] && ZITADEL_PAT_DRY_RUN="false"
 
-# Read in two steps, and never inside a pipeline. `set -e` + `pipefail` kill the
-# script the instant `kubectl get secret` fails on a missing Secret, so the
-# assignment aborts and every friendly message below becomes unreachable. With
-# kubectl's own stderr suppressed the operator gets a silent exit 1 and no clue
-# -- which is exactly how this landed on 2026-08-29.
-PAT=""
-if _pat_b64="$(kubectl get secret "$PAT_SECRET" -n "$PAT_NAMESPACE" \
-                 -o jsonpath='{.data.pat}' 2>/dev/null)"; then
-    PAT="$(printf '%s' "$_pat_b64" | base64 -d 2>/dev/null || true)"
-fi
-
-if [ -z "$PAT" ]; then
-    echo "ERROR: could not read ${PAT_NAMESPACE}/${PAT_SECRET} from the cluster." >&2
-    echo "       (context: $(kubectl config current-context 2>/dev/null || echo unknown))" >&2
-    echo >&2
-    echo "ZITADEL writes that Secret when its FirstInstance bootstrap creates the" >&2
-    echo "iam-admin machine user." >&2
-    echo >&2
-    echo "A RESTORED ZITADEL NEVER RUNS FIRSTINSTANCE, so a cluster whose database" >&2
-    echo "was bootstrapped from a backup has no such Secret and never will --" >&2
-    echo "nothing is broken and waiting will not fix it. That is the usual cause" >&2
-    echo "on aws-0, which restores from a frozen seed. Mint a PAT for the" >&2
-    echo "iam-admin machine user in the ZITADEL console and create the Secret:" >&2
-    echo >&2
-    echo "  kubectl create secret generic ${PAT_SECRET} -n ${PAT_NAMESPACE} \\" >&2
-    echo "    --from-literal=pat=<the token>" >&2
-    echo >&2
-    echo "Otherwise ZITADEL has not finished bootstrapping -- check the setup Job:" >&2
-    echo "  kubectl get jobs -n ${PAT_NAMESPACE} | grep zitadel" >&2
-    exit 1
-fi
+PAT="$(resolve_zitadel_pat)" || exit 1
 
 # The IdP base URL. Derived the same way the platform derives it, so a mismatch
 # here is a mismatch everywhere.
@@ -221,14 +140,75 @@ fi
 CURL_RESOLVE=()
 [ -n "${IDP_RESOLVE:-}" ] && CURL_RESOLVE=(--resolve "$IDP_RESOLVE")
 
+# The admin PAT never touches argv. `-H "Authorization: Bearer ${PAT}"` would
+# put the live token in `ps`/`/proc/<pid>/cmdline` for as long as every curl
+# process runs -- the same vulnerability class this repo already closed for
+# jq --arg/--argjson (test-no-secret-argv.sh). curl has no stdin form for a
+# header, so it goes into a `-K` config file instead, created once for this
+# run:
+#
+#   * `umask 077 && mktemp` sets the mode AT CREATION -- creating the file and
+#     chmod-ing it afterward leaves a window where it is world-readable.
+#   * the path is baked into the trap STRING at trap-SET time
+#     (`trap "rm -f '$path'" EXIT`), not left to expand when the trap fires.
+#     Under `nounset`, a trap that expands the variable at fire time dies on
+#     "unbound variable" if the variable is ever unset before it fires, and
+#     cleans up nothing -- the exact bug just fixed in cloud-secret-store.sh's
+#     store_write; same fix, same reasoning, applied here to the config file
+#     itself rather than to a value merely passing through it.
+#   * `"` and `\` in the token are escaped for curl's config-file syntax,
+#     where both are otherwise significant.
+API_CURL_CONFIG="$(umask 077 && mktemp -t zitadel-api-curl.XXXXXX)"
+# shellcheck disable=SC2064
+trap "rm -f '$API_CURL_CONFIG'" EXIT
+pat_escaped="${PAT//\\/\\\\}"
+pat_escaped="${pat_escaped//\"/\\\"}"
+printf 'header = "Authorization: Bearer %s"\n' "$pat_escaped" > "$API_CURL_CONFIG"
+unset pat_escaped
+
 api() {
     local method="$1" path="$2"
     shift 2
     curl -fsS -X "$method" "${IDP_URL}${path}" \
+        -K "$API_CURL_CONFIG" \
         ${CURL_RESOLVE[@]+"${CURL_RESOLVE[@]}"} \
-        -H "Authorization: Bearer ${PAT}" \
         -H "Content-Type: application/json" \
         "$@"
+}
+
+# Wrap a READ-only api() call: on failure, print a diagnostic and return 1
+# instead of letting the caller treat curl's empty stdout as "nothing found".
+#
+# THE DEFECT THIS CLOSES: ensure_project's id lookup used to be
+# `id=$(api ... | jq ... | head -1)`. When the API call failed (403/404/
+# network), the pipeline's non-zero exit did NOT stop the script: `head -1`
+# absorbs pipefail's view of curl's exit code, and even without it, errexit
+# does not reliably fire on a failing assignment buried two command-
+# substitution levels deep -- which this one was, since ensure_project itself
+# is called as `project_id="$(ensure_project)"`. `id` ended up empty either
+# way, indistinguishable from "the project genuinely does not exist", and
+# ensure_project fell through to its DRYRUN-PROJECT sentinel -- printing a
+# clean plan while a 404 sat in the terminal right above it. Observed live:
+#   curl: (22) The requested URL returned error: 404
+#   created: 5, updated: 0, unchanged: 0
+#
+# Every _search/GET call in this script goes through this rather than the
+# `2>/dev/null`/`|| true` each used to swallow the same class of failure.
+# Testing the exit code explicitly works regardless of how many command
+# substitutions deep the call sits, which is what makes it reliable where
+# errexit alone was not.
+api_or_fail() {
+    local resp
+    if ! resp="$(api "$@" 2>&1)"; then
+        echo "[FAILED ] ZITADEL API call failed: ${1:-} ${2:-}" >&2
+        echo "           ${resp}" >&2
+        echo "           Likely cause: the iam-admin machine user lacks ORG_OWNER" >&2
+        echo "           on this org (IAM_OWNER for an /admin/v1 call), or IDP_URL" >&2
+        echo "           / the admin PAT is stale -- NOT the same thing as the" >&2
+        echo "           object being searched for not existing yet." >&2
+        return 1
+    fi
+    printf '%s' "$resp"
 }
 
 # ── the consumers ─────────────────────────────────────────────────────────────
@@ -249,11 +229,24 @@ CONSUMERS=(
   # same hostname, on the proxy's own callback path. ADR-0026.
   "headlamp-proxy|https://headlamp.${PRIVATE_DOMAIN}/oauth2/callback|headlamp-oauth2-proxy"
   # Harbor's callback is /c/oidc/callback -- Harbor's own path, not guessable
-  # from the others. Applying the client to Harbor is a SECOND step:
-  # scripts/harbor-oidc.sh, because Harbor stores auth config in its DATABASE
-  # rather than in the chart, so nothing in git makes it true.
+  # from the others. No second imperative step applies it: Harbor stores
+  # auth config in its DATABASE rather than in the chart, but the chart's
+  # core.configureUserSettings renders CONFIG_OVERWRITE_JSON, which Harbor
+  # writes to that database itself at startup and then locks read-only. The
+  # client id/secret this script writes to the "harbor-oidc" store key reach
+  # the HelmRelease via an ExternalSecret + valuesFrom, same as every other
+  # consumer here. See ADR-0028.
   "harbor|https://harbor.${PRIVATE_DOMAIN}/c/oidc/callback|harbor-oidc"
 )
+
+# The one non-secret OIDC field known to have drifted in practice: headlamp
+# needs `groups` in scope to get a groups claim at all, without which it can
+# authorize nobody. A single named source of truth for both merge_secret
+# (new app) and converge_secret (existing app, below) -- defect 4 was two
+# independent copies of this exact literal, one corrected by hand on
+# 2026-08-29 and the other never reached because nothing wrote to an existing
+# app's stored secret at all.
+HEADLAMP_OIDC_SCOPES="profile,email,groups"
 
 # Roles are additive and idempotent: ZITADEL rejects a duplicate roleKey, so an
 # existing role is left alone rather than rewritten. Granting a role to a USER is
@@ -268,8 +261,9 @@ ensure_project_roles() {
         return 0
     fi
 
-    existing="$(api POST "/management/v1/projects/${project_id}/roles/_search" -d '{"query":{"limit":100}}' 2>/dev/null \
-                | jq -r '.result[]?.key' || true)"
+    local resp
+    resp="$(api_or_fail POST "/management/v1/projects/${project_id}/roles/_search" -d '{"query":{"limit":100}}')" || return 1
+    existing="$(jq -r '.result[]?.key' <<< "$resp")"
 
     for role in "${ZITADEL_PROJECT_ROLES[@]}"; do
         if grep -qx "$role" <<< "$existing"; then
@@ -287,21 +281,26 @@ ensure_project_roles() {
 }
 
 ensure_project() {
-    local id
-    id=$(api POST /management/v1/projects/_search -d '{"queries":[]}' \
-         | jq -r --arg n "$ZITADEL_PROJECT_NAME" \
-             '.result[]? | select(.name == $n) | .id' | head -1)
+    local id resp
+    resp="$(api_or_fail POST /management/v1/projects/_search -d '{"queries":[]}')" || return 1
+    id=$(jq -r --arg n "$ZITADEL_PROJECT_NAME" \
+             '.result[]? | select(.name == $n) | .id' <<< "$resp" | head -1)
     if [ -n "$id" ]; then
         echo "$id"
-        return
+        return 0
     fi
     if [ "$APPLY" != "true" ]; then
         echo "DRYRUN-PROJECT"
-        return
+        return 0
     fi
-    api POST /management/v1/projects -d "$(jq -n --arg n "$ZITADEL_PROJECT_NAME" \
-        '{name:$n, projectRoleAssertion:true}')" \
-        | jq -r '.id'
+    resp="$(api_or_fail POST /management/v1/projects -d "$(jq -n --arg n "$ZITADEL_PROJECT_NAME" \
+        '{name:$n, projectRoleAssertion:true}')")" || return 1
+    id="$(jq -r '.id // empty' <<< "$resp")"
+    if [ -z "$id" ]; then
+        echo "[FAILED ] project creation returned no id: $(jq -c '.' <<< "$resp" | head -c 200)" >&2
+        return 1
+    fi
+    echo "$id"
 }
 
 # "Assert Roles on Authentication", and it is the flag every SSO consumer on this
@@ -330,7 +329,7 @@ ensure_project() {
 # before this was understood, and a project that predates this function must be
 # repaired rather than left to a manual console click nobody remembers.
 grant_admin_role() {
-    local email="$1" project_id="$2" user_id existing
+    local email="$1" project_id="$2" user_id existing resp
     [ -n "$email" ] || return 0
     [ -n "$project_id" ] || return 0
     if [ "$project_id" = "DRYRUN-PROJECT" ]; then
@@ -338,8 +337,8 @@ grant_admin_role() {
         return 0
     fi
 
-    user_id="$(api POST /management/v1/users/_search -d '{"query":{"limit":200}}' 2>/dev/null \
-               | jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' | head -1)"
+    resp="$(api_or_fail POST /management/v1/users/_search -d '{"query":{"limit":200}}')" || return 1
+    user_id="$(jq -r --arg e "$email" '.result[]? | select((.userName == $e) or (.human.email.email == $e)) | .id' <<< "$resp" | head -1)"
     if [ -z "$user_id" ]; then
         echo "[FAILED ] no ZITADEL user for ${email}." >&2
         echo "           A human user exists only AFTER their first login through the" >&2
@@ -347,9 +346,9 @@ grant_admin_role() {
         return 1
     fi
 
-    existing="$(api POST /management/v1/users/grants/_search -d '{"query":{"limit":200}}' 2>/dev/null \
-                | jq -r --arg u "$user_id" --arg p "$project_id" \
-                    '.result[]? | select(.userId == $u and .projectId == $p) | .roleKeys[]?' || true)"
+    resp="$(api_or_fail POST /management/v1/users/grants/_search -d '{"query":{"limit":200}}')" || return 1
+    existing="$(jq -r --arg u "$user_id" --arg p "$project_id" \
+                    '.result[]? | select(.userId == $u and .projectId == $p) | .roleKeys[]?' <<< "$resp")"
     if grep -qx "admin" <<< "$existing"; then
         echo "[skip   ] ${email} already holds 'admin'"
         return 0
@@ -365,12 +364,12 @@ grant_admin_role() {
 }
 
 ensure_project_role_assertion() {
-    local project_id="$1" current
+    local project_id="$1" current resp
     [ -n "$project_id" ] || return 0
     [ "$project_id" = "DRYRUN-PROJECT" ] && { echo "[dry-run] would ensure projectRoleAssertion=true"; return 0; }
 
-    current="$(api GET "/management/v1/projects/${project_id}" 2>/dev/null \
-               | jq -r '.project.projectRoleAssertion // false')"
+    resp="$(api_or_fail GET "/management/v1/projects/${project_id}")" || return 1
+    current="$(jq -r '.project.projectRoleAssertion // false' <<< "$resp")"
     if [ "$current" = "true" ]; then
         echo "[skip   ] projectRoleAssertion already true"
         return 0
@@ -391,14 +390,16 @@ ensure_project_role_assertion() {
 }
 
 app_id_by_name() {
-    api POST "/management/v1/projects/$1/apps/_search" -d '{"queries":[]}' \
-        | jq -r --arg n "$2" '.result[]? | select(.name == $n) | .id' | head -1
+    local resp
+    resp="$(api_or_fail POST "/management/v1/projects/$1/apps/_search" -d '{"queries":[]}')" || return 1
+    jq -r --arg n "$2" '.result[]? | select(.name == $n) | .id' <<< "$resp" | head -1
 }
 
-# The redirect URIs an existing app currently has, one per line.
-app_redirect_uris() {
-    api GET "/management/v1/projects/$1/apps/$2" \
-        | jq -r '.app.oidcConfig.redirectUris[]? // empty'
+# The whole app entry, once -- redirectUris for the staleness check below and
+# (defect 4) clientId for converging an existing app's secret payload. One
+# call rather than two separate reads of the same object.
+app_get() {
+    api_or_fail GET "/management/v1/projects/$1/apps/$2"
 }
 
 # Point an existing app at the redirect URI it is supposed to have.
@@ -430,50 +431,111 @@ app_set_redirect() {
 }
 
 # Merge OIDC fields into a secret without dropping what else is in it.
+#
+# $existing, $client_secret and (for headlamp-proxy) the cookie secret all
+# travel into jq on STDIN, never as --arg/--argjson -- either would put the
+# value on jq's argv, readable by any process via /proc/<pid>/cmdline for as
+# long as jq runs. That matters for more than the client secret: $existing is
+# the CURRENT full contents of the target secret, and for grafana that blob
+# also carries the generated Grafana admin credentials, so --argjson base
+# would leak those too. Only client_id and the issuer URL, neither secret, go
+# in as --arg. Three concatenated JSON documents on one stream, pulled out in
+# order with `input` -- the same trick jq's own manual gives for slurping more
+# than one value without `--slurp` swallowing the whole stream into an array.
 merge_secret() {
-    local key="$1" name="$2" client_id="$3" client_secret="$4" existing='{}'
+    local key="$1" name="$2" client_id="$3" client_secret="$4"
+    local existing='{}' cookie_secret=''
     store_exists "$key" && existing="$(store_read "$key")"
     [ -z "$existing" ] && existing='{}'
 
-    case "$name" in
-        grafana)
-            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
-               '$base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id, GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: $sec}' ;;
-        headlamp)
-            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
-               --arg iss "$IDP_URL" \
-               '$base + {OIDC_CLIENT_ID: $id, OIDC_CLIENT_SECRET: $sec, OIDC_ISSUER_URL: $iss,
-                         OIDC_SCOPES: "openid,profile,email",
-                         OIDC_VALIDATOR_CLIENT_ID: $id, OIDC_VALIDATOR_ISSUER_URL: $iss}' ;;
-        flux-ui)
-            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
-               '$base + {clientID: $id, clientSecret: $sec}' ;;
-        harbor)
-            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
-               --arg iss "$IDP_URL" \
-               '$base + {client_id: $id, client_secret: $sec, endpoint: $iss}' ;;
-        headlamp-proxy)
-            # Hyphenated keys, deliberately: the oauth2-proxy chart's
-            # `config.existingSecret` reads exactly client-id / client-secret /
-            # cookie-secret, so the blob is shaped to be consumed by a whole-blob
-            # ExternalSecret extract with no remapping.
-            #
-            # The cookie secret is generated here and then PRESERVED across runs
-            # by the `// $ck` fallback -- regenerating it on every sync would
-            # silently log every user out and look like a broken login.
-            #
-            # EXACTLY 32 CHARACTERS. `openssl rand -base64 32` alone emits 44,
-            # and oauth2-proxy refuses to start on it:
-            #   cookie_secret must be 16, 24, or 32 bytes to create an AES
-            #   cipher, but is 44 bytes
-            # It measures the STRING, not the decoded bytes, so the base64 has to
-            # be truncated to the cipher length rather than sized to decode into
-            # it. `head -c 32` is the recipe the chart's own values.yaml gives.
-            jq -n --argjson base "$existing" --arg id "$client_id" --arg sec "$client_secret" \
-               --arg ck "$(openssl rand -base64 32 | head -c 32)" \
-               '$base + {"client-id": $id, "client-secret": $sec,
-                         "cookie-secret": ($base["cookie-secret"] // $ck)}' ;;
-    esac
+    if [ "$name" = headlamp-proxy ]; then
+        # Hyphenated keys, deliberately: the oauth2-proxy chart's
+        # `config.existingSecret` reads exactly client-id / client-secret /
+        # cookie-secret, so the blob is shaped to be consumed by a whole-blob
+        # ExternalSecret extract with no remapping.
+        #
+        # PRESERVED across runs -- regenerating on every sync would silently
+        # log every user out and look like a broken login.
+        #
+        # EXACTLY 32 CHARACTERS. `openssl rand -base64 32` alone emits 44,
+        # and oauth2-proxy refuses to start on it:
+        #   cookie_secret must be 16, 24, or 32 bytes to create an AES
+        #   cipher, but is 44 bytes
+        # It measures the STRING, not the decoded bytes, so the base64 has to
+        # be truncated to the cipher length rather than sized to decode into
+        # it. `head -c 32` is the recipe the chart's own values.yaml gives.
+        cookie_secret="$(jq -r '."cookie-secret" // empty' <<< "$existing")"
+        [ -n "$cookie_secret" ] || cookie_secret="$(openssl rand -base64 32 | head -c 32)"
+    fi
+
+    {
+        printf '%s\n' "$existing"
+        printf '%s' "$client_secret" | jq -Rs .
+        printf '%s' "$cookie_secret" | jq -Rs .
+    } | jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" '
+        input as $base | input as $sec | input as $ck |
+        if $name == "grafana" then
+            $base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id, GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: $sec}
+        elif $name == "headlamp" then
+            $base + {OIDC_CLIENT_ID: $id, OIDC_CLIENT_SECRET: $sec, OIDC_ISSUER_URL: $iss,
+                     OIDC_SCOPES: $scopes,
+                     OIDC_VALIDATOR_CLIENT_ID: $id, OIDC_VALIDATOR_ISSUER_URL: $iss}
+        elif $name == "flux-ui" then
+            $base + {clientID: $id, clientSecret: $sec}
+        elif $name == "harbor" then
+            $base + {client_id: $id, client_secret: $sec, endpoint: $iss}
+        elif $name == "headlamp-proxy" then
+            $base + {"client-id": $id, "client-secret": $sec, "cookie-secret": $ck}
+        else
+            empty
+        end
+    '
+}
+
+# DEFECT 4: converge the NON-SECRET fields of an EXISTING app's stored
+# payload. merge_secret above only ever ran when an app was CREATED --
+# cmd_sync's existing-app branch checked the redirect URI against ZITADEL and
+# stopped there, never looking at what $key currently held. So a field this
+# script's own literal changed after an app already existed never reached
+# it: OIDC_SCOPES gaining `groups` on 2026-08-29 is why this exists. Every
+# run against an already-registered headlamp printed
+#   [ok     ] headlamp -- app exists (...), redirect correct
+# and converge_secret was never even called -- the store kept the old value
+# forever.
+#
+# What is converged, and why each one is safe to overwrite: client id and the
+# issuer URL are read back FROM ZITADEL itself, not guessed, so they can only
+# ever correct drift; the scopes string is this script's own literal, and
+# stale copies of it are exactly the bug being closed. NEVER converged: the
+# client secret (ZITADEL returns it exactly once, at creation, so this path
+# has no correct value to put there even if it wanted to) and, for
+# headlamp-proxy, the cookie secret (regenerating it on a routine sync would
+# silently log out every user). Both are simply absent from every branch's
+# overlay object below, so jq's `+` leaves whatever $existing already had.
+#
+# $existing travels in on stdin, not --argjson, for the same reason
+# merge_secret keeps it off jq's argv: it can carry fields this script does
+# not own (grafana's admin credentials), and putting the whole blob on argv
+# would expose those too, not just the OIDC fields being converged here.
+converge_secret() {
+    local name="$1" client_id="$2" existing="$3"
+    jq -n --arg id "$client_id" --arg iss "$IDP_URL" --arg name "$name" --arg scopes "$HEADLAMP_OIDC_SCOPES" '
+        input as $base |
+        if $name == "grafana" then
+            $base + {GF_AUTH_GENERIC_OAUTH_CLIENT_ID: $id}
+        elif $name == "headlamp" then
+            $base + {OIDC_CLIENT_ID: $id, OIDC_ISSUER_URL: $iss, OIDC_SCOPES: $scopes,
+                     OIDC_VALIDATOR_CLIENT_ID: $id, OIDC_VALIDATOR_ISSUER_URL: $iss}
+        elif $name == "flux-ui" then
+            $base + {clientID: $id}
+        elif $name == "harbor" then
+            $base + {client_id: $id, endpoint: $iss}
+        elif $name == "headlamp-proxy" then
+            $base + {"client-id": $id}
+        else
+            empty
+        end
+    ' <<< "$existing"
 }
 
 cmd_sync() {
@@ -483,19 +545,37 @@ cmd_sync() {
     echo
 
     local project_id
-    project_id="$(ensure_project)"
+    # DEFECT 1: ensure_project used to be captured the same way but with no
+    # way to tell "it failed" from "it returned the dry-run sentinel" -- both
+    # are non-empty strings, so the `[ -n ... ]` check below let a failed API
+    # call straight through. Checking the command substitution's own exit
+    # status closes that: ensure_project now returns non-zero on a genuine
+    # failure (and has already printed why), so this `if !` catches it before
+    # the emptiness check ever runs.
+    if ! project_id="$(ensure_project)"; then
+        exit 1
+    fi
     [ -n "$project_id" ] || { echo "could not resolve or create the ZITADEL project" >&2; exit 1; }
 
     ensure_project_role_assertion "$project_id"
     ensure_project_roles "$project_id"
     grant_admin_role "$GRANT_ADMIN" "$project_id"
 
-    local created=0 skipped=0 updated=0
+    local created=0 skipped=0 updated=0 converged=0
     for entry in "${CONSUMERS[@]}"; do
         IFS='|' read -r name redirect key <<< "$entry"
 
         local existing_id=""
-        [ "$project_id" != "DRYRUN-PROJECT" ] && existing_id="$(app_id_by_name "$project_id" "$name")"
+        if [ "$project_id" != "DRYRUN-PROJECT" ]; then
+            # NOT `[ ... ] && existing_id=...`: the right-hand side of `&&` is
+            # exempt from errexit by design, so a failed lookup there would
+            # leave existing_id empty and silently fall through to the
+            # create-a-new-app branch below -- recreating an app that
+            # actually exists, which rotates its secret and breaks the
+            # running consumer. An explicit `|| exit 1` cannot be bypassed
+            # that way.
+            existing_id="$(app_id_by_name "$project_id" "$name")" || exit 1
+        fi
 
         if [ -n "$existing_id" ]; then
             # Never RECREATE: ZITADEL returns the client secret once, so
@@ -509,26 +589,61 @@ cmd_sync() {
             # cloud split moved it to priv.aws.ogenki.io. Every login failed with
             #   "The requested redirect_uri is missing in the client configuration"
             # and re-running this script cheerfully skipped all five.
-            local current
-            current="$(app_redirect_uris "$project_id" "$existing_id")"
+            local app_json current client_id
+            app_json="$(app_get "$project_id" "$existing_id")" || exit 1
+            current="$(jq -r '.app.oidcConfig.redirectUris[]? // empty' <<< "$app_json")"
+            client_id="$(jq -r '.app.oidcConfig.clientId // empty' <<< "$app_json")"
+            if [ -z "$client_id" ]; then
+                echo "[FAILED ] ${name}: app ${existing_id} has no oidcConfig.clientId in ZITADEL's response" >&2
+                exit 1
+            fi
 
             if grep -Fxq "$redirect" <<< "$current"; then
                 echo "[ok     ] ${name} -- app exists (${existing_id}), redirect correct"
                 skipped=$((skipped + 1))
-                continue
+            else
+                echo "[STALE  ] ${name} (${existing_id})"
+                echo "           has:  ${current:-<none>}"
+                echo "           want: ${redirect}"
+                if [ "$APPLY" != "true" ]; then
+                    echo "           would update the redirect URI (client secret untouched)"
+                else
+                    app_set_redirect "$project_id" "$existing_id" "$redirect"
+                    echo "[updated] ${name} -> ${redirect} (client secret untouched)"
+                fi
+                updated=$((updated + 1))
             fi
 
-            echo "[STALE  ] ${name} (${existing_id})"
-            echo "           has:  ${current:-<none>}"
-            echo "           want: ${redirect}"
-            if [ "$APPLY" != "true" ]; then
-                echo "           would update the redirect URI (client secret untouched)"
-                updated=$((updated + 1))
-                continue
+            # DEFECT 4: the redirect check above only ever compared ZITADEL's
+            # own state -- it never looked at what $key currently holds, so a
+            # field this script's own literal changed (OIDC_SCOPES gaining
+            # `groups`) never reached a cluster whose app already existed.
+            # This runs regardless of whether the redirect was stale, because
+            # the two can drift independently.
+            if ! store_exists "$key"; then
+                echo "[FAILED ] ${name}: app ${existing_id} exists in ZITADEL but ${key} holds" >&2
+                echo "           no secret. ZITADEL returns a client secret exactly once, at" >&2
+                echo "           creation -- it cannot be recovered from here, so writing the" >&2
+                echo "           client id alone would leave a half payload, worse than the" >&2
+                echo "           missing one. Restore ${key} from a backup, or delete the app" >&2
+                echo "           in ZITADEL and re-run so it is created (and its secret" >&2
+                echo "           captured) fresh." >&2
+                exit 1
             fi
-            app_set_redirect "$project_id" "$existing_id" "$redirect"
-            echo "[updated] ${name} -> ${redirect} (client secret untouched)"
-            updated=$((updated + 1))
+
+            local existing_secret desired
+            existing_secret="$(store_read "$key")"
+            desired="$(converge_secret "$name" "$client_id" "$existing_secret")"
+            if [ "$desired" = "$existing_secret" ]; then
+                echo "[ok     ] ${name} -- ${key} already converged"
+            elif [ "$APPLY" != "true" ]; then
+                echo "[dry-run] ${name} -- would converge non-secret fields in ${key}"
+                converged=$((converged + 1))
+            else
+                printf '%s' "$desired" | store_write "$key"
+                echo "[converged] ${name} -> ${key} (client id ${client_id}, secret untouched)"
+                converged=$((converged + 1))
+            fi
             continue
         fi
 
@@ -540,7 +655,7 @@ cmd_sync() {
         fi
 
         local resp client_id client_secret
-        resp=$(api POST "/management/v1/projects/${project_id}/apps/oidc" -d "$(jq -n \
+        resp="$(api_or_fail POST "/management/v1/projects/${project_id}/apps/oidc" -d "$(jq -n \
             --arg n "$name" --arg r "$redirect" '{
               name: $n,
               redirectUris: [$r],
@@ -553,7 +668,7 @@ cmd_sync() {
               idTokenRoleAssertion: true,
               idTokenUserinfoAssertion: true,
               devMode: false
-            }')")
+            }')")" || exit 1
 
         client_id=$(jq -r '.clientId // empty' <<< "$resp")
         client_secret=$(jq -r '.clientSecret // empty' <<< "$resp")
@@ -569,7 +684,7 @@ cmd_sync() {
     done
 
     echo
-    echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}"
+    echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}, converged: ${converged}"
     if [ "$APPLY" != "true" ]; then
         echo
         echo "This was a DRY RUN. Nothing was created and nothing was written."

@@ -73,18 +73,21 @@ Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 #    it, and the action that flattens project roles into a `groups` claim.
 #    Creating the provider without the policy entry gives "User not found".
 IDP_URL=$IDP_URL ./scripts/zitadel-idp.sh sync $CL --apply
-
-# 4. Harbor's auth mode. Harbor stores this in its DATABASE, not in the chart,
-#    so no manifest can express it and a fresh cluster has no SSO button.
-PRIVATE_DOMAIN=$PRIVATE_DOMAIN ./scripts/harbor-oidc.sh sync $CL --apply
 ```
+
+**There is no manual step for Harbor.** Step 1 already wrote its client id and
+secret to the `harbor-oidc` store entry; an `ExternalSecret` syncs that into the
+cluster and Harbor's `HelmRelease` renders it into `CONFIG_OVERWRITE_JSON`
+declaratively — the same shape as every other consumer. It converges on its own
+within the `ExternalSecret` refresh interval and the next `HelmRelease`
+reconcile. See [ADR-0028]({{< relref "/docs/decisions/0028-harbor-oidc-config-overwrite-json.md" >}}).
 
 **Then log in once through Google**, at any consumer. That first login is what
 CREATES your ZITADEL user — the IdP auto-registers it — so there is nobody to
 authorise before it. Afterwards:
 
 ```bash
-# 5. Give yourself the admin role. Group-based RBAC (cluster-admin via the
+# 4. Give yourself the admin role. Group-based RBAC (cluster-admin via the
 #    `admin` group) does nothing until a user actually holds it.
 ./scripts/zitadel-oidc-clients.sh sync $CL --grant-admin you@example.com --apply
 ```
@@ -115,9 +118,35 @@ The per-cloud verify pages cover the rest of the post-deploy checks:
 **A restored ZITADEL can predate its own configuration.** `aws-0` bootstraps its
 database from a frozen backup, so a cluster rebuilt today comes back with
 whatever OIDC clients and roles existed when that seed was taken — not the ones
-this page creates. Re-run steps 1, 3 and 4 after a restore; they are idempotent
-and will fill in whatever the seed is missing. See
+this page creates. Re-run steps 1 and 3 after a restore; they are idempotent
+and will fill in whatever the seed is missing. Harbor needs no re-run — it
+converges from whatever step 1 last wrote to the `harbor-oidc` store entry. See
 [Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}}).
+{{< /callout >}}
+
+{{< callout type="info" >}}
+**The admin PAT every script above needs is automatic, not a prerequisite.** The
+chart writes it once, into the `iam-admin-pat` Secret in the `security`
+namespace, at `FirstInstance`. The first script run above reads that Secret and
+captures the token into the cloud secret store; every later run — on any
+cluster, restored or not — reads it back from there. Nothing here needs a token
+minted by hand.
+{{< /callout >}}
+
+{{< callout type="warning" >}}
+**Recovery only: a cluster restored before this landed has no PAT anywhere.** If
+every script above fails with `no ZITADEL admin PAT available`, the store was
+never seeded — this cluster's seed predates the capture step above, or its store
+entry was deleted. Mint a PAT for the `iam-admin` machine user in the ZITADEL
+console, then:
+
+```bash
+kubectl create secret generic iam-admin-pat \
+  -n security --from-literal=pat=<token>
+```
+
+and re-run step 1 — it persists the token into the store, so this is a one-time
+recovery rather than a routine step.
 {{< /callout >}}
 
 ## Related

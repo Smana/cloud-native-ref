@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+# shellcheck source=scripts/lib/gcloud-adc.sh
+. "$(dirname "$0")/lib/gcloud-adc.sh"
+
 # This script is used to configure OpenBao. It supports two operations:
 # - init: Initialize the OpenBao cluster, then store the root token and the
 #         recovery keys in two SEPARATE secret store entries (AWS Secrets
@@ -217,46 +220,10 @@ check_openbao_status() {
     return 1
 }
 
-# Run gcloud as the SAME identity OpenTofu uses.
-#
-# Everything else in the GCP lane authenticates with Application Default
-# Credentials -- the google provider, the GCS state backend, the GKE calls. This
-# script was the one exception: it shelled out to plain `gcloud`, which uses the
-# *CLI account* (`gcloud config get-value account`) instead. Two identities, one
-# deploy, and nothing says so until one of them is missing a grant.
-#
-# That is exactly how it failed on 2026-08-29. A fresh `gcloud auth login` left
-# the CLI account without `secretmanager.versions.access` on ogenki-435905, so
-# `openbao-config.sh ca` died with PERMISSION_DENIED reading the CA chain --
-# while ADC could read the very same secret (HTTP 200). The deploy had already
-# created the network, the OpenBao VM and GKE using ADC, so "no permission" was
-# true and misleading at the same time.
-#
-# CLOUDSDK_AUTH_ACCESS_TOKEN makes gcloud use a token we hand it. If ADC is not
-# configured we fall back to the CLI account, which is the old behaviour and
-# still right on a workstation that only ever uses `gcloud auth login`.
-# The log lines below go to STDERR deliberately: gcp_gcloud is called from
-# secret_read, whose STDOUT *is* the secret value. Logging to stdout here put
-# a timestamped log line inside .tls/ca.pem, which then fails TLS verification
-# in a way that points at the certificate rather than at this function.
-_gcloud_adc_token=""
-_gcloud_adc_resolved="false"
-gcp_gcloud() {
-    if [ "$_gcloud_adc_resolved" = "false" ]; then
-        _gcloud_adc_token=$(gcloud auth application-default print-access-token 2>/dev/null || true)
-        _gcloud_adc_resolved="true"
-        if [ -n "$_gcloud_adc_token" ]; then
-            log_message "INFO" "Using Application Default Credentials for Secret Manager (same identity as OpenTofu)" >&2
-        else
-            log_message "INFO" "No Application Default Credentials; falling back to the gcloud CLI account" >&2
-        fi
-    fi
-    if [ -n "$_gcloud_adc_token" ]; then
-        CLOUDSDK_AUTH_ACCESS_TOKEN="$_gcloud_adc_token" gcloud "$@"
-    else
-        gcloud "$@"
-    fi
-}
+# gcloud runs as the identity OpenTofu uses -- see scripts/lib/gcloud-adc.sh
+# for why, and for the 2026-08-29 failure that made it necessary. This was a
+# private copy here first; it moved to lib/ once six more scripts turned out to
+# need exactly the same thing.
 
 # Write a secret value, creating the secret if it does not exist. Dispatches
 # on $CLOUD so init_openbao() and write_ca() don't need to know which backend
@@ -365,17 +332,23 @@ init_openbao() {
     fi
 
     log_message "INFO" "Storing root token..."
-    root_token_value=$(jq -n --arg token "$root_token" '{"token": $token}')
+    # On STDIN via `-Rs`, not --arg -- --arg puts the root token on jq's argv,
+    # readable by any process on the box via /proc/<pid>/cmdline for as long
+    # as jq runs. Same class of leak closed in zitadel-idp.sh and
+    # zitadel-oidc-clients.sh.
+    root_token_value=$(printf '%s' "$root_token" | jq -Rs '{"token": .}')
     if ! secret_write "$ROOT_TOKEN_SECRET_NAME" "$root_token_value"; then
         log_message "ERROR" "Failed to store root token"
         exit 1
     fi
 
     log_message "INFO" "Storing recovery keys..."
-    recovery_value=$(jq -n \
-        --argjson keys "$recovery_keys" \
-        --argjson threshold "$RECOVERY_THRESHOLD" \
-        '{"recovery_keys": $keys, "recovery_key": $keys[0], "threshold": $threshold}')
+    # Same fix, on the array this time: $recovery_keys is already a JSON
+    # array (from `jq -c` above), so it goes in on STDIN as `.` rather than
+    # via --argjson. $RECOVERY_THRESHOLD is a plain integer, not a secret --
+    # it stays a normal --argjson.
+    recovery_value=$(printf '%s' "$recovery_keys" | jq --argjson threshold "$RECOVERY_THRESHOLD" \
+        '{"recovery_keys": ., "recovery_key": .[0], "threshold": $threshold}')
     if ! secret_write "$RECOVERY_KEYS_SECRET_NAME" "$recovery_value"; then
         log_message "ERROR" "Failed to store recovery keys"
         exit 1

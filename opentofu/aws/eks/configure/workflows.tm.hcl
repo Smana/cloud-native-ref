@@ -52,27 +52,35 @@ script "preview" {
   }
 }
 
+# Deliberately a no-op. This stack IS destroyed -- by eks/init's "EKS Full
+# Destroy", whose `stage2-destroy-addons` job runs `tofu destroy` in this
+# directory at the right moment.
+#
+# It used to destroy itself here, and that made `terramate script run --reverse
+# destroy` from opentofu/ unsafe. The reverse walk visits this stack FIRST
+# (stack.tm.hcl: `after = ["/opentofu/aws/eks/init"]`), so Cilium and Flux came
+# down raw: Flux never suspended, admission webhooks left admitting, PVCs,
+# NodePools and IAM access keys never cleaned. eks/init's prepare-destroy job
+# then ran against a cluster whose networking was already gone. The teardown
+# guide carried a warning telling people not to use the one command that ought
+# to work.
+#
+# Sequencing this correctly is not something the stack graph can express -- the
+# ordering the cluster needs is the opposite of the dependency ordering -- so
+# ownership sits in one place, eks/init, and this stack defers to it.
+#
+# Destroying ONLY Cilium and Flux is not a real operation anyway: it breaks
+# cluster networking and leaves an EKS cluster nothing can reconcile. If you
+# genuinely want it, run tofu directly in this directory and pass the four
+# version variables, which have no defaults.
 script "destroy" {
-  name        = "EKS Configure Destroy"
-  description = "Remove Cilium and Flux (WARNING: will break cluster networking)"
+  name        = "EKS Configure Destroy (handled by eks/init)"
+  description = "No-op: eks/init's destroy tears this stack down in the correct order"
 
   job {
     commands = [
-      # Single y/n prompt; cached for 10 min so `--reverse destroy` asks once.
-      # Bypass with TM_DESTROY_CONFIRMED=true for CI.
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
-      # `destroy` is a standalone entrypoint: unlike `deploy` it can be the first
-      # tofu command run in a stack, so it has to init itself. Without this a lock
-      # file predating a new provider fails the whole `--reverse destroy` sweep.
-      [global.provisioner, "init", "-lock-timeout=5m"],
-      # `-auto-approve`: confirmation already handled by the helper above.
-      # The version variables carry no defaults, and OpenTofu requires every
-      # variable to be set on destroy as well as on apply.
-      [global.provisioner, "destroy", "-auto-approve", "-var-file=variables.tfvars",
-        "-var=cilium_version=${global.cilium_version}",
-        "-var=gateway_api_version=${global.gateway_api_version}",
-        "-var=flux_operator_version=${global.flux_operator_version}",
-      "-var=flux_instance_version=${global.flux_instance_version}"],
+      ["echo", "[skip] eks/configure is destroyed by eks/init's `stage2-destroy-addons` job."],
+      ["echo", "       Run: cd opentofu/aws/eks/init && terramate script run destroy"],
     ]
   }
 }

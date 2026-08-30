@@ -48,6 +48,10 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# gcloud must run as the identity OpenTofu uses, not the CLI account.
+# shellcheck source=scripts/lib/gcloud-adc.sh
+. "$(dirname "$0")/lib/gcloud-adc.sh"
+
 PROJECT=""
 APPLY="false"
 
@@ -64,7 +68,7 @@ done
 # `-users:*` is the unattached filter. The description match cannot be expressed
 # in a --filter reliably (it is a JSON blob), so it is checked per disk below.
 mapfile -t CANDIDATES < <(
-    gcloud compute disks list --project "$PROJECT" \
+    gcp_gcloud compute disks list --project "$PROJECT" \
         --filter="-users:*" \
         --format='value(name,zone,sizeGb)' 2>/dev/null || true
 )
@@ -83,7 +87,7 @@ for row in "${CANDIDATES[@]}"; do
     # zone comes back as a URL; the basename is what the delete call wants.
     zone="${zone##*/}"
 
-    desc=$(gcloud compute disks describe "$name" --project "$PROJECT" --zone "$zone" \
+    desc=$(gcp_gcloud compute disks describe "$name" --project "$PROJECT" --zone "$zone" \
              --format='value(description)' 2>/dev/null || true)
 
     if ! grep -q "pd.csi.storage.gke.io" <<< "$desc"; then
@@ -108,7 +112,7 @@ except Exception:
         continue
     fi
 
-    if gcloud compute disks delete "$name" --project "$PROJECT" --zone "$zone" --quiet >/dev/null 2>&1; then
+    if gcp_gcloud compute disks delete "$name" --project "$PROJECT" --zone "$zone" --quiet >/dev/null 2>&1; then
         echo "[deleted] ${name} (${size}GB, ${zone}) — was ${pvc}"
         swept=$((swept + 1))
     else
