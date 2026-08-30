@@ -2,7 +2,7 @@
 title: Repository Structure
 weight: 20
 description: How Flux actually assembles what it applies — the ArtifactGenerator/ExternalArtifact split and controller sharding.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 [Repository Layout]({{< relref "/docs/reference/repository-layout.md" >}})
@@ -68,7 +68,7 @@ sharding:
     - "apps"
 ```
 
-Two Kustomizations — `tooling` and `apps` — carry
+Three Kustomizations — `tooling`, `apps`, and the opt-in `apps-llm` — carry
 `labels: sharding.fluxcd.io/key: apps` and propagate it to what they create
 via `spec.commonMetadata.labels`; everything else reconciles on the default,
 unsharded controller set. The isolation has one sharp edge: a `GitRepository`

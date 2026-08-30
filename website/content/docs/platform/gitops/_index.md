@@ -107,6 +107,214 @@ Three non-default settings are load-bearing:
   between a fix landing in seconds and waiting out an eight-minute timeout on
   the broken revision it replaces.
 
+## One repository, two clusters
+
+`aws-0` and `gcp-0` reconcile the same `infrastructure/base`, `security/base`
+and `observability/base` trees. What differs between them — a region, a VPC
+CIDR, a storage class, a domain — is not branched in the manifests. It arrives
+at apply time through Flux's `postBuild` variable substitution, from one
+ConfigMap per cluster:
+
+| Cluster | ConfigMap | Written by |
+|---|---|---|
+| `aws-0` | `eks-aws-0-vars` | `opentofu/aws/eks/configure/kubernetes.tf` |
+| `gcp-0` | `gke-gcp-0-vars` | `opentofu/gcp/gke/configure/kubernetes.tf` |
+
+Both are created in Stage 2, before Flux starts reconciling, and both carry
+`reconcile.fluxcd.io/watch: Enabled` — so changing a value re-triggers every
+Kustomization that substitutes from it rather than waiting out an interval.
+Sixty `substituteFrom` entries across `clusters/` name one of the two.
+
+The most-substituted variables are the ones a manifest cannot hardcode without
+picking a cloud: `${private_domain_name}`, `${region}`, `${cluster_name}`,
+`${public_domain_name}` and `${storage_class}`, plus `${project_id}` on
+`gcp-0` alone.
+
+### The failure mode this creates
+
+**Flux substitutes an undefined variable to an empty string.** It does not
+fail, warn, or leave the placeholder behind. The manifest is still
+schema-valid; it just has a hole in it.
+
+That is not hypothetical here. `domain_name` used to be a third key holding the
+same value as `public_domain_name` — a harmless-looking alias. `gcp-0`'s
+ConfigMap never defined it, so every manifest reaching for `${domain_name}` was
+AWS-only *by accident* rather than by design, and rendered a hostname with a
+missing middle on GCP. `observability/base/runlore` was excluded from `gcp-0`
+for that reason and no other. The key was deleted rather than aliased, and the
+OpenTofu still carries the note explaining why.
+
+The rendered-bundle gate cannot catch this: `render-bundle.py` substitutes its
+fixtures unconditionally, so the bundle shows what Flux *would* render given a
+correct ConfigMap — never whether the ConfigMap has the key, nor whether
+`postBuild` is wired at all. So there is a separate check,
+`scripts/flux-schema/check-substitution.py`, which reads the Kustomizations
+under `clusters/` directly, builds each path with `kustomize build`, and fails
+when a Kustomization applies a `${var}` its own cluster's ConfigMap does not
+define — reading those keys out of the `flux_cluster_vars` resource in each
+`configure` stack. It fails equally on a path that renders variables with no
+`postBuild` at all, where Flux would apply the literal `${var}` text. It runs
+first in [Validation]({{< relref "/docs/platform/gitops/validation.md" >}}),
+before anything is rendered.
+
+### Same key, different shape
+
+Sharing a key name across clouds is only honest when both values are consumed
+the same way. Two keys deliberately hold differently-shaped values:
+
+- `${openbao_cidr}` — the whole VPC CIDR on AWS, where OpenBao's internal NLB
+  lives; the node subnet on GCP, where its internal load balancer does. One
+  `CiliumNetworkPolicy` (`security/base/openbao-snapshot/network-policy.yaml`)
+  consumes it on both.
+- `${openbao_snapshot_secret}` and `${llm_hf_token_secret}` — the *name of a
+  secret in the cloud's own secret store*, not a path in this repository, and
+  the two stores disagree on what a name may contain: slash-delimited on AWS
+  Secrets Manager, flat and dash-separated on GCP, because GCP Secret Manager
+  forbids `/` in a secret ID
+  ([ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}})).
+
+Which is exactly why the manifest cannot hardcode either one.
+
+### The one variable that comes from a Secret
+
+`substituteFrom` accepts a `Secret` as well as a `ConfigMap`, and one
+Kustomization uses it. `security-openbao` on `aws-0` substitutes
+`${cert_manager_approle_id}` from the `cert-manager-openbao-approle` Secret,
+because cert-manager's OpenBao issuer takes `roleId` as a plain string with no
+`secretRef` option — a generated value has no other way in.
+
+A Secret's keys are created in-cluster at runtime, so `check-substitution.py`
+cannot compare against them. It reports that case as a note naming the variable
+and the Secret, rather than failing it or silently skipping it:
+
+```text
+note: 1 Kustomization(s) apply variable(s) no ConfigMap defines, but also
+substitute from a Secret this repo cannot read:
+  Kustomization/security-openbao (security/aws-0/openbao):
+  ${cert_manager_approle_id} not in any ConfigMap; may come from Secret
+  cert-manager-openbao-approle
+```
+
+`gcp-0` has no Secret reference here on purpose. The AWS copy substitutes out
+of the very Secret its own `ExternalSecret` creates, so a fresh cluster's first
+reconcile of that path necessarily fails and succeeds on the retry; GCP pins
+the role ID in its OpenBao management stack and has no such cycle.
+
+### Escaping `${...}` that Flux must not touch
+
+Anything in an applied manifest that legitimately contains `${...}` has to be
+written `$${...}`, which Flux renders back to a single `$`. Nine files need it,
+and they are not all Grafana:
+
+- Grafana dashboard and datasource JSON, where `${var}` is Grafana's own
+  template syntax — `$${__value.raw}`, `$${service}`.
+- `tooling/base/promptfoo/cronjob.yaml`, where an inline Node script builds
+  Prometheus exposition lines with JavaScript template literals:
+  ``out.push(`promptfoo_test_total{category="$${c}"} $${x.total}`)``.
+
+`check-substitution.py` strips the escaped form before it looks for the
+unescaped one — otherwise every dashboard in the repository would be a false
+positive.
+
+## Flux managing Flux
+
+There is no `flux bootstrap` in this repository. Stage 2 of the cluster build
+installs two Helm charts — `flux-operator`, then `flux-instance` — and the
+second creates one object:
+
+```yaml
+# opentofu/shared/helm_values/flux-instance.yaml.tftpl — one file, both clouds
+instance:
+  distribution:
+    version: "2.x"
+    artifact: "oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests"
+  components: [source-controller, kustomize-controller, helm-controller,
+               notification-controller, source-watcher]
+  sync:
+    kind: GitRepository
+```
+
+`instance.sync.url`, `.ref` and `.path` are passed by `--set` from each stack —
+`path` is `clusters/<cluster_name>`, and `ref` is what
+`TF_VAR_flux_git_ref=refs/heads/<branch>` overrides when a feature branch is
+being deployed to a throwaway cluster.
+
+What that buys over `flux bootstrap`:
+
+- **The installation is a declared object, not the residue of a command.**
+  `flux bootstrap` commits a rendered `gotk-components.yaml` to the repository
+  and upgrades by re-running the command with a newer CLI. Here, which
+  controllers exist, how they are sharded, what flags they run with and what
+  version they are is one `FluxInstance` spec — and the operator reconciles the
+  installation toward it continuously, so a hand-edited controller Deployment
+  is corrected the same way any other drift is.
+- **`version: "2.x"` is a range, not a pin.** The operator resolves and applies
+  Flux 2.x releases from the OCI artifact without a human re-running anything.
+  What *is* pinned is the operator's own chart.
+- **Controller tuning is a patch, not a fork.** `kustomize.patches` in the same
+  values file adds the `--concurrent` and `--requeue-dependency` flags and the
+  `CancelHealthCheckOnNewRevision` feature gate described under
+  [How Flux itself is tuned](#how-flux-itself-is-tuned) above. One patch also
+  widens the operator-generated `allow-egress` NetworkPolicy, whose default
+  same-namespace ingress rule blocks Cilium's Gateway API L7 proxy.
+- **`source-watcher`** is in the component list for one reason: it reconciles
+  `ArtifactGenerator`, which is what re-slices this repository into the
+  per-domain `ExternalArtifact`s described in
+  [Repository Structure]({{< relref "/docs/platform/gitops/repository-structure.md" >}}).
+
+### The operator upgrades itself, from Git
+
+OpenTofu installs the operator once, at the version pinned in
+`opentofu/config.tm.hcl`. From then on `flux/operator/helmrelease.yaml` owns
+it, sourced from `flux/sources/ocirepo-flux-operator.yaml`:
+
+```yaml
+url: oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator
+ref:
+  semver: ">=0.43.0 <1.0.0"
+verify:
+  provider: cosign
+  matchOIDCIdentity:
+    - issuer: "https://token.actions.githubusercontent.com"
+      subject: "https://github.com/controlplaneio-fluxcd/charts/*"
+```
+
+So the OpenTofu pin is a bootstrap floor, not the running version — after Stage
+2 the operator tracks the semver range, and every chart version is checked
+against a keyless cosign signature from the publisher's GitHub Actions identity
+before it is installed. The `FluxInstance` itself stays OpenTofu-owned: the
+thing that describes the installation is created by the same apply that creates
+the cluster, so a cluster is never half-bootstrapped.
+
+### Preview environments per pull request
+
+`ResourceSet` and `ResourceSetInputProvider` are the operator's own CRDs, and
+`flux/previews/` uses them to build one namespace per pull request:
+
+```yaml
+# flux/previews/input-provider.yaml
+spec:
+  type: GitHubPullRequest
+  url: https://github.com/Smana/cloud-native-ref
+  filter:
+    labels: [preview]     # opt-in per PR, not every PR
+    limit: 5
+```
+
+Each matching PR renders a `Namespace`, a `GitRepository` pinned to the PR's
+commit SHA, and a `Kustomization` applying `./apps/aws-0` into its own
+`preview-pr-<id>` namespace. The operator's `<< inputs.* >>` templating is
+evaluated before Flux's own `${var}` substitution runs on the generated
+Kustomization — two layers, which is why both can appear in the same file.
+
+The `ResourceSet` runs under a `flux-previews` ServiceAccount whose ClusterRole
+grants three resources and nothing else: `namespaces`, `gitrepositories`,
+`kustomizations`. A generator that creates cluster-scoped objects from the
+content of a pull request is exactly where least privilege has to be real.
+
+Previews run on `aws-0` only — `clusters/gcp-0/flux/` has no `flux-previews`
+Kustomization.
+
 ## The repository, as Flux sees it
 
 Each top-level directory maps to a Kustomization, or to the OpenTofu half
@@ -207,6 +415,54 @@ while a Kustomization is suspended the cluster can drift from Git and nothing
 will correct it. That is also exactly how the opt-in LLM platform ships —
 suspended by default, see
 [AI Platform]({{< relref "/docs/platform/ai-platform/_index.md" >}}).
+
+### Two web UIs, and why both
+
+The CLI is the primary interface, but reconciliation state is also worth
+looking at, and two things serve it:
+
+| | Hostname | Behind | Reachable by |
+|---|---|---|---|
+| **Flux UI** | `flux-ui-<cluster>.priv.<cloud>.ogenki.io` | `platform-tailscale-admin` | `tag:admin` |
+| **Headlamp** | `headlamp.priv.<cloud>.ogenki.io` | `platform-tailscale-general` | `tag:k8s` |
+
+**The Flux UI** ships with the Flux Operator — `web.enabled: true` in
+`flux/operator/helmrelease.yaml` — and is the operator's own view of
+`FluxInstance`, Kustomizations, HelmReleases, sources and events. It sits on
+the **admin** Gateway, not the general one; see
+[Private access]({{< relref "/docs/platform/networking/private-access.md" >}})
+for the ACL that backs the two tags.
+
+It authenticates against ZITADEL over OIDC and then **impersonates the
+logged-in human**:
+
+```yaml
+impersonation:
+  username: "claims.email"
+  groups: "claims.groups"
+```
+
+So the UI holds no standing privilege of its own — Kubernetes RBAC decides what
+each person can do, and the API server's audit log carries their email rather
+than a service account name. `flux/operator/rbac.yaml` binds the ZITADEL
+groups: `admin` to `cluster-admin`, and `backend`, `frontend` and `data` to
+`edit`. The full identity chain is in
+[Authentication]({{< relref "/docs/platform/security/authentication.md" >}}).
+
+**Headlamp** is the general-purpose cluster UI, and it carries a Flux plugin —
+`ghcr.io/headlamp-k8s/headlamp-plugin-flux`, pinned, installed by an init
+container alongside the cert-manager and AI-assistant plugins. It is the one to
+reach for when a Flux failure turns out not to be a Flux problem: the plugin
+puts Kustomization and HelmRelease state next to the Pods, Events and logs of
+whatever they created, without leaving the page.
+
+The two differ in what they can show *per person*. The Flux UI impersonates on
+both clusters. Headlamp does on `aws-0`, where EKS is configured to trust
+ZITADEL directly — but not on `gcp-0`, where GKE cannot be, so Headlamp sits
+behind oauth2-proxy and talks to the API server as its own ServiceAccount. The
+per-user RBAC tiers collapse to one there, which is the trade
+[ADR-0026]({{< relref "/docs/decisions/0026-headlamp-auth-proxy-on-gke.md" >}})
+records and accepts.
 
 Flux also reports on itself: `flux/observability/` ships its Grafana
 dashboards and alert rules, and `flux/notifications/` sends reconciliation
