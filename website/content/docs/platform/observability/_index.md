@@ -58,6 +58,37 @@ and Tempo — including what was given up — is recorded in
 [ADR-0010]({{< relref "/docs/decisions/0010-victoriametrics-over-prometheus.md" >}});
 this section is a summary of that decision record.
 
+## No cloud-provider monitoring, on either cloud
+
+Neither CloudWatch on AWS nor Cloud Logging and Monitoring on GCP is used. Every
+metric, log and trace on both clusters goes to the VictoriaMetrics stack above,
+and that is the only place to look.
+
+This is a deliberate consequence of running the same platform on two clouds: an
+observability stack that lives *inside* the cluster is identical on both, so a
+dashboard, a `VMRule` or a LogsQL query written once works on `aws-0` and
+`gcp-0` without translation. A cloud-native stack would mean two of everything
+and two query languages, for signals that are already being collected.
+
+It has a cost consequence worth stating plainly, because it was not free by
+default:
+
+- **EKS control-plane logging is off** (`enabled_log_types = []` in
+  `opentofu/aws/eks/init/main.tf`). It shipped all five types to CloudWatch and
+  billed **$144/month** — 20% of the entire AWS bill and its largest single
+  line, essentially all of it the audit log. Nothing read any of it.
+- GKE's equivalent, Cloud Logging ingestion for the cluster, is likewise not
+  something the platform consumes.
+
+**What that means if you need them.** Control-plane audit logs are genuinely
+useful during a security investigation, and they are the one thing the in-cluster
+stack cannot reconstruct — the API server writes them before anything the cluster
+runs can see them. Turn them on deliberately when you need them, and expect the
+bill: `enabled_log_types = ["audit"]` and re-apply `eks/init`.
+
+See [What it costs]({{< relref "/docs/get-started/costs.md" >}}) for the full
+breakdown.
+
 ## Single mode today, cluster mode standing by
 
 Both VictoriaMetrics and VictoriaLogs ship **two** HelmReleases in their

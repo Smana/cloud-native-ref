@@ -7,13 +7,22 @@ module "eks" {
   kubernetes_version     = var.kubernetes_version
   endpoint_public_access = false
 
-  enabled_log_types = [
-    "api",
-    "audit",
-    "authenticator",
-    "controllerManager",
-    "scheduler"
-  ]
+  # No control-plane logging to CloudWatch, deliberately.
+  #
+  # This was all five types, and it cost $144/month -- 20% of the entire AWS
+  # bill and its single largest line, every cent of it EUW3-VendedLog-Bytes
+  # dominated by the audit log. Nothing in this repository reads any of it:
+  # observability is VictoriaMetrics/VictoriaLogs, and the platform uses no
+  # cloud-provider monitoring on either cloud (see website/content/docs/
+  # platform/observability).
+  #
+  # So it was $144/month of logs nobody could look at without first going to
+  # find them in a console.
+  #
+  # Turn types back on deliberately if you need them -- `audit` is the one worth
+  # having during a security investigation, and it is also the expensive one.
+  # The module's own default is ["audit", "api", "authenticator"].
+  enabled_log_types = []
 
   # Bootstrap addons: VPC CNI + kube-proxy make nodes Ready
   # Stage 2 (opentofu/aws/eks/configure/) replaces them with Cilium

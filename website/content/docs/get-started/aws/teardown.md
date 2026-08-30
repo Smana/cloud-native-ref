@@ -18,42 +18,48 @@ cd opentofu/aws/eks/init
 terramate script run destroy
 ```
 
-Four steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
+Five steps, defined in `opentofu/aws/eks/init/workflows.tm.hcl`:
 
 1. **`prepare-destroy`** — runs `scripts/eks-prepare-destroy.sh` (see below).
-2. **`stage2-destroy-addons`** — destroys the `eks/configure` stack (Cilium, Flux).
+2. **`stage2-destroy-addons`** — *attempts* to destroy the `eks/configure` stack
+   (Cilium, Flux) via `scripts/destroy-stage2.sh` in its `attempt` mode. Never fatal: everything
+   that stack manages lives inside the cluster step 3 deletes anyway, so a failure
+   here must not strand the one billable resource ([why](#stage-2-never-gates-the-cluster)).
 3. **`stage1-destroy-cluster`** — destroys the `eks/init` stack (the cluster itself).
 4. **`stage3-sweep-orphaned-volumes`** — deletes the EBS volumes that were still
    detaching when step 1 swept ([why](#the-sweep-after-the-destroy)).
+5. **`stage4-reconcile-state`** — drops any stage-2 state entries left behind, now
+   that the cluster holding those objects is provably gone.
 
 ## Full teardown
 
-{{< callout type="warning" >}}
-Do **not** run `terramate script run --reverse destroy` from `opentofu/` on a
-cluster carrying real data or live Karpenter nodes. `eks/configure` is a
-separately registered stack (`after = ["/opentofu/aws/eks/init"]`) with its own
-bare `destroy` script — confirm → `tofu init` → `tofu destroy` — that never
-calls `eks-prepare-destroy.sh`. The reverse dependency walk destroys
-`eks/configure` **first**: Cilium and Flux are torn down raw, with Flux never
-suspended, webhooks never disabled, and PVCs/NodePools/IAM keys never
-cleaned up. Only afterwards does the sweep reach `eks/init`, whose own
-`prepare-destroy` job then runs against a cluster whose networking is
-already gone. This is a known ordering issue, tracked separately — it is not
-fixed today. Use [EKS only](#eks-only) above instead.
-{{< /callout >}}
-
-To tear down every stack — EKS, OpenBao, Network — in one sweep once the
-ordering above is fixed, or on a cluster you are certain holds no data worth
-protecting:
+Tears down every stack — EKS, OpenBao, Network — in one command:
 
 ```bash
 cd opentofu
-terramate script run --reverse destroy
+terramate script run --reverse destroy          # aws (the default)
+TM_CLOUD=all terramate script run --reverse destroy   # both clouds
 ```
 
-Destroys every stack in reverse dependency order with a single confirmation
-prompt (`scripts/terramate-destroy-confirm.sh`), cached for 10 minutes so
-the whole reverse sweep only asks once.
+Reverse dependency order, with a single confirmation prompt
+(`scripts/terramate-destroy-confirm.sh`) cached for 10 minutes so the whole
+sweep only asks once. `TM_DESTROY_CONFIRMED=true` skips it for CI.
+
+{{< callout type="info" >}}
+**Why `eks/configure` shows `[skip]`.** It is a registered stack
+(`after = ["/opentofu/aws/eks/init"]`), so a reverse walk reaches it *before*
+`eks/init` — the opposite of the order a cluster needs. It used to destroy
+itself there, which brought Cilium and Flux down raw: Flux never suspended,
+admission webhooks left admitting, and PVCs, NodePools and IAM access keys
+never cleaned up. `eks/init`'s `prepare-destroy` then ran against a cluster
+whose networking was already gone, and this page carried a warning telling
+people not to use the command that ought to work.
+
+Its `destroy` script is now a no-op that says so. The stack is still destroyed
+— by `eks/init`'s `stage2-destroy-addons` job, at the point in the sequence
+where it is safe. Ownership of the ordering lives in one place because the
+stack graph cannot express it.
+{{< /callout >}}
 
 ## What `eks-prepare-destroy.sh` does first
 
@@ -92,6 +98,34 @@ Before OpenTofu deletes anything, the script:
 - Strips finalizers from any Crossplane composite resource stuck terminating,
   so the namespace delete that follows doesn't hang forever.
 
+## Stage 2 never gates the cluster
+
+The `eks/configure` stack manages Cilium, the Flux Operator and the Flux Instance —
+all of them objects *inside* the cluster that stage 1 deletes moments later. Its
+teardown is therefore tidiness, never a prerequisite, and `scripts/destroy-stage2.sh`
+enforces that: `attempt` reports a failure and exits 0.
+
+Both clouds proved why the hard version is wrong:
+
+- **2026-08-23, GKE** — the helm and kubectl providers held an access token acquired
+  at plan time. It expired mid-destroy, stage 2 failed `Unauthorized`, and the cluster
+  and both nodes were still `RUNNING` afterwards. Finished by hand, which diverged
+  state and needed `tofu state rm`.
+- **2026-08-29, EKS** — a teardown reached stage 2 with the cluster already deleted.
+  Every in-cluster delete returned `the server has asked for the client to provide
+  credentials`, against an endpoint that no longer resolved in DNS. Errors about
+  objects that had ceased to exist, failing the run.
+
+The usual reason to be running a destroy at all is that the cluster is broken, or its
+private endpoint is unreachable because the tailnet is down — exactly when stage 2
+cannot succeed and exactly when you most need the cluster gone.
+
+`stage4-reconcile-state` cleans up afterwards. It runs **last**, once stage 1 has
+provably deleted the cluster: anything still in stage 2's state describes an object
+that lived there, so it cannot exist any more. Clearing state earlier would be unsafe
+in the other direction — if the cluster destroy then failed, state would have been
+emptied for resources that still exist.
+
 ## The sweep after the destroy
 
 `terramate script run destroy` ends with `stage3-sweep-orphaned-volumes`, which
@@ -122,6 +156,32 @@ unless you pass `--apply`:
 
 GCP has the same step as `stage2-sweep-orphaned-disks` — see the
 [GCP teardown]({{< relref "/docs/get-started/gcp/teardown.md" >}}).
+
+## Verify against AWS, not against the exit code
+
+A Terramate destroy can exit 0 having destroyed nothing. The safeguards refuse
+silently, a job that fails before `tofu` runs still ends the run, and a
+backgrounded invocation reports the status of whatever came last in the pipeline.
+The GCP side [says the same]({{< relref "/docs/reference/commands.md" >}}) for
+the same reason. Ask the provider:
+
+```bash
+aws eks list-clusters --region eu-west-3
+aws ec2 describe-instances --region eu-west-3 \
+  --filters Name=instance-state-name,Values=running \
+  --query 'Reservations[].Instances[].[InstanceId,Tags[?Key==`Name`].Value|[0]]' --output text
+aws ec2 describe-volumes --region eu-west-3 \
+  --filters Name=status,Values=available --query 'Volumes[].[VolumeId,Size]' --output text
+aws elbv2 describe-load-balancers --region eu-west-3 --query 'LoadBalancers[].LoadBalancerName' --output text
+aws ec2 describe-nat-gateways --region eu-west-3 \
+  --filter Name=state,Values=available --query 'NatGateways[].NatGatewayId' --output text
+aws ec2 describe-addresses --region eu-west-3 --query 'Addresses[].PublicIp' --output text
+```
+
+Empty output from all six is the only thing that means the platform is gone.
+NAT gateways and unattached Elastic IPs bill by the hour whether or not anything
+uses them, and available volumes bill by the GiB-month — those three are what an
+"successful" teardown most often leaves behind.
 
 ## What is not deleted
 

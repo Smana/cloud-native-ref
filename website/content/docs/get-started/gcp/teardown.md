@@ -34,8 +34,9 @@ Six jobs, defined in `opentofu/gcp/gke/init/workflows.tm.hcl`:
    CRDs, Cilium, Flux). Never gates the cluster deletion.
 4. **`stage1-destroy-cluster`** — destroys the cluster itself. This one *is*
    allowed to fail loudly: it is the billable resource.
-5. **`stage2-sweep-orphaned-disks`** — deletes PD disks the in-cluster reclaim
-   couldn't finish. Runs *after* the cluster is gone (see below).
+5. **`stage2-sweep-orphaned-disks`** — the backstop for whatever step 2 could not
+   reclaim in time, and it runs *after* the cluster is gone precisely so nothing
+   is still attached ([why](#orphaned-persistent-disks)).
 6. **`stage2-reconcile-state`** — drops any stage-2 state left behind, now that
    the cluster holding those objects is provably gone.
 
