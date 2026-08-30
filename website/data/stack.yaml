@@ -315,12 +315,6 @@ groups:
         url: https://grafana.github.io/grafana-operator/
         pin: "`observability/base/grafana-operator/helmrelease.yaml`"
         strip: true
-      - name: Grafana OnCall
-        role: Alerting escalation and on-call scheduling for Grafana, if ever wired in
-        logo: grafana
-        url: https://grafana.com/products/oncall/
-        pin: "`observability/base/grafana-oncall/helmrelease-oncall.yaml`"
-        note: Built but wired into no Kustomization — it does not run on the cluster.
       - name: metrics-server
         role: Backs kubectl top and HPA resource metrics cluster-wide
         url: https://github.com/kubernetes-sigs/metrics-server

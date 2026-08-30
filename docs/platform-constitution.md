@@ -122,7 +122,9 @@ Use EKS Pod Identity for all AWS access from pods. Do NOT use IRSA.
 
 - VictoriaMetrics for all metrics collection
 - Prometheus exposition format required
-- ServiceMonitor CRDs for service discovery
+- `VMServiceScrape` CRDs for service discovery (the VictoriaMetrics operator also converts
+  `ServiceMonitor`/`PrometheusRule` objects a chart ships natively, so either is acceptable
+  from an upstream chart's own values)
 
 ### 5.2 Logging
 
@@ -143,20 +145,36 @@ All deployments MUST define:
 
 ### 6.1 Crossplane Compositions
 
-Before committing composition changes:
+Compositions are not edited in this repo — they live in
+[`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration). Before
+committing a composition change, in that repo:
 
 | Tool | Target | Purpose |
 |------|--------|---------|
 | `kcl fmt` | No changes | Formatting compliance |
-| `kcl run` | Success | Syntax validation |
-| `crossplane render` | Success | End-to-end rendering |
-| Polaris | Score 85+ | Security best practices |
-| kube-linter | No errors | Kubernetes best practices |
-| Datree | Pass | Policy enforcement |
+| `kcl test` | Success | Unit tests against golden fixtures |
+| XRD schema check | Success | Composition output matches the XRD |
 
-**Validation**: `task check` in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration), which owns the compositions. This repo pins a released version in `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml`.
+**Validation**: `task check` in that repo runs all three, plus render-equivalence against golden
+fixtures. This repo only pins the released version, in
+`infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml` (and the GCP
+equivalent) — it does not re-run KCL validation itself.
 
-### 6.2 Infrastructure Changes
+### 6.2 Rendered Manifests
+
+Every claim and manifest in this repo — including ones the pinned Composition above renders — is
+gated before merge:
+
+| Tool | Target | Purpose |
+|------|--------|---------|
+| `flux schema validate` | Success, `skipMissingSchemas: false` | Structure + CEL, against the repo's XRDs and the Flux/CNCF catalogs |
+| `polaris audit --set-exit-code-on-danger` | No danger-level findings | Workload best practices |
+
+**Validation**: `./scripts/validate-manifests.sh`, the single entry point CI runs. It renders the
+repository the way Flux does — every Kustomize overlay and `HelmRelease` — then applies both
+gates to the rendered bundle.
+
+### 6.3 Infrastructure Changes
 
 Before applying OpenTofu changes:
 
@@ -248,7 +266,7 @@ Use this checklist when reviewing specs and implementations:
 - [ ] EKS Pod Identity used (not IRSA)
 - [ ] Health probes defined (liveness, readiness)
 - [ ] Observability configured (metrics, logs)
-- [ ] Validation tools pass (Polaris 85+, kube-linter, Datree)
+- [ ] Validation tools pass (`flux schema validate`, `polaris audit --set-exit-code-on-danger`, and `task check` in `Smana/crossplane-configuration` for any composition change)
 - [ ] Examples provided (basic + complete)
 - [ ] Design doc committed under `docs/superpowers/specs/` and linked from the PR
 - [ ] No `[NEEDS CLARIFICATION]` markers left in the approved design

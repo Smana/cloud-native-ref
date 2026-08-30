@@ -7,8 +7,8 @@ lastVerified: 2026-08-30
 
 [Foundations]({{< relref "/docs/platform/foundations/aws.md#the-openbao-cluster-stack" >}})
 covers how the OpenBao cluster is provisioned — a single node on `file`
-storage as committed (`mode = "dev"`), or five SPOT nodes on Raft with RAID-0
-NVMe at `mode = "ha"`, with KMS auto-unseal either way. This page covers what
+storage as committed (`mode = "dev"`), or five nodes on Raft (3 on-demand + 2
+spot) with RAID-0 NVMe at `mode = "ha"`, with KMS auto-unseal either way. This page covers what
 runs on top of that cluster:
 `opentofu/aws/openbao/management/` layers namespaces, auth methods, the PKI, and
 policies onto it, and this is the operational surface every other security

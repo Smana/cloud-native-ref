@@ -43,7 +43,7 @@ description: "An opinionated, production-ready Kubernetes platform reference: bo
   {{< hextra/feature-card link="docs/reference/" icon="book-open" title="Reference"
     subtitle="Repository layout, the technology stack and what each piece is responsible for, commands, CI, the platform constitution." >}}
   {{< hextra/feature-card link="docs/decisions/" icon="scale" title="Decisions"
-    subtitle="Twenty-four architecture decision records — what was chosen, what it was chosen over, and the cost that came with it." >}}
+    subtitle="An architecture decision record for every consequential choice — what was chosen, what it was chosen over, and the cost that came with it." >}}
 {{< /hextra/feature-grid >}}
 
 {{< stack-strip >}}

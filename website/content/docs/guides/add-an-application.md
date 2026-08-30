@@ -2,7 +2,7 @@
 title: Add an application
 weight: 20
 description: From an image to a running, routed, monitored application — via the wizard or by hand.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Two paths, same result: an `App` claim committed to Git and reconciled by
@@ -29,7 +29,7 @@ Start from the smallest thing that runs:
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: App
 metadata:
-  name: xplane-myapp
+  name: myapp
   namespace: apps
 spec:
   image:
@@ -46,8 +46,10 @@ lists every field with its type and default.
 
 Two conventions the platform depends on:
 
-- **Name it `xplane-<something>`.** The prefix is load-bearing for IAM
-  scoping, and renaming a Crossplane managed resource later is delete-and-create.
+- **Name the claim plainly** (e.g. `myapp`) — do not prefix it yourself. The
+  composition derives an `xplane-*` name for every managed resource it
+  creates; the prefix is load-bearing for IAM scoping, and renaming one later
+  is delete-and-create.
 - **Do not wire connection strings yourself.** If you ask for a
   `sqlInstance` or `kvStore`, the composition injects `DATABASE_URL` and
   `REDIS_URL`. Setting them by hand fights the composition.
@@ -65,8 +67,8 @@ of the `apps` Kustomization.
 ## Verifying it reconciled
 
 ```bash
-kubectl get app xplane-myapp -n apps
-kubectl describe app xplane-myapp -n apps
+kubectl get app myapp -n apps
+kubectl describe app myapp -n apps
 ```
 
 `READY=True` means the composition's readiness checks passed — the Deployment

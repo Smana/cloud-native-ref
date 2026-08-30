@@ -2,7 +2,7 @@
 title: Commands
 weight: 30
 description: The commands used day to day, verified to exist against the scripts and Terramate workflows in this repository.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Every command below is either a Terramate script defined in a `workflows.tm.hcl`
@@ -62,16 +62,24 @@ TF_VAR_flux_git_ref='refs/heads/my-branch' terramate script run deploy
 `EKS Full Destroy` runs the reverse order: `prepare-destroy` →
 `stage2-destroy-addons` → `stage1-destroy-cluster`.
 
-## GKE deploy (two-stage bootstrap)
+## GKE deploy (four-job bootstrap)
 
-Defined in `opentofu/gcp/gke/init/workflows.tm.hcl`. Same two-stage shape as EKS
-and for the same provider-graph reason, but Stage 2 has no CNI to disable first —
-Cilium's `cni.exclusive` displaces GKE's config directly.
+Defined in `opentofu/gcp/gke/init/workflows.tm.hcl`. Not the EKS two-stage
+shape — GKE needs no CNI swap, since Cilium's `cni.exclusive` displaces GKE's
+config directly — but it does need two bootstrap jobs EKS doesn't:
+
+1. **`stage0-seed-secrets`** — seeds generated secrets *before* the cluster
+   exists, so CNPG and Harbor never mint a password nobody holds.
+2. **`stage1-cluster`** — the GKE cluster, static spot node pool and Workload
+   Identity.
+3. **`stage2-cilium-and-flux`** — Gateway API CRDs, then Cilium and Flux.
+4. **`stage3-secrets-and-oidc`** — grants External Secrets its per-secret
+   access, and registers OIDC clients if this cluster hosts the IdP.
 
 ```bash
 cd opentofu/gcp/gke/init
-TM_CLOUD=gcp terramate script run deploy          # both stages
-TM_CLOUD=gcp terramate script run deploy-stage1   # Stage 1 only
+TM_CLOUD=gcp terramate script run deploy          # all four jobs
+TM_CLOUD=gcp terramate script run deploy-stage1   # stage1-cluster only
 
 TM_CLOUD=gcp TF_VAR_flux_git_ref='refs/heads/my-branch' \
   terramate script run deploy

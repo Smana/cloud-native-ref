@@ -2,7 +2,7 @@
 title: Repository Layout
 weight: 10
 description: What lives where — top-level directories, the base/overlay pattern, and how a change maps to a domain.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Every deployable domain in this repository follows the same shape:
@@ -28,8 +28,8 @@ even when both clouds happen to want a file of the same name — see
 
 Within `infrastructure/`, `security/`, `observability/` and `tooling/`, each
 component gets its own directory under `base/` — typically a `HelmRelease` or
-a handful of raw manifests plus a `kustomization.yaml`. The cluster-specific
-The cluster's own `kustomization.yaml` lists which of those base components are
+a handful of raw manifests plus a `kustomization.yaml`. The cluster's own
+`kustomization.yaml` lists which of those base components are
 actually included; a component present under `base/` but absent (or commented
 out) from the overlay is not deployed. `tooling/base/gha-runners` is the
 clearest example — present under `base/`, commented out in

@@ -2,7 +2,7 @@
 title: Technology Stack
 weight: 20
 description: What runs on this platform, and what each piece is responsible for.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 Every component this platform runs, and what it is responsible for — not

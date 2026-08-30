@@ -2,7 +2,7 @@
 title: Zero trust
 weight: 40
 description: Default-deny at the network, no ambient credentials, no static secrets — enforced by policy rather than asserted.
-lastVerified: 2026-08-27
+lastVerified: 2026-08-30
 ---
 
 "Zero trust" is easy to claim and hard to check. The useful version of the
@@ -28,9 +28,12 @@ never static keys — the reasoning is in
 On `gcp-0` the same binding runs through GKE Workload Identity, via the
 sibling `GCPWorkloadIdentity` XRD
 ([ADR-0007]({{< relref "/docs/decisions/0007-cloud-abstraction-boundaries.md" >}})).
-Policies are scoped to `xplane-*` resources, and Crossplane holds no
-deletion permissions for stateful services, so a compromised controller
-cannot destroy a database or an S3 bucket.
+Policies are scoped to `xplane-*` resources. On `aws-0`, deletion is
+explicitly denied for the platform's own critical buckets — Harbor, OpenBao
+snapshots, CNPG backups — carved out of an otherwise broad `s3:*` grant, so a
+compromised controller cannot destroy those three; nothing else gets that
+carve-out, and `gcp-0` grants `storage.buckets.delete` with no equivalent
+deny at all.
 
 **Secrets.** Nothing sensitive is committed. External Secrets Operator pulls
 from the cloud's managed secret store — AWS Secrets Manager on `aws-0`,

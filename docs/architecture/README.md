@@ -23,6 +23,7 @@ committed, so a source change without a re-run ships a stale picture.
 | `ci-pipeline.drawio` | What gates a merge, and the three consumers of `main` afterwards. [Reference → CI Workflows](../../website/content/docs/reference/ci-workflows.md), [Platform → GitOps → Validation](../../website/content/docs/platform/gitops/validation.md) |
 | `request-path.drawio` | Three front doors onto one Envoy fleet. [Platform → Networking](../../website/content/docs/platform/networking/_index.md) |
 | `secrets-and-pki.drawio` | The private CA chain and the two secret paths. [Platform → Security](../../website/content/docs/platform/security/_index.md) |
+| `authentication-chain.drawio` | ZITADEL brokering one Google Workspace directory into every client's token, and where EKS and GKE diverge at the Kubernetes API. [Platform → Security → Authentication](../../website/content/docs/platform/security/authentication.md) |
 | `app-claim-expansion.drawio` | One `App` claim becoming a whole application. [Platform → Developer Platform](../../website/content/docs/platform/developer-platform/_index.md) |
 | `observability-flow.drawio` | Metrics, logs, traces and the alerting path. [Platform → Observability](../../website/content/docs/platform/observability/_index.md) |
 | `llm-platform.drawio` | Three pages — request path, one claim rendered, autoscaling and telemetry. [Platform → AI Platform](../../website/content/docs/platform/ai-platform/_index.md) |
