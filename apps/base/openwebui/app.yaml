@@ -10,7 +10,7 @@ metadata:
 spec:
   image:
     repository: ghcr.io/open-webui/open-webui
-    tag: "v0.11.1"
+    tag: "v0.11.3"
     pullPolicy: IfNotPresent
 
   # Single replica — SQLite data dir on emptyDir; sessions reset on restart.
