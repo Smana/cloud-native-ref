@@ -37,6 +37,31 @@ spec:
   # zitadel-20260829 is deliberately left in the bucket as a fallback. Delete
   # it once a rebuild has actually restored from this one.
   #
+  # ── zitadel-20260901: the -2 seed was born unrestorable ─────────────────────
+  # Found on the 2026-09-01 rebuild, the first to actually restore from -2:
+  # recovery targets the newest base backup (20260829T195453), whose
+  # consistency point sits in WAL segment ...0x42 — archived to the LIVE
+  # prefix seconds AFTER the copy was taken. The seed's WAL chain ends at
+  # ...0x41, the backup's begin_wal, so recovery can never reach consistency
+  # and the full-recovery Job loops forever. "Object count equal to the
+  # source" verified equality with a source that had not yet archived the
+  # final segment; by the time the rebuild ran, the live prefix (and that
+  # segment) had been cleared, unrecoverable (no bucket versioning).
+  #
+  # zitadel-20260901 is zitadel-20260829-2 minus base/20260829T195453/: the
+  # catalog's newest backup becomes 20260829T190000 (WAL window 0x36-0x37,
+  # inside the seed), and replay continues to the archive end (0x41) — past
+  # the 19:54:29Z project cleanup the -2 rotation existed to capture. Net
+  # loss versus -2's intent: only the final ~50 seconds, which contain
+  # nothing but the backup itself.
+  #
+  # LESSON for the promotion procedure below: after the one-shot Backup
+  # completes, force the segment out before copying —
+  #   kubectl exec -n security xplane-zitadel-cnpg-cluster-1 -c postgres -- \
+  #     psql -c "SELECT pg_switch_wal();"
+  # then wait for the backup's end_wal to appear under wals/ in the live
+  # prefix, and only then take the copy.
+  #
   # NOTE: this was a COPY, so the live prefix is NOT empty. A restore
   # therefore still needs scripts/cnpg-prepare-restore.sh first (see the
   # expected-empty-archive note below). Earlier rotations MOVED the
@@ -88,7 +113,7 @@ spec:
   # which removes the step on both clouds. See docs/guides/restore-a-database.
   objectStoreRecovery:
     bucketName: "${region}-ogenki-cnpg-backups"
-    path: "zitadel-20260829-2"
+    path: "zitadel-20260901"
   backup:
     schedule: "0 0 * * *"
     bucketName: "${region}-ogenki-cnpg-backups"
