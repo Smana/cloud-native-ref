@@ -1,7 +1,7 @@
 ---
 title: What it costs
 weight: 45
-description: A rough monthly estimate of what the platform costs on each cloud, how the two compare on equal terms, and which lines are worth attacking.
+description: A rough monthly estimate of what the platform costs on each cloud, and how the two compare on equal terms.
 lastVerified: 2026-09-01
 ---
 
@@ -121,32 +121,6 @@ aws secretsmanager list-secrets \
 aws kms list-keys --query 'Keys[].KeyId' --output text | xargs -n1 \
   aws kms describe-key --query 'KeyMetadata.[KeyState,Description]' --output text --key-id
 ```
-
-## What is worth attacking
-
-In rough order of what they return:
-
-**1. Workload requests and replica counts.** Compute is the largest line on
-both clouds, and node-level tuning only trims the overhead around it. Pod
-requests, replica counts and retention windows are what actually move it.
-
-**2. Node shape and provisioned disk.** A minimum instance size on the NodePool
-(`karpenter.k8s.aws/instance-cpu` with a `Gt` requirement) consolidates the
-fleet, and because each node carries its own root and data volumes, fewer nodes
-also means less EBS. Check the EC2NodeClass `blockDeviceMappings` too — a
-volume sized for an occasional peak is paid for on every node, every hour.
-
-**3. NAT data processing.** It can cost as much as the NAT gateway itself,
-mostly from image pulls. An S3 **gateway** endpoint is free and captures ECR
-layer traffic along with S3; ECR *interface* endpoints bill per hour and are
-usually not worth adding on top.
-
-**4. Single-instance databases block node lifecycle.** A CNPG cluster with
-`instances: 1` has a PodDisruptionBudget that can never permit a voluntary
-eviction, so it pins its node against consolidation, drift and upgrades until
-someone cordons the node and restarts the pod by hand. That is an availability
-and operations cost rather than a billing one — worth knowing before scaling a
-database down to save a replica.
 
 ## Keeping it cheap
 
