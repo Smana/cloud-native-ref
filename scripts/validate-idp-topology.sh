@@ -17,6 +17,13 @@
 # here instead. The forbidden state has occurred twice; both times the intended
 # topology was written only in an ADR, where no machine could read it.
 #
+# SCOPE: this reads COMMITTED YAML, not a live cluster. It answers "would this
+# configuration produce two identity directories?", not "are two running right
+# now?" -- suspending a Kustomization stops Flux reconciling an instance without
+# removing one already deployed, so a live migration can be mid-flight with two
+# directories up while this reports consistent. That case belongs to the
+# migration guide's decommissioning step, not here.
+#
 # Usage: validate-idp-topology.sh [ROOT_DIR]
 set -euo pipefail
 

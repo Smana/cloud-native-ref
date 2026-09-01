@@ -41,6 +41,18 @@ nowhere a machine can read it.**
 - **An AWS-side host toggle.** See *Unsupported state* below.
 - **A new ADR.** The decision exists. This is enforcement, so ADR-0024 and
   ADR-0027 get short amendments instead.
+- **Generating the Flux manifest with Terramate.** The obvious way to make gate
+  2 derived rather than checked, and it is technically possible — `generate_file`
+  takes `context = "root"`, so it is not confined to `opentofu/`. Rejected on
+  three grounds. Flux's `postBuild` substitution cannot reach a Kustomization's
+  own `spec`, only what it builds from `path`, so the field can be *generated*
+  but never *substituted* — the derivation would have to own the whole file.
+  Owning the whole file means either regenerating it (losing the narrative
+  comments that explain the gate) or marker-based patching, which is as fragile
+  as the hand-editing it replaces. And it crosses the repo's ownership line:
+  `opentofu/` is Terramate's, `clusters/` is hand-authored GitOps that Flux
+  reads directly, and trading that clarity for one boolean is a bad exchange.
+  Checking is the right altitude, not the fallback.
 
 ## Design
 
