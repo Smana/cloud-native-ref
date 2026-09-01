@@ -68,3 +68,26 @@ resource "aws_route_table_association" "pods" {
   subnet_id      = aws_subnet.pods[count.index].id
   route_table_id = module.vpc.private_route_table_ids[0]
 }
+
+# S3 gateway endpoint: free, and it takes the bulk of NAT data processing out
+# (#1941 — measured ~$41/month against $35/month of gateway-hours). Image
+# pulls are the main driver, and ECR serves LAYER bytes from S3, so this one
+# endpoint captures them along with CNPG backups and every other S3 flow from
+# the private and pod subnets. DNS is unchanged (traffic is steered by the
+# endpoint's prefix list in the route tables), so Cilium toFQDNs policies are
+# unaffected.
+#
+# ECR *interface* endpoints (api/dkr) are deliberately NOT added: with layers
+# riding S3 only the small auth/manifest calls remain on the NAT path, and two
+# interface endpoints bill ~$16/month — more than they would save here.
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = module.vpc.vpc_id
+  service_name      = "com.amazonaws.${var.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = module.vpc.private_route_table_ids
+
+  tags = merge(
+    local.tags,
+    { Name = "vpc-${var.region}-${var.env}-s3" }
+  )
+}
