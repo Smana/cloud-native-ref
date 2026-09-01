@@ -25,10 +25,10 @@ data processing, egress) are called out rather than measured.
 
 | Line | $/month | Notes |
 |---|---:|---|
-| **Spot compute, 8 nodes** | **378** | **largest single item** — 24 vCPU: the static bootstrap pair alone is $180, the 6 Karpenter nodes $198 |
+| **Spot compute, 10 nodes** | **369** | **largest single item** — 22 vCPU: a 2 × `m8i.large` static pair ($69) plus 8 Karpenter-provisioned nodes ($300), measured after right-sizing the static pair and letting Karpenter settle |
 | NAT gateway | 76 | $35 gateway-hours + ~$41 data processing (measured) |
 | EKS control plane | 73 | $0.10/hr, flat |
-| EBS, 753 GiB gp3 | 70 | 33 volumes |
+| EBS, ~900 GiB gp3 | 83 | 35 volumes |
 | 3 × network load balancer | 49 | public gateway, ZITADEL, OpenBao internal |
 | 2 × `t3.micro` on-demand | 17 | OpenBao, Tailscale subnet router |
 | Secrets Manager | 16 | the ~40 secrets the platform actually reads |
@@ -55,12 +55,15 @@ nodes and storage to per-signal service fees, and trade operating effort for
 bill opacity. If the platform adopts any of them, that will be a recorded
 decision with its price on this page, not a default left on.
 
-Compute is spot throughout — measured at $0.160 (`c7i-flex.2xlarge`) and
-$0.0863 (`c7i-flex.xlarge`) for the static bootstrap pair, plus 3 × $0.0405
-(`c7i-flex.large`), $0.0481 (`c8i-flex.large`), $0.0477 (`m8i.large`) and
-$0.0544 (`r5ad.large`) per hour for the Karpenter fleet. The Karpenter line
-moves between runs; the bootstrap pair never does — Karpenter cannot
-consolidate a managed node group.
+Compute is spot throughout, and one measurement here is worth recording: the
+static pair was originally xlarge/2xlarge (~$180/month on its own), and
+right-sizing it to `m8i.large` did **not** shave that off the bill — Karpenter
+grew by almost the same amount to absorb the displaced pods. The pair was
+carrying real capacity, not idle headroom. The lesson generalizes: what this
+platform pays for compute is set by what it *consumes*, and by node
+granularity — every extra node carries its own copy of the DaemonSet overhead
+(Cilium, CSI, exporters), which favors fewer, larger nodes over many small
+ones.
 
 ## GCP — about $10/day
 
@@ -76,20 +79,24 @@ consolidate a managed node group.
 
 ## Why they differ
 
-At list price AWS runs at about **2.2×** GCP — but most of that is not cloud
-pricing. Re-price AWS at gcp-0's exact footprint (12 spot vCPUs, 283 GB of
-disk, a trimmed secret/key inventory) and it lands near **$400/month**, about
-**1.3×** GCP:
+At list price AWS runs at about **2.2×** GCP. Separating what the *clouds*
+charge from what *this deployment* consumes:
 
-- **Most of the gap is deployment drift**, all fixable on our side: the
-  oversized static bootstrap pair (~$120), a Karpenter fleet holding twice
-  GCP's vCPUs (~$85), 2.8× the provisioned disk (~$44), and smaller inventory
-  differences for the rest.
-- **The remaining ~$80/month is genuinely AWS charging more**: three metered
-  NLBs against forwarding rules under a flat minimum, NAT gateway-hours, the
-  per-secret and per-key pricing model, and a ~10% spot premium at equal vCPUs.
-  One line runs the other way — `pd-balanced` costs ~18% more per GiB than gp3.
-- The control-plane fee is a wash at list price; both charge $0.10/hour.
+- **Cloud pricing accounts for roughly 1.3× of it.** Priced at identical
+  consumption (12 spot vCPUs, the same disk and inventory), AWS lands near
+  **$410/month** against GCP's $317: a ~25% spot premium per vCPU, three
+  metered NLBs against forwarding rules under a flat minimum, NAT
+  gateway-hours, and the per-secret/per-key pricing model. One line runs the
+  other way — `pd-balanced` costs ~18% more per GiB than gp3 — and the
+  control-plane fee is a wash: both charge $0.10/hour.
+- **The rest is consumption, on our side of the ledger, and it was measured
+  rather than assumed**: the AWS deployment consumes ~22 spot vCPUs where GCP
+  serves the platform on 12. Right-sizing the static pair did not close it —
+  the capacity simply moved to Karpenter. The drivers are node granularity
+  (ten 2-vCPU nodes pay ten copies of the per-node DaemonSet overhead; GCP
+  packs onto three 4-vCPU machines), scheduling fragmentation on small nodes,
+  3× the provisioned block storage, and a few AWS-only components (Karpenter
+  itself, the demo applications).
 - The comparison is structurally fair since ADR-0024: **both clouds run their
   own ZITADEL and their own OpenBao**, and only public DNS stays AWS-owned.
 
@@ -121,22 +128,24 @@ aws kms list-keys --query 'Keys[].KeyId' --output text | xargs -n1 \
 
 ## What is worth attacking
 
-**1. The static bootstrap node group — ~$180/month for two nodes.** A
-`c7i-flex.2xlarge` + `c7i-flex.xlarge` pair that exists to host what must run
-before Karpenter does, and that Karpenter therefore can never consolidate. It
-is the single biggest lever on the bill: sizing the pair down is one variable
-in `opentofu/aws/eks/init/main.tf` and worth on the order of $120/month.
+**1. Node granularity.** The measured lesson above: the fleet runs ten mostly
+2-vCPU nodes, each carrying its own copy of the DaemonSet overhead. Steering
+Karpenter toward fewer, larger instances (NodePool requirements or
+consolidation preferences) is now the biggest compute lever — plausibly on the
+order of $100/month. (Right-sizing the static pair is already done; it moved
+capacity to Karpenter rather than removing it, which is how we know the
+remaining lever is granularity, not node-group sizing.)
 
 **2. NAT data processing costs more than the NAT gateway** — $41/month against
 $35/month of gateway-hours, from image pulls and telemetry egress. There are no
 VPC endpoints configured; S3 and ECR endpoints would take most of it out.
 
-**3. Provisioned EBS keeps growing** — 753 GiB across 33 volumes against
+**3. Provisioned EBS keeps growing** — ~900 GiB across 35 volumes against
 283 GB for the same charts on GCP. Worth one look at PVC sizes before calling
 it necessary.
 
-Together those are roughly **$200/month**, none of which requires changing what
-the platform does.
+Together those are plausibly **$150–200/month**, none of which requires
+changing what the platform does.
 
 ## Keeping it cheap
 
