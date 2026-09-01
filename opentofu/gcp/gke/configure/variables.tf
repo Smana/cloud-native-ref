@@ -141,25 +141,30 @@ variable "route53_region" {
 # resolves through the same cross-cloud federation as every other public
 # hostname here.
 #
-# Running an instance per cloud means a user directory per cloud. That is the
-# real cost and it is accepted deliberately: these are throwaway platforms whose
-# ZITADEL bootstraps empty on every rebuild, so there is no long-lived directory
-# to federate. A production two-cloud deployment would want one instance and
-# should set deploy_identity_provider = false.
+# ADR-0027 settles what "deployable on either cloud" means: ZITADEL is a
+# primary-cloud SINGLETON. It relocates to whichever cloud is primary; two
+# clouds each running one is ruled out, because a grant means nothing without
+# knowing which directory issued it.
 #
-# TWO GATES, and they must agree:
+# DO NOT SET THIS IN variables.tfvars. It is derived from global.primary_cloud
+# and passed as `-var` by workflows.tm.hcl on every invocation -- deploy,
+# preview, destroy and drift -- and a trailing `-var` wins over `-var-file`.
+# A literal in the tfvars file is therefore silently ineffective. Setting
+# primary_cloud is what flips this.
 #
-#   1. deploy_identity_provider (here) -- drives identity_provider_url, which
-#      every consumer reads.
-#   2. clusters/gcp-0/security/zitadel.yaml `spec.suspend` -- whether Flux
-#      actually deploys it.
+# TWO GATES still, but only one is typed:
 #
-# Setting this true while the Kustomization stays suspended points every
-# consumer at a hostname this cluster does not serve. Nothing can enforce the
-# pairing from here, which is exactly why the URL is derived from this flag
-# rather than typed twice.
+#   1. deploy_identity_provider (here) -- DERIVED, drives identity_provider_url,
+#      which every consumer reads.
+#   2. clusters/gcp-0/security/zitadel.yaml `spec.suspend` -- committed Flux
+#      state, which Terramate cannot reach. VERIFIED against primary_cloud by
+#      ./scripts/validate-idp-topology.sh in CI.
+#
+# The default stays false so that a bare `tofu apply` run in this directory,
+# outside the Terramate workflow, cannot stand up a second directory by
+# omission.
 variable "deploy_identity_provider" {
-  description = "Whether this cluster hosts its own ZITADEL. False consumes the instance named by identity_provider_url. Must be flipped together with spec.suspend on clusters/gcp-0/security/zitadel.yaml; see ADR-0024"
+  description = "Whether this cluster hosts its own ZITADEL. Derived from global.primary_cloud by workflows.tm.hcl -- do not set it in variables.tfvars, where a `-var` would override it silently. False consumes the instance named by identity_provider_url. See ADR-0027"
   type        = bool
   default     = false
 }

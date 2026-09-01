@@ -211,9 +211,6 @@ jobs:
         run: |
           find ./scripts -name "*.sh" -type f -print0 | xargs -0 shellcheck -x -S warning
 
-      - name: Run script unit tests
-        run: ./scripts/test-validate-idp-topology.sh
-
   links:
     name: Check the documentation links 🔗
     runs-on: ubuntu-latest
@@ -232,7 +229,20 @@ jobs:
         run: ./scripts/validate-doc-claims.sh
 
       # Folded into this job for the same reason as the claims check above: the
-      # required-check list on `main` does not have to change. It needs the
-      # pyyaml installed for that step.
+      # required-check list on `main` does not have to change.
+      #
+      # It runs HERE rather than in the shellcheck job because it needs the
+      # pyyaml installed above. The shellcheck job installs only shellcheck, and
+      # this repo does not treat "it happens to be in the runner image" as a
+      # dependency declaration.
       - name: Check identity provider topology
         run: ./scripts/validate-idp-topology.sh
+
+      # Glob, not a list: a test script added under scripts/ should run without
+      # anyone remembering to add a line here.
+      - name: Run script unit tests
+        run: |
+          for t in ./scripts/test-*.sh; do
+            echo "== $t"
+            "$t"
+          done

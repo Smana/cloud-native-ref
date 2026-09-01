@@ -56,6 +56,19 @@ spec:
   # half-works in silence. Note that a GCP primary while AWS is also deployed
   # is rejected: opentofu/aws/eks/configure hosts unconditionally, so that
   # combination needs an AWS-side toggle and a new decision.
+  #
+  # KNOWN GAP while this cluster consumes aws-0's instance: nothing registers
+  # gcp-0's OIDC clients there. scripts/zitadel-oidc-clients.sh reads the admin
+  # PAT from the INVOKING cluster's own secret store, and its only automated
+  # caller is gke/init stage 3, which correctly skips when this cluster does not
+  # host. So gcp-0's redirect URIs must be added to aws-0's ZITADEL by hand
+  # until that script grows a cross-cluster mode -- otherwise headlamp's
+  # oauth2-proxy has no client secret and sits in CreateContainerConfigError.
+  # Tracked separately; do not discover it during a bootstrap.
+  #
+  # This field is also only half of a live migration: suspending stops Flux
+  # reconciling an instance, it does not remove one that is already running.
+  # See the warning in the migration guide.
   suspend: true
   prune: true
   interval: 1m0s

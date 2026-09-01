@@ -223,18 +223,26 @@ GCP-only platform can authenticate without an AWS cluster running. The accepted
 cost is one user directory per cloud, with no federation between them. Only
 public DNS stays AWS-owned ([ADR-0019](../../decisions/0019-cross-cloud-dns-federation.md)).
 
-`gcp-0` takes that opt-out today and runs its own instance. Doing so requires
-two gates that must agree, because neither can enforce the other:
+`gcp-0` does **not** take that opt-out: AWS is the primary cloud
+([ADR-0027](../../decisions/0027-primary-cloud-provider.md)), so `aws-0` hosts
+the one instance and `gcp-0` consumes it. The opt-out exists for a GCP-only
+platform, where the singleton relocates rather than being duplicated — two
+clouds each running a directory is ruled out, since a grant means nothing
+without knowing which directory issued it.
 
-| Gate | Where | Value on `gcp-0` |
+Placement has two halves, and only one of them is typed:
+
+| Gate | Where | Value today |
 |---|---|---|
-| 1 · which URL consumers read | `deploy_identity_provider` in `opentofu/gcp/gke/configure/variables.tfvars` | `true` |
-| 2 · whether an instance runs | `spec.suspend` in `clusters/gcp-0/security/zitadel.yaml` | `false` |
+| 1 · which URL consumers read | `deploy_identity_provider`, **derived** from `primary_cloud` in `opentofu/config.tm.hcl` | `false` on `gcp-0` |
+| 2 · whether an instance runs | `spec.suspend` in `clusters/gcp-0/security/zitadel.yaml` | `true` |
 
-Gate 1 alone points every consumer at a hostname nothing serves. Gate 2 alone
-runs an IdP no consumer is configured to use — and that half fails *silently*,
-since ZITADEL is up and every consumer is healthy while pointed at the other
-cluster. Flip them in the same commit.
+Gate 1 cannot disagree with the declaration, because it is the declaration.
+Gate 2 is committed Flux state — Flux never reads Terramate globals — so it is
+verified instead, by `./scripts/validate-idp-topology.sh` in CI. Changing which
+cloud hosts is a [migration]({{< relref "/docs/guides/migrate-the-identity-provider.md" >}}),
+not a toggle: the database seed, admin credential and OIDC clients travel with
+it.
 
 ## Adding a third cloud
 

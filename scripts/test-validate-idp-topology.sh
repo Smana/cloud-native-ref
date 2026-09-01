@@ -17,12 +17,18 @@ make_fixture() {
   local root="$1" primary="$2"
   shift 2
   mkdir -p "${root}/opentofu"
-  cat >"${root}/opentofu/config.tm.hcl" <<EOF
+  # "absent" omits the declaration entirely -- the same sentinel spelling the
+  # suspend pairs use below, so every case can go through `expect`.
+  if [ "$primary" = "absent" ]; then
+    printf 'globals {\n  region = "eu-west-3"\n}\n' >"${root}/opentofu/config.tm.hcl"
+  else
+    cat >"${root}/opentofu/config.tm.hcl" <<EOF
 globals {
   region        = "eu-west-3"
   primary_cloud = "${primary}"
 }
 EOF
+  fi
   local pair cluster suspend
   for pair in "$@"; do
     cluster="${pair%%:*}"
@@ -80,27 +86,28 @@ expect "primary hosting nothing is rejected" \
 expect "gcp primary while aws is present is rejected" \
   1 "unconditionally" gcp "aws-0:absent" "gcp-0:false"
 
+# The same combination with AWS suspended: still rejected. Suspending aws-0 stops
+# AWS hosting, but eks/configure still points every aws-0 consumer at a host
+# nothing serves -- so suspend must not be a way to pass this case.
+expect "gcp primary with aws present but suspended is still rejected" \
+  1 "unconditionally" gcp "aws-0:true" "gcp-0:false"
+
 expect "unknown primary_cloud is rejected" \
   1 "azure" azure "aws-0:absent" "gcp-0:true"
 
-# primary_cloud absent entirely
-root="$(mktemp -d)"
-mkdir -p "${root}/opentofu"
-echo 'globals {' >"${root}/opentofu/config.tm.hcl"
-echo '  region = "eu-west-3"' >>"${root}/opentofu/config.tm.hcl"
-echo '}' >>"${root}/opentofu/config.tm.hcl"
-mkdir -p "${root}/clusters/aws-0/security"
-printf 'spec:\n  suspend: false\n' >"${root}/clusters/aws-0/security/zitadel.yaml"
-set +e
-out="$("$VALIDATOR" "$root" 2>&1)"; rc=$?
-set -e
-rm -rf "$root"
-if [ "$rc" -eq 1 ] && grep -qF "primary_cloud" <<<"$out"; then
-  echo "ok   undeclared primary_cloud is rejected"
-else
-  echo "FAIL undeclared primary_cloud is rejected: exit ${rc}: ${out}"
-  failures=$((failures + 1))
-fi
+expect "malformed primary_cloud reports as invalid, not undeclared" \
+  1 "not a known cloud" AWS "aws-0:absent" "gcp-0:true"
+
+expect "undeclared primary_cloud is rejected" \
+  1 "primary_cloud" absent "aws-0:false"
+
+# "Exactly one hosts" is the contract; these two would pass a purely
+# per-manifest rule while zero or two clusters actually host.
+expect "no cluster on the primary cloud is rejected" \
+  1 "found 0" aws "gcp-0:true"
+
+expect "two clusters on the primary cloud both hosting is rejected" \
+  1 "found 2" aws "aws-0:absent" "aws-1:false" "gcp-0:true"
 
 if [ "$failures" -ne 0 ]; then
   echo "==> ${failures} test(s) failed"

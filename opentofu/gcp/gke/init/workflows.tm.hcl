@@ -172,27 +172,28 @@ script "deploy" {
 
         # Only when this cluster hosts the IdP. Consuming another cluster's
         # ZITADEL means its clients are registered there, not here.
-        # Read the flag from the tfvars FILE, with the environment as an
-        # override -- not the other way round.
+        # Whether this cluster hosts the identity provider comes from the SAME
+        # place the configure stack gets it: global.primary_cloud (ADR-0027),
+        # interpolated below. The environment still overrides for one
+        # invocation.
         #
-        # This used to test only $TF_VAR_deploy_identity_provider. That variable
-        # is how you override the setting for one invocation; the setting itself
-        # lives in ../configure/variables.tfvars, exactly like public_domain_name
-        # two lines up, which is already read that way. So the normal case --
-        # the flag committed to the file, no env var in the shell -- read as
-        # false and skipped registration, while printing a line that looks like
-        # a deliberate decision.
+        # It used to be read out of ../configure/variables.tfvars with awk, and
+        # before that from $TF_VAR_deploy_identity_provider alone. Both were
+        # ways of asking a second source the same question, and both got a
+        # different answer than the deploy did:
         #
-        # gcp-0 shipped with `deploy_identity_provider = true` and no OIDC client
-        # ever registered. Every SSO consumer failed at the authorize step with a
-        # client_id ZITADEL had never heard of, and the deploy reported success.
-        DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-}"
-        if [ -z "$${DEPLOY_IDP}" ]; then
-          DEPLOY_IDP="$(awk -F'=' '/^[[:space:]]*deploy_identity_provider/{gsub(/[[:space:]"]/,"",$$2); print $$2}' ../configure/variables.tfvars)"
-        fi
+        #   gcp-0 shipped with `deploy_identity_provider = true` and no OIDC
+        #   client ever registered. Every SSO consumer failed at the authorize
+        #   step with a client_id ZITADEL had never heard of, and the deploy
+        #   reported success.
+        #
+        # The tfvars literal no longer exists, so the awk matched nothing and
+        # would have reproduced that incident exactly. One source, or none.
+        DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-${global.primary_cloud == "gcp"}}"
         if [ "$${DEPLOY_IDP}" != "true" ]; then
-          echo "== skipping OIDC clients: deploy_identity_provider is not true"
-          echo "   (file: ../configure/variables.tfvars, override: TF_VAR_deploy_identity_provider)"
+          echo "== skipping OIDC clients: this cluster does not host the identity provider"
+          echo "   (primary_cloud = \"${global.primary_cloud}\" in opentofu/config.tm.hcl;"
+          echo "    override for one run: TF_VAR_deploy_identity_provider=true)"
           exit 0
         fi
 

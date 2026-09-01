@@ -113,6 +113,23 @@ consumed internally by the developer-facing compositions.
 works the case through `EPI`, whose central field — inline AWS IAM JSON — has
 no neutral form.
 
+## Where the cloud list is enumerated
+
+Three places name the clouds explicitly, and a new lane has to appear in all
+three or it half-works:
+
+| Place | What it drives |
+|---|---|
+| `global.stack_cloud` in `opentofu/config.tm.hcl` | which lane a stack belongs to, from its tags |
+| `--tm-check` in `scripts/tm-provisioner.sh` | whether `TM_CLOUD` selects that lane |
+| `KNOWN_CLOUDS` in `scripts/validate-idp-topology.sh` | which values `primary_cloud` may take |
+
+The third is the one that surprises: a new lane that is *not* primary must also
+have `spec.suspend: true` on its own `clusters/<cluster>/security/zitadel.yaml`,
+or the topology check fails — the identity provider is a primary-cloud
+singleton ([ADR-0027]({{< relref "/docs/decisions/0027-primary-cloud-provider.md" >}})),
+so a third cloud consumes it rather than running its own.
+
 ## What must not change
 
 `App` and `SQLInstance` claims are developer-facing and stay neutral. The
