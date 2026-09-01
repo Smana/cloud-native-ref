@@ -32,6 +32,17 @@ globals {
   region                 = "eu-west-3"
   profile                = ""
   eks_cluster_name       = "aws-0"
+
+  # Which cloud hosts the services that cannot sensibly exist twice: the public
+  # DNS zone, the cross-cloud federation trust, and ZITADEL (ADR-0027).
+  #
+  # Changing this is a MIGRATION, not a toggle. The identity provider's database
+  # seed, admin credential and OIDC clients travel with it or the move
+  # half-works in silence -- which is why placement is stated here once and
+  # never derived from TM_CLOUD, whose value changes per invocation.
+  #
+  # Enforced by ./scripts/validate-idp-topology.sh.
+  primary_cloud = "aws"
   openbao_url            = "https://bao.priv.aws.ogenki.io:8200"
   root_token_secret_name = "openbao/cloud-native-ref/tokens/root"
   # Deliberately a different secret from the root token: the recovery keys are
