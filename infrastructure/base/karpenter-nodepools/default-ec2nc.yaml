@@ -10,7 +10,13 @@ spec:
     maxPods: 100
   # Default 4Gi OS + 20Gi data isn't enough for the LLM platform's preload
   # Jobs (model weights up to ~16GB into emptyDir before S3 upload).
-  # 80Gi gives ~60Gi free after kubelet/system overhead.
+  # 50Gi gives ~30-35Gi free after kubelet/system overhead and image cache —
+  # still 2× the largest documented preload. This volume is replicated on
+  # EVERY default-pool node (measured 2026-09-01, #1942: 8 × 80Gi = 640 GiB,
+  # ~70% of all provisioned EBS, for a preload path that is suspended by
+  # default); size it for the routine case, not the peak of an opt-in
+  # feature. If a future model exceeds it, raise this together with the gpu
+  # pool's ec2nc rather than paying for it fleet-wide.
   blockDeviceMappings:
     - deviceName: /dev/xvda
       ebs:
@@ -21,7 +27,7 @@ spec:
     - deviceName: /dev/xvdb
       ebs:
         volumeType: gp3
-        volumeSize: 80Gi
+        volumeSize: 50Gi
         encrypted: true
         deleteOnTermination: true
   subnetSelectorTerms:
