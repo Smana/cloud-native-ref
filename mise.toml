@@ -22,7 +22,7 @@ tflint = "0.64.0"
 
 # Manifest validation (SPEC-007). flux 2.9+ is required for `flux plugin`;
 # install the schema plugin with: flux plugin install schema
-flux2 = "2.9.4"
+flux2 = "2.9.5"
 helm = "4.2.4"
 
 # Documentation site (website/). "hugo-extended" is deliberate: mise's plain
