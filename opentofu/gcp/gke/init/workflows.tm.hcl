@@ -189,7 +189,7 @@ script "deploy" {
         #
         # The tfvars literal no longer exists, so the awk matched nothing and
         # would have reproduced that incident exactly. One source, or none.
-        DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-${global.primary_cloud == "gcp"}}"
+        DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-${global.deploy_identity_provider_gcp}}"
         if [ "$${DEPLOY_IDP}" != "true" ]; then
           echo "== skipping OIDC clients: this cluster does not host the identity provider"
           echo "   (primary_cloud = \"${global.primary_cloud}\" in opentofu/config.tm.hcl;"

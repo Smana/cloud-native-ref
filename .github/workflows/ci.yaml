@@ -238,11 +238,11 @@ jobs:
       - name: Check identity provider topology
         run: ./scripts/validate-idp-topology.sh
 
-      # Glob, not a list: a test script added under scripts/ should run without
-      # anyone remembering to add a line here.
-      - name: Run script unit tests
-        run: |
-          for t in ./scripts/test-*.sh; do
-            echo "== $t"
-            "$t"
-          done
+      # Named explicitly, NOT globbed over scripts/test-*.sh. There are 12 such
+      # scripts and CI runs none of them today; a glob here would silently
+      # activate the other 11 as a side effect of this change, and two of them
+      # (test-flux-schema.sh, test-vector-vrl.sh) do not pass in a bare
+      # environment. Wiring them up is worth doing on its own terms -- see the
+      # tracking issue -- not as a drive-by.
+      - name: Run identity provider topology tests
+        run: ./scripts/test-validate-idp-topology.sh

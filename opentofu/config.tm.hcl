@@ -42,9 +42,20 @@ globals {
   # never derived from TM_CLOUD, whose value changes per invocation.
   #
   # Enforced by ./scripts/validate-idp-topology.sh.
-  primary_cloud          = "aws"
-  openbao_url            = "https://bao.priv.aws.ogenki.io:8200"
-  root_token_secret_name = "openbao/cloud-native-ref/tokens/root"
+  primary_cloud = "aws"
+
+  # Whether the GCP lane hosts the identity provider, derived once rather than
+  # compared at each call site. Five sites need it -- deploy, preview, destroy
+  # and drift in gcp/gke/configure, plus the OIDC-client registration in
+  # gcp/gke/init -- and the same file's `cloud_gate` above records what happens
+  # when a rule is hand-copied instead: "the previous gate was fifteen
+  # hand-copied blocks, and four scripts ended up missing one entirely."
+  #
+  # A third cloud, or any change to what makes a lane eligible to host, is then
+  # one edit here rather than a hunt across two files.
+  deploy_identity_provider_gcp = global.primary_cloud == "gcp"
+  openbao_url                  = "https://bao.priv.aws.ogenki.io:8200"
+  root_token_secret_name       = "openbao/cloud-native-ref/tokens/root"
   # Deliberately a different secret from the root token: the recovery keys are
   # what regenerates a lost or revoked root token, so storing both together
   # would make the pair only as strong as one of them.
