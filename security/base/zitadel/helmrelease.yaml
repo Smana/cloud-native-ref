@@ -58,11 +58,23 @@ spec:
     initJob:
       backoffLimit: 30 # Wait for the CNPG database instance to be ready
 
-    # Fix for missing alpine/k8s:1.34.2 image (chart default doesn't exist)
+    # The chart's kubectl helper image (setup/cleanup/init jobs) defaults its
+    # tag to the CLUSTER's Kubernetes version, and docker.io/alpine/k8s does
+    # not publish every patch release — tags jump 1.35.6 → 1.36.0, so GKE's
+    # v1.35.7 resolved to a tag that does not exist and the setup job died in
+    # ImagePullBackOff (found live on gcp-0, 2026-09-01; same class as the
+    # earlier missing-1.34.2 fix, but chart 10.x moved the knob from
+    # setupJob.machinekeyWriter to tools.kubectl). Pin an EXISTING tag within
+    # kubectl's ±1-minor skew of both clusters; re-check the tag exists when
+    # bumping cluster versions.
+    tools:
+      kubectl:
+        image:
+          tag: "1.36.2"
     setupJob:
       machinekeyWriter:
         image:
-          tag: "1.35.0"
+          tag: "1.36.2"
 
     # Login v2 disabled due to Helm chart bug with pod-level TLS
     # Bug: Init container uses HTTPS for internal connections when TLS.Enabled=true
