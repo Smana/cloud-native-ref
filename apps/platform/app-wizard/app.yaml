@@ -336,7 +336,7 @@ spec:
   # ---------------------------------------------------------------------------
   sidecars:
     - name: function-kcl
-      image: "xpkg.upbound.io/crossplane-contrib/function-kcl:v0.12.2"
+      image: "xpkg.upbound.io/crossplane-contrib/function-kcl:v0.12.3"
       args: ["--insecure", "--address=:9443"]
       ports:
         - name: fn-kcl
