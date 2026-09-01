@@ -43,9 +43,9 @@ globals {
   cert_manager_approle             = "cert-manager"
 
   # Helm chart versions for EKS bootstrap
-  cilium_version        = "1.20.0"
-  flux_operator_version = "0.55.0"
-  flux_instance_version = "0.55.0"
+  cilium_version        = "1.20.1"
+  flux_operator_version = "0.59.0"
+  flux_instance_version = "0.59.0"
 
   # Gateway API release. Shared for the same reason as cilium_version: Cilium is
   # the GatewayClass implementation, so the CRD set cannot move independently of

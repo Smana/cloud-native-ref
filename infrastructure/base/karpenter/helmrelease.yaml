@@ -13,8 +13,15 @@ spec:
   interval: 3m0s
   install:
     createNamespace: true
+    crds: CreateReplace
     remediation:
       retries: 3
+  upgrade:
+    # Flux defaults upgrade.crds to Skip, so a chart bump would upgrade the
+    # controller while leaving the CRDs at the previously installed version
+    # (e.g. no `Balanced` consolidationPolicy enum from 1.14). Karpenter ships
+    # its CRDs in the main chart, so replace them on every upgrade.
+    crds: CreateReplace
   values:
     settings:
       clusterName: ${cluster_name}
