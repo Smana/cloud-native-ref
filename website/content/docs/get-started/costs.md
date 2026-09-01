@@ -5,11 +5,14 @@ description: What the platform actually bills on each cloud, measured rather tha
 lastVerified: 2026-09-01
 ---
 
-Roughly **$700/month on AWS** and **$320/month on GCP** for the same platform at
+Roughly **$690/month on AWS** and **$320/month on GCP** for the same platform at
 list price, with the LLM components disabled on both.
 
-The more useful number is smaller: **about $80/month bills on AWS even when
-every cluster is destroyed**, and almost none of it is the platform.
+On top of that, AWS bills about **$45/month of residue that is not the platform
+at all** — secrets, KMS keys and one Kinesis stream left behind by past
+rebuilds. It is kept out of the platform totals above and itemized in
+[the floor section](#the-floor-you-pay-for-nothing), because the honest way to
+account for cruft is to name it, not to blend it in.
 
 {{< callout type="info" >}}
 Measured on 2026-09-01, about one hour after bootstrapping both platforms from
@@ -20,7 +23,9 @@ whatever the autoscalers held at snapshot time, and usage-based lines (NAT/LB
 data processing, egress) are called out rather than measured.
 {{< /callout >}}
 
-## AWS — about $25/day
+## AWS — about $23/day
+
+The platform, and only the platform — residue is counted separately below.
 
 | Line | $/month | Notes |
 |---|---:|---|
@@ -29,12 +34,11 @@ data processing, egress) are called out rather than measured.
 | EKS control plane | 73 | $0.10/hr, flat |
 | EBS, 753 GiB gp3 | 70 | 33 volumes |
 | 3 × network load balancer | 49 | public gateway, ZITADEL, OpenBao internal |
-| Secrets Manager | 34 | 84 secrets |
-| KMS | 31 | 31 customer-managed keys |
 | 2 × `t3.micro` on-demand | 17 | OpenBao, Tailscale subnet router |
-| Kinesis | 11 | orphaned stream — still, see below |
+| Secrets Manager | 16 | the ~40 secrets the platform actually reads |
 | Public IPv4 | 4 | the NAT gateway's EIP |
 | S3 | 3 | 8 buckets, ~112 GB (mostly LLM weights) |
+| KMS | 3 | 3 keys: cluster encryption, OpenBao unseal, snapshot bucket |
 | Route 53 | 1 | 2 hosted zones |
 
 ### CloudWatch is absent on purpose
@@ -80,10 +84,11 @@ pricing. Re-price AWS at gcp-0's exact footprint (12 spot vCPUs, 283 GB of
 disk, a trimmed secret/key inventory) and it lands near **$400/month**, about
 **1.3×** GCP:
 
-- **Two-thirds of the gap is deployment drift**, all fixable on our side: the
+- **Most of the gap is deployment drift**, all fixable on our side: the
   oversized static bootstrap pair (~$120), a Karpenter fleet holding twice
-  GCP's vCPUs (~$85), 2.8× the provisioned disk (~$44), and secrets, keys and
-  one Kinesis stream accumulated across rebuilds (~$60).
+  GCP's vCPUs (~$85), 2.8× the provisioned disk (~$44), and smaller inventory
+  differences for the rest. (The $45/month of rebuild residue is on top of
+  this — already excluded from the AWS platform total.)
 - **The remaining ~$80/month is genuinely AWS charging more**: three metered
   NLBs against forwarding rules under a flat minimum, NAT gateway-hours, the
   per-secret and per-key pricing model, and a ~10% spot premium at equal vCPUs.
@@ -97,38 +102,37 @@ Removing it closed a fifth of the gap on its own.
 
 ## The floor you pay for nothing
 
-On 2026-08-28 — a full day with no cluster on either cloud — AWS still billed
-**$2.19**:
+With every cluster destroyed, AWS still bills about **$70/month**: the 84
+secrets, the 19 enabled KMS keys, the Kinesis stream, the backup buckets and
+the DNS zones all survive teardown. About **$23** of that is deliberate — the
+platform's ~40 secrets, its 3 keys, and
+[backup buckets that outlive their clusters on purpose]({{< relref "/docs/guides/restore-a-database.md" >}}).
 
-| Service | $/day | Why |
+The other **$45/month is residue**, audited item by item on 2026-09-01:
+
+| Residue | $/month | What it actually is |
 |---|---:|---|
-| Secrets Manager | 0.87 | **81 secrets**; the platform provisions about 10 |
-| KMS | 0.81 | **39 keys** |
-| Kinesis | 0.36 | `xplane-vector-stream` in `eu-west-1` |
-| S3 | 0.15 | backup buckets, which *should* outlive clusters |
-| Route 53 | 0.001 | 2 zones |
+| ~44 stale secrets | 18 | four layers: twins from the 2026-08-27 slash→dash renaming (~17), Grafana OnCall remnants (~9 — removed by ADR-0029), the `vault/` + `priv.cloud.ogenki.io` era (~8), dead experiments — gitlab, tofu-controller, kube-prometheus (~10) |
+| 16 stale KMS keys | 16 | **13 are the snapshot-bucket key, one leaked per rebuild**: teardown schedules the unseal and cluster keys for deletion but never this one. Plus three ancient cluster keys (`dev-giving-hen` 2022, `mgmt-trusty-bear` 2023, `mycluster-0`) |
+| Kinesis stream | 11 | `xplane-vector-stream` in `eu-west-1` — a region this platform does not deploy to — since 2023 |
 
-Only the S3 line is deliberate — [backup buckets outlive their clusters on
-purpose]({{< relref "/docs/guides/restore-a-database.md" >}}). The rest is
-residue from rebuilds:
+(12 more keys sit in `PendingDeletion`, which costs nothing — the teardown *does*
+clean what it knows about.)
 
-- **Secrets and KMS keys survive teardown by design.** The platform constitution
-  withholds delete permissions for stateful services, so `xplane-*` IAM, S3 and
-  secrets are re-adopted by name on the next deploy rather than recreated. That
-  is correct, and it means nothing ever removes the ones that stop being used.
-- **`xplane-vector-stream` sits in `eu-west-1`**, a region this platform does not
-  deploy to at all — left from an old Vector experiment.
-
-By 2026-09-01 the same lines had grown, not shrunk: **84 secrets, 31
-customer-managed keys, and the stream still ACTIVE** — about $80/month. GCP's
-equivalent floor is **under $4/month** (secret versions, backup buckets, one
-DNS zone, one key version).
+Why it accumulates: **secrets and KMS keys survive teardown by design.** The
+platform constitution withholds delete permissions for stateful services, so
+`xplane-*` IAM, S3 and secrets are re-adopted by name on the next deploy rather
+than recreated. That is correct, and it means nothing ever removes the ones
+that stop being used. GCP's floor is **under $4/month** — the project is
+younger, not better designed; give it the same number of rebuilds and it will
+grow the same layers unless swept.
 
 The pattern is worth naming: **teardown is thorough about compute and blind to
 everything that outlives a cluster.** The
 [EBS]({{< relref "/docs/get-started/aws/teardown.md" >}}) and PD sweeps close one
 leak of exactly this shape; secrets, KMS keys and cross-region leftovers are the
-same shape, unswept.
+same shape, unswept — and the snapshot-bucket key is a one-line fix away from
+being scheduled for deletion like its two siblings.
 
 ## What is worth attacking
 
@@ -155,14 +159,18 @@ is the single biggest lever left on the bill: sizing the pair down is one
 variable in `opentofu/aws/eks/init/main.tf` and worth on the order of
 $120/month.
 
-**3. The idle floor — now $80/month, still unswept.** Two audits later the
-orphaned secrets and KMS keys have grown (84 and 31), and the stray stream is
-still ACTIVE. Delete it:
+**3. The $45/month of residue — audited, still unswept.** The table above
+names every item; none of it is load-bearing. Two audits have now prescribed
+the same first command:
 
 ```bash
 aws --region eu-west-1 kinesis delete-stream \
   --stream-name xplane-vector-stream --enforce-consumer-deletion
 ```
+
+Then the ~44 stale secrets and 16 stale keys — and, so the pile stops growing,
+schedule the snapshot-bucket KMS key for deletion at teardown the way the
+unseal and cluster keys already are.
 
 **4. NAT data processing costs more than the NAT gateway** — $41/month against
 $35/month of gateway-hours, from image pulls and telemetry egress. There are no
@@ -172,7 +180,7 @@ VPC endpoints configured; S3 and ECR endpoints would take most of it out.
 283 GB for the same charts on GCP. Worth one look at PVC sizes before calling
 it necessary.
 
-Together those are roughly **$300/month**, none of which requires changing what
+Together those are roughly **$250/month**, none of which requires changing what
 the platform does.
 
 ## Keeping it cheap
@@ -187,7 +195,7 @@ expensive choices are the ones that look like defaults:
 - **`mode = "dev"` for OpenBao** (`opentofu/aws/openbao/cluster/variables.tfvars`)
   is one `t3.micro`. `mode = "ha"` is five spot instances, and the configuration
   steps are identical either way.
-- **Tear it down when you are done.** At ~$24/day, AWS costs more in three days
+- **Tear it down when you are done.** At ~$23/day, AWS costs more in three days
   than a month of the idle floor.
 
 ## Related
