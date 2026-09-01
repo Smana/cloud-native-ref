@@ -28,6 +28,15 @@ spec:
         - key: karpenter.k8s.aws/instance-cpu
           operator: Lt
           values: ["26"]
+        # ...but not tiny ones either. Measured 2026-09-01 (#1940): with no
+        # floor the fleet settles as many 2-vCPU nodes, and every node pays
+        # its own copy of the DaemonSet overhead (Cilium, CSI, exporters)
+        # plus scheduling fragmentation — ~22 vCPU consumed for a workload
+        # GCP packs into 12 on three 4-vCPU machines. A 4-vCPU floor keeps
+        # the 4–25 band: fewer, larger nodes, same spot diversity.
+        - key: karpenter.k8s.aws/instance-cpu
+          operator: Gt
+          values: ["3"]
         - key: karpenter.k8s.aws/instance-memory
           operator: Lt
           values: ["50001"]
