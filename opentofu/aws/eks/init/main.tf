@@ -155,7 +155,15 @@ module "eks" {
 
       capacity_type        = "SPOT"
       force_update_version = true
-      instance_types       = ["c7i.xlarge", "c7i-flex.xlarge", "c6i.xlarge", "t3a.xlarge", "c7i.2xlarge", "c7i-flex.2xlarge"]
+      # large-tier only, and the 8 GiB-RAM m/t families rather than 4 GiB
+      # c-larges: these two nodes are the pre-Karpenter critical path (Cilium,
+      # CoreDNS, Flux, Karpenter itself all land here during stage 2, before
+      # any NodePool exists), and memory is what runs out first in that burst.
+      # Everything else reschedules onto Karpenter capacity once it exists, so
+      # steady-state the pair hosts very little — xlarge/2xlarge tiers made it
+      # the single biggest line on the bill (~$180/mo) for idle headroom
+      # Karpenter can never consolidate. Four families keep spot diversity.
+      instance_types = ["m7i-flex.large", "t3a.large", "m8i.large", "m6i.large"]
 
       # max-pods must match what CILIUM can address, not what AWS can attach.
       #
