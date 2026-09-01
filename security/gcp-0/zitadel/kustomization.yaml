@@ -85,13 +85,19 @@ patches:
   #      (infrastructure/gcp-0/cloudnative-pg-barman-plugin) with a GCS egress
   #      allowlist in place of the base's AWS S3 one.
   #
-  #   4. instances stays at 1, where before it followed from having no backup.
-  #      The XRD's CEL rule -- `backup.schedule is required for multi-instance
-  #      clusters` -- is satisfied now, so 2 would be allowed. It is still 1
-  #      because this cluster is rebuilt from scratch and torn down after every
-  #      run, and a standby costs a second Postgres for availability nobody is
-  #      here to need. aws-0 keeps 2. Raising it here is a one-line change the
-  #      moment anything on gcp-0 becomes long-lived.
+  #   4. instances matches aws-0 at 2. It was 1 for as long as gcp-0's ZITADEL
+  #      was a duplicate of the real one -- a second directory on a throwaway
+  #      cluster, where a standby bought availability nobody needed.
+  #
+  #      ADR-0027 removed that situation: this instance only ever runs when GCP
+  #      is PRIMARY, and GCP being primary means a GCP-only platform, where this
+  #      is not a spare directory but THE directory. Every login on the platform
+  #      depends on it, so it gets the same durability as aws-0's.
+  #
+  #      It costs nothing the rest of the time: with AWS primary this whole
+  #      Kustomization is suspended, so the claim is never applied.
+  #      (The XRD's CEL rule -- `backup.schedule is required for multi-instance
+  #      clusters` -- is satisfied, since gcp-0 writes real backups now.)
   - target:
       group: cloud.ogenki.io
       kind: SQLInstance
@@ -102,7 +108,7 @@ patches:
         value: xsqlinstances-gcp.cloud.ogenki.io
       - op: replace
         path: /spec/instances
-        value: 1
+        value: 2
       - op: replace
         path: /spec/objectStoreRecovery/bucketName
         value: ${project_id}-ogenki-cnpg-backups

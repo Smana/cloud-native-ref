@@ -4,6 +4,15 @@ metadata:
   name: zitadel
   namespace: flux-system
 spec:
+  # ACTIVE: this cluster is the primary cloud (global.primary_cloud = "aws" in
+  # opentofu/config.tm.hcl), so it hosts the one identity provider (ADR-0027).
+  #
+  # Stated explicitly rather than left absent, so that the rule reads the same
+  # on both clusters: THE SECONDARY CLOUD IS SUSPENDED, THE PRIMARY IS NOT.
+  # An omitted field means the same thing to Flux, but it makes the pair look
+  # asymmetric and leaves a reader guessing whether the omission is a decision.
+  # ./scripts/validate-idp-topology.sh checks the pair against primary_cloud.
+  suspend: false
   prune: true
   interval: 1m0s
   timeout: 5m0s

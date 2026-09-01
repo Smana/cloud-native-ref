@@ -83,14 +83,18 @@ expect "both clouds hosting is rejected" \
 expect "primary hosting nothing is rejected" \
   1 "aws-0" aws "aws-0:true" "gcp-0:true"
 
-expect "gcp primary while aws is present is rejected" \
-  1 "unconditionally" gcp "aws-0:absent" "gcp-0:false"
+# GCP primary is a SUPPORTED configuration, and the tree always contains
+# clusters/aws-0/security/zitadel.yaml because it is a committed file. An
+# earlier version treated that file's mere presence as proof AWS was deployed
+# and rejected the whole configuration, making GCP-only impossible to commit --
+# this case is here so that cannot come back.
+expect "gcp primary with aws suspended is accepted" \
+  0 "" gcp "aws-0:true" "gcp-0:false"
 
-# The same combination with AWS suspended: still rejected. Suspending aws-0 stops
-# AWS hosting, but eks/configure still points every aws-0 consumer at a host
-# nothing serves -- so suspend must not be a way to pass this case.
-expect "gcp primary with aws present but suspended is still rejected" \
-  1 "unconditionally" gcp "aws-0:true" "gcp-0:false"
+# ...and the mirror image is still caught: GCP primary while aws-0 would also
+# host is two directories, whichever cloud is primary.
+expect "gcp primary with aws also hosting is rejected" \
+  1 "aws-0" gcp "aws-0:false" "gcp-0:false"
 
 expect "unknown primary_cloud is rejected" \
   1 "azure" azure "aws-0:absent" "gcp-0:true"

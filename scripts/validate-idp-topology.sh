@@ -17,6 +17,21 @@
 # here instead. The forbidden state has occurred twice; both times the intended
 # topology was written only in an ADR, where no machine could read it.
 #
+# THE ONLY THREE CONFIGURATIONS, which is why this check is as small as it is:
+#
+#   TM_CLOUD=aws       -> primary_cloud = "aws". aws-0 hosts.
+#   TM_CLOUD=aws,gcp   -> primary_cloud = "aws". aws-0 hosts, gcp-0 consumes.
+#   TM_CLOUD=gcp       -> primary_cloud = "gcp". gcp-0 hosts, and there is NO
+#                         aws-0: a GCP-only platform uses the AWS account for a
+#                         Route53 zone, not for a cluster.
+#
+# So "GCP is primary while AWS is also deployed" is not an unsupported state to
+# be rejected -- it does not exist. An earlier version of this script rejected
+# it anyway, by treating the mere presence of clusters/aws-0/security/
+# zitadel.yaml (a file that is always committed) as proof AWS was deployed. That
+# made primary_cloud = "gcp" impossible to commit, blocking the one case the
+# gates exist to enable.
+#
 # SCOPE: this reads COMMITTED YAML, not a live cluster. It answers "would this
 # configuration produce two identity directories?", not "are two running right
 # now?" -- suspending a Kustomization stops Flux reconciling an instance without
@@ -95,18 +110,6 @@ PY
     else
       hosts=$((hosts + 1))
     fi
-  elif [ "$cloud" = "aws" ]; then
-    # Unsupported REGARDLESS of suspend: opentofu/aws/eks/configure sets
-    # identity_provider_url unconditionally, so deploying AWS at all points every
-    # aws-0 consumer at auth.<aws public domain>. Suspending the Kustomization
-    # stops AWS hosting but leaves its consumers aimed at a host nothing serves --
-    # the other silent failure this check exists to catch, so it cannot be the
-    # way out of the first one.
-    fail "primary_cloud is \"${primary}\", but the AWS cluster ${cluster} is present."
-    echo "      opentofu/aws/eks/configure sets identity_provider_url unconditionally, so AWS"
-    echo "      cannot consume another cloud's identity provider. A non-AWS primary with AWS"
-    echo "      deployed needs an AWS-side host toggle, which is a new decision -- not a"
-    echo "      suspend. See ADR-0027."
   elif [ "$suspend" != "true" ]; then
     fail "${cluster} is not on the primary cloud (${primary}) but would run its own identity provider."
     echo "      Set spec.suspend: true in clusters/${cluster}/security/zitadel.yaml."
