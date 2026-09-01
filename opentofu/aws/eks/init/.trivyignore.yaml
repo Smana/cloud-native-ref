@@ -1,5 +1,9 @@
 # We need to work on these security issues
 misconfigurations:
+  # Control-plane logging is deliberately OFF (#1920): $144/month of CloudWatch
+  # vended logs nobody reads — observability here is VictoriaMetrics/VictoriaLogs.
+  # Accepting AWS-0038 is that decision, not an oversight.
+  - id: AVD-AWS-0038
   - id: AVD-KSV-0001
   - id: AVD-KSV-0003
   - id: AVD-KSV-0004
