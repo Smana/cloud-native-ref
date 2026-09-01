@@ -211,6 +211,9 @@ jobs:
         run: |
           find ./scripts -name "*.sh" -type f -print0 | xargs -0 shellcheck -x -S warning
 
+      - name: Run script unit tests
+        run: ./scripts/test-validate-idp-topology.sh
+
   links:
     name: Check the documentation links 🔗
     runs-on: ubuntu-latest
@@ -227,3 +230,9 @@ jobs:
 
       - name: Check documentation claims against configuration
         run: ./scripts/validate-doc-claims.sh
+
+      # Folded into this job for the same reason as the claims check above: the
+      # required-check list on `main` does not have to change. It needs the
+      # pyyaml installed for that step.
+      - name: Check identity provider topology
+        run: ./scripts/validate-idp-topology.sh
