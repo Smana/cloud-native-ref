@@ -5,7 +5,7 @@ description: What the platform actually bills on each cloud, measured rather tha
 lastVerified: 2026-09-01
 ---
 
-Roughly **$690/month on AWS** and **$320/month on GCP** for the same platform at
+Roughly **$575/month on AWS** and **$320/month on GCP** for the same platform at
 list price, with the LLM components disabled on both.
 
 The more useful number is smaller: **about $23/month keeps billing after every
@@ -21,14 +21,14 @@ whatever the autoscalers held at snapshot time, and usage-based lines (NAT/LB
 data processing, egress) are called out rather than measured.
 {{< /callout >}}
 
-## AWS — about $23/day
+## AWS — about $19/day
 
 | Line | $/month | Notes |
 |---|---:|---|
-| **Spot compute, 10 nodes** | **369** | **largest single item** — 22 vCPU: a 2 × `m8i.large` static pair ($69) plus 8 Karpenter-provisioned nodes ($300), measured after right-sizing the static pair and letting Karpenter settle |
-| NAT gateway | 76 | $35 gateway-hours + ~$41 data processing (measured) |
+| **Spot compute, 6 nodes** | **331** | **largest single item** — 20 vCPU: a 2 × `m8i.large` static pair ($67) plus 4 Karpenter xlarge-class nodes ($264) |
+| NAT gateway | 35+ | gateway-hours; data processing was ~$41/month before an S3 gateway endpoint was added — expect most of that gone, not yet re-measured |
 | EKS control plane | 73 | $0.10/hr, flat |
-| EBS, ~900 GiB gp3 | 83 | 35 volumes |
+| EBS, 443 GiB gp3 | 41 | 27 volumes |
 | 3 × network load balancer | 49 | public gateway, ZITADEL, OpenBao internal |
 | 2 × `t3.micro` on-demand | 17 | OpenBao, Tailscale subnet router |
 | Secrets Manager | 16 | the ~40 secrets the platform actually reads |
@@ -55,15 +55,25 @@ nodes and storage to per-signal service fees, and trade operating effort for
 bill opacity. If the platform adopts any of them, that will be a recorded
 decision with its price on this page, not a default left on.
 
-Compute is spot throughout, and one measurement here is worth recording: the
-static pair was originally xlarge/2xlarge (~$180/month on its own), and
-right-sizing it to `m8i.large` did **not** shave that off the bill — Karpenter
-grew by almost the same amount to absorb the displaced pods. The pair was
-carrying real capacity, not idle headroom. The lesson generalizes: what this
-platform pays for compute is set by what it *consumes*, and by node
-granularity — every extra node carries its own copy of the DaemonSet overhead
-(Cilium, CSI, exporters), which favors fewer, larger nodes over many small
-ones.
+Compute is spot throughout, and two experiments here are worth recording
+because both under-delivered against the obvious theory:
+
+1. **Right-sizing the static node group.** It ran xlarge/2xlarge (~$180/month
+   on its own). Moving it to `m8i.large` did **not** shave that off the bill —
+   Karpenter grew by almost as much to absorb the displaced pods. The pair was
+   carrying real capacity, not idle headroom.
+2. **Forcing fewer, larger nodes** (a 4-vCPU floor on the NodePool). Node count
+   nearly halved, 10 → 6, but total consumption moved only 22 → 20 vCPU and the
+   bill only $369 → $331. Per-vCPU spot pricing is near-flat between `large`
+   and `xlarge`, so consolidating mostly removed **per-node overhead** (one
+   fewer copy of every DaemonSet, less scheduling fragmentation) rather than
+   capacity.
+
+The generalizable lesson: on a spot fleet, **what you pay for compute is set by
+what the workloads actually consume**. Node shape and count are worth tuning —
+they were worth ~$38/month here, and they cut provisioned disk by half because
+each node carries its own root and data volumes — but no instance-type choice
+substitutes for right-sizing the workloads themselves.
 
 ## GCP — about $10/day
 
@@ -79,7 +89,7 @@ ones.
 
 ## Why they differ
 
-At list price AWS runs at about **2.2×** GCP. Separating what the *clouds*
+At list price AWS runs at about **1.8×** GCP. Separating what the *clouds*
 charge from what *this deployment* consumes:
 
 - **Cloud pricing accounts for roughly 1.3× of it.** Priced at identical
@@ -90,13 +100,11 @@ charge from what *this deployment* consumes:
   other way — `pd-balanced` costs ~18% more per GiB than gp3 — and the
   control-plane fee is a wash: both charge $0.10/hour.
 - **The rest is consumption, on our side of the ledger, and it was measured
-  rather than assumed**: the AWS deployment consumes ~22 spot vCPUs where GCP
-  serves the platform on 12. Right-sizing the static pair did not close it —
-  the capacity simply moved to Karpenter. The drivers are node granularity
-  (ten 2-vCPU nodes pay ten copies of the per-node DaemonSet overhead; GCP
-  packs onto three 4-vCPU machines), scheduling fragmentation on small nodes,
-  3× the provisioned block storage, and a few AWS-only components (Karpenter
-  itself, the demo applications).
+  rather than assumed**: this deployment consumes ~20 spot vCPUs where GCP
+  serves the platform on 12. Two tuning rounds narrowed it and neither closed
+  it, which is the useful part — the capacity is real. What remains is genuine
+  demand (AWS additionally runs Karpenter and the demo applications) plus
+  scheduling slack that no instance-type choice removes.
 - The comparison is structurally fair since ADR-0024: **both clouds run their
   own ZITADEL and their own OpenBao**, and only public DNS stays AWS-owned.
 
@@ -128,24 +136,26 @@ aws kms list-keys --query 'Keys[].KeyId' --output text | xargs -n1 \
 
 ## What is worth attacking
 
-**1. Node granularity.** The measured lesson above: the fleet runs ten mostly
-2-vCPU nodes, each carrying its own copy of the DaemonSet overhead. Steering
-Karpenter toward fewer, larger instances (NodePool requirements or
-consolidation preferences) is now the biggest compute lever — plausibly on the
-order of $100/month. (Right-sizing the static pair is already done; it moved
-capacity to Karpenter rather than removing it, which is how we know the
-remaining lever is granularity, not node-group sizing.)
+The infrastructure-shaped levers have now been pulled, and what they were
+actually worth is recorded above: node shape and count (−$38/month), node
+volume sizing (−$42/month), an S3 gateway endpoint for NAT data processing
+(worth up to ~$41/month, not yet re-measured). What is left is not
+configuration:
 
-**2. NAT data processing costs more than the NAT gateway** — $41/month against
-$35/month of gateway-hours, from image pulls and telemetry egress. There are no
-VPC endpoints configured; S3 and ECR endpoints would take most of it out.
+**1. Right-size the workloads.** ~20 vCPU is consumed for what GCP serves on
+12, and two rounds of node tuning did not move that — so the remaining compute
+cost is requests and replica counts, not instance types. Start with the
+components that run more replicas here than they need to.
 
-**3. Provisioned EBS keeps growing** — ~900 GiB across 35 volumes against
-283 GB for the same charts on GCP. Worth one look at PVC sizes before calling
-it necessary.
+**2. Single-instance databases block node lifecycle.** A CNPG cluster with
+`instances: 1` has a PodDisruptionBudget that can never permit a voluntary
+eviction, so it pins its node against consolidation, drift and upgrades
+indefinitely — the node has to be cordoned and the pod restarted by hand. This
+is an availability and operations cost more than a billing one, and it is worth
+knowing before you scale a database down to save a replica.
 
-Together those are plausibly **$150–200/month**, none of which requires
-changing what the platform does.
+**3. Watch what accumulates.** Provisioned disk and node count creep back after
+every rebuild; both are worth re-measuring rather than assumed stable.
 
 ## Keeping it cheap
 
