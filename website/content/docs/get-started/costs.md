@@ -8,11 +8,9 @@ lastVerified: 2026-09-01
 Roughly **$690/month on AWS** and **$320/month on GCP** for the same platform at
 list price, with the LLM components disabled on both.
 
-On top of that, AWS bills about **$45/month of residue that is not the platform
-at all** — secrets, KMS keys and one Kinesis stream left behind by past
-rebuilds. It is kept out of the platform totals above and itemized in
-[the floor section](#the-floor-you-pay-for-nothing), because the honest way to
-account for cruft is to name it, not to blend it in.
+The more useful number is smaller: **about $23/month keeps billing after every
+cluster is destroyed** — and that part is by design. See
+[the floor](#the-floor-you-pay-for-nothing).
 
 {{< callout type="info" >}}
 Measured on 2026-09-01, about one hour after bootstrapping both platforms from
@@ -25,12 +23,10 @@ data processing, egress) are called out rather than measured.
 
 ## AWS — about $23/day
 
-The platform, and only the platform — residue is counted separately below.
-
 | Line | $/month | Notes |
 |---|---:|---|
 | **Spot compute, 8 nodes** | **378** | **largest single item** — 24 vCPU: the static bootstrap pair alone is $180, the 6 Karpenter nodes $198 |
-| NAT gateway | 76 | $35 gateway-hours + ~$41 data processing (August actuals) |
+| NAT gateway | 76 | $35 gateway-hours + ~$41 data processing (measured) |
 | EKS control plane | 73 | $0.10/hr, flat |
 | EBS, 753 GiB gp3 | 70 | 33 volumes |
 | 3 × network load balancer | 49 | public gateway, ZITADEL, OpenBao internal |
@@ -41,22 +37,23 @@ The platform, and only the platform — residue is counted separately below.
 | KMS | 3 | 3 keys: cluster encryption, OpenBao unseal, snapshot bucket |
 | Route 53 | 1 | 2 hosted zones |
 
-### CloudWatch is absent on purpose
+### No cloud-provider monitoring is on the bill
 
-EKS control-plane logging used to be the **largest line on the whole bill** —
-**$144/month**, 20% of AWS, almost entirely `EUW3-VendedLog-Bytes` dominated by
-the audit log. All five log types were on.
+The platform
+[runs its own observability and security stack in-cluster]({{< relref "/docs/platform/observability" >}})
+— VictoriaMetrics, VictoriaLogs, Kyverno — so there is no CloudWatch, Cloud
+Monitoring, GuardDuty or Security Command Center line above. EKS control-plane
+logging is off for the same reason (`enabled_log_types = []` in
+`opentofu/aws/eks/init/main.tf`): vended logs bill per byte, and the audit log
+alone can rival the control plane itself. If you need it for an investigation,
+enable it deliberately — `enabled_log_types = ["audit"]` — and expect the line
+to appear.
 
-Nothing in this repository reads any of it. Observability is
-VictoriaMetrics/VictoriaLogs, and the platform
-[uses no cloud-provider monitoring on either cloud]({{< relref "/docs/platform/observability" >}}).
-So it was $144/month of logs nobody could look at without first going to find
-them in a console. `enabled_log_types` is now empty in
-`opentofu/aws/eks/init/main.tf`.
-
-Turn types back on deliberately if you need them. `audit` is the one worth having
-during a security investigation, and it is also the expensive one — the module's
-own default is `["audit", "api", "authenticator"]`.
+Managed alternatives are a legitimate future direction — managed Prometheus,
+provider log sinks, GuardDuty / Security Command Center would shift cost from
+nodes and storage to per-signal service fees, and trade operating effort for
+bill opacity. If the platform adopts any of them, that will be a recorded
+decision with its price on this page, not a default left on.
 
 Compute is spot throughout — measured at $0.160 (`c7i-flex.2xlarge`) and
 $0.0863 (`c7i-flex.xlarge`) for the static bootstrap pair, plus 3 × $0.0405
@@ -69,7 +66,7 @@ consolidate a managed node group.
 
 | Line | $/month | Notes |
 |---|---:|---|
-| **3 × `e2-standard-4` spot** | **161** | **largest single item** — the catalog spot rate for E2 nearly doubled since August's estimate |
+| **3 × `e2-standard-4` spot** | **161** | **largest single item** — spot catalog rates are revised by Google monthly, so this line moves |
 | GKE control plane | 73 | $0.10/hr at list, same as EKS. The zonal free-tier credit ($74.40/month, one cluster per billing account) usually wipes this off the *invoice* — it is an account promotion, so it is not counted here |
 | 283 GB persistent disk | 29 | 17 disks, `pd-balanced` + one `pd-standard` |
 | 3 × forwarding rule | 20 | flat minimum up to 5 rules; plus data processing |
@@ -87,8 +84,7 @@ disk, a trimmed secret/key inventory) and it lands near **$400/month**, about
 - **Most of the gap is deployment drift**, all fixable on our side: the
   oversized static bootstrap pair (~$120), a Karpenter fleet holding twice
   GCP's vCPUs (~$85), 2.8× the provisioned disk (~$44), and smaller inventory
-  differences for the rest. (The $45/month of rebuild residue is on top of
-  this — already excluded from the AWS platform total.)
+  differences for the rest.
 - **The remaining ~$80/month is genuinely AWS charging more**: three metered
   NLBs against forwarding rules under a flat minimum, NAT gateway-hours, the
   per-secret and per-key pricing model, and a ~10% spot premium at equal vCPUs.
@@ -97,90 +93,49 @@ disk, a trimmed secret/key inventory) and it lands near **$400/month**, about
 - The comparison is structurally fair since ADR-0024: **both clouds run their
   own ZITADEL and their own OpenBao**, and only public DNS stays AWS-owned.
 
-Until 2026-08-29 the single biggest contributor was CloudWatch at $144/month.
-Removing it closed a fifth of the gap on its own.
-
 ## The floor you pay for nothing
 
-With every cluster destroyed, AWS still bills about **$70/month**: the 84
-secrets, the 19 enabled KMS keys, the Kinesis stream, the backup buckets and
-the DNS zones all survive teardown. About **$23** of that is deliberate — the
-platform's ~40 secrets, its 3 keys, and
+With every cluster destroyed, about **$23/month keeps billing** — the
+platform's ~40 secrets, its 3 KMS keys, the DNS zones, and
 [backup buckets that outlive their clusters on purpose]({{< relref "/docs/guides/restore-a-database.md" >}}).
+That floor is a feature: **secrets, keys and backups survive teardown by
+design.** The platform constitution withholds delete permissions for stateful
+services, so `xplane-*` IAM, S3 and secrets are re-adopted by name on the next
+deploy rather than recreated.
 
-The other **$45/month is residue**, audited item by item on 2026-09-01:
+The flip side: nothing ever removes the ones that stop being used. Renamed or
+removed components leave their secrets behind, and each rebuild can leave a key
+behind, at $0.40/secret and $1/key per month. **Teardown is thorough about
+compute and blind to everything that outlives a cluster** — the
+[EBS]({{< relref "/docs/get-started/aws/teardown.md" >}}) and PD sweeps close
+one leak of exactly this shape. If your account has lived through a few
+rebuilds, audit the rest of it (keys in `PendingDeletion` cost nothing; enabled
+ones bill):
 
-| Residue | $/month | What it actually is |
-|---|---:|---|
-| ~44 stale secrets | 18 | four layers: twins from the 2026-08-27 slash→dash renaming (~17), Grafana OnCall remnants (~9 — removed by ADR-0029), the `vault/` + `priv.cloud.ogenki.io` era (~8), dead experiments — gitlab, tofu-controller, kube-prometheus (~10) |
-| 16 stale KMS keys | 16 | **13 are the snapshot-bucket key, one leaked per rebuild**: teardown schedules the unseal and cluster keys for deletion but never this one. Plus three ancient cluster keys (`dev-giving-hen` 2022, `mgmt-trusty-bear` 2023, `mycluster-0`) |
-| Kinesis stream | 11 | `xplane-vector-stream` in `eu-west-1` — a region this platform does not deploy to — since 2023 |
-
-(12 more keys sit in `PendingDeletion`, which costs nothing — the teardown *does*
-clean what it knows about.)
-
-Why it accumulates: **secrets and KMS keys survive teardown by design.** The
-platform constitution withholds delete permissions for stateful services, so
-`xplane-*` IAM, S3 and secrets are re-adopted by name on the next deploy rather
-than recreated. That is correct, and it means nothing ever removes the ones
-that stop being used. GCP's floor is **under $4/month** — the project is
-younger, not better designed; give it the same number of rebuilds and it will
-grow the same layers unless swept.
-
-The pattern is worth naming: **teardown is thorough about compute and blind to
-everything that outlives a cluster.** The
-[EBS]({{< relref "/docs/get-started/aws/teardown.md" >}}) and PD sweeps close one
-leak of exactly this shape; secrets, KMS keys and cross-region leftovers are the
-same shape, unswept — and the snapshot-bucket key is a one-line fix away from
-being scheduled for deletion like its two siblings.
+```bash
+aws secretsmanager list-secrets \
+  --query 'SecretList[].[Name,LastAccessedDate]' --output table
+aws kms list-keys --query 'Keys[].KeyId' --output text | xargs -n1 \
+  aws kms describe-key --query 'KeyMetadata.[KeyState,Description]' --output text --key-id
+```
 
 ## What is worth attacking
 
-**1. EKS control-plane logging — $144/month. Done.** It was the largest single
-line and 20% of the AWS bill, every cent `EUW3-VendedLog-Bytes` dominated by the
-audit log, and nothing in this repository read any of it. All five types were
-enabled; the module's own default is three.
-
-`opentofu/aws/eks/init/main.tf` now sets `enabled_log_types = []`, which changes
-nothing about how the platform runs — the platform uses
-[no cloud-provider monitoring on either cloud]({{< relref "/docs/platform/observability/_index.md" >}}).
-Verified live on the 2026-09-01 rebuild: the log group exists with 0 stored
-bytes.
-
-Audit logs are the one signal the in-cluster stack cannot reconstruct, since the
-API server writes them before anything in the cluster can observe them. If you
-need them for an investigation, turn them on deliberately —
-`enabled_log_types = ["audit"]` — and expect the bill to come back.
-
-**2. The static bootstrap node group — ~$180/month for two nodes.** A
+**1. The static bootstrap node group — ~$180/month for two nodes.** A
 `c7i-flex.2xlarge` + `c7i-flex.xlarge` pair that exists to host what must run
 before Karpenter does, and that Karpenter therefore can never consolidate. It
-is the single biggest lever left on the bill: sizing the pair down is one
-variable in `opentofu/aws/eks/init/main.tf` and worth on the order of
-$120/month.
+is the single biggest lever on the bill: sizing the pair down is one variable
+in `opentofu/aws/eks/init/main.tf` and worth on the order of $120/month.
 
-**3. The $45/month of residue — audited, still unswept.** The table above
-names every item; none of it is load-bearing. Two audits have now prescribed
-the same first command:
-
-```bash
-aws --region eu-west-1 kinesis delete-stream \
-  --stream-name xplane-vector-stream --enforce-consumer-deletion
-```
-
-Then the ~44 stale secrets and 16 stale keys — and, so the pile stops growing,
-schedule the snapshot-bucket KMS key for deletion at teardown the way the
-unseal and cluster keys already are.
-
-**4. NAT data processing costs more than the NAT gateway** — $41/month against
+**2. NAT data processing costs more than the NAT gateway** — $41/month against
 $35/month of gateway-hours, from image pulls and telemetry egress. There are no
 VPC endpoints configured; S3 and ECR endpoints would take most of it out.
 
-**5. Provisioned EBS keeps growing** — 753 GiB across 33 volumes against
+**3. Provisioned EBS keeps growing** — 753 GiB across 33 volumes against
 283 GB for the same charts on GCP. Worth one look at PVC sizes before calling
 it necessary.
 
-Together those are roughly **$250/month**, none of which requires changing what
+Together those are roughly **$200/month**, none of which requires changing what
 the platform does.
 
 ## Keeping it cheap
