@@ -31,8 +31,15 @@
 # them would lock the operator out of Grafana.
 #
 # Usage:
+#   # a cluster that HOSTS its own identity provider
 #   zitadel-oidc-clients.sh sync --cluster gcp-0 --cloud gcp [--project ID] [--apply]
 #   zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws [--region R]  [--apply]
+#
+#   # a SECONDARY cluster consuming the primary cloud's identity provider:
+#   # admin PAT from AWS, client secrets into GCP, kubectl pointed at aws-0.
+#   IDP_URL=https://auth.cloud.ogenki.io PRIVATE_DOMAIN=priv.gcp.ogenki.io \
+#     zitadel-oidc-clients.sh sync --cluster gcp-0 \
+#       --cloud gcp --project ID --idp-cloud aws --region eu-west-3 --apply
 #
 # Dry-run unless --apply. Client secrets are never printed: ZITADEL returns a
 # client secret exactly once, at creation, so it goes straight from the API
@@ -94,6 +101,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --cluster) CLUSTER="$2"; shift 2 ;;
         --cloud)   CLOUD="$2"; shift 2 ;;
+        --idp-cloud) IDP_CLOUD="$2"; shift 2 ;;
         --region)  REGION="$2"; shift 2 ;;
         --project) GCP_PROJECT="$2"; shift 2 ;;
         --apply)   APPLY="true"; shift ;;
@@ -104,6 +112,21 @@ done
 
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
+
+# Which cloud's secret store holds the ZITADEL ADMIN PAT, as opposed to which
+# one receives the client secrets this script writes. They are the same cloud
+# whenever a cluster hosts its own identity provider, so this defaults to
+# --cloud and every existing invocation is unchanged.
+#
+# They differ in exactly one case, and it is the one ADR-0027 makes normal:
+# a SECONDARY cluster consuming the primary cloud's ZITADEL. Registering
+# gcp-0's clients into aws-0's directory needs the admin PAT from AWS and the
+# resulting client secrets in GCP, because that is where gcp-0's
+# ExternalSecrets read. One flag could not express that, which is why nothing
+# registered a consuming cluster's clients and its oauth2-proxy came up with
+# no secret at all.
+IDP_CLOUD="${IDP_CLOUD:-$CLOUD}"
+case "$IDP_CLOUD" in aws|gcp) ;; *) echo "--idp-cloud must be aws or gcp" >&2; exit 2 ;; esac
 
 # Provenance for secrets this script writes, read by cloud-secret-store.sh's
 # store_write. Preserves what this script wrote before the store/PAT logic
@@ -122,7 +145,21 @@ STORE_WRITE_LABEL="zitadel-oidc-clients"
 ZITADEL_PAT_DRY_RUN="true"
 [ "$APPLY" = "true" ] && ZITADEL_PAT_DRY_RUN="false"
 
+# zitadel-pat.sh and cloud-secret-store.sh both dispatch on the GLOBAL $CLOUD,
+# so the PAT is read with $CLOUD temporarily pointed at the IdP's cloud and the
+# value restored immediately afterwards -- every write below then lands in the
+# target cluster's store, which is the whole point of the split. $REGION and
+# $GCP_PROJECT need no swap: each is only read by its own cloud's branch, so
+# both can be supplied at once.
+#
+# When --idp-cloud differs from --cloud, point kubectl at the cluster that HOSTS
+# the identity provider. resolve_zitadel_pat falls back to reading the PAT from
+# the current context's Kubernetes Secret when the store has none, and on a
+# fresh primary that fallback is the only place the token exists yet.
+_target_cloud="$CLOUD"
+CLOUD="$IDP_CLOUD"
 PAT="$(resolve_zitadel_pat)" || exit 1
+CLOUD="$_target_cloud"
 
 # The IdP base URL. Derived the same way the platform derives it, so a mismatch
 # here is a mismatch everywhere.

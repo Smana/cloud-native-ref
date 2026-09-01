@@ -191,9 +191,41 @@ script "deploy" {
         # would have reproduced that incident exactly. One source, or none.
         DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-${global.deploy_identity_provider_gcp}}"
         if [ "$${DEPLOY_IDP}" != "true" ]; then
-          echo "== skipping OIDC clients: this cluster does not host the identity provider"
-          echo "   (primary_cloud = \"${global.primary_cloud}\" in opentofu/config.tm.hcl;"
-          echo "    override for one run: TF_VAR_deploy_identity_provider=true)"
+          # NOT hosting is not the same as nothing to do. This cluster's
+          # consumers still need OIDC clients -- registered in the PRIMARY
+          # cloud's directory, with THIS cluster's redirect URIs, and with the
+          # resulting secrets written to THIS cluster's store where its
+          # ExternalSecrets read.
+          #
+          # Skipping here is what left a consuming gcp-0 with no client at all:
+          # oauth2-proxy came up with no secret, sat in
+          # CreateContainerConfigError, and headlamp's Kustomization never went
+          # ready -- the same class of failure as the never-registered-clients
+          # incident above, arrived at from the opposite direction.
+          #
+          # The IdP URL comes from the cluster vars ConfigMap rather than being
+          # rebuilt here: that is the exact value every consumer on this cluster
+          # reads, so it cannot disagree with them.
+          echo "== this cluster consumes ${global.primary_cloud}'s identity provider"
+          CONSUMED_IDP="$(kubectl get configmap "gke-$${NAME}-vars" -n flux-system \
+            -o jsonpath='{.data.identity_provider_url}' 2>/dev/null || true)"
+          if [ -z "$${CONSUMED_IDP}" ]; then
+            echo "[warn] could not read identity_provider_url from gke-$${NAME}-vars;"
+            echo "       skipping client registration. Re-run by hand once it exists."
+            exit 0
+          fi
+
+          echo "== registering this cluster's OIDC clients in $${CONSUMED_IDP}"
+          IDP_URL="$${CONSUMED_IDP}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
+            bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
+              --cluster "$${NAME}" \
+              --cloud gcp --project "$${PROJECT}" \
+              --idp-cloud "${global.primary_cloud}" --region "${global.region}" \
+              --apply || \
+            echo "[warn] OIDC registration against the primary cloud failed; re-run it by hand"
+
+          echo "== granting access to the secrets it just created"
+          bash "$${ROOT}/scripts/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || true
           exit 0
         fi
 
