@@ -32,13 +32,28 @@ export AWS_PAGER=""
 SCRIPT_NAME=$(basename "${0}")
 DEFAULT_DAYS=8 # Default number of days for snapshot validation
 
-# Where the restore freshness marker lives. The kv-v2 mount is in the `app`
-# tenant namespace — platform services live in root, tenants get namespaces.
-CHECK_NAMESPACE="${CHECK_NAMESPACE:-app}"
-CHECK_PATH="${CHECK_PATH:-secret/check_timestamp}"
+# Where the freshness marker lives: the root-namespace `lineage/` kv-v2 mount
+# both management stacks create. It used to be `app/secret/check_timestamp`, but
+# GCP has no `app` namespace, so the restore path 404'd there, and a tenant
+# namespace is the wrong home for a platform marker anyway. CHECK_NAMESPACE is
+# kept for operators with an older snapshot; empty means root.
+CHECK_NAMESPACE="${CHECK_NAMESPACE:-}"
+CHECK_PATH="${CHECK_PATH:-lineage/check_timestamp}"
 
-# Writable volume
-export HOME=/snapshot
+# `bao kv ... -namespace=""` is not the same as omitting the flag, so build it.
+kv_ns_flag() {
+    if [ -n "${CHECK_NAMESPACE}" ]; then
+        printf -- '-namespace=%s' "${CHECK_NAMESPACE}"
+    fi
+}
+
+# Writable scratch dir. The CronJob mounts an emptyDir at /snapshot; an operator
+# shell has no such directory, and the previous unconditional export made every
+# write under $HOME (the generate-root nonce file, gcloud's config) abort a
+# restore under `set -e`. Use it when it is there, otherwise leave HOME alone.
+if [ -d /snapshot ] && [ -w /snapshot ]; then
+    export HOME=/snapshot
+fi
 
 # Which cloud's CLIs to use. Set by the CronJob; defaults to aws so an operator
 # running this by hand against aws-0 needs no new environment.
@@ -58,19 +73,25 @@ Usage: ./${SCRIPT_NAME} [save|restore] -s <snapshot_file> -b <bucket_name> -a <V
       -b | --bucket             : Bucket name
       -a | --addr               : OpenBao address in the form "https://<address>:<port>"
       -d | --days               : Number of days for snapshot validation (default: ${DEFAULT_DAYS} days)
+      -f | --freshness          : What to do when the restored marker is older than --days:
+                                  "fail" (default) exits 1, "warn" logs and continues.
+                                  Use "warn" when restoring into an EMPTY node (a rehydrate):
+                                  the guard exists to stop an old backup overwriting a good
+                                  cluster, and there is no good cluster to protect there.
 
       ex:
       # Run a snapshot (backup)
-      ./${SCRIPT_NAME} save -u https://bao.domain.tld:8200 -s /path/backup.snap -b mybucketname
+      ./${SCRIPT_NAME} save -a https://bao.domain.tld:8200 -s /path/backup.snap -b mybucketname
 
       # Restore from a snapshot
-      ./${SCRIPT_NAME} restore -u https://bao.domain.tld:8200 -s /path/backup.snap -b mybucketname -d 10
+      ./${SCRIPT_NAME} restore -a https://bao.domain.tld:8200 -s /path/backup.snap -b mybucketname -d 10
 EOF
 }
 
 # Options parsing
 COMMAND=$1
 NUM_DAYS=${DEFAULT_DAYS}
+FRESHNESS=fail
 shift
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -79,6 +100,7 @@ while [ $# -gt 0 ]; do
     -b | --bucket) BUCKET_NAME=$2; shift 2;;
     -a | --addr) VAULT_ADDR=$2; shift 2;;
     -d | --days) NUM_DAYS=$2; shift 2;;
+    -f | --freshness) FRESHNESS=$2; shift 2;;
     *)
         echo "${err} : Unknown option"
         usage
@@ -109,11 +131,10 @@ if ! echo "${NUM_DAYS}" | grep -E '^[0-9]+$' > /dev/null; then
     exit 1
 fi
 
-# Check required environment variables
-if [ -z "${APPROLE_ROLE_ID}" ] || [ -z "${APPROLE_SECRET_ID}" ]; then
-    echo "${err}: The environment variables APPROLE_ROLE_ID and APPROLE_SECRET_ID must be set"
-    exit 1
-fi
+case "${FRESHNESS}" in
+    fail|warn) ;;
+    *) echo "${err}: --freshness must be 'fail' or 'warn', got '${FRESHNESS}'."; usage; exit 1;;
+esac
 
 # Check if required binaries are installed
 # Only used by `restore`, which is an operator action run with operator
@@ -158,12 +179,39 @@ generate_root_token() {
     echo "${VAULT_TOKEN}"
 }
 
-# One AppRole login per run. Leader discovery used to authenticate, unset the
-# token, and then `save` logged in again immediately afterwards - two logins and
-# two token leases for one snapshot.
+# Three ways in, tried in order. VAULT_TOKEN wins so an operator (or the
+# rehydrate step, which holds a fresh root token) can drive save/restore
+# directly; the JWT path is what the CronJob uses; AppRole is kept for a
+# snapshot taken by hand against a lineage that predates the JWT mounts.
 authenticate() {
-    echo "${info}: Authenticating with OpenBao..."
-    VAULT_TOKEN=$(bao write -field=token auth/approle/login role_id="${APPROLE_ROLE_ID}" secret_id="${APPROLE_SECRET_ID}")
+    if [ -n "${VAULT_TOKEN:-}" ]; then
+        echo "${info}: Using the token supplied in VAULT_TOKEN."
+        export VAULT_TOKEN
+        return 0
+    fi
+
+    if [ -n "${OPENBAO_JWT_PATH:-}" ]; then
+        if [ -z "${OPENBAO_JWT_MOUNT:-}" ] || [ -z "${OPENBAO_JWT_ROLE:-}" ]; then
+            echo "${err}: OPENBAO_JWT_PATH is set; OPENBAO_JWT_MOUNT (e.g. jwt/aws-0) and OPENBAO_JWT_ROLE are required with it."
+            exit 1
+        fi
+        echo "${info}: Authenticating with OpenBao via auth/${OPENBAO_JWT_MOUNT} as role ${OPENBAO_JWT_ROLE}..."
+        # `jwt=@file` makes bao read the projected ServiceAccount token from disk,
+        # so the token never appears on a command line.
+        VAULT_TOKEN=$(bao write -field=token "auth/${OPENBAO_JWT_MOUNT}/login" \
+            role="${OPENBAO_JWT_ROLE}" jwt=@"${OPENBAO_JWT_PATH}")
+    elif [ -n "${APPROLE_ROLE_ID:-}" ] && [ -n "${APPROLE_SECRET_ID:-}" ]; then
+        echo "${info}: Authenticating with OpenBao via AppRole..."
+        VAULT_TOKEN=$(bao write -field=token auth/approle/login \
+            role_id="${APPROLE_ROLE_ID}" secret_id="${APPROLE_SECRET_ID}")
+    else
+        echo "${err}: No OpenBao credentials. Set one of:"
+        echo "${err}:   VAULT_TOKEN"
+        echo "${err}:   OPENBAO_JWT_PATH + OPENBAO_JWT_MOUNT + OPENBAO_JWT_ROLE"
+        echo "${err}:   APPROLE_ROLE_ID + APPROLE_SECRET_ID"
+        exit 1
+    fi
+
     if [ -z "${VAULT_TOKEN}" ]; then
         echo "${err}: Authentication failed. Unable to retrieve OpenBao token."
         exit 1
@@ -197,6 +245,13 @@ save() {
     echo "${info}: Starting OpenBao backup to object storage..."
     check_required_bin
     authenticate
+    # The marker records WHEN THE SNAPSHOT WAS TAKEN, so a later restore can
+    # judge the age of what it just installed. It used to be written only on
+    # restore, which meant a lineage's first snapshot carried no marker at all
+    # and the first rehydrate could not judge anything.
+    echo "${info}: Stamping ${CHECK_PATH} before the snapshot"
+    # shellcheck disable=SC2046 # kv_ns_flag prints zero or one word by design
+    bao kv put $(kv_ns_flag) "${CHECK_PATH}" "value=$(date -u +%s)" >/dev/null
     echo "${info}: Requesting a snapshot via ${VAULT_ADDR}"
     bao operator raft snapshot save "${SNAPSHOT_FILE}"
     # UTC, colon-free, lexicographically sortable. The previous
@@ -274,24 +329,31 @@ restore() {
     export VAULT_TOKEN
     trap 'bao token revoke "${VAULT_TOKEN}" >/dev/null 2>&1 || true' EXIT
 
-    # The kv-v2 mount lives in the `app` tenant namespace, not root — platform
-    # services are in root and tenants get namespaces. Without -namespace this
-    # 404s.
-    echo "${info}: Check that ${CHECK_NAMESPACE}/${CHECK_PATH} is less than ${NUM_DAYS} days old"
-    CURR_TS=$(date "+%s")
-    VAULT_TS=$(bao kv get -namespace="${CHECK_NAMESPACE}" --field=value "${CHECK_PATH}")
+    echo "${info}: Checking that ${CHECK_PATH} is less than ${NUM_DAYS} days old (--freshness ${FRESHNESS})"
+    CURR_TS=$(date -u "+%s")
+    # shellcheck disable=SC2046 # kv_ns_flag prints zero or one word by design
+    VAULT_TS=$(bao kv get $(kv_ns_flag) --field=value "${CHECK_PATH}" 2>/dev/null || true)
 
     if [ -z "${VAULT_TS}" ]; then
-        echo "${err}: ${CHECK_PATH} is absent from the restored snapshot; cannot judge its age."
-        exit 1
+        if [ "${FRESHNESS}" = "fail" ]; then
+            echo "${err}: ${CHECK_PATH} is absent from the restored snapshot; cannot judge its age."
+            exit 1
+        fi
+        echo "${warn}: ${CHECK_PATH} is absent from the restored snapshot (a snapshot taken before save() stamped it). Continuing."
+        return 0
     fi
 
+    AGE_DAYS=$(( (CURR_TS - VAULT_TS) / 86400 ))
+    echo "${info}: The restored snapshot was taken ${AGE_DAYS} day(s) ago."
     if [ $((CURR_TS - VAULT_TS)) -gt $((NUM_DAYS * 86400)) ]; then
-        echo "${err}: The restored snapshot is more than ${NUM_DAYS} days old."
-        exit 1
+        if [ "${FRESHNESS}" = "fail" ]; then
+            echo "${err}: The restored snapshot is more than ${NUM_DAYS} days old."
+            exit 1
+        fi
+        echo "${warn}: The restored snapshot is more than ${NUM_DAYS} days old. Continuing (--freshness warn)."
     fi
-
-    bao kv put -namespace="${CHECK_NAMESPACE}" "${CHECK_PATH}" "value=$(date "+%s")" >/dev/null 2>&1
+    # No re-stamp here: the marker means "when the snapshot was taken", and
+    # only save() knows that.
 }
 
 # Command execution
