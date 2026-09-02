@@ -335,6 +335,24 @@ one object, deliberately, before redeploying AWS.
 The snapshot is barrier-encrypted. Without the seal key it is ciphertext, which is
 why the bucket policy can be ordinary and why the seal key is the asset to protect.
 
+**What the freshness marker is, and the stronger guard that was rejected.** The
+marker (`lineage/check_timestamp`, written by `save()` before every snapshot) is
+an *alarm*, not a gate: it can only be read back after the restore has already
+been applied, so it reports the age of what was installed and gives calling
+automation a non-zero exit. A Task 1 review argued for replacing it with the
+snapshot object's own timestamp, which is readable *before* the destructive
+restore and therefore could actually prevent a stale one — a fair point, and the
+object name already carries a sortable UTC stamp.
+
+It is not adopted, for one reason the object name cannot cover: read back from
+*inside* the restored OpenBao, the marker proves the restore actually applied
+end to end. Object metadata only describes the file, and `LastModified` is
+rewritten by the GCS mirror, so it does not survive the cross-cloud path at all.
+Adding a pre-restore age check from the object *name* on top of the marker is a
+genuine improvement and is left as follow-up; it is not on Stage 1's critical
+path, and the marker's write is non-fatal precisely so it can never cost a
+backup.
+
 ### Cross-cloud fallback
 
 **Seal from GCP.** The GCP cluster stack gains `seal_provider = awskms | gcpckms`
