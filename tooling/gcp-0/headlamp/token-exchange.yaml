@@ -31,6 +31,18 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
+        # 65532 is distroless's `nonroot` user. The UID is REQUIRED, not
+        # decorative: the image declares `USER nonroot` by NAME, and with
+        # runAsNonRoot set the kubelet refuses to start a container whose user it
+        # cannot prove is non-root --
+        #   container has runAsNonRoot and image has non-numeric user (nonroot),
+        #   cannot verify user is non-root
+        # Measured on gcp-0 2026-09-02: the image pulls fine and the pod then
+        # sits in CreateContainerConfigError. Neither the schema gate nor Polaris
+        # catches this; only a real kubelet does.
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -40,6 +52,11 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+            # Restated at container level: a container securityContext REPLACES
+            # the pod-level one for the fields it sets, so omitting the UID here
+            # would reintroduce the non-numeric-user failure.
+            runAsUser: 65532
+            runAsGroup: 65532
             capabilities:
               drop:
                 - ALL
