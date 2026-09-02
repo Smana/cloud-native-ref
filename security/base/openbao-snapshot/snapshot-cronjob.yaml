@@ -49,6 +49,16 @@ spec:
             - name: openbao-ca
               secret:
                 secretName: openbao-ca  # pragma: allowlist secret
+            # The credential. A projected ServiceAccount token with the audience
+            # the JWT role binds and a 10-minute lifetime; the kubelet rotates
+            # it. Nothing here comes from a secret store any more.
+            - name: openbao-token
+              projected:
+                sources:
+                  - serviceAccountToken:
+                      path: token
+                      audience: openbao
+                      expirationSeconds: 600
           securityContext:
             fsGroup: 1001
             runAsUser: 1000
@@ -62,26 +72,32 @@ spec:
                 - -c
                 - "openbao-snapshot.sh save -b $(BUCKET_NAME) -s /snapshot/backup.snap -a $(VAULT_ADDR) -d 8"
               env:
-                # No VAULT_SKIP_VERIFY. It was only ever needed because the job
-                # resolved the raft leader and connected to it by private IP,
-                # which the server certificate's single DNS SAN cannot match.
-                # Now that the snapshot goes through the NLB at
-                # bao.<private_domain_name>, the name matches and the CA is
-                # enough — so this workload verifies TLS like everything else.
+                # No VAULT_SKIP_VERIFY. The job goes through the neutral
+                # in-cluster name, which is a SAN on the server certificate, so
+                # the CA is enough and this workload verifies TLS like everything
+                # else.
                 - name: VAULT_CACERT
                   value: /etc/openbao/tls/ca.crt
+                - name: VAULT_ADDR
+                  value: https://openbao.security.svc.cluster.local:8200
                 - name: HOME
                   value: /snapshot
                 # Selects the cloud branch inside openbao-snapshot.sh (aws | gcp).
-                # No cross-cluster substitution variable exists for this -- it
-                # would carry a literal that each overlay already knows
-                # statically. gcp-0 patches this to "gcp".
+                # gcp-0 patches this to "gcp".
                 - name: CLOUD
                   value: "aws"
-              envFrom:
-                - secretRef:
-                    name: openbao-snapshot
-              image: ghcr.io/smana/openbao-snapshot:v0.1.0
+                # The lineage's snapshot bucket, per cluster (region-prefixed on
+                # AWS, project-prefixed on GCP).
+                - name: BUCKET_NAME
+                  value: ${openbao_snapshot_bucket}
+                # JWT login: mount, role and where the projected token is.
+                - name: OPENBAO_JWT_MOUNT
+                  value: jwt/${cluster_name}
+                - name: OPENBAO_JWT_ROLE
+                  value: openbao-snapshot
+                - name: OPENBAO_JWT_PATH
+                  value: /var/run/secrets/openbao/token
+              image: ghcr.io/smana/openbao-snapshot:v0.2.0
               imagePullPolicy: IfNotPresent
               name: openbao-snapshot
               securityContext:
@@ -114,6 +130,9 @@ spec:
                   name: tmp
                 - mountPath: "/etc/openbao/tls"
                   name: openbao-ca
+                  readOnly: true
+                - mountPath: /var/run/secrets/openbao
+                  name: openbao-token
                   readOnly: true
           serviceAccountName: openbao-snapshot
           restartPolicy: Never

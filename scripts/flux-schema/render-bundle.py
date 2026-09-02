@@ -89,7 +89,6 @@ FIXTURE_VARS = {
     # it hosts the IdP, gcp-0 sets the same literal because it consumes it
     # (ADR-0022). A per-cluster override would misrepresent the design.
     "identity_provider_url": "https://auth.cluster.local",
-    "cert_manager_approle_id": "random",
     "route53_public_zone_id": "Z0123456789",
     "aws_account_id": "123456789012",
     "vpc_id": "vpc-0123456789abcdef0",
@@ -98,12 +97,12 @@ FIXTURE_VARS = {
     # openbao_cidr from the same CIDR range in this fixture (AWS: whole VPC;
     # GCP: node subnet), so aws-0 renders byte-identical.
     "openbao_cidr": "10.0.0.0/16",
-    # AWS value (the GCP ConfigMap carries a different, dash-separated ID --
-    # see Task 14). Without this entry VAR_RE.sub passes the name through
-    # verbatim and the ExternalSecret silently extracts nothing: schema-valid,
-    # useless, and gate 1 would never catch it since the target field is a
-    # free-form string.
-    "openbao_snapshot_secret": "security/openbao/openbao-snapshot",  # pragma: allowlist secret
+    # The lineage's snapshot bucket, consumed as BUCKET_NAME by the snapshot
+    # CronJob. AWS value; gcp-0's ConfigMap carries a project-prefixed name.
+    "openbao_snapshot_bucket": "eu-west-3-ogenki-openbao-snapshot",
+    # security/base/openbao-endpoint/remote: the active OpenBao's fixed NLB
+    # address a remote cluster proxies to. Only gcp-0 applies that directory.
+    "openbao_target_ip": "10.0.15.250",
     # apps/base/ai/llm/hf-token-externalsecret.yaml. AWS value, same reasoning
     # as openbao_snapshot_secret above: without this entry VAR_RE.sub passes
     # the name through verbatim and the ExternalSecret extracts nothing --

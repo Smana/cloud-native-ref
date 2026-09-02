@@ -21,8 +21,12 @@ kind: Kustomization
 # and have nothing to do with OpenBao, so they moved to
 # ../cert-manager-public/, applied by `security-public-certs` -- the same split
 # gcp-0 already had.
+# `openbao-endpoint/local` because this cluster consumes the OpenBao in its own
+# cloud. A cluster consuming the OTHER cloud's active OpenBao lists
+# `../../base/openbao-endpoint/remote` instead and sets openbao_target_ip in
+# its configure stack -- see the cross-cloud failover guide.
 resources:
+  - ../../base/openbao-endpoint/local
   - clustersecretstore.yaml
-  - openbao-approle-externalsecret.yaml
   - openbao-ca-externalsecret.yaml
   - openbao-clusterissuer.yaml

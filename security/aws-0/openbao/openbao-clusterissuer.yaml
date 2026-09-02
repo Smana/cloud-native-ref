@@ -5,25 +5,30 @@ metadata:
   namespace: security
 spec:
   vault:
-    server: https://bao.${private_domain_name}:8200
-    # No `namespace`: the PKI mount and the cert-manager AppRole both live in the
-    # root namespace now. They were previously in `admin/pki` — a shared platform
-    # service nested inside a namespace named for an administrative role. See
-    # opentofu/aws/openbao/management/namespaces.tf for why that layout was dropped.
+    # The neutral in-cluster name (security/base/openbao-endpoint). Was
+    # bao.${private_domain_name}; the Service now decides where that goes.
+    server: https://openbao.security.svc.cluster.local:8200
+    # No `namespace`: the PKI mount and the auth mount both live in the root
+    # namespace. See opentofu/aws/openbao/management/namespaces.tf for why the
+    # earlier `admin/pki` layout was dropped.
     path: pki_private_issuer/sign/ogenki
-    # Was an inline base64 chain pasted into this file. Now synced from the
-    # same AWS Secrets Manager entry the OpenTofu management stack builds the
-    # PKI from, so rotating the intermediate does not require editing a
-    # manifest. Resolved in cert-manager's cluster resource namespace
-    # (`security`) — see openbao-ca-externalsecret.yaml.
+    # Synced from the same Secrets Manager entry the management stack's CA step
+    # reads, so rotating the intermediate does not require editing a manifest.
+    # Resolved in cert-manager's cluster resource namespace (`security`).
     caBundleSecretRef:
       name: openbao-ca
       key: ca.crt
     auth:
-      appRole:
-        path: approle
-        roleId: ${cert_manager_approle_id}
-        secretRef:
-          # This secret should have been created before
-          name: cert-manager-openbao-approle
-          key: cert_manager_approle_secret
+      # A projected ServiceAccount token, not an AppRole. cert-manager requests
+      # a short-lived token for its own ServiceAccount with the audience the
+      # JWT role binds, and POSTs {jwt, role} to the mount -- which is exactly
+      # the JWT method's login payload, so `kubernetes` here targets a `jwt`
+      # mount. Nothing long-lived is stored anywhere. The mount is created by
+      # opentofu/aws/eks/configure/openbao.tf.
+      kubernetes:
+        mountPath: /v1/auth/jwt/${cluster_name}
+        role: cert-manager
+        serviceAccountRef:
+          name: cert-manager
+          audiences:
+            - openbao

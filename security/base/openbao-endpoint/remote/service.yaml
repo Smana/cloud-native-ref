@@ -1,0 +1,31 @@
+# REMOTE form of the openbao Service (see ../local/service.yaml for the name
+# contract). This cluster's pods cannot route to the other cloud's VPC -- pods
+# are not tailnet devices -- so the Tailscale operator proxies the connection:
+# an ExternalName Service annotated with a tailnet-reachable IP is rewritten by
+# the operator to point at its egress ProxyGroup, whose pods carry the traffic
+# over the tailnet to that cloud's subnet router and on to the address.
+#
+# ${openbao_target_ip} is one of the active OpenBao's FIXED internal NLB
+# addresses (opentofu/aws/openbao/cluster: `tofu output nlb_private_ips`),
+# set per cluster in its configure stack's vars ConfigMap. Failover = change
+# that variable.
+#
+# The ProxyGroup `ts-proxies` (security/base/tailscale-operator/proxygroup.yaml)
+# is tagged tag:k8s; opentofu/shared/tailscale/main.tf admits tag:k8s to the
+# advertised VPC CIDRs on 8200 for exactly this path.
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbao
+  namespace: security
+  annotations:
+    tailscale.com/tailnet-ip: "${openbao_target_ip}"
+    tailscale.com/proxy-group: ts-proxies
+spec:
+  type: ExternalName
+  # Overwritten by the operator with the ProxyGroup's Service name.
+  externalName: placeholder
+  ports:
+    - name: https
+      port: 8200
+      protocol: TCP

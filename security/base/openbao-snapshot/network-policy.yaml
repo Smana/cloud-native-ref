@@ -50,6 +50,19 @@ spec:
         - ports:
             - port: "8200"
               protocol: TCP
+    # The same 8200, when the openbao Service is in its REMOTE form
+    # (security/base/openbao-endpoint/remote): the ExternalName then resolves
+    # to the Tailscale operator's egress ProxyGroup, so the packet's first hop
+    # is a proxy pod in the tailscale namespace, not the load balancer. Harmless
+    # in the local form -- no traffic matches it.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: tailscale
+            k8s:tailscale.com/parent-resource: ts-proxies
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP
     # S3 and STS on AWS; on GCP this is what carries `gcloud storage` traffic
     # to Google APIs. toFQDNs would be the tighter rule, but both clouds' object
     # storage endpoint topology fans out past what a single-segment

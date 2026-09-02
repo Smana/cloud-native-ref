@@ -31,11 +31,11 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: eks-aws-0-vars
-      # ${cert_manager_approle_id} for the openbao ClusterIssuer's roleId.
-      # cert-manager takes roleId as a plain string with no secretRef option, so
-      # a generated value has to arrive through substitution.
-      - kind: Secret
-        name: cert-manager-openbao-approle
+    # No Secret source any more. The ClusterIssuer used to take an AppRole
+    # roleId out of a Secret this Kustomization's own ExternalSecret created,
+    # so a fresh cluster's first reconcile necessarily failed. JWT auth needs
+    # no generated value: the role name is a literal and the credential is a
+    # projected ServiceAccount token.
   dependsOn:
     - name: security
   healthChecks:
