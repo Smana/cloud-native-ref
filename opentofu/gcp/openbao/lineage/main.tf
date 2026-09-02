@@ -13,13 +13,19 @@ locals {
 #   GCP-0066 (no customer-managed key): Google-managed encryption is enough
 #   for ~1 KB backup objects; there is no key-rotation policy this bucket
 #   needs to participate in.
-#   GCP-0078 (no versioning): every object name is a unique snapshot
-#   timestamp and the mirror job never overwrites
-#   (transfer_options.overwrite_objects_already_existing_in_sink = false in
-#   transfer.tf), so there is no in-place write for a version history to
-#   protect against.
+#
+# GCP-0078 (no versioning) is NOT suppressed, and the reasoning that would have
+# suppressed it was wrong. It ran: every object name is a unique timestamp and
+# the mirror never overwrites, so there is nothing for a version history to
+# protect. Both halves are true and the conclusion still does not follow -- the
+# failback step in the cross-cloud runbook has a human typing an object name at
+# a `gcloud storage cp`, which is precisely an in-place overwrite of a snapshot
+# that may be the only good one. The AWS sibling reached the opposite call for
+# the identical bucket shape (opentofu/aws/openbao/lineage/s3.tf: "what lets a
+# snapshot overwritten by a bad run be recovered"), and two lineage buckets
+# disagreeing about the same risk is worse than either answer. Versioning is on,
+# with noncurrent versions expiring so history cannot accumulate.
 #trivy:ignore:GCP-0066
-#trivy:ignore:GCP-0078
 resource "google_storage_bucket" "snapshot" {
   name                        = local.snapshot_bucket_name
   project                     = var.project_id
@@ -28,9 +34,26 @@ resource "google_storage_bucket" "snapshot" {
   force_destroy               = false
 
   # Snapshots are small; keep the history the AWS bucket keeps.
+  versioning {
+    enabled = true
+  }
+
   lifecycle_rule {
     condition {
       age = 120
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  # Bounds what versioning can cost. Without it an overwritten object's previous
+  # generations live forever, because the age rule above matches on the object's
+  # own age rather than on how long a generation has been superseded.
+  lifecycle_rule {
+    condition {
+      num_newer_versions         = 1
+      days_since_noncurrent_time = 30
     }
     action {
       type = "Delete"
