@@ -2319,6 +2319,26 @@ bucket first."
 - Modify: `opentofu/aws/openbao/management/variables.tf`
 - Modify: `opentofu/aws/openbao/management/variables.tfvars`
 - Modify: `opentofu/aws/openbao/management/policies/snapshot.hcl`
+- Modify: `opentofu/aws/openbao/management/providers.tf`, `roles.tf`,
+  `scripts/openbao-config.sh` and `scripts/secret-store.sh` — **comments and one
+  stale list**, all falsified by Steps 3 and 6 and none of them obvious from the
+  diff. `providers.tf` says this stack "imports the CA, signs the intermediate,
+  and writes every policy and AppRole on the platform" (it no longer signs the
+  intermediate and writes no platform AppRole); `roles.tf` and `variables.tf` both
+  say `pki_max_lease_ttl` bounds "the mount and the intermediate", but the
+  intermediate's lifetime now comes from the offline ceremony; `openbao-config.sh`'s
+  `write_ca` comment still documents the AWS branch reading the deleted `root-ca`
+  secret as JSON with `.ca` and `.bundle`; and `secret-store.sh`'s `OLD_NAMES` still
+  lists the removed cert-manager AppRole entry, so `migrate-aws` would either copy a
+  dead credential or report it absent.
+- Modify: `opentofu/aws/openbao/management/auth.tf` — **one comment, and it hides
+  something.** Step 6 says to leave the `userpass` and `app` blocks exactly as they
+  are, which is right about the code and wrong about the comment above them: it
+  reads "Deliberately no `token_bound_cidrs`, unlike the machine roles above", and
+  after Step 6 there are no machine roles above. Worse, the JWT roles that replaced
+  them carry no CIDR bind either, so the sentence conceals a real narrowing that
+  went away. Say that machine auth is now bound by ServiceAccount subject and
+  audience instead of by CIDR.
 - Modify: `opentofu/aws/openbao/management/autopilot.tf:1-9` (comment only)
 
 - [ ] **Step 1: Globals**
@@ -2659,7 +2679,13 @@ that nothing else catches.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add opentofu/config.tm.hcl opentofu/aws/openbao/management
+# Explicit pathspec, and note the last two: Step 8 edits a VMRule outside this
+# stack, and the detect-secrets hook rewrites .secrets.baseline when a secret
+# NAME disappears from the tracked files. Neither is under
+# opentofu/aws/openbao/management, so a narrower `git add` silently drops them.
+git add opentofu/config.tm.hcl opentofu/aws/openbao/management scripts/openbao-config.sh \
+  scripts/secret-store.sh observability/base/victoria-metrics-k8s-stack/vmrules/openbao.yaml \
+  .secrets.baseline
 git commit -m "feat(openbao): management stack rehydrates from the lineage, imports a pre-signed intermediate, drops AppRole
 
 Deploy now fetches the CA chain first, then rehydrates the node from the

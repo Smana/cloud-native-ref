@@ -329,8 +329,9 @@ seal uses. The service agent's identity is deterministic per project, so the tru
 never has to follow a rebuilt cluster — the reason a CronJob-side upload with a
 Workload Identity Pool trusting the EKS issuer was rejected: that issuer changes
 on every rebuild and would need re-federating after `eks/init` each time. The
-role holds `s3:GetObject` and `s3:ListBucket` on the snapshot bucket and
-`kms:Decrypt` on the bucket's key, nothing else.
+role holds `s3:GetObject`, `s3:ListBucket` and `s3:GetBucketLocation` on the
+snapshot bucket and `kms:Decrypt` on the bucket's key — read-only, and nothing
+that can write, delete or encrypt.
 
 Failback direction (GCS → S3) is a **manual step in the runbook**, not an
 automatic mirror: a standby's snapshot holds the AWS lineage's data plus
@@ -373,8 +374,11 @@ configured on the OpenBao side.
 **AWS side**, in `opentofu/shared/aws-gcp-federation/`: an IAM OIDC provider for
 `https://accounts.google.com`, and a role `openbao-standby-seal` whose trust policy
 binds `accounts.google.com:sub` to the standby VM service account's unique ID and
-the audience to a fixed string. Its only permission is `kms:Encrypt`,
-`kms:Decrypt` and `kms:DescribeKey` on the seal key. The lineage's key policy
+the audience to a fixed string. Its only permissions are the seal-key
+operations OpenBao's `awskms` seal actually performs — `kms:Encrypt`,
+`kms:Decrypt`, `kms:DescribeKey`, `kms:GenerateDataKey*` and `kms:ReEncrypt*`,
+the same set `opentofu/aws/openbao/cluster/iam.tf` already grants the AWS node
+for the same key, and nothing beyond it. The lineage's key policy
 admits that role by its deterministic ARN, so the two stacks need no ordering.
 This is distinct from the existing federation, which trusts the *GKE* issuer for
 Kubernetes ServiceAccounts; a Compute Engine VM presents a Google-issued identity
