@@ -2102,6 +2102,13 @@ In `opentofu/config.tm.hcl`, replace:
   cert_manager_approle             = "cert-manager"
 ```
 
+**Match on the three variable names, not character-for-character.** The two
+`# pragma: allowlist secret` comments above are on this *quotation* only — they
+stop `detect-secrets` flagging this plan file — and are **not** in
+`config.tm.hcl`, where only `recovery_keys_secret_name` carries one. The lines to
+replace are the three named here, whatever trailing comments they do or do not
+have.
+
 with:
 
 ```hcl
@@ -2352,7 +2359,16 @@ locals {
 
 In `outputs.tf`, delete the `cert_manager_approle_credentials_secret_arn` and `cert_manager_approle_role_id` outputs.
 
-In `variables.tf`: delete `root_ca_secret_name`, `cert_manager_approle_secret_name`, `snapshot_approle_secret_name`, `recovery_keys_secret_name`, `snapshot_bucket_name`. Add:
+In `variables.tf`: delete `root_ca_secret_name`, `cert_manager_approle_secret_name`,
+`snapshot_approle_secret_name`, `recovery_keys_secret_name`, `snapshot_bucket_name`
+— **and `pki_key_type` and `pki_key_bits`.** Those last two are not obvious from
+the diff: their only consumer was `vault_pki_secret_backend_key.this`, which
+Step 3 deletes, and pre-commit's `terraform_tflint` hook fails on
+`terraform_unused_declarations` until they go. Also fix two descriptions that
+Step 3 falsified: `openbao_ca_cert_file` still says the chain comes "from the
+root CA secret in AWS Secrets Manager" (it is the ca-chain secret now), and in
+`secrets.tf` the "Human operator password" block still lists "both AppRole
+secret IDs" among the credentials this stack manages — Step 6 removed them. Add:
 
 ```hcl
 variable "intermediate_ca_secret_name" {
@@ -2391,10 +2407,25 @@ pki_domains = [
 tofu fmt -recursive opentofu/aws/openbao/management
 (cd opentofu/aws/openbao/management && tofu init -backend=false >/dev/null && tofu validate)
 (cd opentofu/aws/openbao/management && trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .)
-grep -rn "approle" opentofu/aws/openbao/management/*.tf | grep -v "approle_app\|namespace = vault_namespace.app" ; echo "grep-exit=$?"
+grep -rn "approle" opentofu/aws/openbao/management/*.tf
+terramate fmt --check opentofu/config.tm.hcl opentofu/aws/openbao/management/workflows.tm.hcl; echo "tm_fmt=$?"
 ```
 
-Expected: valid; trivy exit 0; the grep prints nothing and `grep-exit=1` (only the `app` tenant AppRole remains).
+Expected: valid; trivy exit 0; `tm_fmt=0`.
+
+The `approle` grep is a **read-and-judge, not a pass/fail**: every remaining hit
+must belong to the `app` tenant namespace's own AppRole, which this task keeps as
+the worked tenancy example. Expect roughly four lines — the `vault_auth_backend`
+`approle_app`, the `vault_approle_auth_backend_role` `app`, and their
+`type = "approle"` / `backend = ...` attributes. What must be **gone** is a
+root-namespace `approle` backend and the `snapshot`/`cert_manager` roles on it.
+(An earlier revision of this step piped through `grep -v` and asserted an empty
+result; the filter could not span a whole resource block, so it reported hits
+that were entirely legitimate.)
+
+`terramate fmt` is the right formatter for `.tm.hcl` — `tofu fmt` does not touch
+those files, so a Step 1 edit to `config.tm.hcl` can leave real alignment drift
+that nothing else catches.
 
 - [ ] **Step 10: Commit**
 
@@ -4599,6 +4630,12 @@ keys reach CI: every assertion is an unauthenticated endpoint."
 - Modify: `.doc-claims.yaml`
 - Modify: `CLAUDE.md`
 - Modify: `docs/gcp-bootstrap.md`
+- Modify: `opentofu/aws/openbao/management/README.md` — it documents the AppRole
+  machine-auth flow Task 5 deleted, and the old PKI design in which the root CA
+  private key was imported into the live mount. Both are now false. Replace the
+  AppRole section with a pointer to the per-cluster JWT mounts, and the PKI
+  paragraph with the pre-signed-intermediate shape, matching the OpenBao page.
+  Task 5 deliberately left this file alone as out of its scope; it lands here.
 
 Write in the site's existing voice (short paragraphs, tables, `{{< callout >}}` shortcodes). Every relative link must resolve (`validate-links.sh`); every claim entry must match (`validate-doc-claims.sh`).
 
