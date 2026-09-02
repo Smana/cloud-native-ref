@@ -237,7 +237,11 @@ check_openbao_status() {
     while [[ $attempt -le $max_retries ]]
     do
         log_message "INFO" "Attempt $attempt: Checking $OPENBAO_URL..."
-        status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health")
+        # Mirrors the two probes in rehydrate and pre-destroy: a bare
+        # /v1/sys/health returns 200 only for the ACTIVE node, and this poll
+        # goes through the NLB, which reports standbys as healthy. In `ha` it
+        # would otherwise time out on a healthy cluster.
+        status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true")
 
         if [ "$status_code" = "200" ]; then
             log_message "INFO" "OpenBao is initialized, unsealed, and active"
@@ -341,12 +345,12 @@ export_snapshot_env() {
         #
         # `local adc_token` is not cosmetic. Bash is DYNAMICALLY SCOPED: this
         # function is called by pre_destroy_snapshot, which declares its own
-        # `local token` holding the lineage root token -- an unlocalised
-        # assignment plus `unset token` in here would clobber the caller's
+        # `local root_token` holding the lineage root token -- an unlocalised
+        # assignment plus `unset root_token` in here would clobber the caller's
         # variable, handing the child an empty VAULT_TOKEN. Measured in bash
-        # 5.3. Naming this `adc_token` rather than `token` avoids the collision
-        # outright; `local` is what makes it safe even if the name ever
-        # collided again.
+        # 5.3. Naming this `adc_token` rather than `root_token` avoids the
+        # collision outright; `local` is what makes it safe even if the name
+        # ever collided again.
         if [ -z "${CLOUDSDK_AUTH_ACCESS_TOKEN:-}" ]; then
             local adc_token
             if adc_token=$(gcloud auth application-default print-access-token 2>/dev/null) && [ -n "$adc_token" ]; then
@@ -409,15 +413,32 @@ verify_pki_present() {
     # way curl exits 2 on every run and this function reports a missing PKI
     # mount that is actually present -- the most misleading message this script
     # can produce, on the disaster-recovery path. Measured, both states.
-    local -a curl_args=(-fsS)
+    #
+    # -sS, NOT -f: `curl -f` collapses every non-2xx into exit 22, so a 404 --
+    # which IS a missing mount, and the one case the caller may act on -- looked
+    # identical to a TLS or network failure, which is never a reason to destroy
+    # anything. The status code is captured explicitly below instead.
+    local -a curl_args=(-sS)
     if [ -n "${VAULT_CACERT:-}" ]; then curl_args+=(--cacert "$VAULT_CACERT"); fi
     if [ -n "${VAULT_SKIP_VERIFY:-}" ]; then curl_args+=(-k); fi
 
-    local pem
-    if ! pem=$(curl "${curl_args[@]}" "$OPENBAO_URL/v1/pki_private_issuer/ca/pem"); then
-        log_message "ERROR" "pki_private_issuer/ca/pem did not answer. The transport failed, so this could be TLS trust or an unreachable node -- not necessarily a missing mount."
-        return 1
-    fi
+    local pem http_code
+    pem=$(curl "${curl_args[@]}" -w '\n%{http_code}' "$OPENBAO_URL/v1/pki_private_issuer/ca/pem" 2>/dev/null || true)
+    http_code=$(printf '%s' "$pem" | tail -n1)
+    pem=$(printf '%s' "$pem" | sed '$d')
+
+    case "$http_code" in
+        200) ;;
+        404)
+            log_message "ERROR" "pki_private_issuer is not mounted on this node (HTTP 404)."
+            return 1 ;;
+        '')
+            log_message "ERROR" "Could not reach $OPENBAO_URL at all -- TLS trust or the node itself, not the PKI mount."
+            return 1 ;;
+        *)
+            log_message "ERROR" "pki_private_issuer/ca/pem returned HTTP ${http_code}. Not a missing mount: check TLS trust and that this node is unsealed."
+            return 1 ;;
+    esac
     if ! printf '%s\n' "$pem" | openssl x509 -noout -subject >/dev/null 2>&1; then
         log_message "ERROR" "pki_private_issuer/ca/pem returned something that is not a certificate"
         return 1
@@ -544,16 +565,48 @@ rehydrate_openbao() {
             # left behind by a FAILED restore looks like: throwaway keys, no
             # lineage data. Exiting 0 on the strength of a 200 alone would turn
             # a loud failure into a silent success on the next deploy, and the
-            # management stack would then run against an empty store. One
-            # unauthenticated request settles it.
+            # management stack would then run against an empty store.
             if verify_pki_present; then
                 log_message "INFO" "OpenBao is already initialized, unsealed, and holds the PKI -- nothing to rehydrate"
                 exit 0
             fi
-            log_message "ERROR" "OpenBao is initialized and unsealed but has NO PKI mount. This is the state a failed"
-            log_message "ERROR" "restore leaves behind: the node holds throwaway keys that were never stored, so"
-            log_message "ERROR" "nothing can authenticate to it. Destroy and redeploy the cluster stack with"
-            log_message "ERROR" "TM_OPENBAO_SKIP_SNAPSHOT=true -- there is nothing on this node worth snapshotting."
+            # No PKI. Two very different situations look identical from here,
+            # and the BUCKET is what separates them:
+            #
+            #   bucket has a snapshot -> this node should have restored it and
+            #                            did not. Stranded: throwaway keys
+            #                            nobody holds.
+            #   bucket is empty       -> a young lineage part-way through its
+            #                            FIRST bootstrap. `init_openbao` has
+            #                            run and stored real keys, and the PKI
+            #                            mount does not exist yet because the
+            #                            `tofu apply` that creates it has not
+            #                            succeeded yet. Perfectly recoverable:
+            #                            just let this deploy continue.
+            #
+            # Getting this wrong in the safe-looking direction is expensive: it
+            # tells an operator whose apply merely failed to destroy a cluster
+            # holding freshly stored keys.
+            export_snapshot_env
+            # `local` on its own line, then assign: `local x=$(cmd)` masks the
+            # command's exit status behind local's own.
+            local _latest
+            if ! _latest=$(latest_snapshot); then
+                log_message "ERROR" "OpenBao has no PKI mount and the lineage bucket cannot be listed, so this"
+                log_message "ERROR" "cannot be told apart from a failed restore. Fix the listing and re-run."
+                exit 1
+            fi
+            if [ -z "$_latest" ]; then
+                log_message "WARN" "OpenBao is initialized and unsealed with no PKI mount, and ${SNAPSHOT_BUCKET} is"
+                log_message "WARN" "empty -- a first bootstrap whose 'tofu apply' has not completed. Continuing;"
+                log_message "WARN" "the apply after this step is what creates the PKI."
+                exit 0
+            fi
+            log_message "ERROR" "OpenBao is initialized and unsealed but has NO PKI mount, while ${SNAPSHOT_BUCKET}"
+            log_message "ERROR" "holds ${_latest}. This is the state a failed restore leaves behind: the node holds"
+            log_message "ERROR" "throwaway keys that were never stored, so nothing can authenticate to it. Destroy"
+            log_message "ERROR" "and redeploy the cluster stack with TM_OPENBAO_SKIP_SNAPSHOT=true -- there is"
+            log_message "ERROR" "nothing on this node worth snapshotting."
             exit 1 ;;
         501) ;;
         *)
@@ -604,9 +657,20 @@ rehydrate_openbao() {
 
     local scratch
     scratch=$(mktemp -d)
-    # On a trap, not duplicated per branch: the scratch dir holds the downloaded
-    # snapshot, and an interrupt mid-restore would otherwise leave it behind.
-    trap 'rm -rf "$scratch"' EXIT INT TERM
+    # DOUBLE quotes, so $scratch is expanded NOW, when the trap is set -- not
+    # when it fires. With single quotes the expansion happens at fire time, by
+    # which point a SUCCESS path has already returned and the local is out of
+    # scope: `set -u` then makes the trap itself fatal, so the function returns
+    # 1 after doing its job correctly, AND the directory is never removed.
+    # Failure paths are unaffected (the frame is still live when `exit` fires
+    # the trap), so the bug is invisible to any test that exercises an error.
+    # Measured on bash 3.2 and 5.3. `mktemp -d` output contains no quotes, so
+    # embedding it is safe. INT/TERM exit explicitly, or bash runs the handler
+    # and resumes.
+    # shellcheck disable=SC2064 # expand now, deliberately -- see the comment above
+    trap "rm -rf -- '$scratch'" EXIT
+    # shellcheck disable=SC2064 # expand now, deliberately -- see the comment above
+    trap "rm -rf -- '$scratch'; exit 130" INT TERM
 
     local init_output root_token
     init_output=$(bao operator init -recovery-shares=1 -recovery-threshold=1 -format=json)
@@ -670,12 +734,13 @@ pre_destroy_snapshot() {
     fi
 
     # `export_snapshot_env` FIRST, then read the token. Order matters: that
-    # function must not be able to touch this scope's `token`, and while it now
-    # declares its own local, doing the read afterwards means a future edit to
-    # it cannot reintroduce the clobber. (It did clobber it: bash is dynamically
-    # scoped, so its non-local `token` assignment plus `unset token` destroyed
-    # this one, and the child was handed an empty VAULT_TOKEN -- so a GCP
-    # destroy could never take its final snapshot.)
+    # function must not be able to touch this scope's `root_token`, and while
+    # it now declares its own local (`adc_token`), doing the read afterwards
+    # means a future edit to it cannot reintroduce the clobber. (It did clobber
+    # it: bash is dynamically scoped, so its non-local `token` assignment plus
+    # `unset token` destroyed this one -- back when both were named `token` --
+    # and the child was handed an empty VAULT_TOKEN -- so a GCP destroy could
+    # never take its final snapshot.)
     export_snapshot_env
 
     local root_token
@@ -686,9 +751,17 @@ pre_destroy_snapshot() {
 
     local scratch
     scratch=$(mktemp -d)
-    # On a trap: this scratch dir holds the real snapshot until it is uploaded,
-    # so an interrupt mid-upload would otherwise leave it in /tmp.
-    trap 'rm -rf "$scratch"' EXIT INT TERM
+    # Double-quoted for the same reason as in rehydrate_openbao: expanded at
+    # set time, or a SUCCESSFUL snapshot returns 1 from the trap and leaves the
+    # directory behind. That failure is worse here than it looks -- the destroy
+    # workflow reads the non-zero status as 'snapshot failed' and blocks, and
+    # the operator's documented escape is TM_OPENBAO_SKIP_SNAPSHOT=true, i.e.
+    # destroying WITHOUT a snapshot: the exact loss this function exists to
+    # prevent.
+    # shellcheck disable=SC2064 # expand now, deliberately -- see the comment above
+    trap "rm -rf -- '$scratch'" EXIT
+    # shellcheck disable=SC2064 # expand now, deliberately -- see the comment above
+    trap "rm -rf -- '$scratch'; exit 130" INT TERM
 
     if ! VAULT_TOKEN="$root_token" sh "$(dirname "$0")/openbao-snapshot.sh" save \
             -a "$OPENBAO_URL" -b "$SNAPSHOT_BUCKET" -s "$scratch/bao.snap"; then

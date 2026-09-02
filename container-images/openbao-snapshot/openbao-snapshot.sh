@@ -193,7 +193,12 @@ generate_root_token() {
     nonce_file="$HOME/.generate-root.$$"
     ( umask 077; : > "$nonce_file" )
     bao operator generate-root -init --format json | jq -cr '.nonce, .otp' > "$nonce_file"
-    read -r VAULT_NONCE VAULT_OTP < "$nonce_file"
+    # One `read` PER LINE. `jq -cr '.nonce, .otp'` prints two lines, and a
+    # single `read -r VAULT_NONCE VAULT_OTP` consumes only the first -- so the
+    # OTP came out empty and `generate-root -decode` failed with "otp string is
+    # wrong length", after the destructive restore had already run. Introduced
+    # in #1844 and never caught, because nothing exercised this path.
+    { read -r VAULT_NONCE; read -r VAULT_OTP; } < "$nonce_file"
     rm -f "$nonce_file"
     VAULT_ENCODED_TOKEN=$(echo "${RECOVERY_SECRET}" | jq -r '.recovery_key' | bao operator generate-root -nonce="${VAULT_NONCE}" --format json - | jq -cr '.encoded_root_token')
     VAULT_TOKEN=$(bao operator generate-root -decode "${VAULT_ENCODED_TOKEN}" -otp "${VAULT_OTP}")
@@ -201,10 +206,12 @@ generate_root_token() {
     echo "${VAULT_TOKEN}"
 }
 
-# Three ways in, tried in order. VAULT_TOKEN wins so an operator (or the
+# Four ways in, tried in order. VAULT_TOKEN wins so an operator (or the
 # rehydrate step, which holds a fresh root token) can drive save/restore
 # directly; the JWT path is what the CronJob uses; AppRole is kept for a
-# snapshot taken by hand against a lineage that predates the JWT mounts.
+# snapshot taken by hand against a lineage that predates the JWT mounts; and
+# bao's own token helper (~/.vault-token, from a prior `bao login`) covers an
+# operator who is already authenticated but has no VAULT_TOKEN exported.
 authenticate() {
     if [ -n "${VAULT_TOKEN:-}" ]; then
         echo "${info}: Using the token supplied in VAULT_TOKEN."
