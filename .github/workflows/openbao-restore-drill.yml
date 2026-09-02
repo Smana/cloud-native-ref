@@ -1,13 +1,24 @@
 name: OpenBao restore drill
 
-# Proves, every week, that the newest snapshot in the lineage bucket can be
-# restored by a node that has nothing but the lineage seal key -- and that the
-# GCS mirror holds the same newest object. This is the "restore is not a
-# hypothesis" requirement of the store-of-record design.
+# Two independent jobs, one weekly schedule. Neither needs the other, and
+# neither depends on the other, so a red X names its own problem.
 #
-# What it deliberately does NOT have: the recovery keys. Everything asserted
-# below comes from unauthenticated endpoints (sys/health, the PKI mount's CA
-# endpoint), so a compromised runner can restore a snapshot it cannot read.
+#   drill               the newest snapshot in the lineage bucket can be
+#                       restored by a node that has nothing but the lineage seal
+#                       key, and the GCS mirror holds the same newest object.
+#                       This is the "restore is not a hypothesis" requirement of
+#                       the store-of-record design.
+#
+#   web-identity-seal   the `awskms` seal resolves credentials from
+#                       AWS_ROLE_ARN + AWS_WEB_IDENTITY_TOKEN_FILE alone, with
+#                       no static credential anywhere. That is the mechanism the
+#                       GCP standby unseals with during an AWS-region outage,
+#                       and `drill` cannot test it: `drill` runs under static
+#                       credentials, which the AWS SDK's chain prefers.
+#
+# What neither job has: the recovery keys. Everything asserted below comes from
+# unauthenticated endpoints (sys/health, the PKI mount's CA endpoint), so a
+# compromised runner can restore a snapshot it cannot read.
 
 on:
   schedule:
@@ -195,6 +206,377 @@ jobs:
             echo "::error::size mismatch for $key: s3=$size gcs=$gsize -- a truncated or partial copy"; exit 1
           fi
           echo "mirror OK: $key ($gsize bytes) present on both sides"
+
+      - name: Stop the node
+        if: always()
+        run: pkill -f 'bao server' || true
+
+  # WHY THIS JOB EXISTS
+  # -------------------
+  # The GCP standby unseals with the AWS lineage's seal key, because a snapshot
+  # can only be restored under the seal that encrypted it. It reaches AWS KMS
+  # with no AWS credential of any kind: a GCE instance identity token written to
+  # a file by a systemd timer, plus AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE
+  # in the unit's environment
+  # (opentofu/gcp/openbao/cluster/scripts/startup-script.sh). That is the whole
+  # cross-cloud fallback, and it is risk 3 in
+  # docs/superpowers/specs/2026-09-02-openbao-store-of-record-design.md.
+  #
+  # The `drill` job above does NOT test it. It runs the same `seal "awskms"`
+  # stanza, but under STATIC credentials that configure-aws-credentials exports
+  # into the environment -- and the SDK's default chain prefers those. So the
+  # drill proves the environment-variable provider works and says nothing at all
+  # about the web-identity provider, which is the only one an AWS-outage
+  # failover has.
+  #
+  # A GitHub Actions run can settle it without GCP, because it has an OIDC token
+  # of its own: same seal, same SDK, same two variables, a different identity
+  # provider. So this job starts a node with no static credentials anywhere and
+  # initialises it. If that node unseals, the seal honours the two variables.
+  #
+  # WHAT THE SOURCE SAYS, AND WHY IT IS NOT ENOUGH
+  # ----------------------------------------------
+  # The seal is `wrappers/awskms/v2 v2.4.0` (openbao v2.6.2 go.mod, no replace),
+  # whose GetAwsKmsClient builds `&awsutil.CredentialsConfig{}` and calls
+  # GenerateCredentialChain(). awsutil v0.3.0 reads AWS_ROLE_ARN and
+  # AWS_WEB_IDENTITY_TOKEN_FILE from the environment inside that function and
+  # appends an stscreds.WebIdentityRoleProvider -- so on paper this works. Two
+  # reasons that is not evidence:
+  #
+  #   * The OpenBao docs' own precedence list ("specified credentials,
+  #     environment credentials, shared file credentials, or IAM role/ECS task
+  #     credentials in that order") does not mention web identity at all, and the
+  #     awskms parameter table documents no role_arn or web_identity_token_file.
+  #     The page and the code disagree; a static read cannot say which ships.
+  #   * The chain is FIVE providers deep and web identity is fourth. Anything
+  #     ahead of it -- a seal-stanza access_key, AWS_ACCESS_KEY_ID, a
+  #     ~/.aws/credentials -- wins silently. That is exactly how `drill` passes.
+  #
+  # WHERE THE ANALOGY STOPS
+  # -----------------------
+  # A GitHub Actions ID token and a GCE instance identity token are not the same
+  # document, and this job cannot test the differences:
+  #   * Different issuer, so a different IAM OIDC provider and a different trust
+  #     policy. This job exercises token.actions.githubusercontent.com and the
+  #     drill role; the standby uses accounts.google.com and the
+  #     openbao-standby-seal role in opentofu/shared/aws-gcp-federation. A
+  #     thumbprint or sub-condition error there is invisible here.
+  #   * Different sub shape: repo:<owner>/<repo>:ref:... versus the VM service
+  #     account's numeric unique ID.
+  #   * No refresh. The GCE node re-fetches the token every 50 minutes on a
+  #     systemd timer; this job mints one and finishes inside two minutes, so it
+  #     never exercises a token rotating under a running seal.
+  # What it DOES settle is the one thing that is common to both and was untested:
+  # whether the seal's credential chain reaches the web-identity provider at all.
+  web-identity-seal:
+    name: The awskms seal unseals on a web-identity token alone
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # No `needs:`, deliberately: the two jobs answer different questions, and if
+    # they were chained a red X would not say which one to read. They run in
+    # parallel, so the workflow is no slower for it.
+    #
+    # No `actions/checkout` either -- nothing here reads the repository. The
+    # restore job needs the committed root certificate; this one asserts only on
+    # sys/health.
+    steps:
+      - name: Install bao (checksum-verified)
+        run: |
+          set -euo pipefail
+          tarball="openbao_${BAO_VERSION}_linux_amd64.tar.gz"
+          base="https://github.com/openbao/openbao/releases/download/v${BAO_VERSION}"
+          curl -fsSL "${base}/${tarball}" -o "/tmp/${tarball}"
+          curl -fsSL "${base}/checksums.txt" -o /tmp/checksums.txt
+          grep -E "  ${tarball}$" /tmp/checksums.txt > /tmp/bao.sha256sum
+          (cd /tmp && sha256sum -c bao.sha256sum)
+          tar -xzf "/tmp/${tarball}" -C /tmp bao
+          sudo install -m 0755 /tmp/bao /usr/local/bin/bao
+          bao version
+
+      # Fetched by hand rather than with aws-actions/configure-aws-credentials,
+      # and that is the point of the job: the action ends by exporting
+      # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN, which is
+      # exactly the provider this test has to exclude.
+      #
+      # audience=sts.amazonaws.com because that is what the drill role's trust
+      # policy demands: `token.actions.githubusercontent.com:aud` is an exact
+      # StringEquals on that string in
+      # opentofu/aws/openbao/lineage/github-oidc.tf, and the same string is the
+      # OIDC provider's only client_id_list entry. No trust-policy change was
+      # needed to run this test.
+      - name: Mint a GitHub OIDC token for STS
+        run: |
+          set -euo pipefail
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::no OIDC request context on this runner -- the workflow needs permissions: id-token: write"
+            exit 1
+          fi
+          # The URL already carries ?api-version=, hence & and not ?.
+          token=$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r '.value')
+          if [ -z "$token" ] || [ "$token" = "null" ]; then
+            echo "::error::the OIDC endpoint returned no token value"
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$token" > "$RUNNER_TEMP/aws-web-identity-token"
+          # The claims, never the token: aud and sub are what the trust policy
+          # tests, so printing them makes a later AccessDenied readable instead
+          # of a guess. The signature is what makes the token a credential and
+          # it is not printed.
+          payload=$(cut -d. -f2 < "$RUNNER_TEMP/aws-web-identity-token")
+          case $((${#payload} % 4)) in
+            2) payload="${payload}==" ;;
+            3) payload="${payload}=" ;;
+          esac
+          printf '%s' "$payload" | tr '_-' '/+' | base64 -d 2>/dev/null \
+            | jq -c '{aud, sub, iss}' || echo "(claims not decodable -- not fatal)"
+
+      # If this job can quietly degrade into the drill's test, it is worth
+      # nothing. So fail loudly if anything the chain reaches BEFORE web identity
+      # exists on this runner. awsutil's chain, in order:
+      #   1 seal-stanza access_key/secret_key   (not set -- see the HCL below)
+      #   2 AWS_ACCESS_KEY_ID / _SECRET_ACCESS_KEY / _SESSION_TOKEN
+      #   3 ~/.aws/credentials, profile from AWS_PROFILE
+      #   4 AWS_ROLE_ARN + AWS_WEB_IDENTITY_TOKEN_FILE   <-- the one under test
+      #   5 container credentials, else EC2 IMDS
+      # Positions 2 and 3 are what this step rules out. Position 5 cannot serve
+      # AWS credentials here and is disabled outright two steps below, so a green
+      # run leaves 4 as the only provider that can have worked.
+      - name: Assert there are no static AWS credentials to fall back on
+        run: |
+          set -euo pipefail
+          bad=0
+          for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN \
+                   AWS_PROFILE AWS_SHARED_CREDENTIALS_FILE \
+                   AWS_CONTAINER_CREDENTIALS_RELATIVE_URI \
+                   AWS_CONTAINER_CREDENTIALS_FULL_URI; do
+            if printenv "$v" > /dev/null 2>&1; then
+              echo "::error::$v is set. The SDK would prefer it, and this job would silently re-test the drill's path."
+              bad=1
+            fi
+          done
+          for f in "$HOME/.aws/credentials" "$HOME/.aws/config"; do
+            if [ -e "$f" ]; then
+              echo "::error::$f exists. The shared-config provider also precedes web identity."
+              bad=1
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then exit 1; fi
+          echo "no static credentials, no shared config, no container-credentials endpoint"
+
+      # Splits the two failure modes apart BEFORE OpenBao is involved.
+      #
+      # The AWS CLI honours the same two variables through botocore, so this
+      # proves the token, the audience, the sub and the trust policy are all good
+      # from this runner with nothing else set. Every later failure in the job is
+      # therefore about OpenBao and not about IAM -- which is why the pre-flight
+      # is a separate step rather than folded into the next one.
+      - name: Pre-flight -- the role assumes with the two variables and nothing else
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_DRILL_ROLE_ARN }}
+          AWS_WEB_IDENTITY_TOKEN_FILE: ${{ runner.temp }}/aws-web-identity-token
+        run: |
+          set -euo pipefail
+          if ! aws sts get-caller-identity --output json > "$RUNNER_TEMP/sts.json" 2> "$RUNNER_TEMP/sts.err"; then
+            echo "::error::sts:AssumeRoleWithWebIdentity was REFUSED for $AWS_ROLE_ARN."
+            echo "This is failure mode (a): the trust policy or the audience, not OpenBao."
+            echo "Nothing about the awskms seal has been exercised yet."
+            echo "  AccessDenied          -> the sub condition. The drill role admits exactly"
+            echo "                           repo:<owner>/<repo>:ref:refs/heads/main, an exact"
+            echo "                           StringEquals, so a branch or fork run is refused"
+            echo "                           by design -- dispatch this on main."
+            echo "  InvalidIdentityToken  -> the aud condition, or the OIDC provider thumbprint."
+            echo "                           Compare the aud logged two steps above."
+            echo "Both conditions live in opentofu/aws/openbao/lineage/github-oidc.tf."
+            cat "$RUNNER_TEMP/sts.err"
+            exit 1
+          fi
+          jq -r '"assumed " + .Arn' "$RUNNER_TEMP/sts.json"
+
+      # From here on, ONLY the variables the GCE node's systemd drop-in sets.
+      # Note what is deliberately NOT set: AWS_ROLE_SESSION_NAME. The GCE unit
+      # does not set it either, so setting it here would hide a dependency on it.
+      # (It is safe: aws-sdk-go's WebIdentityRoleProvider substitutes a unix-nanos
+      # session name when the field is empty. The cost is that CloudTrail session
+      # names are opaque integers -- which matters below.)
+      #
+      # AWS_EC2_METADATA_DISABLED is the one difference from the GCE node. It
+      # makes chain position 5 fail IMMEDIATELY rather than wait on a round trip
+      # to 169.254.169.254 -- it does NOT remove the provider from the chain,
+      # which is still constructed and still called. What it buys is determinism
+      # and a few seconds, not a shorter chain. That provider could not have
+      # served AWS credentials here anyway (169.254.169.254 on a GitHub runner is
+      # Azure's metadata service) nor on the GCE node (Google's). Region stays
+      # deterministic because AWS_REGION is set at workflow level and the seal
+      # stanza names the region too; without one, disabling IMDS makes awsutil's
+      # region discovery fall back to us-east-1 silently.
+      - name: Start a node whose only credential is the web-identity token
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_DRILL_ROLE_ARN }}
+          AWS_WEB_IDENTITY_TOKEN_FILE: ${{ runner.temp }}/aws-web-identity-token
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/raft"
+          # The key is named by alias in AWS_REGION -- the primary, not the
+          # replica region the GCP standby points at. Same key ID either way and
+          # the drill role's grant carries a region wildcard; the replica's own
+          # unwrap belongs to the live cross-cloud drill. One variable at a time
+          # is the whole value of this job.
+          cat > "$RUNNER_TEMP/bao.hcl" <<EOF
+          ui            = false
+          disable_mlock = true
+          api_addr      = "http://127.0.0.1:8200"
+          cluster_addr  = "https://127.0.0.1:8201"
+          listener "tcp" {
+            address     = "127.0.0.1:8200"
+            tls_disable = true
+          }
+          storage "raft" {
+            path    = "$RUNNER_TEMP/raft"
+            node_id = "web-identity"
+          }
+          seal "awskms" {
+            region     = "$AWS_REGION"
+            kms_key_id = "$SEAL_KEY_ALIAS"
+          }
+          EOF
+          # No access_key / secret_key in that stanza, deliberately: they are
+          # chain position 1 and would beat web identity outright. The GCP
+          # standby's stanza has none either.
+          nohup bao server -config="$RUNNER_TEMP/bao.hcl" > "$RUNNER_TEMP/bao.log" 2>&1 &
+          # 501 means up, seal configured, not yet initialised. Seal
+          # configuration is the seal's first credentialed call, so a node that
+          # never reaches 501 is the finding this job was built to produce.
+          code=""
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8200/v1/sys/health || true)
+            [ "$code" = "501" ] && break
+            sleep 1
+          done
+          if [ "$code" != "501" ]; then
+            echo "::error::the awskms seal did not configure on a web-identity token (last health code: ${code:-none})"
+            echo
+            echo "WHAT THIS MEANS, AND WHY THE LOG BELOW WILL NOT TELL YOU ON ITS OWN"
+            echo "-------------------------------------------------------------------"
+            echo "There are two possible causes and they print the SAME line:"
+            echo "  (a) the seal asked STS for the role and STS refused it;"
+            echo "  (b) the seal never asked -- it ignored the two variables entirely."
+            echo
+            echo "They are indistinguishable in the log by design, not by accident. awsutil"
+            echo "builds the web-identity provider, calls Retrieve() on it straight away, and on"
+            echo "ANY failure drops the provider from the chain after logging the real STS error"
+            echo "to CredentialsConfig.Logger -- which OpenBao's built-in seal leaves nil, so the"
+            echo "error is discarded before it reaches any writer. log_level = debug does not"
+            echo "help; the value is thrown away upstream of hclog. What surfaces instead is the"
+            echo "generic chain error on the seal's first signed call, DescribeKey:"
+            echo
+            echo '  Error configuring seal "awskms": error fetching AWS KMS wrapping key'
+            echo '  information: NoCredentialProviders: no valid providers in chain. Deprecated.'
+            echo
+            echo "That line is identical for a missing token file, a refused trust policy, a"
+            echo "wrong region, and a seal that never looked at the variables."
+            echo
+            echo "HOW TO TELL THEM APART"
+            echo "----------------------"
+            echo "1. The pre-flight step above already assumed this role from this runner with"
+            echo "   the same two variables and nothing else. So (a) is already unlikely, and"
+            echo "   a failure here is presumptively (b)."
+            echo "2. CloudTrail is the only direct evidence. Look up AssumeRoleWithWebIdentity"
+            echo "   events for this role around this run:"
+            echo "     aws cloudtrail lookup-events --lookup-attributes \\"
+            echo "       AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity"
+            echo "   TWO events (one from aws-cli, one from an aws-sdk-go/Go-http-client user"
+            echo "   agent) => the seal DID call STS: cause (a), read that event's errorMessage."
+            echo "   ONE event, from aws-cli only => the seal never called STS: cause (b)."
+            echo
+            echo "IF IT IS (b), THE GCP STANDBY CANNOT UNSEAL."
+            echo "This falsifies risk 3 of"
+            echo "docs/superpowers/specs/2026-09-02-openbao-store-of-record-design.md."
+            echo "opentofu/gcp/openbao/cluster/scripts/startup-script.sh sets exactly those two"
+            echo "variables and nothing else, so a standby brought up during an AWS-region outage"
+            echo "would fail at seal configuration exactly as this node just did, printing that"
+            echo "same NoCredentialProviders line into journalctl -u openbao -- and, because of"
+            echo "the StartLimitIntervalSec=0 drop-in, retrying it every 30 seconds forever."
+            echo "The recorded fallback is to have the refresher timer call"
+            echo "sts assume-role-with-web-identity itself and write the returned static session"
+            echo "credentials into the unit's environment, where chain position 2 will find them."
+            echo
+            echo "--- bao server log ---"
+            cat "$RUNNER_TEMP/bao.log"
+            exit 1
+          fi
+          echo "seal configured: the node is up and uninitialised (501)"
+
+      # `operator init` is the whole test of the encrypt path: OpenBao generates
+      # the 32-byte DEK itself, AES-GCM-seals the barrier key with it locally,
+      # and sends only the DEK to kms:Encrypt -- then unwraps it with kms:Decrypt
+      # to unseal. No snapshot and no restore is needed to exercise that, and
+      # leaving them out keeps the signal unambiguous. The recovery share is
+      # throwaway and is never printed.
+      #
+      # Those two calls plus the DescribeKey at seal configuration are the WHOLE
+      # KMS surface of this seal -- which is why the drill role's grant carries
+      # exactly kms:Encrypt, kms:Decrypt and kms:DescribeKey and needs nothing
+      # more. GenerateDataKey* and ReEncrypt* appear in the older grants on the
+      # AWS node and the GCP standby role, but the wrapper never calls either.
+      - name: Initialise -- kms:Encrypt wraps the barrier key
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+        run: |
+          set -euo pipefail
+          if ! bao operator init -recovery-shares=1 -recovery-threshold=1 -format=json \
+               > "$RUNNER_TEMP/init.json" 2> "$RUNNER_TEMP/init.err"; then
+            echo "::error::operator init failed -- the seal could not wrap the barrier key"
+            echo "Seal configuration already succeeded, which means the DescribeKey went"
+            echo "through and credentials DID resolve from the two variables. So the"
+            echo "web-identity path is NOT what failed here; this is the kms:Encrypt itself."
+            echo "The identity grant is not the first thing to suspect either: it already"
+            echo "carries kms:Encrypt, and the seal calls no KMS action beyond Encrypt, Decrypt"
+            echo "and DescribeKey. Look at the key's own resource policy, a KMS grant, or the"
+            echo "key's state (disabled, pending deletion, or a replica not yet available in"
+            echo "this region)."
+            cat "$RUNNER_TEMP/init.err"
+            tail -50 "$RUNNER_TEMP/bao.log"
+            exit 1
+          fi
+          echo "initialised; recovery share discarded"
+
+      - name: 'Assert sys/health reports Sealed: false with no operator input'
+        run: |
+          set -euo pipefail
+          code=""
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o "$RUNNER_TEMP/health.json" -w '%{http_code}' \
+              http://127.0.0.1:8200/v1/sys/health || true)
+            [ "$code" = "200" ] && break
+            sleep 1
+          done
+          # Unauthenticated, like every other assertion in this workflow: the
+          # root token from init is never used and no recovery key is entered.
+          #
+          # `has()`, NOT `.sealed // "absent"`. jq's `//` treats `false` as a
+          # false value and substitutes the alternative, so the alternative form
+          # reports the HEALTHY case -- sealed: false, the thing this job is
+          # trying to observe -- as absent, and the assertion fails on success.
+          # Caught in a dry run before this job ever executed.
+          jqget() { jq -r "if has(\"$1\") then (.[\"$1\"] | tostring) else \"absent\" end" \
+            "$RUNNER_TEMP/health.json" 2> /dev/null || echo absent; }
+          sealed=$(jqget sealed)
+          initialized=$(jqget initialized)
+          echo "sys/health: http=$code initialized=$initialized sealed=$sealed"
+          if [ "$code" != "200" ] || [ "$sealed" != "false" ] || [ "$initialized" != "true" ]; then
+            echo "::error::the node did not auto-unseal (http=$code initialized=$initialized sealed=$sealed)"
+            echo "The barrier key was wrapped, so kms:Encrypt worked; this is the kms:Decrypt"
+            echo "that unwraps it. Check the log below for a KMS denial on that action."
+            tail -50 "$RUNNER_TEMP/bao.log"
+            exit 1
+          fi
+          echo "PROVEN: the awskms seal resolved credentials from AWS_ROLE_ARN and"
+          echo "AWS_WEB_IDENTITY_TOKEN_FILE alone, wrapped and unwrapped the barrier key with"
+          echo "the lineage seal key, and unsealed unattended. Design risk 3 holds."
 
       - name: Stop the node
         if: always()
