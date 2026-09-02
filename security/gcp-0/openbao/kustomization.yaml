@@ -17,8 +17,18 @@ kind: Kustomization
 # cloud. A cluster consuming the OTHER cloud's active OpenBao lists
 # `../../base/openbao-endpoint/remote` instead and sets openbao_target_ip in
 # its configure stack -- see the cross-cloud failover guide.
+#
+# `cert-manager-token-creator` is the RBAC precondition of the ClusterIssuer
+# below: without it cert-manager cannot mint the projected ServiceAccount token
+# it authenticates to OpenBao with, and the issuer never goes Ready. It used to
+# live in ../cert-manager-public/, where the PRIVATE issuer inherited it from
+# the PUBLIC one -- see ../../base/cert-manager-token-creator/rbac.yaml for why
+# that was wrong. The ACME issuer next door needs the same Role and now gets it
+# from here; one Role in one namespace serves both, and only one Kustomization
+# owns it.
 resources:
   - ../../base/openbao-endpoint/local
+  - ../../base/cert-manager-token-creator
   - clustersecretstore.yaml
   - openbao-ca-externalsecret.yaml
   - openbao-clusterissuer.yaml

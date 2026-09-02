@@ -6,9 +6,14 @@ kind: Kustomization
 # issuer families exist to fail independently, which is why they are separate
 # Kustomizations rather than one.
 #
-# Mirrors security/gcp-0/cert-manager-public. That overlay carries an extra
-# rbac.yaml because its solver assumes a federated AWS role; aws-0 reaches
-# Route53 with an EKS Pod Identity instead, so it needs no equivalent.
+# Mirrors security/gcp-0/cert-manager-public. Neither overlay carries the
+# `cert-manager-token-creator` Role any more: it lives in
+# security/base/cert-manager-token-creator/ and is applied by both clusters'
+# ../openbao/ overlays, because the private-PKI ClusterIssuer needs it too since
+# it switched to projected-token auth. Nothing in THIS directory needs it on
+# aws-0 -- the dns01 solver here reaches Route53 with ambient EKS Pod Identity
+# credentials rather than a federated token, which is the one place aws-0 and
+# gcp-0 genuinely differ.
 #
 # Staging is kept alongside prod deliberately: it is the issuer to switch a
 # Certificate to while debugging an issuance problem, and Let's Encrypt's

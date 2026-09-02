@@ -1,0 +1,60 @@
+# cert-manager requests a PROJECTED ServiceAccount token for ITSELF and presents
+# it as a bearer credential. Creating that token is a privileged verb it does not
+# have by default, so it must be granted explicitly -- narrowly, on one
+# ServiceAccount. The cert-manager CRD says so in as many words: the
+# `serviceAccountRef` field's own description in
+# crds/base/crds-cert-manager.yaml reads "To use this field, you must configure
+# an RBAC rule to let cert-manager request a token."
+#
+# Two issuers depend on it, which is why the Role lives in a shared base:
+#
+#   - the PRIVATE `openbao` ClusterIssuer on BOTH clusters
+#     (security/{aws-0,gcp-0}/openbao/openbao-clusterissuer.yaml), which
+#     authenticates to OpenBao's per-cluster JWT mount with that token;
+#   - gcp-0's PUBLIC ACME/Route53 issuer, whose dns01 solver federates the same
+#     token to AWS STS. aws-0's public issuer needs no equivalent -- it reaches
+#     Route53 with ambient EKS Pod Identity credentials.
+#
+# Symptom when missing: the Certificate stays pending and cert-manager logs
+# `serviceaccounts "cert-manager" is forbidden: ... cannot create resource
+# "serviceaccounts/token"`. On the private path that keeps the `openbao`
+# ClusterIssuer from ever going Ready, so `security-openbao`'s healthCheck times
+# out at 8m and everything downstream reports only "dependency not ready" -- an
+# error naming neither RBAC nor OpenBao, which sends you looking in the wrong
+# place. On the public path it says nothing about Route53 and sends you looking
+# in the wrong cloud.
+#
+# WHY IT LIVES HERE. This Role used to exist only in
+# security/gcp-0/cert-manager-public/, owned by the ACME overlay. That was wrong
+# in both directions once the private issuers switched to token auth: aws-0 had
+# no copy at all, and on gcp-0 the private issuer silently inherited its
+# precondition from an unrelated public one -- so deleting the public issuer
+# would have broken the private PKI, with no diff to explain it. The issuer that
+# cannot work without a precondition owns it, so this is applied by both
+# `openbao` overlays. It is deliberately NOT also applied by the
+# `cert-manager-public` overlays: two Flux Kustomizations owning the same Role
+# would fight over it through server-side apply.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cert-manager-token-creator
+  namespace: security
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    resourceNames: ["cert-manager"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cert-manager-token-creator
+  namespace: security
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cert-manager-token-creator
+subjects:
+  - kind: ServiceAccount
+    name: cert-manager
+    namespace: security

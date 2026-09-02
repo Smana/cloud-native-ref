@@ -51,7 +51,7 @@ sits inside the build context.
 ```bash
 cd container-images/openbao-snapshot
 ./build.sh
-docker run --rm --entrypoint sh ghcr.io/smana/openbao-snapshot:v0.1.0 \
+docker run --rm --entrypoint sh ghcr.io/smana/openbao-snapshot:v0.2.0 \
   -c 'aws --version; gcloud --version | head -1; bao version; jq --version'
 ```
 
@@ -59,7 +59,7 @@ docker run --rm --entrypoint sh ghcr.io/smana/openbao-snapshot:v0.1.0 \
 
 ```bash
 docker buildx build --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/smana/openbao-snapshot:v0.1.0 \
+  -t ghcr.io/smana/openbao-snapshot:v0.2.0 \
   container-images/openbao-snapshot
 ```
 
@@ -74,6 +74,12 @@ Bump them there; `BAO_VERSION` should track
 [`opentofu/aws/openbao/cluster/variables.tf`'s `openbao_version`](../../opentofu/aws/openbao/cluster/variables.tf)
 so the snapshot CLI matches the server it talks to.
 
+The image's **own** version is `ARG OPENBAO_SNAPSHOT_VERSION` in the same `Dockerfile`, and that
+`ARG` is the only place it is written down. CI derives the published tag from it, and `build.sh`
+reads it out of the `Dockerfile` rather than keeping a copy — a second literal drifts, and did.
+Bump the `ARG` and both paths follow; the tags quoted above then need updating by hand, because
+prose cannot read an `ARG`.
+
 ## Security
 
 - Non-root (uid 1000 / gid 1001), no privilege escalation, all capabilities dropped, read-only
@@ -82,4 +88,7 @@ so the snapshot CLI matches the server it talks to.
 - `HOME=/snapshot` (set by the CronJob, a writable `emptyDir`) is where `gcloud`'s config dir and
   any CLI scratch files land, since the root filesystem is read-only.
 - No credentials are baked into the image. AWS and GCP credentials come from EKS/GKE workload
-  identity; the OpenBao AppRole credentials come from the `openbao-snapshot` Secret via `envFrom`.
+  identity; OpenBao credentials are a projected ServiceAccount token (audience `openbao`) mounted
+  by the CronJob and exchanged at the per-cluster `jwt/<cluster>` mount. There is no stored
+  OpenBao secret to rotate — the AppRole id/secret that used to arrive via `envFrom` from an
+  `openbao-snapshot` Secret is gone.

@@ -50,12 +50,15 @@ spec:
       - kind: ConfigMap
         name: gke-gcp-0-vars
     # ConfigMap only -- as on AWS since the JWT switch. The AWS copy used to
-    # add a Secret source too, substituting ${cert_manager_approle_id} out of
-    # the very Secret its own ExternalSecret creates, so a fresh cluster's
-    # first reconcile necessarily failed and succeeded on a retry. Nothing
-    # substitutes an AppRole id on either cluster now: cert-manager
-    # authenticates with a projected ServiceAccount token, so there is no
-    # such cycle anywhere.
+    # add a second source, `kind: Secret` / `cert-manager-openbao-approle` in
+    # flux-system, written by OpenTofu and supplying
+    # ${cert_manager_approle_id} to the ClusterIssuer. It is gone because JWT
+    # auth substitutes no generated identifier at all: the role name is a
+    # literal and the credential is a projected ServiceAccount token minted at
+    # request time. There is now no `kind: Secret` in any substituteFrom
+    # anywhere in the repo -- see the note in
+    # scripts/flux-schema/check-substitution.py, which can only check the keys
+    # of a ConfigMap.
   dependsOn:
     - name: security
   healthChecks:

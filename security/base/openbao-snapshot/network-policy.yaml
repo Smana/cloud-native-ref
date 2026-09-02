@@ -50,19 +50,30 @@ spec:
         - ports:
             - port: "8200"
               protocol: TCP
-    # The same 8200, when the openbao Service is in its REMOTE form
-    # (security/base/openbao-endpoint/remote): the ExternalName then resolves
-    # to the Tailscale operator's egress ProxyGroup, so the packet's first hop
-    # is a proxy pod in the tailscale namespace, not the load balancer. Harmless
-    # in the local form -- no traffic matches it.
+    # Reaching OpenBao when the `openbao` Service is in its REMOTE form
+    # (security/base/openbao-endpoint/remote): the ExternalName then resolves to
+    # the Tailscale operator's egress ProxyGroup, so the packet's first hop is a
+    # proxy pod in the tailscale namespace, not the load balancer. Harmless in
+    # the local form -- no traffic matches it.
+    #
+    # NO toPorts, deliberately. The operator does not have the proxy pod listen
+    # on 8200: for each port of the user Service it allocates a free CONTAINER
+    # port and maps 8200 onto it through the generated ClusterIP Service's
+    # targetPort. tailscale v1.90.6, cmd/k8s-operator/egress-services.go:
+    # `unusedPort()` returns `rand.Int32N(maxPorts) + 10000`, i.e. a random port
+    # in [10000, 11000) ("The high range should make it easier to distinguish
+    # container ports from the tailnet target ports"), and the PortMap is built
+    # as `Port: <user port>, TargetPort: <allocated port>`. Cilium enforces
+    # egress AFTER socket-level service translation, so a rule written for 8200
+    # would be matched against the backend pod's port and silently deny every
+    # connection -- and pinning [10000, 11000) instead would be a 1000-port
+    # range picked at random on every reconcile, which is not a constraint worth
+    # writing down. The destination is already one named workload in one
+    # namespace; the port is left unconstrained because the operator owns it.
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: tailscale
             k8s:tailscale.com/parent-resource: ts-proxies
-      toPorts:
-        - ports:
-            - port: "8200"
-              protocol: TCP
     # S3 and STS on AWS; on GCP this is what carries `gcloud storage` traffic
     # to Google APIs. toFQDNs would be the tighter rule, but both clouds' object
     # storage endpoint topology fans out past what a single-segment

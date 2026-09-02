@@ -6,6 +6,47 @@
 # 2. Installs Cilium CNI with kube-proxy replacement
 # 3. Cilium's unmanagedPodWatcher restarts pods to get Cilium networking
 # 4. Installs Flux Operator and Instance
+#
+# EVERY script here that runs `tofu plan` or `tofu apply` has to materialise the
+# CA chain first, and that is why there are four overrides below rather than two.
+#
+# openbao.tf configures the `vault` provider, which verifies the server against
+# `.tls/ca.pem`. `.tls/` is gitignored, so on a fresh checkout or any CI runner
+# that file does not exist and the provider fails to CONFIGURE -- before it can
+# plan. Provider configuration is evaluated before any resource exists, so this
+# cannot be a `local_file` resource; it has to be a script step.
+#
+# `deploy` and `preview` carried the fetch as a duplicated 8-line literal and the
+# inherited `drift detect` / `drift reconcile` from opentofu/workflows.tm.hcl had
+# no fetch at all, so both drift scripts were broken for this stack the moment
+# openbao.tf landed. Same failure, same fix and same shape as
+# opentofu/aws/openbao/management/workflows.tm.hcl: one global, reused.
+#
+# The overrides also have to pass the four version variables. They have no
+# defaults in variables.tf (deliberately -- see the deploy job's comment), so the
+# inherited `drift detect` would fail on missing required variables even with the
+# CA on disk. `drift reconcile` does not repeat them: it applies a saved
+# drift.tfplan, which already carries the values.
+#
+# `destroy` is NOT overridden here -- see the note above that script.
+globals "openbao_ca_cmd" {
+  args = [
+    "bash",
+    "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+    "--tm-run",
+    "bash",
+    "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
+    "ca",
+    "--root-ca-secret-name",
+    global.ca_chain_secret_name,
+    "--ca-output-file",
+    ".tls/ca.pem",
+    "--region",
+    global.region,
+    "--profile",
+    global.profile,
+  ]
+}
 
 script "deploy" {
   name        = "EKS Configure Deployment (Stage 2)"
@@ -16,16 +57,8 @@ script "deploy" {
     description = "Apply Cilium and Flux configuration"
     commands = [
       # The vault provider (openbao.tf) verifies OpenBao against the CA chain,
-      # which must be on disk before `tofu init`. Same step the management
-      # stack runs; .tls/ is gitignored.
-      [
-        "bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run",
-        "bash", "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh", "ca",
-        "--root-ca-secret-name", global.ca_chain_secret_name,
-        "--ca-output-file", ".tls/ca.pem",
-        "--region", global.region,
-        "--profile", global.profile,
-      ],
+      # which must be on disk before `tofu init` -- see the file header.
+      global.openbao_ca_cmd.args,
       [global.provisioner, "init"],
       [global.provisioner, "validate"],
       # The versions come from globals in opentofu/config.tm.hcl, the single
@@ -50,16 +83,8 @@ script "preview" {
   job {
     commands = [
       # The vault provider (openbao.tf) verifies OpenBao against the CA chain,
-      # which must be on disk before `tofu init`. Same step the management
-      # stack runs; .tls/ is gitignored.
-      [
-        "bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run",
-        "bash", "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh", "ca",
-        "--root-ca-secret-name", global.ca_chain_secret_name,
-        "--ca-output-file", ".tls/ca.pem",
-        "--region", global.region,
-        "--profile", global.profile,
-      ],
+      # which must be on disk before `tofu init` -- see the file header.
+      global.openbao_ca_cmd.args,
       [global.provisioner, "init"],
       [global.provisioner, "validate"],
       [global.provisioner, "plan", "-out=out.tfplan", "-var-file=variables.tfvars",
@@ -69,6 +94,48 @@ script "preview" {
         "-var=flux_instance_version=${global.flux_instance_version}", {
           sync_preview   = true
           tofu_plan_file = "out.tfplan"
+      }],
+    ]
+  }
+}
+
+# `drift detect` and `drift reconcile` mirror the global scripts in
+# opentofu/workflows.tm.hcl with the CA fetch prepended -- and, for detect, the
+# four version variables added. Both run tofu against the `vault` provider, so
+# both were broken here without the fetch; see the file header.
+script "drift" "detect" {
+  name        = "Opentofu Drift Check"
+  description = "Detect drifts in Opentofu configuration and synchronize it to Terramate Cloud"
+
+  job {
+    commands = [
+      global.openbao_ca_cmd.args,
+      ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
+      [global.provisioner, "plan", "-out=out.tfplan", "-detailed-exitcode", "-lock=false", "-var-file=variables.tfvars",
+        "-var=cilium_version=${global.cilium_version}",
+        "-var=gateway_api_version=${global.gateway_api_version}",
+        "-var=flux_operator_version=${global.flux_operator_version}",
+        "-var=flux_instance_version=${global.flux_instance_version}", {
+          sync_drift_status = true
+          tofu_plan_file    = "out.tfplan"
+      }],
+    ]
+  }
+}
+
+script "drift" "reconcile" {
+  name        = "Opentofu Drift Reconciliation"
+  description = "Reconcile drifts in all changed stacks"
+
+  job {
+    commands = [
+      global.openbao_ca_cmd.args,
+      ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
+      # No version -var flags: applying a saved plan takes its variable values
+      # from the plan file, which `drift detect` above wrote with them.
+      [global.provisioner, "apply", "-input=false", "-auto-approve", "-lock-timeout=5m", "-var-file=variables.tfvars", "drift.tfplan", {
+        sync_deployment = true
+        tofu_plan_file  = "drift.tfplan"
       }],
     ]
   }

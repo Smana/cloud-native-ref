@@ -101,12 +101,21 @@ FIXTURE_VARS = {
     # CronJob. AWS value; gcp-0's ConfigMap carries a project-prefixed name.
     "openbao_snapshot_bucket": "eu-west-3-ogenki-openbao-snapshot",
     # security/base/openbao-endpoint/remote: the active OpenBao's fixed NLB
-    # address a remote cluster proxies to. Only gcp-0 applies that directory.
+    # address a remote cluster proxies to. NO cluster applies that directory
+    # today -- both security/{aws-0,gcp-0}/openbao list the `local` sibling --
+    # and it is rendered anyway, because top_most_overlays() collects every
+    # filesystem-top-most kustomize root whether or not a Flux Kustomization
+    # names it. That is the better property, not a leak: the cross-cloud
+    # failover form gets validated BEFORE a failover rather than during one. It
+    # also makes this fixture the only thing keeping a literal
+    # ${openbao_target_ip} out of the bundle.
     "openbao_target_ip": "10.0.15.250",
-    # apps/base/ai/llm/hf-token-externalsecret.yaml. AWS value, same reasoning
-    # as openbao_snapshot_bucket above: without this entry VAR_RE.sub passes
-    # the name through verbatim and the ExternalSecret extracts nothing --
-    # schema-valid, useless.
+    # apps/base/ai/llm/hf-token-externalsecret.yaml. AWS value. Without this
+    # entry VAR_RE.sub passes the name through verbatim and the ExternalSecret
+    # asks its store for a key literally called "${llm_hf_token_secret}" --
+    # schema-valid and useless, and gate 1 cannot catch it because `key` is a
+    # free-form string. The same argument applies to openbao_snapshot_bucket
+    # above, whose value reaches a container as an env var.
     "llm_hf_token_secret": "/platform/llm/hf_token",  # pragma: allowlist secret
     "oidc_provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks",
     "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com",

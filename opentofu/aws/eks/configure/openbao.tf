@@ -29,10 +29,10 @@ resource "vault_jwt_auth_backend" "cluster" {
 }
 
 locals {
-  # role name => { sa, namespace, policies }. The policy names are created by
-  # opentofu/aws/openbao/management/policies.tf. `external-secrets` has no
-  # consumer until Stage 2 repoints the ClusterSecretStore; it is created now
-  # so the auth contract is complete and smoke-testable.
+  # role name => { sa, namespace, policies }. The NAMED policies below
+  # (cert-manager, snapshot) are created by
+  # opentofu/aws/openbao/management/policies.tf; `default` is OpenBao's
+  # built-in, not one of ours -- see the note on that role.
   openbao_roles = {
     cert-manager = {
       service_account = "cert-manager"
@@ -42,7 +42,15 @@ locals {
     external-secrets = {
       service_account = "external-secrets"
       namespace       = "security"
-      policies        = ["default"]
+      # `default` is NOT "the default permissions for this role" -- it is
+      # OpenBao's built-in policy, which grants a token essentially nothing
+      # beyond operations on itself (lookup-self, renew-self, revoke-self). This
+      # role can therefore authenticate and read no secret at all. That is
+      # deliberate for now: the auth contract exists and is smoke-testable, and
+      # the real grant lands with the consumer. Replace this with a named policy
+      # from opentofu/aws/openbao/management/policies.tf when the
+      # ClusterSecretStore is repointed at OpenBao.
+      policies = ["default"]
     }
     openbao-snapshot = {
       service_account = "openbao-snapshot"
@@ -69,5 +77,10 @@ resource "vault_jwt_auth_backend_role" "cluster" {
   token_max_ttl  = 1200
   # Service tokens, which is what a workload wants: revocable and leased.
   # Set per role rather than on the mount -- see the note above.
-  token_type = "default-service"
+  #
+  # `service`, not `default-service`: the latter only sets the DEFAULT, so a
+  # client passing `token_type=batch` on login would get an unrevocable,
+  # non-leased token and the enforcement this comment describes would not exist.
+  # `service` refuses the request instead.
+  token_type = "service"
 }

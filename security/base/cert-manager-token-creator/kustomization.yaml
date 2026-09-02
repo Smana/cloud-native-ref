@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The one RBAC precondition cert-manager's token-based authentication has. Owned
+# by the private-PKI issuer that cannot work without it, and listed by both
+# clusters' security/<cluster>/openbao overlays -- see rbac.yaml for why it is
+# here rather than in the public ACME overlay it started in.
+resources:
+  - rbac.yaml
