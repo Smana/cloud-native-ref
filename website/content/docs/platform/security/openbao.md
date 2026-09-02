@@ -76,9 +76,10 @@ OpenBao's storage is **derived state**. What persists is the *lineage*
 
 The CA chain is the one most easily left off that list, and it is the one read
 *first*: both management stacks fetch it with `openbao-config.sh ca` before
-rehydrate on every deploy (`global.openbao_ca_fetch` in each stack's
-`workflows.tm.hcl`), and the `VAULT_CACERT` every command on this page uses is
-that fetch's output.
+rehydrate on every deploy — `global.openbao_ca_cmd` in
+`opentofu/config.tm.hcl` on AWS, `global.openbao_ca_fetch` in the stack's own
+`workflows.tm.hcl` on GCP — and the `VAULT_CACERT` every command on this page
+uses is that fetch's output.
 
 Both modes run the `raft` storage backend — `storage "raft"` in
 `opentofu/aws/openbao/cluster/scripts/startup_script.sh` — because a snapshot
