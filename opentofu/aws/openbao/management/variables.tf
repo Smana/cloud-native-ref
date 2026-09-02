@@ -21,7 +21,7 @@ variable "openbao_domain_name" {
 }
 
 variable "openbao_ca_cert_file" {
-  description = "Path to the CA chain used to verify the OpenBao server certificate. Written by `openbao-config.sh ca` in the deploy workflow, from the root CA secret in AWS Secrets Manager. Relative to the stack directory; .tls/ is gitignored."
+  description = "Path to the CA chain used to verify the OpenBao server certificate. Written by `openbao-config.sh ca` in the deploy workflow, from the ca-chain secret (certificates/priv.aws.ogenki.io/ca-chain, certificates only) in AWS Secrets Manager. Relative to the stack directory; .tls/ is gitignored."
   type        = string
   default     = ".tls/ca.pem"
 }
@@ -72,7 +72,7 @@ variable "pki_domains" {
 }
 
 variable "pki_max_lease_ttl" {
-  description = "Maximum TTL (in seconds) for the mount and the intermediate issuer (default 3 years)"
+  description = "Maximum TTL (in seconds) for the mount and the leases issued from it (default 3 years). The intermediate's own lifetime comes from the offline signing ceremony, not this variable."
   type        = number
   default     = 94670856
 }

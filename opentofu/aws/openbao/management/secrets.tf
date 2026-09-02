@@ -17,10 +17,10 @@ data "aws_secretsmanager_secret_version" "intermediate_ca" {
 # the root namespace means one login carrying both the `admin` and `pki-admin`
 # policies, where the old `admin` / `admin/pki` split forced one per namespace.
 #
-# This does land in the state file, as does every other credential this stack
-# manages (the root token, both AppRole secret IDs). The provider's write-only
-# `password_wo` attribute would avoid that, but it needs write-only attribute
-# support, so it is deliberately not used here.
+# This does land in the state file, as does the root token, the only other
+# credential this stack manages. The provider's write-only `password_wo`
+# attribute would avoid that, but it needs write-only attribute support, so it
+# is deliberately not used here.
 resource "random_password" "admin" {
   length           = 32
   special          = true

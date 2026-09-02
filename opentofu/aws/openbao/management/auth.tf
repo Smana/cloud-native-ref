@@ -26,10 +26,13 @@
 # login per namespace, because a policy binds only within the namespace it is
 # created in; collapsing the platform into root removes that.
 #
-# Deliberately no token_bound_cidrs, unlike the machine roles above: the only
-# route to this API is the internal NLB, so the network is already constrained,
-# and a CIDR bind on the break-glass credential buys nothing against the risk of
-# locking yourself out of your own secrets store.
+# Deliberately no token_bound_cidrs here either, but for a different reason
+# than machine auth. Machine auth (documented above) is bound by ServiceAccount
+# subject and audience rather than by CIDR, and carries no CIDR bind of its
+# own either. This login's lack of one is its own deliberate choice: the only
+# route to this API is the internal NLB, so the network is already
+# constrained, and a CIDR bind on the break-glass credential buys nothing
+# against the risk of locking yourself out of your own secrets store.
 resource "vault_auth_backend" "userpass" {
   type = "userpass"
   path = "userpass"

@@ -778,9 +778,12 @@ pre_destroy_snapshot() {
 #
 # The secret's SHAPE differs by cloud, and that is by design, not an
 # inconsistency to paper over:
-#   - AWS: the root-CA secret (certificates/priv.aws.ogenki.io/root-ca) is
-#     hand-loaded per the manual ceremony in pki-and-secrets.md as JSON with
-#     `.ca` (and `.bundle`) fields.
+#   - AWS: the ca-chain secret (certificates/priv.aws.ogenki.io/ca-chain) is
+#     JSON with a `.ca` field only (certificates, no key), written by the
+#     offline signing ceremony in pki-and-secrets.md. The root-CA secret this
+#     branch used to read (certificates/priv.aws.ogenki.io/root-ca, JSON with
+#     `.ca` and `.bundle`) is deleted -- the root key was never meant to reach
+#     a networked secret store.
 #   - GCP: openbao-priv-gcp-ca-chain is raw PEM (`gcloud secrets create
 #     ... --data-file=ca-chain.pem`, plan Task 3 Step 6) -- PEM is the natural
 #     shape for a CA bundle, and the file is consumed directly as
