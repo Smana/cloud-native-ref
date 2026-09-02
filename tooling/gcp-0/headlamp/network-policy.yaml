@@ -104,3 +104,64 @@ spec:
         - ports:
             - port: "4466"
               protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: headlamp-token-exchange
+  namespace: tooling
+spec:
+  description: "Token-exchange shim: STS access for Headlamp's per-user GKE RBAC"
+  endpointSelector:
+    matchLabels:
+      k8s:app.kubernetes.io/name: headlamp-token-exchange
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:app.kubernetes.io/name: oauth2-proxy
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          # L7 DNS inspection, mandatory for the toFQDNs rule below to have any
+          # resolved IPs to match. Same trap as the identical comment on
+          # headlamp-oauth2-proxy above: without it DNS keeps working and every
+          # STS call is silently dropped. See .claude/rules/cilium-network-policies.md.
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    # The shim's only external dependency: Google STS, to exchange the
+    # ZITADEL id_token for a Workforce Identity Federation access token.
+    # matchName (not matchPattern) -- sts.googleapis.com is a single fixed
+    # host, not a CDN with subdomain fan-out.
+    - toFQDNs:
+        - matchName: sts.googleapis.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # The upstream it proxies to, once the token is injected. Port 4466, NOT
+    # the Service port 80 that TEP_UPSTREAM_URL (token-exchange.yaml) names --
+    # Cilium enforces the pod's real listening port after Service resolution,
+    # the same reason headlamp-oauth2-proxy's own egress rule to headlamp
+    # (above) names 4466 rather than the port its `upstream:` field uses.
+    - toEndpoints:
+        - matchLabels:
+            k8s:app.kubernetes.io/name: headlamp
+      toPorts:
+        - ports:
+            - port: "4466"
+              protocol: TCP
