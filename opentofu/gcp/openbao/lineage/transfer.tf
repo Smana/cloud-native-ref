@@ -27,6 +27,15 @@ resource "google_storage_transfer_job" "s3_mirror" {
   project     = var.project_id
 
   transfer_spec {
+    # NO `path` on either side, and that is load-bearing rather than incidental.
+    # Storage Transfer preserves an object's name only when neither source nor
+    # sink carries a path prefix, and the snapshot's name is now the only record
+    # of which seal encrypted it -- `<timestamp>-<seal>.snap`. A mirrored object
+    # that arrived as `awskms/<timestamp>-awskms.snap` would drop out of the
+    # selector's candidate set entirely (it lists non-recursively and strips
+    # through the last "/"), so the sink would look like it held no AWS
+    # snapshots at all. Adding a prefix here breaks the cross-cloud restore
+    # silently, in the direction that only shows up during a failover.
     aws_s3_data_source {
       bucket_name = var.aws_snapshot_bucket_name
       role_arn    = var.aws_mirror_role_arn
