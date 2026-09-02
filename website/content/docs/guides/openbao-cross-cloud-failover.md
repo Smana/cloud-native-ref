@@ -258,11 +258,12 @@ region.
 
    - **The key existing is not the same as it being set.** Both variables
      default to `""` in the normal posture, and Flux substitutes an *undefined*
-     variable to the empty string too — so a forgotten `-var` and a missing key
-     both render `tailscale.com/tailnet-ip: ""` in
-     `security/base/openbao-endpoint/remote/service.yaml`: schema-valid,
-     silently wrong, a Service annotated with nothing. Apply the `configure`
-     stack with the value, then check the ConfigMap actually carries it.
+     variable to the empty string too — so a value left at that default and a
+     missing key render identically: `tailscale.com/tailnet-ip: ""` in
+     `security/base/openbao-endpoint/remote/service.yaml`, schema-valid,
+     silently wrong, a Service annotated with nothing. Put the address in that
+     stack's `variables.tfvars`, apply, then check the ConfigMap actually
+     carries it (`kubectl -n flux-system get cm eks-aws-0-vars -o yaml`).
    - **The missing-key half is gated.**
      `scripts/flux-schema/check-substitution.py` fails the build when a
      Kustomization applies a `${var}` its own cluster's ConfigMap does not
