@@ -22,7 +22,7 @@
   - `python3 scripts/flux-schema/check-substitution.py` — after any change to a `flux_cluster_vars` ConfigMap or a `${var}` in a manifest.
   - `./scripts/validate-links.sh` and `./scripts/validate-doc-claims.sh` — after any doc change.
   - `tofu fmt -recursive opentofu/ && (cd opentofu/<stack> && tofu init -backend=false && tofu validate)` — after any HCL change. `-backend=false` avoids needing cloud credentials for validation.
-  - `shellcheck scripts/openbao-config.sh scripts/openbao-snapshot.sh` — after script changes (`shellcheck` is in `mise.toml`'s toolset via pre-commit; if absent, `brew install shellcheck`).
+  - `shellcheck -x -S warning scripts/openbao-config.sh` — after script changes. **Use CI's exact flags** (`.github/workflows/ci.yaml:212` runs `find ./scripts -name "*.sh" | xargs -0 shellcheck -x -S warning`). Plain `shellcheck` exits 1 on a pre-existing info-level `SC1091` for the `lib/gcloud-adc.sh` source line; `-x` follows the source and `-S warning` filters info, which is the gate that actually has to pass. For the POSIX sibling, `shellcheck -s sh container-images/openbao-snapshot/openbao-snapshot.sh` (it lives outside `./scripts`, so CI's find does not reach it through the symlink).
 - **Cloud credentials.** Tasks marked **[LIVE]** talk to AWS/GCP or a running OpenBao and need: an AWS session for the `ogenki` account, `gcloud auth application-default login` for project `ogenki-435905`, and a tailnet connection. Everything else is offline.
 - **Fixed values used throughout** (do not invent alternatives):
 
@@ -714,8 +714,10 @@ In the `case "$COMMAND"` at the bottom, before `    *)`, add:
 
 - [ ] **Step 6: Lint and parser checks**
 
-Run: `shellcheck scripts/openbao-config.sh`
-Expected: no output.
+Run: `shellcheck -x -S warning scripts/openbao-config.sh; echo "exit=$?"`
+Expected: `exit=0`. These are CI's flags (`.github/workflows/ci.yaml:212`). Plain
+`shellcheck` without them exits 1 on a pre-existing info-level `SC1091` about the
+`lib/gcloud-adc.sh` source line, which is not a defect in this task.
 
 Run: `bash scripts/openbao-config.sh rehydrate --url https://x:8200 --root-token-secret-name a --recovery-keys-secret-name b; echo "exit=$?"`
 Expected: `--snapshot-bucket is required for rehydrate` then usage, `exit=1`.
