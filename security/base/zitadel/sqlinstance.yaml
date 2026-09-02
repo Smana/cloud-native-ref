@@ -111,9 +111,34 @@ spec:
   #
   # The durable fix is a per-generation serverName in the SQLInstance Composition,
   # which removes the step on both clouds. See docs/guides/restore-a-database.
+  # ── zitadel-20260902: rotated because the directory changed materially ──────
+  # Taken 2026-09-02 after a one-shot Backup (20260902T123813, status=DONE).
+  # Promoted because zitadel-20260901 holds AUG 29 data and predates, in this
+  # order: the five gcp-0 OIDC clients (grafana-gcp-0, headlamp-gcp-0,
+  # flux-ui-gcp-0, headlamp-proxy-gcp-0, harbor-gcp-0) registered into this
+  # directory, and the projectRoleAssertion fix without which no token carries
+  # roles at all. Restoring from -0901 would silently reinstate a directory in
+  # which gcp-0 cannot authenticate anyone and every groups claim is empty.
+  #
+  # Verified against the failure that made zitadel-20260829-2 unrestorable,
+  # rather than by comparing object counts (which that seed also passed):
+  # recovery targets the seed's NEWEST base backup, 20260902T123813, whose
+  # begin_wal ...0x7E and end_wal ...0x7F are BOTH present in the seed's wals/,
+  # with ...0x80 and ...0x81 beyond them so replay continues past the
+  # consistency point. Both timeline history files (6, 7) copied. 80 objects
+  # source, 80 in seed.
+  #
+  # The pg_switch_wal() step in the LESSON above was not needed here only
+  # because ...0x7F had already been archived by the time the copy ran (backup
+  # 12:38:13Z, segment archived 12:39:45Z, copy ~12:52Z). That was luck, not
+  # method — keep doing the switch, and keep checking end_wal rather than
+  # object counts.
+  #
+  # zitadel-20260901 is left in the bucket as a fallback. Delete it once a
+  # rebuild has actually restored from this one.
   objectStoreRecovery:
     bucketName: "${region}-ogenki-cnpg-backups"
-    path: "zitadel-20260901"
+    path: "zitadel-20260902"
   backup:
     schedule: "0 0 * * *"
     bucketName: "${region}-ogenki-cnpg-backups"
