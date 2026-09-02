@@ -287,14 +287,14 @@ api_or_fail() {
 # app name. The secret KEYS are deliberately not suffixed: they are per-cluster
 # already, living in that cluster's own secret store.
 CONSUMERS=(
-  "grafana${APP_SUFFIX}|https://grafana.${PRIVATE_DOMAIN}/login/generic_oauth|observability-victoria-metrics-k8s-stack-grafana-envvars"
-  "headlamp${APP_SUFFIX}|https://headlamp.${PRIVATE_DOMAIN}/oidc-callback|headlamp-envvars"
-  "flux-ui${APP_SUFFIX}|https://flux-ui-${CLUSTER}.${PRIVATE_DOMAIN}/oauth2/callback|security-flux-ui-oidc"
+  "grafana|https://grafana.${PRIVATE_DOMAIN}/login/generic_oauth|observability-victoria-metrics-k8s-stack-grafana-envvars"
+  "headlamp|https://headlamp.${PRIVATE_DOMAIN}/oidc-callback|headlamp-envvars"
+  "flux-ui|https://flux-ui-${CLUSTER}.${PRIVATE_DOMAIN}/oauth2/callback|security-flux-ui-oidc"
   # gcp-0 only in practice, and harmless on aws-0 where nothing consumes it.
   # GKE cannot be told to trust ZITADEL, so Headlamp there sits behind
   # oauth2-proxy and the PROXY holds the OIDC client -- a second client for the
   # same hostname, on the proxy's own callback path. ADR-0026.
-  "headlamp-proxy${APP_SUFFIX}|https://headlamp.${PRIVATE_DOMAIN}/oauth2/callback|headlamp-oauth2-proxy"
+  "headlamp-proxy|https://headlamp.${PRIVATE_DOMAIN}/oauth2/callback|headlamp-oauth2-proxy"
   # Harbor's callback is /c/oidc/callback -- Harbor's own path, not guessable
   # from the others. No second imperative step applies it: Harbor stores
   # auth config in its DATABASE rather than in the chart, but the chart's
@@ -303,7 +303,7 @@ CONSUMERS=(
   # client id/secret this script writes to the "harbor-oidc" store key reach
   # the HelmRelease via an ExternalSecret + valuesFrom, same as every other
   # consumer here. See ADR-0028.
-  "harbor${APP_SUFFIX}|https://harbor.${PRIVATE_DOMAIN}/c/oidc/callback|harbor-oidc"
+  "harbor|https://harbor.${PRIVATE_DOMAIN}/c/oidc/callback|harbor-oidc"
 )
 
 # The one non-secret OIDC field known to have drifted in practice: headlamp
@@ -630,7 +630,23 @@ cmd_sync() {
 
     local created=0 skipped=0 updated=0 converged=0
     for entry in "${CONSUMERS[@]}"; do
-        IFS='|' read -r name redirect key <<< "$entry"
+        # TWO names, and conflating them is a bug this script has already made.
+        #
+        #   consumer -- the bare name (grafana, harbor, ...). It is the DISPATCH
+        #               KEY for which fields go into which secret, matched
+        #               literally inside merge_secret/converge_secret's jq.
+        #   name     -- the ZITADEL app name, suffixed for a consuming cluster so
+        #               two clusters do not contend for one app.
+        #
+        # Suffixing the CONSUMERS table itself made $name = "grafana-gcp-0",
+        # which matched none of jq's `if $name == "grafana"` branches, fell to
+        # the else, and produced an empty payload:
+        #   ERROR: (gcloud.secrets.versions.add) INVALID_ARGUMENT:
+        #   Secret Payload cannot be empty.
+        # -- after the app had already been created in ZITADEL, stranding a
+        # client secret that ZITADEL only ever returns once.
+        IFS='|' read -r consumer redirect key <<< "$entry"
+        local name="${consumer}${APP_SUFFIX}"
 
         local existing_id=""
         if [ "$project_id" != "DRYRUN-PROJECT" ]; then
@@ -700,7 +716,7 @@ cmd_sync() {
 
             local existing_secret desired
             existing_secret="$(store_read "$key")"
-            desired="$(converge_secret "$name" "$client_id" "$existing_secret")"
+            desired="$(converge_secret "$consumer" "$client_id" "$existing_secret")"
             if [ "$desired" = "$existing_secret" ]; then
                 echo "[ok     ] ${name} -- ${key} already converged"
             elif [ "$APPLY" != "true" ]; then
@@ -745,7 +761,7 @@ cmd_sync() {
             exit 1
         fi
 
-        merge_secret "$key" "$name" "$client_id" "$client_secret" | store_write "$key"
+        merge_secret "$key" "$consumer" "$client_id" "$client_secret" | store_write "$key"
         echo "[created] ${name} -> ${key} (client ${client_id})"
         created=$((created + 1))
     done
