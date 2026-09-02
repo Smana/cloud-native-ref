@@ -1,0 +1,161 @@
+name: OpenBao restore drill
+
+# Proves, every week, that the newest snapshot in the lineage bucket can be
+# restored by a node that has nothing but the lineage seal key -- and that the
+# GCS mirror holds the same newest object. This is the "restore is not a
+# hypothesis" requirement of the store-of-record design.
+#
+# What it deliberately does NOT have: the recovery keys. Everything asserted
+# below comes from unauthenticated endpoints (sys/health, the PKI mount's CA
+# endpoint), so a compromised runner can restore a snapshot it cannot read.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC, after the 04:00 snapshot and 05:00 mirror
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  # renovate: datasource=github-releases depName=openbao/openbao
+  BAO_VERSION: 2.6.2
+  AWS_REGION: eu-west-3
+  SNAPSHOT_BUCKET: eu-west-3-ogenki-openbao-snapshot
+  MIRROR_BUCKET: ogenki-435905-ogenki-openbao-snapshot
+  SEAL_KEY_ALIAS: alias/openbao-seal
+
+jobs:
+  drill:
+    name: Restore the newest snapshot into a throwaway node
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_DRILL_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_DRILL_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DRILL_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Install bao (checksum-verified)
+        run: |
+          set -euo pipefail
+          tarball="openbao_${BAO_VERSION}_linux_amd64.tar.gz"
+          base="https://github.com/openbao/openbao/releases/download/v${BAO_VERSION}"
+          curl -fsSL "${base}/${tarball}" -o "/tmp/${tarball}"
+          curl -fsSL "${base}/checksums.txt" -o /tmp/checksums.txt
+          grep -E "  ${tarball}$" /tmp/checksums.txt > /tmp/bao.sha256sum
+          (cd /tmp && sha256sum -c bao.sha256sum)
+          tar -xzf "/tmp/${tarball}" -C /tmp bao
+          sudo install -m 0755 /tmp/bao /usr/local/bin/bao
+          bao version
+
+      - name: Fetch the newest snapshot
+        id: snapshot
+        run: |
+          set -euo pipefail
+          key=$(aws s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" \
+            --query 'sort_by(Contents, &LastModified)[-1].Key' --output text)
+          if [ -z "$key" ] || [ "$key" = "None" ]; then
+            echo "::error::no snapshot in s3://$SNAPSHOT_BUCKET"; exit 1
+          fi
+          size=$(aws s3api head-object --bucket "$SNAPSHOT_BUCKET" --key "$key" --query ContentLength --output text)
+          aws s3 cp "s3://$SNAPSHOT_BUCKET/$key" "$RUNNER_TEMP/bao.snap"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+          echo "newest S3 object: $key ($size bytes)"
+
+      - name: Start a throwaway OpenBao sealed by the lineage key
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/raft"
+          cat > "$RUNNER_TEMP/bao.hcl" <<EOF
+          ui            = false
+          disable_mlock = true
+          api_addr      = "http://127.0.0.1:8200"
+          cluster_addr  = "https://127.0.0.1:8201"
+          listener "tcp" {
+            address     = "127.0.0.1:8200"
+            tls_disable = true
+          }
+          storage "raft" {
+            path    = "$RUNNER_TEMP/raft"
+            node_id = "drill"
+          }
+          seal "awskms" {
+            region     = "$AWS_REGION"
+            kms_key_id = "$SEAL_KEY_ALIAS"
+          }
+          EOF
+          nohup bao server -config="$RUNNER_TEMP/bao.hcl" > "$RUNNER_TEMP/bao.log" 2>&1 &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8200/v1/sys/health || true)
+            [ "$code" = "501" ] && break
+            sleep 1
+          done
+          [ "$code" = "501" ] || { echo "::error::server did not come up (last health code: $code)"; cat "$RUNNER_TEMP/bao.log"; exit 1; }
+
+      - name: Initialise with throwaway shares and restore
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+        run: |
+          set -euo pipefail
+          # The throwaway root token is only used to POST the snapshot; the
+          # restored token store does not contain it, and nothing later needs
+          # a token.
+          VAULT_TOKEN=$(bao operator init -recovery-shares=1 -recovery-threshold=1 -format=json | jq -r .root_token)
+          export VAULT_TOKEN
+          bao status
+          bao operator raft snapshot restore -force "$RUNNER_TEMP/bao.snap"
+          unset VAULT_TOKEN
+          # After a restore the node reloads and unseals with the lineage key.
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8200/v1/sys/health || true)
+            [ "$code" = "200" ] && break
+            sleep 1
+          done
+          if [ "$code" != "200" ]; then
+            echo "::error::node is not unsealed+active after restore (health code $code) -- the seal key cannot unwrap this snapshot"
+            tail -50 "$RUNNER_TEMP/bao.log"; exit 1
+          fi
+          bao status
+
+      - name: Assert the PKI issuer came back and chains to the offline root
+        run: |
+          set -euo pipefail
+          curl -fsS http://127.0.0.1:8200/v1/pki_private_issuer/ca_chain > "$RUNNER_TEMP/chain.pem"
+          openssl x509 -in "$RUNNER_TEMP/chain.pem" -noout -subject -issuer -enddate
+          # Split the chain and verify the leaf-most CA against the committed root.
+          awk 'BEGIN{n=0} /BEGIN CERT/{n++} {print > sprintf("'"$RUNNER_TEMP"'/c%d.pem", n)}' "$RUNNER_TEMP/chain.pem"
+          openssl verify -CAfile .github/openbao-root-ca.pem -untrusted "$RUNNER_TEMP/chain.pem" "$RUNNER_TEMP/c1.pem"
+
+      - name: Assert the GCS mirror holds the same newest object
+        run: |
+          set -euo pipefail
+          key="${{ steps.snapshot.outputs.key }}"
+          size="${{ steps.snapshot.outputs.size }}"
+          gsize=$(gcloud storage objects describe "gs://$MIRROR_BUCKET/$key" --format='value(size)' 2>/dev/null || echo missing)
+          if [ "$gsize" = "missing" ]; then
+            echo "::error::gs://$MIRROR_BUCKET/$key is absent -- the Storage Transfer mirror is behind or broken"; exit 1
+          fi
+          if [ "$gsize" != "$size" ]; then
+            echo "::error::size mismatch for $key: s3=$size gcs=$gsize"; exit 1
+          fi
+          echo "mirror OK: $key ($gsize bytes) present on both sides"
+
+      - name: Stop the node
+        if: always()
+        run: pkill -f 'bao server' || true
