@@ -137,6 +137,61 @@ func TestHandlerInjectSurvivesStripWhenHeadersShareAName(t *testing.T) {
 	}
 }
 
+// A client that names the injected credential header as hop-by-hop, via
+// Connection, must not be able to have httputil.ReverseProxy strip it back
+// out on the way to the upstream.
+func TestClientCannotStripInjectedHeaderViaConnection(t *testing.T) {
+	var gotToken string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotToken = r.Header.Get("X-Access-Token")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+	u, _ := url.Parse(upstream.URL)
+
+	ex, cfg := testExchanger(t, 200, `{"access_token":"real.exchanged.token","expires_in":3598}`)
+	cfg.InjectHeader = "X-Access-Token"
+	cfg.InjectPrefix = ""
+	h := newHandler(ex, cfg, u)
+
+	req := httptest.NewRequest(http.MethodGet, "/anything", nil)
+	req.Header.Set("Authorization", "Bearer "+idToken(time.Now().Add(time.Hour)))
+	// The attack: nominate the credential header as hop-by-hop.
+	req.Header.Set("Connection", "X-Access-Token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if gotToken != "real.exchanged.token" {
+		t.Fatalf("upstream saw %q -- a client stripped the injected credential", gotToken)
+	}
+}
+
+// NewSingleHostReverseProxy does not rewrite the Host header on its own; a
+// security-facing proxy should pin it to the upstream rather than forward
+// whatever Host the client sent.
+func TestHostHeaderIsPinnedToUpstream(t *testing.T) {
+	var gotHost string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+	u, _ := url.Parse(upstream.URL)
+
+	ex, cfg := testExchanger(t, 200, `{"access_token":"t","expires_in":3598}`)
+	h := newHandler(ex, cfg, u)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+idToken(time.Now().Add(time.Hour)))
+	req.Host = "attacker.example.invalid"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if gotHost == "attacker.example.invalid" {
+		t.Fatalf("client Host reached upstream verbatim: %q", gotHost)
+	}
+}
+
 func TestHandlerKeepsSubjectHeaderWhenStripSubjectFalse(t *testing.T) {
 	var gotSubject string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

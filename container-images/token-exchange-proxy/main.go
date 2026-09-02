@@ -51,6 +51,12 @@ func newHandler(ex *Exchanger, cfg Config, upstream *url.URL) http.Handler {
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Sanitise first, before anything else reads or sets a header. A
+		// client naming a header we depend on or are about to set --
+		// Connection: X-Access-Token -- must not get a say in whether that
+		// header survives the proxy hop.
+		stripHopByHop(r.Header)
+
 		raw := r.Header.Get(cfg.SubjectHeader)
 		if !strings.HasPrefix(raw, cfg.SubjectPrefix) {
 			http.Error(w, "missing or malformed subject token", http.StatusUnauthorized)
@@ -81,7 +87,32 @@ func newHandler(ex *Exchanger, cfg Config, upstream *url.URL) http.Handler {
 			r.Header.Del(cfg.SubjectHeader)
 		}
 		r.Header.Set(cfg.InjectHeader, cfg.InjectPrefix+tok)
+
+		// NewSingleHostReverseProxy rewrites the outbound URL but leaves the
+		// Host header as the client sent it. The dial target is pinned by
+		// `upstream` regardless, so this is not SSRF, but an upstream that
+		// does Host-based routing or auth should never see a client-chosen
+		// value from a security-facing proxy.
+		r.Host = upstream.Host
 		proxy.ServeHTTP(w, r)
 	})
 	return mux
+}
+
+// stripHopByHop removes headers the CLIENT nominated as hop-by-hop, then the
+// Connection header itself. RFC 7230 says a proxy must not forward these, and
+// Go's ReverseProxy enforces that on the way out -- which means an
+// unsanitised request lets a client name a header we are about to set
+// (Connection: X-Access-Token) and have the freshly injected credential
+// deleted for them. Sanitising on the way IN removes the client's control
+// over that entirely.
+func stripHopByHop(h http.Header) {
+	for _, f := range h.Values("Connection") {
+		for _, name := range strings.Split(f, ",") {
+			if n := strings.TrimSpace(name); n != "" {
+				h.Del(n)
+			}
+		}
+	}
+	h.Del("Connection")
 }
