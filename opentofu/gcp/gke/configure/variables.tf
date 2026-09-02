@@ -190,3 +190,8 @@ variable "workforce_pool_id" {
   description = "Workforce pool federating ZITADEL. Substituted into the gcp-0 RBAC bindings; an empty value silently produces a binding matching nobody."
   type        = string
 }
+
+variable "zitadel_project_id" {
+  description = "ZITADEL project id. The workforce provider pins its audience to this, and consumers must REQUEST that audience, so it is substituted into oauth2-proxy's scope rather than hardcoded there. A mismatch fails as a bare invalid_grant with every component reporting healthy."
+  type        = string
+}

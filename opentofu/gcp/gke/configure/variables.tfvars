@@ -56,3 +56,7 @@ route53_region = "eu-west-3"
 # variables.tfvars verbatim. Substituted into the gcp-0 RBAC bindings; disagreement
 # names a pool that does not exist and denies every user.
 workforce_pool_id = "ogenki-zitadel"
+
+# Must match zitadel_project_id in opentofu/gcp/workforce-identity, which
+# pins the workforce provider audience to it.
+zitadel_project_id = "388445486190712688"

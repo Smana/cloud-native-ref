@@ -10,7 +10,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -34,7 +33,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           newHandler(NewExchanger(cfg, http.DefaultClient), cfg, upstream),
+		Handler:           newHandler(NewExchanger(cfg, exchangeClient()), cfg, upstream),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("listening on %s, upstream %s", cfg.ListenAddr, upstream)
@@ -136,21 +135,39 @@ func stripHopByHop(h http.Header) {
 // The signature is not verified -- that is the authorization server's job, and
 // this runs only where the server has already refused the token.
 func subjectDiagnostics(tok string) string {
-	parts := strings.Split(tok, ".")
-	if len(parts) != 3 {
-		return "not a JWT (opaque or malformed subject token)"
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	claims, err := decodeJWTPayload(tok)
 	if err != nil {
-		return "undecodable JWT payload"
+		return err.Error() + " (opaque or malformed subject token)"
 	}
-	var c struct {
-		Iss string          `json:"iss"`
-		Azp string          `json:"azp"`
-		Aud json.RawMessage `json:"aud"`
+	unquote := func(k string) string {
+		raw, ok := claims[k]
+		if !ok {
+			return ""
+		}
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			return s
+		}
+		return string(raw)
 	}
-	if err := json.Unmarshal(payload, &c); err != nil {
-		return "unparseable JWT claims"
+	aud := ""
+	if raw, ok := claims["aud"]; ok {
+		aud = string(raw)
 	}
-	return fmt.Sprintf("iss=%s azp=%s aud=%s", c.Iss, c.Azp, string(c.Aud))
+	return fmt.Sprintf("iss=%s azp=%s aud=%s", unquote("iss"), unquote("azp"), aud)
+}
+
+// exchangeClient is http.DefaultClient with a bigger idle-connection pool.
+//
+// DefaultTransport allows only 2 idle connections per host. Concurrent requests
+// for the same COLD token each call the authorization server independently (a
+// deliberate choice -- singleflight lives outside the standard library and this
+// module is stdlib-only), and a dashboard page load fans out into many parallel
+// requests. With the default, all but two of that burst pay a fresh TLS
+// handshake instead of reusing a pooled connection. Raising one field removes
+// that cost without touching the singleflight tradeoff.
+func exchangeClient() *http.Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.MaxIdleConnsPerHost = 32
+	return &http.Client{Transport: t}
 }

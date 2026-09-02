@@ -189,6 +189,14 @@ func putIfNotEmpty(m map[string]string, k, val string) {
 }
 
 // evictExpiredLocked drops entries whose expiry has passed. Caller must hold x.mu.
+//
+// It runs under the same lock that gates cache HITS, so a sweep briefly stalls
+// unrelated lookups too. That is fine while the number of LIVE entries stays
+// small: map iteration is tens of nanoseconds per entry, so a thousand entries
+// costs well under a millisecond. Note the key is the token, not the user, so
+// entries accumulate with token ROTATION as well as with headcount. If live
+// entries ever reach the tens of thousands, move the sweep off the request path
+// (a ticker) or switch to sync.RWMutex so hits proceed during one.
 // Called on WRITE, which happens once per token rather than once per request, so
 // the O(n) sweep is cheap and keeps the map bounded by the number of LIVE tokens
 // instead of every token ever seen.
@@ -206,23 +214,44 @@ func cacheKey(tok string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// jwtExpiry reads `exp` WITHOUT verifying the signature. Verification is the
-// token endpoint's job; this only bounds how long the exchanged token may be
-// cached.
-func jwtExpiry(tok string) (time.Time, bool) {
+// decodeJWTPayload returns a JWT's claims segment WITHOUT verifying the
+// signature. Verification belongs to the authorization server; this exists only
+// so the proxy can read two things it needs locally -- how long a result may be
+// cached, and what to say when an exchange is refused.
+//
+// Shared rather than duplicated: both callers previously carried the same
+// split/base64/unmarshal boilerplate and had already drifted in how they
+// reported a malformed token.
+func decodeJWTPayload(tok string) (map[string]json.RawMessage, error) {
 	parts := strings.Split(tok, ".")
 	if len(parts) != 3 {
-		return time.Time{}, false
+		return nil, fmt.Errorf("not a JWT")
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
+		return nil, fmt.Errorf("undecodable payload")
+	}
+	var claims map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, fmt.Errorf("unparseable claims")
+	}
+	return claims, nil
+}
+
+// jwtExpiry reads `exp`. Used only to bound how long an exchanged token may be
+// cached, never to decide whether the subject token is acceptable.
+func jwtExpiry(tok string) (time.Time, bool) {
+	claims, err := decodeJWTPayload(tok)
+	if err != nil {
 		return time.Time{}, false
 	}
-	var c struct {
-		Exp int64 `json:"exp"`
-	}
-	if err := json.Unmarshal(payload, &c); err != nil || c.Exp == 0 {
+	raw, ok := claims["exp"]
+	if !ok {
 		return time.Time{}, false
 	}
-	return time.Unix(c.Exp, 0), true
+	var exp int64
+	if err := json.Unmarshal(raw, &exp); err != nil || exp == 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(exp, 0), true
 }

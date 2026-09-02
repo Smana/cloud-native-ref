@@ -18,11 +18,9 @@ spec:
     bucketName: "${region}-ogenki-cnpg-backups"
     path: "harbor-20241111"
   backup:
-    # SIX fields, seconds first -- CNPG uses robfig/cron, not Kubernetes CronJob
-    # syntax, so a five-field expression is silently shifted one position left
-    # rather than rejected. `0 1 * * *` meant EVERY HOUR at :01:00.
-    # Measured on this cluster 2026-09-02: backups at 08:01, 09:01, 10:01,
-    # 11:01, 12:01, 13:01. See security/base/zitadel/sqlinstance.yaml.
+    # SIX-field cron, seconds first -- CNPG uses robfig/cron, not Kubernetes
+    # CronJob syntax, so `0 1 * * *` silently meant hourly at :01.
+    # Full explanation and the measurement: security/base/zitadel/sqlinstance.yaml
     schedule: "0 0 1 * * *"
     bucketName: "${region}-ogenki-cnpg-backups"
   crossplane:

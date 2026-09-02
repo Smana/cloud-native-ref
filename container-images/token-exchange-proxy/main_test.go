@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -216,5 +219,40 @@ func TestHandlerKeepsSubjectHeaderWhenStripSubjectFalse(t *testing.T) {
 	}
 	if gotSubject != subjectHeader {
 		t.Fatalf("subject header changed though StripSubject=false: got %q, want %q", gotSubject, subjectHeader)
+	}
+}
+
+// subjectDiagnostics is what makes a bare `invalid_grant` diagnosable, so its
+// output format is a contract with whoever is reading logs at 2am. It must
+// render the claims plainly, and must never echo the token itself.
+func TestSubjectDiagnosticsReportsClaimsNotToken(t *testing.T) {
+	payload, _ := json.Marshal(map[string]any{
+		"iss": "https://issuer.example",
+		"azp": "client-123",
+		"aud": []string{"aud-a", "aud-b"},
+		"sub": "should-not-appear-verbatim-as-a-token",
+	})
+	tok := "aGRy." + base64.RawURLEncoding.EncodeToString(payload) + ".sig"
+
+	got := subjectDiagnostics(tok)
+	for _, want := range []string{"iss=https://issuer.example", "azp=client-123", "aud-a", "aud-b"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("diagnostics %q should contain %q", got, want)
+		}
+	}
+	if strings.Contains(got, tok) {
+		t.Errorf("diagnostics must never contain the token itself: %q", got)
+	}
+}
+
+func TestSubjectDiagnosticsHandlesNonJWT(t *testing.T) {
+	for _, tok := range []string{"opaque-token", "a.b", "a.!!!not-base64!!!.c"} {
+		got := subjectDiagnostics(tok)
+		if got == "" {
+			t.Errorf("expected a description for %q, got empty", tok)
+		}
+		if strings.Contains(got, "iss=") {
+			t.Errorf("a malformed token must not report claims: %q", got)
+		}
 	}
 }

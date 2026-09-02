@@ -221,7 +221,7 @@ func TestFormEncodingUsesRFCParameterNames(t *testing.T) {
 		t.Errorf("Content-Type = %q, want form encoding", gotContentType)
 	}
 	for _, want := range []string{"grant_type=", "subject_token=", "subject_token_type="} {
-		if !contains(gotBody, want) {
+		if !strings.Contains(gotBody, want) {
 			t.Errorf("form body should contain %q, got %q", want, gotBody)
 		}
 	}

@@ -121,7 +121,7 @@ spec:
       # -- no mention of audiences, and oauth2-proxy and Headlamp both look
       # perfectly healthy. The only symptom is "token exchange failed" in the
       # browser. Measured on gcp-0 2026-09-02.
-      scope: "openid profile email urn:zitadel:iam:org:project:id:388445486190712688:aud"
+      scope: "openid profile email urn:zitadel:iam:org:project:id:${zitadel_project_id}:aud"
 
       cookie-secure: "true"
 

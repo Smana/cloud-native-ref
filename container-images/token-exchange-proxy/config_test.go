@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -11,7 +12,7 @@ func TestValidateRejectsMissingRequired(t *testing.T) {
 		t.Fatal("expected an error when required values are absent")
 	}
 	for _, want := range []string{"TEP_STS_URL", "TEP_UPSTREAM_URL"} {
-		if !contains(err.Error(), want) {
+		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should name %s, got %q", want, err)
 		}
 	}
@@ -39,18 +40,6 @@ func TestValidateAcceptsBothEncodings(t *testing.T) {
 			t.Errorf("encoding %q should be valid: %v", enc, err)
 		}
 	}
-}
-
-func contains(hay, needle string) bool {
-	return len(hay) >= len(needle) && (hay == needle || len(needle) == 0 ||
-		func() bool {
-			for i := 0; i+len(needle) <= len(hay); i++ {
-				if hay[i:i+len(needle)] == needle {
-					return true
-				}
-			}
-			return false
-		}())
 }
 
 // An explicitly EMPTY variable must be honoured, not replaced by the default.
