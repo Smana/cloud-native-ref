@@ -103,16 +103,35 @@ script "deploy" {
         fi
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}"
 
-        echo "== waiting for ZITADEL (up to 15m)"
-        deadline=$(( SECONDS + 900 ))
+        # A BUDGET FOR A COLD BUILD, NOT A REBUILD.
+        #
+        # ZITADEL is last in a long chain on a fresh cluster --
+        # crds -> crossplane -> eks-pod-identities -> security ->
+        # security-openbao -> infrastructure -> zitadel. The old fixed 15m was
+        # fine for a rebuild and far too short for a first bootstrap: on
+        # 2026-09-02 it expired while `infrastructure` was still reconciling,
+        # registration was skipped, and the platform came up with no OIDC
+        # clients at all.
+        #
+        # The progress line names whatever Kustomization is still blocking, so
+        # a slow-but-healthy build is distinguishable from a stalled one
+        # without tailing Flux in another terminal.
+        ZITADEL_WAIT_SECONDS="$${ZITADEL_WAIT_SECONDS:-2700}"
+        echo "== waiting for ZITADEL (up to $(( ZITADEL_WAIT_SECONDS / 60 ))m)"
+        deadline=$(( SECONDS + ZITADEL_WAIT_SECONDS ))
+        last_report=0
         while [ "$SECONDS" -lt "$deadline" ]; do
           if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -ge 1 ] 2>/dev/null; then
             break
           fi
+          if [ $(( SECONDS - last_report )) -ge 120 ]; then
+            last_report="$SECONDS"
+            echo "   [$${SECONDS}s] still waiting; blocked on: $(kubectl get kustomization -n flux-system --no-headers -o custom-columns=N:.metadata.name,R:'.status.conditions[?(@.type=="Ready")].status' 2>/dev/null | awk '$2 != "True" { printf "%s ", $1 }' | head -c 200)"
+          fi
           sleep 20
         done
         if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -lt 1 ] 2>/dev/null; then
-          echo "[warn] ZITADEL not ready in 15m; skipping OIDC client registration."
+          echo "[warn] ZITADEL not ready in $(( ZITADEL_WAIT_SECONDS / 60 ))m; skipping OIDC client registration."
           echo "       Re-run by hand once it is up -- see scripts/zitadel-oidc-clients.sh."
           exit 0
         fi
