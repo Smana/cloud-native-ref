@@ -4509,11 +4509,23 @@ to
 
 `| **Primary-cloud singleton** | the primary cloud | public Route53 zone, ZITADEL, the \`aws-gcp-federation\` OIDC providers and roles, OpenBao (since [ADR-0032](0032-openbao-store-of-record-lineage.md) — its relocation carries state, by snapshot restore) |`
 
-In its "What it does not change" paragraph, replace `Both clusters keep their own
+In its "What it does not change" paragraph, find:
+
+```markdown
+Nothing per-cloud. Both clusters keep their own
 OpenBao, secret store, state and backups, and neither depends on the other for
-them.` with `Both clusters keep their own secret store, state and backups, and
-neither depends on the other for them. (OpenBao left this class on 2026-09-02 —
-[ADR-0032](0032-openbao-store-of-record-lineage.md).)`. Set `lastVerified: 2026-09-02`.
+them.
+```
+
+Replace with:
+
+```markdown
+Nothing per-cloud. Both clusters keep their own secret store, state and backups,
+and neither depends on the other for them. (OpenBao left this class on
+2026-09-02 — [ADR-0032](0032-openbao-store-of-record-lineage.md).)
+```
+
+Set `lastVerified: 2026-09-02`.
 
 - [ ] **Step 3: The failover guide**
 
