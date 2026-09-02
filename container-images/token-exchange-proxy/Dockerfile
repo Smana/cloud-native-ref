@@ -1,3 +1,12 @@
+# This ARG is what makes CI publish the tag the Deployment pins.
+# .github/workflows/build-container-images.yml derives a version tag from
+# `ARG <IMAGE_NAME_UPPERCASED>_VERSION=` in this file; with no such ARG the
+# workflow only ever produces `latest` and `<branch>-<sha>`, so the pinned
+# `:v0.1.0` reference in tooling/gcp-0/headlamp/token-exchange.yaml would never
+# resolve and the pod would ImagePullBackOff. Keep this in step with VERSION in
+# build.sh.
+ARG TOKEN_EXCHANGE_PROXY_VERSION=v0.1.0
+
 # Build stage: compile a static binary. CGO_ENABLED=0 removes the libc
 # dependency the distroless runtime below has no shell to satisfy anyway;
 # -trimpath drops build-machine paths from the binary, -ldflags="-s -w"
