@@ -57,14 +57,16 @@ spec:
   # is rejected: opentofu/aws/eks/configure hosts unconditionally, so that
   # combination needs an AWS-side toggle and a new decision.
   #
-  # KNOWN GAP while this cluster consumes aws-0's instance: nothing registers
-  # gcp-0's OIDC clients there. scripts/zitadel-oidc-clients.sh reads the admin
-  # PAT from the INVOKING cluster's own secret store, and its only automated
-  # caller is gke/init stage 3, which correctly skips when this cluster does not
-  # host. So gcp-0's redirect URIs must be added to aws-0's ZITADEL by hand
-  # until that script grows a cross-cluster mode -- otherwise headlamp's
-  # oauth2-proxy has no client secret and sits in CreateContainerConfigError.
-  # Tracked separately; do not discover it during a bootstrap.
+  # CLOSED, and left here because the gap it describes is the kind people
+  # rediscover: gcp-0's OIDC clients ARE registered in aws-0's directory
+  # automatically. scripts/zitadel-oidc-clients.sh grew the cross-cluster mode
+  # this comment was waiting for -- `--idp-cloud aws` reads the admin PAT from
+  # the cluster that HOSTS the directory while writing client secrets into the
+  # CONSUMING cluster's store -- and aws/eks/init's stage4-oidc-clients job
+  # calls it for this cluster whenever TM_CLOUD includes gcp or all.
+  #
+  # The symptom if that ever regresses is unchanged: headlamp's oauth2-proxy
+  # has no client secret and sits in CreateContainerConfigError.
   #
   # This field is also only half of a live migration: suspending stops Flux
   # reconciling an instance, it does not remove one that is already running.
