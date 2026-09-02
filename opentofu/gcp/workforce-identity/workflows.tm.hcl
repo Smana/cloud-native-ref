@@ -38,7 +38,7 @@ script "deploy" {
         ${global.provisioner} init
         ${global.provisioner} validate
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
-        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars
+        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
       ],
     ]
@@ -57,7 +57,7 @@ script "preview" {
         ${global.provisioner} init
         ${global.provisioner} validate
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
-        ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars
+        ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
       ],
     ]
@@ -74,7 +74,7 @@ script "drift" "detect" {
         ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
-        ${global.provisioner} plan -out=out.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars
+        ${global.provisioner} plan -out=out.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
       ],
     ]
@@ -109,7 +109,7 @@ script "destroy" {
         WARN
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
         ${global.provisioner} init -lock-timeout=5m
-        ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars
+        ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
       ],
     ]

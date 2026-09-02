@@ -253,10 +253,17 @@ script "deploy" {
           exit 0
         fi
 
+        # The workforce provider's audience is the ZITADEL PROJECT id, which does
+        # not exist until the sync below creates the project. Passing the pool
+        # lets the script reconcile it; without this, per-user RBAC on this
+        # cluster fails as a bare `invalid_grant` with everything looking healthy.
+        # Empty (no such stack / no such key) simply skips that reconciliation.
+        WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
         echo "== registering the OIDC clients"
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
           bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
-            --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" --apply || \
+            --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" \
+            --workforce-pool "$${WORKFORCE_POOL}" --apply || \
           echo "[warn] OIDC registration failed; re-run it by hand"
 
         echo "== granting access to the secrets it just created"

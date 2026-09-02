@@ -147,10 +147,16 @@ script "deploy" {
             # split is what makes a consuming cluster expressible at all, and it
             # is what suffixes its app names so the two clusters do not contend
             # for one app.
+            # --workforce-pool is a no-op in THIS topology -- with AWS primary the
+            # pool's committed audience is already this directory's project id --
+            # but passing it makes a drifted audience self-correct rather than
+            # waiting for someone to notice an invalid_grant.
+            WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
             IDP_URL="$${IDP_URL}" PRIVATE_DOMAIN="$${GCP_PRIVATE}" \
               bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
                 --cluster "$${GCP_CLUSTER}" \
                 --cloud gcp --project "$${GCP_PROJECT}" \
+                --workforce-pool "$${WORKFORCE_POOL}" \
                 --idp-cloud aws --region "${global.region}" --apply || \
               echo "[warn] registration for $${GCP_CLUSTER} failed; re-run it by hand"
             ;;

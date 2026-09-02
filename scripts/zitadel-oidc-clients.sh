@@ -65,6 +65,9 @@ CLOUD=""
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 GCP_PROJECT=""
 APPLY="false"
+# Empty means "this platform has no workforce pool" -- the reconciliation below
+# is then skipped entirely, which is the correct behaviour on AWS-only setups.
+WORKFORCE_POOL=""
 ZITADEL_PROJECT_NAME="platform"
 
 # The project roles the platform's OWN RBAC already refers to. These are not a
@@ -106,6 +109,7 @@ while [ $# -gt 0 ]; do
         --project) GCP_PROJECT="$2"; shift 2 ;;
         --apply)   APPLY="true"; shift ;;
         --grant-admin) GRANT_ADMIN="$2"; shift 2 ;;
+        --workforce-pool) WORKFORCE_POOL="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -605,6 +609,68 @@ converge_secret() {
     ' <<< "$existing"
 }
 
+# THE WORKFORCE PROVIDER'S AUDIENCE IS THE ZITADEL PROJECT ID, and on some
+# topologies it cannot be committed ahead of time.
+#
+# opentofu/gcp/workforce-identity pins the provider's client_id to the project
+# id, because ZITADEL puts that id in the `aud` of every token the project
+# issues -- so any client is accepted and the pool can be created before a
+# single OIDC app exists. That trick relies on the id being KNOWN in advance,
+# which holds while AWS is primary: its ZITADEL restores from a seed and keeps
+# its ids across rebuilds.
+#
+# A GCP-primary bootstrap mints a brand-new ZITADEL, whose project id is
+# generated. The committed value is then wrong, and the failure is the worst
+# kind: `token exchange 400: invalid_grant`, with oauth2-proxy, the exchange
+# proxy and the dashboard all reporting healthy.
+#
+# This script already resolves the project id and already runs after the cluster
+# exists, so it closes that loop. The tofu resource carries
+# `lifecycle.ignore_changes` on the same field so the next apply does not put
+# the stale value back.
+reconcile_workforce_audience() {
+    local project_id="$1" current
+    [ -n "$WORKFORCE_POOL" ] || return 0
+    [ "$project_id" != "DRYRUN-PROJECT" ] || return 0
+
+    if ! command -v gcloud >/dev/null 2>&1; then
+        echo "workforce: gcloud not available, skipping audience reconciliation" >&2
+        return 0
+    fi
+
+    current="$(gcloud iam workforce-pools providers describe zitadel \
+                 --workforce-pool="$WORKFORCE_POOL" --location=global \
+                 --format='value(oidc.clientId)' 2>/dev/null)" || true
+
+    if [ -z "$current" ]; then
+        echo "workforce: pool '${WORKFORCE_POOL}' has no zitadel provider yet, skipping" >&2
+        return 0
+    fi
+
+    if [ "$current" = "$project_id" ]; then
+        echo "workforce: audience already ${project_id}"
+        return 0
+    fi
+
+    echo "workforce: audience ${current} -> ${project_id}"
+    if [ "$APPLY" != "true" ]; then
+        echo "workforce: (dry-run, not applied)"
+        return 0
+    fi
+
+    if gcloud iam workforce-pools providers update-oidc zitadel \
+         --workforce-pool="$WORKFORCE_POOL" --location=global \
+         --client-id="$project_id" >/dev/null 2>&1; then
+        echo "workforce: audience updated"
+    else
+        # Not fatal: every OTHER consumer this script configures is unaffected,
+        # and failing here would leave the OIDC clients half-written. The
+        # symptom is contained to the dashboard's token exchange.
+        echo "workforce: FAILED to update the provider audience -- per-user RBAC" >&2
+        echo "           will fail with invalid_grant until this is corrected." >&2
+    fi
+}
+
 cmd_sync() {
     echo "cluster:  ${CLUSTER} (${CLOUD})"
     echo "idp:      ${IDP_URL}"
@@ -625,6 +691,7 @@ cmd_sync() {
     [ -n "$project_id" ] || { echo "could not resolve or create the ZITADEL project" >&2; exit 1; }
 
     ensure_project_role_assertion "$project_id"
+    reconcile_workforce_audience "$project_id"
     ensure_project_roles "$project_id"
     grant_admin_role "$GRANT_ADMIN" "$project_id"
 
