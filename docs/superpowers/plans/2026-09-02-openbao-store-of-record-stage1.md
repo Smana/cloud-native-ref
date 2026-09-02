@@ -56,7 +56,7 @@
   | Destroy gates | `TM_LINEAGE_DESTROY=true` (lineage + management stacks), `TM_OPENBAO_SKIP_SNAPSHOT=true` (skip the pre-destroy snapshot) |
   | New Flux variables | `openbao_snapshot_bucket` (both clusters), `openbao_target_ip` (gcp-0 only) |
   | Removed Flux variables | `openbao_snapshot_secret`, `cert_manager_approle_id` |
-  | Snapshot image | `ghcr.io/smana/openbao-snapshot:v0.2.0` |
+  | Snapshot image | `ghcr.io/smana/openbao-snapshot:v0.3.0` |
 
 ## Deviations from the design, stated once
 
@@ -768,7 +768,7 @@ In `container-images/openbao-snapshot/Dockerfile`, directly after the line `FROM
 # `ARG OPENBAO_SNAPSHOT_VERSION=` (the directory name upper-cased + _VERSION) and
 # tags the image with it, so the CronJob can pin a real version instead of
 # `latest`. Bump it whenever openbao-snapshot.sh changes behaviour.
-ARG OPENBAO_SNAPSHOT_VERSION=v0.2.0
+ARG OPENBAO_SNAPSHOT_VERSION=v0.3.0
 ```
 
 - [ ] **Step 9: Lint**
@@ -909,6 +909,21 @@ Replace with:
 
 - [ ] **Step 2: Helpers shared by the two new subcommands**
 
+Two of these call `log_err`, a stderr sibling of `log_message` that belongs next
+to it near the top of the file:
+
+```bash
+log_err() {
+    log_message "ERROR" "$@" >&2
+}
+```
+
+It is not cosmetic. `log_message` writes to **stdout**, and `latest_snapshot` is
+called as `latest=$(latest_snapshot)` — so a diagnostic emitted inside it is
+swallowed whole by the command substitution and the operator sees nothing at all,
+on the one path where the message is the entire value. Same reasoning as
+`gcp_gcloud_identity`'s redirect in `scripts/lib/gcloud-adc.sh`.
+
 Add these functions after `secret_read()`:
 
 ```bash
@@ -966,7 +981,7 @@ latest_snapshot() {
     if [ "$CLOUD" = "gcp" ]; then
         local listing
         if ! listing=$(gcp_gcloud storage ls "gs://${SNAPSHOT_BUCKET}/"); then
-            log_message "ERROR" "could not list gs://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
+            log_err "could not list gs://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
             return 1
         fi
         # `grep || true`: grep exits 1 when it matches nothing, and this file
@@ -980,7 +995,7 @@ latest_snapshot() {
         # query ERRORS on an empty bucket, so exit status alone could not
         # separate "empty" from "could not list".
         if ! out=$($aws_cmd s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" --output json); then
-            log_message "ERROR" "could not list s3://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
+            log_err "could not list s3://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
             return 1
         fi
         printf '%s' "$out" | jq -r '(.Contents // []) | if length == 0 then "" else (sort_by(.LastModified) | last | .Key) end'
@@ -3275,7 +3290,7 @@ Replace the `env:` list's `VAULT_CACERT`, `HOME` and `CLOUD` entries **and** the
                   value: /var/run/secrets/openbao/token
 ```
 
-Change `image: ghcr.io/smana/openbao-snapshot:v0.1.0` to `image: ghcr.io/smana/openbao-snapshot:v0.2.0`.
+Change `image: ghcr.io/smana/openbao-snapshot:v0.1.0` to `image: ghcr.io/smana/openbao-snapshot:v0.3.0`.
 
 Add to `volumeMounts:`:
 
@@ -6440,13 +6455,106 @@ Expected: the job exists; after the manual run the newest S3 object name appears
 
 ### Task 17 [LIVE]: AWS deploy — the lineage's first snapshot, then destroy and rehydrate
 
+**Sequencing: the `v0.3.0` image must be published BEFORE Step 1, and a PR build
+will not do it.** Two halves of the seal scheme ship by different routes.
+`scripts/openbao-config.sh` runs from the **repo checkout**, so it is strict the
+moment this branch is checked out. The snapshot CronJob runs from the
+**published image**, and `security/base/openbao-snapshot/snapshot-cronjob.yaml`
+now pins `ghcr.io/smana/openbao-snapshot:v0.3.0` with `imagePullPolicy:
+IfNotPresent` — a tag that does not exist yet is an `ImagePullBackOff`, so
+Step 1's manual snapshot job never runs and Step 3 has nothing to restore.
+
+`.github/workflows/build-container-images.yml` carries
+`push: ${{ github.event_name != 'pull_request' }}`, so **opening a PR builds the
+image and pushes nothing**. Publish it deliberately, from this branch, before
+Step 1:
+
+```bash
+gh workflow run build-container-images.yml \
+  --ref worktree-openbao-lineage -f image=openbao-snapshot
+gh run watch "$(gh run list --workflow=build-container-images.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+docker manifest inspect ghcr.io/smana/openbao-snapshot:v0.3.0 >/dev/null && echo "v0.3.0 published"
+```
+
+The `v0.3.0` tag comes from `ARG OPENBAO_SNAPSHOT_VERSION` via
+`type=raw,value=${{ steps.app-version.outputs.version }}`, so it needs no
+separate input.
+
+The reverse hazard — an older image still writing untagged `<ts>.snap` objects
+that `rehydrate` will later refuse — **does not have a window on a fresh
+lineage**, and Step 1's bucket precondition is why: an empty bucket takes the
+first-deploy path, and the first object written is already tagged. It only bites
+a lineage whose bucket was not emptied while an image older than `v0.3.0` was
+still running.
+
+- [ ] **Step 0: Confirm an uninitialised node reports its seal over TLS**
+
+**This is the one assumption in the whole scheme that only a live node can
+settle, and the code fails closed on it.** Both selectors read the node's seal
+from `.type` on `GET /v1/sys/seal-status`, and `rehydrate`'s gate sits *before*
+`bao operator init` — so it asks an OpenBao that is up and deliberately **not
+yet initialised**. There is closed source-level proof that this works
+(the endpoint is on OpenBao's bare, unauthenticated HTTP mux next to
+`/v1/sys/init` and `/v1/sys/health`, and `.type` has reported the barrier seal
+type since 2.4.0 — openbao/openbao#1638, both clusters pin 2.6.2) and **no live
+confirmation**. If `.type` came back empty, `node_seal_type` returns 1 and every
+rehydrate refuses: that is not a degraded mode, it blocks the deploy.
+
+Create the window deliberately — apply the cluster stack on its own, so the node
+is booted but the management stack has not initialised it yet:
+
+```bash
+TM_CLOUD=aws terramate -C opentofu/aws/openbao/cluster script run deploy
+./scripts/openbao-config.sh ca --region eu-west-3 \
+  --root-ca-secret-name certificates/priv.aws.ogenki.io/ca-chain \
+  --ca-output-file /tmp/lineage-ca.pem
+curl -sS --cacert /tmp/lineage-ca.pem \
+  https://bao.priv.aws.ogenki.io:8200/v1/sys/seal-status | jq '{type, initialized, recovery_seal}'
+```
+
+Expected, on a fresh node:
+
+```json
+{
+  "type": "awskms",
+  "initialized": false,
+  "recovery_seal": true
+}
+```
+
+What each field proves:
+
+| Field | Expected | What it establishes |
+|---|---|---|
+| `type` | `"awskms"` | The barrier seal is legible **before** init. This is the value that names every object the CronJob writes and the value both gates compare against. Everything else in the scheme is downstream of this one string. |
+| `initialized` | `false` | The read happened on the near side of `bao operator init` — which is the only case in doubt. A `true` here means the window was missed and the test proved the easy case; destroy and retry, or take the reading during Step 3's redeploy instead. |
+| `recovery_seal` | `true` | Auto-unseal is genuinely configured, so `type` is reporting a real KMS barrier rather than a default. It is also the other half of the pre-2.4.0 guard: `shamir` **and** `recovery_seal: true` together is impossible and is refused. |
+
+**If `type` is empty or absent, stop.** That is the pre-2.4.0 signature —
+`sys/seal-status` only began returning the barrier seal type in 2.4.0, per
+OpenBao's CHANGELOG; before that it was hardcoded `"shamir"` for every
+configuration (issue #1633, fixed by #1638). Nothing downstream works: `save`
+refuses to name an object and `rehydrate` refuses to select one. Check
+`openbao_version` in `opentofu/aws/openbao/cluster/variables.tf` actually
+resolved to 2.6.2 on the running node (`bao version`, or the boot script's
+download URL) and that the instance really did restart onto it. Do not work
+around it by hardcoding the seal — the segment records what wrapped the bytes
+precisely because a variable can disagree with the running process.
+
+A `curl` failure with no HTTP response is a different problem and not this one:
+the endpoint needs no token, so it is the node, the tailnet, or the TLS trust.
+
 - [ ] **Step 1: Deploy the platform on the branch**
 
 ```bash
 cd opentofu && TF_VAR_flux_git_ref='refs/heads/worktree-openbao-lineage' terramate script run deploy
 ```
 
-**Before deploying, check the bucket.** `dev` mode never took a snapshot, but an earlier `ha` experiment may have left objects sealed by a key that no longer exists; rehydrate would try the newest one and fail at unseal. Run `aws s3 ls s3://eu-west-3-ogenki-openbao-snapshot/`; if anything is listed and nothing there is wanted, `aws s3 rm s3://eu-west-3-ogenki-openbao-snapshot/ --recursive`. Then deploy, and watch the management stack's output for `No snapshot in eu-west-3-ogenki-openbao-snapshot: first deploy of this lineage`. Then:
+**Before deploying, empty the bucket. This is now the documented precondition for the strict legacy-object policy, not incidental tidying.** `dev` mode never took a snapshot, but an earlier `ha` experiment may have left objects behind. Those objects predate the seal-in-the-name scheme, so they carry **no seal segment**, and `rehydrate` will not select one: it refuses and names the object rather than restoring a snapshot whose seal it cannot determine. (If such an object is genuinely wanted, `container-images/openbao-snapshot/README.md` carries the one-command retag; that is a deliberate act, not a step of this task.)
+
+An empty bucket is what makes that policy cost nothing here. `latest_snapshot` returns empty, `rehydrate_openbao`'s `[ -z "$latest" ]` branch routes straight to `init_openbao` and returns — and that branch sits **before** the seal gate, so the gate is never consulted on a first deploy. The first object the CronJob then writes is already tagged, which is why a fresh lineage has no untagged-object window at all.
+
+Run `aws s3 ls s3://eu-west-3-ogenki-openbao-snapshot/`; if anything is listed and nothing there is wanted, `aws s3 rm s3://eu-west-3-ogenki-openbao-snapshot/ --recursive`. Then deploy, and watch the management stack's output for `No snapshot in eu-west-3-ogenki-openbao-snapshot: first deploy of this lineage`. Then:
 
 ```bash
 export VAULT_ADDR=https://bao.priv.aws.ogenki.io:8200 VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem

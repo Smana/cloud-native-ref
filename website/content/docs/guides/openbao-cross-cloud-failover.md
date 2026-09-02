@@ -143,6 +143,16 @@ management stack's `tofu apply`.
    gcloud storage ls -l gs://ogenki-435905-ogenki-openbao-snapshot/ | sort -k2 | tail -1
    ```
 
+   Object names are `<UTC timestamp>-<seal>.snap` — for example
+   `2026-09-02T041500Z-awskms.snap`. The trailing segment is **the seal that
+   encrypted the object**, read from the writing node's own
+   `/v1/sys/seal-status`, and it is the whole reason this failover works: only a
+   node running that seal can unwrap it. In this bucket you should see
+   `-awskms` on every mirrored object and `-gcpckms` on whatever `gcp-0` wrote
+   for itself before the failover. An object with **no** seal segment is a
+   legacy one written before the scheme; nothing will select it, and
+   `container-images/openbao-snapshot/README.md` carries the one-command retag.
+
 2. **Deploy the standby with the AWS seal.** In
    `opentofu/gcp/openbao/cluster/variables.tfvars` set:
 
@@ -321,17 +331,22 @@ the newest object in the AWS history.
 
 3. **Retire the standby — do not flip its seal.** The GCP node is holding
    AWS-sealed data, and restoring `seal_provider = "gcpckms"` on that stack is
-   the single change that strands it. Flipping the variable edits the instance
+   the single change that dead-ends it. Flipping the variable edits the instance
    template; the MIG's `PROACTIVE` / `REPLACE` update policy
    (`opentofu/gcp/openbao/cluster/compute.tf`) replaces the running instance;
-   the replacement boots with an empty Raft store; `rehydrate` selects the
-   newest object in `gs://ogenki-435905-ogenki-openbao-snapshot/` and restores
-   it — and **every object in that bucket is AWS-sealed by now**: the mirrored
-   ones by construction, and the standby's own because it ran under
-   `seal_provider = "awskms"`. A `gcpckms` node cannot unwrap any of them. That
-   is the drill's `the seal key cannot unwrap this snapshot`
-   (`.github/workflows/openbao-restore-drill.yml`), and exactly the stranded
-   state `openbao-config.sh rehydrate` warns about.
+   the replacement boots with an empty Raft store; `rehydrate` goes looking for
+   the newest object in `gs://ogenki-435905-ogenki-openbao-snapshot/` — and
+   **every object in that bucket is AWS-sealed by now**: the mirrored ones by
+   construction, and the standby's own because it ran under
+   `seal_provider = "awskms"`. A `gcpckms` node cannot unwrap any of them.
+
+   **How that surfaces, and it is no longer a stranding.** `rehydrate` reads
+   this node's seal from `/v1/sys/seal-status`, compares it with the newest
+   object's name segment, and **refuses before `bao operator init`** — the
+   irreversible step — naming both seals. The deploy stops with a legible error
+   and an untouched store, rather than the node coming back sealed with nothing
+   to diagnose it by. It is still the wrong move: you are left with a replaced
+   instance, an empty Raft store, and step 4's decision to make anyway.
 
    Destroy the standby instead, by directory, and skip its pre-destroy
    snapshot:
@@ -354,42 +369,58 @@ the newest object in the AWS history.
    `terramate list --run-order` — tearing down the cluster you just failed over
    to and are still running on.
 
-4. **Before `gcp-0` runs GCP-only again, deal with the AWS-sealed objects.**
-   The GCP snapshot bucket is now a **mixed-seal namespace whose objects are
-   indistinguishable by name**: `openbao-snapshot.sh` writes every object as
-   `<timestamp>.snap` — flat, and identical on both clouds — so nothing in a
-   name records which seal wrapped it, and `latest_snapshot()` picks the newest
-   either way. A fresh `gcpckms` node therefore selects an AWS-sealed snapshot
-   and strands itself, exactly as in step 3.
+4. **Before `gcp-0` runs GCP-only again, decide which writes to discard.**
+   Every object in the GCP snapshot bucket is AWS-sealed by now — the mirrored
+   ones by construction, the standby's own because it ran under
+   `seal_provider = "awskms"`. What has changed is that the bucket is no longer
+   ambiguous: objects are named `<UTC timestamp>-<seal>.snap`, so a fresh
+   `gcpckms` node reads its own seal, sees the mismatch and **refuses before
+   `bao operator init`**:
 
-   Do one of these before redeploying with `seal_provider = "gcpckms"`:
-
-   ```bash
-   # (a) Move the AWS-sealed objects under a prefix. Both selection paths list
-   #     the bucket NON-recursively and strip through the last "/", so a
-   #     prefixed object stops matching '\.snap$' and drops out of the
-   #     candidate set -- while staying readable if you ever fail over again.
-   gcloud storage ls -l gs://ogenki-435905-ogenki-openbao-snapshot/ | sort -k2
-   gcloud storage mv "gs://ogenki-435905-ogenki-openbao-snapshot/<object>.snap" \
-     "gs://ogenki-435905-ogenki-openbao-snapshot/awskms/<object>.snap"
+   ```text
+   ERROR: SEAL MISMATCH -- refusing to initialise or restore. Nothing has changed yet.
+   ERROR:   this node's seal : gcpckms
+   ERROR:   newest object    : 2026-09-02T041500Z-awskms.snap
+   ERROR:                      sealed 'awskms'
    ```
 
+   **Nothing needs moving aside and nothing needs re-stamping.** That refusal
+   mutates neither the bucket nor the node, so this step is no longer bucket
+   surgery performed mid-incident. What is left is the one judgement the tooling
+   will not make for you.
+
+   Read the bucket. The seal segment is in the name, so the listing is the whole
+   answer:
+
    ```bash
-   # (b) Or promote the last gcpckms-era object BY NAME, so selection-by-newest
-   #     lands on a snapshot this seal can unwrap. Re-stamping it with a current
-   #     timestamp makes it newest by both name and LastModified; the
-   #     lineage/check_timestamp marker inside it still reports its true age, so
-   #     the freshness alarm keeps working.
-   gcloud storage cp "gs://ogenki-435905-ogenki-openbao-snapshot/<last-gcpckms>.snap" \
-     "gs://ogenki-435905-ogenki-openbao-snapshot/$(date -u +%Y-%m-%dT%H%M%SZ).snap"
+   gcloud storage ls gs://ogenki-435905-ogenki-openbao-snapshot/ | sed 's#.*/##' | sort
    ```
 
-   The failover's start time bounds which objects are AWS-sealed: everything
-   written from step 2 of the failover onward, plus every mirrored object.
-   Making the seal legible in the object name is the code-level fix that would
-   remove this hazard altogether — recorded as a risk in
-   [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}),
-   and deliberately not done here.
+   The newest object a `gcpckms` node can unwrap is the last `-gcpckms.snap`,
+   from before the failover, and restoring it discards every write after it.
+   **Those discarded writes belong to the AWS lineage, not this one** — the
+   standby was serving the restored AWS store — and step 1 above already carried
+   them into `eu-west-3-ogenki-openbao-snapshot`, which is where they belong.
+   That is what makes the skip correct here rather than a loss: `gcp-0` is going
+   back to being authoritative for itself, and its own last GCP-sealed snapshot
+   is exactly the store it should hold. Confirm that object is the one you
+   expect, then accept the skip on the stack that runs `rehydrate`:
+
+   ```bash
+   OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true TM_CLOUD=gcp \
+     terramate -C opentofu/gcp/openbao/management script run deploy
+   ```
+
+   It logs which object it skipped past and which it restored. Set it for that
+   one invocation only — it is not a default precisely because skipping a newer
+   snapshot discards data.
+
+   If the listing shows **no** `-gcpckms.snap` object at all — a young GCP
+   lineage, or one whose snapshots passed the bucket's 120-day expiry
+   (`lifecycle_rule` in `opentofu/gcp/openbao/lineage/main.tf`) — the flag
+   cannot help, and `rehydrate` refuses rather than falling through to a plain
+   init, which would overwrite this lineage's stored root token and recovery
+   keys. That case is a deliberate fresh GCP lineage, not a restore.
 
 5. Revert the `openbao_target_ip` / overlay changes from step 4 of the failover.
 

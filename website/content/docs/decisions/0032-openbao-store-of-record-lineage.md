@@ -194,22 +194,48 @@ drift in the Negatives below is real rather than theoretical.
   never names them at all and `check` cannot see them. It also needs a running cluster
   with External Secrets installed, which is exactly what a fallback bootstrap
   does not have.
-- **The GCP snapshot bucket becomes a mixed-seal namespace during a failover,
-  and its objects are indistinguishable by name.** `openbao-snapshot.sh` writes
-  every object as `<timestamp>.snap` — flat, identical on both clouds — so
-  nothing in a name, and nothing `latest_snapshot()` reads, records which seal
-  wrapped it. Once a standby has run under `awskms`, both the mirrored objects
-  and its own are AWS-sealed, while `latest_snapshot()` still just picks the
-  newest. A later `gcpckms` node therefore selects a snapshot it cannot unwrap,
-  restores it, and strands itself holding throwaway keys. *Mitigation today*:
-  procedural — the failover guide's failback destroys the standby with
-  `TM_OPENBAO_SKIP_SNAPSHOT=true` rather than flipping its seal, and requires
-  the AWS-sealed objects to be moved aside (or the last `gcpckms`-era object
-  promoted by name) before `gcp-0` returns to GCP-only mode. *The code-level
-  fix that would remove the hazard* is to make the seal legible in the object
-  name — a seal segment in the key, or a `seal=` object attribute
-  `latest_snapshot()` filters on. Not done in Stage 1; it is the first thing to
-  do if a second failover is ever expected.
+- **The GCP snapshot bucket becomes a mixed-seal namespace during a failover.**
+  Once a standby has run under `awskms`, both the mirrored objects and its own
+  are AWS-sealed, and a `gcpckms` node cannot unwrap any of them. That much is
+  inherent to the design and is still true.
+
+  *As accepted on 2026-09-02*, the consequence was sharper than that: those
+  objects were **indistinguishable by name**. `openbao-snapshot.sh` wrote every
+  one as `<timestamp>.snap` — flat, identical on both clouds — so nothing in a
+  name, and nothing `latest_snapshot()` read, recorded which seal had wrapped
+  it; the selector simply picked the newest. A later `gcpckms` node therefore
+  selected a snapshot it could not unwrap, restored it, and stranded itself
+  holding throwaway keys. The mitigation was procedural: the failover guide's
+  failback destroyed the standby with `TM_OPENBAO_SKIP_SNAPSHOT=true` rather
+  than flipping its seal, and asked an operator to move the AWS-sealed objects
+  aside — or promote the last `gcpckms`-era object by name — before `gcp-0`
+  returned to GCP-only mode. This record named the code-level fix that would
+  remove it, "a seal segment in the key, or a `seal=` object attribute
+  `latest_snapshot()` filters on", and deferred it: *not done in Stage 1; the
+  first thing to do if a second failover is ever expected.*
+
+  **Amended 2026-09-02 — closed the same day, by the first of those two.**
+  Objects are now written `<UTC timestamp>-<seal>.snap`, e.g.
+  `2026-09-02T041500Z-awskms.snap`. The seal is read from the writing node's own
+  unauthenticated `/v1/sys/seal-status` rather than from configuration, so it
+  records what actually wrapped the bytes; the timestamp stays leading and
+  fixed-width, so lexicographic order remains chronological across seals. Both
+  selection paths — the gate in `rehydrate_openbao`
+  (`scripts/openbao-config.sh`) and the one in `restore`
+  (`container-images/openbao-snapshot/openbao-snapshot.sh`) — compare the newest
+  object's segment against the node's own seal and **refuse before
+  `bao operator init` and before `snapshot restore -force`**, naming both seals.
+  An object carrying no seal segment is never selected, and is named in the
+  refusal rather than skipped silently.
+  `OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true` restores the newest object the
+  node's seal *can* unwrap instead — the failback case — and is deliberately not
+  the default, because skipping a newer snapshot discards writes. Snapshot image
+  `v0.3.0`. The bucket is still a mixed-seal namespace: what is gone is its
+  illegibility, and with it the bucket-mutation chore the failback used to
+  prescribe — [step 4 of the failover
+  guide]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}) is now a
+  decision about whose writes to discard, taken against a listing that answers
+  the question.
 - New moving parts: a systemd timer refreshing a web-identity token on the GCP
   node, a Storage Transfer job, an egress `ProxyGroup` path, two federated roles.
 - A node recreated between snapshots loses writes since the last one (RPO = the

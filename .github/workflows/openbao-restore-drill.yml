@@ -76,18 +76,68 @@ jobs:
 
       - name: Fetch the newest snapshot
         id: snapshot
+        env:
+          # The seal this drill's node runs, and therefore the only seal whose
+          # objects it can unwrap. A CONSTANT here rather than a lookup, and
+          # that is the one thing to check before trusting this step: the
+          # "Start a throwaway OpenBao" step below hardcodes `seal "awskms"`
+          # against SEAL_KEY_ALIAS, so the value is knowable in advance. The
+          # production selectors read it from the node instead
+          # (/v1/sys/seal-status), which is not answerable here -- the node
+          # does not exist yet at this point in the job. If that step ever
+          # stops being `awskms`, or gains a second seal, this has to move
+          # with it or the drill silently stops selecting anything.
+          DRILL_SEAL: awskms
         run: |
           set -euo pipefail
-          key=$(aws s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" \
-            --query 'sort_by(Contents, &LastModified)[-1].Key' --output text)
-          if [ -z "$key" ] || [ "$key" = "None" ]; then
-            echo "::error::no snapshot in s3://$SNAPSHOT_BUCKET"; exit 1
+          # The same candidate set `restore` builds in
+          # container-images/openbao-snapshot/openbao-snapshot.sh: TOP-LEVEL
+          # objects only, named `<UTC timestamp>-<seal>.snap`, and only those
+          # carrying this node's seal. The bare
+          # `--query 'sort_by(Contents, &LastModified)[-1].Key'` this replaces
+          # had no filter of any kind, so three things it would hand straight
+          # to `snapshot restore -force` now drop out:
+          #
+          #   - an object an operator MOVED ASIDE under a prefix
+          #     (`awskms/<ts>-awskms.snap`), which production treats as
+          #     deliberately out of the candidate set;
+          #   - a stray non-snapshot key -- a README, a partial upload -- which
+          #     restored as a confusing `bao` parse error rather than a clean
+          #     "no snapshot";
+          #   - a legacy `<ts>.snap` carrying no seal segment, which production
+          #     now REFUSES. Without this filter the drill would restore one
+          #     happily and go green on exactly the bucket state that blocks a
+          #     real rehydrate.
+          #
+          # Full JSON through jq rather than --query, for the reason
+          # latest_snapshot() in scripts/openbao-config.sh gives: that query
+          # ERRORS on an empty bucket, so exit status alone cannot separate
+          # "empty" from "could not list".
+          if ! listing=$(aws s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" --output json); then
+            echo "::error::could not list s3://$SNAPSHOT_BUCKET -- a listing failure, NOT an empty bucket"
+            exit 1
           fi
-          size=$(aws s3api head-object --bucket "$SNAPSHOT_BUCKET" --key "$key" --query ContentLength --output text)
+          read -r key size < <(printf '%s' "$listing" | jq -r --arg seal "$DRILL_SEAL" '
+              (.Contents // [])
+              | map(select((.Key | contains("/")) | not))
+              | map(select(.Key | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-\($seal)\\.snap$")))
+              | if length == 0 then "NONE 0"
+                else (sort_by(.LastModified) | last | "\(.Key) \(.Size)") end')
+
+          if [ "$key" = "NONE" ]; then
+            echo "::error::no ${DRILL_SEAL}-sealed snapshot in s3://$SNAPSHOT_BUCKET"
+            echo "Every key in the bucket, for context -- if the newest is a legacy <ts>.snap,"
+            echo "the CronJob is still running an image older than v0.3.0 and a real rehydrate"
+            echo "would refuse too. Retag it per container-images/openbao-snapshot/README.md."
+            printf '%s' "$listing" | jq -r '(.Contents // []) | .[].Key'
+            exit 1
+          fi
+          # .Size off the same listing, so this no longer needs a head-object
+          # round-trip; the mirror step below already reads it the same way.
           aws s3 cp "s3://$SNAPSHOT_BUCKET/$key" "$RUNNER_TEMP/bao.snap"
           echo "key=$key" >> "$GITHUB_OUTPUT"
           echo "size=$size" >> "$GITHUB_OUTPUT"
-          echo "newest S3 object: $key ($size bytes)"
+          echo "newest ${DRILL_SEAL}-sealed S3 object: $key ($size bytes)"
 
       - name: Start a throwaway OpenBao sealed by the lineage key
         run: |
@@ -167,9 +217,24 @@ jobs:
         run: |
           set -euo pipefail
           cutoff=$(date -u -d "-${MIRROR_GRACE_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)
+          # Top-level `*.snap` only, for the same reason the fetch step above
+          # filters -- but note this check compares NAMES ACROSS BUCKETS, and
+          # names carry the seal segment on both sides, so it needs no seal
+          # filter and gets none: a mirrored object is asserted by the name it
+          # was written under, whatever seal that is.
+          #
+          # The filter it does need is the top-level one, and its absence was a
+          # false-alarm bug that predates the seal segment: an object moved
+          # aside under a prefix could be picked as "newest older than 6h" and
+          # then reported ABSENT from the mirror -- because Storage Transfer
+          # copies it as `awskms/<ts>.snap` while `describe` is asked for the
+          # bare key, or because it was moved after the copy. Either way the
+          # drill would blame the mirror for an operator's own housekeeping.
           read -r key size < <(aws s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" --output json \
             | jq -r --arg c "$cutoff" '
                 (.Contents // [])
+                | map(select((.Key | contains("/")) | not))
+                | map(select(.Key | endswith(".snap")))
                 | map(select(.LastModified <= $c))
                 | if length == 0 then "NONE 0"
                   else (sort_by(.LastModified) | last | "\(.Key) \(.Size)") end')
