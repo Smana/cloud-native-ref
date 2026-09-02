@@ -4256,9 +4256,20 @@ EOF
 with:
 
 ```bash
+# REQUIRED with Integrated Storage, and it was missing here while the backend
+# was `file`. With mlock enabled OpenBao locks the whole Bolt database into
+# physical memory and the OOM killer takes the process once it outgrows RAM
+# (https://openbao.org/docs/rfcs/mlock-removal/). Harmless under `file`; on this
+# 2 GB e2-small now running raft it is the documented OOM path, and the
+# retry-forever drop-in below would turn it into a slow crashloop rather than a
+# clean failure. The AWS sibling and the CI drill both set it.
+disable_mlock = true
+
 # Raft, single node. `file` could neither take nor receive a snapshot, so a
 # node's contents died with it; a one-node raft cluster is bootstrapped by
-# `operator init` and costs nothing extra. api_addr is the FQDN so a restored
+# `operator init` and costs nothing extra. No `retry_join` at all, unlike AWS:
+# there is no second node to find, so `operator init` bootstraps the single
+# voter and it is leader immediately. api_addr is the FQDN so a restored
 # snapshot's peer list (which raft.Restore discards anyway) never has to match.
 storage "raft" {
   path    = "${openbao_data_path}"

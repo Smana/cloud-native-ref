@@ -142,17 +142,57 @@ jobs:
           awk 'BEGIN{n=0} /BEGIN CERT/{n++} {print > sprintf("'"$RUNNER_TEMP"'/c%d.pem", n)}' "$RUNNER_TEMP/chain.pem"
           openssl verify -CAfile .github/openbao-root-ca.pem -untrusted "$RUNNER_TEMP/chain.pem" "$RUNNER_TEMP/c1.pem"
 
-      - name: Assert the GCS mirror holds the same newest object
+      # Deliberately NOT the object the restore used. That one is hours old at
+      # most, and the Storage Transfer job's schedule is an EARLIEST start time,
+      # not a guarantee -- so asserting the very newest object is mirrored makes
+      # this drill fail on ordinary backend queuing. A weekly job that cries
+      # wolf gets switched off, which costs more than the bug it was built to
+      # catch. So: pick the newest object that has had MIRROR_GRACE_HOURS to
+      # cross, and assert *that* one. Still a real test of the mirror; just not
+      # a race against it.
+      - name: Assert the GCS mirror is working
+        env:
+          MIRROR_GRACE_HOURS: "6"
         run: |
           set -euo pipefail
-          key="${{ steps.snapshot.outputs.key }}"
-          size="${{ steps.snapshot.outputs.size }}"
-          gsize=$(gcloud storage objects describe "gs://$MIRROR_BUCKET/$key" --format='value(size)' 2>/dev/null || echo missing)
-          if [ "$gsize" = "missing" ]; then
-            echo "::error::gs://$MIRROR_BUCKET/$key is absent -- the Storage Transfer mirror is behind or broken"; exit 1
+          cutoff=$(date -u -d "-${MIRROR_GRACE_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)
+          read -r key size < <(aws s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" --output json \
+            | jq -r --arg c "$cutoff" '
+                (.Contents // [])
+                | map(select(.LastModified <= $c))
+                | if length == 0 then "NONE 0"
+                  else (sort_by(.LastModified) | last | "\(.Key) \(.Size)") end')
+
+          if [ "$key" = "NONE" ]; then
+            echo "::notice::No snapshot older than ${MIRROR_GRACE_HOURS}h in s3://$SNAPSHOT_BUCKET."
+            echo "Nothing has had time to mirror yet -- a young lineage. Skipping the mirror check."
+            exit 0
           fi
+          echo "checking mirror for $key ($size bytes), the newest object older than ${MIRROR_GRACE_HOURS}h"
+
+          # stderr is CAPTURED, not discarded. Sending it to /dev/null and
+          # treating every failure as "absent" would report a WIF
+          # misconfiguration, an IAM gap, a disabled API or a network blip as
+          # "the mirror is behind or broken" -- pointing the operator at the
+          # wrong system entirely, during the one job whose whole value is its
+          # failure message.
+          if gsize=$(gcloud storage objects describe "gs://$MIRROR_BUCKET/$key" \
+                       --format='value(size)' 2>"$RUNNER_TEMP/gcs.err"); then
+            :
+          elif grep -qiE 'not found|404|does not exist' "$RUNNER_TEMP/gcs.err"; then
+            echo "::error::gs://$MIRROR_BUCKET/$key is genuinely absent, ${MIRROR_GRACE_HOURS}h after it was written."
+            echo "The Storage Transfer job has not copied it: check the job's last run and its AWS role."
+            exit 1
+          else
+            echo "::error::Could not query gs://$MIRROR_BUCKET/$key at all. This is NOT an absent object --"
+            echo "it is this drill's own GCP access failing. Check the Workload Identity provider, the"
+            echo "service account binding, and that the Storage API is enabled."
+            cat "$RUNNER_TEMP/gcs.err"
+            exit 1
+          fi
+
           if [ "$gsize" != "$size" ]; then
-            echo "::error::size mismatch for $key: s3=$size gcs=$gsize"; exit 1
+            echo "::error::size mismatch for $key: s3=$size gcs=$gsize -- a truncated or partial copy"; exit 1
           fi
           echo "mirror OK: $key ($gsize bytes) present on both sides"
 
