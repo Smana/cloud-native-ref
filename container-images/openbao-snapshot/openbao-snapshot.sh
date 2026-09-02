@@ -8,8 +8,16 @@ info="INFO"
 export warn="WARNING"
 
 # Replacing array with individual checks
+#
+# `curl` joined the list when the seal segment did (see "Seal legibility"
+# below): the seal type is read from /v1/sys/seal-status, which is unwrapped
+# and unauthenticated, and `bao status` cannot stand in for it -- that command
+# exits 2 whenever the node is sealed, which is precisely its state on the
+# restore path. curl is already in this image (see the Dockerfile's apt step)
+# and is already a pre-flight requirement of the caller in
+# scripts/openbao-config.sh, so this adds nothing an operator does not have.
 check_required_bin() {
-    for BIN in bao jq; do
+    for BIN in bao jq curl; do
         if ! type "${BIN}" >/dev/null 2>&1; then
             echo "${err}: ${BIN} binary not found"
             exit 1
@@ -63,6 +71,137 @@ case "${CLOUD}" in
     *) echo "${err}: CLOUD must be 'aws' or 'gcp', got '${CLOUD}'." ; exit 1 ;;
 esac
 
+# ---------------------------------------------------------------------------
+# Seal legibility
+# ---------------------------------------------------------------------------
+#
+# A Raft snapshot can only be restored under THE SEAL THAT ENCRYPTED IT, and
+# the platform exploits that on purpose: a GCP standby unseals with the *AWS*
+# KMS key so it can restore AWS snapshots (ADR-0032). The consequence is that
+# the GCP bucket becomes a mixed-seal namespace after a failover -- mirrored
+# objects are AWS-sealed by construction, and the standby's own are AWS-sealed
+# too, because it ran with seal_provider = "awskms".
+#
+# So the seal goes IN THE OBJECT NAME:
+#
+#     <UTC timestamp>-<seal>.snap        e.g. 2026-09-02T041500Z-awskms.snap
+#
+# A trailing SEGMENT, not a key prefix. A prefix (`awskms/<ts>.snap`) makes an
+# object drop out of the candidate set altogether -- both selection paths list
+# non-recursively and strip through the last "/" -- which is exactly what you
+# want from "move this aside" and exactly wrong for normal operation. Keeping
+# the timestamp leading, and fixed-width, also keeps lexicographic order
+# chronological across seals, which is what the GCP selector relies on.
+SNAP_NAME_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-[a-z0-9]+\.snap$'
+
+# Objects with NO seal segment -- everything written before this scheme, and
+# anything moved under a prefix -- are never selected. Their seal cannot be
+# determined from anything a selector can read, so accepting one reintroduces
+# the whole hazard; and silently skipping one could restore an older snapshot
+# while a newer sits there, which is silent data loss on the disaster-recovery
+# path. Both selectors refuse and name the object instead.
+#
+# The escape hatch, for the one legitimate case: a bucket whose newest objects
+# are foreign-sealed and are not coming back (the failback in
+# website/content/docs/guides/openbao-cross-cloud-failover.md). Set this and
+# the newest object THIS NODE'S seal can unwrap is used, with the skipped ones
+# counted in the log. Deliberately not the default: skipping a newer snapshot
+# discards data, and that decision belongs to an operator rather than to a
+# selector.
+SKIP_FOREIGN_SEAL="${OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL:-false}"
+case "${SKIP_FOREIGN_SEAL}" in
+    true|false) ;;
+    *) echo "${err}: OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL must be 'true' or 'false', got '${SKIP_FOREIGN_SEAL}'." ; exit 1 ;;
+esac
+
+# GET /v1/sys/seal-status, honouring the same TLS choices as everything else
+# here. Built as explicit branches rather than by word-splitting a variable of
+# flags: `"${VAULT_CACERT:+--cacert $VAULT_CACERT}"` passes `--cacert /path` as
+# ONE argv element when quoted and an empty word when unset -- the exact trap
+# already documented in verify_pki_present() in scripts/openbao-config.sh.
+seal_status_raw() {
+    if [ -n "${VAULT_CACERT:-}" ] && [ -n "${VAULT_SKIP_VERIFY:-}" ]; then
+        curl -sS -k --cacert "${VAULT_CACERT}" "${VAULT_ADDR}/v1/sys/seal-status"
+    elif [ -n "${VAULT_CACERT:-}" ]; then
+        curl -sS --cacert "${VAULT_CACERT}" "${VAULT_ADDR}/v1/sys/seal-status"
+    elif [ -n "${VAULT_SKIP_VERIFY:-}" ]; then
+        curl -sS -k "${VAULT_ADDR}/v1/sys/seal-status"
+    else
+        curl -sS "${VAULT_ADDR}/v1/sys/seal-status"
+    fi
+}
+
+# The seal this node actually runs, on stdout; empty and non-zero when it
+# cannot be established.
+#
+# Read from the NODE, not from a variable: `seal_provider` in a tfvars file can
+# disagree with the process that is running, and the whole point of the segment
+# is to record what really wrapped the bytes. /v1/sys/seal-status is
+# UNAUTHENTICATED -- it sits on OpenBao's bare HTTP mux next to /v1/sys/init
+# and /v1/sys/health (openbao/openbao, http/handler.go:164 at v2.6.2) -- so both
+# the writer (save, holding a JWT token) and the reader (restore, running
+# against a node that is up but may not be initialised yet) can ask it.
+#
+# `.type` is the BARRIER seal type: awskms, gcpckms, shamir. That is only true
+# from OpenBao 2.4.0 onward -- before openbao/openbao#1638 the field was
+# hardcoded "shamir" for every configuration (issue #1633). Both clusters pin
+# 2.6.2 (`openbao_version`, opentofu/{aws,gcp}/openbao/cluster/variables.tf),
+# and the guard below refuses rather than trusting a misreport: labelling every
+# object "-shamir" on both clouds would reintroduce, invisibly, the very hazard
+# the segment exists to remove.
+node_seal_type() {
+    seal_out=$(seal_status_raw 2>/dev/null) || seal_out=""
+    if [ -z "${seal_out}" ]; then
+        echo "${err}: could not read ${VAULT_ADDR}/v1/sys/seal-status." >&2
+        echo "${err}: that endpoint needs no token, so this is the node or the TLS trust," >&2
+        echo "${err}: not a credential. The seal type is what names a snapshot and what" >&2
+        echo "${err}: decides whether one can be restored here, so refusing rather than" >&2
+        echo "${err}: writing or selecting an object whose seal is unknown." >&2
+        return 1
+    fi
+
+    seal_type=$(printf '%s' "${seal_out}" | jq -r '.type // empty' 2>/dev/null) || seal_type=""
+    seal_recovery=$(printf '%s' "${seal_out}" | jq -r 'if .recovery_seal == true then "true" else "false" end' 2>/dev/null) || seal_recovery="false"
+
+    if [ -z "${seal_type}" ]; then
+        echo "${err}: ${VAULT_ADDR}/v1/sys/seal-status returned no '.type' field." >&2
+        echo "${err}: response was: ${seal_out}" >&2
+        return 1
+    fi
+    # It goes into an object key and into a regex; keep it boring.
+    if ! printf '%s' "${seal_type}" | grep -Eq '^[a-z0-9]+$'; then
+        echo "${err}: seal type '${seal_type}' is not a plain lowercase token, so it cannot" >&2
+        echo "${err}: safely become part of an object name. Refusing." >&2
+        return 1
+    fi
+    # An impossible combination, and a precise fingerprint of a server older
+    # than OpenBao 2.4.0: before openbao/openbao#1638, sys/seal-status reported
+    # "shamir" for EVERY barrier -- auto-unseal included -- while still setting
+    # recovery_seal for the auto-unseal case. A real Shamir barrier has no
+    # recovery seal, so the pair cannot both be honest.
+    if [ "${seal_type}" = "shamir" ] && [ "${seal_recovery}" = "true" ]; then
+        echo "${err}: this node reports a 'shamir' barrier AND recovery_seal=true, which" >&2
+        echo "${err}: cannot both be true -- a Shamir barrier has no recovery seal. That is" >&2
+        echo "${err}: what an OpenBao older than 2.4.0 reports for an auto-unseal barrier" >&2
+        echo "${err}: (openbao/openbao#1633, fixed by #1638). Trusting it would label every" >&2
+        echo "${err}: object '-shamir' on both clouds and hide the mixed-seal hazard again." >&2
+        echo "${err}: Upgrade the server; \`openbao_version\` pins 2.6.2." >&2
+        return 1
+    fi
+    printf '%s' "${seal_type}"
+}
+
+# The seal segment an object name carries, or empty when it carries none.
+#
+# Anchored against the WHOLE name rather than split on the last "-": the
+# timestamp contains dashes too, so splitting a legacy "2026-09-02T041500Z.snap"
+# yields "02T041500Z" -- a string that is not a seal, but is not obviously not
+# one either.
+snapshot_seal_segment() {
+    printf '%s' "$1" | grep -Eq "${SNAP_NAME_RE}" || return 0
+    printf '%s' "$1" | sed -E 's/^.*Z-([a-z0-9]+)\.snap$/\1/'
+}
+
 usage() {
     cat << EOF
 Backup or restore a OpenBao instance from a bucket in object storage
@@ -96,6 +235,22 @@ Usage: ./${SCRIPT_NAME} [save|restore] -s <snapshot_file> -b <bucket_name> -a <V
       VAULT_CACERT              : CA chain to verify the server. Set it; do not skip verify.
       CHECK_NAMESPACE           : override the marker's namespace (default: root).
       CHECK_PATH                : override the marker path (default: lineage/check_timestamp).
+      OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL
+                                : 'true' lets 'restore' skip objects sealed by a
+                                  DIFFERENT seal than this node's, and use the newest
+                                  object this node's seal can unwrap. Default 'false',
+                                  which REFUSES instead -- skipping a newer snapshot
+                                  discards every write after it. Only for a failback,
+                                  where the foreign-sealed objects are not coming back.
+
+      Object naming:
+      Objects are written as <UTC timestamp>-<seal>.snap, e.g.
+      2026-09-02T041500Z-awskms.snap. The seal is read from the node itself
+      (/v1/sys/seal-status, unauthenticated), because a snapshot can only be
+      restored under the seal that encrypted it -- so 'restore' selects the newest
+      object and REFUSES if its seal is not this node's. Objects with no seal
+      segment (written before this scheme) are never selected; see the container
+      image README for how to retag one.
 
       ex:
       # Run a snapshot (backup)
@@ -301,6 +456,13 @@ save() {
     # rather than exits, so the exit is chosen here -- restore() makes the
     # opposite choice deliberately.
     authenticate || exit 1
+    # The seal FIRST, before anything is written anywhere. A snapshot whose
+    # seal cannot be established cannot be named, and an object with no seal
+    # segment is one no future restore will select -- so it is not a backup,
+    # it is a silent gap. Failing here is loud: the CronJob's next miss trips
+    # OpenBaoSnapshotStale.
+    SEAL_TYPE=$(node_seal_type) || exit 1
+    echo "${info}: This node's seal is '${SEAL_TYPE}'; the object will carry it."
     # The marker records WHEN THE SNAPSHOT WAS TAKEN, so a later restore can
     # judge the age of what it just installed -- and, because it is read back
     # from inside the restored OpenBao, prove the restore actually applied.
@@ -327,15 +489,18 @@ save() {
     fi
     echo "${info}: Requesting a snapshot via ${VAULT_ADDR}"
     bao operator raft snapshot save "${SNAPSHOT_FILE}"
-    # UTC, colon-free, lexicographically sortable. The previous
+    # UTC, colon-free, lexicographically sortable, then the seal. The previous
     # "%Y-%m-%d_%H:%M:%S_%Z" embedded colons (legal in S3, awkward everywhere
     # downstream) and a local timezone abbreviation, so key order broke across a
-    # DST change.
+    # DST change. The timestamp stays FIRST and fixed-width so `sort | tail -n1`
+    # remains chronological even in a bucket holding two seals.
+    SNAP_OBJECT="$(date -u +"%Y-%m-%dT%H%M%SZ")-${SEAL_TYPE}.snap"
     if [ "${CLOUD}" = "gcp" ]; then
-        gcloud storage cp "${SNAPSHOT_FILE}" "gs://${BUCKET_NAME}/$(date -u +"%Y-%m-%dT%H%M%SZ").snap"
+        gcloud storage cp "${SNAPSHOT_FILE}" "gs://${BUCKET_NAME}/${SNAP_OBJECT}"
     else
-        aws s3 cp "${SNAPSHOT_FILE}" "s3://${BUCKET_NAME}/$(date -u +"%Y-%m-%dT%H%M%SZ").snap"
+        aws s3 cp "${SNAPSHOT_FILE}" "s3://${BUCKET_NAME}/${SNAP_OBJECT}"
     fi
+    echo "${info}: Wrote ${SNAP_OBJECT}"
 }
 
 restore() {
@@ -351,7 +516,23 @@ restore() {
         echo "${warn}: restore authenticates with the recovery keys instead."
     fi
 
+    # The seal BEFORE anything is selected or downloaded. On a rehydrate this
+    # runs against the node that is about to be restored INTO -- which is
+    # exactly the node whose seal has to unwrap the object -- and the endpoint
+    # answers there because it needs no token and no initialised barrier.
+    SEAL_TYPE=$(node_seal_type) || exit 1
+    echo "${info}: This node's seal is '${SEAL_TYPE}'."
+
     echo "${info}: Fetching latest backup from bucket ${BUCKET_NAME}"
+    # CANDIDATES is the whole candidate set, oldest first, one object name per
+    # line -- not just the newest. The seal gate below has to be able to count
+    # what it is refusing and, under the escape hatch, to reach past it.
+    #
+    # Top-level objects only, both clouds. An object moved under a prefix
+    # ("awskms/<ts>.snap") is by definition one an operator moved ASIDE, and
+    # must not be selected; GCP already dropped those (a non-recursive listing
+    # plus `sed 's#.*/##'` leaves a directory entry that no longer matches
+    # '\.snap$'), and AWS now does too rather than selecting any key at all.
     if [ "${CLOUD}" = "gcp" ]; then
         # Lexicographic is chronological here, and only here. The AWS bucket
         # still holds objects in the old "%Y-%m-%d_%H:%M:%S_%Z" format, where
@@ -359,35 +540,100 @@ restore() {
         # hence the LastModified sort below. The GCP bucket was created after
         # the format change and has only ever held the sortable form.
         #
-        # Listing is split from the sed|grep|sort|tail pipeline on purpose:
-        # under `set -e` (no `pipefail` here -- see below), a pipeline's exit
-        # status is its last command's, so a failed `gcloud storage ls`
-        # (expired auth, no bucket permission, network down) would be masked
-        # by `tail -n1` exiting 0 on empty input, and fall through to the
-        # "No snapshots found" guard below -- a misleading diagnosis on the
-        # restore path, during an incident. Testing the listing on its own
-        # keeps that failure loud and distinct from a genuinely empty bucket.
-        # (Not fixed with `set -o pipefail` instead: `grep` exits 1 when it
-        # matches nothing, so pipefail would turn a legitimately empty bucket
-        # into a hard failure too.)
+        # Listing is split from the sed|grep|sort pipeline on purpose: under
+        # `set -e` (no `pipefail` here -- see below), a pipeline's exit status
+        # is its last command's, so a failed `gcloud storage ls` (expired auth,
+        # no bucket permission, network down) would be masked by `sort` exiting
+        # 0 on empty input, and fall through to the "No snapshots found" guard
+        # below -- a misleading diagnosis on the restore path, during an
+        # incident. Testing the listing on its own keeps that failure loud and
+        # distinct from a genuinely empty bucket. (Not fixed with `set -o
+        # pipefail` instead: `grep` exits 1 when it matches nothing, so
+        # pipefail would turn a legitimately empty bucket into a hard failure
+        # too -- hence the `|| true` guards on every grep below as well.)
         if ! LISTING=$(gcloud storage ls "gs://${BUCKET_NAME}/"); then
             echo "${err}: could not list gs://${BUCKET_NAME} -- see the gcloud error above."
             echo "${err}: this is a listing failure, NOT an empty bucket."
             exit 1
         fi
-        SNAP=$(echo "${LISTING}" | sed 's#.*/##' | grep '\.snap$' | sort | tail -n1)
+        CANDIDATES=$(echo "${LISTING}" | sed 's#.*/##' | { grep '\.snap$' || true; } | sort)
     else
         # Sorted by LastModified, not by key name. Key-name ordering would be
         # actively dangerous during the changeover from the old
         # "%Y-%m-%d_%H:%M:%S_%Z" format: '_' sorts after 'T', so every old-format
         # object ranks above every new one and `tail -n1` would keep selecting a
         # stale snapshot until the 120-day lifecycle rule aged them out.
-        SNAP=$(aws s3api list-objects-v2 --bucket "${BUCKET_NAME}" \
-            --query 'sort_by(Contents, &LastModified)[-1].Key' --output text)
+        #
+        # Full JSON through jq rather than `--query 'sort_by(...)[-1].Key'`, for
+        # the same reason latest_snapshot() in scripts/openbao-config.sh does
+        # it this way: that query ERRORS on an empty bucket, so exit status
+        # alone could not separate "empty" from "could not list" -- and the
+        # gate below needs the whole set, not only the last element.
+        if ! LISTING=$(aws s3api list-objects-v2 --bucket "${BUCKET_NAME}" --output json); then
+            echo "${err}: could not list s3://${BUCKET_NAME} -- see the aws error above."
+            echo "${err}: this is a listing failure, NOT an empty bucket."
+            exit 1
+        fi
+        CANDIDATES=$(printf '%s' "${LISTING}" | jq -r '
+            (.Contents // [])
+            | map(select((.Key | contains("/")) | not))
+            | map(select(.Key | endswith(".snap")))
+            | sort_by(.LastModified) | .[].Key')
     fi
-    if [ -z "${SNAP}" ] || [ "${SNAP}" = "None" ]; then
+    if [ -z "${CANDIDATES}" ]; then
         echo "${err}: No snapshots found in ${BUCKET_NAME}."
         exit 1
+    fi
+
+    SNAP=$(printf '%s\n' "${CANDIDATES}" | tail -n1)
+    SNAP_SEAL=$(snapshot_seal_segment "${SNAP}")
+
+    # THE GATE. Everything below this point is destructive -- `operator raft
+    # snapshot restore -force` replaces the entire storage backend -- and a
+    # snapshot restored under the wrong seal leaves the node sealed with no
+    # useful error at all. So the mismatch is caught here, by name, before a
+    # single byte is downloaded.
+    if [ "${SNAP_SEAL}" != "${SEAL_TYPE}" ]; then
+        # `grep -c` prints its count and exits 1 when that count is zero, so
+        # every one of these needs the `|| true`.
+        n_all=$(printf '%s\n' "${CANDIDATES}" | { grep -c . || true; })
+        n_tagged=$(printf '%s\n' "${CANDIDATES}" | { grep -cE "${SNAP_NAME_RE}" || true; })
+        n_mine=$(printf '%s\n' "${CANDIDATES}" | { grep -cE "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-${SEAL_TYPE}\.snap$" || true; })
+        if [ -n "${SNAP_SEAL}" ]; then
+            found="sealed '${SNAP_SEAL}'"
+        else
+            found="carrying NO seal segment -- written before seals were legible in the name"
+        fi
+        echo "${err}: SEAL MISMATCH -- refusing to restore, before anything destructive runs."
+        echo "${err}:   this node's seal : ${SEAL_TYPE}"
+        echo "${err}:   newest object    : ${SNAP}"
+        echo "${err}:                      ${found}"
+        echo "${err}:   in ${BUCKET_NAME}: ${n_all} snapshot object(s), ${n_mine} this node can unwrap,"
+        echo "${err}:                      $((n_all - n_tagged)) with no seal segment"
+        echo "${err}: A Raft snapshot can only be restored under the seal that encrypted it, so"
+        echo "${err}: restoring this one would leave the node sealed with no diagnosable error."
+        echo "${err}: This is the mixed-seal state a cross-cloud failover leaves behind (ADR-0032):"
+        echo "${err}: mirrored objects are AWS-sealed by construction, and a standby that ran with"
+        echo "${err}: seal_provider = \"awskms\" wrote AWS-sealed objects of its own."
+        echo "${err}: Pick one:"
+        echo "${err}:   - deploy this node under the seal that matches the newest object, or"
+        echo "${err}:   - re-run with OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true to restore the newest"
+        echo "${err}:     object this node's '${SEAL_TYPE}' seal CAN unwrap. That DISCARDS every"
+        echo "${err}:     write after it, so list the bucket and decide first."
+        if [ "${SKIP_FOREIGN_SEAL}" != "true" ]; then
+            exit 1
+        fi
+        SNAP=$(printf '%s\n' "${CANDIDATES}" | { grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-${SEAL_TYPE}\.snap$" || true; } | tail -n1)
+        if [ -z "${SNAP}" ]; then
+            echo "${err}: ...and there is no such object: nothing in ${BUCKET_NAME} carries the"
+            echo "${err}: '-${SEAL_TYPE}' seal segment, so OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL cannot help."
+            echo "${err}: This node cannot be rehydrated from this bucket. Deploy it under the seal"
+            echo "${err}: the objects carry, or point it at a bucket holding '${SEAL_TYPE}' snapshots."
+            exit 1
+        fi
+        echo "${warn}: OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true -- skipping the newer foreign-sealed"
+        echo "${warn}: object(s) and restoring ${SNAP}, the newest this node's seal can unwrap."
+        echo "${warn}: Whatever was written after it is NOT in this restore."
     fi
 
     if [ "${CLOUD}" = "gcp" ]; then

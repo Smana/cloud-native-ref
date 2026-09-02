@@ -68,6 +68,15 @@ usage() {
     echo "  --ca-file <Path>                          CA chain to verify the server with (sets VAULT_CACERT)"
     echo "  --freshness-days <N>                      Age past which a restored snapshot is reported as old (default: ${FRESHNESS_DAYS})"
     echo ""
+    echo "Environment:"
+    echo "  OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true   Let 'rehydrate' skip snapshots sealed by a"
+    echo "                                             DIFFERENT seal than this node's, and restore"
+    echo "                                             the newest one this node's seal can unwrap."
+    echo "                                             Default refuses instead, before the init:"
+    echo "                                             skipping a newer snapshot discards every write"
+    echo "                                             after it. Only for a failback, where the"
+    echo "                                             foreign-sealed objects are not coming back."
+    echo ""
     echo "Example:"
     echo "  $0 init --url https://openbao:8200 --root-token-secret-name openbao/root-token \\"
     echo "          --recovery-keys-secret-name openbao/recovery-keys"
@@ -203,6 +212,19 @@ log_message() {
     shift
     local message="$*"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $message"
+}
+
+# The same line, ON STDERR. Mandatory for any function whose stdout a caller
+# CAPTURES -- latest_snapshot, latest_snapshot_sealed, node_seal_type are all
+# called as `x=$(f)`, so a log_message inside them is swallowed by the command
+# substitution and the operator sees nothing. Measured: the seal-mismatch
+# refusal printed not one word until these moved to stderr, which would have
+# made a loud failure a silent one -- exactly the bug the gate exists to
+# remove. Same reasoning as gcp_gcloud_identity's redirect in
+# scripts/lib/gcloud-adc.sh, where a log line captured as data ended up inside
+# a PEM file.
+log_err() {
+    log_message "ERROR" "$@" >&2
 }
 
 wait_for_openbao() {
@@ -380,7 +402,7 @@ latest_snapshot() {
     if [ "$CLOUD" = "gcp" ]; then
         local listing
         if ! listing=$(gcp_gcloud storage ls "gs://${SNAPSHOT_BUCKET}/"); then
-            log_message "ERROR" "could not list gs://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
+            log_err "could not list gs://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
             return 1
         fi
         # `grep || true`: grep exits 1 when it matches nothing, and this file
@@ -394,10 +416,136 @@ latest_snapshot() {
         # query ERRORS on an empty bucket, so exit status alone could not
         # separate "empty" from "could not list".
         if ! out=$($aws_cmd s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" --output json); then
-            log_message "ERROR" "could not list s3://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
+            log_err "could not list s3://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
             return 1
         fi
         printf '%s' "$out" | jq -r '(.Contents // []) | if length == 0 then "" else (sort_by(.LastModified) | last | .Key) end'
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Seal legibility
+# ---------------------------------------------------------------------------
+#
+# A Raft snapshot can only be restored under THE SEAL THAT ENCRYPTED IT, which
+# the platform exploits on purpose: a GCP standby unseals with the *AWS* KMS
+# key so it can restore AWS snapshots (ADR-0032). After a failover the GCP
+# bucket therefore holds a mix -- mirrored objects are AWS-sealed by
+# construction, and the standby's own are AWS-sealed too, because it ran with
+# seal_provider = "awskms".
+#
+# Objects carry the seal in their name, `<UTC timestamp>-<seal>.snap`, written
+# by the sibling save path. Keep this regex and the three helpers below
+# textually in step with the copies in
+# container-images/openbao-snapshot/openbao-snapshot.sh -- the duplication is
+# structural, not laziness: THIS file must decide before `bao operator init`,
+# and the sibling only runs after it. The whole point of the gate is that it
+# lands on the near side of the irreversible step.
+SNAP_NAME_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-[a-z0-9]+\.snap$'
+
+# The seal this node actually runs, on stdout; non-zero when it cannot be
+# established.
+#
+# Read from the NODE, not from a variable: `seal_provider` in a tfvars file can
+# disagree with the process that is running, and the point of the segment is to
+# record what really wrapped the bytes. /v1/sys/seal-status is UNAUTHENTICATED
+# -- it sits on OpenBao's bare HTTP mux next to /v1/sys/init and /v1/sys/health
+# (openbao/openbao, http/handler.go:164 at v2.6.2) -- so it answers here, where
+# the node is up but deliberately NOT yet initialised.
+#
+# `.type` is the BARRIER seal type: awskms, gcpckms, shamir. True only from
+# OpenBao 2.4.0 onward -- before openbao/openbao#1638 the field was hardcoded
+# "shamir" for every configuration (issue #1633). Both clusters pin 2.6.2
+# (`openbao_version`, opentofu/{aws,gcp}/openbao/cluster/variables.tf), and the
+# guard below refuses rather than trusting a misreport: labelling every object
+# "-shamir" on both clouds would reintroduce the hazard invisibly.
+node_seal_type() {
+    # Same array-built argv, and for the same measured reason, as
+    # verify_pki_present() below -- see the comment there.
+    local -a curl_args=(-sS)
+    if [ -n "${VAULT_CACERT:-}" ]; then curl_args+=(--cacert "$VAULT_CACERT"); fi
+    if [ -n "${VAULT_SKIP_VERIFY:-}" ]; then curl_args+=(-k); fi
+
+    local raw seal_type recovery
+    raw=$(curl "${curl_args[@]}" "$OPENBAO_URL/v1/sys/seal-status" 2>/dev/null || true)
+    if [ -z "$raw" ]; then
+        log_err "could not read ${OPENBAO_URL}/v1/sys/seal-status. That endpoint needs no"
+        log_err "token, so this is the node or the TLS trust, not a credential. The seal"
+        log_err "type is what decides whether the lineage's newest snapshot can be"
+        log_err "restored here at all, so refusing before the init rather than stranding"
+        log_err "the node afterwards."
+        return 1
+    fi
+
+    seal_type=$(printf '%s' "$raw" | jq -r '.type // empty' 2>/dev/null || true)
+    recovery=$(printf '%s' "$raw" | jq -r 'if .recovery_seal == true then "true" else "false" end' 2>/dev/null || true)
+
+    if [ -z "$seal_type" ]; then
+        log_err "${OPENBAO_URL}/v1/sys/seal-status returned no '.type' field."
+        log_err "response was: ${raw}"
+        return 1
+    fi
+    if ! printf '%s' "$seal_type" | grep -Eq '^[a-z0-9]+$'; then
+        log_err "seal type '${seal_type}' is not a plain lowercase token, so it cannot be"
+        log_err "matched against an object name. Refusing."
+        return 1
+    fi
+    # An impossible combination, and a precise fingerprint of a server older
+    # than OpenBao 2.4.0: before openbao/openbao#1638, sys/seal-status reported
+    # "shamir" for EVERY barrier -- auto-unseal included -- while still setting
+    # recovery_seal for the auto-unseal case. A real Shamir barrier has no
+    # recovery seal, so the pair cannot both be honest.
+    if [ "$seal_type" = "shamir" ] && [ "$recovery" = "true" ]; then
+        log_err "this node reports a 'shamir' barrier AND recovery_seal=true, which cannot"
+        log_err "both be true -- a Shamir barrier has no recovery seal. That is what an"
+        log_err "OpenBao older than 2.4.0 reports for an auto-unseal barrier"
+        log_err "(openbao/openbao#1633, fixed by #1638). Trusting it would treat every"
+        log_err "object as '-shamir' on both clouds and hide the mixed-seal hazard again."
+        log_err "Upgrade the server; \`openbao_version\` pins 2.6.2."
+        return 1
+    fi
+    printf '%s' "$seal_type"
+}
+
+# The seal segment an object name carries, or empty when it carries none --
+# every object written before this scheme, and anything moved under a prefix.
+#
+# Anchored against the WHOLE name rather than split on the last "-": the
+# timestamp contains dashes too, so splitting a legacy "2026-09-02T041500Z.snap"
+# yields "02T041500Z", which is not a seal but is not obviously not one either.
+snapshot_seal_segment() {
+    printf '%s' "$1" | grep -Eq "$SNAP_NAME_RE" || return 0
+    printf '%s' "$1" | sed -E 's/^.*Z-([a-z0-9]+)\.snap$/\1/'
+}
+
+# Newest object in the bucket carrying a GIVEN seal segment. Same three-state
+# contract as latest_snapshot(): stdout empty = none, return 1 = the listing
+# itself failed. Used only by the escape hatch below, which is why it is
+# separate rather than folded into latest_snapshot() -- overloading that
+# function's emptiness answer is how "the bucket holds snapshots I will not
+# select" would silently become "the bucket is empty", and that answer routes
+# straight into a plain init that overwrites the lineage's stored keys.
+latest_snapshot_sealed() {
+    local seal=$1
+    local re="^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-${seal}\\.snap$"
+    if [ "$CLOUD" = "gcp" ]; then
+        local listing
+        if ! listing=$(gcp_gcloud storage ls "gs://${SNAPSHOT_BUCKET}/"); then
+            log_err "could not list gs://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
+            return 1
+        fi
+        printf '%s\n' "$listing" | sed 's#.*/##' | { grep -E "$re" || true; } | sort | tail -n1
+    else
+        local aws_cmd; aws_cmd=$(get_aws_cmd)
+        local out
+        if ! out=$($aws_cmd s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" --output json); then
+            log_err "could not list s3://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
+            return 1
+        fi
+        printf '%s' "$out" | jq -r --arg re "$re" '
+            (.Contents // [])
+            | map(select(.Key | test($re)))
+            | if length == 0 then "" else (sort_by(.LastModified) | last | .Key) end'
     fi
 }
 
@@ -653,6 +801,71 @@ rehydrate_openbao() {
         exit 1
     fi
 
+    # THE SEAL GATE, and it belongs exactly here: the last thing before
+    # `bao operator init`, which is irreversible, and before the child's
+    # `snapshot restore -force`, which replaces the whole storage backend.
+    #
+    # A snapshot can only be restored under the seal that encrypted it. Get
+    # this wrong and the node comes back SEALED with no diagnosable error --
+    # the stranded state the 200-with-no-PKI branch above exists to describe
+    # after the fact. Detecting it by name, here, is what makes that branch
+    # something an operator should never reach.
+    local node_seal snap_seal
+    if ! node_seal=$(node_seal_type); then
+        exit 1
+    fi
+    snap_seal=$(snapshot_seal_segment "$latest")
+    log_message "INFO" "This node's seal is '${node_seal}'; ${latest} carries '${snap_seal:-none}'."
+
+    if [ "$snap_seal" != "$node_seal" ]; then
+        local found
+        if [ -n "$snap_seal" ]; then
+            found="sealed '${snap_seal}'"
+        elif [[ "$latest" == */* ]]; then
+            found="under a prefix -- an object an operator MOVED ASIDE, so it carries no seal segment"
+        else
+            found="carrying NO seal segment -- written before seals were legible in the name"
+        fi
+        log_message "ERROR" "SEAL MISMATCH -- refusing to initialise or restore. Nothing has changed yet."
+        log_message "ERROR" "  this node's seal : ${node_seal}"
+        log_message "ERROR" "  newest object    : ${latest}"
+        log_message "ERROR" "                     ${found}"
+        log_message "ERROR" "A Raft snapshot can only be restored under the seal that encrypted it, so"
+        log_message "ERROR" "restoring this one would leave the node sealed with no useful error -- the"
+        log_message "ERROR" "stranded state this script warns about once it is already too late."
+        log_message "ERROR" "This is the mixed-seal state a cross-cloud failover leaves behind (ADR-0032):"
+        log_message "ERROR" "mirrored objects are AWS-sealed by construction, and a standby that ran with"
+        log_message "ERROR" "seal_provider = \"awskms\" wrote AWS-sealed objects of its own."
+        log_message "ERROR" "Pick one:"
+        log_message "ERROR" "  - deploy this node under the seal the newest object carries, or"
+        log_message "ERROR" "  - re-run with OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true to restore the newest"
+        log_message "ERROR" "    object this node's '${node_seal}' seal CAN unwrap. That DISCARDS every"
+        log_message "ERROR" "    write after it, so list the bucket and decide first."
+        if [ "${OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL:-false}" != "true" ]; then
+            exit 1
+        fi
+        # The escape hatch. Still not a free pass: if the bucket holds nothing
+        # this seal can unwrap, we must NOT fall through to init_openbao --
+        # that writes fresh keys over the lineage's stored ones. Refuse instead.
+        local sealed_latest
+        if ! sealed_latest=$(latest_snapshot_sealed "$node_seal"); then
+            log_message "ERROR" "Refusing: cannot list ${SNAPSHOT_BUCKET} to find a '${node_seal}'-sealed object."
+            exit 1
+        fi
+        if [ -z "$sealed_latest" ]; then
+            log_message "ERROR" "...and there is no such object: nothing in ${SNAPSHOT_BUCKET} carries the"
+            log_message "ERROR" "'-${node_seal}' seal segment, so OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL cannot"
+            log_message "ERROR" "help. NOT falling through to a plain init -- that would overwrite this"
+            log_message "ERROR" "lineage's stored root token and recovery keys. Deploy this node under the"
+            log_message "ERROR" "seal the objects carry, or point it at a bucket holding '${node_seal}' snapshots."
+            exit 1
+        fi
+        log_message "WARN" "OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true -- skipping the newer foreign-sealed"
+        log_message "WARN" "object(s). ${sealed_latest} is the newest this node's seal can unwrap; whatever"
+        log_message "WARN" "was written after it is NOT in this restore."
+        latest="$sealed_latest"
+    fi
+
     log_message "INFO" "Snapshot ${latest} found in ${SNAPSHOT_BUCKET}. Initialising with throwaway shares, then restoring."
 
     local scratch
@@ -691,7 +904,13 @@ rehydrate_openbao() {
     # LINEAGE's recovery keys are passed too, because the child needs them
     # AFTER the restore, once the snapshot's token store has replaced the
     # throwaway one.
+    # OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL is passed EXPLICITLY rather than left
+    # to inheritance: an operator who set it as a shell variable rather than an
+    # exported one would otherwise get a parent that skipped past the foreign
+    # seal and a child that refused -- after the init, which is the one place
+    # this must not happen.
     if ! VAULT_TOKEN="$root_token" RECOVERY_KEYS_SECRET_ID="$RECOVERY_KEYS_SECRET_NAME" \
+        OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL="${OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL:-false}" \
         sh "$(dirname "$0")/openbao-snapshot.sh" restore \
             -a "$OPENBAO_URL" -b "$SNAPSHOT_BUCKET" -s "$scratch/bao.snap" \
             -d "$FRESHNESS_DAYS" --freshness warn; then
