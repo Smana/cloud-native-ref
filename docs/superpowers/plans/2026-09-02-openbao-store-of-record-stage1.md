@@ -960,16 +960,48 @@ rehydrate_openbao() {
             # left behind by a FAILED restore looks like: throwaway keys, no
             # lineage data. Exiting 0 on the strength of a 200 alone would turn
             # a loud failure into a silent success on the next deploy, and the
-            # management stack would then run against an empty store. One
-            # unauthenticated request settles it.
+            # management stack would then run against an empty store.
             if verify_pki_present; then
                 log_message "INFO" "OpenBao is already initialized, unsealed, and holds the PKI -- nothing to rehydrate"
                 exit 0
             fi
-            log_message "ERROR" "OpenBao is initialized and unsealed but has NO PKI mount. This is the state a failed"
-            log_message "ERROR" "restore leaves behind: the node holds throwaway keys that were never stored, so"
-            log_message "ERROR" "nothing can authenticate to it. Destroy and redeploy the cluster stack with"
-            log_message "ERROR" "TM_OPENBAO_SKIP_SNAPSHOT=true -- there is nothing on this node worth snapshotting."
+            # No PKI. Two very different situations look identical from here,
+            # and the BUCKET is what separates them:
+            #
+            #   bucket has a snapshot -> this node should have restored it and
+            #                            did not. Stranded: throwaway keys
+            #                            nobody holds.
+            #   bucket is empty       -> a young lineage part-way through its
+            #                            FIRST bootstrap. `init_openbao` has
+            #                            run and stored real keys, and the PKI
+            #                            mount does not exist yet because the
+            #                            `tofu apply` that creates it has not
+            #                            succeeded yet. Perfectly recoverable:
+            #                            just let this deploy continue.
+            #
+            # Getting this wrong in the safe-looking direction is expensive: it
+            # tells an operator whose apply merely failed to destroy a cluster
+            # holding freshly stored keys.
+            export_snapshot_env
+            # `local` on its own line, then assign: `local x=$(cmd)` masks the
+            # command's exit status behind local's own.
+            local _latest
+            if ! _latest=$(latest_snapshot); then
+                log_message "ERROR" "OpenBao has no PKI mount and the lineage bucket cannot be listed, so this"
+                log_message "ERROR" "cannot be told apart from a failed restore. Fix the listing and re-run."
+                exit 1
+            fi
+            if [ -z "$_latest" ]; then
+                log_message "WARN" "OpenBao is initialized and unsealed with no PKI mount, and ${SNAPSHOT_BUCKET} is"
+                log_message "WARN" "empty -- a first bootstrap whose 'tofu apply' has not completed. Continuing;"
+                log_message "WARN" "the apply after this step is what creates the PKI."
+                exit 0
+            fi
+            log_message "ERROR" "OpenBao is initialized and unsealed but has NO PKI mount, while ${SNAPSHOT_BUCKET}"
+            log_message "ERROR" "holds ${_latest}. This is the state a failed restore leaves behind: the node holds"
+            log_message "ERROR" "throwaway keys that were never stored, so nothing can authenticate to it. Destroy"
+            log_message "ERROR" "and redeploy the cluster stack with TM_OPENBAO_SKIP_SNAPSHOT=true -- there is"
+            log_message "ERROR" "nothing on this node worth snapshotting."
             exit 1 ;;
         501) ;;
         *)
