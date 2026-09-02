@@ -3392,6 +3392,17 @@ ca-chain entry. Tailscale admits tag:k8s to the VPC CIDRs on 8200."
 - Create: `opentofu/gcp/openbao/lineage/outputs.tf`
 - Create: `opentofu/gcp/openbao/lineage/workflows.tm.hcl`
 - Create: `opentofu/gcp/openbao/lineage/trivy.yaml` (copy of `opentofu/gcp/openbao/management/trivy.yaml`)
+- Create: `opentofu/gcp/openbao/lineage/.trivyignore.yaml` (copy the header and
+  `misconfigurations: []` from `opentofu/gcp/openbao/cluster/.trivyignore.yaml`).
+  **This file must exist even though it is empty.** The `deploy` and `preview`
+  scripts you copy in Step 6 run
+  `trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .`, and trivy
+  exits **FATAL** on a missing ignorefile — so without it
+  `TM_CLOUD=gcp terramate script run deploy` on this stack dies before planning
+  a single resource, which is what the live Task 15 does. Both GCP sibling
+  stacks carry this file and say exactly this in their own header comment.
+  `trivy.yaml` cannot substitute for it: that file configures the scanner and
+  can only *point at* an ignorefile, never carry ignore rules itself.
 - Delete: `security/gcp-0/openbao-snapshot/gcs-bucket.yaml`
 - Modify: `security/gcp-0/openbao-snapshot/kustomization.yaml`
 
@@ -3772,7 +3783,16 @@ tofu fmt -recursive opentofu/gcp/openbao/lineage
 ./scripts/validate-manifests.sh
 ```
 
-Expected: valid; trivy exit 0 (if it flags bucket logging or versioning, add the finding to `trivy.yaml` with a one-line statement mirroring Task 3's reasoning); manifests `Invalid: 0, Skipped: 0`.
+Expected: valid; trivy exit 0; manifests `Invalid: 0, Skipped: 0`.
+
+Trivy will flag the bucket for no CMEK (`GCP-0066`) and no versioning
+(`GCP-0078`). Suppress both with **inline `#trivy:ignore:<ID>` comments above
+`google_storage_bucket.snapshot`**, one line of justification each — that is
+this repo's idiom for a finding with a single owning resource, because it keeps
+the reason next to the code (see `opentofu/aws/openbao/lineage/kms.tf`). Put ids
+in `.trivyignore.yaml` only for findings with no single owner. Do **not** try to
+put ignore rules in `trivy.yaml`: it has no such mechanism, only an
+`ignorefile:` pointer.
 
 - [ ] **Step 9: Commit**
 

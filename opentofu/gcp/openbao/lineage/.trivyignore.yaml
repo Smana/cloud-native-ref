@@ -1,0 +1,16 @@
+# Per-stack ignorefile. The Terramate scripts run
+#   trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
+# from the STACK directory, so this file must exist here even when empty --
+# without it trivy exits FATAL "ignore file not found" and the deploy fails
+# before a single resource is planned.
+#
+# Findings in this stack are suppressed with inline `#trivy:ignore:` comments
+# next to the resource they apply to, which keeps the justification with the
+# code: see google_storage_bucket.snapshot in main.tf for GCP-0066 (no CMEK)
+# and GCP-0078 (no versioning). Add ids here only for findings that have no
+# single owning resource.
+#
+# Note trivy.yaml in this directory is a different mechanism and cannot replace
+# this file: it configures the scanner (skip-dirs) and can only POINT at an
+# ignorefile, not carry ignore rules itself.
+misconfigurations: []
