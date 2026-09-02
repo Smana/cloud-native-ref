@@ -15,7 +15,16 @@ spec:
   suspend: false
   prune: true
   interval: 1m0s
-  timeout: 5m0s
+  # 15m, not 5m: this must be >= the time the HelmRelease can legitimately take,
+  # or the health check reports failure on every first bootstrap while Helm is
+  # still working. ZITADEL's own install timeout is 45m, and a restore-from-seed
+  # bootstrap really does take longer than five minutes -- CNPG recovery, then
+  # the replica join, then ZITADEL's schema migrations.
+  #
+  # Measured 2026-09-02: this Kustomization flapped False/Unknown for ~25
+  # minutes while the install underneath was progressing normally, which buried
+  # a real failure (a stuck certificate) in noise that looked identical.
+  timeout: 15m0s
   sourceRef:
     kind: ExternalArtifact
     name: security-artifact

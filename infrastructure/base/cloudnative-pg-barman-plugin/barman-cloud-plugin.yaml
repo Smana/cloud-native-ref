@@ -20,6 +20,20 @@ metadata:
   name: cloudnative-pg-barman-plugin
 spec:
   interval: 10m
+  # Retry failures in a minute rather than waiting out the full interval.
+  #
+  # Measured on the 2026-09-02 dual bootstrap: this Kustomization creates a
+  # Service, the AWS Load Balancer Controller's mutating webhook intercepts
+  # every Service with failurePolicy: Fail, and during bootstrap that webhook's
+  # own Service briefly has no endpoints. One transient admission rejection --
+  #
+  #   Service/infrastructure/barman-cloud dry-run failed (InternalError):
+  #   failed calling webhook "mservice.elbv2.k8s.aws": no endpoints available
+  #
+  # -- then idled the whole chain for ten minutes: no plugin, so CNPG reported
+  # "unknown plugin being required", so every database claim stalled, so ZITADEL
+  # never started. The webhook was healthy again within a minute of the failure.
+  retryInterval: 1m
   timeout: 5m
   prune: true
   sourceRef:
