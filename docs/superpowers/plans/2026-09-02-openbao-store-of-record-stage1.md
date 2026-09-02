@@ -4824,7 +4824,7 @@ jobs:
           }
           EOF
           nohup bao server -config="$RUNNER_TEMP/bao.hcl" > "$RUNNER_TEMP/bao.log" 2>&1 &
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8200/v1/sys/health || true)
             [ "$code" = "501" ] && break
             sleep 1
@@ -4845,7 +4845,7 @@ jobs:
           bao operator raft snapshot restore -force "$RUNNER_TEMP/bao.snap"
           unset VAULT_TOKEN
           # After a restore the node reloads and unseals with the lineage key.
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8200/v1/sys/health || true)
             [ "$code" = "200" ] && break
             sleep 1
