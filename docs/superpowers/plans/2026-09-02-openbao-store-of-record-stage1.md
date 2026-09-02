@@ -601,6 +601,35 @@ Replace with:
         aws s3 cp "s3://${BUCKET_NAME}/${SNAP}" "${SNAPSHOT_FILE}"
 ```
 
+- [ ] **Step 6b-bis: `check_openbao_status` has the same standby blindness**
+
+Third occurrence of one shape, so fix it at the last site too. `check_openbao_status`
+polls for HTTP 200 from `/v1/sys/health`, which only the **active** node returns;
+a standby answers 429. It runs right after `bao operator init`, through the NLB,
+whose target group deliberately reports standbys as healthy — so in
+`mode = "ha"` the poll can land on a standby and time out with "OpenBao is not
+initialized, unsealed, or active" on a cluster that is entirely fine. Latent
+today because the committed posture is single-node, real for the production
+posture the design describes. In `check_openbao_status`, find:
+
+```bash
+        status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health")
+```
+
+Replace with:
+
+```bash
+        # standbyok, for the same reason as the two probes in rehydrate and
+        # pre-destroy: a bare /v1/sys/health returns 200 only for the ACTIVE
+        # node, and this poll goes through the NLB, which reports standbys as
+        # healthy. In `ha` it would otherwise time out on a healthy cluster.
+        status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true")
+```
+
+Leave `init_openbao`'s own probe alone: it waits for **501** (uninitialised),
+which every node returns before init regardless of role, so the query string
+would change nothing there.
+
 - [ ] **Step 6c: A pre-existing bug that makes every restore fail after the snapshot is already applied**
 
 `generate_root_token()` has never worked, and nothing noticed because — as the
