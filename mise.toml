@@ -25,6 +25,14 @@ tflint = "0.64.0"
 flux2 = "2.9.5"
 helm = "4.2.4"
 
+# promtool parses the PromQL inside every repo-authored VMRule
+# (scripts/validate-vmrules.sh). Pinned, not `latest`: the PromQL parser IS the
+# gate, so an unannounced parser change would move what the repo accepts.
+# mise's registry maps this to aqua:prometheus/prometheus — promtool ships
+# inside the prometheus release archive — but the entry is keyed `promtool` so
+# that `mise install promtool` and `mise which promtool` both honour the pin.
+promtool = "3.14.0"
+
 # Documentation site (website/). "hugo-extended" is deliberate: mise's plain
 # `hugo` entry resolves to the non-extended build, and Hextra targets extended.
 hugo-extended = "0.165.0"

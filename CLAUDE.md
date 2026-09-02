@@ -372,6 +372,36 @@ It also fails when a Kustomization applies variables with no `postBuild` wired a
 would apply the literal `${var}`. Covered by `scripts/flux-schema/test-check-substitution.py` — the
 only test any script in `scripts/flux-schema/` has.
 
+**A fourth check parses the alerting expressions, which nothing else ever did:**
+`scripts/validate-vmrules.sh` extracts each repo-authored `VMRule`'s `.spec` — already the shape of
+a Prometheus rules file — and runs `promtool check rules` over it. To `flux schema validate`, an
+`expr` is just a string in the right place; polaris never looks at rules at all. So an unbalanced
+paren, an unknown function or a malformed label matcher validated clean until now, and the cost
+landed at runtime: vmalert logs a parse error, the group never evaluates, and **the alert silently
+never fires**.
+
+It reads **committed VMRules, not the bundle** — the bundle also holds VMRules shipped by upstream
+Helm charts, which we neither author nor can fix, and which are entitled to use MetricsQL that
+promtool rejects. A gate that can go red on something the repo cannot fix gets switched off. (All 22
+VMRule documents in the rendered bundle pass promtool as of 2026-09-02, so this is about the first
+chart bump that would not, not about present breakage.) The gap that leaves: rules written inline in
+a HelmRelease `values:` block are repo-authored and are *not* seen — there are none today.
+
+**It skips what it cannot check, and says so on every run.** A rule group's `type` field selects the
+query language (`prometheus` — the default — plus `graphite` and `vlogs`), so the skip predicate is
+read from the data rather than hardcoded to a filename: a group is checked when `type` is unset,
+empty, or `prometheus`. Today that skips exactly one group, `loggen` in
+`observability/base/loggen/demo-vmrule.yaml`, whose `type: vlogs` expressions are LogsQL against
+VictoriaLogs — and which **must not be made to pass**. Every skipped group is named with its reason
+in both a green and a red run, and the summary counts skipped groups separately, for the same reason
+`Skipped: 0` is part of the claim below.
+
+> **PromQL ⊂ MetricsQL, so this gate can in principle reject a valid expression.** Nothing in the
+> repo relies on MetricsQL-only syntax today — verified by construction, since every checked
+> expression passes a PromQL parser. When someone does hit it, the fix is *not* to delete the gate:
+> rewrite in PromQL, or isolate the rule in its own group with a `type` the script skips so the hole
+> is visible. The script's header spells this out at the point of failure.
+
 > A `substituteFrom` entry may name a **Secret** as well as a ConfigMap. **None does today** — the
 > last was `cert-manager-openbao-approle` supplying `${cert_manager_approle_id}`, removed when
 > cert-manager moved to a projected ServiceAccount token. A Secret's keys are created in-cluster at
@@ -391,5 +421,7 @@ The schema catalog (`.schemas/`) and the bundle (`.bundle/`) are generated on ev
 gitignored — a committed catalog drifts from the XRDs it is derived from.
 
 Requires `flux` ≥ 2.9 with the schema plugin: `mise install && flux plugin install schema`.
+`promtool` comes from the `promtool = "3.14.0"` pin in `mise.toml` (mise resolves it to the
+prometheus release archive, which is what promtool ships inside), so `mise install` covers it too.
 
 - always check the network policies when there are timeouts
