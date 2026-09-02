@@ -25,3 +25,11 @@ provider "kubectl" {
   token                  = data.google_client_config.default.access_token
   load_config_file       = false
 }
+
+# OpenBao, for this cluster's JWT auth mount (openbao.tf). Root token from
+# Secret Manager, CA chain written to .tls/ by the deploy workflow first.
+provider "vault" {
+  address      = "https://bao.${local.init.private_domain_name}:8200"
+  token        = jsondecode(data.google_secret_manager_secret_version.openbao_root_token.secret_data)["token"]
+  ca_cert_file = var.openbao_ca_cert_file
+}

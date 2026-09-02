@@ -74,20 +74,17 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # value as node_cidr above, consumed by
       # security/base/openbao-snapshot/network-policy.yaml.
       openbao_cidr = local.init.node_cidr
-      # Secret Manager keys for the two ExternalSecrets that need one:
-      # security/base/openbao-snapshot/external-secrets.yaml and
-      # apps/base/ai/llm/hf-token-externalsecret.yaml. Both are FLAT and
-      # dash-separated, unlike the AWS ConfigMap's path-style values, because
-      # GCP Secret Manager forbids "/" in a secret ID -- ADR-0023. The first
-      # must match opentofu/gcp/openbao/management's
-      # snapshot_approle_secret_name.
-      #
-      # llm_hf_token_secret is only required if the LLM platform is enabled on
-      # this cluster (clusters/gcp-0/llm-platform.yaml), and is a hand-created
-      # entry like the other gcp-bootstrap.md prerequisites -- not provisioned
-      # by OpenTofu on either cloud.
-      openbao_snapshot_secret = "openbao-priv-gcp-snapshot" # pragma: allowlist secret
-      llm_hf_token_secret     = "llm-platform-hf-token"     # pragma: allowlist secret
+      # The lineage's snapshot bucket (opentofu/gcp/openbao/lineage), consumed
+      # by security/base/openbao-snapshot/snapshot-cronjob.yaml as BUCKET_NAME.
+      # Project-prefixed here, region-prefixed on AWS.
+      openbao_snapshot_bucket = "${var.project_id}-ogenki-openbao-snapshot"
+      # security/base/openbao-endpoint/remote, when this cluster consumes the AWS
+      # active OpenBao. Unused in GCP-only mode.
+      openbao_target_ip = var.openbao_target_ip
+      # Secret Manager key for apps/base/ai/llm/hf-token-externalsecret.yaml.
+      # FLAT and dash-separated (GCP forbids "/") -- ADR-0023. Hand-created,
+      # only needed when the LLM platform is enabled on this cluster.
+      llm_hf_token_secret = "llm-platform-hf-token" # pragma: allowlist secret
 
       # Public DNS, for the federated Route53 path.
       # public_domain_name is gcp.cloud.ogenki.io -- gcp-0's OWN subdomain of

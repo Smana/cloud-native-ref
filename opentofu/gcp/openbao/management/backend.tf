@@ -7,8 +7,9 @@
 #
 # No `use_lockfile` -- unlike the S3 backend, GCS locks natively.
 #
-# This stack's state is the one that most needed moving: it holds
-# cert-manager's live AppRole secret_id (see secrets.tf, which says so).
+# This stack's state is the one that most needed moving: the vault provider
+# reads OpenBao's live root token straight out of Secret Manager (see
+# providers.tf), and that token's value flows into this state.
 terraform {
   backend "gcs" {
     bucket = "ogenki-cloud-native-ref-tfstate"

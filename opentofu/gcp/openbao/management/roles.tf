@@ -1,11 +1,16 @@
 # The role cert-manager issues through. Scoped to this cloud's private domain
-# only: the GCP PKI issues for *.priv.gcp.ogenki.io and nothing else, while the
-# AWS one keeps *.priv.aws.ogenki.io. ADR-0017's per-cloud domains make that
-# split clean -- there is no name a client could resolve to either CA.
+# AND, now, the AWS one: a lineage's OpenBao can be running on either cloud
+# after a failover, and the roles it issues through come back exactly as the
+# snapshot recorded them. ADR-0017's per-cloud domains still stand -- each name
+# resolves to one CA -- this just lets either cloud's OpenBao issue for both.
 resource "vault_pki_secret_backend_role" "cert_manager" {
-  backend          = vault_mount.pki.path
-  name             = lower(var.pki_organization)
-  allowed_domains  = [var.private_domain_name]
+  backend = vault_mount.pki.path
+  name    = lower(var.pki_organization)
+  # Both private domains, like AWS: when this OpenBao is the restored STANDBY of
+  # the AWS lineage it issues for aws-0 too. (Irrelevant on a rehydrated node --
+  # the role comes back inside the snapshot -- but a fresh GCP-only lineage must
+  # start with the same shape.)
+  allowed_domains  = [var.private_domain_name, "priv.aws.ogenki.io"]
   allow_subdomains = true
   organization     = [var.pki_organization]
   country          = [var.pki_country]

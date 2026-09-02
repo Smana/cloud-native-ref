@@ -32,6 +32,10 @@ script "deploy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
+        # The vault provider (openbao.tf) needs the CA chain on disk before init.
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init
         ${global.provisioner} validate
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
@@ -50,6 +54,10 @@ script "preview" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
+        # The vault provider (openbao.tf) needs the CA chain on disk before init.
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init
         ${global.provisioner} validate
         ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
@@ -98,6 +106,10 @@ script "destroy" {
         ${global.cloud_gate}
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        # The vault provider (openbao.tf) needs the CA chain on disk before init.
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         bash "${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh" \
           attempt "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure" \
           -var='cilium_version=${global.cilium_version}' \
