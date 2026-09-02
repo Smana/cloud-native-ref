@@ -285,8 +285,10 @@ cluster, not a manifest edit on two clusters.
 
 The active OpenBao's internal NLB gets **fixed private IPs** through
 `subnet_mapping.private_ipv4_address`, so the target survives a rebuild of the
-cluster stack. The tailnet ACL admits `tag:k8s` to the VPC CIDR on 8200. A
-per-cluster Flux variable, `openbao_target`, selects the row.
+cluster stack. The tailnet ACL admits `tag:k8s` to the VPC CIDR on 8200. Which
+*form* a cluster uses is a committed overlay choice — Flux substitutes strings
+and cannot select a manifest — and the *address* is a per-cluster Flux
+variable, `openbao_target_ip`.
 
 Both server certificates (active and standby, bootstrap tier) carry every SAN
 they can be reached by: `bao.priv.aws.ogenki.io`, `bao.priv.gcp.ogenki.io`,
@@ -324,10 +326,11 @@ on every rebuild and would need re-federating after `eks/init` each time. The
 role holds `s3:GetObject` and `s3:ListBucket` on the snapshot bucket and
 `kms:Decrypt` on the bucket's key, nothing else.
 
-Failback direction (GCS → S3) is covered by the `gcp-0` CronJob, which already
-runs with the federation role ADR-0019 created for GKE ServiceAccounts; it gains
-`s3:PutObject` on the AWS bucket. The GKE issuer is deterministic, so this trust is
-stable.
+Failback direction (GCS → S3) is a **manual step in the runbook**, not an
+automatic mirror: a standby's snapshot holds the AWS lineage's data plus
+whatever was written during the incident, and it must not silently become the
+"newest" object mirrored back over the AWS history. The operator copies exactly
+one object, deliberately, before redeploying AWS.
 
 The snapshot is barrier-encrypted. Without the seal key it is ciphertext, which is
 why the bucket policy can be ordinary and why the seal key is the asset to protect.
@@ -380,11 +383,13 @@ A scheduled GitHub Actions workflow, weekly, assumes the CI role through OIDC an
 1. starts `bao server` in a container with Raft on a tmpfs and the `awskms` seal
    on the lineage key;
 2. initialises with throwaway shares and restores the newest S3 object;
-3. asserts the restore succeeded, `check_timestamp` exists (its age is logged,
-   not asserted — when the reference platform is torn down the newest snapshot is
-   the pre-destroy one, and staleness while the platform runs is
-   `OpenBaoSnapshotStale`'s job), the PKI issuer is present and chains to the
-   offline root, and the `platform/` mount is non-empty (Stage 2);
+3. asserts the restore succeeded — the node reports unsealed and active, which
+   proves the lineage seal unwrapped the snapshot — and that the PKI issuer's
+   unauthenticated `ca_chain` endpoint answers with a chain ending at the
+   committed offline root certificate. It does **not** read `check_timestamp`:
+   that needs a token, and the only way CI could mint one is the recovery keys,
+   which must not be within a runner's reach. The marker is asserted by the
+   operator-run rehydrate instead;
 4. asserts the newest object in the GCS mirror has the same name and size as the
    newest in S3;
 5. fails the workflow otherwise.
