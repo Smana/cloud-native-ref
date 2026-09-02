@@ -32,12 +32,19 @@ REGION_EXPLICIT=false
 PROFILE=""
 CLOUD="aws"
 PROJECT=""
+SNAPSHOT_BUCKET=""
+CA_FILE=""
+FRESHNESS_DAYS=8
 
 usage() {
     echo "Usage: $0 <command> [options]"
     echo "Commands:"
     echo "  init          Initialize OpenBao cluster"
     echo "  ca            Write the CA chain to a local file for TLS verification"
+    echo "  rehydrate     Initialise a fresh node and restore the lineage's newest snapshot"
+    echo "                (falls back to a plain init when the bucket holds none)"
+    echo "  pre-destroy-snapshot"
+    echo "                Take one last snapshot before the cluster stack is destroyed"
     echo ""
     echo "Common Options:"
     echo "  --url <OpenBao URL>                       OpenBao server URL (required for init)"
@@ -56,6 +63,10 @@ usage() {
     echo "  --profile <Profile>                       AWS profile"
     echo "  --cloud <aws|gcp>                         Secret backend (default: aws)"
     echo "  --project <Project ID>                    GCP project (required for --cloud gcp)"
+    echo "  --snapshot-bucket <Name>                  S3 bucket (aws) or GCS bucket (gcp) holding raft snapshots"
+    echo "                                             (required for rehydrate and pre-destroy-snapshot)"
+    echo "  --ca-file <Path>                          CA chain to verify the server with (sets VAULT_CACERT)"
+    echo "  --freshness-days <N>                      Age past which a restored snapshot is reported as old (default: ${FRESHNESS_DAYS})"
     echo ""
     echo "Example:"
     echo "  $0 init --url https://openbao:8200 --root-token-secret-name openbao/root-token \\"
@@ -80,6 +91,9 @@ parse_args() {
             --profile)                    PROFILE="$2"; shift 2 ;;
             --cloud)                      CLOUD="$2"; shift 2 ;;
             --project)                    PROJECT="$2"; shift 2 ;;
+            --snapshot-bucket)            SNAPSHOT_BUCKET="$2"; shift 2 ;;
+            --ca-file)                    CA_FILE="$2"; shift 2 ;;
+            --freshness-days)             FRESHNESS_DAYS="$2"; shift 2 ;;
             *)
                 echo "Invalid argument: $1"
                 usage
@@ -113,7 +127,7 @@ parse_args() {
             ;;
     esac
 
-    if [ "$COMMAND" = "init" ]; then
+    if [ "$COMMAND" = "init" ] || [ "$COMMAND" = "rehydrate" ]; then
         if [ -z "$OPENBAO_URL" ]; then
             echo "OpenBao URL is required"; usage; exit 1
         fi
@@ -130,6 +144,17 @@ parse_args() {
         fi
     fi
 
+    if [ "$COMMAND" = "rehydrate" ] || [ "$COMMAND" = "pre-destroy-snapshot" ]; then
+        if [ -z "$SNAPSHOT_BUCKET" ]; then
+            echo "--snapshot-bucket is required for $COMMAND"; usage; exit 1
+        fi
+    fi
+    if [ "$COMMAND" = "pre-destroy-snapshot" ]; then
+        if [ -z "$OPENBAO_URL" ] || [ -z "$ROOT_TOKEN_SECRET_NAME" ]; then
+            echo "--url and --root-token-secret-name are required for pre-destroy-snapshot"; usage; exit 1
+        fi
+    fi
+
     if [ "$COMMAND" = "ca" ]; then
         if [ -z "$ROOT_CA_SECRET_NAME" ]; then
             echo "Root CA secret name is required"; usage; exit 1
@@ -142,6 +167,13 @@ parse_args() {
     export VAULT_ADDR="$OPENBAO_URL"
     if [ "$SKIP_VERIFY" = true ]; then
         export VAULT_SKIP_VERIFY=true
+    fi
+    if [ -n "$CA_FILE" ]; then
+        if [ ! -r "$CA_FILE" ]; then
+            echo "Error: --ca-file $CA_FILE is not readable (run the 'ca' subcommand first)" >&2
+            exit 1
+        fi
+        export VAULT_CACERT="$CA_FILE"
     fi
 }
 
@@ -285,6 +317,62 @@ secret_read() {
     fi
 }
 
+# Environment the sibling snapshot script needs. It is POSIX sh and calls the
+# cloud CLIs bare, so the region/profile/ADC choices made here have to reach it
+# through the environment rather than flags.
+export_snapshot_env() {
+    export CLOUD
+    if [ "$CLOUD" = "aws" ]; then
+        export AWS_DEFAULT_REGION="$REGION"
+        if [ -n "$PROFILE" ]; then export AWS_PROFILE="$PROFILE"; fi
+    else
+        export CLOUDSDK_CORE_PROJECT="$PROJECT"
+        # Same identity OpenTofu uses -- see scripts/lib/gcloud-adc.sh for the
+        # day this cost when it was left to the CLI account.
+        if [ -z "${CLOUDSDK_AUTH_ACCESS_TOKEN:-}" ]; then
+            if token=$(gcloud auth application-default print-access-token 2>/dev/null) && [ -n "$token" ]; then
+                export CLOUDSDK_AUTH_ACCESS_TOKEN="$token"
+            fi
+            unset token
+        fi
+    fi
+}
+
+# Name of the newest snapshot object in the lineage bucket, or empty.
+latest_snapshot() {
+    if [ "$CLOUD" = "gcp" ]; then
+        local listing
+        if ! listing=$(gcp_gcloud storage ls "gs://${SNAPSHOT_BUCKET}/" 2>/dev/null); then
+            echo ""
+            return 0
+        fi
+        printf '%s\n' "$listing" | sed 's#.*/##' | grep '\.snap$' | sort | tail -n1
+    else
+        local aws_cmd; aws_cmd=$(get_aws_cmd)
+        local key
+        key=$($aws_cmd s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" \
+            --query 'sort_by(Contents, &LastModified)[-1].Key' --output text 2>/dev/null || true)
+        if [ "$key" = "None" ]; then key=""; fi
+        printf '%s' "$key"
+    fi
+}
+
+# The PKI mount's CA endpoint is unauthenticated, which makes it the one thing a
+# rehydrate can assert without a token: if it answers with a certificate, the
+# barrier unwrapped and the mount came back.
+verify_pki_present() {
+    local pem
+    if ! pem=$(curl -fsS "${VAULT_CACERT:+--cacert $VAULT_CACERT}" ${VAULT_SKIP_VERIFY:+-k} "$OPENBAO_URL/v1/pki_private_issuer/ca/pem"); then
+        log_message "ERROR" "pki_private_issuer/ca/pem did not answer -- the PKI mount is missing from the restored state"
+        return 1
+    fi
+    if ! printf '%s\n' "$pem" | openssl x509 -noout -subject >/dev/null 2>&1; then
+        log_message "ERROR" "pki_private_issuer/ca/pem returned something that is not a certificate"
+        return 1
+    fi
+    log_message "INFO" "PKI issuer present: $(printf '%s\n' "$pem" | openssl x509 -noout -subject)"
+}
+
 # Initialize OpenBao
 #
 # The recovery keys are persisted, in their own secret. Previously only the
@@ -361,6 +449,121 @@ init_openbao() {
         log_message "ERROR" "Final health check failed"
         exit 1
     fi
+}
+
+# Rehydrate a freshly booted, uninitialised node from the lineage's newest
+# snapshot. This is what makes OpenBao's storage a derived artefact: the
+# durable copy is the snapshot in the lineage bucket, sealed by the lineage's
+# KMS key, and the running process is rebuilt from it on every deploy.
+#
+# Three rules, in code below and in the design:
+#   1. The throwaway root token and recovery shares from `operator init` are
+#      NEVER written to the secret store. The restore replaces them with the
+#      snapshot's, which are the ones already stored.
+#   2. Idempotent: a node that is already initialised and unsealed is left alone.
+#   3. The freshness guard is `warn`, not `fail`: there is no populated cluster
+#      to protect, so age is information here.
+rehydrate_openbao() {
+    if ! wait_for_openbao; then
+        log_message "ERROR" "Failed to wait for OpenBao to be ready"
+        exit 1
+    fi
+
+    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health")
+    case "$status_code" in
+        200)
+            log_message "INFO" "OpenBao is already initialized, unsealed, and active -- nothing to rehydrate"
+            exit 0 ;;
+        501) ;;
+        *)
+            log_message "ERROR" "Unexpected status code: $status_code"
+            exit 1 ;;
+    esac
+
+    export_snapshot_env
+    local latest
+    latest=$(latest_snapshot)
+    if [ -z "$latest" ]; then
+        log_message "INFO" "No snapshot in ${SNAPSHOT_BUCKET}: first deploy of this lineage. Initialising and storing the new keys."
+        init_openbao
+        return 0
+    fi
+
+    log_message "INFO" "Snapshot ${latest} found in ${SNAPSHOT_BUCKET}. Initialising with throwaway shares, then restoring."
+    local init_output root_token
+    init_output=$(bao operator init -recovery-shares=1 -recovery-threshold=1 -format=json)
+    root_token=$(printf '%s' "$init_output" | jq -r '.root_token // empty')
+    unset init_output
+    if [ -z "$root_token" ]; then
+        log_message "ERROR" "operator init returned no root token"
+        exit 1
+    fi
+
+    if ! check_openbao_status; then
+        log_message "ERROR" "Node did not become active after init"
+        exit 1
+    fi
+
+    local scratch
+    scratch=$(mktemp -d)
+    # VAULT_TOKEN drives the snapshot script's authenticate(); the recovery keys
+    # secret is the LINEAGE's, which is what generate_root_token needs once the
+    # restored token store has replaced the throwaway one.
+    if ! VAULT_TOKEN="$root_token" RECOVERY_KEYS_SECRET_ID="$RECOVERY_KEYS_SECRET_NAME" \
+        sh "$(dirname "$0")/openbao-snapshot.sh" restore \
+            -a "$OPENBAO_URL" -b "$SNAPSHOT_BUCKET" -s "$scratch/bao.snap" \
+            -d "$FRESHNESS_DAYS" --freshness warn; then
+        rm -rf "$scratch"
+        log_message "ERROR" "Restore failed. The node is initialised with THROWAWAY keys that were not stored: destroy and redeploy the cluster stack rather than trying to use it."
+        exit 1
+    fi
+    rm -rf "$scratch"
+    unset root_token
+
+    if ! verify_pki_present; then
+        exit 1
+    fi
+    log_message "INFO" "Rehydrated from ${latest}."
+}
+
+# One last snapshot before `tofu destroy` takes the node away. Runs from the
+# operator's context with the lineage root token: the in-cluster CronJob cannot
+# do this because `--reverse destroy` has already removed the cluster it ran in.
+#
+# Fails hard when OpenBao is unreachable, because destroying anyway loses every
+# write since the last scheduled snapshot. TM_OPENBAO_SKIP_SNAPSHOT=true is the
+# explicit override for a node that is already gone.
+pre_destroy_snapshot() {
+    if [ "${TM_OPENBAO_SKIP_SNAPSHOT:-false}" = "true" ]; then
+        log_message "WARN" "TM_OPENBAO_SKIP_SNAPSHOT=true -- skipping the pre-destroy snapshot"
+        exit 0
+    fi
+
+    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health" || true)
+    if [ "$status_code" != "200" ]; then
+        log_message "ERROR" "OpenBao at $OPENBAO_URL is not active (HTTP ${status_code:-none}); refusing to destroy without a snapshot."
+        log_message "ERROR" "If the node is genuinely gone, re-run with TM_OPENBAO_SKIP_SNAPSHOT=true."
+        exit 1
+    fi
+
+    local token
+    if ! token=$(secret_read "$ROOT_TOKEN_SECRET_NAME" | jq -r '.token // empty') || [ -z "$token" ]; then
+        log_message "ERROR" "Could not read the root token from $ROOT_TOKEN_SECRET_NAME"
+        exit 1
+    fi
+
+    export_snapshot_env
+    local scratch
+    scratch=$(mktemp -d)
+    if ! VAULT_TOKEN="$token" sh "$(dirname "$0")/openbao-snapshot.sh" save \
+            -a "$OPENBAO_URL" -b "$SNAPSHOT_BUCKET" -s "$scratch/bao.snap"; then
+        rm -rf "$scratch"
+        log_message "ERROR" "Pre-destroy snapshot failed; not destroying."
+        exit 1
+    fi
+    rm -rf "$scratch"
+    unset token
+    log_message "INFO" "Pre-destroy snapshot stored in ${SNAPSHOT_BUCKET}."
 }
 
 # Write the CA chain to disk so the Vault provider can verify the server
@@ -449,6 +652,18 @@ case "$COMMAND" in
         parse_args "$@"
         check_prerequisites
         write_ca
+        ;;
+    rehydrate)
+        parse_args "$@"
+        check_prerequisites
+        rehydrate_openbao
+        ;;
+    pre-destroy-snapshot)
+        parse_args "$@"
+        check_prerequisites
+        # The CA is fetched by the caller (`ca` subcommand) so VAULT_CACERT can be
+        # set; --skip-verify is the fallback for a first bootstrap.
+        pre_destroy_snapshot
         ;;
     *)
         echo "Unknown command: $COMMAND"
