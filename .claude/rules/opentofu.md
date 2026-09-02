@@ -12,7 +12,12 @@ globs:
 
 ```bash
 # Individual stack
-cd opentofu/<stack>  # network, eks/init, eks/configure, openbao/cluster, openbao/management, llm-platform
+# Stack paths are cloud-prefixed. `cd opentofu && terramate list` is the source
+# of truth -- 15 stacks today:
+#   aws/{network,eks/init,eks/configure,openbao/cluster,openbao/lineage,openbao/management,llm-platform}
+#   gcp/{network,gke/init,gke/configure,openbao/cluster,openbao/lineage,openbao/management}
+#   shared/{tailscale,aws-gcp-federation}
+cd opentofu/<stack>
 tofu init
 tofu plan -var-file=variables.tfvars
 tofu apply -var-file=variables.tfvars
@@ -49,7 +54,7 @@ gcloud) carry `${global.cloud_gate}` or `--tm-run`; the destructive ones must,
 since `eks-prepare-destroy.sh` deletes every PVC.
 
 **Why not tags.** A tag filter has no committed default — `--no-tags` has to be
-typed, so a fresh clone or CI would get all 13 stacks, and `drift reconcile`
+typed, so a fresh clone or CI would get all 15 stacks, and `drift reconcile`
 runs `tofu apply -auto-approve`. Tags remain right for *listing*
 (`terramate list --tags=gcp`), not for gating. This replaced a two-knob scheme
 (`TM_GCP_ENABLED=true` to turn GCP on, `--no-tags=aws` to turn AWS off) where

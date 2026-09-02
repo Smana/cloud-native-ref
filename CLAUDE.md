@@ -254,8 +254,17 @@ Two skills cover ground the plugin does not. Both are optional.
 
 ### OpenBao PKI Structure
 
-- Root CA -> Intermediate CA -> Leaf certificates
-- AppRole authentication for cert-manager
+- **Offline** root CA -> intermediate CA -> leaf certificates. The root signed each
+  cloud's intermediate offline, once; only the intermediate's cert+key bundle is
+  imported into the `pki` mount, and that intermediate **is** the issuer. OpenBao
+  never holds the root key — the `root-ca` Secrets Manager entry that used to
+  carry it is deleted. One root for both clouds, so a tailnet client trusts one
+  anchor. See `opentofu/aws/openbao/management/pki.tf`.
+- cert-manager authenticates with a **projected ServiceAccount token** against the
+  per-cluster JWT mount (`jwt/<cluster>`, role `cert-manager`) — not an AppRole,
+  and no long-lived credential anywhere. It needs the `create` grant on
+  `serviceaccounts/token` for itself to mint that token:
+  `security/base/cert-manager-token-creator/rbac.yaml`.
 - Automatic certificate rotation
 
 ### IAM and Permissions
