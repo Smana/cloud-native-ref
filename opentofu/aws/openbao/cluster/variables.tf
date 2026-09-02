@@ -39,6 +39,12 @@ variable "openbao_data_path" {
   default     = "/opt/openbao/data"
 }
 
+variable "seal_key_alias" {
+  description = "Alias of the seal key this node unseals with. MUST match `seal_key_alias` in opentofu/aws/openbao/lineage, which creates it -- nothing enforces that, and a mismatch surfaces as a plan-time 'alias not found'."
+  type        = string
+  default     = "alias/openbao-seal"
+}
+
 variable "root_volume_size" {
   description = "Size (GiB) of the encrypted gp3 root volume. In dev mode this also holds the single-node raft store, so it needs headroom beyond the AMI default of 8."
   type        = number

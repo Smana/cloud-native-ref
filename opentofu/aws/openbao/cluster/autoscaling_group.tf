@@ -14,8 +14,9 @@ resource "aws_launch_template" "dev" {
   }
 
   # Neither template declared a root volume, so size and encryption were
-  # whatever the AMI shipped. That matters most here: in dev mode the `file`
-  # storage backend and the server TLS private key both live on the root volume.
+  # whatever the AMI shipped. That matters most here: in dev mode the
+  # single-node raft store and the server TLS private key both live on the
+  # root volume.
   block_device_mappings {
     device_name = data.aws_ami.this.root_device_name
     ebs {

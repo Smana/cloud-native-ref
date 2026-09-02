@@ -533,7 +533,11 @@ rehydrate_openbao() {
         exit 1
     fi
 
-    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health" || true)
+    # This call goes through the NLB, whose target group deliberately
+    # flattens standby into healthy. A bare /v1/sys/health returns 200 only
+    # for the active node, so on a healthy cluster this would 429 instead of
+    # confirming activation -- hence the query parameters below.
+    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true" || true)
     case "$status_code" in
         200)
             # Initialised and unsealed -- but that is also exactly what a node
@@ -657,7 +661,8 @@ pre_destroy_snapshot() {
         exit 0
     fi
 
-    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health" || true)
+    # Same NLB flattened-standby semantics as rehydrate_openbao -- see there.
+    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true" || true)
     if [ "$status_code" != "200" ]; then
         log_message "ERROR" "OpenBao at $OPENBAO_URL is not active (HTTP ${status_code:-none}); refusing to destroy without a snapshot."
         log_message "ERROR" "If the node is genuinely gone, re-run with TM_OPENBAO_SKIP_SNAPSHOT=true."

@@ -104,7 +104,7 @@ data "cloudinit_config" "openbao_cloud_init" {
       "openbao_version"       = var.openbao_version
       "openbao_data_path"     = var.openbao_data_path
       "openbao_instance"      = local.tags.OpenBaoInstance
-      "dev_mode"              = var.mode == "dev" ? true : false
+      "dev_mode"              = var.mode == "dev" ? true : false # unused since raft in both modes; kept to avoid churn
       "leader_tls_servername" = var.leader_tls_servername
       "kms_unseal_key_id"     = data.aws_kms_alias.seal.target_key_id
       # The secret *name*, not its contents.
