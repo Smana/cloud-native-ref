@@ -4098,6 +4098,12 @@ GCP subject IDs are known, so an AWS-only apply is unaffected."
 - Modify: `opentofu/gcp/openbao/cluster/compute.tf:73-76,96-110`
 - Modify: `opentofu/gcp/openbao/cluster/variables.tf`
 - Modify: `opentofu/gcp/openbao/cluster/scripts/startup-script.sh:141-151` and its tail
+- Modify: `opentofu/gcp/openbao/cluster/firewall.tf` and
+  `opentofu/gcp/openbao/cluster/outputs.tf` — four more references to the
+  service account Step 1 deletes: three `target_service_accounts` entries in the
+  firewall rules and the `service_account_email` output. Same substitution to
+  `local.lineage.openbao_node_sa_email`. `tofu validate` fails until all four
+  are done, so they are part of Step 1 rather than an implementer's improvisation.
 - Modify: `opentofu/gcp/openbao/cluster/stack.tm.hcl`
 - Modify: `opentofu/gcp/openbao/cluster/workflows.tm.hcl` (`destroy`)
 - Modify: `opentofu/gcp/openbao/cluster/compute.tf:1-9` header comment
