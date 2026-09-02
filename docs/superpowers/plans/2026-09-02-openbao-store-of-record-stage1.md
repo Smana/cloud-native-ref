@@ -601,6 +601,78 @@ Replace with:
         aws s3 cp "s3://${BUCKET_NAME}/${SNAP}" "${SNAPSHOT_FILE}"
 ```
 
+- [ ] **Step 6c: A pre-existing bug that makes every restore fail after the snapshot is already applied**
+
+`generate_root_token()` has never worked, and nothing noticed because — as the
+OpenBao page says in as many words — the restore path was never tested. This
+design depends on it, so it is fixed here. Find:
+
+```sh
+    bao operator generate-root -init --format json | jq -cr '.nonce, .otp' > "$nonce_file"
+    read -r VAULT_NONCE VAULT_OTP < "$nonce_file"
+```
+
+`jq -cr '.nonce, .otp'` emits the two values on **two lines**. `read -r A B`
+consumes **one** line and splits it on whitespace, so `VAULT_NONCE` gets the
+nonce and `VAULT_OTP` is always **empty**. `bao operator generate-root -decode`
+then fails with `otp string is wrong length`. Demonstrate it in one line before
+you fix it:
+
+```bash
+printf '{"nonce":"n1","otp":"otp1"}' | jq -cr '.nonce, .otp' > /tmp/nf
+read -r A B < /tmp/nf; echo "nonce='$A' otp='$B'"   # otp='' -- empty
+```
+
+Because the *post*-restore mint runs unconditionally, this fails **after**
+`bao operator raft snapshot restore -force` has already been applied, on every
+rehydrate, on both clouds. Replace with:
+
+```sh
+    bao operator generate-root -init --format json | jq -cr '.nonce, .otp' > "$nonce_file"
+    # One `read` PER LINE. `jq -cr '.nonce, .otp'` prints two lines, and a
+    # single `read -r VAULT_NONCE VAULT_OTP` consumes only the first -- so the
+    # OTP came out empty and `generate-root -decode` failed with "otp string is
+    # wrong length", after the destructive restore had already run. Introduced
+    # in #1844 and never caught, because nothing exercised this path.
+    { read -r VAULT_NONCE; read -r VAULT_OTP; } < "$nonce_file"
+```
+
+- [ ] **Step 6d: `verify_pki_present` must not report a missing mount as a transport failure**
+
+`curl -f` exits 22 for *any* non-2xx, so a 404 (the mount genuinely is not
+there) is indistinguishable from a TLS-trust or reachability failure — and the
+message asserts the second while the caller escalates it into "destroy and
+redeploy". Capture the status code instead of relying on `-f`. In
+`scripts/openbao-config.sh`'s `verify_pki_present`, replace the request and its
+error branch with:
+
+```bash
+    local pem http_code
+    # -w '%{http_code}', not -f: `curl -f` collapses every non-2xx into exit 22,
+    # so a 404 -- which IS a missing mount, and the one case the caller may act
+    # on -- looked identical to a TLS or network failure, which is never a
+    # reason to destroy anything.
+    pem=$(curl "${curl_args[@]}" -w '\n%{http_code}' "$OPENBAO_URL/v1/pki_private_issuer/ca/pem" 2>/dev/null || true)
+    http_code=$(printf '%s' "$pem" | tail -n1)
+    pem=$(printf '%s' "$pem" | sed '$d')
+
+    case "$http_code" in
+        200) ;;
+        404)
+            log_message "ERROR" "pki_private_issuer is not mounted on this node (HTTP 404)."
+            return 1 ;;
+        '')
+            log_message "ERROR" "Could not reach $OPENBAO_URL at all -- TLS trust or the node itself, not the PKI mount."
+            return 1 ;;
+        *)
+            log_message "ERROR" "pki_private_issuer/ca/pem returned HTTP ${http_code}. Not a missing mount: check TLS trust and that this node is unsealed."
+            return 1 ;;
+    esac
+```
+
+Remove `-fsS` from the `curl_args` initialiser and use `-sS` instead, or `-f`
+will still short-circuit before the status code is read.
+
 - [ ] **Step 7b: Two one-line hardening fixes on lines this task already touches**
 
 The file's own prior art is that a root token must not reach argv, where
@@ -1059,9 +1131,18 @@ rehydrate_openbao() {
 
     local scratch
     scratch=$(mktemp -d)
-    # On a trap, not duplicated per branch: the scratch dir holds the downloaded
-    # snapshot, and an interrupt mid-restore would otherwise leave it behind.
-    trap 'rm -rf "$scratch"' EXIT INT TERM
+    # DOUBLE quotes, so $scratch is expanded NOW, when the trap is set -- not
+    # when it fires. With single quotes the expansion happens at fire time, by
+    # which point a SUCCESS path has already returned and the local is out of
+    # scope: `set -u` then makes the trap itself fatal, so the function returns
+    # 1 after doing its job correctly, AND the directory is never removed.
+    # Failure paths are unaffected (the frame is still live when `exit` fires
+    # the trap), so the bug is invisible to any test that exercises an error.
+    # Measured on bash 3.2 and 5.3. `mktemp -d` output contains no quotes, so
+    # embedding it is safe. INT/TERM exit explicitly, or bash runs the handler
+    # and resumes.
+    trap "rm -rf -- '$scratch'" EXIT
+    trap "rm -rf -- '$scratch'; exit 130" INT TERM
 
     local init_output root_token
     init_output=$(bao operator init -recovery-shares=1 -recovery-threshold=1 -format=json)
@@ -1153,9 +1234,15 @@ pre_destroy_snapshot() {
 
     local scratch
     scratch=$(mktemp -d)
-    # On a trap: this scratch dir holds the real snapshot until it is uploaded,
-    # so an interrupt mid-upload would otherwise leave it in /tmp.
-    trap 'rm -rf "$scratch"' EXIT INT TERM
+    # Double-quoted for the same reason as in rehydrate_openbao: expanded at
+    # set time, or a SUCCESSFUL snapshot returns 1 from the trap and leaves the
+    # directory behind. That failure is worse here than it looks -- the destroy
+    # workflow reads the non-zero status as 'snapshot failed' and blocks, and
+    # the operator's documented escape is TM_OPENBAO_SKIP_SNAPSHOT=true, i.e.
+    # destroying WITHOUT a snapshot: the exact loss this function exists to
+    # prevent.
+    trap "rm -rf -- '$scratch'" EXIT
+    trap "rm -rf -- '$scratch'; exit 130" INT TERM
 
     if ! VAULT_TOKEN="$root_token" sh "$(dirname "$0")/openbao-snapshot.sh" save \
             -a "$OPENBAO_URL" -b "$SNAPSHOT_BUCKET" -s "$scratch/bao.snap"; then
@@ -1244,6 +1331,20 @@ and source that alongside a stub `log_message`. Expected: a clean transport erro
 about the endpoint, **not** `curl: option --cacert ...: is unknown` and **not**
 `curl: option : blank argument where content is expected`. Either of those means
 the argv is being built as a single word again.
+
+*(d) The trap must not turn success into failure, and must clean up.* Both
+`rehydrate` and `pre-destroy-snapshot` create a scratch dir and remove it on a
+trap. Run each to a **successful** completion under stubs and assert two things:
+the exit status is **0**, and the `mktemp -d` directory is gone. This is the
+check that a failure-only test cannot make — the trap works on every error path
+and breaks only on success, because the local it expands has gone out of scope
+by the time it fires.
+
+*(e) The root-token mint must receive a non-empty OTP.* Stub `bao` so that
+`operator generate-root -decode` **asserts** its `-otp` argument is non-empty
+and fails loudly otherwise, then drive `restore` to the point of the mint.
+Expected: the assertion passes. Before Step 6c's fix it fails with an empty
+`-otp`, which is how a broken restore survived a review that only read the code.
 
 Delete the stub directory afterwards.
 
