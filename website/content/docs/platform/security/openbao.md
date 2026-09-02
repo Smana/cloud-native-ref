@@ -85,7 +85,7 @@ Both modes run the `raft` storage backend — `storage "raft"` in
 can neither be taken from nor restored into anything else.
 
 On every deploy, the management stack's workflow runs
-`scripts/openbao-config.sh rehydrate`: a fresh node is initialised with
+`./scripts/openbao-config.sh rehydrate`: a fresh node is initialised with
 throwaway shares that are **never stored**, the newest snapshot is restored
 into it, and the root token and recovery keys already in Secrets Manager
 belong to the restored state. If the bucket is empty — the first deploy of a
@@ -277,8 +277,8 @@ Prerequisites worth stating plainly:
   meant to run weekly, from `.github/workflows/openbao-restore-drill.yml`, which
   restores the newest snapshot into a throwaway node with nothing but the seal
   key and asserts the PKI issuer chains to the offline root — **that workflow
-  cannot pass yet.** It verifies against `.github/openbao-root-ca.pem`, which
-  **Task 14 Step 3** of the Stage 1 plan commits and which is not in the
+  cannot pass yet.** It verifies against `openbao-root-ca.pem` in `.github/`,
+  which **Task 14 Step 3** of the Stage 1 plan commits and which is not in the
   repository, and it reads three repository variables
   (`AWS_DRILL_ROLE_ARN`, `GCP_DRILL_WIF_PROVIDER`, `GCP_DRILL_SERVICE_ACCOUNT`)
   set in Tasks 15–16. Rehydrate is the exercised half today; the drill is the

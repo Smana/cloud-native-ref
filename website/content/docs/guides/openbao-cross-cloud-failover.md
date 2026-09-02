@@ -73,7 +73,9 @@ copy** in the fourth, and the **hand mirror copy** in the callout above.
   | `openbao-priv-gcp-intermediate-ca` | the PKI mount's issuer import |
 
   The `VAULT_CACERT` used throughout this guide is that CA-chain fetch's own
-  output, at `opentofu/gcp/openbao/management/.tls/ca.pem`.
+  output — written to `.tls/ca.pem` under
+  `opentofu/gcp/openbao/management/` at deploy time, and gitignored, so it is
+  not in a fresh clone.
 
 - **`openbao-priv-gcp-server-cert` must already carry all four SANs.** `gcp-0`'s
   `ClusterIssuer` connects by `openbao.security.svc.cluster.local` in *both*
@@ -393,7 +395,9 @@ the newest object in the AWS history.
 
 ## Drill record
 
-Every executed failover is recorded in
-`docs/superpowers/specs/2026-09-02-openbao-store-of-record-verification.md`
-(repository path) with the snapshot object, the measured RPO, and the time from
-step 2 to step 3.
+Every executed failover is recorded with the snapshot object, the measured RPO,
+and the time from step 2 to step 3 — in
+`2026-09-02-openbao-store-of-record-verification.md` under
+`docs/superpowers/specs/` (a repository path — verification notes are not
+published). **No failover has been executed yet, so that note does not exist:**
+it is written by the first one, and `/verify-spec` creates it post-merge.

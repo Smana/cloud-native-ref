@@ -226,7 +226,7 @@ drift in the Negatives below is real rather than theoretical.
 
 Stage 1 plan: `docs/superpowers/plans/2026-09-02-openbao-store-of-record-stage1.md`.
 Lineage stacks: `opentofu/aws/openbao/lineage/`, `opentofu/gcp/openbao/lineage/`.
-Rehydrate: `scripts/openbao-config.sh rehydrate`, called by both management
+Rehydrate: `./scripts/openbao-config.sh rehydrate`, called by both management
 stacks' deploy scripts. Auth mounts: `opentofu/{aws/eks,gcp/gke}/configure/openbao.tf`.
 Fallback runbook: [Cross-cloud failover]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}).
 

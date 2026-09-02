@@ -77,7 +77,7 @@ guides and not highly available. Set `mode = "ha"` for the five-node Raft cluste
 on spot instances — the same configuration steps apply either way.
 
 Either way the cluster is auto-unsealed via AWS KMS with the lineage's key, and
-`scripts/openbao-config.sh rehydrate` brings its contents back from the newest
+`./scripts/openbao-config.sh rehydrate` brings its contents back from the newest
 snapshot — so there is no manual `bao operator init` / `unseal` step, and on the
 first deploy of a lineage the root token and recovery keys are written to two
 separate AWS Secrets Manager entries. The management stack then layers a

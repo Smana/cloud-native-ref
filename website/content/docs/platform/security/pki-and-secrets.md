@@ -44,7 +44,7 @@ run**:
 
 | Gate | What it does |
 |---|---|
-| **Task 14** `[LIVE]` | signs an AWS intermediate under the offline root, writes `certificates/priv.aws.ogenki.io/intermediate-ca` and `.../ca-chain`, re-issues the server certificate, and commits the root *certificate* as `.github/openbao-root-ca.pem` |
+| **Task 14** `[LIVE]` | signs an AWS intermediate under the offline root, writes `certificates/priv.aws.ogenki.io/intermediate-ca` and `.../ca-chain`, re-issues the server certificate, and commits the root *certificate* as `openbao-root-ca.pem` in `.github/` (not there yet — this task is what creates it) |
 | **Task 17 Step 2** `[LIVE]` | deletes `certificates/priv.aws.ogenki.io/root-ca` — only after the new chain has issued a certificate |
 
 Until both are done, read every "one offline root for both clouds" statement
