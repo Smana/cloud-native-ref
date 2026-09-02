@@ -109,15 +109,38 @@ spec:
               resources:
                 requests:
                   cpu: 50m
-                  # ~= the resident set of the cloud CLI at rest, which is the
-                  # typical case today: the objects this job writes are ~1 KB
-                  # (opentofu/gcp/openbao/lineage/main.tf makes that call for the
-                  # bucket's encryption), far below the 8Mi threshold that
-                  # switches gcloud to a chunked upload -- so the steady state is
-                  # "an interpreter with a cloud SDK imported" and nothing more.
-                  # Peaks are what the limit below is for, so this stays where it
-                  # was and the scheduling footprint on both clouds is unchanged.
-                  memory: 150Mi
+                  # Tracks the measured PEAK (~193 MiB, arithmetic in the limit
+                  # comment below), not the resting set -- the opposite of how
+                  # the cpu request above is chosen, and deliberately so.
+                  #
+                  # The two resources are not the same kind of thing. CPU is
+                  # compressible: exceeding the cpu request only throttles, and
+                  # throttling a once-a-night job just lengthens the backup
+                  # window, so 50m can sit at the resting set and let the limit
+                  # absorb the peak. Memory is not compressible. A container
+                  # using more memory than it requested is ranked AHEAD of
+                  # containers inside their requests when the kubelet evicts
+                  # under node MemoryPressure -- so a request below the peak
+                  # does not merely under-reserve, it volunteers this pod first.
+                  #
+                  # And this pod is the wrong one to volunteer. The eviction
+                  # lands AFTER `bao operator raft snapshot save` has already
+                  # succeeded, during the copy: the Job fails having done the
+                  # expensive part, the day's snapshot is lost, and
+                  # OpenBaoSnapshotJobFailed sends the responder to look at JWT
+                  # login and bucket access rather than at node pressure.
+                  #
+                  # Not a claim that today's runs exceed 150Mi -- they very
+                  # likely do not. Today's snapshot is small enough to stay
+                  # under the 8Mi chunking threshold, so the resting 92.6 MiB
+                  # import graph is the whole footprint. The point is that
+                  # nothing announces the crossing: the store grows, one night
+                  # the snapshot passes 8 MiB, and the request is wrong from
+                  # that night on with no signal but a failed Job. 200Mi is the
+                  # next round figure above the peak, so the request is right on
+                  # both sides of that line. It costs 50Mi of reservation on one
+                  # node, once a night.
+                  memory: 200Mi
                   # The snapshot lands in an emptyDir backed by the node's root
                   # disk, so the scheduler has to account for it. Without this
                   # a large snapshot triggers node DiskPressure and evicts
@@ -130,9 +153,12 @@ spec:
                   # backup window longer. The constitution requires a limit, so
                   # there is one.
                   cpu: 300m
-                  # Memory gets the same treatment, which it did not before: it
-                  # was pinned to the request at 150Mi, i.e. no headroom at all,
-                  # on a container whose copy step is a Python cloud CLI.
+                  # Memory gets headroom too, which it did not before: it was
+                  # pinned to the request at 150Mi, i.e. no headroom at all, on
+                  # a container whose copy step is a Python cloud CLI. Unlike
+                  # cpu, the request moved as well -- see above for why memory
+                  # cannot leave its peak to the limit.
+                  #
                   # Measured, not guessed -- importing the module graph that
                   # `gcloud storage cp` needs (googlecloudsdk.gcloud_main plus
                   # surface.storage.cp, 1178 modules, SDK 581 which is the series

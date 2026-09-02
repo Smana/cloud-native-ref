@@ -60,6 +60,26 @@ runs `tofu apply -auto-approve`. Tags remain right for *listing*
 (`TM_GCP_ENABLED=true` to turn GCP on, `--no-tags=aws` to turn AWS off) where
 getting one wrong silently built the wrong cloud.
 
+## The other `TM_*` gates — one table, not seven greps
+
+`TM_CLOUD` is one of **seven** environment variables that decide what a run may
+do. The other six are `TM_LLM_PLATFORM_ENABLED`, `TM_DESTROY_CONFIRMED`,
+`TM_LINEAGE_DESTROY`, `TM_OPENBAO_SKIP_SNAPSHOT`, `TM_TAILNET_DESTROY` and
+`TM_FEDERATION_DESTROY`.
+
+**The authoritative table — polarity, default-when-unset, and what each one
+gates — is [§ Environment gates in the Commands
+reference](../../website/content/docs/reference/commands.md).** It is not
+restated here: two copies of a safety table is how one of them goes stale, and
+an operator who cannot find `TM_LINEAGE_DESTROY` cannot destroy that stack at
+all.
+
+Read it before adding a gate, and note the trap it exists to make visible:
+**the polarity is not uniform.** Five of the six authorise an action when set to
+`true`; `TM_OPENBAO_SKIP_SNAPSHOT` *removes* the pre-destroy snapshot when set
+to `true`. A new gate should follow the majority shape — `=true` authorises —
+and go into that table in the same commit.
+
 ## EKS Two-Stage Bootstrap
 
 **Stage 1** (`eks/init`): EKS cluster, managed node groups, bootstrap addons (vpc-cni, kube-proxy, coredns, ebs-csi), Gateway API CRDs, IAM, flux-system namespace.

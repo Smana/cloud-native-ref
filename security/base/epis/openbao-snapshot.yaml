@@ -10,6 +10,19 @@ spec:
     serviceAccount:
         name: openbao-snapshot
         namespace: security
+    # ${openbao_snapshot_bucket}, not "${region}-ogenki-openbao-snapshot".
+    #
+    # Each cluster's `configure` stack publishes the effective bucket name as a
+    # Flux variable -- opentofu/aws/eks/configure/kubernetes.tf for aws-0, the
+    # only cluster this EPI is applied to -- and
+    # security/base/openbao-snapshot/snapshot-cronjob.yaml, two files over,
+    # already reads it as BUCKET_NAME. Rebuilding the name here from ${region}
+    # was a second, independent derivation of a value already handed to us --
+    # and string concatenation does not self-correct: it yields a plausible name
+    # for a bucket that may not exist. The EPI applies clean, the IAM role is
+    # created scoped to nothing, and the break surfaces at 04:00 as NoSuchBucket
+    # or an AccessDenied against a bucket nobody writes to. Reading the same
+    # variable the writer reads makes the two impossible to disagree.
     policyDocument: |
         {
             "Version": "2012-10-17",
@@ -22,8 +35,8 @@ spec:
                         "s3:ListBucket"
                     ],
                     "Resource": [
-                        "arn:aws:s3:::${region}-ogenki-openbao-snapshot",
-                        "arn:aws:s3:::${region}-ogenki-openbao-snapshot/*"
+                        "arn:aws:s3:::${openbao_snapshot_bucket}",
+                        "arn:aws:s3:::${openbao_snapshot_bucket}/*"
                     ]
                 },
                 {
@@ -32,7 +45,7 @@ spec:
                     "Action": [
                         "s3:PutObject"
                     ],
-                    "Resource": "arn:aws:s3:::${region}-ogenki-openbao-snapshot/*"
+                    "Resource": "arn:aws:s3:::${openbao_snapshot_bucket}/*"
                 },
                 {
                     "Sid": "AllowKMSUsage",
