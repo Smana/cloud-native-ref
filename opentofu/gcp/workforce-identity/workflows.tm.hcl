@@ -38,6 +38,14 @@ script "deploy" {
         ${global.provisioner} init
         ${global.provisioner} validate
         trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
+        # Workforce pools soft-delete with a 30-day purge, so a rebuild inside
+        # that window fails 409 on the very first resource -- while every check
+        # reports the org clean, because `list` hides deleted pools. This
+        # undeletes and imports whatever is already there; it is a no-op on a
+        # genuinely fresh org. See scripts/gcp-adopt-workforce-pool.sh.
+        bash "${terramate.root.path.fs.absolute}/scripts/gcp-adopt-workforce-pool.sh" \
+          --pool "$$(awk -F= '/workforce_pool_id/{gsub(/[ "]/,"",$$2); print $$2}' variables.tfvars)" \
+          --apply
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
       ],
