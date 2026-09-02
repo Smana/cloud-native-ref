@@ -1,142 +1,126 @@
 ---
 title: What it costs
 weight: 45
-description: What the platform actually bills on each cloud, measured rather than estimated, and which lines are worth attacking.
-lastVerified: 2026-08-29
+description: A rough monthly estimate of what the platform costs on each cloud, and how the two compare on equal terms.
+lastVerified: 2026-09-01
 ---
 
-Roughly **$590/month on AWS** and **$220/month on GCP** for the same platform,
-with the LLM components disabled on both.
+Roughly **$575/month on AWS** and **$320/month on GCP** for the same platform at
+list price, with the LLM components disabled on both.
 
-The more useful number is smaller: **$66/month bills on AWS even when every
-cluster is destroyed**, and almost none of it is the platform.
+The more useful number is smaller: **about $23/month keeps billing after every
+cluster is destroyed** — and that part is by design. See
+[the floor](#the-floor-you-pay-for-nothing).
 
 {{< callout type="info" >}}
-Measured on 2026-08-29 against both reference clusters, LLM platform suspended.
-The AWS figures come from Cost Explorer actuals plus live spot prices. The GCP
-figures are **rate-card estimates** — the billing API is reachable but exposes no
-spend without a BigQuery export — so treat them as ±20%.
+Measured on 2026-09-01, about one hour after bootstrapping both platforms from
+scratch. AWS compute uses live spot prices per instance type, the rest published
+`eu-west-3` rates — Cost Explorer actuals lag a same-day bootstrap. GCP comes
+from the Cloud Billing Catalog API. These are rough estimates: node counts are
+whatever the autoscalers held at snapshot time, and usage-based lines (NAT/LB
+data processing, egress) are called out rather than measured.
 {{< /callout >}}
 
-## AWS — about $24/day
+## AWS — about $19/day
 
 | Line | $/month | Notes |
 |---|---:|---|
-| **Spot compute, 6 nodes** | **250** | **largest single item** — measured spot rates, `eu-west-3` |
-| NAT gateway | 76 | $35 gateway-hours + $41 data processing |
+| **Spot compute, 6 nodes** | **331** | **largest single item** — 20 vCPU: a 2 × `m8i.large` static pair ($67) plus 4 Karpenter xlarge-class nodes ($264) |
+| NAT gateway | 35+ | gateway-hours. Data processing is billed on top and can match it — an S3 gateway endpoint takes out most of that traffic |
 | EKS control plane | 73 | $0.10/hr, flat |
-| EBS, 563 GiB gp3 | 54 | 27 volumes |
+| EBS, 443 GiB gp3 | 41 | 27 volumes |
 | 3 × network load balancer | 49 | public gateway, ZITADEL, OpenBao internal |
-| KMS | 29 | 39 keys |
-| Secrets Manager | 26 | 81 secrets |
 | 2 × `t3.micro` on-demand | 17 | OpenBao, Tailscale subnet router |
-| Kinesis | 11 | orphaned stream |
-| S3 | 10 | 7 buckets |
+| Secrets Manager | 16 | the ~40 secrets the platform actually reads |
+| Public IPv4 | 4 | the NAT gateway's EIP |
+| S3 | 3 | 8 buckets, ~112 GB (mostly LLM weights) |
+| KMS | 3 | 3 keys: cluster encryption, OpenBao unseal, snapshot bucket |
 | Route 53 | 1 | 2 hosted zones |
 
-### CloudWatch is absent on purpose
+### No cloud-provider monitoring is on the bill
 
-EKS control-plane logging used to be the **largest line on the whole bill** —
-**$144/month**, 20% of AWS, almost entirely `EUW3-VendedLog-Bytes` dominated by
-the audit log. All five log types were on.
+The platform
+[runs its own observability and security stack in-cluster]({{< relref "/docs/platform/observability" >}})
+— VictoriaMetrics, VictoriaLogs, Kyverno — so there is no CloudWatch, Cloud
+Monitoring, GuardDuty or Security Command Center line above. EKS control-plane
+logging is off for the same reason (`enabled_log_types = []` in
+`opentofu/aws/eks/init/main.tf`): vended logs bill per byte, and the audit log
+alone can rival the control plane itself. If you need it for an investigation,
+enable it deliberately — `enabled_log_types = ["audit"]` — and expect the line
+to appear.
 
-Nothing in this repository reads any of it. Observability is
-VictoriaMetrics/VictoriaLogs, and the platform
-[uses no cloud-provider monitoring on either cloud]({{< relref "/docs/platform/observability" >}}).
-So it was $144/month of logs nobody could look at without first going to find
-them in a console. `enabled_log_types` is now empty in
-`opentofu/aws/eks/init/main.tf`.
+Managed alternatives are a legitimate future direction — managed Prometheus,
+provider log sinks, GuardDuty / Security Command Center would shift cost from
+nodes and storage to per-signal service fees, and trade operating effort for
+bill opacity. If the platform adopts any of them, that will be a recorded
+decision with its price on this page, not a default left on.
 
-Turn types back on deliberately if you need them. `audit` is the one worth having
-during a security investigation, and it is also the expensive one — the module's
-own default is `["audit", "api", "authenticator"]`.
+Compute is spot throughout, and it is the line most worth understanding before
+trying to shrink it. Spot pricing per vCPU is close to flat across instance
+sizes, so **consolidating onto fewer, larger nodes saves per-node overhead —
+one fewer copy of every DaemonSet, less scheduling fragmentation, fewer root
+and data volumes — rather than capacity.** That is worth having (it also cuts
+provisioned disk, since every node carries its own volumes), but it is a
+second-order saving. What sets this line is what the workloads request.
 
-Compute is spot throughout — the six nodes measured at $0.0688 (`t3a.xlarge`),
-$0.0747 (`c5.xlarge`), $0.0428 (`c6i.large`), $0.0401 (`m5.large`) and $0.0471
-(`m8i.large`) per hour. Node count varies with what Karpenter has provisioned, so
-this line moves the most between runs.
-
-## GCP — about $7/day
+## GCP — about $10/day
 
 | Line | $/month | Notes |
 |---|---:|---|
-| **3 × `e2-standard-4` spot** | **88** | **largest single item** |
-| 3 × forwarding rule | 54 | 2 external, 1 internal |
-| Cloud NAT | 32 | plus data processing |
-| 273 GB `pd-balanced` | 27 | 16 disks |
-| `e2-micro` + `e2-small` | 18 | Tailscale router, OpenBao |
-| GKE control plane | 0 | zonal — assumed covered by the free zonal-cluster tier; **+$73 if not** |
-| Cloud DNS, GCS, Secret Manager | ~3 | 1 zone, 4 buckets, 28 secrets |
+| **3 × `e2-standard-4` spot** | **161** | **largest single item** — spot catalog rates are revised by Google monthly, so this line moves |
+| GKE control plane | 73 | $0.10/hr at list, same as EKS. The zonal free-tier credit ($74.40/month, one cluster per billing account) usually wipes this off the *invoice* — it is an account promotion, so it is not counted here |
+| 283 GB persistent disk | 29 | 17 disks, `pd-balanced` + one `pd-standard` |
+| 3 × forwarding rule | 20 | flat minimum up to 5 rules; plus data processing |
+| `e2-micro` + `e2-small` | 20 | Tailscale router, OpenBao |
+| Cloud NAT + IP | 9 | plus $0.045/GiB processing |
+| Cloud DNS, GCS, Secret Manager, KMS | ~4 | 1 zone, ~17 GiB, 55 secret versions, 1 key |
 
-GCP runs at roughly **a third of AWS** for the same workload, and very little of
-that gap is compute — spot nodes cost $250 against $88 largely because AWS is
-running six and GCP three. The rest is the flat EKS control-plane charge GKE
-waives on a zonal cluster, NAT data processing, load balancers, and the
-accumulated cruft below.
+## Why they differ
 
-Until 2026-08-29 the single biggest contributor was CloudWatch at $144/month.
-Removing it closed a fifth of the gap on its own.
+At list price AWS runs at about **1.8×** GCP. Separating what the *clouds*
+charge from what *this deployment* consumes:
+
+- **Cloud pricing accounts for roughly 1.3× of it.** Priced at identical
+  consumption (12 spot vCPUs, the same disk and inventory), AWS lands near
+  **$410/month** against GCP's $317: a ~25% spot premium per vCPU, three
+  metered NLBs against forwarding rules under a flat minimum, NAT
+  gateway-hours, and the per-secret/per-key pricing model. One line runs the
+  other way — `pd-balanced` costs ~18% more per GiB than gp3 — and the
+  control-plane fee is a wash: both charge $0.10/hour.
+- **The rest is consumption, not pricing**: this deployment consumes ~20 spot
+  vCPUs on AWS where GCP serves the platform on 12, and provisions more block
+  storage. Some of that is real (AWS additionally runs Karpenter and the demo
+  applications), some is scheduling slack. Either way it is a property of how
+  the platform is deployed, not of what the cloud charges — which is why the
+  headline ratio and the like-for-like ratio differ so much.
+- The comparison is structurally fair since ADR-0024: **both clouds run their
+  own ZITADEL and their own OpenBao**, and only public DNS stays AWS-owned.
 
 ## The floor you pay for nothing
 
-On 2026-08-28 — a full day with no cluster on either cloud — AWS still billed
-**$2.19**:
+With every cluster destroyed, about **$23/month keeps billing** — the
+platform's ~40 secrets, its 3 KMS keys, the DNS zones, and
+[backup buckets that outlive their clusters on purpose]({{< relref "/docs/guides/restore-a-database.md" >}}).
+That floor is a feature: **secrets, keys and backups survive teardown by
+design.** The platform constitution withholds delete permissions for stateful
+services, so `xplane-*` IAM, S3 and secrets are re-adopted by name on the next
+deploy rather than recreated.
 
-| Service | $/day | Why |
-|---|---:|---|
-| Secrets Manager | 0.87 | **81 secrets**; the platform provisions about 10 |
-| KMS | 0.81 | **39 keys** |
-| Kinesis | 0.36 | `xplane-vector-stream` in `eu-west-1` |
-| S3 | 0.15 | backup buckets, which *should* outlive clusters |
-| Route 53 | 0.001 | 2 zones |
-
-Only the S3 line is deliberate — [backup buckets outlive their clusters on
-purpose]({{< relref "/docs/guides/restore-a-database.md" >}}). The rest is
-residue from rebuilds:
-
-- **Secrets and KMS keys survive teardown by design.** The platform constitution
-  withholds delete permissions for stateful services, so `xplane-*` IAM, S3 and
-  secrets are re-adopted by name on the next deploy rather than recreated. That
-  is correct, and it means nothing ever removes the ones that stop being used.
-- **`xplane-vector-stream` sits in `eu-west-1`**, a region this platform does not
-  deploy to at all — left from an old Vector experiment.
-
-The pattern is worth naming: **teardown is thorough about compute and blind to
-everything that outlives a cluster.** The
-[EBS]({{< relref "/docs/get-started/aws/teardown.md" >}}) and PD sweeps close one
-leak of exactly this shape; secrets, KMS keys and cross-region leftovers are the
-same shape, unswept.
-
-## What is worth attacking
-
-**1. EKS control-plane logging — $144/month. Done.** It was the largest single
-line and 20% of the AWS bill, every cent `EUW3-VendedLog-Bytes` dominated by the
-audit log, and nothing in this repository read any of it. All five types were
-enabled; the module's own default is three.
-
-`opentofu/aws/eks/init/main.tf` now sets `enabled_log_types = []`, which changes
-nothing about how the platform runs — the platform uses
-[no cloud-provider monitoring on either cloud]({{< relref "/docs/platform/observability/_index.md" >}}).
-
-Audit logs are the one signal the in-cluster stack cannot reconstruct, since the
-API server writes them before anything in the cluster can observe them. If you
-need them for an investigation, turn them on deliberately —
-`enabled_log_types = ["audit"]` — and expect the bill to come back.
-
-**2. The idle floor — $66/month.** Sweep the orphaned secrets and KMS keys, and
-delete the stray stream:
+The flip side: nothing ever removes the ones that stop being used. Renamed or
+removed components leave their secrets behind, and each rebuild can leave a key
+behind, at $0.40/secret and $1/key per month. **Teardown is thorough about
+compute and blind to everything that outlives a cluster** — the
+[EBS]({{< relref "/docs/get-started/aws/teardown.md" >}}) and PD sweeps close
+one leak of exactly this shape. If your account has lived through a few
+rebuilds, audit the rest of it (keys in `PendingDeletion` cost nothing; enabled
+ones bill):
 
 ```bash
-aws --region eu-west-1 kinesis delete-stream \
-  --stream-name xplane-vector-stream --enforce-consumer-deletion
+aws secretsmanager list-secrets \
+  --query 'SecretList[].[Name,LastAccessedDate]' --output table
+aws kms list-keys --query 'Keys[].KeyId' --output text | xargs -n1 \
+  aws kms describe-key --query 'KeyMetadata.[KeyState,Description]' --output text --key-id
 ```
-
-**3. NAT data processing costs more than the NAT gateway** — $41/month against
-$35/month of gateway-hours, from image pulls and telemetry egress. There are no
-VPC endpoints configured; S3 and ECR endpoints would take most of it out.
-
-Together those are roughly **$200/month**, none of which requires changing what
-the platform does.
 
 ## Keeping it cheap
 
@@ -150,7 +134,7 @@ expensive choices are the ones that look like defaults:
 - **`mode = "dev"` for OpenBao** (`opentofu/aws/openbao/cluster/variables.tfvars`)
   is one `t3.micro`. `mode = "ha"` is five spot instances, and the configuration
   steps are identical either way.
-- **Tear it down when you are done.** At ~$24/day, AWS costs more in three days
+- **Tear it down when you are done.** At ~$19/day, AWS costs more in two days
   than a month of the idle floor.
 
 ## Related
