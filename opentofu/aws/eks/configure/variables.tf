@@ -121,3 +121,22 @@ variable "openbao_jwt_audience" {
   type        = string
   default     = "openbao"
 }
+
+# Which OpenBao this cluster's pods reach through the neutral `openbao` Service,
+# when the overlay lists security/base/openbao-endpoint/remote. In the normal
+# posture aws-0 lists the local form and this is unused -- but the key still has
+# to reach the cluster's ConfigMap, or Flux substitutes an empty string into the
+# Service's tailnet-ip annotation, which is schema-valid and silently wrong.
+#
+# EMPTY by default, unlike the gcp-0 counterpart, and the asymmetry is real
+# rather than an oversight: gcp-0 can default to the AWS NLB's address because
+# that address is FIXED (opentofu/aws/openbao/cluster/load_balancer.tf assigns
+# it with cidrhost, and outputs it as nlb_private_ips). The GCP internal load
+# balancer's address is allocated dynamically -- google_compute_address.openbao
+# sets no `address` -- so there is no value to write here until that stack has
+# been applied. The failback runbook reads it from that stack's output.
+variable "openbao_target_ip" {
+  description = "Private address of the OpenBao this cluster consumes, for the remote form of the openbao Service. Empty in the normal posture; set from the GCP cluster stack's load_balancer_address output during a failback."
+  type        = string
+  default     = ""
+}

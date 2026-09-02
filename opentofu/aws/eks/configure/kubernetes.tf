@@ -89,6 +89,19 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # and the Crossplane IAM condition keyed on the project prefix), so it is
       # a per-cluster variable rather than a literal in the shared manifest.
       openbao_snapshot_bucket = "${var.region}-ogenki-openbao-snapshot"
+      # security/base/openbao-endpoint/remote, when THIS cluster consumes an
+      # OpenBao on the other cloud. Unused in the normal posture, where aws-0
+      # lists the local form -- but it has to exist as a key regardless.
+      #
+      # The failover runbook's step 4 tells the operator to switch a cluster to
+      # the remote overlay and set this. Without the key, Flux substitutes an
+      # empty string into `tailscale.com/tailnet-ip` -- schema-valid, silently
+      # wrong -- so an operator following the runbook mid-incident would get a
+      # Service annotated with nothing. gcp-0 has carried this key since the
+      # GCP lineage stack landed; aws-0 was missing it, which made the runbook
+      # unexecutable in the AWS-consumes-GCP direction. That is the direction
+      # failback uses, so it is not the rare one.
+      openbao_target_ip = var.openbao_target_ip
       # Secret Manager key for apps/base/ai/llm/hf-token-externalsecret.yaml.
       # PATH-STYLE here because AWS Secrets Manager permits "/"; gcp-0's
       # ConfigMap carries a flat dash-separated ID instead -- ADR-0023.
