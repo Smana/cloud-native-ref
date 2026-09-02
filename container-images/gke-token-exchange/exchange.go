@@ -57,19 +57,34 @@ func (x *Exchanger) Exchange(ctx context.Context, idToken string) (string, error
 	}
 	x.mu.Unlock()
 
+	// Concurrent requests for the same COLD token each call STS. Deliberate:
+	// singleflight lives in golang.org/x/sync and this module is stdlib-only by
+	// constraint, hand-rolled in-flight dedup adds real concurrency risk to a
+	// security-path component, and the cost is bounded -- one burst per token per
+	// hour per user, far inside STS quota for a handful of operators.
+
 	tok, ttl, err := x.callSTS(ctx, idToken)
 	if err != nil {
 		return "", err
 	}
 
 	expiry := x.now().Add(ttl)
-	if idExp, ok := jwtExpiry(idToken); ok && idExp.Before(expiry) {
+	idExp, ok := jwtExpiry(idToken)
+	if !ok {
+		// Cannot bound this entry by the subject token's own lifetime, so do not
+		// cache it at all. Caching on the STS TTL alone would let an exchanged
+		// token outlive the id_token that authorised it -- the single property
+		// this cache exists to preserve.
+		return tok, nil
+	}
+	if idExp.Before(expiry) {
 		expiry = idExp
 	}
 	expiry = expiry.Add(-safetyMargin)
 
 	if expiry.After(x.now()) {
 		x.mu.Lock()
+		x.evictExpiredLocked()
 		x.cache[key] = entry{token: tok, expiry: expiry}
 		x.mu.Unlock()
 	}
@@ -130,6 +145,19 @@ func (x *Exchanger) callSTS(ctx context.Context, idToken string) (string, time.D
 		return "", 0, fmt.Errorf("sts returned no access_token")
 	}
 	return out.AccessToken, time.Duration(out.ExpiresIn) * time.Second, nil
+}
+
+// evictExpiredLocked drops entries whose expiry has passed. Caller must hold x.mu.
+// Called on WRITE, which happens once per token rather than once per request, so
+// the O(n) sweep is cheap and keeps the map bounded by the number of LIVE tokens
+// instead of every token ever seen.
+func (x *Exchanger) evictExpiredLocked() {
+	now := x.now()
+	for k, ent := range x.cache {
+		if !now.Before(ent.expiry) {
+			delete(x.cache, k)
+		}
+	}
 }
 
 func cacheKey(tok string) string {

@@ -141,3 +141,48 @@ func TestExchangeErrorDoesNotLeakTokenMaterial(t *testing.T) {
 		t.Fatalf("error must not echo the STS description, got %q", err)
 	}
 }
+
+func TestExchangeDoesNotCacheUnparseableIDToken(t *testing.T) {
+	hits := 0
+	srv := fakeSTS(t, &hits, 200, `{"access_token":"ya29.fake","expires_in":3598}`)
+	defer srv.Close()
+
+	ex := NewExchanger("//aud", srv.Client())
+	ex.stsURL = srv.URL
+
+	opaque := "not.a.jwt"
+	for i := 0; i < 2; i++ {
+		if _, err := ex.Exchange(context.Background(), opaque); err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+	}
+	if hits != 2 {
+		t.Fatalf("STS called %d times, want 2 (an unbounded entry must never be cached)", hits)
+	}
+}
+
+func TestExchangeEvictsExpiredEntries(t *testing.T) {
+	hits := 0
+	srv := fakeSTS(t, &hits, 200, `{"access_token":"ya29.fake","expires_in":3598}`)
+	defer srv.Close()
+
+	ex := NewExchanger("//aud", srv.Client())
+	ex.stsURL = srv.URL
+
+	if _, err := ex.Exchange(context.Background(), idToken(time.Now().Add(6*time.Minute))); err != nil {
+		t.Fatal(err)
+	}
+	if len(ex.cache) != 1 {
+		t.Fatalf("cache has %d entries, want 1", len(ex.cache))
+	}
+
+	// Past the first entry's expiry. Writing a different token must sweep the dead
+	// entry rather than accumulate it.
+	ex.now = func() time.Time { return time.Now().Add(10 * time.Minute) }
+	if _, err := ex.Exchange(context.Background(), idToken(time.Now().Add(2*time.Hour))); err != nil {
+		t.Fatal(err)
+	}
+	if len(ex.cache) != 1 {
+		t.Fatalf("cache has %d entries after the eviction sweep, want 1", len(ex.cache))
+	}
+}
