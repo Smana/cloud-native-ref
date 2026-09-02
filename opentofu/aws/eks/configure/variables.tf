@@ -134,9 +134,10 @@ variable "openbao_jwt_audience" {
 # it with cidrhost, and outputs it as nlb_private_ips). The GCP internal load
 # balancer's address is allocated dynamically -- google_compute_address.openbao
 # sets no `address` -- so there is no value to write here until that stack has
-# been applied. The failback runbook reads it from that stack's output.
+# been applied. The failback runbook reads it from that stack's `internal_ip`
+# output (opentofu/gcp/openbao/cluster/outputs.tf).
 variable "openbao_target_ip" {
-  description = "Private address of the OpenBao this cluster consumes, for the remote form of the openbao Service. Empty in the normal posture; set from the GCP cluster stack's load_balancer_address output during a failback."
+  description = "Private address of the OpenBao this cluster consumes, for the remote form of the openbao Service. Empty in the normal posture; set from the GCP cluster stack's internal_ip output during a failback."
   type        = string
   default     = ""
 }
