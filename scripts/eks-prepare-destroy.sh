@@ -202,6 +202,19 @@ else
 fi
 
 # Delete Karpenter NodePools (only if CRD exists)
+#
+# AND THEN WAIT FOR THE NODECLAIMS TO GO. Deleting a NodePool does not terminate
+# anything by itself -- it asks Karpenter to, and Karpenter runs INSIDE this
+# cluster. If the control plane is destroyed while a NodeClaim is still
+# draining, the EC2 instance survives with nothing left that will ever reap it.
+#
+# Measured 2026-09-02: a teardown left two instances running, both tagged
+# kubernetes.io/cluster/<cluster>=owned. One had been launched A MINUTE AFTER
+# the teardown began, because this script drains workloads and Karpenter
+# provisioned for the pods that went pending. Their ENIs held two security
+# groups, `tofu destroy` failed with DependencyViolation, and since that stack
+# failed the whole --reverse sweep stopped there -- leaving an entire SECOND
+# CLOUD untouched and running. One orphaned node, two clusters still billing.
 echo "Checking for Karpenter NodePools..."
 if kubectl api-resources --api-group=karpenter.sh 2>/dev/null | grep -q nodepools; then
 	mapfile -t NODEPOOLS < <(kubectl get nodepools -o json 2>/dev/null | jq -r '.items[].metadata.name' 2>/dev/null || echo "")
@@ -210,6 +223,29 @@ if kubectl api-resources --api-group=karpenter.sh 2>/dev/null | grep -q nodepool
 		kubectl delete nodepools --all 2>/dev/null || echo "Failed to delete some NodePools"
 	else
 		echo "No NodePools found"
+	fi
+
+	# Bounded: this is best-effort cleanup, not a gate. If Karpenter cannot
+	# finish (it may already be evicted), say so loudly and name the sweep --
+	# a warning the operator can act on beats a hang, and beats silence.
+	if kubectl api-resources --api-group=karpenter.sh 2>/dev/null | grep -q nodeclaims; then
+		echo "Waiting for Karpenter NodeClaims to terminate (up to 300s)..."
+		for _ in $(seq 1 60); do
+			remaining="$(kubectl get nodeclaims -o json 2>/dev/null | jq -r '.items | length' 2>/dev/null || echo 0)"
+			[ "${remaining:-0}" = "0" ] && break
+			sleep 5
+		done
+		remaining="$(kubectl get nodeclaims -o json 2>/dev/null | jq -r '.items | length' 2>/dev/null || echo 0)"
+		if [ "${remaining:-0}" = "0" ]; then
+			echo "All NodeClaims terminated."
+		else
+			echo "[warn] ${remaining} NodeClaim(s) still present. Their EC2 instances will"
+			echo "[warn] outlive the cluster and their ENIs will block security-group"
+			echo "[warn] deletion with DependencyViolation. After the destroy, sweep them:"
+			echo "[warn]   aws ec2 describe-instances --region <region> \\"
+			echo "[warn]     --filters Name=tag:kubernetes.io/cluster/<cluster>,Values=owned \\"
+			echo "[warn]               Name=instance-state-name,Values=running"
+		fi
 	fi
 else
 	echo "Karpenter CRDs not available, skipping NodePool deletion"
