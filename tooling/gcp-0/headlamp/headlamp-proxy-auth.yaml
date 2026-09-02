@@ -5,6 +5,31 @@ metadata:
   namespace: tooling
 spec:
   values:
+    # The chart's default (clusterRoleName: cluster-admin) binds the headlamp
+    # ServiceAccount to cluster-admin via ClusterRoleBinding headlamp-admin --
+    # live state confirmed before this repo added per-user auth. That made
+    # sense only when every user's request ran AS that SA
+    # (unsafeUseServiceAccountToken: true, above). It no longer does: each
+    # request now carries the requesting user's own federated token, and
+    # Kubernetes RBAC (security/gcp-0/rbac/) authorises against that user, not
+    # this SA. A cluster-admin binding here would keep the exact blast radius
+    # this change removes -- anything reaching the API server AS the headlamp
+    # SA (its own health/readiness calls, chart-internal version checks) gets
+    # cluster-admin regardless of who is logged in.
+    #
+    # Reduced to the built-in `view` ClusterRole (read-only, all namespaces,
+    # no secrets) rather than dropping the binding entirely: `view` is
+    # conservative in both directions -- generous enough that if Headlamp's
+    # own SA does still make some background read (e.g. server version/API
+    # discovery), it keeps working, but it grants no write access anywhere,
+    # so the removed cluster-admin blast radius does not come back through
+    # this binding. Named permissions were not enumerated because the pod's
+    # actual background API usage (as opposed to per-request proxying,
+    # which now runs as the user) was not verified against a live cluster
+    # for this change -- narrowing further needs that evidence first.
+    clusterRoleBinding:
+      clusterRoleName: view
+
     config:
       # OIDC OFF ON THIS CLUSTER, STILL -- but it no longer costs anything.
       # GKE cannot be made to trust ZITADEL directly (Identity Service for GKE,
