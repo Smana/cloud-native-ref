@@ -51,6 +51,7 @@ useful error.
 |---|---|
 | A trailing **segment**, not a key prefix | A prefix (`awskms/<ts>.snap`) makes an object vanish from the candidate set — both selection paths list non-recursively and strip through the last `/`. That is exactly right for "move this aside" and exactly wrong for normal operation. |
 | Timestamp **first**, fixed width | `sort \| tail -n1` stays chronological even in a bucket holding two seals. |
+| Only **top-level `*.snap`** objects are candidates | Both selectors — this script's `restore` and `rehydrate` in [`scripts/openbao-config.sh`](../../scripts/openbao-config.sh) — drop anything under a prefix and anything not ending `.snap`, so a `README`, a lifecycle artefact or a moved-aside object can never be mistaken for "the newest snapshot". Emptying the candidate set that way does **not** read as an empty bucket: `rehydrate` refuses rather than treating it as a first deploy, because a first deploy's plain `init` would overwrite the lineage's stored root token and recovery keys. |
 | Seal read from the **node**, not from config | `seal_provider` in a tfvars file can disagree with the process that is running. `GET /v1/sys/seal-status` reports `.type` — the barrier seal type — and is **unauthenticated**: it sits on OpenBao's bare HTTP mux next to `/v1/sys/init` and `/v1/sys/health`, so both `save` (holding a JWT token) and `restore` (running against a node that is up but not yet initialised) can ask it. |
 
 `.type` is only trustworthy from **OpenBao 2.4.0** onward: before

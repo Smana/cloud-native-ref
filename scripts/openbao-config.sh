@@ -186,12 +186,28 @@ parse_args() {
     fi
 }
 
+# Every binary any subcommand shells out to, checked ONCE, before any of them
+# runs.
+#
+# `curl` and `openssl` were checked 75 lines into rehydrate_openbao, which is
+# after the idempotency branch has already called verify_pki_present -- and that
+# function needs both. Without openssl it reported "returned something that is
+# not a certificate" about a perfectly good PEM, control fell through to the
+# no-PKI analysis, and the script told the operator to *destroy a healthy
+# OpenBao* with TM_OPENBAO_SKIP_SNAPSHOT=true, discarding its final snapshot.
+# Measured with openssl off PATH.
+#
+# Checked for all four subcommands rather than per-command: `ca` and
+# `rehydrate` use openssl, `init`/`rehydrate`/`pre-destroy-snapshot` use curl,
+# and a missing binary is worth one boring uniform failure rather than four
+# subtly different late ones. Anywhere the cloud CLI is installed, both of these
+# are.
 check_prerequisites() {
     local cloud_bin="aws"
     if [ "$CLOUD" = "gcp" ]; then
         cloud_bin="gcloud"
     fi
-    for bin in bao jq "$cloud_bin"; do
+    for bin in bao jq curl openssl "$cloud_bin"; do
         if ! command -v "$bin" &> /dev/null; then
             echo "Error: $bin is not installed"
             exit 1
@@ -250,6 +266,27 @@ wait_for_openbao() {
     return 1
 }
 
+# Poll until OpenBao answers as INITIALISED AND UNSEALED. Deliberately NOT
+# "active", and the wording matters because a caller acts on it.
+#
+# The probe carries standbyok/perfstandbyok because it goes through the NLB,
+# whose target group reports a standby as healthy: a bare /v1/sys/health answers
+# 200 only on the active node, so without these it timed out for ten minutes
+# against a healthy `ha` cluster. Having accepted a standby's 200, the function
+# can no longer claim activation, and it no longer does.
+#
+# Nor should it try. Asking the same address for `sys/leader`'s `is_self` asks
+# "is the node this request happened to land on the leader", which through a
+# round-robin listener is a coin toss that would flap between polls; and an
+# active-only probe is exactly the thing that broke. The property a caller
+# actually needs is weaker anyway -- OpenBao standbys RPC the active node over
+# the cluster port for any request that must be served there, which is what
+# makes `snapshot save` and `snapshot restore` work through this same address
+# (see the "No leader discovery" note in
+# container-images/openbao-snapshot/openbao-snapshot.sh). Both clusters run
+# single-node `dev` today, where this address IS the active node, so the
+# distinction costs nothing here; the wording is what stops a future `ha`
+# reader from believing an assertion the code never made.
 check_openbao_status() {
     local max_retries=20
     local timeout_seconds=600
@@ -259,14 +296,10 @@ check_openbao_status() {
     while [[ $attempt -le $max_retries ]]
     do
         log_message "INFO" "Attempt $attempt: Checking $OPENBAO_URL..."
-        # Mirrors the two probes in rehydrate and pre-destroy: a bare
-        # /v1/sys/health returns 200 only for the ACTIVE node, and this poll
-        # goes through the NLB, which reports standbys as healthy. In `ha` it
-        # would otherwise time out on a healthy cluster.
-        status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true")
+        status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true" || true)
 
         if [ "$status_code" = "200" ]; then
-            log_message "INFO" "OpenBao is initialized, unsealed, and active"
+            log_message "INFO" "OpenBao is initialized and unsealed (this address may be a standby; requests that need the leader are forwarded)"
             return 0
         fi
 
@@ -274,7 +307,7 @@ check_openbao_status() {
         attempt=$((attempt + 1))
     done
 
-    log_message "ERROR" "OpenBao is not initialized, unsealed, or active"
+    log_message "ERROR" "OpenBao did not become initialized and unsealed (last status: ${status_code:-none})"
     return 1
 }
 
@@ -384,10 +417,13 @@ export_snapshot_env() {
 
 # Newest snapshot object in the lineage bucket.
 #
-#   stdout = the object name, or EMPTY when the bucket genuinely holds none
-#   return = 0 on a successful listing, 1 when the listing itself FAILED
+#   stdout = the object name, or EMPTY when the bucket holds NOTHING AT ALL
+#   return = 0 on a successful listing
+#            1 when the listing itself FAILED
+#            2 when the listing succeeded, the bucket is NOT empty, and none of
+#              what it holds is a selectable snapshot
 #
-# The two must not be conflated, and conflating them is the single most
+# The three must not be conflated, and conflating them is the single most
 # dangerous mistake available in this file. An empty answer routes the caller
 # to "first deploy of this lineage -> plain init", which WRITES a fresh root
 # token and fresh recovery keys over the lineage's. Reaching that from an
@@ -398,9 +434,26 @@ export_snapshot_env() {
 # The sibling script already argues this at length for its own listing
 # (container-images/openbao-snapshot/openbao-snapshot.sh, `restore`): "this is a
 # listing failure, NOT an empty bucket". Same rule here.
+#
+# WHAT COUNTS AS A CANDIDATE: a TOP-LEVEL object whose name ends `.snap`, on
+# both clouds. The AWS branch used to apply neither filter and hand back the
+# newest key of any kind, so a README, or a snapshot an operator had moved
+# aside under a prefix, became "the newest snapshot" -- snapshot_seal_segment
+# then returned empty and the seal gate refused on a bucket whose real newest
+# snapshot was restorable. (Reproduced: a bucket holding
+# 2026-09-01T000000Z-awskms.snap, awskms/<older>.snap and README.md selected
+# README.md.) A prefix is how "move this aside" is spelled, which is exactly why
+# a prefixed object must not be selected.
+#
+# Return 2 exists BECAUSE of that filter. Without it, "the bucket holds objects
+# but none is a candidate" -- every snapshot moved aside, say -- would answer
+# EMPTY, and empty means plain init, which overwrites the lineage's stored keys.
+# That is the same catastrophe the listing-failure branch above exists to
+# prevent, reached by a different road. The GCP branch has always filtered, so
+# it has always had this hole; it is closed for both here.
 latest_snapshot() {
     if [ "$CLOUD" = "gcp" ]; then
-        local listing
+        local listing newest n_objects
         if ! listing=$(gcp_gcloud storage ls "gs://${SNAPSHOT_BUCKET}/"); then
             log_err "could not list gs://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
             return 1
@@ -408,10 +461,11 @@ latest_snapshot() {
         # `grep || true`: grep exits 1 when it matches nothing, and this file
         # runs with `set -o pipefail`, so an unguarded grep in a pipeline turns
         # a legitimately empty bucket into a hard failure.
-        printf '%s\n' "$listing" | sed 's#.*/##' | { grep '\.snap$' || true; } | sort | tail -n1
+        newest=$(printf '%s\n' "$listing" | sed 's#.*/##' | { grep '\.snap$' || true; } | sort | tail -n1)
+        n_objects=$(printf '%s\n' "$listing" | { grep -c . || true; })
     else
         local aws_cmd; aws_cmd=$(get_aws_cmd)
-        local out
+        local out newest n_objects
         # Full JSON, filtered by jq, rather than --query sort_by(...)[-1]: that
         # query ERRORS on an empty bucket, so exit status alone could not
         # separate "empty" from "could not list".
@@ -419,8 +473,32 @@ latest_snapshot() {
             log_err "could not list s3://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
             return 1
         fi
-        printf '%s' "$out" | jq -r '(.Contents // []) | if length == 0 then "" else (sort_by(.LastModified) | last | .Key) end'
+        newest=$(printf '%s' "$out" | jq -r '
+            (.Contents // [])
+            | map(select((.Key | contains("/")) | not))
+            | map(select(.Key | endswith(".snap")))
+            | if length == 0 then "" else (sort_by(.LastModified) | last | .Key) end')
+        n_objects=$(printf '%s' "$out" | jq -r '(.Contents // []) | length')
     fi
+
+    if [ -n "$newest" ]; then
+        printf '%s\n' "$newest"
+        return 0
+    fi
+
+    # A count that is not a number is treated as a LISTING FAILURE, not as an
+    # empty bucket. Only one of those two answers lets the caller initialise
+    # over the lineage's stored keys, and it must not be reachable by accident.
+    case "${n_objects:-}" in
+        ''|*[!0-9]*)
+            log_err "could not count the objects in ${SNAPSHOT_BUCKET} (got '${n_objects:-}')."
+            log_err "Refusing to report it as empty on the strength of that."
+            return 1 ;;
+    esac
+    if [ "$n_objects" -gt 0 ]; then
+        return 2
+    fi
+    return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -623,9 +701,19 @@ init_openbao() {
         exit 1
     fi
 
-    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health")
+    # The FOURTH probe, and the one that was missed when the other three gained
+    # these parameters. Same reason as there: a bare /v1/sys/health returns 200
+    # only for the ACTIVE node, this call goes through the NLB, and the NLB's
+    # target group deliberately reports standbys as healthy. In `ha` a bare
+    # probe therefore got 429 from a perfectly healthy standby and this function
+    # exited 1 with "Unexpected status code: 429" -- reached not only by `init`
+    # but by `rehydrate`, whose empty-bucket branch calls straight into here.
+    # `|| true` for the same reason the other three have it: curl exits 7 on a
+    # refused connection, which under `set -e` killed the script before the
+    # status could be reported at all.
+    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true" || true)
     if [ "$status_code" = "200" ]; then
-        log_message "INFO" "OpenBao is already initialized, unsealed, and active"
+        log_message "INFO" "OpenBao is already initialized and unsealed"
         exit 0
     fi
 
@@ -737,13 +825,25 @@ rehydrate_openbao() {
             # holding freshly stored keys.
             export_snapshot_env
             # `local` on its own line, then assign: `local x=$(cmd)` masks the
-            # command's exit status behind local's own.
-            local _latest
-            if ! _latest=$(latest_snapshot); then
-                log_message "ERROR" "OpenBao has no PKI mount and the lineage bucket cannot be listed, so this"
-                log_message "ERROR" "cannot be told apart from a failed restore. Fix the listing and re-run."
-                exit 1
-            fi
+            # command's exit status behind local's own. `|| _rc=$?` rather than
+            # `if !`, because latest_snapshot has THREE answers and only one of
+            # them is "the listing failed" -- see its contract.
+            local _latest _rc=0
+            _latest=$(latest_snapshot) || _rc=$?
+            case "$_rc" in
+                0) ;;
+                2)
+                    log_message "ERROR" "OpenBao has no PKI mount, and ${SNAPSHOT_BUCKET} holds objects of which none is a"
+                    log_message "ERROR" "selectable snapshot -- what the bucket looks like once every snapshot has been"
+                    log_message "ERROR" "moved aside under a prefix. Not an empty bucket, so this is NOT the young"
+                    log_message "ERROR" "lineage case and must not be waved through. Put the object(s) back at the top"
+                    log_message "ERROR" "level (container-images/openbao-snapshot/README.md) and re-run."
+                    exit 1 ;;
+                *)
+                    log_message "ERROR" "OpenBao has no PKI mount and the lineage bucket cannot be listed, so this"
+                    log_message "ERROR" "cannot be told apart from a failed restore. Fix the listing and re-run."
+                    exit 1 ;;
+            esac
             if [ -z "$_latest" ]; then
                 log_message "WARN" "OpenBao is initialized and unsealed with no PKI mount, and ${SNAPSHOT_BUCKET} is"
                 log_message "WARN" "empty -- a first bootstrap whose 'tofu apply' has not completed. Continuing;"
@@ -769,13 +869,25 @@ rehydrate_openbao() {
     # the lineage's stored root token and recovery keys. Getting there from an
     # expired session, while the bucket still holds every snapshot, is how a
     # lineage becomes unrecoverable.
-    local latest
-    if ! latest=$(latest_snapshot); then
-        log_message "ERROR" "Refusing to initialise: cannot prove ${SNAPSHOT_BUCKET} is empty."
-        log_message "ERROR" "Initialising now would overwrite this lineage's stored root token and"
-        log_message "ERROR" "recovery keys. Fix the listing (credentials, region, bucket name) and re-run."
-        exit 1
-    fi
+    local latest rc=0
+    latest=$(latest_snapshot) || rc=$?
+    case "$rc" in
+        0) ;;
+        2)
+            log_message "ERROR" "Refusing to initialise: ${SNAPSHOT_BUCKET} is NOT empty, but nothing in it is a"
+            log_message "ERROR" "selectable snapshot -- no top-level '<UTC timestamp>-<seal>.snap' object. That is"
+            log_message "ERROR" "what the bucket looks like once every snapshot has been moved aside under a"
+            log_message "ERROR" "prefix. Initialising now would overwrite this lineage's stored root token and"
+            log_message "ERROR" "recovery keys, so this refuses instead. Put the object(s) back at the top level"
+            log_message "ERROR" "(container-images/openbao-snapshot/README.md), or point --snapshot-bucket at the"
+            log_message "ERROR" "right bucket."
+            exit 1 ;;
+        *)
+            log_message "ERROR" "Refusing to initialise: cannot prove ${SNAPSHOT_BUCKET} is empty."
+            log_message "ERROR" "Initialising now would overwrite this lineage's stored root token and"
+            log_message "ERROR" "recovery keys. Fix the listing (credentials, region, bucket name) and re-run."
+            exit 1 ;;
+    esac
 
     if [ -z "$latest" ]; then
         log_message "INFO" "No snapshot in ${SNAPSHOT_BUCKET}: first deploy of this lineage. Initialising and storing the new keys."
@@ -789,12 +901,9 @@ rehydrate_openbao() {
         log_message "ERROR" "--freshness-days must be a positive integer (got '${FRESHNESS_DAYS}')"
         exit 1
     fi
-    for bin in openssl curl; do
-        if ! command -v "$bin" >/dev/null 2>&1; then
-            log_message "ERROR" "$bin is required by the restore path and is not installed"
-            exit 1
-        fi
-    done
+    # openssl and curl used to be checked here. They are in check_prerequisites
+    # now -- this was 75 lines AFTER the idempotency branch that calls
+    # verify_pki_present, which needs both.
     if ! secret_read "$RECOVERY_KEYS_SECRET_NAME" >/dev/null 2>&1; then
         log_message "ERROR" "Cannot read ${RECOVERY_KEYS_SECRET_NAME}. The restore mints a root token from it,"
         log_message "ERROR" "so refusing before the init rather than stranding the node afterwards."
@@ -821,29 +930,38 @@ rehydrate_openbao() {
         local found
         if [ -n "$snap_seal" ]; then
             found="sealed '${snap_seal}'"
-        elif [[ "$latest" == */* ]]; then
-            found="under a prefix -- an object an operator MOVED ASIDE, so it carries no seal segment"
         else
             found="carrying NO seal segment -- written before seals were legible in the name"
         fi
-        log_message "ERROR" "SEAL MISMATCH -- refusing to initialise or restore. Nothing has changed yet."
-        log_message "ERROR" "  this node's seal : ${node_seal}"
-        log_message "ERROR" "  newest object    : ${latest}"
-        log_message "ERROR" "                     ${found}"
-        log_message "ERROR" "A Raft snapshot can only be restored under the seal that encrypted it, so"
-        log_message "ERROR" "restoring this one would leave the node sealed with no useful error -- the"
-        log_message "ERROR" "stranded state this script warns about once it is already too late."
-        log_message "ERROR" "This is the mixed-seal state a cross-cloud failover leaves behind (ADR-0032):"
-        log_message "ERROR" "mirrored objects are AWS-sealed by construction, and a standby that ran with"
-        log_message "ERROR" "seal_provider = \"awskms\" wrote AWS-sealed objects of its own."
-        log_message "ERROR" "Pick one:"
-        log_message "ERROR" "  - deploy this node under the seal the newest object carries, or"
-        log_message "ERROR" "  - re-run with OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true to restore the newest"
-        log_message "ERROR" "    object this node's '${node_seal}' seal CAN unwrap. That DISCARDS every"
-        log_message "ERROR" "    write after it, so list the bucket and decide first."
+
+        # THE REFUSAL IS PRINTED ONLY ON THE BRANCH THAT REFUSES. It used to be
+        # printed above this test, unconditionally, so the documented failback
+        # path logged "SEAL MISMATCH -- refusing to initialise or restore.
+        # Nothing has changed yet." and then ran `bao operator init` and
+        # `snapshot restore -force`. Any alert or CI grep on that string drew the
+        # opposite conclusion from what had happened, and the message advised
+        # setting OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true to an operator who had
+        # just set it. Same fix as the sibling gate in
+        # container-images/openbao-snapshot/openbao-snapshot.sh.
         if [ "${OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL:-false}" != "true" ]; then
+            log_message "ERROR" "SEAL MISMATCH -- refusing to initialise or restore. Nothing has changed yet."
+            log_message "ERROR" "  this node's seal : ${node_seal}"
+            log_message "ERROR" "  newest object    : ${latest}"
+            log_message "ERROR" "                     ${found}"
+            log_message "ERROR" "A Raft snapshot can only be restored under the seal that encrypted it, so"
+            log_message "ERROR" "restoring this one would leave the node sealed with no useful error -- the"
+            log_message "ERROR" "stranded state this script warns about once it is already too late."
+            log_message "ERROR" "This is the mixed-seal state a cross-cloud failover leaves behind (ADR-0032):"
+            log_message "ERROR" "mirrored objects are AWS-sealed by construction, and a standby that ran with"
+            log_message "ERROR" "seal_provider = \"awskms\" wrote AWS-sealed objects of its own."
+            log_message "ERROR" "Pick one:"
+            log_message "ERROR" "  - deploy this node under the seal the newest object carries, or"
+            log_message "ERROR" "  - re-run with OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true to restore the newest"
+            log_message "ERROR" "    object this node's '${node_seal}' seal CAN unwrap. That DISCARDS every"
+            log_message "ERROR" "    write after it, so list the bucket and decide first."
             exit 1
         fi
+
         # The escape hatch. Still not a free pass: if the bucket holds nothing
         # this seal can unwrap, we must NOT fall through to init_openbao --
         # that writes fresh keys over the lineage's stored ones. Refuse instead.
@@ -853,16 +971,25 @@ rehydrate_openbao() {
             exit 1
         fi
         if [ -z "$sealed_latest" ]; then
-            log_message "ERROR" "...and there is no such object: nothing in ${SNAPSHOT_BUCKET} carries the"
-            log_message "ERROR" "'-${node_seal}' seal segment, so OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL cannot"
-            log_message "ERROR" "help. NOT falling through to a plain init -- that would overwrite this"
-            log_message "ERROR" "lineage's stored root token and recovery keys. Deploy this node under the"
-            log_message "ERROR" "seal the objects carry, or point it at a bucket holding '${node_seal}' snapshots."
+            # Self-contained: this is now the first thing printed on this path.
+            log_message "ERROR" "SEAL MISMATCH, and OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true cannot help --"
+            log_message "ERROR" "refusing to initialise or restore. Nothing has changed yet."
+            log_message "ERROR" "  this node's seal : ${node_seal}"
+            log_message "ERROR" "  newest object    : ${latest}"
+            log_message "ERROR" "                     ${found}"
+            log_message "ERROR" "Nothing in ${SNAPSHOT_BUCKET} carries the '-${node_seal}' seal segment, so there is"
+            log_message "ERROR" "no object to fall back to. NOT falling through to a plain init -- that would"
+            log_message "ERROR" "overwrite this lineage's stored root token and recovery keys. Deploy this node"
+            log_message "ERROR" "under the seal the objects carry, or point it at a bucket holding"
+            log_message "ERROR" "'${node_seal}' snapshots."
             exit 1
         fi
-        log_message "WARN" "OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true -- skipping the newer foreign-sealed"
-        log_message "WARN" "object(s). ${sealed_latest} is the newest this node's seal can unwrap; whatever"
-        log_message "WARN" "was written after it is NOT in this restore."
+        # Also self-contained, and it says PROCEEDING rather than refusing.
+        log_message "WARN" "SEAL MISMATCH, and OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true -- PROCEEDING."
+        log_message "WARN" "  this node's seal : ${node_seal}"
+        log_message "WARN" "  newest object    : ${latest} (${found}) -- SKIPPED"
+        log_message "WARN" "  restoring instead: ${sealed_latest}, the newest this node's seal can unwrap"
+        log_message "WARN" "Whatever was written after ${latest} is NOT in this restore."
         latest="$sealed_latest"
     fi
 
@@ -894,8 +1021,12 @@ rehydrate_openbao() {
         exit 1
     fi
 
+    # "unsealed", not "active": that is all check_openbao_status proves, now
+    # that it accepts a standby's 200 (see the note on that function). It is
+    # also all the restore below needs -- a standby forwards
+    # sys/storage/raft/snapshot-force to the active node over the cluster port.
     if ! check_openbao_status; then
-        log_message "ERROR" "Node did not become active after init"
+        log_message "ERROR" "Node did not become initialized and unsealed after init"
         exit 1
     fi
 

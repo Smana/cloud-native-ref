@@ -262,6 +262,22 @@ EOF
 }
 
 # Options parsing
+#
+# The guard is load-bearing on the entry point of the disaster-recovery path.
+# `COMMAND=$1; shift` under `set -e` handled neither end of a bad invocation:
+# with NO arguments, `shift` fails ("shift: can't shift that many") and the
+# shell exits -- 2 under dash, 1 under bash -- having printed nothing at all;
+# and with `-h` first, the option was consumed AS the command, so an operator
+# asking for help was answered with "The OpenBao address must be provided
+# (--addr)!" and a non-zero exit.
+if [ $# -eq 0 ]; then
+    echo "${err}: a command is required: 'save' or 'restore'." >&2
+    usage
+    exit 2
+fi
+case "$1" in
+    -h | --help) usage; exit 0;;
+esac
 COMMAND=$1
 NUM_DAYS=${DEFAULT_DAYS}
 FRESHNESS=fail
@@ -309,6 +325,26 @@ case "${FRESHNESS}" in
     *) echo "${err}: --freshness must be 'fail' or 'warn', got '${FRESHNESS}'."; usage; exit 1;;
 esac
 
+# RECOVERY_KEYS_SECRET_ID, on stderr, returning rather than exiting.
+#
+# Split out of generate_root_token so restore() can ask the same question on the
+# NEAR side of `snapshot restore -force`. It is required by every restore, not
+# only by the ones that authenticate with it: see the unconditional mint after
+# the restore for why.
+require_recovery_keys_secret() {
+    if [ -n "${RECOVERY_KEYS_SECRET_ID:-}" ]; then
+        return 0
+    fi
+    echo "${err}: RECOVERY_KEYS_SECRET_ID must be set to run a restore." >&2
+    echo "${err}: It names the secret holding the OpenBao recovery keys --" >&2
+    echo "${err}: an AWS Secrets Manager entry, or a GCP Secret Manager secret." >&2
+    echo "${err}: A restore needs it EVEN WHEN VAULT_TOKEN is supplied: a raft" >&2
+    echo "${err}: restore replaces the token store, so the token that performed" >&2
+    echo "${err}: the restore no longer exists, and everything after it runs on a" >&2
+    echo "${err}: token minted from these keys." >&2
+    return 1
+}
+
 # Check if required binaries are installed
 # Only used by `restore`, which is an operator action run with operator
 # credentials - not something the CronJob can do. The job's EKS Pod Identity
@@ -318,13 +354,15 @@ esac
 # The secret is written by `openbao-config.sh init` as
 # {"recovery_keys": [...], "recovery_key": "<first>", "threshold": N}.
 # This handles threshold 1; a higher threshold needs one -nonce round per share.
+#
+# EVERY diagnostic below goes to STDERR, and that is not a style choice: this
+# function is only ever called as `VAULT_TOKEN=$(generate_root_token)`, so a
+# message on stdout is captured by the command substitution and the operator
+# sees a bare non-zero exit with no reason -- measured, on both of its error
+# paths. Same bug, same fix, as node_seal_type() above and log_err() in
+# scripts/openbao-config.sh.
 generate_root_token() {
-    if [ -z "${RECOVERY_KEYS_SECRET_ID:-}" ]; then
-        echo "${err}: RECOVERY_KEYS_SECRET_ID must be set to run a restore."
-        echo "${err}: It names the secret holding the OpenBao recovery keys --"
-        echo "${err}: an AWS Secrets Manager entry, or a GCP Secret Manager secret."
-        exit 1
-    fi
+    require_recovery_keys_secret || exit 1
 
     if [ "${CLOUD}" = "gcp" ]; then
         RECOVERY_SECRET=$(gcloud secrets versions access latest --secret="${RECOVERY_KEYS_SECRET_ID}")
@@ -334,8 +372,8 @@ generate_root_token() {
 
     RECOVERY_THRESHOLD=$(echo "${RECOVERY_SECRET}" | jq -r '.threshold // 1')
     if [ "${RECOVERY_THRESHOLD}" -gt 1 ]; then
-        echo "${err}: recovery threshold is ${RECOVERY_THRESHOLD}; this script only automates a threshold of 1."
-        echo "${err}: Run 'bao operator generate-root' by hand, supplying ${RECOVERY_THRESHOLD} shares."
+        echo "${err}: recovery threshold is ${RECOVERY_THRESHOLD}; this script only automates a threshold of 1." >&2
+        echo "${err}: Run 'bao operator generate-root' by hand, supplying ${RECOVERY_THRESHOLD} shares." >&2
         exit 1
     fi
 
@@ -506,6 +544,13 @@ save() {
 restore() {
     echo "${info}: Restoring OpenBao from object storage..."
     check_required_bin
+    # Demanded HERE, on the near side of `snapshot restore -force`, because the
+    # mint AFTER the restore needs it unconditionally. Discovering it afterwards
+    # produced the worst combination available on this path: the storage backend
+    # WAS replaced, the run still exited non-zero, and rehydrate_openbao read
+    # that as "Restore failed ... Destroy and redeploy the cluster stack" about a
+    # node that had in fact been restored.
+    require_recovery_keys_secret || exit 1
     # Advisory, not required. Nothing between here and the restore uses this
     # token: generate_root_token below mints one from the recovery keys, needs
     # no authentication, and overwrites VAULT_TOKEN. Demanding a credential
@@ -604,36 +649,58 @@ restore() {
         else
             found="carrying NO seal segment -- written before seals were legible in the name"
         fi
-        echo "${err}: SEAL MISMATCH -- refusing to restore, before anything destructive runs."
-        echo "${err}:   this node's seal : ${SEAL_TYPE}"
-        echo "${err}:   newest object    : ${SNAP}"
-        echo "${err}:                      ${found}"
-        echo "${err}:   in ${BUCKET_NAME}: ${n_all} snapshot object(s), ${n_mine} this node can unwrap,"
-        echo "${err}:                      $((n_all - n_tagged)) with no seal segment"
-        echo "${err}: A Raft snapshot can only be restored under the seal that encrypted it, so"
-        echo "${err}: restoring this one would leave the node sealed with no diagnosable error."
-        echo "${err}: This is the mixed-seal state a cross-cloud failover leaves behind (ADR-0032):"
-        echo "${err}: mirrored objects are AWS-sealed by construction, and a standby that ran with"
-        echo "${err}: seal_provider = \"awskms\" wrote AWS-sealed objects of its own."
-        echo "${err}: Pick one:"
-        echo "${err}:   - deploy this node under the seal that matches the newest object, or"
-        echo "${err}:   - re-run with OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true to restore the newest"
-        echo "${err}:     object this node's '${SEAL_TYPE}' seal CAN unwrap. That DISCARDS every"
-        echo "${err}:     write after it, so list the bucket and decide first."
+        NEWEST="${SNAP}"
+
+        # THE REFUSAL IS PRINTED ONLY ON THE BRANCH THAT REFUSES. It used to be
+        # printed above this test, unconditionally, so the documented failback
+        # path logged "SEAL MISMATCH -- refusing to restore, before anything
+        # destructive runs" and then ran `snapshot restore -force` anyway. Every
+        # alert and every CI grep on that string drew the opposite conclusion
+        # from what had happened. It also advised setting
+        # OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true to an operator who had just
+        # set it.
         if [ "${SKIP_FOREIGN_SEAL}" != "true" ]; then
+            echo "${err}: SEAL MISMATCH -- refusing to restore, before anything destructive runs."
+            echo "${err}:   this node's seal : ${SEAL_TYPE}"
+            echo "${err}:   newest object    : ${NEWEST}"
+            echo "${err}:                      ${found}"
+            echo "${err}:   in ${BUCKET_NAME}: ${n_all} snapshot object(s), ${n_mine} this node can unwrap,"
+            echo "${err}:                      $((n_all - n_tagged)) with no seal segment"
+            echo "${err}: A Raft snapshot can only be restored under the seal that encrypted it, so"
+            echo "${err}: restoring this one would leave the node sealed with no diagnosable error."
+            echo "${err}: This is the mixed-seal state a cross-cloud failover leaves behind (ADR-0032):"
+            echo "${err}: mirrored objects are AWS-sealed by construction, and a standby that ran with"
+            echo "${err}: seal_provider = \"awskms\" wrote AWS-sealed objects of its own."
+            echo "${err}: Pick one:"
+            echo "${err}:   - deploy this node under the seal that matches the newest object, or"
+            echo "${err}:   - re-run with OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true to restore the newest"
+            echo "${err}:     object this node's '${SEAL_TYPE}' seal CAN unwrap. That DISCARDS every"
+            echo "${err}:     write after it, so list the bucket and decide first."
             exit 1
         fi
+
         SNAP=$(printf '%s\n' "${CANDIDATES}" | { grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-${SEAL_TYPE}\.snap$" || true; } | tail -n1)
         if [ -z "${SNAP}" ]; then
-            echo "${err}: ...and there is no such object: nothing in ${BUCKET_NAME} carries the"
-            echo "${err}: '-${SEAL_TYPE}' seal segment, so OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL cannot help."
-            echo "${err}: This node cannot be rehydrated from this bucket. Deploy it under the seal"
-            echo "${err}: the objects carry, or point it at a bucket holding '${SEAL_TYPE}' snapshots."
+            # Self-contained: this is now the first thing printed on this path.
+            echo "${err}: SEAL MISMATCH, and OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true cannot help --"
+            echo "${err}: refusing to restore, before anything destructive runs."
+            echo "${err}:   this node's seal : ${SEAL_TYPE}"
+            echo "${err}:   newest object    : ${NEWEST}"
+            echo "${err}:                      ${found}"
+            echo "${err}: Nothing in ${BUCKET_NAME} carries the '-${SEAL_TYPE}' seal segment"
+            echo "${err}: (${n_all} snapshot object(s), $((n_all - n_tagged)) with no seal segment), so there is"
+            echo "${err}: no object to fall back to. This node cannot be rehydrated from this bucket:"
+            echo "${err}: deploy it under the seal the objects carry, or point it at a bucket holding"
+            echo "${err}: '${SEAL_TYPE}' snapshots."
             exit 1
         fi
-        echo "${warn}: OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true -- skipping the newer foreign-sealed"
-        echo "${warn}: object(s) and restoring ${SNAP}, the newest this node's seal can unwrap."
-        echo "${warn}: Whatever was written after it is NOT in this restore."
+        # Also self-contained, and it says PROCEEDING rather than refusing.
+        echo "${warn}: SEAL MISMATCH, and OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true -- PROCEEDING."
+        echo "${warn}:   this node's seal : ${SEAL_TYPE}"
+        echo "${warn}:   newest object    : ${NEWEST} (${found}) -- SKIPPED"
+        echo "${warn}:   restoring instead: ${SNAP}, the newest of the ${n_mine} object(s) this node can unwrap"
+        echo "${warn}:   in ${BUCKET_NAME}: ${n_all} snapshot object(s), $((n_all - n_tagged)) with no seal segment"
+        echo "${warn}: Whatever was written after ${NEWEST} is NOT in this restore."
     fi
 
     if [ "${CLOUD}" = "gcp" ]; then
@@ -643,6 +710,19 @@ restore() {
     fi
     echo "${info}: Restoring snapshot ${SNAP}"
 
+    # The revoke trap is armed BEFORE the first mint, not after the last one.
+    # Armed afterwards, a token minted here and then orphaned by a failing
+    # `snapshot restore -force` lived out its full TTL -- a root token, on the
+    # one path where nothing is watching.
+    #
+    # It fires only for a token THIS function minted. A caller-supplied
+    # VAULT_TOKEN -- an operator's own, or the throwaway root a rehydrate holds
+    # and still needs to diagnose the node afterwards -- must survive a failure
+    # here rather than be revoked by it. `-self` rather than passing the token as
+    # an argument: same job, nothing on the command line.
+    MINTED_ROOT_TOKEN=""
+    trap 'if [ -n "${MINTED_ROOT_TOKEN}" ]; then bao token revoke -self >/dev/null 2>&1 || true; fi' EXIT
+
     # The pre-restore mint exists for the JWT and AppRole paths, whose tokens
     # lack sys/storage/raft/snapshot-force. A caller-supplied token is already
     # root on this node -- and on a rehydrate it is the ONLY thing that is,
@@ -651,19 +731,29 @@ restore() {
     if [ -z "${SUPPLIED_VAULT_TOKEN:-}" ]; then
         VAULT_TOKEN=$(generate_root_token)
         export VAULT_TOKEN
+        MINTED_ROOT_TOKEN=1
     fi
 
     bao operator raft snapshot restore -force "${SNAPSHOT_FILE}"
 
-    # A raft restore replaces the entire storage backend, token store included,
-    # so the token minted above no longer exists. Everything after this point —
-    # including the revoke in the exit trap — needs a token generated against
-    # the *restored* cluster.
+    # A raft restore replaces the entire storage backend, TOKEN STORE INCLUDED,
+    # so whatever authenticated the restore -- a token minted above, a JWT
+    # token, or the throwaway root a rehydrate supplied -- does not exist in the
+    # store that is now running. Everything below (the marker read, the revoke
+    # in the trap) needs a token generated against the RESTORED cluster, so this
+    # mint is unconditional.
+    #
+    # It is deliberately NOT symmetrical with the guarded mint above, and the
+    # asymmetry is the whole point: the recovery keys in
+    # RECOVERY_KEYS_SECRET_ID are the LINEAGE's, which is to say the snapshot's.
+    # Before the restore they belong to a different barrier than the node in
+    # front of us (hence skipping the mint when the caller already holds a root
+    # token); after it they are exactly this node's. That is also why the
+    # variable is demanded by restore()'s pre-flight rather than only by the
+    # authentication paths that read it.
     VAULT_TOKEN=$(generate_root_token)
     export VAULT_TOKEN
-    # `-self` rather than passing the token as an argument: same job, nothing
-    # on the command line.
-    trap 'bao token revoke -self >/dev/null 2>&1 || true' EXIT
+    MINTED_ROOT_TOKEN=1
 
     echo "${info}: Checking that ${CHECK_PATH} is less than ${NUM_DAYS} days old (--freshness ${FRESHNESS})"
     CURR_TS=$(date -u "+%s")
