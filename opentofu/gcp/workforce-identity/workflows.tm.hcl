@@ -90,6 +90,23 @@ script "destroy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
+        cat >&2 <<'WARN'
+        [warn] ─────────────────────────────────────────────────────────────────
+        [warn] DESTROYING THIS POOL IS NOT LIKE DESTROYING A CLUSTER.
+        [warn]
+        [warn] The pool id is embedded verbatim in every Kubernetes RBAC group
+        [warn] string on the clusters that federate through it:
+        [warn]   principalSet://iam.googleapis.com/locations/global/
+        [warn]     workforcePools/<POOL>/group/<role>
+        [warn] Those bindings stay schema-valid and simply match nobody, so the
+        [warn] symptom is "everyone is suddenly unauthorised", with nothing
+        [warn] failing or logging an error anywhere.
+        [warn]
+        [warn] Worse, workforce pools SOFT-DELETE with a 30-day purge: the same
+        [warn] name cannot be recreated until then, so this is not a mistake you
+        [warn] can undo by re-running deploy.
+        [warn] ─────────────────────────────────────────────────────────────────
+        WARN
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
         ${global.provisioner} init -lock-timeout=5m
         ${global.provisioner} destroy -auto-approve -var-file=variables.tfvars
