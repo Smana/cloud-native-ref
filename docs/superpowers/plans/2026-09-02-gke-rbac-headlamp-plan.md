@@ -27,12 +27,25 @@
 
 ## File Structure
 
+> **Amended 2026-09-02, after Task 1.** The component is now a provider-neutral
+> RFC 8693 token-exchange proxy rather than a GCP-and-Headlamp shim, and is renamed
+> `container-images/token-exchange-proxy`. Research found the gap is general (no
+> standalone exchange proxy exists; Headlamp
+> [#5402](https://github.com/kubernetes-sigs/headlamp/issues/5402),
+> [#2643](https://github.com/kubernetes-sigs/headlamp/issues/2643),
+> [#1338](https://github.com/kubernetes-sigs/headlamp/issues/1338) all open), and the
+> tool is intended for extraction to its own repository once verified live. **Task 1b**
+> (`task-1b-brief.md`) carries that refactor; everything provider-specific moves from
+> the binary into the Deployment's environment. Paths and env vars below reflect the
+> new name.
+
 | Path | Responsibility |
 |---|---|
-| `container-images/gke-token-exchange/main.go` | HTTP handler + reverse proxy wiring |
-| `container-images/gke-token-exchange/exchange.go` | STS client + token cache |
-| `container-images/gke-token-exchange/exchange_test.go` | unit tests for both |
-| `container-images/gke-token-exchange/{Dockerfile,build.sh,README.md,.dockerignore,go.mod}` | image, matching `openbao-snapshot`'s pattern |
+| `container-images/token-exchange-proxy/main.go` | HTTP handler + reverse proxy wiring |
+| `container-images/token-exchange-proxy/config.go` | configuration; all provider specifics |
+| `container-images/token-exchange-proxy/exchange.go` | RFC 8693 client + token cache |
+| `container-images/token-exchange-proxy/*_test.go` | unit tests |
+| `container-images/token-exchange-proxy/{Dockerfile,build.sh,README.md,.dockerignore,go.mod}` | image, matching `openbao-snapshot`'s pattern |
 | `opentofu/gcp/workforce-identity/` | pool + ZITADEL OIDC provider (org-scoped stack) |
 | `opentofu/gcp/gke/configure/kubernetes.tf` | publish `workforce_pool_id` into `flux_cluster_vars` |
 | `tooling/gcp-0/headlamp/token-exchange.yaml` | shim Deployment + Service |
@@ -403,15 +416,33 @@ git commit -m "feat(gke): STS token exchange with expiry-bounded cache"
 
 ---
 
-## Task 2: Shim HTTP handler and reverse proxy
+## Task 2: HTTP handler and reverse proxy
+
+> **Amended after Task 1b.** Paths are `container-images/token-exchange-proxy/`, and
+> the handler is driven by `Config` rather than loose parameters, so it carries no
+> provider or application coupling. The code below supersedes the original.
 
 **Files:**
-- Create: `container-images/gke-token-exchange/main.go`
-- Test: `container-images/gke-token-exchange/main_test.go`
+- Create: `container-images/token-exchange-proxy/main.go`
+- Test: `container-images/token-exchange-proxy/main_test.go`
 
 **Interfaces:**
-- Consumes: `NewExchanger`, `(*Exchanger).Exchange` from Task 1.
-- Produces: `newHandler(ex *Exchanger, upstream *url.URL, tokenHeader string) http.Handler`. Task 4's manifests set `STS_AUDIENCE`, `UPSTREAM_URL`, `TOKEN_HEADER`, `LISTEN_ADDR`.
+- Consumes: `Config`, `LoadConfig` from Task 1b; `NewExchanger`, `(*Exchanger).Exchange` from Task 1.
+- Produces: `newHandler(ex *Exchanger, cfg Config, upstream *url.URL) http.Handler`. Task 6's Deployment supplies every `TEP_*` variable.
+
+**Behaviour the handler must have**, all driven by `Config`:
+- read the subject token from `cfg.SubjectHeader`, stripping `cfg.SubjectPrefix` if set;
+- `401` when that header is absent or does not carry the prefix;
+- exchange, then write `cfg.InjectPrefix + token` into `cfg.InjectHeader`;
+- delete `cfg.SubjectHeader` before proxying when `cfg.StripSubject`;
+- on exchange failure return `502` and **never** reach the upstream;
+- serve `/healthz` without requiring a token.
+
+The tests below are written against the original parameter list; adapt each call to
+`newHandler(ex, cfg, upstream)` and replace the hardcoded `"X-Gke-Token"` with
+`cfg.InjectHeader` from `testConfig(...)`. Keep every assertion, especially
+`TestHandlerNeverProxiesWithoutAToken`. Add one test proving `StripSubject: false`
+leaves the subject header intact, since that is now configurable.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -900,7 +931,36 @@ git commit -m "feat(gcp): publish workforce_pool_id to gcp-0 cluster vars"
 cat tooling/gcp-0/headlamp/network-policy.yaml
 ```
 
-- [ ] **Step 2: Write `token-exchange.yaml`** — Deployment + Service. Set `STS_AUDIENCE` to `//iam.googleapis.com/locations/global/workforcePools/${workforce_pool_id}/providers/zitadel` and `UPSTREAM_URL` to `http://headlamp.tooling.svc.cluster.local:80`. Include the full restricted security context from Global Constraints, requests **and** limits, and `/healthz` liveness + readiness probes.
+- [ ] **Step 2: Write `token-exchange.yaml`** — Deployment + Service, image `ghcr.io/smana/token-exchange-proxy:v0.1.0` (pinned, never `latest`).
+
+All provider specifics live here, in the environment, because the binary is
+provider-neutral:
+
+```yaml
+env:
+  - name: TEP_STS_URL
+    value: "https://sts.googleapis.com/v1/token"
+  - name: TEP_AUDIENCE
+    value: "//iam.googleapis.com/locations/global/workforcePools/${workforce_pool_id}/providers/zitadel"
+  - name: TEP_SCOPE
+    value: "https://www.googleapis.com/auth/cloud-platform"
+  - name: TEP_REQUEST_ENCODING
+    value: "json"
+  - name: TEP_SUBJECT_HEADER
+    value: "Authorization"
+  - name: TEP_SUBJECT_PREFIX
+    value: "Bearer "
+  - name: TEP_INJECT_HEADER
+    value: "X-Gke-Token"          # matches Headlamp's -proxy-auth-token-header
+  - name: TEP_INJECT_PREFIX
+    value: ""                     # Headlamp wants the raw token, not "Bearer <t>"
+  - name: TEP_STRIP_SUBJECT
+    value: "true"
+  - name: TEP_UPSTREAM_URL
+    value: "http://headlamp.tooling.svc.cluster.local:80"
+```
+
+Include the full restricted security context from Global Constraints, requests **and** limits, and `/healthz` liveness + readiness probes.
 
 - [ ] **Step 3: Extend the network policy** with a default-deny rule for the shim allowing exactly: ingress from the oauth2-proxy pod on 8080; egress to `headlamp` on 80; egress to kube-dns **with `toPorts.rules.dns.matchPattern: "*"`**; egress to `sts.googleapis.com` on TCP 443 via `toFQDNs`.
 

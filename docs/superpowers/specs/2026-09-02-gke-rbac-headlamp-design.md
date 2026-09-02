@@ -202,10 +202,25 @@ silently.
 The Kustomization applying `security/gcp-0/rbac` needs that ConfigMap in its
 `substituteFrom`.
 
-### 3. The token-exchange shim
+### 3. The token-exchange proxy
 
-The one piece of custom code. A small Go or Python service, one container, in the
-`tooling` namespace.
+The one piece of custom code. A small Go service, one container, in the `tooling`
+namespace.
+
+**It is deliberately provider-neutral.** RFC 8693 token exchange is generic, and the
+gap it fills is not ours alone: no standalone exchange proxy exists, and the same
+shape solves AKS/Entra and any managed cluster whose cloud speaks the RFC. Nothing in
+the binary names GCP, Kubernetes or Headlamp — the STS endpoint, audience, scope,
+token types, request encoding and both header names are configuration. The intent is
+to extract it to its own open-source repository **after** it is proven on a live
+cluster; publishing an unverified auth-path component would be worse than not
+publishing. Everything specific to this platform lives in the Deployment's
+environment, not the image.
+
+Two encodings are supported because providers disagree: RFC 8693 specifies
+form-encoded snake_case, while some hosted services take JSON with camelCase keys.
+The default is JSON, since that is the only encoding measured against a live STS
+here — an auth component should not default to a path nobody has exercised.
 
 Behaviour:
 
@@ -376,11 +391,27 @@ they come first.
   and per Tremolo's comparison it has no story for non-OIDC-native apps like
   Headlamp, so it would *still* need an impersonating proxy beside it. Strictly more
   moving parts than this design.
-- **oauth2-proxy + kube-oidc-proxy** — the community-standard dashboard pattern and a
-  genuine contender: it keeps Kubernetes RBAC and needs no GCP org changes. Rejected
-  because [kube-oidc-proxy was archived in May 2024](https://github.com/jetstack/kube-oidc-proxy)
-  and only a third-party fork is maintained, and because it puts a proxy in the API
-  path where this design puts nothing.
+- **oauth2-proxy + an impersonating proxy** (kube-oidc-proxy and its maintained forks:
+  [TremoloSecurity](https://github.com/TremoloSecurity/kube-oidc-proxy),
+  [banyansecurity](https://github.com/banyansecurity/kube-oidc-proxy),
+  [sspreitzer](https://github.com/sspreitzer/helm-kube-oidc-proxy), or
+  [OpenUnison](https://github.com/OpenUnison/openunison-k8s-login-oidc) which bundles
+  one). This looked like the strongest contender — it keeps Kubernetes RBAC and needs
+  no GCP org changes — but **it cannot work with in-cluster Headlamp at all.** An
+  impersonating proxy must sit *behind* Headlamp, and Headlamp cannot be pointed at a
+  different API endpoint in-cluster
+  ([#1460](https://github.com/kubernetes-sigs/headlamp/issues/1460), open since
+  October 2023), nor does its OIDC mode emit impersonation headers
+  ([#4198](https://github.com/kubernetes-sigs/headlamp/issues/4198)). The design here
+  works precisely because the exchange sits *in front*, where
+  `-proxy-auth-token-header` already does what is needed.
+
+  **Correcting an earlier claim in this document's history:** this option was first
+  written up as putting "no component in the request path" versus a proxy that does.
+  That was wrong. The exchange proxy sits between oauth2-proxy and Headlamp on every
+  request. The honest distinction is *small code we own and test* versus *a larger
+  third-party component whose upstream is archived* — and, decisively, that the
+  latter does not function with in-cluster Headlamp.
 - **Google Workspace identities + Google Groups for RBAC** — natively supported and
   needs no shim, but GKE demands a `cloud-platform`-scoped token, which for a real
   Workspace human is a full GCP credential (verified: `HTTP 200` against Resource
