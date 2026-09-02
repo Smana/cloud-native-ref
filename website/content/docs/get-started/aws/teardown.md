@@ -126,6 +126,41 @@ that lived there, so it cannot exist any more. Clearing state earlier would be u
 in the other direction — if the cluster destroy then failed, state would have been
 emptied for resources that still exist.
 
+## The sweep before the destroy
+
+`terramate script run destroy` opens with `stage0-sweep-teardown-blockers`, which
+runs `scripts/aws-sweep-teardown-blockers.sh`. It clears the two things that make
+`tofu destroy` **fail**, neither of which Terraform owns:
+
+- **ExternalDNS records.** Route53 refuses `DeleteHostedZone` while any record
+  other than the zone's own NS/SOA remains. ExternalDNS writes an A record and a
+  TXT ownership record per exposed service, and once the cluster is gone nothing
+  reclaims them.
+- **The EKS-managed cluster security group** (`eks-cluster-sg-<name>-*`). EKS
+  creates it, Terraform never owned it, and it outlives the cluster — so
+  `DeleteVpc` fails with `DependencyViolation` naming a group that appears
+  nowhere in the state file.
+
+It runs *before* the destroy, the opposite of the volume sweep below, for the
+opposite reason: these two block the destroy, so a sweep running afterwards
+would never be reached.
+
+{{< callout type="warning" >}}
+The cost of skipping this is larger than it looks. `terramate script run
+--reverse destroy` stops at the first failing stack. On 2026-09-02 the AWS
+stacks failed on exactly these blockers, so the sweep never reached the GCP
+stacks at all — a GKE cluster kept running because a leftover DNS record two
+stacks away blocked a hosted zone. The teardown reported failure, and anyone
+reading only the exit code would still have been billed for a whole second
+cloud.
+{{< /callout >}}
+
+The script refuses to touch anything shared: NS and SOA are never deleted, the
+`default` security group is never deleted, the group is matched by the
+EKS-generated name for the cluster you name, and a group still holding network
+interfaces is reported and skipped — because that means the cluster is not
+actually gone.
+
 ## The sweep after the destroy
 
 `terramate script run destroy` ends with `stage3-sweep-orphaned-volumes`, which

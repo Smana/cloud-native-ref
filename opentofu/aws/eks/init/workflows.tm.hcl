@@ -277,6 +277,37 @@ script "destroy" {
   # unambiguously detached and there is no in-flight state to race. Same three
   # filters as the earlier sweep -- available + this cluster's tag + the CSI
   # driver's PVC tag -- so it cannot touch a live cluster or a hand-made volume.
+  # The two things that make `tofu destroy` FAIL, cleared before it runs.
+  #
+  # Opposite ordering to the volume sweep below, and for the opposite reason: a
+  # volume has to finish detaching first, so that sweep runs after. These two
+  # BLOCK the destroy, so a sweep that ran afterwards would never be reached --
+  # on 2026-09-02 the destroy failed here and terramate stopped, leaving the GCP
+  # stacks entirely untouched and a GKE cluster running.
+  #
+  # Idempotent and dry-run-safe; on a healthy teardown it finds nothing and says
+  # so. See scripts/aws-sweep-teardown-blockers.sh for what it will not touch.
+  job {
+    name        = "stage0-sweep-teardown-blockers"
+    description = "Clear ExternalDNS records and the EKS-managed SG that block DeleteHostedZone / DeleteVpc"
+    commands = [
+      [
+        "bash",
+        "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+        "--tm-run",
+        "bash",
+        "${terramate.root.path.fs.absolute}/scripts/aws-sweep-teardown-blockers.sh",
+        "--cluster-name",
+        global.eks_cluster_name,
+        "--region",
+        global.region,
+        "--profile",
+        global.profile,
+        "--apply",
+      ],
+    ]
+  }
+
   job {
     name        = "stage3-sweep-orphaned-volumes"
     description = "Delete EBS volumes that were still detaching when the pre-destroy sweep ran"
