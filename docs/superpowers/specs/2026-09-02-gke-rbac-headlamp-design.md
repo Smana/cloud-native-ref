@@ -135,7 +135,11 @@ resource "google_iam_workforce_pool_provider" "zitadel" {
 
   oidc {
     issuer_uri = var.identity_provider_url      # https://auth.cloud.ogenki.io
-    client_id  = var.zitadel_audience
+    # The ZITADEL PROJECT id, not a per-cluster OIDC client id. ZITADEL puts the
+    # project id in the aud of every token it issues for that project, and STS
+    # accepts it (measured 2026-09-02). This is what lets the provider be created
+    # before zitadel-oidc-clients.sh has created any app -- see open question 1.
+    client_id  = var.zitadel_project_id
     web_sso_config {
       response_type             = "ID_TOKEN"
       assertion_claims_behavior = "ONLY_ID_TOKEN_CLAIMS"
@@ -338,14 +342,26 @@ they come first.
 
 ## Open questions
 
-1. **Which ZITADEL audience does the provider pin?** The provider needs a
-   `client_id` matching the `aud` of incoming tokens. The observed `aud` array
-   contains every app in the `platform` project *and* the project id
-   (`388445486190712688`). Pinning the **project id** would avoid a chicken-and-egg
-   problem, since the per-cluster OIDC clients are created by
-   `scripts/zitadel-oidc-clients.sh` *after* the cluster exists, while Terraform wants
-   the value up front. **To verify before implementation** — if the project id is not
-   accepted, the provider must be created or updated in a post-cluster step.
+1. ~~**Which ZITADEL audience does the provider pin?**~~ **RESOLVED 2026-09-02 by
+   measurement.** The provider pins the ZITADEL **project id**
+   (`388445486190712688`), not a per-cluster OIDC client id. ZITADEL puts the project
+   id in the `aud` array of every token issued for that project, and STS accepts it:
+
+   ```
+   PROJECT-ID AUDIENCE ACCEPTED  (expires_in 3598)
+   user  : principal://…/workforcePools/<pool>/subject/293297125834367432
+   groups: ['principalSet://…/workforcePools/<pool>/group/admin', 'system:authenticated']
+   ```
+
+   So there is **no chicken-and-egg**: Terraform creates the provider from a value
+   that exists before any cluster does, and `scripts/zitadel-oidc-clients.sh` needs no
+   post-cluster step to update it. Adding a sixth OIDC client later changes nothing.
+
+   The trade-off to be deliberate about: this audience covers *every* app in the
+   `platform` project, so any token ZITADEL issues there can be exchanged. That is
+   acceptable because exchange only yields an identity — authorisation is the
+   ClusterRoleBinding, and a user without the `admin` role gets a token that
+   authenticates and permits nothing.
 2. **Shim language.** Go (matches the platform, single static binary, easy distroless
    image) versus Python (shorter). Recommend Go.
 3. **Where the shim image is built and pinned.** Harbor, following an existing
