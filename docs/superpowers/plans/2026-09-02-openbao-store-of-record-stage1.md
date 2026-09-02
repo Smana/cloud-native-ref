@@ -2017,11 +2017,13 @@ resource "vault_jwt_auth_backend" "cluster" {
   oidc_discovery_url = data.aws_eks_cluster.this.identity[0].oidc[0].issuer
   bound_issuer       = data.aws_eks_cluster.this.identity[0].oidc[0].issuer
 
-  tune {
-    default_lease_ttl = "10m"
-    max_lease_ttl     = "20m"
-    token_type        = "default-service"
-  }
+  # No mount `tune`. In hashicorp/vault v5 `tune` is a
+  # `list(object({...}))` ATTRIBUTE, not a block, and its object type has eight
+  # non-optional fields -- so `tune { ... }` is a syntax error and a partial
+  # `tune = [{ default_lease_ttl = ... }]` fails on the fields it omits.
+  # Verified against provider v5.11.0's schema on 2026-09-02. Every token this
+  # mount issues comes from a role below, and those bound the TTL and the type
+  # directly, so the mount-level tune bought nothing anyway.
 }
 
 locals {
@@ -2063,6 +2065,9 @@ resource "vault_jwt_auth_backend_role" "cluster" {
   token_policies = each.value.policies
   token_ttl      = 600
   token_max_ttl  = 1200
+  # Service tokens, which is what a workload wants: revocable and leased.
+  # Set per role rather than on the mount -- see the note above.
+  token_type = "default-service"
 }
 ```
 
@@ -3770,11 +3775,10 @@ resource "vault_jwt_auth_backend" "cluster" {
   oidc_discovery_url = "https://container.googleapis.com/v1/projects/${var.project_id}/locations/${local.init.cluster_location}/clusters/${var.cluster_name}"
   bound_issuer       = "https://container.googleapis.com/v1/projects/${var.project_id}/locations/${local.init.cluster_location}/clusters/${var.cluster_name}"
 
-  tune {
-    default_lease_ttl = "10m"
-    max_lease_ttl     = "20m"
-    token_type        = "default-service"
-  }
+  # No mount `tune` -- see the note in opentofu/aws/eks/configure/openbao.tf:
+  # in provider v5 it is a list(object) attribute with eight non-optional
+  # fields, so block syntax is invalid and a partial object is rejected. The
+  # roles below bound TTL and token type instead.
 }
 
 locals {
@@ -3809,6 +3813,7 @@ resource "vault_jwt_auth_backend_role" "cluster" {
   token_policies  = each.value.policies
   token_ttl       = 600
   token_max_ttl   = 1200
+  token_type      = "default-service"
 }
 ```
 
