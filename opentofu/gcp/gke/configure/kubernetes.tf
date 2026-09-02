@@ -117,6 +117,12 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # local.identity_provider_url is computed in one place and both halves are
       # documented together in variables.tf.
       identity_provider_url = local.identity_provider_url
+
+      # Workforce pool federating ZITADEL (opentofu/gcp/workforce-identity).
+      # Consumed by security/gcp-0/rbac -- the RBAC binding's group name embeds
+      # this pool id. Must be present, or Flux substitutes an empty string and
+      # produces a binding matching nobody. See var.workforce_pool_id.
+      workforce_pool_id = var.workforce_pool_id
     }
   })
   server_side_apply = true

@@ -51,3 +51,8 @@ route53_role_arn       = "arn:aws:iam::396740644681:role/gcp-0-route53-dns"
 # comment on var.route53_region). Matches opentofu/shared/aws-gcp-federation's
 # aws_region default and opentofu/aws/eks/configure's region.
 route53_region = "eu-west-3"
+
+# Workforce pool federating ZITADEL -- must match opentofu/gcp/workforce-identity's
+# variables.tfvars verbatim. Substituted into the gcp-0 RBAC bindings; disagreement
+# names a pool that does not exist and denies every user.
+workforce_pool_id = "ogenki-zitadel"

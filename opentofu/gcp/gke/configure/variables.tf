@@ -182,3 +182,11 @@ variable "identity_provider_url" {
     error_message = "identity_provider_url must be an https:// URL with no path or trailing slash."
   }
 }
+
+# Workforce pool federating ZITADEL (opentofu/gcp/workforce-identity). Substituted
+# into the gcp-0 RBAC bindings; an empty value silently produces a binding
+# matching nobody.
+variable "workforce_pool_id" {
+  description = "Workforce pool federating ZITADEL. Substituted into the gcp-0 RBAC bindings; an empty value silently produces a binding matching nobody."
+  type        = string
+}
