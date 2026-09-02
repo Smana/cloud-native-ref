@@ -89,6 +89,13 @@ script "preview" {
 # opentofu/workflows.tm.hcl with the CA fetch prepended -- and, for detect, the
 # four version variables added. Both run tofu against the `vault` provider, so
 # both were broken here without the fetch; see the file header.
+#
+# They do NOT mirror the global scripts' `trivy config` step, and neither do
+# `deploy` and `preview` above. This stack creates no cloud resources, only
+# in-cluster ones, and it has no `.trivyignore.yaml` -- every stack that does run
+# the step has one, these two "configure" stacks are the only two that do not.
+# gcp/gke/configure states the same rule in its own header. (trivy exits 0 on a
+# missing ignorefile, so the step was inconsistent rather than broken.)
 script "drift" "detect" {
   name        = "Opentofu Drift Check"
   description = "Detect drifts in Opentofu configuration and synchronize it to Terramate Cloud"
@@ -96,7 +103,6 @@ script "drift" "detect" {
   job {
     commands = [
       global.openbao_ca_cmd.args,
-      ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
       [global.provisioner, "plan", "-out=out.tfplan", "-detailed-exitcode", "-lock=false", "-var-file=variables.tfvars",
         "-var=cilium_version=${global.cilium_version}",
         "-var=gateway_api_version=${global.gateway_api_version}",
@@ -116,10 +122,11 @@ script "drift" "reconcile" {
   job {
     commands = [
       global.openbao_ca_cmd.args,
-      ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
-      # DIVERGES from the eight other copies of this script, deliberately, on two
-      # points -- because this override exists to make `drift reconcile` work in
-      # this stack, and mirroring a script that cannot run would achieve nothing.
+      # The apply command DIVERGES from the eight other copies of this script,
+      # deliberately, on two points -- because this override exists to make
+      # `drift reconcile` work in this stack, and mirroring a script that cannot
+      # run would achieve nothing. (The missing `trivy config` step is a third
+      # divergence, and its reason is in the note above `drift detect`.)
       #
       #   1. No `-var-file`. `tofu apply -help`: "If you don't provide a saved
       #      plan file then this command will also accept all of the

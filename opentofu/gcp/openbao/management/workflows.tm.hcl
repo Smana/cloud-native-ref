@@ -10,7 +10,10 @@
 # destroy, so a teardown without the CA aborts before deleting anything -- the
 # AWS stack says the same thing at the same place.
 #
-# opt-in gate: see opentofu/gcp/config.tm.hcl. Every command runs inside a
+# opt-in gate: `global.cloud_gate`, defined in opentofu/config.tm.hcl. (This used
+# to point at opentofu/gcp/config.tm.hcl, which does not exist -- opentofu/gcp/
+# holds no *.tm.hcl at all, so every global reaching this stack comes from the
+# opentofu/ root.) Every command runs inside a
 # ${global.cloud_gate} block. A BARE command list cannot be gated -- each command
 # in a Terramate job is its own process, so an `exit 0` in the block before it
 # ends only that block. An ungated `gcloud secrets versions access` here would
