@@ -92,14 +92,24 @@ spec:
   # only way in, by allowing ingress ONLY from the proxy. Without it the gateway
   # filter is a fence with the gate left open beside it -- any pod in the cluster
   # could call headlamp:4466 with an X-Forwarded-User of its choosing.
-  description: "Headlamp accepts traffic only from its auth proxy"
+  description: "Headlamp accepts traffic only from the token-exchange shim"
   endpointSelector:
     matchLabels:
       k8s:app.kubernetes.io/name: headlamp
   ingress:
+    # THE SHIM, NOT oauth2-proxy. Since the cutover, oauth2-proxy's upstream is
+    # the shim, and the shim's upstream is headlamp -- so oauth2-proxy no longer
+    # talks to headlamp at all and naming it here would be a stale grant.
+    #
+    # Getting this wrong is invisible from every side: the shim's own egress rule
+    # permits headlamp:4466, so a config review reads as correct, and the drop is
+    # recorded against HEADLAMP's endpoint rather than the shim's -- so
+    # `hubble observe --pod tooling/headlamp-token-exchange` shows nothing at all.
+    # The only symptom is `dial tcp <headlamp-clusterIP>:80: i/o timeout` in the
+    # shim's log. Measured on gcp-0 2026-09-02.
     - fromEndpoints:
         - matchLabels:
-            k8s:app.kubernetes.io/name: oauth2-proxy
+            k8s:app.kubernetes.io/name: headlamp-token-exchange
       toPorts:
         - ports:
             - port: "4466"
