@@ -55,7 +55,7 @@
 
 | Path | Task | Responsibility |
 |---|---|---|
-| `scripts/openbao-snapshot.sh`, `container-images/openbao-snapshot/openbao-snapshot.sh` (identical copies) | 1 | save/restore; auth by `VAULT_TOKEN`, JWT, or AppRole; stamps `lineage/check_timestamp` on save; `--freshness warn\|fail` |
+| `container-images/openbao-snapshot/openbao-snapshot.sh` (the real file; `scripts/openbao-snapshot.sh` is a **symlink** to it) | 1 | save/restore; auth by `VAULT_TOKEN`, JWT, or AppRole; stamps `lineage/check_timestamp` on save; `--freshness warn\|fail` |
 | `container-images/openbao-snapshot/Dockerfile` | 1 | image version `0.2.0` |
 | `scripts/openbao-config.sh` | 2 | `rehydrate` and `pre-destroy-snapshot` subcommands, `--ca-file`, `--snapshot-bucket` |
 | `opentofu/aws/openbao/lineage/*` | 3 | multi-region seal key, imported snapshot bucket + key, GitHub OIDC drill role, destroy gate |
@@ -83,7 +83,7 @@ Tasks 1–13 are offline and can each be validated without a cluster. Tasks 14�
 
 **Files:**
 - Modify: `scripts/openbao-snapshot.sh`
-- Modify: `container-images/openbao-snapshot/openbao-snapshot.sh` (byte-identical copy — `cp` after editing)
+- Modify: `container-images/openbao-snapshot/openbao-snapshot.sh` — **this is the real file.** `scripts/openbao-snapshot.sh` is a committed symlink to it (git mode `120000`), so the two are the same inode and byte-identity is structural, not maintained by copying. Edit the `container-images/` path; every `scripts/openbao-snapshot.sh` reference elsewhere resolves through the symlink.
 - Modify: `container-images/openbao-snapshot/Dockerfile:12` (add a version ARG the build workflow tags from)
 
 The script is `#!/bin/sh` (POSIX, no arrays, no `pipefail`). Keep it that way.
@@ -345,10 +345,16 @@ Replace with:
 
 In `usage()`, replace both `-u https://bao.domain.tld:8200` with `-a https://bao.domain.tld:8200` (the flag has always been `-a`).
 
-- [ ] **Step 8: Sync the image copy and bump the image version**
+- [ ] **Step 8: Bump the image version**
+
+Nothing to sync: `scripts/openbao-snapshot.sh` is a symlink to the file you just
+edited, so the two paths are one inode. (`cp` between them exits 1 with
+`are identical (not copied)`.) Confirm the symlink is intact rather than
+replaced by a regular file — an editor that writes through the link would break
+the invariant:
 
 ```bash
-cp scripts/openbao-snapshot.sh container-images/openbao-snapshot/openbao-snapshot.sh
+git ls-files -s scripts/openbao-snapshot.sh   # expect mode 120000
 ```
 
 In `container-images/openbao-snapshot/Dockerfile`, directly after the line `FROM debian:bookworm-slim`, add:
