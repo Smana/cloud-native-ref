@@ -287,14 +287,14 @@ api_or_fail() {
 # app name. The secret KEYS are deliberately not suffixed: they are per-cluster
 # already, living in that cluster's own secret store.
 CONSUMERS=(
-  "grafana${APP_SUFFIX}|https://grafana.${PRIVATE_DOMAIN}/login/generic_oauth|observability-victoria-metrics-k8s-stack-grafana-envvars"
-  "headlamp${APP_SUFFIX}|https://headlamp.${PRIVATE_DOMAIN}/oidc-callback|headlamp-envvars"
-  "flux-ui${APP_SUFFIX}|https://flux-ui-${CLUSTER}.${PRIVATE_DOMAIN}/oauth2/callback|security-flux-ui-oidc"
+  "grafana|https://grafana.${PRIVATE_DOMAIN}/login/generic_oauth|observability-victoria-metrics-k8s-stack-grafana-envvars"
+  "headlamp|https://headlamp.${PRIVATE_DOMAIN}/oidc-callback|headlamp-envvars"
+  "flux-ui|https://flux-ui-${CLUSTER}.${PRIVATE_DOMAIN}/oauth2/callback|security-flux-ui-oidc"
   # gcp-0 only in practice, and harmless on aws-0 where nothing consumes it.
   # GKE cannot be told to trust ZITADEL, so Headlamp there sits behind
   # oauth2-proxy and the PROXY holds the OIDC client -- a second client for the
   # same hostname, on the proxy's own callback path. ADR-0026.
-  "headlamp-proxy${APP_SUFFIX}|https://headlamp.${PRIVATE_DOMAIN}/oauth2/callback|headlamp-oauth2-proxy"
+  "headlamp-proxy|https://headlamp.${PRIVATE_DOMAIN}/oauth2/callback|headlamp-oauth2-proxy"
   # Harbor's callback is /c/oidc/callback -- Harbor's own path, not guessable
   # from the others. No second imperative step applies it: Harbor stores
   # auth config in its DATABASE rather than in the chart, but the chart's
@@ -303,7 +303,7 @@ CONSUMERS=(
   # client id/secret this script writes to the "harbor-oidc" store key reach
   # the HelmRelease via an ExternalSecret + valuesFrom, same as every other
   # consumer here. See ADR-0028.
-  "harbor${APP_SUFFIX}|https://harbor.${PRIVATE_DOMAIN}/c/oidc/callback|harbor-oidc"
+  "harbor|https://harbor.${PRIVATE_DOMAIN}/c/oidc/callback|harbor-oidc"
 )
 
 # The one non-secret OIDC field known to have drifted in practice: headlamp
