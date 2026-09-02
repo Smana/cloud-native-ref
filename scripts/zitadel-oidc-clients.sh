@@ -128,6 +128,32 @@ case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;;
 IDP_CLOUD="${IDP_CLOUD:-$CLOUD}"
 case "$IDP_CLOUD" in aws|gcp) ;; *) echo "--idp-cloud must be aws or gcp" >&2; exit 2 ;; esac
 
+# App names are per-CONSUMER (`harbor`, `grafana`, ...), which is unambiguous
+# only while one directory serves one cluster. It no longer does: ADR-0027 makes
+# a secondary cluster CONSUMING the primary's directory the normal arrangement,
+# and then two clusters want an app called `harbor` in the same project.
+#
+# Caught by a dry run on 2026-09-02, before anything was written:
+#
+#   [STALE  ] harbor  has:  https://harbor.priv.aws.ogenki.io/c/oidc/callback
+#                     want: https://harbor.priv.gcp.ogenki.io/c/oidc/callback
+#   created: 0, updated: 5
+#
+# Registering gcp-0 would not have created gcp-0's clients -- it would have
+# rewritten aws-0's redirect URIs to gcp-0's hostnames and broken SSO on the
+# cluster that hosts the directory.
+#
+# So a CONSUMING cluster's apps are suffixed with its cluster name. The hosting
+# cluster's are not, deliberately: its apps already exist under bare names, they
+# are carried in the database restore seed, and renaming them would orphan the
+# originals on every restore while rotating secrets on a running cluster.
+# Asymmetric, and the asymmetry is the point -- the host owns the plain names.
+if [ "$IDP_CLOUD" != "$CLOUD" ]; then
+    APP_SUFFIX="-${CLUSTER}"
+else
+    APP_SUFFIX=""
+fi
+
 # Provenance for secrets this script writes, read by cloud-secret-store.sh's
 # store_write. Preserves what this script wrote before the store/PAT logic
 # moved into shared libraries.
@@ -256,15 +282,19 @@ api_or_fail() {
 #   Grafana   /login/generic_oauth   (grafana.ini auth.generic_oauth)
 #   Headlamp  /oidc-callback         (headlamp chart)
 #   Flux UI   /oauth2/callback       (flux-operator web.config.authentication)
+# ${APP_SUFFIX} is empty for the cluster that HOSTS this directory and
+# "-<cluster>" for one consuming it, so two clusters never contend for the same
+# app name. The secret KEYS are deliberately not suffixed: they are per-cluster
+# already, living in that cluster's own secret store.
 CONSUMERS=(
-  "grafana|https://grafana.${PRIVATE_DOMAIN}/login/generic_oauth|observability-victoria-metrics-k8s-stack-grafana-envvars"
-  "headlamp|https://headlamp.${PRIVATE_DOMAIN}/oidc-callback|headlamp-envvars"
-  "flux-ui|https://flux-ui-${CLUSTER}.${PRIVATE_DOMAIN}/oauth2/callback|security-flux-ui-oidc"
+  "grafana${APP_SUFFIX}|https://grafana.${PRIVATE_DOMAIN}/login/generic_oauth|observability-victoria-metrics-k8s-stack-grafana-envvars"
+  "headlamp${APP_SUFFIX}|https://headlamp.${PRIVATE_DOMAIN}/oidc-callback|headlamp-envvars"
+  "flux-ui${APP_SUFFIX}|https://flux-ui-${CLUSTER}.${PRIVATE_DOMAIN}/oauth2/callback|security-flux-ui-oidc"
   # gcp-0 only in practice, and harmless on aws-0 where nothing consumes it.
   # GKE cannot be told to trust ZITADEL, so Headlamp there sits behind
   # oauth2-proxy and the PROXY holds the OIDC client -- a second client for the
   # same hostname, on the proxy's own callback path. ADR-0026.
-  "headlamp-proxy|https://headlamp.${PRIVATE_DOMAIN}/oauth2/callback|headlamp-oauth2-proxy"
+  "headlamp-proxy${APP_SUFFIX}|https://headlamp.${PRIVATE_DOMAIN}/oauth2/callback|headlamp-oauth2-proxy"
   # Harbor's callback is /c/oidc/callback -- Harbor's own path, not guessable
   # from the others. No second imperative step applies it: Harbor stores
   # auth config in its DATABASE rather than in the chart, but the chart's
@@ -273,7 +303,7 @@ CONSUMERS=(
   # client id/secret this script writes to the "harbor-oidc" store key reach
   # the HelmRelease via an ExternalSecret + valuesFrom, same as every other
   # consumer here. See ADR-0028.
-  "harbor|https://harbor.${PRIVATE_DOMAIN}/c/oidc/callback|harbor-oidc"
+  "harbor${APP_SUFFIX}|https://harbor.${PRIVATE_DOMAIN}/c/oidc/callback|harbor-oidc"
 )
 
 # The one non-secret OIDC field known to have drifted in practice: headlamp
