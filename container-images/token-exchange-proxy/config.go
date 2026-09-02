@@ -101,8 +101,19 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// envOr returns the environment value if the variable is SET -- including when
+// it is set to the empty string -- and the default only when it is absent.
+//
+// os.Getenv cannot tell those apart, and conflating them is not academic here:
+// several of these values are legitimately empty. TEP_INJECT_PREFIX="" means
+// "inject the raw token with no prefix", which is what an upstream expecting a
+// bare token requires. Defaulting it to "Bearer " instead produced
+// `Authorization: Bearer Bearer <token>` at the API server and a 401 that named
+// nothing -- the exchange succeeded, every component logged success, and only a
+// byte-level comparison of a working request against a failing one found it.
+// Measured against a live deployment, 2026-09-02.
 func envOr(k, d string) string {
-	if v := os.Getenv(k); v != "" {
+	if v, ok := os.LookupEnv(k); ok {
 		return v
 	}
 	return d

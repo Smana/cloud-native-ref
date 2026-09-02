@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestValidateRejectsMissingRequired(t *testing.T) {
 	err := Config{RequestEncoding: EncodingJSON}.Validate()
@@ -48,4 +51,41 @@ func contains(hay, needle string) bool {
 			}
 			return false
 		}())
+}
+
+// An explicitly EMPTY variable must be honoured, not replaced by the default.
+// TEP_INJECT_PREFIX="" means "inject the raw token"; silently substituting
+// "Bearer " produced a doubled prefix at the upstream and a 401 that named
+// nothing. This is the regression test for that.
+func TestEmptyEnvIsHonouredNotDefaulted(t *testing.T) {
+	t.Setenv("TEP_STS_URL", "https://sts.example/v1/token")
+	t.Setenv("TEP_UPSTREAM_URL", "http://upstream.invalid")
+	t.Setenv("TEP_INJECT_PREFIX", "")
+	t.Setenv("TEP_SUBJECT_PREFIX", "")
+
+	c, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.InjectPrefix != "" {
+		t.Errorf("InjectPrefix = %q, want \"\" (an explicitly empty value must survive)", c.InjectPrefix)
+	}
+	if c.SubjectPrefix != "" {
+		t.Errorf("SubjectPrefix = %q, want \"\"", c.SubjectPrefix)
+	}
+}
+
+// An ABSENT variable still gets its default -- the fix above must not break this.
+func TestAbsentEnvStillDefaults(t *testing.T) {
+	t.Setenv("TEP_STS_URL", "https://sts.example/v1/token")
+	t.Setenv("TEP_UPSTREAM_URL", "http://upstream.invalid")
+	os.Unsetenv("TEP_INJECT_PREFIX")
+
+	c, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.InjectPrefix != "Bearer " {
+		t.Errorf("InjectPrefix = %q, want \"Bearer \" when unset", c.InjectPrefix)
+	}
 }

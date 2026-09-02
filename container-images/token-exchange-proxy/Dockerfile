@@ -5,7 +5,7 @@
 # `:v0.1.1` reference in tooling/gcp-0/headlamp/token-exchange.yaml would never
 # resolve and the pod would ImagePullBackOff. Keep this in step with VERSION in
 # build.sh.
-ARG TOKEN_EXCHANGE_PROXY_VERSION=v0.1.1
+ARG TOKEN_EXCHANGE_PROXY_VERSION=v0.1.2
 
 # Build stage: compile a static binary. CGO_ENABLED=0 removes the libc
 # dependency the distroless runtime below has no shell to satisfy anyway;
