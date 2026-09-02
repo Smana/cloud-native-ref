@@ -15,7 +15,7 @@ resource "google_compute_firewall" "openbao_health_check" {
   }
 
   source_ranges           = ["130.211.0.0/22", "35.191.0.0/16"]
-  target_service_accounts = [google_service_account.openbao.email]
+  target_service_accounts = [local.lineage.openbao_node_sa_email]
 }
 
 # Everything that talks to OpenBao's API.
@@ -49,7 +49,7 @@ resource "google_compute_firewall" "openbao_api" {
   }
 
   source_ranges           = local.network.advertised_routes
-  target_service_accounts = [google_service_account.openbao.email]
+  target_service_accounts = [local.lineage.openbao_node_sa_email]
 }
 
 # IAP TCP forwarding for SSH, OFF by default.
@@ -73,5 +73,5 @@ resource "google_compute_firewall" "openbao_iap_ssh" {
   }
 
   source_ranges           = ["35.235.240.0/20"]
-  target_service_accounts = [google_service_account.openbao.email]
+  target_service_accounts = [local.lineage.openbao_node_sa_email]
 }

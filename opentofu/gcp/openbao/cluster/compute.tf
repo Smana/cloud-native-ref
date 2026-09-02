@@ -1,10 +1,10 @@
 # Single-node OpenBao compute: instance template + a one-instance MIG.
 #
-# This mirrors the AWS stack's "dev" mode, not "ha" (see
-# opentofu/aws/openbao/cluster/README.md) -- one node, `storage "file"`, no
-# raft join, no quorum. This stack is a demo/test posture torn down and
-# rebuilt on every platform test cycle; scaling to a real multi-node raft
-# cluster is future work, not attempted here.
+# Single node on raft, like the AWS stack's "dev" mode. The node's storage is
+# derived state: the lineage's newest snapshot is restored into it on every
+# deploy (opentofu/gcp/openbao/management/workflows.tm.hcl, rehydrate), so a
+# recreated instance is a restore, not a loss. Multi-node raft remains future
+# work.
 
 # Ubuntu, not a GCP-native image family such as Container-Optimized OS: the
 # boot script installs OpenBao from a signed .deb via dpkg (scripts/startup-
@@ -60,7 +60,7 @@ resource "google_compute_instance_template" "openbao" {
   }
 
   service_account {
-    email = google_service_account.openbao.email
+    email = local.lineage.openbao_node_sa_email
     # Broad OAuth scope, narrow IAM: the actual permissions are the two grants
     # in iam.tf (KMS encrypt/decrypt on one key, Secret Manager access on one
     # secret), not this scope. Same pattern as the Tailscale subnet router in
@@ -102,6 +102,10 @@ resource "google_compute_instance_template" "openbao" {
       kms_crypto_key          = data.google_kms_crypto_key.openbao.name
       server_cert_secret_name = var.server_cert_secret_name
       fqdn                    = local.fqdn
+      seal_provider           = var.seal_provider
+      aws_seal_kms_key_id     = var.aws_seal_kms_key_id
+      aws_seal_region         = var.aws_seal_region
+      aws_seal_role_arn       = var.aws_seal_role_arn
     }),
   ])
 
@@ -112,6 +116,11 @@ resource "google_compute_instance_template" "openbao" {
 
   lifecycle {
     create_before_destroy = true
+
+    precondition {
+      condition     = var.seal_provider == "gcpckms" || (var.aws_seal_kms_key_id != "" && var.aws_seal_role_arn != "")
+      error_message = "seal_provider = awskms needs aws_seal_kms_key_id and aws_seal_role_arn."
+    }
   }
 }
 

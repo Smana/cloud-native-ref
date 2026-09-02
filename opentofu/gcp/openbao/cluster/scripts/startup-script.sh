@@ -138,16 +138,32 @@ telemetry {
   disable_hostname          = true
 }
 
-storage "file" {
-  path = "${openbao_data_path}"
+# Raft, single node. `file` could neither take nor receive a snapshot, so a
+# node's contents died with it; a one-node raft cluster is bootstrapped by
+# `operator init` and costs nothing extra. api_addr is the FQDN so a restored
+# snapshot's peer list (which raft.Restore discards anyway) never has to match.
+storage "raft" {
+  path    = "${openbao_data_path}"
+  node_id = "$(hostname)"
 }
 
+%{ if seal_provider == "awskms" }
+# STANDBY seal: the AWS lineage's multi-region key, in its replica region,
+# reached with the federated role. Credentials come from the SDK's web-identity
+# provider -- AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE in the systemd
+# drop-in below -- so nothing is in this file.
+seal "awskms" {
+  region     = "${aws_seal_region}"
+  kms_key_id = "${aws_seal_kms_key_id}"
+}
+%{ else }
 seal "gcpckms" {
   project    = "${project_id}"
   region     = "${region}"
   key_ring   = "${kms_key_ring}"
   crypto_key = "${kms_crypto_key}"
 }
+%{ endif }
 EOF
 
 # Retry forever, instead of giving up after a few fast failures.
@@ -176,6 +192,68 @@ StartLimitIntervalSec=0
 Restart=on-failure
 RestartSec=30s
 EOF
+
+%{ if seal_provider == "awskms" }
+# AWS web-identity token for the awskms seal.
+# ------------------------------------------
+# A Compute Engine identity token (aud = sts.amazonaws.com, sub = this service
+# account's unique ID) is written where the AWS SDK's web-identity credential
+# provider reads it, and refreshed every 50 minutes -- the token lives one hour.
+# The seal only needs it at unseal and at key operations, so a stopped timer
+# does not stop a running node; it stops the NEXT unseal. `bao status` and the
+# OpenBaoSealed alert are what surface that.
+install -d -m 0750 -o root -g openbao /run/openbao
+
+cat << 'EOF' > /usr/local/bin/openbao-aws-token.sh
+#!/bin/bash
+set -euo pipefail
+TOKEN=$(curl -fsS -H "Metadata-Flavor: Google" \
+  "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=sts.amazonaws.com&format=full")
+umask 027
+printf '%s' "$TOKEN" > /run/openbao/aws-web-identity-token.tmp
+chown root:openbao /run/openbao/aws-web-identity-token.tmp
+mv -f /run/openbao/aws-web-identity-token.tmp /run/openbao/aws-web-identity-token
+EOF
+chmod 0755 /usr/local/bin/openbao-aws-token.sh
+
+cat << 'EOF' > /etc/systemd/system/openbao-aws-token.service
+[Unit]
+Description=Refresh the AWS web-identity token the OpenBao awskms seal uses
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/openbao-aws-token.sh
+EOF
+
+cat << 'EOF' > /etc/systemd/system/openbao-aws-token.timer
+[Unit]
+Description=Refresh the OpenBao AWS web-identity token every 50 minutes
+
+[Timer]
+OnBootSec=0
+OnUnitActiveSec=50min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# The seal reads these at start. A drop-in rather than /etc/openbao/openbao.env
+# so it does not depend on the packaged unit's EnvironmentFile handling.
+cat << EOF > /etc/systemd/system/openbao.service.d/aws-seal.conf
+[Unit]
+After=openbao-aws-token.service
+Requires=openbao-aws-token.service
+
+[Service]
+Environment=AWS_ROLE_ARN=${aws_seal_role_arn}
+Environment=AWS_WEB_IDENTITY_TOKEN_FILE=/run/openbao/aws-web-identity-token
+Environment=AWS_REGION=${aws_seal_region}
+EOF
+
+systemctl daemon-reload
+systemctl enable --now openbao-aws-token.timer
+%{ endif }
 systemctl daemon-reload
 
 systemctl start openbao.service

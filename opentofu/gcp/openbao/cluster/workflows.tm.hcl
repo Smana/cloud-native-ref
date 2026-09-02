@@ -111,6 +111,19 @@ script "destroy" {
         ${global.cloud_gate}
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        # One last snapshot into the lineage bucket before the node goes -- the
+        # in-cluster CronJob is already gone at this point of a reverse destroy.
+        # Fails hard when OpenBao is unreachable; TM_OPENBAO_SKIP_SNAPSHOT=true
+        # is the override for a node that is already dead.
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" pre-destroy-snapshot \
+          --cloud gcp --project ogenki-435905 \
+          --url https://bao.priv.gcp.ogenki.io:8200 \
+          --root-token-secret-name openbao-priv-gcp-root-token \
+          --snapshot-bucket ogenki-435905-ogenki-openbao-snapshot \
+          --ca-file .tls/ca.pem
         ${global.provisioner} init -lock-timeout=5m
         # -refresh=false is deliberate on DESTROY: this stack reads the network
         # stack's outputs through data.terraform_remote_state, and refreshing
