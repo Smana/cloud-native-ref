@@ -74,7 +74,7 @@ data "aws_iam_policy_document" "openbao-kms-unseal" {
   statement {
     sid       = "VaultKMSUnseal"
     effect    = "Allow"
-    resources = [aws_kms_key.openbao.arn]
+    resources = [data.aws_kms_alias.seal.target_key_arn]
 
     actions = [
       "kms:Decrypt",

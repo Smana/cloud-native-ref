@@ -147,19 +147,13 @@ module "openbao_asg" {
 
   # Rolling refresh in `ha` only.
   #
-  # NOT in dev, and the reason matters: dev is a single node whose `file`
-  # storage backend lives on the root volume, which block_device_mappings above
-  # marks delete_on_termination (t3.micro has no instance store, so
-  # setup-local-disks.sh leaves openbao_data_path as a plain directory there).
-  # A refresh would terminate the only copy of every secret, policy, AppRole and
-  # the PKI intermediate — and there is nothing to restore from, because
-  # snapshots are raft-only and dev runs `file`.
-  #
-  # The triggers are routine, not exceptional: `data.aws_ami.this` sets
-  # most_recent = true, so a Canonical AMI publish alone rewrites the launch
-  # template, as does any openbao_version bump. dev therefore keeps the
-  # pre-existing behaviour — template changes reach new instances, and replacing
-  # the running one stays a deliberate manual act.
+  # NOT in dev. dev is a single node whose raft store lives on the root
+  # volume, which block_device_mappings marks delete_on_termination. A refresh
+  # would terminate the only live copy; the lineage's newest snapshot brings it
+  # back on the next deploy, but everything written since that snapshot is
+  # lost. The triggers are routine (an AMI publish, an openbao_version bump), so
+  # replacing the running dev node stays a deliberate act: take a snapshot
+  # first (`openbao-config.sh pre-destroy-snapshot`), then recycle.
   instance_refresh = var.mode == "ha" ? {
     strategy = "Rolling"
     preferences = {

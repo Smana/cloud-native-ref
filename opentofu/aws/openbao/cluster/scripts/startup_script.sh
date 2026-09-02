@@ -116,11 +116,10 @@ telemetry {
   disable_hostname          = true
 }
 
-%{ if dev_mode }
-storage "file" {
-  path = "${openbao_data_path}"
-}
-%{ else }
+# Raft in BOTH modes. `dev` used to run the `file` backend, which can neither
+# take nor receive a snapshot -- so a dev node's contents died with it. A
+# single-node raft cluster costs nothing extra: `operator init` bootstraps it,
+# and retry_join finds only itself. In `ha` the same stanza joins five nodes.
 storage "raft" {
   path = "${openbao_data_path}"
   node_id = "$INSTANCE_ID"
@@ -134,7 +133,6 @@ storage "raft" {
     leader_ca_cert_file     = "/opt/openbao/tls/ca.pem"
   }
 }
-%{ endif }
 
 seal "awskms" {
   region     = "${region}"

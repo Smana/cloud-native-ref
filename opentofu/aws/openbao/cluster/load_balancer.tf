@@ -1,8 +1,29 @@
+# One private subnet per AZ, resolved individually so each can carry a fixed
+# address below.
+data "aws_subnet" "private" {
+  for_each = toset(data.aws_subnets.private.ids)
+  id       = each.value
+}
+
 resource "aws_lb" "this" {
   name               = local.name
   internal           = true
   load_balancer_type = "network"
-  subnets            = data.aws_subnets.private.ids
+
+  # Fixed private IPs, not AWS-assigned. A remote cluster reaches this OpenBao
+  # through a Tailscale egress Service annotated with one of these addresses
+  # (security/base/openbao-endpoint/remote), and that annotation must survive
+  # a rebuild of this stack. cidrhost(-6) is the sixth address from the top of
+  # each /20: AWS reserves the first four and the last one, and EKS assigns
+  # from the pool at random, so a high fixed address is the least likely to
+  # collide. If creation fails with "address already in use", pick -7.
+  dynamic "subnet_mapping" {
+    for_each = data.aws_subnet.private
+    content {
+      subnet_id            = subnet_mapping.value.id
+      private_ipv4_address = cidrhost(subnet_mapping.value.cidr_block, -6)
+    }
+  }
 
   # AWS only accepts security groups on an NLB at creation time, so adding this
   # replaces the load balancer. The Route53 alias in route53.tf follows the new

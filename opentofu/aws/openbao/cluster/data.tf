@@ -106,7 +106,7 @@ data "cloudinit_config" "openbao_cloud_init" {
       "openbao_instance"      = local.tags.OpenBaoInstance
       "dev_mode"              = var.mode == "dev" ? true : false
       "leader_tls_servername" = var.leader_tls_servername
-      "kms_unseal_key_id"     = aws_kms_key.openbao.id
+      "kms_unseal_key_id"     = data.aws_kms_alias.seal.target_key_id
       # The secret *name*, not its contents.
       "openbao_certificates_secret_id" = var.openbao_certificates_secret_name
     }
