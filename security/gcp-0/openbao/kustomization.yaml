@@ -2,8 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Everything that the controllers in ../controllers/ have to ADMIT before it can
-# exist: two ExternalSecrets and a ClusterSecretStore behind the external-secrets
-# webhook, a ClusterIssuer behind cert-manager's.
+# exist: one ExternalSecret (the CA chain) and a ClusterSecretStore behind the
+# external-secrets webhook, a ClusterIssuer behind cert-manager's. It was two
+# ExternalSecrets until the JWT switch: the second fetched cert-manager's
+# AppRole secret_id, and a projected ServiceAccount token needs none.
 #
 # Kept out of ../controllers/ deliberately -- see the note there. Applying these
 # in the same Kustomization as the charts means admitting them against webhooks

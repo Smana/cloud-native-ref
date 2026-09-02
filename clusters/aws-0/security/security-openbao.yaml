@@ -1,5 +1,7 @@
 # The OpenBao-backed configuration the `security` controllers admit: a
-# ClusterSecretStore, two ExternalSecrets and the `openbao` ClusterIssuer. The
+# ClusterSecretStore, one ExternalSecret (the CA chain) and the `openbao`
+# ClusterIssuer -- two ExternalSecrets until the JWT switch removed the one
+# holding cert-manager's AppRole secret_id. The
 # Let's Encrypt issuers are NOT here -- they are ACME/Route53, unrelated to
 # OpenBao, and belong to `security-public-certs`.
 #

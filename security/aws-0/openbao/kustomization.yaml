@@ -2,8 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Everything the controllers in ../ have to ADMIT before it can exist: a
-# ClusterSecretStore and two ExternalSecrets behind the external-secrets
-# webhook, one ClusterIssuer behind cert-manager's.
+# ClusterSecretStore and one ExternalSecret behind the external-secrets webhook,
+# one ClusterIssuer behind cert-manager's. It was two ExternalSecrets until the
+# JWT switch: the second fetched cert-manager's AppRole secret_id, and a
+# projected ServiceAccount token needs no stored credential.
 #
 # Kept out of the `security` Kustomization deliberately, and this now mirrors
 # security/gcp-0/openbao file for file. See that directory's kustomization.yaml

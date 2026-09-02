@@ -28,11 +28,19 @@
 #
 # WHAT THE SUSPEND WAS COSTING. Not just the absence of backups.
 # OpenBaoSnapshotStale (observability/base/victoria-metrics-k8s-stack/vmrules/
-# openbao.yaml) has a second arm --
-# `absent(kube_cronjob_status_last_successful_time{...}) == 1` -- precisely
-# because kube-state-metrics emits no series for a CronJob that has never
-# succeeded. On gcp-0 that arm was firing critical continuously, with no action
-# available to silence it.
+# openbao.yaml) has a second arm on
+# `absent(kube_cronjob_status_last_successful_time{...})` -- precisely because
+# kube-state-metrics emits no series for a CronJob that has never succeeded. On
+# gcp-0 that arm was firing critical continuously, with no action available to
+# silence it.
+#
+# That arm has since been guarded with a `kube_cronjob_created` age condition,
+# so it stays quiet for the first 26 hours of a CronJob's life -- the worst-case
+# wait for a healthy first run is 25.5 h (up to 24 h to the next 04:00, plus
+# startingDeadlineSeconds 3600, plus activeDeadlineSeconds 1800). The guard is
+# in the expression rather than in `for:` because `for:` is per-RULE, not
+# per-arm: raising it to 26 h would drag the 36-hour freshness arm out to 62 h.
+# So read the alert as it now stands, not as quoted above.
 #
 # WHAT IT NEEDS, all verified against this branch rather than assumed:
 #
