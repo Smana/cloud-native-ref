@@ -365,7 +365,7 @@ backup.
 **Seal from GCP.** The GCP cluster stack gains `seal_provider = awskms | gcpckms`
 (default `gcpckms`, for GCP-only mode). With `awskms`, the VM's startup script
 installs a systemd timer that fetches a GCE instance identity token from the
-metadata server every 50 minutes into `/run/openbao/aws-web-identity-token`; the
+metadata server every 15 minutes into `/run/openbao/aws-web-identity-token`; the
 service unit sets `AWS_ROLE_ARN`, `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_REGION`
 (the replica region), and the seal stanza names the multi-region key. The awskms
 seal resolves credentials through the SDK default chain, so nothing else is
@@ -374,11 +374,15 @@ configured on the OpenBao side.
 **AWS side**, in `opentofu/shared/aws-gcp-federation/`: an IAM OIDC provider for
 `https://accounts.google.com`, and a role `openbao-standby-seal` whose trust policy
 binds `accounts.google.com:sub` to the standby VM service account's unique ID and
-the audience to a fixed string. Its only permissions are the seal-key
+the audience to a fixed string. Its only permissions are the three KMS
 operations OpenBao's `awskms` seal actually performs — `kms:Encrypt`,
-`kms:Decrypt`, `kms:DescribeKey`, `kms:GenerateDataKey*` and `kms:ReEncrypt*`,
-the same set `opentofu/aws/openbao/cluster/iam.tf` already grants the AWS node
-for the same key, and nothing beyond it. The lineage's key policy
+`kms:Decrypt` and `kms:DescribeKey` — the same set
+`opentofu/aws/openbao/cluster/iam.tf` grants the AWS node for the same key, and
+nothing beyond it. `kms:GenerateDataKey*` is deliberately absent even though
+this is envelope encryption: the wrapper mints the 32-byte data key in-process
+and sends only that key to `kms:Encrypt`, so KMS is never asked to generate one,
+and nothing re-wraps ciphertext under a different key, so `kms:ReEncrypt*` has
+no caller either. The lineage's key policy
 admits that role by its deterministic ARN, so the two stacks need no ordering.
 This is distinct from the existing federation, which trusts the *GKE* issuer for
 Kubernetes ServiceAccounts; a Compute Engine VM presents a Google-issued identity

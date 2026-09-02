@@ -70,6 +70,27 @@ resource "aws_iam_role_policy" "openbao_certificates" {
 
 
 # For the auto unseal using AWS KMS
+#
+# Three actions, which is the whole KMS surface of an `awskms` seal:
+# DescribeKey when it configures the seal, Encrypt to wrap the barrier key,
+# Decrypt to unwrap it. The same three the drill role
+# (opentofu/aws/openbao/lineage/github-oidc.tf) and the GCP standby-seal role
+# (opentofu/shared/aws-gcp-federation/google-identity.tf) carry -- all three
+# grants agree, because all three drive the identical wrapper.
+#
+# The non-obvious half, and the first thing a reviewer doubts:
+# kms:GenerateDataKey* is NOT needed, even though this is envelope encryption.
+# wrapping.EnvelopeEncrypt generates the 32-byte data key IN-PROCESS
+# (uuid.GenerateRandomBytes(32), then a local AES-GCM seal) and sends only that
+# key to kms:Encrypt -- the DEK never leaves the process for KMS to mint, so the
+# API that mints one is never called. Nothing re-wraps ciphertext under a
+# different key either, so kms:ReEncrypt* has no caller. Both were in the
+# Vault-era convention this grant was copied from, and both are removed here.
+# OpenBao's own awskms seal page says the same: "OpenBao needs the following
+# permissions on the KMS key: kms:Encrypt, kms:Decrypt, kms:DescribeKey."
+#
+# Steady state adds no action either: the seal health check runs one
+# Encrypt->Decrypt round trip every ten minutes, both already granted.
 data "aws_iam_policy_document" "openbao-kms-unseal" {
   statement {
     sid       = "VaultKMSUnseal"
@@ -79,9 +100,7 @@ data "aws_iam_policy_document" "openbao-kms-unseal" {
     actions = [
       "kms:Decrypt",
       "kms:Encrypt",
-      "kms:DescribeKey",
-      "kms:ReEncrypt*",
-      "kms:GenerateDataKey*"
+      "kms:DescribeKey"
     ]
   }
 }

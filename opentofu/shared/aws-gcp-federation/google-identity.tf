@@ -30,7 +30,7 @@ resource "aws_iam_openid_connect_provider" "google" {
 # Lets the GCP OpenBao node use the AWS multi-region seal key, so a snapshot
 # taken under that seal restores on GCP during an AWS regional outage
 # (design scenario A). The node fetches a Compute Engine identity token with
-# audience sts.amazonaws.com every 50 minutes and the awskms seal exchanges it
+# audience sts.amazonaws.com every 15 minutes and the awskms seal exchanges it
 # through the SDK's web-identity credential provider.
 data "aws_iam_policy_document" "standby_seal_assume" {
   count = var.gcp_openbao_standby_sa_unique_id == "" ? 0 : 1
@@ -67,6 +67,35 @@ resource "aws_iam_role" "standby_seal" {
 }
 
 data "aws_iam_policy_document" "standby_seal" {
+  # Three actions, which is the whole KMS surface of an `awskms` seal:
+  # DescribeKey when it configures the seal, Encrypt to wrap the barrier key,
+  # Decrypt to unwrap it. Same three as the drill role in
+  # opentofu/aws/openbao/lineage/github-oidc.tf and the AWS node's own seal role
+  # in opentofu/aws/openbao/cluster/iam.tf -- all three grants now agree,
+  # because all three drive the identical wrapper.
+  #
+  # The non-obvious half, and the first thing a reviewer doubts:
+  # kms:GenerateDataKey* is NOT needed, even though this is envelope
+  # encryption. wrapping.EnvelopeEncrypt generates the 32-byte data key
+  # IN-PROCESS (uuid.GenerateRandomBytes(32), then a local AES-GCM seal) and
+  # sends only that key to kms:Encrypt -- the DEK never leaves the process for
+  # KMS to mint, so the API that mints one is never called. Nothing re-wraps
+  # ciphertext under a different key either, so kms:ReEncrypt* has no caller.
+  # Both were in the Vault-era convention this grant was copied from, and both
+  # are removed here. OpenBao's own awskms seal page says the same:
+  # "OpenBao needs the following permissions on the KMS key: kms:Encrypt,
+  # kms:Decrypt, kms:DescribeKey."
+  #
+  # Nothing on the STANDBY path asks for more than the AWS node does. It runs
+  # the same OpenBao 2.6.2 with the same `seal "awskms"` stanza (region +
+  # kms_key_id and nothing else); the only difference is where the credentials
+  # come from -- web identity here, an instance profile there -- and that is an
+  # STS concern, not a KMS one. Restoring a snapshot is Decrypt: the barrier
+  # keyring inside it was wrapped by this same key. The snapshot bytes come
+  # from GCS, not S3, so no bucket-key Decrypt belongs here.
+  #
+  # Steady state adds no action either: the seal health check runs one
+  # Encrypt->Decrypt round trip every ten minutes, both already granted.
   statement {
     sid    = "SealKeyByAlias"
     effect = "Allow"
@@ -74,10 +103,12 @@ data "aws_iam_policy_document" "standby_seal" {
       "kms:Encrypt",
       "kms:Decrypt",
       "kms:DescribeKey",
-      "kms:GenerateDataKey*",
-      "kms:ReEncrypt*",
     ]
     # Every region: the standby names the replica region's copy.
+    #
+    # By alias-plus-condition rather than by exact ARN, unlike the drill role:
+    # this stack does not create the key, so it has no ARN to reference at
+    # grant time and has to resolve it by the alias the lineage attaches.
     resources = ["arn:aws:kms:*:${data.aws_caller_identity.this.account_id}:key/*"]
 
     condition {

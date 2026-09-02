@@ -3934,7 +3934,7 @@ resource "aws_iam_openid_connect_provider" "google" {
 # Lets the GCP OpenBao node use the AWS multi-region seal key, so a snapshot
 # taken under that seal restores on GCP during an AWS regional outage
 # (design scenario A). The node fetches a Compute Engine identity token with
-# audience sts.amazonaws.com every 50 minutes and the awskms seal exchanges it
+# audience sts.amazonaws.com every 15 minutes and the awskms seal exchanges it
 # through the SDK's web-identity credential provider.
 data "aws_iam_policy_document" "standby_seal_assume" {
   count = var.gcp_openbao_standby_sa_unique_id == "" ? 0 : 1
@@ -3971,6 +3971,13 @@ resource "aws_iam_role" "standby_seal" {
 }
 
 data "aws_iam_policy_document" "standby_seal" {
+  # Three actions, which is the whole KMS surface of an `awskms` seal:
+  # DescribeKey at seal configuration, Encrypt to wrap the barrier key, Decrypt
+  # to unwrap it. kms:GenerateDataKey* is NOT needed despite this being envelope
+  # encryption -- the wrapper mints the 32-byte DEK in-process and sends only
+  # that key to Encrypt -- and nothing re-wraps ciphertext, so kms:ReEncrypt* has
+  # no caller either. See the shipped file for the full argument; the same three
+  # actions appear in the drill role and on the AWS node.
   statement {
     sid    = "SealKeyByAlias"
     effect = "Allow"
@@ -3978,8 +3985,6 @@ data "aws_iam_policy_document" "standby_seal" {
       "kms:Encrypt",
       "kms:Decrypt",
       "kms:DescribeKey",
-      "kms:GenerateDataKey*",
-      "kms:ReEncrypt*",
     ]
     # Every region: the standby names the replica region's copy.
     resources = ["arn:aws:kms:*:${data.aws_caller_identity.this.account_id}:key/*"]
@@ -4123,7 +4128,8 @@ GCP subject IDs are known, so an AWS-only apply is unaffected."
 - Modify: `opentofu/gcp/openbao/cluster/iam.tf`
 - Modify: `opentofu/gcp/openbao/cluster/compute.tf:73-76,96-110`
 - Modify: `opentofu/gcp/openbao/cluster/variables.tf`
-- Modify: `opentofu/gcp/openbao/cluster/scripts/startup-script.sh:141-151` and its tail
+- Modify: `opentofu/gcp/openbao/cluster/scripts/startup-script.sh:141-151`, its
+  `restart.conf` drop-in, and its tail
 - Modify: `opentofu/gcp/openbao/cluster/firewall.tf` and
   `opentofu/gcp/openbao/cluster/outputs.tf` — four more references to the
   service account Step 1 deletes: three `target_service_accounts` entries in the
@@ -4235,7 +4241,7 @@ Add a precondition on the instance template so `awskms` without its inputs fails
 
 (replacing the existing `lifecycle { create_before_destroy = true }` block).
 
-- [ ] **Step 3: Raft, and the seal branch, in the boot script**
+- [ ] **Step 3: Raft, the data-disk ordering edge, and the seal branch, in the boot script**
 
 In `scripts/startup-script.sh`, replace:
 
@@ -4296,6 +4302,38 @@ seal "gcpckms" {
 EOF
 ```
 
+Then add one line to the existing retry-forever drop-in — the `restart.conf`
+heredoc a little further down the same file — so that it reads:
+
+```bash
+mkdir -p /etc/systemd/system/openbao.service.d
+cat << 'EOF' > /etc/systemd/system/openbao.service.d/restart.conf
+[Unit]
+StartLimitIntervalSec=0
+RequiresMountsFor=${openbao_data_path}
+
+[Service]
+Restart=on-failure
+RestartSec=30s
+EOF
+```
+
+`RequiresMountsFor` is what the move to raft owes this step, and it belongs in
+`restart.conf` rather than in the `awskms` drop-in below because it applies in
+**both** seal postures. Without it there is no ordering edge at all between
+`openbao.service` and the `opt-openbao-data.mount` unit `setup-local-disks.sh`
+enables, so systemd starts them concurrently at every reboot. If OpenBao wins,
+raft creates its BoltDB under the storage path on the **root** filesystem and
+the mount then shadows it: the node reports healthy with its storage on the
+wrong volume, the real disk stays empty, and everything written is discarded at
+the next boot — none of which is visible from `bao status`. It expands to
+`Requires=` + `After=` on the mount unit, and here that veto is the outcome we
+want: starting without the disk is the thing that corrupts. (`WantsMountsFor=`,
+the tolerant variant, arrived in systemd 256; Ubuntu 24.04 ships 255, so writing
+it would be silently ignored rather than softer.) The path interpolates inside
+the quoted heredoc because `templatefile()` rewrites this file before it is ever
+a shell script.
+
 Then, **before** the line `systemctl daemon-reload` near the end of the file, insert:
 
 ```bash
@@ -4304,11 +4342,17 @@ Then, **before** the line `systemctl daemon-reload` near the end of the file, in
 # ------------------------------------------
 # A Compute Engine identity token (aud = sts.amazonaws.com, sub = this service
 # account's unique ID) is written where the AWS SDK's web-identity credential
-# provider reads it, and refreshed every 50 minutes -- the token lives one hour.
+# provider reads it, and refreshed every 15 minutes -- the token lives one hour.
 # The seal only needs it at unseal and at key operations, so a stopped timer
 # does not stop a running node; it stops the NEXT unseal. `bao status` and the
 # OpenBaoSealed alert are what surface that.
-install -d -m 0750 -o root -g openbao /run/openbao
+#
+# /run/openbao is created by systemd (RuntimeDirectory= below), NOT here. This
+# script runs from google-startup-scripts.service, /run is a tmpfs, and both
+# openbao.service and openbao-aws-token.timer are enabled -- so on every reboot
+# after the first they start in parallel with this script, with no ordering
+# edge, and the timer's OnBootSec=0 fires the token service immediately. A
+# directory created here would not exist yet when it did.
 
 cat << 'EOF' > /usr/local/bin/openbao-aws-token.sh
 #!/bin/bash
@@ -4322,22 +4366,72 @@ mv -f /run/openbao/aws-web-identity-token.tmp /run/openbao/aws-web-identity-toke
 EOF
 chmod 0755 /usr/local/bin/openbao-aws-token.sh
 
+# RuntimeDirectory= creates /run/openbao before every ExecStart, so the
+# directory exists at every boot whichever unit starts first -- the race above
+# cannot happen rather than being lost less often.
+#
+# RuntimeDirectoryPreserve=yes is load-bearing, and the trap is the default:
+# `no` removes the directory when the service STOPS, and a Type=oneshot service
+# stops the instant ExecStart exits, so the default would delete the token this
+# unit was started to write, on every single run. `restart` is not enough
+# either -- it preserves across restarts, not across a clean oneshot exit. Only
+# `yes` survives it (systemd.exec(5): "the directories are not removed when the
+# service is stopped"); /run being a tmpfs still clears it at reboot, which is
+# exactly the lifetime a one-hour token wants.
+#
+# Group=openbao is how the directory gets group openbao: a runtime directory is
+# owned by the unit's User=/Group= and systemd offers no separate owner knob.
+# That reproduces the 0750 root:openbao posture this script used to set by
+# hand, so openbao.service -- a different unit, running as openbao -- can still
+# traverse /run/openbao and read the 0640 root:openbao token inside it.
+#
+# Restart=on-failure is where a fast retry belongs, because the TIMER cannot
+# express one: OnUnitActiveSec is measured from the moment the triggered unit
+# left the inactive state, i.e. the START of the last run, whether that run
+# succeeded or not -- so a failed fetch would otherwise wait a whole interval.
+# One minute, indefinitely, with the start limiter off for the same reason
+# restart.conf clears it. (`on-failure` is one of the Restart= values
+# Type=oneshot accepts; `always` and `on-success` are refused outright.)
 cat << 'EOF' > /etc/systemd/system/openbao-aws-token.service
 [Unit]
 Description=Refresh the AWS web-identity token the OpenBao awskms seal uses
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
+RuntimeDirectory=openbao
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+Group=openbao
 ExecStart=/usr/local/bin/openbao-aws-token.sh
+Restart=on-failure
+RestartSec=1min
 EOF
 
+# Cadence arithmetic, against a token that lives 60 minutes:
+#
+#   refresh   attempts per token   consecutive failures survived
+#   50min     1                    0  (next try lands 10min AFTER expiry)
+#   15min     4                    2  (+15 and +30 fail; +45 still has 15min)
+#
+# 15min replaces the token while 45 minutes of validity are still in hand, so
+# two whole failed windows are survivable and only a third consecutive failure
+# can open a gap. 50min left a ten-minute margin and no room whatsoever: one
+# failed run and the next attempt arrived ten minutes after the token had
+# already expired, because OnUnitActiveSec counts from the start of the last
+# run regardless of its outcome. That is also why the retry-sooner knob lives
+# on the service above and not here -- timers have no failure-aware trigger at
+# all, so there is nothing to set in this section.
+#
+# An expired token does not stop a running node. It stops the next UNSEAL,
+# which is the single thing this node exists to do.
 cat << 'EOF' > /etc/systemd/system/openbao-aws-token.timer
 [Unit]
-Description=Refresh the OpenBao AWS web-identity token every 50 minutes
+Description=Refresh the OpenBao AWS web-identity token every 15 minutes
 
 [Timer]
 OnBootSec=0
-OnUnitActiveSec=50min
+OnUnitActiveSec=15min
 AccuracySec=1min
 
 [Install]
@@ -4348,13 +4442,45 @@ EOF
 # so it does not depend on the packaged unit's EnvironmentFile handling.
 cat << EOF > /etc/systemd/system/openbao.service.d/aws-seal.conf
 [Unit]
+# Wants=, deliberately NOT Requires=. Requires= plus After= means "if one of
+# the other units fails to activate ... this unit will not be started"
+# (systemd.unit(5)) -- systemd CANCELS openbao.service's start job with a
+# dependency error. A cancelled job is not a failed start, so
+# Restart=on-failure in restart.conf never engages and nothing retries until
+# the timer's next tick. That rebuilds, one layer up, the exact incident
+# restart.conf was written to end: an instance stuck RUNNING and serving
+# nothing while nothing ever tries again. A metadata-server blip or an
+# unpropagated API at boot would be enough to trigger it.
+#
+# Wants= keeps the ordering edge and drops the veto: OpenBao starts, fails at
+# unseal because the token file is not there yet, and retries every 30s until
+# it is. Do not restore Requires= on the grounds that it looks safer -- it is
+# the failure mode, not the guard against it.
 After=openbao-aws-token.service
-Requires=openbao-aws-token.service
+Wants=openbao-aws-token.service
 
 [Service]
 Environment=AWS_ROLE_ARN=${aws_seal_role_arn}
 Environment=AWS_WEB_IDENTITY_TOKEN_FILE=/run/openbao/aws-web-identity-token
 Environment=AWS_REGION=${aws_seal_region}
+# Regional STS resolution. AWS_REGION alone does NOT give it: the SDK behind
+# this seal (aws-sdk-go v1, via go-kms-wrapping's awskms wrapper) carries a
+# legacy-global region list for STS that contains eu-west-1 -- and every other
+# region this stack would plausibly name -- so with the flag unset it sends
+# AssumeRoleWithWebIdentity to sts.amazonaws.com, served out of us-east-1.
+#
+# This design's whole scenario is surviving an AWS REGIONAL outage, so routing
+# the one call the unseal depends on through a single distant region defeats
+# it: us-east-1 STS turns sick and the standby cannot unseal while
+# ${aws_seal_region} and the seal key living in it are perfectly healthy.
+# "regional" sends it to sts.${aws_seal_region}.amazonaws.com instead.
+#
+# ENDPOINT RESOLUTION ONLY. The identity token's audience stays the literal
+# string sts.amazonaws.com (openbao-aws-token.sh) because that is what the IAM
+# role's trust policy matches on -- accounts.google.com:oaud in
+# opentofu/shared/aws-gcp-federation/google-identity.tf. Same spelling, but an
+# identifier and not a URL; changing it breaks AssumeRoleWithWebIdentity.
+Environment=AWS_STS_REGIONAL_ENDPOINTS=regional
 EOF
 
 systemctl daemon-reload
@@ -4363,6 +4489,16 @@ systemctl enable --now openbao-aws-token.timer
 ```
 
 (The `openbao.service.d` directory is created by the existing `restart.conf` block above it; keep that block first.)
+
+Four knobs in that block read backwards, so the reasons travel with them rather
+than living only here:
+
+| Knob | Why the obvious alternative is wrong |
+|---|---|
+| `RuntimeDirectory=openbao` + `RuntimeDirectoryPreserve=yes` + `Group=openbao` on the oneshot | `/run` is a tmpfs, so an `install -d` in this script leaves the directory **absent after a reboot** — and the timer's `OnBootSec=0` races the startup script with no ordering edge between them. `Preserve=yes` is not decoration: the default removes the directory when the unit *stops*, and a `Type=oneshot` stops the instant `ExecStart` exits, so it would delete the token on every run. |
+| `Wants=openbao-aws-token.service`, not `Requires=` | `Requires=` + `After=` makes systemd **cancel** OpenBao's start job when the oneshot fails, and a cancelled job is not a *failed start* — so the `Restart=on-failure` engineered in `restart.conf` never engages, rebuilding the 2026-08-25 incident one layer up. `Wants=` keeps the ordering edge and drops the veto. Do not "fix" it back. |
+| `OnUnitActiveSec=15min`, plus `Restart=on-failure` / `RestartSec=1min` on the oneshot | The token lives one hour. At `50min` a single failed refresh put the next attempt **ten minutes after expiry**, because `OnUnitActiveSec` counts from the *start* of the last run whether it succeeded or not. `15min` survives two consecutive failures; the failure-aware retry has to be on the service, because a timer has no such trigger at all. |
+| `AWS_STS_REGIONAL_ENDPOINTS=regional` | `AWS_REGION` alone does not give it. aws-sdk-go v1 — what the `awskms` wrapper links — carries a legacy-global STS region list, so `AssumeRoleWithWebIdentity` went to `sts.amazonaws.com` in `us-east-1`: a single-region dependency inside a design whose whole scenario is surviving an AWS regional outage. Endpoint resolution only; the token's *audience* stays the literal `sts.amazonaws.com`. |
 
 Replace the file's header comment sentence `This mirrors the AWS stack's "dev" mode, not "ha"` … `not attempted here.` in `compute.tf` with:
 
@@ -4960,8 +5096,11 @@ job and none of which are in the OpenBao documentation:
   DEK goes to KMS, so `GenerateDataKey*` is never called; nothing calls
   `ReEncrypt*`. The drill role's existing grant of `kms:Encrypt`, `kms:Decrypt`,
   `kms:DescribeKey` is therefore exactly sufficient and needs no widening. (The
-  older five-action grants on the AWS node and the standby role are the
-  Vault-era convention, not a requirement.) OpenBao's own awskms page agrees:
+  five-action grants on the AWS node and the standby role were the Vault-era
+  convention, not a requirement, and have since been narrowed to the same three
+  — `opentofu/aws/openbao/cluster/iam.tf` and
+  `opentofu/shared/aws-gcp-federation/google-identity.tf`, which now carry the
+  argument inline.) OpenBao's own awskms page agrees:
   "OpenBao needs the following permissions on the KMS key: kms:Encrypt,
   kms:Decrypt, kms:DescribeKey".
 - **The audience is already right.** The drill role's trust policy tests
@@ -5036,7 +5175,7 @@ Appended to the same file, after the `drill` job:
   #     thumbprint or sub-condition error there is invisible here.
   #   * Different sub shape: repo:<owner>/<repo>:ref:... versus the VM service
   #     account's numeric unique ID.
-  #   * No refresh. The GCE node re-fetches the token every 50 minutes on a
+  #   * No refresh. The GCE node re-fetches the token every 15 minutes on a
   #     systemd timer; this job mints one and finishes inside two minutes, so it
   #     never exercises a token rotating under a running seal.
   # What it DOES settle is the one thing that is common to both and was untested:
