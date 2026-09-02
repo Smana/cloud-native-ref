@@ -141,8 +141,13 @@ the same `harbor-oidc` store key the old script read.
 ### Option 3: Same JSON blob, but as a plain (non-`valuesFrom`) Helm value
 
 Set `core.configureUserSettings` directly in the `HelmRelease`'s `values:`
-block, sourced by Flux `postBuild.substituteFrom` (the mechanism this repo
-already uses for `cert_manager_approle_id`) rather than `valuesFrom`.
+block, sourced by Flux `postBuild.substituteFrom` with a `Secret` source rather
+than `valuesFrom`. (At the time this was written the repository had one such
+case, `cert_manager_approle_id`; it has since gone — see
+[ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})
+— so nothing uses a Secret-sourced substitution today. The reasoning below is
+unaffected: it is about what the mechanism does, not about how many callers
+it has.)
 
 **Pros**:
 - One fewer manifest — no separate `ExternalSecret` needed if `substituteFrom`
