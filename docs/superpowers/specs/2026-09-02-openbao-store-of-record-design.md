@@ -185,14 +185,20 @@ management workflow:
                                             (first deploy of a lineage)
        a snapshot exists                  → initialise with throwaway shares and
                                             write NOTHING to the managed store
-  2. restore the newest snapshot object (skipped when nothing to restore)
+  2. restore the newest snapshot object — and refuse to init at all if the
+     listing FAILED rather than came back empty, since a plain init overwrites
+     the lineage's stored root token and recovery keys
        POST sys/storage/raft/snapshot; same seal, so the sealed-hash check passes
-       mint a root token from the lineage's recovery keys (existing restore path)
-       assert: secret/check_timestamp exists; log its age (the operator restore
+       the restore itself uses the THROWAWAY root token from step 1 — the only
+               credential that exists on this node. The lineage's recovery keys
+               are the right input only AFTERWARDS, once the snapshot's token
+               store has replaced the throwaway one
+       assert: lineage/check_timestamp exists; log its age (the operator restore
                path's staleness guard protects a populated cluster from an old
                backup — a rehydrate restores into an empty one, so age is
                information here, not a failure)
-       assert: pki_private_issuer mount present, issuer chains to the offline root
+       assert: pki_private_issuer mount present, and its CA chains to the
+               lineage's CA file — which is the offline root
   3. seed (first deploy of a lineage only): secret-store.sh seed --store openbao
   4. tofu apply — a no-op on a rehydrated lineage
 ```
@@ -550,7 +556,7 @@ non-empty `platform/` mount.
 | 4 | The management stack's OpenTofu state is a no-op against a rehydrated lineage | Stage 1 exit criteria | targeted `import`/`state rm` for the resources whose IDs differ, documented |
 | 5 | Fixed NLB private IPs survive a cluster-stack rebuild | Stage 1 step 2 | a MagicDNS name on a tailnet-joined node in front of the NLB |
 | 6 | The Tailscale operator egress `ProxyGroup` at 1.90.6 handles TCP 8200 to an IP behind a subnet router with the ACL as written | Stage 1 step 7 | site-to-site subnet routers |
-| 7 | `hashicorp/raft` `Restore` keeps the current peer set | first rehydrate | the plan's rehydrate step removes stale peers with `raft remove-peer` |
+| 7 | `hashicorp/raft` `Restore` keeps the current peer set | first rehydrate | **Accepted for the single-node reference posture, not mitigated.** A one-node cluster restoring a snapshot keeps a peer set of exactly itself, so there is nothing stale to remove and no task implements one. In `mode = "ha"` a snapshot taken from a five-node cluster restored into a fresh five would need `bao operator raft remove-peer` for the old node IDs, and `vault_raft_autopilot`'s dead-server cleanup (`autopilot.tf`, `ha` only) is what handles it in steady state. Revisit with the production posture; do not assume the `ha` path is covered by Stage 1. |
 | 8 | CI has, or can be given, an AWS OIDC role with `kms` and `s3:GetObject` on the lineage | Stage 1 step 9 | the drill runs from the operator's machine on a schedule instead |
 | 9 | Storage Transfer Service reads a KMS-encrypted S3 bucket through federated identity with only the role's `kms:Decrypt` grant | Stage 1 step 6 | the `gcp-0` CronJob pushes with the ADR-0019 role in reverse, or the snapshot object uses the bucket's default SSE-S3 instead of the CMK |
 | 10 | The `eks/configure` stack can reach OpenBao to write the JWT mount with the tooling it already has (it runs from the operator's machine, on the tailnet) | Stage 1 step 4 | write the mount from the management stack with a placeholder issuer and patch it from `eks/configure` with `bao write` in the workflow |
