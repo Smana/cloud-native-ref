@@ -61,7 +61,7 @@
 ## Deviations from the design, stated once
 
 1. **Local/remote form of the `openbao` Service is a committed overlay choice, not a Flux variable.** Flux `postBuild` substitutes strings and cannot select a manifest. The *address* (`openbao_target_ip`) is the variable; the *form* is which `openbao-endpoint/{local,remote}` directory a cluster's overlay lists (Task 7).
-2. **The CI drill does not assert `check_timestamp`.** Reading it needs a token, which CI could only obtain from the recovery keys. The drill asserts what unauthenticated endpoints prove (unsealed with the lineage seal; PKI issuer chains to the committed root; mirror holds the newest object). Rehydrate, run by an operator, still checks the marker (Task 12).
+2. **The CI drill does not assert `check_timestamp`.** Reading it needs a token, which CI could only obtain from the recovery keys. The drill asserts what unauthenticated endpoints prove (unsealed with the lineage seal; PKI issuer chains to the committed root; the mirror holds the newest object that has had `MIRROR_GRACE_HOURS` to cross). The grace window is deliberate and is a second deviation in itself: a Storage Transfer schedule is an *earliest start time*, so asserting the very newest object turns ordinary backend queuing into a red build, and a weekly job that cries wolf gets switched off — which costs more than the bug it exists to catch. Rehydrate, run by an operator, still checks the marker (Task 12).
 3. **Failback mirroring (GCS → S3) is a manual step in the runbook**, not a `gcp-0` CronJob permission. A standby's snapshot must not silently become the "newest" object mirrored over the AWS lineage's history; the operator copies exactly one object deliberately (Task 13 guide, Task 18 Step 4).
 4. **The GCP seal key stays a hand-created prerequisite.** The design's lineage table listed it; it was already outside every stack (`opentofu/gcp/openbao/cluster/kms.tf`), which is the property wanted. Nothing to move (Task 8).
 
@@ -5675,6 +5675,90 @@ git commit -m "chore(pki): commit the offline root certificate for the restore d
 
 **Do not delete `certificates/priv.aws.ogenki.io/root-ca` yet** — Task 17 does, after the new chain has issued a certificate.
 
+### Task 14b [LIVE]: GCP server-certificate re-issue — the neutral name `gcp-0` now connects by
+
+**Files:**
+- Modify: `opentofu/gcp/openbao/cluster/dns.tf` (the comment about SANs)
+- Secret Manager write: `openbao-priv-gcp-server-cert` (new version)
+
+**Why this is not optional, and not drill-specific.** Task 7 pointed `gcp-0`'s
+`ClusterIssuer` at `https://openbao.security.svc.cluster.local:8200` and gave that
+cluster an `openbao` ExternalName Service — in *both* postures, GCP-only and standby.
+So cert-manager on `gcp-0` performs TLS verification against a certificate that must
+carry `openbao.security.svc.cluster.local`, and the GCP leaf issued by the 2026-08-25
+ceremony carries only `bao.priv.gcp.ogenki.io`. Without this task, `gcp-0`'s issuer
+fails with `x509: certificate is valid for bao.priv.gcp.ogenki.io, not
+openbao.security.svc.cluster.local` — the same dead end as a missing token grant, one
+layer down.
+
+GCP has its own intermediate (`openbao-priv-gcp-intermediate-ca`) under the same
+offline root, so this signs against that intermediate — not the AWS one from Task 14.
+Perform it on the offline medium if you no longer hold the GCP intermediate's key
+outside Secret Manager.
+
+- [ ] **Step 1: Re-issue with the same four SANs**
+
+```bash
+set -euo pipefail
+work=$(mktemp -d); cd "$work"
+gcloud secrets versions access latest --secret openbao-priv-gcp-intermediate-ca \
+  --project ogenki-435905 | jq -r .bundle > int-bundle.pem
+gcloud secrets versions access latest --secret openbao-priv-gcp-ca-chain \
+  --project ogenki-435905 | jq -r .ca > ca-chain.pem
+# Split the bundle: the certificate first, then the key.
+openssl x509 -in int-bundle.pem -out intermediate-ca.pem
+openssl pkey -in int-bundle.pem -out intermediate-ca-key.pem && chmod 600 intermediate-ca-key.pem
+
+cat > server.cnf <<'EOF'
+[ v3_req ]
+basicConstraints = CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth, clientAuth
+subjectAltName = DNS:bao.priv.gcp.ogenki.io, DNS:bao.priv.aws.ogenki.io, DNS:openbao.security.svc.cluster.local, DNS:openbao.security.svc
+EOF
+openssl ecparam -genkey -name prime256v1 -out server-key.pem && chmod 600 server-key.pem
+openssl req -new -key server-key.pem -subj "/CN=bao.priv.gcp.ogenki.io/O=Ogenki/C=FR" -out server.csr
+openssl x509 -req -in server.csr -CA intermediate-ca.pem -CAkey intermediate-ca-key.pem -CAcreateserial \
+  -out server.pem -days 825 -sha256 -extfile server.cnf -extensions v3_req
+openssl verify -CAfile ca-chain.pem server.pem
+openssl x509 -in server.pem -noout -ext subjectAltName
+```
+
+Expected: `server.pem: OK` and all four DNS names. The CN stays
+`bao.priv.gcp.ogenki.io` — the GCP node's own address, so nothing already trusting
+that name has to change. `bao.priv.aws.ogenki.io` is in the list for the same reason
+the AWS leaf carries the GCP name: either node may answer for either address during a
+failover, and a certificate is cheaper to over-scope now than to re-issue mid-incident.
+
+- [ ] **Step 2: Store it and shred the key material**
+
+```bash
+jq -n --rawfile cert server.pem --rawfile key server-key.pem --rawfile ca ca-chain.pem \
+  '{cert: $cert, key: $key, ca: $ca}' > server.json
+gcloud secrets versions add openbao-priv-gcp-server-cert --project ogenki-435905 --data-file=server.json
+shred -u server-key.pem intermediate-ca-key.pem int-bundle.pem server.json 2>/dev/null \
+  || rm -f server-key.pem intermediate-ca-key.pem int-bundle.pem server.json
+cd - && rm -rf "$work"
+```
+
+Expected: a new version number printed. The node reads this secret at boot, so it
+picks the new leaf up on the next start — Task 18 Step 3 already stops and starts the
+instance, which is the cheapest way to make it take effect.
+
+- [ ] **Step 3: Correct the DNS comment that says there is one SAN**
+
+`opentofu/gcp/openbao/cluster/dns.tf`'s header states the certificate carries
+`DNS:bao.priv.gcp.ogenki.io` and that "this record and the certificate's SAN have to
+agree exactly". After Step 1 there are four SANs and this record matches one of them.
+The load-bearing half of that comment is still true and worth keeping: there is **no
+IP SAN**, so a client that connects to the load balancer by address cannot verify TLS,
+and the name is the only way in. Rewrite it to say that, and to say that the other
+three SANs exist for the in-cluster Service name and for cross-cloud failover.
+
+```bash
+git commit -F <msgfile> -- opentofu/gcp/openbao/cluster/dns.tf
+```
+
 ### Task 15 [LIVE]: Apply the lineage stacks and import the existing buckets
 
 - [ ] **Step 1: AWS lineage — import, then apply**
@@ -5775,6 +5859,40 @@ aws s3 ls s3://eu-west-3-ogenki-openbao-snapshot/ | tail -1
 
 Expected: everything as annotated; the manual snapshot job logs `Authenticating with OpenBao via auth/jwt/aws-0 as role openbao-snapshot`, `Stamping lineage/check_timestamp`, and a new object appears.
 
+**Settle the `aud` question before trusting the ClusterIssuer's verdict.** cert-manager's
+`serviceAccountRef.audiences` are *extra*: the vendored CRD says "the default token
+consisting of the issuer's namespace and name is always included", so the token
+cert-manager mints carries a **two-element** `aud` array — `vault://openbao` plus
+`openbao` — against a role bound to `openbao` alone. OpenBao's JWT method matches if
+*any* audience in the token is in `bound_audiences`, so this should pass; it is
+unverified against this build, and it is three commands to know rather than guess:
+
+```bash
+kubectl -n security create token cert-manager --audience openbao --duration 10m > /tmp/t
+cut -d. -f2 /tmp/t | base64 -d 2>/dev/null | jq '{iss, sub, aud, exp}'
+bao write auth/jwt/aws-0/login role=cert-manager jwt=@/tmp/t
+```
+
+Expected: `sub` is `system:serviceaccount:security:cert-manager`, `aud` is an **array**,
+and the login returns a token with `token_policies` including `cert-manager`. Note that
+`kubectl create token` produces a *single*-audience token, so it proves the role's
+subject and issuer bindings but not the two-element case — read `aud` off the real
+request instead if this passes and the ClusterIssuer still does not: `bao read
+sys/internal/counters/activity` is no help here, the cert-manager log line is
+(`kubectl logs -n security deploy/cert-manager | grep -i audience`).
+
+If the login fails specifically on the audience (`error validating token: invalid
+audience (aud) claim`), the one-line fix is in `opentofu/aws/eks/configure/openbao.tf`:
+
+```hcl
+bound_audiences = [var.openbao_jwt_audience, "vault://openbao"]
+```
+
+and the same for `jwt/gcp-0` in `opentofu/gcp/gke/configure/openbao.tf`. Prefer that to
+dropping `audiences` from the ClusterIssuer — an unrestricted token is worse than a
+second permitted value. Record which branch you took in the verification doc; it decides
+whether Stage 2's other JWT consumers need the same pair.
+
 - [ ] **Step 2: Delete the old root secret**
 
 Only now, with a certificate issued by the new chain:
@@ -5830,7 +5948,7 @@ aws secretsmanager get-secret-value --region eu-west-3 --secret-id openbao/cloud
   | gcloud secrets versions add openbao-priv-gcp-recovery-keys --project ogenki-435905 --data-file=-
 ```
 
-(The GCP server certificate already carries `bao.priv.gcp.ogenki.io`; re-issue it with the four SANs from Task 14 Step 2's pattern if a client will use the neutral name against it — for this drill the FQDN suffices.)
+(Task 14b must already be done. The drill itself connects by `bao.priv.gcp.ogenki.io`, which the original leaf covers — but `gcp-0`'s own `ClusterIssuer` connects by the neutral Service name in *both* postures, so a standby brought up without Task 14b comes back with a working OpenBao and a cert-manager that cannot talk to it.)
 
 - [ ] **Step 2: Deploy the standby**
 
@@ -5869,7 +5987,7 @@ From the design's exit criteria. Every line needs a fresh command and its output
 - [ ] `aws kms describe-key --key-id alias/openbao-seal --region eu-west-3 --query 'KeyMetadata.[MultiRegion,MultiRegionConfiguration.ReplicaKeys[0].Region]'` → `[true, "eu-west-1"]`.
 - [ ] `bao auth list` shows `jwt/aws-0/` and no `approle/`; `aws secretsmanager list-secrets --query 'SecretList[?contains(Name, `approles`)].Name'` → `[]`.
 - [ ] `openssl s_client` against `bao.priv.aws.ogenki.io:8200` and (on a two-cloud run) `bao.priv.gcp.ogenki.io:8200` both chain to the committed `.github/openbao-root-ca.pem`; `describe-secret` on `root-ca` → `ResourceNotFoundException`.
-- [ ] Newest object in `gs://ogenki-435905-ogenki-openbao-snapshot/` equals newest in S3 (Task 16 Step 2 / drill).
+- [ ] Every S3 object older than the drill's grace window has a same-size twin in `gs://ogenki-435905-ogenki-openbao-snapshot/` (Task 16 Step 2 checks the newest by hand once; the drill checks the newest settled one every week).
 - [ ] GCP standby with `seal_provider = awskms` reports `Sealed: false` after stop/start (Task 18).
 - [ ] The drill workflow has one green run against a CronJob-taken snapshot (Task 17 Step 4).
 - [ ] `./scripts/validate-manifests.sh` → `Invalid: 0, Skipped: 0`; `check-substitution.py`, `validate-links.sh`, `validate-doc-claims.sh` → exit 0.
