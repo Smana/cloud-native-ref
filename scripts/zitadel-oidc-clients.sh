@@ -646,7 +646,10 @@ cmd_sync() {
         # -- after the app had already been created in ZITADEL, stranding a
         # client secret that ZITADEL only ever returns once.
         IFS='|' read -r consumer redirect key <<< "$entry"
-        local name="${consumer}${APP_SUFFIX}"
+        # :- so a harness that lifts this function out of the script (the
+        # test-zitadel-* suites do) does not trip over nounset on a global it
+        # did not know to declare.
+        local name="${consumer}${APP_SUFFIX:-}"
 
         local existing_id=""
         if [ "$project_id" != "DRYRUN-PROJECT" ]; then
