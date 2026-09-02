@@ -106,6 +106,12 @@ IDP_URL="https://auth.priv.aws.ogenki.io"
 PRIVATE_DOMAIN="priv.aws.ogenki.io"
 ZITADEL_PROJECT_NAME="platform"
 GRANT_ADMIN=""
+# Empty because this fixture is a HOSTING cluster (--idp-cloud would equal
+# --cloud). A consuming cluster sets it to "-<cluster>" so two clusters do not
+# contend for one ZITADEL app name; see the block that computes it in the
+# script. It has to be declared here because these tests lift the functions out
+# of the script and supply their globals by hand.
+APP_SUFFIX=""
 HEADLAMP_OIDC_SCOPES="profile,email,groups"
 REDIRECT="https://headlamp.${PRIVATE_DOMAIN}/oidc-callback"
 EXISTING_CLIENT_ID="existing-client-id"

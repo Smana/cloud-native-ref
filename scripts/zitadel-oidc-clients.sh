@@ -630,7 +630,26 @@ cmd_sync() {
 
     local created=0 skipped=0 updated=0 converged=0
     for entry in "${CONSUMERS[@]}"; do
-        IFS='|' read -r name redirect key <<< "$entry"
+        # TWO names, and conflating them is a bug this script has already made.
+        #
+        #   consumer -- the bare name (grafana, harbor, ...). It is the DISPATCH
+        #               KEY for which fields go into which secret, matched
+        #               literally inside merge_secret/converge_secret's jq.
+        #   name     -- the ZITADEL app name, suffixed for a consuming cluster so
+        #               two clusters do not contend for one app.
+        #
+        # Suffixing the CONSUMERS table itself made $name = "grafana-gcp-0",
+        # which matched none of jq's `if $name == "grafana"` branches, fell to
+        # the else, and produced an empty payload:
+        #   ERROR: (gcloud.secrets.versions.add) INVALID_ARGUMENT:
+        #   Secret Payload cannot be empty.
+        # -- after the app had already been created in ZITADEL, stranding a
+        # client secret that ZITADEL only ever returns once.
+        IFS='|' read -r consumer redirect key <<< "$entry"
+        # :- so a harness that lifts this function out of the script (the
+        # test-zitadel-* suites do) does not trip over nounset on a global it
+        # did not know to declare.
+        local name="${consumer}${APP_SUFFIX:-}"
 
         local existing_id=""
         if [ "$project_id" != "DRYRUN-PROJECT" ]; then
@@ -700,7 +719,7 @@ cmd_sync() {
 
             local existing_secret desired
             existing_secret="$(store_read "$key")"
-            desired="$(converge_secret "$name" "$client_id" "$existing_secret")"
+            desired="$(converge_secret "$consumer" "$client_id" "$existing_secret")"
             if [ "$desired" = "$existing_secret" ]; then
                 echo "[ok     ] ${name} -- ${key} already converged"
             elif [ "$APPLY" != "true" ]; then
@@ -745,7 +764,7 @@ cmd_sync() {
             exit 1
         fi
 
-        merge_secret "$key" "$name" "$client_id" "$client_secret" | store_write "$key"
+        merge_secret "$key" "$consumer" "$client_id" "$client_secret" | store_write "$key"
         echo "[created] ${name} -> ${key} (client ${client_id})"
         created=$((created + 1))
     done
