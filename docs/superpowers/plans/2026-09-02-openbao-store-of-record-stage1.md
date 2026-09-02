@@ -830,7 +830,7 @@ export_snapshot_env() {
         # child an empty VAULT_TOKEN. Measured in bash 5.3.
         if [ -z "${CLOUDSDK_AUTH_ACCESS_TOKEN:-}" ]; then
             local adc_token
-            if adc_token=$(gcp_gcloud_token 2>/dev/null) && [ -n "$adc_token" ]; then
+            if adc_token=$(gcloud auth application-default print-access-token 2>/dev/null) && [ -n "$adc_token" ]; then
                 export CLOUDSDK_AUTH_ACCESS_TOKEN="$adc_token"
             fi
         fi
@@ -919,13 +919,13 @@ verify_pki_present() {
 }
 ```
 
-`gcp_gcloud_token` is the accessor for the cached ADC token in
-`scripts/lib/gcloud-adc.sh`. **Check what that library actually exports** before
-writing this: if it offers no such function, use whatever it does expose for the
-token (the library resolves one into `_gcloud_adc_token`), and if it exposes only
-`gcp_gcloud`, fall back to `local adc_token; adc_token=$(gcloud auth application-default print-access-token 2>/dev/null)`
-— with the variable declared `local`, which is the part that matters. Report which
-form you used.
+The token is resolved directly rather than through the library, and that is not an
+oversight: `scripts/lib/gcloud-adc.sh` exposes only `gcp_gcloud` and
+`gcp_gcloud_identity` (verified 2026-09-02 — its token lives in a private
+`_gcloud_adc_token`, with no accessor). So this one call duplicates what the
+library does internally. What must not be duplicated is the *variable*: it is
+declared `local`, because a bare `token=` here is dynamically scoped over the
+caller's and destroyed `pre_destroy_snapshot`'s root token.
 
 - [ ] **Step 3: The `rehydrate` subcommand**
 
