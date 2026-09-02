@@ -106,7 +106,22 @@ spec:
       email-domain: "ogenki.io"
       allowed-group: "admin"
       oidc-groups-claim: "groups"
-      scope: "openid profile email"
+      # THE PROJECT-AUDIENCE SCOPE IS LOAD-BEARING, not decoration.
+      #
+      # The workforce identity provider (opentofu/gcp/workforce-identity) pins
+      # its client_id to the ZITADEL PROJECT id, deliberately: the project id is
+      # stable and known before any OIDC client exists, which is what lets that
+      # stack apply before scripts/zitadel-oidc-clients.sh has run.
+      #
+      # But ZITADEL only puts the project id in a token's `aud` when the token
+      # was REQUESTED with this scope. Plain `openid profile email` yields
+      # aud=[<this client's own id>], the STS sees an audience it was not
+      # configured for, and the exchange fails with a bare
+      #   token exchange 400: invalid_grant
+      # -- no mention of audiences, and oauth2-proxy and Headlamp both look
+      # perfectly healthy. The only symptom is "token exchange failed" in the
+      # browser. Measured on gcp-0 2026-09-02.
+      scope: "openid profile email urn:zitadel:iam:org:project:id:388445486190712688:aud"
 
       cookie-secure: "true"
 
