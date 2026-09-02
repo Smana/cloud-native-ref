@@ -293,10 +293,25 @@ def substitute(text, cluster=None):
 
 
 def load_docs_text(text):
-    """Parse a rendered multi-doc YAML string. Mirrors load_docs, which reads
-    from a path — chart extraction now works on kustomize output held in
-    memory rather than on a file."""
-    return [d for d in yaml.safe_load_all(text) if isinstance(d, dict)]
+    """Parse a rendered multi-doc YAML string — the in-memory counterpart of
+    load_docs, which reads from a path.
+
+    Same YAML_LOADER, and that is not cosmetic: it is libyaml-backed (this runs
+    once per overlay over full `kustomize build` output, ~67 of them), and it
+    carries yamlcompat's `tag:yaml.org,2002:value` constructor. `yaml.safe_load_all`,
+    which this used, has NEITHER — yamlcompat registers that constructor on
+    YAML_LOADER, not on yaml.SafeLoader — so it raises ConstructorError on a bare
+    `=` scalar that YAML_LOADER reads as the plain string it is.
+
+    A parse error is deliberately NOT swallowed the way load_docs swallows one.
+    load_docs scans repository files during discovery, where an unparseable file
+    must not stop the scan; this reads output the renderer itself just produced,
+    where an empty list would silently drop that overlay's HelmReleases from
+    chart extraction — they would fall through to main()'s "not reached by any
+    overlay" path and be rendered with base values instead of the cluster's,
+    which is the exact coverage gap that path exists to report, not to cause.
+    """
+    return [d for d in yaml.load_all(text, Loader=YAML_LOADER) if isinstance(d, dict)]
 
 
 def load_docs(path):

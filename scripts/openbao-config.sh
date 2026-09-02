@@ -4,6 +4,20 @@ set -euo pipefail
 
 # shellcheck source=scripts/lib/gcloud-adc.sh
 . "$(dirname "$0")/lib/gcloud-adc.sh"
+# cloud-secret-store.sh re-sources gcloud-adc.sh, which re-runs its two
+# `_gcloud_adc_*=""` initialisers. Harmless HERE and only here: both `.` lines
+# run at load time, before anything has resolved a token, so the reset lands on
+# values that are still empty. Do not move either line below a call that uses
+# the ADC token.
+# shellcheck source=scripts/lib/cloud-secret-store.sh
+. "$(dirname "$0")/lib/cloud-secret-store.sh"
+
+# Provenance the library stamps on a secret it CREATES (an existing secret just
+# gets a new version, description and labels untouched). Set here rather than
+# left at the library's defaults so an operator reading the console lands on
+# this script, not on the shared helper.
+STORE_WRITE_DESCRIPTION="OpenBao lineage material, written by scripts/openbao-config.sh"
+STORE_WRITE_LABEL="openbao-config"
 
 # This script is used to configure OpenBao. It supports two operations:
 # - init: Initialize the OpenBao cluster, then store the root token and the
@@ -173,6 +187,24 @@ parse_args() {
         fi
     fi
 
+    # scripts/lib/cloud-secret-store.sh takes its cloud configuration from the
+    # ENVIRONMENT, not from parameters: it reads $CLOUD and $REGION (which this
+    # script already names identically) plus $GCP_PROJECT, and it has no
+    # --profile of its own. Both gaps are closed here, by exporting, rather than
+    # by widening the library's signature: $AWS_PROFILE names the same profile
+    # the explicit `--profile` names on the paths get_aws_cmd still builds (and
+    # an explicit --profile wins where both apply, so the two cannot disagree),
+    # and export_snapshot_env already exports it from the same source for the
+    # snapshot child. One value, one meaning.
+    if [ "$CLOUD" = "gcp" ]; then
+        export GCP_PROJECT="$PROJECT"
+    # Deliberately not exported when empty, matching export_snapshot_env and
+    # get_aws_cmd: that leaves an AWS_PROFILE already in the operator's shell
+    # alone instead of blanking it.
+    elif [ -n "$PROFILE" ]; then
+        export AWS_PROFILE="$PROFILE"
+    fi
+
     export VAULT_ADDR="$OPENBAO_URL"
     if [ "$SKIP_VERIFY" = true ]; then
         export VAULT_SKIP_VERIFY=true
@@ -266,14 +298,43 @@ wait_for_openbao() {
     return 1
 }
 
-# Poll until OpenBao answers as INITIALISED AND UNSEALED. Deliberately NOT
-# "active", and the wording matters because a caller acts on it.
+# ONE probe of OpenBao's health endpoint. Prints the HTTP status code; "000"
+# when the connection never completed.
 #
-# The probe carries standbyok/perfstandbyok because it goes through the NLB,
-# whose target group reports a standby as healthy: a bare /v1/sys/health answers
-# 200 only on the active node, so without these it timed out for ten minutes
-# against a healthy `ha` cluster. Having accepted a standby's 200, the function
-# can no longer claim activation, and it no longer does.
+# The `standbyok`/`perfstandbyok` pair is a CORRECTNESS CONTRACT, not tuning.
+# Every call in this file goes through the NLB, whose target group deliberately
+# reports a standby as healthy, while a bare /v1/sys/health answers 200 only on
+# the ACTIVE node -- so without them a perfectly healthy standby answers 429 and
+# the caller reads that as a broken cluster. It cost ten minutes of polling in
+# check_openbao_status and an outright "Unexpected status code: 429" exit in
+# init_openbao, which was the FOURTH copy of this line and the one that was
+# missed when the other three gained the parameters. That is why it is one
+# function now: four copies made the contract a four-site edit with a silent
+# failure mode.
+#
+# (The NLB's own probe in opentofu/aws/openbao/cluster/load_balancer.tf carries
+# a DIFFERENT set -- uninitcode/sealedcode/performancestandbyok -- because it
+# must report an uninitialised or sealed node as healthy so this script can
+# reach it and initialise it. Different contract; do not unify them.)
+#
+# `|| true`: curl exits 7 on a refused connection, which under `set -e` killed
+# the script before the status could be reported at all.
+#
+# NO RETRY LOOP IN HERE, on purpose. check_openbao_status wraps it in one; the
+# other three callers need a single reading they handle themselves -- 501 means
+# "not initialised yet, go ahead" to init_openbao, 200-without-PKI sends
+# rehydrate_openbao into its bucket analysis, and anything but 200 makes
+# pre_destroy_snapshot refuse. A poll in here would turn each of those into a
+# ten-minute wait for a code they were ready to act on immediately.
+openbao_health_code() {
+    curl -k -s -o /dev/null -w "%{http_code}" \
+        "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true" || true
+}
+
+# Poll until OpenBao answers as INITIALISED AND UNSEALED. Deliberately NOT
+# "active", and the wording matters because a caller acts on it: having accepted
+# a standby's 200 (see openbao_health_code), this function cannot claim
+# activation, and it no longer does.
 #
 # Nor should it try. Asking the same address for `sys/leader`'s `is_self` asks
 # "is the node this request happened to land on the leader", which through a
@@ -296,7 +357,7 @@ check_openbao_status() {
     while [[ $attempt -le $max_retries ]]
     do
         log_message "INFO" "Attempt $attempt: Checking $OPENBAO_URL..."
-        status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true" || true)
+        status_code=$(openbao_health_code)
 
         if [ "$status_code" = "200" ]; then
             log_message "INFO" "OpenBao is initialized and unsealed (this address may be a standby; requests that need the leader are forwarded)"
@@ -316,46 +377,53 @@ check_openbao_status() {
 # private copy here first; it moved to lib/ once six more scripts turned out to
 # need exactly the same thing.
 
-# Write a secret value, creating the secret if it does not exist. Dispatches
-# on $CLOUD so init_openbao() and write_ca() don't need to know which backend
-# they're talking to.
+# Write a secret value, creating the secret if it does not exist. The cloud
+# dispatch happens in the library below, so init_openbao() does not need to know
+# which backend it is talking to.
+#
+# That library is scripts/lib/cloud-secret-store.sh's store_write, and the
+# reason for delegating is a security property rather than code reuse. This
+# function had its own AWS branch that handed the value to the aws CLI as a
+# command-line VALUE FLAG, which puts the payload on that process's argv --
+# readable by any process on the box via /proc/<pid>/cmdline for as long as it
+# runs. The payloads here are the OpenBao ROOT TOKEN and the RECOVERY KEYS,
+# i.e. the same leak class already closed for jq --arg in init_openbao, missed
+# on the cloud CLI. store_write takes the value on STDIN (via an `umask 077`
+# temp file whose subshell EXIT trap shreds it), so nothing but the secret's
+# NAME ever reaches an argv.
+#
+# The GCP branch was already stdin-based (`--data-file=-`) and behaves
+# identically through the library; on AWS the value now goes in as
+# --cli-input-json. Both branches also lose the old `2>&1`, so a failed write
+# now reaches the operator with the CLI's own error text -- the same reason
+# secret_read below does not use store_read.
+# scripts/test-no-secret-argv.sh greps for these value flags, so the old shape
+# cannot come back silently.
 # Usage: secret_write <name> <value>
 secret_write() {
     local secret_name=$1
     local secret_value=$2
 
+    # store_write branches on existence itself; this extra describe call buys
+    # the create-vs-update line below, which is worth one API round-trip in
+    # THIS file: "does not exist, creating it" against a lineage that should
+    # already hold both secrets is the loudest early symptom of the wrong
+    # account, region or profile -- the failure mode latest_snapshot()'s
+    # contract is written around.
+    if store_exists "$secret_name"; then
+        log_message "INFO" "Secret $secret_name exists, updating it..."
+    else
+        log_message "INFO" "Secret $secret_name does not exist, creating it..."
+    fi
+
+    if ! printf '%s' "$secret_value" | store_write "$secret_name"; then
+        log_message "ERROR" "Failed to write secret $secret_name"
+        return 1
+    fi
+
     if [ "$CLOUD" = "gcp" ]; then
-        if gcp_gcloud secrets describe "$secret_name" --project "$PROJECT" >/dev/null 2>&1; then
-            log_message "INFO" "Secret $secret_name exists, updating it..."
-            if ! printf '%s' "$secret_value" | gcp_gcloud secrets versions add "$secret_name" \
-                --project "$PROJECT" --data-file=- >/dev/null 2>&1; then
-                log_message "ERROR" "Failed to update secret $secret_name"
-                return 1
-            fi
-        else
-            log_message "INFO" "Secret $secret_name does not exist, creating it..."
-            if ! printf '%s' "$secret_value" | gcp_gcloud secrets create "$secret_name" \
-                --project "$PROJECT" --replication-policy=automatic --data-file=- >/dev/null 2>&1; then
-                log_message "ERROR" "Failed to create secret $secret_name"
-                return 1
-            fi
-        fi
         log_message "INFO" "Successfully updated GCP Secret Manager entry for $secret_name"
     else
-        local aws_cmd; aws_cmd=$(get_aws_cmd)
-        if $aws_cmd secretsmanager describe-secret --secret-id "$secret_name" >/dev/null 2>&1; then
-            log_message "INFO" "Secret $secret_name exists, updating it..."
-            if ! $aws_cmd secretsmanager update-secret --secret-id "$secret_name" --secret-string "$secret_value" >/dev/null 2>&1; then
-                log_message "ERROR" "Failed to update secret $secret_name"
-                return 1
-            fi
-        else
-            log_message "INFO" "Secret $secret_name does not exist, creating it..."
-            if ! $aws_cmd secretsmanager create-secret --name "$secret_name" --secret-string "$secret_value" >/dev/null 2>&1; then
-                log_message "ERROR" "Failed to create secret $secret_name"
-                return 1
-            fi
-        fi
         log_message "INFO" "Successfully updated AWS Secrets Manager entry for $secret_name"
     fi
 
@@ -394,9 +462,11 @@ export_snapshot_env() {
         if [ -n "$PROFILE" ]; then export AWS_PROFILE="$PROFILE"; fi
     else
         export CLOUDSDK_CORE_PROJECT="$PROJECT"
-        # scripts/lib/gcloud-adc.sh exposes gcp_gcloud (a wrapper) and
-        # gcp_gcloud_identity (a logger), not a bare token accessor, so the
-        # token is resolved directly here instead of through the library.
+        # gcp_gcloud_token is scripts/lib/gcloud-adc.sh's accessor for the token
+        # it has already MEMOISED for every gcp_gcloud call in this run. This
+        # used to re-run `print-access-token` here, which paid a second
+        # round-trip for a token already in hand and could hand the child a
+        # different one than the parent was using.
         #
         # `local adc_token` is not cosmetic. Bash is DYNAMICALLY SCOPED: this
         # function is called by pre_destroy_snapshot, which declares its own
@@ -408,7 +478,8 @@ export_snapshot_env() {
         # ever collided again.
         if [ -z "${CLOUDSDK_AUTH_ACCESS_TOKEN:-}" ]; then
             local adc_token
-            if adc_token=$(gcloud auth application-default print-access-token 2>/dev/null) && [ -n "$adc_token" ]; then
+            adc_token=$(gcp_gcloud_token)
+            if [ -n "$adc_token" ]; then
                 export CLOUDSDK_AUTH_ACCESS_TOKEN="$adc_token"
             fi
         fi
@@ -701,17 +772,14 @@ init_openbao() {
         exit 1
     fi
 
-    # The FOURTH probe, and the one that was missed when the other three gained
-    # these parameters. Same reason as there: a bare /v1/sys/health returns 200
-    # only for the ACTIVE node, this call goes through the NLB, and the NLB's
-    # target group deliberately reports standbys as healthy. In `ha` a bare
-    # probe therefore got 429 from a perfectly healthy standby and this function
-    # exited 1 with "Unexpected status code: 429" -- reached not only by `init`
-    # but by `rehydrate`, whose empty-bucket branch calls straight into here.
-    # `|| true` for the same reason the other three have it: curl exits 7 on a
-    # refused connection, which under `set -e` killed the script before the
-    # status could be reported at all.
-    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true" || true)
+    # One reading, not a poll: 501 here means "uninitialised", which is the
+    # state this function exists to act on, and waiting for it to change would
+    # wait forever. This site is why openbao_health_code exists -- it was the
+    # fourth hand-written copy of the probe and the one that missed the standby
+    # parameters, so `init` (and `rehydrate`, whose empty-bucket branch calls
+    # straight into here) exited 1 with "Unexpected status code: 429" against a
+    # perfectly healthy standby.
+    status_code=$(openbao_health_code)
     if [ "$status_code" = "200" ]; then
         log_message "INFO" "OpenBao is already initialized and unsealed"
         exit 0
@@ -790,11 +858,10 @@ rehydrate_openbao() {
         exit 1
     fi
 
-    # This call goes through the NLB, whose target group deliberately
-    # flattens standby into healthy. A bare /v1/sys/health returns 200 only
-    # for the active node, so on a healthy cluster this would 429 instead of
-    # confirming activation -- hence the query parameters below.
-    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true" || true)
+    # One reading, not a poll: both codes below are terminal decisions for this
+    # function, and a 501 is the normal answer on the node this command exists
+    # to rehydrate.
+    status_code=$(openbao_health_code)
     case "$status_code" in
         200)
             # Initialised and unsealed -- but that is also exactly what a node
@@ -1075,8 +1142,10 @@ pre_destroy_snapshot() {
         exit 0
     fi
 
-    # Same NLB flattened-standby semantics as rehydrate_openbao -- see there.
-    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true" || true)
+    # One reading, not a poll: this runs immediately before `tofu destroy`, and
+    # anything but 200 is a refusal the operator has to resolve, not something
+    # to sit and wait ten minutes for.
+    status_code=$(openbao_health_code)
     if [ "$status_code" != "200" ]; then
         log_message "ERROR" "OpenBao at $OPENBAO_URL is not active (HTTP ${status_code:-none}); refusing to destroy without a snapshot."
         log_message "ERROR" "If the node is genuinely gone, re-run with TM_OPENBAO_SKIP_SNAPSHOT=true."
