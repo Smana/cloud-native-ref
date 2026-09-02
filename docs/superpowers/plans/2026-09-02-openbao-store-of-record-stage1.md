@@ -16,6 +16,14 @@
 
 - **Worktree.** Work in the `openbao-lineage` worktree this plan was written in (`.claude/worktrees/openbao-lineage`, branch `worktree-openbao-lineage`). Never commit on `main`.
 - **Commits.** One commit per task, message in `type(scope): summary` form. **Never add a `Co-Authored-By` trailer** (user rule).
+- **Commit with an explicit pathspec: `git commit -F <msgfile> -- <paths>`.** A bare
+  `git commit` commits the whole **index**, not the paths you just added — so if
+  anything else is staged (another agent in the same worktree, a `git rm` from a
+  parallel task, a pre-commit hook's fixup), it silently rides along in your
+  commit. This has already happened once here: three of Task 7's deletions landed
+  in an unrelated plan-fix commit. Also write the message to a **file** rather
+  than passing `-m "..."`: a backtick in a double-quoted message is command
+  substitution, and the shell will execute it.
 - **A new `variables.tfvars` must be force-added.** `.gitignore:55` is a blanket
   `*.tfvars`, so `git add` silently skips it and the file stays untracked — it then
   does not exist on a fresh clone, while `deploy` and `destroy` both pass
@@ -2843,6 +2851,16 @@ resource "vault_jwt_auth_backend_role" "cluster" {
 
 In `kubernetes.tf`, delete the whole `resource "kubectl_manifest" "flux_cert_manager_approle"` block (and the comment above it: `# Create secrets using kubectl_manifest instead of kubernetes_secret` … `to avoid plan-time validation issues with the kubernetes provider`). Keep `flux_system_secret`.
 
+**Two dangling references go with it, in files this task's list does not name.**
+`tofu validate` fails with "Reference to undeclared resource" until both are
+removed, so they are part of this step:
+
+- `opentofu/aws/eks/configure/locals.tf` — delete `local.cert_manager_approle`,
+  which decoded the data source Step 2 removed.
+- `opentofu/aws/eks/configure/main.tf` — remove
+  `kubectl_manifest.flux_cert_manager_approle` from `helm_release.flux_instance`'s
+  `depends_on` list.
+
 Replace:
 
 ```hcl
@@ -3315,7 +3333,31 @@ tofu fmt -recursive opentofu/shared/tailscale
 grep -rn "approle\|root-ca\|openbao_snapshot_secret\|cert_manager_approle" security/ observability/ clusters/ scripts/flux-schema/ --include='*.yaml' --include='*.py'; echo "grep-exit=$?"
 ```
 
-Expected: manifests `Invalid: 0, Skipped: 0`; check-substitution exit 0 with no missing variable (on gcp-0 too: `openbao_target_ip` is only referenced by `remote/`, which no cluster lists yet); the substitution test passes; tailscale valid; the final grep prints only comment lines that *explain the removal* (the ones this task wrote) and `grep-exit=0` — read them to confirm none is a live reference.
+Expected, and **one of these is a deliberate failure**:
+
+- `flux schema validate` → `Invalid: 0, Skipped: 0`, and `polaris` clean.
+- `check-substitution.py` → **exit 1, with exactly one finding**:
+  `clusters/gcp-0/security/security-openbao-snapshot.yaml` applies
+  `${openbao_snapshot_bucket}`, which `gke-gcp-0-vars` does not define yet.
+  This is **expected and correct**. Step 5 moves that variable into the *shared*
+  base `security/base/openbao-snapshot/snapshot-cronjob.yaml`, which gcp-0's
+  overlay also consumes — and gcp-0's ConfigMap is **Task 11's** Step 3. Any
+  other finding is a real defect. Do **not** "fix" this one by editing
+  `opentofu/gcp/gke/configure/`: that is Task 11's file, and touching it here
+  splits one change across two tasks.
+  Because `validate-manifests.sh` runs this gate **first** and stops on it, run
+  the remaining gates by hand to prove they pass: `scripts/flux-schema/gen-catalog.sh`,
+  `render-bundle.py .bundle`, `flux schema validate --config .fluxschema.yml`,
+  and `polaris audit --set-exit-code-on-danger`.
+- `test-check-substitution.py` → exit 0. `validate-links.sh` → exit 0. Both
+  `tofu validate`s → valid. `fmt` → 0.
+- The final grep prints only comment lines that *explain the removal*; read each
+  and confirm none is a live `${var}` or a surviving manifest reference.
+
+**The branch is therefore red on that one finding from Task 7 until Task 11
+lands.** They are in the same branch and the same pull request, so nothing ships
+in that state — but do not treat the red as done-and-acceptable, and re-run the
+full suite after Task 11.
 
 - [ ] **Step 10: Commit**
 
@@ -4851,6 +4893,15 @@ keys reach CI: every assertion is an unauthenticated endpoint."
 - Modify: `.doc-claims.yaml`
 - Modify: `CLAUDE.md`
 - Modify: `docs/gcp-bootstrap.md`
+- Modify: three comments that Tasks 6 and 7 falsified and correctly left alone as
+  out of scope. Each now describes a removed mechanism in the present tense:
+  `clusters/gcp-0/security/security-openbao.yaml` says the AWS copy substitutes
+  `${cert_manager_approle_id}` "out of the very Secret its own ExternalSecret
+  creates" — aws-0 no longer does that; `scripts/flux-schema/check-substitution.py`'s
+  docstring says "one such case exists" of a Secret-sourced variable — after this
+  branch there are none, so say so rather than leaving a reader hunting;
+  `scripts/flux-schema/render-bundle.py`'s comment above `llm_hf_token_secret`
+  cross-references `openbao_snapshot_secret`, a key this branch renamed.
 - Modify: `opentofu/aws/openbao/management/README.md` — it documents the AppRole
   machine-auth flow Task 5 deleted, and the old PKI design in which the root CA
   private key was imported into the live mount. Both are now false. Replace the
