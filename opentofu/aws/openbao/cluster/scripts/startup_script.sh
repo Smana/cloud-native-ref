@@ -89,6 +89,19 @@ chmod 0644 /opt/openbao/tls/tls.crt /opt/openbao/tls/ca.pem
 chown openbao:openbao /etc/openbao/openbao.hcl
 chown -R openbao:openbao ${openbao_data_path}
 
+# NO BACKTICKS BELOW, in the HCL or in its comments. This heredoc is
+# deliberately UNQUOTED (<< EOF, not << 'EOF') because $PRIVATE_IP and
+# $INSTANCE_ID have to expand. Bash therefore also performs command
+# substitution inside it -- comments included, where nobody expects it. A
+# backtick pair used as inline-code quoting EXECUTES what it encloses and is
+# replaced by the output: the deployed openbao.hcl silently loses those words,
+# and the boot runs whatever they named. set -e does not catch it, because the
+# substitution is an argument to cat rather than a command of its own. Quote
+# literals with "double quotes", as the comments below do, or leave them bare.
+# Escaping each backtick with a backslash renders correctly too, but a
+# half-escaped pair fails quietly -- an even count deletes words, an odd count
+# breaks the whole script -- so the rule here is none, not escaped.
+
 cat << EOF > /etc/openbao/openbao.hcl
 cluster_addr  = "https://$PRIVATE_IP:8201"
 api_addr      = "https://$PRIVATE_IP:8200"
@@ -116,10 +129,10 @@ telemetry {
   disable_hostname          = true
 }
 
-# Raft in BOTH modes. `dev` used to run the `file` backend, which can neither
+# Raft in BOTH modes. "dev" used to run the "file" backend, which can neither
 # take nor receive a snapshot -- so a dev node's contents died with it. A
-# single-node raft cluster costs nothing extra: `operator init` bootstraps it,
-# and retry_join finds only itself. In `ha` the same stanza joins five nodes.
+# single-node raft cluster costs nothing extra: operator init bootstraps it,
+# and retry_join finds only itself. In "ha" the same stanza joins five nodes.
 storage "raft" {
   path = "${openbao_data_path}"
   node_id = "$INSTANCE_ID"

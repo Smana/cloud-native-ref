@@ -9,7 +9,7 @@
 
 OpenBao becomes the platform's store of record for secrets and the PKI, without
 raising the idle cost of the reference platform. The mechanism is a **lineage**:
-one persistent KMS seal key, four bootstrap secrets, and a snapshot bucket.
+one persistent KMS seal key, five bootstrap secrets, and a snapshot bucket.
 Everything else OpenBao holds is derived from the latest Raft snapshot and is
 **rehydrated at boot**. A production deployment leaves the process on; the
 reference platform turns it off between runs. Both run the same design.
@@ -123,13 +123,14 @@ relocation carries state.
 
 | Tier | Where it lives | Contents (per cloud) | Who reads it, when |
 |---|---|---|---|
-| Bootstrap | AWS Secrets Manager / GCP Secret Manager | OpenBao server TLS cert, key and chain | the instance at boot, before the API exists |
+| Bootstrap | AWS Secrets Manager / GCP Secret Manager | the CA chain | the deploy workflow's CA fetch, before rehydrate, on every deploy — read first of the five |
+| Bootstrap | same | OpenBao server TLS cert and key | the instance at boot, before the API exists |
 | Bootstrap | same | root token | the management stack, and the restore path, after boot |
 | Bootstrap | same | recovery keys | the restore path, to mint a root token after a snapshot lands |
 | Bootstrap | same | intermediate CA cert and key, signed by the offline root | the first seeding of a lineage only; afterwards the PKI mount comes back inside the snapshot |
 | Store of record | OpenBao | every other platform secret, in a `platform/` kv-v2 mount; the PKI; auth methods and policies | External Secrets, cert-manager, the `eks/configure` stack, operators |
 
-The seal key is the fifth bootstrap item, an AWS resource rather than a secret.
+The seal key is the sixth bootstrap item, an AWS resource rather than a secret.
 
 Flux's GitHub App key is the one judgment call. It lets Flux clone the repository
 that defines everything else, and it is consumed by `eks/configure`, after

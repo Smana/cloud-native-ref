@@ -2044,10 +2044,10 @@ storage "raft" {
 with:
 
 ```bash
-# Raft in BOTH modes. `dev` used to run the `file` backend, which can neither
+# Raft in BOTH modes. "dev" used to run the "file" backend, which can neither
 # take nor receive a snapshot -- so a dev node's contents died with it. A
-# single-node raft cluster costs nothing extra: `operator init` bootstraps it,
-# and retry_join finds only itself. In `ha` the same stanza joins five nodes.
+# single-node raft cluster costs nothing extra: operator init bootstraps it,
+# and retry_join finds only itself. In "ha" the same stanza joins five nodes.
 storage "raft" {
   path = "${openbao_data_path}"
   node_id = "$INSTANCE_ID"
@@ -4263,18 +4263,18 @@ with:
 
 ```bash
 # REQUIRED with Integrated Storage, and it was missing here while the backend
-# was `file`. With mlock enabled OpenBao locks the whole Bolt database into
+# was "file". With mlock enabled OpenBao locks the whole Bolt database into
 # physical memory and the OOM killer takes the process once it outgrows RAM
-# (https://openbao.org/docs/rfcs/mlock-removal/). Harmless under `file`; on this
+# (https://openbao.org/docs/rfcs/mlock-removal/). Harmless under "file"; on this
 # 2 GB e2-small now running raft it is the documented OOM path, and the
 # retry-forever drop-in below would turn it into a slow crashloop rather than a
 # clean failure. The AWS sibling and the CI drill both set it.
 disable_mlock = true
 
-# Raft, single node. `file` could neither take nor receive a snapshot, so a
+# Raft, single node. "file" could neither take nor receive a snapshot, so a
 # node's contents died with it; a one-node raft cluster is bootstrapped by
-# `operator init` and costs nothing extra. No `retry_join` at all, unlike AWS:
-# there is no second node to find, so `operator init` bootstraps the single
+# operator init and costs nothing extra. No retry_join at all, unlike AWS:
+# there is no second node to find, so operator init bootstraps the single
 # voter and it is leader immediately. api_addr is the FQDN so a restored
 # snapshot's peer list (which raft.Restore discards anyway) never has to match.
 storage "raft" {
@@ -5595,7 +5595,7 @@ Create `website/content/docs/decisions/0032-openbao-store-of-record-lineage.md`:
 title: OpenBao is the store of record, durable as a snapshot lineage, active on the primary cloud with restore-based fallback
 linkTitle: 0032 · OpenBao lineage
 weight: 320
-description: OpenBao's storage becomes derived state rebuilt from its newest Raft snapshot on every boot; what persists is a lineage — one multi-region KMS seal key, four bootstrap secrets, a snapshot bucket. One instance is active on AWS and serves both clusters; a GCP standby restores the mirrored snapshot under the same AWS seal. Chosen over per-cloud authoritative instances, an instance with no fallback, a Shamir-sealed standby, the clouds' managed CAs and cert-manager's CA issuer.
+description: OpenBao's storage becomes derived state rebuilt from its newest Raft snapshot on every boot; what persists is a lineage — one multi-region KMS seal key, five bootstrap secrets, a snapshot bucket. One instance is active on AWS and serves both clusters; a GCP standby restores the mirrored snapshot under the same AWS seal. Chosen over per-cloud authoritative instances, an instance with no fallback, a Shamir-sealed standby, the clouds' managed CAs and cert-manager's CA issuer.
 lastVerified: 2026-09-02
 ---
 
@@ -5670,7 +5670,7 @@ anything, which is the dependency ADR-0024 removed for the identity provider.
 **Pros**: one store, one policy model, one root; the floor moves by one key;
 restore is exercised on every deploy; fallback survives a regional outage.
 **Cons**: the standby depends on AWS KMS (mitigated by a multi-region replica);
-a bootstrap tier of four secrets per cloud remains in the managed stores; new
+a bootstrap tier of five secrets per cloud remains in the managed stores; new
 cross-cloud plumbing (Tailscale egress, two federated roles).
 
 ### Rejected on the seal: a Shamir-sealed standby
@@ -5694,8 +5694,9 @@ ADR-0025, option 3.
 
 **Option 4.** OpenBao is the store of record. Its durable form is the lineage:
 `alias/openbao-seal` (multi-region, replica in `eu-west-1`), the snapshot
-bucket and its key, and four bootstrap secrets per cloud (server TLS material,
-root token, recovery keys, the offline-signed intermediate). The process is
+bucket and its key, and five bootstrap secrets per cloud (the CA chain, server
+TLS material, root token, recovery keys, the offline-signed intermediate — the
+CA chain is read first, before rehydrate, on every deploy). The process is
 rehydrated from the newest snapshot on every boot; a last snapshot is taken
 before every destroy. One instance is active on AWS
 ([ADR-0027](0027-primary-cloud-provider.md) primary-cloud singleton — OpenBao
@@ -5728,7 +5729,7 @@ managed store still the store of record. Stage 2 repoints the
 
 - The standby is coupled to AWS KMS. *Mitigation*: multi-region replica; the
   limit is stated in the failover guide.
-- Four bootstrap secrets per cloud must exist on both clouds for a fallback to be
+- Five bootstrap secrets per cloud must exist on both clouds for a fallback to be
   bootstrappable; they are seeded by hand and can drift. *Mitigation*: the list
   is short and `secret-store.sh check` names what is missing.
 - New moving parts: a systemd timer refreshing a web-identity token on the GCP
@@ -5773,7 +5774,7 @@ In `0025-cloud-managed-secret-stores.md`, directly after the `---` that follows 
 **Amended 2026-09-02 by [ADR-0032](0032-openbao-store-of-record-lineage.md).**
 The constraint recorded below is unchanged: this reference cannot afford an
 always-on OpenBao. What changed is what the constraint bounds. OpenBao's storage
-is now derived from a *lineage* — a persistent seal key, four bootstrap secrets
+is now derived from a *lineage* — a persistent seal key, five bootstrap secrets
 and a snapshot bucket — and rehydrated on every boot, so the process can be off
 between runs while OpenBao is the store of record. The "Neutral" sentence below
 saying OpenBao remains the target is therefore no longer aspirational; the
@@ -5833,7 +5834,7 @@ lastVerified: 2026-09-02
 
 The active OpenBao runs on AWS and serves both clusters. Its durable form is
 the *lineage* ([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})):
-the multi-region seal key `alias/openbao-seal`, four bootstrap secrets, and the
+the multi-region seal key `alias/openbao-seal`, five bootstrap secrets, and the
 snapshot bucket `eu-west-3-ogenki-openbao-snapshot`, mirrored daily into
 `ogenki-435905-ogenki-openbao-snapshot` by a Storage Transfer job.
 
@@ -5854,13 +5855,14 @@ wait, so this procedure is manual and measured in tens of minutes.
 - The GCP lineage stack has been applied and the federation stack knows its
   identities (`gcp_openbao_standby_sa_unique_id`, `gcp_transfer_agent_subject_id`
   in `opentofu/shared/aws-gcp-federation/variables.tfvars`).
-- The four GCP bootstrap secrets exist: `openbao-priv-gcp-server-cert`,
-  `openbao-priv-gcp-root-token`, `openbao-priv-gcp-recovery-keys`,
-  `openbao-priv-gcp-intermediate-ca`. **For a fallback the root token and
-  recovery keys must be the AWS lineage's**, because the restored token store is
-  the AWS one: copy them from AWS Secrets Manager into those two GCP entries
-  before step 2 (`scripts/secret-store.sh` has no cross-cloud copy; use the two
-  CLIs).
+- The five GCP bootstrap secrets exist: `openbao-priv-gcp-ca-chain` (read
+  first, by `openbao_ca_fetch`, before rehydrate on every deploy),
+  `openbao-priv-gcp-server-cert`, `openbao-priv-gcp-root-token`,
+  `openbao-priv-gcp-recovery-keys`, `openbao-priv-gcp-intermediate-ca`.
+  **For a fallback the root token and recovery keys must be the AWS lineage's**,
+  because the restored token store is the AWS one: copy them from AWS Secrets
+  Manager into those two GCP entries before step 2 (`scripts/secret-store.sh`
+  has no cross-cloud copy; use the two CLIs).
 - `gcloud auth application-default login` for `ogenki-435905`, a tailnet
   connection, and `TF_VAR_tailscale_api_key`.
 

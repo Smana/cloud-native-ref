@@ -100,6 +100,19 @@ chmod 0644 /opt/openbao/tls/tls.crt /opt/openbao/tls/ca.pem
 chown openbao:openbao /etc/openbao/openbao.hcl
 chown -R openbao:openbao "${openbao_data_path}"
 
+# NO BACKTICKS BELOW, in the HCL or in its comments. This heredoc is
+# deliberately UNQUOTED (<< EOF, not << 'EOF') because $PRIVATE_IP and
+# $(hostname) have to expand. Bash therefore also performs command
+# substitution inside it -- comments included, where nobody expects it. A
+# backtick pair used as inline-code quoting EXECUTES what it encloses and is
+# replaced by the output: the deployed openbao.hcl silently loses those words,
+# and the boot runs whatever they named. set -e does not catch it, because the
+# substitution is an argument to cat rather than a command of its own. Quote
+# literals with "double quotes", as the comments below do, or leave them bare.
+# Escaping each backtick with a backslash renders correctly too, but a
+# half-escaped pair fails quietly -- an even count deletes words, an odd count
+# breaks the whole script -- so the rule here is none, not escaped.
+
 cat << EOF > /etc/openbao/openbao.hcl
 cluster_addr = "https://$PRIVATE_IP:8201"
 api_addr     = "https://${fqdn}:8200"
@@ -139,18 +152,18 @@ telemetry {
 }
 
 # REQUIRED with Integrated Storage, and it was missing here while the backend
-# was `file`. With mlock enabled OpenBao locks the whole Bolt database into
+# was "file". With mlock enabled OpenBao locks the whole Bolt database into
 # physical memory and the OOM killer takes the process once it outgrows RAM
-# (https://openbao.org/docs/rfcs/mlock-removal/). Harmless under `file`; on this
+# (https://openbao.org/docs/rfcs/mlock-removal/). Harmless under "file"; on this
 # 2 GB e2-small now running raft it is the documented OOM path, and the
 # retry-forever drop-in below would turn it into a slow crashloop rather than a
 # clean failure. The AWS sibling and the CI drill both set it.
 disable_mlock = true
 
-# Raft, single node. `file` could neither take nor receive a snapshot, so a
+# Raft, single node. "file" could neither take nor receive a snapshot, so a
 # node's contents died with it; a one-node raft cluster is bootstrapped by
-# `operator init` and costs nothing extra. No `retry_join` at all, unlike AWS:
-# there is no second node to find, so `operator init` bootstraps the single
+# operator init and costs nothing extra. No retry_join at all, unlike AWS:
+# there is no second node to find, so operator init bootstraps the single
 # voter and it is leader immediately. api_addr is the FQDN so a restored
 # snapshot's peer list (which raft.Restore discards anyway) never has to match.
 storage "raft" {
