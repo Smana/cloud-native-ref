@@ -71,7 +71,7 @@ variable "openbao_version" {
 }
 
 variable "data_disk_size_gb" {
-  description = "Size in GB of the persistent disk backing OpenBao's file storage backend"
+  description = "Size in GB of the persistent disk backing OpenBao's raft storage"
   type        = number
   default     = 10
 }
@@ -83,7 +83,7 @@ variable "server_cert_secret_name" {
 }
 
 variable "openbao_data_path" {
-  description = "Path on the instance's data disk where OpenBao's file storage backend keeps its data (single-node, storage \"file\" -- not raft)"
+  description = "Path on the instance's data disk where OpenBao's raft storage backend keeps its data (single-node raft -- see compute.tf)"
   type        = string
   default     = "/opt/openbao/data"
 }

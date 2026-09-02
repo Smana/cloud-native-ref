@@ -33,16 +33,17 @@ resource "google_compute_instance_template" "openbao" {
     disk_size_gb = 20
   }
 
-  # OpenBao's storage (file backend) and its TLS material live here, not on
-  # the boot disk -- so a boot disk replacement (a new image, a template
-  # revision) never touches raft/file state. device_name is the contract with
+  # OpenBao's raft storage lives here, not on the boot disk -- so a boot disk
+  # replacement (a new image, a template revision) never touches raft state.
+  # (The TLS material does NOT: it is refetched from Secret Manager into
+  # /opt/openbao/tls on every boot.) device_name is the contract with
   # scripts/setup-local-disks.sh, which looks for this disk at the stable path
   # /dev/disk/by-id/google-openbao-data.
   #
   # auto_delete = true, matching the AWS dev launch template's
   # delete_on_termination = true on its root volume: this is a single-node,
   # torn-down-every-cycle demo posture, not a deployment with anything on the
-  # data disk worth outliving the instance. Revisit before any real HA/raft
+  # data disk worth outliving the instance. Revisit before multi-node raft/HA
   # work, which will need a disk that survives instance replacement.
   disk {
     auto_delete  = true
@@ -176,11 +177,11 @@ resource "google_compute_instance_group_manager" "openbao" {
   #
   # Auto-healing would have replaced that node. It would also wipe its storage.
   # Auto-healing RECREATEs the instance, the data disk above is
-  # `auto_delete = true` with no source, and OpenBao keeps everything in
-  # `storage "file"` on it -- so the successor boots with a blank disk that
-  # setup-local-disks.sh runs mkfs over. What comes back has no PKI mount and no
-  # imported issuer, and the root token in Secret Manager now belongs to a
-  # server that no longer exists.
+  # `auto_delete = true` with no source, and OpenBao keeps its entire raft store
+  # on it -- so the successor boots with a blank disk that setup-local-disks.sh
+  # runs mkfs over. What comes back has no PKI mount and no imported issuer, and
+  # the root token in Secret Manager now belongs to a server that no longer
+  # exists.
   #
   # Recoverable, though, and less costly than it once was:
   #   - There is no AppRole to lose. cert-manager and the snapshot job now
@@ -208,8 +209,13 @@ resource "google_compute_instance_group_manager" "openbao" {
   # installs a drop-in clearing the start limit, and a dead OpenBao now retries
   # forever instead of needing anything to recycle the node.
   #
-  # Revisit together with the data disk: once state survives instance
-  # replacement (a standalone google_compute_disk, or raft on a persistent
-  # volume), auto-healing becomes restorative rather than destructive and should
-  # come back.
+  # Revisit together with the data disk, which is the half of that future step
+  # still outstanding. The storage engine is already raft -- so the node can now
+  # take and receive snapshots, which is what makes a rehydrate possible at all
+  # -- but the disk it writes to is still `auto_delete = true` with no source,
+  # so a REPLACE still starts from an empty volume and still needs an operator
+  # to run the rehydrate. What is left is a data disk that OUTLIVES the
+  # instance: a standalone google_compute_disk the template attaches instead of
+  # creating. Once that exists, auto-healing becomes restorative rather than
+  # destructive and should come back.
 }
