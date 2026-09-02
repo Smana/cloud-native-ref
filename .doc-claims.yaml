@@ -291,6 +291,24 @@ claims:
       - 'deploy_identity_provider` in `opentofu/gcp/gke/configure/variables.tfvars'
       - 'neither can enforce the other'
 
+  - id: workforce-pool-id
+    why: >-
+      The GCP Workforce Identity Federation pool id is embedded verbatim in
+      every RBAC group string it federates
+      (`principalSet://…/workforcePools/<id>/group/<role>`, see
+      security/gcp-0/rbac/admin.yaml) and is treated as permanent — renaming
+      is delete+create with a 30-day soft-delete purge window, and every
+      binding referencing the old name goes stale the moment a rename lands.
+      ADR-0032 quotes the id as part of its measured evidence; pinning it
+      here means a Terraform rename fails this check instead of leaving the
+      ADR describing a pool that no longer exists.
+    source:
+      file: opentofu/gcp/workforce-identity/variables.tfvars
+      pattern: '^workforce_pool_id\s*=\s*"([a-z0-9-]+)"'
+    pages:
+      - website/content/docs/decisions/0032-workforce-identity-federation-for-gke-rbac.md
+    must_contain: '{value}'
+
   - id: runlore-alerts-both-clouds
     why: >-
       The 12 RunLore health alerts sat in the aws-0 overlay for months
