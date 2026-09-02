@@ -3,7 +3,7 @@ title: AWS is the primary cloud, and cross-cloud singletons live there
 linkTitle: 0027 · Primary cloud
 weight: 270
 description: Some services cannot sensibly exist twice — one public DNS zone, one identity directory, one federation trust. Naming AWS the primary cloud gives those a defined home, and gives a GCP-only platform a defined way to take it over.
-lastVerified: 2026-08-29
+lastVerified: 2026-09-01
 ---
 
 **Status**: Accepted
@@ -91,6 +91,23 @@ path as designed rather than proven.
 **What it does not change.** Nothing per-cloud. Both clusters keep their own
 OpenBao, secret store, state and backups, and neither depends on the other for
 them. This decision is only about the handful of things that cannot be two.
+
+**How it is enforced (2026-09-01).** The primary cloud is declared once, as
+`primary_cloud` in `opentofu/config.tm.hcl`. The OpenTofu gate that decides
+whether a cluster hosts ZITADEL is derived from it at every invocation site; the
+Flux gate, which cannot be derived because Flux never sees Terramate globals, is
+checked against it by `./scripts/validate-idp-topology.sh` in CI. The third state
+this record rules out — two clouds each hosting a singleton — now fails a
+required check rather than depending on someone remembering the rule.
+
+It was worth doing: this record was written on 2026-08-29 *because* two
+directories were running, and a dual-cloud bootstrap on 2026-09-01 produced the
+same state again, from configuration left over after the GCP validation work. A
+rule that only exists in prose is a rule the next rebuild can quietly break.
+
+A non-AWS primary while AWS is also deployed is rejected too:
+`opentofu/aws/eks/configure` hosts unconditionally, so supporting that
+combination would need an AWS-side toggle and a new decision.
 
 ## Alternatives considered
 

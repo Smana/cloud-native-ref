@@ -227,3 +227,22 @@ jobs:
 
       - name: Check documentation claims against configuration
         run: ./scripts/validate-doc-claims.sh
+
+      # Folded into this job for the same reason as the claims check above: the
+      # required-check list on `main` does not have to change.
+      #
+      # It runs HERE rather than in the shellcheck job because it needs the
+      # pyyaml installed above. The shellcheck job installs only shellcheck, and
+      # this repo does not treat "it happens to be in the runner image" as a
+      # dependency declaration.
+      - name: Check identity provider topology
+        run: ./scripts/validate-idp-topology.sh
+
+      # Named explicitly, NOT globbed over scripts/test-*.sh. There are 12 such
+      # scripts and CI runs none of them today; a glob here would silently
+      # activate the other 11 as a side effect of this change, and two of them
+      # (test-flux-schema.sh, test-vector-vrl.sh) do not pass in a bare
+      # environment. Wiring them up is worth doing on its own terms -- see the
+      # tracking issue -- not as a drive-by.
+      - name: Run identity provider topology tests
+        run: ./scripts/test-validate-idp-topology.sh

@@ -1,0 +1,76 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  labels:
+    app: cert-manager
+  name: cert-manager
+  namespace: observability
+spec:
+  groups:
+    - name: cert-manager
+      rules:
+        # The alert whose absence cost ~25 minutes of a dual-cloud bootstrap on
+        # 2026-09-02, and would have cost an hour unattended.
+        #
+        # An ACME order failed at finalization with a transient upstream error:
+        #
+        #   Failed to finalize Order: 404 urn:ietf:params:acme:error:malformed:
+        #   Certificate not found
+        #
+        # cert-manager does NOT retry an errored Order, and once the
+        # CertificateRequest fails it enters a failed-issuance backoff of up to
+        # an hour. So the Certificate sat Ready=False indefinitely, its Secret
+        # was never created, and every pod mounting that Secret stayed in
+        # ContainerCreating.
+        #
+        # Nothing surfaced it. Flux reported only a generic health-check
+        # timeout on the Kustomization; the pod said ContainerCreating; the
+        # actual reason lived three resources deep, in the Order's status. This
+        # rule is what turns that into a signal.
+        #
+        # `condition="True" == 0` rather than `condition="False" == 1`: it
+        # catches a certificate stuck in Unknown -- issuance in progress and
+        # never completing -- which is exactly the ACME-order case, as well as
+        # outright failure.
+        - alert: CertificateNotReady
+          expr: certmanager_certificate_ready_status{condition="True"} == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            message: Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} has not been ready for 15 minutes.
+            description: |
+              cert-manager has not issued this certificate. Anything mounting its
+              Secret is stuck in ContainerCreating, and neither Flux nor the pod
+              will say why -- the reason is on the Order.
+
+              Diagnose from the outside in:
+                kubectl describe certificate {{ $labels.name }} -n {{ $labels.exported_namespace }}
+                kubectl get certificaterequest,order,challenge -n {{ $labels.exported_namespace }}
+                kubectl get order <name> -n {{ $labels.exported_namespace }} -o jsonpath='{.status.reason}'
+
+              An `errored` Order is NOT retried, and a failed CertificateRequest
+              backs off for up to an hour. Deleting the CertificateRequest alone
+              may not be enough; deleting the Certificate lets Flux recreate it
+              and issue immediately.
+            runbook_url: "https://cert-manager.io/docs/troubleshooting/acme/"
+            dashboard: "https://grafana.${private_domain_name}/dashboards"
+
+        # 15m catches a stall; this catches the slower, quieter failure -- a
+        # certificate that issued once and is now failing to renew. Left alone
+        # it becomes an outage on expiry day, which is how an OpenBao server
+        # certificate went nine months unnoticed (see the openbao rules).
+        - alert: CertificateExpiringSoon
+          expr: (certmanager_certificate_expiration_timestamp_seconds - time()) < (14 * 24 * 3600)
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            message: Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} expires in under 14 days.
+            description: |
+              Renewal normally happens at two thirds of the lifetime, so a
+              certificate this close to expiry means renewal is failing, not that
+              it is merely due. Check the Certificate's conditions and the most
+              recent CertificateRequest for the same reasons as CertificateNotReady.
+            runbook_url: "https://cert-manager.io/docs/troubleshooting/"
+            dashboard: "https://grafana.${private_domain_name}/dashboards"

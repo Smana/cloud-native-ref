@@ -172,27 +172,60 @@ script "deploy" {
 
         # Only when this cluster hosts the IdP. Consuming another cluster's
         # ZITADEL means its clients are registered there, not here.
-        # Read the flag from the tfvars FILE, with the environment as an
-        # override -- not the other way round.
+        # Whether this cluster hosts the identity provider comes from the SAME
+        # place the configure stack gets it: global.primary_cloud (ADR-0027),
+        # interpolated below. The environment still overrides for one
+        # invocation.
         #
-        # This used to test only $TF_VAR_deploy_identity_provider. That variable
-        # is how you override the setting for one invocation; the setting itself
-        # lives in ../configure/variables.tfvars, exactly like public_domain_name
-        # two lines up, which is already read that way. So the normal case --
-        # the flag committed to the file, no env var in the shell -- read as
-        # false and skipped registration, while printing a line that looks like
-        # a deliberate decision.
+        # It used to be read out of ../configure/variables.tfvars with awk, and
+        # before that from $TF_VAR_deploy_identity_provider alone. Both were
+        # ways of asking a second source the same question, and both got a
+        # different answer than the deploy did:
         #
-        # gcp-0 shipped with `deploy_identity_provider = true` and no OIDC client
-        # ever registered. Every SSO consumer failed at the authorize step with a
-        # client_id ZITADEL had never heard of, and the deploy reported success.
-        DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-}"
-        if [ -z "$${DEPLOY_IDP}" ]; then
-          DEPLOY_IDP="$(awk -F'=' '/^[[:space:]]*deploy_identity_provider/{gsub(/[[:space:]"]/,"",$$2); print $$2}' ../configure/variables.tfvars)"
-        fi
+        #   gcp-0 shipped with `deploy_identity_provider = true` and no OIDC
+        #   client ever registered. Every SSO consumer failed at the authorize
+        #   step with a client_id ZITADEL had never heard of, and the deploy
+        #   reported success.
+        #
+        # The tfvars literal no longer exists, so the awk matched nothing and
+        # would have reproduced that incident exactly. One source, or none.
+        DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-${global.deploy_identity_provider_gcp}}"
         if [ "$${DEPLOY_IDP}" != "true" ]; then
-          echo "== skipping OIDC clients: deploy_identity_provider is not true"
-          echo "   (file: ../configure/variables.tfvars, override: TF_VAR_deploy_identity_provider)"
+          # NOT hosting is not the same as nothing to do. This cluster's
+          # consumers still need OIDC clients -- registered in the PRIMARY
+          # cloud's directory, with THIS cluster's redirect URIs, and with the
+          # resulting secrets written to THIS cluster's store where its
+          # ExternalSecrets read.
+          #
+          # Skipping here is what left a consuming gcp-0 with no client at all:
+          # oauth2-proxy came up with no secret, sat in
+          # CreateContainerConfigError, and headlamp's Kustomization never went
+          # ready -- the same class of failure as the never-registered-clients
+          # incident above, arrived at from the opposite direction.
+          #
+          # The IdP URL comes from the cluster vars ConfigMap rather than being
+          # rebuilt here: that is the exact value every consumer on this cluster
+          # reads, so it cannot disagree with them.
+          echo "== this cluster consumes ${global.primary_cloud}'s identity provider"
+          CONSUMED_IDP="$(kubectl get configmap "gke-$${NAME}-vars" -n flux-system \
+            -o jsonpath='{.data.identity_provider_url}' 2>/dev/null || true)"
+          if [ -z "$${CONSUMED_IDP}" ]; then
+            echo "[warn] could not read identity_provider_url from gke-$${NAME}-vars;"
+            echo "       skipping client registration. Re-run by hand once it exists."
+            exit 0
+          fi
+
+          echo "== registering this cluster's OIDC clients in $${CONSUMED_IDP}"
+          IDP_URL="$${CONSUMED_IDP}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
+            bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
+              --cluster "$${NAME}" \
+              --cloud gcp --project "$${PROJECT}" \
+              --idp-cloud "${global.primary_cloud}" --region "${global.region}" \
+              --apply || \
+            echo "[warn] OIDC registration against the primary cloud failed; re-run it by hand"
+
+          echo "== granting access to the secrets it just created"
+          bash "$${ROOT}/scripts/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || true
           exit 0
         fi
 

@@ -266,6 +266,31 @@ claims:
       - 'never actually deploys'
       - 'wired into no Kustomization'
 
+  - id: idp-primary-cloud-singleton
+    why: >-
+      The identity provider is a primary-cloud singleton (ADR-0027), and
+      the pages describing it drifted the moment the configuration changed:
+      cloud-support.md still said "gcp-0 takes that opt-out today and runs
+      its own instance", and the migration guide still told operators to
+      set `deploy_identity_provider` in variables.tfvars -- a literal that
+      no longer exists and that a `-var` would override in silence.
+
+      Both statements were true when written, which is exactly why they
+      need pinning rather than trusting: a reader following either one
+      would half-flip the topology and get no error. The banned phrases
+      are the two shapes of the retired model -- the tfvars literal as a
+      settable gate, and the "neither can enforce the other" pairing that
+      is now one derived and one verified.
+    source:
+      file: opentofu/config.tm.hcl
+      must_contain: 'primary_cloud\s*=\s*"aws"'
+    pages:
+      - website/content/docs/platform/foundations/cloud-support.md
+      - website/content/docs/guides/migrate-the-identity-provider.md
+    must_not_contain:
+      - 'deploy_identity_provider` in `opentofu/gcp/gke/configure/variables.tfvars'
+      - 'neither can enforce the other'
+
   - id: runlore-alerts-both-clouds
     why: >-
       The 12 RunLore health alerts sat in the aws-0 overlay for months

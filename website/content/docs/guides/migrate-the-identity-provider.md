@@ -164,16 +164,32 @@ not a flag flipped there.
 
 | Gate | Where | Target value for GCP-hosted |
 |---|---|---|
-| `deploy_identity_provider` | `opentofu/gcp/gke/configure/variables.tfvars` | `true` |
+| `primary_cloud` | `opentofu/config.tm.hcl` | `"gcp"` |
 | `spec.suspend` | `clusters/gcp-0/security/zitadel.yaml` | `false` |
 
-They must agree in the same commit — one alone points every consumer at a
-hostname nothing serves, or runs an instance nothing is configured to use, and
-neither half can detect the other is wrong.
+**Do not set `deploy_identity_provider` in `variables.tfvars`.** It is derived
+from `primary_cloud` and passed as a `-var` on every invocation, which wins over
+the file — re-adding the literal there changes nothing and reports no error.
+Setting `primary_cloud` is what flips it.
 
-Migrating back to AWS is the reverse: `deploy_identity_provider = false` and
+The two gates must still agree, in the same commit: one alone points every
+consumer at a hostname nothing serves, or runs an instance nothing is configured
+to use. The difference is that disagreement is now caught —
+`./scripts/validate-idp-topology.sh` fails in CI, rather than the platform
+failing silently at the authorize step.
+
+Migrating back to AWS is the reverse: `primary_cloud = "aws"` and
 `spec.suspend: true` on the GCP side; nothing to flip on AWS, since it has no
 gate to begin with.
+
+{{< callout type="warning" >}}
+**Suspending is not decommissioning.** `spec.suspend: true` stops Flux
+reconciling the outgoing instance; it does not remove what is already running.
+On a live migration, delete the outgoing cluster's ZITADEL release, its
+`SQLInstance` claim, TLSRoute and certificate after the new host is serving —
+otherwise two directories keep running while the topology check, which reads
+committed YAML rather than the cluster, reports "consistent".
+{{< /callout >}}
 
 ## 6. Deploy
 
