@@ -95,8 +95,8 @@ script "deploy" {
         fi
 
         CONF="$${ROOT}/opentofu/aws/eks/configure/variables.tfvars"
-        PUBLIC_DOMAIN="$(awk -F'=' '/^[[:space:]]*public_domain_name/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${CONF}")"
-        PRIVATE_DOMAIN="$(awk -F'=' '/^[[:space:]]*private_domain_name/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${CONF}")"
+        PUBLIC_DOMAIN="$(awk -F'=' '/^[[:space:]]*public_domain_name/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${CONF}")"
+        PRIVATE_DOMAIN="$(awk -F'=' '/^[[:space:]]*private_domain_name/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${CONF}")"
         if [ -z "$${PUBLIC_DOMAIN}" ] || [ -z "$${PRIVATE_DOMAIN}" ]; then
           echo "[warn] could not read the domains from $${CONF}; skipping OIDC registration"
           exit 0
@@ -104,8 +104,8 @@ script "deploy" {
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}"
 
         echo "== waiting for ZITADEL (up to 15m)"
-        deadline=$$(( SECONDS + 900 ))
-        while [ "$$SECONDS" -lt "$$deadline" ]; do
+        deadline=$(( SECONDS + 900 ))
+        while [ "$SECONDS" -lt "$deadline" ]; do
           if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -ge 1 ] 2>/dev/null; then
             break
           fi
@@ -135,9 +135,9 @@ script "deploy" {
             # not there yields an empty string and skips the registration behind
             # a warning nobody reads.
             GCP_NET="$${ROOT}/opentofu/gcp/network/variables.tfvars"
-            GCP_PRIVATE="$(awk -F'=' '/^[[:space:]]*private_domain_name/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${GCP_NET}" 2>/dev/null || true)"
-            GCP_PROJECT="$(awk -F'=' '/^[[:space:]]*project_id/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${GCP_NET}" 2>/dev/null || true)"
-            GCP_CLUSTER="$(awk -F'=' '/^[[:space:]]*cluster_name/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${ROOT}/opentofu/gcp/gke/init/variables.tfvars" 2>/dev/null || true)"
+            GCP_PRIVATE="$(awk -F'=' '/^[[:space:]]*private_domain_name/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${GCP_NET}" 2>/dev/null || true)"
+            GCP_PROJECT="$(awk -F'=' '/^[[:space:]]*project_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${GCP_NET}" 2>/dev/null || true)"
+            GCP_CLUSTER="$(awk -F'=' '/^[[:space:]]*cluster_name/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/gke/init/variables.tfvars" 2>/dev/null || true)"
             if [ -z "$${GCP_PRIVATE}" ] || [ -z "$${GCP_CLUSTER}" ] || [ -z "$${GCP_PROJECT}" ]; then
               echo "[warn] could not read the GCP cluster/domain/project; skipping its OIDC registration"
               exit 0
@@ -151,7 +151,7 @@ script "deploy" {
             # pool's committed audience is already this directory's project id --
             # but passing it makes a drifted audience self-correct rather than
             # waiting for someone to notice an invalid_grant.
-            WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
+            WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
             IDP_URL="$${IDP_URL}" PRIVATE_DOMAIN="$${GCP_PRIVATE}" \
               bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
                 --cluster "$${GCP_CLUSTER}" \

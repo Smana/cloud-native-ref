@@ -237,8 +237,8 @@ script "deploy" {
         fi
 
         echo "== waiting for ZITADEL (up to 15m)"
-        deadline=$$(( SECONDS + 900 ))
-        while [ "$$SECONDS" -lt "$$deadline" ]; do
+        deadline=$(( SECONDS + 900 ))
+        while [ "$SECONDS" -lt "$deadline" ]; do
           if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -ge 1 ] 2>/dev/null; then
             break
           fi
@@ -258,7 +258,7 @@ script "deploy" {
         # lets the script reconcile it; without this, per-user RBAC on this
         # cluster fails as a bare `invalid_grant` with everything looking healthy.
         # Empty (no such stack / no such key) simply skips that reconciliation.
-        WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
+        WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
         echo "== registering the OIDC clients"
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
           bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
