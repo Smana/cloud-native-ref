@@ -14,6 +14,11 @@
 # same technique test-zitadel-oidc-clients-project.sh uses -- the script itself
 # is not sourceable, since it parses argv and demands --cluster/--cloud at the
 # top of the file. A change there is therefore a change under test.
+# WORKFORCE_POOL, APPLY and the STUB_* values are read ONLY by the eval'''d
+# function bodies lifted from the script under test, which shellcheck cannot see
+# through. File-wide because they are set at nearly every test case; the same
+# directive, for the same reason, as test-zitadel-oidc-clients-project.sh.
+# shellcheck disable=SC2034
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 fail=0
