@@ -609,6 +609,51 @@ converge_secret() {
     ' <<< "$existing"
 }
 
+# THE OTHER END OF THE SAME CONTRACT.
+#
+# reconcile_workforce_audience above fixes what the POOL expects. This fixes
+# what oauth2-proxy REQUESTS -- ZITADEL only stamps a project id into a token's
+# `aud` when the token was asked for with that project's audience scope, and
+# that scope is rendered from ${zitadel_project_id} in the cluster vars
+# ConfigMap.
+#
+# Fixing only one end is worse than fixing neither: the pool then expects an
+# audience no token will ever carry, and every exchange fails `invalid_grant`
+# while oauth2-proxy, the exchange proxy, Headlamp and every Flux resource all
+# report healthy.
+#
+# The ConfigMap is written by tofu but carries reconcile.fluxcd.io/watch, so a
+# patch here makes Flux re-render the consumers by itself. tofu will rewrite the
+# committed value on its next apply -- harmless, because this script runs after
+# gke/configure in the deploy flow and simply corrects it again.
+reconcile_consumer_audience() {
+    local project_id="$1" cm current
+    cm="$(kubectl get cm -n flux-system -o name 2>/dev/null | grep -E 'vars$' | head -1)"
+    if [ -z "$cm" ]; then
+        echo "consumer: no cluster vars ConfigMap reachable from this context, skipping" >&2
+        return 0
+    fi
+
+    current="$(kubectl get "$cm" -n flux-system -o jsonpath='{.data.zitadel_project_id}' 2>/dev/null)"
+    if [ -z "$current" ]; then
+        echo "consumer: ${cm} defines no zitadel_project_id, skipping" >&2
+        return 0
+    fi
+    if [ "$current" = "$project_id" ]; then
+        echo "consumer: audience scope already ${project_id}"
+        return 0
+    fi
+
+    echo "consumer: audience scope ${current} -> ${project_id}"
+    if kubectl patch "$cm" -n flux-system --type=merge \
+         -p "{\"data\":{\"zitadel_project_id\":\"${project_id}\"}}" >/dev/null 2>&1; then
+        echo "consumer: patched; Flux will re-render the consumers"
+    else
+        echo "consumer: FAILED to patch ${cm}. oauth2-proxy will keep requesting" >&2
+        echo "          the wrong audience and every exchange will 400." >&2
+    fi
+}
+
 # THE WORKFORCE PROVIDER'S AUDIENCE IS THE ZITADEL PROJECT ID, and on some
 # topologies it cannot be committed ahead of time.
 #
@@ -662,6 +707,7 @@ reconcile_workforce_audience() {
          --workforce-pool="$WORKFORCE_POOL" --location=global \
          --client-id="$project_id" >/dev/null 2>&1; then
         echo "workforce: audience updated"
+        reconcile_consumer_audience "$project_id"
     else
         # Not fatal: every OTHER consumer this script configures is unaffected,
         # and failing here would leave the OIDC clients half-written. The

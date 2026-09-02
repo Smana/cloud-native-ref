@@ -29,6 +29,10 @@ cluster holds a credential of its own.
 
 ## The chain
 
+![A browser reaches oauth2-proxy, which authenticates the human against ZITADEL and forwards the resulting id_token to the token-exchange proxy; that proxy sends the id_token to Google STS as an RFC 8693 subject token and receives a one-hour federated token in return, which it injects as X-Gke-Token; Headlamp forwards that header verbatim to the GKE API server as an Authorization bearer, and the API server resolves it to a principal identifier and a principalSet group derived from the user's ZITADEL role, which an ordinary ClusterRoleBinding authorises exactly as on aws-0. A proxy is needed at all because GKE accepts no custom OIDC issuer and Headlamp cannot perform the exchange itself, though it can forward a token a proxy hands it. The exchange requests cloud-platform scope, but a workforce principal has no default IAM permissions, so the same token that lists pods in the cluster is refused with 403 by Cloud Resource Manager and Cloud Storage](/images/diagrams/gke-token-exchange.svg)
+
+In text, in the order a request travels it:
+
 ```
 browser
   │

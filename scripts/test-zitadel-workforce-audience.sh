@@ -21,9 +21,14 @@ check() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"
           else printf '  FAIL %s: expected %q got %q\n' "$1" "$2" "$3"; fail=1; fi }
 
 SRC="${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/zitadel-oidc-clients.sh}"
-body="$(sed -n '/^reconcile_workforce_audience() {/,/^}/p' "$SRC")"
-[ -n "$body" ] || { echo "could not extract reconcile_workforce_audience() from $SRC" >&2; exit 1; }
-eval "$body"
+# BOTH halves. reconcile_workforce_audience calls reconcile_consumer_audience,
+# so lifting only the first gives exit 127 -- which is how this harness caught
+# the coupling when the second was added.
+for f in reconcile_workforce_audience reconcile_consumer_audience; do
+    body="$(sed -n "/^${f}() {/,/^}/p" "$SRC")"
+    [ -n "$body" ] || { echo "could not extract ${f}() from $SRC" >&2; exit 1; }
+    eval "$body"
+done
 
 # Records what the function would have done, so a skip is distinguishable from
 # a silent success.
@@ -40,6 +45,14 @@ gcloud() {
     case "$*" in
         *"providers describe"*) printf '%s' "${STUB_CURRENT_AUDIENCE:-}" ;;
         *"providers update-oidc"*) return "${STUB_UPDATE_RC:-0}" ;;
+    esac
+}
+kubectl() {
+    printf 'kubectl %s\n' "$*" >> "$CALLS"
+    case "$*" in
+        *"get cm"*)    printf '%s' "${STUB_CM_NAME:-configmap/gke-gcp-0-vars}" ;;
+        *jsonpath*)    printf '%s' "${STUB_CM_AUDIENCE:-}" ;;
+        *patch*)       return "${STUB_PATCH_RC:-0}" ;;
     esac
 }
 calls() { cat "$CALLS" 2>/dev/null; }
@@ -115,5 +128,49 @@ case "$out" in
     *)               check "update fails: names the consequence" "named" "$out" ;;
 esac
 
-[ "$fail" -eq 0 ] && echo "==> reconcile_workforce_audience behaves" || echo "==> ${fail} failure(s)"
+
+# ── 8. consumer half: scope already correct -> no patch ────────────────────
+# Every AWS-primary run lands here, so a false patch would be constant churn.
+reset_calls; STUB_CM_AUDIENCE="proj-123"
+out="$(reconcile_consumer_audience "proj-123" 2>&1)"; rc=$?
+check "consumer, already correct: success"  "0" "$rc"
+case "$(calls)" in
+    *patch*) check "consumer, already correct: no patch" "no-patch" "patched" ;;
+    *)       check "consumer, already correct: no patch" "no-patch" "no-patch" ;;
+esac
+
+# ── 9. consumer half: scope stale -> patch it ──────────────────────────────
+# THE BUG THIS EXISTS FOR. Without it the pool expects the new project id while
+# oauth2-proxy keeps requesting the old one, and every exchange 400s forever
+# while every component reports healthy.
+reset_calls; STUB_CM_AUDIENCE="old-proj"
+out="$(reconcile_consumer_audience "proj-123" 2>&1)"; rc=$?
+check "consumer, stale: success"            "0" "$rc"
+case "$(calls)" in
+    *patch*proj-123*) check "consumer, stale: patches to the new id" "patched" "patched" ;;
+    *)                check "consumer, stale: patches to the new id" "patched" "$(calls)" ;;
+esac
+
+# ── 10. consumer half: no ConfigMap reachable -> skip, do not fail ─────────
+# kubectl may be pointed at the IdP's cluster rather than the consumer's.
+reset_calls; STUB_CM_NAME=""; STUB_CM_AUDIENCE=""
+out="$(reconcile_consumer_audience "proj-123" 2>&1)"; rc=$?
+check "consumer, no ConfigMap: success"     "0" "$rc"
+case "$(calls)" in
+    *patch*) check "consumer, no ConfigMap: no patch" "no-patch" "patched" ;;
+    *)       check "consumer, no ConfigMap: no patch" "no-patch" "no-patch" ;;
+esac
+STUB_CM_NAME="configmap/gke-gcp-0-vars"
+
+# ── 11. consumer half: patch fails -> warn, do not abort ───────────────────
+reset_calls; STUB_CM_AUDIENCE="old-proj"; STUB_PATCH_RC=1
+out="$(reconcile_consumer_audience "proj-123" 2>&1)"; rc=$?
+check "consumer, patch fails: success"      "0" "$rc"
+case "$out" in
+    *"wrong audience"*) check "consumer, patch fails: names it" "named" "named" ;;
+    *)                  check "consumer, patch fails: names it" "named" "$out" ;;
+esac
+STUB_PATCH_RC=0
+
+[ "$fail" -eq 0 ] && echo "==> both halves of the audience contract behave" || echo "==> ${fail} failure(s)"
 exit "$fail"
