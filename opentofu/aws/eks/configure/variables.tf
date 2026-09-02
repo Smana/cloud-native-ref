@@ -103,9 +103,21 @@ variable "github_app_secret_name" {
   sensitive   = true
 }
 
-variable "cert_manager_approle_secret_name" {
+variable "openbao_root_token_secret_id" {
+  description = "Secrets Manager entry holding the OpenBao root token ({\"token\": ...}), used by the vault provider to create this cluster's JWT auth mount"
   type        = string
-  description = "SecretsManager name from where to retrieve the cert-manager approle information."
-  default     = "openbao/approles/cert-manager"
+  default     = "openbao/cloud-native-ref/tokens/root"
   sensitive   = true
+}
+
+variable "openbao_ca_cert_file" {
+  description = "CA chain used to verify OpenBao's server certificate. Written by `openbao-config.sh ca` in the deploy workflow; .tls/ is gitignored."
+  type        = string
+  default     = ".tls/ca.pem"
+}
+
+variable "openbao_jwt_audience" {
+  description = "Audience every ServiceAccount token presented to OpenBao must carry. Consumers request it via serviceAccountRef.audiences / a projected token's audience."
+  type        = string
+  default     = "openbao"
 }

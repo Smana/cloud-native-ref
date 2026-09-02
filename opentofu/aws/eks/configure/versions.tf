@@ -14,5 +14,9 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = "~> 1.14"
     }
+    vault = {
+      source  = "hashicorp/vault"
+      version = "~> 5.0"
+    }
   }
 }

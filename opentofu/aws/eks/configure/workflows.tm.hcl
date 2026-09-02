@@ -15,6 +15,17 @@ script "deploy" {
     name        = "deploy-configure"
     description = "Apply Cilium and Flux configuration"
     commands = [
+      # The vault provider (openbao.tf) verifies OpenBao against the CA chain,
+      # which must be on disk before `tofu init`. Same step the management
+      # stack runs; .tls/ is gitignored.
+      [
+        "bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run",
+        "bash", "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh", "ca",
+        "--root-ca-secret-name", global.ca_chain_secret_name,
+        "--ca-output-file", ".tls/ca.pem",
+        "--region", global.region,
+        "--profile", global.profile,
+      ],
       [global.provisioner, "init"],
       [global.provisioner, "validate"],
       # The versions come from globals in opentofu/config.tm.hcl, the single
@@ -38,6 +49,17 @@ script "preview" {
 
   job {
     commands = [
+      # The vault provider (openbao.tf) verifies OpenBao against the CA chain,
+      # which must be on disk before `tofu init`. Same step the management
+      # stack runs; .tls/ is gitignored.
+      [
+        "bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run",
+        "bash", "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh", "ca",
+        "--root-ca-secret-name", global.ca_chain_secret_name,
+        "--ca-output-file", ".tls/ca.pem",
+        "--region", global.region,
+        "--profile", global.profile,
+      ],
       [global.provisioner, "init"],
       [global.provisioner, "validate"],
       [global.provisioner, "plan", "-out=out.tfplan", "-var-file=variables.tfvars",

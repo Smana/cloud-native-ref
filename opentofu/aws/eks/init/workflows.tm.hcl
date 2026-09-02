@@ -28,6 +28,10 @@ script "deploy" {
     name        = "stage2-cilium-and-flux"
     description = "Disable VPC CNI/kube-proxy, install Cilium and Flux"
     commands = [
+      # The configure stack's vault provider needs the CA chain on disk before
+      # `tofu init`. Same step the management stack runs; configure/.tls/ is
+      # gitignored.
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-config.sh' ca --root-ca-secret-name '${global.ca_chain_secret_name}' --ca-output-file .tls/ca.pem --region '${global.region}' --profile '${global.profile}'"],
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var=\"flux_git_ref=$${TF_VAR_flux_git_ref}\"}"],
     ]
@@ -145,8 +149,17 @@ script "destroy" {
     name        = "stage2-destroy-addons"
     description = "Attempt a graceful Cilium and Flux teardown; never blocks the cluster deletion"
     commands = [
+      # The configure stack's vault provider needs the CA chain on disk before
+      # `tofu init`. Same step the management stack runs; configure/.tls/ is
+      # gitignored. In a `--reverse destroy`, OpenBao is still up at this point
+      # (the OpenBao stacks come later in the reverse walk) -- without the CA,
+      # `tofu destroy` here would abort at provider configuration, and while
+      # `destroy-stage2.sh attempt` tolerates that failure, a clean teardown is
+      # better than a tolerated one.
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
-        "bash '${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh' attempt '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure' -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
+      "cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-config.sh' ca --root-ca-secret-name '${global.ca_chain_secret_name}' --ca-output-file .tls/ca.pem --region '${global.region}' --profile '${global.profile}'"],
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
+      "bash '${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh' attempt '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure' -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
     ]
   }
 
@@ -206,7 +219,7 @@ script "destroy" {
     description = "Drop stage-2 state entries whose cluster no longer exists"
     commands = [
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
-        "bash '${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh' reconcile '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure'"],
+      "bash '${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh' reconcile '${terramate.root.path.fs.absolute}/opentofu/aws/eks/configure'"],
     ]
   }
 }

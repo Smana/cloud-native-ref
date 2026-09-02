@@ -10,8 +10,8 @@ public_domain_name  = "cloud.ogenki.io"
 # the cluster exists — see kubernetes.tf. They previously lived in eks/init but
 # that forced the kubectl provider to configure from not-yet-created cluster
 # outputs (alekc/kubectl can't defer → "no configuration has been provided").
-cert_manager_approle_secret_name = "openbao/cloud-native-ref/approles/cert-manager"
 # github_app_secret_name defaults to github/flux-app
+# openbao_root_token_secret_id defaults to openbao/cloud-native-ref/tokens/root
 # gateway_api_version is NOT set here: it is shared with GCP and passed via
 # -var from globals.gateway_api_version in opentofu/config.tm.hcl, the same way
 # cilium_version is.
