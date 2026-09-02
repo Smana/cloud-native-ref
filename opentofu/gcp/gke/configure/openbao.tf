@@ -48,5 +48,17 @@ resource "vault_jwt_auth_backend_role" "cluster" {
   token_policies  = each.value.policies
   token_ttl       = 600
   token_max_ttl   = 1200
-  token_type      = "default-service"
+
+  # Service tokens, which is what a workload wants: revocable and leased. Set
+  # per role rather than on the mount -- see the note about `tune` above.
+  #
+  # `service`, not `default-service`: the latter only sets the DEFAULT, so a
+  # client passing `token_type=batch` on login would get an unrevocable,
+  # non-leased token and the enforcement this comment describes would not exist.
+  # `service` refuses the request instead. This mount's clients are
+  # `cert-manager`, `external-secrets` and `openbao-snapshot`; a compromised
+  # ServiceAccount token for any of them could otherwise mint a token no
+  # operator can revoke. Same value, and the same reason, as the AWS twin in
+  # opentofu/aws/eks/configure/openbao.tf -- the two must not drift.
+  token_type = "service"
 }

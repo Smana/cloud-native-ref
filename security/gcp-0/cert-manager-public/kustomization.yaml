@@ -13,8 +13,12 @@ namespace: security
 # to be applied from THIS directory, which had the private issuer inheriting its
 # own precondition from the public one -- deleting this overlay would have
 # broken the private PKI silently. It now lives in
-# security/base/cert-manager-token-creator/ and is applied by ../openbao/, and
-# is deliberately NOT listed here as well: two Flux Kustomizations owning the
-# same Role would fight over it through server-side apply.
+# security/base/cert-manager-token-creator/ and is applied by ../controllers/,
+# i.e. by the `security` Kustomization that installs cert-manager itself, which
+# this overlay already dependsOn. It is deliberately NOT listed here as well:
+# two Flux Kustomizations owning the same Role would fight over it through
+# server-side apply. Note it is not applied by ../openbao/ either -- that would
+# put the private PKI's Kustomization in front of public issuance, which is
+# exactly the coupling this file's separation exists to avoid.
 resources:
   - letsencrypt-clusterissuer.yaml

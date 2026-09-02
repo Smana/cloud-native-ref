@@ -6287,10 +6287,33 @@ shred -u intermediate-ca-key.pem server-key.pem intermediate.json server.json 2>
 
 - [ ] **Step 4: Commit the public root**
 
+`.gitignore` carries a blanket `*.pem`, so this used to be a `git add` that
+silently added nothing — leaving `.github/openbao-root-ca.pem` untracked while
+the weekly drill's `openssl verify -CAfile .github/openbao-root-ca.pem` step
+failed with `No such file or directory`, *after* it had proved the restore
+worked. `.gitignore` now negates this one exact path (see the comment there for
+why a root **certificate** is safe to commit and the root **key** still is not),
+so a plain `git add` works. Assert that before trusting it, because the check is
+one command and the failure is a red Monday:
+
 ```bash
+# Not ignored => exit 1. Use check-ignore WITHOUT -v for the assertion: with -v
+# the exit status means "some pattern matched", and the negation is a match, so
+# `-v` exits 0 and prints the `!` line. Read the line, trust the plain exit code.
+git check-ignore .github/openbao-root-ca.pem; [ $? -eq 1 ] || { echo "still ignored -- the .gitignore negation is missing"; exit 1; }
 git add .github/openbao-root-ca.pem
-git commit -m "chore(pki): commit the offline root certificate for the restore drill to verify against"
+git ls-files --error-unmatch .github/openbao-root-ca.pem   # empty output => still untracked
+printf '%s\n' "chore(pki): commit the offline root certificate for the restore drill to verify against" > /tmp/pki-root-msg
+git commit -F /tmp/pki-root-msg -- .github/openbao-root-ca.pem
 ```
+
+Commit with an explicit pathspec and a message **file**, as every other task in
+this plan does — see *Conventions for every task*. `git add -f` is the right tool
+for a `variables.tfvars` (many paths, each a deliberate per-stack exception, and
+a tfvars may hold secrets, so the blanket rule must keep its force). It is the
+wrong tool here: this is one fixed public path, re-committed on every root
+rotation, and a `-f` buried in a runbook step leaves nothing behind for the next
+reader of `.gitignore` to find.
 
 **Do not delete `certificates/priv.aws.ogenki.io/root-ca` yet** — Task 17 does, after the new chain has issued a certificate.
 

@@ -6,7 +6,7 @@
 # crds/base/crds-cert-manager.yaml reads "To use this field, you must configure
 # an RBAC rule to let cert-manager request a token."
 #
-# Two issuers depend on it, which is why the Role lives in a shared base:
+# Three issuers depend on it, which is why the Role lives in a shared base:
 #
 #   - the PRIVATE `openbao` ClusterIssuer on BOTH clusters
 #     (security/{aws-0,gcp-0}/openbao/openbao-clusterissuer.yaml), which
@@ -24,16 +24,48 @@
 # place. On the public path it says nothing about Route53 and sends you looking
 # in the wrong cloud.
 #
-# WHY IT LIVES HERE. This Role used to exist only in
+# WHY IT LIVES HERE, AND WHO APPLIES IT. This Role used to exist only in
 # security/gcp-0/cert-manager-public/, owned by the ACME overlay. That was wrong
 # in both directions once the private issuers switched to token auth: aws-0 had
 # no copy at all, and on gcp-0 the private issuer silently inherited its
 # precondition from an unrelated public one -- so deleting the public issuer
-# would have broken the private PKI, with no diff to explain it. The issuer that
-# cannot work without a precondition owns it, so this is applied by both
-# `openbao` overlays. It is deliberately NOT also applied by the
-# `cert-manager-public` overlays: two Flux Kustomizations owning the same Role
-# would fight over it through server-side apply.
+# would have broken the private PKI, with no diff to explain it.
+#
+# Moving it to the two `openbao` overlays only reversed that dependency instead
+# of removing it. `security-public-certs` dependsOn `security` alone, on both
+# clusters, and says in as many words that it has "no relationship to the private
+# PKI -- deliberately, since the two issuers exist to fail independently". With
+# the Role applied by `security-openbao`, a cold build reconciles the two in
+# parallel and gcp-0's ACME dns01 solver loses its token grant whenever
+# `security-public-certs` wins the race -- the private path's failure breaking
+# the public one, which is the mirror image of the original bug.
+#
+# So it is applied by whatever applies cert-manager itself: the `security`
+# Kustomization, via security/aws-0/kustomization.yaml and
+# security/gcp-0/controllers/kustomization.yaml. Both consumers -- and every
+# future one -- already dependsOn `security`, so no ordering edge is needed in
+# either direction and neither issuer family can break the other. It stays a
+# separate directory rather than joining security/base/cert-manager/ so that base
+# remains chart-only (referencing it whole is always safe) and so the Role's
+# hardcoded `namespace: security` stays a cluster-overlay decision rather than a
+# chart one.
+#
+# Exactly ONE Kustomization applies it per cluster. Listing it from an `openbao`
+# or `cert-manager-public` overlay as well would have two Flux Kustomizations
+# fighting over the same Role through server-side apply.
+#
+# NO one-time migration step is needed on the live aws-0, and the direction is
+# why. Moving a resource between two Kustomizations is only destructive when the
+# LOSING one reconciles first: it still owns the ownership labels at that moment,
+# so its prune matches and deletes, and the new owner recreates minutes later --
+# the hazard clusters/aws-0/security/security.yaml carries a one-time annotation
+# procedure for. Here the winner is `security` and the loser is
+# `security-openbao`, which dependsOn it, so `security` applies the Role and
+# takes the `kustomize.toolkit.fluxcd.io/name` label BEFORE `security-openbao`
+# reconciles the same revision. Its prune then finds a Role labelled for another
+# Kustomization and skips it. And if `security` failed to apply, its dependent
+# would not reconcile at all, so there is no window in which nobody owns the
+# Role.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

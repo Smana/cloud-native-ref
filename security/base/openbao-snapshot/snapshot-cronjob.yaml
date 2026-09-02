@@ -109,6 +109,14 @@ spec:
               resources:
                 requests:
                   cpu: 50m
+                  # ~= the resident set of the cloud CLI at rest, which is the
+                  # typical case today: the objects this job writes are ~1 KB
+                  # (opentofu/gcp/openbao/lineage/main.tf makes that call for the
+                  # bucket's encryption), far below the 8Mi threshold that
+                  # switches gcloud to a chunked upload -- so the steady state is
+                  # "an interpreter with a cloud SDK imported" and nothing more.
+                  # Peaks are what the limit below is for, so this stays where it
+                  # was and the scheduling footprint on both clouds is unchanged.
                   memory: 150Mi
                   # The snapshot lands in an emptyDir backed by the node's root
                   # disk, so the scheduler has to account for it. Without this
@@ -122,7 +130,40 @@ spec:
                   # backup window longer. The constitution requires a limit, so
                   # there is one.
                   cpu: 300m
-                  memory: 150Mi
+                  # Memory gets the same treatment, which it did not before: it
+                  # was pinned to the request at 150Mi, i.e. no headroom at all,
+                  # on a container whose copy step is a Python cloud CLI.
+                  # Measured, not guessed -- importing the module graph that
+                  # `gcloud storage cp` needs (googlecloudsdk.gcloud_main plus
+                  # surface.storage.cp, 1178 modules, SDK 581 which is the series
+                  # the image pins at 582.0.0-0) peaks at 92.6 MiB RSS before a
+                  # single argument is parsed, a credential fetched or a byte
+                  # read. Two SDK defaults then sit on top of it:
+                  #
+                  #   storage/resumable_threshold   8Mi   -> above this, the
+                  #                                          upload is chunked
+                  #   storage/upload_chunk_size   100Mi   -> and apitools holds a
+                  #                                          buffer that size per
+                  #                                          in-flight chunk
+                  #
+                  # so a snapshot that grows past 8 MiB needs ~193 MiB for one
+                  # worker -- 43 MiB over the old limit. An OOMKill there lands
+                  # AFTER `bao operator raft snapshot save` has succeeded, so the
+                  # Job dies with exit 137 and no snapshot while
+                  # OpenBaoSnapshotJobFailed sends the responder to the JWT login
+                  # and bucket access. 512Mi clears that with room for the retry
+                  # path and for gcloud's own process pool, which sizes itself
+                  # from multiprocessing.cpu_count() -- the NODE's cores, not this
+                  # cgroup's quota.
+                  #
+                  # ONE number for both clouds, not a per-cloud patch. `aws s3
+                  # cp` is the same kind of program -- AWS CLI v2 is a frozen
+                  # CPython bundling botocore -- so 150Mi was never measured on
+                  # the AWS side either; it has simply not been pushed past it
+                  # yet. And a limit is not a reservation: raising it changes
+                  # nothing about what aws-0 schedules or bills, which removes the
+                  # only reason to make the two clouds differ here.
+                  memory: 512Mi
               volumeMounts:
                 - mountPath: "/snapshot"
                   name: snapshot
