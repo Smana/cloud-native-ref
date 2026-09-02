@@ -323,47 +323,99 @@ secret_read() {
 export_snapshot_env() {
     export CLOUD
     if [ "$CLOUD" = "aws" ]; then
+        # BOTH, and in this order of precedence: the AWS CLI resolves AWS_REGION
+        # ahead of AWS_DEFAULT_REGION, so exporting only the latter lets an
+        # AWS_REGION already in the operator's shell send the child to a
+        # different region than the parent's own --region calls use -- a region
+        # split inside one operation.
+        export AWS_REGION="$REGION"
         export AWS_DEFAULT_REGION="$REGION"
+        # Deliberately not exported when empty: that leaves an inherited
+        # AWS_PROFILE alone, matching get_aws_cmd's behaviour.
         if [ -n "$PROFILE" ]; then export AWS_PROFILE="$PROFILE"; fi
     else
         export CLOUDSDK_CORE_PROJECT="$PROJECT"
-        # Same identity OpenTofu uses -- see scripts/lib/gcloud-adc.sh for the
-        # day this cost when it was left to the CLI account.
+        # scripts/lib/gcloud-adc.sh exposes gcp_gcloud (a wrapper) and
+        # gcp_gcloud_identity (a logger), not a bare token accessor, so the
+        # token is resolved directly here instead of through the library.
+        #
+        # `local adc_token` is not cosmetic. Bash is DYNAMICALLY SCOPED: this
+        # function is called by pre_destroy_snapshot, which declares its own
+        # `local token` holding the lineage root token -- an unlocalised
+        # assignment plus `unset token` in here would clobber the caller's
+        # variable, handing the child an empty VAULT_TOKEN. Measured in bash
+        # 5.3. Naming this `adc_token` rather than `token` avoids the collision
+        # outright; `local` is what makes it safe even if the name ever
+        # collided again.
         if [ -z "${CLOUDSDK_AUTH_ACCESS_TOKEN:-}" ]; then
-            if token=$(gcloud auth application-default print-access-token 2>/dev/null) && [ -n "$token" ]; then
-                export CLOUDSDK_AUTH_ACCESS_TOKEN="$token"
+            local adc_token
+            if adc_token=$(gcloud auth application-default print-access-token 2>/dev/null) && [ -n "$adc_token" ]; then
+                export CLOUDSDK_AUTH_ACCESS_TOKEN="$adc_token"
             fi
-            unset token
         fi
     fi
 }
 
-# Name of the newest snapshot object in the lineage bucket, or empty.
+# Newest snapshot object in the lineage bucket.
+#
+#   stdout = the object name, or EMPTY when the bucket genuinely holds none
+#   return = 0 on a successful listing, 1 when the listing itself FAILED
+#
+# The two must not be conflated, and conflating them is the single most
+# dangerous mistake available in this file. An empty answer routes the caller
+# to "first deploy of this lineage -> plain init", which WRITES a fresh root
+# token and fresh recovery keys over the lineage's. Reaching that from an
+# expired session or a mistyped --profile, while the bucket still holds every
+# snapshot, produces an OpenBao whose stored recovery keys no longer match any
+# snapshot -- discovered during an incident.
+#
+# The sibling script already argues this at length for its own listing
+# (container-images/openbao-snapshot/openbao-snapshot.sh, `restore`): "this is a
+# listing failure, NOT an empty bucket". Same rule here.
 latest_snapshot() {
     if [ "$CLOUD" = "gcp" ]; then
         local listing
-        if ! listing=$(gcp_gcloud storage ls "gs://${SNAPSHOT_BUCKET}/" 2>/dev/null); then
-            echo ""
-            return 0
+        if ! listing=$(gcp_gcloud storage ls "gs://${SNAPSHOT_BUCKET}/"); then
+            log_message "ERROR" "could not list gs://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
+            return 1
         fi
-        printf '%s\n' "$listing" | sed 's#.*/##' | grep '\.snap$' | sort | tail -n1
+        # `grep || true`: grep exits 1 when it matches nothing, and this file
+        # runs with `set -o pipefail`, so an unguarded grep in a pipeline turns
+        # a legitimately empty bucket into a hard failure.
+        printf '%s\n' "$listing" | sed 's#.*/##' | { grep '\.snap$' || true; } | sort | tail -n1
     else
         local aws_cmd; aws_cmd=$(get_aws_cmd)
-        local key
-        key=$($aws_cmd s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" \
-            --query 'sort_by(Contents, &LastModified)[-1].Key' --output text 2>/dev/null || true)
-        if [ "$key" = "None" ]; then key=""; fi
-        printf '%s' "$key"
+        local out
+        # Full JSON, filtered by jq, rather than --query sort_by(...)[-1]: that
+        # query ERRORS on an empty bucket, so exit status alone could not
+        # separate "empty" from "could not list".
+        if ! out=$($aws_cmd s3api list-objects-v2 --bucket "$SNAPSHOT_BUCKET" --output json); then
+            log_message "ERROR" "could not list s3://${SNAPSHOT_BUCKET} -- a listing failure, NOT an empty bucket."
+            return 1
+        fi
+        printf '%s' "$out" | jq -r '(.Contents // []) | if length == 0 then "" else (sort_by(.LastModified) | last | .Key) end'
     fi
 }
 
 # The PKI mount's CA endpoint is unauthenticated, which makes it the one thing a
-# rehydrate can assert without a token: if it answers with a certificate, the
-# barrier unwrapped and the mount came back.
+# rehydrate can assert without a token: if it answers with a certificate that
+# chains to the CA we already trust, the barrier unwrapped and the mount came
+# back.
 verify_pki_present() {
+    # argv built as an ARRAY. `"${VAULT_CACERT:+--cacert $VAULT_CACERT}"` looks
+    # right and is not: quoted, it passes `--cacert /path` as ONE argv element
+    # ("option --cacert /path: is unknown"), and when the variable is unset it
+    # passes an empty word ("blank argument where content is expected"). Either
+    # way curl exits 2 on every run and this function reports a missing PKI
+    # mount that is actually present -- the most misleading message this script
+    # can produce, on the disaster-recovery path. Measured, both states.
+    local -a curl_args=(-fsS)
+    if [ -n "${VAULT_CACERT:-}" ]; then curl_args+=(--cacert "$VAULT_CACERT"); fi
+    if [ -n "${VAULT_SKIP_VERIFY:-}" ]; then curl_args+=(-k); fi
+
     local pem
-    if ! pem=$(curl -fsS "${VAULT_CACERT:+--cacert $VAULT_CACERT}" ${VAULT_SKIP_VERIFY:+-k} "$OPENBAO_URL/v1/pki_private_issuer/ca/pem"); then
-        log_message "ERROR" "pki_private_issuer/ca/pem did not answer -- the PKI mount is missing from the restored state"
+    if ! pem=$(curl "${curl_args[@]}" "$OPENBAO_URL/v1/pki_private_issuer/ca/pem"); then
+        log_message "ERROR" "pki_private_issuer/ca/pem did not answer. The transport failed, so this could be TLS trust or an unreachable node -- not necessarily a missing mount."
         return 1
     fi
     if ! printf '%s\n' "$pem" | openssl x509 -noout -subject >/dev/null 2>&1; then
@@ -371,6 +423,18 @@ verify_pki_present() {
         return 1
     fi
     log_message "INFO" "PKI issuer present: $(printf '%s\n' "$pem" | openssl x509 -noout -subject)"
+
+    # Chain it to the CA we were given, which makes this the assertion the
+    # design actually promises ("issuer chains to the offline root") rather than
+    # just "the bytes parse". Skipped when no --ca-file was passed, since there
+    # is then nothing to verify against.
+    if [ -n "${VAULT_CACERT:-}" ]; then
+        if ! printf '%s\n' "$pem" | openssl verify -CAfile "$VAULT_CACERT" >/dev/null 2>&1; then
+            log_message "ERROR" "the restored PKI issuer does NOT chain to ${VAULT_CACERT}. The mount came back, but under a different root than this lineage's."
+            return 1
+        fi
+        log_message "INFO" "PKI issuer chains to ${VAULT_CACERT}."
+    fi
 }
 
 # Initialize OpenBao
@@ -469,11 +533,24 @@ rehydrate_openbao() {
         exit 1
     fi
 
-    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health")
+    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health" || true)
     case "$status_code" in
         200)
-            log_message "INFO" "OpenBao is already initialized, unsealed, and active -- nothing to rehydrate"
-            exit 0 ;;
+            # Initialised and unsealed -- but that is also exactly what a node
+            # left behind by a FAILED restore looks like: throwaway keys, no
+            # lineage data. Exiting 0 on the strength of a 200 alone would turn
+            # a loud failure into a silent success on the next deploy, and the
+            # management stack would then run against an empty store. One
+            # unauthenticated request settles it.
+            if verify_pki_present; then
+                log_message "INFO" "OpenBao is already initialized, unsealed, and holds the PKI -- nothing to rehydrate"
+                exit 0
+            fi
+            log_message "ERROR" "OpenBao is initialized and unsealed but has NO PKI mount. This is the state a failed"
+            log_message "ERROR" "restore leaves behind: the node holds throwaway keys that were never stored, so"
+            log_message "ERROR" "nothing can authenticate to it. Destroy and redeploy the cluster stack with"
+            log_message "ERROR" "TM_OPENBAO_SKIP_SNAPSHOT=true -- there is nothing on this node worth snapshotting."
+            exit 1 ;;
         501) ;;
         *)
             log_message "ERROR" "Unexpected status code: $status_code"
@@ -481,15 +558,52 @@ rehydrate_openbao() {
     esac
 
     export_snapshot_env
+
+    # Distinguish "the bucket is empty" from "we could not read the bucket".
+    # Only the first may proceed to a plain init, because a plain init OVERWRITES
+    # the lineage's stored root token and recovery keys. Getting there from an
+    # expired session, while the bucket still holds every snapshot, is how a
+    # lineage becomes unrecoverable.
     local latest
-    latest=$(latest_snapshot)
+    if ! latest=$(latest_snapshot); then
+        log_message "ERROR" "Refusing to initialise: cannot prove ${SNAPSHOT_BUCKET} is empty."
+        log_message "ERROR" "Initialising now would overwrite this lineage's stored root token and"
+        log_message "ERROR" "recovery keys. Fix the listing (credentials, region, bucket name) and re-run."
+        exit 1
+    fi
+
     if [ -z "$latest" ]; then
         log_message "INFO" "No snapshot in ${SNAPSHOT_BUCKET}: first deploy of this lineage. Initialising and storing the new keys."
         init_openbao
         return 0
     fi
 
+    # Pre-flight, all of it before the irreversible init. Each of these used to
+    # be discovered only afterwards, stranding the node.
+    if ! echo "$FRESHNESS_DAYS" | grep -Eq '^[0-9]+$'; then
+        log_message "ERROR" "--freshness-days must be a positive integer (got '${FRESHNESS_DAYS}')"
+        exit 1
+    fi
+    for bin in openssl curl; do
+        if ! command -v "$bin" >/dev/null 2>&1; then
+            log_message "ERROR" "$bin is required by the restore path and is not installed"
+            exit 1
+        fi
+    done
+    if ! secret_read "$RECOVERY_KEYS_SECRET_NAME" >/dev/null 2>&1; then
+        log_message "ERROR" "Cannot read ${RECOVERY_KEYS_SECRET_NAME}. The restore mints a root token from it,"
+        log_message "ERROR" "so refusing before the init rather than stranding the node afterwards."
+        exit 1
+    fi
+
     log_message "INFO" "Snapshot ${latest} found in ${SNAPSHOT_BUCKET}. Initialising with throwaway shares, then restoring."
+
+    local scratch
+    scratch=$(mktemp -d)
+    # On a trap, not duplicated per branch: the scratch dir holds the downloaded
+    # snapshot, and an interrupt mid-restore would otherwise leave it behind.
+    trap 'rm -rf "$scratch"' EXIT INT TERM
+
     local init_output root_token
     init_output=$(bao operator init -recovery-shares=1 -recovery-threshold=1 -format=json)
     root_token=$(printf '%s' "$init_output" | jq -r '.root_token // empty')
@@ -504,26 +618,30 @@ rehydrate_openbao() {
         exit 1
     fi
 
-    local scratch
-    scratch=$(mktemp -d)
-    # VAULT_TOKEN drives the snapshot script's authenticate(); the recovery keys
-    # secret is the LINEAGE's, which is what generate_root_token needs once the
-    # restored token store has replaced the throwaway one.
+    # VAULT_TOKEN is the throwaway root token, and it is what performs the
+    # restore: it is the only credential that exists on this node. The
+    # LINEAGE's recovery keys are passed too, because the child needs them
+    # AFTER the restore, once the snapshot's token store has replaced the
+    # throwaway one.
     if ! VAULT_TOKEN="$root_token" RECOVERY_KEYS_SECRET_ID="$RECOVERY_KEYS_SECRET_NAME" \
         sh "$(dirname "$0")/openbao-snapshot.sh" restore \
             -a "$OPENBAO_URL" -b "$SNAPSHOT_BUCKET" -s "$scratch/bao.snap" \
             -d "$FRESHNESS_DAYS" --freshness warn; then
-        rm -rf "$scratch"
-        log_message "ERROR" "Restore failed. The node is initialised with THROWAWAY keys that were not stored: destroy and redeploy the cluster stack rather than trying to use it."
+        log_message "ERROR" "Restore failed. The node is initialised with THROWAWAY keys that were never stored,"
+        log_message "ERROR" "so nothing can authenticate to it. Destroy and redeploy the cluster stack; the"
+        log_message "ERROR" "pre-destroy snapshot will refuse (no usable token), so pass"
+        log_message "ERROR" "TM_OPENBAO_SKIP_SNAPSHOT=true -- there is nothing here worth snapshotting."
         exit 1
     fi
-    rm -rf "$scratch"
     unset root_token
 
     if ! verify_pki_present; then
         exit 1
     fi
-    log_message "INFO" "Rehydrated from ${latest}."
+    # Deliberately not naming ${latest}: the child re-lists and selects
+    # independently, so its own "Restoring snapshot ..." line is the
+    # authoritative one and this must not contradict it.
+    log_message "INFO" "Rehydrate complete; see the restore output above for the snapshot used."
 }
 
 # One last snapshot before `tofu destroy` takes the node away. Runs from the
@@ -546,23 +664,33 @@ pre_destroy_snapshot() {
         exit 1
     fi
 
-    local token
-    if ! token=$(secret_read "$ROOT_TOKEN_SECRET_NAME" | jq -r '.token // empty') || [ -z "$token" ]; then
+    # `export_snapshot_env` FIRST, then read the token. Order matters: that
+    # function must not be able to touch this scope's `token`, and while it now
+    # declares its own local, doing the read afterwards means a future edit to
+    # it cannot reintroduce the clobber. (It did clobber it: bash is dynamically
+    # scoped, so its non-local `token` assignment plus `unset token` destroyed
+    # this one, and the child was handed an empty VAULT_TOKEN -- so a GCP
+    # destroy could never take its final snapshot.)
+    export_snapshot_env
+
+    local root_token
+    if ! root_token=$(secret_read "$ROOT_TOKEN_SECRET_NAME" | jq -r '.token // empty') || [ -z "$root_token" ]; then
         log_message "ERROR" "Could not read the root token from $ROOT_TOKEN_SECRET_NAME"
         exit 1
     fi
 
-    export_snapshot_env
     local scratch
     scratch=$(mktemp -d)
-    if ! VAULT_TOKEN="$token" sh "$(dirname "$0")/openbao-snapshot.sh" save \
+    # On a trap: this scratch dir holds the real snapshot until it is uploaded,
+    # so an interrupt mid-upload would otherwise leave it in /tmp.
+    trap 'rm -rf "$scratch"' EXIT INT TERM
+
+    if ! VAULT_TOKEN="$root_token" sh "$(dirname "$0")/openbao-snapshot.sh" save \
             -a "$OPENBAO_URL" -b "$SNAPSHOT_BUCKET" -s "$scratch/bao.snap"; then
-        rm -rf "$scratch"
         log_message "ERROR" "Pre-destroy snapshot failed; not destroying."
         exit 1
     fi
-    rm -rf "$scratch"
-    unset token
+    unset root_token
     log_message "INFO" "Pre-destroy snapshot stored in ${SNAPSHOT_BUCKET}."
 }
 

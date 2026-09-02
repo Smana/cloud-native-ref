@@ -209,6 +209,9 @@ authenticate() {
     if [ -n "${VAULT_TOKEN:-}" ]; then
         echo "${info}: Using the token supplied in VAULT_TOKEN."
         export VAULT_TOKEN
+        # Recorded so restore() knows not to replace it with a token minted from
+        # recovery keys that may not belong to the node in front of us.
+        SUPPLIED_VAULT_TOKEN=1
         return 0
     fi
 
@@ -381,16 +384,23 @@ restore() {
     fi
 
     if [ "${CLOUD}" = "gcp" ]; then
-        gcloud storage cp "gs://${BUCKET_NAME}/${SNAP}" /tmp/bao.snap
+        gcloud storage cp "gs://${BUCKET_NAME}/${SNAP}" "${SNAPSHOT_FILE}"
     else
-        aws s3 cp "s3://${BUCKET_NAME}/${SNAP}" /tmp/bao.snap
+        aws s3 cp "s3://${BUCKET_NAME}/${SNAP}" "${SNAPSHOT_FILE}"
     fi
     echo "${info}: Restoring snapshot ${SNAP}"
 
-    VAULT_TOKEN=$(generate_root_token)
-    export VAULT_TOKEN
+    # The pre-restore mint exists for the JWT and AppRole paths, whose tokens
+    # lack sys/storage/raft/snapshot-force. A caller-supplied token is already
+    # root on this node -- and on a rehydrate it is the ONLY thing that is,
+    # because the lineage's recovery keys belong to the snapshot we are about to
+    # restore, not to the throwaway init we are restoring over.
+    if [ -z "${SUPPLIED_VAULT_TOKEN:-}" ]; then
+        VAULT_TOKEN=$(generate_root_token)
+        export VAULT_TOKEN
+    fi
 
-    bao operator raft snapshot restore -force /tmp/bao.snap
+    bao operator raft snapshot restore -force "${SNAPSHOT_FILE}"
 
     # A raft restore replaces the entire storage backend, token store included,
     # so the token minted above no longer exists. Everything after this point —
