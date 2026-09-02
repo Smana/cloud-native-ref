@@ -1,0 +1,6 @@
+misconfigurations:
+  # S3 access logging. The bucket holds ~1 KB objects written by a CronJob and
+  # read by a deploy; OpenBao's own audit is where secret-access auditing
+  # belongs, not S3 request logs about a backup file.
+  - id: AVD-AWS-0089
+    statement: "No access logging on the snapshot bucket: request logs on a backup artefact add cost and no signal."
