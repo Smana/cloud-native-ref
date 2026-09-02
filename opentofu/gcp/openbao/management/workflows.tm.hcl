@@ -58,7 +58,7 @@ globals {
 
 script "deploy" {
   name        = "GCP OpenBao Management Deploy (opt-in)"
-  description = "Configure the PKI mount, cert-manager role and AppRole"
+  description = "Rehydrate, then configure the PKI mount, cert-manager PKI role and policies"
 
   job {
     commands = [

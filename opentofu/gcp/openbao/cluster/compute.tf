@@ -174,19 +174,34 @@ resource "google_compute_instance_group_manager" "openbao" {
   # stayed in the MIG, and served nothing. Fixing the IAM changed nothing,
   # because nothing ever tried again; the instance had to be deleted by hand.
   #
-  # Auto-healing would have replaced that node. It would also DESTROY THE PKI on
-  # any node that had already been initialised. Auto-healing RECREATEs the
-  # instance, the data disk above is `auto_delete = true` with no source, and
-  # OpenBao keeps everything in `storage "file"` on it -- so the successor boots
-  # with a blank disk that setup-local-disks.sh runs mkfs over. What comes back
-  # has no PKI mount, no imported issuer, no AppRole. Worse, the root token in
-  # Secret Manager now belongs to a server that no longer exists, so the
-  # management stack cannot even plan, let alone self-repair.
+  # Auto-healing would have replaced that node. It would also wipe its storage.
+  # Auto-healing RECREATEs the instance, the data disk above is
+  # `auto_delete = true` with no source, and OpenBao keeps everything in
+  # `storage "file"` on it -- so the successor boots with a blank disk that
+  # setup-local-disks.sh runs mkfs over. What comes back has no PKI mount and no
+  # imported issuer, and the root token in Secret Manager now belongs to a
+  # server that no longer exists.
+  #
+  # Recoverable, though, and less costly than it once was:
+  #   - There is no AppRole to lose. cert-manager and the snapshot job now
+  #     authenticate through the cluster's JWT mount; the AppRole backend that
+  #     used to live here is gone (openbao/management/auth.tf, secrets.tf).
+  #   - The mount, the issuer and the root token all come back: the management
+  #     stack's deploy runs `openbao-config.sh rehydrate` BEFORE its apply,
+  #     restoring the lineage's newest snapshot into the blank node and writing
+  #     a fresh root token.
+  #
+  # What is still lost is everything written since that snapshot -- and, more to
+  # the point, nothing triggers a rehydrate on an unattended replacement. The
+  # node would sit blank and sealed, serving nothing, until an operator noticed
+  # and ran the management deploy.
   #
   # The health check is TCP on 8200 with a 30-second unhealthy threshold
   # (load_balancer.tf), so an OOM on a 2 GB e2-small, or any 30-second stall
   # after initial_delay_sec, would be enough to trigger it. That converts a
-  # recoverable "restart the service" into unrecoverable data loss, unattended.
+  # recoverable "restart the service" into an unattended outage that only an
+  # operator-run rehydrate ends, plus the loss of everything written since the
+  # last snapshot.
   #
   # The actual root cause was systemd giving up, not the absence of a node
   # replacer -- so it is fixed where it happened: scripts/startup-script.sh

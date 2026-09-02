@@ -106,10 +106,35 @@ script "destroy" {
         ${global.cloud_gate}
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
-        # The vault provider (openbao.tf) needs the CA chain on disk before init.
-        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+        # The CA fetch is BEST-EFFORT here, and only here -- deploy and preview
+        # above keep it strict, because there the vault provider must configure
+        # for the apply to mean anything.
+        #
+        # On the destroy path it is the opposite. `write_ca` in
+        # openbao-config.sh exits non-zero on four paths -- secret unreadable,
+        # empty value, mkdir failure, non-PEM content -- and an expired ADC
+        # reaches the first of them. Under the `set -euo pipefail` above, that
+        # aborts this script BEFORE destroy-stage2.sh runs, which is precisely
+        # the 2026-08-24 failure this script's header memorialises: a stale
+        # credential left a live GKE cluster with no workflow path to remove it.
+        # AWS hit the same shape and was corrected -- see the long comment in
+        # opentofu/aws/openbao/cluster/workflows.tm.hcl about a CA fetch
+        # hard-blocking a destroy "with the documented override having no
+        # effect".
+        #
+        # Nothing downstream requires the CA: `destroy-stage2.sh attempt`
+        # already tolerates a provider-configure failure, so a missing CA
+        # degrades this run from "removed the in-cluster objects" to "left them
+        # for gke/init to delete with the cluster" -- which is the same
+        # outcome either way, moments later.
+        if ! bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
           --cloud gcp --project ogenki-435905 \
-          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem; then
+          echo "[warn] CA chain fetch failed -- continuing anyway."
+          echo "       The vault provider will fail to configure and destroy-stage2.sh"
+          echo "       will fall through to its tolerant path. Failing here instead"
+          echo "       would strand the live GKE cluster gke/init is about to delete."
+        fi
         bash "${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh" \
           attempt "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure" \
           -var='cilium_version=${global.cilium_version}' \

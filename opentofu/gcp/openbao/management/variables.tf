@@ -15,6 +15,30 @@ variable "private_domain_name" {
   default     = "priv.gcp.ogenki.io"
 }
 
+variable "pki_additional_allowed_domains" {
+  description = <<-EOT
+    Extra domains the cert-manager PKI role may issue for, on top of
+    `private_domain_name`.
+
+    Empty for a GCP-only lineage, and that is the point: both clouds'
+    intermediates were signed by the same offline root, so a certificate this CA
+    mints for an AWS private name is chain-valid and trusted -- including
+    `bao.priv.aws.ogenki.io`. A GCP-only deploy has no use for that reach.
+
+    A STANDBY deploy -- one restoring the AWS lineage's snapshot, so it also
+    carries `seal_provider = "awskms"` in the cluster stack -- sets this to
+    ["priv.aws.ogenki.io"] so it can issue for aws-0's workloads.
+
+    Why this is an input and not "the snapshot brings the widened role back":
+    this stack MANAGES that role. A rehydrate does restore it as the snapshot
+    recorded it, but the `tofu apply` that immediately follows reconciles it to
+    whatever this list produces -- narrowing it again and breaking the standby's
+    ability to issue for aws-0. The widening has to be declared, not inherited.
+  EOT
+  type        = list(string)
+  default     = []
+}
+
 variable "openbao_ca_cert_file" {
   description = "Local path to the CA chain used to verify OpenBao's certificate. Written by `openbao-config.sh ca --cloud gcp` before this stack runs; OpenBao's cert comes from the offline root, which no system trust store knows."
   type        = string
