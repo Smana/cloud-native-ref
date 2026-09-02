@@ -64,7 +64,27 @@ cd "${dir}"
 
 case "${mode}" in
 attempt)
-  tofu init -lock-timeout=5m
+  # Tolerant, for the same reason the destroy below is, and this was the one
+  # gap in that contract. `set -euo pipefail` is on, so a bare `tofu init`
+  # exiting non-zero here -- an expired session, an unreachable backend or
+  # module registry, a lock held by another run -- terminates this script, which
+  # terminates the Terramate destroy script, which means the NEXT job never runs
+  # and the live cluster this helper exists to get out of the way of is left
+  # billing. The header says "NOT treating this as fatal"; the destroy honoured
+  # that and the init did not.
+  #
+  # Bailing out with 0 is safe rather than sloppy: everything this stack tracks
+  # lives inside the cluster the next job deletes, and `reconcile` reads the
+  # state afterwards and is deliberately LOUD when it cannot -- "Refusing to
+  # assume it is empty". So a failed init is reported at the point where it can
+  # be acted on, instead of blocking a teardown at the point where it cannot.
+  if ! tofu init -lock-timeout=5m; then
+    echo "[warn] stage 2 'tofu init' FAILED -- skipping the graceful destroy."
+    echo "[warn] NOT treating this as fatal: blocking here would strand the"
+    echo "[warn] cluster the next job deletes. The 'reconcile' mode will fail"
+    echo "[warn] loudly afterwards if this stack's state is still unreadable."
+    exit 0
+  fi
 
   # -refresh=false, for a reason on each cloud:
   #
