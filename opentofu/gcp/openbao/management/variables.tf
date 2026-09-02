@@ -94,13 +94,13 @@ variable "pki_max_lease_ttl" {
 }
 
 variable "pki_leaf_ttl" {
-  description = "Default lifetime of an issued leaf, in seconds. 90 days: cert-manager renews at two-thirds of lifetime, so this exercises renewal roughly every 60 days."
+  description = "Default lifetime of an issued leaf, in seconds, for a caller that requests none (30 days). A caller may ask for up to pki_leaf_max_ttl."
   type        = number
-  default     = 7776000
+  default     = 2592000
 }
 
 variable "pki_leaf_max_ttl" {
-  description = "Maximum leaf lifetime a caller may request, in seconds"
+  description = "Maximum leaf lifetime a caller may request, in seconds (90 days)"
   type        = number
   default     = 7776000
 }

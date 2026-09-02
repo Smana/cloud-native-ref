@@ -77,8 +77,24 @@ variable "pki_max_lease_ttl" {
   default     = 94670856
 }
 
+# 30 days on BOTH clouds, and the two knobs are deliberately different values.
+# This one is only what a caller gets when it requests no duration of its own;
+# pki_leaf_max_ttl below is the cap. Keeping the default well under the cap is
+# the point of having both: a caller that has not thought about lifetime gets a
+# short certificate, and one that needs longer has to ask.
+#
+# It is behaviour-neutral today. The only Certificate issued by this role is
+# infrastructure/base/gapi/platform-private-gateway-certificate.yaml, which
+# asks for `duration: 2160h` (90 d, i.e. exactly the cap) with
+# `renewBefore: 360h`, so it never sees this default. GCP used to set this to
+# 90 d as well, making default == cap and quietly handing every future caller
+# the maximum; its comment also justified the value by a renewal cadence that
+# the Certificate's own duration decides, not this variable.
+#
+# Shortening the leaf lifetime that is actually issued means changing that
+# Certificate's `duration` -- a behaviour change, and a separate decision.
 variable "pki_leaf_ttl" {
-  description = "Default TTL (in seconds) for issued leaf certificates (default 30 days)"
+  description = "Default lifetime of an issued leaf, in seconds, for a caller that requests none (30 days). A caller may ask for up to pki_leaf_max_ttl."
   type        = number
   default     = 2592000
 }
