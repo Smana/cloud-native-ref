@@ -52,7 +52,11 @@ spec:
       comment: "Harbor admin user"
       superuser: true
   backup:
-    schedule: "0 1 * * *"
+    # SIX fields, seconds first -- CNPG uses robfig/cron, not Kubernetes CronJob
+    # syntax, so a five-field expression is silently shifted one position left
+    # rather than rejected. `0 1 * * *` meant EVERY HOUR at :01:00.
+    # See security/base/zitadel/sqlinstance.yaml for the measurement.
+    schedule: "0 0 1 * * *"
     bucketName: "${project_id}-ogenki-cnpg-backups"
   crossplane:
     compositionRef:

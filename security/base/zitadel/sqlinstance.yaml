@@ -140,7 +140,18 @@ spec:
     bucketName: "${region}-ogenki-cnpg-backups"
     path: "zitadel-20260902"
   backup:
-    schedule: "0 0 * * *"
+    # SIX fields, and the first one is SECONDS. CNPG does not use Kubernetes
+    # CronJob syntax here: it uses the robfig/cron format, so a five-field
+    # expression is not rejected -- it is silently reinterpreted one position to
+    # the left. `0 0 * * *` parsed as (sec=0, min=0, hour=*, dom=*, month=*)
+    # means EVERY HOUR at :00:00, not daily at midnight.
+    #
+    # Measured 2026-09-02: this cluster had six "daily" base backups before
+    # 13:00, and harbor (`0 1 * * *`) fired at 08:01, 09:01, 10:01, 11:01, 12:01
+    # and 13:01. Nothing errors, nothing warns, and the resource is still named
+    # `...-daily-backup` -- the only symptom is 24x the intended object count and
+    # S3 cost, which looks like normal growth.
+    schedule: "0 0 0 * * *"
     bucketName: "${region}-ogenki-cnpg-backups"
   crossplane:
     compositionRef:
