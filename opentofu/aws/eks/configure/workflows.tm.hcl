@@ -131,11 +131,24 @@ script "drift" "reconcile" {
     commands = [
       global.openbao_ca_cmd.args,
       ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
-      # No version -var flags: applying a saved plan takes its variable values
-      # from the plan file, which `drift detect` above wrote with them.
-      [global.provisioner, "apply", "-input=false", "-auto-approve", "-lock-timeout=5m", "-var-file=variables.tfvars", "drift.tfplan", {
+      # DIVERGES from the eight other copies of this script, deliberately, on two
+      # points -- because this override exists to make `drift reconcile` work in
+      # this stack, and mirroring a script that cannot run would achieve nothing.
+      #
+      #   1. No `-var-file`. `tofu apply -help`: "If you don't provide a saved
+      #      plan file then this command will also accept all of the
+      #      plan-customization options" -- so passing one WITH a saved plan is
+      #      rejected. Applying a plan takes its variable values from the plan,
+      #      which also covers the four version vars `drift detect` passes above.
+      #   2. `out.tfplan`, the name `drift detect` actually writes. The other
+      #      copies apply `drift.tfplan`, which nothing in this repo creates.
+      #
+      # Either one alone makes the command fail, so `drift reconcile` has never
+      # run anywhere here. Fixing the other eight is a separate change: it
+      # touches every stack, and the script runs `apply -auto-approve`.
+      [global.provisioner, "apply", "-input=false", "-auto-approve", "-lock-timeout=5m", "out.tfplan", {
         sync_deployment = true
-        tofu_plan_file  = "drift.tfplan"
+        tofu_plan_file  = "out.tfplan"
       }],
     ]
   }
