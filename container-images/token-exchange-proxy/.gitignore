@@ -1,0 +1,4 @@
+# The compiled binary, if someone runs `go build` in this directory.
+# Pre-commit's large-file hook catches it, but only after it has already been
+# staged -- twice now during this component's development.
+/token-exchange-proxy

@@ -47,7 +47,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: token-exchange-proxy
-          image: ghcr.io/smana/token-exchange-proxy:v0.1.0 # pinned, never latest
+          image: ghcr.io/smana/token-exchange-proxy:v0.1.1 # pinned, never latest
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

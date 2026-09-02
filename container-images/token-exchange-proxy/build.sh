@@ -2,7 +2,7 @@
 set -e
 
 # Configuration
-VERSION="v0.1.0"
+VERSION="v0.1.1"
 REGISTRY="${CONTAINER_REGISTRY:-ghcr.io/smana}"
 IMAGE_NAME="token-exchange-proxy"
 FULL_IMAGE="${REGISTRY}/${IMAGE_NAME}:${VERSION}"

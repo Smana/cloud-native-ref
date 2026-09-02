@@ -10,6 +10,9 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -74,7 +77,14 @@ func newHandler(ex *Exchanger, cfg Config, upstream *url.URL) http.Handler {
 			// would be reached carrying whatever ambient credentials it falls
 			// back to -- the shared-identity behaviour this proxy exists to
 			// remove -- as a silent, invisible regression.
-			log.Printf("token exchange failed: %v", err)
+			// The subject token's own iss/aud/azp alongside the error. An
+			// authorization server rejecting an exchange typically says only
+			// `invalid_grant`, which is indistinguishable between a wrong
+			// audience, an untrusted issuer, an expired token and a malformed
+			// one -- while every component in the chain reports healthy. These
+			// three claims separate those cases immediately, and none of them
+			// is secret: they are configuration, not credential.
+			log.Printf("token exchange failed: %v (subject %s)", err, subjectDiagnostics(subject))
 			http.Error(w, "token exchange failed", http.StatusBadGateway)
 			return
 		}
@@ -115,4 +125,32 @@ func stripHopByHop(h http.Header) {
 		}
 	}
 	h.Del("Connection")
+}
+
+// subjectDiagnostics renders the subject token's issuer, audience and authorised
+// party for a log line. It NEVER returns token material: iss, aud and azp are
+// configuration values, not credentials, and they are exactly what distinguishes
+// an audience mismatch from an untrusted issuer when the authorization server
+// will only say `invalid_grant`.
+//
+// The signature is not verified -- that is the authorization server's job, and
+// this runs only where the server has already refused the token.
+func subjectDiagnostics(tok string) string {
+	parts := strings.Split(tok, ".")
+	if len(parts) != 3 {
+		return "not a JWT (opaque or malformed subject token)"
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "undecodable JWT payload"
+	}
+	var c struct {
+		Iss string          `json:"iss"`
+		Azp string          `json:"azp"`
+		Aud json.RawMessage `json:"aud"`
+	}
+	if err := json.Unmarshal(payload, &c); err != nil {
+		return "unparseable JWT claims"
+	}
+	return fmt.Sprintf("iss=%s azp=%s aud=%s", c.Iss, c.Azp, string(c.Aud))
 }
