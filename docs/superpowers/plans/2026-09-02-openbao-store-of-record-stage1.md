@@ -4408,10 +4408,20 @@ node can be rehydrated. destroy snapshots to the lineage bucket first."
 - Modify: `opentofu/gcp/openbao/management/iam.tf`
 - Modify: `opentofu/gcp/openbao/management/outputs.tf`
 - Modify: `opentofu/gcp/openbao/management/variables.tf`
+- Modify: `opentofu/gcp/openbao/management/backend.tf` and
+  `opentofu/gcp/openbao/management/policies/cert-manager.hcl.tftpl` — comments only,
+  both falsified by Step 2. `backend.tf` justifies this stack's state protection by
+  "cert-manager's live AppRole secret_id", which no longer exists; the policy template
+  documents cert-manager's runtime calls as `POST auth/approle/login`, which is now
+  `auth/jwt/<cluster>/login`, and reasons about "a leaked secret_id" that cannot exist.
+  Both would otherwise survive as the only places in the GCP tree still describing
+  AppRole as current.
 - Modify: `opentofu/gcp/openbao/management/policies/snapshot.hcl`
 - Create: `opentofu/gcp/openbao/management/mounts.tf`
 - Create: `opentofu/gcp/gke/configure/openbao.tf`
-- Modify: `opentofu/gcp/gke/configure/providers.tf`, `versions.tf`, `variables.tf`, `variables.tfvars`, `data.tf`, `kubernetes.tf`, `workflows.tm.hcl`
+- Modify: `opentofu/gcp/gke/configure/providers.tf`, `versions.tf`, `variables.tf`,
+  `data.tf`, `kubernetes.tf`, `workflows.tm.hcl`. **Not** `variables.tfvars`: every new
+  variable carries a correct real-value default, so there is nothing to set there.
 
 - [ ] **Step 1: Management workflow — rehydrate replaces init; destroy gated**
 
