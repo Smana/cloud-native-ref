@@ -13,7 +13,6 @@ locals {
   snapshot_bucket_name = var.snapshot_bucket_name == "" ? format("%s-ogenki-openbao-snapshot", var.region) : var.snapshot_bucket_name
 }
 
-#trivy:ignore:AVD-AWS-0104
 resource "aws_kms_key" "snapshot" {
   description             = "Used for the Vault s3 bucket"
   enable_key_rotation     = true

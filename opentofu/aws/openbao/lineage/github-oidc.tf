@@ -34,9 +34,13 @@ data "aws_iam_policy_document" "drill_assume" {
     }
 
     # Only the scheduled/dispatched workflow on main. A pull request from a
-    # fork carries a different sub and is refused.
+    # fork carries a different sub and is refused. An exact-match condition,
+    # not a pattern-match one: the value has no wildcard today, and the
+    # exact-match test keeps it that way -- a later edit to something like
+    # refs/heads/* would silently widen the trust under a pattern-match
+    # condition without anyone touching an operator.
     condition {
-      test     = "StringLike"
+      test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values   = ["repo:${var.github_repository}:ref:refs/heads/main"]
     }
@@ -51,26 +55,33 @@ resource "aws_iam_role" "drill" {
 }
 
 data "aws_iam_policy_document" "drill" {
-  # By alias, not by ARN, in every region: the seal key is multi-region and
-  # the drill may run against either copy. kms:ResourceAliases is multivalued,
-  # hence ForAnyValue.
+  # Exact ARNs, not the alias-plus-condition indirection used by grants
+  # written in stacks that do NOT create the key (e.g. the standby-seal role
+  # in opentofu/shared/aws-gcp-federation, which has to resolve the key by
+  # its alias at grant time): this stack creates both keys, so it can name
+  # them directly. The seal key ARN uses the bare key/<id> form with a region
+  # wildcard: a multi-region key shares its key ID across regions, so this
+  # one ARN matches both the primary in var.region and the replica in
+  # var.replica_region.
+  #
+  # Actions are the whole requirement for what the drill does: an `awskms`
+  # seal wraps a locally generated key with kms:Encrypt and unwraps with
+  # kms:Decrypt; SSE-KMS GetObject needs only kms:Decrypt. Nothing here asks
+  # KMS to generate that data key itself, and nothing here moves ciphertext
+  # to a different key, so neither of those two other action families
+  # belongs in this policy.
   statement {
-    sid    = "SealAndBucketKeysByAlias"
+    sid    = "SealAndBucketKeys"
     effect = "Allow"
     actions = [
       "kms:Encrypt",
       "kms:Decrypt",
       "kms:DescribeKey",
-      "kms:GenerateDataKey*",
-      "kms:ReEncrypt*",
     ]
-    resources = ["arn:aws:kms:*:${data.aws_caller_identity.this.account_id}:key/*"]
-
-    condition {
-      test     = "ForAnyValue:StringEquals"
-      variable = "kms:ResourceAliases"
-      values   = [var.seal_key_alias, var.snapshot_key_alias]
-    }
+    resources = [
+      "arn:aws:kms:*:${data.aws_caller_identity.this.account_id}:key/${aws_kms_key.seal.key_id}",
+      aws_kms_key.snapshot.arn,
+    ]
   }
 
   statement {
