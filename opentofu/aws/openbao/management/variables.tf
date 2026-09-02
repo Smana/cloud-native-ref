@@ -38,13 +38,8 @@ variable "allowed_cidr_blocks" {
   default     = ["10.0.0.0/16"]
 }
 
-variable "root_ca_secret_name" {
-  description = "The name of the AWS Secrets Manager secret containing the root CA certificate bundle"
-  type        = string
-}
-
-variable "cert_manager_approle_secret_name" {
-  description = "The name of the AWS Secrets Manager secret containing the cert-manager AppRole credentials"
+variable "intermediate_ca_secret_name" {
+  description = "AWS Secrets Manager entry holding the intermediate CA pem_bundle ({\"bundle\": \"<cert>\\n<key>\"}) from the offline ceremony. Its private key exists nowhere else on AWS."
   type        = string
 }
 
@@ -76,18 +71,6 @@ variable "pki_domains" {
   default     = ["cluster.local"]
 }
 
-variable "pki_key_type" {
-  description = "The generated key type"
-  type        = string
-  default     = "ec"
-}
-
-variable "pki_key_bits" {
-  description = "The number of bits of generated keys"
-  type        = number
-  default     = 256
-}
-
 variable "pki_max_lease_ttl" {
   description = "Maximum TTL (in seconds) for the mount and the intermediate issuer (default 3 years)"
   type        = number
@@ -104,24 +87,6 @@ variable "pki_leaf_max_ttl" {
   description = "Maximum TTL (in seconds) a caller may request for a leaf certificate (default 90 days)"
   type        = number
   default     = 7776000
-}
-
-variable "snapshot_approle_secret_name" {
-  description = "The name of the AWS Secrets Manager secret holding the snapshot agent's AppRole credentials and job configuration"
-  type        = string
-  default     = "security/openbao/openbao-snapshot"
-}
-
-variable "recovery_keys_secret_name" {
-  description = "The name of the AWS Secrets Manager secret holding the OpenBao recovery keys. Referenced by the snapshot job's restore path; the job's IAM role deliberately cannot read it (restore is an operator action)."
-  type        = string
-  default     = "openbao/cloud-native-ref/tokens/recovery"
-}
-
-variable "snapshot_bucket_name" {
-  description = "S3 bucket where raft snapshots are stored"
-  type        = string
-  default     = ""
 }
 
 variable "admin_username" {
@@ -141,12 +106,10 @@ variable "admin_credentials_secret_name" {
 # wiring remote state between them for a single flag and this stack has no
 # other cross-stack coupling.
 #
-# Getting it wrong is loud rather than silent in the direction that matters:
-# "ha" against a dev cluster fails the apply on raft endpoints that do not
-# exist on file storage. "dev" against an ha cluster leaves dead server cleanup
-# off, which is what OpenBaoRaftNodeLost exists to catch.
+# Both modes are raft now; `mode` only decides whether autopilot's dead-server
+# cleanup is configured (autopilot.tf), which needs the five-node quorum.
 variable "mode" {
-  description = "Storage mode of the target OpenBao cluster: 'dev' (file, single node) or 'ha' (raft). Must match the cluster stack."
+  description = "Storage mode of the target OpenBao cluster: 'dev' (single-node raft) or 'ha' (five-node raft). Must match the cluster stack."
   type        = string
   default     = "dev"
 

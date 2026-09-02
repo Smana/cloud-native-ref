@@ -21,7 +21,7 @@ globals "openbao_ca_cmd" {
     "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
     "ca",
     "--root-ca-secret-name",
-    global.root_ca_secret_name,
+    global.ca_chain_secret_name,
     "--ca-output-file",
     ".tls/ca.pem",
     "--region",
@@ -80,23 +80,38 @@ script "drift" "reconcile" {
   }
 }
 
+# Gated like the lineage stack, and for the same reason: everything this stack
+# manages -- the PKI mount, auth mounts, policies, the `app` namespace, the
+# lineage/ marker mount -- is lineage state that the snapshot carries. Destroying
+# it at teardown would delete those from the live OpenBao moments before the
+# cluster stack's pre-destroy snapshot, so the snapshot would bring back an
+# empty store. The stack's OpenTofu state stays valid across rebuilds because a
+# rehydrated OpenBao holds the same resources at the same paths.
 script "destroy" {
-  description = "Opentofu destroy"
+  description = "Guarded: this stack's resources are lineage state. Requires TM_LINEAGE_DESTROY=true"
   job {
     name        = "destroy"
-    description = "Opentofu destroy"
+    description = "Opentofu destroy, only when TM_LINEAGE_DESTROY=true"
     commands = [
-      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
-      # `destroy` is a standalone entrypoint: unlike `deploy` it can be the first
-      # tofu command run in a stack, so it has to init itself. Without this a lock
-      # file predating a new provider fails the whole `--reverse destroy` sweep.
-      [global.provisioner, "init", "-lock-timeout=5m"],
-      # Needed even to tear down: the provider still has to configure before it
-      # can plan the destroy.
-      global.openbao_ca_cmd.args,
-      # Same #3411 race on the way down — mounts and namespaces are deleted
-      # concurrently otherwise. See the apply job below.
-      [global.provisioner, "destroy", "-auto-approve", "-parallelism=1", "-var-file=variables.tfvars"],
+      ["bash", "-c", <<-BASH
+        if [ "$${TM_LINEAGE_DESTROY:-}" != "true" ]; then
+          echo "[skip] opentofu/aws/openbao/management destroy: the PKI mount, auth mounts and"
+          echo "       policies here are lineage state carried by the raft snapshot. Deleting them"
+          echo "       now would empty the snapshot the cluster stack takes next. Set"
+          echo "       TM_LINEAGE_DESTROY=true to destroy the lineage on purpose."
+          exit 0
+        fi
+        set -euo pipefail
+        bash "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-run bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        ${global.provisioner} init -lock-timeout=5m
+        bash "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-run \
+          bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          --root-ca-secret-name "${global.ca_chain_secret_name}" --ca-output-file .tls/ca.pem \
+          --region "${global.region}" --profile "${global.profile}"
+        # Same #3411 race on the way down -- see the apply job.
+        ${global.provisioner} destroy -auto-approve -parallelism=1 -var-file=variables.tfvars
+      BASH
+      ],
     ]
   }
 }
@@ -107,45 +122,35 @@ script "deploy" {
     name        = "openbao-configure"
     description = "OpenBao configuration"
     commands = [
-      # Initialize OpenBao cluster. Stores the root token and the recovery keys
-      # in two separate AWS Secrets Manager entries.
+      # 1. Materialise the CA chain. Has to be a script step rather than a
+      #    local_file resource: provider configuration is evaluated before any
+      #    resource exists, so the file must already be on disk at `tofu init`.
+      #    It also runs before rehydrate so the restore verifies the server.
+      global.openbao_ca_cmd.args,
+      # 2. Rehydrate -- or, on the first deploy of a lineage, initialise.
       #
-      # --skip-verify is still needed here: this runs against a freshly booted
-      # cluster before anything has vouched for its certificate, and the
-      # request carries no secret in either direction.
+      #    A fresh node reports uninitialised. If the lineage bucket holds a
+      #    snapshot, this initialises with throwaway shares it never stores and
+      #    restores the newest one; the root token and recovery keys already in
+      #    Secrets Manager belong to the restored state. If the bucket is empty,
+      #    it is a plain init and the new keys are stored -- same as before.
+      #    Idempotent: an initialised, unsealed node is left alone.
       [
         "bash",
         "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
         "--tm-run",
         "bash",
         "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
-        "init",
+        "rehydrate",
         "--url",
         global.openbao_url,
         "--root-token-secret-name",
         global.root_token_secret_name,
         "--recovery-keys-secret-name",
         global.recovery_keys_secret_name,
-        "--region",
-        global.region,
-        "--profile",
-        global.profile,
-        "--skip-verify",
-      ],
-      # Materialise the CA chain for the Vault provider. Has to be a script
-      # step rather than a local_file resource: provider configuration is
-      # evaluated before any resource exists, so the file must already be on
-      # disk when `tofu init` runs.
-      [
-        "bash",
-        "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
-        "--tm-run",
-        "bash",
-        "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
-        "ca",
-        "--root-ca-secret-name",
-        global.root_ca_secret_name,
-        "--ca-output-file",
+        "--snapshot-bucket",
+        global.snapshot_bucket_name,
+        "--ca-file",
         ".tls/ca.pem",
         "--region",
         global.region,

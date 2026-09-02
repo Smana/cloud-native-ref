@@ -79,7 +79,7 @@ spec:
         # over live instances, so a stale voter raises the quorum bar (4 of 6
         # instead of 3 of 5) and halves the tolerance without anything failing.
         #
-        # Neither fires in dev mode: file storage has no raft and no autopilot,
+        # Neither fires in dev mode: a single raft node runs no autopilot,
         # so the metric does not exist.
         - alert: OpenBaoRaftNodeLost
           expr: vault_autopilot_failure_tolerance{job="openbao"} < 2

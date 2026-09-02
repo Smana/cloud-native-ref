@@ -37,10 +37,19 @@ globals {
   # Deliberately a different secret from the root token: the recovery keys are
   # what regenerates a lost or revoked root token, so storing both together
   # would make the pair only as strong as one of them.
-  recovery_keys_secret_name        = "openbao/cloud-native-ref/tokens/recovery" # pragma: allowlist secret
-  root_ca_secret_name              = "certificates/priv.aws.ogenki.io/root-ca"
-  cert_manager_approle_secret_name = "openbao/cloud-native-ref/approles/cert-manager"
-  cert_manager_approle             = "cert-manager"
+  recovery_keys_secret_name = "openbao/cloud-native-ref/tokens/recovery" # pragma: allowlist secret
+  # PKI material, both written by the offline signing ceremony (PKI & Secrets
+  # page). The intermediate's private key is in `intermediate-ca` and nowhere
+  # else on AWS; `ca-chain` is certificates only ({"ca": "<intermediate>\n<root>"})
+  # and is what every client verifies against. The former `root-ca` entry, which
+  # held the ROOT private key, is gone -- the root is offline, as on GCP.
+  intermediate_ca_secret_name = "certificates/priv.aws.ogenki.io/intermediate-ca" # pragma: allowlist secret
+  ca_chain_secret_name        = "certificates/priv.aws.ogenki.io/ca-chain"        # pragma: allowlist secret
+
+  # The lineage's snapshot bucket (opentofu/aws/openbao/lineage). Read by the
+  # management stack's rehydrate step and the cluster stack's pre-destroy
+  # snapshot, both of which run BEFORE the cluster that used to own the bucket.
+  snapshot_bucket_name = "eu-west-3-ogenki-openbao-snapshot"
 
   # Helm chart versions for EKS bootstrap
   cilium_version        = "1.20.1"
