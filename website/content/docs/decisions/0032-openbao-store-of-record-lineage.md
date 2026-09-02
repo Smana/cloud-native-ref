@@ -2,7 +2,7 @@
 title: OpenBao is the store of record, durable as a snapshot lineage, active on the primary cloud with restore-based fallback
 linkTitle: 0032 · OpenBao lineage
 weight: 320
-description: OpenBao's storage becomes derived state rebuilt from its newest Raft snapshot on every boot; what persists is a lineage — one multi-region KMS seal key, four bootstrap secrets, a snapshot bucket. One instance is active on AWS and serves both clusters; a GCP standby restores the mirrored snapshot under the same AWS seal. Chosen over per-cloud authoritative instances, an instance with no fallback, a Shamir-sealed standby, the clouds' managed CAs and cert-manager's CA issuer.
+description: OpenBao's storage becomes derived state rebuilt from its newest Raft snapshot on every boot; what persists is a lineage — one multi-region KMS seal key, five bootstrap secrets, a snapshot bucket. One instance becomes active on AWS and serves both clusters; a GCP standby restores the mirrored snapshot under the same AWS seal. Stage 1 is per-cloud; Stage 2 converges it. Chosen over per-cloud authoritative instances, an instance with no fallback, a Shamir-sealed standby, the clouds' managed CAs and cert-manager's CA issuer.
 lastVerified: 2026-09-02
 ---
 
@@ -45,8 +45,9 @@ design either way.
   not pay for an always-on secrets cluster. It may pay ~$1/month for a key.
 - **Restorability, proven.** Every deploy of the reference platform and a weekly
   drill must exercise the restore path.
-- **One root of trust, offline.** The AWS root private key sat inside the live
-  PKI mount; GCP had already fixed that with an offline root.
+- **One root of trust, offline.** The AWS root private key **still sits** inside
+  the live PKI mount — taking it out is a hand-performed ceremony (Stage 1 plan,
+  Task 14) that has not run. GCP has already fixed that with an offline root.
 - **No long-lived credential to reach OpenBao.** Workloads authenticate with
   their cluster's ServiceAccount tokens.
 - **A fallback that survives an AWS regional outage**, stated with its limits.
@@ -67,6 +68,12 @@ rule to learn.
 seeded twice and drifts (ADR-0025's own negative); two policy models; two roots
 of trust or a shared root with two issuing chains and no single audit trail.
 
+Rejected as a **reduction** of that drift surface, not its removal. The chosen
+option's own Negatives concede a residual hand-seeded tier of five secrets per
+cloud, and Stage 1 leaves each cloud with its own lineage, bucket, intermediate
+and JWT mount — so what Option 2 loses is the *convergence*, not the last
+duplicated value.
+
 ### Option 3: One OpenBao, no fallback
 
 **Pros**: simplest. **Cons**: a GCP-only platform cannot authenticate to
@@ -77,7 +84,7 @@ anything, which is the dependency ADR-0024 removed for the identity provider.
 **Pros**: one store, one policy model, one root; the floor moves by one key;
 restore is exercised on every deploy; fallback survives a regional outage.
 **Cons**: the standby depends on AWS KMS (mitigated by a multi-region replica);
-a bootstrap tier of four secrets per cloud remains in the managed stores; new
+a bootstrap tier of five secrets per cloud remains in the managed stores; new
 cross-cloud plumbing (Tailscale egress, two federated roles).
 
 ### Rejected on the seal: a Shamir-sealed standby
@@ -89,9 +96,22 @@ option either: it requires both seals reachable, which an outage denies.
 ### Rejected on the PKI: AWS Private CA / GCP CAS, and cert-manager's CA issuer
 
 The clouds' managed CAs cost about $400/month per CA on AWS and are not
-portable. cert-manager's built-in CA issuer costs nothing but keeps the
-intermediate key in a Kubernetes Secret and removes the self-hosted PKI this
-repository exists to demonstrate.
+portable.
+
+cert-manager's built-in CA issuer costs nothing, and is rejected for what it
+would remove rather than for where it stores a key: it replaces the self-hosted
+PKI — mounts, roles, policies, an audited issuing path — that this repository
+exists to demonstrate, and it has no answer for the non-certificate half of
+OpenBao's job. "It keeps the intermediate key in a Kubernetes Secret" is *not*
+the honest discriminator, because the chosen option keeps that same key in a
+networked secret store too (`certificates/priv.aws.ogenki.io/intermediate-ca`)
+and imports it into the live mount. The real difference is blast radius, not
+kind: a Kubernetes Secret is readable by anything with `get secrets` in that
+namespace and by any workload that mounts it, and it is snapshot into etcd
+backups; the Secrets Manager entry is reachable only by the OpenTofu principal
+that runs the management stack, is IAM-auditable per read, and is never
+projected into a pod. Both are networked. One has a smaller and more legible
+set of readers.
 
 ### Rejected earlier: SOPS
 
@@ -101,10 +121,11 @@ ADR-0025, option 3.
 
 **Option 4.** OpenBao is the store of record. Its durable form is the lineage:
 `alias/openbao-seal` (multi-region, replica in `eu-west-1`), the snapshot
-bucket and its key, and four bootstrap secrets per cloud (server TLS material,
-root token, recovery keys, the offline-signed intermediate). The process is
+bucket and its key, and five bootstrap secrets per cloud (the CA chain, server
+TLS material, root token, recovery keys, the offline-signed intermediate — the
+CA chain is read first, before rehydrate, on every deploy). The process is
 rehydrated from the newest snapshot on every boot; a last snapshot is taken
-before every destroy. One instance is active on AWS
+before every destroy. One instance becomes the active one, on AWS
 ([ADR-0027](0027-primary-cloud-provider.md) primary-cloud singleton — OpenBao
 changes class from *per-cloud*, with the one property the other singletons lack:
 its relocation carries state). Workloads on both clusters authenticate through
@@ -114,10 +135,27 @@ same AWS key through OIDC federation; the fallback survives an AWS regional
 outage and the loss of AWS compute or Secrets Manager, **not** the loss of the
 AWS account — a deliberate trade for keeping auto-unseal.
 
-Staged: Stage 1 builds the lineage, rehydrate, JWT auth, the offline root on
-AWS, the mirror, the drill and one executed cross-cloud failover, with the
-managed store still the store of record. Stage 2 repoints the
-`ClusterSecretStore` and migrates about 36 secrets.
+Staged, and the staging matters for what a reader should expect to find on the
+clusters. **Stage 1 is per-cloud.** It builds the lineage, rehydrate, JWT auth,
+the offline root on AWS, the mirror, the drill and one executed cross-cloud
+failover — while leaving in place:
+
+- **Two OpenBao instances, each authoritative for its own cluster.** `jwt/gcp-0`
+  is created against `https://bao.priv.gcp.ogenki.io:8200`
+  (`opentofu/gcp/gke/configure/openbao.tf`, whose `vault` provider addresses the
+  GCP node), and `security/gcp-0/openbao/kustomization.yaml` lists
+  `openbao-endpoint/local`. `gcp-0` reaches its own cloud's OpenBao in the
+  normal posture; nothing routes it to the AWS instance.
+- **A lineage, snapshot bucket and intermediate CA per cloud**, with the
+  hand-seeded bootstrap tier duplicated on both.
+- **The managed store still the store of record.**
+
+So "one instance active on AWS serving both clusters" is the decision's end
+state, not Stage 1's. Stage 2 is what converges it: it repoints the
+`ClusterSecretStore` and migrates about 36 secrets, and it is also where `gcp-0`
+switches to the remote endpoint form and stops being authoritative for itself.
+Until then the two clouds run the same design twice, which is why the residual
+drift in the Negatives below is real rather than theoretical.
 
 ## Consequences
 
@@ -129,15 +167,49 @@ managed store still the store of record. Stage 2 repoints the
   weekly with no recovery keys in reach.
 - No AppRole `SecretID` exists anywhere; the two AppRole entries per cloud are
   gone from the managed stores.
-- Tailnet clients trust one root, and no CA private key is on a networked system.
+- Tailnet clients trust one root, and no **root** CA private key is on a
+  networked system. The *intermediate's* private key still is: it lives in
+  `certificates/priv.aws.ogenki.io/intermediate-ca` in AWS Secrets Manager
+  (`openbao-priv-gcp-intermediate-ca` on GCP) and is imported into the live PKI
+  mount by `opentofu/aws/openbao/management/pki.tf`. That is the tier this
+  design moves off a networked system, and the tier it does not.
 
 ### Negative
 
 - The standby is coupled to AWS KMS. *Mitigation*: multi-region replica; the
   limit is stated in the failover guide.
-- Four bootstrap secrets per cloud must exist on both clouds for a fallback to be
+- Five bootstrap secrets per cloud must exist on both clouds for a fallback to be
   bootstrappable; they are seeded by hand and can drift. *Mitigation*: the list
-  is short and `secret-store.sh check` names what is missing.
+  is short, and the failover guide's
+  [preconditions]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}})
+  enumerate all five with the code that reads each one, as peacetime checks with
+  the commands to run them.
+
+  **`secret-store.sh check` does not cover this tier, and cannot.** Its
+  `cmd_check` enumerates keys by reading `externalsecrets.external-secrets.io -A`
+  from a **live cluster** and resolving only `spec.data[].remoteRef.key` and
+  `spec.dataFrom[].extract.key`. Of the five, exactly one — the CA chain — is
+  named by any of those fields. The root token, recovery keys, intermediate CA
+  and server certificate are read by OpenTofu providers and boot scripts, so ESO
+  never names them at all and `check` cannot see them. It also needs a running cluster
+  with External Secrets installed, which is exactly what a fallback bootstrap
+  does not have.
+- **The GCP snapshot bucket becomes a mixed-seal namespace during a failover,
+  and its objects are indistinguishable by name.** `openbao-snapshot.sh` writes
+  every object as `<timestamp>.snap` — flat, identical on both clouds — so
+  nothing in a name, and nothing `latest_snapshot()` reads, records which seal
+  wrapped it. Once a standby has run under `awskms`, both the mirrored objects
+  and its own are AWS-sealed, while `latest_snapshot()` still just picks the
+  newest. A later `gcpckms` node therefore selects a snapshot it cannot unwrap,
+  restores it, and strands itself holding throwaway keys. *Mitigation today*:
+  procedural — the failover guide's failback destroys the standby with
+  `TM_OPENBAO_SKIP_SNAPSHOT=true` rather than flipping its seal, and requires
+  the AWS-sealed objects to be moved aside (or the last `gcpckms`-era object
+  promoted by name) before `gcp-0` returns to GCP-only mode. *The code-level
+  fix that would remove the hazard* is to make the seal legible in the object
+  name — a seal segment in the key, or a `seal=` object attribute
+  `latest_snapshot()` filters on. Not done in Stage 1; it is the first thing to
+  do if a second failover is ever expected.
 - New moving parts: a systemd timer refreshing a web-identity token on the GCP
   node, a Storage Transfer job, an egress `ProxyGroup` path, two federated roles.
 - A node recreated between snapshots loses writes since the last one (RPO = the

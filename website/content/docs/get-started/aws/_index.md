@@ -81,8 +81,10 @@ Either way the cluster is auto-unsealed via AWS KMS with the lineage's key, and
 snapshot — so there is no manual `bao operator init` / `unseal` step, and on the
 first deploy of a lineage the root token and recovery keys are written to two
 separate AWS Secrets Manager entries. The management stack then layers a
-three-tier PKI (offline root → intermediate → leaf) and the policies each
-cluster's JWT auth roles bind. See
+three-tier PKI (root → intermediate → leaf) and the policies each cluster's JWT
+auth roles bind. Taking the AWS root offline is decided but not yet performed —
+see the callout on
+[PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}) and
 [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}).
 
 **Stage 3 — Kubernetes.** `aws/eks/init` runs a two-stage bootstrap internally:

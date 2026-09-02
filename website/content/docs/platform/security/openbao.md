@@ -72,7 +72,13 @@ OpenBao's storage is **derived state**. What persists is the *lineage*
 |---|---|
 | Seal key `alias/openbao-seal`, multi-region (replica in `eu-west-1`) | `opentofu/aws/openbao/lineage/` |
 | Snapshot bucket `eu-west-3-ogenki-openbao-snapshot` and its key | same stack (imported from Crossplane) |
-| Server TLS material, root token, recovery keys, the offline-signed intermediate | AWS Secrets Manager, hand-seeded |
+| CA chain, server TLS material, root token, recovery keys, the offline-signed intermediate | AWS Secrets Manager, hand-seeded — **five** entries, not four |
+
+The CA chain is the one most easily left off that list, and it is the one read
+*first*: both management stacks fetch it with `openbao-config.sh ca` before
+rehydrate on every deploy (`global.openbao_ca_fetch` in each stack's
+`workflows.tm.hcl`), and the `VAULT_CACERT` every command on this page uses is
+that fetch's output.
 
 Both modes run the `raft` storage backend — `storage "raft"` in
 `opentofu/aws/openbao/cluster/scripts/startup_script.sh` — because a snapshot
@@ -96,8 +102,13 @@ was already a hand-created prerequisite).
 
 On `aws-0`, human operators authenticate with `userpass`, not the root
 token. The root token is **not** retired: it stays valid for the lineage and is
-what the management stack and `rehydrate` authenticate with, from an operator's
-or CI's context. Retiring it needs an OIDC login for humans, which is a
+what the **management stack** authenticates with, from an operator's or CI's
+context — its `vault` provider reads it straight out of Secrets Manager.
+`rehydrate` does **not** use it: it authenticates with the throwaway root token
+that its own `bao operator init` returns, and after the restore with one minted
+from the lineage's recovery keys. It never reads the stored root token at all,
+which is what lets a rehydrate work on a node whose token store is about to be
+replaced wholesale. Retiring it needs an OIDC login for humans, which is a
 follow-up. `gcp-0` has no `userpass`, see [On GCP](#on-gcp-gcp-0). The
 backend and user are provisioned by Terraform
 (`opentofu/aws/openbao/management/auth.tf`), not created by hand:
@@ -214,8 +225,15 @@ manual `bao operator raft snapshot save` run by a human on a schedule.
 `security/base/openbao-snapshot/`) logs in through `jwt/<cluster>` as
 `openbao-snapshot` to save a Raft snapshot and ship it to S3. Before the
 snapshot it writes `lineage/check_timestamp`, the marker a restore uses to
-report the age of what it installed. A Storage Transfer job mirrors the bucket
-into GCS daily. Its EKS Pod Identity role deliberately has
+report the age of what it installed. A Storage Transfer job is designed to
+mirror the bucket into GCS daily, **but it does not exist yet**:
+`google_storage_transfer_job.s3_mirror` in
+`opentofu/gcp/openbao/lineage/transfer.tf` carries
+`count = var.aws_mirror_role_arn == "" ? 0 : 1`, and that stack's
+`variables.tfvars` leaves `aws_mirror_role_arn` empty until **Task 16 Step 2**
+of the Stage 1 plan has run. Until then the GCS side of the lineage is populated
+by hand — see the
+[failover guide]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}). Its EKS Pod Identity role deliberately has
 **no** `secretsmanager` permission: a daily backup pod able to read the
 material that regenerates a root token would be a privilege escalation, not
 a convenience. Trigger one manually with:
@@ -255,10 +273,16 @@ Prerequisites worth stating plainly:
 - **Both modes are Raft**, so snapshots work in `dev` too.
 - **The script only automates a recovery threshold of 1.** A higher threshold
   makes it exit and tell you to run `bao operator generate-root` by hand.
-- **The restore path is exercised on every deploy** (rehydrate) and weekly by
-  `.github/workflows/openbao-restore-drill.yml`, which restores the newest
-  snapshot into a throwaway node with nothing but the seal key and asserts
-  the PKI issuer chains to the offline root.
+- **The restore path is exercised on every deploy** (rehydrate). It is *also*
+  meant to run weekly, from `.github/workflows/openbao-restore-drill.yml`, which
+  restores the newest snapshot into a throwaway node with nothing but the seal
+  key and asserts the PKI issuer chains to the offline root — **that workflow
+  cannot pass yet.** It verifies against `.github/openbao-root-ca.pem`, which
+  **Task 14 Step 3** of the Stage 1 plan commits and which is not in the
+  repository, and it reads three repository variables
+  (`AWS_DRILL_ROLE_ARN`, `GCP_DRILL_WIF_PROVIDER`, `GCP_DRILL_SERVICE_ACCOUNT`)
+  set in Tasks 15–16. Rehydrate is the exercised half today; the drill is the
+  pending one.
 - **Cross-cloud**: [OpenBao cross-cloud failover]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}).
 
 ## On GCP (gcp-0)

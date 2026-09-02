@@ -1,7 +1,7 @@
 ---
 title: PKI & Secrets
 weight: 20
-description: The three-tier PKI chain OpenBao issues from, how cert-manager and External Secrets pull from it, and how the chain rotates. One offline root for both clouds.
+description: The three-tier PKI chain OpenBao issues from, how cert-manager and External Secrets pull from it, and how the chain rotates. One offline root for both clouds is the target; on AWS the ceremony has not run yet.
 lastVerified: 2026-09-02
 ---
 
@@ -23,13 +23,35 @@ Intermediate is what OpenBao's `pki_private_issuer` mount imports as its
 signing certificate and uses to issue every leaf, which keeps
 revocation/rotation scoped to the tier that actually changed.
 
-{{< callout type="info" >}}
-**One offline root, both clouds.** The root's private key has never been on a
-networked system since 2026-09-02 on AWS (and since 2026-08-25 on GCP). Each
-OpenBao lineage imports an intermediate the root signed offline
-(`certificates/priv.aws.ogenki.io/intermediate-ca` on AWS,
-`openbao-priv-gcp-intermediate-ca` on GCP). The former AWS `root-ca` secret,
-which held the root key, has been deleted.
+{{< callout type="warning" >}}
+**The AWS root CA private key has not been taken offline yet.** It is present in
+the AWS `pki_private_issuer` mount as this platform last deployed it — imported
+there inside a bundle from `certificates/priv.aws.ogenki.io/root-ca`, a secret
+that still exists. This is an accepted trade-off **for this reference
+platform**; do not carry it into a deployment where the root CA matters.
+
+**On GCP it already is offline.** The 2026-08-25 ceremony signed
+`openbao-priv-gcp-intermediate-ca` under a root whose private key never entered
+GCP (`docs/gcp-bootstrap.md`, *What is NOT a prerequisite*).
+
+`opentofu/aws/openbao/management/pki.tf` is already written for the offline
+shape — it imports an intermediate bundle as the mount's issuer and generates
+nothing inside OpenBao — but the secret it reads does not exist yet. Two
+hand-performed steps of the Stage 1 plan
+(`docs/superpowers/plans/2026-09-02-openbao-store-of-record-stage1.md`, a
+repository path — plans are not published) close the gap, and **neither has
+run**:
+
+| Gate | What it does |
+|---|---|
+| **Task 14** `[LIVE]` | signs an AWS intermediate under the offline root, writes `certificates/priv.aws.ogenki.io/intermediate-ca` and `.../ca-chain`, re-issues the server certificate, and commits the root *certificate* as `.github/openbao-root-ca.pem` |
+| **Task 17 Step 2** `[LIVE]` | deletes `certificates/priv.aws.ogenki.io/root-ca` — only after the new chain has issued a certificate |
+
+Until both are done, read every "one offline root for both clouds" statement
+below as what the ceremony produces, not as the current state. The AWS root and
+the GCP root are also not yet the same root: Task 14 signs the AWS intermediate
+with the key the GCP ceremony produced, and that is the step that makes them
+one.
 {{< /callout >}}
 
 ### Building the chain
@@ -85,13 +107,16 @@ carrying forward if you regenerate it:
 - The key is EC P-256, matching the EC P-384 CAs above, and `openssl` writes
   key files world-readable by default — `chmod 600` it, since this key
   terminates TLS for every OpenBao client.
-- The SAN list has **no IP address** and four names:
-  `bao.priv.aws.ogenki.io`, `bao.priv.gcp.ogenki.io`,
+- The SAN list has **no IP address**, and **after Task 14 Step 2** it carries
+  four names: `bao.priv.aws.ogenki.io`, `bao.priv.gcp.ogenki.io`,
   `openbao.security.svc.cluster.local`, `openbao.security.svc` — every name a
   client may connect with, including the neutral in-cluster Service and the
-  standby's hostname. Because there is no IP SAN, a client connecting to a Raft
-  peer by private IP address (rather than by one of those names) cannot verify
-  TLS against it.
+  standby's hostname. That four-name list is what the ceremony above produces;
+  the certificate in `certificates/priv.aws.ogenki.io/openbao` today predates
+  it, and `openbao-priv-gcp-server-cert` carries only `bao.priv.gcp.ogenki.io`
+  until **Task 14b** re-issues it. The no-IP-SAN property holds either way, and
+  is the load-bearing half: a client connecting to a Raft peer by private IP
+  address (rather than by one of those names) cannot verify TLS against it.
 
 ## Trusting the CA on your machine
 
@@ -147,9 +172,12 @@ certificate trusted by `curl` and Chrome is still rejected there. Import it unde
 *Settings → Privacy & Security → Certificates → View Certificates → Authorities*.
 {{< /callout >}}
 
-Both clouds chain to the same offline root
-([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})),
-so one import covers both.
+**Once Tasks 14 and 14b have run**, both clouds chain to the same offline root
+([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}))
+and one import covers both. Until then it is two imports: the AWS chain still
+descends from the root in `certificates/priv.aws.ogenki.io/root-ca`, and the GCP
+chain from the 2026-08-25 offline root. Import both files above and you are
+covered under either state.
 
 Nothing else on your machine needs the file afterwards. The OpenBao management
 stack fetches its own copy into a gitignored `.tls/` directory at apply time —

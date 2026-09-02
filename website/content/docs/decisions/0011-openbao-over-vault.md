@@ -204,25 +204,30 @@ demonstrate.
     in-code as load-bearing rather than caution. This serialises the
     stack's own writes; it is not a version pin, and it does not require
     staying off the 2.6 line.
-- ~~**The root CA private key lives in the live `pki_private_issuer` mount,
-  not offline.**~~ **Fixed on 2026-09-02 by
-  [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}).**
-  The mount used to sign the intermediate's CSR inside OpenBao
-  (`vault_pki_secret_backend_root_sign_intermediate`) so the deploy stayed
-  unattended, which put the root key on a networked system. It now imports an
-  intermediate the offline root signed once, out of band, and the Secrets
-  Manager entry that held the root key has been deleted. Both clouds chain to
-  the same offline root. See
+- **The root CA private key lives in the live `pki_private_issuer` mount, not
+  offline.** **Decided against on 2026-09-02 by
+  [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}) —
+  and not yet undone on AWS.** The mount signed the intermediate's CSR inside
+  OpenBao (`vault_pki_secret_backend_root_sign_intermediate`) so the deploy
+  stayed unattended, which put the root key on a networked system.
+  `opentofu/aws/openbao/management/pki.tf` now imports an intermediate the
+  offline root signed out of band instead — but the signing ceremony that
+  produces that intermediate (**Task 14** of the Stage 1 plan) and the deletion
+  of `certificates/priv.aws.ogenki.io/root-ca` (**Task 17 Step 2**) are both
+  hand-performed and neither has run. So on AWS the root key is still in the
+  mount and still in Secrets Manager; on GCP it has been offline since
+  2026-08-25, and Task 14 is what makes the two clouds chain to the *same*
+  offline root. See
   [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
-  - *Mitigation as recorded at the time*: none beyond documenting the trade-off; a deployment
-    where the root CA's confidentiality matters needs an offline root,
-    which means giving up the unattended-deploy property this platform
-    trades for it.
+  - *Mitigation as recorded at the time, and still the live one*: none beyond
+    documenting the trade-off; a deployment where the root CA's confidentiality
+    matters needs an offline root, which means giving up the unattended-deploy
+    property this platform trades for it.
 
 ### Neutral
 
-- AWS Secrets Manager still holds OpenBao's own bootstrap material — the
-  server certificate, the root token, the recovery keys, the operator
+- AWS Secrets Manager still holds OpenBao's own bootstrap material — the CA
+  chain, the server certificate, the root token, the recovery keys, the operator
   password, and the offline-signed intermediate. This is not an incomplete
   migration to OpenBao; a still-sealed cluster cannot be where its own unseal
   material lives, so the two stores were always going to coexist for that

@@ -34,8 +34,19 @@ data processing, egress) are called out rather than measured.
 | Secrets Manager | 16 | the ~40 secrets the platform actually reads |
 | Public IPv4 | 4 | the NAT gateway's EIP |
 | S3 | 3 | 8 buckets, ~112 GB (mostly LLM weights) |
-| KMS | 4 | 4 keys: cluster encryption, the OpenBao seal and its eu-west-1 replica, snapshot bucket |
+| KMS | 4 | **3 measured, 4 projected** — cluster encryption, the OpenBao seal, the snapshot bucket, plus the seal's `eu-west-1` replica, which does not exist yet: `opentofu/aws/openbao/lineage` has not been applied (Stage 1 plan, Task 15). See the note below the table |
 | Route 53 | 1 | 2 hosted zones |
+
+{{< callout type="warning" >}}
+**One number in the AWS table above is a projection, not a measurement.** The
+KMS line reads 4 keys and $4/month; 3 keys and $3/month is what was billing on
+2026-09-01. The fourth is the OpenBao seal key's multi-region replica in
+`eu-west-1` ([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})),
+created by `aws_kms_replica_key.seal` in `opentofu/aws/openbao/lineage/kms.tf` —
+a stack that has not been applied yet. The figure is carried at 4 because the
+replica is committed and costs a flat $1/month once it exists, but it is the one
+row in a table labelled *measured* that was not.
+{{< /callout >}}
 
 ### No cloud-provider monitoring is on the bill
 
@@ -99,8 +110,10 @@ charge from what *this deployment* consumes:
 ## The floor you pay for nothing
 
 With every cluster destroyed, about **$24/month keeps billing** — the
-platform's ~40 secrets, its 4 KMS keys (the OpenBao seal is multi-region on
-purpose — [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})),
+platform's ~40 secrets, its 4 KMS keys once the lineage stack is applied (the
+OpenBao seal is multi-region on purpose —
+[ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}});
+3 keys and about $23/month is the floor as measured, see the note above),
 the DNS zones, and
 [backup buckets that outlive their clusters on purpose]({{< relref "/docs/guides/restore-a-database.md" >}}).
 That floor is a feature: **secrets, keys and backups survive teardown by

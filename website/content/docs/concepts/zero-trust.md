@@ -66,8 +66,19 @@ into a gate.
 ## Where the platform is honest about its gaps
 
 A zero-trust claim is only worth reading if it also says where the model is
-relaxed. Two examples this repository documents rather than hides:
+relaxed. Three examples this repository documents rather than hides:
 
+- **The AWS root CA private key is present in the live `pki_private_issuer`
+  mount.** It was imported there inside a bundle from
+  `certificates/priv.aws.ogenki.io/root-ca`, and that secret still exists.
+  Accepted for a reference platform; explicitly not to be carried into a
+  deployment where the root CA matters. Taking it offline is decided and
+  designed — `opentofu/aws/openbao/management/pki.tf` already imports an
+  offline-signed intermediate rather than generating one — but it turns on a
+  hand-performed signing ceremony (**Task 14** of the Stage 1 plan) and the
+  deletion of that secret (**Task 17 Step 2**), and neither has run. GCP is
+  already there, since its 2026-08-25 ceremony. See
+  [PKI and secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
 - **Machine credentials are short-lived, but JWKS validation is blind to
   revocation.** Workloads reach OpenBao with a projected ServiceAccount token
   validated against their cluster's OIDC issuer, so nothing long-lived is
@@ -80,10 +91,12 @@ relaxed. Two examples this repository documents rather than hides:
   does not yet meet that bar. See
   [Observability]({{< relref "/docs/platform/observability/_index.md" >}}).
 
-Both are the kind of thing a security page is tempted to omit. Omitting them
-would make the page less useful, not more convincing — a reader evaluating
-this platform needs to know which properties are enforced and which are
-aspirations with a known exception.
+All three are the kind of thing a security page is tempted to omit — and the
+first is the kind it is tempted to write in the past tense once the fix is
+designed. Omitting them, or dating them forward, would make the page less
+useful rather than more convincing: a reader evaluating this platform needs to
+know which properties are enforced, which are aspirations with a known
+exception, and which are one unperformed ceremony away.
 
 ## Reading on
 
