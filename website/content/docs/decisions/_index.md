@@ -74,5 +74,6 @@ single-file fixes never need one.
 | [0029]({{< relref "/docs/decisions/0029-runlore-over-grafana-oncall.md" >}}) | RunLore and Slack over Grafana OnCall | Accepted | 2026-08-30 |
 | [0030]({{< relref "/docs/decisions/0030-vector-as-log-shipper.md" >}}) | Vector as the log shipper | Accepted | 2026-08-30 |
 | [0031]({{< relref "/docs/decisions/0031-per-cluster-observability-panes.md" >}}) | Per-cluster observability panes; Slack and RunLore are the pager | Accepted | 2026-08-30 |
+| [0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}) | OpenBao is the store of record, durable as a snapshot lineage, active on the primary cloud with restore-based fallback | Accepted | 2026-09-02 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

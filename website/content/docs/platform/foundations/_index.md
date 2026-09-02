@@ -57,11 +57,10 @@ because the dependency between them is real, not a convention:
    to what gets built next. Nothing after this stage can reach anything
    built in the next two.
 2. **Security** — a secrets and PKI layer, running before Kubernetes exists
-   because Kubernetes bootstrap itself consumes it: on AWS, the second half
-   of cluster bootstrap reads an AppRole credential this stage already
-   created and seeds it into the cluster as a bootstrap Secret, so the
-   Kubernetes stack's own `stack.tm.hcl` declares this stage in its `after`
-   list.
+   because Kubernetes bootstrap itself consumes it: the second half of cluster
+   bootstrap writes that cluster's own JWT auth mount into OpenBao — it is the
+   only stack that knows the cluster's OIDC issuer — so the Kubernetes stack's
+   own `stack.tm.hcl` declares this stage in its `after` list.
 3. **Kubernetes** — the cluster, plus enough of a CNI to make nodes `Ready`,
    with Flux installed and reconciling by the end of it. This is the handoff
    point: once Flux is running, [GitOps]({{< relref "/docs/platform/gitops/_index.md" >}})

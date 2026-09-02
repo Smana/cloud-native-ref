@@ -142,10 +142,11 @@ aws secretsmanager get-secret-value \
 > The backend and the user used to be created by hand. Both are now in OpenTofu.
 
 **Namespace layout**: shared platform services — the PKI (`pki_private_issuer`), the
-snapshot AppRole, operator logins — live in the **root** namespace. Namespaces are
+per-cluster JWT auth mounts, operator logins — live in the **root** namespace. Namespaces are
 reserved for tenants; `app` is the only one, holding a `secret/` kv-v2 mount reachable
 via its own AppRole. Cluster-wide endpoints such as `sys/storage/raft/*` are callable
-*only* from root, which is why anything operational belongs there. See
+*only* from root, which is why anything operational belongs there.
+OpenBao's storage is rebuilt from its newest snapshot on every deploy (the *lineage*, ADR-0032): the lineage and management stacks are never destroyed by the default `destroy` (`TM_LINEAGE_DESTROY=true` overrides), machine auth is the JWT method on `jwt/<cluster>`, and consumers reach it at `openbao.security.svc.cluster.local:8200`. See
 `opentofu/aws/openbao/management/namespaces.tf`.
 
 ## Development Workflow
@@ -362,10 +363,11 @@ It also fails when a Kustomization applies variables with no `postBuild` wired a
 would apply the literal `${var}`. Covered by `scripts/flux-schema/test-check-substitution.py` — the
 only test any script in `scripts/flux-schema/` has.
 
-> A `substituteFrom` entry may name a **Secret** as well as a ConfigMap (one does:
-> `cert-manager-openbao-approle`, supplying `${cert_manager_approle_id}`). A Secret's keys are created
-> in-cluster at runtime, so they cannot be checked here — those variables are **reported as a note**
-> rather than failed, and rather than silently skipped.
+> A `substituteFrom` entry may name a **Secret** as well as a ConfigMap. **None does today** — the
+> last was `cert-manager-openbao-approle` supplying `${cert_manager_approle_id}`, removed when
+> cert-manager moved to a projected ServiceAccount token. A Secret's keys are created in-cluster at
+> runtime, so they cannot be checked here — those variables are **reported as a note** rather than
+> failed, and rather than silently skipped.
 
 Two properties are load-bearing:
 

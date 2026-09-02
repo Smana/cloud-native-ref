@@ -3,7 +3,7 @@ title: Use OpenBao rather than HashiCorp Vault
 linkTitle: 0011 · OpenBao over Vault
 weight: 110
 description: Secrets and the private PKI run on OpenBao, the Linux Foundation fork, after HashiCorp relicensed Vault under the BUSL — accepting a smaller ecosystem and a 2.6 write-concurrency deadlock worked around with serialised applies.
-lastVerified: 2026-08-21
+lastVerified: 2026-09-02
 ---
 
 **Status**: Accepted
@@ -19,8 +19,8 @@ licence trigger, applied to the toolchain
 
 This platform needs a self-hosted secrets engine and a private PKI: the
 three-tier certificate chain that terminates TLS on every internal Gateway
-API listener, and the AppRole machine credentials that `cert-manager` and
-the Raft snapshot job authenticate with. That role is filled by OpenBao,
+API listener, and the machine authentication `cert-manager` and the Raft
+snapshot job use to reach it. That role is filled by OpenBao,
 not HashiCorp Vault, the project OpenBao forked from.
 
 HashiCorp originally published Vault under the Mozilla Public License 2.0.
@@ -36,14 +36,14 @@ This is not the platform's only secrets store. External Secrets
 Operator's `ClusterSecretStore`
 (`security/aws-0/openbao/clustersecretstore.yaml`) already reads
 from AWS Secrets Manager, and even OpenBao's own bootstrap material — the
-root token, the recovery keys, the operator password, every minted
-AppRole credential — is published there rather than kept inside OpenBao
-itself, since a still-sealed or freshly-initialised cluster cannot be the
-thing that stores the keys to unseal it. What OpenBao specifically owns is
-the private PKI and the namespace-scoped AppRole model: the root namespace
-hosts the PKI mount and every shared platform-service AppRole, while
-`app` is a worked example of a tenant namespace holding its own `secret/`
-mount. This decision is about which engine backs that role, not about the
+server certificate, the root token, the recovery keys, the operator password,
+the offline-signed intermediate — is published there rather than kept inside
+OpenBao itself, since a still-sealed or freshly-initialised cluster cannot be
+the thing that stores the keys to unseal it. What OpenBao specifically owns is
+the private PKI and the namespace-scoped tenancy model: the root namespace
+hosts the PKI mount and the per-cluster JWT auth mounts, while `app` is a
+worked example of a tenant namespace holding its own `secret/` mount and
+AppRole. This decision is about which engine backs that role, not about the
 platform's secrets architecture as a whole.
 
 ---
@@ -58,8 +58,8 @@ platform's secrets architecture as a whole.
   Terraform/OpenTofu code already written against it — `vault_*`
   resources, the `hashicorp/vault` provider, the `bao`/`vault` CLI
   surface.
-- **Self-hosted PKI and namespaced AppRole model.** The chosen engine has
-  to support namespaces as tenancy boundaries and AppRole-scoped policies
+- **Self-hosted PKI and a namespaced tenancy model.** The chosen engine has
+  to support namespaces as tenancy boundaries and role-scoped policies
   for machine authentication, not just a flat key-value store.
 - **Fit with what AWS Secrets Manager already covers**, so the decision
   stays scoped to what OpenBao actually needs to do, not a rewrite of the
@@ -73,9 +73,9 @@ platform's secrets architecture as a whole.
 
 The Linux Foundation fork of the last MPL-2.0 Vault codebase. Provisioned
 as two stacks: `opentofu/aws/openbao/cluster/` stands up the EC2 fleet — one
-node on `file` storage as committed, or a five-node Raft cluster at
-`mode = "ha"` — and `opentofu/aws/openbao/management/` layers namespaces, the PKI and
-AppRole auth on top through the `hashicorp/vault` OpenTofu provider.
+Raft node as committed, or a five-node Raft cluster at `mode = "ha"` — and
+`opentofu/aws/openbao/management/` layers namespaces, the PKI and the auth
+policies on top through the `hashicorp/vault` OpenTofu provider.
 
 **Pros**:
 - Stays under a permissive open-source licence with neutral governance,
@@ -137,7 +137,7 @@ and OpenBao's own bootstrap secrets live there too.
 - Recurring per-CA, per-certificate cost for AWS Private CA, in place of
   a cost this platform currently pays once, as EC2 capacity, regardless
   of how many certificates it issues.
-- Loses the namespace-scoped, AppRole-authenticated tenancy model — `app`
+- Loses the namespace-scoped, policy-authenticated tenancy model — `app`
   as a worked example of a self-service tenant secrets mount has no
   equivalent shape in Secrets Manager, which is a flat, IAM-policy-scoped
   store, not a namespaced one.
@@ -177,8 +177,8 @@ demonstrate.
   so every `vault_*` resource in `opentofu/aws/openbao/management/` needed no
   rewrite to target it.
 - OpenBao's role stays narrow and complementary rather than duplicating
-  AWS Secrets Manager: the private PKI and namespace-scoped AppRole
-  machine auth live in OpenBao, while External Secrets Operator's
+  AWS Secrets Manager: the private PKI and namespace-scoped machine auth
+  live in OpenBao, while External Secrets Operator's
   `ClusterSecretStore` keeps delivering bulk application secrets from AWS
   Secrets Manager.
 
@@ -204,16 +204,17 @@ demonstrate.
     in-code as load-bearing rather than caution. This serialises the
     stack's own writes; it is not a version pin, and it does not require
     staying off the 2.6 line.
-- **The root CA private key lives in the live `pki_private_issuer` mount,
-  not offline.** `vault_pki_secret_backend_root_sign_intermediate` signs
-  the intermediate's CSR inside OpenBao so the deploy stays unattended —
-  keeping the root offline would mean the CSR leaving OpenBao, getting
-  signed elsewhere, and coming back, a manual step
-  `terramate script run deploy` cannot perform. Accepted here because
-  this is a reference platform; explicitly not acceptable for a
-  deployment where the root CA matters. See
+- ~~**The root CA private key lives in the live `pki_private_issuer` mount,
+  not offline.**~~ **Fixed on 2026-09-02 by
+  [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}).**
+  The mount used to sign the intermediate's CSR inside OpenBao
+  (`vault_pki_secret_backend_root_sign_intermediate`) so the deploy stayed
+  unattended, which put the root key on a networked system. It now imports an
+  intermediate the offline root signed once, out of band, and the Secrets
+  Manager entry that held the root key has been deleted. Both clouds chain to
+  the same offline root. See
   [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
-  - *Mitigation*: none beyond documenting the trade-off; a deployment
+  - *Mitigation as recorded at the time*: none beyond documenting the trade-off; a deployment
     where the root CA's confidentiality matters needs an offline root,
     which means giving up the unattended-deploy property this platform
     trades for it.
@@ -221,16 +222,18 @@ demonstrate.
 ### Neutral
 
 - AWS Secrets Manager still holds OpenBao's own bootstrap material — the
-  root token, the recovery keys, the operator password, and every minted
-  AppRole credential. This is not an incomplete migration to OpenBao; a
-  still-sealed cluster cannot be where its own unseal material lives, so
-  the two stores were always going to coexist for that specific
-  material.
-- The root namespace hosts every shared platform service — the PKI mount
-  and every platform-level AppRole — while `app` is the only tenant
-  namespace defined today, holding an otherwise-unconsumed `secret/`
-  mount. Namespaces are a tenancy boundary this platform has built but
-  not yet exercised beyond the one worked example.
+  server certificate, the root token, the recovery keys, the operator
+  password, and the offline-signed intermediate. This is not an incomplete
+  migration to OpenBao; a still-sealed cluster cannot be where its own unseal
+  material lives, so the two stores were always going to coexist for that
+  specific material. [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})
+  names that set the *lineage* and makes everything else derived from a
+  snapshot.
+- The root namespace hosts every shared platform service — the PKI mount and
+  the per-cluster JWT auth mounts — while `app` is the only tenant namespace
+  defined today, holding an otherwise-unconsumed `secret/` mount and the one
+  remaining AppRole. Namespaces are a tenancy boundary this platform has built
+  but not yet exercised beyond the one worked example.
 
 ---
 
@@ -238,15 +241,15 @@ demonstrate.
 
 `opentofu/aws/openbao/cluster/` provisions the EC2 fleet and pins
 the OpenBao release (`openbao_version` in `variables.tf`, currently on
-the 2.6 line); `opentofu/aws/openbao/management/` layers namespaces, the PKI,
-AppRole auth and policies on top through the `hashicorp/vault` provider,
+the 2.6 line); `opentofu/aws/openbao/management/` layers namespaces, the PKI
+and the auth policies on top through the `hashicorp/vault` provider,
 and is the stack the `-parallelism=1` mitigation applies to. The provider
 name is unchanged from the Vault-era code —
 `required_providers { vault = { source = "hashicorp/vault" } }` — because
 OpenBao's HTTP API, not a HashiCorp-specific product name, is what the
 provider actually targets.
 
-Operator access, namespace layout and the AppRole machine-auth pattern
+Operator access, namespace layout and the JWT machine-auth pattern
 are documented in full on
 [OpenBao]({{< relref "/docs/platform/security/openbao.md" >}}).
 
@@ -255,12 +258,12 @@ are documented in full on
 ## References
 
 - [OpenBao]({{< relref "/docs/platform/security/openbao.md" >}}) —
-  namespace layout, operator login, AppRole machine auth, backup/restore,
+  namespace layout, operator login, JWT machine auth, backup/restore,
   and the 2.6.x concurrency constraint this record's Negative section
   draws from
 - [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}})
-  — the three-tier certificate chain and the root-CA-in-live-mount
-  trade-off
+  — the three-tier certificate chain and the one offline root both clouds
+  chain to
 - [CLAUDE.md](https://github.com/Smana/cloud-native-ref/blob/main/CLAUDE.md)
   — the OpenBao command reference and namespace-layout summary under
   "OpenBao"

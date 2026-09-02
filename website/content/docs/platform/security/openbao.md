@@ -1,15 +1,15 @@
 ---
 title: OpenBao
 weight: 10
-description: Namespace layout, operator login, AppRole machine auth, backup and restore, and the 2.6.x concurrency constraint.
-lastVerified: 2026-08-30
+description: Namespace layout, the lineage and rehydrate-at-boot, operator login, JWT machine auth, backup and restore, and the 2.6.x concurrency constraint.
+lastVerified: 2026-09-02
 ---
 
 [Foundations]({{< relref "/docs/platform/foundations/aws.md#the-openbao-cluster-stack" >}})
-covers how the OpenBao cluster is provisioned — a single node on `file`
-storage as committed (`mode = "dev"`), or five nodes on Raft (3 on-demand + 2
-spot) with RAID-0 NVMe at `mode = "ha"`, with KMS auto-unseal either way. This page covers what
-runs on top of that cluster:
+covers how the OpenBao cluster is provisioned — a single Raft node
+as committed (`mode = "dev"`), or five Raft nodes (3 on-demand + 2 spot)
+with RAID-0 NVMe at `mode = "ha"`, with KMS auto-unseal either way. This page
+covers what runs on top of that cluster:
 `opentofu/aws/openbao/management/` layers namespaces, auth methods, the PKI, and
 policies onto it, and this is the operational surface every other security
 page and the [Access]({{< relref "/docs/get-started/access.md" >}}) guide
@@ -51,9 +51,10 @@ the GCP management stack has no `namespaces.tf`, so `gcp-0` is
 root-namespace-only):
 
 - **Root namespace** holds every shared platform service: the PKI mount
-  (`pki_private_issuer`), the `snapshot-agent` and `cert-manager` AppRoles,
-  and the `userpass` operator login. One login now carries both platform
-  policies, instead of one login per namespace.
+  (`pki_private_issuer`), the per-cluster JWT auth mounts (`jwt/aws-0`,
+  `jwt/gcp-0`), the `lineage/` bookkeeping mount, and the `userpass` operator
+  login. One login now carries both platform policies, instead of one login
+  per namespace.
 - **`app`** is the only tenant namespace defined today. It holds a `secret/`
   kv-v2 mount, reachable through its own AppRole
   (`vault_auth_backend.approle_app`) — a worked example for future tenants,
@@ -62,13 +63,44 @@ root-namespace-only):
   from root — the API rejects them from any child namespace with a 404
   `unsupported path`, no matter what the token's policy grants.
 
+## The lineage, and rehydrate at boot
+
+OpenBao's storage is **derived state**. What persists is the *lineage*
+([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})):
+
+| Component | Where |
+|---|---|
+| Seal key `alias/openbao-seal`, multi-region (replica in `eu-west-1`) | `opentofu/aws/openbao/lineage/` |
+| Snapshot bucket `eu-west-3-ogenki-openbao-snapshot` and its key | same stack (imported from Crossplane) |
+| Server TLS material, root token, recovery keys, the offline-signed intermediate | AWS Secrets Manager, hand-seeded |
+
+Both modes run the `raft` storage backend — `storage "raft"` in
+`opentofu/aws/openbao/cluster/scripts/startup_script.sh` — because a snapshot
+can neither be taken from nor restored into anything else.
+
+On every deploy, the management stack's workflow runs
+`scripts/openbao-config.sh rehydrate`: a fresh node is initialised with
+throwaway shares that are **never stored**, the newest snapshot is restored
+into it, and the root token and recovery keys already in Secrets Manager
+belong to the restored state. If the bucket is empty — the first deploy of a
+lineage — it is a plain init and the new keys are stored. Before the cluster
+stack is destroyed, its workflow takes one last snapshot, so nothing written
+since the daily CronJob is lost.
+
+The lineage and management stacks are **never destroyed by the default
+`destroy`**: their `destroy` scripts no-op unless `TM_LINEAGE_DESTROY=true`.
+`gcp-0` has the same shape under `opentofu/gcp/openbao/lineage/` (its seal key
+was already a hand-created prerequisite).
+
 ## Operator login
 
 On `aws-0`, human operators authenticate with `userpass`, not the root
-token — the root token is retired after initial setup (see below); `gcp-0`
-has no `userpass`, see [On GCP](#on-gcp-gcp-0). The backend and user are
-provisioned by Terraform (`opentofu/aws/openbao/management/auth.tf`), not created
-by hand:
+token. The root token is **not** retired: it stays valid for the lineage and is
+what the management stack and `rehydrate` authenticate with, from an operator's
+or CI's context. Retiring it needs an OIDC login for humans, which is a
+follow-up. `gcp-0` has no `userpass`, see [On GCP](#on-gcp-gcp-0). The
+backend and user are provisioned by Terraform
+(`opentofu/aws/openbao/management/auth.tf`), not created by hand:
 
 ```bash
 export VAULT_ADDR=https://bao.priv.aws.ogenki.io:8200
@@ -88,65 +120,60 @@ aws secretsmanager get-secret-value \
 ```
 
 The `admin` login carries both the `admin` and `pki-admin` policies. It has
-no `token_bound_cidrs`, unlike the machine AppRoles below — the only route to
+no `token_bound_cidrs`, unlike the tenant AppRole below — the only route to
 the API is the internal NLB, so the network is already constrained, and a
 CIDR bind on the one break-glass credential buys nothing against the risk of
 locking yourself out of the secrets store.
 
-## AppRole: machine authentication
+## JWT: machine authentication
 
-AppRole assigns a `RoleID`/`SecretID` pair to a workload so it can
-authenticate without a human-held token. One `approle` auth backend in root
-hosts every machine role — `snapshot-agent` (Raft snapshot capability) and
-`cert-manager` (PKI issuance) — each bound to a scoped policy:
+Workloads authenticate with a **projected ServiceAccount token**, validated by
+OpenBao's JWT method against the cluster's public OIDC issuer. Nothing
+long-lived is minted or stored. One mount per cluster:
 
-```hcl
-resource "vault_auth_backend" "approle" {
-  type = "approle"
-  path = "approle"
-}
+| Mount | Created by | Roles (audience `openbao`) |
+|---|---|---|
+| `jwt/aws-0` | `opentofu/aws/eks/configure/openbao.tf` | `cert-manager`, `external-secrets`, `openbao-snapshot` |
+| `jwt/gcp-0` | `opentofu/gcp/gke/configure/openbao.tf` | same |
 
-resource "vault_approle_auth_backend_role" "snapshot" {
-  backend           = vault_auth_backend.approle.path
-  role_name         = "snapshot-agent"
-  token_policies    = [vault_policy.snapshot.name]
-  token_bound_cidrs = var.allowed_cidr_blocks
-}
-```
+The mount lives in the *configure* stack because the EKS issuer URL carries a
+per-cluster ID that changes on every rebuild, and the management stack runs
+before `eks/init`. The policies the roles bind stay in the management stack.
+Each role is bound to one ServiceAccount by full subject
+(`system:serviceaccount:security:cert-manager`) and tokens live 10 minutes,
+because JWKS validation never consults the API server: a token Kubernetes
+revoked stays valid until it expires.
 
-The underlying policy is scoped to exactly the path the role needs — the
-`snapshot` policy grants nothing beyond `sys/storage/raft/snapshot`:
+The policy behind each role is scoped to exactly the paths it needs — the
+`snapshot` policy grants the Raft snapshot endpoint and the one key that
+records when the snapshot was taken, nothing else:
 
 ```hcl
 path "sys/storage/raft/snapshot" {
   capabilities = ["read"]
 }
+
+# The freshness marker (mounts.tf, `lineage/`). kv-v2 puts data under /data/.
+path "lineage/data/check_timestamp" {
+  capabilities = ["create", "update", "read"]
+}
 ```
 
-Each role's credentials are minted once by Terraform and published to
-Secrets Manager — but not under one shared path pattern per role:
-
-| Role | Secrets Manager entry | Source |
-|---|---|---|
-| `cert-manager` | `openbao/cloud-native-ref/approles/cert-manager` — the in-cluster `ExternalSecret` (`security/aws-0/openbao/openbao-approle-externalsecret.yaml`) reads this slash-form key directly; it's AWS-only, not one of the shared-base keys [ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}}) renamed to a portable dash form | `variables.tfvars` (`cert_manager_approle_secret_name`) |
-| `snapshot-agent` | Secrets Manager secret ID "security/openbao/openbao-snapshot" — also carries `VAULT_ADDR` and `BUCKET_NAME`, not just the RoleID/SecretID pair | `variables.tf:112` default (`snapshot_approle_secret_name`), not overridden |
-
-then synced into the cluster by External Secrets — see
-[PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
-The tenant-namespace `app` AppRole has no minted `SecretID`, and so no
-Secrets Manager entry, at all: nothing consumes it yet, and an unused live
-credential is worse than none (`opentofu/aws/openbao/management/auth.tf`) — mint
-one by hand with `bao write -f -namespace=app auth/approle/role/app/secret-id`
-only when something needs it.
-
-Nothing mints an AppRole `SecretID` by hand outside that flow; a credential
-created outside the stack that manages every other credential drifts by
-construction.
+The former AppRole backend, its `snapshot-agent` and `cert-manager` roles and
+their Secrets Manager entries are gone. The `app` tenant namespace keeps its
+own AppRole as the worked tenancy example: it has no minted `SecretID` and so
+no Secrets Manager entry at all, because nothing consumes it yet and an unused
+live credential is worse than none
+(`opentofu/aws/openbao/management/auth.tf`) — mint one by hand with
+`bao write -f -namespace=app auth/approle/role/app/secret-id` only when
+something needs it.
 
 ## Cluster initialisation
 
-Initialisation is not a day-2 operation — it happens once, when the Raft
-cluster first comes up, and is automated rather than run by hand:
+Initialisation is not a day-2 operation — it happens once per *lineage*,
+on the first deploy, and is automated rather than run by hand. Every deploy
+after that rehydrates instead (see
+[The lineage](#the-lineage-and-rehydrate-at-boot)):
 `terramate script run deploy` calls `scripts/openbao-config.sh` (`init` subcommand — see
 [Commands]({{< relref "/docs/reference/commands.md" >}}) for the full script
 table), which runs `bao operator init -recovery-shares=1 -recovery-threshold=1` and
@@ -184,8 +211,11 @@ Raft's own snapshot mechanism, automated end to end — nothing here is a
 manual `bao operator raft snapshot save` run by a human on a schedule.
 
 **Backup.** A CronJob in the `security` namespace (manifests under
-`security/base/openbao-snapshot/`) uses the `snapshot-agent` AppRole to save
-a Raft snapshot and ship it to S3. Its EKS Pod Identity role deliberately has
+`security/base/openbao-snapshot/`) logs in through `jwt/<cluster>` as
+`openbao-snapshot` to save a Raft snapshot and ship it to S3. Before the
+snapshot it writes `lineage/check_timestamp`, the marker a restore uses to
+report the age of what it installed. A Storage Transfer job mirrors the bucket
+into GCS daily. Its EKS Pod Identity role deliberately has
 **no** `secretsmanager` permission: a daily backup pod able to read the
 material that regenerates a root token would be a privilege escalation, not
 a convenience. Trigger one manually with:
@@ -194,22 +224,19 @@ a convenience. Trigger one manually with:
 kubectl create job --namespace security --from=cronjob/openbao-snapshot manual-openbao-snapshot-$(date +%s)
 ```
 
-**Restore.** `scripts/openbao-snapshot.sh` (`restore` subcommand) fetches the newest snapshot from S3, mints a temporary
-root token from the recovery key, restores, and checks that
-`secret/check_timestamp` is recent enough to rule out restoring a stale
-backup over a good cluster. Run it as an **operator**, never as the CronJob —
-it needs `RECOVERY_KEYS_SECRET_ID` and AWS credentials that can read that
-secret, which the snapshot job's Pod Identity role is deliberately denied.
+**Restore.** `scripts/openbao-snapshot.sh` (`restore` subcommand) fetches
+the newest snapshot from the bucket, authenticates — a supplied `VAULT_TOKEN`
+wins, otherwise it mints a temporary root token from the recovery key —
+restores, mints a *second* root token (a Raft restore replaces the token store,
+so the first one no longer exists), and checks `lineage/check_timestamp`.
 
-The script itself does `export HOME=/snapshot`, unconditionally, before the
-first line of `restore` runs — the CronJob gets that for free from a mounted
-`emptyDir`, but a bare operator shell does not, and the recovery-token
-nonce-file write under `set -e` aborts the whole restore the instant `$HOME`
-isn't writable. Create it before invoking the script:
-
-```bash
-sudo mkdir -p /snapshot && sudo chown "$(id -u):$(id -g)" /snapshot
-```
+That check is an **alarm, not a gate**. The marker lives inside the snapshot,
+so it can only be read once the restore has already been applied: it reports
+the age of what was installed and exits non-zero under `--freshness fail`. It
+cannot prevent a stale restore. Run the command as an **operator**, never as
+the CronJob — it needs `RECOVERY_KEYS_SECRET_ID` and AWS credentials that can
+read that secret, which the snapshot job's Pod Identity role is deliberately
+denied.
 
 The block below is self-contained — every variable the script needs is
 exported here, not assumed left over from the Operator Login section above:
@@ -217,7 +244,7 @@ exported here, not assumed left over from the Operator Login section above:
 ```bash
 export VAULT_ADDR="https://bao.priv.aws.ogenki.io:8200"
 export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem
-export APPROLE_ROLE_ID=... APPROLE_SECRET_ID=...
+export VAULT_TOKEN=...   # admin or root; the script also accepts a JWT or AppRole
 export RECOVERY_KEYS_SECRET_ID="openbao/cloud-native-ref/tokens/recovery"
 ./scripts/openbao-snapshot.sh restore -a "${VAULT_ADDR}" \
   -b eu-west-3-ogenki-openbao-snapshot -s /tmp/bao.snap -d 8
@@ -225,41 +252,36 @@ export RECOVERY_KEYS_SECRET_ID="openbao/cloud-native-ref/tokens/recovery"
 
 Prerequisites worth stating plainly:
 
-- **Raft storage is required.** `bao operator raft snapshot save|restore`
-  and `sys/storage/raft/configuration` are Raft-only endpoints — `dev` mode
-  runs the `file` backend, and neither backup nor restore works there.
-- **The script only automates a recovery threshold of 1.** A higher
-  threshold makes it exit and tell you to run `bao operator generate-root`
-  by hand with the required number of shares.
-- **The restore path is not itself tested in CI.** There is no workflow that
-  restores the latest snapshot into a throwaway cluster and asserts its
-  contents — until there is, treat the restore procedure as a hypothesis.
-  The `OpenBaoSnapshotStale` and `OpenBaoSnapshotJobFailed` VMRules at least
-  confirm the *backup* half keeps working.
+- **Both modes are Raft**, so snapshots work in `dev` too.
+- **The script only automates a recovery threshold of 1.** A higher threshold
+  makes it exit and tell you to run `bao operator generate-root` by hand.
+- **The restore path is exercised on every deploy** (rehydrate) and weekly by
+  `.github/workflows/openbao-restore-drill.yml`, which restores the newest
+  snapshot into a throwaway node with nothing but the seal key and asserts
+  the PKI issuer chains to the offline root.
+- **Cross-cloud**: [OpenBao cross-cloud failover]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}).
 
 ## On GCP (gcp-0)
 
-`gcp-0` runs the same two-stack shape — `opentofu/gcp/openbao/cluster/` and
-`opentofu/gcp/openbao/management/` — against
-`https://bao.priv.gcp.ogenki.io:8200`, with GCP Secret Manager in Secrets
-Manager's role: `openbao-priv-gcp-root-token`, `openbao-priv-gcp-ca-chain`,
-`openbao-priv-gcp-approle-cert-manager`, `openbao-priv-gcp-snapshot` (dash
+`gcp-0` runs the same three-stack shape — `opentofu/gcp/openbao/lineage/`,
+`opentofu/gcp/openbao/cluster/` and `opentofu/gcp/openbao/management/` —
+against `https://bao.priv.gcp.ogenki.io:8200`, with GCP Secret Manager in
+Secrets Manager's role: `openbao-priv-gcp-server-cert`,
+`openbao-priv-gcp-root-token`, `openbao-priv-gcp-recovery-keys`,
+`openbao-priv-gcp-intermediate-ca` and `openbao-priv-gcp-ca-chain` (dash
 names — a GCP secret ID cannot contain `/`). The deltas from everything
 above:
 
 - **Root namespace only, root token as operator access.** The GCP management
   stack has no `namespaces.tf` and no `userpass` — operators use the root
-  token from `openbao-priv-gcp-root-token`.
-- **The cert-manager AppRole's `role_id` is pinned to `cert-manager-gcp`**
-  (`opentofu/gcp/openbao/management/auth.tf`): the `ClusterIssuer` needs
-  `roleId` as a literal string, and this stack has no Kubernetes provider to
-  plumb a generated value through the cluster's Flux vars the way AWS does.
-- **Snapshots ship to GCS.** `security/gcp-0/openbao-snapshot/` adds a GCS
-  bucket and patches the shared CronJob with `CLOUD=gcp`;
-  `scripts/openbao-snapshot.sh` branches to `gcloud storage` / `gs://` on
-  that switch. The cluster itself is single-node `file` storage today
-  (`opentofu/gcp/openbao/cluster/compute.tf`), so the Raft-only caveat above
-  applies to it unchanged.
+  token from `openbao-priv-gcp-root-token`. There is no `app` namespace and
+  so no tenant AppRole either.
+- **Snapshots ship to GCS.** `security/gcp-0/openbao-snapshot/` patches the
+  shared CronJob with `CLOUD=gcp`; `scripts/openbao-snapshot.sh` branches to
+  `gcloud storage` / `gs://` on that switch. The cluster is single-node Raft,
+  rehydrated from `ogenki-435905-ogenki-openbao-snapshot` like AWS; with
+  `seal_provider = "awskms"` it is the standby for the AWS lineage — see
+  [OpenBao cross-cloud failover]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}).
 - **`scripts/openbao-config.sh` takes `--cloud gcp`** (plus `--project`), and
   its `ca` subcommand reads `openbao-priv-gcp-ca-chain` as raw PEM rather
-  than AWS's JSON-shaped root-CA secret.
+  than AWS's JSON-shaped `certificates/priv.aws.ogenki.io/ca-chain`.

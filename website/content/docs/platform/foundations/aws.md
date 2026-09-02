@@ -1,20 +1,21 @@
 ---
 title: AWS
 weight: 20
-description: The five OpenTofu stacks that implement the three-stage model on AWS, and why EKS bootstrap needs two of them.
-lastVerified: 2026-08-30
+description: The six OpenTofu stacks that implement the three-stage model on AWS, and why EKS bootstrap needs two of them.
+lastVerified: 2026-09-02
 ---
 
 AWS instantiates the [three-stage model]({{< relref "/docs/platform/foundations/_index.md" >}})
-as five OpenTofu stacks. Each stack's `stack.tm.hcl` declares the stacks it
+as six OpenTofu stacks. Each stack's `stack.tm.hcl` declares the stacks it
 runs `after`, so Terramate always applies them in this order even when one
 command spans several:
 
 | Stack | Model stage | Owns |
 |---|---|---|
 | `opentofu/aws/network/` | Network | VPC across three AZs, pod subnets on a secondary CIDR for Cilium ENI prefix delegation, a Route53 private zone, the Tailscale subnet router |
-| `opentofu/aws/openbao/cluster/` | Security | OpenBao on EC2 with KMS auto-unseal. Ships as `mode = "dev"` — a single node on `file` storage; `mode = "ha"` builds the five-node Raft cluster on a mix of on-demand and SPOT with RAID-0 NVMe |
-| `opentofu/aws/openbao/management/` | Security | The three-tier PKI (root → intermediate → leaf), the cert-manager AppRole, backup automation |
+| `opentofu/aws/openbao/lineage/` | Security | Multi-region seal key, snapshot bucket, CI drill role. **Persistent** — never destroyed by the default `destroy` |
+| `opentofu/aws/openbao/cluster/` | Security | OpenBao on EC2 with KMS auto-unseal. Ships as `mode = "dev"` — a single Raft node; `mode = "ha"` builds the five-node Raft cluster on a mix of on-demand and SPOT with RAID-0 NVMe |
+| `opentofu/aws/openbao/management/` | Security | The three-tier PKI (root → intermediate → leaf), the `lineage/` marker mount, policies, and the rehydrate step. **Persistent**, for the same reason as the lineage stack |
 | `opentofu/aws/eks/init/` | Kubernetes (Stage 1) | The EKS cluster, managed node groups, bootstrap addons, IAM, the `flux-system` namespace and secrets |
 | `opentofu/aws/eks/configure/` | Kubernetes (Stage 2) | Cilium, Flux Operator + Instance |
 
@@ -90,13 +91,14 @@ unless you change it.
 | | `mode = "dev"` (committed) | `mode = "ha"` |
 |---|---|---|
 | Nodes | 1 | 5 |
-| Storage backend | `file`, on the root volume | Raft, with `retry_join` auto-discovery by tag |
+| Storage backend | Raft, single node, on the root volume | Raft, with `retry_join` auto-discovery by tag |
 | Instances | `t3.micro`, on-demand | 3 on-demand (quorum majority) + 2 ~95% SPOT, mixed-instances policy (`t3.small`/`t3.medium`) |
 | Data volume | gp3 root volume | RAID-0 over instance-store NVMe |
-| Unseal | KMS auto-unseal | KMS auto-unseal |
+| Unseal | KMS auto-unseal, key from the lineage stack | same |
 
-So the default posture is a single node whose OpenBao data *and* server TLS
-private key both sit on one encrypted gp3 root volume. It is enough to
+So the default posture is a single Raft node whose data and server TLS
+private key both sit on one encrypted gp3 root volume — and whose data is
+rebuilt from the lineage's newest snapshot on every deploy. It is enough to
 exercise every path this documentation describes, and it is not highly
 available — a Raft-only command like `bao operator raft list-peers` has
 nothing to talk to.
@@ -115,7 +117,8 @@ Neither shape is a production posture. The cluster is torn down and
 reprovisioned on every platform test, which is what `dev` mode is priced for
 and what the mostly-SPOT, RAID-0-with-no-redundancy choices in `ha` mode
 are priced for. `opentofu/aws/openbao/management/`
-then layers the three-tier PKI, the cert-manager AppRole, and policies on
-top of the running cluster — see `opentofu/aws/openbao/cluster/README.md` and
+then layers the three-tier PKI, the policies the per-cluster JWT roles bind,
+and the rehydrate step on top of the running cluster — see
+`opentofu/aws/openbao/cluster/README.md` and
 `opentofu/aws/openbao/management/README.md` for the operational detail (unseal
-keys, AppRole setup, backup and restore).
+keys, machine auth, backup and restore).

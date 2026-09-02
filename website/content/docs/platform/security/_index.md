@@ -26,7 +26,7 @@ this section links to it rather than restating it.
 ![Two secret paths sharing one private CA: a root CA signs an intermediate inside OpenBao, which becomes the pki_private_issuer mount that signs every leaf certificate cert-manager requests through the openbao ClusterIssuer; alongside it, External Secrets Operator authenticates to the cloud's managed secret store (AWS Secrets Manager / GCP Secret Manager) through a ClusterSecretStore and materialises every other credential as a Kubernetes Secret](/images/diagrams/secrets-and-pki.svg)
 
 {{< cards >}}
-  {{< card link="/docs/platform/security/openbao/" title="OpenBao" icon="lock-closed" subtitle="Namespace layout, operator login, AppRoles, backup and restore, and the 2.6.x parallelism constraint." >}}
+  {{< card link="/docs/platform/security/openbao/" title="OpenBao" icon="lock-closed" subtitle="Namespace layout, the lineage, operator login, JWT machine auth, backup and restore, and the 2.6.x parallelism constraint." >}}
   {{< card link="/docs/platform/security/pki-and-secrets/" title="PKI & Secrets" icon="key" subtitle="The three-tier PKI chain, how cert-manager issues from it, and how External Secrets syncs credentials from AWS." >}}
   {{< card link="/docs/platform/security/policies/" title="Policies" icon="shield-check" subtitle="Kyverno admission policies, CiliumNetworkPolicy default-deny, and the pod security context baseline." >}}
 {{< /cards >}}

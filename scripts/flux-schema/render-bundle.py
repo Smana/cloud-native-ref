@@ -104,7 +104,7 @@ FIXTURE_VARS = {
     # address a remote cluster proxies to. Only gcp-0 applies that directory.
     "openbao_target_ip": "10.0.15.250",
     # apps/base/ai/llm/hf-token-externalsecret.yaml. AWS value, same reasoning
-    # as openbao_snapshot_secret above: without this entry VAR_RE.sub passes
+    # as openbao_snapshot_bucket above: without this entry VAR_RE.sub passes
     # the name through verbatim and the ExternalSecret extracts nothing --
     # schema-valid, useless.
     "llm_hf_token_secret": "/platform/llm/hf_token",  # pragma: allowlist secret

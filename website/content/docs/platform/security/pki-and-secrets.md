@@ -1,8 +1,8 @@
 ---
 title: PKI & Secrets
 weight: 20
-description: The three-tier PKI chain OpenBao issues from, how cert-manager and External Secrets pull from it, and how the chain rotates.
-lastVerified: 2026-08-30
+description: The three-tier PKI chain OpenBao issues from, how cert-manager and External Secrets pull from it, and how the chain rotates. One offline root for both clouds.
+lastVerified: 2026-09-02
 ---
 
 Every internal TLS certificate on this platform — Gateway API listeners,
@@ -23,49 +23,56 @@ Intermediate is what OpenBao's `pki_private_issuer` mount imports as its
 signing certificate and uses to issue every leaf, which keeps
 revocation/rotation scoped to the tier that actually changed.
 
-{{< callout type="warning" >}}
-The Root CA private key is **present in the live `pki_private_issuer`
-mount**, not held offline. `opentofu/aws/openbao/management/pki.tf`'s
-`vault_pki_secret_backend_root_sign_intermediate` resource signs the
-Intermediate's CSR *inside* OpenBao — keeping the root offline would mean
-the CSR leaves OpenBao, gets signed elsewhere, and comes back, a manual step
-incompatible with `terramate script run deploy`
-(`opentofu/aws/openbao/management/README.md`). This is an accepted trade-off
-**for this reference platform**; do not carry it into a deployment where the
-root CA matters.
+{{< callout type="info" >}}
+**One offline root, both clouds.** The root's private key has never been on a
+networked system since 2026-09-02 on AWS (and since 2026-08-25 on GCP). Each
+OpenBao lineage imports an intermediate the root signed offline
+(`certificates/priv.aws.ogenki.io/intermediate-ca` on AWS,
+`openbao-priv-gcp-intermediate-ca` on GCP). The former AWS `root-ca` secret,
+which held the root key, has been deleted.
 {{< /callout >}}
 
 ### Building the chain
 
-The root and intermediate CAs are generated once, outside Terraform, with
-`openssl` — EC keys (`secp384r1` for the CAs, `prime256v1` for OpenBao's own
-leaf) rather than RSA:
+The root CA is generated once, on an offline medium, with `openssl` — EC keys
+(`secp384r1` for the CAs, `prime256v1` for OpenBao's own leaf) rather than RSA:
 
 ```bash
-# Root CA
 openssl ecparam -genkey -name secp384r1 -out root-ca-key.pem
 openssl req -x509 -new -nodes -key root-ca-key.pem -sha384 -days 3653 -out root-ca.pem
+```
 
-# Intermediate CA — CSR, then sign it with the root
+Its private key never leaves that medium. A **new intermediate per lineage** is
+signed there too, and only the intermediate's own certificate and key come
+back:
+
+```bash
+cat > intermediate-ca.cnf <<'EOF'
+[ v3_req ]
+basicConstraints = critical, CA:TRUE, pathlen:0
+keyUsage = critical, digitalSignature, keyCertSign, cRLSign
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+EOF
 openssl ecparam -genkey -name secp384r1 -out intermediate-ca-key.pem
-openssl req -new -key intermediate-ca-key.pem -out intermediate-ca.csr
+openssl req -new -key intermediate-ca-key.pem \
+  -subj "/CN=Ogenki AWS Intermediate CA/O=Ogenki/C=FR" -out intermediate-ca.csr
 openssl x509 -req -in intermediate-ca.csr -CA root-ca.pem -CAkey root-ca-key.pem \
   -CAcreateserial -out intermediate-ca.pem -days 1827 -sha384 \
   -extfile intermediate-ca.cnf -extensions v3_req
+openssl verify -CAfile root-ca.pem intermediate-ca.pem
 ```
 
-The root's certificate and private key (`bundle`/`ca` in the JSON shape
-below) are what `opentofu/aws/openbao/management/pki.tf` imports into the
-`pki_private_issuer` mount via `vault_pki_secret_backend_config_ca`, followed
-by a CSR/sign/set-signed sequence in which OpenBao generates its own
-intermediate key and self-signs it against that imported root, becoming the
-mount's active issuer. That root material is read from AWS Secrets Manager,
-not committed to Git:
+The intermediate's certificate and key go to Secrets Manager as
+`{"bundle": "..."}` under `certificates/priv.aws.ogenki.io/intermediate-ca`;
+the certificates-only chain goes to `certificates/priv.aws.ogenki.io/ca-chain`
+as `{"ca": "..."}`. `opentofu/aws/openbao/management/pki.tf` imports the bundle
+as the mount's issuer:
 
 ```hcl
 resource "vault_pki_secret_backend_config_ca" "pki" {
   backend    = vault_mount.pki.path
-  pem_bundle = jsondecode(data.aws_secretsmanager_secret_version.root_ca.secret_string).bundle
+  pem_bundle = jsondecode(data.aws_secretsmanager_secret_version.intermediate_ca.secret_string)["bundle"]
 }
 ```
 
@@ -78,9 +85,13 @@ carrying forward if you regenerate it:
 - The key is EC P-256, matching the EC P-384 CAs above, and `openssl` writes
   key files world-readable by default — `chmod 600` it, since this key
   terminates TLS for every OpenBao client.
-- The SAN list has **no IP address**, only `DNS:bao.priv.aws.ogenki.io`.
-  That's why a client connecting to a Raft peer by private IP address
-  (rather than through the NLB's DNS name) cannot verify TLS against it.
+- The SAN list has **no IP address** and four names:
+  `bao.priv.aws.ogenki.io`, `bao.priv.gcp.ogenki.io`,
+  `openbao.security.svc.cluster.local`, `openbao.security.svc` — every name a
+  client may connect with, including the neutral in-cluster Service and the
+  standby's hostname. Because there is no IP SAN, a client connecting to a Raft
+  peer by private IP address (rather than by one of those names) cannot verify
+  TLS against it.
 
 ## Trusting the CA on your machine
 
@@ -100,7 +111,7 @@ PEM:
 ```bash
 # aws-0
 ./scripts/openbao-config.sh ca --region eu-west-3 \
-  --root-ca-secret-name certificates/priv.aws.ogenki.io/root-ca \
+  --root-ca-secret-name certificates/priv.aws.ogenki.io/ca-chain \
   --ca-output-file /tmp/ogenki-aws-ca.pem
 
 # gcp-0
@@ -136,8 +147,9 @@ certificate trusted by `curl` and Chrome is still rejected there. Import it unde
 *Settings → Privacy & Security → Certificates → View Certificates → Authorities*.
 {{< /callout >}}
 
-Each cloud has its own offline root — [ADR-0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}})
-— so trusting `aws-0` does nothing for `gcp-0`. Import both if you use both.
+Both clouds chain to the same offline root
+([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})),
+so one import covers both.
 
 Nothing else on your machine needs the file afterwards. The OpenBao management
 stack fetches its own copy into a gitignored `.tls/` directory at apply time —
@@ -145,12 +157,6 @@ that one exists so the Vault provider can verify the server at plan time, not fo
 your browser.
 
 ## cert-manager: issuing from the PKI
-
-A `ClusterIssuer` authenticates to OpenBao with the `cert-manager` AppRole
-and signs from `pki_private_issuer/sign/ogenki`. Both the CA bundle and the
-AppRole `SecretID` are synced from AWS Secrets Manager by External Secrets
-Operator rather than pasted into the manifest — rotating the intermediate no
-longer means hand-editing a `ClusterIssuer`:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -160,31 +166,33 @@ metadata:
   namespace: security
 spec:
   vault:
-    server: https://bao.priv.aws.ogenki.io:8200
+    server: https://openbao.security.svc.cluster.local:8200
     path: pki_private_issuer/sign/ogenki
     caBundleSecretRef:
       name: openbao-ca
       key: ca.crt
     auth:
-      appRole:
-        path: approle
-        roleId: ${cert_manager_approle_id}
-        secretRef:
-          name: cert-manager-openbao-approle
-          key: cert_manager_approle_secret
+      kubernetes:
+        mountPath: /v1/auth/jwt/${cluster_name}
+        role: cert-manager
+        serviceAccountRef:
+          name: cert-manager
+          audiences:
+            - openbao
 ```
 
-Both referenced secrets are `ExternalSecret` objects
-(`security/aws-0/openbao/`) pulling from the same AWS Secrets Manager
-entries the OpenTofu management stack writes to — one for the CA chain
-(`certificates/priv.aws.ogenki.io/root-ca`), one for the AppRole
-credential (`openbao/cloud-native-ref/approles/cert-manager`). Both keep
-their slash shape: this directory is AWS-only, not one of the shared bases
-[ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}})
-renamed to a portable dash grammar.
-Neither the
-PKI mount nor the AppRole needs a `namespace:` field on the issuer — both
-live in OpenBao's root namespace (see
+A `ClusterIssuer` reaches OpenBao by the **neutral in-cluster name**
+`openbao.security.svc.cluster.local` — an `ExternalName` Service in
+`security/base/openbao-endpoint/` that a cluster points at its own cloud's
+load balancer (local form) or, through the Tailscale operator's egress
+`ProxyGroup`, at the other cloud's (remote form). It authenticates with a
+**projected ServiceAccount token** against `jwt/<cluster>`: cert-manager
+requests a 10-minute token with audience `openbao` for its own ServiceAccount
+and POSTs it with the role name. No AppRole, no `SecretID`, nothing synced. The
+CA bundle is still an `ExternalSecret`, from `certificates/<domain>/ca-chain`.
+
+Neither the PKI mount nor the auth mount needs a `namespace:` field on the
+issuer — both live in OpenBao's root namespace (see
 [OpenBao]({{< relref "/docs/platform/security/openbao.md#namespace-layout" >}})).
 
 A `Certificate` object requesting one of these leaves looks like any other
@@ -218,9 +226,9 @@ Gateway picks up the new `Secret` without a redeploy.
 
 Where cert-manager pulls certificates *out* of OpenBao's PKI, External
 Secrets Operator pulls arbitrary credentials *out of the cloud's managed
-secret store* — the AppRole `SecretID`s above, the OpenBao admin password,
-the snapshot job's credentials. One `ClusterSecretStore` backs every
-`ExternalSecret` in the cluster:
+secret store* — the CA chain above, the OpenBao admin password, every
+application credential. One `ClusterSecretStore` backs every `ExternalSecret`
+in the cluster:
 
 ```yaml
 apiVersion: external-secrets.io/v1

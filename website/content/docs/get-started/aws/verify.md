@@ -78,7 +78,8 @@ a key that did not exist, visible only in `security` namespace events.
 ## 3. Secrets
 
 External Secrets pulls from AWS Secrets Manager; cert-manager authenticates to
-OpenBao with an AppRole delivered the same way:
+OpenBao with a projected ServiceAccount token, so there is no credential to
+deliver at all:
 
 ```bash
 kubectl get externalsecret -A
@@ -96,7 +97,7 @@ openbao               True
 
 `SecretSyncedError` with *"Secret does not exist"* usually means the **key** is
 wrong rather than the secret missing — compare it against what OpenTofu wrote
-(`cert_manager_approle_secret_name` in `opentofu/config.tm.hcl`).
+(the `*_secret_name` globals in `opentofu/config.tm.hcl`).
 
 ## 4. Certificates and networking
 

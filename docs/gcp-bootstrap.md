@@ -180,6 +180,10 @@ a personal gmail identity.
   that change a GCP-only deploy failed at `tofu init` with
   `No valid credential sources found` on an expired AWS SSO token, which is the
   coupling that ADR removed.
+- **For a standby deploy only:** the AWS lineage's root token and recovery keys
+  copied into `openbao-priv-gcp-root-token` and `openbao-priv-gcp-recovery-keys`
+  — see the failover guide
+  ([`website/content/docs/guides/openbao-cross-cloud-failover.md`](../website/content/docs/guides/openbao-cross-cloud-failover.md)).
 
 ## What is NOT a prerequisite
 
@@ -187,3 +191,7 @@ The offline root CA and the GCP intermediate. Those come from the signing
 ceremony in the [OpenBao design](superpowers/specs/2026-08-24-gcp-openbao-design.md)
 and already live in Secret Manager (`openbao-priv-gcp-ca-chain`,
 `openbao-priv-gcp-intermediate-ca`). The root's private key must never be in GCP.
+
+The snapshot bucket and the `openbao-node` / `openbao-drill` service accounts
+are created by `opentofu/gcp/openbao/lineage`; the bucket is imported from the
+Crossplane-era object on first apply (see the Stage 1 plan, Task 15).

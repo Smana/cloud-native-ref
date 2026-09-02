@@ -2,7 +2,7 @@
 title: Zero trust
 weight: 40
 description: Default-deny at the network, no ambient credentials, no static secrets — enforced by policy rather than asserted.
-lastVerified: 2026-08-30
+lastVerified: 2026-09-02
 ---
 
 "Zero trust" is easy to claim and hard to check. The useful version of the
@@ -68,11 +68,13 @@ into a gate.
 A zero-trust claim is only worth reading if it also says where the model is
 relaxed. Two examples this repository documents rather than hides:
 
-- **The root CA private key is present in the live OpenBao mount**, because
-  the intermediate is signed inside OpenBao to keep the deploy unattended.
-  Accepted for a reference platform; explicitly not to be carried into a
-  deployment where the root CA matters. See
-  [PKI and secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
+- **Machine credentials are short-lived, but JWKS validation is blind to
+  revocation.** Workloads reach OpenBao with a projected ServiceAccount token
+  validated against their cluster's OIDC issuer, so nothing long-lived is
+  minted or stored — but OpenBao never consults the API server, so a token
+  Kubernetes has revoked stays valid until it expires. 10-minute TTLs are the
+  whole mitigation. See
+  [OpenBao]({{< relref "/docs/platform/security/openbao.md#jwt-machine-authentication" >}}).
 - **Network policy coverage is uneven.** The constitution requires a
   CiliumNetworkPolicy on every pod-running workload; the observability stack
   does not yet meet that bar. See
