@@ -12,24 +12,11 @@
 # These overrides mirror the global scripts in opentofu/workflows.tm.hcl with the
 # `ca` step prepended. Pass `-var openbao_skip_tls_verify=true` for a first
 # bootstrap where the CA is not in Secrets Manager yet.
-globals "openbao_ca_cmd" {
-  args = [
-    "bash",
-    "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
-    "--tm-run",
-    "bash",
-    "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
-    "ca",
-    "--root-ca-secret-name",
-    global.ca_chain_secret_name,
-    "--ca-output-file",
-    ".tls/ca.pem",
-    "--region",
-    global.region,
-    "--profile",
-    global.profile,
-  ]
-}
+#
+# The step itself is `global.openbao_ca_cmd.args`, defined once in
+# opentofu/config.tm.hcl. aws/eks/configure needs the identical command and
+# Terramate globals are stack-local, so a block here would be a second definition
+# of the same 18 lines rather than a shared one -- which is exactly what it was.
 
 script "preview" {
   name        = "OpenTofu Deployment Preview"
@@ -103,11 +90,17 @@ script "destroy" {
         fi
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-run bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
-        ${global.provisioner} init -lock-timeout=5m
+        # CA fetch BEFORE `tofu init`, as in this file's `deploy` and in both
+        # openbao/cluster stacks. The fetch is the step that can fail -- an
+        # unreadable or missing ca-chain secret -- and `tofu init` is a backend
+        # handshake plus a provider download. Running init first spent both on a
+        # teardown that then aborted, on exactly the path the comments above say
+        # must not be blocked.
         bash "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-run \
           bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
           --root-ca-secret-name "${global.ca_chain_secret_name}" --ca-output-file .tls/ca.pem \
           --region "${global.region}" --profile "${global.profile}"
+        ${global.provisioner} init -lock-timeout=5m
         # Same #3411 race on the way down -- see the apply job.
         ${global.provisioner} destroy -auto-approve -parallelism=1 -var-file=variables.tfvars
       BASH
@@ -127,7 +120,25 @@ script "deploy" {
       #    resource exists, so the file must already be on disk at `tofu init`.
       #    It also runs before rehydrate so the restore verifies the server.
       global.openbao_ca_cmd.args,
-      # 2. Rehydrate -- or, on the first deploy of a lineage, initialise.
+      # 2. The cheap static gates, and they run BEFORE rehydrate deliberately.
+      #
+      #    `tofu init` is a backend handshake plus a provider download;
+      #    `validate` and `trivy config` are checks on this directory's HCL.
+      #    None of the three needs a cluster, a live OpenBao, or any state.
+      #    Rehydrate is their opposite: minutes of wall clock, a multi-MB
+      #    snapshot download, a write into a live OpenBao, and NOT undoable.
+      #
+      #    They used to run after it, so a typo in a .tf file -- caught by
+      #    `validate` in under a second -- discarded a completed snapshot
+      #    restore. Two ordering constraints keep them from moving any earlier:
+      #    `validate` needs `init`, and `init` needs the CA already on disk
+      #    (step 1, and the reason it cannot be a local_file resource).
+      #
+      #    gcp/openbao/management's deploy is already in this order.
+      [global.provisioner, "init"],
+      [global.provisioner, "validate"],
+      ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
+      # 3. Rehydrate -- or, on the first deploy of a lineage, initialise.
       #
       #    A fresh node reports uninitialised. If the lineage bucket holds a
       #    snapshot, this initialises with throwaway shares it never stores and
@@ -157,11 +168,14 @@ script "deploy" {
         "--profile",
         global.profile,
       ],
-      # Module management: Configure OpenBao (SecretsEngine, Approles, PKI, etc.)
-      [global.provisioner, "init"],
-      [global.provisioner, "validate"],
+      # 4. Configure OpenBao (SecretsEngine, AppRoles, PKI, etc.).
+      #
+      #    `plan` is the first step that needs a live, unsealed OpenBao, which
+      #    is why it -- and not `init`/`validate` -- sits below rehydrate. The
+      #    vault provider configures at PLAN time and reads its token from
+      #    Secrets Manager (providers.tf), and on a lineage's first deploy that
+      #    secret is written by rehydrate.
       [global.provisioner, "plan", "-out=out.tfplan", "-lock=false", "-var-file=variables.tfvars"],
-      ["trivy", "config", "--exit-code=1", "--ignorefile=./.trivyignore.yaml", "."],
       # -parallelism=1 is load-bearing, not caution.
       #
       # OpenBao 2.6.x carries openbao/openbao#3411 — inconsistent lock ordering

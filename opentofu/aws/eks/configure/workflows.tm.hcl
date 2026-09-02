@@ -19,8 +19,12 @@
 # `deploy` and `preview` carried the fetch as a duplicated 8-line literal and the
 # inherited `drift detect` / `drift reconcile` from opentofu/workflows.tm.hcl had
 # no fetch at all, so both drift scripts were broken for this stack the moment
-# openbao.tf landed. Same failure, same fix and same shape as
-# opentofu/aws/openbao/management/workflows.tm.hcl: one global, reused.
+# openbao.tf landed. Same failure and same fix as
+# opentofu/aws/openbao/management/workflows.tm.hcl, which needs the identical
+# command -- so the step is `global.openbao_ca_cmd.args`, defined ONCE in
+# opentofu/config.tm.hcl and reused by both stacks. It is deliberately not
+# redefined here: Terramate globals are stack-local, so a local block would be a
+# second definition of the same 18 lines, not a shared one.
 #
 # The overrides also have to pass the four version variables. They have no
 # defaults in variables.tf (deliberately -- see the deploy job's comment), so the
@@ -29,24 +33,6 @@
 # drift.tfplan, which already carries the values.
 #
 # `destroy` is NOT overridden here -- see the note above that script.
-globals "openbao_ca_cmd" {
-  args = [
-    "bash",
-    "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
-    "--tm-run",
-    "bash",
-    "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
-    "ca",
-    "--root-ca-secret-name",
-    global.ca_chain_secret_name,
-    "--ca-output-file",
-    ".tls/ca.pem",
-    "--region",
-    global.region,
-    "--profile",
-    global.profile,
-  ]
-}
 
 script "deploy" {
   name        = "EKS Configure Deployment (Stage 2)"

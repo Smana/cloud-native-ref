@@ -81,10 +81,16 @@ variable "pki_country" {
   default     = "FR"
 }
 
+# 94670856 = 3 x 31556952, the mean Gregorian year (365.2425 days) in seconds.
+# It is the AWS value, and the "matching AWS" in the description below used to be
+# false: this was 94608000, which is 1095 days -- three 365-day years, 17h27m
+# short. Both are ~3 years and nothing here comes close to the ceiling, so the
+# divergence cost nothing; it just made the sentence untrue, and a reader
+# checking parity would have had to do the arithmetic to find that out.
 variable "pki_max_lease_ttl" {
-  description = "Mount lifetime in seconds. Three years, matching AWS."
+  description = "Mount lifetime in seconds. Three years (3 x 31556952), the same value as AWS."
   type        = number
-  default     = 94608000
+  default     = 94670856
 }
 
 variable "pki_leaf_ttl" {

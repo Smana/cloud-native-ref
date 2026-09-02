@@ -20,7 +20,10 @@
 globals {
   # A bash SNIPPET, not a command list, precisely so it can live INSIDE a gated
   # block. The literal project id matches variables.tfvars; opentofu/gcp has no
-  # project global to reference.
+  # project global to reference. The snapshot bucket DOES have one --
+  # `global.gcp_snapshot_bucket_name` in opentofu/config.tm.hcl -- because
+  # gcp/openbao/cluster's pre-destroy snapshot is handed the same value, the way
+  # the two AWS twins both read `global.snapshot_bucket_name`.
   #
   # This is not optional and it is not idempotent-by-luck: a brand-new instance
   # has empty `file` storage, so it reports initialized=false and every read
@@ -43,7 +46,7 @@ globals {
       --project ogenki-435905 \
       --root-token-secret-name openbao-priv-gcp-root-token \
       --recovery-keys-secret-name openbao-priv-gcp-recovery-keys \
-      --snapshot-bucket ogenki-435905-ogenki-openbao-snapshot \
+      --snapshot-bucket ${global.gcp_snapshot_bucket_name} \
       --ca-file .tls/ca.pem
   EOT
 

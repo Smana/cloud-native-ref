@@ -156,7 +156,7 @@ script "destroy" {
           --cloud gcp --project ogenki-435905 \
           --url https://bao.priv.gcp.ogenki.io:8200 \
           --root-token-secret-name openbao-priv-gcp-root-token \
-          --snapshot-bucket ogenki-435905-ogenki-openbao-snapshot \
+          --snapshot-bucket ${global.gcp_snapshot_bucket_name} \
           --ca-file .tls/ca.pem
       BASH
       ],

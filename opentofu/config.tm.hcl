@@ -85,7 +85,7 @@ globals {
   # There are deliberately NO gcp_project / gcp_region / gcp_zone / gke_cluster_name
   # globals to match `region` and `eks_cluster_name` above. Those two exist because
   # something consumes them: eks-recycle-bootstrap-nodes.sh and the OpenBao
-  # workflows take them as script arguments. GCP has no equivalent imperative step,
+  # workflows take them as script arguments. Their GCP peers have no such consumer,
   # so the same globals were pure duplication -- a third copy of values that already
   # live in each stack's variables.tf defaults and variables.tfvars, and one that
   # nothing would notice going stale.
@@ -93,4 +93,57 @@ globals {
   # The live values: project/region/zone in opentofu/gcp/network/variables.tfvars,
   # cluster name in opentofu/gcp/gke/init/variables.tfvars. Add a global here when,
   # and only when, a script needs to be handed one.
+  #
+  # `gcp_snapshot_bucket_name` is the one value that clears that bar today, which is
+  # why the rule above is a bar and not a ban. Two GCP scripts take the bucket as an
+  # argument -- `openbao-config.sh rehydrate` in gcp/openbao/management's deploy,
+  # `openbao-config.sh pre-destroy-snapshot` in gcp/openbao/cluster's destroy --
+  # the same two sites that on AWS already read `snapshot_bucket_name` above. It was
+  # a literal in both heredocs, so one value was written twice with neither copy
+  # aware of the other. The project id stays a literal there: nothing is handed it
+  # as a shared argument, so it does not clear the bar.
+  gcp_snapshot_bucket_name = "ogenki-435905-ogenki-openbao-snapshot"
+}
+
+# The CA-chain fetch, as a command list, for the two AWS stacks whose `vault`
+# provider must verify OpenBao before it can plan.
+#
+# `providers.tf` in aws/openbao/management and `openbao.tf` in aws/eks/configure
+# both point `ca_cert_file` at `.tls/ca.pem`. `.tls/` is gitignored, so on a fresh
+# checkout or any CI runner that file does not exist and the provider fails to
+# CONFIGURE -- before it can plan. Provider configuration is evaluated before any
+# resource exists, so this cannot be a `local_file` resource; it has to be a script
+# step, prepended to every script in those stacks that runs tofu.
+#
+# It lives HERE rather than in either stack because the two copies were 18
+# byte-identical lines, and the newer one carried a comment reading "one global,
+# reused" -- which would have stopped the next reader noticing there were two.
+# Terramate globals are stack-local (`terramate debug show globals` resolves
+# `openbao_ca_cmd` in aws/eks/configure and not in aws/openbao/cluster), so a
+# stack-level block cannot be shared however it is worded. opentofu/aws/ holds no
+# *.tm.hcl at all, which makes this file the nearest common ancestor -- and it
+# already owns every input the command takes (`ca_chain_secret_name`, `region`,
+# `profile`) and already carries a bash-snippet command global (`cloud_gate`) as
+# precedent.
+#
+# Visible to the GCP stacks as well, like `region` and `snapshot_bucket_name`
+# above, and unused there: GCP fetches its CA with `--cloud gcp` from its own
+# Secret Manager, as a bash snippet inside a `${global.cloud_gate}` block.
+globals "openbao_ca_cmd" {
+  args = [
+    "bash",
+    "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+    "--tm-run",
+    "bash",
+    "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
+    "ca",
+    "--root-ca-secret-name",
+    global.ca_chain_secret_name,
+    "--ca-output-file",
+    ".tls/ca.pem",
+    "--region",
+    global.region,
+    "--profile",
+    global.profile,
+  ]
 }
