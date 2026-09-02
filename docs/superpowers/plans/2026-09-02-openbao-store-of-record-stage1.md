@@ -953,7 +953,14 @@ rehydrate_openbao() {
         exit 1
     fi
 
-    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health" || true)
+    # `?standbyok=true&perfstandbyok=true`, matching the NLB's own target-group
+    # check. A bare /v1/sys/health returns 200 only for initialized + unsealed
+    # + ACTIVE; a standby answers 429. The URL here goes through the NLB, whose
+    # target group deliberately flattens standby into healthy, so in
+    # `mode = "ha"` the probe can land on a standby -- and a bare check would
+    # then refuse the operation with "not active (HTTP 429)" on a perfectly
+    # healthy cluster.
+    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true" || true)
     case "$status_code" in
         200)
             # Initialised and unsealed -- but that is also exactly what a node
@@ -1115,7 +1122,14 @@ pre_destroy_snapshot() {
         exit 0
     fi
 
-    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health" || true)
+    # `?standbyok=true&perfstandbyok=true`, matching the NLB's own target-group
+    # check. A bare /v1/sys/health returns 200 only for initialized + unsealed
+    # + ACTIVE; a standby answers 429. The URL here goes through the NLB, whose
+    # target group deliberately flattens standby into healthy, so in
+    # `mode = "ha"` the probe can land on a standby -- and a bare check would
+    # then refuse the operation with "not active (HTTP 429)" on a perfectly
+    # healthy cluster.
+    status_code=$(curl -k -s -o /dev/null -w "%{http_code}" "$OPENBAO_URL/v1/sys/health?standbyok=true&perfstandbyok=true" || true)
     if [ "$status_code" != "200" ]; then
         log_message "ERROR" "OpenBao at $OPENBAO_URL is not active (HTTP ${status_code:-none}); refusing to destroy without a snapshot."
         log_message "ERROR" "If the node is genuinely gone, re-run with TM_OPENBAO_SKIP_SNAPSHOT=true."
@@ -1827,8 +1841,27 @@ Create `opentofu/aws/openbao/cluster/lineage.tf`:
 # (kms.tf) and destroyed with the stack, which made every snapshot from the
 # previous lineage unreadable by the next cluster. opentofu/aws/openbao/lineage
 # owns it now; this stack only looks it up.
+#
+# A data source rather than a remote-state read, deliberately: this stack then
+# needs no read access to the lineage stack's state, and survives that state
+# moving. The cost is that `tofu plan` here FAILS until the lineage stack has
+# been applied, with a not-found error naming the alias but not the stack that
+# owns it -- the `after` edge in stack.tm.hcl only orders a full
+# `terramate script run`. If you are running tofu directly and see that error,
+# apply opentofu/aws/openbao/lineage first.
 data "aws_kms_alias" "seal" {
-  name = "alias/openbao-seal"
+  name = var.seal_key_alias
+}
+```
+
+And add to `variables.tf` — a literal here and a `var.seal_key_alias` in the
+lineage stack, with nothing coupling them, is how the two drift apart:
+
+```hcl
+variable "seal_key_alias" {
+  description = "Alias of the seal key this node unseals with. MUST match `seal_key_alias` in opentofu/aws/openbao/lineage, which creates it -- nothing enforces that, and a mismatch surfaces as a plan-time 'alias not found'."
+  type        = string
+  default     = "alias/openbao-seal"
 }
 ```
 
@@ -1939,13 +1972,36 @@ resource "aws_lb" "this" {
   internal           = true
   load_balancer_type = "network"
 
+  # Fixed IPs are only useful if every one of them works, and by default they
+  # would not. NLB cross-zone load balancing is DISABLED unless asked for: an
+  # NLB node then serves only targets registered in its own AZ and DROPS
+  # traffic when it has none. subnet_mapping below enables three AZs, but
+  # `dev` runs one instance, in whichever AZ the ASG picked -- so two of the
+  # three addresses would blackhole, and which one worked would change on
+  # every instance replacement. That is exactly the instability these fixed
+  # addresses exist to remove.
+  #
+  # It is invisible on the DNS path, which is why this is easy to miss:
+  # AWS drops target-less AZs from the NLB's own DNS answer, and the Route53
+  # alias evaluates target health. The fixed-IP path has no such fallback --
+  # security/base/openbao-endpoint/remote pins ONE literal address.
+  #
+  # Cost is cross-zone data processing, which at OpenBao API volume is noise.
+  enable_cross_zone_load_balancing = true
+
   # Fixed private IPs, not AWS-assigned. A remote cluster reaches this OpenBao
   # through a Tailscale egress Service annotated with one of these addresses
   # (security/base/openbao-endpoint/remote), and that annotation must survive
   # a rebuild of this stack. cidrhost(-6) is the sixth address from the top of
   # each /20: AWS reserves the first four and the last one, and EKS assigns
   # from the pool at random, so a high fixed address is the least likely to
-  # collide. If creation fails with "address already in use", pick -7.
+  # collide.
+  #
+  # If creation fails with "address already in use", the usual cause is the
+  # PREVIOUS load balancer's ENI not yet released after a destroy -- wait and
+  # re-apply, the address comes back. Change the offset only if a long-lived
+  # ENI genuinely holds it, and treat that as a contract change: the remote
+  # cluster's openbao_target_ip has to move with it.
   dynamic "subnet_mapping" {
     for_each = data.aws_subnet.private
     content {
@@ -1955,14 +2011,37 @@ resource "aws_lb" "this" {
   }
 ```
 
-Note this replaces the NLB (changing `subnets` to `subnet_mapping` forces a new one). The Route53 alias in `route53.tf` follows it.
+**This replaces the load balancer**, and the replacement is the riskiest apply in
+Stage 1 — say so in the comment block above `aws_lb` as well. Changing `subnets`
+to `subnet_mapping` forces a new NLB, and OpenTofu's default order is
+destroy-then-create: listener down, NLB down, NLB up, listener up, then the
+Route53 alias updates. That is a **multi-minute OpenBao API outage** plus stale
+DNS for the alias record's cache lifetime, during which cert-manager cannot
+issue, the snapshot CronJob fails, and `OpenBaoDown` fires. Do not run it during
+a certificate renewal, and **take a snapshot first** — except on the very first
+such apply, where you cannot, because the node is still on the `file` backend
+until it reboots onto Raft.
+
+Do **not** add `create_before_destroy` to fix the outage: a target group cannot
+be associated with two load balancers, so it would deadlock the apply. The
+target group and listener re-attach correctly as written — the TG is not
+force-replaced and the ASG references it by an unchanged ARN.
 
 Append to `outputs.tf`:
 
 ```hcl
+# A MAP keyed by availability zone, not a list.
+#
+# `aws_lb.subnet_mapping` is a set in the provider schema, so a list built from
+# it comes out in hash order -- not AZ order, and not stable when an AZ is added
+# or removed. The one consumer of this output picks a SINGLE address
+# (openbao_target_ip, in opentofu/gcp/gke/configure), so it needs to know which
+# address belongs to which zone rather than being handed three in arbitrary
+# order. Computed from the subnet data source with the same expression the
+# resource uses, so it is also known at plan time instead of only after apply.
 output "nlb_private_ips" {
-  description = "Fixed private addresses of the internal NLB, one per AZ. A remote cluster's openbao_target_ip is one of these (opentofu/gcp/gke/configure)."
-  value       = [for m in aws_lb.this.subnet_mapping : m.private_ipv4_address]
+  description = "Fixed private address of the internal NLB, per availability zone. A remote cluster's openbao_target_ip is one of these (opentofu/gcp/gke/configure)."
+  value       = { for s in data.aws_subnet.private : s.availability_zone => cidrhost(s.cidr_block, -6) }
 }
 ```
 
@@ -2010,27 +2089,39 @@ script "destroy" {
     description = "Confirm, snapshot, destroy"
     commands = [
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
-      # The CA chain, so the snapshot request verifies the server like every
-      # other client. Writes into this stack's .tls/ (gitignored).
-      [
-        "bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run",
-        "bash", "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh", "ca",
-        "--root-ca-secret-name", global.ca_chain_secret_name,
-        "--ca-output-file", ".tls/ca.pem",
-        "--region", global.region,
-        "--profile", global.profile,
-      ],
-      # Fails hard if OpenBao is unreachable. TM_OPENBAO_SKIP_SNAPSHOT=true is
-      # the override for a node that is already gone.
-      [
-        "bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run",
-        "bash", "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh", "pre-destroy-snapshot",
-        "--url", global.openbao_url,
-        "--root-token-secret-name", global.root_token_secret_name,
-        "--snapshot-bucket", global.snapshot_bucket_name,
-        "--ca-file", ".tls/ca.pem",
-        "--region", global.region,
-        "--profile", global.profile,
+      # The CA fetch and the snapshot share ONE gate, in one bash step.
+      #
+      # They were two separate ungated steps, and that made
+      # TM_OPENBAO_SKIP_SNAPSHOT useless for the case it exists for. The CA
+      # fetch exits non-zero when the ca-chain secret is missing or unreadable,
+      # and `openbao-config.sh`'s own --ca-file readability check runs during
+      # argument parsing, before dispatch reaches the skip check inside
+      # pre_destroy_snapshot. So a destroy of a node that is "already gone" --
+      # exactly when its surrounding secrets are most likely gone too -- was
+      # hard-blocked by an error about a CA chain, with the documented override
+      # having no effect. The operator's only recourse was editing this file.
+      #
+      # The CA exists only to let the snapshot verify TLS, so if the snapshot is
+      # skipped the CA is not wanted either. One gate, checked before either.
+      ["bash", "-c", <<-BASH
+        ${global.cloud_gate}
+        if [ "$${TM_OPENBAO_SKIP_SNAPSHOT:-false}" = "true" ]; then
+          echo "[skip] TM_OPENBAO_SKIP_SNAPSHOT=true -- no CA fetch, no pre-destroy snapshot."
+          echo "       Everything written since the last scheduled snapshot will be lost."
+          exit 0
+        fi
+        set -euo pipefail
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          --root-ca-secret-name "${global.ca_chain_secret_name}" \
+          --ca-output-file .tls/ca.pem \
+          --region "${global.region}" --profile "${global.profile}"
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" pre-destroy-snapshot \
+          --url "${global.openbao_url}" \
+          --root-token-secret-name "${global.root_token_secret_name}" \
+          --snapshot-bucket "${global.snapshot_bucket_name}" \
+          --ca-file .tls/ca.pem \
+          --region "${global.region}" --profile "${global.profile}"
+      BASH
       ],
       [global.provisioner, "init", "-lock-timeout=5m"],
       [global.provisioner, "destroy", "-auto-approve", "-var-file=variables.tfvars"],
@@ -5139,7 +5230,37 @@ admits `tag:k8s` to the advertised CIDRs on port 8200 for exactly this
 
 - [ ] **Step 5: `.doc-claims.yaml`, `CLAUDE.md`, `docs/gcp-bootstrap.md`**
 
-In `.doc-claims.yaml`, change the `openbao-cluster-mode` entry's `why` to:
+**First, close the gap that lets this task be forgotten.** `.doc-claims.yaml`'s
+`openbao-cluster-mode` claim keys on `mode = "dev"` in `variables.tfvars` — a
+value Task 4 did not change — so `validate-doc-claims.sh` **passes right now
+while six live pages still say OpenBao runs the `file` backend**, one of them
+asserting "neither backup nor restore works there", which is the opposite of
+true. Nothing but this plan enforces that Task 13 happens before merge. Add a
+claim keyed on the thing that actually changed:
+
+```yaml
+  - id: openbao-storage-backend
+    why: >-
+      Both modes run Raft since the lineage design: `file` can neither take nor
+      receive a snapshot, and the node is now rebuilt from one on every deploy.
+      Six pages described the `file` backend, one of them stating that backup
+      and restore do not work -- the exact opposite of the design's central
+      claim. The mode claim below could not catch it, because `mode` did not
+      change.
+    source:
+      file: opentofu/aws/openbao/cluster/scripts/startup_script.sh
+      pattern: '^storage "([a-z]+)" \{'
+    pages:
+      - path: website/content/docs/platform/security/openbao.md
+        must_contain: '`{value}`'
+        must_not_contain:
+          - 'storage type.*`file`'
+          - 'neither backup nor restore works'
+      - path: website/content/docs/platform/foundations/aws.md
+        must_contain: 'Raft, single node'
+```
+
+Then, in the same file, change the `openbao-cluster-mode` entry's `why` to:
 
 ```yaml
     why: >-
