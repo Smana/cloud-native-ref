@@ -55,8 +55,9 @@ spec:
   # loss versus -2's intent: only the final ~50 seconds, which contain
   # nothing but the backup itself.
   #
-  # LESSON for the promotion procedure below: after the one-shot Backup
-  # completes, force the segment out before copying —
+  # LESSON, now encoded in scripts/cnpg-promote-seed.sh (see the rotation
+  # command at the end of this block): after the one-shot Backup completes,
+  # force the segment out before copying —
   #   kubectl exec -n security xplane-zitadel-cnpg-cluster-1 -c postgres -- \
   #     psql -c "SELECT pg_switch_wal();"
   # then wait for the backup's end_wal to appear under wals/ in the live
@@ -66,8 +67,14 @@ spec:
   # therefore still needs scripts/cnpg-prepare-restore.sh first (see the
   # expected-empty-archive note below). Earlier rotations MOVED the
   # prefix and got that clearing for free.
+  #   [SUPERSEDED by #1963 — kept as a record of what was true on
+  #   2026-09-01, not as an instruction. Each cluster generation now
+  #   archives into its own uid-suffixed prefix, so a new cluster's
+  #   destination is empty whether the seed was copied or moved, and
+  #   nothing needs clearing. See the 2026-09-02 entry below.]
   #
-  # The live prefix `xplane-zitadel-cnpg-cluster/` accrues daily
+  # The live prefix (`xplane-zitadel-cnpg-cluster-<uid>/` since #1963;
+  # `xplane-zitadel-cnpg-cluster/` when this was written) accrues daily
   # ScheduledBackups but is NOT used for recovery — that decoupling
   # means a bad day on the live cluster (corruption, accidental DROP)
   # doesn't cascade into recovery from a poisoned state.

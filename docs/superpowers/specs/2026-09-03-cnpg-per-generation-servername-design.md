@@ -140,21 +140,41 @@ A bucket lifecycle rule filtered on `xplane-` expires generation archives and
 is structurally incapable of touching a seed, because seeds are named
 `zitadel-*` / `harbor-*` and never carry the prefix.
 
-### 4. The rule lives in the one-time bootstrap step
+### 4. The rule is declarative, in the Crossplane bucket claims
 
-Nothing in this repo creates these buckets — they are hand-created
-prerequisites that deliberately outlive every cluster, as the teardown docs
-state ("Keep `<project>-ogenki-cnpg-backups`"). The rule is therefore
-documented alongside that existing one-time step, on both clouds.
+Both buckets are already created by Crossplane, in this repo:
+`infrastructure/aws-0/cloudnative-pg/s3-bucket.yaml` and
+`infrastructure/gcp-0/cloudnative-pg/gcs-bucket.yaml`. So the rule belongs
+where the bucket is declared and ships with it — no bootstrap step to document,
+no runbook line to forget, and no cluster where it is silently absent.
 
-Adopting the buckets into an OpenTofu stack was rejected: on GCS, lifecycle is
-a field of `google_storage_bucket`, so managing it means importing the bucket,
-and any stack in the reverse-destroy walk would then either destroy a bucket
-that must survive or carry `prevent_destroy` and make `terramate destroy` fail
-outright — a new instance of [#1964](https://github.com/Smana/cloud-native-ref/issues/1964).
+The two claims express it differently, because the providers do:
 
-This remains a manual step, but it is **once ever per cloud**, not once per
-rebuild. That is a different category from what this work removes.
+- **GCS** — `lifecycleRule` is a field of the `Bucket` itself, so the rule is
+  added to the existing claim. Its `condition` and `action` are single objects
+  there, not lists.
+- **S3** — lifecycle is a separate `BucketLifecycleConfiguration` managed
+  resource, added alongside the `Bucket` and bound to it by a `bucketSelector`
+  on `cloud.ogenki.io/name: cnpg-backups` rather than a hardcoded name.
+
+Neither claim carries `Delete` in `managementPolicies`, so the buckets still
+outlive every cluster — the property this decision has to protect either way.
+
+An **OpenTofu** stack was considered and rejected, and that reasoning survives:
+adopting the buckets there means importing them, and any stack in the
+reverse-destroy walk would then either destroy a bucket that must survive or
+carry `prevent_destroy` and make `terramate destroy` fail outright — a new
+instance of [#1964](https://github.com/Smana/cloud-native-ref/issues/1964).
+Crossplane has neither problem here: these claims never delete, and Flux prune
+cannot remove the bucket for the same reason.
+
+> **Corrected after review.** This decision was first written as "the rule
+> lives in the one-time bootstrap step", on the premise that "nothing in this
+> repo creates these buckets — they are hand-created prerequisites". That
+> premise was false; the two claims named above have created them all along,
+> and the alternative the original text weighed OpenTofu against was never the
+> real mechanism. What shipped is what is described here — declarative, on both
+> clouds, with no manual step at all.
 
 ### 5. Seed promotion becomes a script
 

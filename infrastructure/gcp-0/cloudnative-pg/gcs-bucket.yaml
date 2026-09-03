@@ -14,25 +14,33 @@
 # globally unique across all of GCP, so the region is not enough to avoid a
 # collision with someone else's bucket. Same convention as the other three
 # buckets on this cluster (harbor, openbao-snapshot, llm weights).
-# THE BUCKET OUTLIVES THE CLUSTER, AND THAT HAS A CONSEQUENCE ON REBUILD.
-# gcp-0 is destroyed and recreated routinely; this bucket is not, by the
-# managementPolicies above. The recreated CNPG clusters take the SAME names, so
-# they archive into the SAME prefixes — and barman refuses to start archiving
-# into a non-empty one (its expected-empty-archive check). A rebuild onto a
-# bucket left as-is therefore wedges the new cluster, with the failure surfacing
-# as a Kustomization health check rather than as anything naming the archive.
+# THE BUCKET OUTLIVES THE CLUSTER. That used to have a consequence on rebuild,
+# and since #1963 it no longer does. gcp-0 is destroyed and recreated routinely;
+# this bucket is not, by the managementPolicies above. The recreated CNPG
+# clusters took the SAME names, so they archived into the SAME prefixes — and
+# barman refuses to start archiving into a non-empty one (its
+# expected-empty-archive check). A rebuild onto a bucket left as-is wedged the
+# new cluster, with the failure surfacing as a Kustomization health check rather
+# than as anything naming the archive, so every teardown had to empty the live
+# prefixes by hand with a `gcloud storage rm`/`mv`.
 #
-# So a teardown must leave the live prefixes empty. Two ways, both fine:
+# Each cluster generation now archives into its OWN prefix, keyed by the XR uid
+# (`xplane-<name>-cnpg-cluster-<uid[0:8]>/`), so a new generation's destination
+# is empty because it never existed. Nothing is cleared by hand on teardown, and
+# the orphaned generation prefixes left behind are reclaimed by the
+# `lifecycleRule` below rather than by an operator remembering to.
 #
-#   # discard — right for a disposable cluster, which this one is
-#   gcloud storage rm -r gs://${project_id}-ogenki-cnpg-backups/'*-cnpg-cluster'
+# Freezing a recovery seed is likewise a script now, not a `gcloud storage mv`:
 #
-#   # or keep it as a recovery seed, the pattern security/base/zitadel uses:
-#   gcloud storage mv -r \
-#     gs://.../xplane-zitadel-cnpg-cluster gs://.../zitadel-$(date +%Y%m%d)
-#   # then point the claim's objectStoreRecovery.path at that dated prefix.
-#   # MOVE, not copy: copying leaves the live prefix non-empty and wedges the
-#   # rebuild anyway, which is the whole trap.
+#   ./scripts/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
+#     --cloud gcp --bucket ${project_id}-ogenki-cnpg-backups --apply
+#
+# It discovers the uid-suffixed live prefix from the Cluster, forces the
+# backup's final WAL segment out before copying, and verifies the seed holds a
+# restorable base backup rather than counting objects. Then point the claim's
+# objectStoreRecovery.path at the dated prefix it prints. A seed is named
+# `zitadel-*` / `harbor-*` and never `xplane-*`, which is what keeps the
+# lifecycle rule below structurally incapable of deleting one.
 #
 apiVersion: storage.gcp.m.upbound.io/v1beta1
 kind: Bucket
