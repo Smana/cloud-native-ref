@@ -10,9 +10,36 @@ apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
   name: cnpg-backups
+  labels:
+    cloud.ogenki.io/name: cnpg-backups
   annotations:
     crossplane.io/external-name: ${region}-ogenki-cnpg-backups
 spec:
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
     region: ${region}
+---
+# Since #1963 each cluster generation writes to its own `xplane-*` prefix and
+# nothing reclaims them, so expire those automatically. Scoped to the
+# `xplane-` prefix specifically so this rule is structurally incapable of
+# touching a dated seed -- seeds are named `zitadel-*` / `harbor-*` and never
+# carry that prefix.
+apiVersion: s3.aws.m.upbound.io/v1beta1
+kind: BucketLifecycleConfiguration
+metadata:
+  name: xplane-cnpg-backups
+  labels:
+    cloud.ogenki.io/name: cnpg-backups
+spec:
+  forProvider:
+    bucketSelector:
+      matchLabels:
+        cloud.ogenki.io/name: cnpg-backups
+    region: ${region}
+    rule:
+      - id: expire-generation-archives
+        status: Enabled
+        filter:
+          - prefix: xplane-
+        expiration:
+          - days: 30

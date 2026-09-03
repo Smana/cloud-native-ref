@@ -181,21 +181,13 @@ a personal gmail identity.
   `No valid credential sources found` on an expired AWS SSO token, which is the
   coupling that ADR removed.
 
-## Expire old generation archives
+## Expiring old generation archives is not a manual step
 
-Each cluster generation writes to its own `xplane-*` prefix and nothing
-reclaims them, so set this once per cloud. It cannot touch the dated seeds —
-they are named `zitadel-*` / `harbor-*` and never carry the `xplane-` prefix.
-
-```bash
-cat > /tmp/cnpg-lifecycle.json <<'EOF'
-{"lifecycle":{"rule":[{"action":{"type":"Delete"},
-  "condition":{"age":30,"matchesPrefix":["xplane-"]}}]}}
-EOF
-
-gcloud storage buckets update "gs://${PROJECT}-ogenki-cnpg-backups" \
-  --lifecycle-file=/tmp/cnpg-lifecycle.json
-```
+Each CNPG cluster generation writes to its own `xplane-*` prefix and nothing
+reclaims them by hand — the bucket's own claim carries a `lifecycleRule` that
+expires them automatically, scoped so it cannot touch the dated seeds (named
+`zitadel-*` / `harbor-*`, never `xplane-`). See
+`infrastructure/gcp-0/cloudnative-pg/gcs-bucket.yaml`.
 
 ## What is NOT a prerequisite
 

@@ -41,26 +41,13 @@ a stack expects is to read the file already sitting next to it.
    export TF_VAR_tailscale_api_key=<YOUR_TAILSCALE_API_KEY>
    ```
 
-### Expire old generation archives
+### Expiring old generation archives is not a manual step
 
-The `<region>-ogenki-cnpg-backups` bucket is meant to outlive individual
-clusters — each `SQLInstance` restores from a frozen, dated prefix inside it —
-so nothing here can be allowed to delete it. Set its lifecycle rule once, so
-old cluster-generation prefixes expire instead of accumulating forever. Each
-cluster generation writes to its own `xplane-*` prefix and nothing reclaims
-them; the rule cannot touch the dated seeds — they are named `zitadel-*` /
-`harbor-*` and never carry the `xplane-` prefix.
-
-```bash
-cat > /tmp/cnpg-lifecycle.json <<'EOF'
-{"Rules":[{"ID":"expire-generation-archives","Status":"Enabled",
-  "Filter":{"Prefix":"xplane-"},"Expiration":{"Days":30}}]}
-EOF
-
-aws s3api put-bucket-lifecycle-configuration \
-  --bucket "${REGION}-ogenki-cnpg-backups" \
-  --lifecycle-configuration file:///tmp/cnpg-lifecycle.json
-```
+Each CNPG cluster generation writes to its own `xplane-*` prefix and nothing
+reclaims them by hand — the bucket's own claim carries a
+`BucketLifecycleConfiguration` that expires them automatically, scoped so it
+cannot touch the dated seeds (named `zitadel-*` / `harbor-*`, never
+`xplane-`). See `infrastructure/aws-0/cloudnative-pg/s3-bucket.yaml`.
 
 ## Deploy
 

@@ -47,3 +47,17 @@ spec:
     location: ${region}
     uniformBucketLevelAccess: true
     forceDestroy: false
+    # Since #1963 each cluster generation writes to its own `xplane-*` prefix
+    # and nothing reclaims them, so expire those automatically. `condition`
+    # and `action` are single objects here, not lists -- confirmed against
+    # storage.gcp.m.upbound.io/v1beta1 Bucket via the flux-schema MCP, not
+    # assumed from the AWS shape. Scoped to the `xplane-` prefix specifically
+    # so this rule is structurally incapable of touching a dated seed -- seeds
+    # are named `zitadel-*` / `harbor-*` and never carry that prefix.
+    lifecycleRule:
+      - action:
+          type: Delete
+        condition:
+          age: 30
+          matchesPrefix:
+            - "xplane-"
