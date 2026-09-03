@@ -95,17 +95,30 @@ esac
 # print -- an empty prefix is not a failure). On a REAL failure, prints the
 # CLI's own error to stderr and returns 1 -- callers MUST check this, not
 # just look at whether anything was printed.
+#
+# stdout and stderr are captured SEPARATELY (a temp file for stderr, not
+# 2>&1) so a benign stderr notice on an otherwise-successful call can never
+# leak into the parsed listing. Round-2 merged them with 2>&1 to get real
+# error text on the failure path, but that also re-emitted stderr on the
+# SUCCESS path -- `list_subdir_names`'s unanchored `sort | tail -1` then
+# happily picked up a stray line like AWS CLI v2's
+# "Note: switching to next-gen CRT-based S3 transfer client" (its last word,
+# "client", sorts after a timestamp and wins) as if it were the newest base
+# backup's name. Demonstrated live with a stub emitting exactly that notice
+# under exit 0.
 ls_raw() { # $1 = URI prefix (should end in /)
-  local out rc
+  local out err rc errfile
+  errfile="$(mktemp)"
   case "$CLOUD" in
-    aws) out="$(aws s3 ls "$1" 2>&1)"; rc=$? ;;
-    gcp) out="$(gcloud storage ls "$1" 2>&1)"; rc=$? ;;
+    aws) out="$(aws s3 ls "$1" 2>"$errfile")"; rc=$? ;;
+    gcp) out="$(gcloud storage ls "$1" 2>"$errfile")"; rc=$? ;;
   esac
+  err="$(cat "$errfile")"; rm -f "$errfile"
   if [ "$rc" -ne 0 ]; then
-    if [ "$CLOUD" = "gcp" ] && printf '%s' "$out" | grep -q "matched no objects"; then
+    if [ "$CLOUD" = "gcp" ] && printf '%s' "$err" | grep -q "matched no objects"; then
       return 0
     fi
-    echo "[error ] listing $1 failed (exit $rc): $out" >&2
+    echo "[error ] listing $1 failed (exit $rc): $err" >&2
     return 1
   fi
   [ -n "$out" ] && printf '%s\n' "$out"
@@ -132,14 +145,22 @@ list_subdir_names() { # $1 = URI prefix (should end in /)
 # content on success; on failure (missing object OR a real API error) prints
 # the CLI's own error to stderr and returns 1 -- callers must not treat empty
 # output alone as proof the object doesn't exist.
+#
+# Same stdout/stderr separation as ls_raw, for the same reason and for
+# consistency -- not currently at risk the way ls_raw was (callers parse this
+# with anchored `sed -n 's/^key=//p'`, so a stray stderr line just fails to
+# match any pattern), but conflating the streams on success is the wrong
+# default to leave lying around here too.
 cat_object() { # $1 = full URI to the object
-  local out rc
+  local out err rc errfile
+  errfile="$(mktemp)"
   case "$CLOUD" in
-    aws) out="$(aws s3 cp --only-show-errors "$1" - 2>&1)"; rc=$? ;;
-    gcp) out="$(gcloud storage cat "$1" 2>&1)"; rc=$? ;;
+    aws) out="$(aws s3 cp --only-show-errors "$1" - 2>"$errfile")"; rc=$? ;;
+    gcp) out="$(gcloud storage cat "$1" 2>"$errfile")"; rc=$? ;;
   esac
+  err="$(cat "$errfile")"; rm -f "$errfile"
   if [ "$rc" -ne 0 ]; then
-    echo "[error ] reading $1 failed (exit $rc): $out" >&2
+    echo "[error ] reading $1 failed (exit $rc): $err" >&2
     return 1
   fi
   printf '%s\n' "$out"
