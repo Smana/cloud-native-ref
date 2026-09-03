@@ -72,23 +72,52 @@ case "$CLOUD" in
   *) echo "--cloud must be aws or gcp" >&2; exit 2 ;;
 esac
 
+# A seed must NEVER be named `xplane-*`. The default below strips that prefix,
+# so the generated name is structurally safe -- but an operator-supplied
+# --seed is not otherwise constrained, and the bucket lifecycle rules added
+# with #1963 (infrastructure/aws-0/cloudnative-pg/s3-bucket.yaml,
+# infrastructure/gcp-0/cloudnative-pg/gcs-bucket.yaml) EXPIRE every
+# `xplane-`-prefixed object after 30 days, because that prefix means "an
+# orphaned cluster generation". A seed named that way would be deleted
+# silently, with nothing to notice it until the next rebuild -- when the seed
+# is the only copy of the ZITADEL directory. Refuse it here rather than let
+# the bucket delete it later.
+case "$SEED" in
+  xplane-*)
+    echo "--seed must not begin with 'xplane-': the CNPG backup buckets carry a lifecycle rule that expires every \`xplane-\`-prefixed object after 30 days (it reclaims orphaned per-generation cluster archives), so a seed named that way would be deleted silently and missed only at the next rebuild. Use a dated name such as zitadel-$(date +%Y%m%d)." >&2
+    exit 2 ;;
+esac
+
 # ---- cloud-abstraction helpers ---------------------------------------------
 #
 # Every helper here distinguishes "the call failed" from "the call succeeded
 # and found nothing" and NEVER collapses the former into the latter -- see
-# the header. Concretely:
-#   `aws s3 ls` on a genuinely empty/nonexistent prefix exits 0 with empty
-#     stdout; any non-zero exit is a real failure.
-#   `gcloud storage ls` exits 1 BOTH for "matched no objects" (empty, not a
-#     failure) and for every other error (bucket gone, network, auth) --
-#     verified live against a real bucket during this fix, so it is not a
-#     bare assumption:
+# the header. NEITHER CLI signals that distinction with the exit code alone,
+# and both were MEASURED against a real bucket rather than assumed:
+#
+#   `aws s3 ls`
+#     empty / nonexistent prefix   rc=1    stdout empty     stderr EMPTY
+#     real prefix                  rc=0    stdout listing   stderr empty
+#     nonexistent bucket           rc=254  stdout empty     stderr "An error
+#                                                           occurred (NoSuchBucket) ..."
+#     So a bare `rc != 0` is NOT a failure on AWS: rc 1 with nothing on stderr
+#     is how the CLI says "there is nothing here", which is the normal state
+#     of a seed prefix that has not been created yet. An earlier revision of
+#     this file asserted the opposite -- "exits 0 on an empty prefix; any
+#     non-zero exit is a real failure" -- and the destination-collision guard
+#     below therefore ABORTED on every seed that did not already exist, in
+#     exactly the case where it must proceed. Real AWS errors are 254/255 and
+#     always carry stderr, which is what the check below keys off.
+#
+#   `gcloud storage ls`
+#     exits 1 BOTH for "matched no objects" (empty, not a failure) and for
+#     every other error (bucket gone, network, auth):
 #       $ gcloud storage ls gs://<bucket>/definitely-does-not-exist/
 #       ERROR: (gcloud.storage.ls) One or more URLs matched no objects.  (rc=1)
 #       $ gcloud storage ls gs://<nonexistent-bucket>/
 #       ERROR: (gcloud.storage.ls) gs://<nonexistent-bucket> not found: 404.  (rc=1)
-#     so on GCP the exit code alone cannot tell those apart -- the message
-#     text has to.
+#     so on GCP the exit code alone cannot tell those apart either -- there the
+#     message text has to.
 
 # Raw listing, for existence/substring checks and simple counts. Prints the
 # listing on stdout and returns 0 on success (possibly with nothing to
@@ -115,6 +144,15 @@ ls_raw() { # $1 = URI prefix (should end in /)
   esac
   err="$(cat "$errfile")"; rm -f "$errfile"
   if [ "$rc" -ne 0 ]; then
+    # AWS: rc 1 with an EMPTY stderr is the CLI's way of saying the prefix
+    # holds nothing -- a successful call with no results, not a failure. A
+    # real AWS failure exits 254/255 and always says why on stderr, so the
+    # empty-stderr test is what keeps this from swallowing one.
+    if [ "$CLOUD" = "aws" ] && [ "$rc" -eq 1 ] && [ -z "$err" ]; then
+      return 0
+    fi
+    # GCP: the same exit code (1) covers both, so only the message tells them
+    # apart.
     if [ "$CLOUD" = "gcp" ] && printf '%s' "$err" | grep -q "matched no objects"; then
       return 0
     fi

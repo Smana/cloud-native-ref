@@ -85,9 +85,24 @@ EOF
 # ---- stub CLIs ----------------------------------------------------------
 cat > "$STUB/aws" <<'EOF'
 #!/usr/bin/env bash
+# EXIT CODES MATTER, and this stub gets them from the real CLI, not from
+# convenience. Measured against a real bucket (round 4):
+#
+#   empty / nonexistent prefix   rc=1    stdout empty   stderr EMPTY
+#   real prefix                  rc=0    stdout listing stderr empty
+#   nonexistent bucket           rc=254  stdout empty   stderr "An error
+#                                                        occurred (NoSuchBucket)"
+#
+# So `aws s3 ls` does NOT exit 0 on an empty prefix -- it exits 1, silently.
+# An earlier version of this stub fell through to `: ;` + `exit 0` for every
+# unmatched prefix, which encoded the OPPOSITE semantics and kept this suite
+# green while the script under test aborted on "the seed does not exist yet".
+# Unmatched now means "empty prefix": rc 1, nothing on stderr.
 FIXDIR="$STUB_FIXTURES"
+empty_prefix() { exit 1; }   # rc 1, no stderr -- the real "nothing here"
 if [ "$1" = "s3" ] && [ "$2" = "ls" ]; then
     case "$3" in
+        s3://test-bucket/absent-shard-seed/base/)         cat "$FIXDIR/good-base-listing.txt" ;;
         s3://test-bucket/good-seed/base/)                 cat "$FIXDIR/good-base-listing.txt" ;;
         s3://test-bucket/good-seed/wals/0000000700000002/) cat "$FIXDIR/good-wals-listing.txt" ;;
         s3://test-bucket/bad-seed/base/)                   cat "$FIXDIR/bad-base-listing.txt" ;;
@@ -117,13 +132,22 @@ if [ "$1" = "s3" ] && [ "$2" = "ls" ]; then
             [ -f "$FIXDIR/settle-lands-poll-count" ] && n="$(cat "$FIXDIR/settle-lands-poll-count")"
             n=$((n + 1))
             echo "$n" > "$FIXDIR/settle-lands-poll-count"
-            [ "$n" -ge 3 ] && echo "2026-09-02 12:41:00     123456 00000007000000020000007F.bz2" ;;
-        s3://test-bucket/settle-timeout-server/wals/0000000700000002/) : ;;  # never lands
+            if [ "$n" -ge 3 ]; then
+                echo "2026-09-02 12:41:00     123456 00000007000000020000007F.bz2"
+            else
+                empty_prefix   # not there YET: empty prefix, rc 1, no stderr
+            fi ;;
+        s3://test-bucket/settle-timeout-server/wals/0000000700000002/) empty_prefix ;;  # never lands
         s3://test-bucket/settle-error-server/wals/0000000700000002/)
             echo "An error occurred (SlowDown) when calling the ListObjectsV2 operation" >&2; exit 254 ;;
         s3://test-bucket/settle-lands-seed/base/)                 cat "$FIXDIR/good-base-listing.txt" ;;
         s3://test-bucket/settle-lands-seed/wals/0000000700000002/) cat "$FIXDIR/good-wals-listing.txt" ;;
-        *) : ;;
+        # round-4 fixture: base/ and backup.info are fine, but the WAL shard
+        # DIRECTORY does not exist at all -- the commonest shape of a genuinely
+        # incomplete seed. Falls through to the catch-all below (rc 1, no
+        # stderr), which is precisely the case the inverted premise misread as
+        # a listing failure.
+        *) empty_prefix ;;
     esac
     exit 0
 fi
@@ -140,7 +164,8 @@ if [ "$1" = "s3" ] && [ "$2" = "cp" ]; then
             echo "Note: switching to next-gen CRT-based S3 transfer client" >&2
             cat "$FIXDIR/good-backup.info" ;;
         s3://test-bucket/settle-lands-seed/base/20260902T123813/backup.info) cat "$FIXDIR/good-backup.info" ;;
-        *) exit 1 ;;
+        s3://test-bucket/absent-shard-seed/base/20260902T123813/backup.info) cat "$FIXDIR/good-backup.info" ;;
+        *) echo "fatal error: An error occurred (404) when calling the HeadObject operation: Not Found" >&2; exit 1 ;;
     esac
     exit 0
 fi
@@ -244,10 +269,20 @@ check "populated destination refused" "1" "$rc"
 check_contains "populated destination names the reason" "already has objects in it" "$out"
 
 # ---- 5. dry-run still succeeds against an empty destination ----------------
+# ROUND 4: this is the case the inverted AWS premise broke. `aws s3 ls` exits 1
+# on a prefix that does not exist yet -- which is the NORMAL state of a seed
+# about to be created -- and the guard read that exit code as "the listing
+# failed", aborting in exactly the situation where it should proceed. The stub
+# now returns rc 1 with empty stderr here, like the real CLI.
 out="$(bash "$SCRIPT" --cluster xplane-fake --namespace ns --cloud aws --bucket test-bucket --seed empty-seed 2>&1)"
 rc=$?
 check "empty destination dry-run exit code" "0" "$rc"
 check_contains "empty destination dry-run reports serverName" "serverName live-server-name" "$out"
+if printf '%s' "$out" | grep -qF "could not check whether seed"; then
+    printf '  FAIL absent destination: must not be read as a listing failure\n'; fail=1
+else
+    printf '  ok   absent destination: not read as a listing failure\n'
+fi
 
 # ---- round 2: a failed cloud-CLI call must never be read as "absent" -------
 # (the actual defect: aws s3 ls returning a transient error was silently read
@@ -364,6 +399,20 @@ rc=$?
 check "settle loop: genuine timeout -> exit code" "1" "$rc"
 check_contains "settle loop: genuine timeout names the real cause" \
     "end_wal 00000007000000020000007F did not land in the archive within 5 minutes" "$out"
+# ROUND 4: the shard prefix is genuinely empty here (rc 1, no stderr), so this
+# also proves the loop does not misreport an absent segment as a listing
+# failure -- and that it stops emitting ~30 spurious "[error ] listing ..."
+# lines while it waits.
+if printf '%s' "$out" | grep -qF "could not check for end_wal"; then
+    printf '  FAIL settle loop genuine timeout: must not report a listing failure\n'; fail=1
+else
+    printf '  ok   settle loop genuine timeout: not reported as a listing failure\n'
+fi
+if printf '%s' "$out" | grep -qF "[error ] listing"; then
+    printf '  FAIL settle loop genuine timeout: emitted spurious listing errors while waiting\n'; fail=1
+else
+    printf '  ok   settle loop genuine timeout: no spurious listing errors while waiting\n'
+fi
 
 # ---- 15. the listing keeps failing throughout -> "could not tell" timeout,
 #          NOT the same message as a genuine timeout ------------------------
@@ -381,5 +430,49 @@ if printf '%s' "$out" | grep -qF "did not land in the archive within 5 minutes";
 else
     printf '  ok   settle loop could-not-tell: not reported as a genuine timeout\n'
 fi
+
+# ---- round 4: `aws s3 ls` exits 1, with empty stderr, on a prefix that holds
+# nothing. The script's header claimed the opposite ("exits 0 ... any non-zero
+# is a real failure"), and the stub above encoded the same inversion, so the
+# suite stayed green while the destination-collision guard aborted on every
+# not-yet-existing seed. Real errors are 254/255 and ALWAYS carry stderr.
+
+# ---- 16. wal_present on an absent shard DIRECTORY must report the segment
+#          absent -- the genuinely-incomplete-seed verdict -- not "could not
+#          tell". This is the verdict the whole script exists to produce, and
+#          the inverted premise turned it into a listing failure. ------------
+out="$(bash "$SCRIPT" --verify-seed absent-shard-seed --cloud aws --bucket test-bucket 2>&1)"
+rc=$?
+check "absent WAL shard: exit code" "1" "$rc"
+check_contains "absent WAL shard: reports the segment absent" \
+    "begin_wal segment 00000007000000020000007E is not present under wals/ -- unrestorable" "$out"
+if printf '%s' "$out" | grep -qF "could not verify begin_wal"; then
+    printf '  FAIL absent WAL shard: must not be reported as could-not-verify\n'; fail=1
+else
+    printf '  ok   absent WAL shard: not reported as could-not-verify\n'
+fi
+
+# ---- 17. a REAL aws failure (254 + stderr) must still fail closed, so the
+#          round-4 relaxation did not reopen the round-2 hole ---------------
+out="$(bash "$SCRIPT" --verify-seed flaky-base-seed --cloud aws --bucket test-bucket 2>&1)"
+rc=$?
+check "aws rc=254 still fails closed: exit code" "1" "$rc"
+check_contains "aws rc=254 still fails closed: names the listing failure" \
+    "could not list s3://test-bucket/flaky-base-seed/base/ -- see error above" "$out"
+if printf '%s' "$out" | grep -qF "holds no base backup"; then
+    printf '  FAIL aws rc=254: must not be read as a genuine empty result\n'; fail=1
+else
+    printf '  ok   aws rc=254: not read as a genuine empty result\n'
+fi
+
+# ---- 18. a seed named `xplane-*` is refused: the bucket lifecycle rules added
+#          with #1963 expire every `xplane-`-prefixed object after 30 days, so
+#          such a seed would be deleted silently and only missed at a rebuild -
+out="$(bash "$SCRIPT" --cluster xplane-fake --namespace ns --cloud aws --bucket test-bucket \
+    --seed xplane-zitadel-cnpg-cluster-a1b2c3d4 2>&1)"
+rc=$?
+check "xplane- seed name refused: exit code" "2" "$rc"
+check_contains "xplane- seed name refused: explains the lifecycle rule" \
+    "expires every \`xplane-\`-prefixed object after 30 days" "$out"
 
 exit $fail
