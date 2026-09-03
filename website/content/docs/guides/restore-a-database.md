@@ -138,10 +138,10 @@ identity providers. All five matched exactly:
 ## Rotating the seed
 
 Refresh it when the database changes meaningfully — new OAuth apps, a schema
-migration, significant user growth. Re-run `scripts/cnpg-promote-seed.sh` (it
-defaults the seed name to `<cluster>-$(date +%Y%m%d)` if `--seed` is omitted)
-and update `path`. The old prefix costs a few tens of megabytes; keep it until
-the new one has been restored from at least once.
+migration, significant user growth. Re-run `scripts/cnpg-promote-seed.sh` (if
+`--seed` is omitted it defaults to the claim name with any `xplane-` prefix
+removed, plus today's date) and update `path`. The old prefix costs a few tens
+of megabytes; keep it until the new one has been restored from at least once.
 
 ## Related
 

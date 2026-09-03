@@ -72,30 +72,11 @@ spec:
   # means a bad day on the live cluster (corruption, accidental DROP)
   # doesn't cascade into recovery from a poisoned state.
   #
-  # Promotion procedure (rotate the frozen snapshot when zitadel
-  # changes meaningfully — new OAuth apps, schema migration,
-  # significant user growth):
-  #   1. `kubectl create -f one-shot-backup.yaml -n security`
-  #      (Backup CR pointing at xplane-zitadel-cnpg-cluster).
-  #   2. Wait for phase=completed.
-  #   3. `aws s3 cp --recursive
-  #      s3://eu-west-3-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/
-  #      s3://eu-west-3-ogenki-cnpg-backups/zitadel-$(date +%Y%m%d)/`
-  #   4. Update this `path:` to the new dated prefix, commit, push.
-  #
   # Follow-up: the original 2026-05-04 manual backup didn't write to
   # S3 (root cause unknown — suspect cluster destroy raced backup
   # finalize). Add a Flux pre-flight check that fails closed if the
   # configured recovery prefix is empty.
-  # Restoring no longer requires clearing the live archive. Since #1963 each
-  # cluster generation writes to its own prefix (serverName carries the XR
-  # uid), so a new cluster's destination is empty because it never existed.
   #
-  # Rotate this seed with:
-  #   scripts/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
-  #     --cloud aws --bucket <region>-ogenki-cnpg-backups --apply
-  # It discovers the live prefix, forces the final WAL segment out before
-  # copying, and verifies the result is restorable rather than counting objects.
   # ── zitadel-20260902: rotated because the directory changed materially ──────
   # Taken 2026-09-02 after a one-shot Backup (20260902T123813, status=DONE).
   # Promoted because zitadel-20260901 holds AUG 29 data and predates, in this
@@ -121,6 +102,16 @@ spec:
   #
   # zitadel-20260901 is left in the bucket as a fallback. Delete it once a
   # rebuild has actually restored from this one.
+  #
+  # Restoring no longer requires clearing the live archive. Since #1963 each
+  # cluster generation writes to its own prefix (serverName carries the XR
+  # uid), so a new cluster's destination is empty because it never existed.
+  #
+  # Rotate this seed with:
+  #   scripts/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
+  #     --cloud aws --bucket <region>-ogenki-cnpg-backups --apply
+  # It discovers the live prefix, forces the final WAL segment out before
+  # copying, and verifies the result is restorable rather than counting objects.
   objectStoreRecovery:
     bucketName: "${region}-ogenki-cnpg-backups"
     path: "zitadel-20260902"
