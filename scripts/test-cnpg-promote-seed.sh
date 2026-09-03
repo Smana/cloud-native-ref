@@ -86,6 +86,11 @@ if [ "$1" = "s3" ] && [ "$2" = "ls" ]; then
         s3://test-bucket/bad-seed/base/)                   cat "$FIXDIR/bad-base-listing.txt" ;;
         s3://test-bucket/bad-seed/wals/0000000500000002/)  cat "$FIXDIR/bad-wals-listing.txt" ;;
         s3://test-bucket/populated-seed/)                  echo "                           PRE existing-object/" ;;
+        # round-2 fixtures: a transient CLI failure, not a real empty result.
+        s3://test-bucket/flaky-wal-seed/base/)                 cat "$FIXDIR/good-base-listing.txt" ;;
+        s3://test-bucket/flaky-wal-seed/wals/0000000700000002/) echo "An error occurred (SlowDown) when calling the ListObjectsV2 operation" >&2; exit 254 ;;
+        s3://test-bucket/flaky-info-seed/base/)                cat "$FIXDIR/good-base-listing.txt" ;;
+        s3://test-bucket/flaky-collision-seed/)                echo "An error occurred (SlowDown) when calling the ListObjectsV2 operation" >&2; exit 254 ;;
         *) : ;;
     esac
     exit 0
@@ -94,8 +99,10 @@ if [ "$1" = "s3" ] && [ "$2" = "cp" ]; then
     uri=""
     for a in "$@"; do case "$a" in s3://*) uri="$a" ;; esac; done
     case "$uri" in
-        s3://test-bucket/good-seed/base/20260902T123813/backup.info) cat "$FIXDIR/good-backup.info" ;;
-        s3://test-bucket/bad-seed/base/20260829T195453/backup.info)  cat "$FIXDIR/bad-backup.info" ;;
+        s3://test-bucket/good-seed/base/20260902T123813/backup.info)       cat "$FIXDIR/good-backup.info" ;;
+        s3://test-bucket/bad-seed/base/20260829T195453/backup.info)        cat "$FIXDIR/bad-backup.info" ;;
+        s3://test-bucket/flaky-wal-seed/base/20260902T123813/backup.info)  cat "$FIXDIR/good-backup.info" ;;
+        s3://test-bucket/flaky-info-seed/base/20260902T123813/backup.info) echo "An error occurred (RequestTimeout) when calling the GetObject operation" >&2; exit 254 ;;
         *) exit 1 ;;
     esac
     exit 0
@@ -110,6 +117,12 @@ if [ "$1" = "storage" ] && [ "$2" = "ls" ]; then
     case "$3" in
         gs://test-bucket/gcp-good-seed/base/)                 cat "$FIXDIR/gcp-good-base-listing.txt" ;;
         gs://test-bucket/gcp-good-seed/wals/0000000700000002/) cat "$FIXDIR/gcp-good-wals-listing.txt" ;;
+        # round-2 fixtures, wording verified live against a real bucket
+        # (see task-4-report.md): gcloud storage ls uses the SAME exit code
+        # (1) for "genuinely nothing there" and for a real failure -- only
+        # the message text tells them apart.
+        gs://test-bucket/gcp-empty-seed/base/)  echo "ERROR: (gcloud.storage.ls) One or more URLs matched no objects." >&2; exit 1 ;;
+        gs://test-bucket/gcp-broken-seed/base/) echo "ERROR: (gcloud.storage.ls) gs://test-bucket not found: 404." >&2; exit 1 ;;
         *) : ;;
     esac
     exit 0
@@ -171,5 +184,66 @@ out="$(bash "$SCRIPT" --cluster xplane-fake --namespace ns --cloud aws --bucket 
 rc=$?
 check "empty destination dry-run exit code" "0" "$rc"
 check_contains "empty destination dry-run reports serverName" "serverName live-server-name" "$out"
+
+# ---- round 2: a failed cloud-CLI call must never be read as "absent" -------
+# (the actual defect: aws s3 ls returning a transient error was silently read
+# as "the segment isn't there", making a known-good seed intermittently fail)
+
+# ---- 6. wal_present: a listing failure on begin_wal must be reported as a
+#         failure to verify, NOT as "not present" ---------------------------
+out="$(bash "$SCRIPT" --verify-seed flaky-wal-seed --cloud aws --bucket test-bucket 2>&1)"
+rc=$?
+check "flaky wal listing: exit code" "1" "$rc"
+check_contains "flaky wal listing: reports could-not-verify, not absence" \
+    "could not verify begin_wal 00000007000000020000007E -- listing failed" "$out"
+if printf '%s' "$out" | grep -qF "is not present under wals/"; then
+    printf '  FAIL flaky wal listing: must not claim the segment is absent\n'; fail=1
+else
+    printf '  ok   flaky wal listing: does not claim the segment is absent\n'
+fi
+
+# ---- 7. cat_object: a failed backup.info read must be reported as a
+#         failure to read, NOT as "missing/empty" ---------------------------
+out="$(bash "$SCRIPT" --verify-seed flaky-info-seed --cloud aws --bucket test-bucket 2>&1)"
+rc=$?
+check "flaky backup.info read: exit code" "1" "$rc"
+check_contains "flaky backup.info read: reports could-not-read" \
+    "could not read 20260902T123813/backup.info -- see error above" "$out"
+
+# ---- 8. destination-collision check: a listing failure must fail closed,
+#         NOT be read as "the seed doesn't exist yet, go ahead" ------------
+export STUB_SERVER_NAME="live-server-name"
+out="$(bash "$SCRIPT" --cluster xplane-fake --namespace ns --cloud aws --bucket test-bucket --seed flaky-collision-seed 2>&1)"
+rc=$?
+check "flaky collision check: exit code" "1" "$rc"
+check_contains "flaky collision check: reports could-not-check, not proceed" \
+    "could not check whether seed flaky-collision-seed already exists" "$out"
+
+# ---- 9. GCP: "matched no objects" IS a genuine empty result, not a failure
+#         -- gcloud storage ls uses the SAME exit code (1) for both, so this
+#         is the one case where the message, not the exit code, must decide -
+out="$(bash "$SCRIPT" --verify-seed gcp-empty-seed --cloud gcp --bucket test-bucket 2>&1)"
+rc=$?
+check "gcp genuinely-empty seed: exit code" "1" "$rc"
+check_contains "gcp genuinely-empty seed: reports holds-no-base-backup, not a listing failure" \
+    "seed gcp-empty-seed holds no base backup" "$out"
+if printf '%s' "$out" | grep -qF "could not list"; then
+    printf '  FAIL gcp genuinely-empty seed: must not report this as a listing failure\n'; fail=1
+else
+    printf '  ok   gcp genuinely-empty seed: not reported as a listing failure\n'
+fi
+
+# ---- 10. GCP: a REAL error (same exit code as #9) must still fail closed
+#          as a listing failure, not as "holds no base backup" -------------
+out="$(bash "$SCRIPT" --verify-seed gcp-broken-seed --cloud gcp --bucket test-bucket 2>&1)"
+rc=$?
+check "gcp real listing failure: exit code" "1" "$rc"
+check_contains "gcp real listing failure: reports could-not-list" \
+    "could not list gs://test-bucket/gcp-broken-seed/base/ -- see error above" "$out"
+if printf '%s' "$out" | grep -qF "holds no base backup"; then
+    printf '  FAIL gcp real listing failure: must not be read as a genuine empty result\n'; fail=1
+else
+    printf '  ok   gcp real listing failure: not read as a genuine empty result\n'
+fi
 
 exit $fail

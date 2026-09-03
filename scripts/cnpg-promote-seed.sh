@@ -32,6 +32,17 @@
 #     same-day re-run defaults to the same dated name; copying into it would
 #     merge two backup generations into one seed and silently overwrite
 #     same-key WAL objects.
+#   - treats every cloud-CLI listing/read as capable of FAILING, distinctly
+#     from returning "nothing". A transient S3/GCS API error (throttling, a
+#     credential refresh, a network blip) is not the same fact as "this
+#     prefix is empty" or "this segment is absent", and conflating the two
+#     produces exactly the same class of false confidence as the object-count
+#     bug: a real seed reported unrestorable, or (the more dangerous
+#     direction) an unrestorable one reported fine, because a listing call
+#     failed silently and an empty result was read as data. Every call site
+#     below (`ls_raw`, `cat_object`, `wal_present`, the destination-collision
+#     check, the archive-settle loop) fails closed and prints the CLI's own
+#     error instead of guessing.
 #
 # Dry-run unless --apply. --verify-seed is always read-only, regardless of
 # --apply, and never touches --cluster/--namespace.
@@ -62,15 +73,43 @@ case "$CLOUD" in
 esac
 
 # ---- cloud-abstraction helpers ---------------------------------------------
+#
+# Every helper here distinguishes "the call failed" from "the call succeeded
+# and found nothing" and NEVER collapses the former into the latter -- see
+# the header. Concretely:
+#   `aws s3 ls` on a genuinely empty/nonexistent prefix exits 0 with empty
+#     stdout; any non-zero exit is a real failure.
+#   `gcloud storage ls` exits 1 BOTH for "matched no objects" (empty, not a
+#     failure) and for every other error (bucket gone, network, auth) --
+#     verified live against a real bucket during this fix, so it is not a
+#     bare assumption:
+#       $ gcloud storage ls gs://<bucket>/definitely-does-not-exist/
+#       ERROR: (gcloud.storage.ls) One or more URLs matched no objects.  (rc=1)
+#       $ gcloud storage ls gs://<nonexistent-bucket>/
+#       ERROR: (gcloud.storage.ls) gs://<nonexistent-bucket> not found: 404.  (rc=1)
+#     so on GCP the exit code alone cannot tell those apart -- the message
+#     text has to.
 
-# Raw listing, for existence/substring checks and simple counts. Output
-# format differs by cloud but both put the object/prefix name somewhere on
-# the line, which is all a grep/wc -l caller needs.
+# Raw listing, for existence/substring checks and simple counts. Prints the
+# listing on stdout and returns 0 on success (possibly with nothing to
+# print -- an empty prefix is not a failure). On a REAL failure, prints the
+# CLI's own error to stderr and returns 1 -- callers MUST check this, not
+# just look at whether anything was printed.
 ls_raw() { # $1 = URI prefix (should end in /)
+  local out rc
   case "$CLOUD" in
-    aws) aws s3 ls "$1" 2>/dev/null ;;
-    gcp) gcloud storage ls "$1" 2>/dev/null ;;
+    aws) out="$(aws s3 ls "$1" 2>&1)"; rc=$? ;;
+    gcp) out="$(gcloud storage ls "$1" 2>&1)"; rc=$? ;;
   esac
+  if [ "$rc" -ne 0 ]; then
+    if [ "$CLOUD" = "gcp" ] && printf '%s' "$out" | grep -q "matched no objects"; then
+      return 0
+    fi
+    echo "[error ] listing $1 failed (exit $rc): $out" >&2
+    return 1
+  fi
+  [ -n "$out" ] && printf '%s\n' "$out"
+  return 0
 }
 
 # Bare basenames of the immediate "subdirectories" under a prefix. Needed only
@@ -79,6 +118,8 @@ ls_raw() { # $1 = URI prefix (should end in /)
 # gs://.../<name>/ URI per line -- reusing the aws-shaped
 # `awk '{print $NF}' | tr -d '/'` against that mangles the whole URI into one
 # deslashed blob instead of a name (e.g. "gs:bucketserverbase20260902T123813").
+# Propagates ls_raw's exit code (via `set -o pipefail`) -- a listing failure
+# here surfaces as a non-zero return, not as "no subdirectories".
 list_subdir_names() { # $1 = URI prefix (should end in /)
   case "$CLOUD" in
     aws) ls_raw "$1" | awk '{print $NF}' | tr -d '/' ;;
@@ -87,39 +128,65 @@ list_subdir_names() { # $1 = URI prefix (should end in /)
 }
 
 # Stream one object's content to stdout. Read-only on both clouds: `aws s3 cp
-# <src> -` and `gcloud storage cat` never write anything.
+# <src> -` and `gcloud storage cat` never write anything. Returns 0 with the
+# content on success; on failure (missing object OR a real API error) prints
+# the CLI's own error to stderr and returns 1 -- callers must not treat empty
+# output alone as proof the object doesn't exist.
 cat_object() { # $1 = full URI to the object
+  local out rc
   case "$CLOUD" in
-    aws) aws s3 cp --only-show-errors "$1" - 2>/dev/null ;;
-    gcp) gcloud storage cat "$1" 2>/dev/null ;;
+    aws) out="$(aws s3 cp --only-show-errors "$1" - 2>&1)"; rc=$? ;;
+    gcp) out="$(gcloud storage cat "$1" 2>&1)"; rc=$? ;;
   esac
+  if [ "$rc" -ne 0 ]; then
+    echo "[error ] reading $1 failed (exit $rc): $out" >&2
+    return 1
+  fi
+  printf '%s\n' "$out"
 }
 
-# True if a WAL segment is present under <prefix-root>/wals/. Barman shards by
+# Whether a WAL segment is present under <prefix-root>/wals/. Barman shards by
 # the segment's first 16 hex chars, and the object carries a compression
 # suffix (.bz2, .gz, ...) that depends on config -- match the segment name as
 # a substring of the shard listing rather than a full filename.
+#
+# Returns 0 = present, 1 = genuinely absent, 2 = COULD NOT TELL (the listing
+# call itself failed). Callers must never treat 2 the same as 1 -- that
+# conflation is exactly the round-2 finding: a transient AWS API failure made
+# a known-good, still-restorable seed (zitadel-20260902) intermittently
+# report "unrestorable" because the listing came back empty for the wrong
+# reason.
 wal_present() { # $1 = URI root (.../<serverName-or-seed>), $2 = segment name
-  local sub="${2:0:16}"
-  ls_raw "$1/wals/$sub/" | grep -qF "$2"
+  local sub="${2:0:16}" out
+  out="$(ls_raw "$1/wals/$sub/")" || return 2
+  printf '%s\n' "$out" | grep -qF "$2"
 }
 
 # Verify a seed's restorability by parsing its NEWEST base backup's
 # backup.info -- not by counting objects. This is the check that would have
 # caught zitadel-20260829-2: it had a backup.info, a base/ dir and WAL
 # objects; it was missing exactly the one WAL segment (end_wal) the backup
-# needed. Strictly read-only.
+# needed. Strictly read-only. Fails closed -- and honestly -- on any listing
+# or read error, distinct from a genuine "this seed is incomplete" verdict.
 verify_seed() { # $1 = seed name (prefix under the bucket root)
   local seed="$1"
   local seed_uri="$URI/$seed"
-  local newest
-  newest="$(list_subdir_names "$seed_uri/base/" | sort | tail -1)"
+  local newest rc
+  newest="$(list_subdir_names "$seed_uri/base/" | sort | tail -1)"; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "[fail] seed $seed: could not list $seed_uri/base/ -- see error above" >&2
+    return 1
+  fi
   [ -n "$newest" ] || { echo "[fail] seed $seed holds no base backup" >&2; return 1; }
   echo "[ok    ] seed $seed: newest base backup $newest"
 
   local info
-  info="$(cat_object "$seed_uri/base/$newest/backup.info")"
-  [ -n "$info" ] || { echo "[fail] seed $seed: $newest/backup.info missing or unreadable" >&2; return 1; }
+  info="$(cat_object "$seed_uri/base/$newest/backup.info")"; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "[fail] seed $seed: could not read $newest/backup.info -- see error above" >&2
+    return 1
+  fi
+  [ -n "$info" ] || { echo "[fail] seed $seed: $newest/backup.info is empty" >&2; return 1; }
 
   local status begin_wal end_wal
   status="$(printf '%s\n' "$info" | sed -n 's/^status=//p')"
@@ -130,10 +197,23 @@ verify_seed() { # $1 = seed name (prefix under the bucket root)
   [ -n "$begin_wal" ] || { echo "[fail] seed $seed: $newest backup.info has no begin_wal" >&2; return 1; }
   [ -n "$end_wal" ] || { echo "[fail] seed $seed: $newest backup.info has no end_wal" >&2; return 1; }
 
-  wal_present "$seed_uri" "$begin_wal" \
-    || { echo "[fail] seed $seed: begin_wal segment $begin_wal is not present under wals/ -- unrestorable" >&2; return 1; }
-  wal_present "$seed_uri" "$end_wal" \
-    || { echo "[fail] seed $seed: end_wal segment $end_wal is not present under wals/ -- unrestorable (this is the zitadel-20260829-2 failure)" >&2; return 1; }
+  wal_present "$seed_uri" "$begin_wal"; rc=$?
+  if [ "$rc" -eq 2 ]; then
+    echo "[fail] seed $seed: could not verify begin_wal $begin_wal -- listing failed, see error above" >&2
+    return 1
+  elif [ "$rc" -ne 0 ]; then
+    echo "[fail] seed $seed: begin_wal segment $begin_wal is not present under wals/ -- unrestorable" >&2
+    return 1
+  fi
+
+  wal_present "$seed_uri" "$end_wal"; rc=$?
+  if [ "$rc" -eq 2 ]; then
+    echo "[fail] seed $seed: could not verify end_wal $end_wal -- listing failed, see error above" >&2
+    return 1
+  elif [ "$rc" -ne 0 ]; then
+    echo "[fail] seed $seed: end_wal segment $end_wal is not present under wals/ -- unrestorable (this is the zitadel-20260829-2 failure)" >&2
+    return 1
+  fi
 
   echo "[ok    ] seed $seed: status=DONE, begin_wal=$begin_wal present, end_wal=$end_wal present"
   return 0
@@ -169,10 +249,16 @@ echo "[ok    ] serverName $SERVER_NAME"
 # 2. Refuse a destination collision before ANYTHING mutates. A same-day
 #    re-run defaults to the same SEED name; copying into it would merge two
 #    backup generations into one seed and silently overwrite same-key WAL
-#    objects -- an operator could recreate the 20260829-2 failure by hand this
-#    way. Read-only, so it runs in dry-run too.
-existing="$(ls_raw "$URI/$SEED/" | wc -l)"
-if [ "$existing" -gt 0 ]; then
+#    objects -- an operator could recreate the 20260829-2 failure by hand
+#    this way. Read-only, so it runs in dry-run too. A listing failure here
+#    fails closed too: "could not tell if it's empty" must never be read as
+#    "it's empty, go ahead".
+existing="$(ls_raw "$URI/$SEED/")"; existing_rc=$?
+if [ "$existing_rc" -ne 0 ]; then
+  echo "[fail] could not check whether seed $SEED already exists -- listing failed, see error above" >&2
+  exit 1
+fi
+if [ -n "$existing" ]; then
   echo "[fail] seed $SEED already has objects in it -- refusing to merge into an existing seed. Pass an explicit --seed with a name that does not exist yet." >&2
   exit 1
 fi
@@ -240,14 +326,24 @@ kubectl exec -n "$NAMESPACE" "$PRIMARY_POD" -c postgres -- \
 echo "[ok    ] pg_switch_wal issued"
 
 settled=0
+settle_rc=0
 for _ in $(seq 1 30); do
-  if wal_present "$URI/$SERVER_NAME" "$END_WAL"; then
+  wal_present "$URI/$SERVER_NAME" "$END_WAL"
+  settle_rc=$?
+  if [ "$settle_rc" -eq 0 ]; then
     settled=1
     break
   fi
   sleep 10
 done
-[ "$settled" = "1" ] || { echo "[fail] end_wal $END_WAL did not land in the archive within 5 minutes" >&2; exit 1; }
+if [ "$settled" != "1" ]; then
+  if [ "$settle_rc" -eq 2 ]; then
+    echo "[fail] could not check for end_wal $END_WAL -- listing kept failing, see errors above" >&2
+  else
+    echo "[fail] end_wal $END_WAL did not land in the archive within 5 minutes" >&2
+  fi
+  exit 1
+fi
 echo "[ok    ] end_wal $END_WAL archived"
 
 # 6. Copy. The destination-empty check in step 2 is what makes this safe to
