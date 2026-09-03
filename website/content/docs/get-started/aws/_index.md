@@ -41,6 +41,35 @@ a stack expects is to read the file already sitting next to it.
    export TF_VAR_tailscale_api_key=<YOUR_TAILSCALE_API_KEY>
    ```
 
+5. **Create the CNPG backup bucket by hand.** Unlike every other bucket in this
+   repository, `<region>-ogenki-cnpg-backups` is not managed by OpenTofu — it
+   is meant to outlive individual clusters (each `SQLInstance` restores from a
+   frozen, dated prefix inside it), so nothing here can be allowed to delete
+   it. Create it once, then set its lifecycle rule so old cluster-generation
+   prefixes expire instead of accumulating forever:
+
+   ```bash
+   aws s3api create-bucket --bucket "${REGION}-ogenki-cnpg-backups" \
+     --create-bucket-configuration LocationConstraint="${REGION}"
+   ```
+
+### Expire old generation archives
+
+Each cluster generation writes to its own `xplane-*` prefix and nothing
+reclaims them, so set this once. It cannot touch the dated seeds — they are
+named `zitadel-*` / `harbor-*` and never carry the `xplane-` prefix.
+
+```bash
+cat > /tmp/cnpg-lifecycle.json <<'EOF'
+{"Rules":[{"ID":"expire-generation-archives","Status":"Enabled",
+  "Filter":{"Prefix":"xplane-"},"Expiration":{"Days":30}}]}
+EOF
+
+aws s3api put-bucket-lifecycle-configuration \
+  --bucket "${REGION}-ogenki-cnpg-backups" \
+  --lifecycle-configuration file:///tmp/cnpg-lifecycle.json
+```
+
 ## Deploy
 
 ```bash
