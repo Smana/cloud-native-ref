@@ -36,31 +36,17 @@ archive — a live prefix keeps changing under you, and the whole point is a kno
 state you can return to.
 
 ```bash
-# a) one-shot backup, so the seed contains the current configuration
-kubectl apply -n security -f - <<'EOF'
-apiVersion: postgresql.cnpg.io/v1
-kind: Backup
-metadata:
-  name: zitadel-restore-seed
-  namespace: security
-spec:
-  cluster:
-    name: xplane-zitadel-cnpg-cluster
-  method: plugin
-  pluginConfiguration:
-    name: barman-cloud.cloudnative-pg.io
-EOF
-
-kubectl get backup -n security zitadel-restore-seed -w   # wait for phase=completed
-
-# b) copy the cluster prefix to a dated one
-gcloud storage cp --recursive \
-  gs://<project>-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/* \
-  gs://<project>-ogenki-cnpg-backups/zitadel-$(date +%Y%m%d)/
+./scripts/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
+  --cloud gcp --bucket <project>-ogenki-cnpg-backups --apply
 ```
 
-On AWS the same two steps use `aws s3 cp --recursive` against
-`s3://<region>-ogenki-cnpg-backups/`.
+It discovers the live prefix from the cluster's own `serverName` rather than
+guessing it from the claim name, takes a one-shot Backup, forces the final WAL
+segment out before copying — the step that made `zitadel-20260829-2`
+unrestorable when it was done by hand — and verifies the result actually holds
+a restorable base backup rather than counting objects.
+
+On AWS the same command takes `--cloud aws --bucket <region>-ogenki-cnpg-backups`.
 
 Then point the claim at it — `security/gcp-0/zitadel/kustomization.yaml`:
 
@@ -70,11 +56,7 @@ Then point the claim at it — `security/gcp-0/zitadel/kustomization.yaml`:
   value: zitadel-20260828
 ```
 
-## 2. The check that will refuse the restore
-
-{{< callout type="warning" >}}
-**Clear the live archive first, or the restore will not start.**
-{{< /callout >}}
+## 2. Why the destination is always empty
 
 CloudNativePG refuses to start a **restored** cluster whose destination WAL
 archive is non-empty — a restore opens a new timeline that would collide with the
@@ -85,77 +67,30 @@ barman-cloud-check-wal-archive: WAL archive check failed for server
 xplane-zitadel-cnpg-cluster: Expected empty archive
 ```
 
-This is not an edge case. The backup bucket **outlives the cluster on purpose**
-(`infrastructure/gcp-0/cloudnative-pg/gcs-bucket.yaml`: *"backups outlive any
-individual cluster"*), so on every rebuild the destination still holds the
-previous cluster's archive and the bootstrap refuses.
-
-{{< callout type="warning" >}}
-**A cluster that bootstraps *empty* fails differently, and worse.** The check is
-about the destination, not about where the data comes from — but an `initdb`
-cluster does **not** refuse to start. It starts, reports `Ready`, Flux goes
-green, and only continuous WAL archiving fails:
+Since [#1963](https://github.com/Smana/cloud-native-ref/issues/1963) this can no
+longer happen: each cluster generation writes to its own prefix, keyed by the
+XR uid, rather than reusing the bare `xplane-<name>-cnpg-cluster/` name:
 
 ```
-Initialized=True: Cluster has been bootstrapped
-Ready=True:       Cluster is Ready
-ContinuousArchiving=False: unexpected failure invoking barman-cloud-wal-archive
+s3://<bucket>/
+  xplane-zitadel-cnpg-cluster-a1b2c3d4/   generation N
+  xplane-zitadel-cnpg-cluster-9f8e7d6c/   generation N+1, empty on create
+  zitadel-20260902/                       frozen seed, read-only
 ```
 
-with the same `Expected empty archive` underneath. The cluster runs happily
-**with no backups**, and nothing surfaces it — so clear every `*-cnpg-cluster/`
-prefix before a rebuild, not only the ones with a seed.
+A new generation's destination is empty because it never existed — there is
+nothing to clear, on either cloud, for a cluster that restores or one that
+bootstraps empty. Recovery is unaffected by any of this: it reads
+`spec.objectStoreRecovery.path` explicitly and never touches a live archive.
 
-Measured on 2026-08-29. `aws-0` had all three archives cleared and all three
-clusters report `ContinuousArchiving=True`; `gcp-0` had harbor's left in place
-(69 objects) and it alone reports `False`, while looking healthy in every other
-respect.
+{{< callout type="info" >}}
+`scripts/cnpg-prepare-restore.sh` still exists as an escape hatch for the cases
+that still collide: a cluster pinned to an explicit `serverName`, an archive
+left behind by a pre-#1963 generation, or a deliberate reuse of a prefix. It
+refuses to clear a live archive unless the named seed actually holds a base
+backup — read the script's header for the guard and the two failure modes
+("could not check" vs "empty") it distinguishes.
 {{< /callout >}}
-
-And **"empty" means no objects, not no base backups.** A prefix holding only
-`wals/` still refuses. This bit us on 2026-08-29: preparing an `aws-0` rebuild,
-`xplane-zitadel-cnpg-cluster/` held six WAL objects and no `base/`, and a
-base-backup count called it empty.
-
-`scripts/cnpg-prepare-restore.sh` does this with the guard that makes it safe —
-it refuses unless the dated seed actually holds a base backup, so the live
-archive is never cleared when there would be nothing to restore from:
-
-```bash
-./scripts/cnpg-prepare-restore.sh --cloud gcp --project <project> \
-  --bucket <project>-ogenki-cnpg-backups \
-  --cluster xplane-zitadel-cnpg-cluster --seed zitadel-20260828      # dry run
-# ... then --apply
-```
-
-It distinguishes *could not check* from *empty*: if the listing fails — a stale
-credential is the usual cause — it refuses and says so, rather than reporting an
-absent seed and inviting you to proceed.
-
-On `aws-0` this step has always been done by hand before a rebuild, which is why
-restores work there; the script is the same operation with the check attached:
-
-```bash
-B=eu-west-3-ogenki-cnpg-backups
-./scripts/cnpg-prepare-restore.sh --cloud aws --region eu-west-3 --bucket $B \
-  --cluster xplane-zitadel-cnpg-cluster --seed zitadel-20260719
-./scripts/cnpg-prepare-restore.sh --cloud aws --region eu-west-3 --bucket $B \
-  --cluster xplane-harbor-cnpg-cluster  --seed harbor-20241111
-```
-
-The third one bootstraps empty, so there is no seed to protect it — clearing its
-archive discards that database's only backup. The script refuses to guess, and
-makes you say so:
-
-```bash
-./scripts/cnpg-prepare-restore.sh --cloud aws --region eu-west-3 --bucket $B \
-  --cluster xplane-image-gallery-cnpg-cluster --accept-data-loss
-```
-
-The durable fix is a per-generation `serverName` in the `SQLInstance`
-Composition, which would remove the step on both clouds. Until then it is a
-normal part of restoring — on `aws-0` it has always been done, just never
-written down.
 
 ## 3. Force the bootstrap
 
@@ -203,9 +138,10 @@ identity providers. All five matched exactly:
 ## Rotating the seed
 
 Refresh it when the database changes meaningfully — new OAuth apps, a schema
-migration, significant user growth. Repeat step 1 with a new date and update
-`path`. The old prefix costs a few tens of megabytes; keep it until the new one
-has been restored from at least once.
+migration, significant user growth. Re-run `scripts/cnpg-promote-seed.sh` (if
+`--seed` is omitted it defaults to the claim name with any `xplane-` prefix
+removed, plus today's date) and update `path`. The old prefix costs a few tens
+of megabytes; keep it until the new one has been restored from at least once.
 
 ## Related
 

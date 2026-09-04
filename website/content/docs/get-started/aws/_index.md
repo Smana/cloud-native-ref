@@ -41,6 +41,14 @@ a stack expects is to read the file already sitting next to it.
    export TF_VAR_tailscale_api_key=<YOUR_TAILSCALE_API_KEY>
    ```
 
+### Expiring old generation archives is not a manual step
+
+Each CNPG cluster generation writes to its own `xplane-*` prefix and nothing
+reclaims them by hand — the bucket's own claim carries a
+`BucketLifecycleConfiguration` that expires them automatically, scoped so it
+cannot touch the dated seeds (named `zitadel-*` / `harbor-*`, never
+`xplane-`). See `infrastructure/aws-0/cloudnative-pg/s3-bucket.yaml`.
+
 ## Deploy
 
 ```bash

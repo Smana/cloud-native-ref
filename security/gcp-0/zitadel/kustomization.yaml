@@ -31,11 +31,23 @@ patches:
   #      previously REMOVED the field entirely, on the grounds that "there is
   #      nothing equivalent to restore from on GCS". That was true until
   #      2026-08-28 and is not any more: gcp-0 now writes real backups, so a seed
-  #      was frozen the same way aws-0's is --
+  #      is frozen the same way aws-0's is:
   #
-  #        gcloud storage cp --recursive \
-  #          gs://<project>-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/* \
-  #          gs://<project>-ogenki-cnpg-backups/zitadel-20260828/
+  #        ./scripts/cnpg-promote-seed.sh --cluster xplane-zitadel \
+  #          --namespace security --cloud gcp \
+  #          --bucket ${project_id}-ogenki-cnpg-backups --apply
+  #
+  #      Then set `path` below to the dated seed it prints. The hand-rolled
+  #      `gcloud storage cp --recursive .../xplane-zitadel-cnpg-cluster/*` that
+  #      used to live here is retired twice over: since #1963 the live prefix
+  #      carries a per-generation uid suffix, so that glob matches NOTHING and
+  #      would have frozen an empty seed in silence; and copying without first
+  #      forcing the backup's final WAL segment out is precisely what made
+  #      zitadel-20260829-2 unrestorable. The script discovers the live prefix
+  #      from the Cluster, issues pg_switch_wal, waits for THAT segment, and
+  #      then verifies the copy holds a restorable base backup instead of
+  #      counting objects. Full procedure:
+  #      website/content/docs/guides/restore-a-database.md.
   #
   #      It matters more here than the old comment allowed. A ZITADEL that
   #      bootstraps EMPTY loses, on every rebuild, everything
@@ -44,38 +56,26 @@ patches:
   #      Restoring is what makes "the platform comes back" true rather than "the
   #      platform is rebuilt and you log in again to re-earn your grants".
   #
-  #      Rotate the seed the way base documents for aws-0: take a one-shot
-  #      Backup, copy the cluster prefix to a new dated one, update `path` here.
-  #
-  #      ── RESTORING REQUIRES CLEARING THE LIVE ARCHIVE FIRST ──────────────
-  #
   #      VALIDATED end to end on 2026-08-28 by deleting the CNPG Cluster AND its
   #      PVC and letting Crossplane rebuild: the restored instance came back with
   #      the same 3 users, 5 OIDC apps, 4 roles, admin grant and Google IdP.
   #
-  #      It failed three times first, and the reason is structural rather than
-  #      incidental. CNPG refuses to start a restored cluster whose DESTINATION
-  #      WAL archive is non-empty -- a restore opens a new timeline and would
-  #      collide with the existing WALs:
+  #      That run needed one manual step first, and no longer does. It failed
+  #      three times because CNPG refuses to start a restored cluster whose
+  #      DESTINATION WAL archive is non-empty -- a restore opens a new timeline
+  #      that would collide with the WALs already there:
   #
   #        barman-cloud-check-wal-archive: WAL archive check failed for server
   #        xplane-zitadel-cnpg-cluster: Expected empty archive
   #
   #      The bucket is deliberately durable (infrastructure/gcp-0/cloudnative-pg/
-  #      gcs-bucket.yaml: "backups outlive any individual cluster"), so on EVERY
-  #      rebuild the destination still holds the previous cluster's archive and
-  #      the restore refuses. Before a restore-bootstrap, clear it:
-  #
-  #        gcloud storage rm --recursive \
-  #          gs://<project>-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/
-  #
-  #      Safe only because the seed under zitadel-<date>/ is a full copy -- take
-  #      and freeze the seed BEFORE clearing anything.
-  #
-  #      The durable fix is a per-generation `serverName` in the SQLInstance
-  #      Composition, which would remove this step on both clouds. Until then the
-  #      manual step is required, and aws-0 carries the same exposure -- see the
-  #      note in security/base/zitadel/sqlinstance.yaml.
+  #      gcs-bucket.yaml: "backups outlive any individual cluster"), so every
+  #      rebuild used to land on the previous cluster's archive under the same
+  #      name and had to be cleared by hand. Since #1963 each generation writes
+  #      to its own uid-suffixed prefix, so a new cluster's destination is empty
+  #      because it never existed: nothing to clear, on either cloud, and the
+  #      orphaned generation prefixes are reclaimed by the bucket's own
+  #      lifecycleRule rather than by a `gcloud storage rm`.
   #
   #   3. backup.bucketName points at a `${project_id}-` bucket rather than
   #      base's `${region}-` one. GCS bucket names are globally unique, so the
