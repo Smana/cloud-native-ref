@@ -4,6 +4,30 @@ metadata:
   name: external-dns
 spec:
   releaseName: external-dns
+  # Wait for the AWS Load Balancer Controller. This chart creates a Service, and
+  # any Service create is intercepted by the controller's MUTATING webhook
+  # (`mservice.elbv2.k8s.aws`). If the controller has no endpoints yet the API
+  # server cannot call it and the install fails outright:
+  #
+  #   server-side apply failed for object kube-system/external-dns Kind=Service:
+  #   failed calling webhook "mservice.elbv2.k8s.aws": no endpoints available
+  #   for service "aws-load-balancer-webhook-service"
+  #
+  # Measured 2026-09-04 on a from-scratch bootstrap: external-dns lost that race,
+  # burned all four Helm install retries before the controller finished starting,
+  # and went `Stalled=True RetriesExceeded`. Flux does not retry a stalled
+  # release, so it stayed failed permanently -- taking `infrastructure` with it,
+  # and with it `tooling`, `zitadel` and `apps`. ZITADEL never started, the
+  # OIDC registration timed out, and the platform came up with no identity
+  # provider. Recovering it needs `flux reconcile helmrelease external-dns
+  # --reset`, which nobody would guess from the symptom.
+  #
+  # dependsOn rather than more retries: retries make the race narrower, this
+  # makes it impossible. The controller is a hard prerequisite for creating any
+  # Service in this cluster, not merely something that is usually up first.
+  dependsOn:
+    - name: aws-load-balancer-controller
+      namespace: kube-system
   driftDetection:
     mode: enabled
   chart:
