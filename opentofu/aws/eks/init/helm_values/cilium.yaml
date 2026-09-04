@@ -66,10 +66,39 @@ prometheus:
   enabled: true
   serviceMonitor:
     enabled: false
+# The agent is OOM-KILLED at 256Mi on a cold start. Measured 2026-09-04 on a
+# from-scratch aws-0: both pods exitCode 137, one restart each, and the
+# DaemonSet only stabilised ~9 minutes into the rollout -- 40 seconds before
+# the recycle job's 10-minute wait expired, which failed the whole bootstrap.
+#
+# 256Mi is simply too small for what this agent is configured to do. It runs ENI
+# IPAM with prefix delegation (a large ipcache, and a per-node CRD it keeps in
+# sync), WireGuard encryption, kube-proxy replacement, and the Gateway API L7
+# proxy. Startup is the peak: the agent builds its BPF maps and reconciles the
+# full endpoint and identity state before it reports ready, so the ceiling has
+# to cover the spike, not the steady state.
+#
+# 512Mi is 2x the value that demonstrably failed, not a number chosen for
+# comfort. The measured evidence is only that 256Mi is too small -- how far the
+# agent overshot is unknown, because the metrics API was not available on the
+# cluster where this was found. So this is the smallest principled step: if the
+# agent OOMs again, raise it with a measurement rather than a guess.
+#
+# This is a LIMIT, not a request, and the agent is a DaemonSet -- so it applies
+# on every node but reserves nothing. Requests are deliberately left unset:
+# steady-state usage is far below the startup peak, and reserving the peak on
+# every node would cost real schedulable capacity to guard a transient.
+#
+# WHY THIS WENT UNNOTICED FOR SO LONG: the OOM kills were always happening, but
+# scripts/eks-recycle-bootstrap-nodes.sh used to read Cilium's ConfigMap BEFORE
+# waiting for Cilium, found the key unset, and exited 0. The wait never ran, so
+# a slow, crash-looping rollout looked like a healthy one and the damage
+# surfaced an hour later as IP exhaustion in an unrelated component. Fixing that
+# ordering (#1972) is what made this visible.
 resources:
   limits:
     cpu: 300m
-    memory: 256Mi
+    memory: 512Mi
 routingMode: native
 # Note: tunnelProtocol defaults to vxlan in Helm chart but is ignored in native routing mode.
 # ENI mode uses direct routing, no tunnel encapsulation is used regardless of this setting.
