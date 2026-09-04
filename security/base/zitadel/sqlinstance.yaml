@@ -119,9 +119,39 @@ spec:
   #     --cloud aws --bucket <region>-ogenki-cnpg-backups --apply
   # It discovers the live prefix, forces the final WAL segment out before
   # copying, and verifies the result is restorable rather than counting objects.
+  # ── zitadel-20260904: the first seed cut by the script, not by hand ─────────
+  # Created 2026-09-04 by scripts/cnpg-promote-seed.sh --apply against the
+  # rebuilt aws-0, on the live prefix xplane-zitadel-cnpg-cluster-87c1dcbf --
+  # the first per-generation prefix, and the first promotion that discovered its
+  # source rather than assuming it.
+  #
+  # This rotation is NOT justified by a directory change. It is the same
+  # directory: this cluster restored from zitadel-20260902 and the OIDC
+  # registration then reported `created: 0, updated: 0, unchanged: 5`. Nothing
+  # material changed, so by the promotion criterion above (new OAuth apps,
+  # schema migration, significant user growth) -0902 would still do.
+  #
+  # It is promoted for a different reason: -0904 is the first seed whose
+  # restorability was established by the procedure rather than by hand. The
+  # script read the backup's own end_wal (...008B) from Backup.status.endWal,
+  # forced it out with pg_switch_wal, waited for THAT segment specifically, and
+  # only then copied -- the exact discipline whose absence made
+  # zitadel-20260829-2 unrestorable. Verified after the fact by an independent
+  # --verify-seed run: status=DONE, begin_wal ...008A and end_wal ...008B both
+  # present.
+  #
+  # HONEST CAVEAT, because the file's own history exists to prevent this being
+  # forgotten: -0902 carries STRONGER evidence than -0904. It has been proven by
+  # an actual restore -- this very cluster came up from it, with all five OIDC
+  # clients intact. -0904 has only been proven by the checker. If a rebuild ever
+  # fails to restore from -0904, fall back to -0902, which is known to work end
+  # to end and is deliberately retained below.
+  #
+  # zitadel-20260902 is left in the bucket as that fallback. Delete it once a
+  # rebuild has actually restored from this one.
   objectStoreRecovery:
     bucketName: "${region}-ogenki-cnpg-backups"
-    path: "zitadel-20260902"
+    path: "zitadel-20260904"
   backup:
     # SIX fields, and the first one is SECONDS. CNPG does not use Kubernetes
     # CronJob syntax here: it uses the robfig/cron format, so a five-field
