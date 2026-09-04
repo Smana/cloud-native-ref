@@ -125,6 +125,43 @@ if [ "$hosts" -ne 1 ]; then
   echo "      zitadel.yaml exists and is not suspended, and that only one is."
 fi
 
+# ── the two ends of the audience contract must name the same project ───────
+#
+# zitadel_project_id appears in two tfvars files and they mean different halves
+# of one thing:
+#
+#   opentofu/gcp/workforce-identity  -> the workforce provider's client_id,
+#                                       i.e. the audience the STS EXPECTS
+#   opentofu/gcp/gke/configure       -> published into the cluster vars
+#                                       ConfigMap and substituted into
+#                                       oauth2-proxy's scope, i.e. the audience
+#                                       the token CARRIES
+#
+# Edit one without the other and the STS rejects every exchange with a bare
+# `invalid_grant`, while oauth2-proxy, the exchange proxy, Headlamp and every
+# Flux resource report healthy. Nothing else in the repo catches that: the
+# manifests are schema-valid either way and both values are plain literals.
+#
+# Skipped rather than failed when a file is absent, so an AWS-only checkout is
+# not required to carry the GCP stacks.
+wi_vars="opentofu/gcp/workforce-identity/variables.tfvars"
+cfg_vars="opentofu/gcp/gke/configure/variables.tfvars"
+if [ -f "$wi_vars" ] && [ -f "$cfg_vars" ]; then
+  wi_id="$(sed -n 's/^[[:space:]]*zitadel_project_id[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$wi_vars" | head -1)"
+  cfg_id="$(sed -n 's/^[[:space:]]*zitadel_project_id[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg_vars" | head -1)"
+  if [ -z "$wi_id" ] || [ -z "$cfg_id" ]; then
+    fail "zitadel_project_id is missing from one of the two files that must agree."
+    echo "      ${wi_vars}: ${wi_id:-<unset>}"
+    echo "      ${cfg_vars}: ${cfg_id:-<unset>}"
+  elif [ "$wi_id" != "$cfg_id" ]; then
+    fail "the two ends of the ZITADEL audience contract disagree."
+    echo "      ${wi_vars} (what the STS expects):   ${wi_id}"
+    echo "      ${cfg_vars} (what the token carries): ${cfg_id}"
+    echo "      Every token exchange would fail 'invalid_grant' while every"
+    echo "      component reports healthy. Make them equal."
+  fi
+fi
+
 if [ "$failures" -ne 0 ]; then
   echo "==> identity provider topology is inconsistent (${failures} problem(s)); see ADR-0027."
   exit 1

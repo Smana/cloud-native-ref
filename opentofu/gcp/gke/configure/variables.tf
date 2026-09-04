@@ -182,3 +182,16 @@ variable "identity_provider_url" {
     error_message = "identity_provider_url must be an https:// URL with no path or trailing slash."
   }
 }
+
+# Workforce pool federating ZITADEL (opentofu/gcp/workforce-identity). Substituted
+# into the gcp-0 RBAC bindings; an empty value silently produces a binding
+# matching nobody.
+variable "workforce_pool_id" {
+  description = "Workforce pool federating ZITADEL. Substituted into the gcp-0 RBAC bindings; an empty value silently produces a binding matching nobody."
+  type        = string
+}
+
+variable "zitadel_project_id" {
+  description = "ZITADEL project id. The workforce provider pins its audience to this, and consumers must REQUEST that audience, so it is substituted into oauth2-proxy's scope rather than hardcoded there. A mismatch fails as a bare invalid_grant with every component reporting healthy."
+  type        = string
+}

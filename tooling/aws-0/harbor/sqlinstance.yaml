@@ -18,7 +18,10 @@ spec:
     bucketName: "${region}-ogenki-cnpg-backups"
     path: "harbor-20241111"
   backup:
-    schedule: "0 1 * * *"
+    # SIX-field cron, seconds first -- CNPG uses robfig/cron, not Kubernetes
+    # CronJob syntax, so `0 1 * * *` silently meant hourly at :01.
+    # Full explanation and the measurement: security/base/zitadel/sqlinstance.yaml
+    schedule: "0 0 1 * * *"
     bucketName: "${region}-ogenki-cnpg-backups"
   crossplane:
     compositionRef:

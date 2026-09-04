@@ -95,24 +95,43 @@ script "deploy" {
         fi
 
         CONF="$${ROOT}/opentofu/aws/eks/configure/variables.tfvars"
-        PUBLIC_DOMAIN="$(awk -F'=' '/^[[:space:]]*public_domain_name/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${CONF}")"
-        PRIVATE_DOMAIN="$(awk -F'=' '/^[[:space:]]*private_domain_name/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${CONF}")"
+        PUBLIC_DOMAIN="$(awk -F'=' '/^[[:space:]]*public_domain_name/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${CONF}")"
+        PRIVATE_DOMAIN="$(awk -F'=' '/^[[:space:]]*private_domain_name/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${CONF}")"
         if [ -z "$${PUBLIC_DOMAIN}" ] || [ -z "$${PRIVATE_DOMAIN}" ]; then
           echo "[warn] could not read the domains from $${CONF}; skipping OIDC registration"
           exit 0
         fi
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}"
 
-        echo "== waiting for ZITADEL (up to 15m)"
-        deadline=$$(( SECONDS + 900 ))
-        while [ "$$SECONDS" -lt "$$deadline" ]; do
+        # A BUDGET FOR A COLD BUILD, NOT A REBUILD.
+        #
+        # ZITADEL is last in a long chain on a fresh cluster --
+        # crds -> crossplane -> eks-pod-identities -> security ->
+        # security-openbao -> infrastructure -> zitadel. The old fixed 15m was
+        # fine for a rebuild and far too short for a first bootstrap: on
+        # 2026-09-02 it expired while `infrastructure` was still reconciling,
+        # registration was skipped, and the platform came up with no OIDC
+        # clients at all.
+        #
+        # The progress line names whatever Kustomization is still blocking, so
+        # a slow-but-healthy build is distinguishable from a stalled one
+        # without tailing Flux in another terminal.
+        ZITADEL_WAIT_SECONDS="$${ZITADEL_WAIT_SECONDS:-2700}"
+        echo "== waiting for ZITADEL (up to $(( ZITADEL_WAIT_SECONDS / 60 ))m)"
+        deadline=$(( SECONDS + ZITADEL_WAIT_SECONDS ))
+        last_report=0
+        while [ "$SECONDS" -lt "$deadline" ]; do
           if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -ge 1 ] 2>/dev/null; then
             break
+          fi
+          if [ $(( SECONDS - last_report )) -ge 120 ]; then
+            last_report="$SECONDS"
+            echo "   [$${SECONDS}s] still waiting; blocked on: $(kubectl get kustomization -n flux-system --no-headers -o custom-columns=N:.metadata.name,R:'.status.conditions[?(@.type=="Ready")].status' 2>/dev/null | awk '$2 != "True" { printf "%s ", $1 }' | head -c 200)"
           fi
           sleep 20
         done
         if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -lt 1 ] 2>/dev/null; then
-          echo "[warn] ZITADEL not ready in 15m; skipping OIDC client registration."
+          echo "[warn] ZITADEL not ready in $(( ZITADEL_WAIT_SECONDS / 60 ))m; skipping OIDC client registration."
           echo "       Re-run by hand once it is up -- see scripts/zitadel-oidc-clients.sh."
           exit 0
         fi
@@ -135,9 +154,9 @@ script "deploy" {
             # not there yields an empty string and skips the registration behind
             # a warning nobody reads.
             GCP_NET="$${ROOT}/opentofu/gcp/network/variables.tfvars"
-            GCP_PRIVATE="$(awk -F'=' '/^[[:space:]]*private_domain_name/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${GCP_NET}" 2>/dev/null || true)"
-            GCP_PROJECT="$(awk -F'=' '/^[[:space:]]*project_id/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${GCP_NET}" 2>/dev/null || true)"
-            GCP_CLUSTER="$(awk -F'=' '/^[[:space:]]*cluster_name/{gsub(/[[:space:]"]/,"",$$2); print $$2}' "$${ROOT}/opentofu/gcp/gke/init/variables.tfvars" 2>/dev/null || true)"
+            GCP_PRIVATE="$(awk -F'=' '/^[[:space:]]*private_domain_name/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${GCP_NET}" 2>/dev/null || true)"
+            GCP_PROJECT="$(awk -F'=' '/^[[:space:]]*project_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${GCP_NET}" 2>/dev/null || true)"
+            GCP_CLUSTER="$(awk -F'=' '/^[[:space:]]*cluster_name/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/gke/init/variables.tfvars" 2>/dev/null || true)"
             if [ -z "$${GCP_PRIVATE}" ] || [ -z "$${GCP_CLUSTER}" ] || [ -z "$${GCP_PROJECT}" ]; then
               echo "[warn] could not read the GCP cluster/domain/project; skipping its OIDC registration"
               exit 0
@@ -147,10 +166,16 @@ script "deploy" {
             # split is what makes a consuming cluster expressible at all, and it
             # is what suffixes its app names so the two clusters do not contend
             # for one app.
+            # --workforce-pool is a no-op in THIS topology -- with AWS primary the
+            # pool's committed audience is already this directory's project id --
+            # but passing it makes a drifted audience self-correct rather than
+            # waiting for someone to notice an invalid_grant.
+            WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
             IDP_URL="$${IDP_URL}" PRIVATE_DOMAIN="$${GCP_PRIVATE}" \
               bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
                 --cluster "$${GCP_CLUSTER}" \
                 --cloud gcp --project "$${GCP_PROJECT}" \
+                --workforce-pool "$${WORKFORCE_POOL}" \
                 --idp-cloud aws --region "${global.region}" --apply || \
               echo "[warn] registration for $${GCP_CLUSTER} failed; re-run it by hand"
             ;;
@@ -271,6 +296,37 @@ script "destroy" {
   # unambiguously detached and there is no in-flight state to race. Same three
   # filters as the earlier sweep -- available + this cluster's tag + the CSI
   # driver's PVC tag -- so it cannot touch a live cluster or a hand-made volume.
+  # The two things that make `tofu destroy` FAIL, cleared before it runs.
+  #
+  # Opposite ordering to the volume sweep below, and for the opposite reason: a
+  # volume has to finish detaching first, so that sweep runs after. These two
+  # BLOCK the destroy, so a sweep that ran afterwards would never be reached --
+  # on 2026-09-02 the destroy failed here and terramate stopped, leaving the GCP
+  # stacks entirely untouched and a GKE cluster running.
+  #
+  # Idempotent and dry-run-safe; on a healthy teardown it finds nothing and says
+  # so. See scripts/aws-sweep-teardown-blockers.sh for what it will not touch.
+  job {
+    name        = "stage0-sweep-teardown-blockers"
+    description = "Clear ExternalDNS records and the EKS-managed SG that block DeleteHostedZone / DeleteVpc"
+    commands = [
+      [
+        "bash",
+        "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+        "--tm-run",
+        "bash",
+        "${terramate.root.path.fs.absolute}/scripts/aws-sweep-teardown-blockers.sh",
+        "--cluster-name",
+        global.eks_cluster_name,
+        "--region",
+        global.region,
+        "--profile",
+        global.profile,
+        "--apply",
+      ],
+    ]
+  }
+
   job {
     name        = "stage3-sweep-orphaned-volumes"
     description = "Delete EBS volumes that were still detaching when the pre-destroy sweep ran"

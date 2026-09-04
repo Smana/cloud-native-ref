@@ -53,7 +53,10 @@ spec:
       provider: oidc
       oidc-issuer-url: "${identity_provider_url}"
       redirect-url: "https://headlamp.${private_domain_name}/oauth2/callback"
-      upstream: "http://headlamp.tooling.svc.cluster.local:80"
+      # The upstream is the token-exchange shim, not Headlamp directly (see
+      # token-exchange.yaml). The shim consumes the Authorization header below,
+      # exchanges it at Google STS, and forwards to Headlamp with the result.
+      upstream: "http://headlamp-token-exchange.tooling.svc.cluster.local:8080"
 
       # THE HEADER CONTRACT WITH HEADLAMP, and the half of it that is easy to get
       # wrong. --pass-user-headers makes oauth2-proxy set X-Forwarded-User and
@@ -65,15 +68,20 @@ spec:
       pass-user-headers: "true"
       set-xauthrequest: "true"
 
-      # No Authorization header upstream. Headlamp must NOT receive a bearer
-      # token here: it authenticates to the API server with its own ServiceAccount
-      # (see the patch), and a stray Authorization header would be a second,
-      # unintended credential path.
+      # The token-exchange shim (the upstream above) needs the raw ZITADEL
+      # id_token as its RFC 8693 subject token, so the Authorization header
+      # must reach it. This is no longer a path to Headlamp: the shim strips
+      # the header (TEP_STRIP_SUBJECT) before forwarding the request on, so
+      # Headlamp itself never sees the id_token -- only the X-Gke-Token the
+      # shim minted from it.
       pass-basic-auth: "false"
-      pass-authorization-header: "false"
+      pass-authorization-header: "true"
 
-      # WHO GETS IN. This is the whole authorisation model now -- Kubernetes RBAC
-      # can no longer tell these users apart, so the gate has to be here.
+      # WHO GETS IN. Kubernetes RBAC now tells these users apart again (the
+      # shim forwards a per-user federated token -- see token-exchange.yaml
+      # and headlamp-proxy-auth.yaml), so this gate is defence in depth
+      # rather than the whole authorisation model: it stops a non-admin from
+      # reaching the shim at all, before RBAC on the GKE side gets a say.
       #
       # `admin` is the ZITADEL project role, reaching the token through
       # zitadel-actions/groups-from-roles.js.
@@ -98,7 +106,22 @@ spec:
       email-domain: "ogenki.io"
       allowed-group: "admin"
       oidc-groups-claim: "groups"
-      scope: "openid profile email"
+      # THE PROJECT-AUDIENCE SCOPE IS LOAD-BEARING, not decoration.
+      #
+      # The workforce identity provider (opentofu/gcp/workforce-identity) pins
+      # its client_id to the ZITADEL PROJECT id, deliberately: the project id is
+      # stable and known before any OIDC client exists, which is what lets that
+      # stack apply before scripts/zitadel-oidc-clients.sh has run.
+      #
+      # But ZITADEL only puts the project id in a token's `aud` when the token
+      # was REQUESTED with this scope. Plain `openid profile email` yields
+      # aud=[<this client's own id>], the STS sees an audience it was not
+      # configured for, and the exchange fails with a bare
+      #   token exchange 400: invalid_grant
+      # -- no mention of audiences, and oauth2-proxy and Headlamp both look
+      # perfectly healthy. The only symptom is "token exchange failed" in the
+      # browser. Measured on gcp-0 2026-09-02.
+      scope: "openid profile email urn:zitadel:iam:org:project:id:${zitadel_project_id}:aud"
 
       cookie-secure: "true"
 

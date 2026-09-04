@@ -1,0 +1,23 @@
+# GCP-0 CANNOT REUSE security/base/rbac/admin.yaml. On aws-0 the group is
+# literally `admin`: EKS trusts ZITADEL directly, so the claim passes through
+# unchanged. Here the API server sees a Workforce Identity Federation principal,
+# so the group carries the pool's full resource path. Same ZITADEL role, same
+# cluster-admin, different spelling.
+#
+# ${workforce_pool_id} comes from the gke-gcp-0-vars ConfigMap. If it were
+# undefined Flux would substitute an EMPTY STRING, producing a binding for
+# .../workforcePools//group/admin -- schema-valid, matching nobody, denying
+# silently. scripts/flux-schema/check-substitution.py is what makes that
+# impossible.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ogenki-admin
+subjects:
+  - kind: Group
+    name: principalSet://iam.googleapis.com/locations/global/workforcePools/${workforce_pool_id}/group/admin
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io

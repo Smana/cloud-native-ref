@@ -117,6 +117,21 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # local.identity_provider_url is computed in one place and both halves are
       # documented together in variables.tf.
       identity_provider_url = local.identity_provider_url
+
+      # Workforce pool federating ZITADEL (opentofu/gcp/workforce-identity).
+      # Consumed by security/gcp-0/rbac -- the RBAC binding's group name embeds
+      # this pool id. Must be present, or Flux substitutes an empty string and
+      # produces a binding matching nobody. See var.workforce_pool_id.
+      workforce_pool_id = var.workforce_pool_id
+
+      # Same reasoning as workforce_pool_id, for the other half of the exchange.
+      # The workforce provider pins its audience to the ZITADEL PROJECT id, and
+      # ZITADEL only puts that id in a token's `aud` when the token was
+      # REQUESTED with the matching project-audience scope -- so oauth2-proxy's
+      # scope has to name it. Substituting it means a rename is caught by
+      # check-substitution.py instead of surfacing as a bare `invalid_grant`
+      # with oauth2-proxy, the exchange proxy and Headlamp all reporting healthy.
+      zitadel_project_id = var.zitadel_project_id
     }
   })
   server_side_apply = true

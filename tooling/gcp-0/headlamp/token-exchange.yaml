@@ -1,0 +1,124 @@
+# Token-exchange shim for Headlamp on gcp-0 (design:
+# docs/superpowers/specs/2026-09-02-gke-rbac-headlamp-design.md).
+#
+# Sits between oauth2-proxy and Headlamp: oauth2-proxy forwards the user's
+# ZITADEL id_token as a bearer token, this proxy exchanges it at Google STS
+# for a Workforce Identity Federation access token scoped to the workforce
+# pool, injects it as X-Gke-Token, and forwards the request to Headlamp --
+# which forwards that header straight to the GKE API server.
+#
+# The binary (container-images/token-exchange-proxy) is provider-neutral and
+# has NO GCP defaults compiled in: every specific below is a TEP_* env var.
+# It never proxies a request it could not exchange a token for -- Headlamp
+# would otherwise silently fall back to its own ServiceAccount.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headlamp-token-exchange
+  namespace: tooling
+  labels:
+    app.kubernetes.io/name: headlamp-token-exchange
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: headlamp-token-exchange
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: headlamp-token-exchange
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # 65532 is distroless's `nonroot` user. The UID is REQUIRED, not
+        # decorative: the image declares `USER nonroot` by NAME, and with
+        # runAsNonRoot set the kubelet refuses to start a container whose user it
+        # cannot prove is non-root --
+        #   container has runAsNonRoot and image has non-numeric user (nonroot),
+        #   cannot verify user is non-root
+        # Measured on gcp-0 2026-09-02: the image pulls fine and the pod then
+        # sits in CreateContainerConfigError. Neither the schema gate nor Polaris
+        # catches this; only a real kubelet does.
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: token-exchange-proxy
+          image: ghcr.io/smana/token-exchange-proxy:v0.1.2 # pinned, never latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            # Restated at container level: a container securityContext REPLACES
+            # the pod-level one for the fields it sets, so omitting the UID here
+            # would reintroduce the non-numeric-user failure.
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: TEP_STS_URL
+              value: "https://sts.googleapis.com/v1/token"
+            - name: TEP_AUDIENCE
+              value: "//iam.googleapis.com/locations/global/workforcePools/${workforce_pool_id}/providers/zitadel"
+            - name: TEP_SCOPE
+              value: "https://www.googleapis.com/auth/cloud-platform"
+            - name: TEP_REQUEST_ENCODING
+              value: "json"
+            - name: TEP_SUBJECT_HEADER
+              value: "Authorization"
+            - name: TEP_SUBJECT_PREFIX
+              value: "Bearer "
+            - name: TEP_INJECT_HEADER
+              value: "X-Gke-Token" # matches Headlamp's -proxy-auth-token-header (Task 8)
+            - name: TEP_INJECT_PREFIX
+              value: "" # Headlamp wants the raw token, not "Bearer <t>"
+            - name: TEP_STRIP_SUBJECT
+              value: "true"
+            - name: TEP_UPSTREAM_URL
+              value: "http://headlamp.tooling.svc.cluster.local:80"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: headlamp-token-exchange
+  namespace: tooling
+  labels:
+    app.kubernetes.io/name: headlamp-token-exchange
+spec:
+  selector:
+    app.kubernetes.io/name: headlamp-token-exchange
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

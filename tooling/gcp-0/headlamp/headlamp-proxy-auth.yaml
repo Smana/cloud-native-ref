@@ -5,14 +5,45 @@ metadata:
   namespace: tooling
 spec:
   values:
+    # The chart's default (clusterRoleName: cluster-admin) binds the headlamp
+    # ServiceAccount to cluster-admin via ClusterRoleBinding headlamp-admin --
+    # live state confirmed before this repo added per-user auth. That made
+    # sense only when every user's request ran AS that SA
+    # (unsafeUseServiceAccountToken: true, above). It no longer does: each
+    # request now carries the requesting user's own federated token, and
+    # Kubernetes RBAC (security/gcp-0/rbac/) authorises against that user, not
+    # this SA. A cluster-admin binding here would keep the exact blast radius
+    # this change removes -- anything reaching the API server AS the headlamp
+    # SA (its own health/readiness calls, chart-internal version checks) gets
+    # cluster-admin regardless of who is logged in.
+    #
+    # Reduced to the built-in `view` ClusterRole (read-only, all namespaces,
+    # no secrets) rather than dropping the binding entirely: `view` is
+    # conservative in both directions -- generous enough that if Headlamp's
+    # own SA does still make some background read (e.g. server version/API
+    # discovery), it keeps working, but it grants no write access anywhere,
+    # so the removed cluster-admin blast radius does not come back through
+    # this binding. Named permissions were not enumerated because the pod's
+    # actual background API usage (as opposed to per-request proxying,
+    # which now runs as the user) was not verified against a live cluster
+    # for this change -- narrowing further needs that evidence first.
+    clusterRoleBinding:
+      clusterRoleName: view
+
     config:
-      # OIDC OFF ON THIS CLUSTER. Not a preference -- GKE cannot be made to trust
-      # ZITADEL. aws-0 associates the issuer with the EKS control plane
-      # (identity_providers in opentofu/aws/eks/init/variables.tfvars), so there
-      # Headlamp forwards the user's id_token and the API server validates it.
-      # GKE exposes no equivalent knob, and Identity Service for GKE -- the thing
-      # that used to provide one -- is deprecated as of 2026-07-01 and unsupported
-      # in GKE 1.37+. See ADR-0026.
+      # OIDC OFF ON THIS CLUSTER, STILL -- but it no longer costs anything.
+      # GKE cannot be made to trust ZITADEL directly (Identity Service for GKE,
+      # the thing that used to provide that knob, is deprecated as of
+      # 2026-07-01 and unsupported in GKE 1.37+ -- see ADR-0026, superseded by
+      # ADR-0032). aws-0 still uses this path: it associates the issuer with
+      # the EKS control plane directly (identity_providers in
+      # opentofu/aws/eks/init/variables.tfvars).
+      #
+      # On gcp-0, Headlamp never validates a token itself either way -- it
+      # forwards one the token-exchange shim minted (X-Gke-Token, see
+      # -proxy-auth-token-header below and token-exchange.yaml), and that
+      # token carries the real user's identity. Per-user Kubernetes RBAC is
+      # restored without Headlamp needing an OIDC integration GKE can't offer.
       #
       # Emptying the block removes the -oidc-* flags the chart would otherwise
       # render, and with them the headlamp-envvars mount. Leaving OIDC on would
@@ -25,13 +56,12 @@ spec:
         externalSecret:
           enabled: false
 
-      # Headlamp now talks to the API server as its OWN ServiceAccount, for every
-      # user. The chart calls this flag unsafe and it is right to: per-user
-      # Kubernetes RBAC is gone, so anyone oauth2-proxy admits has whatever the
-      # headlamp SA has. That is why allowed-group=admin on the proxy is
-      # load-bearing rather than defence in depth, and why the SA's binding is
-      # worth re-reading before widening the proxy's audience.
-      unsafeUseServiceAccountToken: true
+      # Per-user tokens are back, so the SA fallback is off. Headlamp talks to
+      # the API server with the token the shim forwards in X-Gke-Token
+      # (-proxy-auth-token-header below), not its own ServiceAccount -- each
+      # request now carries the requesting user's own federated identity, and
+      # Kubernetes RBAC (security/gcp-0/rbac/) sees that user, not headlamp's SA.
+      unsafeUseServiceAccountToken: false
 
       # config.extraArgs, NOT a top-level extraArgs. The chart nests it under
       # `config:`; at the top level it renders nothing at all, silently, and the
@@ -44,3 +74,8 @@ spec:
         # singular X-Forwarded-Group and would silently see no groups. Verified
         # against the flag list of the running v0.44.0 binary, not the docs.
         - "-proxy-auth-group-header=X-Forwarded-Groups"
+        # The header the token-exchange shim injects (TEP_INJECT_HEADER in
+        # token-exchange.yaml) carrying the Workforce Identity Federation
+        # access token exchanged from the user's ZITADEL id_token. Headlamp
+        # sends this value straight to the GKE API server as the bearer token.
+        - "-proxy-auth-token-header=X-Gke-Token"

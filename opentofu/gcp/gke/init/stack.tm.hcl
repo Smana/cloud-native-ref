@@ -4,7 +4,15 @@ stack {
   id          = "5a0ec1d9-6b2f-4f8e-9c3a-7d41e0b8f256"
 
   after = [
-    "/opentofu/gcp/network"
+    "/opentofu/gcp/network",
+    # This stack's own deploy script embeds a `gke/configure` apply as its
+    # stage 2, rather than leaving it to Terramate's separate visit to that
+    # stack. So gke/configure's `after` edge on workforce-identity does NOT
+    # constrain the embedded run -- without this edge here, the ConfigMap can
+    # publish workforce_pool_id before the pool exists, and stage 3's audience
+    # reconciliation then finds no provider and skips. It self-heals on a later
+    # sync, but silently, with RBAC bindings matching nobody in between.
+    "/opentofu/gcp/workforce-identity"
   ]
 
   tags = [
