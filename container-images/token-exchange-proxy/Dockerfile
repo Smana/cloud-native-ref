@@ -11,7 +11,7 @@ ARG TOKEN_EXCHANGE_PROXY_VERSION=v0.1.2
 # dependency the distroless runtime below has no shell to satisfy anyway;
 # -trimpath drops build-machine paths from the binary, -ldflags="-s -w"
 # strips the symbol table and DWARF debug info.
-FROM golang:1.23-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod ./
 COPY *.go ./
