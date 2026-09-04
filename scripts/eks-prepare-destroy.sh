@@ -239,12 +239,56 @@ if kubectl api-resources --api-group=karpenter.sh 2>/dev/null | grep -q nodepool
 		if [ "${remaining:-0}" = "0" ]; then
 			echo "All NodeClaims terminated."
 		else
-			echo "[warn] ${remaining} NodeClaim(s) still present. Their EC2 instances will"
-			echo "[warn] outlive the cluster and their ENIs will block security-group"
-			echo "[warn] deletion with DependencyViolation. After the destroy, sweep them:"
-			echo "[warn]   aws ec2 describe-instances --region <region> \\"
-			echo "[warn]     --filters Name=tag:kubernetes.io/cluster/<cluster>,Values=owned \\"
-			echo "[warn]               Name=instance-state-name,Values=running"
+			# Do the sweep rather than describing it (#1964).
+			#
+			# This branch used to print the exact command an operator should run
+			# afterwards -- and it correctly predicted the failure, right down to
+			# the DependencyViolation. It just did not act, so on 2026-09-02 a
+			# c5.xlarge outlived its control plane, held a Cilium ENI on two
+			# security groups, and `tofu destroy` died with
+			#
+			#   Error: deleting Security Group (sg-...): DependencyViolation
+			#
+			# halting the whole --reverse walk before the network, OpenBao and
+			# the entire GCP lane were reached. `aws eks list-clusters` was
+			# already empty: a node with no control plane, still billing.
+			echo "[warn] ${remaining} NodeClaim(s) did not terminate in time."
+			echo "[sweep] terminating their EC2 instances directly, or their ENIs"
+			echo "[sweep] will block security-group deletion with DependencyViolation."
+
+			orphans="$(${AWS_CMD} ec2 describe-instances \
+				--filters "Name=tag:kubernetes.io/cluster/${CLUSTER_NAME},Values=owned" \
+				"Name=instance-state-name,Values=running,pending,stopping,stopped" \
+				--query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || true)"
+
+			if [ -z "${orphans}" ]; then
+				echo "[sweep] no orphaned instances found; nothing to terminate."
+			else
+				# shellcheck disable=SC2086 # deliberate word splitting: instance-ids takes a list
+				${AWS_CMD} ec2 terminate-instances --instance-ids ${orphans} \
+					--query 'TerminatingInstances[].InstanceId' --output text >/dev/null 2>&1 \
+					|| echo "[warn] terminate call failed; sweep them by hand."
+				echo "[sweep] terminating: ${orphans}"
+
+				# Wait on the ENIs, NOT on instance state. They detach
+				# asynchronously after the instance reaches `terminated`, so a
+				# destroy retried on instance state alone hits the SAME
+				# DependencyViolation -- observed 2026-09-03.
+				echo "[sweep] waiting for their ENIs to detach (up to 300s)..."
+				for _ in $(seq 1 60); do
+					enis="$(${AWS_CMD} ec2 describe-network-interfaces \
+						--filters "Name=tag:cluster.k8s.amazonaws.com/name,Values=${CLUSTER_NAME}" \
+						--query 'length(NetworkInterfaces)' --output text 2>/dev/null || echo 0)"
+					[ "${enis:-0}" = "0" ] && break
+					sleep 5
+				done
+				if [ "${enis:-0}" = "0" ]; then
+					echo "[sweep] ENIs released; the security groups can now be deleted."
+				else
+					echo "[warn] ${enis} ENI(s) still attached after 300s. The destroy may"
+					echo "[warn] still hit DependencyViolation; re-run it once they clear."
+				fi
+			fi
 		fi
 	fi
 else
