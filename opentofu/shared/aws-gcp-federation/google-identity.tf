@@ -18,10 +18,39 @@ data "tls_certificate" "google" {
 
 resource "aws_iam_openid_connect_provider" "google" {
   url = "https://accounts.google.com"
-  # Every `aud` a trusted token may carry. The standby VM requests
-  # sts.amazonaws.com; Storage Transfer's federated-identity tokens carry the
-  # service agent's own subject ID as their audience.
-  client_id_list  = compact(["sts.amazonaws.com", var.gcp_transfer_agent_subject_id])
+  # NOT simply "every `aud` a trusted token may carry" -- that reading of this
+  # field is what broke the standby path, and it is worth spelling out because
+  # nothing in the failure names it.
+  #
+  # AWS matches a Google token against this list on the AUTHORIZED PARTY (`azp`)
+  # as well as the audience, and a GCE instance identity token's `azp` is the
+  # service account's unique ID -- never the audience string it was minted for.
+  # A list holding only "sts.amazonaws.com" therefore rejects the very token the
+  # standby node presents:
+  #
+  #   Code: InvalidIdentityToken
+  #   "The web identity token provided could not be validated."
+  #
+  # Measured 2026-09-05 from a throwaway GCE instance running as openbao-node,
+  # printing its own claims next to the failure:
+  #
+  #   {"aud":"sts.amazonaws.com","azp":"110583515827251510802",
+  #    "iss":"https://accounts.google.com","sub":"110583515827251510802"}
+  #
+  # Every condition in the trust policy below matched that token, and STS still
+  # refused it. Adding the standby's unique ID here -- changing nothing else --
+  # turned the same request into an assumed-role ARN. The thumbprint was ruled
+  # out first: substituting each certificate of accounts.google.com's live chain
+  # changed nothing.
+  #
+  # So this list holds, per federated principal, whichever claim AWS actually
+  # matches -- the standby's SA unique ID, the Storage Transfer service agent's
+  # subject ID -- plus sts.amazonaws.com for the audience itself.
+  client_id_list = compact([
+    "sts.amazonaws.com",
+    var.gcp_transfer_agent_subject_id,
+    var.gcp_openbao_standby_sa_unique_id,
+  ])
   thumbprint_list = [data.tls_certificate.google.certificates[0].sha1_fingerprint]
 }
 

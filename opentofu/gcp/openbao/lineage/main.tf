@@ -88,3 +88,29 @@ resource "google_storage_bucket_iam_member" "drill_reader" {
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.openbao_drill.email}"
 }
+
+# The standby node reads the same objects, and this grant is the one that is
+# easy to leave out: the CI drill above exercises the bucket constantly, so the
+# mirror looks reachable, while the identity that matters during an actual AWS
+# outage has never touched it.
+#
+# It had in fact been left out. Measured 2026-09-05 -- a GCE instance running as
+# openbao-node, asked to rehydrate from the mirror, got as far as listing:
+#
+#   STANDBY no-static-credential OK
+#   STANDBY identity-token-file bytes=656
+#   STANDBY gcs-list FAILED
+#
+# The AWS half of the failover was already proven by then (the node assumes
+# openbao-standby-seal over web identity and the awskms seal unwraps the barrier
+# key), which is exactly what made this the remaining gap: the standby could
+# unseal a snapshot it had no permission to fetch.
+#
+# objectViewer, not objectUser: the standby restores FROM the mirror and must
+# never write to it. The AWS bucket stays the store of record, and Storage
+# Transfer is the only writer here (see transfer.tf).
+resource "google_storage_bucket_iam_member" "node_reader" {
+  bucket = google_storage_bucket.snapshot.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.openbao_node.email}"
+}

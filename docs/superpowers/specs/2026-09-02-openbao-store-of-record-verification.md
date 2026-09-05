@@ -583,19 +583,84 @@ the failure surfaced as an AWS `AccessDenied`, naming the wrong cloud) and
 `ff675908` (the pre-destroy snapshot resolves OpenBao by a DNS name the teardown
 itself removes, while the node still answers on its fixed NLB address).
 
+## Criterion 6, proven — and two defects that made it impossible
+
+The headline cross-cloud claim, run for real. It did **not** need the GCP
+platform: the claim is about an identity and a seal, not about a cluster, so a
+throwaway `e2-medium` in the `default` network running as the real
+`openbao-node` service account is a complete test — and a cheap one. This also
+retires the earlier note in this file that design risk 3 "cannot be reproduced
+locally"; it can, and doing so is what found the defects.
+
+The drill asserts it holds no AWS credential, fetches a GCE identity token to a
+**file**, and points `AWS_ROLE_ARN` + `AWS_WEB_IDENTITY_TOKEN_FILE` at OpenBao's
+own `seal "awskms"` — so the AWS SDK's web-identity provider does the exchange,
+exactly as the standby unit does. No manual `sts:AssumeRoleWithWebIdentity`
+call stands in for the mechanism.
+
+```
+STANDBY no-static-credential OK
+STANDBY identity-token-file bytes=656
+STANDBY gcs-newest 2026-09-05T092947Z-awskms.snap
+STANDBY seal-segment awskms OK
+STANDBY snapshot-bytes 74785
+STANDBY seal-status {"type":"awskms","initialized":false}
+STANDBY init OK (awskms unwrapped a fresh barrier key over web identity)
+STANDBY unsealed-after-restore OK no-operator-input
+STANDBY issuer subject=CN = Ogenki AWS Intermediate CA  issuer=CN = Ogenki Root CA
+STANDBY fingerprint 8A:C4:25:40:...:A2:57
+```
+
+That fingerprint is the AWS cluster's live issuer, byte for byte. A GCP node
+holding no AWS credential read the GCS mirror, unsealed with the AWS
+multi-region key, and served the same PKI.
+
+**Getting there required fixing two defects, both on the path nothing had ever
+executed.** Neither is visible from configuration review — each one fails only
+when a real GCP identity tries the real thing.
+
+| Defect | Symptom | Fix |
+|---|---|---|
+| `client_id_list` omitted the standby SA's unique ID | `InvalidIdentityToken` — every trust-policy condition matched and STS still refused | `opentofu/shared/aws-gcp-federation/google-identity.tf` |
+| The snapshot bucket granted read to the CI drill SA but never to the node SA | standby could unseal a snapshot it had no permission to fetch | `opentofu/gcp/openbao/lineage/main.tf` |
+
+The first is the interesting one. `client_id_list` reads like "the audiences we
+accept", and the token's `aud` *was* `sts.amazonaws.com` — already in the list.
+AWS also matches the **authorized party**, and for a GCE instance identity token
+`azp` is the service account's unique ID:
+
+```
+{"aud":"sts.amazonaws.com","azp":"110583515827251510802",
+ "iss":"https://accounts.google.com","sub":"110583515827251510802"}
+```
+
+The thumbprint was ruled out first — substituting each certificate of
+`accounts.google.com`'s live chain changed nothing. Adding the unique ID, and
+nothing else, produced
+`arn:aws:sts::396740644681:assumed-role/openbao-standby-seal/webid-drill`.
+
+Both fixes were then applied **from code**, and the final run above is against
+that reconciled state: `client_id_list` shows no diff, and the exploratory
+thumbprints were reverted to the single code-managed value by the apply, so the
+committed configuration is what is proven. Live provider state afterwards:
+
+```
+clients:     sts.amazonaws.com, 103642011123339318159, 110583515827251510802
+thumbprints: 08745487e891c19e3078c1f2a07e452950ef36f6
+```
+
+`gcloud compute instances list` → `Listed 0 items.` after the run.
+
 ## Still outstanding
 
 - [x] Delete `certificates/priv.aws.ogenki.io/root-ca` and the two AppRole entries
 - [x] **Redeploy and compare the issuer fingerprint (success criterion 1)** — done,
       through `rehydrate` itself. See above.
+- [x] **GCP standby restores the AWS lineage (criterion 6)** — proven end to end,
+      after fixing the two defects above.
+- [x] **Design risk 3, the web-identity seal** — proven on a real GCE identity.
 - [ ] Drill workflow, one green run — **blocked until merge**: `workflow_dispatch`
-      needs the workflow on the default branch. Its substance is proven locally
-      above; the workflow itself is not.
-- [ ] `web-identity-seal` drill job (design risk 3) — **blocked until merge**,
-      same reason. Cannot be reproduced locally either: the whole point is a
-      GCE-issued web-identity token, which only that job's environment has.
+      needs the workflow on the default branch. Its substance is proven above; the
+      workflow wrapper itself is not.
 - [x] GCP server-certificate re-issue (Task 14b), lineage stack, federation, mirror
-- [ ] **GCP standby restores the AWS lineage (criterion 6)** — the headline
-      cross-cloud claim, still with no live evidence. Needs a GCP node deployed
-      with `seal_provider = "awskms"`.
 - [ ] Costs page re-measured
