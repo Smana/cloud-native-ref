@@ -55,7 +55,20 @@ globals {
   # one edit here rather than a hunt across two files.
   deploy_identity_provider_gcp = global.primary_cloud == "gcp"
   openbao_url                  = "https://bao.priv.aws.ogenki.io:8200"
-  root_token_secret_name       = "openbao/cloud-native-ref/tokens/root"
+
+  # The AWS NLB's fixed private address in the first private subnet, used only
+  # as a fallback when `bao.priv.aws.ogenki.io` does not resolve. A teardown
+  # removes that record while the node is still serving, which is precisely when
+  # the pre-destroy snapshot needs to reach it (measured 2026-09-05: dig empty,
+  # the same request to this address returned 200).
+  #
+  # This is the SAME contract as `openbao_target_ip` in gcp/gke/configure, and
+  # the same one load_balancer.tf's `cidrhost(cidr, -6)` comment calls out: move
+  # the offset and both values move with it. Only used to connect -- TLS still
+  # verifies the hostname, because the certificate carries no IP SAN.
+  openbao_fallback_address = "10.0.15.250"
+
+  root_token_secret_name = "openbao/cloud-native-ref/tokens/root"
   # Deliberately a different secret from the root token: the recovery keys are
   # what regenerates a lost or revoked root token, so storing both together
   # would make the pair only as strong as one of them.

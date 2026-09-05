@@ -48,6 +48,12 @@ CLOUD="aws"
 PROJECT=""
 SNAPSHOT_BUCKET=""
 CA_FILE=""
+# Optional. A fixed address to reach OpenBao on when its DNS name does not
+# resolve -- see pre_destroy_snapshot for why a teardown is exactly when that
+# happens. Empty means "no fallback", which is the correct setting wherever the
+# address is not deterministic (GCP assigns its load-balancer address
+# dynamically, so the GCP destroy passes nothing).
+FALLBACK_ADDRESS=""
 FRESHNESS_DAYS=8
 
 usage() {
@@ -80,6 +86,8 @@ usage() {
     echo "  --snapshot-bucket <Name>                  S3 bucket (aws) or GCS bucket (gcp) holding raft snapshots"
     echo "                                             (required for rehydrate and pre-destroy-snapshot)"
     echo "  --ca-file <Path>                          CA chain to verify the server with (sets VAULT_CACERT)"
+    echo "  --fallback-address <IP>                   Fixed address to reach OpenBao on when its DNS name does not"
+    echo "                                             resolve (pre-destroy-snapshot only; TLS still verifies the name)"
     echo "  --freshness-days <N>                      Age past which a restored snapshot is reported as old (default: ${FRESHNESS_DAYS})"
     echo ""
     echo "Environment:"
@@ -116,6 +124,7 @@ parse_args() {
             --project)                    PROJECT="$2"; shift 2 ;;
             --snapshot-bucket)            SNAPSHOT_BUCKET="$2"; shift 2 ;;
             --ca-file)                    CA_FILE="$2"; shift 2 ;;
+            --fallback-address)           FALLBACK_ADDRESS="$2"; shift 2 ;;
             --freshness-days)             FRESHNESS_DAYS="$2"; shift 2 ;;
             *)
                 echo "Invalid argument: $1"
@@ -1146,9 +1155,59 @@ pre_destroy_snapshot() {
     # anything but 200 is a refusal the operator has to resolve, not something
     # to sit and wait ten minutes for.
     status_code=$(openbao_health_code)
+
+    # A teardown removes the DNS record, and it can do so while the node is
+    # still up and serving. Measured 2026-09-05, in the same minute:
+    #
+    #   dig +short bao.priv.aws.ogenki.io               -> (nothing)
+    #   curl --resolve ...:10.0.15.250 /v1/sys/health   -> 200
+    #   the instance was running and its NLB was active
+    #
+    # Without this fallback that reads as "not active", the destroy stops --
+    # after the EKS cluster is gone and BEFORE the NAT gateway -- and the
+    # documented escape (TM_OPENBAO_SKIP_SNAPSHOT=true) throws away a snapshot
+    # that was there for the taking. On a teardown where this is the newest copy
+    # of the lineage, that is the data loss this function exists to prevent.
+    #
+    # CURL_HOME rather than --resolve: openbao-snapshot.sh runs the actual
+    # snapshot through its own curl calls, and that file is a symlink into the
+    # published container image, so it must not grow a flag for an operator-only
+    # path. curl reads $CURL_HOME/.curlrc before $HOME's, and a `resolve` entry
+    # there applies to every curl in this process tree -- the child included.
+    # TLS is unaffected: the request still presents the hostname, which is
+    # required, because the certificate carries no IP SAN by design.
+    if [ "$status_code" != "200" ] && [ -n "$FALLBACK_ADDRESS" ]; then
+        local host_port host port
+        host_port=${OPENBAO_URL#*://}
+        host_port=${host_port%%/*}
+        host=${host_port%%:*}
+        port=${host_port##*:}
+        [ "$port" = "$host_port" ] && port=8200
+
+        log_message "WARN" "$OPENBAO_URL did not answer (HTTP ${status_code:-none}); retrying at the fixed address $FALLBACK_ADDRESS."
+
+        CURL_HOME=$(mktemp -d)
+        export CURL_HOME
+        # shellcheck disable=SC2064 # expand now, so the trap survives CURL_HOME changing
+        trap "rm -rf -- '$CURL_HOME'" EXIT
+        printf 'resolve = %s:%s:%s\n' "$host" "$port" "$FALLBACK_ADDRESS" > "$CURL_HOME/.curlrc"
+
+        status_code=$(openbao_health_code)
+        if [ "$status_code" = "200" ]; then
+            log_message "INFO" "Reached OpenBao at $FALLBACK_ADDRESS presenting $host: the name is gone, the node is not."
+        fi
+    fi
+
     if [ "$status_code" != "200" ]; then
-        log_message "ERROR" "OpenBao at $OPENBAO_URL is not active (HTTP ${status_code:-none}); refusing to destroy without a snapshot."
-        log_message "ERROR" "If the node is genuinely gone, re-run with TM_OPENBAO_SKIP_SNAPSHOT=true."
+        log_message "ERROR" "OpenBao at $OPENBAO_URL did not answer (HTTP ${status_code:-none}); refusing to destroy without a snapshot."
+        if [ -n "$FALLBACK_ADDRESS" ]; then
+            log_message "ERROR" "The fixed address $FALLBACK_ADDRESS did not answer either, so the node is genuinely unreachable."
+        else
+            log_message "ERROR" "No --fallback-address was given, so this cannot tell an unresolvable NAME from a dead NODE."
+            log_message "ERROR" "Check the instance and its load balancer before concluding the node is gone."
+        fi
+        log_message "ERROR" "Only if the node is genuinely gone, re-run with TM_OPENBAO_SKIP_SNAPSHOT=true -- that DISCARDS"
+        log_message "ERROR" "every write since the last scheduled snapshot."
         exit 1
     fi
 
@@ -1177,10 +1236,17 @@ pre_destroy_snapshot() {
     # the operator's documented escape is TM_OPENBAO_SKIP_SNAPSHOT=true, i.e.
     # destroying WITHOUT a snapshot: the exact loss this function exists to
     # prevent.
+    #
+    # Both directories, because the fallback probe above may have set CURL_HOME
+    # to a temp dir and registered its own EXIT trap -- a second `trap ... EXIT`
+    # REPLACES the first, so naming only $scratch here would leak that dir, and
+    # with it a .curlrc that silently redirects every later curl in this process
+    # tree. "${CURL_HOME:-}" is empty when no fallback ran, and `rm -rf --` on an
+    # empty argument is a no-op.
     # shellcheck disable=SC2064 # expand now, deliberately -- see the comment above
-    trap "rm -rf -- '$scratch'" EXIT
+    trap "rm -rf -- '$scratch' '${CURL_HOME:-}'" EXIT
     # shellcheck disable=SC2064 # expand now, deliberately -- see the comment above
-    trap "rm -rf -- '$scratch'; exit 130" INT TERM
+    trap "rm -rf -- '$scratch' '${CURL_HOME:-}'; exit 130" INT TERM
 
     if ! VAULT_TOKEN="$root_token" sh "$(dirname "$0")/openbao-snapshot.sh" save \
             -a "$OPENBAO_URL" -b "$SNAPSHOT_BUCKET" -s "$scratch/bao.snap"; then

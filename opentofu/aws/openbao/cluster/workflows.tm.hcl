@@ -44,8 +44,14 @@ script "destroy" {
           --root-ca-secret-name "${global.ca_chain_secret_name}" \
           --ca-output-file .tls/ca.pem \
           --region "${global.region}" --profile "${global.profile}"
+        # --fallback-address: this stack's own destroy removes the Route53
+        # record, and the reverse walk can reach here with the name already
+        # gone while the node and its NLB are still up. Without it the snapshot
+        # is refused, the walk stops after EKS and before the NAT gateway, and
+        # the documented escape discards a snapshot that was obtainable.
         bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" pre-destroy-snapshot \
           --url "${global.openbao_url}" \
+          --fallback-address "${global.openbao_fallback_address}" \
           --root-token-secret-name "${global.root_token_secret_name}" \
           --snapshot-bucket "${global.snapshot_bucket_name}" \
           --ca-file .tls/ca.pem \
