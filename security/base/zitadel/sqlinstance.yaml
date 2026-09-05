@@ -55,8 +55,9 @@ spec:
   # loss versus -2's intent: only the final ~50 seconds, which contain
   # nothing but the backup itself.
   #
-  # LESSON for the promotion procedure below: after the one-shot Backup
-  # completes, force the segment out before copying —
+  # LESSON, now encoded in scripts/cnpg-promote-seed.sh (see the rotation
+  # command at the end of this block): after the one-shot Backup completes,
+  # force the segment out before copying —
   #   kubectl exec -n security xplane-zitadel-cnpg-cluster-1 -c postgres -- \
   #     psql -c "SELECT pg_switch_wal();"
   # then wait for the backup's end_wal to appear under wals/ in the live
@@ -66,56 +67,104 @@ spec:
   # therefore still needs scripts/cnpg-prepare-restore.sh first (see the
   # expected-empty-archive note below). Earlier rotations MOVED the
   # prefix and got that clearing for free.
+  #   [SUPERSEDED by #1963 — kept as a record of what was true on
+  #   2026-09-01, not as an instruction. Each cluster generation now
+  #   archives into its own uid-suffixed prefix, so a new cluster's
+  #   destination is empty whether the seed was copied or moved, and
+  #   nothing needs clearing. See the 2026-09-02 entry below.]
   #
-  # The live prefix `xplane-zitadel-cnpg-cluster/` accrues daily
+  # The live prefix (`xplane-zitadel-cnpg-cluster-<uid>/` since #1963;
+  # `xplane-zitadel-cnpg-cluster/` when this was written) accrues daily
   # ScheduledBackups but is NOT used for recovery — that decoupling
   # means a bad day on the live cluster (corruption, accidental DROP)
   # doesn't cascade into recovery from a poisoned state.
-  #
-  # Promotion procedure (rotate the frozen snapshot when zitadel
-  # changes meaningfully — new OAuth apps, schema migration,
-  # significant user growth):
-  #   1. `kubectl create -f one-shot-backup.yaml -n security`
-  #      (Backup CR pointing at xplane-zitadel-cnpg-cluster).
-  #   2. Wait for phase=completed.
-  #   3. `aws s3 cp --recursive
-  #      s3://eu-west-3-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/
-  #      s3://eu-west-3-ogenki-cnpg-backups/zitadel-$(date +%Y%m%d)/`
-  #   4. Update this `path:` to the new dated prefix, commit, push.
   #
   # Follow-up: the original 2026-05-04 manual backup didn't write to
   # S3 (root cause unknown — suspect cluster destroy raced backup
   # finalize). Add a Flux pre-flight check that fails closed if the
   # configured recovery prefix is empty.
-  # RESTORING REQUIRES CLEARING THE LIVE ARCHIVE FIRST, and on aws-0 that step is
-  # already part of how rebuilds are done by hand -- the `…-cnpg-cluster/` prefix
-  # is cleaned before the bootstrap, which is why it has always worked here.
   #
-  # It is written down now because it was tribal knowledge, and gcp-0 rediscovered
-  # it the hard way on 2026-08-28 with three failed recovery Jobs. CNPG refuses to
-  # start a restored cluster whose DESTINATION WAL archive is non-empty --
+  # ── zitadel-20260902: rotated because the directory changed materially ──────
+  # Taken 2026-09-02 after a one-shot Backup (20260902T123813, status=DONE).
+  # Promoted because zitadel-20260901 holds AUG 29 data and predates, in this
+  # order: the five gcp-0 OIDC clients (grafana-gcp-0, headlamp-gcp-0,
+  # flux-ui-gcp-0, headlamp-proxy-gcp-0, harbor-gcp-0) registered into this
+  # directory, and the projectRoleAssertion fix without which no token carries
+  # roles at all. Restoring from -0901 would silently reinstate a directory in
+  # which gcp-0 cannot authenticate anyone and every groups claim is empty.
   #
-  #   barman-cloud-check-wal-archive: WAL archive check failed for server
-  #   xplane-zitadel-cnpg-cluster: Expected empty archive
+  # Verified against the failure that made zitadel-20260829-2 unrestorable,
+  # rather than by comparing object counts (which that seed also passed):
+  # recovery targets the seed's NEWEST base backup, 20260902T123813, whose
+  # begin_wal ...0x7E and end_wal ...0x7F are BOTH present in the seed's wals/,
+  # with ...0x80 and ...0x81 beyond them so replay continues past the
+  # consistency point. Both timeline history files (6, 7) copied. 80 objects
+  # source, 80 in seed.
   #
-  # -- because a restore opens a new timeline that would collide with the WALs
-  # already there. This bucket outlives the cluster by design, so the destination
-  # is never empty on a rebuild and the step is a normal part of restoring rather
-  # than an incident.
+  # The pg_switch_wal() step in the LESSON above was not needed here only
+  # because ...0x7F had already been archived by the time the copy ran (backup
+  # 12:38:13Z, segment archived 12:39:45Z, copy ~12:52Z). That was luck, not
+  # method — keep doing the switch, and keep checking end_wal rather than
+  # object counts.
   #
-  # `scripts/cnpg-prepare-restore.sh` is that step with a guard: it refuses unless
-  # the dated seed actually holds a base backup, so the live archive is never
-  # cleared when there would be nothing to restore from. The manual equivalent is
-  #   aws s3 rm --recursive \
-  #     s3://<region>-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/
+  # zitadel-20260901 is left in the bucket as a fallback. Delete it once a
+  # rebuild has actually restored from this one.
   #
-  # The durable fix is a per-generation serverName in the SQLInstance Composition,
-  # which removes the step on both clouds. See docs/guides/restore-a-database.
+  # Restoring no longer requires clearing the live archive. Since #1963 each
+  # cluster generation writes to its own prefix (serverName carries the XR
+  # uid), so a new cluster's destination is empty because it never existed.
+  #
+  # Rotate this seed with:
+  #   scripts/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
+  #     --cloud aws --bucket <region>-ogenki-cnpg-backups --apply
+  # It discovers the live prefix, forces the final WAL segment out before
+  # copying, and verifies the result is restorable rather than counting objects.
+  # ── zitadel-20260904: the first seed cut by the script, not by hand ─────────
+  # Created 2026-09-04 by scripts/cnpg-promote-seed.sh --apply against the
+  # rebuilt aws-0, on the live prefix xplane-zitadel-cnpg-cluster-87c1dcbf --
+  # the first per-generation prefix, and the first promotion that discovered its
+  # source rather than assuming it.
+  #
+  # This rotation is NOT justified by a directory change. It is the same
+  # directory: this cluster restored from zitadel-20260902 and the OIDC
+  # registration then reported `created: 0, updated: 0, unchanged: 5`. Nothing
+  # material changed, so by the promotion criterion above (new OAuth apps,
+  # schema migration, significant user growth) -0902 would still do.
+  #
+  # It is promoted for a different reason: -0904 is the first seed whose
+  # restorability was established by the procedure rather than by hand. The
+  # script read the backup's own end_wal (...008B) from Backup.status.endWal,
+  # forced it out with pg_switch_wal, waited for THAT segment specifically, and
+  # only then copied -- the exact discipline whose absence made
+  # zitadel-20260829-2 unrestorable. Verified after the fact by an independent
+  # --verify-seed run: status=DONE, begin_wal ...008A and end_wal ...008B both
+  # present.
+  #
+  # HONEST CAVEAT, because the file's own history exists to prevent this being
+  # forgotten: -0902 carries STRONGER evidence than -0904. It has been proven by
+  # an actual restore -- this very cluster came up from it, with all five OIDC
+  # clients intact. -0904 has only been proven by the checker. If a rebuild ever
+  # fails to restore from -0904, fall back to -0902, which is known to work end
+  # to end and is deliberately retained below.
+  #
+  # zitadel-20260902 is left in the bucket as that fallback. Delete it once a
+  # rebuild has actually restored from this one.
   objectStoreRecovery:
     bucketName: "${region}-ogenki-cnpg-backups"
-    path: "zitadel-20260901"
+    path: "zitadel-20260904"
   backup:
-    schedule: "0 0 * * *"
+    # SIX fields, and the first one is SECONDS. CNPG does not use Kubernetes
+    # CronJob syntax here: it uses the robfig/cron format, so a five-field
+    # expression is not rejected -- it is silently reinterpreted one position to
+    # the left. `0 0 * * *` parsed as (sec=0, min=0, hour=*, dom=*, month=*)
+    # means EVERY HOUR at :00:00, not daily at midnight.
+    #
+    # Measured 2026-09-02: this cluster had six "daily" base backups before
+    # 13:00, and harbor (`0 1 * * *`) fired at 08:01, 09:01, 10:01, 11:01, 12:01
+    # and 13:01. Nothing errors, nothing warns, and the resource is still named
+    # `...-daily-backup` -- the only symptom is 24x the intended object count and
+    # S3 cost, which looks like normal growth.
+    schedule: "0 0 0 * * *"
     bucketName: "${region}-ogenki-cnpg-backups"
   crossplane:
     compositionRef:

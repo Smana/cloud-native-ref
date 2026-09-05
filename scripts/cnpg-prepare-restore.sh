@@ -2,25 +2,15 @@
 #
 # Clear a CloudNativePG cluster's live WAL archive, so a new cluster can start.
 #
-# WHY THIS STEP EXISTS AT ALL
+# NOT PART OF THE NORMAL PATH ANY MORE.
 #
-# CloudNativePG refuses to start a cluster whose DESTINATION archive is not
-# empty -- a new cluster opens a new timeline that would collide with the WALs
-# already there:
+# Since #1963 each cluster generation writes to its own WAL archive prefix, so a
+# rebuild's destination is empty by construction and nothing needs clearing.
 #
-#   barman-cloud-check-wal-archive: WAL archive check failed for server
-#   <cluster>: Expected empty archive
-#
-# And the backup buckets here outlive their clusters ON PURPOSE, so the
-# destination is never empty on a rebuild. Clearing it is therefore a normal part
-# of rebuilding, not an incident -- it is what an operator already does by hand
-# before an aws-0 rebuild, for every `*-cnpg-cluster/` prefix.
-#
-# This applies to a cluster that bootstraps EMPTY (initdb) just as much as to one
-# that restores: the check is about the destination, not about where the data
-# comes from. On aws-0 that is three clusters, only two of which restore.
-#
-# This script is that step, with the check that makes it safe to run.
+# This remains as an escape hatch for the cases that still collide: a cluster
+# pinned to an explicit serverName, an archive left behind by a pre-#1963
+# generation, or a deliberate reuse of a prefix. It still refuses to clear a
+# live archive unless the named seed actually holds a base backup.
 #
 # TWO DIFFERENT QUESTIONS, TWO DIFFERENT PREDICATES
 #

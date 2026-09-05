@@ -63,5 +63,5 @@ cluster's own OIDC issuer — one JWT mount per cluster.
   {{< card link="/docs/platform/security/openbao/" title="OpenBao" icon="lock-closed" subtitle="The operational surface: namespaces, operator login, JWT roles, backup and restore." >}}
   {{< card link="/docs/platform/security/pki-and-secrets/" title="PKI & Secrets" icon="key" subtitle="The certificate chain, and how cert-manager and External Secrets consume it." >}}
   {{< card link="/docs/guides/openbao-cross-cloud-failover/" title="Failover runbook" icon="switch-horizontal" subtitle="What to run when the primary cloud is unavailable, and how to fail back." >}}
-  {{< card link="/docs/decisions/0032-openbao-store-of-record-lineage/" title="ADR-0032" icon="document-text" subtitle="Why this design, the cost constraint behind it, and the alternatives rejected." >}}
+  {{< card link="/docs/decisions/0033-openbao-store-of-record-lineage/" title="ADR-0033" icon="document-text" subtitle="Why this design, the cost constraint behind it, and the alternatives rejected." >}}
 {{< /cards >}}

@@ -2,7 +2,7 @@
 title: Migrate the identity provider
 weight: 50
 description: Move ZITADEL from AWS to a GCP-only platform, or back — the database seed, the admin PAT and the client secrets travel together, or the result authenticates nobody.
-lastVerified: 2026-08-29
+lastVerified: 2026-09-03
 ---
 
 [ADR-0027]({{< relref "/docs/decisions/0027-primary-cloud-provider.md" >}})
@@ -57,51 +57,72 @@ purpose.
 ## 1. Freeze a seed on the source cloud
 
 Identical to the "Freeze a seed" step of
-[Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}}): take
-a one-shot `Backup`, wait for `phase=completed`, then copy the cluster's live
-prefix to a dated one so the seed is a known, unmoving state rather than
-whatever the live archive happens to hold when you read it later.
+[Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}}) — run
+the same script:
 
 ```bash
-kubectl apply -n security -f - <<'EOF'
-apiVersion: postgresql.cnpg.io/v1
-kind: Backup
-metadata:
-  name: zitadel-migration-seed
-  namespace: security
-spec:
-  cluster:
-    name: xplane-zitadel-cnpg-cluster
-  method: plugin
-  pluginConfiguration:
-    name: barman-cloud.cloudnative-pg.io
-EOF
-
-kubectl get backup -n security zitadel-migration-seed -w   # wait for phase=completed
+# AWS → GCP: freeze on AWS
+./scripts/cnpg-promote-seed.sh --cluster xplane-zitadel --namespace security \
+  --cloud aws --bucket eu-west-3-ogenki-cnpg-backups --apply
 ```
+
+GCP → AWS is `--cloud gcp --bucket <gcp-project>-ogenki-cnpg-backups`. Either
+way it prints the dated seed name (`zitadel-<date>`) it created — step 2 copies
+**that** prefix.
+
+{{< callout type="warning" >}}
+**Do not hand-roll this as a `Backup` plus a `cp`.** That is exactly the
+procedure that produced `zitadel-20260829-2`: the backup's `end_wal` segment
+was archived seconds *after* the copy ran, so the seed could never reach
+consistency on replay — a copy with the right object count and the wrong
+objects, which nothing noticed until a rebuild three days later. The script
+issues `pg_switch_wal()`, waits for *that specific* segment to land, and then
+verifies the copy holds a restorable base backup rather than counting objects.
+
+It also discovers the live prefix from the cluster instead of assuming it.
+Since [#1963](https://github.com/Smana/cloud-native-ref/issues/1963) the
+`serverName` carries a per-generation uid suffix, so a hardcoded
+`xplane-zitadel-cnpg-cluster/` matches nothing at all — a hand-rolled copy from
+it would freeze an *empty* seed and exit 0.
+{{< /callout >}}
 
 ## 2. Copy the seed to the target cloud's backup bucket
 
-AWS → GCP:
+Copy the **dated seed**, never the live cluster prefix — the seed is a known,
+unmoving state, and the live archive keeps changing under you:
 
 ```bash
-aws s3 sync s3://eu-west-3-ogenki-cnpg-backups/xplane-zitadel-cnpg-cluster/ \
+aws s3 sync s3://eu-west-3-ogenki-cnpg-backups/zitadel-20260902/ \
   /tmp/zitadel-seed/
-gcloud storage rsync /tmp/zitadel-seed/ \
-  gs://<gcp-project>-ogenki-cnpg-backups/zitadel-$(date +%Y%m%d)/
+gcloud storage rsync --recursive /tmp/zitadel-seed/ \
+  gs://<gcp-project>-ogenki-cnpg-backups/zitadel-20260902/
 ```
 
+Keep the same dated name on both clouds so the two buckets stay comparable, and
+verify the copy on the target before trusting it — a cross-cloud round trip
+through a local directory is one more place for a seed to lose an object:
+
+```bash
+./scripts/cnpg-promote-seed.sh --verify-seed zitadel-20260902 \
+  --cloud gcp --bucket <gcp-project>-ogenki-cnpg-backups
+```
+
+`--verify-seed` is read-only, needs no cluster, and checks the same thing the
+promotion does: the newest base backup's `status`, and that **both** its
+`begin_wal` and `end_wal` segments are present under `wals/`.
+
 GCP → AWS is the reverse: `gcloud storage rsync` down, `aws s3 sync` up. Then
-point the *target* cluster's claim at the new dated prefix — on GCP that is
+point the *target* cluster's claim at the dated prefix — on GCP that is
 `security/gcp-0/zitadel/kustomization.yaml`'s `objectStoreRecovery.path`
 patch, on AWS `security/base/zitadel/sqlinstance.yaml`'s.
 
 `bootstrap` is immutable on an existing CloudNativePG cluster, so this only
 takes effect on a cluster created fresh from that claim — the same
 force-a-recreate procedure as the "Force the bootstrap" step of
-[Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}}),
-including clearing the target's live WAL archive first if it already holds
-one, or the restore refuses with `Expected empty archive`.
+[Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}}).
+There is no archive to clear first: since #1963 each generation writes to its
+own uid-suffixed prefix, so the new cluster's destination is empty because it
+never existed.
 
 ## 3. Copy the admin PAT
 
@@ -164,16 +185,32 @@ not a flag flipped there.
 
 | Gate | Where | Target value for GCP-hosted |
 |---|---|---|
-| `deploy_identity_provider` | `opentofu/gcp/gke/configure/variables.tfvars` | `true` |
+| `primary_cloud` | `opentofu/config.tm.hcl` | `"gcp"` |
 | `spec.suspend` | `clusters/gcp-0/security/zitadel.yaml` | `false` |
 
-They must agree in the same commit — one alone points every consumer at a
-hostname nothing serves, or runs an instance nothing is configured to use, and
-neither half can detect the other is wrong.
+**Do not set `deploy_identity_provider` in `variables.tfvars`.** It is derived
+from `primary_cloud` and passed as a `-var` on every invocation, which wins over
+the file — re-adding the literal there changes nothing and reports no error.
+Setting `primary_cloud` is what flips it.
 
-Migrating back to AWS is the reverse: `deploy_identity_provider = false` and
+The two gates must still agree, in the same commit: one alone points every
+consumer at a hostname nothing serves, or runs an instance nothing is configured
+to use. The difference is that disagreement is now caught —
+`./scripts/validate-idp-topology.sh` fails in CI, rather than the platform
+failing silently at the authorize step.
+
+Migrating back to AWS is the reverse: `primary_cloud = "aws"` and
 `spec.suspend: true` on the GCP side; nothing to flip on AWS, since it has no
 gate to begin with.
+
+{{< callout type="warning" >}}
+**Suspending is not decommissioning.** `spec.suspend: true` stops Flux
+reconciling the outgoing instance; it does not remove what is already running.
+On a live migration, delete the outgoing cluster's ZITADEL release, its
+`SQLInstance` claim, TLSRoute and certificate after the new host is serving —
+otherwise two directories keep running while the topology check, which reads
+committed YAML rather than the cluster, reports "consistent".
+{{< /callout >}}
 
 ## 6. Deploy
 

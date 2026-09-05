@@ -48,7 +48,7 @@ Two things since then made that cost worth re-examining:
   cert-manager's AppRole `secret_id` into its state, which its own `secrets.tf` named as the
   one place this design put a live credential in state. Under a shared bucket, an AWS-side
   compromise yields a working GCP credential. (That specific credential is gone since
-  [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})
+  [ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})
   replaced AppRole with JWT auth; the driver is recorded as it stood. An OpenBao management
   state still holds sensitive material — the AWS one carries the generated operator
   password — so the conclusion is unchanged.)

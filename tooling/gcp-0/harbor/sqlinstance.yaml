@@ -52,7 +52,10 @@ spec:
       comment: "Harbor admin user"
       superuser: true
   backup:
-    schedule: "0 1 * * *"
+    # SIX-field cron, seconds first -- CNPG uses robfig/cron, not Kubernetes
+    # CronJob syntax, so `0 1 * * *` silently meant hourly at :01.
+    # Full explanation and the measurement: security/base/zitadel/sqlinstance.yaml
+    schedule: "0 0 1 * * *"
     bucketName: "${project_id}-ogenki-cnpg-backups"
   crossplane:
     compositionRef:

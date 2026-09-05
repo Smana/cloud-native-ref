@@ -189,7 +189,7 @@ a fresh cluster's first reconcile of that path necessarily failed and succeeded
 only on the retry.
 
 Machine authentication is now the JWT method
-([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})):
+([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})):
 cert-manager presents a projected ServiceAccount token, the role name is a
 literal, and there is no generated identifier to plumb through a Secret at all.
 The cycle went with it.

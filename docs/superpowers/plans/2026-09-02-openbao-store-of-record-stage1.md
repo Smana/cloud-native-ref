@@ -5570,7 +5570,7 @@ MSG
 ### Task 13: Records and documentation
 
 **Files:**
-- Create: `website/content/docs/decisions/0032-openbao-store-of-record-lineage.md`
+- Create: `website/content/docs/decisions/0033-openbao-store-of-record-lineage.md`
 - Modify: `website/content/docs/decisions/_index.md` (table row)
 - Modify: `website/content/docs/decisions/0025-cloud-managed-secret-stores.md` (amendment callout)
 - Modify: `website/content/docs/decisions/0027-primary-cloud-provider.md` (table row, one paragraph)
@@ -5601,9 +5601,9 @@ MSG
 
 Write in the site's existing voice (short paragraphs, tables, `{{< callout >}}` shortcodes). Every relative link must resolve (`validate-links.sh`); every claim entry must match (`validate-doc-claims.sh`).
 
-- [ ] **Step 1: ADR-0032**
+- [ ] **Step 1: ADR-0033**
 
-Create `website/content/docs/decisions/0032-openbao-store-of-record-lineage.md`:
+Create `website/content/docs/decisions/0033-openbao-store-of-record-lineage.md`:
 
 ```markdown
 ---
@@ -5777,7 +5777,7 @@ Fallback runbook: [Cross-cloud failover]({{< relref "/docs/guides/openbao-cross-
 Add to `website/content/docs/decisions/_index.md`, after the 0031 row:
 
 ```markdown
-| [0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}) | OpenBao is the store of record, durable as a snapshot lineage, active on the primary cloud with restore-based fallback | Accepted | 2026-09-02 |
+| [0032]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}) | OpenBao is the store of record, durable as a snapshot lineage, active on the primary cloud with restore-based fallback | Accepted | 2026-09-02 |
 ```
 
 - [ ] **Step 2: Amend ADR-0025 and ADR-0027**
@@ -5786,14 +5786,14 @@ In `0025-cloud-managed-secret-stores.md`, directly after the `---` that follows 
 
 ```markdown
 {{< callout type="info" >}}
-**Amended 2026-09-02 by [ADR-0032](0032-openbao-store-of-record-lineage.md).**
+**Amended 2026-09-02 by [ADR-0033](0033-openbao-store-of-record-lineage.md).**
 The constraint recorded below is unchanged: this reference cannot afford an
 always-on OpenBao. What changed is what the constraint bounds. OpenBao's storage
 is now derived from a *lineage* — a persistent seal key, five bootstrap secrets
 and a snapshot bucket — and rehydrated on every boot, so the process can be off
 between runs while OpenBao is the store of record. The "Neutral" sentence below
 saying OpenBao remains the target is therefore no longer aspirational; the
-`ClusterSecretStore` repoint it describes is Stage 2 of ADR-0032's plan. Until
+`ClusterSecretStore` repoint it describes is Stage 2 of ADR-0033's plan. Until
 that stage lands, the placement rule in this record still describes the live
 platform.
 {{< /callout >}}
@@ -5815,7 +5815,7 @@ and the row
 
 to
 
-`| **Primary-cloud singleton** | the primary cloud | public Route53 zone, ZITADEL, the \`aws-gcp-federation\` OIDC providers and roles, OpenBao (since [ADR-0032](0032-openbao-store-of-record-lineage.md) — its relocation carries state, by snapshot restore) |`
+`| **Primary-cloud singleton** | the primary cloud | public Route53 zone, ZITADEL, the \`aws-gcp-federation\` OIDC providers and roles, OpenBao (since [ADR-0033](0033-openbao-store-of-record-lineage.md) — its relocation carries state, by snapshot restore) |`
 
 In its "What it does not change" paragraph, find:
 
@@ -5830,7 +5830,7 @@ Replace with:
 ```markdown
 Nothing per-cloud. Both clusters keep their own secret store, state and backups,
 and neither depends on the other for them. (OpenBao left this class on
-2026-09-02 — [ADR-0032](0032-openbao-store-of-record-lineage.md).)
+2026-09-02 — [ADR-0033](0033-openbao-store-of-record-lineage.md).)
 ```
 
 Set `lastVerified: 2026-09-02`.
@@ -5848,7 +5848,7 @@ lastVerified: 2026-09-02
 ---
 
 The active OpenBao runs on AWS and serves both clusters. Its durable form is
-the *lineage* ([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})):
+the *lineage* ([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})):
 the multi-region seal key `alias/openbao-seal`, five bootstrap secrets, and the
 snapshot bucket `eu-west-3-ogenki-openbao-snapshot`, mirrored daily into
 `ogenki-435905-ogenki-openbao-snapshot` by a Storage Transfer job.
@@ -5858,7 +5858,7 @@ snapshot bucket `eu-west-3-ogenki-openbao-snapshot`, mirrored daily into
 | Failure | Covered |
 |---|---|
 | AWS `eu-west-3` regional outage; AWS compute or Secrets Manager unavailable | yes — the seal key has a replica in `eu-west-1` |
-| The AWS account itself lost or closed | **no** — every snapshot is ciphertext under an AWS KMS key. A Shamir seal would cover this at the cost of a human at every restart; the trade is recorded in ADR-0032 |
+| The AWS account itself lost or closed | **no** — every snapshot is ciphertext under an AWS KMS key. A Shamir seal would cover this at the cost of a human at every restart; the trade is recorded in ADR-0033 |
 | Snapshot older than you would like | RPO is the mirror cadence: 24 h as committed, 1 h in the production posture |
 
 Consumers tolerate the gap: External Secrets keeps the last synced Secrets and
@@ -5973,7 +5973,7 @@ and set that file's `lastVerified` to `2026-09-02`.
 ## The lineage, and rehydrate at boot
 
 OpenBao's storage is **derived state**. What persists is the *lineage*
-([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})):
+([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})):
 
 | Component | Where |
 |---|---|
@@ -6077,7 +6077,7 @@ CA bundle is still an `ExternalSecret`, from `certificates/<domain>/ca-chain`.
 `costs.md`:
 
 - In the AWS table change `| KMS | 3 | 3 keys: cluster encryption, OpenBao unseal, snapshot bucket |` to `| KMS | 4 | 4 keys: cluster encryption, the OpenBao seal and its eu-west-1 replica, snapshot bucket |`.
-- In "The floor you pay for nothing", change `about **$23/month** keeps billing` to `about **$24/month** keeps billing` and `its 3 KMS keys` to `its 4 KMS keys (the OpenBao seal is multi-region on purpose — [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}))`. Change the summary line `**about $23/month keeps billing` at the top to `$24`.
+- In "The floor you pay for nothing", change `about **$23/month** keeps billing` to `about **$24/month** keeps billing` and `its 3 KMS keys` to `its 4 KMS keys (the OpenBao seal is multi-region on purpose — [ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}))`. Change the summary line `**about $23/month keeps billing` at the top to `$24`.
 - In "Keeping it cheap", replace `is one \`t3.micro\`. \`mode = "ha"\` is five spot instances, and the configuration steps are identical either way.` with `is one \`t3.micro\` on single-node Raft, rebuilt from its newest snapshot on every deploy. \`mode = "ha"\` is five instances, and the configuration steps are identical either way.`
 - `lastVerified: 2026-09-02`.
 
@@ -6185,7 +6185,7 @@ and append three claims:
 
 In `CLAUDE.md`, in the **Namespace layout** paragraph of the "OpenBao" section, insert this sentence before `See \`opentofu/aws/openbao/management/namespaces.tf\``:
 
-`OpenBao's storage is rebuilt from its newest snapshot on every deploy (the *lineage*, ADR-0032): the lineage and management stacks are never destroyed by the default \`destroy\` (\`TM_LINEAGE_DESTROY=true\` overrides), machine auth is the JWT method on \`jwt/<cluster>\`, and consumers reach it at \`openbao.security.svc.cluster.local:8200\`. `
+`OpenBao's storage is rebuilt from its newest snapshot on every deploy (the *lineage*, ADR-0033): the lineage and management stacks are never destroyed by the default \`destroy\` (\`TM_LINEAGE_DESTROY=true\` overrides), machine auth is the JWT method on \`jwt/<cluster>\`, and consumers reach it at \`openbao.security.svc.cluster.local:8200\`. `
 
 In `docs/gcp-bootstrap.md`, in "What is NOT a prerequisite", append: `The snapshot bucket and the \`openbao-node\` / \`openbao-drill\` service accounts are created by \`opentofu/gcp/openbao/lineage\`; the bucket is imported from the Crossplane-era object on first apply (see the Stage 1 plan, Task 15).` And in the prerequisites list add: `- **For a standby deploy only:** the AWS lineage's root token and recovery keys copied into \`openbao-priv-gcp-root-token\` and \`openbao-priv-gcp-recovery-keys\` — see the failover guide.`
 
@@ -6203,7 +6203,7 @@ Expected: links resolve; claims pass (fix any regex that does not match the word
 
 ```bash
 git add website/content/docs .doc-claims.yaml CLAUDE.md docs/gcp-bootstrap.md
-git commit -m "docs: ADR-0032 (OpenBao lineage), amendments to 0025/0027, failover guide, page updates
+git commit -m "docs: ADR-0033 (OpenBao lineage), amendments to 0025/0027, failover guide, page updates
 
 Records the store-of-record decision with its rejected alternatives,
 amends ADR-0025's target statement and ADR-0027's class table, adds the

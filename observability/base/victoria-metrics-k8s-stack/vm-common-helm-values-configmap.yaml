@@ -216,7 +216,7 @@ data:
         # renovate: datasource=github-releases depName=VictoriaMetrics/victoriametrics-datasource extractVersion=^v(?<version>.+)$
         - "victoriametrics-metrics-datasource@0.25.2"
         # renovate: datasource=github-releases depName=VictoriaMetrics/victorialogs-datasource extractVersion=^v(?<version>.+)$
-        - "victoriametrics-logs-datasource@0.31.0"
+        - "victoriametrics-logs-datasource@0.32.0"
         - "marcusolsson-dynamictext-panel"
       "grafana.ini":
         feature_toggles:

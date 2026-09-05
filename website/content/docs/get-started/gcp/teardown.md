@@ -199,6 +199,46 @@ gcloud compute networks list --project <project>   # only `default` should remai
 gcloud storage buckets list --project <project> --format='value(name)'
 ```
 
+### The workforce pool needs `--show-deleted`, or it lies to you
+
+```bash
+# WRONG -- this reports an empty org even when a pool name is still reserved.
+gcloud iam workforce-pools list --organization <org> --location global
+
+# RIGHT
+gcloud iam workforce-pools list --organization <org> --location global --show-deleted
+```
+
+Workforce pools **soft-delete with a 30-day purge**. `tofu destroy` removes the
+pool and empties the state, but the *name* stays reserved — and `list` hides
+deleted pools by default, so every check reports the org clean while the next
+apply fails on its very first resource:
+
+```
+Error 409: Pool locations/global/workforcePools/ogenki-zitadel already exists.
+```
+
+Measured 2026-09-02: a bootstrap died nine seconds in, on the first stack, for
+exactly this — after a sweep had declared the org empty.
+
+{{< callout type="warning" >}}
+Undeleting a pool does **not** restore its providers. They are separate objects
+with their own lifecycle, so a pool undeleted by hand comes back trusting
+nothing, and the failure surfaces much later as `invalid_grant` on every login
+rather than as an error during the rebuild.
+{{< /callout >}}
+
+You should not normally have to do any of this: the workforce-identity stack's
+deploy runs `scripts/gcp-adopt-workforce-pool.sh` first, which undeletes the
+pool *and* its provider and imports both into state, so a rebuild inside the
+30-day window just works. It is a no-op on a genuinely fresh org. The manual
+commands are here for when you are diagnosing rather than deploying.
+
+The pool name is deliberately **stable across rebuilds** rather than unique per
+build, because it is embedded verbatim in every Kubernetes RBAC group string —
+a per-build name would change every binding every build and leave a trail of
+tombstones. Surviving the tombstone is the cheaper trade.
+
 ## Non-interactive
 
 `TM_DESTROY_CONFIRMED=true` skips the interactive `y/n` prompt. It exists for

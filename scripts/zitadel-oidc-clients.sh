@@ -31,8 +31,15 @@
 # them would lock the operator out of Grafana.
 #
 # Usage:
+#   # a cluster that HOSTS its own identity provider
 #   zitadel-oidc-clients.sh sync --cluster gcp-0 --cloud gcp [--project ID] [--apply]
 #   zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws [--region R]  [--apply]
+#
+#   # a SECONDARY cluster consuming the primary cloud's identity provider:
+#   # admin PAT from AWS, client secrets into GCP, kubectl pointed at aws-0.
+#   IDP_URL=https://auth.cloud.ogenki.io PRIVATE_DOMAIN=priv.gcp.ogenki.io \
+#     zitadel-oidc-clients.sh sync --cluster gcp-0 \
+#       --cloud gcp --project ID --idp-cloud aws --region eu-west-3 --apply
 #
 # Dry-run unless --apply. Client secrets are never printed: ZITADEL returns a
 # client secret exactly once, at creation, so it goes straight from the API
@@ -58,6 +65,9 @@ CLOUD=""
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 GCP_PROJECT=""
 APPLY="false"
+# Empty means "this platform has no workforce pool" -- the reconciliation below
+# is then skipped entirely, which is the correct behaviour on AWS-only setups.
+WORKFORCE_POOL=""
 ZITADEL_PROJECT_NAME="platform"
 
 # The project roles the platform's OWN RBAC already refers to. These are not a
@@ -94,16 +104,59 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --cluster) CLUSTER="$2"; shift 2 ;;
         --cloud)   CLOUD="$2"; shift 2 ;;
+        --idp-cloud) IDP_CLOUD="$2"; shift 2 ;;
         --region)  REGION="$2"; shift 2 ;;
         --project) GCP_PROJECT="$2"; shift 2 ;;
         --apply)   APPLY="true"; shift ;;
         --grant-admin) GRANT_ADMIN="$2"; shift 2 ;;
+        --workforce-pool) WORKFORCE_POOL="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 
 [ -n "$CLUSTER" ] || { echo "--cluster is required" >&2; exit 2; }
 case "$CLOUD" in aws|gcp) ;; *) echo "--cloud must be aws or gcp" >&2; exit 2 ;; esac
+
+# Which cloud's secret store holds the ZITADEL ADMIN PAT, as opposed to which
+# one receives the client secrets this script writes. They are the same cloud
+# whenever a cluster hosts its own identity provider, so this defaults to
+# --cloud and every existing invocation is unchanged.
+#
+# They differ in exactly one case, and it is the one ADR-0027 makes normal:
+# a SECONDARY cluster consuming the primary cloud's ZITADEL. Registering
+# gcp-0's clients into aws-0's directory needs the admin PAT from AWS and the
+# resulting client secrets in GCP, because that is where gcp-0's
+# ExternalSecrets read. One flag could not express that, which is why nothing
+# registered a consuming cluster's clients and its oauth2-proxy came up with
+# no secret at all.
+IDP_CLOUD="${IDP_CLOUD:-$CLOUD}"
+case "$IDP_CLOUD" in aws|gcp) ;; *) echo "--idp-cloud must be aws or gcp" >&2; exit 2 ;; esac
+
+# App names are per-CONSUMER (`harbor`, `grafana`, ...), which is unambiguous
+# only while one directory serves one cluster. It no longer does: ADR-0027 makes
+# a secondary cluster CONSUMING the primary's directory the normal arrangement,
+# and then two clusters want an app called `harbor` in the same project.
+#
+# Caught by a dry run on 2026-09-02, before anything was written:
+#
+#   [STALE  ] harbor  has:  https://harbor.priv.aws.ogenki.io/c/oidc/callback
+#                     want: https://harbor.priv.gcp.ogenki.io/c/oidc/callback
+#   created: 0, updated: 5
+#
+# Registering gcp-0 would not have created gcp-0's clients -- it would have
+# rewritten aws-0's redirect URIs to gcp-0's hostnames and broken SSO on the
+# cluster that hosts the directory.
+#
+# So a CONSUMING cluster's apps are suffixed with its cluster name. The hosting
+# cluster's are not, deliberately: its apps already exist under bare names, they
+# are carried in the database restore seed, and renaming them would orphan the
+# originals on every restore while rotating secrets on a running cluster.
+# Asymmetric, and the asymmetry is the point -- the host owns the plain names.
+if [ "$IDP_CLOUD" != "$CLOUD" ]; then
+    APP_SUFFIX="-${CLUSTER}"
+else
+    APP_SUFFIX=""
+fi
 
 # Provenance for secrets this script writes, read by cloud-secret-store.sh's
 # store_write. Preserves what this script wrote before the store/PAT logic
@@ -122,7 +175,21 @@ STORE_WRITE_LABEL="zitadel-oidc-clients"
 ZITADEL_PAT_DRY_RUN="true"
 [ "$APPLY" = "true" ] && ZITADEL_PAT_DRY_RUN="false"
 
+# zitadel-pat.sh and cloud-secret-store.sh both dispatch on the GLOBAL $CLOUD,
+# so the PAT is read with $CLOUD temporarily pointed at the IdP's cloud and the
+# value restored immediately afterwards -- every write below then lands in the
+# target cluster's store, which is the whole point of the split. $REGION and
+# $GCP_PROJECT need no swap: each is only read by its own cloud's branch, so
+# both can be supplied at once.
+#
+# When --idp-cloud differs from --cloud, point kubectl at the cluster that HOSTS
+# the identity provider. resolve_zitadel_pat falls back to reading the PAT from
+# the current context's Kubernetes Secret when the store has none, and on a
+# fresh primary that fallback is the only place the token exists yet.
+_target_cloud="$CLOUD"
+CLOUD="$IDP_CLOUD"
 PAT="$(resolve_zitadel_pat)" || exit 1
+CLOUD="$_target_cloud"
 
 # The IdP base URL. Derived the same way the platform derives it, so a mismatch
 # here is a mismatch everywhere.
@@ -219,6 +286,10 @@ api_or_fail() {
 #   Grafana   /login/generic_oauth   (grafana.ini auth.generic_oauth)
 #   Headlamp  /oidc-callback         (headlamp chart)
 #   Flux UI   /oauth2/callback       (flux-operator web.config.authentication)
+# ${APP_SUFFIX} is empty for the cluster that HOSTS this directory and
+# "-<cluster>" for one consuming it, so two clusters never contend for the same
+# app name. The secret KEYS are deliberately not suffixed: they are per-cluster
+# already, living in that cluster's own secret store.
 CONSUMERS=(
   "grafana|https://grafana.${PRIVATE_DOMAIN}/login/generic_oauth|observability-victoria-metrics-k8s-stack-grafana-envvars"
   "headlamp|https://headlamp.${PRIVATE_DOMAIN}/oidc-callback|headlamp-envvars"
@@ -538,6 +609,114 @@ converge_secret() {
     ' <<< "$existing"
 }
 
+# THE OTHER END OF THE SAME CONTRACT.
+#
+# reconcile_workforce_audience above fixes what the POOL expects. This fixes
+# what oauth2-proxy REQUESTS -- ZITADEL only stamps a project id into a token's
+# `aud` when the token was asked for with that project's audience scope, and
+# that scope is rendered from ${zitadel_project_id} in the cluster vars
+# ConfigMap.
+#
+# Fixing only one end is worse than fixing neither: the pool then expects an
+# audience no token will ever carry, and every exchange fails `invalid_grant`
+# while oauth2-proxy, the exchange proxy, Headlamp and every Flux resource all
+# report healthy.
+#
+# The ConfigMap is written by tofu but carries reconcile.fluxcd.io/watch, so a
+# patch here makes Flux re-render the consumers by itself. tofu will rewrite the
+# committed value on its next apply -- harmless, because this script runs after
+# gke/configure in the deploy flow and simply corrects it again.
+reconcile_consumer_audience() {
+    local project_id="$1" cm current
+    cm="$(kubectl get cm -n flux-system -o name 2>/dev/null | grep -E 'vars$' | head -1)"
+    if [ -z "$cm" ]; then
+        echo "consumer: no cluster vars ConfigMap reachable from this context, skipping" >&2
+        return 0
+    fi
+
+    current="$(kubectl get "$cm" -n flux-system -o jsonpath='{.data.zitadel_project_id}' 2>/dev/null)"
+    if [ -z "$current" ]; then
+        echo "consumer: ${cm} defines no zitadel_project_id, skipping" >&2
+        return 0
+    fi
+    if [ "$current" = "$project_id" ]; then
+        echo "consumer: audience scope already ${project_id}"
+        return 0
+    fi
+
+    echo "consumer: audience scope ${current} -> ${project_id}"
+    if kubectl patch "$cm" -n flux-system --type=merge \
+         -p "{\"data\":{\"zitadel_project_id\":\"${project_id}\"}}" >/dev/null 2>&1; then
+        echo "consumer: patched; Flux will re-render the consumers"
+    else
+        echo "consumer: FAILED to patch ${cm}. oauth2-proxy will keep requesting" >&2
+        echo "          the wrong audience and every exchange will 400." >&2
+    fi
+}
+
+# THE WORKFORCE PROVIDER'S AUDIENCE IS THE ZITADEL PROJECT ID, and on some
+# topologies it cannot be committed ahead of time.
+#
+# opentofu/gcp/workforce-identity pins the provider's client_id to the project
+# id, because ZITADEL puts that id in the `aud` of every token the project
+# issues -- so any client is accepted and the pool can be created before a
+# single OIDC app exists. That trick relies on the id being KNOWN in advance,
+# which holds while AWS is primary: its ZITADEL restores from a seed and keeps
+# its ids across rebuilds.
+#
+# A GCP-primary bootstrap mints a brand-new ZITADEL, whose project id is
+# generated. The committed value is then wrong, and the failure is the worst
+# kind: `token exchange 400: invalid_grant`, with oauth2-proxy, the exchange
+# proxy and the dashboard all reporting healthy.
+#
+# This script already resolves the project id and already runs after the cluster
+# exists, so it closes that loop. The tofu resource carries
+# `lifecycle.ignore_changes` on the same field so the next apply does not put
+# the stale value back.
+reconcile_workforce_audience() {
+    local project_id="$1" current
+    [ -n "$WORKFORCE_POOL" ] || return 0
+    [ "$project_id" != "DRYRUN-PROJECT" ] || return 0
+
+    if ! command -v gcloud >/dev/null 2>&1; then
+        echo "workforce: gcloud not available, skipping audience reconciliation" >&2
+        return 0
+    fi
+
+    current="$(gcloud iam workforce-pools providers describe zitadel \
+                 --workforce-pool="$WORKFORCE_POOL" --location=global \
+                 --format='value(oidc.clientId)' 2>/dev/null)" || true
+
+    if [ -z "$current" ]; then
+        echo "workforce: pool '${WORKFORCE_POOL}' has no zitadel provider yet, skipping" >&2
+        return 0
+    fi
+
+    if [ "$current" = "$project_id" ]; then
+        echo "workforce: audience already ${project_id}"
+        return 0
+    fi
+
+    echo "workforce: audience ${current} -> ${project_id}"
+    if [ "$APPLY" != "true" ]; then
+        echo "workforce: (dry-run, not applied)"
+        return 0
+    fi
+
+    if gcloud iam workforce-pools providers update-oidc zitadel \
+         --workforce-pool="$WORKFORCE_POOL" --location=global \
+         --client-id="$project_id" >/dev/null 2>&1; then
+        echo "workforce: audience updated"
+        reconcile_consumer_audience "$project_id"
+    else
+        # Not fatal: every OTHER consumer this script configures is unaffected,
+        # and failing here would leave the OIDC clients half-written. The
+        # symptom is contained to the dashboard's token exchange.
+        echo "workforce: FAILED to update the provider audience -- per-user RBAC" >&2
+        echo "           will fail with invalid_grant until this is corrected." >&2
+    fi
+}
+
 cmd_sync() {
     echo "cluster:  ${CLUSTER} (${CLOUD})"
     echo "idp:      ${IDP_URL}"
@@ -558,12 +737,32 @@ cmd_sync() {
     [ -n "$project_id" ] || { echo "could not resolve or create the ZITADEL project" >&2; exit 1; }
 
     ensure_project_role_assertion "$project_id"
+    reconcile_workforce_audience "$project_id"
     ensure_project_roles "$project_id"
     grant_admin_role "$GRANT_ADMIN" "$project_id"
 
     local created=0 skipped=0 updated=0 converged=0
     for entry in "${CONSUMERS[@]}"; do
-        IFS='|' read -r name redirect key <<< "$entry"
+        # TWO names, and conflating them is a bug this script has already made.
+        #
+        #   consumer -- the bare name (grafana, harbor, ...). It is the DISPATCH
+        #               KEY for which fields go into which secret, matched
+        #               literally inside merge_secret/converge_secret's jq.
+        #   name     -- the ZITADEL app name, suffixed for a consuming cluster so
+        #               two clusters do not contend for one app.
+        #
+        # Suffixing the CONSUMERS table itself made $name = "grafana-gcp-0",
+        # which matched none of jq's `if $name == "grafana"` branches, fell to
+        # the else, and produced an empty payload:
+        #   ERROR: (gcloud.secrets.versions.add) INVALID_ARGUMENT:
+        #   Secret Payload cannot be empty.
+        # -- after the app had already been created in ZITADEL, stranding a
+        # client secret that ZITADEL only ever returns once.
+        IFS='|' read -r consumer redirect key <<< "$entry"
+        # :- so a harness that lifts this function out of the script (the
+        # test-zitadel-* suites do) does not trip over nounset on a global it
+        # did not know to declare.
+        local name="${consumer}${APP_SUFFIX:-}"
 
         local existing_id=""
         if [ "$project_id" != "DRYRUN-PROJECT" ]; then
@@ -633,7 +832,7 @@ cmd_sync() {
 
             local existing_secret desired
             existing_secret="$(store_read "$key")"
-            desired="$(converge_secret "$name" "$client_id" "$existing_secret")"
+            desired="$(converge_secret "$consumer" "$client_id" "$existing_secret")"
             if [ "$desired" = "$existing_secret" ]; then
                 echo "[ok     ] ${name} -- ${key} already converged"
             elif [ "$APPLY" != "true" ]; then
@@ -678,7 +877,7 @@ cmd_sync() {
             exit 1
         fi
 
-        merge_secret "$key" "$name" "$client_id" "$client_secret" | store_write "$key"
+        merge_secret "$key" "$consumer" "$client_id" "$client_secret" | store_write "$key"
         echo "[created] ${name} -> ${key} (client ${client_id})"
         created=$((created + 1))
     done

@@ -1,7 +1,7 @@
 ---
 title: OpenBao is the store of record, durable as a snapshot lineage, active on the primary cloud with restore-based fallback
-linkTitle: 0032 · OpenBao lineage
-weight: 320
+linkTitle: 0033 · OpenBao lineage
+weight: 330
 description: OpenBao's storage becomes derived state rebuilt from its newest Raft snapshot on every boot; what persists is a lineage — one multi-region KMS seal key, five bootstrap secrets, a snapshot bucket. One instance becomes active on AWS and serves both clusters; a GCP standby restores the mirrored snapshot under the same AWS seal. Stage 1 is per-cloud; Stage 2 converges it. Chosen over per-cloud authoritative instances, an instance with no fallback, a Shamir-sealed standby, the clouds' managed CAs and cert-manager's CA issuer.
 lastVerified: 2026-09-02
 ---

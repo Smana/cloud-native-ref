@@ -202,6 +202,19 @@ else
 fi
 
 # Delete Karpenter NodePools (only if CRD exists)
+#
+# AND THEN WAIT FOR THE NODECLAIMS TO GO. Deleting a NodePool does not terminate
+# anything by itself -- it asks Karpenter to, and Karpenter runs INSIDE this
+# cluster. If the control plane is destroyed while a NodeClaim is still
+# draining, the EC2 instance survives with nothing left that will ever reap it.
+#
+# Measured 2026-09-02: a teardown left two instances running, both tagged
+# kubernetes.io/cluster/<cluster>=owned. One had been launched A MINUTE AFTER
+# the teardown began, because this script drains workloads and Karpenter
+# provisioned for the pods that went pending. Their ENIs held two security
+# groups, `tofu destroy` failed with DependencyViolation, and since that stack
+# failed the whole --reverse sweep stopped there -- leaving an entire SECOND
+# CLOUD untouched and running. One orphaned node, two clusters still billing.
 echo "Checking for Karpenter NodePools..."
 if kubectl api-resources --api-group=karpenter.sh 2>/dev/null | grep -q nodepools; then
 	mapfile -t NODEPOOLS < <(kubectl get nodepools -o json 2>/dev/null | jq -r '.items[].metadata.name' 2>/dev/null || echo "")
@@ -210,6 +223,73 @@ if kubectl api-resources --api-group=karpenter.sh 2>/dev/null | grep -q nodepool
 		kubectl delete nodepools --all 2>/dev/null || echo "Failed to delete some NodePools"
 	else
 		echo "No NodePools found"
+	fi
+
+	# Bounded: this is best-effort cleanup, not a gate. If Karpenter cannot
+	# finish (it may already be evicted), say so loudly and name the sweep --
+	# a warning the operator can act on beats a hang, and beats silence.
+	if kubectl api-resources --api-group=karpenter.sh 2>/dev/null | grep -q nodeclaims; then
+		echo "Waiting for Karpenter NodeClaims to terminate (up to 300s)..."
+		for _ in $(seq 1 60); do
+			remaining="$(kubectl get nodeclaims -o json 2>/dev/null | jq -r '.items | length' 2>/dev/null || echo 0)"
+			[ "${remaining:-0}" = "0" ] && break
+			sleep 5
+		done
+		remaining="$(kubectl get nodeclaims -o json 2>/dev/null | jq -r '.items | length' 2>/dev/null || echo 0)"
+		if [ "${remaining:-0}" = "0" ]; then
+			echo "All NodeClaims terminated."
+		else
+			# Do the sweep rather than describing it (#1964).
+			#
+			# This branch used to print the exact command an operator should run
+			# afterwards -- and it correctly predicted the failure, right down to
+			# the DependencyViolation. It just did not act, so on 2026-09-02 a
+			# c5.xlarge outlived its control plane, held a Cilium ENI on two
+			# security groups, and `tofu destroy` died with
+			#
+			#   Error: deleting Security Group (sg-...): DependencyViolation
+			#
+			# halting the whole --reverse walk before the network, OpenBao and
+			# the entire GCP lane were reached. `aws eks list-clusters` was
+			# already empty: a node with no control plane, still billing.
+			echo "[warn] ${remaining} NodeClaim(s) did not terminate in time."
+			echo "[sweep] terminating their EC2 instances directly, or their ENIs"
+			echo "[sweep] will block security-group deletion with DependencyViolation."
+
+			orphans="$(${AWS_CMD} ec2 describe-instances \
+				--filters "Name=tag:kubernetes.io/cluster/${CLUSTER_NAME},Values=owned" \
+				"Name=instance-state-name,Values=running,pending,stopping,stopped" \
+				--query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || true)"
+
+			if [ -z "${orphans}" ]; then
+				echo "[sweep] no orphaned instances found; nothing to terminate."
+			else
+				# shellcheck disable=SC2086 # deliberate word splitting: instance-ids takes a list
+				${AWS_CMD} ec2 terminate-instances --instance-ids ${orphans} \
+					--query 'TerminatingInstances[].InstanceId' --output text >/dev/null 2>&1 \
+					|| echo "[warn] terminate call failed; sweep them by hand."
+				echo "[sweep] terminating: ${orphans}"
+
+				# Wait on the ENIs, NOT on instance state. They detach
+				# asynchronously after the instance reaches `terminated`, so a
+				# destroy retried on instance state alone hits the SAME
+				# DependencyViolation -- observed 2026-09-03.
+				echo "[sweep] waiting for their ENIs to detach (up to 300s)..."
+				for _ in $(seq 1 60); do
+					enis="$(${AWS_CMD} ec2 describe-network-interfaces \
+						--filters "Name=tag:cluster.k8s.amazonaws.com/name,Values=${CLUSTER_NAME}" \
+						--query 'length(NetworkInterfaces)' --output text 2>/dev/null || echo 0)"
+					[ "${enis:-0}" = "0" ] && break
+					sleep 5
+				done
+				if [ "${enis:-0}" = "0" ]; then
+					echo "[sweep] ENIs released; the security groups can now be deleted."
+				else
+					echo "[warn] ${enis} ENI(s) still attached after 300s. The destroy may"
+					echo "[warn] still hit DependencyViolation; re-run it once they clear."
+				fi
+			fi
+		fi
 	fi
 else
 	echo "Karpenter CRDs not available, skipping NodePool deletion"

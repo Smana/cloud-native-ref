@@ -27,7 +27,7 @@ Everything below is machinery in service of those three.
 
 ## The chain
 
-![One Google Workspace account is the only user directory; ZITADEL brokers it, creating a user on first login through isAutoCreation, holding the platform project with its admin, backend, frontend and data roles, and running the flatRoles Action that flattens those roles into the groups claim Headlamp and the Flux UI read and the roles claim Grafana reads; the token it issues carries every client of the project plus the project id in its audience, which is what the EKS OIDC provider is pinned to; Grafana, the Flux UI, Harbor and Headlamp each consume that token, and the two clouds diverge at the Kubernetes API, where EKS trusts ZITADEL directly and turns the groups claim into real Kubernetes groups while GKE cannot and puts oauth2-proxy in front of Headlamp instead](/images/diagrams/authentication-chain.svg)
+![One Google Workspace account is the only user directory; ZITADEL brokers it, creating a user on first login through isAutoCreation, holding the platform project with its admin, backend, frontend and data roles, and running the flatRoles Action that flattens those roles into the groups claim Headlamp and the Flux UI read and the roles claim Grafana reads; the token it issues carries every client of the project plus the project id in its audience, which is what the EKS OIDC provider is pinned to; Grafana, the Flux UI, Harbor and Headlamp each consume that token, and the two clouds diverge at the Kubernetes API, where EKS trusts ZITADEL directly and turns the groups claim into real Kubernetes groups while GKE reaches the same outcome through Workforce Identity Federation, exchanging that token for a Google federated one whose principalSet group an ordinary ClusterRoleBinding authorises](/images/diagrams/authentication-chain.svg)
 
 ### Google Workspace → ZITADEL
 
@@ -137,30 +137,40 @@ each way, with OIDC auth to the API server down in between. IAM authentication,
 which `aws eks get-token` kubeconfigs use, keeps working throughout.
 {{< /callout >}}
 
-### gcp-0 — it does not, and cannot
+### gcp-0 — not directly, but the same outcome
 
 GKE's managed control plane accepts no equivalent flag, and Identity Service for
 GKE — which used to provide one — is deprecated as of 2026-07-01 and unsupported
-in GKE 1.37+. Workforce Identity Federation, its replacement, authenticates a
-client *to Google* through a token exchange and cannot take a ZITADEL `id_token`.
+in GKE 1.37+. So GKE never sees the ZITADEL token.
 
-So on GCP, Headlamp sits behind **oauth2-proxy**: the proxy authenticates the
-human against ZITADEL and Headlamp talks to the API server as its **own
-ServiceAccount**. The trade is explicit — per-user Kubernetes RBAC is lost, and
-authorisation moves entirely to `--allowed-group=admin` on the proxy. See
-[ADR-0026]({{< relref "/docs/decisions/0026-headlamp-auth-proxy-on-gke.md" >}})
-for the alternatives weighed, including Pinniped.
+It does not need to. **Workforce Identity Federation** turns the ZITADEL
+`id_token` into a Google federated token *before* it reaches the API server, and
+GKE then resolves the same ZITADEL role into a Kubernetes group. A user is
+authorised by an ordinary `ClusterRoleBinding`, exactly as on `aws-0` — the
+group is merely spelled differently:
+
+| | Kubernetes sees the group as |
+|---|---|
+| `aws-0` | `admin` |
+| `gcp-0` | `principalSet://iam.googleapis.com/locations/global/workforcePools/ogenki-zitadel/group/admin` |
+
+The mechanism, the failure modes and the four defects that only a live cluster
+exposed are in
+[Per-user RBAC on GKE]({{< relref "/docs/platform/security/gke-per-user-rbac.md" >}}).
 
 {{< callout type="warning" >}}
-Two properties hold that design up, and it fails open without either: the
-HTTPRoute **strips every inbound `X-Forwarded-*` header** before oauth2-proxy sets
-its own, and a CiliumNetworkPolicy allows ingress to Headlamp **only from the
-proxy**. Without the second, any pod in the cluster could call Headlamp claiming
-to be anyone.
+This replaced an earlier design in which Headlamp talked to the API server as its
+**own ServiceAccount**, bound to `cluster-admin`, with `--allowed-group=admin` on
+oauth2-proxy as the entire authorisation model. Every admitted user was
+effectively cluster-admin and no action was attributable to a person.
+[ADR-0032]({{< relref "/docs/decisions/0032-workforce-identity-federation-for-gke-rbac.md" >}})
+supersedes [ADR-0026]({{< relref "/docs/decisions/0026-headlamp-auth-proxy-on-gke.md" >}}),
+whose conclusion rested on assuming the dashboard had to perform the token
+exchange itself. It does not.
 {{< /callout >}}
 
-Note also that oauth2-proxy emits `X-Forwarded-Groups` (**plural**) while
-Headlamp defaults to the singular `X-Forwarded-Group`. Left at defaults the login
+Note that oauth2-proxy emits `X-Forwarded-Groups` (**plural**) while Headlamp
+defaults to the singular `X-Forwarded-Group`. Left at defaults the login
 succeeds, the user has no groups, and nothing logs an error.
 
 ## Setting it up
@@ -171,5 +181,6 @@ The five ordered bootstrap steps — and why the order is load-bearing — are i
 ## Related
 
 - [ADR-0024]({{< relref "/docs/decisions/0024-identity-provider-per-cloud.md" >}}) — why each cloud runs its own ZITADEL
-- [ADR-0026]({{< relref "/docs/decisions/0026-headlamp-auth-proxy-on-gke.md" >}}) — why Headlamp is proxied on GKE
+- [ADR-0032]({{< relref "/docs/decisions/0032-workforce-identity-federation-for-gke-rbac.md" >}}) — how GKE gets per-user RBAC from ZITADEL
+- [ADR-0026]({{< relref "/docs/decisions/0026-headlamp-auth-proxy-on-gke.md" >}}) — superseded; the shared-ServiceAccount design it chose, and why
 - [Restore a database]({{< relref "/docs/guides/restore-a-database.md" >}}) — why an empty ZITADEL costs more than it looks

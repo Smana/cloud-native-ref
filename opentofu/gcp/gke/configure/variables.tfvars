@@ -34,29 +34,29 @@ public_domain_name     = "gcp.cloud.ogenki.io"
 route53_public_zone_id = "Z002027037R5RFCG05YY6"
 route53_role_arn       = "arn:aws:iam::396740644681:role/gcp-0-route53-dns"
 
-# gcp-0 hosts its OWN ZITADEL (ADR-0024), so this must be true.
+# deploy_identity_provider is NOT set here. It is derived from
+# global.primary_cloud in workflows.tm.hcl, so that "which cloud hosts the
+# identity provider" has exactly one answer in configuration (ADR-0027).
 #
-# It is the second of two gates that have to agree, and they did not. The other
-# is `spec.suspend` on clusters/gcp-0/security/zitadel.yaml, which is already
-# false -- Flux deploys ZITADEL here and its TLSRoute serves
-# auth.gcp.cloud.ogenki.io. Leaving this at its default `false` made
-# locals.tf fall back to var.identity_provider_url, whose default names the
-# aws-0 instance, so every consumer on this cluster -- Grafana, the Flux UI,
-# Headlamp, OpenWebUI -- was sent to https://auth.cloud.ogenki.io.
+# It used to be a literal, and it was wrong: it said `true` while aws-0 also
+# hosted, which is the state ADR-0027 rules out -- two user directories, where
+# a grant means nothing without knowing which one issued it. Nothing could
+# catch that, because the two halves of the pairing lived in different tools.
 #
-# That is a live IdP only while aws-0 exists. With aws-0 torn down, SSO fails
-# at the authorize step against a host that answers for someone else's cluster,
-# and nothing on gcp-0 reports a problem: ZITADEL is up, the consumers are
-# healthy, and they simply point somewhere else.
-#
-# variables.tf's own comment predicts the mirror image of this ("setting this
-# true while the Kustomization stays suspended points every consumer at a
-# hostname this cluster does not serve"). Same failure, opposite direction:
-# nothing can enforce the pairing across OpenTofu and Flux, so both halves have
-# to be flipped by hand together.
-deploy_identity_provider = true
+# The variable's own default is false, so a bare `tofu apply` in this directory
+# does not silently stand up a second identity directory.
+# ./scripts/validate-idp-topology.sh fails if the Flux half disagrees.
 
 # AWS SDK region hint for the route53 solver -- NOT gcp-0's GCP region (see the
 # comment on var.route53_region). Matches opentofu/shared/aws-gcp-federation's
 # aws_region default and opentofu/aws/eks/configure's region.
 route53_region = "eu-west-3"
+
+# Workforce pool federating ZITADEL -- must match opentofu/gcp/workforce-identity's
+# variables.tfvars verbatim. Substituted into the gcp-0 RBAC bindings; disagreement
+# names a pool that does not exist and denies every user.
+workforce_pool_id = "ogenki-zitadel"
+
+# Must match zitadel_project_id in opentofu/gcp/workforce-identity, which
+# pins the workforce provider audience to it.
+zitadel_project_id = "388445486190712688"

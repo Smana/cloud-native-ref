@@ -98,6 +98,39 @@ if ! selected "$lane"; then
     exit 0
 fi
 
+# TF_VAR_flux_git_ref names the branch FLUX will track. It says nothing about
+# which code OpenTofu is about to apply -- that comes from the checkout this
+# runs in. When the two disagree, the deploy half-succeeds in a way that is very
+# hard to read.
+#
+# Measured 2026-09-02. A dual-cloud bootstrap was launched with
+# TF_VAR_flux_git_ref pointing at a feature branch, from a checkout that did not
+# have the branch's changes. Flux got the branch and correctly suspended
+# ZITADEL on gcp-0; OpenTofu ran the older code and wrote
+# identity_provider_url=https://auth.gcp.cloud.ogenki.io into that cluster's
+# vars. gcp-0 therefore ran no identity provider AND pointed every consumer at
+# the one it no longer had: oauth2-proxy crash-looped on OIDC discovery, the
+# gateway answered "no healthy upstream", and the Flux UI returned a generic
+# internal error. Nothing named the cause, because from Flux's side everything
+# reconciled and from tofu's side everything applied.
+#
+# A warning, not a failure: deploying a branch's manifests against older
+# infrastructure code is occasionally deliberate, and this script has no way to
+# tell that from a mistake. It only has to be impossible to do by accident
+# without seeing it.
+if [ -n "${TF_VAR_flux_git_ref:-}" ]; then
+    _want_ref="${TF_VAR_flux_git_ref#refs/heads/}"
+    _have_ref="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+    if [ "$_want_ref" != "$_have_ref" ]; then
+        echo "[warn] ─────────────────────────────────────────────────────────────" >&2
+        echo "[warn] Flux will track '${_want_ref}', but this checkout is on '${_have_ref}'." >&2
+        echo "[warn] OpenTofu applies THIS checkout, not the branch Flux tracks, so" >&2
+        echo "[warn] the cluster gets its manifests from one commit and its cluster" >&2
+        echo "[warn] vars from another. Check out '${_want_ref}' unless you mean it." >&2
+        echo "[warn] ─────────────────────────────────────────────────────────────" >&2
+    fi
+fi
+
 if [ "$RUN_ANY" = "true" ]; then
     exec "$@"
 fi

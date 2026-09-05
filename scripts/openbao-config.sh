@@ -578,7 +578,7 @@ latest_snapshot() {
 #
 # A Raft snapshot can only be restored under THE SEAL THAT ENCRYPTED IT, which
 # the platform exploits on purpose: a GCP standby unseals with the *AWS* KMS
-# key so it can restore AWS snapshots (ADR-0032). After a failover the GCP
+# key so it can restore AWS snapshots (ADR-0033). After a failover the GCP
 # bucket therefore holds a mix -- mirrored objects are AWS-sealed by
 # construction, and the standby's own are AWS-sealed too, because it ran with
 # seal_provider = "awskms".
@@ -1018,7 +1018,7 @@ rehydrate_openbao() {
             log_message "ERROR" "A Raft snapshot can only be restored under the seal that encrypted it, so"
             log_message "ERROR" "restoring this one would leave the node sealed with no useful error -- the"
             log_message "ERROR" "stranded state this script warns about once it is already too late."
-            log_message "ERROR" "This is the mixed-seal state a cross-cloud failover leaves behind (ADR-0032):"
+            log_message "ERROR" "This is the mixed-seal state a cross-cloud failover leaves behind (ADR-0033):"
             log_message "ERROR" "mirrored objects are AWS-sealed by construction, and a standby that ran with"
             log_message "ERROR" "seal_provider = \"awskms\" wrote AWS-sealed objects of its own."
             log_message "ERROR" "Pick one:"

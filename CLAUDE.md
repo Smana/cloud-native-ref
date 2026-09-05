@@ -146,7 +146,7 @@ per-cluster JWT auth mounts, operator logins — live in the **root** namespace.
 reserved for tenants; `app` is the only one, holding a `secret/` kv-v2 mount reachable
 via its own AppRole. Cluster-wide endpoints such as `sys/storage/raft/*` are callable
 *only* from root, which is why anything operational belongs there.
-OpenBao's storage is rebuilt from its newest snapshot on every deploy (the *lineage*, ADR-0032): the lineage and management stacks are never destroyed by the default `destroy` (`TM_LINEAGE_DESTROY=true` overrides), machine auth is the JWT method on `jwt/<cluster>`, and consumers reach it at `openbao.security.svc.cluster.local:8200`. See
+OpenBao's storage is rebuilt from its newest snapshot on every deploy (the *lineage*, ADR-0033): the lineage and management stacks are never destroyed by the default `destroy` (`TM_LINEAGE_DESTROY=true` overrides), machine auth is the JWT method on `jwt/<cluster>`, and consumers reach it at `openbao.security.svc.cluster.local:8200`. See
 `opentofu/aws/openbao/management/namespaces.tf`.
 
 ## Development Workflow
@@ -345,6 +345,7 @@ trivy config --exit-code=1 --ignorefile=./.trivyignore.yaml .
 ./scripts/validate-manifests.sh   # renders the repo, then gates it (see below)
 ./scripts/validate-links.sh       # resolves every relative Markdown link
 ./scripts/validate-doc-claims.sh  # docs still agree with config (.doc-claims.yaml)
+./scripts/validate-idp-topology.sh # exactly one cloud hosts ZITADEL (ADR-0027)
 kubectl get nodes && kubectl get pods --all-namespaces
 flux get all
 ```

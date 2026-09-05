@@ -102,7 +102,23 @@ script "destroy" {
           --region "${global.region}" --profile "${global.profile}"
         ${global.provisioner} init -lock-timeout=5m
         # Same #3411 race on the way down -- see the apply job.
-        ${global.provisioner} destroy -auto-approve -parallelism=1 -var-file=variables.tfvars
+        #
+        # Contained destroy (#1964, kept through the lineage merge): every
+        # `vault_*` resource here lives INSIDE the OpenBao cluster, which
+        # opentofu/aws/openbao/cluster destroys immediately after this stack in
+        # the reverse walk. By then `bao.priv.aws.ogenki.io` no longer resolves,
+        # the provider cannot delete them, and terramate's --reverse walk halts
+        # -- stranding the OpenBao cluster, the network and the shared stacks.
+        # Measured 2026-09-02: two teardowns reported success while a NAT
+        # gateway and two instances kept running.
+        #
+        # Only `vault_*` is ever dropped. The aws_secretsmanager_* secrets and
+        # random_password in this same state are real resources, do not match
+        # the prefix, and tofu still has to delete them.
+        bash "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh" --tm-run \
+          bash "${terramate.root.path.fs.absolute}/scripts/tofu-destroy-contained.sh" \
+          --contained-prefix vault_ -- \
+          -auto-approve -parallelism=1 -var-file=variables.tfvars
       BASH
       ],
     ]

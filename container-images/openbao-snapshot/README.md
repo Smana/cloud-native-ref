@@ -40,7 +40,7 @@ Objects are written as:
 
 A Raft snapshot can only be restored **under the seal that encrypted it**, and the platform
 exploits that deliberately: a GCP standby unseals with the *AWS* KMS key so it can restore AWS
-snapshots ([ADR-0032](../../website/content/docs/decisions/0032-openbao-store-of-record-lineage.md)).
+snapshots ([ADR-0033](../../website/content/docs/decisions/0033-openbao-store-of-record-lineage.md)).
 The consequence is that after a failover the GCP bucket holds a mix — mirrored objects are
 AWS-sealed by construction, and the standby's own are AWS-sealed too, because it ran with
 `seal_provider = "awskms"`. Before the seal was in the name, nothing distinguished them and a

@@ -21,4 +21,4 @@ spec:
   interval: 1h
   url: https://github.com/kubernetes-sigs/gateway-api
   ref:
-    tag: v1.6.1
+    tag: v1.6.2

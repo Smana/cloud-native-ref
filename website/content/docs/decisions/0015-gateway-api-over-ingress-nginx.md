@@ -214,8 +214,8 @@ can run, not chosen freely.
   `opentofu/config.tm.hcl`'s `globals` and is passed to both clouds'
   `configure` stacks by `-var`, so the two clusters cannot diverge. It must
   equal the tag `flux/sources/gitrepo-gateway-api.yaml` pins Flux's
-  `GitRepository` to — both currently `v1.6.1` — while the installed
-  `cilium_version` (also `opentofu/config.tm.hcl`, currently `1.20.0`) must
+  `GitRepository` to — both currently `v1.6.2` — while the installed
+  `cilium_version` (also `opentofu/config.tm.hcl`, currently `1.20.1`) must
   stay at or above the 1.19.5 floor.
   - *Mitigation*: those two pins are checked against each other by the
     `gateway-api-version` claim in `.doc-claims.yaml`
@@ -284,7 +284,7 @@ and `envoy.enabled: true` (the L7 proxy). `ingressController` is not set,
 so Cilium's own `Ingress` support stays off.
 
 The Gateway API CRDs themselves are not chart-managed: `flux/sources/gitrepo-gateway-api.yaml`
-pins a `GitRepository` to `kubernetes-sigs/gateway-api` tag `v1.6.1`, and
+pins a `GitRepository` to `kubernetes-sigs/gateway-api` tag `v1.6.2`, and
 `opentofu/shared/modules/gateway-api-crds` installs the same-versioned
 experimental-channel bundle — every CRD in the release, `backendtlspolicies` and
 `listenersets` included — before Cilium's Stage 2 install, so

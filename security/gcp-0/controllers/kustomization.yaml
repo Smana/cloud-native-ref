@@ -42,10 +42,20 @@ kind: Kustomization
 # ACME one to federate to AWS STS. Applying it from either overlay would make one
 # issuer family's failure break the other's.
 # ../../base/cert-manager-token-creator/rbac.yaml has the whole argument.
+#
+# ../rbac breaks the "controllers and nothing they admit" rule in name only:
+# a ClusterRoleBinding is a core API type, admitted by the API server itself,
+# not by either webhook above -- so it carries none of the race this split
+# guards against. It rides here (as aws-0's rbac rides in its own top-level
+# security/aws-0/kustomization.yaml) because this is the Kustomization the
+# `security` Flux Kustomization applies, and that one already wires
+# postBuild.substituteFrom to gke-gcp-0-vars, which ../rbac's
+# ${workforce_pool_id} needs.
 resources:
   - ../../base/external-secrets
   - ../../base/cert-manager
   - ../../base/cert-manager-token-creator
+  - ../rbac
 
 patches:
   - path: cert-manager-helmrelease.yaml

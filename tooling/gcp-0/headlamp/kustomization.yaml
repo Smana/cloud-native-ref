@@ -19,6 +19,7 @@ resources:
   - externalsecret-oauth2-proxy.yaml
   - oauth2-proxy.yaml
   - network-policy.yaml
+  - token-exchange.yaml
 
 patches:
   - path: headlamp-proxy-auth.yaml

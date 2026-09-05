@@ -192,6 +192,14 @@ a personal gmail identity.
   changes. Commands and the full failure mode are in the failover guide
   ([`website/content/docs/guides/openbao-cross-cloud-failover.md`](../website/content/docs/guides/openbao-cross-cloud-failover.md)).
 
+## Expiring old generation archives is not a manual step
+
+Each CNPG cluster generation writes to its own `xplane-*` prefix and nothing
+reclaims them by hand — the bucket's own claim carries a `lifecycleRule` that
+expires them automatically, scoped so it cannot touch the dated seeds (named
+`zitadel-*` / `harbor-*`, never `xplane-`). See
+`infrastructure/gcp-0/cloudnative-pg/gcs-bucket.yaml`.
+
 ## What is NOT a prerequisite
 
 The offline root CA and the GCP intermediate. Those come from the signing

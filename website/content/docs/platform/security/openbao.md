@@ -66,7 +66,7 @@ root-namespace-only):
 ## The lineage, and rehydrate at boot
 
 OpenBao's storage is **derived state**. What persists is the *lineage*
-([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})):
+([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})):
 
 | Component | Where |
 |---|---|

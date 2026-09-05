@@ -77,7 +77,7 @@ esac
 #
 # A Raft snapshot can only be restored under THE SEAL THAT ENCRYPTED IT, and
 # the platform exploits that on purpose: a GCP standby unseals with the *AWS*
-# KMS key so it can restore AWS snapshots (ADR-0032). The consequence is that
+# KMS key so it can restore AWS snapshots (ADR-0033). The consequence is that
 # the GCP bucket becomes a mixed-seal namespace after a failover -- mirrored
 # objects are AWS-sealed by construction, and the standby's own are AWS-sealed
 # too, because it ran with seal_provider = "awskms".
@@ -668,7 +668,7 @@ restore() {
             echo "${err}:                      $((n_all - n_tagged)) with no seal segment"
             echo "${err}: A Raft snapshot can only be restored under the seal that encrypted it, so"
             echo "${err}: restoring this one would leave the node sealed with no diagnosable error."
-            echo "${err}: This is the mixed-seal state a cross-cloud failover leaves behind (ADR-0032):"
+            echo "${err}: This is the mixed-seal state a cross-cloud failover leaves behind (ADR-0033):"
             echo "${err}: mirrored objects are AWS-sealed by construction, and a standby that ran with"
             echo "${err}: seal_provider = \"awskms\" wrote AWS-sealed objects of its own."
             echo "${err}: Pick one:"

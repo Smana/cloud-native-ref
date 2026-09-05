@@ -38,7 +38,7 @@ script "deploy" {
           --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init
         ${global.provisioner} validate
-        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
+        ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
       ],
     ]
@@ -60,7 +60,7 @@ script "preview" {
           --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init
         ${global.provisioner} validate
-        ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'
+        ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
       ],
     ]
@@ -140,7 +140,8 @@ script "destroy" {
           -var='cilium_version=${global.cilium_version}' \
           -var='gateway_api_version=${global.gateway_api_version}' \
           -var='flux_operator_version=${global.flux_operator_version}' \
-          -var='flux_instance_version=${global.flux_instance_version}'
+          -var='flux_instance_version=${global.flux_instance_version}' \
+          -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
       ],
     ]
@@ -173,7 +174,10 @@ script "drift" "detect" {
         ${global.cloud_gate}
         set -euo pipefail
         ${global.provisioner} init
-        ${global.provisioner} plan -out=drift.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars
+        # deploy_identity_provider is passed here too, unlike the version vars:
+        # without it drift compares against the variable's default (false) and
+        # reports a difference that does not exist whenever GCP is primary.
+        ${global.provisioner} plan -out=drift.tfplan -detailed-exitcode -lock=false -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
       ],
     ]

@@ -41,6 +41,14 @@ a stack expects is to read the file already sitting next to it.
    export TF_VAR_tailscale_api_key=<YOUR_TAILSCALE_API_KEY>
    ```
 
+### Expiring old generation archives is not a manual step
+
+Each CNPG cluster generation writes to its own `xplane-*` prefix and nothing
+reclaims them by hand — the bucket's own claim carries a
+`BucketLifecycleConfiguration` that expires them automatically, scoped so it
+cannot touch the dated seeds (named `zitadel-*` / `harbor-*`, never
+`xplane-`). See `infrastructure/aws-0/cloudnative-pg/s3-bucket.yaml`.
+
 ## Deploy
 
 ```bash
@@ -85,7 +93,7 @@ three-tier PKI (root → intermediate → leaf) and the policies each cluster's 
 auth roles bind. Taking the AWS root offline is decided but not yet performed —
 see the callout on
 [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}) and
-[ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}).
+[ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}).
 
 **Stage 3 — Kubernetes.** `aws/eks/init` runs a two-stage bootstrap internally:
 the EKS cluster comes up with the temporary VPC-CNI bootstrap addon, then that is

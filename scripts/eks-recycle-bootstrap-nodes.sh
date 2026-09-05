@@ -80,23 +80,60 @@ fi
 
 echo "==> Checking for bootstrap nodes with pre-Cilium ENIs (cluster: ${CLUSTER_NAME})"
 
-# Only meaningful when prefix delegation is actually on. If it is off, individual
-# secondary IPs are the intended behaviour everywhere and there is nothing to fix.
-pd=$(kubectl get cm -n kube-system cilium-config -o jsonpath='{.data.aws-enable-prefix-delegation}' 2>/dev/null)
-if [[ "$pd" != "true" ]]; then
-	echo "    Prefix delegation is not enabled (aws-enable-prefix-delegation=${pd:-<unset>}) — nothing to do."
-	exit 0
-fi
-
-# Wait for Cilium to be fully up. The helm_release that installs it uses wait=false,
-# so reaching this script does NOT imply the DaemonSet is ready — and recycling a
-# node while Cilium is still rolling out would just recreate the problem.
+# WAIT FOR CILIUM BEFORE ASKING CILIUM ANYTHING.
+#
+# The prefix-delegation check below reads `cilium-config`, a ConfigMap that
+# CILIUM CREATES. The helm_release that installs Cilium runs with wait=false, so
+# reaching this script does not imply the ConfigMap exists yet -- and the check
+# used to run FIRST, before this wait.
+#
+# Measured 2026-09-04 on a from-scratch bootstrap. The script read the key as
+# unset, concluded prefix delegation was off, and exited without recycling
+# anything:
+#
+#   ==> Checking for bootstrap nodes with pre-Cilium ENIs (cluster: aws-0)
+#       Prefix delegation is not enabled (aws-enable-prefix-delegation=<unset>) — nothing to do.
+#
+# The setting was correct all along; the ConfigMap simply was not populated yet.
+# `kubectl get cm cilium-config -o jsonpath=...` returned empty and the script
+# treated "I could not read it" as "it is off" -- the same
+# absent-versus-unknown conflation that #1963 and #1964 both turned on.
+#
+# The cost was the entire bootstrap. The bootstrap nodes kept their pre-Cilium
+# ~18-IP pools, function-auto-ready's pod sat in ContainerCreating for over an
+# hour on `all CIDR ranges are exhausted`, so the function never went healthy,
+# so every Composition calling it failed, so every EPI failed, so infrastructure
+# never reconciled, so no CNPG cluster was ever created and ZITADEL never
+# started. Every layer reported itself healthy except the bottom one.
+#
+# Waiting first costs nothing when prefix delegation is off: the wait succeeds,
+# the check then reads a populated ConfigMap and exits cleanly as before.
 echo "==> Waiting for the Cilium DaemonSet to be ready (up to 10m)"
 if ! kubectl rollout status daemonset/cilium -n kube-system --timeout=600s >/dev/null 2>&1; then
 	echo "    ERROR: Cilium DaemonSet did not become ready. Refusing to recycle nodes." >&2
 	exit 1
 fi
 echo "    Cilium is ready."
+
+# Only meaningful when prefix delegation is actually on. If it is off, individual
+# secondary IPs are the intended behaviour everywhere and there is nothing to fix.
+#
+# Fail closed on an unreadable ConfigMap rather than treating it as "off". If
+# Cilium is ready and this still cannot be read, something is wrong that a silent
+# no-op would hide -- and the failure it hides is a capacity cliff that surfaces
+# hours later, in an unrelated component.
+if ! pd_raw=$(kubectl get cm -n kube-system cilium-config -o jsonpath='{.data.aws-enable-prefix-delegation}' 2>&1); then
+	echo "    ERROR: could not read cilium-config even though Cilium is ready:" >&2
+	echo "    ${pd_raw}" >&2
+	echo "    Refusing to assume prefix delegation is off -- that assumption is what" >&2
+	echo "    silently wedged the 2026-09-04 bootstrap." >&2
+	exit 1
+fi
+pd="${pd_raw}"
+if [[ "$pd" != "true" ]]; then
+	echo "    Prefix delegation is not enabled (aws-enable-prefix-delegation=${pd:-<unset>}) — nothing to do."
+	exit 0
+fi
 
 # Returns the number of ENI prefixes Cilium has allocated on a node (0 if none).
 node_prefix_count() {

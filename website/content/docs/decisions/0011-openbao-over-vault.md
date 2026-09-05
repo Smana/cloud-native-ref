@@ -206,7 +206,7 @@ demonstrate.
     staying off the 2.6 line.
 - **The root CA private key lives in the live `pki_private_issuer` mount, not
   offline.** **Decided against on 2026-09-02 by
-  [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}) —
+  [ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}) —
   and not yet undone on AWS.** The mount signed the intermediate's CSR inside
   OpenBao (`vault_pki_secret_backend_root_sign_intermediate`) so the deploy
   stayed unattended, which put the root key on a networked system.
@@ -231,7 +231,7 @@ demonstrate.
   password, and the offline-signed intermediate. This is not an incomplete
   migration to OpenBao; a still-sealed cluster cannot be where its own unseal
   material lives, so the two stores were always going to coexist for that
-  specific material. [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})
+  specific material. [ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})
   names that set the *lineage* and makes everything else derived from a
   snapshot.
 - The root namespace hosts every shared platform service — the PKI mount and

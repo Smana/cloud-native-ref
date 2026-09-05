@@ -19,6 +19,10 @@ kind: Kustomization
 # ai-fleet LLM-platform alerts moved to apps/base/ai/llm/vmrule-ai-fleet.yaml so
 # they only deploy when the (opt-in, suspend-by-default) LLM platform is resumed —
 # otherwise LLMPlatformSemanticRouterDown fires forever on an LLM-free cluster.
+# cert-manager.yaml is in base deliberately: both clouds run cert-manager, both
+# issue through Let's Encrypt, and the failure it watches for (an errored ACME
+# order that cert-manager never retries) is cloud-neutral.
 resources:
+  - cert-manager.yaml
   - openbao.yaml
   - runlore.yaml

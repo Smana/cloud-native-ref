@@ -172,27 +172,60 @@ script "deploy" {
 
         # Only when this cluster hosts the IdP. Consuming another cluster's
         # ZITADEL means its clients are registered there, not here.
-        # Read the flag from the tfvars FILE, with the environment as an
-        # override -- not the other way round.
+        # Whether this cluster hosts the identity provider comes from the SAME
+        # place the configure stack gets it: global.primary_cloud (ADR-0027),
+        # interpolated below. The environment still overrides for one
+        # invocation.
         #
-        # This used to test only $TF_VAR_deploy_identity_provider. That variable
-        # is how you override the setting for one invocation; the setting itself
-        # lives in ../configure/variables.tfvars, exactly like public_domain_name
-        # two lines up, which is already read that way. So the normal case --
-        # the flag committed to the file, no env var in the shell -- read as
-        # false and skipped registration, while printing a line that looks like
-        # a deliberate decision.
+        # It used to be read out of ../configure/variables.tfvars with awk, and
+        # before that from $TF_VAR_deploy_identity_provider alone. Both were
+        # ways of asking a second source the same question, and both got a
+        # different answer than the deploy did:
         #
-        # gcp-0 shipped with `deploy_identity_provider = true` and no OIDC client
-        # ever registered. Every SSO consumer failed at the authorize step with a
-        # client_id ZITADEL had never heard of, and the deploy reported success.
-        DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-}"
-        if [ -z "$${DEPLOY_IDP}" ]; then
-          DEPLOY_IDP="$(awk -F'=' '/^[[:space:]]*deploy_identity_provider/{gsub(/[[:space:]"]/,"",$$2); print $$2}' ../configure/variables.tfvars)"
-        fi
+        #   gcp-0 shipped with `deploy_identity_provider = true` and no OIDC
+        #   client ever registered. Every SSO consumer failed at the authorize
+        #   step with a client_id ZITADEL had never heard of, and the deploy
+        #   reported success.
+        #
+        # The tfvars literal no longer exists, so the awk matched nothing and
+        # would have reproduced that incident exactly. One source, or none.
+        DEPLOY_IDP="$${TF_VAR_deploy_identity_provider:-${global.deploy_identity_provider_gcp}}"
         if [ "$${DEPLOY_IDP}" != "true" ]; then
-          echo "== skipping OIDC clients: deploy_identity_provider is not true"
-          echo "   (file: ../configure/variables.tfvars, override: TF_VAR_deploy_identity_provider)"
+          # NOT hosting is not the same as nothing to do. This cluster's
+          # consumers still need OIDC clients -- registered in the PRIMARY
+          # cloud's directory, with THIS cluster's redirect URIs, and with the
+          # resulting secrets written to THIS cluster's store where its
+          # ExternalSecrets read.
+          #
+          # Skipping here is what left a consuming gcp-0 with no client at all:
+          # oauth2-proxy came up with no secret, sat in
+          # CreateContainerConfigError, and headlamp's Kustomization never went
+          # ready -- the same class of failure as the never-registered-clients
+          # incident above, arrived at from the opposite direction.
+          #
+          # The IdP URL comes from the cluster vars ConfigMap rather than being
+          # rebuilt here: that is the exact value every consumer on this cluster
+          # reads, so it cannot disagree with them.
+          echo "== this cluster consumes ${global.primary_cloud}'s identity provider"
+          CONSUMED_IDP="$(kubectl get configmap "gke-$${NAME}-vars" -n flux-system \
+            -o jsonpath='{.data.identity_provider_url}' 2>/dev/null || true)"
+          if [ -z "$${CONSUMED_IDP}" ]; then
+            echo "[warn] could not read identity_provider_url from gke-$${NAME}-vars;"
+            echo "       skipping client registration. Re-run by hand once it exists."
+            exit 0
+          fi
+
+          echo "== registering this cluster's OIDC clients in $${CONSUMED_IDP}"
+          IDP_URL="$${CONSUMED_IDP}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
+            bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
+              --cluster "$${NAME}" \
+              --cloud gcp --project "$${PROJECT}" \
+              --idp-cloud "${global.primary_cloud}" --region "${global.region}" \
+              --apply || \
+            echo "[warn] OIDC registration against the primary cloud failed; re-run it by hand"
+
+          echo "== granting access to the secrets it just created"
+          bash "$${ROOT}/scripts/secret-store.sh" grant --cloud gcp --project "$${PROJECT}" --apply || true
           exit 0
         fi
 
@@ -203,27 +236,53 @@ script "deploy" {
           exit 0
         fi
 
-        echo "== waiting for ZITADEL (up to 15m)"
-        deadline=$$(( SECONDS + 900 ))
-        while [ "$$SECONDS" -lt "$$deadline" ]; do
+        # A BUDGET FOR A COLD BUILD, NOT A REBUILD.
+        #
+        # ZITADEL is last in a long chain on a fresh cluster --
+        # crds -> crossplane -> eks-pod-identities -> security ->
+        # security-openbao -> infrastructure -> zitadel. The old fixed 15m was
+        # fine for a rebuild and far too short for a first bootstrap: on
+        # 2026-09-02 it expired while `infrastructure` was still reconciling,
+        # registration was skipped, and the platform came up with no OIDC
+        # clients at all.
+        #
+        # The progress line names whatever Kustomization is still blocking, so
+        # a slow-but-healthy build is distinguishable from a stalled one
+        # without tailing Flux in another terminal.
+        ZITADEL_WAIT_SECONDS="$${ZITADEL_WAIT_SECONDS:-2700}"
+        echo "== waiting for ZITADEL (up to $(( ZITADEL_WAIT_SECONDS / 60 ))m)"
+        deadline=$(( SECONDS + ZITADEL_WAIT_SECONDS ))
+        last_report=0
+        while [ "$SECONDS" -lt "$deadline" ]; do
           if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -ge 1 ] 2>/dev/null; then
             break
+          fi
+          if [ $(( SECONDS - last_report )) -ge 120 ]; then
+            last_report="$SECONDS"
+            echo "   [$${SECONDS}s] still waiting; blocked on: $(kubectl get kustomization -n flux-system --no-headers -o custom-columns=N:.metadata.name,R:'.status.conditions[?(@.type=="Ready")].status' 2>/dev/null | awk '$2 != "True" { printf "%s ", $1 }' | head -c 200)"
           fi
           sleep 20
         done
 
         if [ "$(kubectl get deploy zitadel -n security -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)" -lt 1 ] 2>/dev/null; then
-          echo "[warn] ZITADEL not ready in 15m; skipping OIDC client registration."
+          echo "[warn] ZITADEL not ready in $(( ZITADEL_WAIT_SECONDS / 60 ))m; skipping OIDC client registration."
           echo "       Re-run by hand once it is up:"
           echo "         IDP_URL=https://auth.$${PUBLIC_DOMAIN} PRIVATE_DOMAIN=$${PRIVATE_DOMAIN} \\"
           echo "         scripts/zitadel-oidc-clients.sh sync --cluster $${NAME} --cloud gcp --project $${PROJECT} --apply"
           exit 0
         fi
 
+        # The workforce provider's audience is the ZITADEL PROJECT id, which does
+        # not exist until the sync below creates the project. Passing the pool
+        # lets the script reconcile it; without this, per-user RBAC on this
+        # cluster fails as a bare `invalid_grant` with everything looking healthy.
+        # Empty (no such stack / no such key) simply skips that reconciliation.
+        WORKFORCE_POOL="$(awk -F'=' '/^[[:space:]]*workforce_pool_id/{gsub(/[[:space:]"]/,"",$2); print $2}' "$${ROOT}/opentofu/gcp/workforce-identity/variables.tfvars" 2>/dev/null || true)"
         echo "== registering the OIDC clients"
         IDP_URL="https://auth.$${PUBLIC_DOMAIN}" PRIVATE_DOMAIN="$${PRIVATE_DOMAIN}" \
           bash "$${ROOT}/scripts/zitadel-oidc-clients.sh" sync \
-            --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" --apply || \
+            --cluster "$${NAME}" --cloud gcp --project "$${PROJECT}" \
+            --workforce-pool "$${WORKFORCE_POOL}" --apply || \
           echo "[warn] OIDC registration failed; re-run it by hand"
 
         echo "== granting access to the secrets it just created"

@@ -52,7 +52,7 @@ determines where it lives:
 
 | Class | Home | Examples |
 |---|---|---|
-| **Primary-cloud singleton** | the primary cloud | public Route53 zone, ZITADEL, the `aws-gcp-federation` OIDC providers and roles, OpenBao (since [ADR-0032](0032-openbao-store-of-record-lineage.md) — its relocation carries state, by snapshot restore) |
+| **Primary-cloud singleton** | the primary cloud | public Route53 zone, ZITADEL, the `aws-gcp-federation` OIDC providers and roles, OpenBao (since [ADR-0033](0033-openbao-store-of-record-lineage.md) — its relocation carries state, by snapshot restore) |
 | **Cloud-agnostic** | neither cloud | Tailscale and the tailnet ACL — a SaaS control plane, in `opentofu/shared/tailscale` |
 | **Per-cloud** | every cloud, independently | network, GKE/EKS, secret store, state and backup buckets |
 
@@ -91,8 +91,25 @@ path as designed rather than proven.
 **What it does not change.** Nothing per-cloud. Both clusters keep their own
 secret store, state and backups, and neither depends on the other for them.
 (OpenBao left this class on 2026-09-02 —
-[ADR-0032](0032-openbao-store-of-record-lineage.md).) This decision is only
+[ADR-0033](0033-openbao-store-of-record-lineage.md).) This decision is only
 about the handful of things that cannot be two.
+
+**How it is enforced (2026-09-01).** The primary cloud is declared once, as
+`primary_cloud` in `opentofu/config.tm.hcl`. The OpenTofu gate that decides
+whether a cluster hosts ZITADEL is derived from it at every invocation site; the
+Flux gate, which cannot be derived because Flux never sees Terramate globals, is
+checked against it by `./scripts/validate-idp-topology.sh` in CI. The third state
+this record rules out — two clouds each hosting a singleton — now fails a
+required check rather than depending on someone remembering the rule.
+
+It was worth doing: this record was written on 2026-08-29 *because* two
+directories were running, and a dual-cloud bootstrap on 2026-09-01 produced the
+same state again, from configuration left over after the GCP validation work. A
+rule that only exists in prose is a rule the next rebuild can quietly break.
+
+A non-AWS primary while AWS is also deployed is rejected too:
+`opentofu/aws/eks/configure` hosts unconditionally, so supporting that
+combination would need an AWS-side toggle and a new decision.
 
 ## Alternatives considered
 

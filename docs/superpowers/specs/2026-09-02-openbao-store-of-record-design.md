@@ -477,7 +477,7 @@ is done, every risk the design carries has been retired on a live cluster.
    runbook; **one executed AWS → GCP drill** recorded in the verification
    document.
 9. **CI restore drill** workflow.
-10. **Records**: ADR-0032 and the amendments listed below; the OpenBao, PKI &
+10. **Records**: ADR-0033 and the amendments listed below; the OpenBao, PKI &
     Secrets and costs pages; CLAUDE.md.
 
 Exit criteria: destroy and redeploy the AWS platform, and OpenBao serves the same
@@ -514,7 +514,7 @@ non-empty `platform/` mount.
 
 ## Records and documentation
 
-- **New ADR-0032** — *OpenBao is the store of record, durable as a snapshot
+- **New ADR-0033** — *OpenBao is the store of record, durable as a snapshot
   lineage, active on the primary cloud with restore-based fallback.* Rejected
   alternatives, each with the reason: managed stores as store of record (the
   status quo, ADR-0025); per-cloud OpenBaos each authoritative (secrets seeded

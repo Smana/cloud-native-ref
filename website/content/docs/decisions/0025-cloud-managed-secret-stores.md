@@ -17,14 +17,14 @@ grammar that keeps the store swappable
 ---
 
 {{< callout type="info" >}}
-**Amended 2026-09-02 by [ADR-0032](0032-openbao-store-of-record-lineage.md).**
+**Amended 2026-09-02 by [ADR-0033](0033-openbao-store-of-record-lineage.md).**
 The constraint recorded below is unchanged: this reference cannot afford an
 always-on OpenBao. What changed is what the constraint bounds. OpenBao's storage
 is now derived from a *lineage* — a persistent seal key, five bootstrap secrets
 and a snapshot bucket — and rehydrated on every boot, so the process can be off
 between runs while OpenBao is the store of record. The "Neutral" sentence below
 saying OpenBao remains the target is therefore no longer aspirational; the
-`ClusterSecretStore` repoint it describes is Stage 2 of ADR-0032's plan. Until
+`ClusterSecretStore` repoint it describes is Stage 2 of ADR-0033's plan. Until
 that stage lands, the placement rule in this record still describes the live
 platform.
 {{< /callout >}}

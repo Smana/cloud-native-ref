@@ -72,7 +72,7 @@ warning: it overwrites `root-ca.pem` and `root-ca-key.pem` in the working
 directory, and every step afterwards still *succeeds* — the intermediate signs,
 `openssl verify` passes, the leaf gets its four SANs. You would simply have
 built that chain under a root nothing else trusts, leaving two roots again,
-which is the condition [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})
+which is the condition [ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})
 exists to remove. It surfaces days later, when the weekly restore drill's
 `openssl verify -CAfile .github/openbao-root-ca.pem` fails.
 
@@ -326,7 +326,7 @@ certificate trusted by `curl` and Chrome is still rejected there. Import it unde
 {{< /callout >}}
 
 **Once Tasks 14 and 14b have run**, both clouds chain to the same offline root
-([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}}))
+([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}))
 and one import covers both. Until then it is two imports: the AWS chain still
 descends from the root in `certificates/priv.aws.ogenki.io/root-ca`, and the GCP
 chain from the 2026-08-25 offline root. Import both files above and you are

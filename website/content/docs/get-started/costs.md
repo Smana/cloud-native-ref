@@ -41,7 +41,7 @@ data processing, egress) are called out rather than measured.
 **One number in the AWS table above is a projection, not a measurement.** The
 KMS line reads 4 keys and $4/month; 3 keys and $3/month is what was billing on
 2026-09-01. The fourth is the OpenBao seal key's multi-region replica in
-`eu-west-1` ([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})),
+`eu-west-1` ([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})),
 created by `aws_kms_replica_key.seal` in `opentofu/aws/openbao/lineage/kms.tf` —
 a stack that has not been applied yet. The figure is carried at 4 because the
 replica is committed and costs a flat $1/month once it exists, but it is the one
@@ -112,7 +112,7 @@ charge from what *this deployment* consumes:
 With every cluster destroyed, about **$24/month keeps billing** — the
 platform's ~40 secrets, its 4 KMS keys once the lineage stack is applied (the
 OpenBao seal is multi-region on purpose —
-[ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}});
+[ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}});
 3 keys and about $23/month is the floor as measured, see the note above),
 the DNS zones, and
 [backup buckets that outlive their clusters on purpose]({{< relref "/docs/guides/restore-a-database.md" >}}).

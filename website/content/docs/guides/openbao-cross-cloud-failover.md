@@ -6,7 +6,7 @@ lastVerified: 2026-09-02
 ---
 
 The active OpenBao runs on AWS and serves both clusters. Its durable form is
-the *lineage* ([ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})):
+the *lineage* ([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})):
 the multi-region seal key `alias/openbao-seal`, five bootstrap secrets, and the
 snapshot bucket `eu-west-3-ogenki-openbao-snapshot`, to be mirrored into
 `ogenki-435905-ogenki-openbao-snapshot` by a Storage Transfer job at 05:00 UTC,
@@ -41,7 +41,7 @@ preconditions below are peacetime work.
 | Failure | Covered |
 |---|---|
 | AWS `eu-west-3` regional outage; AWS compute or Secrets Manager unavailable | yes — the seal key has a replica in `eu-west-1` |
-| The AWS account itself lost or closed | **no** — every snapshot is ciphertext under an AWS KMS key. A Shamir seal would cover this at the cost of a human at every restart; the trade is recorded in ADR-0032 |
+| The AWS account itself lost or closed | **no** — every snapshot is ciphertext under an AWS KMS key. A Shamir seal would cover this at the cost of a human at every restart; the trade is recorded in ADR-0033 |
 | Snapshot older than you would like | RPO is the mirror cadence: 24 h once the transfer job exists, 1 h in the production posture |
 
 Consumers tolerate the gap: External Secrets keeps the last synced Secrets and

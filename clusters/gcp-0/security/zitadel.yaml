@@ -17,35 +17,61 @@
 # HelmRelease health check would go Ready before the database is usable. The
 # 10m timeout is deliberately longer than aws-0's 5m for the same reason.
 #
-# ── ACTIVE: gcp-0 hosts its own instance ──────────────────────────────────────
-# ADR-0024 makes AWS the *default* host, but this cluster opts out of that
-# default so a GCP-only platform can log people in with aws-0 torn down.
+# ── INACTIVE: this cluster consumes aws-0's instance ──────────────────────────
+# ZITADEL is a primary-cloud singleton (ADR-0027) and AWS is primary
+# (global.primary_cloud in opentofu/config.tm.hcl), so this cluster does not
+# host one. It reaches auth.<aws public domain>, which every consumer here gets
+# from identity_provider_url in the cluster vars ConfigMap.
 #
-# That takes TWO gates, and they must always agree:
+# Placement still has two halves, but only one of them is typed now:
 #
-#   1. tofu:  deploy_identity_provider = true   (opentofu/gcp/gke/configure/
-#             variables.tfvars) -- drives identity_provider_url, which every
-#             consumer reads
-#   2. flux:  spec.suspend = false              (below)
+#   1. tofu:  deploy_identity_provider -- DERIVED from global.primary_cloud in
+#             workflows.tm.hcl; no longer a literal anyone can set out of step
+#   2. flux:  spec.suspend             -- committed below, and CHECKED against
+#             primary_cloud by ./scripts/validate-idp-topology.sh
 #
-# Gate 1 alone points every consumer at auth.<gcp public domain>, which nothing
-# serves. Gate 2 alone runs a ZITADEL that no consumer is configured to use --
-# and that failure is silent, because ZITADEL is up and the consumers are
-# healthy, they are simply pointed at another cluster's IdP. Neither half can
-# enforce the other; see ADR-0024. To consume aws-0's instance instead, flip
-# both back in one commit.
+# The failures this prevents are both silent. Hosting here while AWS also hosts
+# gives two user directories, where a grant means nothing without knowing which
+# one issued it. Pointing consumers at a host nothing serves breaks SSO at the
+# authorize step while ZITADEL and every consumer still report healthy.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: zitadel
   namespace: flux-system
 spec:
-  # Gate 2 of the two above, and it must keep agreeing with gate 1
-  # (deploy_identity_provider = true in opentofu/gcp/gke/configure/
-  # variables.tfvars). `flux suspend` is not a way to flip this durably --
-  # kustomize-controller owns the field and re-asserts the committed value on
-  # its next apply. Change it here, in the same commit as gate 1.
-  suspend: false
+  # SUSPENDED: aws-0 hosts the identity provider (global.primary_cloud = "aws",
+  # ADR-0027). ZITADEL is a singleton that RELOCATES for a GCP-only platform
+  # rather than being duplicated -- two directories mean a grant says nothing
+  # without knowing which one issued it.
+  #
+  # This is the half that cannot be derived: kustomize-controller owns the
+  # field and re-asserts the committed value on its next apply, and Flux never
+  # sees Terramate globals. `flux suspend` therefore does not flip it durably.
+  # ./scripts/validate-idp-topology.sh checks it against primary_cloud instead.
+  #
+  # To make GCP primary: set primary_cloud = "gcp" in opentofu/config.tm.hcl,
+  # flip this to false in the same commit, and MIGRATE the database seed, the
+  # admin credential and the OIDC clients -- they travel together or the move
+  # half-works in silence. Note that a GCP primary while AWS is also deployed
+  # is rejected: opentofu/aws/eks/configure hosts unconditionally, so that
+  # combination needs an AWS-side toggle and a new decision.
+  #
+  # CLOSED, and left here because the gap it describes is the kind people
+  # rediscover: gcp-0's OIDC clients ARE registered in aws-0's directory
+  # automatically. scripts/zitadel-oidc-clients.sh grew the cross-cluster mode
+  # this comment was waiting for -- `--idp-cloud aws` reads the admin PAT from
+  # the cluster that HOSTS the directory while writing client secrets into the
+  # CONSUMING cluster's store -- and aws/eks/init's stage4-oidc-clients job
+  # calls it for this cluster whenever TM_CLOUD includes gcp or all.
+  #
+  # The symptom if that ever regresses is unchanged: headlamp's oauth2-proxy
+  # has no client secret and sits in CreateContainerConfigError.
+  #
+  # This field is also only half of a live migration: suspending stops Flux
+  # reconciling an instance, it does not remove one that is already running.
+  # See the warning in the migration guide.
+  suspend: true
   prune: true
   interval: 1m0s
   timeout: 10m0s

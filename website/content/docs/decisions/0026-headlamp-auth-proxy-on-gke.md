@@ -2,15 +2,25 @@
 title: Headlamp authenticates behind an auth proxy on GKE, not against the cluster
 linkTitle: 0026 · Headlamp auth on GKE
 weight: 260
-description: GKE cannot be told to trust ZITADEL, so on gcp-0 Headlamp sits behind oauth2-proxy and talks to the API server as its own ServiceAccount — trading per-user Kubernetes RBAC for an authorisation gate at the proxy. aws-0 keeps real per-user OIDC.
-lastVerified: 2026-08-30
+description: GKE cannot be told to trust ZITADEL, so on gcp-0 Headlamp sits behind oauth2-proxy and talks to the API server as its own ServiceAccount — trading per-user Kubernetes RBAC for an authorisation gate at the proxy. aws-0 keeps real per-user OIDC. Superseded by ADR-0032.
+lastVerified: 2026-09-02
 ---
 
-**Status**: Accepted
+**Status**: Superseded by [ADR-0032](0032-workforce-identity-federation-for-gke-rbac.md)
 **Date**: 2026-08-28
 **Deciders**: Platform Team
 
 ---
+
+{{< callout type="warning" >}}
+**Superseded 2026-09-02.** This record's dismissal of Workforce Identity
+Federation assumed Headlamp itself had to perform the Google STS token
+exchange; it does not — Headlamp's `-proxy-auth-token-header` flag lets an
+upstream proxy do the exchange and hand it a working token. [ADR-0032](0032-workforce-identity-federation-for-gke-rbac.md)
+uses exactly that, restoring per-user Kubernetes RBAC on `gcp-0`. The
+context and alternatives below are otherwise still an accurate record of what
+was known on 2026-08-28.
+{{< /callout >}}
 
 ## Context
 

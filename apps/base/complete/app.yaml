@@ -329,6 +329,9 @@ spec:
       path: "internal/platform/database/migrations"
 
     backup:
-      schedule: "0 2 * * *"
+      # SIX-field cron, seconds first -- CNPG uses robfig/cron, not Kubernetes
+      # CronJob syntax, so `0 2 * * *` silently meant hourly at :02.
+      # Full explanation and the measurement: security/base/zitadel/sqlinstance.yaml
+      schedule: "0 0 2 * * *"
       bucketName: "${region}-ogenki-cnpg-backups"
       retentionPolicy: "30d"
