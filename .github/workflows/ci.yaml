@@ -93,7 +93,7 @@ jobs:
           sarif_file: checkov-results.sarif
 
       - name: Detect secrets with TruffleHog
-        uses: trufflesecurity/trufflehog@v3.97.1
+        uses: trufflesecurity/trufflehog@v3.97.4
         with:
           path: ./
           base: main
