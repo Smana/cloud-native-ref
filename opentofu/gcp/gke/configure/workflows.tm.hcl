@@ -38,6 +38,35 @@ script "deploy" {
           --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init
         ${global.provisioner} validate
+        # Adopt jwt/gcp-0 if the lineage already restored it, exactly as
+        # aws/eks/init does before its configure apply.
+        #
+        # openbao/management runs BEFORE this stack (gke/init's `after` edge)
+        # and its deploy rehydrates, which restores the jwt/<cluster> mount from
+        # the snapshot. This stack's own state, meanwhile, is destroyed with the
+        # cluster. So on every rebuild once the lineage holds a snapshot -- the
+        # routine case, not an edge -- `vault_jwt_auth_backend.cluster` tries to
+        # create a mount that is already there:
+        #
+        #   POST /v1/sys/auth/jwt/gcp-0 -> 400 "path is already in use at jwt/gcp-0/"
+        #
+        # GCP escapes the other half of AWS's problem: a GKE issuer is
+        # deterministic from project/location/name, so the restored mount's
+        # oidc_discovery_url is still correct and only the create collides. The
+        # collision alone is enough to abort the apply.
+        #
+        # The apply's -var list is repeated here because `tofu import` evaluates
+        # the same root module and stops at "No value for required variable"
+        # otherwise. Note deploy_identity_provider: GCP passes a fifth var that
+        # AWS does not, so this list is NOT copyable from the AWS call.
+        #
+        # No `cd` either, unlike AWS -- that call runs from eks/init and has to
+        # reach ../configure, while this one is already in the stack directory.
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-adopt-jwt-mount.sh" \
+          --cluster-name gcp-0 --url https://bao.priv.gcp.ogenki.io:8200 \
+          --root-token-secret-name openbao-priv-gcp-root-token \
+          --ca-file .tls/ca.pem --cloud gcp --project ogenki-435905 \
+          -- -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
       ],

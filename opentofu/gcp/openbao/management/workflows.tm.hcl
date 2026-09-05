@@ -199,7 +199,30 @@ script "destroy" {
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
         ${global.provisioner} init -lock-timeout=5m
         ${global.openbao_ca_fetch}
-        ${global.provisioner} destroy -parallelism=1 -auto-approve -var-file=variables.tfvars
+        # Contained destroy, matching aws/openbao/management. Every `vault_*`
+        # resource in this state lives INSIDE the OpenBao cluster, which
+        # gcp/openbao/cluster destroys immediately after this stack in the
+        # reverse walk. By then `bao.priv.gcp.ogenki.io` no longer resolves, the
+        # provider cannot delete them, the destroy aborts having deleted
+        # nothing, and terramate's --reverse walk halts -- stranding the GCE
+        # instance and gcp/network behind it.
+        #
+        # The AWS side carries the measured version of this: two teardowns on
+        # 2026-09-02 reported success while a NAT gateway and two instances kept
+        # running. The GCP reverse walk has the identical shape
+        # (management -> cluster -> network) and the identical property, so it
+        # had the identical bug -- it simply had not been run yet.
+        #
+        # And it only bites the run that can least afford it: both sides are
+        # gated on TM_LINEAGE_DESTROY=true, so this path is only ever taken when
+        # an operator has deliberately asked to tear the lineage down.
+        #
+        # Only `vault_*` is dropped from state. The google_secret_manager_* and
+        # random_password resources here are real and do not match the prefix,
+        # so tofu still deletes them.
+        bash "${terramate.root.path.fs.absolute}/scripts/tofu-destroy-contained.sh" \
+          --contained-prefix vault_ -- \
+          -auto-approve -parallelism=1 -var-file=variables.tfvars
       BASH
       ],
     ]
