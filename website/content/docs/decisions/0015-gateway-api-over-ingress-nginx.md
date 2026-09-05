@@ -215,7 +215,7 @@ can run, not chosen freely.
   `configure` stacks by `-var`, so the two clusters cannot diverge. It must
   equal the tag `flux/sources/gitrepo-gateway-api.yaml` pins Flux's
   `GitRepository` to — both currently `v1.6.2` — while the installed
-  `cilium_version` (also `opentofu/config.tm.hcl`, currently `1.20.0`) must
+  `cilium_version` (also `opentofu/config.tm.hcl`, currently `1.20.1`) must
   stay at or above the 1.19.5 floor.
   - *Mitigation*: those two pins are checked against each other by the
     `gateway-api-version` claim in `.doc-claims.yaml`
