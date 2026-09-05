@@ -125,9 +125,29 @@ if [ -z "${TOKEN:-}" ]; then
     exit 1
 fi
 
+# The token goes in a curl CONFIG FILE, never on argv.
+#
+# `-H "X-Vault-Token: $TOKEN"` puts the OpenBao ROOT token in the process
+# table, where any local user's `ps` reads it -- on the single
+# highest-value credential in this design, in a script whose whole purpose is
+# to run during a deploy on a shared machine. scripts/test-no-secret-argv.sh
+# catches exactly this and was failing on these two calls.
+#
+# Same construction as api() in zitadel-oidc-clients.sh: mode 600 by umask
+# rather than by a chmod that would race the write, removed by a trap that
+# expands the path NOW (so it survives the variable changing), and `"` and `\`
+# escaped because both are significant in curl's config-file syntax.
+TOKEN_CURL_CONFIG="$(umask 077 && mktemp -t openbao-adopt-curl.XXXXXX)"
+# shellcheck disable=SC2064
+trap "rm -f '$TOKEN_CURL_CONFIG'" EXIT
+token_escaped="${TOKEN//\\/\\\\}"
+token_escaped="${token_escaped//\"/\\\"}"
+printf 'header = "X-Vault-Token: %s"\n' "$token_escaped" > "$TOKEN_CURL_CONFIG"
+unset token_escaped
+
 # Does OpenBao hold it? `sys/auth` needs a token, hence the read above.
 auth_json=$(curl -fsS ${CA_FILE:+--cacert "$CA_FILE"} \
-    -H "X-Vault-Token: ${TOKEN}" "${OPENBAO_URL}/v1/sys/auth" 2>/dev/null) || {
+    -K "$TOKEN_CURL_CONFIG" "${OPENBAO_URL}/v1/sys/auth" 2>/dev/null) || {
     echo "ERROR: could not list OpenBao's auth mounts at ${OPENBAO_URL}." >&2
     exit 1; }
 
@@ -145,7 +165,7 @@ try_import vault_jwt_auth_backend.cluster "${MOUNT}"
 # away from them, and the state then disagrees with OpenBao in the other
 # direction. Import what exists; skip what does not.
 roles_json=$(curl -fsS ${CA_FILE:+--cacert "$CA_FILE"} \
-    -H "X-Vault-Token: ${TOKEN}" -X LIST \
+    -K "$TOKEN_CURL_CONFIG" -X LIST \
     "${OPENBAO_URL}/v1/auth/${MOUNT}/role" 2>/dev/null) || roles_json=""
 if [ -n "$roles_json" ]; then
     for role in $(printf '%s' "$roles_json" | jq -r '.data.keys[]?' 2>/dev/null); do

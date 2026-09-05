@@ -245,11 +245,17 @@ jobs:
       # by widening the glob: it covers the pre-destroy snapshot's fallback
       # address, which is a different subsystem that happens to be testable the
       # same way (offline, every call stubbed, bash and jq only).
-      - name: Run the ZITADEL test suites
+      # scripts/test-no-secret-argv.sh is the third named addition, and the one
+      # that most needed to be here: it scans every script for a credential-
+      # shaped variable passed on argv, where `ps` reads it. It existed, it
+      # worked, and nothing ran it -- so it was failing on two live calls in
+      # scripts/openbao-adopt-jwt-mount.sh that put the OpenBao ROOT token in
+      # the process table. A guard nobody runs is how that ships.
+      - name: Run the shell test suites
         run: |
           set -uo pipefail
           rc=0
-          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh; do
+          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh; do
             if bash "$t" > /tmp/zitadel-test.log 2>&1; then
               echo "PASS  $t"
             else
