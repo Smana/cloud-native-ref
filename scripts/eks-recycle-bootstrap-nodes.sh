@@ -109,7 +109,40 @@ echo "==> Checking for bootstrap nodes with pre-Cilium ENIs (cluster: ${CLUSTER_
 # Waiting first costs nothing when prefix delegation is off: the wait succeeds,
 # the check then reads a populated ConfigMap and exits cleanly as before.
 echo "==> Waiting for the Cilium DaemonSet to be ready (up to 10m)"
-if ! kubectl rollout status daemonset/cilium -n kube-system --timeout=600s >/dev/null 2>&1; then
+
+# Two waits, not one, because `kubectl rollout status` does NOT wait for the
+# object to appear. On a DaemonSet that does not exist yet it returns
+# `Error from server (NotFound)` in about half a second, having ignored
+# --timeout entirely -- measured 2026-09-05: 0.495s against a 600s timeout.
+#
+# That matters here specifically. `helm_release.cilium` in
+# opentofu/aws/eks/configure/main.tf sets `wait = false`, so the apply can print
+# "Apply complete!" and hand straight over to this script while the API server
+# has not registered the DaemonSet yet. A single rollout-status call then claims
+# a ten-minute timeout that never happened -- on a from-scratch build, which is
+# the only kind of build this script exists for. It cost the 2026-09-05
+# bootstrap, on a cluster whose Cilium went Ready 35 seconds after the
+# DaemonSet was finally created.
+deadline=$((SECONDS + 600))
+until kubectl get daemonset/cilium -n kube-system >/dev/null 2>&1; do
+	if [ "$SECONDS" -ge "$deadline" ]; then
+		echo "    ERROR: the Cilium DaemonSet was never created (waited 10m)." >&2
+		echo "    helm_release.cilium sets wait = false, so a successful apply does not" >&2
+		echo "    mean the chart landed. Check the release itself:" >&2
+		echo "        helm -n kube-system status cilium" >&2
+		exit 1
+	fi
+	sleep 5
+done
+
+# stderr is deliberately NOT discarded here. Three unrelated failures reach this
+# line -- the DaemonSet missing, kubeconfig pointing at another cluster, and a
+# genuine readiness timeout -- and swallowing the error made all three print one
+# identical sentence. After the fact the real cause was unrecoverable: the
+# evidence that would have distinguished them had been thrown away.
+remaining=$((deadline - SECONDS))
+[ "$remaining" -gt 0 ] || remaining=30
+if ! kubectl rollout status daemonset/cilium -n kube-system --timeout="${remaining}s"; then
 	echo "    ERROR: Cilium DaemonSet did not become ready. Refusing to recycle nodes." >&2
 	exit 1
 fi
