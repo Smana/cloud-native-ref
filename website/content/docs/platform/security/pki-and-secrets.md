@@ -37,21 +37,22 @@ GCP (`docs/gcp-bootstrap.md`, *What is NOT a prerequisite*).
 `opentofu/aws/openbao/management/pki.tf` is already written for the offline
 shape — it imports an intermediate bundle as the mount's issuer and generates
 nothing inside OpenBao — but the secret it reads does not exist yet. Two
-hand-performed steps of the Stage 1 plan
-(`docs/superpowers/plans/2026-09-02-openbao-store-of-record-stage1.md`, a
-repository path — plans are not published) close the gap, and **neither has
-run**:
+hand-performed steps close the gap, both documented below, and **neither has run
+on AWS**:
 
-| Gate | What it does |
-|---|---|
-| **Task 14** `[LIVE]` | signs an AWS intermediate under the offline root, writes `certificates/priv.aws.ogenki.io/intermediate-ca` and `.../ca-chain`, re-issues the server certificate, and commits the root *certificate* as `openbao-root-ca.pem` in `.github/` (not there yet — this task is what creates it) |
-| **Task 17 Step 2** `[LIVE]` | deletes `certificates/priv.aws.ogenki.io/root-ca` — only after the new chain has issued a certificate |
+| Step | What it does | Where |
+|---|---|---|
+| The signing ceremony | Signs an AWS intermediate under the offline root, issues a new server certificate, and stores both — then commits the root *certificate* as `openbao-root-ca.pem` in `.github/`, which does not exist until this runs | [Building the chain](#building-the-chain), [Storing the chain](#storing-the-chain) |
+| Retiring the old root | Deletes `certificates/priv.aws.ogenki.io/root-ca`, and only after the new chain has issued a certificate | [Rotation](#rotation) |
 
 Until both are done, read every "one offline root for both clouds" statement
 below as what the ceremony produces, not as the current state. The AWS root and
-the GCP root are also not yet the same root: Task 14 signs the AWS intermediate
-with the key the GCP ceremony produced, and that is the step that makes them
-one.
+the GCP root are also not yet the same root — signing the AWS intermediate with
+the key the GCP ceremony produced is the step that makes them one.
+
+If you are standing this platform up yourself, none of this is a caveat: you
+perform the ceremony once, before the first deploy, and start from the offline
+shape.
 {{< /callout >}}
 
 ### Building the chain
@@ -168,14 +169,14 @@ Two details worth carrying forward if you regenerate it:
   The names cover every way a client may legitimately connect: the node's own
   address, the other cloud's node during a failover, and the neutral in-cluster
   Service in both its forms.
-- **The deployed certificates do not carry that list yet.**
-  `certificates/priv.aws.ogenki.io/openbao` predates it and holds only
+- **On this reference platform the deployed certificates do not carry that list
+  yet.** `certificates/priv.aws.ogenki.io/openbao` predates it and holds only
   `bao.priv.aws.ogenki.io`; `openbao-priv-gcp-server-cert` holds only
-  `bao.priv.gcp.ogenki.io`. **Task 14 Step 2** re-issues the first and
-  **Task 14b** the second. Until each runs, cert-manager on that cluster cannot
-  verify `openbao.security.svc.cluster.local` and its `ClusterIssuer` fails with
-  `x509: certificate is valid for bao.priv.<cloud>.ogenki.io, not
-  openbao.security.svc.cluster.local`.
+  `bao.priv.gcp.ogenki.io`. Each is fixed by re-issuing that cloud's leaf with
+  the SAN list above, under that cloud's own intermediate. Until then,
+  cert-manager cannot verify `openbao.security.svc.cluster.local` and its
+  `ClusterIssuer` fails with `x509: certificate is valid for
+  bao.priv.<cloud>.ogenki.io, not openbao.security.svc.cluster.local`.
 
 ### Storing the chain
 
