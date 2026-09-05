@@ -42,7 +42,7 @@ on AWS**:
 
 | Step | What it does | Where |
 |---|---|---|
-| The signing ceremony | Signs an AWS intermediate under the offline root, issues a new server certificate, and stores both — then commits the root *certificate* as `openbao-root-ca.pem` in `.github/`, which does not exist until this runs | [Building the chain](#building-the-chain), [Storing the chain](#storing-the-chain) |
+| The signing ceremony | Signs an AWS intermediate under the offline root, issues a new server certificate, and stores both — then commits the root *certificate* as `openbao-root-ca.pem` in `.github/`, which does not exist until this runs | [Building the chain](#building-the-chain), [Storing the chain](#storing-the-chain), [Committing the root certificate](#committing-the-root-certificate) |
 | Retiring the old root | Deletes `certificates/priv.aws.ogenki.io/root-ca`, and only after the new chain has issued a certificate | [Rotation](#rotation) |
 
 Until both are done, read every "one offline root for both clouds" statement
@@ -230,20 +230,45 @@ shred -u intermediate-ca-key.pem server-key.pem intermediate.json server.json 2>
 ```
 
 The root key is **not** in that list and must never be — it stays on the offline
-medium. The root *certificate* is public and is committed to the repository as
-`openbao-root-ca.pem` in `.github/`, which is what the weekly restore drill
-verifies a restored chain against.
+medium.
 
-{{< callout type="info" >}}
-`.gitignore` carries a blanket `*.pem` with a single negation for
-`openbao-root-ca.pem` in `.github/`, so committing the root certificate needs no
-`git add -f`. Confirm the negation is doing its job before trusting it — with
-**no** `-v`, since `-v` reports "a pattern matched" and the negation *is* a
-match:
+### Committing the root certificate
+
+The root *certificate* is public, and the weekly restore drill verifies a
+restored chain against it with `openssl verify -CAfile`. Reading it from the
+repository rather than from a cloud secret store is deliberate: the one job
+whose value is being usable during an outage should not depend on the outage
+being over. From the ceremony directory, with `REPO` pointing at your clone:
 
 ```bash
+REPO=~/Sources/cloud-native-ref
+cp root-ca.pem "$REPO/.github/openbao-root-ca.pem"
+cd "$REPO"
 git check-ignore .github/openbao-root-ca.pem   # exit 1 == not ignored == correct
+git add .github/openbao-root-ca.pem
+git ls-files --error-unmatch .github/openbao-root-ca.pem   # errors if still untracked
+git commit -m "chore(pki): commit the offline root certificate for the restore drill"
 ```
+
+Only `root-ca.pem` is copied. `root-ca-key.pem` sits beside it under a name one
+character longer and never leaves the offline medium — it is the *only* file in
+the ceremony that can issue a certificate, and the whole design rests on it
+never reaching a networked store.
+
+{{< callout type="info" >}}
+**Check `git check-ignore` before trusting the `git add`.** `.gitignore` carries
+a blanket `*.pem` with a single negation for `openbao-root-ca.pem` in
+`.github/`. Without that negation `git add` fails *silently*, the file stays
+untracked, and the drill fails every week with `No such file or directory` —
+after having already proved the restore worked.
+
+Read the **exit code**, not the output, and run it with **no** `-v`: the
+negation is itself a match, so `-v` exits 0 and prints the `!` line, which reads
+like "ignored" when it means the opposite. Exit 1 is what you want.
+
+The blanket `*.pem` keeps full force everywhere else, `.github/` included — the
+negation names one exact path, not a glob — and `detect-private-key` runs as a
+pre-commit hook regardless.
 {{< /callout >}}
 
 ## Trusting the CA on your machine
