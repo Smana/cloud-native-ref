@@ -148,6 +148,28 @@ claims:
       - path: website/content/docs/decisions/0015-gateway-api-over-ingress-nginx.md
         must_contain: 'both currently `{value}`'
 
+  - id: cilium-version
+    why: >-
+      The sibling of `gateway-api-version`, and the gap that claim exposed.
+      `globals.cilium_version` in `opentofu/config.tm.hcl` is one value for
+      both clouds, but nothing pinned the pages that quote it, so a bump to
+      1.20.1 left three sentences across two ADRs asserting 1.20.0 -- one of
+      them claiming upstream's GKE recipe covers "exactly the pinned
+      version". Every gate stayed green, exactly as with the four pages this
+      file was written for. Only sentences that state the *value* are listed
+      here: the pages naming `cilium_version` as a variable without quoting a
+      number have nothing to drift.
+    source:
+      file: opentofu/config.tm.hcl
+      pattern: '\n\s*cilium_version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"'
+    pages:
+      - path: website/content/docs/decisions/0005-gke-standard-self-managed-cilium.md
+        must_contain: 'pinned version \({value}\)'
+      - path: website/content/docs/decisions/0005-gke-standard-self-managed-cilium.md
+        must_contain: 'Cilium {value} recipe'
+      - path: website/content/docs/decisions/0015-gateway-api-over-ingress-nginx.md
+        must_contain: '`cilium_version`[^)]*currently `{value}`'
+
   - id: vmsingle-retention
     why: >-
       Retention was `1d` — commented "Minimal retention, for tests only" —
