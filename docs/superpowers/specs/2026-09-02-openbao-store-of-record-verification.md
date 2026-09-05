@@ -452,6 +452,72 @@ The teardown was later killed by the OS under memory pressure, leaving a state
 lock and two orphaned `terraform-provider-*` processes; recovered with
 `tofu force-unlock` after killing the orphans, then completed stack-by-stack.
 
+---
+
+## The restore, proven against the surviving lineage
+
+The drill workflow **cannot be dispatched before merge**: `workflow_dispatch` is
+only exposed for workflows present on the default branch, and this one exists
+only on the branch (`gh workflow run` → HTTP 404, `gh workflow list` does not
+show it). Two exit criteria — success criterion 7 and design risk 3's
+`web-identity-seal` job — are therefore unreachable until the PR that
+introduces them has merged. Worth stating plainly rather than leaving as an
+unticked box.
+
+Its *substance* does not need the workflow. With the platform destroyed, the
+`drill` job's steps were reproduced locally against the surviving lineage —
+same `bao` version, same asset and checksum flow, same seal, same assertions:
+
+```
+[1/6] openbao_2.6.2_linux_amd64.tar.gz: OK   (checksums.txt verified)
+      OpenBao v2.6.2
+[2/6] newest object: 2026-09-05T092947Z-awskms.snap   seal segment: awskms
+[3/6] throwaway node up, uninitialised (501)
+[4/6] {"type":"awskms","initialized":false,"recovery_seal":true}
+[5/6] unsealed and active after restore, with no operator input
+[6/6] subject=CN=Ogenki AWS Intermediate CA  issuer=CN=Ogenki Root CA
+      openssl verify -CAfile .github/openbao-root-ca.pem -> c1.pem: OK
+
+before (live cluster, pre-teardown): 8A:C4:25:40:F3:40:CA:44:...:A2:57
+after  (restored from snapshot)    : 8A:C4:25:40:F3:40:CA:44:...:A2:57
+SAME ISSUER
+
+{"type":"awskms","initialized":true,"sealed":false,"storage_type":"raft"}
+```
+
+Read-only against AWS (`s3:GetObject`, `kms:Decrypt`); the node was a temp
+directory removed on exit.
+
+**What this settles.** The snapshot survives a full teardown and is restorable;
+the seal key unwraps it; the node unseals with no operator input; and
+`pki_private_issuer` returns byte-identical and still chains to the committed
+offline root. That is the mechanism the whole design rests on.
+
+**What it does not settle, precisely.** Criterion 1 is *destroy + redeploy
+returns the same fingerprint **with no seeding step***. This used the drill's
+method — a manual `operator init` followed by `raft snapshot restore`. It did
+**not** exercise `openbao-config.sh rehydrate`: snapshot *selection*, the seal
+gate, the freshness marker, or `No changes.` from the management apply (design
+risk 4). Those need one deploy.
+
+Incidental: the drill's own download step (`openbao_${BAO_VERSION}_linux_amd64.tar.gz`
+plus `checksums.txt`) is correct — a first local attempt used the wrong asset
+names and the workflow's were right. `Error properly closing policy file: ...
+file already closed` appears during restore and is benign; the restore
+succeeded.
+
+## Repository validators, re-run after every change on the branch
+
+| Validator | Result |
+|---|---|
+| `./scripts/validate-manifests.sh` | exit 0 — `2110 resources found in 279 files - Valid: 2110, Invalid: 0, Skipped: 0`, both gates passed |
+| PromQL (step 2/5) | 47 expressions in 11 groups parse; 1 group skipped **and named** (`loggen`, `type: vlogs`) |
+| `check-substitution.py` | 68 Kustomizations, wiring consistent |
+| `validate-links.sh` | exit 0 |
+| `validate-doc-claims.sh` | exit 0 |
+| `verify-doc-paths.sh` | exit 0 |
+| `shellcheck -x -S warning` | exit 0 on every touched script |
+
 ## Still outstanding
 
 - [x] Delete `certificates/priv.aws.ogenki.io/root-ca` and the two AppRole entries
@@ -461,7 +527,11 @@ lock and two orphaned `terraform-provider-*` processes; recovered with
       then comparing `pki_private_issuer` against `ISSUER_BEFORE` above. Expect
       `Snapshot … found`, `Rehydrated from …`, and `No changes.` from the
       management apply.
-- [ ] Drill workflow, one green run
-- [ ] `web-identity-seal` drill job (design risk 3)
+- [ ] Drill workflow, one green run — **blocked until merge**: `workflow_dispatch`
+      needs the workflow on the default branch. Its substance is proven locally
+      above; the workflow itself is not.
+- [ ] `web-identity-seal` drill job (design risk 3) — **blocked until merge**,
+      same reason. Cannot be reproduced locally either: the whole point is a
+      GCE-issued web-identity token, which only that job's environment has.
 - [ ] GCP: server-certificate re-issue, lineage stack, federation, standby drill
 - [ ] Costs page re-measured
