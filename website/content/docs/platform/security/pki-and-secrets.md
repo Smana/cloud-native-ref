@@ -57,7 +57,28 @@ one.
 ### Building the chain
 
 The root CA is generated once, on an offline medium, with `openssl` — EC keys
-(`secp384r1` for the CAs, `prime256v1` for OpenBao's own leaf) rather than RSA:
+(`secp384r1` for the CAs, `prime256v1` for OpenBao's own leaf) rather than RSA.
+
+{{< callout type="warning" >}}
+**Run this block only when creating a brand-new lineage.** The root already
+exists — the 2026-08-25 ceremony produced `CN=Ogenki Root CA`, valid to
+**2036-08-24**, and GCP's intermediate is already signed by it. Adding a cloud,
+re-issuing an intermediate or re-issuing a leaf all reuse that root; none of
+them generate one.
+
+Re-running it is quiet rather than loud, which is what makes it worth a
+warning: it overwrites `root-ca.pem` and `root-ca-key.pem` in the working
+directory, and every step afterwards still *succeeds* — the intermediate signs,
+`openssl verify` passes, the leaf gets its four SANs. You would simply have
+built that chain under a root nothing else trusts, leaving two roots again,
+which is the condition [ADR-0032]({{< relref "/docs/decisions/0032-openbao-store-of-record-lineage.md" >}})
+exists to remove. It surfaces days later, when the weekly restore drill's
+`openssl verify -CAfile .github/openbao-root-ca.pem` fails.
+
+To build under the existing root, copy `root-ca.pem` and `root-ca-key.pem` from
+the offline medium into a scratch directory and start at the **intermediate**
+block below.
+{{< /callout >}}
 
 ```bash
 openssl ecparam -genkey -name secp384r1 -out root-ca-key.pem
