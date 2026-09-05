@@ -126,7 +126,7 @@ sits inside the build context.
 ```bash
 cd container-images/openbao-snapshot
 ./build.sh
-docker run --rm --entrypoint sh ghcr.io/smana/openbao-snapshot:v0.3.0 \
+docker run --rm --entrypoint sh ghcr.io/smana/openbao-snapshot:v0.3.1 \
   -c 'aws --version; gcloud --version | head -1; bao version; jq --version'
 ```
 
@@ -134,7 +134,7 @@ docker run --rm --entrypoint sh ghcr.io/smana/openbao-snapshot:v0.3.0 \
 
 ```bash
 docker buildx build --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/smana/openbao-snapshot:v0.3.0 \
+  -t ghcr.io/smana/openbao-snapshot:v0.3.1 \
   container-images/openbao-snapshot
 ```
 

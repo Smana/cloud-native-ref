@@ -237,7 +237,7 @@ drift in the Negatives below is real rather than theoretical.
   `OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true` restores the newest object the
   node's seal *can* unwrap instead — the failback case — and is deliberately not
   the default, because skipping a newer snapshot discards writes. Snapshot image
-  `v0.3.0`. The bucket is still a mixed-seal namespace: what is gone is its
+  `v0.3.1`. The bucket is still a mixed-seal namespace: what is gone is its
   illegibility, and with it the bucket-mutation chore the failback used to
   prescribe — [step 4 of the failover
   guide]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}) is now a

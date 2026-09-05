@@ -248,7 +248,12 @@ check_prerequisites() {
     if [ "$CLOUD" = "gcp" ]; then
         cloud_bin="gcloud"
     fi
-    for bin in bao jq curl openssl "$cloud_bin"; do
+    # `nc` is in this list because wait_for_openbao uses it, and its absence was
+    # the worst-shaped failure available: the reachability loop would poll for
+    # ten minutes and then report "OpenBao is not ready", sending the responder
+    # to the node and its security groups when the real answer is a missing
+    # binary on their own PATH.
+    for bin in bao jq curl openssl nc "$cloud_bin"; do
         if ! command -v "$bin" &> /dev/null; then
             echo "Error: $bin is not installed"
             exit 1

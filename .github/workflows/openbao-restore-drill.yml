@@ -18,7 +18,20 @@ name: OpenBao restore drill
 #
 # What neither job has: the recovery keys. Everything asserted below comes from
 # unauthenticated endpoints (sys/health, the PKI mount's CA endpoint), so a
-# compromised runner can restore a snapshot it cannot read.
+# compromised runner cannot AUTHENTICATE to the restored node.
+#
+# It can, however, read the snapshot's contents, and this comment used to claim
+# otherwise ("restore a snapshot it cannot read"). That was wrong, and wrong in
+# the direction that matters: the drill role holds s3:GetObject on the snapshot
+# bucket AND kms:Decrypt on the seal key (opentofu/aws/openbao/lineage/
+# github-oidc.tf), which is exactly what unwrapping a barrier root key offline
+# requires. Withholding the recovery keys prevents minting a token against the
+# restored node; it does not make the ciphertext unreadable.
+#
+# That is why the role is assumable only from refs/heads/main under an
+# exact-match `sub` condition, and why it does not also carry the recovery keys.
+# Anyone widening this role should reason from the true property, not the
+# comfortable one.
 
 on:
   schedule:
@@ -328,9 +341,10 @@ jobs:
   #     thumbprint or sub-condition error there is invisible here.
   #   * Different sub shape: repo:<owner>/<repo>:ref:... versus the VM service
   #     account's numeric unique ID.
-  #   * No refresh. The GCE node re-fetches the token every 50 minutes on a
-  #     systemd timer; this job mints one and finishes inside two minutes, so it
-  #     never exercises a token rotating under a running seal.
+  #   * No refresh. The GCE node re-fetches the token every 15 minutes on a
+  #     systemd timer (OnUnitActiveSec=15min in the cluster startup script);
+  #     this job mints one and finishes inside two minutes, so it never
+  #     exercises a token rotating under a running seal.
   # What it DOES settle is the one thing that is common to both and was untested:
   # whether the seal's credential chain reaches the web-identity provider at all.
   web-identity-seal:
