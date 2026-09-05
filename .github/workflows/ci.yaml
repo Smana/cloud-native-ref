@@ -243,11 +243,15 @@ jobs:
       # and all seven pass here. Scoping it this way also means the NEXT
       # zitadel suite is covered by default instead of being forgotten, which is
       # exactly how the seven existing ones ended up unrun.
+      # scripts/test-openbao-fallback-address.sh joins them by name rather than
+      # by widening the glob: it covers the pre-destroy snapshot's fallback
+      # address, which is a different subsystem that happens to be testable the
+      # same way (offline, every call stubbed, bash and jq only).
       - name: Run the ZITADEL test suites
         run: |
           set -uo pipefail
           rc=0
-          for t in scripts/test-zitadel-*.sh; do
+          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh; do
             if bash "$t" > /tmp/zitadel-test.log 2>&1; then
               echo "PASS  $t"
             else

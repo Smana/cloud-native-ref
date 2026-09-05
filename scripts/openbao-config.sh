@@ -1170,13 +1170,29 @@ pre_destroy_snapshot() {
     # that was there for the taking. On a teardown where this is the newest copy
     # of the lineage, that is the data loss this function exists to prevent.
     #
-    # CURL_HOME rather than --resolve: openbao-snapshot.sh runs the actual
-    # snapshot through its own curl calls, and that file is a symlink into the
-    # published container image, so it must not grow a flag for an operator-only
-    # path. curl reads $CURL_HOME/.curlrc before $HOME's, and a `resolve` entry
-    # there applies to every curl in this process tree -- the child included.
-    # TLS is unaffected: the request still presents the hostname, which is
-    # required, because the certificate carries no IP SAN by design.
+    # TWO mechanisms, because two different clients have to reach the node and
+    # only one of them is curl.
+    #
+    # CURL_HOME covers the curl calls: curl reads $CURL_HOME/.curlrc before
+    # $HOME's, and a `resolve` entry there applies to every curl in this process
+    # tree, the child included. That is what the health probe below uses.
+    #
+    # It is NOT enough on its own, and believing it was is what let this fail in
+    # practice. openbao-snapshot.sh takes the snapshot with
+    # `bao operator raft snapshot save` -- the Go CLI, which never reads a
+    # .curlrc. Measured on the 2026-09-05 teardown: the health probe went green
+    # through the fallback, then the snapshot died on the name the probe had
+    # just worked around, in Go's own error shape rather than curl's:
+    #
+    #   Error taking the snapshot: Get ".../v1/sys/storage/raft/snapshot":
+    #   dial tcp: lookup bao.priv.aws.ogenki.io ...: no such host
+    #
+    # So the Go client gets the equivalent of curl's --resolve the way Go
+    # expects it: the address in VAULT_ADDR and the name in
+    # VAULT_TLS_SERVER_NAME, which is what keeps verification against the
+    # hostname the certificate actually carries -- it has no IP SAN by design,
+    # so connecting to a bare IP without this would fail the handshake rather
+    # than the lookup, which is not an improvement.
     if [ "$status_code" != "200" ] && [ -n "$FALLBACK_ADDRESS" ]; then
         local host_port host port
         host_port=${OPENBAO_URL#*://}
@@ -1196,6 +1212,12 @@ pre_destroy_snapshot() {
         status_code=$(openbao_health_code)
         if [ "$status_code" = "200" ]; then
             log_message "INFO" "Reached OpenBao at $FALLBACK_ADDRESS presenting $host: the name is gone, the node is not."
+            # Everything downstream of here talks to the ADDRESS and verifies
+            # the NAME. OPENBAO_URL is reassigned rather than shadowed because
+            # it is what gets handed to the child as `-a`.
+            OPENBAO_URL="https://${FALLBACK_ADDRESS}:${port}"
+            export VAULT_ADDR="$OPENBAO_URL"
+            export VAULT_TLS_SERVER_NAME="$host"
         fi
     fi
 
