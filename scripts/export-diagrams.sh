@@ -44,7 +44,12 @@ command -v drawio >/dev/null || { echo "drawio not on PATH — install the deskt
 # Check the count before committing a re-export, whatever this says:
 #   grep -o 'light-dark' website/static/images/diagrams/secrets-and-pki.svg | wc -l
 DRAWIO_PINNED_VERSION="30.3.6"
-drawio_version="$(drawio --version 2>/dev/null | tr -d '\r' | tail -1)"
+# `|| true` so a drawio that cannot report a version reaches the mismatch branch
+# below and says so. Without it, `set -o pipefail` makes the failing pipeline
+# fail the assignment, errexit kills the script on this line, and the
+# ${drawio_version:-unknown} fallback the messages below carry is unreachable --
+# the operator gets a silent exit 1 from a script that had a diagnosis ready.
+drawio_version="$(drawio --version 2>/dev/null | tr -d '\r' | tail -1 || true)"
 if [ "$drawio_version" != "$DRAWIO_PINNED_VERSION" ]; then
     if [ "${DRAWIO_VERSION_OVERRIDE:-false}" = "true" ]; then
         echo "==> drawio ${drawio_version:-unknown} != pinned ${DRAWIO_PINNED_VERSION} (override set, continuing)"

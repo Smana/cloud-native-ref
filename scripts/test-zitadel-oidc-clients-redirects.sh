@@ -39,20 +39,26 @@ check() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"
 contains() { if grep -Fq "$2" <<< "$1"; then printf '  ok   %s\n' "$3"
           else printf '  FAIL %s: %q not found in %q\n' "$3" "$2" "$1"; fail=1; fi }
 
+# Every function this suite lifts is one it asserts on, so a missing one is a
+# setup error rather than something to tolerate -- unlike the sibling
+# convergence suite, which must also run against a pre-fix script that
+# legitimately lacks converge_secret. Failing here names the function; letting
+# it through surfaces later as a bare "command not found".
 load_function() {
     local body
     body="$(sed -n "/^${1}() {/,/^}/p" "$2")"
-    if [ -n "$body" ]; then eval "$body"; fi
+    [ -n "$body" ] || { echo "could not extract ${1}() from $2" >&2; exit 1; }
+    eval "$body"
 }
 
 SRC="${ZITADEL_OIDC_CLIENTS_SCRIPT:-$HERE/zitadel-oidc-clients.sh}"
+# oidc_config_payload builds the PUT body app_set_redirect sends, so the
+# assertions below on redirectUris run against the real one.
+load_function oidc_config_payload "$SRC"
 load_function cmd_sync "$SRC"
 load_function app_set_redirect "$SRC"
 load_function merge_secret "$SRC"
 load_function converge_secret "$SRC"
-for f in cmd_sync app_set_redirect; do
-    declare -F "$f" >/dev/null || { echo "could not extract ${f}() from $SRC" >&2; exit 1; }
-done
 
 UI_CB="https://bao.priv.aws.ogenki.io:8200/ui/vault/auth/oidc/oidc/callback"
 CLI_CB="http://localhost:8250/oidc/callback"

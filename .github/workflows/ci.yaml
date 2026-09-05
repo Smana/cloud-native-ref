@@ -205,8 +205,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Install ShellCheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      # jq comes along here rather than in its own step: the test suites below
+      # need it, and a second `apt-get update` in the same job is pure cost. It
+      # is installed rather than assumed present on the runner image, the same
+      # reason the links job installs pyyaml rather than assuming it.
+      - name: Install ShellCheck and jq
+        run: sudo apt-get update && sudo apt-get install -y shellcheck jq
       - name: Run ShellCheck
         run: |
           # `-type l` as well as `-type f`, and it is load-bearing rather than
@@ -216,12 +220,6 @@ jobs:
           # and silently skipped that one, the largest script in the tree.
           # Do not "simplify" this back to `-type f`.
           find ./scripts \( -type f -o -type l \) -name "*.sh" -print0 | xargs -0 shellcheck -x -S warning
-
-      # jq is on the runner image, but this repo does not treat that as a
-      # dependency declaration -- the same reason the links job installs pyyaml
-      # rather than assuming it.
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
 
       # The ZITADEL suites, which until now CI ran none of.
       #

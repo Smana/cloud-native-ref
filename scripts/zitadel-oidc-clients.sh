@@ -483,32 +483,32 @@ app_get() {
     api_or_fail GET "/management/v1/projects/$1/apps/$2"
 }
 
-# Point an existing app at the redirect URI it is supposed to have.
-#
-# This updates the OIDC CONFIG, not the app: ZITADEL rotates a client secret only
-# through the separate `_secret` endpoint, so the running consumer keeps working
-# and nothing has to be rewritten into the secret store.
-#
-# The update REPLACES the config rather than patching it, so every field the
-# create call sets has to be sent again -- omitting one silently reverts it to
+# Every field of an app's OIDC config, as ZITADEL wants it. ONE definition,
+# used by both the create POST and the update PUT below, and that is the point:
+# the update REPLACES the config rather than patching it, so every field the
+# create sets has to be sent again -- omitting one silently reverts it to
 # ZITADEL's default, and `accessTokenRoleAssertion`/`idTokenRoleAssertion`
 # reverting to false is the same class of failure as projectRoleAssertion being
-# off: authentication keeps working and every consumer loses its groups.
-# $redirect is a COMMA-SEPARATED list, not a single URI. Every consumer here but
-# one has exactly one callback, so it reads as one for them; OpenBao needs two,
-# because its CLI completes the flow on a loopback listener the browser is sent
-# back to (`http://localhost:8250/oidc/callback`) while the UI uses its own
-# in-app path. Registering only one of the pair breaks that half of the login
-# with ZITADEL's "The requested redirect_uri is missing in the client
+# off: authentication keeps working and every consumer loses its groups. Two
+# copies of this list is exactly how a field reaches one call and not the other.
+#
+# $1 is a COMMA-SEPARATED list of redirect URIs, not a single URI. Every consumer
+# here but one has exactly one callback, so it reads as one for them; OpenBao
+# needs two, because its CLI completes the flow on a loopback listener the
+# browser is sent back to (`http://localhost:8250/oidc/callback`) while the UI
+# uses its own in-app path. Registering only one of the pair breaks that half of
+# the login with ZITADEL's "The requested redirect_uri is missing in the client
 # configuration" -- and only for whoever happens to use that entry point.
 #
 # Split on comma rather than taking an array: CONSUMERS is a flat `|`-delimited
 # table and keeping it that way is worth more than the alternative of a parallel
 # array indexed by consumer name.
-app_set_redirect() {
-    local project_id="$1" app_id="$2" redirect="$3"
-    api PUT "/management/v1/projects/${project_id}/apps/${app_id}/oidc_config" \
-        -d "$(jq -n --arg r "$redirect" '{
+#
+# $2 is the app NAME, and only the create call passes it -- the oidc_config
+# endpoint the update uses has no such field.
+oidc_config_payload() {
+    jq -n --arg r "$1" --arg n "${2:-}" '
+        (if $n == "" then {} else {name: $n} end) + {
           redirectUris: ($r | split(",")),
           responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
           grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE","OIDC_GRANT_TYPE_REFRESH_TOKEN"],
@@ -519,7 +519,18 @@ app_set_redirect() {
           idTokenRoleAssertion: true,
           idTokenUserinfoAssertion: true,
           devMode: false
-        }')" >/dev/null
+        }'
+}
+
+# Point an existing app at the redirect URIs it is supposed to have.
+#
+# This updates the OIDC CONFIG, not the app: ZITADEL rotates a client secret only
+# through the separate `_secret` endpoint, so the running consumer keeps working
+# and nothing has to be rewritten into the secret store.
+app_set_redirect() {
+    local project_id="$1" app_id="$2" redirect="$3"
+    api PUT "/management/v1/projects/${project_id}/apps/${app_id}/oidc_config" \
+        -d "$(oidc_config_payload "$redirect")" >/dev/null
 }
 
 # Merge OIDC fields into a secret without dropping what else is in it.
@@ -833,12 +844,11 @@ cmd_sync() {
             # already registered are left alone. Narrowing them would be a
             # different decision from converging them, and this script's job is
             # to make the login work, not to police what else was added.
-            local missing=""
-            local want
+            local missing="" want
             while IFS= read -r want; do
                 [ -z "$want" ] && continue
                 grep -Fxq "$want" <<< "$current" || missing="${missing}${missing:+ }${want}"
-            done <<< "$(tr ',' '\n' <<< "$redirect")"
+            done <<< "${redirect//,/$'\n'}"
 
             if [ -z "$missing" ]; then
                 echo "[ok     ] ${name} -- app exists (${existing_id}), redirect correct"
@@ -898,20 +908,8 @@ cmd_sync() {
         fi
 
         local resp client_id client_secret
-        resp="$(api_or_fail POST "/management/v1/projects/${project_id}/apps/oidc" -d "$(jq -n \
-            --arg n "$name" --arg r "$redirect" '{
-              name: $n,
-              redirectUris: ($r | split(",")),
-              responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-              grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE","OIDC_GRANT_TYPE_REFRESH_TOKEN"],
-              appType: "OIDC_APP_TYPE_WEB",
-              authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
-              accessTokenType: "OIDC_TOKEN_TYPE_BEARER",
-              accessTokenRoleAssertion: true,
-              idTokenRoleAssertion: true,
-              idTokenUserinfoAssertion: true,
-              devMode: false
-            }')")" || exit 1
+        resp="$(api_or_fail POST "/management/v1/projects/${project_id}/apps/oidc" \
+            -d "$(oidc_config_payload "$redirect" "$name")")" || exit 1
 
         client_id=$(jq -r '.clientId // empty' <<< "$resp")
         client_secret=$(jq -r '.clientSecret // empty' <<< "$resp")
