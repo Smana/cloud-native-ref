@@ -794,9 +794,23 @@ restore() {
     # construction. Verified on a restored node: lookup-self returns
     # display_name=root, policies=["root"].
     #
-    # MINTED_ROOT_TOKEN stays empty on this path, and that is load-bearing: the
-    # EXIT trap revokes what this function minted, and revoking the LINEAGE's
-    # root token would destroy the credential the next rehydrate depends on.
+    # MINTED_ROOT_TOKEN must be CLEARED on this path, not merely left unset, and
+    # the difference is the whole point: the EXIT trap revokes what this function
+    # minted, and revoking the LINEAGE's root token would destroy the credential
+    # the next rehydrate depends on.
+    #
+    # An earlier version of this comment claimed the flag "stays empty on this
+    # path". It does not. The pre-restore mint above sets it to 1 whenever the
+    # caller supplied no VAULT_TOKEN -- which is the JWT and AppRole path -- and
+    # nothing cleared it before VAULT_TOKEN is replaced below with the lineage's
+    # stored root token. The trap would then revoke THAT.
+    #
+    # Latent rather than live today: reaching it needs both no caller-supplied
+    # token AND the pre-restore `generate_root_token` to have succeeded, and
+    # generate-root/attempt returns 405 on every auto-unsealed node here, so the
+    # script exits before this point. That makes it a landmine on the DR path
+    # rather than a present failure, which is exactly the kind that detonates
+    # once a node is Shamir-sealed or the endpoint starts working.
     if [ -n "${ROOT_TOKEN_SECRET_ID:-}" ]; then
         if ! VAULT_TOKEN=$(stored_root_token); then
             echo "${err}: could not read the stored root token from ${ROOT_TOKEN_SECRET_ID}." >&2
@@ -805,7 +819,8 @@ restore() {
             exit 1
         fi
         export VAULT_TOKEN
-        # Deliberately NOT setting MINTED_ROOT_TOKEN -- see above.
+        # The token in hand is now the LINEAGE's, not one this function minted.
+        MINTED_ROOT_TOKEN=""
         if ! bao token lookup >/dev/null 2>&1; then
             echo "${err}: the stored root token is not valid on the restored node." >&2
             echo "${err}: That happens when the token was rotated AFTER this snapshot was" >&2

@@ -23,6 +23,29 @@ spec:
     # created scoped to nothing, and the break surfaces at 04:00 as NoSuchBucket
     # or an AccessDenied against a bucket nobody writes to. Reading the same
     # variable the writer reads makes the two impossible to disagree.
+    #
+    # The KMS statement below is scoped by ALIAS CONDITION, and that is new.
+    # It used to be `"Resource": "*"`, which was survivable while the only
+    # customer-managed key in reach wrapped this bucket. It is not survivable
+    # now: ADR-0033 makes `alias/openbao-seal` durable and account-resident, and
+    # `kms:Decrypt` on the seal key plus `s3:GetObject` on the snapshot bucket --
+    # both granted here -- is enough to unwrap the barrier key and read every
+    # secret OpenBao holds, offline. The daily BACKUP pod does not need to be a
+    # full read path to the store it backs up.
+    #
+    # Scoped the way the mirror role in opentofu/shared/aws-gcp-federation
+    # already is, and for the same reason: this policy does not create the key,
+    # so it has no ARN to name and must condition on the alias instead.
+    #
+    # `Encrypt` and `ReEncrypt*` are dropped because nothing calls them.
+    # `PutObject` under SSE-KMS needs GenerateDataKey*, and `GetObject` needs
+    # Decrypt; the wrapper mints its data key in-process, so the two removed
+    # actions had no caller here any more than they did on the seal roles.
+    #
+    # The GCP counterpart (security/gcp-0/openbao-snapshot/workloadidentity.yaml)
+    # grants no KMS at all and explains why. The two clouds now make the same
+    # call in writing, rather than one having reasoned about the blast radius
+    # and the other having inherited a wildcard.
     policyDocument: |
         {
             "Version": "2012-10-17",
@@ -52,11 +75,14 @@ spec:
                     "Effect": "Allow",
                     "Action": [
                         "kms:Decrypt",
-                        "kms:Encrypt",
-                        "kms:ReEncrypt*",
                         "kms:GenerateDataKey*"
                     ],
-                    "Resource": "*"
+                    "Resource": "*",
+                    "Condition": {
+                        "ForAnyValue:StringEquals": {
+                            "kms:ResourceAliases": "alias/xplane-openbao-snapshot"
+                        }
+                    }
                 }
             ]
         }
