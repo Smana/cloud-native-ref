@@ -134,3 +134,23 @@ variable "mode" {
     error_message = "mode must be 'dev' or 'ha'."
   }
 }
+
+# ZITADEL OIDC for human operators (ADR-0034)
+# -------------------------------------------
+# Empty disables the OIDC auth method entirely, which is the right state for a
+# cluster whose ZITADEL has not been bootstrapped yet. There is a genuine
+# ordering knot: `zitadel-oidc-clients.sh` must run before there is a client to
+# configure, that script needs a running ZITADEL, and ZITADEL needs secrets from
+# this stack. Gating on the value rather than trying to order the two lets a
+# first deploy converge without OIDC and pick it up on the next apply.
+variable "openbao_oidc_secret_id" {
+  description = "AWS Secrets Manager secret holding {client_id, client_secret, endpoint} for OpenBao's ZITADEL OIDC client, as written by scripts/zitadel-oidc-clients.sh. Empty disables OIDC auth."
+  type        = string
+  default     = ""
+}
+
+variable "openbao_oidc_issuer" {
+  description = "ZITADEL issuer URL. Defaults to the `endpoint` field of openbao_oidc_secret_id, so it normally needs no value."
+  type        = string
+  default     = ""
+}
