@@ -177,6 +177,74 @@ Two details worth carrying forward if you regenerate it:
   `x509: certificate is valid for bao.priv.<cloud>.ogenki.io, not
   openbao.security.svc.cluster.local`.
 
+### Storing the chain
+
+Three secrets carry the result. Build the JSON payloads with `jq --rawfile` so
+the PEM newlines survive — a shell-interpolated `"$(cat …)"` collapses them and
+OpenBao rejects the bundle:
+
+```bash
+jq -n --rawfile c intermediate-ca.pem --rawfile k intermediate-ca-key.pem '{bundle: ($c + $k)}' > intermediate.json
+jq -n --rawfile ca ca-chain.pem '{ca: $ca}' > chain.json
+jq -n --rawfile cert server.pem --rawfile key server-key.pem --rawfile ca ca-chain.pem '{cert: $cert, key: $key, ca: $ca}' > server.json
+```
+
+**Which verb depends on whether the secret already exists**, and on AWS the
+answer differs per secret — `create-secret` on an existing name fails with
+`ResourceExistsException`, and `put-secret-value` on a missing one fails with
+`ResourceNotFoundException`. Check first rather than guess:
+
+```bash
+aws secretsmanager list-secrets --region eu-west-3 \
+  --query 'SecretList[?contains(Name, `priv.aws.ogenki.io`)].Name' --output text
+```
+
+| Secret | Holds | Verb |
+|---|---|---|
+| `certificates/priv.aws.ogenki.io/intermediate-ca` | `{"bundle": …}` — intermediate cert **+ key**, the issuer `pki.tf` imports | `put-secret-value` if it already holds the pre-lineage `{cert, key}` pair, else `create-secret` |
+| `certificates/priv.aws.ogenki.io/ca-chain` | `{"ca": …}` — certificates only, no key | `create-secret` on first run |
+| `certificates/priv.aws.ogenki.io/openbao` | `{"cert", "key", "ca"}` — the server leaf the node reads at boot | `put-secret-value` |
+
+```bash
+aws secretsmanager put-secret-value --region eu-west-3 \
+  --secret-id certificates/priv.aws.ogenki.io/intermediate-ca --secret-string file://intermediate.json
+aws secretsmanager create-secret --region eu-west-3 \
+  --name certificates/priv.aws.ogenki.io/ca-chain --secret-string file://chain.json
+aws secretsmanager put-secret-value --region eu-west-3 \
+  --secret-id certificates/priv.aws.ogenki.io/openbao --secret-string file://server.json
+```
+
+Prefer `put-secret-value` wherever the name exists: it adds a version and
+leaves the previous one recoverable, which matters because the shape changes —
+`intermediate-ca` moves from `{cert, key}` to `{bundle}`, and only the new shape
+satisfies `jsondecode(...)["bundle"]` in `pki.tf`.
+
+Then destroy the key material that does not belong in a secret store. The
+intermediate key exists only inside `intermediate-ca`'s bundle from here on, and
+the leaf key only inside `openbao`:
+
+```bash
+shred -u intermediate-ca-key.pem server-key.pem intermediate.json server.json 2>/dev/null \
+  || rm -f intermediate-ca-key.pem server-key.pem intermediate.json server.json
+```
+
+The root key is **not** in that list and must never be — it stays on the offline
+medium. The root *certificate* is public and is committed to the repository as
+`openbao-root-ca.pem` in `.github/`, which is what the weekly restore drill
+verifies a restored chain against.
+
+{{< callout type="info" >}}
+`.gitignore` carries a blanket `*.pem` with a single negation for
+`openbao-root-ca.pem` in `.github/`, so committing the root certificate needs no
+`git add -f`. Confirm the negation is doing its job before trusting it — with
+**no** `-v`, since `-v` reports "a pattern matched" and the negation *is* a
+match:
+
+```bash
+git check-ignore .github/openbao-root-ca.pem   # exit 1 == not ignored == correct
+```
+{{< /callout >}}
+
 ## Trusting the CA on your machine
 
 Every private service is served with a certificate from this chain, and no
