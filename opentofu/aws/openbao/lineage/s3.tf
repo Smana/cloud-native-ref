@@ -14,6 +14,7 @@ locals {
 }
 
 resource "aws_kms_key" "snapshot" {
+  # checkov:skip=CKV2_AWS_64:Default key policy, for the same reason as the seal key in kms.tf -- account root plus IAM grants, rather than an explicit policy whose blast radius on a mistake is an unreadable snapshot bucket. This key wraps the objects; the seal key wraps their contents, so neither alone is enough to read a snapshot.
   description             = "Used for the Vault s3 bucket"
   enable_key_rotation     = true
   deletion_window_in_days = 30
@@ -25,7 +26,17 @@ resource "aws_kms_alias" "snapshot" {
   target_key_id = aws_kms_key.snapshot.key_id
 }
 
+# AWS-0089 is trivy's name for the same finding as CKV_AWS_18 below, and the
+# answer is the same one -- suppressed in both scanners so they do not disagree
+# about a decision that has been made.
+#trivy:ignore:AWS-0089
 resource "aws_s3_bucket" "snapshot" {
+  # Three Checkov rules are answered by the design rather than by a setting, so
+  # they are skipped here with the answer rather than left as standing alerts.
+  #
+  # checkov:skip=CKV_AWS_144:Cross-region replication is answered CROSS-CLOUD instead. transfer.tf mirrors this bucket into GCS daily, which is what the fallback in ADR-0033 restores from -- a second AWS region would not survive the failure this design is for.
+  # checkov:skip=CKV2_AWS_62:Nothing consumes S3 events here. The snapshot job reports its own outcome and the drill asserts freshness by listing; a notification target would be a component with no reader.
+  # checkov:skip=CKV_AWS_18:Access logging would need a second bucket with its own lifecycle and cost, to record reads of objects that are already useless without the seal key -- every object is envelope-encrypted by alias/openbao-seal, and the key is granted to three principals. The API-level audit trail is CloudTrail, which covers the KMS calls that actually matter.
   bucket = local.snapshot_bucket_name
   tags   = var.tags
 }
@@ -73,6 +84,22 @@ resource "aws_s3_bucket_lifecycle_configuration" "snapshot" {
     transition {
       days          = 30
       storage_class = "GLACIER"
+    }
+  }
+
+  # A snapshot upload that dies partway leaves its parts billable and invisible:
+  # they do not appear in a listing, they are not covered by the expiration rule
+  # below (which matches objects, and an incomplete upload is not one yet), and
+  # nothing in this stack would ever notice. The snapshot job runs daily and the
+  # node it runs on is destroyed nightly, so a failed upload is an ordinary
+  # event here rather than a rare one.
+  rule {
+    id     = "abort-incomplete-uploads"
+    status = "Enabled"
+    filter {}
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
     }
   }
 

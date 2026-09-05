@@ -9,6 +9,7 @@ resource "google_iam_workload_identity_pool" "github" {
 }
 
 resource "google_iam_workload_identity_pool_provider" "github" {
+  # checkov:skip=CKV_GCP_125:False positive. The check wants the trust narrowed to a repository; attribute_condition below pins BOTH assertion.repository and assertion.ref to refs/heads/main, which is stricter than the rule asks. Checkov does not evaluate the interpolated condition.
   project                            = var.project_id
   workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
   workload_identity_pool_provider_id = "github"

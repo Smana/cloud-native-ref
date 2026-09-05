@@ -29,6 +29,7 @@
 # acts -- setting TM_LINEAGE_DESTROY=true AND removing this lifecycle block --
 # not one. Do not add prevent_destroy anywhere else in this stack.
 resource "aws_kms_key" "seal" {
+  # checkov:skip=CKV2_AWS_64:Deliberately the DEFAULT key policy. An explicit one on this key is the highest-consequence mistake available in this stack: get it wrong and the key is unusable and undeletable (prevent_destroy above, and a key you cannot decrypt with is a key you cannot recover from), taking every snapshot on both clouds with it. Access is granted through IAM instead -- three roles, each scoped to Encrypt/Decrypt/DescribeKey by alias condition, in cluster/iam.tf, github-oidc.tf and shared/aws-gcp-federation.
   description             = "OpenBao seal key (lineage). Multi-region; replica in ${var.replica_region}"
   multi_region            = true
   enable_key_rotation     = true

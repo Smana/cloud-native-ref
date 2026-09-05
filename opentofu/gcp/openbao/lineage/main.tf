@@ -27,11 +27,17 @@ locals {
 # with noncurrent versions expiring so history cannot accumulate.
 #trivy:ignore:GCP-0066
 resource "google_storage_bucket" "snapshot" {
+  # checkov:skip=CKV_GCP_62:Same answer as CKV_AWS_18 on the S3 side. Access logging needs a second bucket with its own lifecycle and cost, to record reads of objects that are useless without the AWS seal key -- every object here is a mirror of an already-envelope-encrypted S3 object. Cloud Audit Logs cover the IAM and KMS calls that decide whether a read can succeed.
   name                        = local.snapshot_bucket_name
   project                     = var.project_id
   location                    = var.region
   uniform_bucket_level_access = true
-  force_destroy               = false
+  # Belt and braces on top of uniform access: uniform access removes per-object
+  # ACLs, but an IAM binding to allUsers would still make this public. Enforced
+  # prevention refuses that binding outright, which is the right answer for a
+  # bucket whose objects are OpenBao's storage.
+  public_access_prevention = "enforced"
+  force_destroy            = false
 
   # Snapshots are small; keep the history the AWS bucket keeps.
   versioning {

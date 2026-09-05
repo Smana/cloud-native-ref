@@ -81,6 +81,7 @@ resource "vault_jwt_auth_backend" "oidc" {
   # edge that actually matters.
   default_role = "default"
 
+  # checkov:skip=CKV_SECRET_6:False positive on `token_type = "default-service"` -- an OpenBao token-type constant, not a base64 secret. The only secret here is oidc_client_secret, read from Secrets Manager.
   tune {
     listing_visibility = "unauth" # so the UI offers it on the login screen
     default_lease_ttl  = "1h"
