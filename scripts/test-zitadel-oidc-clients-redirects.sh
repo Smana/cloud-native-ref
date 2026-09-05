@@ -2,8 +2,12 @@
 # shellcheck disable=SC2034
 # (file-wide: CLUSTER/CLOUD/IDP_URL/PRIVATE_DOMAIN/ZITADEL_PROJECT_NAME/
 # GRANT_ADMIN/CONSUMERS/APPLY/APP_SUFFIX/HEADLAMP_OIDC_SCOPES below are read
-# only by the eval'd bodies of the functions lifted out of the script --
-# shellcheck cannot see those uses.)
+# only by the eval'd bodies of the functions lifted out of the script, and
+# those uses are invisible to static analysis.)
+#
+# NB: do not start a comment line here with the word "shellcheck" after the
+# hash -- it is then parsed as a directive and fails with SC1072/SC1073, which
+# is how this very paragraph broke the shellcheck gate once.
 #
 # Regression test for the MULTI-REDIRECT consumer (ADR-0034).
 #
