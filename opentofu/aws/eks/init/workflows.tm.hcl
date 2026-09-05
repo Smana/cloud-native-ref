@@ -33,6 +33,14 @@ script "deploy" {
       # gitignored.
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-config.sh' ca --root-ca-secret-name '${global.ca_chain_secret_name}' --ca-output-file .tls/ca.pem --region '${global.region}' --profile '${global.profile}'"],
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} init -lock-timeout=5m"],
+      # The lineage restores OpenBao's storage from a snapshot on every deploy,
+      # so `jwt/<cluster>` and its roles come back -- while THIS stack's state
+      # is destroyed on every teardown. Without this the apply below tries to
+      # create a mount the snapshot already restored and fails 400 "path is
+      # already in use". Worse, the restored mount is stale: its issuer names
+      # the destroyed cluster, so every JWT login would fail against it. Adopt
+      # it so the apply updates the issuer in place.
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && bash '${terramate.root.path.fs.absolute}/scripts/openbao-adopt-jwt-mount.sh' --cluster-name '${global.eks_cluster_name}' --url '${global.openbao_url}' --root-token-secret-name '${global.root_token_secret_name}' --ca-file .tls/ca.pem --cloud aws --region '${global.region}' -- -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}'"],
       ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c", "cd ../configure && ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var=\"flux_git_ref=$${TF_VAR_flux_git_ref}\"}"],
     ]
   }
