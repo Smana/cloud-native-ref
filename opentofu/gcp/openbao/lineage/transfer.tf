@@ -9,8 +9,35 @@
 #
 # Federated identity: STS presents a Google-issued token for its service agent
 # to AWS STS and assumes var.aws_mirror_role_arn. No key at rest on either side.
+# The API this whole file depends on, enabled here rather than left as a
+# hand-run prerequisite.
+#
+# Without it `google_storage_transfer_job` fails at creation with a message that
+# names neither the API nor the project setting:
+#
+#   Error 403: Failed to obtain the location of the source S3 bucket.
+#   AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity
+#
+# That reads as an IAM trust-policy problem and sends you to the AWS side, which
+# is where 2026-09-05 was spent before `googleServiceAccounts.get` returned the
+# real reason: "Storage Transfer API has not been used in project ... or it is
+# disabled". The subject id and the trust policy were correct throughout.
+#
+# `disable_on_destroy = false` because destroying this stack must not turn the
+# API off for the whole project -- the lineage stack is deliberately long-lived,
+# but a targeted destroy of it should not reach that far.
+resource "google_project_service" "storagetransfer" {
+  project            = var.project_id
+  service            = "storagetransfer.googleapis.com"
+  disable_on_destroy = false
+}
+
+# depends_on, because a data source is otherwise free to read before the API is
+# enabled. It answered with the correct subject id even while the API was
+# disabled, so the failure surfaced later and somewhere else.
 data "google_storage_transfer_project_service_account" "default" {
-  project = var.project_id
+  project    = var.project_id
+  depends_on = [google_project_service.storagetransfer]
 }
 
 # The service agent writes into the sink bucket.
@@ -70,5 +97,5 @@ resource "google_storage_transfer_job" "s3_mirror" {
     repeat_interval = "86400s"
   }
 
-  depends_on = [google_storage_bucket_iam_member.transfer_sink]
+  depends_on = [google_storage_bucket_iam_member.transfer_sink, google_project_service.storagetransfer]
 }
