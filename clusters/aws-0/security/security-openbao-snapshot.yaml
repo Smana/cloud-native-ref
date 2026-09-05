@@ -1,13 +1,45 @@
-# OpenBao's snapshot CronJob, its S3 bucket, KMS key and network policy.
+# OpenBao's snapshot CronJob, its ServiceAccount and its network policy — and
+# nothing else. The S3 bucket and its KMS key used to be Crossplane MRs in this
+# path; they are now OpenTofu resources in opentofu/aws/openbao/lineage, because
+# rehydrate reads the bucket before this cluster exists. See
+# security/aws-0/openbao-snapshot/kustomization.yaml.
 #
 # Split out of `security` alongside security-openbao, and dependsOn it rather
-# than on `security`: the CronJob's ExternalSecret reads through the
-# `clustersecretstore` ClusterSecretStore, which security-openbao creates.
-# Applied any earlier, the ExternalSecret is admitted (or not) before the store
-# it names exists and sits unsynced through the retry.
+# than on `security`, because of two objects security-openbao applies that this
+# CronJob cannot start without:
 #
-# Mirrors clusters/gcp-0/security/security-openbao-snapshot.yaml, minus that
-# one's suspend.
+#   - the `openbao-ca` Secret, mounted as a volume at /etc/openbao/tls and used
+#     as VAULT_CACERT. It is produced by the `openbao-ca` ExternalSecret in
+#     security/aws-0/openbao. A Secret volume that does not exist does not fail
+#     open: the kubelet leaves the pod in ContainerCreating.
+#   - the `openbao` ExternalName Service from
+#     security/base/openbao-endpoint/local, which is how
+#     VAULT_ADDR=https://openbao.security.svc.cluster.local:8200 resolves.
+#
+# It is NOT about admission ordering any more. This directory used to hold an
+# ExternalSecret reading through the `clustersecretstore` ClusterSecretStore,
+# which made the edge a webhook/store-ordering argument; that ExternalSecret
+# carried the snapshot job's AppRole and went with the JWT switch, so the
+# rendered set here is now ServiceAccount + CronJob + CiliumNetworkPolicy and
+# the two objects above are the whole reason. The edge still implies `security`
+# (and `crds` beneath it), since security-openbao dependsOn `security`.
+#
+# Differences from clusters/gcp-0/security/security-openbao-snapshot.yaml, which
+# is no longer suspended either:
+#
+#   - gcp-0 carries a second edge on `crossplane-configuration`; this one does
+#     not, and must not. That edge exists there because gcp-0's overlay contains
+#     a GCPWorkloadIdentity claim whose XRD ships in the Configuration package.
+#     AWS grants the same bucket access with EPI xplane-openbao-snapshot in
+#     security/base/epis/, applied by the `eks-pod-identities` Kustomization —
+#     which already dependsOn crossplane-configuration itself. `kustomize build
+#     security/aws-0/openbao-snapshot` renders no cloud.ogenki.io kind at all,
+#     so there is no XRD for this Kustomization to wait on.
+#   - gcp-0's overlay patches CLOUD=gcp and adds its identity claim; this one is
+#     a pure pass-through to ../../base/openbao-snapshot.
+#   - gcp-0 states `suspend: false` explicitly, a remnant of the stretch it
+#     spent suspended (written suspended, released 2026-09-02). This file has
+#     never needed the field.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

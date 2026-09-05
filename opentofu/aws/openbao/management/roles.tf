@@ -14,7 +14,7 @@ resource "vault_pki_secret_backend_role" "this" {
   # three years - which meant cert-manager, renewing at two-thirds of
   # lifetime, would not rotate anything for two years. Automated issuance is
   # the whole reason to run a PKI engine; short leaves are the payoff.
-  # var.pki_max_lease_ttl still bounds the mount and the intermediate.
+  # var.pki_max_lease_ttl still bounds the mount and the leases issued from it.
   ttl     = var.pki_leaf_ttl
   max_ttl = var.pki_leaf_max_ttl
 }

@@ -79,7 +79,7 @@ spec:
         # over live instances, so a stale voter raises the quorum bar (4 of 6
         # instead of 3 of 5) and halves the tolerance without anything failing.
         #
-        # Neither fires in dev mode: file storage has no raft and no autopilot,
+        # Neither fires in dev mode: a single raft node runs no autopilot,
         # so the metric does not exist.
         - alert: OpenBaoRaftNodeLost
           expr: vault_autopilot_failure_tolerance{job="openbao"} < 2
@@ -133,11 +133,18 @@ spec:
           annotations:
             message: The OpenBao snapshot job failed.
             description: |
-              The nightly raft snapshot did not complete. Check
-              `kubectl logs -n security -l app.kubernetes.io/instance=openbao`.
-              Note that `bao operator raft snapshot save` only works against raft
-              storage — in dev mode the cluster runs the file backend and this
-              job cannot succeed at all.
+              The nightly raft snapshot did not complete. Start with the pod
+              logs:
+                kubectl logs -n security -l app.kubernetes.io/instance=openbao \
+                  --tail=100
+
+              Every cluster runs raft storage in every mode — `storage "raft"`
+              is unconditional in both clouds' OpenBao boot scripts — so
+              `bao operator raft snapshot save` is available and there is no
+              configuration in which this job is expected to fail. The usual
+              causes are the JWT login (role `openbao-snapshot` on
+              `jwt/<cluster>`, audience `openbao`) and write access to the
+              lineage's snapshot bucket.
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/container-images/openbao-snapshot/README.md"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
 
@@ -145,22 +152,92 @@ spec:
         # kube_cronjob_status_last_successful_time once status.lastSuccessfulTime
         # is populated, so a CronJob that has *never* succeeded produces no
         # series at all and a `time() - <series>` comparison evaluates over an
-        # empty vector — silent forever. That is precisely the cluster's current
-        # state in dev mode, where snapshots are raft-only and cannot run.
+        # empty vector — silent forever. The second arm is what covers that, and
+        # it is worth keeping: a snapshot CronJob that has never once succeeded
+        # is the exact condition this alert exists for, and now that it CAN
+        # succeed on every cluster the arm is a real signal rather than a
+        # permanent fixture.
+        #
+        # The `and on()` age guard is the part that makes it a real signal. The
+        # bare arm is true from the moment kube-state-metrics first sees the
+        # CronJob until the first snapshot succeeds, which on a HEALTHY,
+        # freshly-built cluster is up to 25.5h:
+        #
+        #   next 04:00 UTC after the object is applied (schedule "0 4 * * *")
+        #                                                            <= 24.0h
+        #   startingDeadlineSeconds: 3600 — a missed run may start this late
+        #                                                             + 1.0h
+        #   activeDeadlineSeconds: 1800 — the Job's own bound, retries included
+        #                                                             + 0.5h
+        #                                                            --------
+        #                                                              25.5h
+        #
+        # Unguarded, that is a day of critical paging on every cluster build,
+        # indistinguishable from the real thing and with no action available to
+        # the responder but "wait". kube_cronjob_created is a unix timestamp KSM
+        # emits for the object itself, so requiring 26h of CronJob age (93600s,
+        # 30m of slack over the worst case, plus this rule's own `for: 30m`)
+        # suppresses exactly the bootstrap window and nothing else.
+        #
+        # Why an age guard and not a longer `for:`. `for:` is per-RULE, so a 26h
+        # `for:` would also delay the 36h freshness arm to 62h and destroy the
+        # signal it exists for. It is also vmalert's in-memory timer: a vmalert
+        # restart inside the window resets it, and nothing here configures
+        # remoteRead alert-state restore. The guard is cluster state, so it
+        # survives a restart.
+        #
+        # Known limitation, accepted: kube_cronjob_created tracks the OBJECT, so
+        # a Flux prune/recreate of the CronJob reopens the 26h window. That is
+        # the same class of event as a re-bootstrap, which is what the window is
+        # for.
+        #
+        # Vector matching: `absent()` returns its equality matchers as labels, so
+        # the arm still carries namespace/cronjob; `max()` drops all labels,
+        # hence `on()` with an empty label set. `and` binds tighter than `or`,
+        # and the parentheses make that explicit rather than implied.
         - alert: OpenBaoSnapshotStale
           expr: |
             time() - kube_cronjob_status_last_successful_time{namespace="security", cronjob="openbao-snapshot"} > 129600
-            or absent(kube_cronjob_status_last_successful_time{namespace="security", cronjob="openbao-snapshot"}) == 1
+            or (
+              absent(kube_cronjob_status_last_successful_time{namespace="security", cronjob="openbao-snapshot"}) == 1
+              and on() (time() - max(kube_cronjob_created{namespace="security", cronjob="openbao-snapshot"}) > 93600)
+            )
           for: 30m
           labels:
             severity: critical
           annotations:
-            message: No successful OpenBao snapshot in 36 hours (or ever).
+            message: No successful OpenBao snapshot in 36 hours (or none ever).
             description: |
-              Either the last successful snapshot is more than 36 hours old against
-              a daily schedule, or the CronJob has never succeeded once. The
-              disaster-recovery position is degrading silently — a backup with no
-              freshness signal is not a backup, and one that has never run is not
-              a backup at all.
+              Either the last successful snapshot is more than 36 hours old
+              against a daily schedule, or the CronJob has existed for over 26
+              hours without ever succeeding once. Every cluster runs raft
+              storage, so this job can succeed everywhere it is deployed — there
+              is no configuration in which a missing snapshot is expected. The
+              disaster-recovery position is degrading silently: a backup with no
+              freshness signal is not a backup, and one that has never run is
+              not a backup at all.
+
+              What to check, in order:
+
+                kubectl get cronjob -n security openbao-snapshot -o \
+                  jsonpath='suspend={.spec.suspend} last={.status.lastSuccessfulTime}{"\n"}'
+                kubectl get jobs -n security -l app.kubernetes.io/instance=openbao
+                kubectl logs -n security -l app.kubernetes.io/instance=openbao \
+                  --tail=100
+
+              `suspend=true`, or no Job objects at all, means nothing ever ran —
+              look at the security-openbao-snapshot Flux Kustomization, not at
+              OpenBao. Jobs that ran and failed belong to
+              OpenBaoSnapshotJobFailed; the usual causes are the JWT login and
+              write access to the lineage's snapshot bucket.
+
+              Inside the first 26 hours of a cluster's life this alert is
+              deliberately silent, because a CronJob that has not reached its
+              first 04:00 UTC run is not yet a fault. That window is not
+              coverage: until the first success there is no snapshot of this
+              cluster. To get one now rather than waiting for the schedule:
+
+                kubectl create job -n security \
+                  --from=cronjob/openbao-snapshot openbao-snapshot-manual
             runbook_url: "https://github.com/Smana/cloud-native-ref/blob/main/container-images/openbao-snapshot/README.md"
             dashboard: "https://grafana.${private_domain_name}/dashboards"

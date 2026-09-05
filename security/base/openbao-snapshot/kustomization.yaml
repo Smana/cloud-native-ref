@@ -3,7 +3,6 @@ kind: Kustomization
 namespace: security
 
 resources:
-  - external-secrets.yaml
   - network-policy.yaml
   - serviceaccount.yaml
   - snapshot-cronjob.yaml

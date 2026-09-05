@@ -1,41 +1,20 @@
 # Platform auth, root namespace
 # -----------------------------
-# One AppRole backend hosts both machine roles. They used to sit in separate
-# backends in separate namespaces (`admin` and `admin/pki`), which bought
-# nothing: the roles are already independent units of authorisation, and the
-# namespace split actively broke the snapshot agent, since `sys/storage/raft/*`
-# is callable only from root.
+# Machine authentication for the two clusters is the JWT method, one mount per
+# cluster (`jwt/aws-0`, `jwt/gcp-0`), created by that cluster's `configure`
+# stack -- opentofu/aws/eks/configure/openbao.tf and its GKE twin. It lives
+# there rather than here because the mount's `oidc_discovery_url` is the EKS
+# issuer, which carries a per-cluster ID that changes on every rebuild, and
+# this stack runs BEFORE eks/init. The policies those roles reference stay
+# here (policies.tf), so the authorisation model has one owner.
 #
-# Resources here take no `namespace` argument — that is how the provider
+# The AppRole backend that used to be here (roles `snapshot-agent` and
+# `cert-manager`, credentials published to Secrets Manager) is gone: a JWT
+# login mints no long-lived credential, so there is nothing to store, rotate
+# or leak.
+#
+# Resources below take no `namespace` argument — that is how the provider
 # addresses the root namespace.
-
-resource "vault_auth_backend" "approle" {
-  type = "approle"
-  path = "approle"
-}
-
-# Raft snapshots. `sys/storage/raft/*` is a restricted endpoint: "Clients must
-# call the API path from the root namespace." Raft is a property of the cluster,
-# so there is no per-namespace version of it, and a token from any child
-# namespace gets 404 "unsupported path" no matter what its policy grants.
-resource "vault_approle_auth_backend_role" "snapshot" {
-  backend           = vault_auth_backend.approle.path
-  role_name         = "snapshot-agent"
-  token_policies    = [vault_policy.snapshot.name]
-  token_bound_cidrs = var.allowed_cidr_blocks
-}
-
-# cert-manager. The ClusterIssuer authenticates here and issues from
-# pki_private_issuer; both are now in root, so the issuer manifest no longer
-# needs a `namespace` field.
-resource "vault_approle_auth_backend_role" "cert_manager" {
-  backend           = vault_auth_backend.approle.path
-  role_name         = "cert-manager"
-  token_policies    = [vault_policy.cert_manager.name]
-  token_bound_cidrs = var.allowed_cidr_blocks
-  token_ttl         = 600
-  token_max_ttl     = 1200
-}
 
 # Human operator login
 # --------------------
@@ -47,10 +26,13 @@ resource "vault_approle_auth_backend_role" "cert_manager" {
 # login per namespace, because a policy binds only within the namespace it is
 # created in; collapsing the platform into root removes that.
 #
-# Deliberately no token_bound_cidrs, unlike the machine roles above: the only
-# route to this API is the internal NLB, so the network is already constrained,
-# and a CIDR bind on the break-glass credential buys nothing against the risk of
-# locking yourself out of your own secrets store.
+# Deliberately no token_bound_cidrs here either, but for a different reason
+# than machine auth. Machine auth (documented above) is bound by ServiceAccount
+# subject and audience rather than by CIDR, and carries no CIDR bind of its
+# own either. This login's lack of one is its own deliberate choice: the only
+# route to this API is the internal NLB, so the network is already
+# constrained, and a CIDR bind on the break-glass credential buys nothing
+# against the risk of locking yourself out of your own secrets store.
 resource "vault_auth_backend" "userpass" {
   type = "userpass"
   path = "userpass"

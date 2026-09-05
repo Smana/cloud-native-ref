@@ -105,23 +105,70 @@ script "destroy" {
   name        = "GCP OpenBao Cluster Destroy (opt-in)"
   description = "Destroy the OpenBao cluster stack when TM_CLOUD selects gcp"
 
+  # FOUR COMMANDS, not one heredoc -- and the split is load-bearing, not style.
+  #
+  # The skip gate below has to `exit 0` (a `--reverse destroy` sweep must carry
+  # on to the network stack). Inside a single heredoc that `exit 0` would also
+  # skip the `tofu destroy` two lines further down, which is precisely the
+  # "swallows failure and exits 0" pattern the comment above this script warns
+  # about: the billable instance would survive while the run reported success.
+  # Splitting puts the gate in its own bash process, so ending it early ends
+  # only the snapshot attempt. This is also the shape
+  # opentofu/aws/openbao/cluster/workflows.tm.hcl already uses.
+  #
+  # Each `${global.provisioner}` entry gates itself -- tm-provisioner.sh derives
+  # the lane from $PWD -- so only the non-tofu steps carry
+  # `${global.cloud_gate}`.
   job {
     commands = [
+      # The confirmation prompt is its own step because it must run whether or
+      # not the snapshot is skipped.
+      ["bash", global.provisioner, "--tm-run", "bash", "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"],
+      # One last snapshot into the lineage bucket before the node goes -- the
+      # in-cluster CronJob is already gone at this point of a reverse destroy.
+      # Fails hard when OpenBao is unreachable; TM_OPENBAO_SKIP_SNAPSHOT=true
+      # is the override for a node that is already dead.
+      #
+      # The CA fetch and the snapshot share ONE gate, checked before either,
+      # mirroring the AWS twin. Two ungated steps would make that override
+      # useless for the case it exists for: the CA fetch exits non-zero when the
+      # ca-chain secret is missing or unreadable, and `openbao-config.sh`'s own
+      # --ca-file readability check runs during argument parsing, before
+      # dispatch reaches the skip check inside pre_destroy_snapshot. So
+      # destroying a node that is already gone -- exactly when its surrounding
+      # secrets are most likely gone too -- was hard-blocked by an error about a
+      # CA chain, with the override this comment advertises having no effect,
+      # and the GCE instance stranded behind it. The CA exists only to let the
+      # snapshot verify TLS, so if the snapshot is skipped the CA is not wanted
+      # either.
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
+        if [ "$${TM_OPENBAO_SKIP_SNAPSHOT:-false}" = "true" ]; then
+          echo "[skip] TM_OPENBAO_SKIP_SNAPSHOT=true -- no CA fetch, no pre-destroy snapshot."
+          echo "       Everything written since the last scheduled snapshot will be lost."
+          exit 0
+        fi
         set -euo pipefail
-        bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
-        ${global.provisioner} init -lock-timeout=5m
-        # -refresh=false is deliberate on DESTROY: this stack reads the network
-        # stack's outputs through data.terraform_remote_state, and refreshing
-        # that requires the upstream state OBJECT to exist. Once the network
-        # stack has been destroyed its state is empty, so no object is written
-        # at all and the read fails hard with "Unable to find remote state". A
-        # destroy does not need those outputs -- everything being destroyed is
-        # already described by THIS stack's own state.
-        ${global.provisioner} destroy -refresh=false -auto-approve -var-file=variables.tfvars
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" pre-destroy-snapshot \
+          --cloud gcp --project ogenki-435905 \
+          --url https://bao.priv.gcp.ogenki.io:8200 \
+          --root-token-secret-name openbao-priv-gcp-root-token \
+          --snapshot-bucket ${global.gcp_snapshot_bucket_name} \
+          --ca-file .tls/ca.pem
       BASH
       ],
+      [global.provisioner, "init", "-lock-timeout=5m"],
+      # -refresh=false is deliberate on DESTROY: this stack reads the network
+      # stack's outputs through data.terraform_remote_state, and refreshing
+      # that requires the upstream state OBJECT to exist. Once the network
+      # stack has been destroyed its state is empty, so no object is written
+      # at all and the read fails hard with "Unable to find remote state". A
+      # destroy does not need those outputs -- everything being destroyed is
+      # already described by THIS stack's own state.
+      [global.provisioner, "destroy", "-refresh=false", "-auto-approve", "-var-file=variables.tfvars"],
     ]
   }
 }

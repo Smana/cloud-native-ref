@@ -2,10 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: security
 
-# The base is cloud-neutral: kms.yaml and s3-bucket.yaml -- AWS Crossplane
-# resources (kms.aws.m.upbound.io, s3.aws.m.upbound.io) -- live here instead,
-# alongside the shared CronJob/ServiceAccount/ExternalSecret/network policy.
+# The bucket and its KMS key used to be Crossplane MRs here. They are now
+# OpenTofu resources in opentofu/aws/openbao/lineage: rehydrate reads the bucket
+# BEFORE this cluster exists, so the cluster cannot be what creates it. The MRs
+# carried no `Delete` management policy, so removing them orphaned the AWS
+# objects rather than deleting them, and the lineage stack imported them.
 resources:
   - ../../base/openbao-snapshot
-  - kms.yaml
-  - s3-bucket.yaml

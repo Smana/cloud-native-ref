@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The one RBAC precondition cert-manager's token-based authentication has.
+# Applied alongside cert-manager itself, by the `security` Kustomization on both
+# clusters -- security/aws-0/kustomization.yaml and
+# security/gcp-0/controllers/kustomization.yaml. Three issuers need it (both
+# private `openbao` ClusterIssuers and gcp-0's public ACME solver) and all of
+# them dependsOn `security`, so applying it there is the only arrangement in
+# which no issuer's ordering depends on another's. See rbac.yaml.
+resources:
+  - rbac.yaml

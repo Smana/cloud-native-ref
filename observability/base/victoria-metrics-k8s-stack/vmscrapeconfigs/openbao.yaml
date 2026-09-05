@@ -11,8 +11,16 @@ spec:
   #
   # This targets the internal NLB by DNS rather than discovering instances via
   # EC2 service discovery, for two reasons: the instance security group now
-  # admits port 8200 from the NLB only, and the server certificate carries a
-  # single DNS SAN, so scraping instances by IP could not verify TLS.
+  # admits port 8200 from the NLB only, and the server certificate carries NO IP
+  # SAN -- its four DNS names are bao.priv.aws.ogenki.io, bao.priv.gcp.ogenki.io,
+  # openbao.security.svc.cluster.local and openbao.security.svc -- so scraping
+  # instances by IP could not verify TLS.
+  #
+  # Addressing the load balancer here rather than the neutral in-cluster
+  # `openbao` Service (security/base/openbao-endpoint) is deliberate, and that
+  # Service's comment records it as the one sanctioned exception: a scrape target
+  # eventually wants per-node addressing, which an ExternalName to the LB cannot
+  # express.
   #
   # The trade-off is that each scrape lands on whichever node the NLB picks.
   # That is exact for the current single-node dev mode. Moving to ha means

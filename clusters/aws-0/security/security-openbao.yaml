@@ -1,5 +1,7 @@
 # The OpenBao-backed configuration the `security` controllers admit: a
-# ClusterSecretStore, two ExternalSecrets and the `openbao` ClusterIssuer. The
+# ClusterSecretStore, one ExternalSecret (the CA chain) and the `openbao`
+# ClusterIssuer -- two ExternalSecrets until the JWT switch removed the one
+# holding cert-manager's AppRole secret_id. The
 # Let's Encrypt issuers are NOT here -- they are ACME/Route53, unrelated to
 # OpenBao, and belong to `security-public-certs`.
 #
@@ -31,11 +33,15 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: eks-aws-0-vars
-      # ${cert_manager_approle_id} for the openbao ClusterIssuer's roleId.
-      # cert-manager takes roleId as a plain string with no secretRef option, so
-      # a generated value has to arrive through substitution.
-      - kind: Secret
-        name: cert-manager-openbao-approle
+    # ConfigMap only. This used to carry a second source, `kind: Secret` /
+    # `cert-manager-openbao-approle` in flux-system, written by OpenTofu and
+    # supplying ${cert_manager_approle_id} to the ClusterIssuer. It is gone
+    # because JWT auth substitutes no generated identifier at all: the role
+    # name is a literal and the credential is a projected ServiceAccount token
+    # minted at request time. There is now no `kind: Secret` in any
+    # substituteFrom anywhere in the repo -- see the note in
+    # scripts/flux-schema/check-substitution.py, which can only check the keys
+    # of a ConfigMap.
   dependsOn:
     - name: security
   healthChecks:

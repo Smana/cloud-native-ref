@@ -108,8 +108,76 @@ echo "==> Checking for bootstrap nodes with pre-Cilium ENIs (cluster: ${CLUSTER_
 #
 # Waiting first costs nothing when prefix delegation is off: the wait succeeds,
 # the check then reads a populated ConfigMap and exits cleanly as before.
+
+# Point kubectl at THIS cluster before asking it anything.
+#
+# The platform is destroyed and rebuilt routinely, and a new EKS cluster gets a
+# new API endpoint and CA. So a kubeconfig left over from the previous build is
+# the NORMAL state here, not an edge case -- and every kubectl call below would
+# then be answered by an endpoint that no longer exists.
+#
+# That is not hypothetical: on 2026-09-05 this script reported "the Cilium
+# DaemonSet was never created (waited 10m)" about a cluster whose DaemonSet was
+# healthy and 27 minutes old. The kubeconfig still named the destroyed cluster.
+#
+# --cluster-name and --region are already required arguments, so this needs no
+# new input.
+echo "==> Pointing kubectl at ${CLUSTER_NAME} (${REGION})"
+if ! aws eks update-kubeconfig --region "${REGION}" --name "${CLUSTER_NAME}" >/dev/null; then
+	echo "    ERROR: could not write a kubeconfig for ${CLUSTER_NAME} in ${REGION}." >&2
+	echo "    Everything below talks to the cluster, so this cannot continue." >&2
+	exit 1
+fi
+
 echo "==> Waiting for the Cilium DaemonSet to be ready (up to 10m)"
-if ! kubectl rollout status daemonset/cilium -n kube-system --timeout=600s >/dev/null 2>&1; then
+
+# Two waits, not one, because `kubectl rollout status` does NOT wait for the
+# object to appear. On a DaemonSet that does not exist yet it returns
+# `Error from server (NotFound)` in about half a second, having ignored
+# --timeout entirely -- measured 2026-09-05: 0.495s against a 600s timeout.
+#
+# That matters here specifically. `helm_release.cilium` in
+# opentofu/aws/eks/configure/main.tf sets `wait = false`, so the apply can print
+# "Apply complete!" and hand straight over to this script while the API server
+# has not registered the DaemonSet yet. A single rollout-status call then claims
+# a ten-minute timeout that never happened -- on a from-scratch build, which is
+# the only kind of build this script exists for. It cost the 2026-09-05
+# bootstrap, on a cluster whose Cilium went Ready 35 seconds after the
+# DaemonSet was finally created.
+deadline=$((SECONDS + 600))
+# stderr is KEPT and inspected, for the reason this file already gives below:
+# an absent object and an unreachable cluster must not print the same sentence.
+# The first version of this wait discarded it and did exactly that.
+ds_err="$(mktemp)"
+trap 'rm -f -- "$ds_err"' EXIT
+until kubectl get daemonset/cilium -n kube-system >/dev/null 2>"$ds_err"; do
+	# NotFound is the condition worth waiting through. Anything else -- an
+	# unreachable endpoint, an expired token, an RBAC denial -- will not fix
+	# itself in ten minutes, so say so now rather than at the deadline.
+	if ! grep -qi 'notfound\|not found' "$ds_err"; then
+		echo "    ERROR: cannot query the cluster for the Cilium DaemonSet:" >&2
+		sed 's/^/      /' "$ds_err" >&2
+		echo "    This is not an absent DaemonSet -- waiting will not resolve it." >&2
+		exit 1
+	fi
+	if [ "$SECONDS" -ge "$deadline" ]; then
+		echo "    ERROR: the Cilium DaemonSet was never created (waited 10m)." >&2
+		echo "    helm_release.cilium sets wait = false, so a successful apply does not" >&2
+		echo "    mean the chart landed. Check the release itself:" >&2
+		echo "        helm -n kube-system status cilium" >&2
+		exit 1
+	fi
+	sleep 5
+done
+
+# stderr is deliberately NOT discarded here. Three unrelated failures reach this
+# line -- the DaemonSet missing, kubeconfig pointing at another cluster, and a
+# genuine readiness timeout -- and swallowing the error made all three print one
+# identical sentence. After the fact the real cause was unrecoverable: the
+# evidence that would have distinguished them had been thrown away.
+remaining=$((deadline - SECONDS))
+[ "$remaining" -gt 0 ] || remaining=30
+if ! kubectl rollout status daemonset/cilium -n kube-system --timeout="${remaining}s"; then
 	echo "    ERROR: Cilium DaemonSet did not become ready. Refusing to recycle nodes." >&2
 	exit 1
 fi

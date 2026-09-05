@@ -49,6 +49,16 @@ spec:
             - name: openbao-ca
               secret:
                 secretName: openbao-ca  # pragma: allowlist secret
+            # The credential. A projected ServiceAccount token with the audience
+            # the JWT role binds and a 10-minute lifetime; the kubelet rotates
+            # it. Nothing here comes from a secret store any more.
+            - name: openbao-token
+              projected:
+                sources:
+                  - serviceAccountToken:
+                      path: token
+                      audience: openbao
+                      expirationSeconds: 600
           securityContext:
             fsGroup: 1001
             runAsUser: 1000
@@ -62,25 +72,31 @@ spec:
                 - -c
                 - "openbao-snapshot.sh save -b $(BUCKET_NAME) -s /snapshot/backup.snap -a $(VAULT_ADDR) -d 8"
               env:
-                # No VAULT_SKIP_VERIFY. It was only ever needed because the job
-                # resolved the raft leader and connected to it by private IP,
-                # which the server certificate's single DNS SAN cannot match.
-                # Now that the snapshot goes through the NLB at
-                # bao.<private_domain_name>, the name matches and the CA is
-                # enough — so this workload verifies TLS like everything else.
+                # No VAULT_SKIP_VERIFY. The job goes through the neutral
+                # in-cluster name, which is a SAN on the server certificate, so
+                # the CA is enough and this workload verifies TLS like everything
+                # else.
                 - name: VAULT_CACERT
                   value: /etc/openbao/tls/ca.crt
+                - name: VAULT_ADDR
+                  value: https://openbao.security.svc.cluster.local:8200
                 - name: HOME
                   value: /snapshot
                 # Selects the cloud branch inside openbao-snapshot.sh (aws | gcp).
-                # No cross-cluster substitution variable exists for this -- it
-                # would carry a literal that each overlay already knows
-                # statically. gcp-0 patches this to "gcp".
+                # gcp-0 patches this to "gcp".
                 - name: CLOUD
                   value: "aws"
-              envFrom:
-                - secretRef:
-                    name: openbao-snapshot
+                # The lineage's snapshot bucket, per cluster (region-prefixed on
+                # AWS, project-prefixed on GCP).
+                - name: BUCKET_NAME
+                  value: ${openbao_snapshot_bucket}
+                # JWT login: mount, role and where the projected token is.
+                - name: OPENBAO_JWT_MOUNT
+                  value: jwt/${cluster_name}
+                - name: OPENBAO_JWT_ROLE
+                  value: openbao-snapshot
+                - name: OPENBAO_JWT_PATH
+                  value: /var/run/secrets/openbao/token
               image: ghcr.io/smana/openbao-snapshot:v0.3.1
               imagePullPolicy: IfNotPresent
               name: openbao-snapshot
@@ -93,7 +109,38 @@ spec:
               resources:
                 requests:
                   cpu: 50m
-                  memory: 150Mi
+                  # Tracks the measured PEAK (~193 MiB, arithmetic in the limit
+                  # comment below), not the resting set -- the opposite of how
+                  # the cpu request above is chosen, and deliberately so.
+                  #
+                  # The two resources are not the same kind of thing. CPU is
+                  # compressible: exceeding the cpu request only throttles, and
+                  # throttling a once-a-night job just lengthens the backup
+                  # window, so 50m can sit at the resting set and let the limit
+                  # absorb the peak. Memory is not compressible. A container
+                  # using more memory than it requested is ranked AHEAD of
+                  # containers inside their requests when the kubelet evicts
+                  # under node MemoryPressure -- so a request below the peak
+                  # does not merely under-reserve, it volunteers this pod first.
+                  #
+                  # And this pod is the wrong one to volunteer. The eviction
+                  # lands AFTER `bao operator raft snapshot save` has already
+                  # succeeded, during the copy: the Job fails having done the
+                  # expensive part, the day's snapshot is lost, and
+                  # OpenBaoSnapshotJobFailed sends the responder to look at JWT
+                  # login and bucket access rather than at node pressure.
+                  #
+                  # Not a claim that today's runs exceed 150Mi -- they very
+                  # likely do not. Today's snapshot is small enough to stay
+                  # under the 8Mi chunking threshold, so the resting 92.6 MiB
+                  # import graph is the whole footprint. The point is that
+                  # nothing announces the crossing: the store grows, one night
+                  # the snapshot passes 8 MiB, and the request is wrong from
+                  # that night on with no signal but a failed Job. 200Mi is the
+                  # next round figure above the peak, so the request is right on
+                  # both sides of that line. It costs 50Mi of reservation on one
+                  # node, once a night.
+                  memory: 200Mi
                   # The snapshot lands in an emptyDir backed by the node's root
                   # disk, so the scheduler has to account for it. Without this
                   # a large snapshot triggers node DiskPressure and evicts
@@ -106,7 +153,43 @@ spec:
                   # backup window longer. The constitution requires a limit, so
                   # there is one.
                   cpu: 300m
-                  memory: 150Mi
+                  # Memory gets headroom too, which it did not before: it was
+                  # pinned to the request at 150Mi, i.e. no headroom at all, on
+                  # a container whose copy step is a Python cloud CLI. Unlike
+                  # cpu, the request moved as well -- see above for why memory
+                  # cannot leave its peak to the limit.
+                  #
+                  # Measured, not guessed -- importing the module graph that
+                  # `gcloud storage cp` needs (googlecloudsdk.gcloud_main plus
+                  # surface.storage.cp, 1178 modules, SDK 581 which is the series
+                  # the image pins at 582.0.0-0) peaks at 92.6 MiB RSS before a
+                  # single argument is parsed, a credential fetched or a byte
+                  # read. Two SDK defaults then sit on top of it:
+                  #
+                  #   storage/resumable_threshold   8Mi   -> above this, the
+                  #                                          upload is chunked
+                  #   storage/upload_chunk_size   100Mi   -> and apitools holds a
+                  #                                          buffer that size per
+                  #                                          in-flight chunk
+                  #
+                  # so a snapshot that grows past 8 MiB needs ~193 MiB for one
+                  # worker -- 43 MiB over the old limit. An OOMKill there lands
+                  # AFTER `bao operator raft snapshot save` has succeeded, so the
+                  # Job dies with exit 137 and no snapshot while
+                  # OpenBaoSnapshotJobFailed sends the responder to the JWT login
+                  # and bucket access. 512Mi clears that with room for the retry
+                  # path and for gcloud's own process pool, which sizes itself
+                  # from multiprocessing.cpu_count() -- the NODE's cores, not this
+                  # cgroup's quota.
+                  #
+                  # ONE number for both clouds, not a per-cloud patch. `aws s3
+                  # cp` is the same kind of program -- AWS CLI v2 is a frozen
+                  # CPython bundling botocore -- so 150Mi was never measured on
+                  # the AWS side either; it has simply not been pushed past it
+                  # yet. And a limit is not a reservation: raising it changes
+                  # nothing about what aws-0 schedules or bills, which removes the
+                  # only reason to make the two clouds differ here.
+                  memory: 512Mi
               volumeMounts:
                 - mountPath: "/snapshot"
                   name: snapshot
@@ -114,6 +197,9 @@ spec:
                   name: tmp
                 - mountPath: "/etc/openbao/tls"
                   name: openbao-ca
+                  readOnly: true
+                - mountPath: /var/run/secrets/openbao
+                  name: openbao-token
                   readOnly: true
           serviceAccountName: openbao-snapshot
           restartPolicy: Never

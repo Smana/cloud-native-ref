@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Single entry point for Kubernetes manifest validation (SPEC-007 FR-010).
 #
-# Runs the same three steps locally and in CI, so "it validates" is a claim
+# Runs the same steps locally and in CI, so "it validates" is a claim
 # backed by a command anyone — human or agent — can reproduce:
 #   1. check every Flux Kustomization that applies ${vars} declares postBuild
-#   2. generate the schema catalog (XRDs + Envoy AI Gateway CRDs)
-#   3. render the repo into a bundle (kustomize + envsubst + helm template)
-#   4. gate the bundle: flux schema validate, then polaris audit
+#   2. parse the PromQL inside every repo-authored VMRule
+#   3. generate the schema catalog (XRDs + Envoy AI Gateway CRDs)
+#   4. render the repo into a bundle (kustomize + envsubst + helm template)
+#   5. gate the bundle: flux schema validate, then polaris audit
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,20 +31,28 @@ BUNDLE_DIR="${BUNDLE_DIR:-.bundle}"
 # render-bundle.py substitutes its fixtures unconditionally, so a Kustomization
 # missing postBuild renders correctly in the bundle and lands as literal
 # `${var}` text on the cluster. Measured 2026-08-25; see the script's docstring.
-echo "==> [1/4] Checking Flux variable substitution wiring"
+echo "==> [1/5] Checking Flux variable substitution wiring"
 python3 scripts/flux-schema/check-substitution.py
 
-echo "==> [2/4] Generating schema catalog"
+# Also runs before the render, and on source files rather than the bundle: a
+# VMRule expression is opaque to both gates below — `flux schema validate`
+# proves `expr` is a string in the right place, and polaris does not look at
+# rules at all. See the script's header for why it reads committed VMRules
+# instead of ${BUNDLE_DIR}, and which groups it skips.
+echo "==> [2/5] Checking PromQL expressions in repo-authored VMRules"
+./scripts/validate-vmrules.sh
+
+echo "==> [3/5] Generating schema catalog"
 ./scripts/flux-schema/gen-catalog.sh > /dev/null
 
-echo "==> [3/4] Rendering manifests into ${BUNDLE_DIR}/"
+echo "==> [4/5] Rendering manifests into ${BUNDLE_DIR}/"
 rm -rf "${BUNDLE_DIR}"
 python3 scripts/flux-schema/render-bundle.py "${BUNDLE_DIR}"
 
-echo "==> [4/4] Gate 1 — flux schema validate (structure + CEL)"
+echo "==> [5/5] Gate 1 — flux schema validate (structure + CEL)"
 "${FLUX_BIN}" schema validate "${BUNDLE_DIR}" --config .fluxschema.yml
 
-echo "==> [4/4] Gate 2 — polaris audit (workload best practices)"
+echo "==> [5/5] Gate 2 — polaris audit (workload best practices)"
 polaris audit \
   --audit-path "${BUNDLE_DIR}" \
   --config .polaris.yaml \

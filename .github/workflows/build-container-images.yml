@@ -158,8 +158,14 @@ jobs:
           # pins a tool it vendors (app-wizard pins CROSSPLANE_VERSION for the render CLI):
           # grep then returns two lines, the multi-line value is written to $GITHUB_OUTPUT
           # without a delimiter, and the job dies with `Invalid format 'v2.3.3'`.
+          #
+          # The `^` anchor is load-bearing: openbao-snapshot's Dockerfile documents this
+          # very convention in a comment (`# \`ARG OPENBAO_SNAPSHOT_VERSION=\` ...`) that
+          # sits ABOVE the real ARG, so an unanchored match takes the comment's closing
+          # backtick, metadata-action sanitises it to `-`, and buildx dies on the invalid
+          # tag `<image>:-` before pushing anything.
           ARG_NAME="$(printf '%s' '${{ matrix.name }}' | tr 'a-z-' 'A-Z_')_VERSION"
-          VERSION=$(grep -oP "ARG ${ARG_NAME}=\K[^\s]+" "${{ matrix.dockerfile }}" | head -1 || echo "")
+          VERSION=$(grep -oP "^ARG ${ARG_NAME}=\K[^\s]+" "${{ matrix.dockerfile }}" | head -1 || echo "")
           if [[ -n "$VERSION" ]]; then
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
             echo "Found application version (${ARG_NAME}): ${VERSION}"

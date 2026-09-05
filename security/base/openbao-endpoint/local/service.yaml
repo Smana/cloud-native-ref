@@ -1,0 +1,33 @@
+# The ONE name every CLIENT consumer on this cluster uses for OpenBao:
+# https://openbao.security.svc.cluster.local:8200. Clients never change; what
+# this name points at does.
+#
+# There is one deliberate exception, and it is not a bug to fix:
+# observability/base/victoria-metrics-k8s-stack/vmscrapeconfigs/openbao.yaml
+# still targets `bao.${private_domain_name}:8200` directly. A scrape target is
+# not a client -- it wants to reach a NAMED node, and moving OpenBao to `ha`
+# means replacing that staticConfig with per-instance discovery, which this
+# Service could never express. Leave it pointing at the load balancer's own
+# record.
+#
+# LOCAL form: this cluster is in the same cloud as the active OpenBao, so the
+# name is a plain CNAME to the internal load balancer's DNS record and traffic
+# never leaves the VPC. The sibling ../remote/ is the form for a cluster in the
+# OTHER cloud (Tailscale egress). A cluster's security/<cluster>/openbao/
+# kustomization.yaml lists exactly one of the two.
+#
+# TLS: clients connect with this Service name as the server name, so OpenBao's
+# server certificate carries it as a SAN (PKI & Secrets page, "Building the
+# chain").
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbao
+  namespace: security
+spec:
+  type: ExternalName
+  externalName: bao.${private_domain_name}
+  ports:
+    - name: https
+      port: 8200
+      protocol: TCP

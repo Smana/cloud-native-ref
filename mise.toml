@@ -25,6 +25,14 @@ tflint = "0.64.0"
 flux2 = "2.9.5"
 helm = "4.2.4"
 
+# promtool parses the PromQL inside every repo-authored VMRule
+# (scripts/validate-vmrules.sh). Pinned, not `latest`: the PromQL parser IS the
+# gate, so an unannounced parser change would move what the repo accepts.
+# mise's registry maps this to aqua:prometheus/prometheus — promtool ships
+# inside the prometheus release archive — but the entry is keyed `promtool` so
+# that `mise install promtool` and `mise which promtool` both honour the pin.
+promtool = "3.14.0"
+
 # Documentation site (website/). "hugo-extended" is deliberate: mise's plain
 # `hugo` entry resolves to the non-extended build, and Hextra targets extended.
 hugo-extended = "0.165.0"
@@ -36,3 +44,51 @@ kustomize = "5.8.1"
 # cluster without it: install once with
 #   gcloud components install gke-gcloud-auth-plugin
 "asdf:mise-plugins/mise-gcloud" = "581.0.0"
+
+# Diagram exporter (scripts/export-diagrams.sh) — PINNED, BUT NOT HERE.
+#
+# The SVGs under website/static/images/diagrams/ are committed artifacts, so the
+# tool that generates them should be pinned like any other. mise cannot be the
+# place that pin lives, and the attempt is worth recording so nobody repeats it:
+#
+#   "ubi:jgraph/drawio-desktop" = "30.3.6"
+#
+# fails every job that runs `mise install`, because ubi finds no Linux asset it
+# can use --
+#
+#   Failed to install ubi:jgraph/drawio-desktop@30.3.6: could not find a release
+#   asset for this OS (linux) from ... drawio-x86_64-30.3.6.AppImage,
+#   drawio-amd64-30.3.6.deb, drawio-x86_64-30.3.6.rpm ...
+#
+# drawio ships a desktop app: an AppImage, a .deb and an .rpm, none of which ubi
+# treats as an extractable binary. Four CI jobs broke on it before this was
+# reverted. Even made to install, it would pull ~170 MB into every job for a tool
+# none of them run -- no CI job exports diagrams.
+#
+# The pin therefore lives in scripts/export-diagrams.sh as
+# DRAWIO_PINNED_VERSION, which refuses to run against a different build. That is
+# where the version actually matters, and it costs CI nothing.
+#
+# 30.3.6 is the version in use where these were last exported by hand.
+#
+# KNOWN, AND NOT YET EXPLAINED: the committed SVGs do not reproduce
+# byte-for-byte under it. Re-exporting secrets-and-pki with this exact build
+# leaves the <foreignObject> copy a browser renders byte-identical (39
+# light-dark() fills either way) while the fallback <text> copy — what GitHub
+# renders once its sanitizer strips foreignObject — drops from 32 of 33 labels
+# carrying a light-dark() fill to 7 of 33.
+#
+# The version is NOT the variable: this AppImage has not changed since
+# 2026-07-11 and the committed SVGs were regenerated on 2026-09-02. Ruled out
+# by measurement: --svg-theme auto/dark/light, the xvfb versus real-display
+# path, and GTK_THEME. So something else about the exporting environment
+# differs, and pinning alone does not make the artifacts reproducible — it only
+# removes one variable and makes the rest visible. Re-exporting all thirteen
+# under this pin, in one deliberate commit, is the way to close it.
+#
+# Installing it is a manual step, and on Linux it must be the official
+# self-contained AppImage rather than a distro package: Arch's drawio-desktop
+# launches through the SYSTEM Electron, so `app.isPackaged` is false and its CLI
+# treats its own app.asar as the input file — it exports drawio's bundled
+# resources instead of your diagram, without erroring. Headless export also
+# needs `--no-sandbox` and a virtual display.

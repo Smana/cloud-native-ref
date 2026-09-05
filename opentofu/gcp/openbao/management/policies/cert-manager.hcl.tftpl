@@ -3,11 +3,17 @@
 # DELIBERATELY NARROWER THAN AWS, whose copy of this file grants
 # create/read/update/delete/list on `pki_private_issuer/*`. That covers the
 # issuer configuration, the CA endpoints, every role and the tidy/revoke APIs --
-# so a leaked secret_id could rotate the issuer, or add a role allowing any
-# domain, rather than only mint a certificate for the domain this role permits.
+# so anything holding a cert-manager token there could rotate the issuer, or add
+# a role allowing any domain, rather than only mint a certificate for the domain
+# this role permits. (It used to say "a leaked secret_id"; there is no secret_id
+# any more, but a compromised ServiceAccount token buys the same reach, so the
+# narrowness still earns its keep.)
 #
 # cert-manager's Vault issuer needs exactly two things at runtime:
-#   - POST auth/approle/login  -- unauthenticated by definition, needs no policy
+#   - POST auth/jwt/<cluster>/login -- unauthenticated by definition (it presents
+#     a projected ServiceAccount token), so it needs no policy. This was
+#     auth/approle/login until the AppRole backend was removed; cert-manager now
+#     authenticates with a cluster-issued JWT, and there is no secret_id to leak.
 #   - POST <mount>/sign/<role> -- this rule
 # Its readiness probe hits sys/health, which is unauthenticated by default.
 #

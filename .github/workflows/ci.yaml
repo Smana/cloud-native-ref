@@ -205,11 +205,68 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Install ShellCheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      # jq comes along here rather than in its own step: the test suites below
+      # need it, and a second `apt-get update` in the same job is pure cost. It
+      # is installed rather than assumed present on the runner image, the same
+      # reason the links job installs pyyaml rather than assuming it.
+      - name: Install ShellCheck and jq
+        run: sudo apt-get update && sudo apt-get install -y shellcheck jq
       - name: Run ShellCheck
         run: |
-          find ./scripts -name "*.sh" -type f -print0 | xargs -0 shellcheck -x -S warning
+          # `-type l` as well as `-type f`, and it is load-bearing rather than
+          # belt-and-braces. scripts/openbao-snapshot.sh is a symlink (git mode
+          # 120000) into container-images/openbao-snapshot/, and `-type f` tests
+          # the LINK, not its target -- so the plain predicate matched 40 files
+          # and silently skipped that one, the largest script in the tree.
+          # Do not "simplify" this back to `-type f`.
+          find ./scripts \( -type f -o -type l \) -name "*.sh" -print0 | xargs -0 shellcheck -x -S warning
+
+      # The ZITADEL suites, which until now CI ran none of.
+      #
+      # They are worth gating on precisely because what they cover fails
+      # QUIETLY: a redirect URI that no longer matches, a consumer with no
+      # branch in the payload jq (which strands a client secret ZITADEL returns
+      # exactly once), an app that stops converging, a groups claim that comes
+      # back empty because a role assertion defaults to false. Every one of
+      # those reports success somewhere and breaks a login somewhere else, which
+      # is the worst shape of bug to leave to a hand-run script nobody remembers
+      # to run.
+      #
+      # A NARROW glob, and the distinction from the broad one matters. The links
+      # job warns against globbing scripts/test-*.sh, because that silently
+      # activates ~8 unrelated suites and two of them (test-flux-schema.sh,
+      # test-vector-vrl.sh) need tooling a bare runner does not have. This glob
+      # is scoped to one homogeneous family that is offline by construction --
+      # every API call is stubbed, so they need bash and jq and nothing else --
+      # and all seven pass here. Scoping it this way also means the NEXT
+      # zitadel suite is covered by default instead of being forgotten, which is
+      # exactly how the seven existing ones ended up unrun.
+      # scripts/test-openbao-fallback-address.sh joins them by name rather than
+      # by widening the glob: it covers the pre-destroy snapshot's fallback
+      # address, which is a different subsystem that happens to be testable the
+      # same way (offline, every call stubbed, bash and jq only).
+      # scripts/test-no-secret-argv.sh is the third named addition, and the one
+      # that most needed to be here: it scans every script for a credential-
+      # shaped variable passed on argv, where `ps` reads it. It existed, it
+      # worked, and nothing ran it -- so it was failing on two live calls in
+      # scripts/openbao-adopt-jwt-mount.sh that put the OpenBao ROOT token in
+      # the process table. A guard nobody runs is how that ships.
+      - name: Run the shell test suites
+        run: |
+          set -uo pipefail
+          rc=0
+          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh; do
+            if bash "$t" > /tmp/zitadel-test.log 2>&1; then
+              echo "PASS  $t"
+            else
+              echo "FAIL  $t"
+              # The log, not just the name: a red check whose output is one word
+              # costs a local re-run to learn anything from.
+              sed 's/^/      /' /tmp/zitadel-test.log
+              rc=1
+            fi
+          done
+          exit "$rc"
 
   links:
     name: Check the documentation links 🔗
@@ -238,11 +295,14 @@ jobs:
       - name: Check identity provider topology
         run: ./scripts/validate-idp-topology.sh
 
-      # Named explicitly, NOT globbed over scripts/test-*.sh. There are 12 such
-      # scripts and CI runs none of them today; a glob here would silently
-      # activate the other 11 as a side effect of this change, and two of them
-      # (test-flux-schema.sh, test-vector-vrl.sh) do not pass in a bare
-      # environment. Wiring them up is worth doing on its own terms -- see the
-      # tracking issue -- not as a drive-by.
+      # Named explicitly, NOT globbed over scripts/test-*.sh. A glob here would
+      # silently activate every other suite as a side effect of this change, and
+      # two of them (test-flux-schema.sh, test-vector-vrl.sh) do not pass in a
+      # bare environment.
+      #
+      # The ZITADEL suites are no longer among the unrun: the shellcheck job
+      # runs all seven, under a glob scoped to that one family. The reasoning
+      # for why a NARROW glob is safe where this broad one is not is there.
+      # Everything else under scripts/test-*.sh is still hand-run only.
       - name: Run identity provider topology tests
         run: ./scripts/test-validate-idp-topology.sh

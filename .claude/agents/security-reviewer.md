@@ -33,7 +33,12 @@ You review infrastructure and application security following zero-trust principl
 
 ### Secrets Management
 - Secrets sourced from External Secrets Operator (not hardcoded)
-- OpenBao AppRole authentication for cert-manager
+- OpenBao machine auth is the per-cluster **JWT** mount (`jwt/<cluster>`), presented
+  as a projected ServiceAccount token — cert-manager, the snapshot CronJob and
+  External Secrets all use it. Flag any new AppRole role_id/secret_id pair, or any
+  OpenBao credential synced through a cloud secret store, as a regression: a JWT
+  login mints nothing long-lived. The one surviving AppRole is the `app`
+  tenant namespace's own, in `opentofu/aws/openbao/management/auth.tf`.
 - No secrets in Git (checked by CI with gitleaks)
 
 ### Pod Security

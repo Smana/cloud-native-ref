@@ -33,6 +33,16 @@ kind: Kustomization
 # nobody. Those siblings now live in security/aws-0/{openbao,cert-manager-public}/,
 # mirroring this cluster's own layout.
 #
+# The third entry is not a chart and is not admitted by either webhook: it is the
+# Role and RoleBinding that let cert-manager mint a projected ServiceAccount
+# token for itself. It is applied HERE, with cert-manager, rather than from
+# ../openbao: `security-openbao` and `security-public-certs` both dependsOn this
+# Kustomization and neither depends on the other, and on THIS cluster both of
+# their issuers need the Role -- the private one to log in to OpenBao, the public
+# ACME one to federate to AWS STS. Applying it from either overlay would make one
+# issuer family's failure break the other's.
+# ../../base/cert-manager-token-creator/rbac.yaml has the whole argument.
+#
 # ../rbac breaks the "controllers and nothing they admit" rule in name only:
 # a ClusterRoleBinding is a core API type, admitted by the API server itself,
 # not by either webhook above -- so it carries none of the race this split
@@ -44,6 +54,7 @@ kind: Kustomization
 resources:
   - ../../base/external-secrets
   - ../../base/cert-manager
+  - ../../base/cert-manager-token-creator
   - ../rbac
 
 patches:

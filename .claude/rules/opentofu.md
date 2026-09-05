@@ -12,7 +12,12 @@ globs:
 
 ```bash
 # Individual stack
-cd opentofu/<stack>  # network, eks/init, eks/configure, openbao/cluster, openbao/management, llm-platform
+# Stack paths are cloud-prefixed. `cd opentofu && terramate list` is the source
+# of truth -- 15 stacks today:
+#   aws/{network,eks/init,eks/configure,openbao/cluster,openbao/lineage,openbao/management,llm-platform}
+#   gcp/{network,gke/init,gke/configure,openbao/cluster,openbao/lineage,openbao/management}
+#   shared/{tailscale,aws-gcp-federation}
+cd opentofu/<stack>
 tofu init
 tofu plan -var-file=variables.tfvars
 tofu apply -var-file=variables.tfvars
@@ -49,11 +54,31 @@ gcloud) carry `${global.cloud_gate}` or `--tm-run`; the destructive ones must,
 since `eks-prepare-destroy.sh` deletes every PVC.
 
 **Why not tags.** A tag filter has no committed default — `--no-tags` has to be
-typed, so a fresh clone or CI would get all 13 stacks, and `drift reconcile`
+typed, so a fresh clone or CI would get all 15 stacks, and `drift reconcile`
 runs `tofu apply -auto-approve`. Tags remain right for *listing*
 (`terramate list --tags=gcp`), not for gating. This replaced a two-knob scheme
 (`TM_GCP_ENABLED=true` to turn GCP on, `--no-tags=aws` to turn AWS off) where
 getting one wrong silently built the wrong cloud.
+
+## The other `TM_*` gates — one table, not seven greps
+
+`TM_CLOUD` is one of **seven** environment variables that decide what a run may
+do. The other six are `TM_LLM_PLATFORM_ENABLED`, `TM_DESTROY_CONFIRMED`,
+`TM_LINEAGE_DESTROY`, `TM_OPENBAO_SKIP_SNAPSHOT`, `TM_TAILNET_DESTROY` and
+`TM_FEDERATION_DESTROY`.
+
+**The authoritative table — polarity, default-when-unset, and what each one
+gates — is [§ Environment gates in the Commands
+reference](../../website/content/docs/reference/commands.md).** It is not
+restated here: two copies of a safety table is how one of them goes stale, and
+an operator who cannot find `TM_LINEAGE_DESTROY` cannot destroy that stack at
+all.
+
+Read it before adding a gate, and note the trap it exists to make visible:
+**the polarity is not uniform.** Five of the six authorise an action when set to
+`true`; `TM_OPENBAO_SKIP_SNAPSHOT` *removes* the pre-destroy snapshot when set
+to `true`. A new gate should follow the majority shape — `=true` authorises —
+and go into that table in the same commit.
 
 ## EKS Two-Stage Bootstrap
 

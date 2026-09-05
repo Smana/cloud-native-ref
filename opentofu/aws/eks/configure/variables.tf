@@ -103,9 +103,41 @@ variable "github_app_secret_name" {
   sensitive   = true
 }
 
-variable "cert_manager_approle_secret_name" {
+variable "openbao_root_token_secret_id" {
+  description = "Secrets Manager entry holding the OpenBao root token ({\"token\": ...}), used by the vault provider to create this cluster's JWT auth mount"
   type        = string
-  description = "SecretsManager name from where to retrieve the cert-manager approle information."
-  default     = "openbao/approles/cert-manager"
+  default     = "openbao/cloud-native-ref/tokens/root"
   sensitive   = true
+}
+
+variable "openbao_ca_cert_file" {
+  description = "CA chain used to verify OpenBao's server certificate. Written by `openbao-config.sh ca` in the deploy workflow; .tls/ is gitignored."
+  type        = string
+  default     = ".tls/ca.pem"
+}
+
+variable "openbao_jwt_audience" {
+  description = "Audience every ServiceAccount token presented to OpenBao must carry. Consumers request it via serviceAccountRef.audiences / a projected token's audience."
+  type        = string
+  default     = "openbao"
+}
+
+# Which OpenBao this cluster's pods reach through the neutral `openbao` Service,
+# when the overlay lists security/base/openbao-endpoint/remote. In the normal
+# posture aws-0 lists the local form and this is unused -- but the key still has
+# to reach the cluster's ConfigMap, or Flux substitutes an empty string into the
+# Service's tailnet-ip annotation, which is schema-valid and silently wrong.
+#
+# EMPTY by default, unlike the gcp-0 counterpart, and the asymmetry is real
+# rather than an oversight: gcp-0 can default to the AWS NLB's address because
+# that address is FIXED (opentofu/aws/openbao/cluster/load_balancer.tf assigns
+# it with cidrhost, and outputs it as nlb_private_ips). The GCP internal load
+# balancer's address is allocated dynamically -- google_compute_address.openbao
+# sets no `address` -- so there is no value to write here until that stack has
+# been applied. The failback runbook reads it from that stack's `internal_ip`
+# output (opentofu/gcp/openbao/cluster/outputs.tf).
+variable "openbao_target_ip" {
+  description = "Private address of the OpenBao this cluster consumes, for the remote form of the openbao Service. Empty in the normal posture; set from the GCP cluster stack's internal_ip output during a failback."
+  type        = string
+  default     = ""
 }

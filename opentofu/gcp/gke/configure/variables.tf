@@ -183,6 +183,35 @@ variable "identity_provider_url" {
   }
 }
 
+variable "openbao_root_token_secret_name" {
+  description = "GCP Secret Manager entry holding the OpenBao root token ({\"token\": ...}), for the vault provider that creates this cluster's JWT auth mount"
+  type        = string
+  default     = "openbao-priv-gcp-root-token"
+}
+
+variable "openbao_ca_cert_file" {
+  description = "CA chain used to verify OpenBao's certificate. Written by `openbao-config.sh ca --cloud gcp` in the deploy workflow; .tls/ is gitignored."
+  type        = string
+  default     = ".tls/ca.pem"
+}
+
+variable "openbao_jwt_audience" {
+  description = "Audience every ServiceAccount token presented to OpenBao must carry"
+  type        = string
+  default     = "openbao"
+}
+
+# Which OpenBao this cluster's pods reach through the neutral `openbao` Service.
+# Only consumed by security/base/openbao-endpoint/remote, i.e. when this cluster
+# consumes the AWS active instance. In GCP-only mode the overlay lists the
+# local form and this value is unused. One of `tofu output nlb_private_ips` in
+# opentofu/aws/openbao/cluster.
+variable "openbao_target_ip" {
+  description = "Fixed private address of the active OpenBao's NLB, for the remote form of the openbao Service. Unused in GCP-only mode."
+  type        = string
+  default     = "10.0.15.250"
+}
+
 # Workforce pool federating ZITADEL (opentofu/gcp/workforce-identity). Substituted
 # into the gcp-0 RBAC bindings; an empty value silently produces a binding
 # matching nobody.

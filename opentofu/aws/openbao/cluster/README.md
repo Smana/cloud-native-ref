@@ -16,9 +16,13 @@ Deploy a OpenBao instance following HashiCorp's best practices. Complete these s
 |----------------------|--------------|-----------------------|
 | Number of nodes      | 1            | 5                     |
 | Disk type            | gp3 (root)   | NVMe instance store   |
-| OpenBao storage type | file         | raft                  |
+| OpenBao storage type | raft (single node) | raft                  |
 | Instance type(s)     | t3.micro     | mixed (lower-price)   |
 | Capacity type        | on-demand    | spot                  |
+
+Both modes are Raft since the lineage design (2026-09): a `file` backend cannot take
+or receive a snapshot, and the node is rebuilt from the lineage's newest snapshot on
+every deploy — see [OpenBao](https://cnref.ogenki.io/docs/platform/security/openbao/).
 
 Architectural decisions:
 

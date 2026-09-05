@@ -8,6 +8,12 @@
 # architectures this image is built for.
 FROM debian:bookworm-slim
 
+# The image's own version. `.github/workflows/build-container-images.yml` reads
+# `ARG OPENBAO_SNAPSHOT_VERSION=` (the directory name upper-cased + _VERSION) and
+# tags the image with it, so the CronJob can pin a real version instead of
+# `latest`. Bump it whenever openbao-snapshot.sh changes behaviour.
+ARG OPENBAO_SNAPSHOT_VERSION=v0.3.1
+
 # renovate: datasource=github-releases depName=openbao/openbao
 ARG BAO_VERSION=2.6.2
 # Google's apt repo publishes google-cloud-cli for both amd64 and arm64;

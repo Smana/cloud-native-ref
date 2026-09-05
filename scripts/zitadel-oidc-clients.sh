@@ -308,6 +308,16 @@ CONSUMERS=(
   # the HelmRelease via an ExternalSecret + valuesFrom, same as every other
   # consumer here. See ADR-0028.
   "harbor|https://harbor.${PRIVATE_DOMAIN}/c/oidc/callback|harbor-oidc"
+  # OpenBao is the only TWO-callback consumer here, and both are required
+  # (ADR-0034). The UI path embeds the auth method's MOUNT PATH twice --
+  # /ui/vault/auth/<mount>/oidc/callback -- so mounting the method anywhere but
+  # `oidc` silently invalidates this URI; auth.tf pins that mount and says so.
+  # The loopback is what the CLI's `bao login -method=oidc` sends the browser
+  # back to; port 8250 is the OpenBao default and is not configurable per-role.
+  #
+  # `bao.` rather than `openbao.`: operators reach it over the tailnet at the
+  # NLB's DNS name, which is what the server certificate carries.
+  "openbao|https://bao.${PRIVATE_DOMAIN}:8200/ui/vault/auth/oidc/oidc/callback,http://localhost:8250/oidc/callback|openbao-oidc"
 )
 
 # The one non-secret OIDC field known to have drifted in practice: headlamp
@@ -473,22 +483,33 @@ app_get() {
     api_or_fail GET "/management/v1/projects/$1/apps/$2"
 }
 
-# Point an existing app at the redirect URI it is supposed to have.
-#
-# This updates the OIDC CONFIG, not the app: ZITADEL rotates a client secret only
-# through the separate `_secret` endpoint, so the running consumer keeps working
-# and nothing has to be rewritten into the secret store.
-#
-# The update REPLACES the config rather than patching it, so every field the
-# create call sets has to be sent again -- omitting one silently reverts it to
+# Every field of an app's OIDC config, as ZITADEL wants it. ONE definition,
+# used by both the create POST and the update PUT below, and that is the point:
+# the update REPLACES the config rather than patching it, so every field the
+# create sets has to be sent again -- omitting one silently reverts it to
 # ZITADEL's default, and `accessTokenRoleAssertion`/`idTokenRoleAssertion`
 # reverting to false is the same class of failure as projectRoleAssertion being
-# off: authentication keeps working and every consumer loses its groups.
-app_set_redirect() {
-    local project_id="$1" app_id="$2" redirect="$3"
-    api PUT "/management/v1/projects/${project_id}/apps/${app_id}/oidc_config" \
-        -d "$(jq -n --arg r "$redirect" '{
-          redirectUris: [$r],
+# off: authentication keeps working and every consumer loses its groups. Two
+# copies of this list is exactly how a field reaches one call and not the other.
+#
+# $1 is a COMMA-SEPARATED list of redirect URIs, not a single URI. Every consumer
+# here but one has exactly one callback, so it reads as one for them; OpenBao
+# needs two, because its CLI completes the flow on a loopback listener the
+# browser is sent back to (`http://localhost:8250/oidc/callback`) while the UI
+# uses its own in-app path. Registering only one of the pair breaks that half of
+# the login with ZITADEL's "The requested redirect_uri is missing in the client
+# configuration" -- and only for whoever happens to use that entry point.
+#
+# Split on comma rather than taking an array: CONSUMERS is a flat `|`-delimited
+# table and keeping it that way is worth more than the alternative of a parallel
+# array indexed by consumer name.
+#
+# $2 is the app NAME, and only the create call passes it -- the oidc_config
+# endpoint the update uses has no such field.
+oidc_config_payload() {
+    jq -n --arg r "$1" --arg n "${2:-}" '
+        (if $n == "" then {} else {name: $n} end) + {
+          redirectUris: ($r | split(",")),
           responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
           grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE","OIDC_GRANT_TYPE_REFRESH_TOKEN"],
           appType: "OIDC_APP_TYPE_WEB",
@@ -498,7 +519,18 @@ app_set_redirect() {
           idTokenRoleAssertion: true,
           idTokenUserinfoAssertion: true,
           devMode: false
-        }')" >/dev/null
+        }'
+}
+
+# Point an existing app at the redirect URIs it is supposed to have.
+#
+# This updates the OIDC CONFIG, not the app: ZITADEL rotates a client secret only
+# through the separate `_secret` endpoint, so the running consumer keeps working
+# and nothing has to be rewritten into the secret store.
+app_set_redirect() {
+    local project_id="$1" app_id="$2" redirect="$3"
+    api PUT "/management/v1/projects/${project_id}/apps/${app_id}/oidc_config" \
+        -d "$(oidc_config_payload "$redirect")" >/dev/null
 }
 
 # Merge OIDC fields into a secret without dropping what else is in it.
@@ -555,6 +587,8 @@ merge_secret() {
             $base + {clientID: $id, clientSecret: $sec}
         elif $name == "harbor" then
             $base + {client_id: $id, client_secret: $sec, endpoint: $iss}
+        elif $name == "openbao" then
+            $base + {client_id: $id, client_secret: $sec, endpoint: $iss}
         elif $name == "headlamp-proxy" then
             $base + {"client-id": $id, "client-secret": $sec, "cookie-secret": $ck}
         else
@@ -600,6 +634,8 @@ converge_secret() {
         elif $name == "flux-ui" then
             $base + {clientID: $id}
         elif $name == "harbor" then
+            $base + {client_id: $id, endpoint: $iss}
+        elif $name == "openbao" then
             $base + {client_id: $id, endpoint: $iss}
         elif $name == "headlamp-proxy" then
             $base + {"client-id": $id}
@@ -797,13 +833,53 @@ cmd_sync() {
                 exit 1
             fi
 
-            if grep -Fxq "$redirect" <<< "$current"; then
+            # EVERY wanted URI must be registered, not just one of them. With a
+            # single-URI consumer this is the original check; with OpenBao's
+            # pair it is the difference between a working login and one that
+            # works in the UI and fails in the CLI (or the reverse), which is a
+            # confusing thing to debug because the app plainly exists and one
+            # half of it plainly works.
+            #
+            # EXACT set, in both directions: a URI that is missing is drift, and
+            # so is one that is registered and not declared here.
+            #
+            # This used to check only that the wanted set was present, with a
+            # comment promising that "extra URIs already registered are left
+            # alone". That promise was not kept, and could not be:
+            # app_set_redirect sends the whole list, so the moment any repair
+            # fired it replaced the set and dropped those extras anyway. The
+            # check and the repair disagreed, and the comment described neither.
+            #
+            # Converging to the exact set is also the right answer rather than
+            # merely the consistent one. A redirect URI is the control that stops
+            # an authorization code being delivered somewhere else; one nobody
+            # declared is a real surface, not a harmless leftover. This script is
+            # the source of truth for these apps, so an undeclared URI is exactly
+            # the thing it should be removing -- and now it says so before doing
+            # it, instead of removing it as a side effect of an unrelated repair.
+            local missing="" extra="" want have
+            while IFS= read -r want; do
+                [ -z "$want" ] && continue
+                grep -Fxq "$want" <<< "$current" || missing="${missing}${missing:+ }${want}"
+            done <<< "${redirect//,/$'\n'}"
+            while IFS= read -r have; do
+                [ -z "$have" ] && continue
+                grep -Fxq "$have" <<< "${redirect//,/$'\n'}" || extra="${extra}${extra:+ }${have}"
+            done <<< "$current"
+
+            if [ -z "$missing" ] && [ -z "$extra" ]; then
                 echo "[ok     ] ${name} -- app exists (${existing_id}), redirect correct"
                 skipped=$((skipped + 1))
             else
                 echo "[STALE  ] ${name} (${existing_id})"
-                echo "           has:  ${current:-<none>}"
-                echo "           want: ${redirect}"
+                echo "           has:     ${current:-<none>}"
+                echo "           want:    ${redirect}"
+                # Both reported, and separately: they mean different things. A
+                # missing URI breaks a login; an undeclared one is a redirect
+                # target nobody asked for, and the operator should see which of
+                # the two they are looking at before the repair removes it.
+                [ -n "$missing" ] && echo "           missing: ${missing}"
+                [ -n "$extra" ]   && echo "           undeclared (will be removed): ${extra}"
                 if [ "$APPLY" != "true" ]; then
                     echo "           would update the redirect URI (client secret untouched)"
                 else
@@ -854,20 +930,8 @@ cmd_sync() {
         fi
 
         local resp client_id client_secret
-        resp="$(api_or_fail POST "/management/v1/projects/${project_id}/apps/oidc" -d "$(jq -n \
-            --arg n "$name" --arg r "$redirect" '{
-              name: $n,
-              redirectUris: [$r],
-              responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-              grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE","OIDC_GRANT_TYPE_REFRESH_TOKEN"],
-              appType: "OIDC_APP_TYPE_WEB",
-              authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
-              accessTokenType: "OIDC_TOKEN_TYPE_BEARER",
-              accessTokenRoleAssertion: true,
-              idTokenRoleAssertion: true,
-              idTokenUserinfoAssertion: true,
-              devMode: false
-            }')")" || exit 1
+        resp="$(api_or_fail POST "/management/v1/projects/${project_id}/apps/oidc" \
+            -d "$(oidc_config_payload "$redirect" "$name")")" || exit 1
 
         client_id=$(jq -r '.clientId // empty' <<< "$resp")
         client_secret=$(jq -r '.clientSecret // empty' <<< "$resp")

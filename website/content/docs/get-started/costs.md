@@ -2,13 +2,13 @@
 title: What it costs
 weight: 45
 description: A rough monthly estimate of what the platform costs on each cloud, and how the two compare on equal terms.
-lastVerified: 2026-09-01
+lastVerified: 2026-09-02
 ---
 
 Roughly **$575/month on AWS** and **$320/month on GCP** for the same platform at
 list price, with the LLM components disabled on both.
 
-The more useful number is smaller: **about $23/month keeps billing after every
+The more useful number is smaller: **about $24/month keeps billing after every
 cluster is destroyed** — and that part is by design. See
 [the floor](#the-floor-you-pay-for-nothing).
 
@@ -34,8 +34,19 @@ data processing, egress) are called out rather than measured.
 | Secrets Manager | 16 | the ~40 secrets the platform actually reads |
 | Public IPv4 | 4 | the NAT gateway's EIP |
 | S3 | 3 | 8 buckets, ~112 GB (mostly LLM weights) |
-| KMS | 3 | 3 keys: cluster encryption, OpenBao unseal, snapshot bucket |
+| KMS | 4 | cluster encryption, the OpenBao seal, the snapshot bucket, and the seal's `eu-west-1` replica — KMS bills a multi-region replica as a key of its own |
 | Route 53 | 1 | 2 hosted zones |
+
+{{< callout type="info" >}}
+**The KMS line used to be the one projection in a table labelled *measured*.** It
+no longer is. On 2026-09-01 three keys were billing and the fourth — the OpenBao
+seal key's multi-region replica in `eu-west-1`
+([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}),
+`aws_kms_replica_key.seal`) — was carried at $1/month on the strength of being
+committed rather than existing. The lineage stack has since been applied, and
+`alias/openbao-seal` now resolves in both regions: `PRIMARY` in `eu-west-3`,
+`REPLICA` in `eu-west-1`. The row is a measurement.
+{{< /callout >}}
 
 ### No cloud-provider monitoring is on the bill
 
@@ -98,8 +109,11 @@ charge from what *this deployment* consumes:
 
 ## The floor you pay for nothing
 
-With every cluster destroyed, about **$23/month keeps billing** — the
-platform's ~40 secrets, its 3 KMS keys, the DNS zones, and
+With every cluster destroyed, about **$24/month keeps billing** — the
+platform's ~40 secrets, its 4 KMS keys (the OpenBao seal is multi-region on
+purpose, and its replica bills as a fourth key —
+[ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})),
+the DNS zones, and
 [backup buckets that outlive their clusters on purpose]({{< relref "/docs/guides/restore-a-database.md" >}}).
 That floor is a feature: **secrets, keys and backups survive teardown by
 design.** The platform constitution withholds delete permissions for stateful
@@ -132,8 +146,9 @@ expensive choices are the ones that look like defaults:
   throwaway; do not let a provider or module default quietly reintroduce
   on-demand capacity.
 - **`mode = "dev"` for OpenBao** (`opentofu/aws/openbao/cluster/variables.tfvars`)
-  is one `t3.micro`. `mode = "ha"` is five spot instances, and the configuration
-  steps are identical either way.
+  is one `t3.micro` on single-node Raft, rebuilt from its newest snapshot on
+  every deploy. `mode = "ha"` is five instances, and the configuration steps are
+  identical either way.
 - **Tear it down when you are done.** At ~$19/day, AWS costs more in two days
   than a month of the idle floor.
 

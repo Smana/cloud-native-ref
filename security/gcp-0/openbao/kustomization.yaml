@@ -2,8 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Everything that the controllers in ../controllers/ have to ADMIT before it can
-# exist: two ExternalSecrets and a ClusterSecretStore behind the external-secrets
-# webhook, a ClusterIssuer behind cert-manager's.
+# exist: one ExternalSecret (the CA chain) and a ClusterSecretStore behind the
+# external-secrets webhook, a ClusterIssuer behind cert-manager's. It was two
+# ExternalSecrets until the JWT switch: the second fetched cert-manager's
+# AppRole secret_id, and a projected ServiceAccount token needs none.
 #
 # Kept out of ../controllers/ deliberately -- see the note there. Applying these
 # in the same Kustomization as the charts means admitting them against webhooks
@@ -13,8 +15,23 @@ kind: Kustomization
 # than a workaround: the ClusterIssuer needs the two Secrets that the
 # ExternalSecrets produce, and those need External Secrets to be running. One
 # group installs controllers; the other configures them.
+# `openbao-endpoint/local` because this cluster consumes the OpenBao in its own
+# cloud. A cluster consuming the OTHER cloud's active OpenBao lists
+# `../../base/openbao-endpoint/remote` instead and sets openbao_target_ip in
+# its configure stack -- see the cross-cloud failover guide.
+#
+# The `cert-manager-token-creator` Role -- the RBAC precondition of the
+# ClusterIssuer below, without which cert-manager cannot mint the projected
+# ServiceAccount token it authenticates to OpenBao with -- is deliberately NOT
+# listed here. It is applied by `security` from ../controllers/, because the
+# public ACME issuer on this cluster needs the same Role and dependsOn `security`
+# too: owning it here would make the private PKI's Kustomization a silent
+# prerequisite of public issuance. See
+# ../../base/cert-manager-token-creator/rbac.yaml. Nothing else changes for this
+# overlay -- `security-openbao` already dependsOn `security`, so the Role is
+# there before this ClusterIssuer is applied.
 resources:
+  - ../../base/openbao-endpoint/local
   - clustersecretstore.yaml
-  - openbao-approle-externalsecret.yaml
   - openbao-ca-externalsecret.yaml
   - openbao-clusterissuer.yaml

@@ -1,0 +1,5 @@
+# Skip downloaded modules: a plain `trivy config .` recurses into vendored
+# provider/module trees and reports findings in code this stack does not own.
+scan:
+  skip-dirs:
+    - .terraform

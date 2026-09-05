@@ -1,8 +1,9 @@
 # The PKI wiring: what the security controllers are CONFIGURED with.
 #
-# A ClusterSecretStore pointing at GCP Secret Manager, two ExternalSecrets
-# pulling cert-manager's AppRole secret_id and the CA chain, and the ClusterIssuer
-# that signs private certificates from the GCP OpenBao.
+# A ClusterSecretStore pointing at GCP Secret Manager, the ExternalSecret that
+# pulls the CA chain, and the ClusterIssuer that signs private certificates from
+# the GCP OpenBao (authenticating with a projected ServiceAccount token against
+# jwt/gcp-0, not an AppRole).
 #
 # Separate from `security` for two reasons, both about ordering:
 #
@@ -18,9 +19,9 @@
 #    HelmReleases are what this dependsOn converts into a real ordering
 #    guarantee.
 #
-# 2. DATA. The ClusterIssuer's appRole secretRef and caBundleSecretRef point at
-#    Secrets that the two ExternalSecrets create, which needs a running External
-#    Secrets controller. Same direction, so one edge covers both.
+# 2. DATA. The ClusterIssuer's caBundleSecretRef points at a Secret the
+#    ExternalSecret here creates, which needs a running External Secrets
+#    controller. Same direction, so one edge covers both.
 #
 # The CRDs are a different matter and are NOT fully guaranteed here. `crds` (via
 # `security`) applies crds/base/crds-cert-manager.yaml itself, so the
@@ -48,11 +49,16 @@ spec:
     substituteFrom:
       - kind: ConfigMap
         name: gke-gcp-0-vars
-    # No Secret source, unlike AWS. The AWS copy substitutes
-    # ${cert_manager_approle_id} out of the very Secret its own ExternalSecret
-    # creates, so a fresh cluster's first reconcile necessarily fails and
-    # succeeds on a retry. GCP's role_id is pinned in the management stack
-    # (opentofu/gcp/openbao/management/auth.tf), so this has no such cycle.
+    # ConfigMap only -- as on AWS since the JWT switch. The AWS copy used to
+    # add a second source, `kind: Secret` / `cert-manager-openbao-approle` in
+    # flux-system, written by OpenTofu and supplying
+    # ${cert_manager_approle_id} to the ClusterIssuer. It is gone because JWT
+    # auth substitutes no generated identifier at all: the role name is a
+    # literal and the credential is a projected ServiceAccount token minted at
+    # request time. There is now no `kind: Secret` in any substituteFrom
+    # anywhere in the repo -- see the note in
+    # scripts/flux-schema/check-substitution.py, which can only check the keys
+    # of a ConfigMap.
   dependsOn:
     - name: security
   healthChecks:

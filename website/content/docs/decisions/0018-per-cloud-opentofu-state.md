@@ -3,7 +3,7 @@ title: Per-cloud OpenTofu state — GCP state in GCS, AWS state in S3
 linkTitle: 0018 · Per-cloud state
 weight: 180
 description: GCP stacks keep their state in a GCS bucket in a dedicated project rather than sharing the AWS S3 bucket, so that running or destroying GCP needs GCP credentials only and an AWS outage cannot block a GCP teardown.
-lastVerified: 2026-08-25
+lastVerified: 2026-09-02
 ---
 
 **Status**: Accepted
@@ -44,10 +44,14 @@ Two things since then made that cost worth re-examining:
   OpenBao specifically because it would make GCP certificate issuance depend on AWS. The same
   objection applies to every GCP stack depending on AWS for its state, and with more force:
   it is not one workstream's coupling, it is the foundation of all of them.
-- **State began holding a live credential.** `opentofu/gcp/openbao/management` writes
-  cert-manager's AppRole `secret_id` into its state, which its own `secrets.tf` names as the
-  one place this design puts a live credential in state. Under a shared bucket, an AWS-side
-  compromise yields a working GCP credential.
+- **State began holding a live credential.** `opentofu/gcp/openbao/management` wrote
+  cert-manager's AppRole `secret_id` into its state, which its own `secrets.tf` named as the
+  one place this design put a live credential in state. Under a shared bucket, an AWS-side
+  compromise yields a working GCP credential. (That specific credential is gone since
+  [ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})
+  replaced AppRole with JWT auth; the driver is recorded as it stood. An OpenBao management
+  state still holds sensitive material — the AWS one carries the generated operator
+  password — so the conclusion is unchanged.)
 
 ## Decision Drivers
 
@@ -122,7 +126,8 @@ made it strictly more expensive.
 
 - GCP `plan`, `apply` and `destroy` need GCP credentials only.
 - An S3 outage or a suspended AWS account no longer blocks a GCP teardown.
-- `openbao/management`'s state, which holds a live AppRole `secret_id`, is no longer readable
+- `openbao/management`'s state, which holds sensitive material (a live AppRole `secret_id`
+  when this was written; the generated operator password today), is no longer readable
   from an AWS-side compromise.
 - The backend now matches the repository's own `opentofu/{aws,gcp,shared}` partition.
 - GCS locks natively, so the `use_lockfile` flag the S3 backend needs has no analogue to

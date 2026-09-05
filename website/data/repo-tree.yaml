@@ -22,9 +22,15 @@ entries:
       - path: opentofu/aws/network/
         kind: dir
         desc: VPC, subnets, Route53, the AWS-side Tailscale subnet router
-      - path: opentofu/aws/openbao/
+      - path: opentofu/aws/openbao/lineage/
         kind: dir
-        desc: The OpenBao cluster and its management stack — secrets and the private PKI
+        desc: What outlives every rebuild — the snapshot bucket, its KMS key, the GitHub OIDC role
+      - path: opentofu/aws/openbao/cluster/
+        kind: dir
+        desc: The active OpenBao instance, rebuilt from its newest snapshot on every deploy
+      - path: opentofu/aws/openbao/management/
+        kind: dir
+        desc: What is configured inside it — the private PKI, policies, the operator login
       - path: opentofu/aws/eks/init/
         kind: dir
         desc: Stage 1 — EKS cluster, node groups, bootstrap addons, Gateway API CRDs
@@ -43,12 +49,15 @@ entries:
       - path: opentofu/gcp/gke/configure/
         kind: dir
         desc: Stage 2 — Cilium displaces GKE's CNI, the Flux Operator is installed
+      - path: opentofu/gcp/openbao/lineage/
+        kind: dir
+        desc: The GCS snapshot bucket, and the transfer job mirroring the AWS one into it
       - path: opentofu/gcp/openbao/cluster/
         kind: dir
-        desc: The GCP OpenBao cluster — same role as its AWS sibling
+        desc: The GCP standby — restores the mirrored snapshot under the same AWS seal key
       - path: opentofu/gcp/openbao/management/
         kind: dir
-        desc: The GCP OpenBao management stack — PKI, policies, AppRoles
+        desc: What is configured inside it — the private PKI, its issuing role, the two policies
       - path: opentofu/shared/tailscale/
         kind: dir
         desc: The tailnet itself — ACLs, nameservers, search paths — owned by neither cloud

@@ -2,7 +2,7 @@
 title: Private Access
 weight: 30
 description: The two Tailscale-backed Gateways, the ACL model that separates them, and the steps for exposing a new private service.
-lastVerified: 2026-08-27
+lastVerified: 2026-09-02
 ---
 
 Every private service in this platform (`*.priv.aws.ogenki.io`) is reached
@@ -162,6 +162,18 @@ CIDRs, and `opentofu/shared/tailscale/main.tf` generates from it both the
 `autogroup:member` accept rule per cloud (AWS and GCP alike), so any tailnet
 member can route through either cloud's subnet router once its routes are
 approved.
+
+## Egress: a cluster reaching the other cloud's OpenBao
+
+Pods are not tailnet devices, so a cluster consuming the *other* cloud's OpenBao
+uses the Tailscale operator's **cluster egress**: an `ExternalName` Service
+annotated `tailscale.com/tailnet-ip` with the active OpenBao's fixed NLB address
+and `tailscale.com/proxy-group: ts-proxies` (`security/base/openbao-endpoint/remote`).
+The operator rewrites the Service to its egress `ProxyGroup`, whose pods carry
+the connection over the tailnet to the other cloud's subnet router. The ACL
+admits `tag:k8s` to the advertised CIDRs on port 8200 for exactly this
+(`opentofu/shared/tailscale/main.tf`). See
+[OpenBao cross-cloud failover]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}).
 
 ## Verification
 

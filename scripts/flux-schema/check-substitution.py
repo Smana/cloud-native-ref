@@ -42,18 +42,19 @@ render -- Flux substitutes an empty string, which is schema-valid and silently
 wrong. `substitute` (inline key/values in postBuild, as opposed to
 `substituteFrom`) is a separate mechanism and is not checked here.
 
-A `substituteFrom` entry may also name a `kind: Secret` (one such case exists
-repo-wide: `${cert_manager_approle_id}`, supplied by the
-`cert-manager-openbao-approle` Secret, populated at runtime by External Secrets
-from OpenBao -- the run prints which Kustomization carries it, so this sentence
-does not have to name a path that moves). A Secret's keys are not on disk, so
-they cannot be
-checked the way a ConfigMap's can. A Kustomization whose `substituteFrom` is
-ConfigMap-only still fails strictly on a missing key; one that also names a
-Secret gets a printed note instead of a failure when a variable is missing
-from every ConfigMap ref, naming the variable and the Secret that may supply
-it -- reported, not silently skipped, so a second such case does not vanish
-the way it did before this file could see it at all.
+A `substituteFrom` entry may also name a `kind: Secret`. **No such case exists
+repo-wide today**: the last one was `${cert_manager_approle_id}`, supplied by the
+`cert-manager-openbao-approle` Secret, and it went away when cert-manager
+switched to a projected ServiceAccount token against the per-cluster JWT mount.
+The handling below is kept for the next one, and the run prints which
+Kustomization carries it, so nobody has to hunt for a path from this docstring.
+A Secret's keys are not on disk, so they cannot be checked the way a
+ConfigMap's can. A Kustomization whose `substituteFrom` is ConfigMap-only still
+fails strictly on a missing key; one that also names a Secret gets a printed
+note instead of a failure when a variable is missing from every ConfigMap ref,
+naming the variable and the Secret that may supply it -- reported, not silently
+skipped, so a second such case does not vanish the way it did before this file
+could see it at all.
 """
 import pathlib
 import re
@@ -277,14 +278,14 @@ def main():
 
         if missing_unattributable:
             # See classify_missing's docstring for why these are reported
-            # rather than failed or silently skipped: exactly one Secret ref
-            # exists today -- cert-manager-openbao-approle, supplying
-            # ${cert_manager_approle_id} (see
-            # security/gcp-0/openbao/openbao-clusterissuer.yaml's own
-            # comment) -- and standing down without a word would quietly
-            # remove coverage from one of the repo's largest Kustomizations.
-            # The Kustomization that carries it is printed below rather than
-            # named here; it has already moved once.
+            # rather than failed or silently skipped. NO Secret ref exists in
+            # the repo today -- the last was cert-manager-openbao-approle
+            # supplying ${cert_manager_approle_id}, dropped when cert-manager
+            # switched to a projected ServiceAccount token -- so this branch
+            # is unreachable until someone adds one. It stays because standing
+            # down without a word is how the previous one went unnoticed: the
+            # run prints the Kustomization and the Secret rather than naming
+            # either here, since a hard-coded name is what went stale.
             secrets = [r["name"] for r in refs if r.get("kind") == "Secret"]
             unattributable.append(
                 f"  Kustomization/{k['name']} ({k['path']}): "

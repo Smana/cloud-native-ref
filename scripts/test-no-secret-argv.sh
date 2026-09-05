@@ -15,6 +15,28 @@
 # script); the config-file path itself never touches argv, so it needs no
 # entry here.
 #
+# EXTENDED AGAIN, to the CLOUD CLIs' value flags (see $VALUE_FLAGS below),
+# after openbao-config.sh's secret_write was found handing the OpenBao root
+# token and the recovery keys to `aws secretsmanager` on argv. Same class,
+# third shape: this guard was already in place and matched only jq and curl,
+# so it saw nothing. secret_write now delegates to
+# scripts/lib/cloud-secret-store.sh's store_write, which takes the value on
+# stdin.
+#
+# There is no gcloud counterpart to grep for on the secret-store path: the
+# `gcloud secrets` commands take their value ONLY via --data-file, so the GCP
+# half of that same function never leaked. --password is in the list as the
+# gcloud-side shape that does exist (`gcloud sql users set-password
+# --password=`), and --value as the same mistake one AWS service over (`aws
+# ssm put-parameter --value`).
+#
+# NOT in the list: curl's -d/--data POST body. The long forms would be
+# harmless, but the single-letter `-d` collides with ordinary shell (`[ -d
+# "$SECRET_DIR" ]`, `mktemp -d "$TOKEN_DIR"`) and would flag both as leaks,
+# and a guard with false positives is one people learn to ignore. The two
+# scripts that POST credentials do it through a `-K` config file, which never
+# touches argv at all.
+#
 # Each fixed site also has its own file-scoped assertion (grepping for the
 # EXACT flag/variable name that leaked, in test-zitadel-idp-convergence.sh
 # and test-zitadel-oidc-clients-secrets.sh) -- necessary because a
@@ -25,10 +47,10 @@
 # guard only ever looked at the file someone had already opened.
 #
 # This is the pattern-level guard instead: it scans every scripts/*.sh for a
-# jq --arg/--argjson or curl -H/-u whose VALUE is a variable with a
-# credential-shaped NAME, so a script making the same mistake with a
-# differently-named variable is still caught -- not just a byte-for-byte
-# repeat of a site already found.
+# jq --arg/--argjson, a curl -H/-u, or a cloud-CLI value flag whose VALUE is a
+# variable with a credential-shaped NAME, so a script making the same mistake
+# with a differently-named variable is still caught -- not just a
+# byte-for-byte repeat of a site already found.
 #
 # KNOWN GAP, not silently: this only recognises a plain `"$var"`/"${var}"`
 # value. `--arg p "$(gen_password)"` and `-H "Authorization: Bearer $(get_pat)"`
@@ -51,6 +73,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # repo at the time it was added. Loosen it if that changes.
 CRED_TOKENS="secret|password|passwd|token|credential|cookie|pat|apikey|privatekey|key|keys"
 
+# Flags that put their VALUE on a cloud CLI's argv. Long forms only, and both
+# `--flag value` and `--flag=value` are matched -- the AWS CLI accepts either
+# and gcloud is written the second way by convention.
+VALUE_FLAGS="--secret-string|--secret-binary|--value|--password"
+
 is_cred_shaped() { # $1: variable name
     local part
     IFS='_' read -ra parts <<< "${1,,}"
@@ -70,8 +97,8 @@ extract_hit_varname() {
 
 # Scan one directory tree (its *.sh, non-recursive, plus its lib/*.sh --
 # the same shape scripts/ itself has) for a credential-shaped variable
-# reaching jq's or curl's argv. Prints one "FAIL file:line: ..." line per
-# hit to stdout; returns 1 if it found anything, 0 if the tree is clean.
+# reaching jq's, curl's or a cloud CLI's argv. Prints one "FAIL file:line:
+# ..." line per hit to stdout; returns 1 if it found anything, 0 if clean.
 #
 # Used for BOTH the real scan (against $HERE, i.e. scripts/) and the
 # self-test below (against a throwaway fixture) -- the self-test is only
@@ -136,6 +163,26 @@ scan_dir_for_argv_leaks() {
                 '(-u|--user)[[:space:]]+"[^"]*\$\{?[A-Za-z_][A-Za-z0-9_]*[^"]*"' \
                 <<< "$line")
         done < <(grep -nE -- '(-H|--header|-u|--user)[[:space:]]' "$file")
+
+        # Cloud-CLI value flags. Unlike the two above, the value may be
+        # UNQUOTED (`--password=$pw`) as well as quoted, and may follow either
+        # a space or an `=`, so the quote is optional on both sides here.
+        while IFS=: read -r lineno line; do
+            [ -z "${lineno:-}" ] && continue
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+            while IFS= read -r hit; do
+                [ -z "$hit" ] && continue
+                varname="$(extract_hit_varname "$hit")"
+                if is_cred_shaped "$varname"; then
+                    printf '  FAIL %s:%s: cloud CLI value flag exposes credential-shaped $%s on argv\n' \
+                        "$rel" "$lineno" "$varname"
+                    found=1
+                fi
+            done < <(grep -oE -- \
+                "(${VALUE_FLAGS})(=|[[:space:]]+)\"?\\\$\\{?[A-Za-z_][A-Za-z0-9_]*" \
+                <<< "$line")
+        done < <(grep -nE -- "(${VALUE_FLAGS})(=|[[:space:]])" "$file")
     done < <(find "$dir" -maxdepth 1 -name '*.sh' -print0 2>/dev/null; find "$dir/lib" -maxdepth 1 -name '*.sh' -print0 2>/dev/null)
 
     return "$found"
@@ -156,12 +203,16 @@ trap 'rm -rf "$FIXTURE_DIR"' EXIT
 FIXTURE_FILE="$FIXTURE_DIR/planted-leak.sh"
 {
     echo '#!/usr/bin/env bash'
-    # Two clean lines -- must NOT be flagged. Assembled the same fragmented
+    # Three clean lines -- must NOT be flagged. Assembled the same fragmented
     # way as the leaks below (see the comment there for why): symmetry, not
-    # necessity -- neither string is credential-shaped either way.
+    # necessity -- none of these is credential-shaped either way.
     printf 'curl -fsS -H "Content-Type: application/json" "$%s"\n' "URL"
     printf 'curl -fsS -K "$%s" "$%s"\n' "API_CURL_CONFIG" "URL"
-    # The three planted leaks -- MUST be flagged. Each is assembled from
+    # A real value-flag shape with an ordinary variable name: the flag alone
+    # must not be enough to fail, or the guard becomes noise. This is also the
+    # KNOWN GAP made concrete -- rename it and the same line goes unflagged.
+    printf 'aws ssm put-parameter --%s "$%s"\n' "value" "release_channel"
+    # The five planted leaks -- MUST be flagged. Each is assembled from
     # fragments via printf rather than written as one literal line: this
     # FILE lives under scripts/ too, so the real scan below reads its own
     # source, and a leak shape written out whole here would flag ITSELF as
@@ -170,13 +221,17 @@ FIXTURE_FILE="$FIXTURE_DIR/planted-leak.sh"
     printf 'curl -H "Authorization: Bearer ${%s}" "$%s"\n' "PAT" "URL"
     printf 'curl -u "admin:${%s}" "$%s"\n' "HARBOR_PASSWORD" "URL"
     printf "jq -n --arg id \"\$id\" --arg %s \"\$%s\" '{}'\\n" "sec" "client_secret"
+    # The openbao-config.sh shape, both spellings: space-separated and quoted
+    # (the aws CLI), then `=`-joined and bare (the gcloud convention).
+    printf 'aws secretsmanager create-secret --name x --%s "$%s"\n' "secret-string" "root_token"
+    printf 'gcloud sql users set-password u --%s=$%s\n' "password" "db_password"
 } > "$FIXTURE_FILE"
 
 fixture_output="$(scan_dir_for_argv_leaks "$FIXTURE_DIR" "planted-leak")"
 fixture_rc=$?
 fixture_count="$(grep -c '^  FAIL' <<< "$fixture_output")"
 if [ "$fixture_rc" -eq 0 ]; then
-    echo "  FAIL self-test: a planted -H/-u/--arg leak went undetected -- the scanner itself is broken" >&2
+    echo "  FAIL self-test: a planted -H/-u/--arg/value-flag leak went undetected -- the scanner itself is broken" >&2
     fail=1
 else
     echo "  ok   self-test: scanner's exit code flags a planted leak"
@@ -184,7 +239,9 @@ fi
 for want in \
     'curl -H/--header exposes credential-shaped $PAT' \
     'curl -u/--user exposes credential-shaped $HARBOR_PASSWORD' \
-    'jq --arg/--argjson exposes credential-shaped $client_secret'
+    'jq --arg/--argjson exposes credential-shaped $client_secret' \
+    'cloud CLI value flag exposes credential-shaped $root_token' \
+    'cloud CLI value flag exposes credential-shaped $db_password'
 do
     if grep -qF -- "$want" <<< "$fixture_output"; then
         echo "  ok   self-test: caught \"${want}\""
@@ -193,15 +250,16 @@ do
         fail=1
     fi
 done
-# Exactly 3 findings -- not more. The two clean lines (an ordinary header, a
-# non-secret config PATH variable) must not also be flagged: a scanner that
-# flags everything is as useless as one that flags nothing.
-if [ "$fixture_count" != "3" ]; then
-    echo "  FAIL self-test: expected exactly 3 findings on the fixture, got ${fixture_count}" >&2
+# Exactly 5 findings -- not more. The three clean lines (an ordinary header, a
+# non-secret config PATH variable, a value flag carrying a non-secret) must not
+# also be flagged: a scanner that flags everything is as useless as one that
+# flags nothing.
+if [ "$fixture_count" != "5" ]; then
+    echo "  FAIL self-test: expected exactly 5 findings on the fixture, got ${fixture_count}" >&2
     echo "$fixture_output" >&2
     fail=1
 else
-    echo "  ok   self-test: exactly the 3 planted leaks were flagged, no false positive on the clean lines"
+    echo "  ok   self-test: exactly the 5 planted leaks were flagged, no false positive on the clean lines"
 fi
 
 rm -rf "$FIXTURE_DIR"
@@ -214,7 +272,7 @@ if [ "$real_rc" -ne 0 ]; then
     echo "$real_output"
     fail=1
 else
-    echo "  ok   no scripts/*.sh passes a credential-shaped variable to jq --arg/--argjson, curl -H/--header, or curl -u/--user"
+    echo "  ok   no scripts/*.sh passes a credential-shaped variable to jq --arg/--argjson, curl -H/--header, curl -u/--user, or a cloud CLI value flag"
 fi
 
 exit "$fail"

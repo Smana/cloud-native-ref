@@ -36,6 +36,8 @@ data "aws_secretsmanager_secret_version" "github_app" {
   secret_id = var.github_app_secret_name
 }
 
-data "aws_secretsmanager_secret_version" "cert_manager_approle" {
-  secret_id = var.cert_manager_approle_secret_name
+# The lineage root token, for the vault provider. Read here rather than plumbed
+# from the management stack's state: the two stacks share no other coupling.
+data "aws_secretsmanager_secret_version" "openbao_root_token" {
+  secret_id = var.openbao_root_token_secret_id
 }

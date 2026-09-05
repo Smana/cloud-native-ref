@@ -19,6 +19,46 @@ spec:
     remediation:
       retries: 3
   values:
+    # The service mutator webhook must FAIL OPEN, and this is not a preference.
+    #
+    # It is the one webhook this chart leaves unscoped: `mpod`, `quicid` and
+    # `alb-target-control` each carry a namespaceSelector, while `mservice` has
+    # `namespaceSelector: {}` -- every Service, in every namespace. Combined with
+    # the chart default `failurePolicy: Fail`, that makes this controller a
+    # cluster-wide chokepoint on Service CREATION: while it has no ready
+    # endpoints, nothing anywhere can create a Service at all.
+    #
+    # Measured on the 2026-09-05 bootstrap. The controller was still starting
+    # when cloudnative-pg's Helm install tried to create its ClusterIP webhook
+    # Service -- an object with no connection to load balancing:
+    #
+    #   Helm install failed for release infrastructure/cloudnative-pg:
+    #   server-side apply failed for object infrastructure/cnpg-webhook-service
+    #   Kind=Service: failed calling webhook "mservice.elbv2.k8s.aws":
+    #   no endpoints available for service "aws-load-balancer-webhook-service"
+    #
+    # The install then exhausted its remediation retries and STAYED failed long
+    # after the race had cleared, which is what makes this worth fixing rather
+    # than waiting out. The cascade ran four deep and surfaced nowhere near its
+    # cause: no CNPG operator webhook -> the SQLInstance composition could not
+    # create its ScheduledBackup -> no Postgres cluster -> ZITADEL never started
+    # -> the deploy's 45-minute wait timed out reporting "ZITADEL not ready".
+    # One force-reconcile of cloudnative-pg unblocked ZITADEL, Harbor AND the
+    # image-gallery app, all of which were waiting on that same Service.
+    #
+    # `Ignore` rather than `enableServiceMutatorWebhook: false`: the mutator is
+    # load-bearing here. It is what stamps `service.k8s.aws/nlb` on the public
+    # and ZITADEL gateway Services -- the repo sets `loadBalancerClass` only for
+    # `tailscale` (infrastructure/base/gapi/tailscale-gatewayclass-config.yaml),
+    # so disabling it would leave those two unclaimed by any controller.
+    #
+    # What Ignore costs: a LoadBalancer Service created while the controller is
+    # down gets no class stamped, and since loadBalancerClass is immutable it
+    # needs recreating. That is local, visible, and recoverable -- against a
+    # failure mode that takes out unrelated components and does not self-heal.
+    # The chart already made this exact trade for `mpod`, which ships as Ignore.
+    serviceMutatorWebhookConfig:
+      failurePolicy: Ignore
     clusterName: ${cluster_name}
     serviceAccount:
       # Has to match the EKS Pod Identity ServiceAccount

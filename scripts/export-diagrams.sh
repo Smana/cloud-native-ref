@@ -23,6 +23,45 @@ cd "$(dirname "$0")/.."
 
 command -v drawio >/dev/null || { echo "drawio not on PATH — install the desktop app"; exit 1; }
 
+# The exporter's version is part of the output, so it is pinned like every other
+# tool this repo runs (mise.toml, `ubi:jgraph/drawio-desktop`).
+#
+# What this protects against is real and was measured, though the pin alone does
+# not fully close it. Re-exporting changes the FALLBACK <text> elements — the
+# copy GitHub renders once its sanitizer strips <foreignObject>, which is the
+# entire reason this script emits both. secrets-and-pki goes from 32 of 33
+# fallback labels carrying a light-dark() fill to 7 of 33, so on GitHub in dark
+# mode those labels render in their light-mode colour. Nothing errors, the
+# diagrams look perfect in a browser (the <foreignObject> copy is byte-identical,
+# 39 fills either way), and the only symptom is a diff that reads as noise.
+#
+# The version is NOT the cause — see the note in mise.toml. This AppImage has
+# not changed since 2026-07-11 and the committed SVGs were regenerated on
+# 2026-09-02; --svg-theme, the xvfb path and GTK_THEME are all ruled out by
+# measurement. So a matching version is necessary and not sufficient: expect a
+# re-export to still differ until that is chased down.
+#
+# Check the count before committing a re-export, whatever this says:
+#   grep -o 'light-dark' website/static/images/diagrams/secrets-and-pki.svg | wc -l
+DRAWIO_PINNED_VERSION="30.3.6"
+# `|| true` so a drawio that cannot report a version reaches the mismatch branch
+# below and says so. Without it, `set -o pipefail` makes the failing pipeline
+# fail the assignment, errexit kills the script on this line, and the
+# ${drawio_version:-unknown} fallback the messages below carry is unreachable --
+# the operator gets a silent exit 1 from a script that had a diagnosis ready.
+drawio_version="$(drawio --version 2>/dev/null | tr -d '\r' | tail -1 || true)"
+if [ "$drawio_version" != "$DRAWIO_PINNED_VERSION" ]; then
+    if [ "${DRAWIO_VERSION_OVERRIDE:-false}" = "true" ]; then
+        echo "==> drawio ${drawio_version:-unknown} != pinned ${DRAWIO_PINNED_VERSION} (override set, continuing)"
+    else
+        echo "drawio version mismatch: have '${drawio_version:-unknown}', pinned '${DRAWIO_PINNED_VERSION}'." >&2
+        echo "  A different build changes the committed SVGs in ways that look like noise." >&2
+        echo "  Install the pinned one (mise install), or set DRAWIO_VERSION_OVERRIDE=true" >&2
+        echo "  if you are deliberately moving the pin — see the note above this check." >&2
+        exit 1
+    fi
+fi
+
 SRC="docs/architecture"
 OUT="website/static/images/diagrams"
 mkdir -p "$OUT"
@@ -74,6 +113,14 @@ for i in 1 2 3; do
     echo "==> llm-platform page $i"
     drawio "${SVGOPTS[@]}" --page-index "$i" \
         -o "$OUT/llm-platform-$i.svg" "$SRC/llm-platform.drawio"
+done
+
+# openbao-lineage is two pages: the lineage itself, then the cross-cloud
+# fallback and the drill. Same 1-based indexing caveat as above.
+for i in 1 2; do
+    echo "==> openbao-lineage page $i"
+    drawio "${SVGOPTS[@]}" --page-index "$i" \
+        -o "$OUT/openbao-lineage-$i.svg" "$SRC/openbao-lineage.drawio"
 done
 
 # drawio ends its SVG output without a trailing newline; pre-commit's

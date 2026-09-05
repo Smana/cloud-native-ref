@@ -180,6 +180,17 @@ a personal gmail identity.
   that change a GCP-only deploy failed at `tofu init` with
   `No valid credential sources found` on an expired AWS SSO token, which is the
   coupling that ADR removed.
+- **For a standby deploy: the AWS lineage's root token and recovery keys copied
+  into `openbao-priv-gcp-root-token` and `openbao-priv-gcp-recovery-keys` — and
+  copied ahead of time, not when the standby is needed.** The failover this
+  serves covers "AWS Secrets Manager unavailable", so the `aws
+  secretsmanager get-secret-value` half of the copy may be exactly what is down
+  on the day. Skipping it does not fail early: `rehydrate` only checks the
+  recovery-keys secret is *readable*, so the wrong-lineage keys are discovered
+  after the destructive restore, leaving a node holding throwaway keys nobody
+  stored. Treat it as peacetime maintenance, re-run whenever either value
+  changes. Commands and the full failure mode are in the failover guide
+  ([`website/content/docs/guides/openbao-cross-cloud-failover.md`](../website/content/docs/guides/openbao-cross-cloud-failover.md)).
 
 ## Expiring old generation archives is not a manual step
 
@@ -195,3 +206,7 @@ The offline root CA and the GCP intermediate. Those come from the signing
 ceremony in the [OpenBao design](superpowers/specs/2026-08-24-gcp-openbao-design.md)
 and already live in Secret Manager (`openbao-priv-gcp-ca-chain`,
 `openbao-priv-gcp-intermediate-ca`). The root's private key must never be in GCP.
+
+The snapshot bucket and the `openbao-node` / `openbao-drill` service accounts
+are created by `opentofu/gcp/openbao/lineage`; the bucket is imported from the
+Crossplane-era object on first apply (see the Stage 1 plan, Task 15).

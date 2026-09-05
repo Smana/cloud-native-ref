@@ -175,30 +175,35 @@ the same way. Two keys deliberately hold differently-shaped values:
 
 Which is exactly why the manifest cannot hardcode either one.
 
-### The one variable that comes from a Secret
+### No variable comes from a Secret, and that is the goal
 
-`substituteFrom` accepts a `Secret` as well as a `ConfigMap`, and one
-Kustomization uses it. `security-openbao` on `aws-0` substitutes
-`${cert_manager_approle_id}` from the `cert-manager-openbao-approle` Secret,
-because cert-manager's OpenBao issuer takes `roleId` as a plain string with no
-`secretRef` option — a generated value has no other way in.
+`substituteFrom` accepts a `Secret` as well as a `ConfigMap`. **No Kustomization
+in this repository uses that today**, and getting to zero was deliberate.
 
-A Secret's keys are created in-cluster at runtime, so `check-substitution.py`
-cannot compare against them. It reports that case as a note naming the variable
-and the Secret, rather than failing it or silently skipping it:
+`security-openbao` on `aws-0` used to substitute `${cert_manager_approle_id}`
+out of the `cert-manager-openbao-approle` Secret, because cert-manager's OpenBao
+issuer takes `roleId` as a plain string with no `secretRef` option — so a
+generated value had no other way in. That arrangement had a cycle built into it:
+the Kustomization substituted from a Secret its own `ExternalSecret` created, so
+a fresh cluster's first reconcile of that path necessarily failed and succeeded
+only on the retry.
+
+Machine authentication is now the JWT method
+([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})):
+cert-manager presents a projected ServiceAccount token, the role name is a
+literal, and there is no generated identifier to plumb through a Secret at all.
+The cycle went with it.
+
+The checker still handles the Secret case, because Flux still supports it and
+the next person to reach for it should get a useful answer. A Secret's keys are
+created in-cluster at runtime, so `check-substitution.py` cannot compare against
+them; rather than failing such a variable or silently skipping it, it reports a
+note naming the variable and the Secret that may supply it. With nothing using
+the mechanism, that branch reports nothing — a green run today looks like this:
 
 ```text
-note: 1 Kustomization(s) apply variable(s) no ConfigMap defines, but also
-substitute from a Secret this repo cannot read:
-  Kustomization/security-openbao (security/aws-0/openbao):
-  ${cert_manager_approle_id} not in any ConfigMap; may come from Secret
-  cert-manager-openbao-approle
+==> 68 Flux Kustomization(s) checked; substitution wiring is consistent
 ```
-
-`gcp-0` has no Secret reference here on purpose. The AWS copy substitutes out
-of the very Secret its own `ExternalSecret` creates, so a fresh cluster's first
-reconcile of that path necessarily fails and succeeds on the retry; GCP pins
-the role ID in its OpenBao management stack and has no such cycle.
 
 ### Escaping `${...}` that Flux must not touch
 

@@ -26,6 +26,7 @@ committed, so a source change without a re-run ships a stale picture.
 | `authentication-chain.drawio` | ZITADEL brokering one Google Workspace directory into every client's token, and where EKS and GKE diverge at the Kubernetes API. [Platform → Security → Authentication](../../website/content/docs/platform/security/authentication.md) |
 | `app-claim-expansion.drawio` | One `App` claim becoming a whole application. [Platform → Developer Platform](../../website/content/docs/platform/developer-platform/_index.md) |
 | `observability-flow.drawio` | Metrics, logs, traces and the alerting path. [Platform → Observability](../../website/content/docs/platform/observability/_index.md) |
+| `openbao-lineage.drawio` | Two pages, embedded on two different pages. Page 1, what persists across a teardown versus what is rebuilt: [Platform → Security → OpenBao](../../website/content/docs/platform/security/openbao.md). Page 2, the cross-cloud fallback and the weekly restore drill: [Guides → OpenBao cross-cloud failover](../../website/content/docs/guides/openbao-cross-cloud-failover.md) |
 | `llm-platform.drawio` | Three pages — request path, one claim rendered, autoscaling and telemetry. [Platform → AI Platform](../../website/content/docs/platform/ai-platform/_index.md) |
 
 ## SVG for the site, PNG only where GitHub needs it

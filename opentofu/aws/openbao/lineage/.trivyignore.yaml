@@ -1,0 +1,13 @@
+misconfigurations:
+  # S3 access logging. The bucket holds Raft snapshots -- gzipped BoltDB
+  # dumps, hundreds of KB to several MB each, not the ~1 KB objects a first
+  # pass here assumed -- written by a CronJob and read by a deploy; OpenBao's
+  # own audit is where secret-access auditing belongs, not S3 request logs
+  # about a backup file. (The size matters beyond this justification: it's
+  # comfortably above the 128 KB `all_storage_classes_128K` default that
+  # applies to this bucket's lifecycle rule since
+  # transition_default_minimum_object_size is unset in s3.tf, so snapshots
+  # do transition to Glacier at 30 days as intended -- an object under 128 KB
+  # would not.)
+  - id: AVD-AWS-0089
+    statement: "No access logging on the snapshot bucket: request logs on a backup artefact add cost and no signal."

@@ -2,7 +2,7 @@
 title: AWS
 weight: 20
 description: Deploy the platform on AWS — three sequential stages, about thirty minutes.
-lastVerified: 2026-08-27
+lastVerified: 2026-09-02
 ---
 
 AWS is one of two implemented cloud lanes — see
@@ -77,17 +77,23 @@ private subnets, a Route53 private hosted zone, VPC endpoints, and the Tailscale
 subnet router EC2 instance that gives you private access to everything built
 after this point.
 
-**Stage 2 — OpenBao.** The cluster behind a Network Load Balancer, then its
+**Stage 2 — OpenBao.** The lineage (a persistent seal key and the snapshot
+bucket), then the cluster behind a Network Load Balancer, then its
 configuration. As committed, `opentofu/aws/openbao/cluster/variables.tfvars` sets
-`mode = "dev"`: a single `t3.micro` on `file` storage, enough to follow these
+`mode = "dev"`: a single `t3.micro` on single-node Raft, enough to follow these
 guides and not highly available. Set `mode = "ha"` for the five-node Raft cluster
 on spot instances — the same configuration steps apply either way.
 
-Either way the cluster is initialized and auto-unsealed via AWS KMS, its root
-token and recovery keys are written to two separate AWS Secrets Manager entries,
-and a three-tier PKI (root → intermediate → leaf) plus the cert-manager AppRole
-are provisioned — all driven by `scripts/openbao-config.sh`, with no manual
-`bao operator init` / `unseal` step.
+Either way the cluster is auto-unsealed via AWS KMS with the lineage's key, and
+`./scripts/openbao-config.sh rehydrate` brings its contents back from the newest
+snapshot — so there is no manual `bao operator init` / `unseal` step, and on the
+first deploy of a lineage the root token and recovery keys are written to two
+separate AWS Secrets Manager entries. The management stack then layers a
+three-tier PKI (root → intermediate → leaf) and the policies each cluster's JWT
+auth roles bind. Taking the AWS root offline is decided but not yet performed —
+see the callout on
+[PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}) and
+[ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}).
 
 **Stage 3 — Kubernetes.** `aws/eks/init` runs a two-stage bootstrap internally:
 the EKS cluster comes up with the temporary VPC-CNI bootstrap addon, then that is

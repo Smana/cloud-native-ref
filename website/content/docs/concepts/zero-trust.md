@@ -2,7 +2,7 @@
 title: Zero trust
 weight: 40
 description: Default-deny at the network, no ambient credentials, no static secrets — enforced by policy rather than asserted.
-lastVerified: 2026-08-30
+lastVerified: 2026-09-02
 ---
 
 "Zero trust" is easy to claim and hard to check. The useful version of the
@@ -66,22 +66,41 @@ into a gate.
 ## Where the platform is honest about its gaps
 
 A zero-trust claim is only worth reading if it also says where the model is
-relaxed. Two examples this repository documents rather than hides:
+relaxed. Three examples this repository documents rather than hides — two still
+open, and one that stayed on this list in the present tense until the work
+actually ran:
 
-- **The root CA private key is present in the live OpenBao mount**, because
-  the intermediate is signed inside OpenBao to keep the deploy unattended.
-  Accepted for a reference platform; explicitly not to be carried into a
-  deployment where the root CA matters. See
+- **No root CA private key is in a networked store, on either cloud.** The AWS
+  root used to sit in the live `pki_private_issuer` mount, imported inside a
+  bundle from `certificates/priv.aws.ogenki.io/root-ca`. The signing ceremony has
+  since been performed (2026-09-05; GCP's was 2026-08-25): the root signs each
+  cloud's intermediate offline, `opentofu/aws/openbao/management/pki.tf` imports
+  that signed intermediate rather than generating one, and the `root-ca` secret
+  has been deleted. What remains online is the intermediate bundle. The root
+  **certificate** is committed as `.github/openbao-root-ca.pem` so restores can be
+  verified against it; the root **key** never leaves offline media. See
   [PKI and secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
+- **Machine credentials are short-lived, but JWKS validation is blind to
+  revocation.** Workloads reach OpenBao with a projected ServiceAccount token
+  validated against their cluster's OIDC issuer, so nothing long-lived is
+  minted or stored — but OpenBao never consults the API server, so a token
+  Kubernetes has revoked stays valid until it expires. 10-minute TTLs are the
+  whole mitigation. See
+  [OpenBao]({{< relref "/docs/platform/security/openbao.md#jwt-machine-authentication" >}}).
 - **Network policy coverage is uneven.** The constitution requires a
   CiliumNetworkPolicy on every pod-running workload; the observability stack
   does not yet meet that bar. See
   [Observability]({{< relref "/docs/platform/observability/_index.md" >}}).
 
-Both are the kind of thing a security page is tempted to omit. Omitting them
-would make the page less useful, not more convincing — a reader evaluating
-this platform needs to know which properties are enforced and which are
-aspirations with a known exception.
+All three are the kind of thing a security page is tempted to omit — and the
+first is the kind it is tempted to write in the past tense as soon as the fix is
+*designed*. It was not written that way. It stayed here, in the present tense,
+naming the key that was still in a networked store, for as long as that was true,
+and changed only when the ceremony was performed and the secret deleted. That is
+the distinction the page is trying to hold: a reader evaluating this platform
+needs to know which properties are enforced, which are aspirations with a known
+exception, and which are one unperformed ceremony away — and a page that dates
+its gaps forward is no longer telling them.
 
 ## Reading on
 

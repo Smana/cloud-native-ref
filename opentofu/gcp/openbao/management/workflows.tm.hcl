@@ -10,7 +10,10 @@
 # destroy, so a teardown without the CA aborts before deleting anything -- the
 # AWS stack says the same thing at the same place.
 #
-# opt-in gate: see opentofu/gcp/config.tm.hcl. Every command runs inside a
+# opt-in gate: `global.cloud_gate`, defined in opentofu/config.tm.hcl. (This used
+# to point at opentofu/gcp/config.tm.hcl, which does not exist -- opentofu/gcp/
+# holds no *.tm.hcl at all, so every global reaching this stack comes from the
+# opentofu/ root.) Every command runs inside a
 # ${global.cloud_gate} block. A BARE command list cannot be gated -- each command
 # in a Terramate job is its own process, so an `exit 0` in the block before it
 # ends only that block. An ungated `gcloud secrets versions access` here would
@@ -20,40 +23,34 @@
 globals {
   # A bash SNIPPET, not a command list, precisely so it can live INSIDE a gated
   # block. The literal project id matches variables.tfvars; opentofu/gcp has no
-  # project global to reference.
-  # Initialise a freshly booted OpenBao, then store its root token and recovery
-  # keys in Secret Manager.
+  # project global to reference. The snapshot bucket DOES have one --
+  # `global.gcp_snapshot_bucket_name` in opentofu/config.tm.hcl -- because
+  # gcp/openbao/cluster's pre-destroy snapshot is handed the same value, the way
+  # the two AWS twins both read `global.snapshot_bucket_name`.
   #
   # This is not optional and it is not idempotent-by-luck: a brand-new instance
   # has empty `file` storage, so it reports initialized=false and every read
   # returns `503 Vault is sealed`. Cloud KMS auto-unseal does NOT help — there is
-  # nothing to unseal until `bao operator init` creates the storage. The vault
-  # provider configures at PLAN time, so the failure lands before a single
-  # resource is planned.
-  #
-  # It was missing here while opentofu/aws/openbao/management/workflows.tm.hcl
-  # has run the same step as its first job all along, which is why a
-  # from-scratch GCP deploy could never succeed: `terramate script run deploy`
-  # reached this stack and aborted the whole run on a sealed OpenBao. It only
-  # ever worked when someone had run the init by hand, which is how
-  # docs/gcp-bootstrap.md came to mention a root token "written by
-  # openbao-config.sh init" that no workflow wrote.
+  # nothing to unseal until a rehydrate (or, on a first deploy, a plain init)
+  # creates the storage. The vault provider configures at PLAN time, so the
+  # failure lands before a single resource is planned.
   #
   # Safe to re-run: the script health-checks first and exits 0 when OpenBao is
   # already initialised and unsealed, so this is a no-op on every deploy after
   # the first.
   #
-  # --skip-verify, like the AWS side: this runs against a freshly booted cluster
-  # before anything has vouched for its certificate, and carries no secret in
-  # either direction.
-  openbao_init = <<-EOT
-    bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" init \
+  # Rehydrate -- or, on a lineage's first deploy, initialise. The CA fetch runs
+  # first so the restore verifies the server. See the AWS twin for the full
+  # rationale; the only differences are the cloud flag and the GCS bucket.
+  openbao_rehydrate = <<-EOT
+    bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" rehydrate \
       --url https://bao.priv.gcp.ogenki.io:8200 \
       --cloud gcp \
       --project ogenki-435905 \
       --root-token-secret-name openbao-priv-gcp-root-token \
       --recovery-keys-secret-name openbao-priv-gcp-recovery-keys \
-      --skip-verify
+      --snapshot-bucket ${global.gcp_snapshot_bucket_name} \
+      --ca-file .tls/ca.pem
   EOT
 
   openbao_ca_fetch = <<-EOT
@@ -67,7 +64,7 @@ globals {
 
 script "deploy" {
   name        = "GCP OpenBao Management Deploy (opt-in)"
-  description = "Configure the PKI mount, cert-manager role and AppRole"
+  description = "Rehydrate, then configure the PKI mount, cert-manager PKI role and policies"
 
   job {
     commands = [
@@ -82,8 +79,8 @@ script "deploy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
-        ${global.openbao_init}
         ${global.openbao_ca_fetch}
+        ${global.openbao_rehydrate}
         # -parallelism=1 is deliberate. OpenBao 2.6.x carries openbao/openbao#3411
         # (inconsistent lock ordering across namespaces, mounts and the router),
         # which deadlocks the core when this stack writes concurrently. The
@@ -179,76 +176,53 @@ script "opentofu" "render" {
   }
 }
 
+# Gated like the AWS management stack and the lineage stacks: the PKI mount,
+# auth mounts, policies and the lineage/ marker mount are lineage state carried
+# by the raft snapshot. Destroying them here would empty the snapshot the
+# cluster stack takes next. The former tolerant destroy and its Secret Manager
+# sweep are gone with the AppRole credential they existed for.
 script "destroy" {
-  name        = "GCP OpenBao Management Destroy (opt-in)"
-  description = "Remove the PKI mount, role and AppRole"
+  name        = "GCP OpenBao Management Destroy (guarded, opt-in)"
+  description = "Requires TM_LINEAGE_DESTROY=true: this stack's resources are lineage state"
 
-  # TOLERANT, unlike openbao/cluster's destroy -- and the distinction is the one
-  # that stranded a cluster twice before it was understood.
-  #
-  # Almost everything this stack manages lives INSIDE an OpenBao that
-  # openbao/cluster deletes moments later, so failing here would block the
-  # teardown of the stack that DOES own billable compute. The usual reason to be
-  # running destroy at all is that OpenBao is already unreachable.
-  #
-  # openbao/cluster's destroy is strict for the mirror-image reason. See its
-  # workflows.tm.hcl.
-  #
-  # But tolerance alone leaves a hole, so the last job closes it: the AppRole
-  # SECRET lives in GCP, not in OpenBao, and it holds a live secret_id. When
-  # OpenBao is unreachable the provider cannot configure, `tofu destroy` aborts
-  # before deleting ANYTHING -- GCP resources included -- and a tolerant script
-  # would report success with that credential still in Secret Manager.
   job {
     commands = [
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
+        if [ "$${TM_LINEAGE_DESTROY:-}" != "true" ]; then
+          echo "[skip] opentofu/gcp/openbao/management destroy: the PKI mount, auth mounts and"
+          echo "       policies here are lineage state carried by the raft snapshot. Set"
+          echo "       TM_LINEAGE_DESTROY=true to destroy the lineage on purpose."
+          exit 0
+        fi
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
         ${global.provisioner} init -lock-timeout=5m
-      BASH
-      ],
-      ["bash", "-c", <<-BASH
-        ${global.cloud_gate}
-        # Deliberately NOT set -e from here on.
+        ${global.openbao_ca_fetch}
+        # Contained destroy, matching aws/openbao/management. Every `vault_*`
+        # resource in this state lives INSIDE the OpenBao cluster, which
+        # gcp/openbao/cluster destroys immediately after this stack in the
+        # reverse walk. By then `bao.priv.gcp.ogenki.io` no longer resolves, the
+        # provider cannot delete them, the destroy aborts having deleted
+        # nothing, and terramate's --reverse walk halts -- stranding the GCE
+        # instance and gcp/network behind it.
         #
-        # The fetch is wrapped in a FUNCTION rather than written as
-        # `${"$"}{global.openbao_ca_fetch} || echo ...`. That global is a multi-line
-        # snippet ending in a newline, so appending `||` to the interpolation puts
-        # the operator on its own line: `syntax error near unexpected token ||`.
-        # Measured 2026-08-25 -- it broke the whole `--reverse destroy` and, because
-        # the failure was a bash parse error rather than a tofu error, the run
-        # reported success while every GCP resource was still running.
-        ca_fetch() {
-          ${global.openbao_ca_fetch}
-        }
-        # Best-effort: without the CA the provider cannot configure and the destroy
-        # below aborts before touching anything.
-        if ! ca_fetch; then
-          echo "[warn] CA fetch failed -- destroy will likely abort at provider configure."
-        fi
-        if ! ${global.provisioner} destroy -refresh=false -auto-approve -var-file=variables.tfvars; then
-          echo "[warn] management destroy failed -- OpenBao is probably already gone."
-          echo "[warn] Continuing so the cluster stack's teardown is not blocked."
-          echo "[warn] Any state left here describes objects inside a deleted server."
-        fi
-        exit 0
-      BASH
-      ],
-      ["bash", "-c", <<-BASH
-        ${global.cloud_gate}
-        # Unconditional sweep of the one resource that OUTLIVES OpenBao.
-        # Runs whether or not the destroy above succeeded: if it did, this is a
-        # no-op; if it aborted at provider configure, this is the only thing
-        # that removes a live secret_id from the project.
-        if gcloud secrets describe openbao-priv-gcp-approle-cert-manager \
-             --project ogenki-435905 >/dev/null 2>&1; then
-          echo "[sweep] deleting openbao-priv-gcp-approle-cert-manager"
-          gcloud secrets delete openbao-priv-gcp-approle-cert-manager \
-            --project ogenki-435905 --quiet || \
-            echo "[warn] sweep failed -- delete it by hand, it holds a live secret_id."
-        fi
-        exit 0
+        # The AWS side carries the measured version of this: two teardowns on
+        # 2026-09-02 reported success while a NAT gateway and two instances kept
+        # running. The GCP reverse walk has the identical shape
+        # (management -> cluster -> network) and the identical property, so it
+        # had the identical bug -- it simply had not been run yet.
+        #
+        # And it only bites the run that can least afford it: both sides are
+        # gated on TM_LINEAGE_DESTROY=true, so this path is only ever taken when
+        # an operator has deliberately asked to tear the lineage down.
+        #
+        # Only `vault_*` is dropped from state. The google_secret_manager_* and
+        # random_password resources here are real and do not match the prefix,
+        # so tofu still deletes them.
+        bash "${terramate.root.path.fs.absolute}/scripts/tofu-destroy-contained.sh" \
+          --contained-prefix vault_ -- \
+          -auto-approve -parallelism=1 -var-file=variables.tfvars
       BASH
       ],
     ]
