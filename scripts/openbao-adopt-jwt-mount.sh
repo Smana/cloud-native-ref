@@ -75,6 +75,29 @@ done
 [ -n "$CLUSTER_NAME" ] && [ -n "$OPENBAO_URL" ] && [ -n "$ROOT_TOKEN_SECRET_NAME" ] || {
     echo "--cluster-name, --url and --root-token-secret-name are required" >&2; usage; exit 1; }
 
+# Import one address, treating "already managed" as success.
+#
+# The pre-checks below use `tofu state list`, and relying on that ALONE proved
+# fragile: a run whose state already held the mount still reached the import and
+# failed the whole deploy with "Resource already managed by OpenTofu". Whatever
+# made that listing come back empty, the outcome must not be a failed deploy --
+# adopting something already adopted is a no-op, not an error. So the import's
+# own answer is the authority and the listing is only a fast path.
+try_import() {
+    _ti_addr="$1"; _ti_id="$2"; _ti_out=""
+    # shellcheck disable=SC2086 # TOFU_ARGS is a deliberate word-split of -var flags
+    if _ti_out=$(tofu import -input=false -var-file=variables.tfvars ${TOFU_ARGS} "$_ti_addr" "$_ti_id" 2>&1); then
+        echo "    imported ${_ti_addr}"
+        return 0
+    fi
+    if printf '%s' "$_ti_out" | grep -q 'already managed by OpenTofu'; then
+        echo "    ${_ti_addr} was already managed -- nothing to do"
+        return 0
+    fi
+    printf '%s\n' "$_ti_out" >&2
+    return 1
+}
+
 MOUNT="jwt/${CLUSTER_NAME}"
 
 # Already managed? Then there is nothing to adopt -- this is an ordinary
@@ -115,9 +138,7 @@ fi
 
 echo "==> OpenBao already holds ${MOUNT} (restored from the lineage snapshot)."
 echo "    Importing it so the apply UPDATES its issuer instead of failing to create it."
-# shellcheck disable=SC2086 # TOFU_ARGS is a deliberate word-split of -var flags
-tofu import -input=false -var-file=variables.tfvars ${TOFU_ARGS} \
-    vault_jwt_auth_backend.cluster "${MOUNT}"
+try_import vault_jwt_auth_backend.cluster "${MOUNT}"
 
 # The roles too. A role create is a PUT and would overwrite silently, which is
 # not wrong -- but leaving them unmanaged means the next `tofu destroy` walks
@@ -132,9 +153,7 @@ if [ -n "$roles_json" ]; then
             continue
         fi
         echo "    importing role ${role}"
-        # shellcheck disable=SC2086 # deliberate word-split, as above
-        tofu import -input=false -var-file=variables.tfvars ${TOFU_ARGS} \
-            "vault_jwt_auth_backend_role.cluster[\"${role}\"]" \
+        try_import "vault_jwt_auth_backend_role.cluster[\"${role}\"]" \
             "auth/${MOUNT}/role/${role}" || \
             echo "    (role ${role} not imported; the apply will write it)"
     done
