@@ -173,15 +173,24 @@ contains "$out" "$UI_CB" "names the UI callback"
 contains "$out" "$CLI_CB" "names the CLI callback"
 
 echo
-echo "== an EXTRA registered URI is left alone =="
-# Converging the login is this script's job; narrowing what else somebody
-# registered is a different decision, and silently deleting a URI would break
-# whatever depends on it.
+echo "== an UNDECLARED registered URI is drift, and is named before removal =="
+# This assertion is inverted from what it originally said, and the original was
+# wrong in a way worth recording. It asserted "an extra URI is left alone",
+# matching a comment in the script that promised the same -- but the repair path
+# sends the whole list, so the moment any repair fired the extra was dropped
+# regardless. The check and the repair disagreed.
+#
+# Converging to the exact set is also the safer answer: a redirect URI is the
+# control that stops an authorization code being delivered somewhere else, so
+# one nobody declared is a surface rather than a harmless leftover.
 REGISTERED="${UI_CB}
 ${CLI_CB}
 https://bao.priv.aws.ogenki.io:8200/some/other/callback"
+clear_payload
 out="$(run_sync)"
-contains "$out" "redirect correct" "extra URI does not make it stale"
+contains "$out" "STALE" "an undeclared URI is reported as drift"
+contains "$out" "undeclared (will be removed): https://bao.priv.aws.ogenki.io:8200/some/other/callback" "names the undeclared URI before removing it"
+check "repair sends exactly the declared set" "2" "$(jq '.redirectUris | length' <<< "$(set_payload)")"
 
 echo
 echo "== single-URI consumers still converge (regression) =="

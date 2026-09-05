@@ -840,24 +840,46 @@ cmd_sync() {
             # confusing thing to debug because the app plainly exists and one
             # half of it plainly works.
             #
-            # Only the wanted set is required to be present -- extra URIs
-            # already registered are left alone. Narrowing them would be a
-            # different decision from converging them, and this script's job is
-            # to make the login work, not to police what else was added.
-            local missing="" want
+            # EXACT set, in both directions: a URI that is missing is drift, and
+            # so is one that is registered and not declared here.
+            #
+            # This used to check only that the wanted set was present, with a
+            # comment promising that "extra URIs already registered are left
+            # alone". That promise was not kept, and could not be:
+            # app_set_redirect sends the whole list, so the moment any repair
+            # fired it replaced the set and dropped those extras anyway. The
+            # check and the repair disagreed, and the comment described neither.
+            #
+            # Converging to the exact set is also the right answer rather than
+            # merely the consistent one. A redirect URI is the control that stops
+            # an authorization code being delivered somewhere else; one nobody
+            # declared is a real surface, not a harmless leftover. This script is
+            # the source of truth for these apps, so an undeclared URI is exactly
+            # the thing it should be removing -- and now it says so before doing
+            # it, instead of removing it as a side effect of an unrelated repair.
+            local missing="" extra="" want have
             while IFS= read -r want; do
                 [ -z "$want" ] && continue
                 grep -Fxq "$want" <<< "$current" || missing="${missing}${missing:+ }${want}"
             done <<< "${redirect//,/$'\n'}"
+            while IFS= read -r have; do
+                [ -z "$have" ] && continue
+                grep -Fxq "$have" <<< "${redirect//,/$'\n'}" || extra="${extra}${extra:+ }${have}"
+            done <<< "$current"
 
-            if [ -z "$missing" ]; then
+            if [ -z "$missing" ] && [ -z "$extra" ]; then
                 echo "[ok     ] ${name} -- app exists (${existing_id}), redirect correct"
                 skipped=$((skipped + 1))
             else
                 echo "[STALE  ] ${name} (${existing_id})"
                 echo "           has:     ${current:-<none>}"
                 echo "           want:    ${redirect}"
-                echo "           missing: ${missing}"
+                # Both reported, and separately: they mean different things. A
+                # missing URI breaks a login; an undeclared one is a redirect
+                # target nobody asked for, and the operator should see which of
+                # the two they are looking at before the repair removes it.
+                [ -n "$missing" ] && echo "           missing: ${missing}"
+                [ -n "$extra" ]   && echo "           undeclared (will be removed): ${extra}"
                 if [ "$APPLY" != "true" ]; then
                     echo "           would update the redirect URI (client secret untouched)"
                 else
