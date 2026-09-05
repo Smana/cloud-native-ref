@@ -144,12 +144,29 @@ data "aws_iam_policy_document" "mirror_assume" {
       identifiers = [aws_iam_openid_connect_provider.google.arn]
     }
 
-    condition {
-      test     = "StringEquals"
-      variable = "accounts.google.com:oaud"
-      values   = [var.gcp_transfer_agent_subject_id]
-    }
-
+    # `sub` ONLY, deliberately -- no `oaud` condition here, unlike the standby
+    # seal role above.
+    #
+    # This role used to pin `oaud` to the subject id as well, on the assumption
+    # that a Google token's audience mirrors its subject. It does not, and the
+    # job could not be created at all:
+    #
+    #   Error 403: Failed to obtain the location of the source S3 bucket.
+    #   AccessDenied: Not authorized to perform sts:AssumeRoleWithWebIdentity
+    #
+    # Google's own documented trust policy for agentless S3 transfers conditions
+    # on `accounts.google.com:sub` and nothing else -- the audience of the token
+    # its Storage Transfer service agent mints is not documented, and pinning a
+    # guess at it fails closed.
+    #
+    # The standby seal role above is a different case and keeps its `oaud`: that
+    # token is a GCE instance identity token, minted by our own systemd timer
+    # with `audience=sts.amazonaws.com` explicitly, so the value is ours to
+    # assert. Here the token is minted by a Google-managed service agent.
+    #
+    # `sub` is the constraint that matters either way: it pins this project's
+    # Storage Transfer service agent exactly, and that agent is Google-managed
+    # and project-scoped, so no other principal can present it.
     condition {
       test     = "StringEquals"
       variable = "accounts.google.com:sub"
