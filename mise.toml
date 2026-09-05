@@ -44,3 +44,33 @@ kustomize = "5.8.1"
 # cluster without it: install once with
 #   gcloud components install gke-gcloud-auth-plugin
 "asdf:mise-plugins/mise-gcloud" = "581.0.0"
+
+# Diagram exporter (scripts/export-diagrams.sh). The SVGs under
+# website/static/images/diagrams/ are COMMITTED artifacts, so the tool that
+# generates them belongs under version control like any other.
+#
+# 30.3.6 is the version in use where these were last exported by hand.
+#
+# KNOWN, AND NOT YET EXPLAINED: the committed SVGs do not reproduce
+# byte-for-byte under it. Re-exporting secrets-and-pki with this exact build
+# leaves the <foreignObject> copy a browser renders byte-identical (39
+# light-dark() fills either way) while the fallback <text> copy — what GitHub
+# renders once its sanitizer strips foreignObject — drops from 32 of 33 labels
+# carrying a light-dark() fill to 7 of 33.
+#
+# The version is NOT the variable: this AppImage has not changed since
+# 2026-07-11 and the committed SVGs were regenerated on 2026-09-02. Ruled out
+# by measurement: --svg-theme auto/dark/light, the xvfb versus real-display
+# path, and GTK_THEME. So something else about the exporting environment
+# differs, and pinning alone does not make the artifacts reproducible — it only
+# removes one variable and makes the rest visible. Re-exporting all thirteen
+# under this pin, in one deliberate commit, is the way to close it.
+#
+# NOTE for this machine specifically: ~/.local/bin precedes every mise install
+# dir in PATH, so a local ~/.local/bin/drawio wrapper still wins. That wrapper
+# exists for a good reason — Arch's drawio-desktop runs through the system
+# Electron and its CLI exports drawio's own bundled files instead of yours, so
+# the wrapper points at the official self-contained AppImage and adds
+# --no-sandbox plus xvfb for headless export. Keep the two versions equal; the
+# version check in export-diagrams.sh is what catches them drifting apart.
+"ubi:jgraph/drawio-desktop" = "30.3.6"
