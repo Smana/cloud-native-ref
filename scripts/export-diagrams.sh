@@ -76,6 +76,14 @@ for i in 1 2 3; do
         -o "$OUT/llm-platform-$i.svg" "$SRC/llm-platform.drawio"
 done
 
+# openbao-lineage is two pages: the lineage itself, then the cross-cloud
+# fallback and the drill. Same 1-based indexing caveat as above.
+for i in 1 2; do
+    echo "==> openbao-lineage page $i"
+    drawio "${SVGOPTS[@]}" --page-index "$i" \
+        -o "$OUT/openbao-lineage-$i.svg" "$SRC/openbao-lineage.drawio"
+done
+
 # drawio ends its SVG output without a trailing newline; pre-commit's
 # end-of-file-fixer adds one. Without this, every export leaves the tree dirty
 # by exactly one byte per file and the script is never idempotent.
