@@ -663,4 +663,39 @@ thumbprints: 08745487e891c19e3078c1f2a07e452950ef36f6
       needs the workflow on the default branch. Its substance is proven above; the
       workflow wrapper itself is not.
 - [x] GCP server-certificate re-issue (Task 14b), lineage stack, federation, mirror
-- [ ] Costs page re-measured
+- [x] **Costs page re-measured** — the KMS row was the one projection in a table
+      labelled *measured*, carrying four keys on the strength of the seal replica
+      being committed rather than existing. It exists: `alias/openbao-seal`
+      resolves `PRIMARY` in `eu-west-3` and `REPLICA` in `eu-west-1`. ADR-0033's
+      `$23 → $24` is unchanged and correct — three keys were already billing at
+      idle, and the lineage adds exactly one.
+- [ ] **The OpenBao OIDC browser login (ADR-0034).** The offline suites pass, the
+      terraform validates, and the two latent bugs found while writing it are
+      fixed — but no human has completed the flow against a live ZITADEL. This is
+      the one claim in the PR with no live evidence behind it.
+
+## What a teardown proved on the way out
+
+The final `--reverse destroy` is itself evidence, and it produced one defect and
+one confirmation.
+
+**The defect:** `--fallback-address` never reached the client taking the
+snapshot. The parent's curl probe went green through the fallback —
+`Reached OpenBao at 10.0.15.250 presenting bao.priv.aws.ogenki.io` — and the
+child then died on the name the probe had just worked around, because
+`bao operator raft snapshot save` is a Go client that never reads a `.curlrc`.
+The node was reachable throughout, so this is exactly the loss the function
+exists to prevent. Fixed in `cedcbda8`, with a regression test.
+
+**The confirmation:** the lineage survived, which is the whole claim. After the
+teardown, with 0 instances, 0 NAT gateways, 0 EKS clusters, 0 load balancers, 0
+non-default VPCs and 0 EBS volumes:
+
+```
+seal key eu-west-3:  Enabled  PRIMARY
+seal key eu-west-1:  Enabled  REPLICA
+snapshots in S3:     3
+```
+
+plus the six bootstrap secrets. Both guards held: `TM_LINEAGE_DESTROY` and
+`prevent_destroy` on the seal key.
