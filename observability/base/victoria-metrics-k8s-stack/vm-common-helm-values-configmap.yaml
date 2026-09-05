@@ -230,7 +230,7 @@ data:
         # Before accepting a bump here, check the version is actually published:
         #   curl -s https://grafana.com/api/plugins/<plugin-id>/versions | jq -r '.items[].version'
         # renovate: datasource=github-releases depName=VictoriaMetrics/victorialogs-datasource extractVersion=^v(?<version>.+)$
-        - "victoriametrics-logs-datasource@0.31.0"
+        - "victoriametrics-logs-datasource@0.32.0"
         - "marcusolsson-dynamictext-panel"
       "grafana.ini":
         feature_toggles:
