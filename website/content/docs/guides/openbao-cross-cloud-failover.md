@@ -12,18 +12,26 @@ snapshot bucket `eu-west-3-ogenki-openbao-snapshot`, to be mirrored into
 `ogenki-435905-ogenki-openbao-snapshot` by a Storage Transfer job at 05:00 UTC,
 one hour after the snapshot CronJob's 04:00 UTC run.
 
-{{< callout type="warning" >}}
-**That mirror job does not exist yet, so nothing arrives in the GCS bucket on
-its own.** `google_storage_transfer_job.s3_mirror` in
+{{< callout type="info" >}}
+**Check that the mirror is actually running before you rely on it.**
+`google_storage_transfer_job.s3_mirror` in
 `opentofu/gcp/openbao/lineage/transfer.tf` carries
-`count = var.aws_mirror_role_arn == "" ? 0 : 1`, and that stack's
-`variables.tfvars` leaves `aws_mirror_role_arn` empty until **Task 16 Step 2**
-of the Stage 1 plan
-(`docs/superpowers/plans/2026-09-02-openbao-store-of-record-stage1.md`, a
-repository path — plans are not published). Until that task has run, step 1
-below finds the GCS bucket empty or stale, and the real RPO is "whenever
-someone last copied an object across by hand", not 24 h. Copy the newest S3
-object over before continuing:
+`count = var.aws_mirror_role_arn == "" ? 0 : 1`, so an empty
+`aws_mirror_role_arn` in that stack's `variables.tfvars` silently means *no
+mirror job at all* — the GCS bucket then sits empty or stale and the real RPO is
+"whenever someone last copied an object across by hand", not 24 h. The value is
+set, and the mirror was last verified on 2026-09-05 with the same object on both
+sides at 74785 bytes. Confirm it for yourself in one command:
+
+```bash
+diff <(aws s3 ls s3://eu-west-3-ogenki-openbao-snapshot/ | awk '{print $3, $4}') \
+     <(gcloud storage ls -l gs://ogenki-435905-ogenki-openbao-snapshot/ \
+         | awk '/\.snap$/ {n=split($3,p,"/"); print $1, p[n]}')
+```
+
+If the mirror has not run, copy the newest object across by hand before
+continuing — and note that this hand copy is itself impossible once AWS is
+unreachable, which is why the preconditions below are peacetime work:
 
 ```bash
 key=$(aws s3api list-objects-v2 --bucket eu-west-3-ogenki-openbao-snapshot \
@@ -31,9 +39,6 @@ key=$(aws s3api list-objects-v2 --bucket eu-west-3-ogenki-openbao-snapshot \
 aws s3 cp "s3://eu-west-3-ogenki-openbao-snapshot/${key}" /tmp/mirror.snap
 gcloud storage cp /tmp/mirror.snap "gs://ogenki-435905-ogenki-openbao-snapshot/${key}"
 ```
-
-That hand copy is itself impossible once AWS is unreachable — which is why the
-preconditions below are peacetime work.
 {{< /callout >}}
 
 ## What this survives, and what it does not
@@ -80,14 +85,14 @@ copy** in the fourth, and the **hand mirror copy** in the callout above.
 - **`openbao-priv-gcp-server-cert` must already carry all four SANs.** `gcp-0`'s
   `ClusterIssuer` connects by `openbao.security.svc.cluster.local` in *both*
   postures — GCP-only and standby — see
-  `security/gcp-0/openbao/openbao-clusterissuer.yaml`. The leaf issued by the
-  2026-08-25 GCP ceremony carries only `bao.priv.gcp.ogenki.io`, so until
-  **Task 14b** of the Stage 1 plan has re-issued it with
-  `bao.priv.gcp.ogenki.io`, `bao.priv.aws.ogenki.io`,
-  `openbao.security.svc.cluster.local` and `openbao.security.svc`, cert-manager
-  on `gcp-0` fails with `x509: certificate is valid for
-  bao.priv.gcp.ogenki.io, not openbao.security.svc.cluster.local` — and step 4's
-  "nothing changes for `gcp-0`" does not hold. Check before you need it:
+  `security/gcp-0/openbao/openbao-clusterissuer.yaml`. The leaf first issued by
+  the 2026-08-25 GCP ceremony carried only `bao.priv.gcp.ogenki.io`; it was
+  re-issued on 2026-09-05 (version 2) with `bao.priv.gcp.ogenki.io`,
+  `bao.priv.aws.ogenki.io`, `openbao.security.svc.cluster.local` and
+  `openbao.security.svc`. With a single-SAN leaf, cert-manager on `gcp-0` fails
+  with `x509: certificate is valid for bao.priv.gcp.ogenki.io, not
+  openbao.security.svc.cluster.local` — and step 4's "nothing changes for
+  `gcp-0`" does not hold. Check before you need it:
 
   ```bash
   gcloud secrets versions access latest --secret openbao-priv-gcp-server-cert \

@@ -325,12 +325,13 @@ certificate trusted by `curl` and Chrome is still rejected there. Import it unde
 *Settings → Privacy & Security → Certificates → View Certificates → Authorities*.
 {{< /callout >}}
 
-**Once Tasks 14 and 14b have run**, both clouds chain to the same offline root
-([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}))
-and one import covers both. Until then it is two imports: the AWS chain still
-descends from the root in `certificates/priv.aws.ogenki.io/root-ca`, and the GCP
-chain from the 2026-08-25 offline root. Import both files above and you are
-covered under either state.
+Both clouds now chain to the same offline root
+([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})),
+so **one import covers both** — that root certificate is also committed as
+`.github/openbao-root-ca.pem`. This was two imports until the AWS ceremony ran on
+2026-09-05, when the AWS chain still descended from its own root; if you are
+looking at an older cluster, import both files above and you are covered under
+either state.
 
 Nothing else on your machine needs the file afterwards. The OpenBao management
 stack fetches its own copy into a gitignored `.tls/` directory at apply time —

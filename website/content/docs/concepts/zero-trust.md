@@ -66,18 +66,19 @@ into a gate.
 ## Where the platform is honest about its gaps
 
 A zero-trust claim is only worth reading if it also says where the model is
-relaxed. Three examples this repository documents rather than hides:
+relaxed. Three examples this repository documents rather than hides — two still
+open, and one that stayed on this list in the present tense until the work
+actually ran:
 
-- **The AWS root CA private key is present in the live `pki_private_issuer`
-  mount.** It was imported there inside a bundle from
-  `certificates/priv.aws.ogenki.io/root-ca`, and that secret still exists.
-  Accepted for a reference platform; explicitly not to be carried into a
-  deployment where the root CA matters. Taking it offline is decided and
-  designed — `opentofu/aws/openbao/management/pki.tf` already imports an
-  offline-signed intermediate rather than generating one — but it turns on a
-  hand-performed signing ceremony (**Task 14** of the Stage 1 plan) and the
-  deletion of that secret (**Task 17 Step 2**), and neither has run. GCP is
-  already there, since its 2026-08-25 ceremony. See
+- **No root CA private key is in a networked store, on either cloud.** The AWS
+  root used to sit in the live `pki_private_issuer` mount, imported inside a
+  bundle from `certificates/priv.aws.ogenki.io/root-ca`. The signing ceremony has
+  since been performed (2026-09-05; GCP's was 2026-08-25): the root signs each
+  cloud's intermediate offline, `opentofu/aws/openbao/management/pki.tf` imports
+  that signed intermediate rather than generating one, and the `root-ca` secret
+  has been deleted. What remains online is the intermediate bundle. The root
+  **certificate** is committed as `.github/openbao-root-ca.pem` so restores can be
+  verified against it; the root **key** never leaves offline media. See
   [PKI and secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
 - **Machine credentials are short-lived, but JWKS validation is blind to
   revocation.** Workloads reach OpenBao with a projected ServiceAccount token
@@ -92,11 +93,14 @@ relaxed. Three examples this repository documents rather than hides:
   [Observability]({{< relref "/docs/platform/observability/_index.md" >}}).
 
 All three are the kind of thing a security page is tempted to omit — and the
-first is the kind it is tempted to write in the past tense once the fix is
-designed. Omitting them, or dating them forward, would make the page less
-useful rather than more convincing: a reader evaluating this platform needs to
-know which properties are enforced, which are aspirations with a known
-exception, and which are one unperformed ceremony away.
+first is the kind it is tempted to write in the past tense as soon as the fix is
+*designed*. It was not written that way. It stayed here, in the present tense,
+naming the key that was still in a networked store, for as long as that was true,
+and changed only when the ceremony was performed and the secret deleted. That is
+the distinction the page is trying to hold: a reader evaluating this platform
+needs to know which properties are enforced, which are aspirations with a known
+exception, and which are one unperformed ceremony away — and a page that dates
+its gaps forward is no longer telling them.
 
 ## Reading on
 

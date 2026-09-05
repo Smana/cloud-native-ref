@@ -206,23 +206,21 @@ demonstrate.
     staying off the 2.6 line.
 - **The root CA private key lives in the live `pki_private_issuer` mount, not
   offline.** **Decided against on 2026-09-02 by
-  [ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}) —
-  and not yet undone on AWS.** The mount signed the intermediate's CSR inside
-  OpenBao (`vault_pki_secret_backend_root_sign_intermediate`) so the deploy
-  stayed unattended, which put the root key on a networked system.
-  `opentofu/aws/openbao/management/pki.tf` now imports an intermediate the
-  offline root signed out of band instead — but the signing ceremony that
-  produces that intermediate (**Task 14** of the Stage 1 plan) and the deletion
-  of `certificates/priv.aws.ogenki.io/root-ca` (**Task 17 Step 2**) are both
-  hand-performed and neither has run. So on AWS the root key is still in the
-  mount and still in Secrets Manager; on GCP it has been offline since
-  2026-08-25, and Task 14 is what makes the two clouds chain to the *same*
-  offline root. See
+  [ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}),
+  and undone on both clouds as of 2026-09-05.** The mount signed the
+  intermediate's CSR inside OpenBao
+  (`vault_pki_secret_backend_root_sign_intermediate`) so the deploy stayed
+  unattended, which put the root key on a networked system.
+  `opentofu/aws/openbao/management/pki.tf` now imports an intermediate the offline
+  root signed out of band instead. That signing ceremony has been performed on
+  both clouds — GCP on 2026-08-25, AWS on 2026-09-05 — and
+  `certificates/priv.aws.ogenki.io/root-ca` has been deleted, so both clouds now
+  chain to the *same* offline root and no root key is in a networked store. See
   [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}).
-  - *Mitigation as recorded at the time, and still the live one*: none beyond
-    documenting the trade-off; a deployment where the root CA's confidentiality
-    matters needs an offline root, which means giving up the unattended-deploy
-    property this platform trades for it.
+  - *What it cost*: the deploy is no longer fully unattended. Issuing a new
+    cloud's intermediate is a hand-performed ceremony on offline media — which is
+    the trade this entry originally declined to make, made deliberately once the
+    lineage gave the platform something durable to anchor to.
 
 ### Neutral
 

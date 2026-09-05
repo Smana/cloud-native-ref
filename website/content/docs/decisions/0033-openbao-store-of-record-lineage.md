@@ -45,9 +45,13 @@ design either way.
   not pay for an always-on secrets cluster. It may pay ~$1/month for a key.
 - **Restorability, proven.** Every deploy of the reference platform and a weekly
   drill must exercise the restore path.
-- **One root of trust, offline.** The AWS root private key **still sits** inside
-  the live PKI mount — taking it out is a hand-performed ceremony (Stage 1 plan,
-  Task 14) that has not run. GCP has already fixed that with an offline root.
+- **One root of trust, offline.** The AWS root private key used to sit inside the
+  live PKI mount. Taking it out is a hand-performed ceremony, and it has now been
+  performed: the root signs per-cloud intermediates offline, only the intermediate
+  bundle enters a networked store, and the root certificate is committed as
+  `.github/openbao-root-ca.pem` so the drill can verify against it. Both clouds
+  now match. The procedure is on the
+  [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}) page.
 - **No long-lived credential to reach OpenBao.** Workloads authenticate with
   their cluster's ServiceAccount tokens.
 - **A fallback that survives an AWS regional outage**, stated with its limits.
@@ -162,7 +166,10 @@ drift in the Negatives below is real rather than theoretical.
 ### Positive
 
 - The idle floor moves from about $23 to about $24/month, and the platform runs
-  the design it documents.
+  the design it documents. The added dollar is the seal key's `eu-west-1`
+  replica, which KMS bills as a key of its own; confirmed on the live account
+  once the lineage stack was applied. The buckets are rounding error at 74 KB
+  per snapshot.
 - Restore stops being a hypothesis: every deploy performs one, and CI drills it
   weekly with no recovery keys in reach.
 - No AppRole `SecretID` exists anywhere; the two AppRole entries per cloud are
