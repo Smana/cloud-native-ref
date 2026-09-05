@@ -381,10 +381,86 @@ Fixed on the branch during the run: `6bd8b556`, the recycle script's readiness
 wait (`kubectl rollout status` does not wait for its object to appear, and
 stderr was discarded).
 
+---
+
+## The platform, seen healthy
+
+Before the teardown, with Flux on the branch:
+
+| Check | Result |
+|---|---|
+| Flux Kustomizations | 22+ Ready; `observability -> tooling -> apps` cleared |
+| `home.priv.aws.ogenki.io` | **HTTP 200**, `ssl_verify=0` |
+| Certificate served | `CN=*.priv.aws.ogenki.io`, issuer `CN=Ogenki AWS Intermediate CA` |
+| `headlamp` | 200 · `grafana` 302 (OIDC redirect) |
+
+That fetch is the end-to-end PKI proof no `openssl verify` can give: a real HTTP
+client retrieved a real page over TLS terminated by a leaf from the chain this
+ceremony produced, verified against the CA chain built the same morning.
+
+**An unrelated blocker had to be cleared first.** `victorialogs-datasource
+0.32.0` arrived from main (#1959) and does not exist in the Grafana.com catalog
+— only on GitHub, which is what the tracking comment watches. Grafana's plugin
+installer is a startup module, so this was CrashLoopBackOff rather than a
+missing datasource, and it stalled `observability` -> `tooling` -> `apps`. The
+visible symptom was a 404 on the homepage.
+
+Recovery needed three steps, because the *remediation* path was as broken as
+the install: pin `0.31.0` (`0559ea75`); `helm uninstall --no-hooks`, because the
+chart's cleanup-hook Job name is 65 bytes against the 63-byte label limit and
+could not even be created; then strip `apps.victoriametrics.com/finalizer` from
+four VM CRs whose operator had been deleted alongside them. Bug #1 alone would
+have self-healed once the ConfigMap updated.
+
+## Teardown
+
+`TM_LINEAGE_DESTROY` deliberately unset. **The lineage survived**, which is the
+half of success criterion 1 a destroy can prove on its own:
+
+| Must persist | State after teardown |
+|---|---|
+| Seal key | `mrk-dbd7c4a3…`, `Enabled`, `MultiRegion=True` |
+| `eu-west-1` replica | `Enabled` |
+| Snapshot | `2026-09-05T092947Z-awskms.snap`, 74,785 bytes |
+| Bootstrap secrets | root token, recovery keys, intermediate-ca, server cert, ca-chain |
+| Old `root-ca` | **absent** — deleted earlier, after the new chain had issued |
+
+Nothing billable remains: EKS 0, instances 0, NAT gateways 0, load balancers 0,
+EIPs 0, non-default VPCs 0, orphaned EBS volumes 0.
+
+### Deviation: the pre-destroy snapshot could not resolve a live node
+
+The first teardown failed in `opentofu/aws/openbao/cluster`:
+
+```
+[ERROR] OpenBao at https://bao.priv.aws.ogenki.io:8200 is not active (HTTP 000);
+        refusing to destroy without a snapshot.
+```
+
+The node was alive. In the same minute, `dig` returned nothing while
+`curl --resolve …:10.0.15.250` returned **200**, with the instance running and
+its NLB `active`. The Route53 record had gone before the snapshot step ran.
+
+This stranded the walk after EKS was destroyed but before the NAT gateway, and
+its suggested remedy (`TM_OPENBAO_SKIP_SNAPSHOT=true`) would discard an
+obtainable snapshot. Safe here only because the manual CronJob snapshot already
+sat in the bucket. Raised as PR follow-up
+[#4](https://github.com/Smana/cloud-native-ref/pull/1960#issuecomment-5551254482):
+the fix is the fixed NLB address this PR itself introduced.
+
+The teardown was later killed by the OS under memory pressure, leaving a state
+lock and two orphaned `terraform-provider-*` processes; recovered with
+`tofu force-unlock` after killing the orphans, then completed stack-by-stack.
+
 ## Still outstanding
 
-- [ ] Delete `certificates/priv.aws.ogenki.io/root-ca` and the two AppRole entries
-- [ ] Destroy + redeploy; same `pki_private_issuer` fingerprint (success criterion 1)
+- [x] Delete `certificates/priv.aws.ogenki.io/root-ca` and the two AppRole entries
+- [ ] **Redeploy and compare the issuer fingerprint (success criterion 1).** The
+      destroy half is done and the lineage verified intact; what remains is one
+      `TF_VAR_flux_git_ref='refs/heads/worktree-openbao-lineage' terramate script run deploy`,
+      then comparing `pki_private_issuer` against `ISSUER_BEFORE` above. Expect
+      `Snapshot … found`, `Rehydrated from …`, and `No changes.` from the
+      management apply.
 - [ ] Drill workflow, one green run
 - [ ] `web-identity-seal` drill job (design risk 3)
 - [ ] GCP: server-certificate re-issue, lineage stack, federation, standby drill
