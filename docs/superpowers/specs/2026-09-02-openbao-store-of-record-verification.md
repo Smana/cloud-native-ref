@@ -518,20 +518,84 @@ succeeded.
 | `verify-doc-paths.sh` | exit 0 |
 | `shellcheck -x -S warning` | exit 0 on every touched script |
 
+---
+
+## Success criterion 1, through `rehydrate` itself
+
+The earlier proof used the drill's method — a manual `operator init` plus
+`raft snapshot restore`. This one is the real path: the OpenBao cluster stack
+destroyed, a fresh uninitialised node, and the management stack's own
+`rehydrate` selecting and restoring:
+
+```
+This node's seal is 'awskms'; 2026-09-05T135753Z-awskms.snap carries 'awskms'.
+Snapshot 2026-09-05T135753Z-awskms.snap found ... Initialising with throwaway
+  shares, then restoring.
+The restored snapshot was taken 0 day(s) ago.
+PKI issuer present: subject=CN=Ogenki AWS Intermediate CA, O=Ogenki, C=FR
+
+issuer fingerprint after : 8A:C4:25:40:F3:40:CA:44:...:6B:D1:A2:57
+ISSUER_BEFORE            : 8A:C4:25:40:F3:40:CA:44:...:6B:D1:A2:57
+```
+
+Identical, and against a **different** snapshot than the local drill used, so the
+result is not an artefact of replaying one object.
+
+`/opentofu/aws/openbao/management` then reported **`No changes. Your
+infrastructure matches the configuration.`** and `Apply complete! Resources: 0
+added, 0 changed, 0 destroyed.` — design risk 4 settled: a rehydrated OpenBao is
+indistinguishable from a freshly configured one, with no targeted import or
+`state rm` needed.
+
+Along the way this exercised, for the first time, the seal gate against a real
+object, snapshot selection (it chose the newer of two), and the freshness marker.
+
+### Three defects found by taking that path
+
+| Fix | What it was |
+|---|---|
+| `3bd8dbd3` | `bao operator generate-root` is **unsupported on an auto-unsealed node** (405), and its counterpart `sys/generate-recovery-token` needs a token — the thing being obtained. The post-restore mint could never have worked here, on any node. Uses the lineage's stored root token instead, valid again by construction once the snapshot's token store is in place |
+| `217e3108` / `94ed3d60` | A rehydrated node restores `jwt/<cluster>` **holding the OIDC issuer of the destroyed cluster**. `eks/configure`'s state is destroyed on every teardown, so OpenTofu tried to create what the snapshot restored, and failed 400. That 400 is protective: without it the deploy reports success and leaves an auth method that rejects every token |
+| `6587a485` | Nothing refreshed the kubeconfig, so the recycle script asked the *previous* cluster about a DaemonSet — and reported it "never created" while it was healthy and 27 minutes old. Also a repeat of this file's own stderr-discarding defect, in the wait added earlier the same day |
+
+## The platform, fully converged
+
+| Check | Result |
+|---|---|
+| Flux Kustomizations | **28 Ready**; only `llm-platform` outstanding, the suspended umbrella |
+| `jwt/aws-0` issuer | refreshed to the new cluster (`A0F8FD41…`, was `B5AC3FF6…`) |
+| `ClusterIssuer openbao` | `Ready=True` — cert-manager authenticates through the refreshed mount |
+| Flux sync ref | `refs/heads/worktree-openbao-lineage` |
+| Snapshot image | `ghcr.io/smana/openbao-snapshot:v0.3.1`, job Complete in 40s |
+| Snapshots in the lineage | three, each carrying its seal in the name |
+
+## GCP, unblocked
+
+| Item | Result |
+|---|---|
+| GCP lineage stack | `8 added, 0 changed, 0 destroyed`; bucket versioned, drill variables set |
+| Task 14b | `openbao-priv-gcp-server-cert` v2 — four SANs, verifying against the chain and the committed offline root |
+| Federation | `openbao-snapshot-mirror` and `openbao-standby-seal` roles created |
+| **Mirror — criterion 5** | `2026-09-05T092947Z-awskms.snap`, **74785 bytes on both sides** |
+
+Two defects there too: `32b253ff` (the Storage Transfer API was never enabled —
+the failure surfaced as an AWS `AccessDenied`, naming the wrong cloud) and
+`ff675908` (the pre-destroy snapshot resolves OpenBao by a DNS name the teardown
+itself removes, while the node still answers on its fixed NLB address).
+
 ## Still outstanding
 
 - [x] Delete `certificates/priv.aws.ogenki.io/root-ca` and the two AppRole entries
-- [ ] **Redeploy and compare the issuer fingerprint (success criterion 1).** The
-      destroy half is done and the lineage verified intact; what remains is one
-      `TF_VAR_flux_git_ref='refs/heads/worktree-openbao-lineage' terramate script run deploy`,
-      then comparing `pki_private_issuer` against `ISSUER_BEFORE` above. Expect
-      `Snapshot … found`, `Rehydrated from …`, and `No changes.` from the
-      management apply.
+- [x] **Redeploy and compare the issuer fingerprint (success criterion 1)** — done,
+      through `rehydrate` itself. See above.
 - [ ] Drill workflow, one green run — **blocked until merge**: `workflow_dispatch`
       needs the workflow on the default branch. Its substance is proven locally
       above; the workflow itself is not.
 - [ ] `web-identity-seal` drill job (design risk 3) — **blocked until merge**,
       same reason. Cannot be reproduced locally either: the whole point is a
       GCE-issued web-identity token, which only that job's environment has.
-- [ ] GCP: server-certificate re-issue, lineage stack, federation, standby drill
+- [x] GCP server-certificate re-issue (Task 14b), lineage stack, federation, mirror
+- [ ] **GCP standby restores the AWS lineage (criterion 6)** — the headline
+      cross-cloud claim, still with no live evidence. Needs a GCP node deployed
+      with `seal_provider = "awskms"`.
 - [ ] Costs page re-measured
