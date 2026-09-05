@@ -81,7 +81,7 @@ spec:
               envFrom:
                 - secretRef:
                     name: openbao-snapshot
-              image: ghcr.io/smana/openbao-snapshot:v0.1.0
+              image: ghcr.io/smana/openbao-snapshot:v0.3.0
               imagePullPolicy: IfNotPresent
               name: openbao-snapshot
               securityContext:
