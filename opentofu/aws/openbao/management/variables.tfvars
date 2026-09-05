@@ -22,3 +22,35 @@ tags = {
   project = "cloud-native-ref"
   owner   = "Smana"
 }
+
+# Human login through ZITADEL OIDC (ADR-0034) -- COMMENTED OUT ON PURPOSE, and
+# the comment is the instructions, because without them nothing ever sets this
+# and oidc.tf stays inert forever.
+#
+# It cannot be set on a first deploy. There is a genuine ordering knot:
+#
+#   this stack  ->  ZITADEL's secrets come from here
+#   ZITADEL     ->  must be running before a client can be registered in it
+#   the client  ->  is what this value points at
+#
+# So the sequence is, once the platform has converged:
+#
+#   1. Register the client. The store key IS the AWS secret name (see
+#      scripts/lib/cloud-secret-store.sh -- `harbor-oidc` and
+#      `security-flux-ui-oidc` are literal secret names, not prefixed keys):
+#
+#        ./scripts/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws \
+#          --region eu-west-3 --apply
+#
+#   2. Uncomment the line below and re-apply THIS stack. oidc.tf is gated on the
+#      value being non-empty, so an apply before step 1 is not an error -- it
+#      simply creates no OIDC auth method, which is why a first deploy converges
+#      cleanly without this.
+#
+#   3. Grant yourself the role the external group binds to. A human does not
+#      exist in ZITADEL until first login, so this cannot happen at bootstrap:
+#
+#        ./scripts/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws \
+#          --region eu-west-3 --grant-admin <your-email> --apply
+#
+# openbao_oidc_secret_id = "openbao-oidc"
