@@ -271,9 +271,118 @@ identity federation while this branch also used `0032`.
 
 ---
 
+---
+
+## The platform deploy
+
+### Deviation: the deploy silently built `main`
+
+`TF_VAR_flux_git_ref` was absent from the invocation that created the
+FluxInstance. `flux_git_ref` defaults to `refs/heads/main`, nothing warns, and
+the deploy succeeded — having pointed Flux at main's manifests while the
+infrastructure underneath came from this branch.
+
+The two are individually consistent and jointly irreconcilable. Main's
+`security-openbao` substitutes from `Secret/cert-manager-openbao-approle`,
+written by the AppRole resources this branch deletes:
+
+```
+Ready=False: post build failed for 'ClusterSecretStore':
+  substitute from 'Secret/cert-manager-openbao-approle'
+  error: secrets "cert-manager-openbao-approle" not found
+```
+
+That blocked `security`, and through it `observability`, `apps`,
+`flux-operator` and `flux-notifications`. ZITADEL sits downstream of all of
+them, so `eks/init`'s 45-minute ZITADEL wait was decided at its first poll and
+spent the rest of its budget confirming it.
+
+Re-running with the variable set flipped `spec.sync.ref` within ~40s, and
+`security-openbao` reconciled immediately afterwards. Recorded as PR follow-ups
+1-3, with the ordering and lint findings below.
+
+### Result
+
+| Check | Result |
+|---|---|
+| `spec.sync.ref` | `refs/heads/worktree-openbao-lineage` |
+| `lastAppliedRevision` | `99ecefdd1658` — branch HEAD |
+| `security-openbao` | Ready |
+| ZITADEL | ready **~180s** after the ref flip (against a 45m budget) |
+
+CNPG's first recovery pod failed on `Unable to locate credentials` — an EKS Pod
+Identity race, not the known empty-archive refusal — and CNPG's own retry
+completed with `restore command execution completed without errors`.
+
+## Design risk settled: the cert-manager audience
+
+The `ClusterIssuer` reports:
+
+```
+Ready=True: Vault verified
+```
+
+**No `bound_audiences` change was needed.** cert-manager's
+`serviceAccountRef.audiences` are additive — the vendored CRD states the default
+`vault://openbao` is always included — so the token carries a two-element `aud`
+against a role bound to `openbao` alone, and OpenBao matches if *any* audience
+is in `bound_audiences`. That was reasoned in the plan and is now observed.
+Stage 2's other JWT consumers therefore need no audience pair either.
+
+One condition proves four of this PR's mechanisms at once:
+
+| Mechanism | Observed |
+|---|---|
+| Neutral in-cluster name | `server=https://openbao.security.svc.cluster.local:8200` |
+| JWT rather than AppRole | `path=/v1/auth/jwt/aws-0`, `role=cert-manager` |
+| ExternalName Service, `local` form | `openbao` → `bao.priv.aws.ogenki.io` |
+| The `serviceaccounts/token` RBAC | `cert-manager-token-creator` Role + RoleBinding present |
+
+`bao auth list` equivalent at this point: `jwt/aws-0/`, `token/`, `userpass/` —
+**no `approle/`**. `auth/jwt/aws-0/role` lists `cert-manager`,
+`external-secrets`, `openbao-snapshot`.
+
+## The first snapshot
+
+A manual run of the CronJob (`Complete`, 30s):
+
+```
+INFO: Authenticating with OpenBao via auth/jwt/aws-0 as role openbao-snapshot...
+INFO: This node's seal is 'awskms'; the object will carry it.
+INFO: Stamping lineage/check_timestamp before the snapshot
+INFO: Requesting a snapshot via https://openbao.security.svc.cluster.local:8200
+INFO: Wrote 2026-09-05T092947Z-awskms.snap
+```
+
+| Property | Value |
+|---|---|
+| Object | `2026-09-05T092947Z-awskms.snap` — seal in the name |
+| Size | 74,785 bytes |
+| Encryption | `aws:kms` under `b767b332…`, the aliased key |
+| Freshness marker | `lineage/check_timestamp = 1788600586` |
+
+`ISSUER_BEFORE`, for the rehydrate proof:
+
+```
+8A:C4:25:40:F3:40:CA:44:5C:2E:95:F3:9A:BC:BF:C1:C4:43:70:C3:B8:05:6F:D3:C4:A5:A6:E6:6B:D1:A2:57
+```
+
+---
+
+## Follow-ups raised on the PR (not changed here)
+
+| # | Finding |
+|---|---|
+| [1](https://github.com/Smana/cloud-native-ref/pull/1960#issuecomment-5550806743) | The bootstrap installs Flux **before** recycling bootstrap nodes, so workloads are scheduled onto ceiling-limited nodes that are being drained — the race the recycle exists to prevent |
+| [2](https://github.com/Smana/cloud-native-ref/pull/1960#issuecomment-5550852542) | 60 inline `bash -c <<-BASH` blocks across 13 workflow files, none reachable by `shellcheck`, which already gates `scripts/**` |
+| [3](https://github.com/Smana/cloud-native-ref/pull/1960#issuecomment-5550858250) | Deploy waits poll through terminal states and report blocker *names* without *messages*; plus no guard against deploying a ref other than the branch you are on |
+
+Fixed on the branch during the run: `6bd8b556`, the recycle script's readiness
+wait (`kubectl rollout status` does not wait for its object to appear, and
+stderr was discarded).
+
 ## Still outstanding
 
-- [ ] Platform deploy on the branch; first CronJob snapshot
 - [ ] Delete `certificates/priv.aws.ogenki.io/root-ca` and the two AppRole entries
 - [ ] Destroy + redeploy; same `pki_private_issuer` fingerprint (success criterion 1)
 - [ ] Drill workflow, one green run
