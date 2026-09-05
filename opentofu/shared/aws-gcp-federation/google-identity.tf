@@ -12,10 +12,35 @@
 # `accounts.google.com:aud` is `azp`. Each role pins `sub` and `oaud`.
 data "aws_caller_identity" "this" {}
 
-data "tls_certificate" "google" {
-  url = "https://accounts.google.com/.well-known/openid-configuration"
-}
-
+# NO thumbprint_list, deliberately.
+#
+# It used to be `[data.tls_certificate.google.certificates[0].sha1_fingerprint]`,
+# which pins the LEAF certificate of accounts.google.com -- a certificate Google
+# rotates roughly every 90 days. Every rotation is unmanaged drift, and the
+# 2026-09-05 deploy caught one mid-flight:
+#
+# (the two fingerprints below are PUBLIC certificate hashes, hence the pragmas --
+# detect-secrets sees any high-entropy hex and cannot tell the difference)
+#   ~ thumbprint_list = [
+#       - "08745487e891c19e3078c1f2a07e452950ef36f6",  # pragma: allowlist secret
+#       + "932bed339aa69212c89375b79304b475490b89a0",  # pragma: allowlist secret
+#     ]
+#
+# Taking the last element instead is a trap rather than a fix: accounts.google.com
+# serves its LEAF TWICE, first and last, so `certificates[length-1]` is the leaf
+# again. The chain as served is leaf, WR2, GTS Root R1, leaf.
+#
+# The right answer is not to pin one at all. `thumbprint_list` is Optional and
+# Computed in the AWS provider, and AWS does not use a thumbprint for IdPs whose
+# root it already trusts -- Google among them; it validates against its own
+# library of trusted CAs instead. Omitting it therefore leaves verification
+# exactly as strong as before, removes a value that was never load-bearing, and
+# stops terraform reporting a diff every time Google rotates a certificate.
+#
+# The data source that fed it is gone with it: its only consumer was this
+# argument, and accounts.google.com's reachability is not in question. The GKE
+# provider in main.tf keeps ITS data source, because there it doubles as a
+# reachability check on a per-cluster issuer URL that can genuinely be wrong.
 resource "aws_iam_openid_connect_provider" "google" {
   url = "https://accounts.google.com"
   # NOT simply "every `aud` a trusted token may carry" -- that reading of this
@@ -51,7 +76,7 @@ resource "aws_iam_openid_connect_provider" "google" {
     var.gcp_transfer_agent_subject_id,
     var.gcp_openbao_standby_sa_unique_id,
   ])
-  thumbprint_list = [data.tls_certificate.google.certificates[0].sha1_fingerprint]
+
 }
 
 # --- openbao-standby-seal ------------------------------------------------------
