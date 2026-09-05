@@ -43,7 +43,7 @@ on AWS**:
 | Step | What it does | Where |
 |---|---|---|
 | The signing ceremony | Signs an AWS intermediate under the offline root, issues a new server certificate, and stores both — then commits the root *certificate* as `openbao-root-ca.pem` in `.github/`, which does not exist until this runs | [Building the chain](#building-the-chain), [Storing the chain](#storing-the-chain), [Committing the root certificate](#committing-the-root-certificate) |
-| Retiring the old root | Deletes `certificates/priv.aws.ogenki.io/root-ca`, and only after the new chain has issued a certificate | [Rotation](#rotation) |
+| Retiring the old root | Deletes `certificates/priv.aws.ogenki.io/root-ca` — one `aws secretsmanager delete-secret`, and only once the new chain has issued a certificate. Nothing reads that secret after the ceremony: `pki.tf` reads the intermediate | — |
 
 Until both are done, read every "one offline root for both clouds" statement
 below as what the ceremony produces, not as the current state. The AWS root and
