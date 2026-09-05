@@ -125,7 +125,10 @@
           <mxGeometry x="410" y="632" width="290" height="16" as="geometry" />
         </mxCell>
 
-        <mxCell id="e5" value="⑤ mirror" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#7C3AED;strokeWidth=2;endArrow=classic;endFill=1;exitX=0.15;exitY=1;entryX=0.15;entryY=0;fontFamily=Helvetica;fontSize=10;fontStyle=1;fontColor=#6D28D9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a3" target="a4">
+        <mxCell id="e5l" value="⑤ mirror" style="text;html=1;fontFamily=Helvetica;fontSize=10;fontStyle=1;fontColor=#6D28D9;align=left;labelBackgroundColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="330" y="448" width="115" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#7C3AED;strokeWidth=2;endArrow=classic;endFill=1;exitX=0.15;exitY=1;entryX=0.15;entryY=0;fontFamily=Helvetica;fontSize=10;fontStyle=1;fontColor=#6D28D9;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a3" target="a4">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
@@ -186,7 +189,7 @@
         <mxCell id="p2" value="&lt;b&gt;S3 snapshot bucket&lt;/b&gt;&#xa;every object AWS-sealed by construction" style="rounded=0;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
           <mxGeometry x="70" y="220" width="410" height="52" as="geometry" />
         </mxCell>
-        <mxCell id="p3" value="&lt;b&gt;openbao-standby-seal&lt;/b&gt; IAM role&#xa;trusts accounts.google.com, scoped to two exact key ARNs" style="rounded=0;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+        <mxCell id="p3" value="&lt;b&gt;openbao-standby-seal&lt;/b&gt; IAM role&#xa;trusts accounts.google.com, scoped by key alias + condition" style="rounded=0;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
           <mxGeometry x="70" y="290" width="410" height="52" as="geometry" />
         </mxCell>
         <mxCell id="p4" value="Three KMS actions, not five. &lt;b&gt;wrapping.EnvelopeEncrypt&lt;/b&gt; mints the 32-byte data key in-process, so only that key ever reaches KMS — GenerateDataKey* and ReEncrypt* have no caller." style="text;html=1;fontFamily=Helvetica;fontSize=10;fontColor=#7C3AED;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
@@ -242,6 +245,16 @@
         </mxCell>
         <mxCell id="f6" value="&lt;b&gt;The drill never holds the recovery keys.&lt;/b&gt; Every assertion it makes is against an unauthenticated endpoint, so a compromised runner gains nothing. A restore that only works when someone is watching is not a restore." style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#047857;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
           <mxGeometry x="840" y="630" width="690" height="56" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tw0" value="Two traps on this path, both found by running it" style="text;html=1;fontFamily=Helvetica;fontSize=12;fontStyle=1;fontColor=#92400E;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="110" width="410" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="tw1" value="⚠  &lt;b&gt;client_id_list needs the standby SA's UNIQUE ID&lt;/b&gt;, not just sts.amazonaws.com. AWS matches a Google token on the authorized party (&lt;b&gt;azp&lt;/b&gt;) as well as the audience, and for a GCE identity token azp is the service account's unique id. Every condition in the trust policy can match and STS still answers InvalidIdentityToken." style="rounded=0;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;spacingTop=4;verticalAlign=top;fontFamily=Helvetica;fontSize=11;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="140" width="410" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="tw2" value="⚠  &lt;b&gt;The node's service account needs read on the MIRROR bucket&lt;/b&gt;, and it is easy to leave out: the CI drill's own identity reads that bucket constantly, so the mirror looks reachable while the identity that matters during an actual outage has never touched it. The standby could unseal a snapshot it had no permission to fetch." style="rounded=0;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;spacingTop=4;verticalAlign=top;fontFamily=Helvetica;fontSize=11;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="302" width="410" height="148" as="geometry" />
         </mxCell>
 
       </root>
