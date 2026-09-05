@@ -99,24 +99,62 @@ resource "vault_pki_secret_backend_config_ca" "pki" {
 ```
 
 OpenBao's own server certificate (the one terminating TLS on
-`bao.priv.aws.ogenki.io:8200`) is a leaf signed the same way, generated
+`bao.priv.aws.ogenki.io:8200`) is a leaf signed by that intermediate, generated
 once before the cluster exists and stored in Secrets Manager for
-`opentofu/aws/openbao/cluster/` to consume at bootstrap. Two details worth
-carrying forward if you regenerate it:
+`opentofu/aws/openbao/cluster/` to consume at bootstrap. It is issued on the
+same offline medium, immediately after the intermediate and while its key is
+still to hand:
+
+```bash
+cat > server.cnf <<'EOF'
+[ v3_req ]
+basicConstraints = CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth, clientAuth
+subjectAltName = DNS:bao.priv.aws.ogenki.io, DNS:bao.priv.gcp.ogenki.io, DNS:openbao.security.svc.cluster.local, DNS:openbao.security.svc
+EOF
+openssl ecparam -genkey -name prime256v1 -out server-key.pem && chmod 600 server-key.pem
+openssl req -new -key server-key.pem \
+  -subj "/CN=bao.priv.aws.ogenki.io/O=Ogenki/C=FR" -out server.csr
+openssl x509 -req -in server.csr -CA intermediate-ca.pem -CAkey intermediate-ca-key.pem \
+  -CAcreateserial -out server.pem -days 825 -sha256 \
+  -extfile server.cnf -extensions v3_req
+cat intermediate-ca.pem root-ca.pem > ca-chain.pem
+openssl verify -CAfile root-ca.pem -untrusted intermediate-ca.pem server.pem
+openssl x509 -in server.pem -noout -ext subjectAltName
+```
+
+`openssl verify` must print `server.pem: OK` and the SAN line must list all
+four names before anything is written to a secret store — a leaf short of one
+name fails at a different layer for each name it lacks, and the cheapest place
+to catch that is here.
+
+The CN stays the node's own address (`bao.priv.aws.ogenki.io`), so nothing
+already trusting that name has to change; the other three names ride along as
+SANs. **The GCP leaf is issued exactly the same way**, against
+`openbao-priv-gcp-intermediate-ca` rather than the AWS intermediate and with
+`/CN=bao.priv.gcp.ogenki.io` — the SAN list is identical, because either node
+may answer for either address during a failover.
+
+Two details worth carrying forward if you regenerate it:
 
 - The key is EC P-256, matching the EC P-384 CAs above, and `openssl` writes
   key files world-readable by default — `chmod 600` it, since this key
   terminates TLS for every OpenBao client.
-- The SAN list has **no IP address**, and **after Task 14 Step 2** it carries
-  four names: `bao.priv.aws.ogenki.io`, `bao.priv.gcp.ogenki.io`,
-  `openbao.security.svc.cluster.local`, `openbao.security.svc` — every name a
-  client may connect with, including the neutral in-cluster Service and the
-  standby's hostname. That four-name list is what the ceremony above produces;
-  the certificate in `certificates/priv.aws.ogenki.io/openbao` today predates
-  it, and `openbao-priv-gcp-server-cert` carries only `bao.priv.gcp.ogenki.io`
-  until **Task 14b** re-issues it. The no-IP-SAN property holds either way, and
-  is the load-bearing half: a client connecting to a Raft peer by private IP
-  address (rather than by one of those names) cannot verify TLS against it.
+- The SAN list has **no IP address** — the load-bearing property, and the one
+  the four names above do not imply: a client connecting to a Raft peer by
+  private IP (rather than by one of those names) cannot verify TLS against it.
+  The names cover every way a client may legitimately connect: the node's own
+  address, the other cloud's node during a failover, and the neutral in-cluster
+  Service in both its forms.
+- **The deployed certificates do not carry that list yet.**
+  `certificates/priv.aws.ogenki.io/openbao` predates it and holds only
+  `bao.priv.aws.ogenki.io`; `openbao-priv-gcp-server-cert` holds only
+  `bao.priv.gcp.ogenki.io`. **Task 14 Step 2** re-issues the first and
+  **Task 14b** the second. Until each runs, cert-manager on that cluster cannot
+  verify `openbao.security.svc.cluster.local` and its `ClusterIssuer` fails with
+  `x509: certificate is valid for bao.priv.<cloud>.ogenki.io, not
+  openbao.security.svc.cluster.local`.
 
 ## Trusting the CA on your machine
 
