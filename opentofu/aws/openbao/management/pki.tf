@@ -7,56 +7,38 @@ resource "vault_mount" "pki" {
   max_lease_ttl_seconds     = var.pki_max_lease_ttl
 }
 
-# Configure PKI with the root CA
+# The openssl-made intermediate IS the issuer -- the shape GCP has had since
+# 2026-08-24, adopted here.
+#
+# This stack used to import a bundle containing the ROOT key and have OpenBao
+# generate and sign its own intermediate inside the mount (four resources:
+# key, CSR, root_sign_intermediate, set_signed). That put the root private key
+# on a networked system, which the PKI & Secrets page carried as an accepted
+# trade-off for a reference platform.
+#
+# WRITTEN FOR THE OFFLINE SHAPE, WHICH HAS NOT HAPPENED YET on AWS. This code
+# reads a pre-signed intermediate from `certificates/priv.aws.ogenki.io/
+# intermediate-ca`, a secret the offline ceremony creates -- Task 14 of the
+# Stage 1 plan, still unrun. Until it does:
+#
+#   * this stack cannot apply, because that secret does not exist;
+#   * `certificates/priv.aws.ogenki.io/root-ca`, which holds the root PRIVATE
+#     KEY, is still in Secrets Manager, and the live mount's issuer is still
+#     the one OpenBao generated and signed for itself;
+#   * so the root key IS on a networked system today. Task 17 Step 2 deletes
+#     that secret, deliberately only after the new chain has issued a
+#     certificate.
+#
+# An earlier version of this comment said the deletion had already happened.
+# It had not, and stating a security improvement in the past tense before it is
+# made is the worst direction for the error -- it retires the warning while the
+# exposure is still there. The PKI & Secrets page carries the same gating in a
+# warning callout; the two are meant to agree.
+#
+# After the ceremony: the root signs each cloud's intermediate offline, only the
+# intermediate's cert+key bundle reaches a networked store, and tailnet clients
+# trust ONE root for both clouds.
 resource "vault_pki_secret_backend_config_ca" "pki" {
   backend    = vault_mount.pki.path
-  pem_bundle = jsondecode(data.aws_secretsmanager_secret_version.root_ca.secret_string).bundle
-}
-
-# Generate a key
-resource "vault_pki_secret_backend_key" "this" {
-  backend  = vault_mount.pki.path
-  type     = "internal"
-  key_type = var.pki_key_type
-  key_bits = var.pki_key_bits
-  key_name = lower(replace(var.pki_common_name, " ", "-"))
-}
-
-# Create a CSR (Certificate Signing Request)
-resource "vault_pki_secret_backend_intermediate_cert_request" "this" {
-  backend     = vault_mount.pki.path
-  type        = "existing"
-  common_name = var.pki_common_name
-  key_ref     = vault_pki_secret_backend_key.this.key_id
-}
-
-# Sign our CSR
-resource "vault_pki_secret_backend_root_sign_intermediate" "this" {
-  # Ordering here was previously luck. Nothing tied this to config_ca, so the
-  # graph was free to call root/sign-intermediate before the root CA bundle had
-  # been imported into the mount. At the old default parallelism the two raced
-  # and config_ca happened to win; serialising the stack (-parallelism=1, see
-  # workflows.tm.hcl) made Terraform pick the other order and it failed with
-  # `no default issuer currently configured` (HTTP 500).
-  depends_on = [vault_pki_secret_backend_config_ca.pki]
-
-  backend              = vault_mount.pki.path
-  csr                  = vault_pki_secret_backend_intermediate_cert_request.this.csr
-  common_name          = var.pki_common_name
-  exclude_cn_from_sans = true
-  organization         = var.pki_organization
-  ttl                  = var.pki_max_lease_ttl
-}
-
-# Submits the CA certificate to the PKI Secret Backend.
-resource "vault_pki_secret_backend_intermediate_set_signed" "this" {
-  backend = vault_mount.pki.path
-  # Chaining the certificate used by the Vault CA, the intermediate and the root that are both part of the ca-chain.pem file
-  certificate = "${vault_pki_secret_backend_root_sign_intermediate.this.certificate}\n${jsondecode(data.aws_secretsmanager_secret_version.root_ca.secret_string).ca}"
-}
-
-resource "vault_pki_secret_backend_issuer" "this" {
-  backend     = vault_mount.pki.path
-  issuer_ref  = vault_pki_secret_backend_intermediate_set_signed.this.imported_issuers[0]
-  issuer_name = lower(replace(var.pki_common_name, " ", "-"))
+  pem_bundle = jsondecode(data.aws_secretsmanager_secret_version.intermediate_ca.secret_string)["bundle"]
 }

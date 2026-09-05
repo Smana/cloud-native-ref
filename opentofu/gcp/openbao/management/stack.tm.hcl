@@ -1,6 +1,6 @@
 stack {
   name        = "GCP OpenBao Management"
-  description = "PKI mount, cert-manager role and AppRole on the GCP OpenBao instance"
+  description = "PKI mount, cert-manager PKI role and policies on the GCP OpenBao instance"
   id          = "001633e0-7027-40ca-9d1d-dd2facb5d736"
 
   # The vault provider needs a REACHABLE, INITIALISED server at plan time, so

@@ -2,8 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Everything the controllers in ../ have to ADMIT before it can exist: a
-# ClusterSecretStore and two ExternalSecrets behind the external-secrets
-# webhook, one ClusterIssuer behind cert-manager's.
+# ClusterSecretStore and one ExternalSecret behind the external-secrets webhook,
+# one ClusterIssuer behind cert-manager's. It was two ExternalSecrets until the
+# JWT switch: the second fetched cert-manager's AppRole secret_id, and a
+# projected ServiceAccount token needs no stored credential.
 #
 # Kept out of the `security` Kustomization deliberately, and this now mirrors
 # security/gcp-0/openbao file for file. See that directory's kustomization.yaml
@@ -21,8 +23,21 @@ kind: Kustomization
 # and have nothing to do with OpenBao, so they moved to
 # ../cert-manager-public/, applied by `security-public-certs` -- the same split
 # gcp-0 already had.
+# `openbao-endpoint/local` because this cluster consumes the OpenBao in its own
+# cloud. A cluster consuming the OTHER cloud's active OpenBao lists
+# `../../base/openbao-endpoint/remote` instead and sets openbao_target_ip in
+# its configure stack -- see the cross-cloud failover guide.
+#
+# The `cert-manager-token-creator` Role -- the RBAC precondition of the
+# ClusterIssuer below, without which cert-manager cannot mint the projected
+# ServiceAccount token it authenticates to OpenBao with -- is deliberately NOT
+# listed here. It travels with cert-manager itself, applied by `security` from
+# ../kustomization.yaml, so that no issuer's ordering depends on another issuer
+# family's Kustomization. See ../../base/cert-manager-token-creator/rbac.yaml.
+# `security-openbao` already dependsOn `security`, so the Role is there before
+# this ClusterIssuer is applied.
 resources:
+  - ../../base/openbao-endpoint/local
   - clustersecretstore.yaml
-  - openbao-approle-externalsecret.yaml
   - openbao-ca-externalsecret.yaml
   - openbao-clusterissuer.yaml

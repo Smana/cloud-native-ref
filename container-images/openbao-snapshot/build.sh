@@ -2,7 +2,19 @@
 set -e
 
 # Configuration
-VERSION="v0.1.0"
+#
+# The version is READ from the Dockerfile's ARG, not copied here. CI
+# (.github/workflows/build-container-images.yml) derives the published tag from
+# `ARG OPENBAO_SNAPSHOT_VERSION=`, so a second literal in this file can only
+# drift out of step with it -- and had: this file's literal was left behind by a
+# Dockerfile bump, so a local build produced the new JWT-capable image and tagged
+# it with the PREVIOUS version, silently disagreeing with what that tag means in
+# the registry.
+VERSION="$(sed -n 's/^ARG OPENBAO_SNAPSHOT_VERSION=\(.*\)$/\1/p' Dockerfile)"
+if [ -z "${VERSION}" ]; then
+  echo "error: no 'ARG OPENBAO_SNAPSHOT_VERSION=' in ./Dockerfile (run this from container-images/openbao-snapshot)" >&2
+  exit 1
+fi
 REGISTRY="${CONTAINER_REGISTRY:-ghcr.io/smana}"
 IMAGE_NAME="openbao-snapshot"
 FULL_IMAGE="${REGISTRY}/${IMAGE_NAME}:${VERSION}"

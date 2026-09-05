@@ -187,7 +187,7 @@ change.
   - *Mitigation*: none currently, and the exposure is scoped:
     `opentofu/aws/openbao/cluster/versions.tf`, the stack that provisions the
     actual Raft EC2 fleet, declares no `vault` provider at all — only
-    `management`, which layers namespaces, PKI and AppRole auth on top,
+    `management`, which layers namespaces, the PKI and the auth policies on top,
     needs it.
 - **Provider availability is not automatically identical to Terraform's.**
   OpenTofu's registry is a separate index from HashiCorp's; this

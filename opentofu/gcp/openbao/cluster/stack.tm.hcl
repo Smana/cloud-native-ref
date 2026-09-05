@@ -6,7 +6,8 @@ stack {
   # This stack reads the network stack's outputs via data.terraform_remote_state
   # (subnet, private DNS zone, domain) -- it must exist first.
   after = [
-    "/opentofu/gcp/network"
+    "/opentofu/gcp/network",
+    "/opentofu/gcp/openbao/lineage",
   ]
 
   tags = [

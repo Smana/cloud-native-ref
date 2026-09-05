@@ -32,8 +32,41 @@ script "deploy" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
+        # The vault provider (openbao.tf) needs the CA chain on disk before init.
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init
         ${global.provisioner} validate
+        # Adopt jwt/gcp-0 if the lineage already restored it, exactly as
+        # aws/eks/init does before its configure apply.
+        #
+        # openbao/management runs BEFORE this stack (gke/init's `after` edge)
+        # and its deploy rehydrates, which restores the jwt/<cluster> mount from
+        # the snapshot. This stack's own state, meanwhile, is destroyed with the
+        # cluster. So on every rebuild once the lineage holds a snapshot -- the
+        # routine case, not an edge -- `vault_jwt_auth_backend.cluster` tries to
+        # create a mount that is already there:
+        #
+        #   POST /v1/sys/auth/jwt/gcp-0 -> 400 "path is already in use at jwt/gcp-0/"
+        #
+        # GCP escapes the other half of AWS's problem: a GKE issuer is
+        # deterministic from project/location/name, so the restored mount's
+        # oidc_discovery_url is still correct and only the create collides. The
+        # collision alone is enough to abort the apply.
+        #
+        # The apply's -var list is repeated here because `tofu import` evaluates
+        # the same root module and stops at "No value for required variable"
+        # otherwise. Note deploy_identity_provider: GCP passes a fifth var that
+        # AWS does not, so this list is NOT copyable from the AWS call.
+        #
+        # No `cd` either, unlike AWS -- that call runs from eks/init and has to
+        # reach ../configure, while this one is already in the stack directory.
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-adopt-jwt-mount.sh" \
+          --cluster-name gcp-0 --url https://bao.priv.gcp.ogenki.io:8200 \
+          --root-token-secret-name openbao-priv-gcp-root-token \
+          --ca-file .tls/ca.pem --cloud gcp --project ogenki-435905 \
+          -- -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
       ],
@@ -50,6 +83,10 @@ script "preview" {
       ["bash", "-c", <<-BASH
         ${global.cloud_gate}
         set -euo pipefail
+        # The vault provider (openbao.tf) needs the CA chain on disk before init.
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init
         ${global.provisioner} validate
         ${global.provisioner} plan -out=out.tfplan -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
@@ -98,6 +135,35 @@ script "destroy" {
         ${global.cloud_gate}
         set -euo pipefail
         bash "${terramate.root.path.fs.absolute}/scripts/terramate-destroy-confirm.sh"
+        # The CA fetch is BEST-EFFORT here, and only here -- deploy and preview
+        # above keep it strict, because there the vault provider must configure
+        # for the apply to mean anything.
+        #
+        # On the destroy path it is the opposite. `write_ca` in
+        # openbao-config.sh exits non-zero on four paths -- secret unreadable,
+        # empty value, mkdir failure, non-PEM content -- and an expired ADC
+        # reaches the first of them. Under the `set -euo pipefail` above, that
+        # aborts this script BEFORE destroy-stage2.sh runs, which is precisely
+        # the 2026-08-24 failure this script's header memorialises: a stale
+        # credential left a live GKE cluster with no workflow path to remove it.
+        # AWS hit the same shape and was corrected -- see the long comment in
+        # opentofu/aws/openbao/cluster/workflows.tm.hcl about a CA fetch
+        # hard-blocking a destroy "with the documented override having no
+        # effect".
+        #
+        # Nothing downstream requires the CA: `destroy-stage2.sh attempt`
+        # already tolerates a provider-configure failure, so a missing CA
+        # degrades this run from "removed the in-cluster objects" to "left them
+        # for gke/init to delete with the cluster" -- which is the same
+        # outcome either way, moments later.
+        if ! bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem; then
+          echo "[warn] CA chain fetch failed -- continuing anyway."
+          echo "       The vault provider will fail to configure and destroy-stage2.sh"
+          echo "       will fall through to its tolerant path. Failing here instead"
+          echo "       would strand the live GKE cluster gke/init is about to delete."
+        fi
         bash "${terramate.root.path.fs.absolute}/scripts/destroy-stage2.sh" \
           attempt "${terramate.root.path.fs.absolute}/opentofu/gcp/gke/configure" \
           -var='cilium_version=${global.cilium_version}' \

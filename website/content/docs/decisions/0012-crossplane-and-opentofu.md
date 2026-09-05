@@ -273,7 +273,7 @@ schemas through `./scripts/validate-manifests.sh`.
   three-stage OpenTofu model and the exact handoff point to Flux this
   record's boundary is drawn at
 - [Foundations → AWS]({{< relref "/docs/platform/foundations/aws.md" >}}) —
-  the five OpenTofu stacks and what each one owns
+  the AWS OpenTofu stacks and what each one owns
 - [GitOps]({{< relref "/docs/platform/gitops/_index.md" >}}) — the Flux
   dependency graph Crossplane claims join once the Kubernetes stage hands
   off

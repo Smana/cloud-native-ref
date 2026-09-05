@@ -31,12 +31,32 @@
 # act on that lives in exactly one place in the repo.
 
 claims:
+  - id: openbao-storage-backend
+    why: >-
+      Both modes run Raft since the lineage design: `file` can neither take nor
+      receive a snapshot, and the node is now rebuilt from one on every deploy.
+      Six pages described the `file` backend, one of them stating that backup
+      and restore do not work -- the exact opposite of the design's central
+      claim. The mode claim below could not catch it, because `mode` did not
+      change.
+    source:
+      file: opentofu/aws/openbao/cluster/scripts/startup_script.sh
+      pattern: '^storage "([a-z]+)" \{'
+    pages:
+      - path: website/content/docs/platform/security/openbao.md
+        must_contain: '`{value}`'
+        must_not_contain:
+          - 'storage type.*`file`'
+          - 'neither backup nor restore works'
+      - path: website/content/docs/platform/foundations/aws.md
+        must_contain: 'Raft, single node'
+
   - id: openbao-cluster-mode
     why: >-
-      `mode` decides node count AND storage backend — dev is one node on the
-      `file` backend, ha is five on Raft. Four pages described the ha shape as
-      though it were deployed while variables.tfvars committed dev, so a reader
-      assessing availability of the secrets store was actively misled.
+      `mode` decides the node count — dev is one Raft node, ha is five on Raft
+      with RAID-0 NVMe. Pages used to describe the ha shape as though it were
+      deployed while variables.tfvars committed dev, so a reader assessing
+      availability of the secrets store was actively misled.
     source:
       file: opentofu/aws/openbao/cluster/variables.tfvars
       pattern: '^mode\s*=\s*"([a-z]+)"'
@@ -299,7 +319,7 @@ claims:
       security/gcp-0/rbac/admin.yaml) and is treated as permanent — renaming
       is delete+create with a 30-day soft-delete purge window, and every
       binding referencing the old name goes stale the moment a rename lands.
-      ADR-0032 quotes the id as part of its measured evidence; pinning it
+      ADR-0033 quotes the id as part of its measured evidence; pinning it
       here means a Terraform rename fails this check instead of leaving the
       ADR describing a pool that no longer exists.
     source:
@@ -323,3 +343,83 @@ claims:
       - 'AWS-only'
       - 'aws-0 only'
       - 'stays AWS'
+
+  - id: openbao-seal-alias
+    why: >-
+      The seal key alias is the one string the cluster stack, the standby role,
+      the drill role and the failover guide all agree on; a renamed alias with
+      stale docs would send an operator to a key that does not exist.
+    source:
+      file: opentofu/aws/openbao/lineage/variables.tf
+      pattern: 'default\s*=\s*"(alias/[a-z-]+)"'
+    pages:
+      - path: website/content/docs/platform/security/openbao.md
+        must_contain: '`{value}`'
+      - path: website/content/docs/guides/openbao-cross-cloud-failover.md
+        must_contain: '`{value}`'
+
+  - id: openbao-endpoint-name
+    why: >-
+      Every consumer addresses OpenBao by the neutral Service name; the docs
+      quote it as the thing to configure, so it must match the manifest.
+    source:
+      file: security/base/openbao-endpoint/local/service.yaml
+      pattern: '^\s+name:\s+(openbao)$'
+    pages:
+      - path: website/content/docs/platform/security/pki-and-secrets.md
+        must_contain: '`{value}\.security\.svc\.cluster\.local`'
+
+  - id: openbao-snapshot-schedule
+    why: >-
+      The snapshot cadence IS the RPO of a cross-cloud failover; the guide
+      states it, so it must track the CronJob.
+    source:
+      file: security/base/openbao-snapshot/snapshot-cronjob.yaml
+      pattern: 'schedule:\s+"0 (4) \* \* \*"'
+    pages:
+      - path: website/content/docs/guides/openbao-cross-cloud-failover.md
+        must_contain: '0{value}:00 UTC|24 h'
+
+  - id: openbao-snapshot-bucket-aws
+    why: >-
+      The failover guide hands the operator `aws s3api list-objects-v2 --bucket
+      <name>` and `aws s3 cp s3://<name>/...` to run DURING an outage. A renamed
+      bucket makes those commands target nothing -- they do not error usefully,
+      they return an empty listing -- so the one page written for the worst hour
+      of the year is the page that rots silently. Nothing pinned either bucket
+      name before; the only snapshot claim was the cron cadence.
+      ANCHOR: the name is DERIVED, `<region>-<stem>`, so this pins the stem read
+      from the stack that creates the bucket and requires the pages to spell the
+      full name including today's region prefix. It therefore fails on a stem
+      rename in s3.tf, and on any reword of the name in either page. It does NOT
+      see a region change in variables.tfvars, nor an explicit
+      `snapshot_bucket_name` override that bypasses the derivation entirely --
+      the pattern below asserts the derivation is still in force, so removing or
+      reshaping it fails the claim, but a tfvars override leaves it intact.
+    source:
+      file: opentofu/aws/openbao/lineage/s3.tf
+      pattern: 'snapshot_bucket_name\s*=\s*var\.snapshot_bucket_name == "" \? format\("%s-([a-z0-9-]+)", var\.region\) : var\.snapshot_bucket_name'
+    pages:
+      - path: website/content/docs/platform/security/openbao.md
+        must_contain: 'eu-west-3-{value}'
+      - path: website/content/docs/guides/openbao-cross-cloud-failover.md
+        must_contain: 'eu-west-3-{value}'
+
+  - id: openbao-snapshot-bucket-gcs
+    why: >-
+      Same hazard as openbao-snapshot-bucket-aws, on the mirror the failover
+      guide reads FROM when AWS is the side that is gone: `gcloud storage ls
+      gs://<name>/` and the `gcloud storage cp` that pulls the newest snapshot
+      back. GCS names are global, so this one is project-prefixed rather than
+      region-prefixed -- the prefix differs, the rot is identical.
+      Same anchor caveat: the stem is pinned and the project prefix is spelled
+      literally in the page patterns; a `project_id` change or an explicit
+      `snapshot_bucket_name` override is outside what this can see.
+    source:
+      file: opentofu/gcp/openbao/lineage/main.tf
+      pattern: 'snapshot_bucket_name\s*=\s*var\.snapshot_bucket_name == "" \? format\("%s-([a-z0-9-]+)", var\.project_id\) : var\.snapshot_bucket_name'
+    pages:
+      - path: website/content/docs/platform/security/openbao.md
+        must_contain: 'ogenki-435905-{value}'
+      - path: website/content/docs/guides/openbao-cross-cloud-failover.md
+        must_contain: 'ogenki-435905-{value}'

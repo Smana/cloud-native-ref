@@ -83,36 +83,31 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # subnet, where the internal load balancer lives. Same key, different
       # shape per cloud -- which is exactly why the manifest cannot hardcode it.
       openbao_cidr = data.aws_vpc.selected.cidr_block
-      # Secret Manager keys for the two ExternalSecrets that need one:
-      # security/base/openbao-snapshot/external-secrets.yaml and
-      # apps/base/ai/llm/hf-token-externalsecret.yaml. Both are PATH-STYLE here
-      # because AWS Secrets Manager permits "/"; gcp-0's ConfigMap carries flat
-      # dash-separated IDs instead, because GCP Secret Manager forbids it. Same
-      # keys, different shape per cloud -- ADR-0023.
-      openbao_snapshot_secret = "security/openbao/openbao-snapshot" # pragma: allowlist secret
-      llm_hf_token_secret     = "/platform/llm/hf_token"            # pragma: allowlist secret
-      karpenter_queue_name    = local.karpenter_queue_name
-      route53_public_zone_id  = data.aws_route53_zone.public.zone_id
-    }
-  })
-  server_side_apply = true
-  depends_on        = [kubectl_manifest.flux_system_namespace]
-}
-
-# Create secrets using kubectl_manifest instead of kubernetes_secret
-# to avoid plan-time validation issues with the kubernetes provider
-resource "kubectl_manifest" "flux_cert_manager_approle" {
-  yaml_body = yamlencode({
-    apiVersion = "v1"
-    kind       = "Secret"
-    metadata = {
-      name      = "cert-manager-openbao-approle"
-      namespace = "flux-system"
-    }
-    type = "Opaque"
-    data = {
-      cert_manager_approle_id     = base64encode(local.cert_manager_approle.cert_manager_approle_id)
-      cert_manager_approle_secret = base64encode(local.cert_manager_approle.cert_manager_approle_secret)
+      # The lineage's snapshot bucket, consumed by
+      # security/base/openbao-snapshot/snapshot-cronjob.yaml as BUCKET_NAME.
+      # Region-prefixed on AWS, project-prefixed on GCP (GCS names are global
+      # and the Crossplane IAM condition keyed on the project prefix), so it is
+      # a per-cluster variable rather than a literal in the shared manifest.
+      openbao_snapshot_bucket = "${var.region}-ogenki-openbao-snapshot"
+      # security/base/openbao-endpoint/remote, when THIS cluster consumes an
+      # OpenBao on the other cloud. Unused in the normal posture, where aws-0
+      # lists the local form -- but it has to exist as a key regardless.
+      #
+      # The failover runbook's step 4 tells the operator to switch a cluster to
+      # the remote overlay and set this. Without the key, Flux substitutes an
+      # empty string into `tailscale.com/tailnet-ip` -- schema-valid, silently
+      # wrong -- so an operator following the runbook mid-incident would get a
+      # Service annotated with nothing. gcp-0 has carried this key since the
+      # GCP lineage stack landed; aws-0 was missing it, which made the runbook
+      # unexecutable in the AWS-consumes-GCP direction. That is the direction
+      # failback uses, so it is not the rare one.
+      openbao_target_ip = var.openbao_target_ip
+      # Secret Manager key for apps/base/ai/llm/hf-token-externalsecret.yaml.
+      # PATH-STYLE here because AWS Secrets Manager permits "/"; gcp-0's
+      # ConfigMap carries a flat dash-separated ID instead -- ADR-0023.
+      llm_hf_token_secret    = "/platform/llm/hf_token" # pragma: allowlist secret
+      karpenter_queue_name   = local.karpenter_queue_name
+      route53_public_zone_id = data.aws_route53_zone.public.zone_id
     }
   })
   server_side_apply = true

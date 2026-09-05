@@ -336,7 +336,6 @@ OLD_NAMES=(
     "apps/app-wizard/llm"
     "observability/victoria-metrics-k8s-stack/alertmanager-slack-app"
     "observability/victoria-metrics-k8s-stack/grafana-envvars"
-    "openbao/cloud-native-ref/approles/cert-manager"
     "platform/llm/api-keys"
     "runlore/credentials"
     "runlore/slack-app"

@@ -25,4 +25,17 @@ spec:
     name: openbao-snapshot
   bucketRoles:
     - bucket: ${project_id}-ogenki-openbao-snapshot
-      role: roles/storage.objectAdmin
+      # objectCreator, NOT objectAdmin, and the distinction matters more here
+      # than it would on an ordinary bucket: this one is both gcp-0's snapshot
+      # target AND the DR mirror of the entire AWS lineage. objectAdmin includes
+      # storage.objects.delete, so a bug or a compromise in the daily job could
+      # erase the fallback copy of every AWS snapshot -- the one thing the
+      # cross-cloud design exists to preserve. The AWS twin grants no delete
+      # either; they now agree.
+      #
+      # Create is all the job needs. `save()` does one `gcloud storage cp` and
+      # nothing else; the bucket listing lives in `restore()`, which is an
+      # operator action run with operator credentials, not the pod's identity.
+      # Retention is the bucket's lifecycle rules, not something the job does.
+      # Object names are timestamped, so nothing is ever overwritten.
+      role: roles/storage.objectCreator

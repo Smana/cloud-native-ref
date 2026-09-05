@@ -2,12 +2,14 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: security
 
-# The base is now cloud-neutral -- kms.yaml and s3-bucket.yaml moved to
-# security/aws-0/openbao-snapshot/ -- so this references the whole
-# directory rather than cherry-picking files.
+# The GCS bucket used to be a Crossplane MR here; it is now an OpenTofu resource
+# in opentofu/gcp/openbao/lineage, because rehydrate reads it before this
+# cluster exists and because it mirrors the AWS bucket whether or not gcp-0 is
+# ever built. The MR carried no `Delete` policy, so removing it orphaned the
+# bucket and the lineage stack imported it. The GCPWorkloadIdentity stays: the
+# CronJob still writes this cluster's own snapshots into it.
 resources:
   - ../../base/openbao-snapshot
-  - gcs-bucket.yaml
   - workloadidentity.yaml
 
 patches:

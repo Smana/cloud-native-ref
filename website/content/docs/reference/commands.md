@@ -2,7 +2,7 @@
 title: Commands
 weight: 30
 description: The commands used day to day, verified to exist against the scripts and Terramate workflows in this repository.
-lastVerified: 2026-08-30
+lastVerified: 2026-09-02
 ---
 
 Every command below is either a Terramate script defined in a `workflows.tm.hcl`
@@ -17,8 +17,8 @@ terramate script run deploy          # Deploy platform
 terramate script run drift detect    # Check drift
 
 # Individual stack
-cd opentofu/aws/<stack>   # network, eks/init, eks/configure, openbao/{cluster,management}, llm-platform
-cd opentofu/gcp/<stack>   # network, gke/init, gke/configure, openbao/{cluster,management}
+cd opentofu/aws/<stack>   # network, eks/init, eks/configure, openbao/{lineage,cluster,management}, llm-platform
+cd opentofu/gcp/<stack>   # network, gke/init, gke/configure, openbao/{lineage,cluster,management}
 cd opentofu/shared/<stack>  # tailscale, aws-gcp-federation
 tofu plan -var-file=variables.tfvars
 tofu apply -var-file=variables.tfvars
@@ -37,6 +37,47 @@ TM_CLOUD=all     terramate script run deploy   # every lane there is
 
 A comma list, so a third cloud needs no new keyword. Stacks under
 `opentofu/shared/` are owned by neither cloud and run under every value.
+
+## Environment gates (`TM_*`)
+
+Seven environment variables decide what a Terramate run is allowed to do. Six of
+them protect something; **their polarity is not uniform**, so read the `=true`
+column rather than guessing from the name. `TM_OPENBAO_SKIP_SNAPSHOT` is the odd
+one out: it is the only gate where `true` *removes* a safety step rather than
+authorising an action.
+
+All six boolean gates compare against the exact string `true`. `TRUE`, `1` and
+`yes` all read as unset — for the four destroy gates that means "stay skipped",
+which is the safe direction; for the two `=true`-to-act gates it means "keep the
+default behaviour".
+
+| Variable | `=true` | unset (the default) | Gates |
+|---|---|---|---|
+| `TM_CLOUD` | *not a boolean* — a comma list of lanes, or `all` | `aws`: AWS stacks run, GCP stacks echo `[skip]` and exit 0, `opentofu/shared/**` runs under every value | Every `tofu` call, via `scripts/tm-provisioner.sh` behind `global.provisioner`; plus the non-tofu jobs that carry `--tm-run` or `${global.cloud_gate}` |
+| `TM_LLM_PLATFORM_ENABLED` | the stack's `deploy`/`preview`/`drift detect`/`destroy` run | `[skip]`, exit 0 — the platform is never built by a bare `terramate script run deploy` | `opentofu/aws/llm-platform/workflows.tm.hcl` |
+| `TM_DESTROY_CONFIRMED` | the y/n prompt is bypassed (this is the CI escape hatch) | prompts once on `/dev/tty`, cached 10 min so `--reverse destroy` asks once; **exits 1** when there is no tty | `scripts/terramate-destroy-confirm.sh`, called first by every stack's `destroy` |
+| `TM_LINEAGE_DESTROY` | the four lineage-bearing stacks are destroyed | `[skip]`, exit 0 — a `--reverse destroy` sweep leaves the seal key, both snapshot buckets, the PKI mount and the JWT auth mounts standing | `destroy` in `opentofu/aws/openbao/{lineage,management}` and `opentofu/gcp/openbao/{lineage,management}` |
+| `TM_OPENBAO_SKIP_SNAPSHOT` | **inverted** — the CA fetch and the pre-destroy raft snapshot are skipped, and everything written since the last scheduled snapshot is lost | the snapshot is taken, and a failure aborts the destroy rather than stranding a node's data | `destroy` in `opentofu/{aws,gcp}/openbao/cluster`, and the `pre-destroy-snapshot` subcommand of `scripts/openbao-config.sh` |
+| `TM_TAILNET_DESTROY` | the tailnet-wide singletons are destroyed | `[skip]`, exit 0 — tearing down one cloud does not remove tailnet access for the other | `destroy` in `opentofu/shared/tailscale/workflows.tm.hcl` |
+| `TM_FEDERATION_DESTROY` | the AWS↔GCP OIDC provider and role are destroyed | `[skip]`, exit 0 — `gcp-0`'s cert-manager and external-dns-public keep working | `destroy` in `opentofu/shared/aws-gcp-federation/workflows.tm.hcl` |
+
+Two consequences worth stating outright:
+
+- **A guarded destroy exits 0 when it skips.** That is deliberate — a
+  `--reverse destroy` sweep must carry on to the next stack — so a teardown can
+  report success having deliberately kept the expensive things. Verify against
+  the provider afterwards (see the GKE teardown below) rather than trusting the
+  exit code.
+- **`TM_LINEAGE_DESTROY=true` is not sufficient on AWS.** Past the gate, the
+  seal key carries `prevent_destroy` in `opentofu/aws/openbao/lineage/kms.tf`;
+  removing that lifecycle block is a second, deliberate act. Destroying the
+  lineage makes every snapshot — including the GCS mirror — permanently
+  unreadable.
+
+`TM_GCP_ENABLED` is **retired**. It was half of a two-knob scheme
+(`TM_GCP_ENABLED=true` to turn GCP on, `--no-tags=aws` to turn AWS off) that
+`TM_CLOUD` replaced; it is inert today and appears only in archived plans under
+`docs/superpowers/plans/`.
 
 ## EKS deploy (two-stage bootstrap, three jobs)
 
@@ -121,6 +162,8 @@ terramate script run --tags=opt-in    deploy
 
 The Kubernetes side of the LLM platform has its own gate — see
 [Repository Layout § Opt-in surfaces]({{< relref "/docs/reference/repository-layout.md" >}}).
+`TM_LLM_PLATFORM_ENABLED` is one of seven `TM_*` gates; the rest, and their
+polarities, are in [§ Environment gates](#environment-gates-tm_) above.
 
 ## Cluster access
 

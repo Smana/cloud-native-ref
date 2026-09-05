@@ -32,6 +32,16 @@ resource "tailscale_acl" "this" {
       [
         { action = "accept", src = ["autogroup:member"], dst = ["autogroup:member:*"] },
         { action = "accept", src = ["tag:k8s-operator"], dst = ["tag:k8s:*", "tag:admin:*"] },
+        # The operator's egress ProxyGroup pods (tag:k8s) carrying a remote
+        # cluster's OpenBao traffic to the other cloud's internal load balancer
+        # -- security/base/openbao-endpoint/remote. Port 8200 only, to every
+        # advertised CIDR: which cloud is active is a per-cluster variable, and
+        # the ACL should not have to know.
+        {
+          action = "accept"
+          src    = ["tag:k8s"]
+          dst    = [for c in flatten(values(var.advertised_routes)) : "${c}:8200"]
+        },
       ]
     )
 

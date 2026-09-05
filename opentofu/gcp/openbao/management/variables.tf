@@ -15,6 +15,30 @@ variable "private_domain_name" {
   default     = "priv.gcp.ogenki.io"
 }
 
+variable "pki_additional_allowed_domains" {
+  description = <<-EOT
+    Extra domains the cert-manager PKI role may issue for, on top of
+    `private_domain_name`.
+
+    Empty for a GCP-only lineage, and that is the point: both clouds'
+    intermediates were signed by the same offline root, so a certificate this CA
+    mints for an AWS private name is chain-valid and trusted -- including
+    `bao.priv.aws.ogenki.io`. A GCP-only deploy has no use for that reach.
+
+    A STANDBY deploy -- one restoring the AWS lineage's snapshot, so it also
+    carries `seal_provider = "awskms"` in the cluster stack -- sets this to
+    ["priv.aws.ogenki.io"] so it can issue for aws-0's workloads.
+
+    Why this is an input and not "the snapshot brings the widened role back":
+    this stack MANAGES that role. A rehydrate does restore it as the snapshot
+    recorded it, but the `tofu apply` that immediately follows reconciles it to
+    whatever this list produces -- narrowing it again and breaking the standby's
+    ability to issue for aws-0. The widening has to be declared, not inherited.
+  EOT
+  type        = list(string)
+  default     = []
+}
+
 variable "openbao_ca_cert_file" {
   description = "Local path to the CA chain used to verify OpenBao's certificate. Written by `openbao-config.sh ca --cloud gcp` before this stack runs; OpenBao's cert comes from the offline root, which no system trust store knows."
   type        = string
@@ -31,12 +55,6 @@ variable "intermediate_ca_secret_name" {
   description = "GCP Secret Manager entry holding the intermediate CA pem_bundle (certificate + key) from the offline ceremony"
   type        = string
   default     = "openbao-priv-gcp-intermediate-ca"
-}
-
-variable "approle_secret_name" {
-  description = "GCP Secret Manager entry this stack writes cert-manager's AppRole credentials to"
-  type        = string
-  default     = "openbao-priv-gcp-approle-cert-manager"
 }
 
 variable "pki_mount_path" {
@@ -63,20 +81,26 @@ variable "pki_country" {
   default     = "FR"
 }
 
+# 94670856 = 3 x 31556952, the mean Gregorian year (365.2425 days) in seconds.
+# It is the AWS value, and the "matching AWS" in the description below used to be
+# false: this was 94608000, which is 1095 days -- three 365-day years, 17h27m
+# short. Both are ~3 years and nothing here comes close to the ceiling, so the
+# divergence cost nothing; it just made the sentence untrue, and a reader
+# checking parity would have had to do the arithmetic to find that out.
 variable "pki_max_lease_ttl" {
-  description = "Mount lifetime in seconds. Three years, matching AWS."
+  description = "Mount lifetime in seconds. Three years (3 x 31556952), the same value as AWS."
   type        = number
-  default     = 94608000
+  default     = 94670856
 }
 
 variable "pki_leaf_ttl" {
-  description = "Default lifetime of an issued leaf, in seconds. 90 days: cert-manager renews at two-thirds of lifetime, so this exercises renewal roughly every 60 days."
+  description = "Default lifetime of an issued leaf, in seconds, for a caller that requests none (30 days). A caller may ask for up to pki_leaf_max_ttl."
   type        = number
-  default     = 7776000
+  default     = 2592000
 }
 
 variable "pki_leaf_max_ttl" {
-  description = "Maximum leaf lifetime a caller may request, in seconds"
+  description = "Maximum leaf lifetime a caller may request, in seconds (90 days)"
   type        = number
   default     = 7776000
 }
@@ -97,25 +121,4 @@ variable "external_secrets_service_account" {
   description = "Name of the External Secrets controller's ServiceAccount. Part of the Workload Identity subject; a mismatch produces a binding the API accepts and that never matches."
   type        = string
   default     = "external-secrets"
-}
-
-# Dash-separated, matching its three siblings (approle_secret_name,
-# ca_chain_secret_name, root_token_secret_name), BECAUSE GCP Secret Manager
-# secret IDs may only contain letters, numbers, hyphens and underscores --
-# unlike AWS Secrets Manager, "/" is invalid here. The AWS stack's equivalent
-# default is a path-style name (`security/openbao/openbao-snapshot`), and
-# both values reach the one shared manifest that needs them --
-# security/base/openbao-snapshot/external-secrets.yaml -- through the
-# `openbao_snapshot_secret` per-cluster substitution variable (Task 14), not
-# by this stack matching AWS's literal string.
-variable "snapshot_approle_secret_name" {
-  description = "GCP Secret Manager entry holding the snapshot agent's AppRole credentials and job configuration."
-  type        = string
-  default     = "openbao-priv-gcp-snapshot"
-}
-
-variable "snapshot_bucket_name" {
-  description = "GCS bucket where raft snapshots are stored. Empty means derive it from region, matching security/gcp-0/openbao-snapshot/gcs-bucket.yaml's crossplane.io/external-name."
-  type        = string
-  default     = ""
 }

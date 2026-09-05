@@ -3,7 +3,7 @@ title: AWS is the primary cloud, and cross-cloud singletons live there
 linkTitle: 0027 · Primary cloud
 weight: 270
 description: Some services cannot sensibly exist twice — one public DNS zone, one identity directory, one federation trust. Naming AWS the primary cloud gives those a defined home, and gives a GCP-only platform a defined way to take it over.
-lastVerified: 2026-09-01
+lastVerified: 2026-09-02
 ---
 
 **Status**: Accepted
@@ -52,9 +52,9 @@ determines where it lives:
 
 | Class | Home | Examples |
 |---|---|---|
-| **Primary-cloud singleton** | the primary cloud | public Route53 zone, ZITADEL, the `aws-gcp-federation` OIDC provider and role |
+| **Primary-cloud singleton** | the primary cloud | public Route53 zone, ZITADEL, the `aws-gcp-federation` OIDC providers and roles, OpenBao (since [ADR-0033](0033-openbao-store-of-record-lineage.md) — its relocation carries state, by snapshot restore) |
 | **Cloud-agnostic** | neither cloud | Tailscale and the tailnet ACL — a SaaS control plane, in `opentofu/shared/tailscale` |
-| **Per-cloud** | every cloud, independently | network, GKE/EKS, OpenBao, secret store, state and backup buckets |
+| **Per-cloud** | every cloud, independently | network, GKE/EKS, secret store, state and backup buckets |
 
 `opentofu/shared/` holds the first two classes, which is why a GCP-only deploy
 still applies `aws-gcp-federation`, and why an AWS-only deploy applies it too at
@@ -89,8 +89,10 @@ relocation has never been performed end to end; until it has, treat the GCP-only
 path as designed rather than proven.
 
 **What it does not change.** Nothing per-cloud. Both clusters keep their own
-OpenBao, secret store, state and backups, and neither depends on the other for
-them. This decision is only about the handful of things that cannot be two.
+secret store, state and backups, and neither depends on the other for them.
+(OpenBao left this class on 2026-09-02 —
+[ADR-0033](0033-openbao-store-of-record-lineage.md).) This decision is only
+about the handful of things that cannot be two.
 
 **How it is enforced (2026-09-01).** The primary cloud is declared once, as
 `primary_cloud` in `opentofu/config.tm.hcl`. The OpenTofu gate that decides

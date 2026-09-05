@@ -55,14 +55,36 @@ globals {
   # one edit here rather than a hunt across two files.
   deploy_identity_provider_gcp = global.primary_cloud == "gcp"
   openbao_url                  = "https://bao.priv.aws.ogenki.io:8200"
-  root_token_secret_name       = "openbao/cloud-native-ref/tokens/root"
+
+  # The AWS NLB's fixed private address in the first private subnet, used only
+  # as a fallback when `bao.priv.aws.ogenki.io` does not resolve. A teardown
+  # removes that record while the node is still serving, which is precisely when
+  # the pre-destroy snapshot needs to reach it (measured 2026-09-05: dig empty,
+  # the same request to this address returned 200).
+  #
+  # This is the SAME contract as `openbao_target_ip` in gcp/gke/configure, and
+  # the same one load_balancer.tf's `cidrhost(cidr, -6)` comment calls out: move
+  # the offset and both values move with it. Only used to connect -- TLS still
+  # verifies the hostname, because the certificate carries no IP SAN.
+  openbao_fallback_address = "10.0.15.250"
+
+  root_token_secret_name = "openbao/cloud-native-ref/tokens/root"
   # Deliberately a different secret from the root token: the recovery keys are
   # what regenerates a lost or revoked root token, so storing both together
   # would make the pair only as strong as one of them.
-  recovery_keys_secret_name        = "openbao/cloud-native-ref/tokens/recovery" # pragma: allowlist secret
-  root_ca_secret_name              = "certificates/priv.aws.ogenki.io/root-ca"
-  cert_manager_approle_secret_name = "openbao/cloud-native-ref/approles/cert-manager"
-  cert_manager_approle             = "cert-manager"
+  recovery_keys_secret_name = "openbao/cloud-native-ref/tokens/recovery" # pragma: allowlist secret
+  # PKI material, both written by the offline signing ceremony (PKI & Secrets
+  # page). The intermediate's private key is in `intermediate-ca` and nowhere
+  # else on AWS; `ca-chain` is certificates only ({"ca": "<intermediate>\n<root>"})
+  # and is what every client verifies against. The former `root-ca` entry, which
+  # held the ROOT private key, is gone -- the root is offline, as on GCP.
+  intermediate_ca_secret_name = "certificates/priv.aws.ogenki.io/intermediate-ca" # pragma: allowlist secret
+  ca_chain_secret_name        = "certificates/priv.aws.ogenki.io/ca-chain"        # pragma: allowlist secret
+
+  # The lineage's snapshot bucket (opentofu/aws/openbao/lineage). Read by the
+  # management stack's rehydrate step and the cluster stack's pre-destroy
+  # snapshot, both of which run BEFORE the cluster that used to own the bucket.
+  snapshot_bucket_name = "eu-west-3-ogenki-openbao-snapshot"
 
   # Helm chart versions for EKS bootstrap
   cilium_version        = "1.20.1"
@@ -98,7 +120,7 @@ globals {
   # There are deliberately NO gcp_project / gcp_region / gcp_zone / gke_cluster_name
   # globals to match `region` and `eks_cluster_name` above. Those two exist because
   # something consumes them: eks-recycle-bootstrap-nodes.sh and the OpenBao
-  # workflows take them as script arguments. GCP has no equivalent imperative step,
+  # workflows take them as script arguments. Their GCP peers have no such consumer,
   # so the same globals were pure duplication -- a third copy of values that already
   # live in each stack's variables.tf defaults and variables.tfvars, and one that
   # nothing would notice going stale.
@@ -106,4 +128,57 @@ globals {
   # The live values: project/region/zone in opentofu/gcp/network/variables.tfvars,
   # cluster name in opentofu/gcp/gke/init/variables.tfvars. Add a global here when,
   # and only when, a script needs to be handed one.
+  #
+  # `gcp_snapshot_bucket_name` is the one value that clears that bar today, which is
+  # why the rule above is a bar and not a ban. Two GCP scripts take the bucket as an
+  # argument -- `openbao-config.sh rehydrate` in gcp/openbao/management's deploy,
+  # `openbao-config.sh pre-destroy-snapshot` in gcp/openbao/cluster's destroy --
+  # the same two sites that on AWS already read `snapshot_bucket_name` above. It was
+  # a literal in both heredocs, so one value was written twice with neither copy
+  # aware of the other. The project id stays a literal there: nothing is handed it
+  # as a shared argument, so it does not clear the bar.
+  gcp_snapshot_bucket_name = "ogenki-435905-ogenki-openbao-snapshot"
+}
+
+# The CA-chain fetch, as a command list, for the two AWS stacks whose `vault`
+# provider must verify OpenBao before it can plan.
+#
+# `providers.tf` in aws/openbao/management and `openbao.tf` in aws/eks/configure
+# both point `ca_cert_file` at `.tls/ca.pem`. `.tls/` is gitignored, so on a fresh
+# checkout or any CI runner that file does not exist and the provider fails to
+# CONFIGURE -- before it can plan. Provider configuration is evaluated before any
+# resource exists, so this cannot be a `local_file` resource; it has to be a script
+# step, prepended to every script in those stacks that runs tofu.
+#
+# It lives HERE rather than in either stack because the two copies were 18
+# byte-identical lines, and the newer one carried a comment reading "one global,
+# reused" -- which would have stopped the next reader noticing there were two.
+# Terramate globals are stack-local (`terramate debug show globals` resolves
+# `openbao_ca_cmd` in aws/eks/configure and not in aws/openbao/cluster), so a
+# stack-level block cannot be shared however it is worded. opentofu/aws/ holds no
+# *.tm.hcl at all, which makes this file the nearest common ancestor -- and it
+# already owns every input the command takes (`ca_chain_secret_name`, `region`,
+# `profile`) and already carries a bash-snippet command global (`cloud_gate`) as
+# precedent.
+#
+# Visible to the GCP stacks as well, like `region` and `snapshot_bucket_name`
+# above, and unused there: GCP fetches its CA with `--cloud gcp` from its own
+# Secret Manager, as a bash snippet inside a `${global.cloud_gate}` block.
+globals "openbao_ca_cmd" {
+  args = [
+    "bash",
+    "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh",
+    "--tm-run",
+    "bash",
+    "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh",
+    "ca",
+    "--root-ca-secret-name",
+    global.ca_chain_secret_name,
+    "--ca-output-file",
+    ".tls/ca.pem",
+    "--region",
+    global.region,
+    "--profile",
+    global.profile,
+  ]
 }

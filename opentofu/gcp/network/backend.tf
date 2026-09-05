@@ -17,8 +17,12 @@
 #      account, previously blocked GCP `destroy` as well as `apply` -- and
 #      teardown is the operation most needed when something is already wrong.
 #   3. Secrets in state stop crossing clouds. opentofu/gcp/openbao/management's
-#      state contains cert-manager's live AppRole secret_id; with shared state,
-#      an AWS-side compromise handed over a working GCP credential.
+#      vault provider reads OpenBao's live root token out of Secret Manager and
+#      that value flows into its state; with shared state, an AWS-side
+#      compromise handed over a working GCP credential. (This used to name
+#      cert-manager's AppRole secret_id -- that backend is gone, cert-manager
+#      authenticates with a cluster JWT now, and the root token is a strictly
+#      worse thing to leak.)
 #
 # The accepted cost is a SECOND hand-created bootstrap prerequisite. Neither
 # bucket is IaC-managed (the usual chicken-and-egg), so this is one more
