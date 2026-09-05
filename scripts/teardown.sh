@@ -57,6 +57,51 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
   destroy_rc=$?
   echo "=== terramate exit: ${destroy_rc} ==="
   echo
+
+  # SWEEP AND RETRY, because tofu cannot remove what it did not create.
+  #
+  # A destroy that fails almost always fails on resources an IN-CLUSTER
+  # CONTROLLER created: a load balancer from a Gateway, a Karpenter instance, an
+  # ExternalDNS record, an EKS security group, a CSI volume. OpenTofu has no
+  # state for any of them, so it cannot delete them -- it just hits
+  # DependencyViolation or HostedZoneNotEmpty on whatever they are holding.
+  #
+  # Sweeps for three of these already existed, but were wired as jobs INSIDE
+  # eks/init's destroy. That works only if the teardown succeeds first time: once
+  # eks/init is destroyed, the cleanup written for exactly this situation can
+  # never run again, and every retry fails on leftovers a sweep would have
+  # handled.
+  #
+  # Measured 2026-09-04 on a fully-reconciled aws-0: five attempts, five manual
+  # interventions, five different orphan classes. The same teardown against a
+  # half-built cluster had been clean first time -- the failure scales with how
+  # completely the platform reconciled.
+  #
+  # So: if the cloud is not clean after the destroy, sweep what the controllers
+  # left and destroy once more. Sweeping runs only when the EKS cluster is
+  # already gone (the sweeps enforce that themselves), so this cannot touch live
+  # infrastructure.
+  if wants aws; then
+    _region="${AWS_REGION:-eu-west-3}"
+    _left="$(aws ec2 describe-vpcs --region "$_region" \
+      --query 'Vpcs[?IsDefault==`false`].VpcId' --output text 2>/dev/null)"
+    if [ -n "${_left//[[:space:]]/}" ]; then
+      echo "=== destroy left resources behind — sweeping controller-created orphans ==="
+      bash "${ROOT}/scripts/aws-sweep-teardown-blockers.sh" \
+        --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
+      bash "${ROOT}/scripts/aws-sweep-controller-orphans.sh" \
+        --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
+      bash "${ROOT}/scripts/aws-sweep-orphaned-volumes.sh" \
+        --cluster-name "${EKS_CLUSTER_NAME:-aws-0}" --region "$_region" --apply || true
+
+      echo
+      echo "=== retrying the destroy after the sweep ==="
+      ( cd "${ROOT}/opentofu" && terramate script run --reverse --continue-on-error destroy )
+      destroy_rc=$?
+      echo "=== terramate exit after retry: ${destroy_rc} ==="
+      echo
+    fi
+  fi
 fi
 
 # ---------------------------------------------------------------------------
