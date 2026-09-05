@@ -361,6 +361,29 @@ require_recovery_keys_secret() {
 # sees a bare non-zero exit with no reason -- measured, on both of its error
 # paths. Same bug, same fix, as node_seal_type() above and log_err() in
 # scripts/openbao-config.sh.
+# The LINEAGE's root token, as stored at init time. Used after a raft restore,
+# where the snapshot's token store makes it valid again -- see the long note at
+# the post-restore call site for why this is preferred over minting.
+#
+# Same stderr discipline as generate_root_token below: this is called as
+# `VAULT_TOKEN=$(stored_root_token)`, so anything on stdout would be captured
+# into the token itself.
+stored_root_token() {
+    _srt_raw=""
+    if [ "${CLOUD}" = "gcp" ]; then
+        _srt_raw=$(gcloud secrets versions access latest --secret="${ROOT_TOKEN_SECRET_ID}" 2>/dev/null) || return 1
+    else
+        _srt_raw=$(aws secretsmanager get-secret-value --secret-id "${ROOT_TOKEN_SECRET_ID}" 2>/dev/null | jq -r '.SecretString') || return 1
+    fi
+    [ -n "${_srt_raw}" ] || return 1
+    # `.token` is the shape openbao-config.sh's init writes. `.root_token` is
+    # accepted too because that is what `bao operator init -format=json` calls
+    # it, and an operator storing the raw init output is the obvious mistake.
+    _srt_tok=$(printf '%s' "${_srt_raw}" | jq -r '.token // .root_token // empty' 2>/dev/null)
+    [ -n "${_srt_tok}" ] || return 1
+    printf '%s' "${_srt_tok}"
+}
+
 generate_root_token() {
     require_recovery_keys_secret || exit 1
 
@@ -751,9 +774,51 @@ restore() {
     # token); after it they are exactly this node's. That is also why the
     # variable is demanded by restore()'s pre-flight rather than only by the
     # authentication paths that read it.
-    VAULT_TOKEN=$(generate_root_token)
-    export VAULT_TOKEN
-    MINTED_ROOT_TOKEN=1
+    #
+    # PREFER THE STORED ROOT TOKEN, because minting is not available here.
+    #
+    # `generate_root_token` calls `bao operator generate-root`, which needs no
+    # authentication -- on a SHAMIR-sealed node. Every node in this design is
+    # auto-unsealed, and there the endpoint does not exist:
+    #
+    #   PUT /v1/sys/generate-root/attempt  -> 405 "unsupported operation"
+    #
+    # Its auto-unseal counterpart, /v1/sys/generate-recovery-token/attempt,
+    # answers 403: it requires a token, which is the thing being obtained. So on
+    # this platform the mint cannot succeed, and the first rehydrate to reach
+    # this line failed here with the restore already applied -- reported as
+    # "Restore failed" about a node that had in fact restored perfectly.
+    #
+    # The stored root token is the lineage's own, and a raft restore replaces the
+    # token store WITH THE SNAPSHOT'S, so after the restore it is valid again by
+    # construction. Verified on a restored node: lookup-self returns
+    # display_name=root, policies=["root"].
+    #
+    # MINTED_ROOT_TOKEN stays empty on this path, and that is load-bearing: the
+    # EXIT trap revokes what this function minted, and revoking the LINEAGE's
+    # root token would destroy the credential the next rehydrate depends on.
+    if [ -n "${ROOT_TOKEN_SECRET_ID:-}" ]; then
+        if ! VAULT_TOKEN=$(stored_root_token); then
+            echo "${err}: could not read the stored root token from ${ROOT_TOKEN_SECRET_ID}." >&2
+            echo "${err}: The restore SUCCEEDED -- the node is running the snapshot's data." >&2
+            echo "${err}: Supply that token as VAULT_TOKEN and re-run, or read it by hand." >&2
+            exit 1
+        fi
+        export VAULT_TOKEN
+        # Deliberately NOT setting MINTED_ROOT_TOKEN -- see above.
+        if ! bao token lookup >/dev/null 2>&1; then
+            echo "${err}: the stored root token is not valid on the restored node." >&2
+            echo "${err}: That happens when the token was rotated AFTER this snapshot was" >&2
+            echo "${err}: taken, so the snapshot's token store predates it. Restore a newer" >&2
+            echo "${err}: snapshot, or mint a token by hand from the recovery keys in" >&2
+            echo "${err}: ${RECOVERY_KEYS_SECRET_ID}." >&2
+            exit 1
+        fi
+    else
+        VAULT_TOKEN=$(generate_root_token)
+        export VAULT_TOKEN
+        MINTED_ROOT_TOKEN=1
+    fi
 
     echo "${info}: Checking that ${CHECK_PATH} is less than ${NUM_DAYS} days old (--freshness ${FRESHNESS})"
     CURR_TS=$(date -u "+%s")

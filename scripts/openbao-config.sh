@@ -1117,6 +1117,7 @@ rehydrate_openbao() {
     # seal and a child that refused -- after the init, which is the one place
     # this must not happen.
     if ! VAULT_TOKEN="$root_token" RECOVERY_KEYS_SECRET_ID="$RECOVERY_KEYS_SECRET_NAME" \
+        ROOT_TOKEN_SECRET_ID="$ROOT_TOKEN_SECRET_NAME" \
         OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL="${OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL:-false}" \
         sh "$(dirname "$0")/openbao-snapshot.sh" restore \
             -a "$OPENBAO_URL" -b "$SNAPSHOT_BUCKET" -s "$scratch/bao.snap" \
