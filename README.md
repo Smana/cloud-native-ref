@@ -28,9 +28,11 @@ Every subsystem is explained at
 
 ## Quickstart
 
-Roughly 30 minutes end to end. You need an AWS account with admin permissions, a registered
-domain in Route53, a Tailscale account, and a GitHub App or token for Flux. Full prerequisites
-and the annotated walkthrough are in
+Roughly 45 minutes end to end, and almost all of it unattended: about 30 minutes of
+infrastructure, then Flux converging the platform while you do something else. You
+need an AWS account with admin permissions, a registered domain in Route53, a
+Tailscale account, and a GitHub App or token for Flux. Full prerequisites and the
+annotated walkthrough are in
 [Get Started](https://cnref.ogenki.io/docs/get-started/).
 
 ```bash
@@ -62,7 +64,7 @@ Grafana) and tooling (Harbor, Headlamp, Homepage).
 Full documentation — deploy guides, platform internals, concepts, and the
 architecture decision records — is published at **[cnref.ogenki.io](https://cnref.ogenki.io)**.
 
-- [Get Started](https://cnref.ogenki.io/docs/get-started/) — deploy the platform in about 30 minutes
+- [Get Started](https://cnref.ogenki.io/docs/get-started/) — deploy the platform in about 45 minutes, mostly unattended
 - [Platform](https://cnref.ogenki.io/docs/platform/) — every domain, what runs and why
 - [Concepts](https://cnref.ogenki.io/docs/concepts/) — the ideas the platform is built on
 - [Guides](https://cnref.ogenki.io/docs/guides/) — fork and adapt, add an application, troubleshoot
