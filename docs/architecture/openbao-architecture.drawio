@@ -1,0 +1,102 @@
+<mxfile host="app.diagrams.net" agent="cloud-native-ref" version="24.7.7">
+  <diagram id="openbao-arch" name="OpenBao architecture">
+    <mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1240" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="t1" value="OpenBao: the node is disposable, the lineage is not" style="text;html=1;fontFamily=Helvetica;fontSize=22;fontStyle=1;fontColor=#1E293B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="24" width="900" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="t2" value="The platform is destroyed nightly. OpenBao is rebuilt from its newest snapshot, and comes back serving the same PKI." style="text;html=1;fontFamily=Helvetica;fontSize=13;fontColor=#64748B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="54" width="900" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ─────────── derived: the two nodes ─────────── -->
+        <mxCell id="cA" value="AWS — active" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=1.5;dashed=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontFamily=Helvetica;fontSize=13;fontStyle=1;fontColor=#4338CA;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="520" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="aN" value="&lt;b&gt;OpenBao node&lt;/b&gt; — EC2, auto-unsealed by the seal key" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="62" y="138" width="476" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="aP" value="&lt;b&gt;PKI&lt;/b&gt;&#xa;offline-signed intermediate" style="rounded=0;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="62" y="196" width="230" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="aJ" value="&lt;b&gt;jwt/&amp;lt;cluster&amp;gt;&lt;/b&gt;&#xa;machine auth, one per cluster" style="rounded=0;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="308" y="196" width="230" height="52" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cB" value="GCP — standby" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;fillColor=#FEF9E7;strokeColor=#F59E0B;strokeWidth=1.5;dashed=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontFamily=Helvetica;fontSize=13;fontStyle=1;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="700" y="100" width="500" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="bN" value="&lt;b&gt;OpenBao node&lt;/b&gt; — GCE, deployed only on failover" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=#F59E0B;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="722" y="138" width="456" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="bS" value="&lt;b&gt;Seals with the AWS key&lt;/b&gt;, over federation&#xa;no AWS credential stored on the node" style="rounded=0;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="722" y="196" width="456" height="52" as="geometry" />
+        </mxCell>
+
+        <!-- ─────────── the lineage ─────────── -->
+        <mxCell id="cL" value="The lineage — survives every teardown" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;fillColor=#F5F3FF;strokeColor=#7C3AED;strokeWidth=2;dashed=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontFamily=Helvetica;fontSize=13;fontStyle=1;fontColor=#6D28D9;" vertex="1" parent="1">
+          <mxGeometry x="40" y="360" width="1160" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="lK" value="&lt;b&gt;KMS seal key&lt;/b&gt;&#xa;multi-region · a snapshot restores only under the seal that wrote it" style="rounded=0;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="62" y="400" width="330" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="lS" value="&lt;b&gt;Snapshot bucket&lt;/b&gt; — S3&#xa;daily, plus one before every teardown" style="rounded=0;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="424" y="400" width="330" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="lG" value="&lt;b&gt;GCS mirror&lt;/b&gt;&#xa;the same objects, for the standby to restore" style="rounded=0;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="848" y="400" width="330" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="lB" value="&lt;b&gt;Five bootstrap secrets&lt;/b&gt;, per cloud — in that cloud's own secret store. Nothing is synced between clouds; only the snapshot crosses." style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=#A78BFA;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="62" y="462" width="1116" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ─────────── consumers ─────────── -->
+        <mxCell id="cC" value="Consumers — JWT only, no stored credential" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;fillColor=#ECFDF5;strokeColor=#059669;strokeWidth=1.5;dashed=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontFamily=Helvetica;fontSize=13;fontStyle=1;fontColor=#047857;" vertex="1" parent="1">
+          <mxGeometry x="40" y="556" width="1160" height="92" as="geometry" />
+        </mxCell>
+        <mxCell id="c1" value="&lt;b&gt;cert-manager&lt;/b&gt;&#xa;every internal TLS leaf" style="rounded=0;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="62" y="592" width="360" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c2" value="&lt;b&gt;External Secrets&lt;/b&gt;&#xa;materialises credentials into the cluster" style="rounded=0;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="440" y="592" width="360" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" value="&lt;b&gt;openbao-snapshot&lt;/b&gt;&#xa;writes the daily object" style="rounded=0;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;whiteSpace=wrap;align=left;spacingLeft=10;fontFamily=Helvetica;fontSize=11;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="818" y="592" width="360" height="42" as="geometry" />
+        </mxCell>
+
+        <!-- ─────────── flows ─────────── -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7C3AED;strokeWidth=2;endArrow=classic;endFill=1;exitX=1;exitY=0.25;entryX=0.28;entryY=1;" edge="1" parent="1" source="lK" target="aN">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1l" value="① unseal" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontStyle=1;fontColor=#6D28D9;align=left;labelBackgroundColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="150" y="300" width="90" height="18" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7C3AED;strokeWidth=2;endArrow=classic;endFill=1;exitX=1;exitY=0.5;entryX=0.5;entryY=0;" edge="1" parent="1" source="aN" target="lS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2l" value="② snapshot, then restore on the next deploy" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontStyle=1;fontColor=#6D28D9;align=left;labelBackgroundColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="420" y="300" width="290" height="18" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#7C3AED;strokeWidth=2;endArrow=classic;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="lS" target="lG">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3l" value="③ mirror" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontStyle=1;fontColor=#6D28D9;align=center;labelBackgroundColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="762" y="408" width="80" height="18" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#F59E0B;strokeWidth=2;endArrow=classic;endFill=1;dashed=1;exitX=0.75;exitY=0;entryX=0.75;entryY=1;" edge="1" parent="1" source="lG" target="bS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4l" value="④ failover: the standby restores the mirror" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontStyle=1;fontColor=#B45309;align=left;labelBackgroundColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="900" y="300" width="290" height="18" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

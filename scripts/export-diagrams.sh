@@ -76,6 +76,7 @@ SINGLE_PAGE=(
     app-claim-expansion
     observability-flow
     authentication-chain
+    openbao-architecture
 )
 
 # --embed-svg-fonts false is load-bearing, not a micro-optimisation. drawio

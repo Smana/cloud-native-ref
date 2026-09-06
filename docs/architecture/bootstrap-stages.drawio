@@ -102,9 +102,6 @@
         <mxCell id="l1" value="IAM for the&#xa;vLLM fleet" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="576" y="759" width="176" height="52" as="geometry" />
         </mxCell>
-        <mxCell id="l_gate" value="Skipped unless TM_LLM_PLATFORM_ENABLED=true. GCP has no equivalent stack — its weights bucket is a Crossplane claim rather than a Terraform-managed filesystem." style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
-          <mxGeometry x="772" y="772" width="480" height="34" as="geometry" />
-        </mxCell>
         <mxCell id="e33" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;endArrow=classic;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="s1" target="s2">
           <mxGeometry relative="1" as="geometry">
           </mxGeometry>
@@ -143,12 +140,6 @@
         <mxCell id="e40" value="deleted in Stage 2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#DC2626;strokeWidth=1.5;endArrow=classic;endFill=1;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="i4" target="c4">
           <mxGeometry relative="1" as="geometry">
           </mxGeometry>
-        </mxCell>
-        <mxCell id="why" value="&lt;b&gt;Why two stacks and not one:&lt;/b&gt; the Helm provider needs the cluster endpoint at plan time, so Cilium and Flux cannot be planned in the same apply that creates the cluster. Stage 1 brings nodes Ready on VPC-CNI; Stage 2 deletes it and hands networking to Cilium." style="text;html=1;fontFamily=Helvetica;fontSize=12;fontColor=#1E293B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
-          <mxGeometry x="40" y="856" width="900" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="hand" value="&lt;b&gt;After eks/configure, OpenTofu stops.&lt;/b&gt; The FluxInstance takes over and everything else in the cluster is reconciled from Git." style="text;html=1;fontFamily=Helvetica;fontSize=12;fontColor=#1E293B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
-          <mxGeometry x="40" y="906" width="900" height="34" as="geometry" />
         </mxCell>
         <mxCell id="__lg" value="Legend" style="text;html=1;fontFamily=Helvetica;fontSize=12;fontStyle=1;fontColor=#1E293B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
           <mxGeometry x="1010" y="852" width="190" height="18" as="geometry" />

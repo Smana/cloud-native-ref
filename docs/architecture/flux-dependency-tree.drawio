@@ -178,14 +178,8 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="llmnote" value="&lt;b&gt;Suspended.&lt;/b&gt; spec.suspend: true, and it is deliberately a sibling of clusters/aws-0/ so the flux-system Kustomization's recursive sync cannot reach its children and apply them behind the suspend. Nothing under it runs until:&#xa;flux resume kustomization llm-platform -n flux-system" style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
-          <mxGeometry x="774" y="200" width="246" height="140" as="geometry" />
-        </mxCell>
         <mxCell id="srcnote" value="No dependsOn: sources and artifact generators are what everything else pulls from, so they must reconcile first and depend on nothing." style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
           <mxGeometry x="300" y="200" width="450" height="44" as="geometry" />
-        </mxCell>
-        <mxCell id="hier" value="&lt;b&gt;The constitution states the hierarchy as&lt;/b&gt; namespaces → CRDs → Crossplane → EPIs → security → infrastructure → observability → apps. That is the simplified model; this is the graph the manifests actually declare, and the differences are real: karpenter branches off crds rather than waiting for Crossplane, infrastructure joins two chains, tooling waits on both observability and infrastructure, and zitadel waits on both security and infrastructure." style="text;html=1;fontFamily=Helvetica;fontSize=12;fontColor=#1E293B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
-          <mxGeometry x="526" y="938" width="470" height="130" as="geometry" />
         </mxCell>
         <mxCell id="__lg" value="Legend" style="text;html=1;fontFamily=Helvetica;fontSize=12;fontStyle=1;fontColor=#1E293B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
           <mxGeometry x="526" y="1106" width="320" height="18" as="geometry" />

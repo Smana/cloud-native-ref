@@ -659,9 +659,8 @@ thumbprints: 08745487e891c19e3078c1f2a07e452950ef36f6
 - [x] **GCP standby restores the AWS lineage (criterion 6)** — proven end to end,
       after fixing the two defects above.
 - [x] **Design risk 3, the web-identity seal** — proven on a real GCE identity.
-- [ ] Drill workflow, one green run — **blocked until merge**: `workflow_dispatch`
-      needs the workflow on the default branch. Its substance is proven above; the
-      workflow wrapper itself is not.
+- [x] **Drill workflow, one green run** — done, 2026-09-06, run `34016534236`,
+      both jobs green on the first execution. See below.
 - [x] GCP server-certificate re-issue (Task 14b), lineage stack, federation, mirror
 - [x] **Costs page re-measured** — the KMS row was the one projection in a table
       labelled *measured*, carrying four keys on the strength of the seal replica
@@ -673,6 +672,50 @@ thumbprints: 08745487e891c19e3078c1f2a07e452950ef36f6
       terraform validates, and the two latent bugs found while writing it are
       fixed — but no human has completed the flow against a live ZITADEL. This is
       the one claim in the PR with no live evidence behind it.
+
+## The drill, green on its first run (2026-09-06)
+
+Run [`34016534236`](https://github.com/Smana/cloud-native-ref/actions/runs/34016534236),
+triggered by hand minutes after #1960 merged. Both jobs passed.
+
+This item was the one exit criterion that was **structurally** unreachable before
+merge, not merely unfinished: `workflow_dispatch` is only exposed for workflows
+on the default branch, so `gh workflow run` returned HTTP 404 for a workflow the
+PR itself introduced. It could only ever be satisfied *after* the change that
+adds it lands — which is worth recording, because "unproven at merge" and
+"unprovable before merge" are different states and only one of them is a risk.
+
+**Job 1 — restore into a throwaway node.** It restored
+`2026-09-05T214320Z-awskms.snap`, the snapshot taken by the pre-destroy hook
+during that evening's teardown, into a node holding nothing but the seal key:
+
+```
+subject=CN = Ogenki AWS Intermediate CA, O = Ogenki, C = FR
+issuer=CN = Ogenki Root CA, O = Ogenki, C = FR
+/home/runner/work/_temp/c1.pem: OK
+```
+
+The last line is `openssl verify` against `.github/openbao-root-ca.pem`, the
+offline root committed by the ceremony. So a snapshot of a platform that no
+longer exists restored, on a GitHub runner, to an issuer chaining to the same
+offline root — with no operator input and no recovery keys anywhere near it.
+
+**Job 2 — `web-identity-seal`.** The one that exists because a drill run with
+static credentials would pass whether or not the web-identity path works, since
+static credentials outrank web identity in the AWS SDK's chain:
+
+```
+no static credentials, no shared config, no container-credentials endpoint
+AWS_WEB_IDENTITY_TOKEN_FILE: /home/runner/work/_temp/aws-web-identity-token
+assumed-role/openbao-restore-drill/botocore-session-...
+"... wrapped and unwrapped the barrier key with AWS_WEB_IDENTITY_TOKEN_FILE
+ alone, unsealed unattended. Design risk 3 holds."
+```
+
+Design risk 3 was already settled by hand from a GCE instance (see *Cross-cloud
+failover, proven*). What this adds is that it is now settled **repeatably, every
+Monday**, by something nobody has to remember to run — which is the property
+Stage 2 actually depends on, rather than a single good result.
 
 ## What a teardown proved on the way out
 

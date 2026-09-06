@@ -100,9 +100,6 @@
           <mxGeometry relative="1" as="geometry">
           </mxGeometry>
         </mxCell>
-        <mxCell id="ms" value="metrics-server also runs here, but it is not part of this path: it serves the resource metrics API for HPAs and stores nothing." style="text;html=1;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;align=left;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
-          <mxGeometry x="40" y="710" width="340" height="46" as="geometry" />
-        </mxCell>
         <mxCell id="alert" value="One alerting path, two evaluators, two destinations" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#94A3B8;verticalAlign=top;fontStyle=1;fontFamily=Helvetica;fontSize=13;fontColor=#1E293B;align=left;spacingLeft=8;" vertex="1" parent="1">
           <mxGeometry x="40" y="760" width="1500" height="220" as="geometry" />
         </mxCell>
