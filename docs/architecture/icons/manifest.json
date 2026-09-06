@@ -22,6 +22,11 @@
       "bytes": 4240,
       "label": "Cilium"
     },
+    "cloudnativepg": {
+      "file": "cloudnativepg.png",
+      "bytes": 3534,
+      "label": "CloudNativePG"
+    },
     "crossplane": {
       "file": "crossplane.png",
       "bytes": 1268,
@@ -36,6 +41,11 @@
       "file": "envoy-ai-gateway.png",
       "bytes": 3700,
       "label": "Envoy AI Gateway"
+    },
+    "external-secrets": {
+      "file": "external-secrets.png",
+      "bytes": 3033,
+      "label": "External Secrets Operator"
     },
     "flux": {
       "file": "flux.png",
@@ -97,6 +107,11 @@
       "bytes": 2026,
       "label": "OpenBao"
     },
+    "opentofu": {
+      "file": "opentofu.png",
+      "bytes": 3368,
+      "label": "OpenTofu"
+    },
     "s3": {
       "file": "s3.png",
       "bytes": 5156,
@@ -124,5 +139,6 @@
     }
   },
   "_provenance_note": "Two entries were mislabelled by the extraction, because it inherited platform-overview's cell names rather than checking the images. 'karpenter-keda' was only the KEDA mark (there is no Karpenter logo here) and 'eks' was the plain Kubernetes wheel (not an EKS mark). Both are renamed to what they actually are. Check any new icon against the product before adding it.",
-  "_vendor_note": "eks, iam, s3, kms, vpc, bottlerocket, gke and gcs are rasterised mxgraph stencils, not brand downloads: the AWS six from mxgraph.aws4.resourceIcon through a one-shape drawio export, the two Google ones from the SVG data URI their gcp2 shapes already carry. Rasterising beats placing the stencil, because an mxgraph shape REPLACES the box shape -- an ogenki box cannot carry one, and the alternative is a floating icon cell per box whose absolute coordinates do not follow the box. Rebuild with the recipe in ../README.md."
+  "_vendor_note": "eks, iam, s3, kms, vpc, bottlerocket, gke and gcs are rasterised mxgraph stencils, not brand downloads: the AWS six from mxgraph.aws4.resourceIcon through a one-shape drawio export, the two Google ones from the SVG data URI their gcp2 shapes already carry. Rasterising beats placing the stencil, because an mxgraph shape REPLACES the box shape -- an ogenki box cannot carry one, and the alternative is a floating icon cell per box whose absolute coordinates do not follow the box. Rebuild with the recipe in ../README.md.",
+  "_cncf_note": "cloudnativepg, opentofu and external-secrets come from github.com/cncf/artwork under projects/<slug>/icon/color/. Filenames are NOT derivable from the slug -- external-secrets-operator ships eso-icon-color.svg -- so list the directory rather than guessing. Prefer the plain colour icon over any stacked or horizontal lockup: these render at 24px beside text, where a wordmark is unreadable."
 }

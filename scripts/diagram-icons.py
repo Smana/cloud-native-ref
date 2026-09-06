@@ -75,11 +75,16 @@ CATALOG = {
 
     'route53': 'vendor', 'secrets manager': 'vendor',
 
-    'opentofu': 'cncf', 'cloudnativepg': 'cncf', 'valkey': 'cncf',
-    'prometheus': 'cncf', 'opentelemetry': 'cncf', 'gateway api': 'cncf',
-    'helm': 'cncf', 'kustomize': 'cncf',
-    'external secrets': 'cncf',  # pragma: allowlist secret
-    'alertmanager': 'cncf', 'trivy': 'cncf',
+    'cloudnativepg': 'local', 'opentofu': 'local',
+    'external secrets': 'local',  # pragma: allowlist secret
+
+    'opentelemetry': 'cncf', 'helm': 'cncf', 'kustomize': 'cncf',
+    'prometheus': 'cncf', 'trivy': 'cncf',
+
+    # Not CNCF projects, despite an earlier pass filing them there: Valkey is
+    # Linux Foundation, Gateway API is a Kubernetes SIG rather than a project,
+    # and Alertmanager is part of Prometheus rather than a project of its own.
+    'valkey': 'brand', 'gateway api': 'brand', 'alertmanager': 'brand',
 
     'karpenter': 'brand', 'terramate': 'brand', 'zitadel': 'brand',
     'vector': 'brand',
