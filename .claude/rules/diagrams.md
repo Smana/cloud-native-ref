@@ -33,7 +33,7 @@ first hit:
 | # | Source | How | Cost |
 |---|--------|-----|------|
 | 1 | `docs/architecture/icons/` | `./scripts/diagram-icons.py style <name>` | none — 15 logos already rasterised |
-| 2 | mxgraph stencil | `python3 ~/.claude/skills/drawio-skill/scripts/shapesearch.py "<terms>"` | none — a style string, nothing embedded |
+| 2 | mxgraph stencil | `python3 ~/.claude/skills/drawio-skill/scripts/shapesearch.py "<terms>"`, then rasterise it into `icons/` ([recipe](../../docs/architecture/README.md#rasterising-an-mxgraph-stencil)) | one export |
 | 3 | CNCF Artwork | `projects/<slug>/icon/color/*.svg`, then `rsvg-convert -w 64 -h 64` | one fetch |
 | 4 | Project brand | `python3 ~/.claude/skills/drawio-skill/scripts/aiicons.py "<brand>" --embed`, then rasterise | one fetch |
 | 5 | — | a clean ogenki box, no icon | the honest fallback |
@@ -45,6 +45,17 @@ failure this rule exists to stop.
 renders without one, grouped by which of the four sources would supply it. It is
 **advisory and deliberately not a CI gate**: whether a box wants a logo is a
 judgment call, and a gate that can go red on a judgment call gets switched off.
+
+## Never on a grouping frame
+
+An icon on a frame labels the grouping, not a thing — and it *looks* broken, because
+`imageVerticalAlign=middle` centres the logo in the frame's full height, so it floats halfway down
+the left edge over the border and the children. Three slipped through before this was checked.
+
+`./scripts/diagram-icons.py audit` now reports these under **MISPLACED**. Its test is `container=1`,
+plus an area threshold for the section-band shape — a wide, short, top-aligned cell whose contents
+are siblings drawn inside it rather than child cells, which is why "is another cell's parent" is not
+a sufficient test.
 
 ## When an icon is wrong
 

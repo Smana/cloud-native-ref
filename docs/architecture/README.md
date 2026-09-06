@@ -77,7 +77,7 @@ re-rasterising its own.
 | # | Source | How |
 |---|--------|-----|
 | 1 | `icons/` | `./scripts/diagram-icons.py style <name>` — paste-ready, ogenki palette applied |
-| 2 | mxgraph stencil | `shapesearch.py "<terms>"` — `mxgraph.aws4.*` for AWS, `mxgraph.kubernetes.icon` for K8s primitives. No embedding |
+| 2 | mxgraph stencil | `shapesearch.py "<terms>"` to find it, then **rasterise it into `icons/`** — see below |
 | 3 | [CNCF Artwork](https://github.com/cncf/artwork) | `projects/<slug>/icon/color/*.svg` |
 | 4 | Project brand | `aiicons.py "<brand>" --embed` |
 | 5 | none | a clean ogenki box — the honest fallback, only after 1–4 miss |
@@ -108,6 +108,33 @@ Some boxes are **deliberately** plain, and re-adding an icon to one is a regress
 | container frames | `dp`, `pipe`, `fluxfam`, `ns` — a logo labels the grouping, not a thing |
 | `llm-platform` `vm` | `shape=cylinder3`; `shape=label` would destroy the datastore shape |
 | `openbao-lineage` `c4` `p1` `p3` | an annotation sentence, the KMS key, and an IAM role |
+
+### Rasterising an mxgraph stencil
+
+A stencil cannot be layered onto an ogenki box: `shape=` **replaces** the box shape, so the
+alternative would be a floating icon cell per box, carrying absolute coordinates that do not follow
+the box when it moves. Rasterise it into the library instead, where it behaves like every other
+logo. The eight cloud icons here were made this way.
+
+```bash
+# AWS — mxgraph.aws4.resourceIcon, drawn by drawio, so it exports through drawio
+cat > /tmp/i.drawio <<'EOF'
+<mxfile><diagram name="i" id="i"><mxGraphModel><root>
+<mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="s" value="" style="sketch=0;html=1;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;fillColor=#7AA116;strokeColor=#ffffff;" vertex="1" parent="1">
+<mxGeometry x="0" y="0" width="128" height="128" as="geometry"/></mxCell>
+</root></mxGraphModel></diagram></mxfile>
+EOF
+drawio -x -f png -t -b 0 --width 64 -o docs/architecture/icons/s3.png /tmp/i.drawio
+
+# Google — the gcp2 shapes already carry an SVG data URI; decode and convert
+#   shapesearch.py "gcp cloud storage bucket"  ->  take the image=data:image/svg+xml,<b64>
+#   base64 -d, then: rsvg-convert -w 64 -h 64 -o docs/architecture/icons/gcs.png in.svg
+```
+
+**Look at what comes out.** The exact-name match for "Cloud Storage" is a generic server rack from
+the clip-art library, not the GCS bucket; the right one is unnamed in the results. Rendering the
+candidates side by side is the only way to tell.
 
 Adding one: rasterise to PNG, drop it in `icons/`, add its `manifest.json` entry — and **look at
 the image before you name it**. Two of the seventeen were mislabelled by the extraction, which
