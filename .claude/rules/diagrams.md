@@ -73,6 +73,28 @@ for f in docs/architecture/icons/*.png; do n=$(basename "$f" .png); \
 magick montage /tmp/l-*.png -tile 5x -geometry +8+8 -background '#f1f5f9' /tmp/sheet.png
 ```
 
+**Check it at 24px, not on the contact sheet.** The sheet renders at 110px, where everything looks
+fine. Gateway API's logo is genuine and measurably distinct — the Kubernetes wheel with routing
+arrows, 12.7% of pixels — but at the size these actually render, the arrows vanish and it *is* the
+Kubernetes wheel, which the library already uses for other things. It was fetched, compared at
+render size, and dropped.
+
+```bash
+magick icons/<a>.png -resize 24x24 -background white -flatten -resize 400% /tmp/a.png
+magick icons/<b>.png -resize 24x24 -background white -flatten -resize 400% /tmp/b.png
+magick montage /tmp/a.png /tmp/b.png -tile 2x -geometry +8+8 /tmp/cmp.png
+```
+
+**`aiicons.py` returns the wrong product outside its scope, confidently.** It is an AI/LLM-brand
+tool (lobe-icons). Asked for `vector` it returns **vectorizerai**; asked for `gateway api` it returns
+**cometapi**. Neither is an error — both are plausible-looking hits for a different product. Use it
+for AI brands, verify everything, and reach for `simple-icons` or the project's own repo otherwise.
+
+**`none` is a real answer.** Vector, Valkey, Karpenter and Alertmanager have no mark at any source
+probed — project repo, project site, simple-icons, lobe-icons. The catalog records them as `none` so
+the next pass does not repeat the search. Alertmanager additionally must not borrow the Prometheus
+flame; see above.
+
 Two more traps the CNCF lane carries specifically:
 
 - **Filenames are not slugs.** `external-secrets-operator` ships `eso-icon-color.svg`. List the

@@ -77,6 +77,11 @@
       "bytes": 4856,
       "label": "Harbor \u2014 container &amp; Helm registry"
     },
+    "huggingface": {
+      "file": "huggingface.png",
+      "bytes": 3481,
+      "label": "Hugging Face"
+    },
     "iam": {
       "file": "iam.png",
       "bytes": 3365,
@@ -112,10 +117,20 @@
       "bytes": 3368,
       "label": "OpenTofu"
     },
+    "openwebui": {
+      "file": "openwebui.png",
+      "bytes": 1026,
+      "label": "Open WebUI"
+    },
     "s3": {
       "file": "s3.png",
       "bytes": 5156,
       "label": "Amazon S3"
+    },
+    "slack": {
+      "file": "slack.png",
+      "bytes": 2253,
+      "label": "Slack"
     },
     "tailscale": {
       "file": "tailscale.png",
@@ -136,9 +151,15 @@
       "file": "vpc.png",
       "bytes": 3821,
       "label": "Amazon VPC"
+    },
+    "zitadel": {
+      "file": "zitadel.png",
+      "bytes": 3034,
+      "label": "ZITADEL"
     }
   },
   "_provenance_note": "Two entries were mislabelled by the extraction, because it inherited platform-overview's cell names rather than checking the images. 'karpenter-keda' was only the KEDA mark (there is no Karpenter logo here) and 'eks' was the plain Kubernetes wheel (not an EKS mark). Both are renamed to what they actually are. Check any new icon against the product before adding it.",
   "_vendor_note": "eks, iam, s3, kms, vpc, bottlerocket, gke and gcs are rasterised mxgraph stencils, not brand downloads: the AWS six from mxgraph.aws4.resourceIcon through a one-shape drawio export, the two Google ones from the SVG data URI their gcp2 shapes already carry. Rasterising beats placing the stencil, because an mxgraph shape REPLACES the box shape -- an ogenki box cannot carry one, and the alternative is a floating icon cell per box whose absolute coordinates do not follow the box. Rebuild with the recipe in ../README.md.",
-  "_cncf_note": "cloudnativepg, opentofu and external-secrets come from github.com/cncf/artwork under projects/<slug>/icon/color/. Filenames are NOT derivable from the slug -- external-secrets-operator ships eso-icon-color.svg -- so list the directory rather than guessing. Prefer the plain colour icon over any stacked or horizontal lockup: these render at 24px beside text, where a wordmark is unreadable."
+  "_cncf_note": "cloudnativepg, opentofu and external-secrets come from github.com/cncf/artwork under projects/<slug>/icon/color/. Filenames are NOT derivable from the slug -- external-secrets-operator ships eso-icon-color.svg -- so list the directory rather than guessing. Prefer the plain colour icon over any stacked or horizontal lockup: these render at 24px beside text, where a wordmark is unreadable.",
+  "_brand_note": "zitadel comes from the project's own repo (console/src/assets/images/zitadel-logo-solo-dark.svg), huggingface and openwebui from lobe-icons, slack from simple-icons with the brand purple applied -- simple-icons ships an uncoloured path that rasterises to a solid black smudge otherwise. aiicons.py is AI-brand-scoped and CONFIDENTLY RETURNS THE WRONG PRODUCT outside that scope: it matched 'vector' to vectorizerai and 'gateway api' to cometapi. Verify every result by eye. Vector, Valkey, Karpenter and Alertmanager have no logo at any source probed (project repo, project site, simple-icons, lobe-icons) and stay plain. Gateway API's logo IS genuine -- the Kubernetes wheel with routing arrows -- but the arrows vanish at 24px, leaving a mark this library already uses for Kubernetes, so it is not shipped."
 }
