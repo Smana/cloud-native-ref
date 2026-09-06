@@ -1,20 +1,72 @@
 ---
-title: Per-user RBAC on GKE
+title: Per-user RBAC
 weight: 17
-description: How a ZITADEL identity becomes a Kubernetes group on a cluster whose API server will not trust ZITADEL — the RFC 8693 exchange, the pieces that must agree, and the four failures only a live cluster exposed.
-lastVerified: 2026-09-02
+description: One ZITADEL identity, one set of roles, and a ClusterRoleBinding on either cloud — plus the exchange GKE needs because its API server will not trust ZITADEL.
+lastVerified: 2026-09-06
+aliases:
+  - /docs/platform/security/gke-per-user-rbac/
 ---
 
-`aws-0` hands the user's ZITADEL token straight to the API server, because EKS can
-be told to trust ZITADEL as an OIDC provider. **GKE cannot be told that**, and the
-feature that used to allow it — Identity Service for GKE — is deprecated as of
-2026-07-01 and unsupported in 1.37+.
+A person logs in once, against ZITADEL, and gets the same access on either
+cluster. **The model is identical on both clouds; only the plumbing between the
+token and the API server differs** — and on GKE that plumbing is most of this
+page, because GKE's API server will not trust ZITADEL directly.
 
-The obvious conclusion is that per-user RBAC is impossible on GKE without putting
-an impersonating proxy in front of the API server. That conclusion is wrong, and
-this page is the mechanism that replaces it.
+## The shared model
 
-## The idea in one paragraph
+Three steps, the same on `aws-0` and `gcp-0`:
+
+1. **ZITADEL project roles are the source of truth.** `admin`, `backend`,
+   `frontend`, `data` — granted to a person, not to a cluster.
+2. **A `groups` claim carries them.** ZITADEL has no native groups, so the
+   `groupsFromRoles` Action flattens its nested role object into the flat array
+   every consumer expects.
+3. **An ordinary `ClusterRoleBinding` authorises the group.** No cluster holds a
+   credential; nothing is per-cluster except the binding itself.
+
+## Who gets what
+
+The roles are deliberately few, and they are not Kubernetes-specific — the same
+grant drives Grafana and the Flux UI:
+
+| Role | Intended for | Kubernetes | Grafana | Flux UI |
+|---|---|---|---|---|
+| `admin` | platform operators — the people who run this repo | **`cluster-admin`** | Admin | cluster-admin |
+| `backend` | service teams deploying their own workloads | *(none yet)* | Editor | edit |
+| `data` | data/ML teams | *(none yet)* | Editor | edit |
+| `frontend` | product engineers who need dashboards, not clusters | *(none yet)* | Editor | — |
+
+**Only `admin` has a Kubernetes binding today** — `security/base/rbac/admin.yaml`
+on AWS, `security/gcp-0/rbac/admin.yaml` on GCP. The other three are live in
+Grafana and the Flux UI but have no `ClusterRoleBinding`, which is a deliberate
+starting point rather than an oversight: adding one is a four-line file, and
+inventing namespace conventions before there are teams to fit them is how you
+get bindings nobody matches.
+
+## Where the two clouds differ
+
+Exactly one thing: **what the API server is willing to believe.**
+
+| | `aws-0` | `gcp-0` |
+|---|---|---|
+| Trusts ZITADEL directly? | **Yes** — EKS takes a custom OIDC issuer | **No.** GKE accepts none, and Identity Service for GKE is deprecated as of 2026-07-01, unsupported in 1.37+ |
+| What reaches the API server | the user's ZITADEL `id_token`, unchanged | a Google federated token, obtained by exchanging that `id_token` |
+| The group the binding names | `admin` | `principalSet://iam.googleapis.com/locations/global/workforcePools/<pool>/group/admin` |
+| Extra moving parts | none | a Workforce Identity pool, and a proxy performing the exchange |
+
+That last row of the group name is the practical consequence, and the reason
+`gcp-0` cannot reuse the base binding: same ZITADEL role, same `cluster-admin`,
+different spelling.
+
+{{< callout type="warning" >}}
+`${workforce_pool_id}` in the GCP binding comes from the cluster vars ConfigMap.
+Were it undefined, Flux would substitute an **empty string** and produce a
+binding for `.../workforcePools//group/admin` — schema-valid, matching nobody,
+denying silently. `scripts/flux-schema/check-substitution.py` exists to make that
+impossible.
+{{< /callout >}}
+
+## How GKE gets there
 
 GKE will not trust ZITADEL, but it *will* trust Google. **Workforce Identity
 Federation** lets Google trust ZITADEL, and [RFC 8693 token
