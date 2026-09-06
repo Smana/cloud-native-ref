@@ -1,0 +1,85 @@
+{
+  "_note": "Logos rasterised for platform-overview.drawio and extracted here so every diagram references one asset instead of re-fetching and re-rasterising its own. PNG, not SVG: headless drawio export does not render SVG data URIs. Embed with image=data:image/png,<base64> -- a comma, not ';base64,', which terminates the style value.",
+  "_aliases_note": "victorialogs and victoriatraces currently render the VictoriaMetrics mark -- platform-overview used one logo for all three, and the three extracted files were byte-identical. Both projects have their own upstream logo; fetch the real marks, add them as files, and drop the alias.",
+  "aliases": {
+    "victorialogs": "victoriametrics",
+    "victoriatraces": "victoriametrics"
+  },
+  "icons": {
+    "cert-manager": {
+      "file": "cert-manager.png",
+      "bytes": 5297,
+      "label": "cert-manager"
+    },
+    "cilium": {
+      "file": "cilium.png",
+      "bytes": 4240,
+      "label": "Cilium"
+    },
+    "crossplane": {
+      "file": "crossplane.png",
+      "bytes": 1268,
+      "label": "Crossplane"
+    },
+    "eks": {
+      "file": "eks.png",
+      "bytes": 4747,
+      "label": "eks"
+    },
+    "envoy-ai-gateway": {
+      "file": "envoy-ai-gateway.png",
+      "bytes": 3700,
+      "label": "Envoy AI Gateway"
+    },
+    "flux": {
+      "file": "flux.png",
+      "bytes": 3441,
+      "label": "Flux"
+    },
+    "github": {
+      "file": "github.png",
+      "bytes": 2407,
+      "label": "GitHub"
+    },
+    "grafana": {
+      "file": "grafana.png",
+      "bytes": 2676,
+      "label": "Grafana \u2014 dashboards"
+    },
+    "harbor": {
+      "file": "harbor.png",
+      "bytes": 4856,
+      "label": "Harbor \u2014 container &amp; Helm registry"
+    },
+    "karpenter-keda": {
+      "file": "karpenter-keda.png",
+      "bytes": 3403,
+      "label": "Karpenter / NAP + KEDA"
+    },
+    "kyverno": {
+      "file": "kyverno.png",
+      "bytes": 3269,
+      "label": "Kyverno"
+    },
+    "openbao": {
+      "file": "openbao.png",
+      "bytes": 2026,
+      "label": "OpenBao"
+    },
+    "tailscale": {
+      "file": "tailscale.png",
+      "bytes": 942,
+      "label": "Tailscale"
+    },
+    "victoriametrics": {
+      "file": "victoriametrics.png",
+      "bytes": 3071,
+      "label": "VictoriaMetrics"
+    },
+    "vllm": {
+      "file": "vllm.png",
+      "bytes": 1291,
+      "label": "vLLM fleet"
+    }
+  }
+}

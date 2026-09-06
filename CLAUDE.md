@@ -337,6 +337,8 @@ Use the FluxCD agent-skills plugin for Flux troubleshooting (`/gitops-cluster-de
 
 > **Verification and debugging discipline** (evidence-before-completion gate, 4-phase root-cause method) is in `.claude/rules/process.md` (loaded automatically when editing spec/infra/security/observability/tooling/opentofu/clusters/flux files).
 
+> **Diagram authoring** — the icon-resolution step the drawio skill does not enforce, and the two silent embedding traps — is in `.claude/rules/diagrams.md` (loaded automatically when editing `docs/architecture/**`). The reusable logo library is `docs/architecture/icons/`; `./scripts/diagram-icons.py audit` reports boxes that name a product and render without one.
+
 ## Validation Commands
 
 ```bash

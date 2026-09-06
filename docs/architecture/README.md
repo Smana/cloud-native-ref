@@ -66,14 +66,43 @@ Two export flags carry more weight than they look:
 
 ## Logos
 
-- **AWS** services use native drawio stencils (`mxgraph.aws4.resourceIcon`).
-- **Cloud-native / application** components use their real brand logos, embedded as **PNG data-URIs**
-  so the `.drawio` stays self-contained. Source them from the
-  [CNCF Artwork](https://github.com/cncf/artwork) repo (`projects/<name>/icon/color/*.svg`) for CNCF
-  projects, and each project's own brand otherwise.
-- **Rasterize SVG → PNG before embedding** — headless drawio export does not render SVG `data:` URIs
-  and shows a broken-image placeholder instead. `rsvg-convert -w 64 -h 64` works. Embed as
-  `image=data:image/png,<base64>` — a **comma**, not `;base64,`, which terminates the drawio style
-  value early and makes the icon silently disappear.
-- Components with no clean logo source (Gateway API, ExternalDNS, ZITADEL, External Secrets) stay
-  clean ogenki boxes — a consistent, intentional fallback, not a gap to paper over.
+Seventeen logos were rasterised for `platform-overview.drawio` and, for the life of the repo, were
+reachable from no other file — which is most of why five of the ten single-page diagrams shipped
+with no icons at all. They now live in [`icons/`](icons/) as real PNGs with a
+[`manifest.json`](icons/manifest.json), so a diagram references one asset instead of re-fetching and
+re-rasterising its own.
+
+**Resolve an icon before writing a box.** Stop at the first hit:
+
+| # | Source | How |
+|---|--------|-----|
+| 1 | `icons/` | `./scripts/diagram-icons.py style <name>` — paste-ready, ogenki palette applied |
+| 2 | mxgraph stencil | `shapesearch.py "<terms>"` — `mxgraph.aws4.*` for AWS, `mxgraph.kubernetes.icon` for K8s primitives. No embedding |
+| 3 | [CNCF Artwork](https://github.com/cncf/artwork) | `projects/<slug>/icon/color/*.svg` |
+| 4 | Project brand | `aiicons.py "<brand>" --embed` |
+| 5 | none | a clean ogenki box — the honest fallback, only after 1–4 miss |
+
+`./scripts/diagram-icons.py audit` lists every box that names a product and renders without one,
+grouped by which source would supply it. It is advisory, not a CI gate: whether a box wants a logo
+is a judgment call, and a gate that can go red on a judgment call gets switched off.
+
+**Two traps, both silent:**
+
+- **Rasterize SVG → PNG before embedding.** Headless drawio export does not render SVG `data:`
+  URIs — the diagram looks right in the desktop app and exports with an empty box.
+  `rsvg-convert -w 64 -h 64` works.
+- **`image=data:image/png,<base64>` — a comma, not `;base64,`.** The semicolon terminates the
+  drawio style value, dropping the image *and* every property after it.
+
+**Icon the box's subject, never a product its body text mentions in passing** — a box titled *Leaf
+certificates* gets no OpenTofu logo because its second line says "OpenTofu-managed". Concept boxes
+(*the CNI swap*) and container frames stay plain: a logo there labels the wrong thing.
+
+Adding one: rasterise to PNG, drop it in `icons/`, add its `manifest.json` entry. Check `aliases`
+first — `victorialogs` and `victoriatraces` alias the VictoriaMetrics mark today, because
+`platform-overview` used one logo for all three and the extracted files were byte-identical.
+Replacing them with the real upstream marks means two files added and two alias entries deleted.
+
+The authoring procedure agents follow is [`.claude/rules/diagrams.md`](../../.claude/rules/diagrams.md),
+which exists because the drawio skill's own preset-application steps cover colour, shape, edges and
+fonts but have no icon step at all.
