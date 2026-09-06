@@ -70,9 +70,10 @@ CATALOG = {
     'tailscale': 'local', 'victoriametrics': 'local', 'victorialogs': 'local',
     'victoriatraces': 'local', 'vllm': 'local',
 
-    'eks': 'vendor', 'gke': 'vendor', 'bottlerocket': 'vendor',
-    's3': 'vendor', 'kms': 'vendor', 'route53': 'vendor', 'iam': 'vendor',
-    'gcs': 'vendor', 'vpc': 'vendor', 'secrets manager': 'vendor',
+    'bottlerocket': 'local', 'eks': 'local', 'gcs': 'local', 'gke': 'local',
+    'iam': 'local', 'kms': 'local', 's3': 'local', 'vpc': 'local',
+
+    'route53': 'vendor', 'secrets manager': 'vendor',
 
     'opentofu': 'cncf', 'cloudnativepg': 'cncf', 'valkey': 'cncf',
     'prometheus': 'cncf', 'opentelemetry': 'cncf', 'gateway api': 'cncf',
@@ -155,7 +156,40 @@ def cmd_audit(args):
                 'brand': "the project's brand page — aiicons.py --embed, then rasterise",
             }[src]
             print(f"  {by_source[src]:>4} {src:7} {how}")
+    misplaced = frames_with_icons()
+    if misplaced:
+        print("\nMISPLACED -- an icon on a grouping frame labels the grouping, not a thing.")
+        print("A frame centres it halfway down the left edge, over the border and the children.")
+        for d, cid, why in misplaced:
+            print(f"   {d}#{cid:12} {why}")
+
     print("\nAdvisory, not a gate: whether a box wants a logo is a judgment call.")
+
+
+def frames_with_icons():
+    """Icon-ed cells that are grouping frames rather than boxes.
+
+    container=1 is exact. Failing that, a very large top-aligned cell is a
+    section band -- that is openbao-lineage#zE, 1540x140, whose contents are
+    siblings drawn inside it rather than child cells, so an "is another cell's
+    parent" test misses it. The threshold sits above the largest genuine box in
+    the repo (authentication-chain#awseks, 640x106) with room to spare.
+    """
+    out = []
+    for path in sorted(glob.glob(os.path.join(SRC, '*.drawio'))):
+        doc = open(path).read()
+        name = os.path.basename(path)[:-7]
+        for m in re.finditer(
+                r'<mxCell id="([^"]+)" value="(?:[^"]*)" style="([^"]*)"[^>]*>\s*'
+                r'<mxGeometry x="-?\d+" y="-?\d+" width="(\d+)" height="(\d+)"', doc):
+            cid, style, w, h = m.groups()
+            if 'image=data:image' not in style:
+                continue
+            if 'container=1' in style:
+                out.append((name, cid, 'container=1'))
+            elif int(w) * int(h) > 150000 and 'verticalAlign=top' in style:
+                out.append((name, cid, f'{w}x{h} section band'))
+    return out
 
 
 def main():

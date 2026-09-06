@@ -7,6 +7,11 @@
     "victoriatraces": "victoriametrics"
   },
   "icons": {
+    "bottlerocket": {
+      "file": "bottlerocket.png",
+      "bytes": 4123,
+      "label": "Bottlerocket"
+    },
     "cert-manager": {
       "file": "cert-manager.png",
       "bytes": 5297,
@@ -22,6 +27,11 @@
       "bytes": 1268,
       "label": "Crossplane"
     },
+    "eks": {
+      "file": "eks.png",
+      "bytes": 5186,
+      "label": "Amazon EKS"
+    },
     "envoy-ai-gateway": {
       "file": "envoy-ai-gateway.png",
       "bytes": 3700,
@@ -32,10 +42,20 @@
       "bytes": 3441,
       "label": "Flux"
     },
+    "gcs": {
+      "file": "gcs.png",
+      "bytes": 709,
+      "label": "Google Cloud Storage"
+    },
     "github": {
       "file": "github.png",
       "bytes": 2407,
       "label": "GitHub"
+    },
+    "gke": {
+      "file": "gke.png",
+      "bytes": 2662,
+      "label": "Google Kubernetes Engine"
     },
     "grafana": {
       "file": "grafana.png",
@@ -47,10 +67,20 @@
       "bytes": 4856,
       "label": "Harbor \u2014 container &amp; Helm registry"
     },
+    "iam": {
+      "file": "iam.png",
+      "bytes": 3365,
+      "label": "AWS IAM"
+    },
     "keda": {
       "file": "keda.png",
       "bytes": 3403,
       "label": "KEDA"
+    },
+    "kms": {
+      "file": "kms.png",
+      "bytes": 4500,
+      "label": "AWS KMS"
     },
     "kubernetes": {
       "file": "kubernetes.png",
@@ -67,6 +97,11 @@
       "bytes": 2026,
       "label": "OpenBao"
     },
+    "s3": {
+      "file": "s3.png",
+      "bytes": 5156,
+      "label": "Amazon S3"
+    },
     "tailscale": {
       "file": "tailscale.png",
       "bytes": 942,
@@ -81,7 +116,13 @@
       "file": "vllm.png",
       "bytes": 1291,
       "label": "vLLM fleet"
+    },
+    "vpc": {
+      "file": "vpc.png",
+      "bytes": 3821,
+      "label": "Amazon VPC"
     }
   },
-  "_provenance_note": "Two entries were mislabelled by the extraction, because it inherited platform-overview's cell names rather than checking the images. 'karpenter-keda' was only the KEDA mark (there is no Karpenter logo here) and 'eks' was the plain Kubernetes wheel (not an EKS mark). Both are renamed to what they actually are. Check any new icon against the product before adding it."
+  "_provenance_note": "Two entries were mislabelled by the extraction, because it inherited platform-overview's cell names rather than checking the images. 'karpenter-keda' was only the KEDA mark (there is no Karpenter logo here) and 'eks' was the plain Kubernetes wheel (not an EKS mark). Both are renamed to what they actually are. Check any new icon against the product before adding it.",
+  "_vendor_note": "eks, iam, s3, kms, vpc, bottlerocket, gke and gcs are rasterised mxgraph stencils, not brand downloads: the AWS six from mxgraph.aws4.resourceIcon through a one-shape drawio export, the two Google ones from the SVG data URI their gcp2 shapes already carry. Rasterising beats placing the stencil, because an mxgraph shape REPLACES the box shape -- an ogenki box cannot carry one, and the alternative is a floating icon cell per box whose absolute coordinates do not follow the box. Rebuild with the recipe in ../README.md."
 }
