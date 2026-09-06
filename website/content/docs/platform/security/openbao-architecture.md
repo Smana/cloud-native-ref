@@ -9,6 +9,8 @@ This platform is destroyed most nights to keep it affordable. OpenBao is the
 store of record for secrets and the private PKI anyway — because what persists
 between teardowns is not the instance.
 
+![The whole design on one page. Top left, AWS as the active side: an EC2 OpenBao node auto-unsealed by the seal key, holding the PKI with its offline-signed intermediate and one jwt machine-auth mount per cluster. Top right, GCP as the standby: a GCE node deployed only on failover, which seals with the AWS key over federation and stores no AWS credential. Across the middle, the lineage that survives every teardown: the multi-region KMS seal key, under which alone a snapshot can be restored; the S3 snapshot bucket written daily and once more before every teardown; and the GCS mirror holding the same objects for the standby. Beneath them, five bootstrap secrets per cloud, each in that cloud's own secret store — nothing is synced between clouds, only the snapshot crosses. Along the bottom, the consumers, which authenticate by JWT with no stored credential: cert-manager for every internal TLS leaf, External Secrets materialising credentials into the cluster, and the openbao-snapshot job writing the daily object. Four numbered flows connect them: the seal key unsealing the node, the snapshot that is restored on the next deploy, the mirror to GCS, and the failover in which the standby restores from that mirror](/images/diagrams/openbao-architecture.svg)
+
 ## The idea in one line
 
 **OpenBao's storage is derived state.** The node is disposable; the *lineage* is

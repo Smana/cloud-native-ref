@@ -68,7 +68,7 @@ root-namespace-only):
 OpenBao's storage is **derived state**. What persists is the *lineage*
 ([ADR-0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}})):
 
-![What survives a teardown versus what is rebuilt on every deploy. On the left, the lineage that persists: the multi-region KMS seal key alias/openbao-seal with its eu-west-1 replica, five bootstrap secrets per cloud, the versioned S3 snapshot bucket whose objects are named UTC-timestamp-seal.snap, and the GCS mirror populated daily by Storage Transfer over federated identity. On the right of it, everything rebuilt on each deploy: the single-node EC2 OpenBao instance auto-unsealed by the seal key with no operator input, its Raft store, the pki_private_issuer mount holding the offline-signed intermediate, the lineage kv-v2 mount carrying check_timestamp, and one jwt mount per cluster. Consumers reach it by JWT only, with no AppRole anywhere: cert-manager issues every internal TLS leaf, External Secrets materialises credentials, and the openbao-snapshot CronJob writes the daily object at 04:00 UTC, all three connecting to openbao.security.svc.cluster.local:8200. Numbered flows show rehydrate at boot restoring the newest snapshot, the seal key unsealing the node, consumers authenticating with projected ServiceAccount tokens, the daily snapshot named for the seal that wrote it, and the mirror to GCS. A warning notes that the jwt mount comes back from the snapshot carrying the OIDC issuer of the cluster that was destroyed, so eks/configure must adopt and refresh it or every login fails against a mount that looks healthy](/images/diagrams/openbao-lineage-1.svg)
+![What survives a teardown versus what is rebuilt on every deploy. On the left, the lineage that persists: the multi-region KMS seal key alias/openbao-seal with its eu-west-1 replica, five bootstrap secrets per cloud, the versioned S3 snapshot bucket whose objects are named UTC-timestamp-seal.snap, and the GCS mirror populated daily by Storage Transfer. In the centre, everything rebuilt on each deploy: the single-node EC2 OpenBao instance auto-unsealed by the seal key with no operator input, its Raft store, the pki_private_issuer mount holding the offline-signed intermediate, the lineage kv-v2 mount carrying check_timestamp, and one jwt mount per cluster. On the right, the consumers, which authenticate by JWT only with no AppRole anywhere: cert-manager issuing every internal TLS leaf, External Secrets, and the openbao-snapshot CronJob at 04:00 UTC, all three reaching OpenBao at openbao.security.svc.cluster.local:8200. Five numbered flows connect them: rehydrate at boot restoring the newest snapshot, the seal key unsealing the node, consumers authenticating with projected ServiceAccount tokens, the daily snapshot named for the seal that wrote it, and the mirror to GCS](/images/diagrams/openbao-lineage-1.svg)
 
 | Component | Where |
 |---|---|
@@ -86,6 +86,26 @@ uses is that fetch's output.
 Both modes run the `raft` storage backend — `storage "raft"` in
 `opentofu/aws/openbao/cluster/scripts/startup_script.sh` — because a snapshot
 can neither be taken from nor restored into anything else.
+
+{{< callout type="warning" >}}
+**The `jwt/<cluster>` mount comes back too — carrying the destroyed cluster's
+issuer.** A restored snapshot brings back every mount, including the per-cluster
+JWT auth mount, and its `oidc_discovery_url` still names the OIDC issuer of the
+cluster that no longer exists. Two things then go wrong at once: the cluster's
+`configure` stack cannot create a mount that is already there
+(`path is already in use at jwt/<cluster>/`), and if it could, the stale issuer
+would fail every workload login against a mount reporting perfectly healthy.
+
+`scripts/openbao-adopt-jwt-mount.sh` runs before that apply on both clouds — it
+imports the restored mount and its roles into state so the apply *updates* the
+issuer instead of failing to create it. Observed doing exactly that on a
+2026-09-06 rebuild:
+
+```
+bound_issuer = ".../id/A0F8FD418B41D2BABB156BCFBF4BF5E2"   # the destroyed cluster
+            -> ".../id/2E20D33A73D10E44983F863D574FBE8D"   # this one
+```
+{{< /callout >}}
 
 On every deploy, the management stack's workflow runs
 `./scripts/openbao-config.sh rehydrate`: a fresh node is initialised with

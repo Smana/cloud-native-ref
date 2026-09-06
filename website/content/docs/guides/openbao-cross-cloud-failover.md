@@ -41,7 +41,7 @@ gcloud storage cp /tmp/mirror.snap "gs://ogenki-435905-ogenki-openbao-snapshot/$
 ```
 {{< /callout >}}
 
-![The cross-cloud fallback and the drill that keeps it honest. A snapshot restores only under the seal that encrypted it, which decides the whole design: a GCP node sealed by Cloud KMS could never read an AWS snapshot, so the standby reaches AWS KMS instead over federation, with no AWS credential stored on it. On the AWS side sit the multi-region seal key with its eu-west-1 replica, the S3 snapshot bucket whose every object is AWS-sealed by construction, and the openbao-standby-seal IAM role that trusts accounts.google.com scoped by key alias plus condition, granting only Encrypt, Decrypt and DescribeKey. On the GCP side, the GCS mirror bucket holds the same objects with the same names and sizes, populated daily by Storage Transfer, and a GCE node running with seal_provider awskms whose systemd timer writes a GCE identity token to disk; AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE are the only two variables, and it calls sts:AssumeRoleWithWebIdentity to decrypt with the AWS key. Two traps are called out, both found by actually running the path: client_id_list must hold the standby service account's unique id rather than just sts.amazonaws.com, because AWS matches a Google token on the authorized party azp as well as the audience and every trust-policy condition can match while STS still answers InvalidIdentityToken; and the node's service account needs read access on the mirror bucket, easy to omit because the CI drill's own identity reads that bucket constantly so the mirror looks reachable while the identity that matters during an outage has never touched it. Below, the weekly restore drill runs two independent GitHub Actions jobs on Mondays at 06:00 UTC: restore the newest snapshot into a throwaway node holding nothing but the seal key, verify the chain with openssl against the committed offline root certificate, assert the mirror has a same-size twin in GCS, and separately unseal using only the two web-identity variables having first asserted no static credential is present — a separate job because static credentials outrank web identity in the AWS SDK's chain, so a drill running with them would pass either way](/images/diagrams/openbao-lineage-2.svg)
+![The cross-cloud fallback and the weekly drill. A snapshot restores only under the seal that encrypted it, so the GCP standby uses the AWS key over federation and holds no AWS credential. On the AWS side: the multi-region seal key with its eu-west-1 replica, the S3 snapshot bucket whose every object is AWS-sealed by construction, and the openbao-standby-seal IAM role trusting accounts.google.com scoped by key alias and condition. On the GCP side: the GCS mirror bucket holding the same objects with the same names and sizes, populated daily by Storage Transfer, and a GCE node running seal_provider awskms whose systemd timer writes a GCE identity token to disk, with AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE as its only two variables and no static credential. An arrow between them shows sts:AssumeRoleWithWebIdentity leading to decryption with the AWS key. Below, the weekly restore drill runs two independent GitHub Actions jobs on Mondays at 06:00 UTC: restore the newest snapshot into a throwaway node holding nothing but the seal key, verify the chain with openssl against the committed offline root certificate, assert the mirror has a same-size twin in GCS, and separately unseal using only the two web-identity variables having first asserted no static credential is present](/images/diagrams/openbao-lineage-2.svg)
 
 ## What this survives, and what it does not
 
@@ -57,90 +57,65 @@ wait, so this procedure is manual and measured in tens of minutes.
 
 ## Preconditions
 
-**Every item here is peacetime work.** Read this section now, not during an
-incident. Three of these need a reachable `eu-west-3` and so cannot be done at
-all once AWS is unavailable, which is precisely the failure this procedure
-exists for: the **federation stack** in the first item (its state is in
-`demo-smana-remote-backend`, `eu-west-3`), the **root-token and recovery-keys
-copy** in the fourth, and the **hand mirror copy** in the callout above.
+**All of this is peacetime work — read it now, not during an incident.** Three
+items need a reachable `eu-west-3`, so they cannot be done once AWS is down,
+which is exactly the failure this procedure is for.
 
-- The GCP lineage stack has been applied and the federation stack knows its
-  identities (`gcp_openbao_standby_sa_unique_id`, `gcp_transfer_agent_subject_id`
-  in `opentofu/shared/aws-gcp-federation/variables.tfvars`).
+| # | Must be true | Check |
+|---|---|---|
+| 1 | GCP lineage + federation applied, and the federation knows GCP's identities | `gcp_openbao_standby_sa_unique_id` and `gcp_transfer_agent_subject_id` set in `opentofu/shared/aws-gcp-federation/variables.tfvars` |
+| 2 | **Five** GCP bootstrap secrets exist, not four | the CA chain is the fifth, and the first one read on every deploy |
+| 3 | The server certificate carries **all four** SANs | command below |
+| 4 | The AWS root token and recovery keys are staged into GCP | commands below |
+| 5 | `gcloud auth application-default login`, a tailnet connection, `TF_VAR_tailscale_api_key` | |
 
-- **Five** GCP bootstrap secrets exist, not four. The CA chain is the fifth, and
-  it is the *first* one read on every GCP deploy:
+**Item 3** — `gcp-0`'s ClusterIssuer connects by
+`openbao.security.svc.cluster.local` in both postures, so a certificate carrying
+only `bao.priv.gcp.ogenki.io` fails with `x509: certificate is valid for
+bao.priv.gcp.ogenki.io, not openbao.security.svc.cluster.local`:
 
-  | Secret | Read by |
-  |---|---|
-  | `openbao-priv-gcp-ca-chain` | `global.openbao_ca_fetch` in `opentofu/gcp/openbao/management/workflows.tm.hcl`, **before** rehydrate, on every deploy |
-  | `openbao-priv-gcp-server-cert` | the node's boot script, for the TLS listener |
-  | `openbao-priv-gcp-root-token` | the `vault` provider in `opentofu/gcp/openbao/management/providers.tf` and `opentofu/gcp/gke/configure/providers.tf` |
-  | `openbao-priv-gcp-recovery-keys` | `generate_root_token` in `scripts/openbao-snapshot.sh`, after the restore |
-  | `openbao-priv-gcp-intermediate-ca` | the PKI mount's issuer import |
+```bash
+gcloud secrets versions access latest --secret openbao-priv-gcp-server-cert \
+  --project ogenki-435905 | jq -r .cert | openssl x509 -noout -ext subjectAltName
+```
 
-  The `VAULT_CACERT` used throughout this guide is that CA-chain fetch's own
-  output — written to `.tls/ca.pem` under
-  `opentofu/gcp/openbao/management/` at deploy time, and gitignored, so it is
-  not in a fresh clone.
+**Item 4** — the restored store is the *AWS* one, so the GCP entries must hold
+the *AWS* lineage's credentials. There is no cross-cloud copy tool; these two
+commands are it, and they must be re-run whenever the AWS lineage's root token
+or recovery keys change:
 
-- **`openbao-priv-gcp-server-cert` must already carry all four SANs.** `gcp-0`'s
-  `ClusterIssuer` connects by `openbao.security.svc.cluster.local` in *both*
-  postures — GCP-only and standby — see
-  `security/gcp-0/openbao/openbao-clusterissuer.yaml`. The leaf first issued by
-  the 2026-08-25 GCP ceremony carried only `bao.priv.gcp.ogenki.io`; it was
-  re-issued on 2026-09-05 (version 2) with `bao.priv.gcp.ogenki.io`,
-  `bao.priv.aws.ogenki.io`, `openbao.security.svc.cluster.local` and
-  `openbao.security.svc`. With a single-SAN leaf, cert-manager on `gcp-0` fails
-  with `x509: certificate is valid for bao.priv.gcp.ogenki.io, not
-  openbao.security.svc.cluster.local` — and step 4's "nothing changes for
-  `gcp-0`" does not hold. Check before you need it:
+```bash
+aws secretsmanager get-secret-value --region eu-west-3 \
+  --secret-id openbao/cloud-native-ref/tokens/root --query SecretString --output text \
+  | gcloud secrets versions add openbao-priv-gcp-root-token --project ogenki-435905 --data-file=-
+aws secretsmanager get-secret-value --region eu-west-3 \
+  --secret-id openbao/cloud-native-ref/tokens/recovery --query SecretString --output text \
+  | gcloud secrets versions add openbao-priv-gcp-recovery-keys --project ogenki-435905 --data-file=-
+```
 
-  ```bash
-  gcloud secrets versions access latest --secret openbao-priv-gcp-server-cert \
-    --project ogenki-435905 | jq -r .cert | openssl x509 -noout -ext subjectAltName
-  ```
+{{< callout type="warning" >}}
+**Item 4 cannot be deferred to the incident** — it reads AWS Secrets Manager,
+which may be exactly what is down.
 
-- **Pre-stage the AWS lineage's root token and recovery keys into the two GCP
-  entries now, while AWS is healthy.** For a fallback they must be the *AWS*
-  lineage's, because the restored store is the AWS one:
+Skipping it fails *after* the destructive restore, not before: `rehydrate`
+checks only that the recovery-keys secret is **readable**, never that it belongs
+to the right lineage. So the node initialises, restores the AWS snapshot, and
+only then fails to mint a root token — leaving a node holding throwaway keys
+that were never stored, which nothing can authenticate to. Recovery is to
+destroy and start over, with the copy done first:
+`TM_OPENBAO_SKIP_SNAPSHOT=true TM_CLOUD=gcp terramate -C opentofu/gcp/openbao/cluster script run destroy`
+{{< /callout >}}
 
-  ```bash
-  aws secretsmanager get-secret-value --region eu-west-3 \
-    --secret-id openbao/cloud-native-ref/tokens/root --query SecretString --output text \
-    | gcloud secrets versions add openbao-priv-gcp-root-token --project ogenki-435905 --data-file=-
-  aws secretsmanager get-secret-value --region eu-west-3 \
-    --secret-id openbao/cloud-native-ref/tokens/recovery --query SecretString --output text \
-    | gcloud secrets versions add openbao-priv-gcp-recovery-keys --project ogenki-435905 --data-file=-
-  ```
-
-  Re-run it whenever the AWS lineage's root token or recovery keys change.
-  `scripts/secret-store.sh` has no cross-cloud copy; the two CLIs above are it.
-
-  {{< callout type="warning" >}}
-**This copy cannot be deferred to the incident.** The coverage table above lists
-"AWS compute or Secrets Manager unavailable" as a **covered** failure mode — so
-on the day you need this, the `aws secretsmanager get-secret-value` half may be
-exactly what is down.
-
-What it costs to skip: the GCP entries still hold the *GCP* lineage's
-credentials, and both failures land **after** the destructive restore.
-`rehydrate`'s pre-flight only proves the recovery-keys secret is *readable*
-(`secret_read` in `scripts/openbao-config.sh`), never that it belongs to the
-right lineage. So the run initialises with throwaway shares, restores the AWS
-snapshot — replacing the token store *and* the recovery shares with the AWS
-lineage's — and only then calls `generate_root_token`, which feeds the wrong
-recovery key to `bao operator generate-root` and fails. What is left is the
-state `rehydrate` warns about in so many words: a node holding throwaway keys
-that were never stored, which nothing can authenticate to. Recovery is
-`TM_OPENBAO_SKIP_SNAPSHOT=true TM_CLOUD=gcp terramate -C
-opentofu/gcp/openbao/cluster script run destroy`, then start over — with the
-copy done first. A stale root token fails one step later instead, in the
-management stack's `tofu apply`.
-  {{< /callout >}}
-
-- `gcloud auth application-default login` for `ogenki-435905`, a tailnet
-  connection, and `TF_VAR_tailscale_api_key`.
+{{< callout type="info" >}}
+**Adapting this for your own project?** Two requirements are not obvious, and
+both fail in ways that name neither cause. AWS matches a Google token on the
+**authorized party** (`azp`), so `client_id_list` needs the standby service
+account's *unique ID* — not just the audience — or STS answers
+`InvalidIdentityToken` with every trust-policy condition matching. And the
+standby's own service account needs read on the mirror bucket: it is easy to
+grant only to the CI drill's identity, which keeps the bucket looking reachable
+while the identity that matters during an outage has never touched it.
+{{< /callout >}}
 
 ## Failover, AWS → GCP
 
@@ -150,15 +125,11 @@ management stack's `tofu apply`.
    gcloud storage ls -l gs://ogenki-435905-ogenki-openbao-snapshot/ | sort -k2 | tail -1
    ```
 
-   Object names are `<UTC timestamp>-<seal>.snap` — for example
-   `2026-09-02T041500Z-awskms.snap`. The trailing segment is **the seal that
-   encrypted the object**, read from the writing node's own
-   `/v1/sys/seal-status`, and it is the whole reason this failover works: only a
-   node running that seal can unwrap it. In this bucket you should see
-   `-awskms` on every mirrored object and `-gcpckms` on whatever `gcp-0` wrote
-   for itself before the failover. An object with **no** seal segment is a
-   legacy one written before the scheme; nothing will select it, and
-   `container-images/openbao-snapshot/README.md` carries the one-command retag.
+   Names are `<UTC timestamp>-<seal>.snap`. The trailing segment is the seal
+   that encrypted the object, and only a node running that seal can unwrap it —
+   which is why the standby uses the AWS key. Expect `-awskms` on every mirrored
+   object. One with no seal segment predates the scheme and will not be
+   selected; `container-images/openbao-snapshot/README.md` has the retag.
 
 2. **Deploy the standby with the AWS seal.** In
    `opentofu/gcp/openbao/cluster/variables.tfvars` set:
@@ -178,23 +149,11 @@ management stack's `tofu apply`.
    ```
 
    {{< callout type="warning" >}}
-**Not `TM_CLOUD=gcp terramate script run deploy` from `opentofu/`.** That
-command cannot complete during the outage it would be run in.
-`terramate list --run-order` puts `shared/aws-gcp-federation` third and
-`shared/tailscale` fourth, ahead of `gcp/openbao/cluster`. Both keep their state
-in `bucket = "demo-smana-remote-backend"`, `region = "eu-west-3"` (their
-`backend.tf` files), and `scripts/tm-provisioner.sh` exempts the shared lane
-from the cloud gate outright — `[ "$lane" = "shared" ] && return 0` — so they
-run under any `TM_CLOUD`. `eu-west-3` is the region the coverage table above
-calls *covered*: `tofu init` fails there and the run stops several stacks before
-it ever reaches OpenBao.
-
-The two commands above are the same two stacks the root deploy would eventually
-have reached, minus every stack that needs AWS. `TM_CLOUD=gcp` is still
-required: `tm-provisioner.sh` defaults to `aws` and would print `[skip]`
-without it. Both stacks keep their state in GCS
-(`ogenki-cloud-native-ref-tfstate`), so nothing on this path touches an AWS
-region.
+**By directory, not `terramate script run deploy` from `opentofu/`.** The root
+deploy reaches the `shared/*` stacks first, and their state lives in
+`eu-west-3` — the region the outage is in. `tofu init` fails there and the run
+stops before it ever reaches OpenBao. `TM_CLOUD=gcp` is still required, or the
+provisioner defaults to `aws` and prints `[skip]`.
    {{< /callout >}}
 
    The management stack's rehydrate step restores from the GCS bucket. Its
