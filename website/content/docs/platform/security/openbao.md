@@ -283,10 +283,12 @@ Prerequisites worth stating plainly:
   the PKI issuer chains to the offline root. Its inputs are in place:
   `openbao-root-ca.pem` is committed under `.github/`, and the three repository
   variables it reads (`AWS_DRILL_ROLE_ARN`, `GCP_DRILL_WIF_PROVIDER`,
-  `GCP_DRILL_SERVICE_ACCOUNT`) are set. The substance of what it asserts has been
-  verified by hand — a throwaway node restoring the mirrored snapshot returns the
-  same issuer fingerprint the live cluster serves — but the workflow itself has
-  not had a green scheduled run yet.
+  `GCP_DRILL_SERVICE_ACCOUNT`) are set. It ran green on 2026-09-06, restoring the
+  snapshot the previous evening's teardown had taken and verifying the issuer
+  against the committed offline root with `openssl verify`. A second job asserts
+  the seal unwraps on `AWS_WEB_IDENTITY_TOKEN_FILE` alone, having first checked no
+  static credential is present — separate because static credentials outrank web
+  identity in the AWS SDK's chain, so a combined job would pass either way.
 - **Cross-cloud**: [OpenBao cross-cloud failover]({{< relref "/docs/guides/openbao-cross-cloud-failover.md" >}}).
 
 ## On GCP (gcp-0)
