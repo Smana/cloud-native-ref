@@ -63,13 +63,14 @@ PALETTE = {
 #   brand  -> the project's own brand page; aiicons.py resolves many of them
 CATALOG = {
     'cert-manager': 'local', 'cilium': 'local', 'crossplane': 'local',
-    'eks': 'local', 'envoy': 'local', 'flux': 'local', 'github': 'local',
-    'grafana': 'local', 'harbor': 'local', 'karpenter': 'local',
+    'envoy': 'local', 'flux': 'local', 'github': 'local',
+    'grafana': 'local', 'harbor': 'local',
     'keda': 'local', 'kyverno': 'local', 'openbao': 'local',
+    'kubernetes': 'local',
     'tailscale': 'local', 'victoriametrics': 'local', 'victorialogs': 'local',
     'victoriatraces': 'local', 'vllm': 'local',
 
-    'kubernetes': 'vendor', 'gke': 'vendor', 'bottlerocket': 'vendor',
+    'eks': 'vendor', 'gke': 'vendor', 'bottlerocket': 'vendor',
     's3': 'vendor', 'kms': 'vendor', 'route53': 'vendor', 'iam': 'vendor',
     'gcs': 'vendor', 'vpc': 'vendor', 'secrets manager': 'vendor',
 
@@ -79,7 +80,8 @@ CATALOG = {
     'external secrets': 'cncf',  # pragma: allowlist secret
     'alertmanager': 'cncf', 'trivy': 'cncf',
 
-    'terramate': 'brand', 'zitadel': 'brand', 'vector': 'brand',
+    'karpenter': 'brand', 'terramate': 'brand', 'zitadel': 'brand',
+    'vector': 'brand',
     'postgres': 'brand', 'atlas': 'brand', 'renovate': 'brand',
     'slack': 'brand', 'huggingface': 'brand', 'nvidia': 'brand',
     'openwebui': 'brand', 'wireguard': 'brand', 'polaris': 'brand',

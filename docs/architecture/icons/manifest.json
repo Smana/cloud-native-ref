@@ -1,7 +1,8 @@
 {
-  "_note": "Logos rasterised for platform-overview.drawio and extracted here so every diagram references one asset instead of re-fetching and re-rasterising its own. PNG, not SVG: headless drawio export does not render SVG data URIs. Embed with image=data:image/png,<base64> -- a comma, not ';base64,', which terminates the style value.",
+  "_note": "Logos rasterised for platform-overview.drawio and extracted here so every diagram references one asset instead of re-fetching and re-rasterising its own. PNG, not SVG: headless drawio export does not render SVG data URIs. Embed with image=data:image/png,<base64> -- a comma, not ';base64,', which terminates the style value. Prefer ./scripts/diagram-icons.py style <name> over hand-rolling one.",
   "_aliases_note": "victorialogs and victoriatraces currently render the VictoriaMetrics mark -- platform-overview used one logo for all three, and the three extracted files were byte-identical. Both projects have their own upstream logo; fetch the real marks, add them as files, and drop the alias.",
   "aliases": {
+    "envoy": "envoy-ai-gateway",
     "victorialogs": "victoriametrics",
     "victoriatraces": "victoriametrics"
   },
@@ -20,11 +21,6 @@
       "file": "crossplane.png",
       "bytes": 1268,
       "label": "Crossplane"
-    },
-    "eks": {
-      "file": "eks.png",
-      "bytes": 4747,
-      "label": "eks"
     },
     "envoy-ai-gateway": {
       "file": "envoy-ai-gateway.png",
@@ -51,10 +47,15 @@
       "bytes": 4856,
       "label": "Harbor \u2014 container &amp; Helm registry"
     },
-    "karpenter-keda": {
-      "file": "karpenter-keda.png",
+    "keda": {
+      "file": "keda.png",
       "bytes": 3403,
-      "label": "Karpenter / NAP + KEDA"
+      "label": "KEDA"
+    },
+    "kubernetes": {
+      "file": "kubernetes.png",
+      "bytes": 4747,
+      "label": "Kubernetes"
     },
     "kyverno": {
       "file": "kyverno.png",
@@ -81,5 +82,6 @@
       "bytes": 1291,
       "label": "vLLM fleet"
     }
-  }
+  },
+  "_provenance_note": "Two entries were mislabelled by the extraction, because it inherited platform-overview's cell names rather than checking the images. 'karpenter-keda' was only the KEDA mark (there is no Karpenter logo here) and 'eks' was the plain Kubernetes wheel (not an EKS mark). Both are renamed to what they actually are. Check any new icon against the product before adding it."
 }

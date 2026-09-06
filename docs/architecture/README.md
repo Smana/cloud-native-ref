@@ -98,9 +98,25 @@ is a judgment call, and a gate that can go red on a judgment call gets switched 
 certificates* gets no OpenTofu logo because its second line says "OpenTofu-managed". Concept boxes
 (*the CNI swap*) and container frames stay plain: a logo there labels the wrong thing.
 
-Adding one: rasterise to PNG, drop it in `icons/`, add its `manifest.json` entry. Check `aliases`
-first — `victorialogs` and `victoriatraces` alias the VictoriaMetrics mark today, because
-`platform-overview` used one logo for all three and the extracted files were byte-identical.
+Some boxes are **deliberately** plain, and re-adding an icon to one is a regression:
+
+| Box | Why it stays plain |
+|---|---|
+| `bootstrap-stages` stack column | the subject is the OpenTofu stack path, and iconing part of a uniform column reads as noise |
+| `bootstrap-stages` `s4` `s5` `i0` | each names both clouds — one cloud's logo asserts something false |
+| `ci-pipeline` `j1`–`j6` | a uniform column of CI jobs |
+| container frames | `dp`, `pipe`, `fluxfam`, `ns` — a logo labels the grouping, not a thing |
+| `llm-platform` `vm` | `shape=cylinder3`; `shape=label` would destroy the datastore shape |
+| `openbao-lineage` `c4` `p1` `p3` | an annotation sentence, the KMS key, and an IAM role |
+
+Adding one: rasterise to PNG, drop it in `icons/`, add its `manifest.json` entry — and **look at
+the image before you name it**. Two of the seventeen were mislabelled by the extraction, which
+inherited `platform-overview`'s cell names rather than checking: `karpenter-keda` was only the KEDA
+mark (there is no Karpenter logo here), and `eks` was the plain Kubernetes wheel. Both are now named
+for what they are, and EKS falls back to its `mxgraph.aws4` stencil.
+
+Check `aliases` too — `victorialogs` and `victoriatraces` alias the VictoriaMetrics mark today,
+because `platform-overview` used one logo for all three and the extracted files were byte-identical.
 Replacing them with the real upstream marks means two files added and two alias entries deleted.
 
 The authoring procedure agents follow is [`.claude/rules/diagrams.md`](../../.claude/rules/diagrams.md),
