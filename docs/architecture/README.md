@@ -78,7 +78,7 @@ re-rasterising its own.
 |---|--------|-----|
 | 1 | `icons/` | `./scripts/diagram-icons.py style <name>` — paste-ready, ogenki palette applied |
 | 2 | mxgraph stencil | `shapesearch.py "<terms>"` to find it, then **rasterise it into `icons/`** — see below |
-| 3 | [CNCF Artwork](https://github.com/cncf/artwork) | `projects/<slug>/icon/color/*.svg` |
+| 3 | [CNCF Artwork](https://github.com/cncf/artwork) | **list** `projects/<slug>/icon/color/` and pick the SVG — `external-secrets-operator` ships `eso-icon-color.svg`, so filenames are not slugs |
 | 4 | Project brand | `aiicons.py "<brand>" --embed` |
 | 5 | none | a clean ogenki box — the honest fallback, only after 1–4 miss |
 
@@ -131,6 +131,26 @@ drawio -x -f png -t -b 0 --width 64 -o docs/architecture/icons/s3.png /tmp/i.dra
 #   shapesearch.py "gcp cloud storage bucket"  ->  take the image=data:image/svg+xml,<b64>
 #   base64 -d, then: rsvg-convert -w 64 -h 64 -o docs/architecture/icons/gcs.png in.svg
 ```
+
+**Check a new icon at 24px, not on the contact sheet.** The sheet renders at 110px, where
+everything looks fine. Gateway API's logo is genuine and measurably distinct — the Kubernetes wheel
+with routing arrows, 12.7% of pixels — but at the size these render, the arrows vanish and it *is*
+the Kubernetes wheel, already used here for other things. Fetched, compared at render size, dropped.
+
+**`aiicons.py` confidently returns the wrong product outside its scope.** It covers AI/LLM brands.
+Asked for `vector` it returns *vectorizerai*; for `gateway api`, *cometapi*. Use `simple-icons` or
+the project's own repo for anything else — and verify by eye regardless.
+
+**`none` is a real answer.** Vector, Valkey, Karpenter and Alertmanager have no mark at any source
+probed. The catalog records them as `none` so nobody repeats the search.
+
+**Not everything is a CNCF project.** Valkey is Linux Foundation, Gateway API is a Kubernetes SIG
+rather than a project, and Alertmanager belongs to Prometheus — none has an artwork entry. OpenTofu
+*is* there despite being an LF project. Probe, don't reason.
+
+**An icon must not assert something false.** Alertmanager keeps no Prometheus mark: this platform's
+observability runs on VictoriaMetrics, and a Prometheus flame in that diagram reads as "Prometheus is
+deployed". The icon was fetched, judged, and deleted rather than left to rot in the library.
 
 **Look at what comes out.** The exact-name match for "Cloud Storage" is a generic server rack from
 the clip-art library, not the GCS bucket; the right one is unnamed in the results. Rendering the

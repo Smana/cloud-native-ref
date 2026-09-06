@@ -34,7 +34,7 @@ first hit:
 |---|--------|-----|------|
 | 1 | `docs/architecture/icons/` | `./scripts/diagram-icons.py style <name>` | none — 15 logos already rasterised |
 | 2 | mxgraph stencil | `python3 ~/.claude/skills/drawio-skill/scripts/shapesearch.py "<terms>"`, then rasterise it into `icons/` ([recipe](../../docs/architecture/README.md#rasterising-an-mxgraph-stencil)) | one export |
-| 3 | CNCF Artwork | `projects/<slug>/icon/color/*.svg`, then `rsvg-convert -w 64 -h 64` | one fetch |
+| 3 | CNCF Artwork | **list** `projects/<slug>/icon/color/` and pick the SVG — filenames are not derivable from the slug | one fetch |
 | 4 | Project brand | `python3 ~/.claude/skills/drawio-skill/scripts/aiicons.py "<brand>" --embed`, then rasterise | one fetch |
 | 5 | — | a clean ogenki box, no icon | the honest fallback |
 
@@ -56,6 +56,68 @@ the left edge over the border and the children. Three slipped through before thi
 plus an area threshold for the section-band shape — a wide, short, top-aligned cell whose contents
 are siblings drawn inside it rather than child cells, which is why "is another cell's parent" is not
 a sufficient test.
+
+## Look at every icon before naming it
+
+**Three of the first seventeen were wrong, and none was catchable by name.** A cell called
+`karpenter-keda` held only the KEDA mark; one called `eks` held the plain Kubernetes wheel; and
+`shapesearch`'s exact-name match for "Cloud Storage" is a generic server rack, while the real GCS
+bucket is *unnamed* in the results.
+
+Render a labelled contact sheet and read it:
+
+```bash
+for f in docs/architecture/icons/*.png; do n=$(basename "$f" .png); \
+  magick "$f" -resize 110x110 -background white -flatten -gravity south \
+    -splice 0x26 -pointsize 15 -annotate +0+4 "$n" "/tmp/l-$n.png"; done
+magick montage /tmp/l-*.png -tile 5x -geometry +8+8 -background '#f1f5f9' /tmp/sheet.png
+```
+
+**Check it at 24px, not on the contact sheet.** The sheet renders at 110px, where everything looks
+fine. Gateway API's logo is genuine and measurably distinct — the Kubernetes wheel with routing
+arrows, 12.7% of pixels — but at the size these actually render, the arrows vanish and it *is* the
+Kubernetes wheel, which the library already uses for other things. It was fetched, compared at
+render size, and dropped.
+
+```bash
+magick icons/<a>.png -resize 24x24 -background white -flatten -resize 400% /tmp/a.png
+magick icons/<b>.png -resize 24x24 -background white -flatten -resize 400% /tmp/b.png
+magick montage /tmp/a.png /tmp/b.png -tile 2x -geometry +8+8 /tmp/cmp.png
+```
+
+**`aiicons.py` returns the wrong product outside its scope, confidently.** It is an AI/LLM-brand
+tool (lobe-icons). Asked for `vector` it returns **vectorizerai**; asked for `gateway api` it returns
+**cometapi**. Neither is an error — both are plausible-looking hits for a different product. Use it
+for AI brands, verify everything, and reach for `simple-icons` or the project's own repo otherwise.
+
+**`none` is a real answer.** Vector, Valkey, Karpenter and Alertmanager have no mark at any source
+probed — project repo, project site, simple-icons, lobe-icons. The catalog records them as `none` so
+the next pass does not repeat the search. Alertmanager additionally must not borrow the Prometheus
+flame; see above.
+
+Two more traps the CNCF lane carries specifically:
+
+- **Filenames are not slugs.** `external-secrets-operator` ships `eso-icon-color.svg`. List the
+  directory (`api.github.com/repos/cncf/artwork/contents/projects/<slug>/icon/color`) rather than
+  guessing a name.
+- **Not everything is a CNCF project.** Valkey is Linux Foundation, Gateway API is a Kubernetes SIG
+  rather than a project, and Alertmanager belongs to Prometheus. Probe before assuming a lane.
+  (OpenTofu *is* in `cncf/artwork` despite being an LF project — so probe rather than reason.)
+
+## An icon must not assert something false
+
+Beyond the frame and both-clouds rules below, the sharper test is whether the logo claims something
+untrue about *this* platform. **Alertmanager keeps no Prometheus mark**: the box sits in a diagram
+whose subject is that observability runs on VictoriaMetrics, and a Prometheus flame there reads as
+"Prometheus is deployed". The icon was fetched, judged, and the asset deleted rather than left to
+rot in the library.
+
+## Uniform columns are all or nothing
+
+Iconing three of six stack boxes reads as noise, which is why `bootstrap-stages`' stack column was
+left plain in two passes. Iconing **all six** — once you notice every one of them *is* an OpenTofu
+stack — keeps the column uniform and makes it say something. Prefer that resolution over a
+permanent skip when one logo covers the whole column.
 
 ## When an icon is wrong
 

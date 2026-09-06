@@ -75,18 +75,30 @@ CATALOG = {
 
     'route53': 'vendor', 'secrets manager': 'vendor',
 
-    'opentofu': 'cncf', 'cloudnativepg': 'cncf', 'valkey': 'cncf',
-    'prometheus': 'cncf', 'opentelemetry': 'cncf', 'gateway api': 'cncf',
-    'helm': 'cncf', 'kustomize': 'cncf',
-    'external secrets': 'cncf',  # pragma: allowlist secret
-    'alertmanager': 'cncf', 'trivy': 'cncf',
+    'cloudnativepg': 'local', 'opentofu': 'local',
+    'external secrets': 'local',  # pragma: allowlist secret
 
-    'karpenter': 'brand', 'terramate': 'brand', 'zitadel': 'brand',
-    'vector': 'brand',
-    'postgres': 'brand', 'atlas': 'brand', 'renovate': 'brand',
-    'slack': 'brand', 'huggingface': 'brand', 'nvidia': 'brand',
-    'openwebui': 'brand', 'wireguard': 'brand', 'polaris': 'brand',
-    'checkov': 'brand',
+    'opentelemetry': 'cncf', 'helm': 'cncf', 'kustomize': 'cncf',
+    'prometheus': 'cncf', 'trivy': 'cncf',
+
+    # Not CNCF projects, despite an earlier pass filing them there: Valkey is
+    # Linux Foundation, Gateway API is a Kubernetes SIG rather than a project,
+    # and Alertmanager is part of Prometheus rather than a project of its own.
+    'valkey': 'brand', 'gateway api': 'brand', 'alertmanager': 'brand',
+
+    'zitadel': 'local', 'slack': 'local', 'huggingface': 'local',
+    'openwebui': 'local',
+
+    'terramate': 'brand', 'postgres': 'brand', 'atlas': 'brand',
+    'renovate': 'brand', 'nvidia': 'brand', 'wireguard': 'brand',
+    'polaris': 'brand', 'checkov': 'brand',
+
+    # Probed at the project repo, the project site, simple-icons and
+    # lobe-icons: no mark exists to fetch. Gateway API's does exist -- the
+    # Kubernetes wheel with routing arrows -- but the arrows vanish at the 24px
+    # these render at, leaving the mark already used for Kubernetes.
+    'vector': 'none', 'valkey': 'none', 'karpenter': 'none',
+    'alertmanager': 'none', 'gateway api': 'none',
 }
 
 
@@ -146,14 +158,15 @@ def cmd_audit(args):
             by_source[src] += 1
             print(f"   {cid:14} {src:7} {', '.join(hits)}")
 
-    print(f"\n{total} boxes name a product with an available logo and render without one.")
-    for src in ('local', 'vendor', 'cncf', 'brand'):
+    print(f"\n{total} boxes name a product and render without an icon.")
+    for src in ('local', 'vendor', 'cncf', 'brand', 'none'):
         if by_source[src]:
             how = {
                 'local': "docs/architecture/icons/ — ./scripts/diagram-icons.py style <name>",
                 'vendor': "an mxgraph stencil — shapesearch.py, no embedding needed",
                 'cncf': "github.com/cncf/artwork — fetch, then rsvg-convert -w 64 -h 64",
                 'brand': "the project's brand page — aiicons.py --embed, then rasterise",
+                'none': "no logo exists to fetch — these stay plain, see the catalog comment",
             }[src]
             print(f"  {by_source[src]:>4} {src:7} {how}")
     misplaced = frames_with_icons()
