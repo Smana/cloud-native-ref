@@ -340,6 +340,17 @@ This graph is re-derived from `spec.dependsOn` in every
 `clusters/aws-0/**/*.yaml`, not carried over from an earlier
 description of it — the shape has changed more than once.
 
+{{< callout type="warning" >}}
+**The constitution's summary is a simplification — do not copy a `dependsOn`
+from it.** It states the hierarchy as *namespaces → CRDs → Crossplane → EPIs →
+security → infrastructure → observability → applications*, which is the right
+mental model and the wrong graph. The real one is wider: Crossplane is three
+sequential Kustomizations, Karpenter sits outside them, `infrastructure` depends
+on `karpenter` and `eks-pod-identities` rather than on `security`, and several
+`flux/*` Kustomizations run in parallel. Read the graph above, or
+`clusters/aws-0/` itself, before wiring a new component.
+{{< /callout >}}
+
 **The spine**, one Kustomization deep at each step:
 
 ```

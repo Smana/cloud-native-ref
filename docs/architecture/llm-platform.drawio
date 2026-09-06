@@ -54,9 +54,6 @@
         <mxCell id="sr" value="&lt;b&gt;vllm-semantic-router&lt;/b&gt;&#xa;ns: llm   ·   ext_proc gRPC :50051&#xa;&#xa;Rewrites body.model in place:&#xa;MoM → a concrete fleet model.&#xa;&#xa;An explicit xplane-* model passes&#xa;through untouched." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=12;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
           <mxGeometry x="920" y="590" width="300" height="160" as="geometry" />
         </mxCell>
-        <mxCell id="srn" value="An EnvoyPatchPolicy (raw xDS JSONPatch) inserts this&#xa;filter at index 0. It MUST run before ③, because ③&#xa;derives the routing header from the body it rewrites —&#xa;and EnvoyExtensionPolicy can only append, never prepend." style="text;html=1;align=left;fontFamily=Helvetica;fontSize=11;fontColor=#64748B;" vertex="1" parent="1">
-          <mxGeometry x="920" y="762" width="360" height="70" as="geometry" />
-        </mxCell>
 
         <mxCell id="be" value="&lt;b&gt;Backend + AIServiceBackend&lt;/b&gt;&#xa;&amp;lt;claim&amp;gt;-direct → &amp;lt;claim&amp;gt;.llm.svc:8000&#xa;one extra AIServiceBackend per canary" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="240" y="970" width="330" height="70" as="geometry" />
@@ -217,9 +214,6 @@
 
         <mxCell id="wt2" value="Model weights" style="text;html=1;align=left;fontFamily=Helvetica;fontSize=17;fontStyle=1;fontColor=#1E293B;" vertex="1" parent="1">
           <mxGeometry x="60" y="960" width="240" height="25" as="geometry" />
-        </mxCell>
-        <mxCell id="wnote" value="&lt;b&gt;Weights never transit the serving pod.&lt;/b&gt;  It has no internet egress at all — it cannot reach HuggingFace even in principle.&#xa;A claim with no preload (and no subPath that another claim already filled) starts with an empty /models and never boots." style="text;html=1;align=left;fontFamily=Helvetica;fontSize=12;fontColor=#DC2626;" vertex="1" parent="1">
-          <mxGeometry x="60" y="995" width="1100" height="45" as="geometry" />
         </mxCell>
 
         <mxCell id="hf" value="HuggingFace&#xa;(world :443)" style="rounded=1;absoluteArcSize=1;arcSize=10;dashed=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">

@@ -109,6 +109,10 @@ package pinned at `infrastructure/base/crossplane/configuration-aws/configuratio
 | `toolCallParser` | string | `hermes` on both Qwen instruct models; absent for FIM and the guardrail, neither of which does tool calling |
 | `preload.enabled` | bool | Runs a Job that pulls the weights onto the shared filesystem before the serving pod starts |
 
+{{< callout type="warning" >}}
+**A claim with no preload never boots.** The serving pod has no internet egress at all, so it cannot fetch the weights itself. Unless `preload.enabled` is set — or the claim's `subPath` names a directory another claim already filled — it starts with an empty `/models` and stays down.
+{{< /callout >}}
+
 ### `spec.gpu`
 
 | Field | Type | Notes |
