@@ -443,6 +443,31 @@ GENERATABLE=(
     "cnpg${_cnpg_sep}xplane-zitadel${_cnpg_sep}superuser"
 )
 
+# image-gallery's role credential, AWS-ONLY -- appended rather than listed above
+# because it is the one entry here that does not exist on both clouds.
+#
+# apps/base/complete is deliberately absent from apps/gcp-0/kustomization.yaml:
+# the application talks to S3 through an S3 SDK with the bucket hardcoded in its
+# container environment, so gcp-0 has no image-gallery, no SQLInstance for it,
+# and no ExternalSecret reading this key. Listing it unconditionally would make
+# `seed --cloud gcp` create a secret that cloud can never consume -- a paid,
+# permanently-unread entry, and a misleading one for anyone auditing the store.
+#
+# It belongs here for exactly the reason the comment above GENERATABLE gives for
+# the other two cnpg entries: they are "seeded here so a rebuild does not depend
+# on someone remembering". This one was not, so it did. Nothing in this
+# repository creates it -- the SQLInstance Composition only ASKS for it -- so if
+# it were ever lost, a rebuild would fail the way that comment describes, naming
+# neither the key nor the cause: External Secrets reporting `could not get
+# secret data from provider` while the pod sits in CreateContainerConfigError
+# naming a Kubernetes Secret.
+#
+# `if`, not `[ ... ] && ...`: under `set -o errexit` a trailing && test that
+# evaluates false makes the whole script exit here, on GCP, before doing anything.
+if [ "$CLOUD" = "aws" ]; then
+    GENERATABLE+=( "cnpg/xplane-image-gallery/roles/image-gallery-app" )
+fi
+
 # 32 bytes of urandom, base64, punctuation removed so no consumer has to worry
 # about quoting it in a connection string or an env file.
 # No trailing `head` in the pipeline. `tr` reading /dev/urandom never ends on
@@ -490,6 +515,20 @@ seed_body() {
             # Must match spec.roles[].name on the claim: CNPG creates the role
             # under that name and Harbor connects as it.
             printf '%s' "$(gen_password)" | jq -Rs '{username: "harbor", password: .}' ;;
+        cnpg?xplane-image-gallery?roles?image-gallery-app)
+            # Same shape as harbor above, and the username is again load-bearing:
+            # `image-gallery-app` is spec.sqlInstance.roles[].name in
+            # apps/base/complete/app.yaml, and also the `owner` of the
+            # image-gallery database there.
+            #
+            # GENERATED, not derived -- unlike the zitadel arm below, this
+            # credential has exactly one owner. The claim carries `backup` but no
+            # `recovery`, so the database is always created fresh and a new
+            # password each rebuild is correct rather than merely tolerable.
+            # (The zitadel arm's ORDER MATTERS warning still applies: CNPG sets
+            # the role password when it CREATES the cluster, so seed before the
+            # claim reconciles.)
+            printf '%s' "$(gen_password)" | jq -Rs '{username: "image-gallery-app", password: .}' ;;
         cnpg?xplane-zitadel?superuser)
             # DERIVED, not generated -- the one arm here that reads rather than
             # rolls, and the reason is that this credential has two owners.
