@@ -135,15 +135,40 @@ esac
 # ONE argv element when quoted and an empty word when unset -- the exact trap
 # already documented in verify_pki_present() in scripts/openbao-config.sh.
 seal_status_raw() {
-    if [ -n "${VAULT_CACERT:-}" ] && [ -n "${VAULT_SKIP_VERIFY:-}" ]; then
-        curl -sS -k --cacert "${VAULT_CACERT}" "${VAULT_ADDR}/v1/sys/seal-status"
-    elif [ -n "${VAULT_CACERT:-}" ]; then
-        curl -sS --cacert "${VAULT_CACERT}" "${VAULT_ADDR}/v1/sys/seal-status"
-    elif [ -n "${VAULT_SKIP_VERIFY:-}" ]; then
-        curl -sS -k "${VAULT_ADDR}/v1/sys/seal-status"
-    else
-        curl -sS "${VAULT_ADDR}/v1/sys/seal-status"
+    # VAULT_TLS_SERVER_NAME set means VAULT_ADDR holds an ADDRESS and the
+    # certificate carries a NAME -- the split scripts/openbao-config.sh's
+    # --fallback-address installs when the DNS record is gone but the node is
+    # not. curl does not read VAULT_TLS_SERVER_NAME, so without this it asks for
+    # the bare IP and fails verification against a certificate that has no IP
+    # SAN by design: a handshake failure dressed as an unreachable node.
+    #
+    # --resolve is curl's form of the same thing. Request the NAME, pin it to the
+    # ADDRESS, and SNI and verification both stay intact.
+    _ss_url="${VAULT_ADDR}/v1/sys/seal-status"
+    _ss_resolve=""
+    if [ -n "${VAULT_TLS_SERVER_NAME:-}" ]; then
+        _ss_hp=${VAULT_ADDR#*://}
+        _ss_hp=${_ss_hp%%/*}
+        _ss_addr=${_ss_hp%%:*}
+        _ss_port=${_ss_hp##*:}
+        [ "${_ss_port}" = "${_ss_hp}" ] && _ss_port=8200
+        if [ "${_ss_addr}" != "${VAULT_TLS_SERVER_NAME}" ]; then
+            _ss_url="https://${VAULT_TLS_SERVER_NAME}:${_ss_port}/v1/sys/seal-status"
+            _ss_resolve="${VAULT_TLS_SERVER_NAME}:${_ss_port}:${_ss_addr}"
+        fi
     fi
+
+    # Flags through the positional parameters. This is NOT the trap the previous
+    # comment here warned about -- that was word-splitting an unquoted variable
+    # holding several flags, where `--cacert /path` arrives as one argv element
+    # when quoted and as nothing when empty. "$@" expands each element
+    # separately and drops cleanly when empty, which is the POSIX equivalent of
+    # an array. The function takes no arguments, so `set --` clobbers nothing.
+    set --
+    [ -n "${_ss_resolve}" ] && set -- --resolve "${_ss_resolve}"
+    [ -n "${VAULT_CACERT:-}" ] && set -- "$@" --cacert "${VAULT_CACERT}"
+    [ -n "${VAULT_SKIP_VERIFY:-}" ] && set -- "$@" -k
+    curl -sS "$@" "${_ss_url}"
 }
 
 # The seal this node actually runs, on stdout; empty and non-zero when it
