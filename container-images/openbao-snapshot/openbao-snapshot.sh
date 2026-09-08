@@ -654,6 +654,45 @@ select_snapshot() {
     return 0
 }
 
+# Which object does the foreign-seal escape hatch fall back to?
+#
+# Only reached when OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true and the selected
+# object's seal is not this node's. Prints the object on stdout, diagnostics on
+# stderr, non-zero to refuse.
+#
+# It REFUSES when the operator named an object with OPENBAO_SNAPSHOT_KEY. The
+# hatch substitutes the newest same-seal object, and the newest is the precise
+# opposite of what a named key asks for -- so on a mixed-seal bucket the two
+# features silently cancelled, and the one that won was the one that discards
+# data. The operator who named an object can name a different one; the script
+# must not choose for them.
+#
+# $1 candidates, oldest first.  $2 this node's seal type.
+foreign_seal_fallback() {
+    _fsf_cands="$1"
+    _fsf_seal="$2"
+
+    if [ -n "${SNAPSHOT_KEY}" ]; then
+        echo "${err}: OPENBAO_SNAPSHOT_KEY names '${SNAPSHOT_KEY}', which this node's" >&2
+        echo "${err}: '${_fsf_seal}' seal cannot unwrap, and" >&2
+        echo "${err}: OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true is set." >&2
+        echo "${err}: REFUSING rather than substituting. The hatch restores the NEWEST" >&2
+        echo "${err}: object this node can unwrap, which is the opposite of what naming an" >&2
+        echo "${err}: object asks for -- restoring it would discard everything the named" >&2
+        echo "${err}: snapshot was chosen to recover." >&2
+        echo "${err}: Objects this node CAN unwrap, oldest first:" >&2
+        printf '%s\n' "${_fsf_cands}" \
+            | { grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-${_fsf_seal}\.snap$" || true; } \
+            | sed "s/^/${err}:   /" >&2
+        echo "${err}: Name one of those, or unset OPENBAO_SNAPSHOT_KEY to take the newest." >&2
+        return 1
+    fi
+
+    printf '%s\n' "${_fsf_cands}" \
+        | { grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-${_fsf_seal}\.snap$" || true; } \
+        | tail -n1
+}
+
 restore() {
     echo "${info}: Restoring OpenBao from object storage..."
     check_required_bin
@@ -792,7 +831,7 @@ restore() {
             exit 1
         fi
 
-        SNAP=$(printf '%s\n' "${CANDIDATES}" | { grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-${SEAL_TYPE}\.snap$" || true; } | tail -n1)
+        SNAP=$(foreign_seal_fallback "${CANDIDATES}" "${SEAL_TYPE}") || exit 1
         if [ -z "${SNAP}" ]; then
             # Self-contained: this is now the first thing printed on this path.
             echo "${err}: SEAL MISMATCH, and OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true cannot help --"
@@ -810,7 +849,7 @@ restore() {
         # Also self-contained, and it says PROCEEDING rather than refusing.
         echo "${warn}: SEAL MISMATCH, and OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true -- PROCEEDING."
         echo "${warn}:   this node's seal : ${SEAL_TYPE}"
-        echo "${warn}:   newest object    : ${NEWEST} (${found}) -- SKIPPED"
+        echo "${warn}:   selected object  : ${NEWEST} (${found}) -- SKIPPED"
         echo "${warn}:   restoring instead: ${SNAP}, the newest of the ${n_mine} object(s) this node can unwrap"
         echo "${warn}:   in ${BUCKET_NAME}: ${n_all} snapshot object(s), $((n_all - n_tagged)) with no seal segment"
         echo "${warn}: Whatever was written after ${NEWEST} is NOT in this restore."
