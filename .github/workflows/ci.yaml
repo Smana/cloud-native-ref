@@ -245,6 +245,14 @@ jobs:
       # by widening the glob: it covers the pre-destroy snapshot's fallback
       # address, which is a different subsystem that happens to be testable the
       # same way (offline, every call stubbed, bash and jq only).
+      # scripts/test-openbao-seal-status-tls.sh is the fourth, and pairs with the
+      # fallback-address suite above: that one covers the SNAPSHOT following
+      # --fallback-address, this one the seal-status probe that runs first. On
+      # 2026-09-08 the fallback reached the node and the probe then asked for the
+      # bare IP, which the certificate cannot match -- so a teardown refused,
+      # left a node billing, and pushed the operator toward the escape hatch that
+      # discards an obtainable snapshot. Two correct-looking halves that did not
+      # meet.
       # scripts/test-no-secret-argv.sh is the third named addition, and the one
       # that most needed to be here: it scans every script for a credential-
       # shaped variable passed on argv, where `ps` reads it. It existed, it
@@ -255,7 +263,7 @@ jobs:
         run: |
           set -uo pipefail
           rc=0
-          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh; do
+          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh scripts/test-openbao-seal-status-tls.sh; do
             if bash "$t" > /tmp/zitadel-test.log 2>&1; then
               echo "PASS  $t"
             else
