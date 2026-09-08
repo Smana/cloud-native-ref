@@ -124,7 +124,29 @@ resource "kubectl_manifest" "disable_kube_proxy" {
 # =============================================================================
 # Step 5: Install Flux Operator
 # =============================================================================
+
+# Is flux-operator already installed? See the lifecycle comment on the resource
+# below, and scripts/helm-release-present.sh, for why terraform stops tracking
+# this release and why that makes the check necessary.
+#
+# Never fails: an unreachable cluster answers "false", terraform attempts the
+# create, and helm reports any genuine conflict itself.
+data "external" "flux_operator_release" {
+  program = ["bash", "${path.module}/../../../../scripts/helm-release-present.sh"]
+
+  query = {
+    name      = "flux-operator"
+    namespace = "flux-system"
+  }
+}
+
 resource "helm_release" "flux_operator" {
+  # Bootstrap only. Zero when Flux already has the release -- which is every
+  # deploy after the first, because the workflow drops it from state once the
+  # FluxInstance is Ready. This can never destroy the operator: terraform has
+  # already forgotten it, so count=0 has nothing in state to remove.
+  count = data.external.flux_operator_release.result.present == "true" ? 0 : 1
+
   depends_on = [
     kubectl_manifest.disable_kube_proxy,
     kubectl_manifest.flux_system_namespace, # flux-system namespace must exist first
@@ -151,6 +173,23 @@ resource "helm_release" "flux_operator" {
   # purpose (see the comment there).
   atomic          = true
   cleanup_on_fail = true
+
+  # Terraform BOOTSTRAPS this release; Flux owns it from the first reconcile.
+  #
+  # flux/operator/helmrelease.yaml re-manages the same Helm release, adding the
+  # Web UI and its OIDC configuration -- none of which is declared here. Without
+  # this, every apply reads Flux's values as drift and tries to revert them, and
+  # an apply that lands mid-upgrade fails with "release: already exists" (hit on
+  # 2026-09-08: revisions 23-27 inside 25 minutes).
+  #
+  # The version is Flux's too. `var.flux_operator_version` is the bootstrap
+  # version only; flux/sources/ocirepo-flux-operator.yaml floats
+  # `>=0.43.0 <1.0.0`, so bumping the global will NOT move a running cluster --
+  # and without this block it would try to downgrade one.
+  lifecycle {
+    ignore_changes = all
+  }
+
 }
 
 # =============================================================================

@@ -58,6 +58,21 @@ script "deploy" {
         "-var=gateway_api_version=${global.gateway_api_version}",
         "-var=flux_operator_version=${global.flux_operator_version}",
       "-var=flux_instance_version=${global.flux_instance_version}"],
+      # Hand flux-operator to Flux. Terraform bootstrapped the release; from
+      # the first reconcile flux/operator/helmrelease.yaml owns it, adding the
+      # Web UI and its OIDC configuration and tracking the floating version in
+      # flux/sources/ocirepo-flux-operator.yaml.
+      #
+      # Terraform must forget it, or every later plan fails in the READ: Flux
+      # upgrades the release to flux-operator-0.59.0+ae962f87e043, the provider
+      # writes that into its own `version`, and no plan can resolve it again --
+      # `+` is not legal in an OCI tag. Hit on 2026-09-08, after 29 revisions of
+      # the two owners overwriting each other.
+      #
+      # Idempotent: a no-op once the resource is already out of state.
+      ["bash", "${terramate.root.path.fs.absolute}/scripts/tm-provisioner.sh", "--tm-run", "bash", "-c",
+      "tofu state rm helm_release.flux_operator 2>/dev/null || true"],
+
     ]
   }
 }

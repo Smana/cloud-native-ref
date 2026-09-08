@@ -32,6 +32,7 @@ resource "aws_secretsmanager_secret" "admin_credentials" {
   #checkov:skip=CKV2_AWS_57:Rotation happens by re-running this stack, which generates a fresh password. A Secrets Manager rotation Lambda cannot rotate an OpenBao userpass credential - it has no way to talk to OpenBao.
   name                    = var.admin_credentials_secret_name
   recovery_window_in_days = 0
+  tags                    = var.tags
 }
 
 resource "aws_secretsmanager_secret_version" "admin_credentials" {
