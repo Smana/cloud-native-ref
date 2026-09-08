@@ -63,7 +63,7 @@ stage-2 OpenTofu step, mirroring the existing EKS two-stage bootstrap.
 - Cilium version stays a single platform-wide variable (`opentofu/config.tm.hcl`
   `cilium_version`), so both clouds upgrade together.
 - Most of `infrastructure/base/` is a port, not a rewrite.
-- Current Cilium docs carry a working GKE recipe for exactly the pinned version (1.20.0) — see
+- Current Cilium docs carry a working GKE recipe for exactly the pinned version (1.20.1) — see
   References.
 
 **Cons**:
@@ -181,7 +181,7 @@ rescoped to AWS only once that criterion passes, and not before.
 
 ## References
 
-- [Cilium GKE-to-GKE Clustermesh Preparation](https://docs.cilium.io/en/latest/network/clustermesh/gke-clustermesh-prep/) — current docs, working GKE + Cilium 1.20.0 recipe
+- [Cilium GKE-to-GKE Clustermesh Preparation](https://docs.cilium.io/en/latest/network/clustermesh/gke-clustermesh-prep/) — current docs, working GKE + Cilium 1.20.1 recipe
 - [Cilium GKE IPAM mode](https://docs.cilium.io/en/latest/network/concepts/ipam/gke/) — `ipam.mode=kubernetes`
 - [GKE Dataplane V2](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/dataplane-v2) — create-time only; default on Autopilot
 - [gcloud container clusters create](https://docs.cloud.google.com/sdk/gcloud/reference/container/clusters/create) — `--enable-dataplane-v2` is opt-in
