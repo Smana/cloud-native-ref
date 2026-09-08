@@ -33,5 +33,23 @@ resource "google_iam_workload_identity_pool_provider" "github" {
 resource "google_service_account_iam_member" "drill_wif" {
   service_account_id = google_service_account.openbao_drill.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repository}"
+
+  # `principal://.../subject/<sub>`, not `principalSet://.../attribute.repository/<repo>`.
+  #
+  # The repository form admits every ref and every pull request in the repo, and
+  # leaves the refs/heads/main pin living ONLY in the provider's
+  # attribute_condition one level up. That is a single point of failure in two
+  # directions: a second provider added to this pool would inherit this binding
+  # with no ref constraint at all, and relaxing that one condition would
+  # immediately admit every branch and PR to openbao-drill -- which can list the
+  # entire snapshot mirror. The subject form pins the same identity the AWS role
+  # pins in opentofu/aws/openbao/lineage/github-oidc.tf, so both clouds now
+  # express one decision in their own syntax rather than two different ones.
+  #
+  # COUPLED TO THE WORKFLOW'S `environment:`. GitHub's `sub` is
+  # `repo:<repo>:ref:refs/heads/main` only while the drill job declares no
+  # environment; adding one changes it to `repo:<repo>:environment:<name>` and
+  # this binding stops matching. If the drill is ever scoped to a GitHub
+  # environment, this string and the AWS role's `sub` condition move together.
+  member = "principal://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/subject/repo:${var.github_repository}:ref:refs/heads/main"
 }
