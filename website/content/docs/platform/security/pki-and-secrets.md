@@ -1,8 +1,8 @@
 ---
 title: PKI & Secrets
 weight: 20
-description: The three-tier PKI chain OpenBao issues from, how cert-manager and External Secrets pull from it, and how the chain rotates. One offline root for both clouds is the target; on AWS the ceremony has not run yet.
-lastVerified: 2026-09-02
+description: The three-tier PKI chain OpenBao issues from, how cert-manager and External Secrets pull from it, and how the chain rotates. One offline root signs both clouds' intermediates; its private key has never been in either cloud.
+lastVerified: 2026-09-08
 ---
 
 Every internal TLS certificate on this platform — Gateway API listeners,
@@ -23,36 +23,29 @@ Intermediate is what OpenBao's `pki_private_issuer` mount imports as its
 signing certificate and uses to issue every leaf, which keeps
 revocation/rotation scoped to the tier that actually changed.
 
-{{< callout type="warning" >}}
-**The AWS root CA private key has not been taken offline yet.** It is present in
-the AWS `pki_private_issuer` mount as this platform last deployed it — imported
-there inside a bundle from `certificates/priv.aws.ogenki.io/root-ca`, a secret
-that still exists. This is an accepted trade-off **for this reference
-platform**; do not carry it into a deployment where the root CA matters.
+{{< callout type="info" >}}
+**The signing ceremony has run on both clouds.** One offline root now signs both
+intermediates, and its private key has never been in either cloud.
 
-**On GCP it already is offline.** The 2026-08-25 ceremony signed
-`openbao-priv-gcp-intermediate-ca` under a root whose private key never entered
-GCP (`docs/gcp-bootstrap.md`, *What is NOT a prerequisite*).
+What that means concretely, and how to check it rather than take it on trust:
 
-`opentofu/aws/openbao/management/pki.tf` is already written for the offline
-shape — it imports an intermediate bundle as the mount's issuer and generates
-nothing inside OpenBao — but the secret it reads does not exist yet. Two
-hand-performed steps close the gap, both documented below, and **neither has run
-on AWS**:
+- `.github/openbao-root-ca.pem` holds the root **certificate** and nothing else —
+  `openssl x509 -in .github/openbao-root-ca.pem -noout -subject` prints
+  `CN=Ogenki Root CA`, and the file carries no private key.
+- `certificates/priv.aws.ogenki.io/root-ca`, the entry that used to carry the
+  root **key**, has been deleted. `pki.tf` reads the *intermediate* bundle.
+- The [weekly restore drill](https://github.com/Smana/cloud-native-ref/actions/workflows/openbao-restore-drill.yml)
+  verifies the **AWS** issuer against that committed root on every run — under
+  `set -euo pipefail` with no `continue-on-error`, so a chain that does not
+  verify fails the job.
+- The **GCP** intermediate came out of the same 2026-08-25 ceremony, under the
+  same root: the committed certificate's `notBefore` is `Aug 24 21:58:25 2026`.
+  Nothing re-checks that continuously the way the drill does for AWS — to
+  confirm it by hand, chain `openbao-priv-gcp-ca-chain` against the same file.
 
-| Step | What it does | Where |
-|---|---|---|
-| The signing ceremony | Signs an AWS intermediate under the offline root, issues a new server certificate, and stores both — then commits the root *certificate* as `openbao-root-ca.pem` in `.github/`, which does not exist until this runs | [Building the chain](#building-the-chain), [Storing the chain](#storing-the-chain), [Committing the root certificate](#committing-the-root-certificate) |
-| Retiring the old root | Deletes `certificates/priv.aws.ogenki.io/root-ca` — one `aws secretsmanager delete-secret`, and only once the new chain has issued a certificate. Nothing reads that secret after the ceremony: `pki.tf` reads the intermediate | — |
-
-Until both are done, read every "one offline root for both clouds" statement
-below as what the ceremony produces, not as the current state. The AWS root and
-the GCP root are also not yet the same root — signing the AWS intermediate with
-the key the GCP ceremony produced is the step that makes them one.
-
-If you are standing this platform up yourself, none of this is a caveat: you
-perform the ceremony once, before the first deploy, and start from the offline
-shape.
+The sections below are the ceremony as performed, kept because it has to be
+repeated when the intermediate expires and because anyone standing this platform
+up performs it once before the first deploy.
 {{< /callout >}}
 
 ### Building the chain

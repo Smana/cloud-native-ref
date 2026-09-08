@@ -16,24 +16,26 @@ resource "vault_mount" "pki" {
 # on a networked system, which the PKI & Secrets page carried as an accepted
 # trade-off for a reference platform.
 #
-# WRITTEN FOR THE OFFLINE SHAPE, WHICH HAS NOT HAPPENED YET on AWS. This code
-# reads a pre-signed intermediate from `certificates/priv.aws.ogenki.io/
-# intermediate-ca`, a secret the offline ceremony creates -- Task 14 of the
-# Stage 1 plan, still unrun. Until it does:
+# THE OFFLINE SHAPE, AND IT IS THE LIVE ONE. This code reads a pre-signed
+# intermediate from `certificates/priv.aws.ogenki.io/intermediate-ca` and
+# generates nothing inside OpenBao, so the mount's issuer is the intermediate the
+# offline ceremony signed. Verified 2026-09-08 against the live account:
 #
-#   * this stack cannot apply, because that secret does not exist;
-#   * `certificates/priv.aws.ogenki.io/root-ca`, which holds the root PRIVATE
-#     KEY, is still in Secrets Manager, and the live mount's issuer is still
-#     the one OpenBao generated and signed for itself;
-#   * so the root key IS on a networked system today. Task 17 Step 2 deletes
-#     that secret, deliberately only after the new chain has issued a
-#     certificate.
+#   * `certificates/priv.aws.ogenki.io/intermediate-ca` exists and this stack
+#     applies from it;
+#   * `certificates/priv.aws.ogenki.io/root-ca`, which used to hold the root
+#     PRIVATE KEY, is deleted -- no cloud store holds it;
+#   * a node rehydrated from the newest snapshot serves an issuer that
+#     `openssl verify -CAfile .github/openbao-root-ca.pem` accepts, and the
+#     weekly restore drill asserts exactly that on every run.
 #
-# An earlier version of this comment said the deletion had already happened.
-# It had not, and stating a security improvement in the past tense before it is
-# made is the worst direction for the error -- it retires the warning while the
-# exposure is still there. The PKI & Secrets page carries the same gating in a
-# warning callout; the two are meant to agree.
+# An earlier version of this comment said the deletion had already happened
+# before it had, and the version after it went on saying the opposite once it
+# had. Both directions mislead: one retires a warning over a live exposure, the
+# other leaves a warning standing over a closed one, and a reader cannot tell
+# which they are looking at. Hence the date and the re-check above -- the claim
+# is falsifiable rather than asserted. The PKI & Secrets page carries the same
+# statement; the two are meant to agree.
 #
 # After the ceremony: the root signs each cloud's intermediate offline, only the
 # intermediate's cert+key bundle reaches a networked store, and tailnet clients
