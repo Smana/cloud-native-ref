@@ -2,6 +2,13 @@ terraform {
   required_version = ">= 1.5"
 
   required_providers {
+    # The flux-operator bootstrap guard in main.tf shells out through
+    # scripts/helm-release-present.sh to ask whether Flux already owns the
+    # release.
+    external = {
+      source  = "hashicorp/external"
+      version = "~> 2.3"
+    }
     aws = {
       source  = "hashicorp/aws"
       version = "~> 6.0"

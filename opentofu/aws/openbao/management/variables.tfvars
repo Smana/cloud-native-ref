@@ -1,10 +1,9 @@
-region                           = "eu-west-3"
-openbao_root_token_secret_id     = "openbao/cloud-native-ref/tokens/root"
-domain_name                      = "priv.aws.ogenki.io"
-intermediate_ca_secret_name      = "certificates/priv.aws.ogenki.io/intermediate-ca" # pragma: allowlist secret
-openbao_certificates_secret_name = "certificates/priv.aws.ogenki.io/openbao"
-pki_country                      = "France"
-pki_organization                 = "Ogenki"
+region                       = "eu-west-3"
+openbao_root_token_secret_id = "openbao/cloud-native-ref/tokens/root"
+domain_name                  = "priv.aws.ogenki.io"
+intermediate_ca_secret_name  = "certificates/priv.aws.ogenki.io/intermediate-ca" # pragma: allowlist secret
+pki_country                  = "France"
+pki_organization             = "Ogenki"
 # Both private domains: the active OpenBao issues for both clusters (design,
 # "PKI"), so a gcp-0 Certificate signed here must be allowed. cluster.local
 # covers in-cluster Service names.
