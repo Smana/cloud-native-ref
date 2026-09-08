@@ -129,11 +129,16 @@ case "${SKIP_FOREIGN_SEAL}" in
     *) echo "${err}: OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL must be 'true' or 'false', got '${SKIP_FOREIGN_SEAL}'." ; exit 1 ;;
 esac
 
-# GET /v1/sys/seal-status, honouring the same TLS choices as everything else
-# here. Built as explicit branches rather than by word-splitting a variable of
-# flags: `"${VAULT_CACERT:+--cacert $VAULT_CACERT}"` passes `--cacert /path` as
-# ONE argv element when quoted and an empty word when unset -- the exact trap
-# already documented in verify_pki_present() in scripts/openbao-config.sh.
+# GET /v1/sys/seal-status, honouring the same TLS choices as everything else here.
+#
+# Flags are accumulated in the POSITIONAL PARAMETERS and expanded as "$@". That
+# is deliberately not the trap documented in verify_pki_present() in
+# scripts/openbao-config.sh: word-splitting an unquoted variable that holds
+# several flags, where `"${VAULT_CACERT:+--cacert $VAULT_CACERT}"` passes
+# `--cacert /path` as ONE argv element when quoted and an empty word when unset.
+# "$@" expands each element separately and disappears cleanly when empty, which
+# is the POSIX equivalent of an array. This function takes no arguments, so
+# `set --` clobbers nothing.
 seal_status_raw() {
     # VAULT_TLS_SERVER_NAME set means VAULT_ADDR holds an ADDRESS and the
     # certificate carries a NAME -- the split scripts/openbao-config.sh's
@@ -158,12 +163,7 @@ seal_status_raw() {
         fi
     fi
 
-    # Flags through the positional parameters. This is NOT the trap the previous
-    # comment here warned about -- that was word-splitting an unquoted variable
-    # holding several flags, where `--cacert /path` arrives as one argv element
-    # when quoted and as nothing when empty. "$@" expands each element
-    # separately and drops cleanly when empty, which is the POSIX equivalent of
-    # an array. The function takes no arguments, so `set --` clobbers nothing.
+    # See the header above for why these go through the positional parameters.
     set --
     [ -n "${_ss_resolve}" ] && set -- --resolve "${_ss_resolve}"
     [ -n "${VAULT_CACERT:-}" ] && set -- "$@" --cacert "${VAULT_CACERT}"

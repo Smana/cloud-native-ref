@@ -76,6 +76,14 @@ CRED_TOKENS="secret|password|passwd|token|credential|cookie|pat|apikey|privateke
 # Flags that put their VALUE on a cloud CLI's argv. Long forms only, and both
 # `--flag value` and `--flag=value` are matched -- the AWS CLI accepts either
 # and gcloud is written the second way by convention.
+# NOT here yet: `-otp` / `-decode`. `bao operator generate-root -decode <encoded>
+# -otp <otp>` is a local XOR, so both halves on one argv reconstruct the root
+# token for the life of the call (container-images/openbao-snapshot/
+# openbao-snapshot.sh, in generate_root_token). Adding them here flags it
+# correctly and there is no verified stdin form for either flag, so the fix has
+# to be designed rather than guessed. Latent today: generate-root/attempt returns
+# 405 on an auto-unsealed node, so the line is unreachable outside the Shamir/DR
+# path. Tracked, not forgotten.
 VALUE_FLAGS="--secret-string|--secret-binary|--value|--password"
 
 is_cred_shaped() { # $1: variable name
@@ -112,6 +120,13 @@ scan_dir_for_argv_leaks() {
 
         while IFS=: read -r lineno line; do
             [ -z "${lineno:-}" ] && continue
+            # An explicit, reasoned exemption. Same spirit as detect-secrets'
+            # `pragma: allowlist secret`, which this repo already uses: the
+            # escape exists so a true positive with no impact cannot make the
+            # gate permanently red, which is how gates get switched off. The
+            # reason belongs on the line.
+            case "$line" in *"argv-ok:"*) continue ;; esac
+
             # Skip comment lines -- a fix's own explanation quoting the old,
             # now-removed pattern verbatim as documentation is not a leak
             # (same convention this repo's other file-scoped argv-leak
@@ -137,6 +152,12 @@ scan_dir_for_argv_leaks() {
 
         while IFS=: read -r lineno line; do
             [ -z "${lineno:-}" ] && continue
+            # An explicit, reasoned exemption -- same spirit as detect-secrets'
+            # `pragma: allowlist secret`, which this repo already uses. It exists so a
+            # true positive with NO impact cannot make the gate permanently red, which
+            # is how gates get switched off. The reason belongs on the line itself.
+            case "$line" in *"argv-ok:"*) continue ;; esac
+
             [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
             while IFS= read -r hit; do
@@ -169,6 +190,12 @@ scan_dir_for_argv_leaks() {
         # a space or an `=`, so the quote is optional on both sides here.
         while IFS=: read -r lineno line; do
             [ -z "${lineno:-}" ] && continue
+            # An explicit, reasoned exemption -- same spirit as detect-secrets'
+            # `pragma: allowlist secret`, which this repo already uses. It exists so a
+            # true positive with NO impact cannot make the gate permanently red, which
+            # is how gates get switched off. The reason belongs on the line itself.
+            case "$line" in *"argv-ok:"*) continue ;; esac
+
             [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
             while IFS= read -r hit; do
@@ -183,7 +210,14 @@ scan_dir_for_argv_leaks() {
                 "(${VALUE_FLAGS})(=|[[:space:]]+)\"?\\\$\\{?[A-Za-z_][A-Za-z0-9_]*" \
                 <<< "$line")
         done < <(grep -nE -- "(${VALUE_FLAGS})(=|[[:space:]])" "$file")
-    done < <(find "$dir" -maxdepth 1 -name '*.sh' -print0 2>/dev/null; find "$dir/lib" -maxdepth 1 -name '*.sh' -print0 2>/dev/null)
+    # Scan roots matter as much as the patterns. Rooted at scripts/ alone, this
+    # guard never saw .github/workflows or the per-stack scripts under opentofu/,
+    # both of which handle credentials -- which is how an ID-token request header
+    # on curl's argv reached main unnoticed.
+    done < <(find "$dir" -maxdepth 1 -name '*.sh' -print0 2>/dev/null; \
+             find "$dir/lib" -maxdepth 1 -name '*.sh' -print0 2>/dev/null; \
+             find "$dir/../.github/workflows" -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) -print0 2>/dev/null; \
+             find "$dir/../opentofu" -name '*.sh' -print0 2>/dev/null)
 
     return "$found"
 }
