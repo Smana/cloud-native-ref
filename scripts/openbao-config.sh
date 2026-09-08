@@ -462,6 +462,30 @@ secret_read() {
     fi
 }
 
+# Does the LINEAGE's root token work on this node right now?
+#
+# The one fact that separates a node stranded on throwaway keys from one that
+# restored correctly but whose snapshot predates the PKI mount. Asserting the
+# difference rather than testing it is how the 200-with-no-PKI branch below came
+# to recommend destroying a perfectly good node with its snapshot suppressed.
+#
+# Quiet and non-fatal: returns 1 for "no", including when the secret cannot be
+# read at all, because every caller wants to keep going and say something more
+# useful than the caller could without it.
+stored_root_token_works() {
+    local _srtw_token
+    [ -n "${ROOT_TOKEN_SECRET_NAME}" ] || return 1
+    _srtw_token=$(secret_read "${ROOT_TOKEN_SECRET_NAME}" 2>/dev/null) || return 1
+    # `.token`, the shape the writer above produces (`jq -Rs '{"token": .}'`)
+    # and the shape the only other reader in this file expects. Not a wider
+    # `.root_token // .token // .`: a bare-string secret makes jq error on the
+    # first index anyway, so the extra alternatives buy nothing and imply
+    # shapes nothing writes.
+    _srtw_token=$(printf '%s' "${_srtw_token}" | jq -r '.token // empty' 2>/dev/null) || return 1
+    [ -n "${_srtw_token}" ] || return 1
+    VAULT_TOKEN="${_srtw_token}" bao token lookup >/dev/null 2>&1
+}
+
 # Environment the sibling snapshot script needs. It is POSIX sh and calls the
 # cloud CLIs bare, so the region/profile/ADC choices made here have to reach it
 # through the environment rather than flags.
@@ -935,8 +959,22 @@ rehydrate_openbao() {
                 log_message "WARN" "the apply after this step is what creates the PKI."
                 exit 0
             fi
+            # Test the claim before making it. A node that restored a snapshot
+            # taken before the PKI mount existed looks identical from here, and
+            # for that node the advice below is catastrophic: it destroys a
+            # correctly restored node with its pre-destroy snapshot suppressed.
+            if stored_root_token_works; then
+                log_message "WARN" "OpenBao is initialized and unsealed with NO PKI mount, and ${SNAPSHOT_BUCKET}"
+                log_message "WARN" "holds ${_latest} -- but the lineage's stored root token AUTHENTICATES here."
+                log_message "WARN" "So this node is RESTORED, not stranded: the snapshot it came from was taken"
+                log_message "WARN" "before the PKI mount existed. Do NOT destroy it, and do NOT pass"
+                log_message "WARN" "TM_OPENBAO_SKIP_SNAPSHOT=true -- that would discard every write since."
+                log_message "WARN" "The management apply that follows is what creates the PKI. Continuing."
+                exit 0
+            fi
             log_message "ERROR" "OpenBao is initialized and unsealed but has NO PKI mount, while ${SNAPSHOT_BUCKET}"
-            log_message "ERROR" "holds ${_latest}. This is the state a failed restore leaves behind: the node holds"
+            log_message "ERROR" "holds ${_latest}, AND the lineage's stored root token does not authenticate."
+            log_message "ERROR" "That combination is the state a failed restore leaves behind: the node holds"
             log_message "ERROR" "throwaway keys that were never stored, so nothing can authenticate to it. Destroy"
             log_message "ERROR" "and redeploy the cluster stack with TM_OPENBAO_SKIP_SNAPSHOT=true -- there is"
             log_message "ERROR" "nothing on this node worth snapshotting."
@@ -1153,8 +1191,21 @@ rehydrate_openbao() {
     fi
     unset root_token
 
+    # The child exited 0, so the restore itself SUCCEEDED. A missing PKI mount
+    # past this point means the snapshot predates it -- not that anything failed.
+    # Saying "exit 1" and nothing else is what fed the next deploy into the
+    # 200-with-no-PKI branch above, whose advice destroys the node.
     if ! verify_pki_present; then
-        exit 1
+        if stored_root_token_works; then
+            log_message "WARN" "Restore SUCCEEDED, but the snapshot carries no PKI mount: ${SNAPSHOT_BUCKET}'s"
+            log_message "WARN" "newest object predates it. The lineage's root token authenticates, so this node"
+            log_message "WARN" "holds the lineage's data. The management apply that follows creates the PKI."
+            log_message "WARN" "Do NOT destroy this node, and do NOT pass TM_OPENBAO_SKIP_SNAPSHOT=true."
+        else
+            log_message "ERROR" "Restore reported success, but the node has no PKI mount AND the lineage's root"
+            log_message "ERROR" "token does not authenticate. Treat this as a failed restore."
+            exit 1
+        fi
     fi
     # Deliberately not naming ${latest}: the child re-lists and selects
     # independently, so its own "Restoring snapshot ..." line is the
