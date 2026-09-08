@@ -483,7 +483,16 @@ stored_root_token_works() {
     # shapes nothing writes.
     _srtw_token=$(printf '%s' "${_srtw_token}" | jq -r '.token // empty' 2>/dev/null) || return 1
     [ -n "${_srtw_token}" ] || return 1
-    VAULT_TOKEN="${_srtw_token}" bao token lookup >/dev/null 2>&1
+    # VAULT_TOKEN= as a command PREFIX, not an export: the token stays in this
+    # one process's environment rather than argv or the caller's shell. Both
+    # callers run mid-deploy, so exporting it would silently re-authenticate
+    # everything after this probe as root.
+    #
+    # `|| return 1` normalises the answer. Without it the function returns bao's
+    # own exit code -- 2 for a rejected token, 127 if bao is not on PATH -- and
+    # while every `if` treats those as false, the contract above says 1 and a
+    # future caller reading it with `case $?` would be wrong.
+    VAULT_TOKEN="${_srtw_token}" bao token lookup >/dev/null 2>&1 || return 1
 }
 
 # Environment the sibling snapshot script needs. It is POSIX sh and calls the
