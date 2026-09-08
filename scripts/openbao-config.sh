@@ -91,6 +91,10 @@ usage() {
     echo "  --freshness-days <N>                      Age past which a restored snapshot is reported as old (default: ${FRESHNESS_DAYS})"
     echo ""
     echo "Environment:"
+    echo "  OPENBAO_SNAPSHOT_KEY=<object>             Rehydrate from a NAMED object instead of the"
+    echo "                                             newest. Forwarded to the restore child and"
+    echo "                                             gated here, so the seal checked before the"
+    echo "                                             irreversible init is the one being restored."
     echo "  OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true   Let 'rehydrate' skip snapshots sealed by a"
     echo "                                             DIFFERENT seal than this node's, and restore"
     echo "                                             the newest one this node's seal can unwrap."
@@ -1004,6 +1008,13 @@ rehydrate_openbao() {
     if ! node_seal=$(node_seal_type); then
         exit 1
     fi
+    # Gate the object that will ACTUALLY be restored. The child honours
+    # OPENBAO_SNAPSHOT_KEY, so gating latest_snapshot() here would clear a seal
+    # for one object and then restore another -- after the irreversible init.
+    if [ -n "${OPENBAO_SNAPSHOT_KEY:-}" ]; then
+        log_message "INFO" "OPENBAO_SNAPSHOT_KEY names ${OPENBAO_SNAPSHOT_KEY}; gating that, not the newest."
+        latest="${OPENBAO_SNAPSHOT_KEY}"
+    fi
     snap_seal=$(snapshot_seal_segment "$latest")
     log_message "INFO" "This node's seal is '${node_seal}'; ${latest} carries '${snap_seal:-none}'."
 
@@ -1121,9 +1132,16 @@ rehydrate_openbao() {
     # exported one would otherwise get a parent that skipped past the foreign
     # seal and a child that refused -- after the init, which is the one place
     # this must not happen.
+    # OPENBAO_SNAPSHOT_KEY rides along for the same reason, and it needs it more:
+    # the gate above inspects latest_snapshot(), while the child re-lists and
+    # selects independently. If the key names a different object, the parent
+    # cleared a seal it was not about to restore -- and it cleared it just before
+    # `bao operator init`, which is irreversible. Unexported, it was ignored by
+    # both and the point-in-time request became a silent no-op.
     if ! VAULT_TOKEN="$root_token" RECOVERY_KEYS_SECRET_ID="$RECOVERY_KEYS_SECRET_NAME" \
         ROOT_TOKEN_SECRET_ID="$ROOT_TOKEN_SECRET_NAME" \
         OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL="${OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL:-false}" \
+        OPENBAO_SNAPSHOT_KEY="${OPENBAO_SNAPSHOT_KEY:-}" \
         sh "$(dirname "$0")/openbao-snapshot.sh" restore \
             -a "$OPENBAO_URL" -b "$SNAPSHOT_BUCKET" -s "$scratch/bao.snap" \
             -d "$FRESHNESS_DAYS" --freshness warn; then

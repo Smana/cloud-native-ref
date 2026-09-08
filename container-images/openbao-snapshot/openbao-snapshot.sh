@@ -604,6 +604,18 @@ save() {
     # DST change. The timestamp stays FIRST and fixed-width so `sort | tail -n1`
     # remains chronological even in a bucket holding two seals.
     SNAP_OBJECT="$(date -u +"%Y-%m-%dT%H%M%SZ")-${SEAL_TYPE}.snap"
+    # An empty or truncated snapshot uploads perfectly well, becomes the
+    # lineage's NEWEST object, and leaves OpenBaoSnapshotStale green -- a fresh
+    # object exists. It then surfaces at the next rehydrate, which is the one
+    # moment this file IS the store of record. hashicorp/vault#15258 ("incomplete
+    # snapshot, unable to read SHA256SUMS.sealed") is this failure on this path.
+    if [ ! -s "${SNAPSHOT_FILE}" ]; then
+        echo "${err}: the snapshot at ${SNAPSHOT_FILE} is empty; refusing to upload it."
+        echo "${err}: An empty object would become the newest in ${BUCKET_NAME} and the"
+        echo "${err}: staleness alert would go quiet while the lineage held nothing."
+        exit 1
+    fi
+
     if [ "${CLOUD}" = "gcp" ]; then
         gcloud storage cp "${SNAPSHOT_FILE}" "gs://${BUCKET_NAME}/${SNAP_OBJECT}"
     else

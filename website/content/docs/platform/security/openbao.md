@@ -189,7 +189,7 @@ path "sys/storage/raft/snapshot" {
 
 # The freshness marker (mounts.tf, `lineage/`). kv-v2 puts data under /data/.
 path "lineage/data/check_timestamp" {
-  capabilities = ["create", "update", "read"]
+  capabilities = ["create", "update"]
 }
 ```
 
@@ -269,8 +269,11 @@ kubectl create job --namespace security --from=cronjob/openbao-snapshot manual-o
 **Restore.** `scripts/openbao-snapshot.sh` (`restore` subcommand) fetches
 the newest snapshot from the bucket, authenticates — a supplied `VAULT_TOKEN`
 wins, otherwise it mints a temporary root token from the recovery key —
-restores, mints a *second* root token (a Raft restore replaces the token store,
-so the first one no longer exists), and checks `lineage/check_timestamp`.
+restores, then reads the lineage's **stored** root token from
+`ROOT_TOKEN_SECRET_ID` — a Raft restore replaces the token store, so the
+snapshot's own root token is the valid one again by construction — and checks
+`lineage/check_timestamp`. It falls back to minting one only when that variable
+is unset, and that fallback cannot succeed on an auto-unsealed node (405).
 
 That check is an **alarm, not a gate**. The marker lives inside the snapshot,
 so it can only be read once the restore has already been applied: it reports
@@ -286,8 +289,15 @@ exported here, not assumed left over from the Operator Login section above:
 ```bash
 export VAULT_ADDR="https://bao.priv.aws.ogenki.io:8200"
 export VAULT_CACERT=opentofu/aws/openbao/management/.tls/ca.pem
-export VAULT_TOKEN=...   # admin or root; the script also accepts a JWT or AppRole
+export VAULT_TOKEN=...   # the ROOT token. `admin` cannot restore: neither
+                         # admin.hcl nor pki-admin.hcl grants sys/storage/raft/*
 export RECOVERY_KEYS_SECRET_ID="openbao/cloud-native-ref/tokens/recovery"
+# REQUIRED. Without it the post-restore step falls through to
+# `bao operator generate-root -init`, which returns 405 on an auto-unsealed
+# node -- every node in this design -- and the run dies under `set -e` with the
+# Raft restore ALREADY APPLIED. `rehydrate` works only because
+# scripts/openbao-config.sh passes this for you.
+export ROOT_TOKEN_SECRET_ID="openbao/cloud-native-ref/tokens/root"
 ./scripts/openbao-snapshot.sh restore -a "${VAULT_ADDR}" \
   -b eu-west-3-ogenki-openbao-snapshot -s /tmp/bao.snap -d 8
 ```
@@ -298,12 +308,22 @@ export RECOVERY_KEYS_SECRET_ID="openbao/cloud-native-ref/tokens/recovery"
 That default is right for the case this platform runs nightly — destroyed and
 rebuilt from its own newest backup — and it cannot express the other one:
 *today's value is wrong, give me yesterday's*. The bucket is versioned and keeps
-120 days precisely so that is possible.
+120 days.
+
+{{< callout type="warning" >}}
+**Only about the first 30 days are directly restorable.**
+`opentofu/aws/openbao/lineage/s3.tf` transitions objects to **GLACIER** at 30
+days, and `aws s3 cp` on one fails `InvalidObjectState` — it has to be restored
+out of Glacier first, which takes hours. The 120 days is retention, not reach.
+Add `StorageClass` to the listing below before choosing an old object, and note
+that the `-d 8` in the example also fails anything older than 8 days under the
+default `--freshness fail`.
+{{< /callout >}}
 
 ```bash
 # What is there, oldest first
 aws s3api list-objects-v2 --bucket eu-west-3-ogenki-openbao-snapshot \
-  --query 'sort_by(Contents,&LastModified)[].[Key,LastModified]' --output text
+  --query 'sort_by(Contents,&LastModified)[].[Key,LastModified,StorageClass]' --output text
 
 export OPENBAO_SNAPSHOT_KEY="2026-09-05T092947Z-awskms.snap"
 ./scripts/openbao-snapshot.sh restore -a "${VAULT_ADDR}" \
