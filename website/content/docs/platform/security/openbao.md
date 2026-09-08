@@ -292,6 +292,57 @@ export RECOVERY_KEYS_SECRET_ID="openbao/cloud-native-ref/tokens/recovery"
   -b eu-west-3-ogenki-openbao-snapshot -s /tmp/bao.snap -d 8
 ```
 
+### Restoring a specific snapshot, not the newest
+
+`restore` takes the newest object unless `OPENBAO_SNAPSHOT_KEY` names another.
+That default is right for the case this platform runs nightly — destroyed and
+rebuilt from its own newest backup — and it cannot express the other one:
+*today's value is wrong, give me yesterday's*. The bucket is versioned and keeps
+120 days precisely so that is possible.
+
+```bash
+# What is there, oldest first
+aws s3api list-objects-v2 --bucket eu-west-3-ogenki-openbao-snapshot \
+  --query 'sort_by(Contents,&LastModified)[].[Key,LastModified]' --output text
+
+export OPENBAO_SNAPSHOT_KEY="2026-09-05T092947Z-awskms.snap"
+./scripts/openbao-snapshot.sh restore -a "${VAULT_ADDR}" \
+  -b eu-west-3-ogenki-openbao-snapshot -s /tmp/bao.snap -d 8
+```
+
+The name is checked against the bucket listing before anything is downloaded, so
+a typo fails by printing what *is* there rather than part-way through a
+destructive restore. **Every write after the chosen object is discarded**, and
+the script says so in the log rather than letting that be a surprise. The seal
+gate still applies: naming an object does not exempt it.
+
+{{< callout type="warning" >}}
+**A restore is not verified until you have read your own data back.** The weekly
+drill asserts the PKI issuer and the GCS mirror, and it *cannot* check anything
+else: it deliberately holds no credentials, so a compromised runner cannot
+authenticate to the restored node. That is the right call for CI and it means
+the drill can never tell you your application secrets came back. After any
+restore you care about, read one:
+
+```bash
+VAULT_NAMESPACE=app bao kv get -mount=secret <a-key-you-know>
+```
+{{< /callout >}}
+
+### Recovery point objective
+
+Snapshots run **daily at 04:00 UTC**, plus one immediately before every teardown.
+Nothing captures a write between those points.
+
+So the worst case is a credential written just after a snapshot and lost before
+the next one: **up to ~24 hours of writes**. For the PKI that is close to
+irrelevant — certificates are reissued on demand and cert-manager renews them
+anyway. For anything whose value cannot be regenerated, it is the number that
+matters, and it is the one to revisit before OpenBao becomes the store of record
+for application credentials. Shortening it is a schedule change in
+`security/base/openbao-snapshot/`; the cost is bucket growth against the 120-day
+lifecycle rule, not risk.
+
 Prerequisites worth stating plainly:
 
 - **Both modes are Raft**, so snapshots work in `dev` too.

@@ -109,6 +109,21 @@ SNAP_NAME_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-[a-z0-9]+\.snap$'
 # discards data, and that decision belongs to an operator rather than to a
 # selector.
 SKIP_FOREIGN_SEAL="${OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL:-false}"
+
+# Restore a NAMED object instead of the newest one. Empty (the default) keeps the
+# newest-object behaviour every other path relies on.
+#
+# The newest object is the right default for a platform rebuilt from its own
+# backup nightly, and it cannot express the case that arrives when OpenBao holds
+# application secrets: "today's value is wrong, restore yesterday's". The bucket
+# is versioned and keeps 120 days precisely so that is possible; until this
+# option existed, nothing could reach any of it.
+#
+# The name is matched against the candidate list rather than passed through, so a
+# typo fails by naming what IS there instead of 404-ing mid-restore. The seal gate
+# below still applies to whatever this selects -- a named object is not a trusted
+# object.
+SNAPSHOT_KEY="${OPENBAO_SNAPSHOT_KEY:-}"
 case "${SKIP_FOREIGN_SEAL}" in
     true|false) ;;
     *) echo "${err}: OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL must be 'true' or 'false', got '${SKIP_FOREIGN_SEAL}'." ; exit 1 ;;
@@ -235,6 +250,14 @@ Usage: ./${SCRIPT_NAME} [save|restore] -s <snapshot_file> -b <bucket_name> -a <V
       VAULT_CACERT              : CA chain to verify the server. Set it; do not skip verify.
       CHECK_NAMESPACE           : override the marker's namespace (default: root).
       CHECK_PATH                : override the marker path (default: lineage/check_timestamp).
+      OPENBAO_SNAPSHOT_KEY      : restore this NAMED object instead of the newest
+                                  one, e.g. '2026-09-05T092947Z-awskms.snap'.
+                                  For point-in-time recovery -- "today's secret
+                                  is wrong, give me yesterday's". Validated
+                                  against the bucket listing, and the seal gate
+                                  still applies. Discarding newer writes is the
+                                  point, so it says so in the log.
+
       OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL
                                 : 'true' lets 'restore' skip objects sealed by a
                                   DIFFERENT seal than this node's, and use the newest
@@ -564,6 +587,48 @@ save() {
     echo "${info}: Wrote ${SNAP_OBJECT}"
 }
 
+# Which object does `restore` take? The newest, unless OPENBAO_SNAPSHOT_KEY names
+# one -- see the variable's comment for why that option exists.
+#
+# Chosen key on stdout, diagnostics on stderr, non-zero when the named object is
+# not in the bucket. Split out of restore() so scripts/test-openbao-snapshot-key.sh
+# can exercise it: everything around it in restore() needs a live node and real
+# credentials, and a selector that can silently pick the wrong object is worth
+# testing without either.
+#
+# $1: candidate objects, newline separated, OLDEST FIRST (the callers sort by
+#     LastModified, not by name -- see the listing code for why).
+select_snapshot() {
+    _cands="$1"
+    _newest=$(printf '%s\n' "${_cands}" | tail -n1)
+
+    if [ -z "${SNAPSHOT_KEY}" ]; then
+        printf '%s\n' "${_newest}"
+        return 0
+    fi
+
+    # Validate against the listing rather than trusting the name: a typo must
+    # fail here, naming what IS available, not halfway through a destructive
+    # restore.
+    if ! printf '%s\n' "${_cands}" | grep -qxF "${SNAPSHOT_KEY}"; then
+        echo "${err}: OPENBAO_SNAPSHOT_KEY='${SNAPSHOT_KEY}' is not in ${BUCKET_NAME}." >&2
+        echo "${err}: available objects, oldest first:" >&2
+        printf '%s\n' "${_cands}" | sed "s/^/${err}:   /" >&2
+        return 1
+    fi
+
+    if [ "${SNAPSHOT_KEY}" != "${_newest}" ]; then
+        echo "${warn}: POINT-IN-TIME RESTORE -- not the newest object." >&2
+        echo "${warn}:   restoring : ${SNAPSHOT_KEY}" >&2
+        echo "${warn}:   newest    : ${_newest}" >&2
+        echo "${warn}: Every write after ${SNAPSHOT_KEY} is discarded. This is a" >&2
+        echo "${warn}: deliberate choice, so it is logged as one." >&2
+    fi
+
+    printf '%s\n' "${SNAPSHOT_KEY}"
+    return 0
+}
+
 restore() {
     echo "${info}: Restoring OpenBao from object storage..."
     check_required_bin
@@ -653,7 +718,7 @@ restore() {
         exit 1
     fi
 
-    SNAP=$(printf '%s\n' "${CANDIDATES}" | tail -n1)
+    SNAP=$(select_snapshot "${CANDIDATES}") || exit 1
     SNAP_SEAL=$(snapshot_seal_segment "${SNAP}")
 
     # THE GATE. Everything below this point is destructive -- `operator raft

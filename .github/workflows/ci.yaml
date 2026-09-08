@@ -251,11 +251,18 @@ jobs:
       # worked, and nothing ran it -- so it was failing on two live calls in
       # scripts/openbao-adopt-jwt-mount.sh that put the OpenBao ROOT token in
       # the process table. A guard nobody runs is how that ships.
+      # scripts/test-openbao-snapshot-key.sh is the fourth, and covers which
+      # object a restore takes. Until OPENBAO_SNAPSHOT_KEY existed the answer was
+      # always "the newest", which cannot express "today's secret is wrong, give
+      # me yesterday's" -- the disaster Stage 2 introduces by making OpenBao the
+      # store of record for application secrets. A selector that silently
+      # returns the newest anyway would make point-in-time recovery a lie that
+      # only shows up during an incident, so it is tested offline like the rest.
       - name: Run the shell test suites
         run: |
           set -uo pipefail
           rc=0
-          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh; do
+          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh scripts/test-openbao-snapshot-key.sh; do
             if bash "$t" > /tmp/zitadel-test.log 2>&1; then
               echo "PASS  $t"
             else
