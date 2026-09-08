@@ -18,7 +18,7 @@ Deploy a OpenBao instance following HashiCorp's best practices. Complete these s
 | Disk type            | gp3 (root)   | NVMe instance store   |
 | OpenBao storage type | raft (single node) | raft                  |
 | Instance type(s)     | t3.micro     | mixed (lower-price)   |
-| Capacity type        | on-demand    | spot                  |
+| Capacity type        | on-demand    | 3 on-demand + 2 ~95% spot |
 
 Both modes are Raft since the lineage design (2026-09): a `file` backend cannot take
 or receive a snapshot, and the node is rebuilt from the lineage's newest snapshot on
@@ -42,9 +42,15 @@ This cluster is torn down and reprovisioned on every platform test, and points 3
 above are priced for that. **Do not carry them into a long-lived deployment.** Concretely,
 in `ha` mode:
 
-- **The Raft quorum runs on spot capacity.** `on_demand_base_capacity = 0` with
-  `on_demand_percentage_above_base_capacity = 5` means effectively every voter is
-  interruptible. A correlated reclamation across pools takes out quorum.
+- **Two of the five voters run on spot.** `on_demand_base_capacity = 3`
+  (`autoscaling_group.tf`) pins the quorum majority to on-demand, and
+  `on_demand_percentage_above_base_capacity = 5` leaves the two nodes above that base
+  ~95% spot. So a correlated reclamation costs fault tolerance, not the leader election
+  — but the cluster then runs with no margin, and the ephemeral data path below is what
+  makes that matter. This bullet said `on_demand_base_capacity = 0` and "every voter is
+  interruptible" until 2026-09-08; that was the shape before the 2026-08-19 HA bring-up
+  failed on `InsufficientInstanceCapacity`, and the comment above the setting records
+  why it changed.
 - **The Raft data path is ephemeral.** `/opt/openbao/data` is a RAID-0 of instance-store
   NVMe (`scripts/setup-local-disks.sh`). Instance store does not survive a stop/start or a
   replacement, and RAID-0 means a single failed device loses that node's entire store.
@@ -57,9 +63,10 @@ in `ha` mode:
   (`observability/base/victoria-metrics-k8s-stack/vmrules/openbao.yaml`) is what tells you
   this is happening.
 
-For a deployment meant to stay up, change all three: on-demand capacity, encrypted gp3
-EBS for the Raft path, and a lifecycle hook that deregisters the peer before the instance
-goes away.
+For a deployment meant to stay up: take the last two voters off spot as well, put the
+Raft path on encrypted gp3 EBS, and add a lifecycle hook that deregisters the peer before
+the instance goes away. The first of those is already half done — the quorum majority is
+on-demand — which is why it is one item here rather than three.
 
 ## 🔭 Observability
 
@@ -79,13 +86,25 @@ swap the static target for an `ec2SDConfigs` block filtered on `tag:app=openbao`
 
 ## 🔒 Security Considerations
 
-* Keep the Root CA offline. ⚠️ Not currently the case — see the note in
-  [management/README.md](../management/README.md).
+* Keep the Root CA offline. ✅ It is. One offline root signed each cloud's intermediate
+  once, only the intermediate's cert+key is imported into the `pki` mount, and the
+  Secrets Manager entry that used to hold the root key is deleted — see the note in
+  [management/README.md](../management/README.md), which this line contradicted until
+  2026-09-08. The weekly restore drill re-checks the chain against the committed root
+  certificate on every run.
 * Use hardened AMIs, such as those built with [this project](https://github.com/konstruktoid/hardened-images) from @konstruktoid. An Ubuntu AMI from Canonical is used by default.
 * Disable SSM once the cluster is operational and an Identity provider is configured.
-* Implement MFA for authentication. ⚠️ Not currently the case: the only identity is the
-  root token in Secrets Manager. Zitadel is deployed in the cluster but no OIDC auth
-  method is configured on OpenBao, and the `admin` policy is bound to nothing.
+* Implement MFA for authentication. ⚠️ Still not enforced — but not for the reason this
+  line used to give. It claimed "the only identity is the root token in Secrets Manager",
+  that no OIDC method was configured, and that the `admin` policy was "bound to nothing".
+  All three are false: human login is ZITADEL OIDC
+  (`management/oidc.tf`, [ADR-0034](https://cnref.ogenki.io/docs/decisions/0034-openbao-oidc-via-zitadel-project-roles/),
+  conditional only on the ZITADEL client id and issuer being set), the `userpass` admin
+  (`management/auth.tf`) survives deliberately as break-glass carrying the `admin` and
+  `pki-admin` policies, and machines authenticate through the per-cluster JWT mounts.
+  What remains true is narrower: routing human login through OIDC makes MFA a ZITADEL
+  **login-policy** setting rather than an OpenBao one, and nothing in this repo sets it.
+  The break-glass `userpass` credential would sit outside it either way.
 
 ### Secrets never travel in user-data
 
