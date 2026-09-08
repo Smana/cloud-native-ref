@@ -1,7 +1,7 @@
 ---
 title: Cloud Native Reference
 layout: hextra-home
-description: "An opinionated, production-ready Kubernetes platform reference: bootstrap a complete platform on your own AWS or GCP account in about thirty minutes, built entirely from open-source cloud-native tools and following platform-engineering and security best practices."
+description: "An opinionated, production-ready Kubernetes platform reference: bootstrap a complete platform on your own AWS or GCP account in about forty-five minutes, built entirely from open-source cloud-native tools and following platform-engineering and security best practices."
 ---
 
 {{< hextra/hero-badge >}}
@@ -13,8 +13,9 @@ description: "An opinionated, production-ready Kubernetes platform reference: bo
 {{< /hextra/hero-headline >}}
 
 {{< hextra/hero-subtitle >}}
-  Bootstrap a complete platform on your own AWS or GCP account in about thirty
-  minutes — built entirely from open-source, cloud-native tools. It follows
+  Bootstrap a complete platform on your own AWS or GCP account in about forty-five
+  minutes, almost all of it unattended — built entirely from open-source,
+  cloud-native tools. It follows
   platform-engineering and security best practices from the first commit:
   everything as code and reconciled from Git, zero-trust networking,
   least-privilege identity, secrets never stored in the repository, and a paved
@@ -22,7 +23,7 @@ description: "An opinionated, production-ready Kubernetes platform reference: bo
   application.
 {{< /hextra/hero-subtitle >}}
 
-{{< hextra/hero-button text="Deploy in 30 minutes" link="docs/get-started/" >}}
+{{< hextra/hero-button text="Deploy in 45 minutes" link="docs/get-started/" >}}
 {{< hextra/hero-button text="View on GitHub" link="https://github.com/Smana/cloud-native-ref" style="background:transparent;border:1px solid rgba(148,163,184,0.45);color:inherit" >}}
 
 <p class="cnref-eyebrow" style="margin-top:3rem">The whole platform, on one page</p>

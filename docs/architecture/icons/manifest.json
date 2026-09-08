@@ -1,0 +1,165 @@
+{
+  "_note": "Logos rasterised for platform-overview.drawio and extracted here so every diagram references one asset instead of re-fetching and re-rasterising its own. PNG, not SVG: headless drawio export does not render SVG data URIs. Embed with image=data:image/png,<base64> -- a comma, not ';base64,', which terminates the style value. Prefer ./scripts/diagram-icons.py style <name> over hand-rolling one.",
+  "_aliases_note": "victorialogs and victoriatraces currently render the VictoriaMetrics mark -- platform-overview used one logo for all three, and the three extracted files were byte-identical. Both projects have their own upstream logo; fetch the real marks, add them as files, and drop the alias.",
+  "aliases": {
+    "envoy": "envoy-ai-gateway",
+    "victorialogs": "victoriametrics",
+    "victoriatraces": "victoriametrics"
+  },
+  "icons": {
+    "bottlerocket": {
+      "file": "bottlerocket.png",
+      "bytes": 4123,
+      "label": "Bottlerocket"
+    },
+    "cert-manager": {
+      "file": "cert-manager.png",
+      "bytes": 5297,
+      "label": "cert-manager"
+    },
+    "cilium": {
+      "file": "cilium.png",
+      "bytes": 4240,
+      "label": "Cilium"
+    },
+    "cloudnativepg": {
+      "file": "cloudnativepg.png",
+      "bytes": 3534,
+      "label": "CloudNativePG"
+    },
+    "crossplane": {
+      "file": "crossplane.png",
+      "bytes": 1268,
+      "label": "Crossplane"
+    },
+    "eks": {
+      "file": "eks.png",
+      "bytes": 5186,
+      "label": "Amazon EKS"
+    },
+    "envoy-ai-gateway": {
+      "file": "envoy-ai-gateway.png",
+      "bytes": 3700,
+      "label": "Envoy AI Gateway"
+    },
+    "external-secrets": {
+      "file": "external-secrets.png",
+      "bytes": 3033,
+      "label": "External Secrets Operator"
+    },
+    "flux": {
+      "file": "flux.png",
+      "bytes": 3441,
+      "label": "Flux"
+    },
+    "gcs": {
+      "file": "gcs.png",
+      "bytes": 709,
+      "label": "Google Cloud Storage"
+    },
+    "github": {
+      "file": "github.png",
+      "bytes": 2407,
+      "label": "GitHub"
+    },
+    "gke": {
+      "file": "gke.png",
+      "bytes": 2662,
+      "label": "Google Kubernetes Engine"
+    },
+    "grafana": {
+      "file": "grafana.png",
+      "bytes": 2676,
+      "label": "Grafana \u2014 dashboards"
+    },
+    "harbor": {
+      "file": "harbor.png",
+      "bytes": 4856,
+      "label": "Harbor \u2014 container &amp; Helm registry"
+    },
+    "huggingface": {
+      "file": "huggingface.png",
+      "bytes": 3481,
+      "label": "Hugging Face"
+    },
+    "iam": {
+      "file": "iam.png",
+      "bytes": 3365,
+      "label": "AWS IAM"
+    },
+    "keda": {
+      "file": "keda.png",
+      "bytes": 3403,
+      "label": "KEDA"
+    },
+    "kms": {
+      "file": "kms.png",
+      "bytes": 4500,
+      "label": "AWS KMS"
+    },
+    "kubernetes": {
+      "file": "kubernetes.png",
+      "bytes": 4747,
+      "label": "Kubernetes"
+    },
+    "kyverno": {
+      "file": "kyverno.png",
+      "bytes": 3269,
+      "label": "Kyverno"
+    },
+    "openbao": {
+      "file": "openbao.png",
+      "bytes": 2026,
+      "label": "OpenBao"
+    },
+    "opentofu": {
+      "file": "opentofu.png",
+      "bytes": 3368,
+      "label": "OpenTofu"
+    },
+    "openwebui": {
+      "file": "openwebui.png",
+      "bytes": 1026,
+      "label": "Open WebUI"
+    },
+    "s3": {
+      "file": "s3.png",
+      "bytes": 5156,
+      "label": "Amazon S3"
+    },
+    "slack": {
+      "file": "slack.png",
+      "bytes": 2253,
+      "label": "Slack"
+    },
+    "tailscale": {
+      "file": "tailscale.png",
+      "bytes": 942,
+      "label": "Tailscale"
+    },
+    "victoriametrics": {
+      "file": "victoriametrics.png",
+      "bytes": 3071,
+      "label": "VictoriaMetrics"
+    },
+    "vllm": {
+      "file": "vllm.png",
+      "bytes": 1291,
+      "label": "vLLM fleet"
+    },
+    "vpc": {
+      "file": "vpc.png",
+      "bytes": 3821,
+      "label": "Amazon VPC"
+    },
+    "zitadel": {
+      "file": "zitadel.png",
+      "bytes": 3034,
+      "label": "ZITADEL"
+    }
+  },
+  "_provenance_note": "Two entries were mislabelled by the extraction, because it inherited platform-overview's cell names rather than checking the images. 'karpenter-keda' was only the KEDA mark (there is no Karpenter logo here) and 'eks' was the plain Kubernetes wheel (not an EKS mark). Both are renamed to what they actually are. Check any new icon against the product before adding it.",
+  "_vendor_note": "eks, iam, s3, kms, vpc, bottlerocket, gke and gcs are rasterised mxgraph stencils, not brand downloads: the AWS six from mxgraph.aws4.resourceIcon through a one-shape drawio export, the two Google ones from the SVG data URI their gcp2 shapes already carry. Rasterising beats placing the stencil, because an mxgraph shape REPLACES the box shape -- an ogenki box cannot carry one, and the alternative is a floating icon cell per box whose absolute coordinates do not follow the box. Rebuild with the recipe in ../README.md.",
+  "_cncf_note": "cloudnativepg, opentofu and external-secrets come from github.com/cncf/artwork under projects/<slug>/icon/color/. Filenames are NOT derivable from the slug -- external-secrets-operator ships eso-icon-color.svg -- so list the directory rather than guessing. Prefer the plain colour icon over any stacked or horizontal lockup: these render at 24px beside text, where a wordmark is unreadable.",
+  "_brand_note": "zitadel comes from the project's own repo (console/src/assets/images/zitadel-logo-solo-dark.svg), huggingface and openwebui from lobe-icons, slack from simple-icons with the brand purple applied -- simple-icons ships an uncoloured path that rasterises to a solid black smudge otherwise. aiicons.py is AI-brand-scoped and CONFIDENTLY RETURNS THE WRONG PRODUCT outside that scope: it matched 'vector' to vectorizerai and 'gateway api' to cometapi. Verify every result by eye. Vector, Valkey, Karpenter and Alertmanager have no logo at any source probed (project repo, project site, simple-icons, lobe-icons) and stay plain. Gateway API's logo IS genuine -- the Kubernetes wheel with routing arrows -- but the arrows vanish at 24px, leaving a mark this library already uses for Kubernetes, so it is not shipped."
+}

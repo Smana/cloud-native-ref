@@ -1,46 +1,102 @@
 # The OpenBao snapshot CronJob.
 #
-# SUSPENDED, and not because anything here is unfinished.
+# ACTIVE since 2026-09-02. It was suspended from the day it was written until
+# then, and the history is kept here rather than deleted, because anyone
+# debugging a snapshot problem on gcp-0 is debugging code whose first real run
+# was that day.
 #
-# `openbao-snapshot.sh save` calls `bao operator raft snapshot save`, which
-# needs OpenBao's integrated (raft) storage. gcp-0's OpenBao runs single-node
-# `storage "file"` by design -- opentofu/gcp/openbao/cluster/compute.tf says so
-# in its header: "mirrors the AWS stack's 'dev' mode, not 'ha' -- one node,
-# storage "file", no raft join, no quorum ... scaling to a real multi-node raft
-# cluster is future work, not attempted here."
-#
-# So the endpoint does not exist on this cluster. Measured on a live gcp-0,
-# not inferred:
+# WHY IT WAS SUSPENDED. `openbao-snapshot.sh save` calls
+# `bao operator raft snapshot save`, which needs OpenBao's integrated (raft)
+# storage. gcp-0's OpenBao ran single-node `storage "file"`, so the endpoint did
+# not exist on this cluster. Measured on a live gcp-0, not inferred:
 #
 #   $ bao operator raft snapshot save /tmp/gcp-test.snap
 #     URL: GET https://bao.priv.gcp.ogenki.io:8200/v1/sys/storage/raft/snapshot
 #     Code: 404
 #
-# Everything this Kustomization applies is correct and verified: the AppRole
-# and Secret Manager entry (opentofu/gcp/openbao/management), the bucket-scoped
-# GCPWorkloadIdentity, the GCS bucket, and the CLOUD=gcp branch of the script.
-# The ExternalSecret syncs. Only the raft endpoint is missing.
+# Left active, it would have run daily, failed with that 404, and -- worse --
+# read as backup coverage to anyone not reading the logs.
 #
-# Left active, this would run daily, fail with that 404, and -- worse -- read as
-# backup coverage to anyone not reading the logs. Suspended is the honest state.
+# WHAT CHANGED. opentofu/gcp/openbao/cluster/scripts/startup-script.sh now
+# declares `storage "raft"` unconditionally; the dev-mode file/raft switch is
+# gone, and a one-node raft cluster is bootstrapped by `operator init`. That was
+# the single stated precondition ("move gcp-0's OpenBao to raft storage, then set
+# suspend: false"), so the suspend went with it. Nothing else in this repo had to
+# change -- but note that this Kustomization is NOT proven by a green run: it was
+# never reconciled once while suspended, so treat its first reconcile as a
+# validation run.
 #
-# TO RESUME: move gcp-0's OpenBao to raft storage, then set
-# suspend: false. Nothing in this repo needs to change.
+# WHAT THE SUSPEND WAS COSTING. Not just the absence of backups.
+# OpenBaoSnapshotStale (observability/base/victoria-metrics-k8s-stack/vmrules/
+# openbao.yaml) has a second arm on
+# `absent(kube_cronjob_status_last_successful_time{...})` -- precisely because
+# kube-state-metrics emits no series for a CronJob that has never succeeded. On
+# gcp-0 that arm was firing critical continuously, with no action available to
+# silence it.
 #
-# Its own Kustomization, not folded into `security` or `security-openbao`,
-# for the same reason as security-tailscale.yaml: this directory's
-# ExternalSecret needs the External Secrets webhook running (gated by
-# `security`'s healthChecks), and the CronJob mounts the `openbao-ca` Secret
-# that `security-openbao`'s own ExternalSecret creates. dependsOn
-# security-openbao rather than listing both -- it is the deepest edge and
-# already implies `security` (and `crds` beneath it) is ready.
+# That arm has since been guarded with a `kube_cronjob_created` age condition,
+# so it stays quiet for the first 26 hours of a CronJob's life -- the worst-case
+# wait for a healthy first run is 25.5 h (up to 24 h to the next 04:00, plus
+# startingDeadlineSeconds 3600, plus activeDeadlineSeconds 1800). The guard is
+# in the expression rather than in `for:` because `for:` is per-RULE, not
+# per-arm: raising it to 26 h would drag the 36-hour freshness arm out to 62 h.
+# So read the alert as it now stands, not as quoted above.
+#
+# WHAT IT NEEDS, all verified against this branch rather than assumed:
+#
+#   - Credential: a projected ServiceAccount token (audience `openbao`, 10 min)
+#     against jwt/${cluster_name}, role `openbao-snapshot`. The role exists for
+#     this cluster -- opentofu/gcp/gke/configure/openbao.tf, local.openbao_roles
+#     -- bound to system:serviceaccount:security:openbao-snapshot and carrying
+#     the `snapshot` policy (opentofu/gcp/openbao/management/policies.tf). No
+#     AppRole and no Secret Manager entry: secrets.tf is empty by design.
+#   - GCS: bucket ${project_id}-ogenki-openbao-snapshot, created by
+#     opentofu/gcp/openbao/lineage, and write access via the bucket-scoped
+#     GCPWorkloadIdentity in ./security/gcp-0/openbao-snapshot.
+#   - Endpoint and trust: the `openbao` ExternalName Service and the `openbao-ca`
+#     Secret, both from security-openbao -- hence the dependsOn below.
+#   - Egress: security/base/openbao-snapshot/network-policy.yaml, default-deny
+#     both directions, allowing kube-dns, the metadata server via
+#     `toEntities: host` on 80 (a toCIDR for 169.254.169.254 silently fails),
+#     ${openbao_cidr} on 8200, and world:443 for Google APIs.
+#
+# dependsOn, and why there are now two edges:
+#
+#   - security-openbao: this CronJob mounts the `openbao-ca` Secret that
+#     security-openbao's ExternalSecret creates, and resolves OpenBao through the
+#     `openbao` Service that the same Kustomization applies. It is the deepest
+#     edge and already implies `security` (and `crds` beneath it) is ready. There
+#     is no longer an ExternalSecret in THIS directory -- the AppRole one went
+#     with the JWT switch -- so the External Secrets webhook is no longer the
+#     reason for this edge; the two objects it produces are.
+#   - crossplane-configuration: this directory's GCPWorkloadIdentity claim is the
+#     only thing granting the job write access to the bucket, and its XRD ships
+#     in the Configuration package that crossplane-configuration installs. On
+#     AWS the equivalent identity is an EPI in security/base/epis/, applied by
+#     `eks-pod-identities`, which is why clusters/aws-0's copy needs no such
+#     edge. Without it the first apply here fails with `no matches for kind
+#     "GCPWorkloadIdentity"`.
+#
+#     This NARROWS the window, it does not close it: crossplane-configuration
+#     sets neither `wait: true` nor a healthCheck, so it reports Ready as soon as
+#     the Configuration object is accepted -- before Crossplane has established
+#     the XRD. Closing that needs a healthCheck on the Configuration package
+#     there, not another edge here. Deliberately no healthCheck on the XR in this
+#     file either: a readiness assertion that has never been observed passing on
+#     a live cluster can only convert a working reconcile into a permanently
+#     failing one.
+#
+# Its own Kustomization, not folded into `security` or `security-openbao`, for
+# the same reason as security-tailscale.yaml -- and now for the crossplane edge
+# above, which neither of those carries. Nothing dependsOn this one, so it can
+# fail without blocking the cluster.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: security-openbao-snapshot
   namespace: flux-system
 spec:
-  suspend: true
+  suspend: false
   prune: true
   interval: 4m0s
   retryInterval: 30s
@@ -55,3 +111,4 @@ spec:
         name: gke-gcp-0-vars
   dependsOn:
     - name: security-openbao
+    - name: crossplane-configuration

@@ -25,3 +25,13 @@ provider "kubectl" {
   }
   load_config_file = false
 }
+
+# OpenBao, for the JWT auth mount this cluster authenticates through
+# (openbao.tf). Configured like the management stack: the lineage root token
+# from Secrets Manager, and the CA chain the deploy workflow writes to .tls/
+# before `tofu init` -- a provider block cannot depend on a resource.
+provider "vault" {
+  address      = "https://bao.${var.private_domain_name}:8200"
+  token        = jsondecode(data.aws_secretsmanager_secret_version.openbao_root_token.secret_string)["token"]
+  ca_cert_file = var.openbao_ca_cert_file
+}

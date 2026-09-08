@@ -71,7 +71,7 @@ variable "openbao_version" {
 }
 
 variable "data_disk_size_gb" {
-  description = "Size in GB of the persistent disk backing OpenBao's file storage backend"
+  description = "Size in GB of the persistent disk backing OpenBao's raft storage"
   type        = number
   default     = 10
 }
@@ -83,7 +83,7 @@ variable "server_cert_secret_name" {
 }
 
 variable "openbao_data_path" {
-  description = "Path on the instance's data disk where OpenBao's file storage backend keeps its data (single-node, storage \"file\" -- not raft)"
+  description = "Path on the instance's data disk where OpenBao's raft storage backend keeps its data (single-node raft -- see compute.tf)"
   type        = string
   default     = "/opt/openbao/data"
 }
@@ -92,4 +92,42 @@ variable "enable_iap_ssh" {
   description = "Open TCP 22 to Google's IAP forwarding range so an operator can SSH to a node whose boot failed. OFF by default: the tailnet already reaches this subnet, and an always-on admin path is a standing exposure."
   type        = bool
   default     = false
+}
+
+# --- Seal --------------------------------------------------------------------
+#
+# gcpckms is GCP-only mode: this cloud's own OpenBao, its own hand-created key.
+# awskms is the STANDBY role: this node restores a snapshot taken by the AWS
+# active instance, and raft data is barrier-encrypted under the seal that
+# wrapped it, so the standby has to use the SAME AWS key -- reached through the
+# federated role, with a Compute Engine identity token refreshed by a systemd
+# timer (scripts/startup-script.sh). Design scenario A: survives an AWS regional
+# outage (the key is multi-region), not the loss of the AWS account.
+variable "seal_provider" {
+  description = "gcpckms (own key, GCP-only mode) or awskms (standby for the AWS lineage). See the cross-cloud failover guide"
+  type        = string
+  default     = "gcpckms"
+
+  validation {
+    condition     = contains(["gcpckms", "awskms"], var.seal_provider)
+    error_message = "seal_provider must be gcpckms or awskms."
+  }
+}
+
+variable "aws_seal_kms_key_id" {
+  description = "awskms only: the multi-region key ID (mrk-...) from opentofu/aws/openbao/lineage output seal_key_id"
+  type        = string
+  default     = ""
+}
+
+variable "aws_seal_region" {
+  description = "awskms only: region of the seal key copy to use. The REPLICA region, so a eu-west-3 outage does not matter"
+  type        = string
+  default     = "eu-west-1"
+}
+
+variable "aws_seal_role_arn" {
+  description = "awskms only: opentofu/shared/aws-gcp-federation output openbao_standby_seal_role_arn"
+  type        = string
+  default     = ""
 }

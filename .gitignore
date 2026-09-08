@@ -65,6 +65,22 @@ variables.auto.tfvars
 *.p12
 *.pfx
 
+# The one certificate that MUST be committed: the offline PKI root's
+# certificate, which .github/workflows/openbao-restore-drill.yml verifies the
+# restored PKI chain against (`openssl verify -CAfile`). Without this negation
+# the blanket `*.pem` above silently refuses `git add` and the drill fails every
+# Monday with `No such file or directory` -- after having proved the restore
+# worked.
+#
+# Safe because a root CERTIFICATE is public material: it is the trust anchor
+# every client verifying a private-PKI certificate must already hold, it carries
+# no private key, and committing it removes a cloud read from the one job whose
+# whole value is being readable during an outage. The root's KEY never leaves the
+# offline medium and is what `*.pem` above exists to keep out -- so this negation
+# names one exact path rather than a glob, and `*.pem` keeps its full force
+# everywhere else, `.github/` included.
+!.github/openbao-root-ca.pem
+
 # Backup files
 *.backup
 *.bak

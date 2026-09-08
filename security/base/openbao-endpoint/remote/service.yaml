@@ -1,0 +1,46 @@
+# REMOTE form of the openbao Service (see ../local/service.yaml for the name
+# contract). This cluster's pods cannot route to the other cloud's VPC -- pods
+# are not tailnet devices -- so the Tailscale operator proxies the connection:
+# an ExternalName Service annotated with a tailnet-reachable IP is rewritten by
+# the operator to point at its egress ProxyGroup, whose pods carry the traffic
+# over the tailnet to that cloud's subnet router and on to the address.
+#
+# ${openbao_target_ip} is one of the active OpenBao's FIXED internal NLB
+# addresses (opentofu/aws/openbao/cluster: `tofu output nlb_private_ips`),
+# set per cluster in its configure stack's vars ConfigMap. Failover = change
+# that variable.
+#
+# The ProxyGroup `ts-proxies` (security/base/tailscale-operator/proxygroup.yaml)
+# is tagged tag:k8s; opentofu/shared/tailscale/main.tf admits tag:k8s to the
+# advertised VPC CIDRs on 8200 for exactly this path.
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbao
+  namespace: security
+  annotations:
+    tailscale.com/tailnet-ip: "${openbao_target_ip}"
+    tailscale.com/proxy-group: ts-proxies
+    # CREATE THIS, THEN NEVER UPDATE IT. `spec.externalName` below is a value
+    # the Tailscale operator OWNS at runtime: it rewrites the field to the
+    # generated ProxyGroup Service's name. Flux applies this Kustomization every
+    # 4m (clusters/*/security/security-openbao.yaml) with server-side apply and
+    # force-conflicts, so without this annotation Flux wins every cycle and
+    # resets the field to `placeholder`; name resolution then breaks until the
+    # operator patches it back, in a loop. `IfNotPresent` makes Flux create the
+    # Service and leave it alone thereafter -- an odd exception, but the
+    # alternative is a value that flaps forever.
+    #
+    # A consequence worth knowing: edits to the annotations or ports here will
+    # NOT be applied to an existing Service. Delete it and let Flux recreate it.
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+spec:
+  type: ExternalName
+  # Overwritten by the operator with the ProxyGroup's Service name. Kept as a
+  # literal because `externalName` is required by API validation on an
+  # ExternalName Service, and a placeholder is the operator's documented idiom.
+  externalName: placeholder
+  ports:
+    - name: https
+      port: 8200
+      protocol: TCP

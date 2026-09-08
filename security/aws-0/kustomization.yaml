@@ -17,8 +17,18 @@ kind: Kustomization
 # `security-tailscale`.
 #
 # kyverno and rbac stay: neither renders anything either webhook admits.
+#
+# ../base/cert-manager-token-creator stays for the same reason -- it is a plain
+# Role and RoleBinding, admitted by no webhook, without which cert-manager cannot
+# mint the ServiceAccount token it authenticates with. It is applied HERE, with
+# cert-manager itself, rather than from ./openbao: `security-openbao` and
+# `security-public-certs` both dependsOn this Kustomization and neither depends
+# on the other, so this is the only place the Role can go without one issuer
+# family's ordering depending on the other's.
+# ../base/cert-manager-token-creator/rbac.yaml has the whole argument.
 resources:
   - ../base/kyverno
   - ../base/rbac
   - ../base/cert-manager
+  - ../base/cert-manager-token-creator
   - external-secrets

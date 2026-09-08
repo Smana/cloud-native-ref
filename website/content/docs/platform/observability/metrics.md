@@ -49,7 +49,9 @@ guarantee.
 
 `observability/base/metrics-server/` runs the standard `metrics-server`
 chart (3.14.0) — but into `kube-system`, not `observability`, since it backs
-`kubectl top` and HPA `Resource` metrics cluster-wide. On `aws-0` only: GKE
+`kubectl top` and HPA `Resource` metrics cluster-wide. It is not part of the
+observability data path and stores nothing: it serves the resource metrics API
+from an in-memory window, and nothing on this page reads from it. On `aws-0` only: GKE
 ships its own managed metrics-server, and running ours beside it did nothing
 but fight the addon manager (the header of
 `observability/gcp-0/kustomization.yaml` has the full story). Non-default

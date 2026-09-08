@@ -19,8 +19,10 @@ that predates Kubernetes — the VPC, the cluster itself, OpenBao — lives unde
 The rule that keeps this honest: **anything in `base/` must work on both
 clouds.** A manifest only one cloud can use belongs in that cloud's overlay,
 even when both clouds happen to want a file of the same name — see
-`infrastructure/aws-0/gapi/platform-public-gateway.yaml` and
-`security/aws-0/openbao-snapshot/s3-bucket.yaml`.
+`infrastructure/aws-0/gapi/platform-public-gateway.yaml`, and
+`clustersecretstore.yaml`, which exists under both
+`security/aws-0/openbao/` and `security/gcp-0/openbao/` because one names the
+AWS Secrets Manager provider and the other GCP Secret Manager.
 
 {{< repo-tree >}}
 

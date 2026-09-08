@@ -1,10 +1,11 @@
-# Issues private certificates for this cluster from the GCP OpenBao's PKI.
+# Issues private certificates for this cluster from the OpenBao the openbao
+# Service points at (security/base/openbao-endpoint). In GCP-only mode that is
+# this cloud's own OpenBao; consuming the AWS active instance is the remote form
+# of that Service.
 #
-# The chain behind it: an OFFLINE root signed one GCP intermediate with openssl,
-# the intermediate was imported into OpenBao as its issuer, and this role signs
-# leaves from that. The root's private key has never been on a networked system
-# -- not in GCP, not in OpenBao, not in OpenTofu state. See
-# docs/superpowers/specs/2026-08-24-gcp-openbao-design.md.
+# The chain behind it: an OFFLINE root signed the intermediate with openssl, the
+# intermediate was imported into OpenBao as its issuer, and this role signs
+# leaves from that. The root's private key has never been on a networked system.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -12,26 +13,22 @@ metadata:
   namespace: security
 spec:
   vault:
-    server: https://bao.${private_domain_name}:8200
-    # No `namespace`: the PKI mount and the AppRole both live in OpenBao's root
-    # namespace, matching AWS.
+    server: https://openbao.security.svc.cluster.local:8200
+    # No `namespace`: the PKI mount and the auth mount both live in OpenBao's
+    # root namespace, matching AWS.
     path: pki_private_issuer/sign/ogenki
     caBundleSecretRef:
       name: openbao-ca
       key: ca.crt
     auth:
-      appRole:
-        path: approle
-        # Literal, where AWS substitutes ${cert_manager_approle_id} from the
-        # Secret this cluster's ExternalSecret creates. cert-manager takes
-        # roleId as a required plain string with no secretRef option, so a
-        # generated value has to be plumbed in through postBuild -- which GCP
-        # cannot do, because the management stack runs AFTER gke/configure has
-        # already written the vars ConfigMap. Pinning it in
-        # opentofu/gcp/openbao/management/auth.tf removes that ordering problem.
-        # A role_id is an identifier, not a credential: it is inert without the
-        # secret_id below.
-        roleId: cert-manager-gcp
-        secretRef:
-          name: cert-manager-openbao-approle
-          key: cert_manager_approle_secret
+      # JWT method, same as aws-0 -- see the comment there. The mount is created
+      # by opentofu/gcp/gke/configure/openbao.tf. This replaced a pinned AppRole
+      # role_id whose only reason to exist was that cert-manager takes roleId
+      # as a literal string.
+      kubernetes:
+        mountPath: /v1/auth/jwt/${cluster_name}
+        role: cert-manager
+        serviceAccountRef:
+          name: cert-manager
+          audiences:
+            - openbao

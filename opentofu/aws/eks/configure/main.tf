@@ -159,10 +159,11 @@ resource "helm_release" "flux_operator" {
 resource "helm_release" "flux_instance" {
   depends_on = [
     helm_release.flux_operator,
-    # Git auth + cert-manager AppRole secrets and the substitution-vars
-    # ConfigMap must exist before Flux starts reconciling the repo.
+    # Git auth secret and the substitution-vars ConfigMap must exist before
+    # Flux starts reconciling the repo. No cert-manager AppRole secret any
+    # more -- the ClusterIssuer authenticates with a projected ServiceAccount
+    # token against the jwt/${cluster_name} mount (openbao.tf) instead.
     kubectl_manifest.flux_system_secret,
-    kubectl_manifest.flux_cert_manager_approle,
     kubectl_manifest.flux_cluster_vars,
   ]
 

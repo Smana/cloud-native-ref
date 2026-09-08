@@ -156,7 +156,7 @@ group is merely spelled differently:
 
 The mechanism, the failure modes and the four defects that only a live cluster
 exposed are in
-[Per-user RBAC on GKE]({{< relref "/docs/platform/security/gke-per-user-rbac.md" >}}).
+[Per-user RBAC on GKE]({{< relref "/docs/platform/security/per-user-rbac.md" >}}).
 
 {{< callout type="warning" >}}
 This replaced an earlier design in which Headlamp talked to the API server as its

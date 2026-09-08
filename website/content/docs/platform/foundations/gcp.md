@@ -1,20 +1,21 @@
 ---
 title: GCP
 weight: 30
-description: The five OpenTofu stacks that implement the three-stage model on GCP, and the two places GKE bootstrap is genuinely simpler than EKS.
-lastVerified: 2026-08-30
+description: The six OpenTofu stacks that implement the three-stage model on GCP, and the two places GKE bootstrap is genuinely simpler than EKS.
+lastVerified: 2026-09-02
 ---
 
 GCP instantiates the [three-stage model]({{< relref "/docs/platform/foundations/_index.md" >}})
-as five OpenTofu stacks, mirroring [AWS]({{< relref "/docs/platform/foundations/aws.md" >}})
+as six OpenTofu stacks, mirroring [AWS]({{< relref "/docs/platform/foundations/aws.md" >}})
 stack for stage. Each stack's `stack.tm.hcl` declares what it runs `after`, so
 Terramate applies them in this order:
 
 | Stack | Model stage | Owns |
 |---|---|---|
 | `opentofu/gcp/network/` | Network | VPC, node/pod/service ranges, the control-plane CIDR, a **private Cloud DNS zone**, the Tailscale subnet router |
-| `opentofu/gcp/openbao/cluster/` | Security | OpenBao on Compute Engine with **Cloud KMS** auto-unseal |
-| `opentofu/gcp/openbao/management/` | Security | The three-tier PKI, the cert-manager and snapshot AppRoles, policies |
+| `opentofu/gcp/openbao/lineage/` | Security | Snapshot bucket (also the mirror of AWS snapshots), node and drill identities, Storage Transfer job, GitHub WIF pool. **Persistent** |
+| `opentofu/gcp/openbao/cluster/` | Security | OpenBao on Compute Engine, single-node Raft, **Cloud KMS** or the AWS seal (standby) |
+| `opentofu/gcp/openbao/management/` | Security | The three-tier PKI, the `lineage/` marker mount, policies, and the rehydrate step. **Persistent** |
 | `opentofu/gcp/gke/init/` | Kubernetes (Stage 1) | The GKE cluster, the static node pool, Gateway API CRDs, IAM, the `flux-system` namespace and secrets |
 | `opentofu/gcp/gke/configure/` | Kubernetes (Stage 2) | Cilium, Flux Operator + Instance |
 

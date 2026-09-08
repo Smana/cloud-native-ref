@@ -41,3 +41,41 @@ variable "trusted_service_accounts" {
     error_message = "Each entry must be exactly `<namespace>/<name>`."
   }
 }
+
+# --- Google-issued identities (not GKE ServiceAccounts) ----------------------
+#
+# Two things on GCP need to reach AWS with a token Google signs directly, not
+# through the GKE issuer above: the OpenBao standby VM (a Compute Engine
+# identity token, to use the AWS KMS seal) and the Storage Transfer service
+# agent (to read the S3 snapshot bucket). Both trust the same
+# `accounts.google.com` provider and are pinned by subject.
+
+variable "gcp_openbao_standby_sa_unique_id" {
+  description = "Unique ID of the openbao-node service account (opentofu/gcp/openbao/lineage output openbao_node_sa_unique_id). Empty skips the standby-seal role."
+  type        = string
+  default     = ""
+}
+
+variable "gcp_transfer_agent_subject_id" {
+  description = "Subject ID of the project's Storage Transfer service agent (opentofu/gcp/openbao/lineage output transfer_agent_subject_id). Empty skips the mirror role."
+  type        = string
+  default     = ""
+}
+
+variable "openbao_seal_key_alias" {
+  description = "Alias of the multi-region OpenBao seal key (opentofu/aws/openbao/lineage). Granted through the kms:ResourceAliases condition, so the key need not exist when this stack applies."
+  type        = string
+  default     = "alias/openbao-seal"
+}
+
+variable "openbao_snapshot_bucket_name" {
+  description = "The AWS lineage's snapshot bucket the mirror role may read"
+  type        = string
+  default     = "eu-west-3-ogenki-openbao-snapshot"
+}
+
+variable "openbao_snapshot_key_alias" {
+  description = "Alias of the KMS key encrypting the snapshot bucket"
+  type        = string
+  default     = "alias/xplane-openbao-snapshot"
+}

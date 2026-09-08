@@ -185,10 +185,12 @@ What that runs, in order:
 - **`gcp/network`** — the VPC with its node, pod, service and control-plane
   ranges, a **private Cloud DNS zone**, and the Tailscale subnet router that
   gives you access to everything built afterwards.
-- **`gcp/openbao/{cluster,management}`** — OpenBao on Compute Engine behind an
-  internal load balancer, auto-unsealed via the Cloud KMS key from the
-  prerequisites, then the three-tier PKI and the cert-manager and snapshot
-  AppRoles.
+- **`gcp/openbao/{lineage,cluster,management}`** — the snapshot bucket and the
+  node and drill identities, then OpenBao on Compute Engine behind an internal
+  load balancer, auto-unsealed via the Cloud KMS key from the prerequisites,
+  then the three-tier PKI and the policies `jwt/gcp-0`'s roles bind. The
+  management stack rehydrates the store from its newest snapshot on every
+  deploy.
 - **`gcp/gke/init`**, whose own script drives the GKE bootstrap end to end:
   stage 1 creates the cluster with a private control plane and the static spot
   node pool; stage 2 installs Cilium — which displaces GKE's CNI via

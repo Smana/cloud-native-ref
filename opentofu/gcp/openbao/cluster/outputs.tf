@@ -15,5 +15,5 @@ output "internal_ip" {
 
 output "service_account_email" {
   description = "The OpenBao node's service account"
-  value       = google_service_account.openbao.email
+  value       = local.lineage.openbao_node_sa_email
 }

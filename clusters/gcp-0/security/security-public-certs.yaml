@@ -4,6 +4,16 @@
 # which security's healthChecks already gate on. It has no relationship to the
 # private PKI -- deliberately, since the two issuers exist to fail independently.
 #
+# That sentence is load-bearing and is checked, not assumed. This cluster's ACME
+# dns01 solver federates a projected `cert-manager` ServiceAccount token to AWS
+# STS, so it needs the `cert-manager-token-creator` Role -- and that Role is
+# applied by `security`, from security/gcp-0/controllers/, alongside cert-manager
+# itself. It was briefly applied by `security-openbao` instead, which made this
+# Kustomization's only real precondition arrive from the private PKI's
+# Kustomization: on a cold build the two reconcile in parallel, and whenever this
+# one won, public issuance failed until security-openbao landed. Nothing this
+# overlay needs now comes from security-openbao.
+#
 # No healthCheck on the ClusterIssuer. cert-manager marks an ACME issuer Ready
 # only after it has registered an account with Let's Encrypt, which is a live
 # network call to a rate-limited third party. Gating a Kustomization on that

@@ -1,7 +1,7 @@
 ---
 title: Get Started
 weight: 10
-description: Deploy the platform into your own cloud account — AWS or GCP — in about thirty minutes.
+description: Deploy the platform into your own cloud account — AWS or GCP — in about forty-five minutes, almost all of it unattended.
 lastVerified: 2026-08-30
 ---
 
@@ -12,6 +12,21 @@ up, Flux takes over and reconciles everything else from Git.
 
 Both cloud lanes are implemented and were each deployed end-to-end before this
 page was written.
+
+## How long it takes, and what you are waiting for
+
+**About 45 minutes, and you are only needed for the first minute of it.** The
+split matters more than the total, because the two halves fail differently:
+
+| | Roughly | What is happening |
+|---|---|---|
+| Infrastructure | 30 min | Terramate applies the stacks. Network, OpenBao, the EKS/GKE cluster, Cilium, Flux. This is the part that stops if something is wrong with your account or your variables. |
+| Convergence | 15 min | Flux reconciles the rest from Git — security, infrastructure, observability, tooling. Nothing to do but watch `flux get all`. |
+
+`terramate script run deploy` returning is **not** the finish line: at that point
+the cluster exists and Flux has been handed the repository, but Harbor, Grafana
+and the identity provider are still coming up. The identity provider is usually
+last, because it waits for its own database to be restored.
 
 ## Before you pick a cloud
 

@@ -33,3 +33,9 @@ data "google_secret_manager_secret_version" "flux_github_app" {
   secret  = var.flux_github_app_secret_name
   project = var.project_id
 }
+
+# The GCP lineage's root token, for the vault provider.
+data "google_secret_manager_secret_version" "openbao_root_token" {
+  secret  = var.openbao_root_token_secret_name
+  project = var.project_id
+}

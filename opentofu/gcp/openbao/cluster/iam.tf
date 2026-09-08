@@ -1,39 +1,18 @@
-resource "google_service_account" "openbao" {
-  account_id   = "openbao-${var.env}"
-  display_name = "OpenBao node"
-  project      = var.project_id
-}
-
-# Unseal. Not admin on the key. Bound to the data source in kms.tf, not a
-# managed resource -- the key ring and key are a bootstrap prerequisite (see
-# kms.tf for why).
-#
-# TWO roles are required, and the second is not obvious. The design said
-# encrypterDecrypter "and nothing else"; that is wrong, and only a live boot
-# showed it:
-#
-#   Error configuring seal "gcpckms": error checking key existence:
-#   PermissionDenied: Permission 'cloudkms.cryptoKeys.get' denied on resource
-#   .../cryptoKeys/openbao-unseal (or it may not exist).
-#
-# OpenBao's gcpckms seal checks the key EXISTS before using it, and
-# cryptoKeyEncrypterDecrypter grants encrypt/decrypt without cryptoKeys.get.
-# roles/cloudkms.viewer is the least-privileged predefined role that carries it,
-# and bound at the crypto-key level it sees only this one key.
-#
-# The failure is quiet in the worst way: the instance reaches RUNNING and joins
-# the MIG while openbao.service crashloops, because the seal is configured
-# AFTER the process starts. Measured 2026-08-25.
+# Unseal with the GCP key, in gcpckms mode. In awskms mode (a standby restoring
+# an AWS snapshot) these grants are unused and harmless -- the seal then talks
+# to AWS KMS through the federated role in var.aws_seal_role_arn. The service
+# account itself is the lineage's (lineage.tf): its unique ID is what the AWS
+# side trusts, so it must not be recreated with this stack.
 resource "google_kms_crypto_key_iam_member" "openbao_unseal" {
   crypto_key_id = data.google_kms_crypto_key.openbao.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:${google_service_account.openbao.email}"
+  member        = "serviceAccount:${local.lineage.openbao_node_sa_email}"
 }
 
 resource "google_kms_crypto_key_iam_member" "openbao_key_get" {
   crypto_key_id = data.google_kms_crypto_key.openbao.id
   role          = "roles/cloudkms.viewer"
-  member        = "serviceAccount:${google_service_account.openbao.email}"
+  member        = "serviceAccount:${local.lineage.openbao_node_sa_email}"
 }
 
 # Read the server certificate at boot. Scoped to that ONE secret -- not
@@ -52,5 +31,5 @@ resource "google_secret_manager_secret_iam_member" "openbao_server_cert" {
   project   = var.project_id
   secret_id = var.server_cert_secret_name
   role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.openbao.email}"
+  member    = "serviceAccount:${local.lineage.openbao_node_sa_email}"
 }

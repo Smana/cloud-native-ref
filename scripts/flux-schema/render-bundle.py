@@ -89,7 +89,6 @@ FIXTURE_VARS = {
     # it hosts the IdP, gcp-0 sets the same literal because it consumes it
     # (ADR-0022). A per-cluster override would misrepresent the design.
     "identity_provider_url": "https://auth.cluster.local",
-    "cert_manager_approle_id": "random",
     "route53_public_zone_id": "Z0123456789",
     "aws_account_id": "123456789012",
     "vpc_id": "vpc-0123456789abcdef0",
@@ -98,16 +97,25 @@ FIXTURE_VARS = {
     # openbao_cidr from the same CIDR range in this fixture (AWS: whole VPC;
     # GCP: node subnet), so aws-0 renders byte-identical.
     "openbao_cidr": "10.0.0.0/16",
-    # AWS value (the GCP ConfigMap carries a different, dash-separated ID --
-    # see Task 14). Without this entry VAR_RE.sub passes the name through
-    # verbatim and the ExternalSecret silently extracts nothing: schema-valid,
-    # useless, and gate 1 would never catch it since the target field is a
-    # free-form string.
-    "openbao_snapshot_secret": "security/openbao/openbao-snapshot",  # pragma: allowlist secret
-    # apps/base/ai/llm/hf-token-externalsecret.yaml. AWS value, same reasoning
-    # as openbao_snapshot_secret above: without this entry VAR_RE.sub passes
-    # the name through verbatim and the ExternalSecret extracts nothing --
-    # schema-valid, useless.
+    # The lineage's snapshot bucket, consumed as BUCKET_NAME by the snapshot
+    # CronJob. AWS value; gcp-0's ConfigMap carries a project-prefixed name.
+    "openbao_snapshot_bucket": "eu-west-3-ogenki-openbao-snapshot",
+    # security/base/openbao-endpoint/remote: the active OpenBao's fixed NLB
+    # address a remote cluster proxies to. NO cluster applies that directory
+    # today -- both security/{aws-0,gcp-0}/openbao list the `local` sibling --
+    # and it is rendered anyway, because top_most_overlays() collects every
+    # filesystem-top-most kustomize root whether or not a Flux Kustomization
+    # names it. That is the better property, not a leak: the cross-cloud
+    # failover form gets validated BEFORE a failover rather than during one. It
+    # also makes this fixture the only thing keeping a literal
+    # ${openbao_target_ip} out of the bundle.
+    "openbao_target_ip": "10.0.15.250",
+    # apps/base/ai/llm/hf-token-externalsecret.yaml. AWS value. Without this
+    # entry VAR_RE.sub passes the name through verbatim and the ExternalSecret
+    # asks its store for a key literally called "${llm_hf_token_secret}" --
+    # schema-valid and useless, and gate 1 cannot catch it because `key` is a
+    # free-form string. The same argument applies to openbao_snapshot_bucket
+    # above, whose value reaches a container as an env var.
     "llm_hf_token_secret": "/platform/llm/hf_token",  # pragma: allowlist secret
     "oidc_provider_arn": "arn:aws:iam::123456789012:oidc-provider/oidc.eks",
     "oidc_issuer_host": "oidc.eks.eu-west-3.amazonaws.com",
@@ -285,10 +293,25 @@ def substitute(text, cluster=None):
 
 
 def load_docs_text(text):
-    """Parse a rendered multi-doc YAML string. Mirrors load_docs, which reads
-    from a path — chart extraction now works on kustomize output held in
-    memory rather than on a file."""
-    return [d for d in yaml.safe_load_all(text) if isinstance(d, dict)]
+    """Parse a rendered multi-doc YAML string — the in-memory counterpart of
+    load_docs, which reads from a path.
+
+    Same YAML_LOADER, and that is not cosmetic: it is libyaml-backed (this runs
+    once per overlay over full `kustomize build` output, ~67 of them), and it
+    carries yamlcompat's `tag:yaml.org,2002:value` constructor. `yaml.safe_load_all`,
+    which this used, has NEITHER — yamlcompat registers that constructor on
+    YAML_LOADER, not on yaml.SafeLoader — so it raises ConstructorError on a bare
+    `=` scalar that YAML_LOADER reads as the plain string it is.
+
+    A parse error is deliberately NOT swallowed the way load_docs swallows one.
+    load_docs scans repository files during discovery, where an unparseable file
+    must not stop the scan; this reads output the renderer itself just produced,
+    where an empty list would silently drop that overlay's HelmReleases from
+    chart extraction — they would fall through to main()'s "not reached by any
+    overlay" path and be rendered with base values instead of the cluster's,
+    which is the exact coverage gap that path exists to report, not to cause.
+    """
+    return [d for d in yaml.load_all(text, Loader=YAML_LOADER) if isinstance(d, dict)]
 
 
 def load_docs(path):

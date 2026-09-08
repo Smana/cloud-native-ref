@@ -18,6 +18,8 @@ This document defines the non-negotiable principles that govern all designs and 
 All Crossplane-managed AWS and Kubernetes resources MUST use the `xplane-` prefix.
 
 **Rationale**: Enables IAM policy scoping, resource identification, and prevents conflicts with non-Crossplane resources.
+The prefix is load-bearing rather than cosmetic: the Crossplane controller's IAM policies are scoped to `xplane-*`, so renaming
+a resource is a delete-and-recreate, not a relabel.
 
 **Examples**:
 - `xplane-myapp-sqlinstance` (correct)
