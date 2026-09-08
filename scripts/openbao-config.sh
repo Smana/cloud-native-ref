@@ -753,6 +753,20 @@ latest_snapshot_sealed() {
 # rehydrate can assert without a token: if it answers with a certificate that
 # chains to the CA we already trust, the barrier unwrapped and the mount came
 # back.
+# THREE outcomes, not two, and the callers act differently on each:
+#
+#   0  the mount is there and its issuer chains to this lineage's root
+#   2  a clean 404 -- the mount is genuinely absent, which a snapshot taken
+#      before the PKI existed produces legitimately
+#   1  anything else: unreachable, sealed, non-2xx, not a certificate, or --
+#      the dangerous one -- an issuer that does NOT chain to this lineage's CA
+#
+# 1 and 2 were the same answer until 2026-09-08, and collapsing them is unsafe
+# in one specific direction. A restore that comes back under a DIFFERENT root is
+# a node full of the wrong lineage's data; a caller that reads "failed" as "no
+# mount yet, carry on" waves it through, and one that reads it as "nothing here
+# worth keeping" advises destroying it with the snapshot suppressed. Both are
+# data loss, in opposite directions, from the same missing distinction.
 verify_pki_present() {
     # argv built as an ARRAY. `"${VAULT_CACERT:+--cacert $VAULT_CACERT}"` looks
     # right and is not: quoted, it passes `--cacert /path` as ONE argv element
@@ -778,8 +792,11 @@ verify_pki_present() {
     case "$http_code" in
         200) ;;
         404)
+            # 2, not 1: a clean 404 is the ONE failure a caller may legitimately
+            # continue past, because a snapshot predating the PKI mount produces
+            # exactly this. Every other branch below stays 1.
             log_message "ERROR" "pki_private_issuer is not mounted on this node (HTTP 404)."
-            return 1 ;;
+            return 2 ;;
         '')
             log_message "ERROR" "Could not reach $OPENBAO_URL at all -- TLS trust or the node itself, not the PKI mount."
             return 1 ;;
@@ -920,9 +937,24 @@ rehydrate_openbao() {
             # lineage data. Exiting 0 on the strength of a 200 alone would turn
             # a loud failure into a silent success on the next deploy, and the
             # management stack would then run against an empty store.
-            if verify_pki_present; then
+            local _idem_rc=0
+            verify_pki_present || _idem_rc=$?
+            if [ "$_idem_rc" -eq 0 ]; then
                 log_message "INFO" "OpenBao is already initialized, unsealed, and holds the PKI -- nothing to rehydrate"
                 exit 0
+            fi
+            # Everything below reasons about a node with NO PKI mount, and ends
+            # in advice to destroy it. Only a clean 404 (rc 2) means that. rc 1
+            # is unreachable, sealed, a non-2xx, or an issuer under a DIFFERENT
+            # root -- and that last one is a node holding the wrong lineage's
+            # data, which the destroy advice below would discard along with the
+            # pre-destroy snapshot. Stop here and say which it was instead.
+            if [ "$_idem_rc" -ne 2 ]; then
+                log_message "ERROR" "OpenBao is initialized and unsealed, but the PKI check failed for a reason that"
+                log_message "ERROR" "is NOT a missing mount -- see the line above. Do NOT read this as an empty node:"
+                log_message "ERROR" "an issuer under a different root means this node holds data, just not this"
+                log_message "ERROR" "lineage's. Resolve that before destroying anything."
+                exit 1
             fi
             # No PKI. Two very different situations look identical from here,
             # and the BUCKET is what separates them:
@@ -1204,7 +1236,21 @@ rehydrate_openbao() {
     # past this point means the snapshot predates it -- not that anything failed.
     # Saying "exit 1" and nothing else is what fed the next deploy into the
     # 200-with-no-PKI branch above, whose advice destroys the node.
-    if ! verify_pki_present; then
+    #
+    # Only a 404 (rc 2) is tolerable here. rc 1 covers "the issuer does not
+    # chain to this lineage's root", and the stored root token would happily
+    # authenticate to such a node -- the token store restored fine, it is the
+    # ROOT that is wrong -- so testing the token alone would wave through a
+    # restore from the wrong lineage.
+    local _pki_rc=0
+    verify_pki_present || _pki_rc=$?
+    if [ "$_pki_rc" -eq 1 ]; then
+        log_message "ERROR" "Restore reported success, but the PKI check failed for a reason that is NOT a"
+        log_message "ERROR" "missing mount -- see the line above. An issuer under a different root, an"
+        log_message "ERROR" "unreachable or sealed node: none of those are 'the snapshot predates the PKI'."
+        exit 1
+    fi
+    if [ "$_pki_rc" -eq 2 ]; then
         if stored_root_token_works; then
             log_message "WARN" "Restore SUCCEEDED, but the snapshot carries no PKI mount: ${SNAPSHOT_BUCKET}'s"
             log_message "WARN" "newest object predates it. The lineage's root token authenticates, so this node"
