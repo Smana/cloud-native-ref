@@ -34,6 +34,18 @@ contains() {
     if printf '%s' "$2" | grep -qF -- "$3"; then printf '  ok   %s\n' "$1"
     else printf '  FAIL %s: %q not found in output\n' "$1" "$3"; fail=1; fi
 }
+absent() {
+    if printf '%s' "$2" | grep -qF -- "$3"; then printf '  FAIL %s: %q unexpectedly present\n' "$1" "$3"; fail=1
+    else printf '  ok   %s\n' "$1"; fi
+}
+
+# A missing helper printed "command not found", left `fail` untouched, and the
+# suite reported "all checks passed" with an assertion that never ran. An ERR
+# trap is the wrong guard here -- this suite deliberately runs commands that
+# return non-zero -- so assert the harness itself is complete instead.
+for _h in check contains absent; do
+    declare -F "$_h" >/dev/null || { echo "harness incomplete: $_h() is not defined" >&2; exit 2; }
+done
 
 SRC="${OPENBAO_SNAPSHOT_SCRIPT:-$HERE/openbao-snapshot.sh}"
 body="$(sed -n '/^select_snapshot() {/,/^}/p' "$SRC")"
@@ -108,6 +120,38 @@ check "returns the only object" "$NEWEST" "$out"
 SNAPSHOT_KEY="$NEWEST"
 out=$(select_snapshot "$NEWEST" 2>/dev/null)
 check "named, and it is also the newest" "$NEWEST" "$out"
+
+echo
+echo "== THE GATE: a named key must never be silently replaced (regression, F1)"
+# select_snapshot() alone could not catch this. The gate runs AFTER it, and under
+# OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true it used to re-select `... | tail -n1`,
+# throwing the operator's named object away and restoring the NEWEST -- the exact
+# opposite of what naming one asks for. On a mixed-seal bucket, which is the only
+# state where the hatch is legitimate, the two features silently cancelled.
+gate_body="$(sed -n '/^foreign_seal_fallback() {/,/^}/p' "$SRC")"
+[ -n "$gate_body" ] || { echo "could not extract foreign_seal_fallback() from $SRC" >&2; exit 1; }
+eval "$gate_body"
+
+MIXED="2026-08-01T000000Z-gcpckms.snap
+2026-08-15T000000Z-awskms.snap
+2026-09-05T214320Z-awskms.snap"
+
+SNAPSHOT_KEY="2026-08-01T000000Z-gcpckms.snap"
+out=$(foreign_seal_fallback "$MIXED" awskms 2>/dev/null); rc=$?
+check "refuses when the named object is foreign-sealed" "1" "$rc"
+check "emits no substitute on stdout" "" "$out"
+stderr=$(foreign_seal_fallback "$MIXED" awskms 2>&1 >/dev/null)
+contains "names the object it will not substitute" "$stderr" "2026-08-01T000000Z-gcpckms.snap"
+contains "explains the newest is the opposite"     "$stderr" "opposite of what naming an"
+contains "lists what this node CAN unwrap"         "$stderr" "2026-08-15T000000Z-awskms.snap"
+absent   "does NOT quietly return the newest"      "$out"    "2026-09-05T214320Z-awskms.snap"
+
+echo
+echo "== the hatch still works when NO key was named"
+SNAPSHOT_KEY=""
+out=$(foreign_seal_fallback "$MIXED" awskms 2>/dev/null); rc=$?
+check "exit 0" "0" "$rc"
+check "returns the newest object this seal can unwrap" "2026-09-05T214320Z-awskms.snap" "$out"
 
 echo
 if [ "$fail" -eq 0 ]; then echo "all checks passed"; else echo "FAILURES"; fi

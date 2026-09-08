@@ -3,7 +3,7 @@ title: OpenBao is the store of record, durable as a snapshot lineage, active on 
 linkTitle: 0033 · OpenBao lineage
 weight: 330
 description: OpenBao's storage becomes derived state rebuilt from its newest Raft snapshot on every boot; what persists is a lineage — one multi-region KMS seal key, five bootstrap secrets, a snapshot bucket. One instance becomes active on AWS and serves both clusters; a GCP standby restores the mirrored snapshot under the same AWS seal. Stage 1 is per-cloud; Stage 2 converges it. Chosen over per-cloud authoritative instances, an instance with no fallback, a Shamir-sealed standby, the clouds' managed CAs and cert-manager's CA issuer.
-lastVerified: 2026-09-02
+lastVerified: 2026-09-08
 ---
 
 **Status**: Accepted
@@ -156,10 +156,21 @@ failover — while leaving in place:
 
 So "one instance active on AWS serving both clusters" is the decision's end
 state, not Stage 1's. Stage 2 is what converges it: it repoints the
-`ClusterSecretStore` and migrates about 36 secrets, and it is also where `gcp-0`
+`ClusterSecretStore` and migrates about 20 secrets, and it is also where `gcp-0`
 switches to the remote endpoint form and stops being authoritative for itself.
 Until then the two clouds run the same design twice, which is why the residual
 drift in the Negatives below is real rather than theoretical.
+
+That count is derivable rather than remembered, because it said "about 36" until
+2026-09-08 and nothing in the repo produced that figure. Recount it as: the
+distinct `remoteRef`/`dataFrom` keys across every committed `ExternalSecret`
+(19, in 25 manifests, all against `clustersecretstore`), **minus** the two
+CA-chain entries — `certificates/<domain>/ca-chain` and
+`openbao-priv-gcp-ca-chain` — which have to stay in the cloud store, since
+nothing can fetch OpenBao's own CA *from* OpenBao. Add the few an `App` or
+`SQLInstance` claim renders and it lands around 20. It is a Stage 2 planning
+number, so being out by 16 is the difference between a session's work and a
+project.
 
 ## Consequences
 

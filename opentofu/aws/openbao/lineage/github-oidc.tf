@@ -6,15 +6,19 @@
 # and nothing else. In particular it does NOT get the recovery keys: the drill
 # proves restorability through unauthenticated endpoints, and a CI runner
 # holding the material that mints a root token would be a standing exposure.
-data "tls_certificate" "github" {
-  url = "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
-}
-
 resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.github.certificates[0].sha1_fingerprint]
-  tags            = var.tags
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
+  # NO thumbprint_list, deliberately -- the same decision, and the same reasoning,
+  # as opentofu/shared/aws-gcp-federation/google-identity.tf. It used to pin
+  # certificates[0], which is the LEAF, and GitHub rotates it: the pin produces
+  # recurring drift that means nothing. AWS ignores thumbprints for an IdP whose
+  # root it already trusts, so pinning bought no security to begin with.
+  #
+  # `certificates[length-1]` is not the fix either: the chain is not reliably
+  # ordered leaf-last, and picking by index is how the leaf got pinned here in
+  # the first place.
+  tags = var.tags
 }
 
 data "aws_iam_policy_document" "drill_assume" {

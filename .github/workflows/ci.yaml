@@ -266,11 +266,29 @@ jobs:
       # store of record for application secrets. A selector that silently
       # returns the newest anyway would make point-in-time recovery a lie that
       # only shows up during an incident, so it is tested offline like the rest.
+      # scripts/test-openbao-root-token-probe.sh is the fifth, and guards the
+      # single function two branches now use to decide whether a deploy says
+      # "restored, continue" or "destroy the cluster with
+      # TM_OPENBAO_SKIP_SNAPSHOT=true". The second discards every write since the
+      # restore AND suppresses the pre-destroy snapshot, so a false negative here
+      # is unrecoverable data loss. Those branches are only reachable on a real
+      # cluster in a state that takes a full bootstrap to produce, which is
+      # precisely how their predecessor shipped: the claim was asserted in prose
+      # and never once executed.
+      # scripts/test-openbao-pki-verify.sh is the sixth, and pins the three-way
+      # contract those branches read: 0 present-and-chains, 2 a clean 404, 1
+      # everything else. The case it exists for is an issuer that parses
+      # perfectly but chains to a DIFFERENT root -- a node holding the wrong
+      # lineage's data, invisible to every other signal, because the node is up,
+      # unsealed, serving a valid certificate, and the stored root token
+      # authenticates against it. It needs openssl, which the runner image
+      # already has; it generates its own throwaway CAs rather than stubbing the
+      # verify, since a stub would be assuming the very answer under test.
       - name: Run the shell test suites
         run: |
           set -uo pipefail
           rc=0
-          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh scripts/test-openbao-snapshot-key.sh scripts/test-openbao-seal-status-tls.sh; do
+          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh scripts/test-openbao-snapshot-key.sh scripts/test-openbao-seal-status-tls.sh scripts/test-openbao-root-token-probe.sh scripts/test-openbao-pki-verify.sh; do
             if bash "$t" > /tmp/zitadel-test.log 2>&1; then
               echo "PASS  $t"
             else

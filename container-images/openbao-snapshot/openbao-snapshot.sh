@@ -129,11 +129,16 @@ case "${SKIP_FOREIGN_SEAL}" in
     *) echo "${err}: OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL must be 'true' or 'false', got '${SKIP_FOREIGN_SEAL}'." ; exit 1 ;;
 esac
 
-# GET /v1/sys/seal-status, honouring the same TLS choices as everything else
-# here. Built as explicit branches rather than by word-splitting a variable of
-# flags: `"${VAULT_CACERT:+--cacert $VAULT_CACERT}"` passes `--cacert /path` as
-# ONE argv element when quoted and an empty word when unset -- the exact trap
-# already documented in verify_pki_present() in scripts/openbao-config.sh.
+# GET /v1/sys/seal-status, honouring the same TLS choices as everything else here.
+#
+# Flags are accumulated in the POSITIONAL PARAMETERS and expanded as "$@". That
+# is deliberately not the trap documented in verify_pki_present() in
+# scripts/openbao-config.sh: word-splitting an unquoted variable that holds
+# several flags, where `"${VAULT_CACERT:+--cacert $VAULT_CACERT}"` passes
+# `--cacert /path` as ONE argv element when quoted and an empty word when unset.
+# "$@" expands each element separately and disappears cleanly when empty, which
+# is the POSIX equivalent of an array. This function takes no arguments, so
+# `set --` clobbers nothing.
 seal_status_raw() {
     # VAULT_TLS_SERVER_NAME set means VAULT_ADDR holds an ADDRESS and the
     # certificate carries a NAME -- the split scripts/openbao-config.sh's
@@ -158,12 +163,7 @@ seal_status_raw() {
         fi
     fi
 
-    # Flags through the positional parameters. This is NOT the trap the previous
-    # comment here warned about -- that was word-splitting an unquoted variable
-    # holding several flags, where `--cacert /path` arrives as one argv element
-    # when quoted and as nothing when empty. "$@" expands each element
-    # separately and drops cleanly when empty, which is the POSIX equivalent of
-    # an array. The function takes no arguments, so `set --` clobbers nothing.
+    # See the header above for why these go through the positional parameters.
     set --
     [ -n "${_ss_resolve}" ] && set -- --resolve "${_ss_resolve}"
     [ -n "${VAULT_CACERT:-}" ] && set -- "$@" --cacert "${VAULT_CACERT}"
@@ -604,6 +604,18 @@ save() {
     # DST change. The timestamp stays FIRST and fixed-width so `sort | tail -n1`
     # remains chronological even in a bucket holding two seals.
     SNAP_OBJECT="$(date -u +"%Y-%m-%dT%H%M%SZ")-${SEAL_TYPE}.snap"
+    # An empty or truncated snapshot uploads perfectly well, becomes the
+    # lineage's NEWEST object, and leaves OpenBaoSnapshotStale green -- a fresh
+    # object exists. It then surfaces at the next rehydrate, which is the one
+    # moment this file IS the store of record. hashicorp/vault#15258 ("incomplete
+    # snapshot, unable to read SHA256SUMS.sealed") is this failure on this path.
+    if [ ! -s "${SNAPSHOT_FILE}" ]; then
+        echo "${err}: the snapshot at ${SNAPSHOT_FILE} is empty; refusing to upload it."
+        echo "${err}: An empty object would become the newest in ${BUCKET_NAME} and the"
+        echo "${err}: staleness alert would go quiet while the lineage held nothing."
+        exit 1
+    fi
+
     if [ "${CLOUD}" = "gcp" ]; then
         gcloud storage cp "${SNAPSHOT_FILE}" "gs://${BUCKET_NAME}/${SNAP_OBJECT}"
     else
@@ -652,6 +664,45 @@ select_snapshot() {
 
     printf '%s\n' "${SNAPSHOT_KEY}"
     return 0
+}
+
+# Which object does the foreign-seal escape hatch fall back to?
+#
+# Only reached when OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true and the selected
+# object's seal is not this node's. Prints the object on stdout, diagnostics on
+# stderr, non-zero to refuse.
+#
+# It REFUSES when the operator named an object with OPENBAO_SNAPSHOT_KEY. The
+# hatch substitutes the newest same-seal object, and the newest is the precise
+# opposite of what a named key asks for -- so on a mixed-seal bucket the two
+# features silently cancelled, and the one that won was the one that discards
+# data. The operator who named an object can name a different one; the script
+# must not choose for them.
+#
+# $1 candidates, oldest first.  $2 this node's seal type.
+foreign_seal_fallback() {
+    _fsf_cands="$1"
+    _fsf_seal="$2"
+
+    if [ -n "${SNAPSHOT_KEY}" ]; then
+        echo "${err}: OPENBAO_SNAPSHOT_KEY names '${SNAPSHOT_KEY}', which this node's" >&2
+        echo "${err}: '${_fsf_seal}' seal cannot unwrap, and" >&2
+        echo "${err}: OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true is set." >&2
+        echo "${err}: REFUSING rather than substituting. The hatch restores the NEWEST" >&2
+        echo "${err}: object this node can unwrap, which is the opposite of what naming an" >&2
+        echo "${err}: object asks for -- restoring it would discard everything the named" >&2
+        echo "${err}: snapshot was chosen to recover." >&2
+        echo "${err}: Objects this node CAN unwrap, oldest first:" >&2
+        printf '%s\n' "${_fsf_cands}" \
+            | { grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-${_fsf_seal}\.snap$" || true; } \
+            | sed "s/^/${err}:   /" >&2
+        echo "${err}: Name one of those, or unset OPENBAO_SNAPSHOT_KEY to take the newest." >&2
+        return 1
+    fi
+
+    printf '%s\n' "${_fsf_cands}" \
+        | { grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-${_fsf_seal}\.snap$" || true; } \
+        | tail -n1
 }
 
 restore() {
@@ -792,7 +843,7 @@ restore() {
             exit 1
         fi
 
-        SNAP=$(printf '%s\n' "${CANDIDATES}" | { grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-${SEAL_TYPE}\.snap$" || true; } | tail -n1)
+        SNAP=$(foreign_seal_fallback "${CANDIDATES}" "${SEAL_TYPE}") || exit 1
         if [ -z "${SNAP}" ]; then
             # Self-contained: this is now the first thing printed on this path.
             echo "${err}: SEAL MISMATCH, and OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true cannot help --"
@@ -810,7 +861,7 @@ restore() {
         # Also self-contained, and it says PROCEEDING rather than refusing.
         echo "${warn}: SEAL MISMATCH, and OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true -- PROCEEDING."
         echo "${warn}:   this node's seal : ${SEAL_TYPE}"
-        echo "${warn}:   newest object    : ${NEWEST} (${found}) -- SKIPPED"
+        echo "${warn}:   selected object  : ${NEWEST} (${found}) -- SKIPPED"
         echo "${warn}:   restoring instead: ${SNAP}, the newest of the ${n_mine} object(s) this node can unwrap"
         echo "${warn}:   in ${BUCKET_NAME}: ${n_all} snapshot object(s), $((n_all - n_tagged)) with no seal segment"
         echo "${warn}: Whatever was written after ${NEWEST} is NOT in this restore."

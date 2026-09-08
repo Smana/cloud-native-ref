@@ -51,18 +51,6 @@ spec:
             "Version": "2012-10-17",
             "Statement": [
                 {
-                    "Sid": "ReadPermissions",
-                    "Effect": "Allow",
-                    "Action": [
-                        "s3:GetObject",
-                        "s3:ListBucket"
-                    ],
-                    "Resource": [
-                        "arn:aws:s3:::${openbao_snapshot_bucket}",
-                        "arn:aws:s3:::${openbao_snapshot_bucket}/*"
-                    ]
-                },
-                {
                     "Sid": "WritePermissions",
                     "Effect": "Allow",
                     "Action": [

@@ -14,9 +14,14 @@ echo "OpenBao init"
 
 export DEBIAN_FRONTEND=noninteractive
 
+# The IMDSv2 session token below is marked `argv-ok` for
+# scripts/test-no-secret-argv.sh. It is credential-SHAPED but not a credential
+# worth hiding here: it only authorises reads of THIS instance's metadata, and
+# anyone able to read another process's argv on this host can mint their own with
+# a single PUT. Hiding it would buy nothing and cost legibility in a boot script.
 IMDS_TOKEN=$(curl -fsS -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-INSTANCE_ID=$(curl -fsS -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
-PRIVATE_IP=$(curl -fsS -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
+INSTANCE_ID=$(curl -fsS -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-id)  # argv-ok: IMDSv2 session token
+PRIVATE_IP=$(curl -fsS -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)  # argv-ok: IMDSv2 session token
 
 # Install OpenBao
 # ---------------

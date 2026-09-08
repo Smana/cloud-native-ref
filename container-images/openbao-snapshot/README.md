@@ -64,8 +64,8 @@ object `-shamir` on both clouds would hide the mixed-seal hazard again.
 
 ### `restore` refuses a mismatch, before anything destructive
 
-`restore` selects the **newest** object and compares its seal segment with the node's own seal.
-On a mismatch it refuses — before the download, before `operator init`, before
+`restore` selects the **newest** object — unless `OPENBAO_SNAPSHOT_KEY` names one, see
+below — and compares its seal segment with the node's own seal. On a mismatch it refuses — before the download, before `operator init`, before
 `snapshot restore -force` — and prints both seals plus a count of what the bucket holds. The
 gate is duplicated in [`scripts/openbao-config.sh`](../../scripts/openbao-config.sh)
 (`rehydrate`), on purpose: that script has to decide **before** its own `bao operator init`, and
@@ -76,6 +76,34 @@ Set `OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true` to restore the newest object the n
 for a failback, where the foreign-sealed objects are not coming back. If no object carries the
 node's seal, the run still refuses rather than falling through to a plain init, which would
 overwrite the lineage's stored root token and recovery keys.
+
+### `OPENBAO_SNAPSHOT_KEY` restores a named object, not the newest
+
+The newest object cannot express *"today's is wrong, give me yesterday's"*, which is the
+whole shape of a secrets-store recovery: the bad write is already in the newest snapshot.
+`OPENBAO_SNAPSHOT_KEY=<object>` restores that object instead.
+
+- The name is validated **against the listing**, not trusted. A typo fails before anything
+  destructive, printing what the bucket actually holds — not halfway through a restore.
+- Choosing anything but the newest is logged as `POINT-IN-TIME RESTORE`, naming both
+  objects and stating that every write after the chosen one is discarded. It is a
+  deliberate act, so it leaves a deliberate trace.
+- `scripts/openbao-config.sh` forwards it to this script **explicitly** rather than relying
+  on inheritance, and gates on the *named* object rather than the newest. Unexported, it
+  used to be ignored by both and the point-in-time request became a silent no-op.
+
+**It refuses to combine with `OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true`, and that refusal is
+the point.** The hatch substitutes the newest object this node's seal can unwrap, and
+"newest" is the exact opposite of what a named key asks for. On a mixed-seal bucket — the
+only state where the hatch is legitimate at all — the two features silently cancelled, and
+the one that won was the one that discards data. So the script refuses and says which
+object it could not use: an operator who named one can name another, but the script must
+not choose for them.
+
+> **Retention is not reach.** The AWS bucket transitions objects to GLACIER at 30 days
+> while retaining them for 120, so naming an object older than 30 days fails with
+> `InvalidObjectState` until it is restored out of Glacier. Check the `StorageClass` in the
+> listing before planning a recovery around an old object.
 
 ### Objects with no seal segment are never selected
 

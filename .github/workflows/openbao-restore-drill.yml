@@ -391,9 +391,19 @@ jobs:
             echo "::error::no OIDC request context on this runner -- the workflow needs permissions: id-token: write"
             exit 1
           fi
+          # The request token goes in a -K config file, never on argv: it mints
+          # OIDC tokens for ARBITRARY audiences, so anything able to read
+          # /proc/<pid>/cmdline during this job -- a third-party action, a build
+          # dependency -- could assume the drill role, which holds s3:GetObject
+          # and kms:Decrypt on the seal key. Same pattern as
+          # scripts/zitadel-oidc-clients.sh.
+          CFG=$(mktemp); chmod 600 "$CFG"
+          trap 'rm -f "$CFG"' EXIT
+          printf 'header = "Authorization: bearer %s"\n' "${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" > "$CFG"
           # The URL already carries ?api-version=, hence & and not ?.
-          token=$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+          token=$(curl -fsS -K "$CFG" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r '.value')
+          rm -f "$CFG"
           if [ -z "$token" ] || [ "$token" = "null" ]; then
             echo "::error::the OIDC endpoint returned no token value"
             exit 1
