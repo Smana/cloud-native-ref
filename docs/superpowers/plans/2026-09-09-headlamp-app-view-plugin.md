@@ -38,7 +38,8 @@
 | `container-images/headlamp-plugin-app/build.sh`, `README.md` (new) | Local build, docs — matching `token-exchange-proxy` |
 | `container-images/headlamp-plugin-app/package.json`, `tsconfig.json` (new) | Toolkit wiring |
 | `.../src/headlamp-plugin.d.ts` (new) | Toolkit types + the `pluginLib.ResourceMap` runtime shim |
-| `.../src/app.ts` (new) | The `App` KubeObject class and the shared TypeScript types |
+| `.../src/app.ts` (new) | The shared TypeScript types only — no Kubernetes import, so the resolver stays testable |
+| `.../src/appResource.ts` (new) | The `App` KubeObject class and its GVK constants, isolated because it imports the toolkit |
 | `.../src/tree.ts` + `tree.test.ts` (new) | `buildAppTree`, `attachOwned` — pure, over an injected client |
 | `.../src/status.ts` + `status.test.ts` (new) | `nodeStatus` — kind-aware health |
 | `.../src/links.ts` + `links.test.ts` (new) | `parseLinks`, `expandLink` |
@@ -414,7 +415,7 @@ git commit -m "feat(headlamp-plugin-app): scaffold the plugin and its init-conta
 ### Task 3: The resource tree, resolved
 
 **Files:**
-- Create: `container-images/headlamp-plugin-app/src/app.ts`, `src/tree.ts`, `src/tree.test.ts`
+- Create: `container-images/headlamp-plugin-app/src/app.ts`, `src/appResource.ts`, `src/tree.ts`, `src/tree.test.ts`
 - Test: `container-images/headlamp-plugin-app/src/tree.test.ts`
 
 **Interfaces:**
@@ -605,6 +606,17 @@ describe('attachOwned', () => {
 
 Run: `cd container-images/headlamp-plugin-app && npm test`
 Expected: FAIL — cannot resolve `./tree` / `./app`.
+
+> **Corrected during execution.** `AppResource` extends the toolkit's `KubeObject`,
+> whose import specifier is a virtual alias with no file on disk — the toolkit maps
+> it only in its build config, not its test config. Any module that value-imports it
+> therefore cannot be resolved by the test runner. Since `tree.ts` value-imports
+> `resourceRefs` from this file, keeping the class here makes the resolver untestable.
+> Split it: `src/app.ts` holds `KubeJSON`, `ResourceRef` and `resourceRefs` and imports
+> nothing; `src/appResource.ts` holds `AppResource`, `APP_API_VERSION` and `APP_KIND`.
+> Later tasks import the class from `./appResource`. The generic argument is also
+> dropped — `KubeJSON.metadata.creationTimestamp` is optional by design while the
+> toolkit's `KubeMetadata` requires it.
 
 - [ ] **Step 3: Write `src/app.ts`**
 
@@ -1209,7 +1221,8 @@ export function useConfigLinks(): LinkTemplate[] {
 // enough for a page someone is looking at.
 import { K8s } from '@kinvolk/headlamp-plugin/lib';
 import { useEffect, useMemo, useState } from 'react';
-import { APP_API_VERSION, type KubeJSON } from './app';
+import { type KubeJSON } from './app';
+import { APP_API_VERSION } from './appResource';
 import { makeApiClient } from './client';
 import { attachOwned, buildAppTree, type AppTree } from './tree';
 
@@ -1276,7 +1289,8 @@ export function useAppTree(namespace: string, name: string) {
 import { registerMapSource } from '@kinvolk/headlamp-plugin/lib';
 import { KubeObject } from '@kinvolk/headlamp-plugin/lib/K8s/cluster';
 import { useEffect, useMemo, useState } from 'react';
-import { AppResource, type KubeJSON } from './app';
+import { type KubeJSON } from './app';
+import { AppResource } from './appResource';
 import { makeApiClient } from './client';
 import { nodeStatus } from './status';
 import { buildAppTree, type AppTree } from './tree';
@@ -1356,7 +1370,8 @@ export function registerAppsMapSource() {
 // is the URL the App Wizard builds.
 import { Link, ResourceListView, StatusLabel } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { getCluster } from '@kinvolk/headlamp-plugin/lib/Utils';
-import { AppResource, type KubeJSON } from './app';
+import { type KubeJSON } from './app';
+import { AppResource } from './appResource';
 import { conditionOf } from './status';
 
 function conditionChip(app: AppResource, type: string) {
@@ -1423,7 +1438,7 @@ export function AppsListPage() {
 // pages and the map source are imported from their own modules.
 import { registerKindIcon, registerRoute, registerSidebarEntry } from '@kinvolk/headlamp-plugin/lib';
 import { Icon } from '@iconify/react';
-import { APP_KIND } from './app';
+import { APP_KIND } from './appResource';
 import { AppsListPage } from './AppsListPage';
 import { registerAppsMapSource } from './mapSource';
 
