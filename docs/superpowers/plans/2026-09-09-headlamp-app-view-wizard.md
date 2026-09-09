@@ -538,6 +538,15 @@ type Link struct {
 // exactly what the inventory knows about an app without touching a cluster.
 var AllowedLinkPlaceholders = map[string]bool{"namespace": true, "name": true, "stack": true}
 
+> **Corrected during execution.** The scan below only matches well-formed brace
+> pairs, so `{name` with the closing brace dropped, `name}`, and `{{name}}` all
+> passed validation and would have surfaced as a broken link on click — defeating
+> the very promise these tests state. The shipped code adds a residual-brace check
+> after the unknown-placeholder loop: strip the three allowed tokens with a
+> `strings.NewReplacer`, then reject any surviving brace. Order matters, so that an
+> unknown placeholder still reports itself rather than the brace error. See
+> `internal/config/config.go` on the feature branch.
+
 var linkPlaceholder = regexp.MustCompile(`\{([^{}]*)\}`)
 
 // validateLinks fails closed on the first bad entry, naming its index so the
@@ -708,6 +717,10 @@ type Link struct {
 	URL   string `json:"url"`
 }
 ```
+
+> **Corrected during execution.** Only the version whose signature is
+> `brandingFromConfig(cfg *config.Config) api.Branding` is correct. `config.Link`
+> is a named type, so an anonymous-struct parameter does not compile.
 
 `cmd/app-wizard/branding.go`:
 
@@ -1181,6 +1194,10 @@ The wizard never contacts a cluster; the link is the whole bridge to a live view
 
 `README.md`: where the inventory ("My apps") is described, add the sentence: *Each card can carry operator-configured links (for example to a Headlamp view of the running app); see `docs/configuration.md` → `links`.*
 
+> **Corrected during execution.** Do not commit the built SPA directory. Only a
+> placeholder `index.html` is tracked there; the Dockerfile builds the frontend in
+> its own stage and copies it in, and CI runs the build separately.
+
 - [ ] **Step 2: Full verification**
 
 Run: `gofmt -l . ; go vet ./... && go test -race ./... && cd ui && npm ci && npm run lint && npm test && npm run build`
@@ -1189,7 +1206,7 @@ Expected: nothing from `gofmt -l`; every Go and UI test PASS; `vite build` write
 - [ ] **Step 3: Commit, push, PR**
 
 ```bash
-git add docs/configuration.md examples/wizard.yaml README.md internal/web/dist
+git add docs/configuration.md examples/wizard.yaml README.md
 git commit -m "docs: the links key, with a per-cluster example"
 git push -u origin feat/links
 gh pr create --base main --title "feat: configurable links on app cards" --body "$(cat <<'EOF'
