@@ -35,7 +35,7 @@ promtool = "3.14.0"
 
 # Documentation site (website/). "hugo-extended" is deliberate: mise's plain
 # `hugo` entry resolves to the non-extended build, and Hextra targets extended.
-hugo-extended = "0.165.0"
+hugo-extended = "0.166.0"
 kustomize = "5.8.1"
 
 # Google Cloud SDK — required by the GCP stacks (opentofu/gcp/**) for cluster
