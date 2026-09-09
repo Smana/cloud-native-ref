@@ -17,10 +17,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json ./
 COPY src/ ./src/
-# Task 3 adds `npm test &&` here, with the first tests. It is absent now because
-# the toolkit's test command wraps vitest with a fixed config and no argument
-# passthrough, so with zero test files it exits non-zero and fails the build.
-RUN npm run lint && npm run tsc && npm run build
+RUN npm run lint && npm run tsc && npm test && npm run build
 
 # Runtime: an init container whose only job is to copy the built plugin into
 # the shared plugins volume before Headlamp starts. Headlamp's chart mounts
