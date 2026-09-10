@@ -31,13 +31,12 @@ The links section reads an optional ConfigMap `headlamp-plugin-app` in the
 `{"label": "...", "url": "..."}` whose URL may use `{namespace}` and `{name}`.
 Absent or unreadable ⇒ the links section is hidden.
 
-**Not wired up yet.** This repo has no
-`tooling/base/headlamp/configmap-plugin-app.yaml`, and the plugin isn't loaded
-into a running Headlamp at all yet either — see the platform's GitOps page and
-ADR-0035 for the current deployment state. A later change adds that ConfigMap,
-rendered with `${private_domain_name}` substituted per cluster by Flux,
-alongside the init container wiring; until then the links section always
-renders hidden.
+It is rendered from `tooling/base/headlamp/configmap-plugin-app.yaml`, with
+`${private_domain_name}` substituted per cluster by Flux.
+
+A literal brace in one of those URLs must be percent-encoded as `%7B` / `%7D`:
+a bare brace is read as a placeholder, a malformed one fails the plugin's own
+parsing, and an encoded pair is passed through untouched rather than expanded.
 
 ## Development
 
