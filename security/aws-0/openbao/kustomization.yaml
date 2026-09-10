@@ -41,3 +41,4 @@ resources:
   - clustersecretstore.yaml
   - openbao-ca-externalsecret.yaml
   - openbao-clusterissuer.yaml
+  - ../../base/openbao-stores
