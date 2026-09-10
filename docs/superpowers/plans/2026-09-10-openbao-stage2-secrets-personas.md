@@ -10,6 +10,25 @@
 
 **Spec:** [`docs/superpowers/specs/2026-09-10-openbao-stage2-secrets-personas-design.md`](../specs/2026-09-10-openbao-stage2-secrets-personas-design.md). Read its "Target" and "Risks" sections before starting. Its parent, [`2026-09-02-openbao-store-of-record-design.md`](../specs/2026-09-02-openbao-store-of-record-design.md), defines the tiers and the bootstrap set.
 
+## Status
+
+| Phase | Tasks | State |
+|---|---|---|
+| 1 — Foundation | 1-4 | **Done**, applied and verified against the live `aws-0` OpenBao |
+| 2 — Tooling | 5-6 | **Done**, dry-run verified; nothing written to any store |
+| 3 — Repoint | 7-11 | **Not started.** First task that changes cluster behaviour |
+| 4 — Records and cleanup | 12-13 | **Not started** |
+
+Phases 1 and 2 are deliberately separable: they create mounts, policies and
+groups that nothing consumes yet, plus a tooling change whose only new command
+is dry-run by default. Merging them keeps `main` in step with the cluster —
+after Phase 1 was applied from this branch, a `terramate script run deploy` from
+`main` planned **10 destroys**, because the mounts and policies existed only
+here.
+
+Six defects in this plan were found by executing it. Each is recorded inline at
+the step it affects, marked **Found during execution**.
+
 ## Global Constraints
 
 - **Worktree.** Work in `.claude/worktrees/openbao-stage2-personas`, branch `worktree-openbao-stage2-personas`. Never commit on `main`.
