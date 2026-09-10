@@ -111,6 +111,44 @@ things read before OpenBao has an API, plus the seal key as a sixth item that is
 an AWS resource rather than a secret. Flux's GitHub App key moves to OpenBao, as
 the parent design decided; that decision is inherited, not reopened.
 
+### Runtime-generated secrets — the `cnpg/*` keys (Task 11)
+
+**Decision: they stay in the cloud managed store.** Three keys —
+`cnpg/xplane-harbor/roles/harbor`, `cnpg/xplane-zitadel/superuser` and
+`cnpg/xplane-image-gallery/roles/image-gallery-app`.
+
+**The reason this design originally gave for leaving them is wrong, and is
+corrected here so it is not reused.** It said they are "written at runtime" and
+that moving them would mean granting a machine write access to a mount — the
+property the read-only External Secrets policy deliberately removes. Neither
+half holds:
+
+- Nothing in the cluster writes to any secret store. These keys are created by
+  `scripts/secret-store.sh seed --apply`, an **operator-run** command; they are
+  in its `GENERATABLE` list. The SQLInstance composition only *asks* for them
+  through an `ExternalSecret`. Verified by grep: no manifest or composition in
+  this repository calls a secret-store write API.
+- The seed script already speaks OpenBao (`--store openbao`, added in Stage 2
+  Phase 2), so writing them there needs no new capability for anyone.
+
+The actual blocker is the same one Task 10 hit, in a different composition:
+**`SQLInstance` hardcodes `secretStoreRef.name: clustersecretstore`** — in two
+places in `apis/sqlinstance/kcl/main.k` — and its XRD exposes no store field.
+Moving these three keys therefore requires the same treatment `App` received in
+crossplane-configuration v0.6.1: an optional `store` defaulting to the current
+value, a release, and a pin bump.
+
+Given that, leaving them is also the coherent choice rather than merely the cheap
+one. All three are created by a single operator command at the same moment in a
+rebuild as the bootstrap tier itself, before Flux brings up any consumer.
+Splitting that one command across two stores buys uniformity in the store whose
+remaining residents are precisely the things that *cannot* move.
+
+**Reversal path**, whenever it is wanted: add `store` to the SQLInstance XRD and
+composition exactly as `App` has it, release, bump the pin, then
+`secret-store.sh migrate` followed by `store: openbao-platform` on the claim.
+Nothing here forecloses it.
+
 ## Migration
 
 Non-destructive and reversible at every step:

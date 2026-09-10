@@ -54,33 +54,17 @@ resource "vault_generic_endpoint" "admin_user" {
   })
 }
 
-# Tenant auth: app namespace
-# --------------------------
-# The `app` namespace held a kv-v2 mount with no auth method, no policy and no
-# role, so nothing but a root token could read it. This makes it reachable and
-# gives the tenancy model one worked example.
+# There is deliberately NO tenant auth here any more.
 #
-# No secret_id is generated here on purpose: there is no consumer yet, and an
-# unused live credential is worse than none. Mint one with
-# `bao write -f -namespace=app auth/approle/role/app/secret-id` when something
-# needs it.
-resource "vault_auth_backend" "approle_app" {
-  namespace = vault_namespace.app.path_fq
-  type      = "approle"
-  # No explicit `path`. Setting it -- even to "approle", the value the provider
-  # defaults to -- makes hashicorp/vault v5 fail the post-create read on a
-  # namespaced backend: "Provider produced inconsistent result after apply ...
-  # root object was present, but now absent". The mount IS created server-side;
-  # only the read-back fails, so every apply errors and leaves an untracked
-  # mount behind. Every other namespaced backend here omits `path` too.
-}
-
-resource "vault_approle_auth_backend_role" "app" {
-  namespace         = vault_namespace.app.path_fq
-  backend           = vault_auth_backend.approle_app.path
-  role_name         = "app"
-  token_policies    = [vault_policy.app.name]
-  token_bound_cidrs = var.allowed_cidr_blocks
-  token_ttl         = 1800
-  token_max_ttl     = 3600
-}
+# The `app` namespace, its `secret/` kv-v2 mount, its AppRole and its policy were
+# built as a worked example of tenancy and were never consumed by anything. They
+# are removed rather than kept, because they were not merely unused -- they were
+# unusable in the direction that matters. A policy binds only within the
+# namespace it is created in, so no policy attached to a root identity group
+# (which is where the OIDC groups live) could reach that mount; only a root token
+# could. Leaving it in place read as the intended design rather than as the wrong
+# turn it was, for anyone adding a second tenant.
+#
+# Application secrets live in the root-namespace `apps/` mount instead, owned per
+# app through an external identity group matched on the ZITADEL `groups` claim.
+# See ADR-0036 and policies/app-prefix.hcl.

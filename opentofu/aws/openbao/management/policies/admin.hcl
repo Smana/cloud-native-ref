@@ -63,11 +63,10 @@ path "sys/auth"
   capabilities = ["read"]
 }
 
-# Enable and manage the key/value secrets engine at `secret/` path
-
 # Manage tenant namespaces. Creating and deleting a namespace is a root-level
 # operation; administering what is inside one needs a policy created in that
-# namespace (see policies/app.hcl).
+# namespace. No tenant namespace exists today -- the `app` one was removed with
+# ADR-0036, because a policy on a root identity group could never reach into it.
 path "sys/namespaces"
 {
   capabilities = ["list"]
@@ -78,10 +77,16 @@ path "sys/namespaces/*"
   capabilities = ["create", "read", "update", "delete", "list", "sudo"]
 }
 
-# NOTE: there is deliberately no `secret/*` grant. The only kv-v2 mount on this
-# cluster is `secret/` in the `app` tenant namespace, which this policy cannot
-# reach from root. The grant that used to be here matched nothing.
-# Any kv mount later created *in* root would need it back.
+# NOTE: there is deliberately no grant on any secret PATH here. This policy
+# administers OpenBao; reading and writing the kv mounts is `secrets-admin.hcl`,
+# and the operator login carries both.
+#
+# The warning that used to sit here -- "any kv mount later created *in* root
+# would need it back" -- was right, and was then missed: `platform/` and `apps/`
+# were created in root and the grant went only to the OIDC admin GROUP, so the
+# break-glass userpass login could authenticate and read neither. Fixed by adding
+# secrets-admin to that login in auth.tf. If you add a mount, add it to
+# secrets-admin.hcl AND check auth.tf carries the policy.
 
 # Manage secrets engines
 path "sys/mounts/*"

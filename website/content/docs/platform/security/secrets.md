@@ -55,9 +55,13 @@ These are read *before* OpenBao has an API. The clearest case is the
 certificate against a CA `Secret` that this `ExternalSecret` produces. Repointing
 it at OpenBao would be circular, so it reads the cloud store and always will.
 
-Three `cnpg/*` credentials also stay put. They are generated at runtime by the
-database seeding path rather than curated by a human, and moving them would mean
-granting a machine write access to a mount — the exact property removed below.
+Three database credentials also stay put, for a duller reason: the `SQLInstance`
+composition that renders their `ExternalSecret`s hardcodes the managed store and
+exposes no field to change it — the same blocker the `App` composition had until
+v0.6.1. They are created by the `seed` command of `scripts/secret-store.sh`, one
+operator command that also seeds part of the bootstrap tier, so keeping the two
+together is coherent rather than merely expedient. Nothing forecloses moving them
+later.
 
 {{< callout type="warning" >}}
 **A store of record is only as durable as its restore.** OpenBao's storage here
