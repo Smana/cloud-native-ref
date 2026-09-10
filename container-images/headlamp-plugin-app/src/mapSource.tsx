@@ -40,6 +40,13 @@ export function appTreeSource(tree: AppTree | null) {
 export const appsMapSource = {
   id: 'ogenki-apps',
   label: 'Apps',
+  // Headlamp concatenates every plugin-registered source onto whatever a page
+  // passes as its own `defaultSources`, and selects a source whenever
+  // `isEnabledByDefault` is unset or true. Left unset, this source would ride
+  // along on the App page's embedded graph too — leaking every other App in
+  // the namespace, expanded a level, into a graph meant to hold exactly one.
+  // Keep it opt-in: a user ticks it on in the global Map's source picker.
+  isEnabledByDefault: false,
   useData() {
     const [apps] = AppResource.useList();
     const [tree, setTree] = useState<AppTree | null>(null);
