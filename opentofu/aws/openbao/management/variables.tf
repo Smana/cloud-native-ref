@@ -137,12 +137,13 @@ variable "mode" {
 
 # ZITADEL OIDC for human operators (ADR-0034)
 # -------------------------------------------
-# Empty disables the OIDC auth method entirely, which is the right state for a
-# cluster whose ZITADEL has not been bootstrapped yet. There is a genuine
-# ordering knot: `zitadel-oidc-clients.sh` must run before there is a client to
-# configure, that script needs a running ZITADEL, and ZITADEL needs secrets from
-# this stack. Gating on the value rather than trying to order the two lets a
-# first deploy converge without OIDC and pick it up on the next apply.
+# Empty disables the OIDC auth method entirely. So does a secret that does not
+# exist yet: oidc.tf lists before it reads, so naming a secret that has not been
+# created is not an error. There is a genuine ordering knot -- for
+# `zitadel-oidc-clients.sh` to register a client it needs a running ZITADEL, and
+# ZITADEL needs secrets from this stack -- and gating on the secret EXISTING
+# rather than on the variable being unset is what lets a first deploy converge
+# without OIDC, pick it up on the next apply, and keep it across rebuilds.
 variable "openbao_oidc_secret_id" {
   description = "AWS Secrets Manager secret holding {client_id, client_secret, endpoint} for OpenBao's ZITADEL OIDC client, as written by scripts/zitadel-oidc-clients.sh. Empty disables OIDC auth."
   type        = string
