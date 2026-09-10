@@ -56,7 +56,9 @@
 
 Run: `sed -n '1,30p' opentofu/aws/openbao/management/mounts.tf`
 
-Note how `vault_mount.app_secret` sets `type`, `options` and `namespace`. The new mounts differ in exactly one way: **no `namespace` argument**, which puts them in root.
+Note how `vault_mount.app_secret` and `vault_mount.lineage` are written. Both use `type = "kv-v2"` — the provider's shorthand — **not** `type = "kv"` with `options = { version = "2" }`. `vault_mount.lineage` is also proof that a root-namespace kv-v2 mount already works here. The new mounts differ from `app_secret` in exactly one way: **no `namespace` argument**, which puts them in root.
+
+> **Found during execution (2026-09-10):** this step's code block originally showed `type = "kv"` plus `options`, contradicting the instruction to copy the idiom. Corrected to `kv-v2`; both mounts verified as `version = 2` after apply.
 
 - [ ] **Step 2: Append the two mounts**
 
@@ -73,8 +75,7 @@ Note how `vault_mount.app_secret` sets `type`, `options` and `namespace`. The ne
 # `harbor-admin-password` becomes `platform/harbor/admin-password`.
 resource "vault_mount" "platform" {
   path        = "platform"
-  type        = "kv"
-  options     = { version = "2" }
+  type        = "kv-v2"
   description = "Platform component secrets; store of record (ADR-0033 Stage 2)"
 }
 
@@ -88,8 +89,7 @@ resource "vault_mount" "platform" {
 # Grammar: apps/<app>/<key>.
 resource "vault_mount" "apps" {
   path        = "apps"
-  type        = "kv"
-  options     = { version = "2" }
+  type        = "kv-v2"
   description = "Application secrets, owned per app (ADR-0036)"
 }
 ```
