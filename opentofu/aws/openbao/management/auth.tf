@@ -46,8 +46,19 @@ resource "vault_generic_endpoint" "admin_user" {
   disable_delete       = false
   ignore_absent_fields = true
 
+  # `secrets-admin` is here for the same reason the other two are: this is the
+  # break-glass login, and it must be able to read what it would be used to
+  # recover. Without it the login succeeds and every read of the `platform/` and
+  # `apps/` mounts returns 403 — the wrong moment to discover a missing grant,
+  # because the alternative route to those mounts is the ZITADEL OIDC login, and
+  # the credential that IdP boots from now lives in `platform/zitadel/envvars`.
+  #
+  # The grant went to the `openbao-admin` identity group when the mounts were
+  # created, and only there. `admin.hcl` predicted the gap in a comment — "any
+  # kv mount later created *in* root would need it back" — and both new mounts
+  # are in root.
   data_json = jsonencode({
-    policies      = [vault_policy.admin.name, vault_policy.pki_admin.name]
+    policies      = [vault_policy.admin.name, vault_policy.pki_admin.name, vault_policy.secrets_admin.name]
     password      = random_password.admin.result
     token_ttl     = 3600
     token_max_ttl = 28800
