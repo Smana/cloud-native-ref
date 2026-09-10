@@ -129,6 +129,18 @@ resource "vault_jwt_auth_backend_role" "oidc_default" {
 
   allowed_redirect_uris = local.oidc_redirect_uris
   user_claim            = "email"
+
+  # Without this the method requests `openid` and nothing else, ZITADEL issues a
+  # token carrying neither `email` nor `groups`, and the login dies on
+  # `claim "email" not found in token` at the end of an otherwise healthy round
+  # trip -- user_claim below asks for a claim that was never requested.
+  #
+  # Same trap, same values, as the OIDC_SCOPES the registration script sets for
+  # every other consumer (HEADLAMP_OIDC_SCOPES in scripts/zitadel-oidc-clients.sh):
+  # `groups` is what makes ZITADEL run the groupsFromRoles Action, and `email` is
+  # what user_claim reads. `openid` is always sent by the auth method itself and
+  # must not be repeated here.
+  oidc_scopes = ["profile", "email", "groups"]
   # THE FIELD THAT DECIDES WHETHER ANY OF THIS WORKS.
   #
   # ZITADEL has no groups; it has project roles, emitted as a NESTED object
