@@ -156,6 +156,23 @@ variable "openbao_oidc_issuer" {
   default     = ""
 }
 
+# Apps that own a prefix under the `apps/` mount. One OpenBao policy, one
+# external identity group and one alias are generated per entry.
+#
+# Generated per app rather than templated with {{identity.groups.names.*}} on
+# purpose: templating collapses N policies into one, but the grant stops being
+# visible -- it cannot be read off a plan diff, and one mistake in the template
+# widens every app's reach at once. The cost is that onboarding an app touches
+# Terraform, which is accepted (ADR-0036).
+#
+# An entry is only useful once a matching ZITADEL project role `app-<name>`
+# exists and a human has been granted it; see scripts/zitadel-oidc-clients.sh.
+variable "secret_owning_apps" {
+  description = "Apps that own a prefix under the apps/ kv-v2 mount. Each gets a policy, an external identity group and an alias matched on the OIDC groups claim."
+  type        = set(string)
+  default     = []
+}
+
 variable "tags" {
   description = "A map of tags to add to all resources"
   type        = map(string)

@@ -21,6 +21,7 @@
 - **Migration never overwrites and never deletes the source.** Old entries are removed by hand, in Task 13 only.
 - **The bootstrap tier stays in the managed store**: `certificates/priv.aws.ogenki.io/ca-chain`, the OpenBao server TLS cert/key, root token, recovery keys, intermediate CA bundle. The `openbao-ca` ExternalSecret keeps reading AWS — the OpenBao-backed store depends on the CA Secret it produces, so repointing it would be circular.
 - **`kubernetesServiceAccountToken` trips detect-secrets.** Append ` # pragma: allowlist secret` on that line.
+- **A NEW file must be staged before a pathspec commit.** `git commit -- <path>` only considers *tracked* paths, so a newly created policy or manifest is silently skipped and the commit succeeds without it. Stage it first. Applies to Tasks 2, 3, 4 and 7.
 - **There is exactly ONE OpenBao, and it is on AWS.** ADR-0027 classes it a primary-cloud singleton. The mounts, policies and identity groups are created **only** by `opentofu/aws/openbao/management` — do not mirror them into `opentofu/gcp/openbao/management`, which would create a second, divergent store. What GCP needs is parity on the *consumer* side only: its `external-secrets` JWT role gains the same policy name (Task 4), and its `ClusterSecretStore` objects are the same manifests with `${cluster_name}` resolving to `gcp-0` (Task 7).
 - **`gcp-0` is not running today.** Its `[LIVE]` verification steps cannot be executed in this pass. Make the manifest and HCL changes, let CI validate them, and record in the PR that GCP's live verification is outstanding — do not claim it passed.
 - **Validators** (from the repo root, exit 0 expected):
@@ -295,7 +296,11 @@ Then: `git commit -F /tmp/msg -- opentofu/aws/openbao/management/policies/secret
 
 **Interfaces:**
 - Consumes: `vault_mount.apps` (Task 1), `vault_jwt_auth_backend.oidc[0].accessor` (existing, `oidc.tf`), `local.oidc_enabled` (existing).
-- Produces: `vault_policy.app["<name>"]`, `vault_identity_group.app["<name>"]`, `vault_identity_group_alias.app["<name>"]` for each entry of `var.secret_owning_apps`.
+- Produces: `vault_policy.app_prefix["<name>"]`, `vault_identity_group.app["<name>"]`, `vault_identity_group_alias.app["<name>"]` for each entry of `var.secret_owning_apps`.
+
+> **Found during execution (2026-09-10), two defects in this task's original code:**
+> 1. It used `resource "vault_policy" "app"`, which **collides** with the existing app-namespace tenant policy in `policies.tf`. Renamed to `app_prefix`.
+> 2. `for_each = local.secret_owning_apps` failed with `Invalid for_each argument: local.secret_owning_apps has a sensitive value`, because `local.oidc_enabled` derives from the OIDC secret's payload. Fixed with the `oidc_on` local shown below.
 
 - [ ] **Step 1: Declare the variable**
 
@@ -349,11 +354,23 @@ Create `opentofu/aws/openbao/management/apps.tf`:
 # against those three before anything here is suspected.
 
 locals {
+  # `local.oidc_enabled` is computed from the OIDC secret's PAYLOAD, so OpenTofu
+  # marks it sensitive -- and a sensitive value cannot be a for_each argument,
+  # because instance keys become part of a resource address and would leak.
+  #
+  # The keys below come from a plain tfvars list, never from the secret, so it
+  # is only the GATE that has to be unwrapped. try() covers the other case:
+  # when the secret is absent, oidc_enabled was never sensitive to begin with,
+  # and nonsensitive() errors on a value that is not sensitive.
+  oidc_on = try(nonsensitive(local.oidc_enabled), local.oidc_enabled)
+
   # Empty when OIDC is off, so no policy or group is generated at all.
-  secret_owning_apps = local.oidc_enabled == 1 ? var.secret_owning_apps : toset([])
+  secret_owning_apps = local.oidc_on == 1 ? var.secret_owning_apps : toset([])
 }
 
-resource "vault_policy" "app" {
+# NOT `vault_policy.app` -- that name is already taken by the app-namespace
+# tenant policy in policies.tf.
+resource "vault_policy" "app_prefix" {
   for_each = local.secret_owning_apps
 
   name = "app-${each.value}"
@@ -368,7 +385,7 @@ resource "vault_identity_group" "app" {
 
   name     = "openbao-app-${each.value}"
   type     = "external"
-  policies = [vault_policy.app[each.value].name]
+  policies = [vault_policy.app_prefix[each.value].name]
 }
 
 resource "vault_identity_group_alias" "app" {

@@ -53,3 +53,14 @@ tags = {
 #   ./scripts/zitadel-oidc-clients.sh sync --cluster aws-0 --cloud aws \
 #     --region eu-west-3 --grant-admin <your-email> --apply
 openbao_oidc_secret_id = "openbao-oidc"
+
+# Apps that own a prefix under the `apps/` mount (ADR-0036). Only apps that
+# actually hold secrets today: `secret-store.sh check --cloud aws` resolves
+# app-wizard to two keys (llm, oauth) and image-gallery to one (config). The
+# other App claims consume no ExternalSecret, so they get no group and no
+# prefix -- an empty prefix would only suggest a boundary that protects nothing.
+#
+# Adding an entry here is half the job: the matching ZITADEL project role
+# `app-<name>` has to exist and be granted to a human before the group does
+# anything.
+secret_owning_apps = ["app-wizard", "image-gallery"]
