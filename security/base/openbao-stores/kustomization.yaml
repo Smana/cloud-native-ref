@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The OpenBao-backed ClusterSecretStores, shared by both clouds.
+#
+# Cloud-neutral by construction: the only per-cluster value is the JWT mount,
+# written as `jwt/${cluster_name}` and substituted by Flux from each cluster's
+# own vars ConfigMap. That is why these live in base/ while the MANAGED-store
+# ClusterSecretStore stays in each cloud's overlay -- that one names a provider
+# (`aws` or `gcpsm`) that cannot be shared.
+#
+# Listed from each cloud's `openbao` overlay, so they land in the
+# `security-openbao` Kustomization rather than `security`. That boundary is not
+# cosmetic: everything here has to be ADMITTED by the external-secrets webhook
+# before it can exist, and `security` is what installs that webhook. See the
+# long note in security/gcp-0/openbao/kustomization.yaml, where the race was
+# actually reproduced.
+resources:
+  - clustersecretstore-platform.yaml
+  - clustersecretstore-apps.yaml
