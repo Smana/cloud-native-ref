@@ -458,3 +458,34 @@ claims:
     pages:
       - path: website/content/docs/platform/gitops/_index.md
         must_contain: 'Headlamp {value} or later'
+
+  - id: openbao-platform-mount
+    why: >-
+      The Secrets page tells a reader which mount a platform credential lives in
+      and shows paths built from it. Renaming the mount silently breaks every
+      path on that page and in ADR-0036, while nothing else in the repo would
+      notice -- the ClusterSecretStore carries the mount, so its consumers only
+      ever see the relative path.
+    source:
+      file: opentofu/aws/openbao/management/mounts.tf
+      pattern: '^resource "vault_mount" "(platform)" \{'
+    pages:
+      - path: website/content/docs/platform/security/secrets.md
+        must_contain: '`{value}/`'
+      - path: website/content/docs/decisions/0036-per-app-secret-ownership-via-zitadel-groups.md
+        must_contain: '`{value}/`'
+
+  - id: openbao-apps-mount
+    why: >-
+      Same hazard as openbao-platform-mount, on the mount a developer types into
+      an App claim. The claim's `store` names a ClusterSecretStore rather than
+      the mount, so a rename would leave every documented `remoteRef` example
+      wrong with no failing manifest anywhere.
+    source:
+      file: opentofu/aws/openbao/management/mounts.tf
+      pattern: '^resource "vault_mount" "(apps)" \{'
+    pages:
+      - path: website/content/docs/platform/security/secrets.md
+        must_contain: '`{value}/`'
+      - path: website/content/docs/decisions/0036-per-app-secret-ownership-via-zitadel-groups.md
+        must_contain: '`{value}/`'

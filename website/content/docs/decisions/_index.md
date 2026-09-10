@@ -78,5 +78,6 @@ single-file fixes never need one.
 | [0033]({{< relref "/docs/decisions/0033-openbao-store-of-record-lineage.md" >}}) | OpenBao is the store of record, durable as a snapshot lineage, active on the primary cloud with restore-based fallback | Accepted | 2026-09-02 |
 | [0034]({{< relref "/docs/decisions/0034-openbao-oidc-via-zitadel-project-roles.md" >}}) | Human access to OpenBao is ZITADEL OIDC, authorised by project roles, with userpass kept as break-glass | Accepted | 2026-09-05 |
 | [0035]({{< relref "/docs/decisions/0035-own-headlamp-plugin-for-the-app-view.md" >}}) | An in-house Headlamp plugin gives the App abstraction its own view | Accepted | 2026-09-09 |
+| [0036]({{< relref "/docs/decisions/0036-per-app-secret-ownership-via-zitadel-groups.md" >}}) | An app's secrets are owned by its own ZITADEL group, and the policy for each app is generated rather than templated | Accepted | 2026-09-10 |
 
 Starting a new one? Copy the [template]({{< relref "/docs/decisions/template.md" >}}).

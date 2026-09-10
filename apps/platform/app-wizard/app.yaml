@@ -115,32 +115,45 @@ spec:
       value: "https://app-wizard.${private_domain_name}/api/auth/callback"
 
   # ---------------------------------------------------------------------------
-  # OAuth app credentials + session key from AWS Secrets Manager.
+  # OAuth app credentials + session key, from OpenBao's `apps/` mount.
   # ---------------------------------------------------------------------------
-  # The ExternalSecret is reconciled by the External Secrets Operator (which has
-  # its own EKS Pod Identity) — the wizard pod itself makes NO direct AWS calls,
-  # so it needs no egress to the Pod Identity endpoint (169.254.170.23). ESO
-  # materializes the `app-wizard-oauth` Secret; the wizard reads it via envFrom.
+  # The ExternalSecret is reconciled by the External Secrets Operator — the
+  # wizard pod itself makes NO direct call to any secret store, so it needs no
+  # egress to the Pod Identity endpoint (169.254.170.23). ESO materializes the
+  # `app-wizard-oauth` Secret; the wizard reads it via envFrom.
   #
-  # The secret-store blob at apps-app-wizard-oauth MUST contain these
-  # keys (the composition imports ALL keys from the path via dataFrom → they
-  # land as env vars of the same name through envFrom):
+  # The blob at apps/app-wizard/oauth MUST contain these keys (the composition
+  # imports ALL keys from the path via dataFrom → they land as env vars of the
+  # same name through envFrom):
   #   GITHUB_CLIENT_ID       — GitHub OAuth app (login; PRs open as the user)
   #   GITHUB_CLIENT_SECRET
   #   SESSION_KEY            — signs the session cookie
   # Missing keys simply don't materialize as env vars. Populating them is a
-  # human step (T003).
+  # human step — and now a self-service one: a human in the `openbao-app-app-wizard`
+  # group can write this path in the OpenBao UI without a platform admin
+  # (ADR-0036).
   #
-  # The LLM assist key lives in its OWN blob (apps-app-wizard-llm, key
+  # The LLM assist key lives in its OWN blob (apps/app-wizard/llm, key
   # LLM_API_KEY) rather than the oauth blob: it is a copy of runlore's GLM key
   # and rotates on that key's lifecycle, not the OAuth apps'. Remove the blob
   # (or the entry below) to switch assists off.
+  #
+  # Read from OpenBao's `apps/` mount rather than the cloud managed store
+  # (ADR-0033 Stage 2). `store` is new in crossplane-configuration and defaults
+  # to `clustersecretstore`, so naming it here is what moves these two.
+  #
+  # `remoteRef` loses the `apps-` prefix because the store already carries the
+  # mount: `app-wizard/oauth` resolves to apps/data/app-wizard/oauth. The dash
+  # grammar (ADR-0023) existed so one key name worked on both clouds' managed
+  # stores; under OpenBao there is one store for both, and the path is a path.
   externalSecrets:
     - name: app-wizard-oauth
-      remoteRef: apps-app-wizard-oauth
+      remoteRef: app-wizard/oauth
+      store: openbao-apps
       refreshInterval: 1h
     - name: app-wizard-llm
-      remoteRef: apps-app-wizard-llm
+      remoteRef: app-wizard/llm
+      store: openbao-apps
       refreshInterval: 1h
   envFrom:
     - secretRef:
@@ -219,7 +232,7 @@ spec:
         - clone
         - --depth=1
         - --single-branch
-        - --branch=v0.6.0
+        - --branch=v0.6.1
         - https://github.com/Smana/crossplane-configuration.git
         - /repo/crossplane-configuration
       securityContext:

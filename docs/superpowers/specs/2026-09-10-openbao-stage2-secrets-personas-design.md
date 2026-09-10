@@ -111,6 +111,44 @@ things read before OpenBao has an API, plus the seal key as a sixth item that is
 an AWS resource rather than a secret. Flux's GitHub App key moves to OpenBao, as
 the parent design decided; that decision is inherited, not reopened.
 
+### Runtime-generated secrets — the `cnpg/*` keys (Task 11)
+
+**Decision: they stay in the cloud managed store.** Three keys —
+`cnpg/xplane-harbor/roles/harbor`, `cnpg/xplane-zitadel/superuser` and
+`cnpg/xplane-image-gallery/roles/image-gallery-app`.
+
+**The reason this design originally gave for leaving them is wrong, and is
+corrected here so it is not reused.** It said they are "written at runtime" and
+that moving them would mean granting a machine write access to a mount — the
+property the read-only External Secrets policy deliberately removes. Neither
+half holds:
+
+- Nothing in the cluster writes to any secret store. These keys are created by
+  `scripts/secret-store.sh seed --apply`, an **operator-run** command; they are
+  in its `GENERATABLE` list. The SQLInstance composition only *asks* for them
+  through an `ExternalSecret`. Verified by grep: no manifest or composition in
+  this repository calls a secret-store write API.
+- The seed script already speaks OpenBao (`--store openbao`, added in Stage 2
+  Phase 2), so writing them there needs no new capability for anyone.
+
+The actual blocker is the same one Task 10 hit, in a different composition:
+**`SQLInstance` hardcodes `secretStoreRef.name: clustersecretstore`** — in two
+places in `apis/sqlinstance/kcl/main.k` — and its XRD exposes no store field.
+Moving these three keys therefore requires the same treatment `App` received in
+crossplane-configuration v0.6.1: an optional `store` defaulting to the current
+value, a release, and a pin bump.
+
+Given that, leaving them is also the coherent choice rather than merely the cheap
+one. All three are created by a single operator command at the same moment in a
+rebuild as the bootstrap tier itself, before Flux brings up any consumer.
+Splitting that one command across two stores buys uniformity in the store whose
+remaining residents are precisely the things that *cannot* move.
+
+**Reversal path**, whenever it is wanted: add `store` to the SQLInstance XRD and
+composition exactly as `App` has it, release, bump the pin, then
+`secret-store.sh migrate` followed by `store: openbao-platform` on the claim.
+Nothing here forecloses it.
+
 ## Migration
 
 Non-destructive and reversible at every step:
@@ -124,6 +162,62 @@ Non-destructive and reversible at every step:
    with the command recorded in the PR.
 
 At no point is the old store removed before the new one is proven for that key.
+
+### The grace period — DEFERRED, decided 2026-09-10
+
+**Nothing is deleted from the managed store yet.** The owner's call: revisit in a
+few weeks. This section exists so that is a decision with a list attached rather
+than a loose end.
+
+All sixteen were verified present in OpenBao on 2026-09-10 before this deferral
+was recorded (`bao kv get <path>` succeeded for every one):
+
+| Managed-store entry | OpenBao path | Safe to delete |
+|---|---|---|
+| `harbor-admin-password` | `platform/harbor/admin-password` | now |
+| `harbor-oidc` | `platform/harbor/oidc` | now |
+| `harbor-valkey-password` | `platform/harbor/valkey-password` | now |
+| `headlamp-envvars` | `platform/headlamp/envvars` | now |
+| `zitadel-envvars` | `platform/zitadel/envvars` | now |
+| `runlore-credentials` | `platform/runlore/credentials` | now |
+| `runlore-slack-app` | `platform/runlore/slack-app` | now |
+| `runlore-webhook` | `platform/runlore/webhook` | now |
+| `security-flux-ui-oidc` | `platform/flux/ui-oidc` | now |
+| `observability-flux-slack-app` | `platform/flux/slack-app` | now |
+| `observability-victoria-metrics-k8s-stack-grafana-envvars` | `platform/victoria-metrics/grafana-envvars` | now |
+| `observability-victoria-metrics-k8s-stack-alertmanager-slack-app` | `platform/victoria-metrics/alertmanager-slack-app` | now |
+| `tailscale-k8s-operator-oauth-client` | `platform/tailscale/operator-oauth-client` | now |
+| `apps-app-wizard-llm` | `apps/app-wizard/llm` | after the app repoint is live |
+| `apps-app-wizard-oauth` | `apps/app-wizard/oauth` | after the app repoint is live |
+| `apps/image-gallery/config` | `apps/image-gallery/config` | after the app repoint is live |
+
+```bash
+# Re-verify before deleting -- do not trust this list unread.
+for p in platform/harbor/admin-password platform/zitadel/envvars ... ; do
+  bao kv get "$p" >/dev/null || echo "MISSING IN OPENBAO: $p"
+done
+
+# Soft delete: Secrets Manager keeps a 30-day recovery window by default.
+aws secretsmanager delete-secret --region eu-west-3 --secret-id <name>
+```
+
+**Two things must NOT be deleted with them**, and neither is in the table above:
+
+- The bootstrap tier — `certificates/priv.aws.ogenki.io/{ca-chain,openbao,intermediate-ca}`
+  and `openbao/cloud-native-ref/{tokens/root,tokens/recovery,users/admin}`.
+- The three `cnpg/*` keys, which are staying by the decision above, and
+  `github/flux-app`, which OpenTofu reads to build the Secret Flux authenticates
+  with *before* Flux exists. The parent design listed that key as moving to
+  OpenBao; it has not moved and, on this evidence, belongs in the bootstrap tier
+  instead.
+
+**One hazard when the time comes.** `secret-store.sh seed` still defaults to the
+AWS store. Deleting `harbor-admin-password` and friends there means a from-scratch
+rebuild that runs the default `seed` regenerates them in the managed store while
+the cluster reads OpenBao — two divergent values for one credential, and the
+failure surfaces as a login that rejects a correct password. Either pass
+`--store openbao` at seed time or change the default in the same change as the
+deletion.
 
 ## Records
 

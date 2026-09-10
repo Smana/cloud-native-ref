@@ -38,13 +38,6 @@ resource "vault_policy" "pki_admin" {
   })
 }
 
-# Tenant policy, created inside the tenant's own namespace.
-resource "vault_policy" "app" {
-  namespace = vault_namespace.app.path_fq
-  name      = "app"
-  policy    = file("policies/app.hcl")
-}
-
 # Full control of the two Stage 2 secret mounts. Held by the OIDC admin group
 # alongside `admin` and `pki-admin`; see oidc.tf.
 #
