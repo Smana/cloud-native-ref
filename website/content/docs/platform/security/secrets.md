@@ -26,10 +26,14 @@ developer types to get one.
 **OpenBao is the store of record.** It holds two kv-v2 mounts, both in the root
 namespace:
 
-| Mount | Holds | Example |
+| Mount | Holds | Example path *within* the mount |
 |---|---|---|
-| `platform/` | platform component credentials | `platform/harbor/admin-password` |
-| `apps/` | application credentials | `apps/image-gallery/config` |
+| `platform/` | platform component credentials | `harbor/admin-password` |
+| `apps/` | application credentials | `image-gallery/config` |
+
+Paths are shown relative to their mount throughout this page, because that is
+what a consumer writes: a `ClusterSecretStore` is scoped to one mount, so nothing
+outside OpenBao itself ever spells the mount and the path together.
 
 Two mounts rather than one because External Secrets' `vault` provider takes
 exactly one mount per store, so the split is what lets the two audiences carry
@@ -84,9 +88,15 @@ it could also write, then anything able to shape an `ExternalSecret` — any
 workload with create access in its own namespace — could launder a value into
 another app's prefix, and per-app ownership would be decorative.
 
-So the `external-secrets` role holds a read-only policy over `platform/data/*`
-and `apps/data/*` and no write capability of any kind. Proven by logging in as
-that identity and trying:
+So the `external-secrets` role holds a read-only policy over both mounts and no
+write capability of any kind:
+
+```hcl
+path "platform/data/*" { capabilities = ["read"] }
+path "apps/data/*"     { capabilities = ["read"] }
+```
+
+Proven by logging in as that identity and trying to write:
 
 ```console
 $ bao kv put platform/canary probe=1
@@ -234,9 +244,15 @@ write, no store to configure, and no IAM to request.
 
 Three details are worth knowing before the first one bites you.
 
-**`remoteRef` is relative to the store's mount.** `image-gallery/config`, not
-`apps/image-gallery/config` — the store already carries the mount. Under the
-cloud managed store the path was absolute and dash-separated
+**`remoteRef` is relative to the store's mount** — the store already carries the
+mount, so writing it again resolves to a path that does not exist:
+
+```text
+remoteRef: image-gallery/config         # correct
+remoteRef: apps/image-gallery/config    # wrong — resolves under the mount twice
+```
+
+Under the cloud managed store the path was absolute and dash-separated
 (`apps-app-wizard-oauth`), because [ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}})
 needed one key name to work against two clouds' managed stores. There is one
 OpenBao for both clouds, so a path is just a path.

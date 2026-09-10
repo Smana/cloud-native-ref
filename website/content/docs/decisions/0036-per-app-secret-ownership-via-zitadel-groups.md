@@ -162,7 +162,7 @@ cross-namespace identity problem that has no clean answer — Option 3's wall.
 | ZITADEL role | OpenBao external group | Policies |
 |---|---|---|
 | `admin` | `openbao-admin` | `admin`, `pki-admin`, **`secrets-admin`** — full CRUD over both mounts |
-| `app-<name>` | `openbao-app-<name>` | `app-<name>` — CRUD on `apps/data/<name>/*` plus `metadata`/`delete`/`undelete`; **no `destroy`** |
+| `app-<name>` | `openbao-app-<name>` | `app-<name>` — CRUD on that app's own prefix in the `apps/` mount, plus `metadata`/`delete`/`undelete`; **no `destroy`** |
 
 `destroy` is withheld from every per-app policy: a compromised credential must
 not be able to erase secret history. Erasing history is an administrative act, so
@@ -170,8 +170,13 @@ not be able to erase secret history. Erasing history is an administrative act, s
 
 ### Machines read, humans write
 
-The `external-secrets` JWT role gets a **read-only** policy over `platform/data/*`
-and `apps/data/*` and no write capability of any kind.
+The `external-secrets` JWT role gets a **read-only** policy over both mounts and
+no write capability of any kind:
+
+```hcl
+path "platform/data/*" { capabilities = ["read"] }
+path "apps/data/*"     { capabilities = ["read"] }
+```
 
 This is the property that makes per-app ownership mean something. External
 Secrets resolves a store with the **controller's** identity, not the requester's.
@@ -192,7 +197,8 @@ decorative.
   is reused rather than a second authorisation mechanism invented.
 - Secret paths become paths. ADR-0023's dash grammar existed so one key name
   worked against two clouds' managed stores; there is one OpenBao for both
-  clouds, so `apps/image-gallery/config` is simply a path.
+  clouds, so `apps-image-gallery-config` becomes `image-gallery/config` in the
+  `apps/` mount.
 
 ### Negative
 
