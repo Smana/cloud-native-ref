@@ -46,6 +46,7 @@
 | `.../src/client.ts` (new) | `ApiProxy`-backed `ApiClient` with the per-apiVersion discovery cache |
 | `.../src/useAppTree.ts` (new) | React hook: tree + pods + refresh interval |
 | `.../src/mapSource.tsx` (new) | The "Apps" `GraphSource` for the global Map |
+| `.../src/kubeWrap.ts` (new) | Wraps a plain object in Headlamp's own class for its kind, falling back to a thin subclass — see the correction note in task 5 |
 | `.../src/AppsListPage.tsx`, `AppPage.tsx` (new) | The two pages |
 | `.../src/index.tsx` (new) | Every `register*` call, in one place |
 | `website/content/docs/decisions/0035-own-headlamp-plugin-for-the-app-view.md` (new) | ADR |
@@ -1303,6 +1304,22 @@ export function useAppTree(namespace: string, name: string) {
 }
 ```
 
+> **Corrected during execution.** Wrapping a plain object as `new KubeObject(json)`
+> crashes Headlamp's hover glance for *every* node: the panel calls
+> `Pod.isClassOf(resource)`, which reads the static `apiVersion` of the wrapper's
+> own class, and the base class has none — it throws mid-render, with no error
+> boundary anywhere under the toolkit's map components.
+>
+> Supplying that static is **not** the fix. It stops the throw and then makes the
+> class check start matching, which renders a kind-specific panel that reads
+> accessors only the real classes define — `deployment.status`, `pod.spec`,
+> `service.getExternalAddresses()`. That is a crash one layer deeper.
+>
+> Wrap with Headlamp's own registered class when one exists, and fall back to a
+> thin subclass only for kinds it does not know, which are exactly the kinds no
+> panel can match. The helper lives in `src/kubeWrap.ts` because the App page
+> needs it too.
+
 - [ ] **Step 3: Write `src/mapSource.tsx`**
 
 ```tsx
@@ -1322,7 +1339,7 @@ export function graphNodesFrom(tree: AppTree) {
   return {
     nodes: tree.nodes.map(n => ({
       id: n.id,
-      kubeObject: new KubeObject(n.object as any),
+      kubeObject: wrapKubeObject(n.object),
       status: nodeStatus(n.object),
     })),
     edges: tree.edges.map(e => ({ id: e.id, source: e.source, target: e.target })),
@@ -1527,8 +1544,8 @@ import {
   StatusLabel,
   WorkloadLogs,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
-import { KubeObject } from '@kinvolk/headlamp-plugin/lib/K8s/cluster';
 import { getCluster } from '@kinvolk/headlamp-plugin/lib/Utils';
+import { wrapKubeObject } from './kubeWrap';
 import { Alert, Box, Button, Chip, Typography } from '@mui/material';
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
@@ -1652,7 +1669,7 @@ export function AppPage() {
             {
               label: 'Name',
               getter: (n: (typeof composed)[0]) => (
-                <Link kubeObject={new KubeObject(n.object as any)}>{n.object.metadata.name}</Link>
+                <Link kubeObject={wrapKubeObject(n.object)}>{n.object.metadata.name}</Link>
               ),
             },
             {
@@ -1674,7 +1691,7 @@ export function AppPage() {
             {
               label: 'Name',
               getter: (n: (typeof pods)[0]) => (
-                <Link kubeObject={new KubeObject(n.object as any)}>{n.object.metadata.name}</Link>
+                <Link kubeObject={wrapKubeObject(n.object)}>{n.object.metadata.name}</Link>
               ),
             },
             { label: 'Phase', getter: (n: (typeof pods)[0]) => n.object.status?.phase ?? '' },
@@ -1693,13 +1710,13 @@ export function AppPage() {
         {workloads.map(w => (
           <Box key={w.id} mt={2}>
             <Typography variant="subtitle2">{`${w.object.kind}/${w.object.metadata.name}`}</Typography>
-            <WorkloadLogs item={new KubeObject(w.object as any)} />
+            <WorkloadLogs item={wrapKubeObject(w.object)} />
           </Box>
         ))}
       </SectionBox>
 
       <SectionBox title="Events">
-        <ObjectEventList object={new KubeObject(app as any)} />
+        <ObjectEventList object={wrapKubeObject(app)} />
       </SectionBox>
 
       {links.length > 0 && (
