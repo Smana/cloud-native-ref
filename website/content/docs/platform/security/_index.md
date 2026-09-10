@@ -5,10 +5,13 @@ description: OpenBao's PKI and secrets engine, how External Secrets and cert-man
 lastVerified: 2026-08-27
 ---
 
-Three layers, each consuming the one before it: [OpenBao]({{< relref "/docs/platform/security/openbao.md" >}})
-is the cluster's secrets and PKI backend; [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}})
-covers how cert-manager and External Secrets Operator pull certificates and
-credentials out of it into the cluster; [Policies]({{< relref "/docs/platform/security/policies.md" >}})
+Layers, each consuming the one before it: [OpenBao]({{< relref "/docs/platform/security/openbao.md" >}})
+is the cluster's secrets and PKI backend; [Secrets]({{< relref "/docs/platform/security/secrets.md" >}})
+covers where a credential lives, who may read and write it, and what a developer
+writes to give an application one of its own; [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}})
+covers the certificate half — how cert-manager issues from the PKI — and the
+bootstrap tier that stays in the cloud's managed store;
+[Policies]({{< relref "/docs/platform/security/policies.md" >}})
 covers what's enforced once a workload is running — Kyverno admission,
 CiliumNetworkPolicy default-deny, and pod security context.
 

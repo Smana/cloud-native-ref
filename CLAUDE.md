@@ -142,10 +142,19 @@ aws secretsmanager get-secret-value \
 > The backend and the user used to be created by hand. Both are now in OpenTofu.
 
 **Namespace layout**: shared platform services — the PKI (`pki_private_issuer`), the
-per-cluster JWT auth mounts, operator logins — live in the **root** namespace. Namespaces are
-reserved for tenants; `app` is the only one, holding a `secret/` kv-v2 mount reachable
-via its own AppRole. Cluster-wide endpoints such as `sys/storage/raft/*` are callable
-*only* from root, which is why anything operational belongs there.
+per-cluster JWT auth mounts, the `oidc/` mount and its identity groups, operator logins, and
+the **two kv-v2 secret mounts `platform/` and `apps/`** — live in the **root** namespace. The
+mounts are in root because a policy binds only within its own namespace, so a mount in a child
+namespace is unreachable by a policy on a root identity group (ADR-0036). `app` is the only
+tenant namespace, holds a `secret/` kv-v2 mount reachable via its own AppRole, is consumed by
+nothing, and is scheduled for removal. Cluster-wide endpoints such as `sys/storage/raft/*` are
+callable *only* from root, which is why anything operational belongs there.
+
+**Secret grants**: `secrets-admin` covers both mounts and must be attached to the `userpass`
+break-glass login as well as the `openbao-admin` OIDC group — the OIDC route depends on
+ZITADEL, whose own credential lives in `platform/zitadel/envvars`. Adding a mount means adding
+it to `auth.tf`'s policy list in the same change. External Secrets is **read-only** on both
+mounts by design; see `website/content/docs/platform/security/secrets.md`.
 OpenBao's storage is rebuilt from its newest snapshot on every deploy (the *lineage*, ADR-0033): the lineage and management stacks are never destroyed by the default `destroy` (`TM_LINEAGE_DESTROY=true` overrides), machine auth is the JWT method on `jwt/<cluster>`, and consumers reach it at `openbao.security.svc.cluster.local:8200`. See
 `opentofu/aws/openbao/management/namespaces.tf`.
 

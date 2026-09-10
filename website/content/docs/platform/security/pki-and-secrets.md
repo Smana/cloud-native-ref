@@ -399,11 +399,17 @@ Gateway picks up the new `Secret` without a redeploy.
 
 ## External Secrets: the other direction
 
-Where cert-manager pulls certificates *out* of OpenBao's PKI, External
-Secrets Operator pulls arbitrary credentials *out of the cloud's managed
-secret store* — the CA chain above, the OpenBao admin password, every
-application credential. One `ClusterSecretStore` backs every `ExternalSecret`
-in the cluster:
+Where cert-manager pulls certificates *out* of OpenBao's PKI, External Secrets
+Operator pulls arbitrary credentials into the cluster. **Most of them now come
+from OpenBao itself** — see [Secrets]({{< relref "/docs/platform/security/secrets.md" >}})
+for the two mounts, who may read each one, and what a developer writes to give an
+application a secret.
+
+What remains on the cloud's managed store is the **bootstrap tier**: the CA chain
+above, OpenBao's own server certificate, the root token and recovery keys — every
+value that has to be read *before* OpenBao has an API — plus a few
+runtime-generated database credentials. That tier is served by the store below,
+which is the one this section describes and the only one that predates the move:
 
 ```yaml
 apiVersion: external-secrets.io/v1
@@ -430,19 +436,21 @@ spec:
       projectID: ${project_id}
 ```
 
-Why the store of record is the cloud's managed service rather than OpenBao —
-cost, lifecycle, and the bootstrap circularity — is recorded in
+Why the managed store was originally chosen over OpenBao — cost, lifecycle, and
+the bootstrap circularity — is recorded in
 [ADR-0025]({{< relref "/docs/decisions/0025-cloud-managed-secret-stores.md" >}});
 the shared store name and the dash-grammar keys that let one `ExternalSecret`
 work on both clouds are
 [ADR-0023]({{< relref "/docs/decisions/0023-portable-secret-store-names.md" >}}).
+Of those three reasons only the circularity still binds, and it binds only on the
+bootstrap tier — which is why that tier, and nothing else, is still here.
 
 This is the platform's concrete instance of the constitution's [Secrets
 Management rule]({{< relref "/docs/reference/platform-constitution.md#32-secrets-management" >}}):
 no hardcoded credentials in a manifest, HelmRelease, or Crossplane
-composition — everything resolves through this one `ClusterSecretStore` at
-reconcile time, refreshed on an interval (`refreshInterval: 1h` is typical)
-rather than baked in once.
+composition — everything resolves through a `ClusterSecretStore` at reconcile
+time, refreshed on an interval (`refreshInterval: 1h` is typical) rather than
+baked in once.
 
 ## Rotation
 
