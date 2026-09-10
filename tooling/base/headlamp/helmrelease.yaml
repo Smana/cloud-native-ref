@@ -98,6 +98,29 @@ spec:
           - mountPath: /build/plugins
             name: headlamp-plugins
 
+      # The App view (ADR-0035): a page per cloud.ogenki.io App claim, with a
+      # graph of exactly the resources that claim composed. Unlike the three
+      # above it is built in this repo, under container-images/headlamp-plugin-app;
+      # the tag comes from ARG HEADLAMP_PLUGIN_APP_VERSION in its Dockerfile.
+      #
+      # It needs the chart at 0.45.0 or later — that release is the first to
+      # export the resource map's graph renderer to plugins. The page degrades
+      # to a link rather than breaking on an older one, and .doc-claims.yaml
+      # pins the version claim so a rollback fails a check instead of silently
+      # dropping the graph.
+      - name: app-plugin
+        command:
+          - /bin/sh
+          - -c
+          - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/
+        image: ghcr.io/smana/headlamp-plugin-app:v0.1.0
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+        volumeMounts:
+          - mountPath: /build/plugins
+            name: headlamp-plugins
+
     resources:
       limits:
         memory: 256Mi

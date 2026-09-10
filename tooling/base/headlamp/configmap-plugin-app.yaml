@@ -1,0 +1,34 @@
+# Jump-off links rendered by headlamp-plugin-app on an App's page. Optional by
+# design: the plugin hides the section when this ConfigMap is absent or the
+# viewer cannot read it, so a cluster without it loses nothing else.
+#
+# JSON rather than YAML because a ConfigMap value is a string either way, and
+# JSON needs no parser in the plugin bundle. `{namespace}` and `{name}` are
+# substituted by the plugin per app; `${private_domain_name}` is substituted by
+# Flux per cluster, which is what lets one manifest serve both clouds.
+#
+# A literal brace must be percent-encoded as %7B / %7D — the plugin treats a
+# bare brace as a placeholder and rejects a malformed one, and does not expand
+# an encoded pair. That matters for the VictoriaLogs entry below, whose query
+# is a LogsQL stream selector wrapped in braces.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: headlamp-plugin-app
+  namespace: tooling
+data:
+  links.json: |
+    [
+      {
+        "label": "Logs (VictoriaLogs)",
+        "url": "https://vl.${private_domain_name}/select/vmui/?#/?query=%7Bkubernetes.pod_namespace%3D%22{namespace}%22%2Ckubernetes.pod_name%3D~%22{name}.%2A%22%7D"
+      },
+      {
+        "label": "Dashboards (Grafana)",
+        "url": "https://grafana.${private_domain_name}/dashboards"
+      },
+      {
+        "label": "Source (GitHub)",
+        "url": "https://github.com/Smana/cloud-native-ref/search?q=path%3Aapps+filename%3Aapp.yaml+{name}"
+      }
+    ]

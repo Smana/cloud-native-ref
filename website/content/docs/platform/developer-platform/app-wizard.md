@@ -245,6 +245,27 @@ Stated rather than left to be discovered, in line with how the rest of the
 site records what it could not verify.
 {{< /callout >}}
 
+## From a card to the running app
+
+Once the pull request is merged and Flux has reconciled it, the app appears in
+**My apps** as a card. Each card carries an **Open** action pointing at
+Headlamp's App view for that app: its Ready and Synced conditions, a graph of
+exactly the resources the claim composed — the nested `SQLInstance` and its
+own children included — the pods, the events, and links onward to Grafana and
+VictoriaLogs.
+
+Both clusters run the `platform` and `demo` stacks, so an app can exist on
+either and the card offers one entry per cluster for you to pick from. The
+wizard itself never contacts a cluster: it builds the link from the app's
+namespace and name and opens it in a new tab. Everything live is Headlamp's
+side, under your own identity and your own RBAC.
+
+The links are configured in `apps/platform/app-wizard/wizard.yaml` under
+`links`, and validated when the wizard starts — a malformed placeholder stops
+it there rather than surfacing later as a link that goes nowhere. See
+[ADR-0035]({{< relref "/docs/decisions/0035-own-headlamp-plugin-for-the-app-view.md" >}})
+for why the view is a plugin this platform owns.
+
 ## Which should I use?
 
 - **New to the platform, or not sure what's available?** Use the

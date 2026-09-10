@@ -55,3 +55,23 @@ assists:
 auth:
   mode: github
   redirectUrl: https://app-wizard.priv.aws.ogenki.io/api/auth/callback
+
+# External links shown on each card in "My apps" (file-only; there is no
+# environment override, like branding.theme). The URL is a template over
+# {namespace}, {name} and {stack}, expanded in the browser and opened in a new
+# tab. An unknown placeholder or an unbalanced brace fails startup, naming the
+# entry — a link typo is meant to fail here rather than surface as a dead link
+# on click.
+#
+# One entry per cluster rather than a templated hostname: a placeholder is only
+# usable in the path, query or fragment, because its value is URL-encoded when
+# expanded and that would not protect a host. Both clusters run the platform
+# and demo stacks, so an app can exist on either and the card offers both.
+#
+# The wizard holds no cluster credentials. It builds the link from the app's
+# own namespace and name; everything live is Headlamp's side (ADR-0035).
+links:
+  - label: Headlamp (aws-0)
+    url: https://headlamp.priv.aws.ogenki.io/c/main/apps/{namespace}/{name}
+  - label: Headlamp (gcp-0)
+    url: https://headlamp.priv.gcp.ogenki.io/c/main/apps/{namespace}/{name}

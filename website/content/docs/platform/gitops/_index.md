@@ -482,10 +482,11 @@ the release that first exports the map's graph renderer to plugins, and which is
 what the HelmRelease pins. See
 [ADR-0035]({{< relref "/docs/decisions/0035-own-headlamp-plugin-for-the-app-view.md" >}}).
 
-**It is not loaded yet.** The plugin's source and its image build live here, but
-the init container that copies it into the running Headlamp, and the App Wizard
-links that open it, both land with a later change. Until then the plugin exists
-in the repository and not on the clusters.
+It is loaded by a fourth init container on the HelmRelease, the same way the
+other three are, and its jump-off links come from a ConfigMap in `tooling`
+rendered per cluster. An App Wizard card opens it directly: the wizard builds
+the URL from the app's own namespace and name and never contacts a cluster
+itself.
 
 The two differ in what they can show *per person*. The Flux UI impersonates on
 both clusters. Headlamp does on `aws-0`, where EKS is configured to trust

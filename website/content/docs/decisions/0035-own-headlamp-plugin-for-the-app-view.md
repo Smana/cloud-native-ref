@@ -138,16 +138,11 @@ renderer itself is still reached through a runtime global, which is the one
 temporary shim here.
 
 Source in `container-images/headlamp-plugin-app/`, published by the repo's
-container-image workflow. The intended shape mirrors the Flux and cert-manager
-plugins already wired up: a fourth init container on the Headlamp HelmRelease
-loads it, and its jump-off links come from an optional ConfigMap in `tooling`,
-substituted per cluster by Flux.
-
-**Neither has landed yet.** The image builds, but nothing loads it into a
-running Headlamp, and the ConfigMap does not exist in this repo. Both arrive
-together in a later change — see the platform's GitOps page, which carries the
-same "not loaded yet" note as the one source of truth for deployment state
-rather than restating it as a fact here.
+container-image workflow and loaded by a fourth init container on the Headlamp
+HelmRelease, exactly like the Flux and cert-manager plugins. Its jump-off links
+come from an optional ConfigMap in `tooling`, substituted per cluster by Flux —
+optional because the plugin hides that section when the ConfigMap is absent or
+the viewer cannot read it, so a cluster without one loses nothing else.
 
 ---
 
