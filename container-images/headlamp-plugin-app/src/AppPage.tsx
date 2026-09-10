@@ -10,16 +10,17 @@ import {
   SimpleTable,
   StatusLabel,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
-import { getCluster } from '@kinvolk/headlamp-plugin/lib/Utils';
+import { getCluster, timeAgo } from '@kinvolk/headlamp-plugin/lib/Utils';
 import { Alert, Box, Button, Chip, Typography } from '@mui/material';
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import type { KubeJSON } from './app';
 import { useConfigLinks } from './client';
-import { wrapKubeObject } from './kubeWrap';
+import { groupOf, matchingResourceClass, wrapKubeObject } from './kubeWrap';
 import { expandLink } from './links';
 import { appTreeSource } from './mapSource';
 import { conditionOf, nodeStatus } from './status';
+import type { TreeNode } from './tree';
 import { useAppTree } from './useAppTree';
 
 // Headlamp 0.45.0 exports GraphView through pluginLib.ResourceMap; the pinned
@@ -35,6 +36,34 @@ function ConditionChip({ app, type }: { app: KubeJSON; type: string }) {
       {type}: {c?.status ?? 'Unknown'}
     </StatusLabel>
   );
+}
+
+/**
+ * The composed-resources table's Name cell. A kind Headlamp has a built-in,
+ * group-matching class for (see kubeWrap.ts) gets its own details link. Most
+ * of what an App composes does not — the nested composites, the network
+ * policy, the scrape configs, the bucket — and for those the generic
+ * custom-resource URL is built by hand from the plural buildAppTree already
+ * resolved. That URL only exists for a namespaced object with a known
+ * plural; anything else renders as plain text, since a link that goes
+ * nowhere is worse than admitting there isn't one.
+ */
+function ComposedResourceName({ node, cluster }: { node: TreeNode; cluster: string }) {
+  const { object, plural } = node;
+  if (matchingResourceClass(object)) {
+    return <Link kubeObject={wrapKubeObject(object)}>{object.metadata.name}</Link>;
+  }
+  const group = groupOf(object.apiVersion);
+  const namespace = object.metadata.namespace;
+  if (plural && group && namespace) {
+    const crd = `${plural}.${group}`;
+    return (
+      <Link to={`/c/${cluster}/customresources/${crd}/${namespace}/${object.metadata.name}`}>
+        {object.metadata.name}
+      </Link>
+    );
+  }
+  return <>{object.metadata.name}</>;
 }
 
 export function AppPage() {
@@ -134,9 +163,7 @@ export function AppPage() {
             { label: 'Kind', getter: (n: (typeof composed)[0]) => n.object.kind },
             {
               label: 'Name',
-              getter: (n: (typeof composed)[0]) => (
-                <Link kubeObject={wrapKubeObject(n.object)}>{n.object.metadata.name}</Link>
-              ),
+              getter: (n: (typeof composed)[0]) => <ComposedResourceName node={n} cluster={cluster} />,
             },
             {
               label: 'Status',
@@ -144,7 +171,11 @@ export function AppPage() {
                 <StatusLabel status={nodeStatus(n.object)}>{nodeStatus(n.object)}</StatusLabel>
               ),
             },
-            { label: 'Age', getter: (n: (typeof composed)[0]) => n.object.metadata.creationTimestamp ?? '' },
+            {
+              label: 'Age',
+              getter: (n: (typeof composed)[0]) =>
+                n.object.metadata.creationTimestamp ? timeAgo(n.object.metadata.creationTimestamp) : '',
+            },
           ]}
           data={composed}
           emptyMessage="No composed resources resolved."

@@ -27,9 +27,12 @@ export function makeApiClient(): ApiClient {
         .map(r => ({ kind: r.kind, name: r.name, namespaced: r.namespaced }));
     },
     async getObject(apiVersion, plural, namespace, name): Promise<KubeJSON | null> {
+      // Every request here runs as the viewer through Headlamp's own proxy,
+      // so this isn't an escalation either way — encoding is just correct.
+      const encodedName = encodeURIComponent(name);
       const path = namespace
-        ? `${apiBase(apiVersion)}/namespaces/${namespace}/${plural}/${name}`
-        : `${apiBase(apiVersion)}/${plural}/${name}`;
+        ? `${apiBase(apiVersion)}/namespaces/${encodeURIComponent(namespace)}/${plural}/${encodedName}`
+        : `${apiBase(apiVersion)}/${plural}/${encodedName}`;
       try {
         return (await ApiProxy.request(path)) as KubeJSON;
       } catch {

@@ -135,6 +135,13 @@ describe('buildAppTree', () => {
     expect(tree.edges).toHaveLength(1);
   });
 
+  it('records the plural a fetched child was discovered under, but not on the root', async () => {
+    const tree = await buildAppTree(app, fakeClient());
+    expect(tree.nodes.find(n => n.id === 'uid-deploy')!.plural).toBe('deployments');
+    expect(tree.nodes.find(n => n.id === 'uid-sql')!.plural).toBe('sqlinstances');
+    expect(tree.nodes.find(n => n.id === 'uid-app')!.plural).toBeUndefined();
+  });
+
   it('stops at maxDepth', async () => {
     const tree = await buildAppTree(app, fakeClient(), 1);
     expect(tree.nodes.map(n => n.id).sort()).toEqual(

@@ -25,6 +25,16 @@ export interface TreeNode {
   id: string;
   object: KubeJSON;
   depth: number;
+  /**
+   * The plural resource name this node was fetched as — API discovery
+   * already resolves it once per apiVersion while walking resourceRefs, so
+   * threading it onto the node is free. Used to build a details link for a
+   * kind Headlamp has no registered class for. Absent for the root App
+   * (never fetched by ref) and for anything attachOwned adds (Headlamp's own
+   * typed Pod/ReplicaSet/Job lists always have a matching built-in class, so
+   * nothing needs it there).
+   */
+  plural?: string;
 }
 
 export interface TreeEdge {
@@ -93,7 +103,7 @@ export async function buildAppTree(
         const id = child.metadata.uid;
         if (!seen.has(id)) {
           seen.add(id);
-          const node = { id, object: child, depth };
+          const node = { id, object: child, depth, plural: info.name };
           nodes.push(node);
           next.push(node);
         }

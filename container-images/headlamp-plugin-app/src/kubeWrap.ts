@@ -16,10 +16,13 @@ import type { KubeJSON } from './app';
 // class points the details link at a nonexistent RBAC route and feeds the
 // RBAC glance `.rules` off an IAM role that has none. So the registered class
 // is only trusted once its own API group is checked against the object's.
+// `matchingResourceClass` is exported because the composed-resources table
+// needs the same yes/no answer to decide whether a row can use Headlamp's own
+// `<Link kubeObject>` at all, or has to fall back to a hand-built URL.
 const fallbackCache = new Map<string, typeof KubeObject>();
 
 /** The part of an apiVersion before '/', or '' for a core resource like "v1". */
-function groupOf(apiVersion: string): string {
+export function groupOf(apiVersion: string): string {
   const i = apiVersion.indexOf('/');
   return i === -1 ? '' : apiVersion.slice(0, i);
 }
@@ -38,11 +41,16 @@ function classGroup(cls: typeof KubeObject): string | undefined {
   }
 }
 
-export function wrapKubeObject(o: KubeJSON): KubeObject {
+/** The class Headlamp registered for this object's kind, but only once its
+ * own API group is confirmed to match the object's — see the header comment. */
+export function matchingResourceClass(o: KubeJSON): typeof KubeObject | undefined {
   const known = (K8s.ResourceClasses as Record<string, any>)[o.kind];
-  if (known && (classGroup(known) ?? '') === groupOf(o.apiVersion)) {
-    return new known(o as any);
-  }
+  return known && (classGroup(known) ?? '') === groupOf(o.apiVersion) ? known : undefined;
+}
+
+export function wrapKubeObject(o: KubeJSON): KubeObject {
+  const known = matchingResourceClass(o);
+  if (known) return new known(o as any);
 
   const key = `${o.apiVersion}/${o.kind}`;
   let cls = fallbackCache.get(key);
