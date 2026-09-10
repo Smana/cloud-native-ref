@@ -445,3 +445,16 @@ claims:
         must_contain: 'ogenki-435905-{value}'
       - path: website/content/docs/guides/openbao-cross-cloud-failover.md
         must_contain: 'ogenki-435905-{value}'
+
+  - id: headlamp-chart-version
+    why: >-
+      The App view plugin embeds Headlamp's map renderer, which is only exported
+      to plugins from 0.45.0. The GitOps page tells operators that floor. If the
+      chart is ever rolled back below it, the page silently stops embedding the
+      graph and falls back to a link, while the docs keep promising the graph.
+    source:
+      file: tooling/base/headlamp/helmrelease.yaml
+      pattern: '^      version: "([0-9.]+)"'
+    pages:
+      - path: website/content/docs/platform/gitops/_index.md
+        must_contain: 'Headlamp {value} or later'
