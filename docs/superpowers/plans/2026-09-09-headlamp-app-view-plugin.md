@@ -1023,6 +1023,28 @@ const CONDITION_BY_KIND: Record<string, string> = {
   StatefulSet: 'Available',
 };
 
+> **Corrected during execution.** This table was checked against every kind the
+> platform's `App` composition actually emits (`apis/app/kcl/main.k` in
+> `Smana/crossplane-configuration`) and three were missing, each landing in the
+> default `Ready` lookup and so showing `warning` *permanently* rather than
+> transiently — the opposite of what the comment on that branch promises:
+>
+> - **`CronJob`** belongs in the set below. The composition annotates it ready
+>   unconditionally at creation, in the same bucket as the HPA and PDB entries
+>   already here, and `batch/v1` `CronJobStatus` has no `conditions` field at all.
+> - **`Job`** needs its own branch. Its conditions are `Complete`, `Failed` and
+>   `Suspended`, never `Ready`. Failed is error, Complete is success, and while it
+>   is still running it is warning only when `status.failed` is above zero —
+>   because `Failed` appears only once the retry limit is exhausted, and a
+>   long-running Job that is simply working must not repaint the graph.
+> - **`Gateway`** needs its own branch parallel to `HTTPRoute`. The composition
+>   computes its readiness from `Programmed` / `Accepted`, and unlike a route those
+>   conditions sit on the object rather than per parent.
+>
+> Also export the set and drive a test over every member of it. A test that
+> re-lists the kinds by hand would not have caught this and will not catch the
+> next one.
+
 /** Kinds that carry no health at all: present is healthy. */
 const NO_HEALTH = new Set([
   'Service',
