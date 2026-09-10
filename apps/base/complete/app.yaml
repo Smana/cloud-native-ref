@@ -190,11 +190,20 @@ spec:
                   (pods sit in CreateContainerConfigError), the image cannot be pulled, or
                   the CloudNativePG cluster behind DATABASE_URL is refusing connections.
 
-  # Optional: Additional secrets from AWS Secrets Manager
-  # Currently only needed for non-infrastructure config (optional overrides)
+  # Optional non-infrastructure config overrides, read from OpenBao's `apps/`
+  # mount rather than the cloud managed store (ADR-0033 Stage 2). `store` is new
+  # in crossplane-configuration and defaults to `clustersecretstore`, so naming
+  # it here is what moves this one.
+  #
+  # `remoteRef` drops the `apps/` prefix because the store already carries the
+  # mount: `image-gallery/config` resolves to apps/data/image-gallery/config.
+  #
+  # The blob is `{}` today and `envFrom` below is `optional: true`, so this is
+  # the lowest-risk of the three app secrets to move first.
   externalSecrets:
     - name: image-gallery-app-config
-      remoteRef: apps/image-gallery/config
+      remoteRef: image-gallery/config
+      store: openbao-apps
   envFrom:
     - secretRef:
         name: image-gallery-app-config
