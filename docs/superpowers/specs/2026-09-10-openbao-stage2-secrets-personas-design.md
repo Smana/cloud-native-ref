@@ -163,6 +163,62 @@ Non-destructive and reversible at every step:
 
 At no point is the old store removed before the new one is proven for that key.
 
+### The grace period — DEFERRED, decided 2026-09-10
+
+**Nothing is deleted from the managed store yet.** The owner's call: revisit in a
+few weeks. This section exists so that is a decision with a list attached rather
+than a loose end.
+
+All sixteen were verified present in OpenBao on 2026-09-10 before this deferral
+was recorded (`bao kv get <path>` succeeded for every one):
+
+| Managed-store entry | OpenBao path | Safe to delete |
+|---|---|---|
+| `harbor-admin-password` | `platform/harbor/admin-password` | now |
+| `harbor-oidc` | `platform/harbor/oidc` | now |
+| `harbor-valkey-password` | `platform/harbor/valkey-password` | now |
+| `headlamp-envvars` | `platform/headlamp/envvars` | now |
+| `zitadel-envvars` | `platform/zitadel/envvars` | now |
+| `runlore-credentials` | `platform/runlore/credentials` | now |
+| `runlore-slack-app` | `platform/runlore/slack-app` | now |
+| `runlore-webhook` | `platform/runlore/webhook` | now |
+| `security-flux-ui-oidc` | `platform/flux/ui-oidc` | now |
+| `observability-flux-slack-app` | `platform/flux/slack-app` | now |
+| `observability-victoria-metrics-k8s-stack-grafana-envvars` | `platform/victoria-metrics/grafana-envvars` | now |
+| `observability-victoria-metrics-k8s-stack-alertmanager-slack-app` | `platform/victoria-metrics/alertmanager-slack-app` | now |
+| `tailscale-k8s-operator-oauth-client` | `platform/tailscale/operator-oauth-client` | now |
+| `apps-app-wizard-llm` | `apps/app-wizard/llm` | after the app repoint is live |
+| `apps-app-wizard-oauth` | `apps/app-wizard/oauth` | after the app repoint is live |
+| `apps/image-gallery/config` | `apps/image-gallery/config` | after the app repoint is live |
+
+```bash
+# Re-verify before deleting -- do not trust this list unread.
+for p in platform/harbor/admin-password platform/zitadel/envvars ... ; do
+  bao kv get "$p" >/dev/null || echo "MISSING IN OPENBAO: $p"
+done
+
+# Soft delete: Secrets Manager keeps a 30-day recovery window by default.
+aws secretsmanager delete-secret --region eu-west-3 --secret-id <name>
+```
+
+**Two things must NOT be deleted with them**, and neither is in the table above:
+
+- The bootstrap tier — `certificates/priv.aws.ogenki.io/{ca-chain,openbao,intermediate-ca}`
+  and `openbao/cloud-native-ref/{tokens/root,tokens/recovery,users/admin}`.
+- The three `cnpg/*` keys, which are staying by the decision above, and
+  `github/flux-app`, which OpenTofu reads to build the Secret Flux authenticates
+  with *before* Flux exists. The parent design listed that key as moving to
+  OpenBao; it has not moved and, on this evidence, belongs in the bootstrap tier
+  instead.
+
+**One hazard when the time comes.** `secret-store.sh seed` still defaults to the
+AWS store. Deleting `harbor-admin-password` and friends there means a from-scratch
+rebuild that runs the default `seed` regenerates them in the managed store while
+the cluster reads OpenBao — two divergent values for one credential, and the
+failure surfaces as a login that rejects a correct password. Either pass
+`--store openbao` at seed time or change the default in the same change as the
+deletion.
+
 ## Records
 
 - **New ADR-0036** — *per-app secret ownership through ZITADEL groups, generated
