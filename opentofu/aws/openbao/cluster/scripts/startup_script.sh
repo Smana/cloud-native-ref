@@ -80,7 +80,19 @@ TLS_SECRET=$("$AWS" secretsmanager get-secret-value \
   --query SecretString --output text)
 
 umask 077
+# tls.crt must hold the FULL chain, not just the leaf. A TLS listener sends
+# exactly what is in this file, and a client cannot fetch an intermediate it was
+# never given: a browser that trusts the offline root still rejects
+# bao.priv.<domain> when the "Ogenki <cloud> Intermediate CA" is missing, because
+# there is nothing to bridge leaf to root. Measured 2026-09-10 -- this endpoint
+# presented 1 certificate while the Gateway-served hosts presented 2, which is
+# why importing the root CA into a browser never cleared the warning.
+#
+# `.ca` is the intermediate followed by the root, so appending it whole keeps
+# this correct regardless of that ordering. A self-signed root inside the chain
+# is legal and clients ignore it -- RFC 8446 4.4.2 makes omitting it a MAY.
 printf '%s' "$TLS_SECRET" | jq -r '.cert' > /opt/openbao/tls/tls.crt
+printf '%s' "$TLS_SECRET" | jq -r '.ca' >> /opt/openbao/tls/tls.crt
 printf '%s' "$TLS_SECRET" | jq -r '.key' > /opt/openbao/tls/tls.key
 printf '%s' "$TLS_SECRET" | jq -r '.ca' > /opt/openbao/tls/ca.pem
 unset TLS_SECRET
