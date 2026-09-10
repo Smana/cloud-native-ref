@@ -1196,6 +1196,28 @@ One key per commit, so a bad one is a single revert.
 
 ### Task 10: Repoint the app secrets
 
+> **BLOCKED — found during execution (2026-09-10). Do not attempt this task from this repository.**
+>
+> App secrets are **not** standalone `ExternalSecret` manifests. They are declared inside the `App` claim as `spec.externalSecrets[].remoteRef`, and the Crossplane composition generates the `ExternalSecret` — hardcoding `secretStoreRef.name: clustersecretstore`. The XRD schema exposes no store field at all:
+>
+> ```
+> FIELD: externalSecrets <[]Object>
+>   name           -required-   Kubernetes Secret name
+>   refreshInterval
+>   remoteRef      -required-   Path to secret in AWS Secrets Manager
+> ```
+>
+> The description is explicit that the source is AWS Secrets Manager. Repointing therefore needs, in order:
+>
+> 1. A composition change in [`Smana/crossplane-configuration`](https://github.com/Smana/crossplane-configuration): add an optional `store` (and probably `property`) to `externalSecrets`, defaulting to `clustersecretstore` so existing claims are unaffected.
+> 2. `task check` there, then a release.
+> 3. A pin bump in `infrastructure/base/crossplane/configuration-aws/configuration-packages.yaml` **and** the matching app-wizard tag, which must move together.
+> 4. Only then, `store: openbao-apps` on the three claim entries.
+>
+> The three keys are already migrated and hash-verified in `apps/`, so the mount is ready and waiting. Nothing is lost by deferring.
+>
+> This also means **the `apps/` mount has no consumer yet**, and the per-app groups grant access to data only humans can reach. That is a coherent intermediate state, not a broken one.
+
 **Files:**
 - Modify: the `ExternalSecret` documents for `apps-app-wizard-llm`, `apps-app-wizard-oauth`, `apps/image-gallery/config`
 
