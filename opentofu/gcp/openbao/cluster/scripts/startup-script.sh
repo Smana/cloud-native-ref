@@ -86,7 +86,12 @@ TLS_SECRET=$(gcloud secrets versions access latest \
   --secret "${server_cert_secret_name}" --project "${project_id}")
 
 umask 077
+# Full chain, not just the leaf -- see the long comment on the same lines in
+# opentofu/aws/openbao/cluster/scripts/startup_script.sh. Both clouds chain to
+# one offline root, so a client that trusts it still needs the per-cloud
+# intermediate from the server to bridge leaf to root.
 printf '%s' "$TLS_SECRET" | jq -r '.cert' > /opt/openbao/tls/tls.crt
+printf '%s' "$TLS_SECRET" | jq -r '.ca'  >> /opt/openbao/tls/tls.crt
 printf '%s' "$TLS_SECRET" | jq -r '.key'  > /opt/openbao/tls/tls.key
 printf '%s' "$TLS_SECRET" | jq -r '.ca'   > /opt/openbao/tls/ca.pem
 unset TLS_SECRET
