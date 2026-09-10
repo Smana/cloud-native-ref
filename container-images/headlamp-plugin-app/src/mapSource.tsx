@@ -1,11 +1,11 @@
 // Two consumers, one shape: the page's embedded graph (the whole tree of one
 // app) and the global Map's "Apps" source (every app plus its direct children).
 import { registerMapSource } from '@kinvolk/headlamp-plugin/lib';
-import { KubeObject } from '@kinvolk/headlamp-plugin/lib/K8s/cluster';
 import { useEffect, useMemo, useState } from 'react';
 import { type KubeJSON } from './app';
 import { AppResource } from './appResource';
 import { makeApiClient } from './client';
+import { wrapKubeObject } from './kubeWrap';
 import { nodeStatus } from './status';
 import { type AppTree, buildAppTree } from './tree';
 
@@ -14,7 +14,7 @@ export function graphNodesFrom(tree: AppTree) {
   return {
     nodes: tree.nodes.map(n => ({
       id: n.id,
-      kubeObject: new KubeObject(n.object as any),
+      kubeObject: wrapKubeObject(n.object),
       status: nodeStatus(n.object),
     })),
     edges: tree.edges.map(e => ({ id: e.id, source: e.source, target: e.target })),
