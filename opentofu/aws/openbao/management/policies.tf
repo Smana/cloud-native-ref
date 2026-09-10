@@ -44,3 +44,26 @@ resource "vault_policy" "app" {
   name      = "app"
   policy    = file("policies/app.hcl")
 }
+
+# Full control of the two Stage 2 secret mounts. Held by the OIDC admin group
+# alongside `admin` and `pki-admin`; see oidc.tf.
+#
+# `admin` deliberately grants no secret path and could not reach one anyway --
+# it is a root-namespace policy and, until Stage 2, the only kv-v2 mount holding
+# anything was in the `app` namespace.
+resource "vault_policy" "secrets_admin" {
+  name   = "secrets-admin"
+  policy = file("policies/secrets-admin.hcl")
+}
+
+# External Secrets' read-only identity over both Stage 2 mounts.
+#
+# Created here, but attached to the per-cluster JWT role in each cluster's
+# `configure` stack -- a different Terraform state, which is why the reference
+# there is by NAME. That is the same shape `cert-manager` and `snapshot` already
+# use, and name drift is the risk it carries: the name is `external-secrets` in
+# both places.
+resource "vault_policy" "external_secrets" {
+  name   = "external-secrets"
+  policy = file("policies/external-secrets.hcl")
+}

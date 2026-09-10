@@ -184,7 +184,7 @@ resource "vault_identity_group" "oidc_admin" {
 
   name     = "openbao-admin"
   type     = "external"
-  policies = [vault_policy.admin.name, vault_policy.pki_admin.name]
+  policies = [vault_policy.admin.name, vault_policy.pki_admin.name, vault_policy.secrets_admin.name]
 }
 
 resource "vault_identity_group_alias" "oidc_admin" {

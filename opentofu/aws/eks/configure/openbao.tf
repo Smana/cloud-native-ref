@@ -44,13 +44,15 @@ locals {
       namespace       = "security"
       # `default` is NOT "the default permissions for this role" -- it is
       # OpenBao's built-in policy, which grants a token essentially nothing
-      # beyond operations on itself (lookup-self, renew-self, revoke-self). This
-      # role can therefore authenticate and read no secret at all. That is
-      # deliberate for now: the auth contract exists and is smoke-testable, and
-      # the real grant lands with the consumer. Replace this with a named policy
-      # from opentofu/aws/openbao/management/policies.tf when the
-      # ClusterSecretStore is repointed at OpenBao.
-      policies = ["default"]
+      # beyond operations on itself (lookup-self, renew-self, revoke-self).
+      #
+      # `external-secrets` is the Stage 2 grant this was always waiting for: a
+      # READ-ONLY policy over the `platform/` and `apps/` mounts, defined in
+      # opentofu/aws/openbao/management/policies.tf. Read-only is load-bearing,
+      # not caution -- the controller reads with its own identity rather than
+      # the requester's, so write access would let anything able to create a
+      # namespaced ExternalSecret launder a value into another app's prefix.
+      policies = ["default", "external-secrets"]
     }
     openbao-snapshot = {
       service_account = "openbao-snapshot"

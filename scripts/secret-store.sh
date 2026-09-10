@@ -21,6 +21,14 @@
 #       For every ExternalSecret in the cluster, resolve the key it asks the
 #       store for and report whether it exists. Read-only.
 #
+# FLAGS
+#
+#   --store aws|gcp|openbao
+#       Which store to act on. Defaults to the managed store for --cloud, so
+#       every invocation that predates this flag behaves exactly as before.
+#       `--store openbao` needs VAULT_ADDR, VAULT_CACERT and a token in the
+#       environment; it reads no credential from any store.
+#
 #   lint --cloud aws|gcp [--context CTX]
 #       For every key `check` resolves, read the payload and report characters
 #       that should not be in a credential -- leading/trailing whitespace and
@@ -42,6 +50,17 @@
 #       they are missing. Dry-run unless --apply. Never overwrites an existing
 #       secret, so it is safe to re-run and safe on a cluster whose secrets were
 #       written by hand. Most of the store is not seedable -- see GENERATABLE.
+#
+#   migrate --cloud aws|gcp [--context CTX] [--apply]
+#       Copy every mapped key from the cloud managed store into OpenBao, as the
+#       store of record (ADR-0033 Stage 2). Dry-run unless --apply. Additive: an
+#       existing destination is left alone and the source is never deleted, so
+#       it is safe to re-run and safe to stop half-way.
+#
+#       The key mapping is explicit rather than derived -- see bao_target_for.
+#       Anything unmapped is reported and skipped, never guessed: a wrong guess
+#       writes a platform secret into an app's prefix, which is a privilege
+#       boundary rather than a cosmetic mistake.
 #
 #   migrate-aws [--apply]
 #       Copy AWS Secrets Manager entries from the old slash-separated names to
@@ -66,6 +85,7 @@ CONTEXT=""
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 PROJECT=""
 APPLY="false"
+STORE="" # aws|gcp|openbao; defaults to $CLOUD, i.e. that cloud's managed store
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
 
@@ -75,10 +95,29 @@ while [ $# -gt 0 ]; do
         --context) CONTEXT="$2"; shift 2 ;;
         --region)  REGION="$2"; shift 2 ;;
         --project) PROJECT="$2"; shift 2 ;;
+        --store)   STORE="$2"; shift 2 ;;
         --apply)   APPLY="true"; shift ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
+
+# The managed store is the default, so every pre-existing invocation of this
+# script behaves exactly as it did before `--store` existed.
+[ -n "$STORE" ] || STORE="$CLOUD"
+case "$STORE" in
+    aws | gcp | openbao | "") ;;
+    *)
+        echo "--store must be aws, gcp or openbao" >&2
+        exit 2
+        ;;
+esac
+
+# kv-v2 reads and writes go through `bao kv`, which takes VAULT_ADDR,
+# VAULT_CACERT and a token from the environment -- exactly as the OpenBao
+# section of CLAUDE.md documents. This script never reads a token from a store.
+bao_kv() {
+    bao kv "$@"
+}
 
 kctl() {
     if [ -n "$CONTEXT" ]; then kubectl --context "$CONTEXT" "$@"; else kubectl "$@"; fi
@@ -101,7 +140,15 @@ gcp_sm() {
 # hiding that the store was never actually consulted.
 store_has() {
     local out rc
-    case "$CLOUD" in
+    case "$STORE" in
+        openbao)
+            # kv-v2 metadata is the cheapest existence probe: it answers without
+            # reading the value, so this works under a policy that may only list.
+            out=$(bao_kv metadata get -format=json "$1" 2>&1) && return 0 || rc=$?
+            case "$out" in
+                *"No value found"* | *"Code: 404"*) return 1 ;;
+            esac
+            ;;
         aws)
             out=$(aws_sm describe-secret --secret-id "$1" 2>&1) && return 0 || rc=$?
             case "$out" in
@@ -121,15 +168,19 @@ store_has() {
                 *"HTTPError 404"*) return 1 ;;
             esac
             ;;
-        *) echo "--cloud must be aws or gcp" >&2; exit 2 ;;
+        *)
+            echo "--store must be aws, gcp or openbao" >&2
+            exit 2
+            ;;
     esac
     echo >&2
-    echo "ERROR: could not query the ${CLOUD} secret store for '$1' (exit ${rc})." >&2
+    echo "ERROR: could not query the ${STORE} secret store for '$1' (exit ${rc})." >&2
     echo "${out}" | head -3 >&2
     echo >&2
     echo "Refusing to continue: an unreachable store is not an empty one." >&2
-    [ "$CLOUD" = "aws" ] && echo "Hint: pass --region (aws configure get region is empty here)." >&2
-    [ "$CLOUD" = "gcp" ] && echo "Hint: pass --project, or set one with gcp_gcloud config set project." >&2
+    [ "$STORE" = "aws" ] && echo "Hint: pass --region (aws configure get region is empty here)." >&2
+    [ "$STORE" = "gcp" ] && echo "Hint: pass --project, or set one with gcp_gcloud config set project." >&2
+    [ "$STORE" = "openbao" ] && echo "Hint: VAULT_ADDR, VAULT_CACERT and a token must be in the environment." >&2
     exit 1
 }
 
@@ -137,7 +188,17 @@ store_has() {
 # error EXITS rather than being reported as a value.
 store_value() {
     local out rc
-    case "$CLOUD" in
+    case "$STORE" in
+        openbao)
+            # kv-v2 nests the payload under .data.data; re-emit it as the same
+            # flat JSON object the managed stores return, so every caller and
+            # `lint` see one shape regardless of store.
+            out=$(bao_kv get -format=json "$1" 2>&1) &&
+                {
+                    printf '%s' "$out" | jq -r '.data.data | tojson'
+                    return 0
+                } || rc=$?
+            ;;
         aws)
             out=$(aws_sm get-secret-value --secret-id "$1" --query SecretString --output text 2>&1) \
                 && { printf '%s' "$out"; return 0; } || rc=$?
@@ -146,10 +207,13 @@ store_value() {
             out=$(gcp_sm versions access latest --secret "$1" 2>&1) \
                 && { printf '%s' "$out"; return 0; } || rc=$?
             ;;
-        *) echo "--cloud must be aws or gcp" >&2; exit 2 ;;
+        *)
+            echo "--store must be aws, gcp or openbao" >&2
+            exit 2
+            ;;
     esac
     echo >&2
-    echo "ERROR: could not read the payload of '$1' from the ${CLOUD} store (exit ${rc})." >&2
+    echo "ERROR: could not read the payload of '$1' from the ${STORE} store (exit ${rc})." >&2
     echo "${out}" | head -3 >&2
     echo >&2
     echo "Refusing to continue: unreadable is not clean." >&2
@@ -344,8 +408,116 @@ OLD_NAMES=(
     "zitadel/envvars"
 )
 
+# Managed-store key -> OpenBao path, for `migrate`.
+#
+# Explicit rather than derived, because the managed store's names are not
+# uniform: ADR-0023 introduced the dash form, slash-form names predate it, and
+# the cnpg/* ones are written at runtime by the database seeding rather than
+# curated by a human.
+#
+# Anything not listed is SKIPPED and reported, never guessed. A wrong guess here
+# writes a platform secret into an app's prefix, which is a privilege boundary
+# rather than a cosmetic mistake.
+#
+# Four keys are deliberately absent and must stay so:
+#   certificates/*/ca-chain        bootstrap tier -- read before OpenBao is up,
+#                                  and the OpenBao-backed store needs the Secret
+#                                  it produces, so repointing it is circular
+#   cnpg/*  (three of them)        runtime-generated; moving them would require
+#                                  granting a machine write access, which is the
+#                                  property the external-secrets policy removes
+bao_target_for() {
+    case "$1" in
+        harbor-admin-password) printf 'platform/harbor/admin-password' ;;
+        harbor-oidc) printf 'platform/harbor/oidc' ;;
+        harbor-valkey-password) printf 'platform/harbor/valkey-password' ;;
+        headlamp-envvars) printf 'platform/headlamp/envvars' ;;
+        zitadel-envvars) printf 'platform/zitadel/envvars' ;;
+        runlore-credentials) printf 'platform/runlore/credentials' ;;
+        runlore-slack-app) printf 'platform/runlore/slack-app' ;;
+        runlore-webhook) printf 'platform/runlore/webhook' ;;
+        security-flux-ui-oidc) printf 'platform/flux/ui-oidc' ;;
+        observability-flux-slack-app) printf 'platform/flux/slack-app' ;;
+        observability-victoria-metrics-k8s-stack-grafana-envvars) printf 'platform/victoria-metrics/grafana-envvars' ;;
+        observability-victoria-metrics-k8s-stack-alertmanager-slack-app) printf 'platform/victoria-metrics/alertmanager-slack-app' ;;
+        tailscale-k8s-operator-oauth-client) printf 'platform/tailscale/operator-oauth-client' ;;
+        apps-app-wizard-llm) printf 'apps/app-wizard/llm' ;;
+        apps-app-wizard-oauth) printf 'apps/app-wizard/oauth' ;;
+        apps/image-gallery/config) printf 'apps/image-gallery/config' ;;
+        *) return 1 ;;
+    esac
+}
+
+# The keys to consider: every key the cluster's ExternalSecrets ask for. Same
+# resolution `check` uses, so the two commands can never disagree about what
+# the cluster actually consumes.
+migrate_source_keys() {
+    kctl get externalsecrets -A -o json |
+        jq -r '.items[]
+                 | ((.spec.data // [])[]?.remoteRef.key,
+                    (.spec.dataFrom // [])[]?.extract.key)
+                 | select(. != null)' |
+        sort -u
+}
+
+# Copy every mapped key from the cloud managed store into OpenBao.
+#
+# Additive and idempotent: a destination that already exists is left alone and
+# reported, and the source is never deleted. Removing the migrated managed-store
+# entries is a deliberate, separate, manual act with a recovery window.
+cmd_migrate() {
+    [ -n "$CLOUD" ] || {
+        echo "--cloud is required" >&2
+        exit 2
+    }
+    local copied=0 exists=0 skipped=0 absent=0 key target payload
+
+    printf '%-58s %-46s %s\n' "SOURCE KEY" "OPENBAO PATH" "ACTION"
+    while IFS= read -r key; do
+        [ -z "$key" ] && continue
+
+        if ! target=$(bao_target_for "$key"); then
+            printf '%-58s %-46s %s\n' "$key" "-" "skipped (unmapped)"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        STORE="$CLOUD"
+        if ! store_has "$key"; then
+            printf '%-58s %-46s %s\n' "$key" "$target" "absent at source"
+            absent=$((absent + 1))
+            continue
+        fi
+        payload=$(store_value "$key")
+
+        STORE="openbao"
+        if store_has "$target"; then
+            printf '%-58s %-46s %s\n' "$key" "$target" "exists (left alone)"
+            exists=$((exists + 1))
+            continue
+        fi
+
+        if [ "$APPLY" = "true" ]; then
+            # store_create reads the body on stdin; it takes no payload argument.
+            printf '%s' "$payload" | store_create "$target"
+            printf '%-58s %-46s %s\n' "$key" "$target" "copied"
+        else
+            printf '%-58s %-46s %s\n' "$key" "$target" "would copy"
+        fi
+        copied=$((copied + 1))
+    done <<<"$(migrate_source_keys)"
+
+    echo
+    echo "copied: ${copied}, exists: ${exists}, absent: ${absent}, skipped: ${skipped}"
+    [ "$APPLY" = "true" ] || echo $'\nThis was a DRY RUN. Nothing was written. Re-run with --apply.'
+}
+
 cmd_migrate_aws() {
-    CLOUD="aws"   # store_has dispatches on it; migrate-aws is AWS-only by definition
+    # migrate-aws is AWS-only by definition. STORE is what store_has and
+    # store_create dispatch on; CLOUD stays set because the hint text and the
+    # gcp/aws helpers still read it.
+    CLOUD="aws"
+    STORE="aws"
     local copied=0 skipped=0 absent=0
     for old in "${OLD_NAMES[@]}"; do
         local new="${old//\//-}"
@@ -571,7 +743,13 @@ seed_body() {
 # Create one secret from a JSON body on stdin. Never overwrites: callers check
 # first, and both APIs below are create-only.
 store_create() {
-    case "$CLOUD" in
+    case "$STORE" in
+        openbao)
+            # `-` makes `bao kv put` read a JSON object from stdin, which is the
+            # same contract the gcp arm's --data-file=- uses. kv-v2 wraps it
+            # under data/ on the way in, so store_value's unwrap is the inverse.
+            bao_kv put "$1" - >/dev/null
+            ;;
         aws)
             jq --arg name "$1" \
                --arg desc "Generated by scripts/secret-store.sh seed." \
@@ -685,6 +863,7 @@ case "$COMMAND" in
     lint)        cmd_lint ;;
     seed)        cmd_seed ;;
     grant)       cmd_grant ;;
+    migrate) cmd_migrate ;;
     migrate-aws) cmd_migrate_aws ;;
     *)
         sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
