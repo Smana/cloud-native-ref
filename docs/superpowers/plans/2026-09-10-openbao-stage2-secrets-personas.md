@@ -719,12 +719,14 @@ Rename its `case "$CLOUD"` to `case "$STORE"` and add:
 
 - [ ] **Step 5: Add the `openbao` arm to `store_create`**
 
+> **Corrected during execution (2026-09-10):** `store_create` takes the JSON body on **stdin** and only the name in `$1` — there is no `$2`. Its header says so ("Create one secret from a JSON body on stdin") and the `gcp` arm already uses `--data-file=-`. The original code block here used `"$2"`, which would have written an empty secret.
+
 ```bash
         openbao)
-            # The payload is already a JSON object, so it is fed on stdin with
-            # the `-` sentinel rather than as key=value argv pairs. This also
-            # keeps a large payload off the command line.
-            printf '%s' "$2" | bao_kv put "$1" - >/dev/null
+            # `-` makes `bao kv put` read a JSON object from stdin, which is the
+            # same contract the gcp arm's --data-file=- uses. kv-v2 wraps it
+            # under data/ on the way in, so store_value's unwrap is the inverse.
+            bao_kv put "$1" - >/dev/null
             ;;
 ```
 
@@ -753,9 +755,25 @@ Expected: the same 23-key table as before this task, ending `2/23 key(s) missing
 
 - [ ] **Step 9: Prove the new store answers [LIVE]**
 
-Run: `./scripts/secret-store.sh check --cloud aws --store openbao --region eu-west-3`
+> **Corrected during execution (2026-09-10).** The original expectation here — `check --store openbao` listing every key as `MISSING` — was wrong, and the command **is expected to abort**:
+>
+> ```
+> ERROR: could not query the openbao secret store for 'apps-app-wizard-llm' (exit 2).
+> URL: GET .../v1/sys/internal/ui/mounts/apps-app-wizard-llm
+> Refusing to continue: an unreachable store is not an empty one.
+> ```
+>
+> A managed-store key carries no mount prefix, so it is not a valid kv path and OpenBao answers "no mount here" rather than 404. `store_has` is right to refuse: reporting that as "absent" is exactly the failure its comment warns about. `check --store openbao` only becomes meaningful once keys are repointed. This does **not** affect `migrate`, which probes mapped target paths that do have a mount.
 
-Expected: the same key list, all `MISSING` — nothing has been migrated yet. A crash, or the "unreachable store" abort, means the dispatch is wrong.
+Verify the dispatch against a path that has a mount instead:
+
+```bash
+bao kv metadata get platform/harbor/admin-password    # absent -> "No value found" -> store_has returns 1
+echo '{"probe":"1"}' | bao kv put platform/_canary -  # then metadata get finds it -> store_has returns 0
+bao kv metadata delete platform/_canary
+```
+
+Expected: the absent probe prints `No value found at platform/metadata/harbor/admin-password`; the canary is found; the canary is removed.
 
 - [ ] **Step 10: Commit**
 
@@ -868,7 +886,8 @@ cmd_migrate() {
         fi
 
         if [ "$APPLY" = "true" ]; then
-            store_create "$target" "$payload"
+            # store_create reads the body on stdin; it takes no payload argument.
+            printf '%s' "$payload" | store_create "$target"
             printf '%-58s %-46s %s\n' "$key" "$target" "copied"
         else
             printf '%-58s %-46s %s\n' "$key" "$target" "would copy"
