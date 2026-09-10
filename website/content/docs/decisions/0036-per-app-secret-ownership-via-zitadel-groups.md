@@ -211,8 +211,10 @@ decorative.
 
 ### Neutral
 
-- The `app` tenant namespace becomes dead weight, and is scheduled for removal
-  rather than kept as a decoy. It holds no data and nothing consumes it.
+- The `app` tenant namespace becomes dead weight and is removed rather than kept
+  as a decoy. It was proved empty before the destroy — zero keys under its
+  `secret/` mount — and nothing consumed it. OpenBao now has no tenant namespace
+  at all, on either cluster.
 - A tier of secrets stays in the cloud managed store permanently — the CA chain,
   OpenBao's own server certificate, root token and recovery keys. These are read
   *before* OpenBao has an API, so moving them would be circular. The

@@ -45,10 +45,9 @@ PKI and operator logins under `admin`/`admin/pki`, which didn't hold up: an
 `admin` namespace is a role, not a tenant, and cluster-wide operations
 (`sys/storage/raft/*`, audit devices, seal operations) are root-only
 regardless — a snapshot agent parked in a child namespace could never reach
-them. The current layout, verified against
-`opentofu/aws/openbao/management/namespaces.tf` (this is `aws-0`'s layout —
-the GCP management stack has no `namespaces.tf`, so `gcp-0` is
-root-namespace-only):
+them. **Both clusters are now root-namespace-only**, verified against
+`opentofu/aws/openbao/management/` — there is no longer a `namespaces.tf` on
+either side, because the last tenant namespace was removed with ADR-0036:
 
 - **Root namespace** holds every shared platform service: the PKI mount
   (`pki_private_issuer`), the per-cluster JWT auth mounts (`jwt/aws-0`,
@@ -64,13 +63,13 @@ root-namespace-only):
   [Secrets]({{< relref "/docs/platform/security/secrets.md" >}}) page;
   [ADR-0036]({{< relref "/docs/decisions/0036-per-app-secret-ownership-via-zitadel-groups.md" >}})
   records why the alternative — a namespace per app — was rejected.
-- **`app`** is the only tenant namespace defined today, and it is dead weight.
-  It holds a `secret/` kv-v2 mount reachable through its own AppRole
-  (`vault_auth_backend.approle_app`), was built as a worked example for future
-  tenants, and has never been consumed by anything. It is **scheduled for
-  removal**: a mount no policy on a root identity can reach is the dead end that
-  the two root mounts exist to avoid, and leaving it in place reads as the
-  intended design rather than as the wrong turn it was.
+- **No tenant namespace exists.** An `app` namespace held a `secret/` kv-v2 mount
+  and its own AppRole, built as a worked example for future tenants and consumed
+  by nothing. It was removed with ADR-0036, because it was not merely unused but
+  unusable in the direction that mattered: a policy binds only within its own
+  namespace, so nothing attached to a root identity group — where the OIDC groups
+  live — could reach that mount. Only a root token could. Left in place it read
+  as the intended design rather than as the wrong turn it was.
 - Cluster-wide endpoints such as `sys/storage/raft/*` are callable **only**
   from root — the API rejects them from any child namespace with a 404
   `unsupported path`, no matter what the token's policy grants.
