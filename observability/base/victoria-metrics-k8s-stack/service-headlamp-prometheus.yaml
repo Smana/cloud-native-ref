@@ -1,0 +1,40 @@
+# Headlamp's shipped `prometheus` plugin finds its query backend by label, and
+# the only two it looks for are `headlamp-prometheus=true` -- checked first, on
+# pods then services -- and `app.kubernetes.io/name=prometheus` as the fallback.
+# VictoriaMetrics sets neither: the operator labels its service
+# `app.kubernetes.io/name: vmsingle`. No Service in the cluster carried either
+# label, so the plugin resolved no backend and every metrics chart in Headlamp
+# rendered empty, with nothing logged to say why.
+#
+# This is a thin alias rather than a label patch on the operator's own service.
+# VMSingle only exposes `spec.serviceSpec`, whose `spec` is required and whose
+# `useAsDefault` semantics are undocumented in the CRD, so patching through it
+# risks overriding ports the operator owns. Keeping the plugin's naming
+# expectations in their own file also means reverting is a deletion, and the
+# metrics stack's definition stays about metrics.
+#
+# No `subPath` is needed: VMSingle serves the Prometheus API at the bare path
+# (`/api/v1/query` returns 200), not only under `/prometheus`.
+#
+# The selector targets the VMSingle pods. If this cluster ever switches to the
+# VMCluster release (commented out in kustomization.yaml), this must point at
+# vmselect instead.
+apiVersion: v1
+kind: Service
+metadata:
+  name: headlamp-prometheus
+  namespace: observability
+  labels:
+    headlamp-prometheus: "true"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/instance: victoria-metrics-k8s-stack
+    app.kubernetes.io/name: vmsingle
+    managed-by: vm-operator
+  ports:
+    - name: http
+      port: 8428
+      targetPort: 8428
+      protocol: TCP

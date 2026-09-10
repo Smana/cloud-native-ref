@@ -21,6 +21,8 @@ resources:
   # VM Single
   - helmrelease-vmsingle.yaml
   - httproute-vmsingle.yaml
+  # Label-only alias so Headlamp's prometheus plugin can discover vmsingle
+  - service-headlamp-prometheus.yaml
   # VM Cluster
   # - helmrelease-vmcluster.yaml
   # - httproute-vmcluster.yaml
