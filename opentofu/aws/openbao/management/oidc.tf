@@ -19,8 +19,36 @@
 # app and writes {client_id, client_secret, endpoint} to the `openbao-oidc`
 # store key; this reads it back.
 
+# Existence check, so the secret id can stay SET in variables.tfvars.
+#
+# Reading the version directly is a hard error when the secret does not exist
+# yet, which is why the id used to ship commented out -- and why every rebuild
+# then applied with OIDC disabled and DESTROYED the auth mount, the role and the
+# identity group. Listing first turns "not bootstrapped yet" back into count = 0,
+# so a first deploy still converges with no OIDC method while an established
+# account keeps its login across rebuilds with no manual step.
+#
+# The `name` filter is a PREFIX match in the Secrets Manager API, so `contains`
+# on the returned names is what makes this exact -- a secret called
+# `openbao-oidc-staging` must not satisfy a lookup for `openbao-oidc`.
+data "aws_secretsmanager_secrets" "openbao_oidc" {
+  count = var.openbao_oidc_secret_id == "" ? 0 : 1
+
+  filter {
+    name   = "name"
+    values = [var.openbao_oidc_secret_id]
+  }
+}
+
+locals {
+  oidc_secret_present = var.openbao_oidc_secret_id != "" && contains(
+    try(data.aws_secretsmanager_secrets.openbao_oidc[0].names, []),
+    var.openbao_oidc_secret_id
+  )
+}
+
 data "aws_secretsmanager_secret_version" "openbao_oidc" {
-  count     = var.openbao_oidc_secret_id == "" ? 0 : 1
+  count     = local.oidc_secret_present ? 1 : 0
   secret_id = var.openbao_oidc_secret_id
 }
 
