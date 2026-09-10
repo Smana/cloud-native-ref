@@ -26,7 +26,11 @@ locals {
     external-secrets = {
       service_account = "external-secrets"
       namespace       = "security"
-      policies        = ["default"]
+      # Parity with aws-0. There is exactly ONE OpenBao (ADR-0027, primary-cloud
+      # singleton), so the `external-secrets` policy is defined once, by
+      # opentofu/aws/openbao/management, and referenced by name from both
+      # clusters' JWT roles. Read-only over `platform/` and `apps/`.
+      policies = ["default", "external-secrets"]
     }
     openbao-snapshot = {
       service_account = "openbao-snapshot"
