@@ -26,12 +26,17 @@ function refs(...items: Array<[string, string, string]>) {
   };
 }
 
-// The App and one nested XR (SQLInstance) that has refs of its own.
+// The App and one nested XR (SQLInstance) that has refs of its own. Also a
+// NetworkPolicy: its real plural ("networkpolicies") is irregular enough
+// that no naive kind.toLowerCase()+'s' guess produces it ("networkpolicys"
+// would), which is what makes it useful for pinning that TreeNode.plural
+// comes from discovery rather than from a lucky guess.
 const app = obj('App', 'podinfo', 'uid-app', {
   spec: refs(
     ['apps/v1', 'Deployment', 'xplane-podinfo'],
     ['v1', 'Service', 'xplane-podinfo'],
-    ['cloud.ogenki.io/v1alpha1', 'SQLInstance', 'xplane-podinfo-db']
+    ['cloud.ogenki.io/v1alpha1', 'SQLInstance', 'xplane-podinfo-db'],
+    ['networking.k8s.io/v1', 'NetworkPolicy', 'xplane-podinfo']
   ),
 });
 const deployment = obj('Deployment', 'xplane-podinfo', 'uid-deploy', {}, 'apps/v1');
@@ -46,6 +51,13 @@ const database = obj(
   {},
   'postgresql.sql.crossplane.io/v1alpha1'
 );
+const networkPolicy = obj(
+  'NetworkPolicy',
+  'xplane-podinfo',
+  'uid-netpol',
+  {},
+  'networking.k8s.io/v1'
+);
 
 const catalog: Record<string, ApiResourceInfo[]> = {
   'cloud.ogenki.io/v1alpha1': [
@@ -57,12 +69,14 @@ const catalog: Record<string, ApiResourceInfo[]> = {
   'postgresql.sql.crossplane.io/v1alpha1': [
     { kind: 'Database', name: 'databases', namespaced: false },
   ],
+  'networking.k8s.io/v1': [{ kind: 'NetworkPolicy', name: 'networkpolicies', namespaced: true }],
 };
 const store: Record<string, KubeJSON> = {
   'deployments/xplane-podinfo': deployment,
   'services/xplane-podinfo': service,
   'sqlinstances/xplane-podinfo-db': sql,
   'databases/xplane-podinfo-db': database,
+  'networkpolicies/xplane-podinfo': networkPolicy,
 };
 
 function fakeClient(overrides: Partial<ApiClient> = {}): ApiClient {
@@ -78,7 +92,7 @@ describe('buildAppTree', () => {
     const tree = await buildAppTree(app, fakeClient());
 
     expect(tree.nodes.map(n => n.id).sort()).toEqual(
-      ['uid-app', 'uid-db', 'uid-deploy', 'uid-sql', 'uid-svc'].sort()
+      ['uid-app', 'uid-db', 'uid-deploy', 'uid-netpol', 'uid-sql', 'uid-svc'].sort()
     );
     expect(tree.nodes.find(n => n.id === 'uid-app')!.depth).toBe(0);
     expect(tree.nodes.find(n => n.id === 'uid-sql')!.depth).toBe(1);
@@ -137,6 +151,12 @@ describe('buildAppTree', () => {
 
   it('records the plural a fetched child was discovered under, but not on the root', async () => {
     const tree = await buildAppTree(app, fakeClient());
+    // NetworkPolicy is the case that actually proves this comes from
+    // discovery: a naive kind.toLowerCase()+'s' guess gives "networkpolicys",
+    // not the real "networkpolicies". Deployment/SQLInstance are kept too —
+    // they exercise the ordinary case — but on their own they'd pass even if
+    // plural were guessed rather than looked up.
+    expect(tree.nodes.find(n => n.id === 'uid-netpol')!.plural).toBe('networkpolicies');
     expect(tree.nodes.find(n => n.id === 'uid-deploy')!.plural).toBe('deployments');
     expect(tree.nodes.find(n => n.id === 'uid-sql')!.plural).toBe('sqlinstances');
     expect(tree.nodes.find(n => n.id === 'uid-app')!.plural).toBeUndefined();
@@ -145,7 +165,7 @@ describe('buildAppTree', () => {
   it('stops at maxDepth', async () => {
     const tree = await buildAppTree(app, fakeClient(), 1);
     expect(tree.nodes.map(n => n.id).sort()).toEqual(
-      ['uid-app', 'uid-deploy', 'uid-sql', 'uid-svc'].sort()
+      ['uid-app', 'uid-deploy', 'uid-netpol', 'uid-sql', 'uid-svc'].sort()
     );
   });
 });
