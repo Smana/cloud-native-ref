@@ -12,6 +12,11 @@ container-images/
 │   ├── pev2.html
 │   ├── build.sh
 │   └── README.md
+├── headlamp-plugin-app/     # Headlamp plugin: a page per App claim (ADR-0035)
+│   ├── Dockerfile
+│   ├── src/
+│   ├── build.sh
+│   └── README.md
 ├── openbao-snapshot/        # OpenBao raft snapshot save/restore (aws + gcp CLIs)
 │   ├── Dockerfile
 │   ├── openbao-snapshot.sh

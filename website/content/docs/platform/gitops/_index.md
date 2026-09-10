@@ -472,6 +472,21 @@ reach for when a Flux failure turns out not to be a Flux problem: the plugin
 puts Kustomization and HelmRelease state next to the Pods, Events and logs of
 whatever they created, without leaving the page.
 
+A second plugin is built here rather than pulled in: **`headlamp-plugin-app`**
+(source in `container-images/headlamp-plugin-app/`) gives the platform's own
+`App` claim a page of its own at `/c/main/apps/<namespace>/<name>` — its Ready
+and Synced conditions, a graph of exactly the resources that claim composed
+(nested `SQLInstance` and friends included), its pods and events, and links
+onward to Grafana and VictoriaLogs. It needs Headlamp 0.45.0 or later, which is
+the release that first exports the map's graph renderer to plugins, and which is
+what the HelmRelease pins. See
+[ADR-0035]({{< relref "/docs/decisions/0035-own-headlamp-plugin-for-the-app-view.md" >}}).
+
+**It is not loaded yet.** The plugin's source and its image build live here, but
+the init container that copies it into the running Headlamp, and the App Wizard
+links that open it, both land with a later change. Until then the plugin exists
+in the repository and not on the clusters.
+
 The two differ in what they can show *per person*. The Flux UI impersonates on
 both clusters. Headlamp does on `aws-0`, where EKS is configured to trust
 ZITADEL directly — but not on `gcp-0`, where GKE cannot be, so Headlamp sits
