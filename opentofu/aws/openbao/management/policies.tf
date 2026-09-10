@@ -44,3 +44,14 @@ resource "vault_policy" "app" {
   name      = "app"
   policy    = file("policies/app.hcl")
 }
+
+# Full control of the two Stage 2 secret mounts. Held by the OIDC admin group
+# alongside `admin` and `pki-admin`; see oidc.tf.
+#
+# `admin` deliberately grants no secret path and could not reach one anyway --
+# it is a root-namespace policy and, until Stage 2, the only kv-v2 mount holding
+# anything was in the `app` namespace.
+resource "vault_policy" "secrets_admin" {
+  name   = "secrets-admin"
+  policy = file("policies/secrets-admin.hcl")
+}
