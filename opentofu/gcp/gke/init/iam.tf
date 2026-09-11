@@ -75,7 +75,7 @@
 # spelled `xplane_` here.
 resource "google_project_iam_custom_role" "crossplane_dns" {
   project     = var.project_id
-  role_id     = "xplane_dns_editor"
+  role_id     = "xplane_dns_editor_v2"
   title       = "Crossplane DNS editor"
   description = "Record-set management for external-dns and cert-manager DNS-01. Deliberately excludes zone deletion and response policies; see opentofu/gcp/gke/init/iam.tf."
 
@@ -131,7 +131,7 @@ resource "google_project_iam_custom_role" "crossplane_dns" {
 # pattern as crossplane_dns.
 resource "google_project_iam_custom_role" "crossplane_storage" {
   project     = var.project_id
-  role_id     = "xplane_storage_admin"
+  role_id     = "xplane_storage_admin_v2"
   title       = "Crossplane storage bucket admin"
   description = "Bucket lifecycle + IAM for the App Composition's per-app buckets. See opentofu/gcp/gke/init/iam.tf."
 
@@ -365,7 +365,7 @@ resource "google_project_iam_member" "crossplane_storage" {
 # read requests, so a condition here would be vacuous anyway (see gap 1 below).
 resource "google_project_iam_custom_role" "crossplane_role_reader" {
   project     = var.project_id
-  role_id     = "xplane_role_reader"
+  role_id     = "xplane_role_reader_v2"
   title       = "Crossplane role reader"
   description = "Read-only on IAM role definitions, so ProjectIAMMember can reference the custom DNS role. Confers no grant capability."
 
