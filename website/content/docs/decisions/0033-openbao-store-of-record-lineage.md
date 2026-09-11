@@ -277,5 +277,6 @@ Fallback runbook: [Cross-cloud failover]({{< relref "/docs/guides/openbao-cross-
 ## References
 
 - [ADR-0025](0025-cloud-managed-secret-stores.md), [ADR-0027](0027-primary-cloud-provider.md), [ADR-0024](0024-identity-provider-per-cloud.md), [ADR-0019](0019-cross-cloud-dns-federation.md)
+- [ADR-0037](0037-gcp-only-runs-its-own-openbao-lineage-and-directory.md) — Stage 2 (the `platform/` and `apps/` mounts, their policies and logins) on GCP's OpenBao, from the shared `openbao-store-of-record` module
 - [OpenBao]({{< relref "/docs/platform/security/openbao.md" >}}), [PKI & Secrets]({{< relref "/docs/platform/security/pki-and-secrets.md" >}}), [What it costs]({{< relref "/docs/get-started/costs.md" >}})
 - OpenBao docs: seal migration requires both seals reachable; Raft nodes must share a seal configuration

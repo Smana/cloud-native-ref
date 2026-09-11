@@ -75,6 +75,11 @@ client secrets, which travel together or the move half-works in silence. It is a
 deliberate act with a written procedure, not something that happens as a side
 effect of enabling a cluster.
 
+> **Amended 2026-09-11 by [ADR-0037](0037-gcp-only-runs-its-own-openbao-lineage-and-directory.md):**
+> a GCP-only platform runs the singletons on GCP with GCP's *own* OpenBao lineage
+> and identity directory. Relocating AWS's data is the optional migration above,
+> not a precondition for running GCP alone.
+
 ## Consequences
 
 **What gets better.** "Where does this live, and why?" is answerable from the

@@ -156,6 +156,11 @@ break-glass login as well as the `openbao-admin` OIDC group — the OIDC route d
 ZITADEL, whose own credential lives in `platform/zitadel/envvars`. Adding a mount means adding
 it to `auth.tf`'s policy list in the same change. External Secrets is **read-only** on both
 mounts by design; see `website/content/docs/platform/security/secrets.md`.
+On GCP the same mounts, policies and logins come from
+`opentofu/shared/modules/openbao-store-of-record`, called by
+`opentofu/gcp/openbao/management` (ADR-0037); AWS still defines them inline until it
+moves onto the module. `./scripts/validate-openbao-policies.sh` fails when a JWT role
+names a policy its cloud's OpenBao does not define.
 OpenBao's storage is rebuilt from its newest snapshot on every deploy (the *lineage*, ADR-0033): the lineage and management stacks are never destroyed by the default `destroy` (`TM_LINEAGE_DESTROY=true` overrides), machine auth is the JWT method on `jwt/<cluster>`, and consumers reach it at `openbao.security.svc.cluster.local:8200`. See
 `opentofu/aws/openbao/management/`.
 

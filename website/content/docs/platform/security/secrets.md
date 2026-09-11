@@ -172,6 +172,17 @@ aws secretsmanager get-secret-value \
   --query SecretString --output text | jq -r .password
 ```
 
+GCP's OpenBao has the same login, and publishes the password to Secret Manager:
+
+```bash
+export VAULT_ADDR=https://bao.priv.gcp.ogenki.io:8200
+export VAULT_CACERT=opentofu/gcp/openbao/management/.tls/ca.pem
+bao login -method=userpass username=admin
+
+gcloud secrets versions access latest \
+  --secret openbao-priv-gcp-admin-credentials --project ogenki-435905 | jq -r .password
+```
+
 {{< callout type="warning" >}}
 **This login must carry `secrets-admin`, and once did not.** When the two mounts
 were created, `secrets-admin` was attached only to the `openbao-admin` *identity
@@ -186,8 +197,9 @@ Code: 403. Errors:
 
 So the one path that exists for when ZITADEL is unavailable was the one path that
 could not read what would bring ZITADEL back. It is fixed in
-`opentofu/aws/openbao/management/auth.tf`; if you add a mount, add it to this
-login's policies in the same change.
+`opentofu/aws/openbao/management/auth.tf`, and GCP's login comes from
+`opentofu/shared/modules/openbao-store-of-record`; if you add a mount, add it to
+this login's policies in the same change, in both.
 {{< /callout >}}
 
 ## How a controller gets in
@@ -298,6 +310,20 @@ was deleted before the new source was proven for that key. Where it stands:
 ZITADEL moved last and alone, deliberately: it is the IdP behind the OIDC login
 that reaches OpenBao itself, so it moved only once the break-glass path above was
 known good.
+
+**GCP.** GCP's OpenBao got the same mounts, policies and logins on 2026-09-11,
+from the shared `openbao-store-of-record` module
+([ADR-0037]({{< relref "/docs/decisions/0037-gcp-only-runs-its-own-openbao-lineage-and-directory.md" >}})).
+Its data is seeded from GCP Secret Manager with `scripts/secret-store.sh`'s
+`migrate` command:
+
+```bash
+scripts/secret-store.sh migrate --cloud gcp --keys ...
+```
+
+The explicit list is required, because gcp-0's ExternalSecrets already name
+OpenBao paths. An empty `--keys` refuses rather than falling back to the
+cluster's own list.
 
 ## Related
 

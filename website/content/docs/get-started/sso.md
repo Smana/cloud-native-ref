@@ -140,7 +140,8 @@ minted by hand.
 **Recovery only: a cluster restored before this landed has no PAT anywhere.** If
 every script above fails with `no ZITADEL admin PAT available`, the store was
 never seeded — this cluster's seed predates the capture step above, or its store
-entry was deleted. Mint a PAT for the `iam-admin` machine user in the ZITADEL
+entry was deleted (a GCP-only platform restoring `zitadel-20260828` is exactly this
+case). Mint a PAT for the `iam-admin` machine user in the ZITADEL
 console, then:
 
 ```bash

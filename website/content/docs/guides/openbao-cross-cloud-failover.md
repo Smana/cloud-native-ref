@@ -390,6 +390,37 @@ the newest object in the AWS history.
 
 5. Revert the `openbao_target_ip` / overlay changes from step 4 of the failover.
 
+## Starting a GCP-only lineage
+
+GCP's snapshot bucket also holds the AWS mirror, and every mirrored object is
+AWS-sealed. A `gcpckms` node that finds no object under its own seal therefore
+has no way in. `rehydrate` refuses the foreign seal, and even with
+`OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true` it refuses to initialise, because that
+would overwrite a lineage's stored keys on a guess. The first boot of a GCP-only
+lineage says so out loud instead:
+
+```bash
+OPENBAO_NEW_LINEAGE=true TM_CLOUD=gcp \
+  terramate -C opentofu/gcp/openbao/management script run deploy
+```
+
+The switch has four limits:
+
+- It is honoured only when no top-level object carries the node's own seal, and
+  every top-level snapshot's name carries a `-<seal>` segment. A snapshot whose
+  name has no seal segment (a legacy `<timestamp>.snap` or a hand-named one) is
+  refused, because its seal is unknown.
+- Snapshots moved aside under a prefix are **not examined**. Never move one
+  under a prefix in this bucket to get past the refusal, because that only
+  hides it from the check. Retag it to `<timestamp>-<seal>.snap`, or move it to
+  another bucket.
+- It is never honoured together with `OPENBAO_SNAPSHOT_KEY`.
+- It **replaces** the stored root token and recovery keys.
+
+Every later boot restores the newest `-gcpckms` object. When a mirrored AWS
+object is newer, set `OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true`, as the refusal
+message says.
+
 ## Drill record
 
 Every executed failover is recorded with the snapshot object, the measured RPO,
