@@ -80,6 +80,18 @@ if [ -n "$switch_line" ] && [ -n "$gate_line" ] && [ "$switch_line" -lt "$gate_l
 else
     printf '  FAIL the switch must be consulted before the foreign-seal refusal (switch=%s gate=%s)\n' "$switch_line" "$gate_line"; fail=1
 fi
+cannot_list_line=$(printf '%s\n' "$fn" | grep -nF 'Refusing to initialise: cannot prove' | head -1 | cut -d: -f1)
+if [ -n "$switch_line" ] && [ -n "$cannot_list_line" ] && [ "$cannot_list_line" -lt "$switch_line" ]; then
+    printf '  ok   the switch comes after the cannot-list refusal\n'
+else
+    printf '  FAIL the switch must come after the cannot-list refusal (cannot_list=%s switch=%s)\n' "$cannot_list_line" "$switch_line"; fail=1
+fi
+recovery_preflight_line=$(printf '%s\n' "$fn" | grep -nF 'secret_read "$RECOVERY_KEYS_SECRET_NAME"' | head -1 | cut -d: -f1)
+if [ -n "$switch_line" ] && [ -n "$recovery_preflight_line" ] && [ "$recovery_preflight_line" -lt "$switch_line" ]; then
+    printf '  ok   the switch comes after the recovery-keys pre-flight\n'
+else
+    printf '  FAIL the switch must come after the recovery-keys pre-flight (preflight=%s switch=%s)\n' "$recovery_preflight_line" "$switch_line"; fail=1
+fi
 
 echo "== documented"
 usage_fn="$(sed -n '/^usage() {/,/^}/p' "$SRC")"

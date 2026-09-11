@@ -103,8 +103,9 @@ usage() {
     echo "                                             after it. Only for a failback, where the"
     echo "                                             foreign-sealed objects are not coming back."
     echo "  OPENBAO_NEW_LINEAGE=true                  Let 'rehydrate' start a NEW lineage (a plain init) on a"
-    echo "                                             node whose seal NO object in the bucket carries -- the"
-    echo "                                             first boot of a GCP-only lineage beside the AWS mirror."
+    echo "                                             node whose seal no top-level object in the bucket carries"
+    echo "                                             (objects moved aside under a prefix are not examined) --"
+    echo "                                             the first boot of a GCP-only lineage beside the AWS mirror."
     echo "                                             Refused whenever an object under this node's seal exists,"
     echo "                                             together with OPENBAO_SNAPSHOT_KEY, or when any snapshot's"
     echo "                                             seal is unknown (a legacy name with no seal segment)."
@@ -1158,7 +1159,7 @@ rehydrate_openbao() {
             proceed)
                 log_message "WARN" "OPENBAO_NEW_LINEAGE=true -- STARTING A NEW '${node_seal}' LINEAGE."
                 log_message "WARN" "  newest object : ${latest} (sealed '${snap_seal:-none}') -- NOT restored"
-                log_message "WARN" "  '${node_seal}' objects in ${SNAPSHOT_BUCKET}: none"
+                log_message "WARN" "  no top-level '-${node_seal}' object in ${SNAPSHOT_BUCKET} (objects moved aside under a prefix are NOT examined)"
                 log_message "WARN" "  ${ROOT_TOKEN_SECRET_NAME} and ${RECOVERY_KEYS_SECRET_NAME} are REPLACED with this node's new keys."
                 init_openbao
                 return 0 ;;
