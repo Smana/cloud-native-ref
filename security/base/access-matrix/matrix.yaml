@@ -1,0 +1,45 @@
+# The single source of every team's permissions on this platform.
+#
+# Rows are teams, columns are consumers. scripts/render_access_matrix.py turns
+# this into the ZITADEL project role list and three RBAC manifests; CI fails if
+# a rendered file was edited by hand. scripts/access-matrix-sync.sh reconciles
+# ZITADEL role grants from each team's Google Workspace group.
+#
+# To change what a team may do, change it HERE and re-render. Editing a
+# generated file is the one thing this design exists to stop.
+#
+# See docs/superpowers/specs/2026-09-11-workspace-access-matrix-design.md.
+teams:
+  # Runs the platform. `mountAccess: all` is what used to be the hand-written
+  # openbao-admin identity group.
+  - team: platform
+    googleGroup: platform@ogenki.io
+    kubernetes: cluster-admin
+    mountAccess: all
+    grafana: Admin
+    fluxUI: cluster-admin
+
+  # Service teams. `kubernetes: view` rather than `edit` on purpose: `edit` is
+  # only meaningful scoped to a namespace and every app shares `apps` today.
+  # Namespace-scoped edit waits on per-team namespaces.
+  - team: backend
+    googleGroup: backend@ogenki.io
+    kubernetes: view
+    mountAccess: own
+    grafana: Editor
+    fluxUI: edit
+
+  - team: data
+    googleGroup: data-eng@ogenki.io
+    kubernetes: view
+    mountAccess: own
+    grafana: Editor
+    fluxUI: edit
+
+  # Dashboards only -- no Kubernetes, no OpenBao mount access.
+  - team: frontend
+    googleGroup: frontend@ogenki.io
+    kubernetes: none
+    mountAccess: none
+    grafana: Editor
+    fluxUI: none
