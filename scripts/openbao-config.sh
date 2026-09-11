@@ -1214,9 +1214,12 @@ rehydrate_openbao() {
                 exit 1 ;;
             refuse-unsealed-object)
                 log_message "ERROR" "OPENBAO_NEW_LINEAGE=true, but ${unsealed_latest} carries NO seal segment: its seal is"
-                log_message "ERROR" "UNKNOWN, not 'none' -- it may be this node's seal '${node_seal}'. Confirm the seal and"
-                log_message "ERROR" "retag it to <timestamp>-<seal>.snap, or move it to ANOTHER bucket (not a prefix of"
-                log_message "ERROR" "this one, which trips the moved-aside refusal), then re-run. Nothing has changed yet."
+                log_message "ERROR" "UNKNOWN, not 'none' -- it may be this node's seal '${node_seal}'. Confirm the seal,"
+                log_message "ERROR" "then retag it to <timestamp>-<seal>.snap, or move it to ANOTHER bucket, then re-run."
+                log_message "ERROR" "Do NOT move it under a prefix in THIS bucket: that only hides it from this check --"
+                log_message "ERROR" "the AWS-mirror objects stay at the top level, so a prefix does not trip the"
+                log_message "ERROR" "moved-aside refusal -- and the switch would then start a new lineage over it."
+                log_message "ERROR" "Nothing has changed yet."
                 exit 1 ;;
             *)
                 log_message "ERROR" "new_lineage_verdict returned '${verdict}' -- refusing. Nothing has changed yet."
