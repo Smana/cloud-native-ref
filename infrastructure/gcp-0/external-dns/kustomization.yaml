@@ -16,3 +16,15 @@ patches:
       group: helm.toolkit.fluxcd.io
       kind: HelmRelease
       name: external-dns
+  # The base waits for aws-load-balancer-controller, because on AWS that
+  # controller's mutating webhook intercepts every Service create (#1975). gcp-0
+  # has no such controller, so the dependency can never be met: the release
+  # never installs and the private zone gets no app records at all. Removed here
+  # only; the AWS base keeps it.
+  - target:
+      group: helm.toolkit.fluxcd.io
+      kind: HelmRelease
+      name: external-dns
+    patch: |-
+      - op: remove
+        path: /spec/dependsOn
