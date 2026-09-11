@@ -74,5 +74,37 @@ class TestLoad(unittest.TestCase):
             access_matrix.load(write(doc))
 
 
+import render_access_matrix  # noqa: E402
+
+
+class TestRender(unittest.TestCase):
+    def setUp(self):
+        self.teams = access_matrix.load(write(VALID))
+
+    def test_aws_uses_the_bare_group_name(self):
+        out = render_access_matrix.render_rbac(self.teams, "aws")
+        self.assertIn("name: platform\n", out)
+        self.assertNotIn("principalSet", out)
+
+    def test_gcp_uses_the_principalset_path(self):
+        out = render_access_matrix.render_rbac(self.teams, "gcp")
+        self.assertIn(
+            "principalSet://iam.googleapis.com/locations/global/"
+            "workforcePools/${workforce_pool_id}/group/platform",
+            out,
+        )
+
+    def test_none_renders_no_binding(self):
+        doc = VALID.replace("kubernetes: view", "kubernetes: none")
+        teams = access_matrix.load(write(doc))
+        out = render_access_matrix.render_rbac(teams, "aws")
+        self.assertIn("ogenki-platform", out)
+        self.assertNotIn("ogenki-data", out)
+
+    def test_carries_a_do_not_edit_header(self):
+        out = render_access_matrix.render_rbac(self.teams, "aws")
+        self.assertIn("GENERATED FILE", out.split("\n")[0])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

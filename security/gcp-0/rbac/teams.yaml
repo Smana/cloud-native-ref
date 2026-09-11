@@ -1,0 +1,47 @@
+# GENERATED FILE -- DO NOT EDIT.
+#
+# Rendered from security/base/access-matrix/matrix.yaml by
+# scripts/render_access_matrix.py. Change the matrix and re-render:
+#
+#     python3 scripts/render_access_matrix.py
+#
+# CI runs `--check` and fails if this file and the matrix disagree.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ogenki-platform
+subjects:
+  - kind: Group
+    name: principalSet://iam.googleapis.com/locations/global/workforcePools/${workforce_pool_id}/group/platform
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ogenki-backend
+subjects:
+  - kind: Group
+    name: principalSet://iam.googleapis.com/locations/global/workforcePools/${workforce_pool_id}/group/backend
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: view
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ogenki-data
+subjects:
+  - kind: Group
+    name: principalSet://iam.googleapis.com/locations/global/workforcePools/${workforce_pool_id}/group/data
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: view
+  apiGroup: rbac.authorization.k8s.io
