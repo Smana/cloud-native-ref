@@ -346,6 +346,17 @@ jobs:
       - name: Run identity provider topology tests
         run: ./scripts/test-validate-idp-topology.sh
 
+      # OpenBao policy parity: every policy a JWT role names must be defined by
+      # that cloud's management stack, or a module it calls. The gap it closes
+      # shipped silently with Stage 2 -- jwt/gcp-0's external-secrets role named a
+      # policy GCP's OpenBao never had. Named explicitly, like the IdP suites
+      # above: stdlib python3 only, no pyyaml.
+      - name: Check OpenBao policy parity
+        run: ./scripts/validate-openbao-policies.sh
+
+      - name: Run OpenBao policy parity tests
+        run: ./scripts/test-validate-openbao-policies.sh
+
       # The access matrix: the unit tests of the module that parses it and the
       # tools built on it, the rendered RBAC files still matching it, and
       # Grafana's role_attribute_path still agreeing with it. Here rather than in
