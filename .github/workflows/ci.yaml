@@ -238,7 +238,7 @@ jobs:
       # test-vector-vrl.sh) need tooling a bare runner does not have. This glob
       # is scoped to one homogeneous family that is offline by construction --
       # every API call is stubbed, so they need bash and jq and nothing else --
-      # and all seven pass here. Scoping it this way also means the NEXT
+      # and every one passes here. Scoping it this way also means the NEXT
       # zitadel suite is covered by default instead of being forgotten, which is
       # exactly how the seven existing ones ended up unrun.
       # scripts/test-openbao-fallback-address.sh joins them by name rather than
@@ -284,11 +284,17 @@ jobs:
       # authenticates against it. It needs openssl, which the runner image
       # already has; it generates its own throwaway CAs rather than stubbing the
       # verify, since a stub would be assuming the very answer under test.
+      # scripts/test-access-matrix-sync.sh is the seventh named addition, and
+      # covers the access-matrix reconciler: the guards that decide whether a
+      # Google outage is a non-event or a platform-wide lockout, the per-user
+      # grant planner, and main end to end. Offline like the rest -- curl,
+      # gcloud, kubectl and aws are tripwires it asserts were never called, and
+      # the one Python call is stubbed -- so bash and jq are all it needs.
       - name: Run the shell test suites
         run: |
           set -uo pipefail
           rc=0
-          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh scripts/test-openbao-snapshot-key.sh scripts/test-openbao-seal-status-tls.sh scripts/test-openbao-root-token-probe.sh scripts/test-openbao-pki-verify.sh; do
+          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh scripts/test-openbao-snapshot-key.sh scripts/test-openbao-seal-status-tls.sh scripts/test-openbao-root-token-probe.sh scripts/test-openbao-pki-verify.sh scripts/test-access-matrix-sync.sh; do
             if bash "$t" > /tmp/zitadel-test.log 2>&1; then
               echo "PASS  $t"
             else
@@ -334,8 +340,19 @@ jobs:
       # bare environment.
       #
       # The ZITADEL suites are no longer among the unrun: the shellcheck job
-      # runs all seven, under a glob scoped to that one family. The reasoning
+      # runs every one, under a glob scoped to that one family. The reasoning
       # for why a NARROW glob is safe where this broad one is not is there.
       # Everything else under scripts/test-*.sh is still hand-run only.
       - name: Run identity provider topology tests
         run: ./scripts/test-validate-idp-topology.sh
+
+      # The access matrix: the unit tests of the module that parses it and the
+      # tools built on it, the rendered RBAC files still matching it, and
+      # Grafana's role_attribute_path still agreeing with it. Here rather than in
+      # the shellcheck job for the pyyaml installed above, and in this job so
+      # the required-check list on `main` does not change.
+      - name: Check the access matrix
+        run: |
+          python3 scripts/test-access-matrix.py
+          python3 scripts/render_access_matrix.py --check
+          python3 scripts/validate_access_matrix.py

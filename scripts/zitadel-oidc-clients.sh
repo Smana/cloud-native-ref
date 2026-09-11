@@ -437,7 +437,7 @@ ensure_project() {
 # before this was understood, and a project that predates this function must be
 # repaired rather than left to a manual console click nobody remembers.
 grant_admin_role() {
-    local email="$1" project_id="$2" user_id existing resp
+    local email="$1" project_id="$2" user_id existing resp grant_id roles
     [ -n "$email" ] || return 0
     [ -n "$project_id" ] || return 0
     if [ "$project_id" = "DRYRUN-PROJECT" ]; then
@@ -466,9 +466,24 @@ grant_admin_role() {
         return 0
     fi
 
-    jq -n --arg p "$project_id" '{projectId: $p, roleKeys: ["platform"]}' \
-        | api POST "/management/v1/users/${user_id}/grants" -d @- >/dev/null
-    echo "[granted] 'platform' to ${email} (${user_id})"
+    # ZITADEL keeps ONE grant per (user, project), holding a roleKeys list. A
+    # user who already has one -- after a rebuild, everyone holding the legacy
+    # `admin` role -- gets `platform` ADDED to it: PUT replaces the list, so the
+    # existing roles go with it. A second POST would be a second grant, not an
+    # update, and fail for exactly the users this recovery path exists for.
+    grant_id="$(jq -r --arg u "$user_id" --arg p "$project_id" \
+                    'first(.result[]? | select(.userId == $u and .projectId == $p) | .id) // empty' <<< "$resp")"
+    if [ -z "$grant_id" ]; then
+        jq -n --arg p "$project_id" '{projectId: $p, roleKeys: ["platform"]}' \
+            | api POST "/management/v1/users/${user_id}/grants" -d @- >/dev/null
+        echo "[granted] 'platform' to ${email} (${user_id})"
+        return 0
+    fi
+    roles="$(jq -c --arg g "$grant_id" \
+                 '[.result[]? | select(.id == $g) | .roleKeys[]?] + ["platform"] | unique' <<< "$resp")"
+    jq -n --argjson r "$roles" '{roleKeys: $r}' \
+        | api PUT "/management/v1/users/${user_id}/grants/${grant_id}" -d @- >/dev/null
+    echo "[granted] 'platform' added to the existing grant of ${email} (${user_id}): ${roles}"
 }
 
 ensure_project_role_assertion() {
