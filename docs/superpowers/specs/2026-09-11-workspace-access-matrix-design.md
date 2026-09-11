@@ -50,30 +50,79 @@ flattens `ctx.v1.user.grants` — role grants, not groups.
 
 ### The matrix
 
-One file, rendered to a ConfigMap by kustomize and mounted by the reconciler:
+One file with **one row per team and a column per consumer**. It is not a lookup
+table that something reads at runtime — it is the source the platform's
+authorisation config is *rendered from*:
 
 ```yaml
 # security/base/access-matrix/matrix.yaml
 teams:
-  - team: admin
-    googleGroup: platform-admins@ogenki.io
+  - team: platform
+    googleGroup: platform@ogenki.io
+    kubernetes: cluster-admin
+    secrets: all                      # both mounts
+    grafana: Admin
+    fluxUI: cluster-admin
   - team: backend
     googleGroup: backend@ogenki.io
+    kubernetes: view
+    secrets: own                      # apps/backend/* only
+    grafana: Editor
+    fluxUI: edit
   - team: data
     googleGroup: data-eng@ogenki.io
+    kubernetes: view
+    secrets: own
+    grafana: Editor
+    fluxUI: edit
+  - team: frontend
+    googleGroup: frontend@ogenki.io
+    kubernetes: none
+    secrets: none
+    grafana: Editor
+    fluxUI: none
 ```
 
-**One name in three systems**: the ZITADEL project role, the OpenBao identity
-group suffix (`openbao-team-<team>`), and the secret-path segment
-(`apps/<team>/…`). Collapsing those into a single column is the point — three
-names for one concept is how they drift.
+**The team name is one name in three systems**: the ZITADEL project role, the
+OpenBao identity group suffix (`openbao-team-<team>`), and the secret-path
+segment (`apps/<team>/…`). Three names for one concept is how they drift.
 
-The four existing role names are kept **verbatim** rather than renamed to
-something more team-shaped. `admin` reads as a role rather than a team and that
-is ugly; renaming it would simultaneously break
-`security/base/rbac/admin.yaml`, Grafana's `role_attribute_path`, and the
-`principalSet://…/group/admin` in `security/gcp-0/rbac/admin.yaml`. New teams
-get natural names.
+**The teams are defined fresh.** `admin` becomes `platform`, so every row is a
+team rather than a permission level. There is no migration cost to pay for this:
+every consumer binding is a file in this repository — `security/base/rbac/admin.yaml`,
+`flux/operator/rbac.yaml`, `security/gcp-0/rbac/admin.yaml`, Grafana's
+`role_attribute_path`, and the hardcoded `ZITADEL_PROJECT_ROLES` — and the
+reconciler recreates every ZITADEL grant from this file by definition, so there
+are no in-flight grants to preserve.
+
+### What the matrix renders
+
+| Output | Rendered from | Where |
+|---|---|---|
+| ZITADEL project role list | the `team` column | replaces the hardcoded `ZITADEL_PROJECT_ROLES` |
+| `ClusterRoleBinding` per team | `kubernetes` ≠ `none` | `kind: Group, name: <team>` on AWS; `principalSet://…/group/<team>` on GCP |
+| OpenBao identity group + policy | `secrets` | `all` → `admin`+`pki-admin`+`secrets-admin`; `own` → the team-prefix policy; `none` → no group at all |
+
+`secrets: all` is how the former `openbao-admin` group is expressed, so the
+special case disappears into data rather than living in `oidc.tf` as a
+hand-written exception.
+
+**Grafana, the Flux UI and Headlamp keep their own mapping**, and a validator
+asserts it agrees with the matrix — that the set of teams named in Grafana's
+`role_attribute_path` and the Flux UI's CEL is exactly the set with a non-`none`
+value here. Generating those two expressions was considered and rejected:
+`role_attribute_path` is a JMESPath expression that changes rarely, and a
+generator bug in it becomes a login-authorisation bug. A validator catches drift
+without owning the file.
+
+> **`kubernetes: view`, not `edit`, for the app-owning teams — deliberately.**
+> `edit` is only meaningful scoped to a namespace, and every app shares the
+> `apps` namespace today. [`per-user-rbac.md`](../../../website/content/docs/platform/security/per-user-rbac.md)
+> already made this call — *"inventing namespace conventions before there are
+> teams to fit them is how you get bindings nobody matches"*. Now there are
+> teams, but still one namespace. Namespace-scoped `edit` waits on per-team
+> namespaces, which is the same prerequisite as per-team `ClusterSecretStore`s;
+> the two should land together or not at all.
 
 ### The reconciler
 
@@ -130,14 +179,12 @@ This deletes the cost ADR-0036 explicitly accepted: **adding an app needs no
 OpenBao change at all**, because the grant is on the team prefix rather than on
 an enumerated app. The `platform/` mount is untouched and stays admin-only.
 
-**`admin` is excluded from team-group generation**, and this is load-bearing
-rather than tidiness. An identity group alias must be unique per mount accessor,
-and `openbao-admin` already exists with alias `admin` (`oidc.tf`). Generating
-`openbao-team-admin` with the same alias would be a second group claiming one
-alias — a conflict at apply time, or worse, a silent reassignment. The `admin`
-row still drives its ZITADEL role grant like every other row; it simply has no
-team prefix in `apps/`, because `secrets-admin` already grants it both mounts
-entire.
+**The hand-written `openbao-admin` group in `oidc.tf` is deleted**, replaced by
+the `secrets: all` row. Leaving both would be a correctness bug, not untidiness:
+an identity group alias must be unique per mount accessor, so a generated group
+and a hand-written one both claiming `platform` would conflict at apply time or
+silently reassign. One generator, one group per team, no exceptions — which is
+the benefit of putting the permission in a column rather than in a special case.
 
 > **kv-v2's literal `data/` segment collides with a team named `data`.** The
 > policy path is `apps/data/data/*` — first segment the API, second the team. It
@@ -194,7 +241,7 @@ go one at a time without ever tripping. A matrix typo, a renamed Workspace group
 and a partial directory outage are indistinguishable at the moment of revocation;
 mass removal should require a human.
 
-**Never leave a role with zero members**, `admin` above all. The blast-radius
+**Never leave a role with zero members**, `platform` above all. The blast-radius
 guard would usually catch it, but "zero admins" deserves a rule of its own rather
 than depending on a percentage threshold.
 
@@ -224,12 +271,16 @@ different risk profiles and only one ordering constraint between them:
 
 | Plan | Contents | Risk |
 |---|---|---|
-| **A — the reconciler** | matrix file, CronJob, credentials, guards, tests, three-gate rollout | can lock people out; gated |
-| **B — team-scoped secrets** | OpenBao team policies/groups, `spec.team` on the App XRD, composition path derivation, key migration, deleting ADR-0036's inert artefacts | non-destructive; copy-first |
+| **A — the matrix and the reconciler** | matrix file, the renderers for ZITADEL roles and `ClusterRoleBinding`s, the drift validator, the team rename, CronJob, credentials, guards, tests, three-gate rollout | can lock people out; gated |
+| **B — team-scoped secrets** | OpenBao team policies/groups rendered from the matrix, `spec.team` on the App XRD, composition path derivation, key migration, deleting ADR-0036's inert artefacts and the hand-written `openbao-admin` group | non-destructive; copy-first |
 
 **A before B**, because B's team prefixes are meaningless until a team name is a
 role someone can actually hold. B is otherwise independent and could be paused
 after A without leaving anything half-built.
+
+The team rename (`admin` → `platform`) belongs to **A**, in one commit with the
+five files that name it. Splitting a rename across two plans is how half of a
+codebase ends up on each name.
 
 ## Migration
 
@@ -265,11 +316,15 @@ package, and a stale floor silently leaves the cluster on an XRD without it.
   first).
 - **Amend ADR-0034.** Its rejection of Workspace groups was correct when written
   — "nothing carries it into ZITADEL". This design builds that carrier, so the
-  record should say so rather than quietly contradict it.
+  record should say so rather than quietly contradict it. Its worked examples
+  also name the `admin` role and need the rename.
 - **ADR-0036 marked superseded**, including the note that its per-app groups were
   inert.
 - Update `website/content/docs/platform/security/secrets.md`, `authentication.md`
-  and `per-user-rbac.md`; add doc claims for the matrix path.
+  and `per-user-rbac.md` — the last one carries the "who gets what" table, which
+  becomes a rendering of the matrix rather than a hand-maintained copy of it.
+- Add a doc claim binding that table to the matrix file, so the two cannot drift
+  the way the role list and `ZITADEL_PROJECT_ROLES` did.
 
 ## Success criteria
 
@@ -278,13 +333,20 @@ package, and a stale floor silently leaves the cluster on an XRD without it.
 2. Removing them revokes it within one interval.
 3. `git log` on the matrix file answers "who could do what, when" without
    querying ZITADEL.
-4. A simulated directory outage produces **zero** revocations and a non-zero exit.
-5. A run that would revoke the last `admin` refuses.
-6. A second consecutive run makes no changes (idempotence).
-7. A human in one team can read and write their team's prefix in the OpenBao UI
+4. **The matrix is the only place a team's permissions are written.** Changing a
+   team's `kubernetes` column and re-rendering changes the `ClusterRoleBinding`
+   on both clouds, with no other file edited by hand.
+5. The drift validator fails when Grafana's `role_attribute_path` names a team
+   the matrix does not, or omits one it does.
+6. A simulated directory outage produces **zero** revocations and a non-zero exit.
+7. A run that would revoke the last member of the `platform` team refuses.
+8. A second consecutive run makes no changes (idempotence).
+9. A human in one team can read and write their team's prefix in the OpenBao UI
    and is denied on another team's.
-8. Adding an app to an existing team requires no OpenBao or Terraform change.
-9. `./scripts/validate-manifests.sh` reports `Invalid: 0, Skipped: 0`.
+10. Adding an app to an existing team requires no OpenBao or Terraform change.
+11. No file outside the matrix contains the string `admin` as a ZITADEL role or
+    Kubernetes group name — the rename is complete rather than partial.
+12. `./scripts/validate-manifests.sh` reports `Invalid: 0, Skipped: 0`.
 
 ## Risks
 
