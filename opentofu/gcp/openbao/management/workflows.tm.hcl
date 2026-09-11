@@ -217,11 +217,16 @@ script "destroy" {
         # gated on TM_LINEAGE_DESTROY=true, so this path is only ever taken when
         # an operator has deliberately asked to tear the lineage down.
         #
-        # Only `vault_*` is dropped from state. The google_secret_manager_* and
-        # random_password resources here are real and do not match the prefix,
-        # so tofu still deletes them.
+        # Two prefixes are dropped from state: this stack's own `vault_*`
+        # resources, and the shared module's `module.store_of_record.vault_*`
+        # ones (matching is on the START of the state address, so `vault_`
+        # alone does not match a `module.` address -- see the script's header).
+        # The module's `random_password` and this stack's `google_secret_manager_*`
+        # resources are real and do not match either prefix, so tofu still
+        # deletes them.
         bash "${terramate.root.path.fs.absolute}/scripts/tofu-destroy-contained.sh" \
-          --contained-prefix vault_ -- \
+          --contained-prefix vault_ \
+          --contained-prefix module.store_of_record.vault_ -- \
           -auto-approve -parallelism=1 -var-file=variables.tfvars
       BASH
       ],
