@@ -30,7 +30,7 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
-  name: edit
+  name: view
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -43,5 +43,5 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
-  name: edit
+  name: view
   apiGroup: rbac.authorization.k8s.io

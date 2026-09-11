@@ -19,22 +19,29 @@ teams:
     grafana: Admin
     fluxUI: cluster-admin
 
-  # Service teams. `kubernetes: view` rather than `edit` on purpose: `edit` is
-  # only meaningful scoped to a namespace and every app shares `apps` today.
-  # Namespace-scoped edit waits on per-team namespaces.
+  # Service teams: read-only on the cluster, every change goes through GitOps
+  # (owner decision, 2026-09-11). That covers the Flux UI too -- `fluxUI` may
+  # never exceed `kubernetes`, because both render a ClusterRoleBinding on the
+  # same group and RBAC is a union: the old `fluxUI: edit` was cluster-wide
+  # kubectl `edit` on aws-0. access_matrix.load() refuses such a row.
+  # That comparison (none < view < edit < cluster-admin) holds ONLY because
+  # both columns render to nested BUILT-IN ClusterRoles. Map either one to a
+  # custom ClusterRole and "not above" stops meaning "no broader than", so the
+  # guard must be revisited. Flux UI `view` is the built-in `view`, never the
+  # chart's `flux-web-user`, which reads */* and so every Secret.
   - team: backend
     googleGroup: backend@ogenki.io
     kubernetes: view
     mountAccess: own
     grafana: Editor
-    fluxUI: edit
+    fluxUI: view
 
   - team: data
     googleGroup: data-eng@ogenki.io
     kubernetes: view
     mountAccess: own
     grafana: Editor
-    fluxUI: edit
+    fluxUI: view
 
   # Dashboards only -- no Kubernetes, no OpenBao mount access.
   - team: frontend
