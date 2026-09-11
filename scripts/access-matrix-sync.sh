@@ -11,10 +11,15 @@
 # sync.sh can call reconcile_team directly with fixtures and no network.
 set -uo pipefail
 
-# A run may revoke at most half a team's grants, and never more than two, unless
-# --max-revocations raises it. The "never more than two" half is not redundant:
-# on a two-member team a pure fraction lets both go one at a time without ever
-# tripping.
+# GUARD 3 trips when revocations EXCEED max(n_current / MAX_REVOKE_FRACTION,
+# MIN_REVOKE_FLOOR), or REACH n_current -- i.e. every current holder -- unless
+# --max-revocations raises the limit. MIN_REVOKE_FLOOR is a FLOOR, not a cap:
+# 10 holders allow up to 5 revocations (10/2), while a 3-member team's raw
+# fraction (1) is floored up to 2 so a couple of legitimate leavers still get
+# through. It is the n_current clause -- not the floor -- that keeps a team
+# from ever being revoked to zero through this guard: with a pure 1/2 fraction
+# and no floor, one remaining holder already allows 0, so revoking that last
+# holder trips anyway.
 MAX_REVOKE_FRACTION=2      # denominator: 1/2
 MIN_REVOKE_FLOOR=2
 

@@ -44,10 +44,34 @@ check "exit non-zero"     1 "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
 check "zero revocations"  0 "$(grep -c '^revoke' <<<"$out")"
 check "says why"          1 "$(grep -c 'GUARD blast-radius' <<<"$out")"
 
-echo "== two members, both leaving, still trips (the >2 half) =="
+echo "== two members, both leaving, still trips (via the n_current clause, not the floor) =="
 out="$(reconcile_team data '[]' \
   '[{"email":"a@ogenki.io","userId":"1"},{"email":"b@ogenki.io","userId":"2"}]' 2>&1)"
 check "zero revocations"  0 "$(grep -c '^revoke' <<<"$out")"
+
+echo "== blast radius fraction: 6 holders, revoke 4 (over max(6/2,2)=3) trips =="
+out="$(reconcile_team data '["a@ogenki.io","b@ogenki.io"]' \
+  '[{"email":"a@ogenki.io","userId":"1"},{"email":"b@ogenki.io","userId":"2"},
+    {"email":"c@ogenki.io","userId":"3"},{"email":"d@ogenki.io","userId":"4"},
+    {"email":"e@ogenki.io","userId":"5"},{"email":"f@ogenki.io","userId":"6"}]' 2>&1)"; rc=$?
+check "exit non-zero"     1 "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
+check "zero revocations"  0 "$(grep -c '^revoke' <<<"$out")"
+check "says why"          1 "$(grep -c 'GUARD blast-radius' <<<"$out")"
+
+echo "== blast radius fraction boundary: 6 holders, revoke 3 (== max(6/2,2)=3) passes =="
+out="$(reconcile_team data '["a@ogenki.io","b@ogenki.io","c@ogenki.io"]' \
+  '[{"email":"a@ogenki.io","userId":"1"},{"email":"b@ogenki.io","userId":"2"},
+    {"email":"c@ogenki.io","userId":"3"},{"email":"d@ogenki.io","userId":"4"},
+    {"email":"e@ogenki.io","userId":"5"},{"email":"f@ogenki.io","userId":"6"}]' 2>&1)"; rc=$?
+check "exit 0"             0 "$rc"
+check "revokes exactly 3"  3 "$(grep -c '^revoke' <<<"$out")"
+
+echo "== blast radius floor: 3 holders, revoke 2 (== max(3/2,2)=2) passes -- the floor is why =="
+out="$(reconcile_team data '["a@ogenki.io"]' \
+  '[{"email":"a@ogenki.io","userId":"1"},{"email":"b@ogenki.io","userId":"2"},
+    {"email":"c@ogenki.io","userId":"3"}]' 2>&1)"; rc=$?
+check "exit 0"             0 "$rc"
+check "revokes exactly 2"  2 "$(grep -c '^revoke' <<<"$out")"
 
 echo "== platform is never left empty =="
 out="$(reconcile_team platform '[]' '[{"email":"a@ogenki.io","userId":"1"}]' 2>&1)"; rc=$?
