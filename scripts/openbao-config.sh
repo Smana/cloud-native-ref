@@ -106,8 +106,9 @@ usage() {
     echo "                                             node whose seal NO object in the bucket carries -- the"
     echo "                                             first boot of a GCP-only lineage beside the AWS mirror."
     echo "                                             Refused whenever an object under this node's seal exists,"
-    echo "                                             and together with OPENBAO_SNAPSHOT_KEY. REPLACES the"
-    echo "                                             stored root token and recovery keys."
+    echo "                                             together with OPENBAO_SNAPSHOT_KEY, or when any snapshot's"
+    echo "                                             seal is unknown (a legacy name with no seal segment)."
+    echo "                                             REPLACES the stored root token and recovery keys."
     echo ""
     echo "Example:"
     echo "  $0 init --url https://openbao:8200 --root-token-secret-name openbao/root-token \\"
@@ -730,10 +731,12 @@ snapshot_seal_segment() {
 # separate rather than folded into latest_snapshot() -- overloading that
 # function's emptiness answer is how "the bucket holds snapshots I will not
 # select" would silently become "the bucket is empty", and that answer routes
-# straight into a plain init that overwrites the lineage's stored keys.
+# straight into a plain init that overwrites the lineage's stored keys. An
+# EMPTY seal argument selects legacy seal-less names instead (written before
+# seals were in names) -- their seal is unknown, not "none".
 latest_snapshot_sealed() {
     local seal=$1
-    local re="^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z-${seal}\\.snap$"
+    local re="^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z${seal:+-${seal}}\\.snap$"
     if [ "$CLOUD" = "gcp" ]; then
         local listing
         if ! listing=$(gcp_gcloud storage ls "gs://${SNAPSHOT_BUCKET}/"); then
@@ -762,18 +765,23 @@ latest_snapshot_sealed() {
 #   $1 this node's seal type     $2 the newest object's seal segment (may be empty)
 #   $3 the newest object carrying $1's seal, or empty when none does
 #   $4 OPENBAO_SNAPSHOT_KEY, empty when unset
+#   $5 the newest seal-less (legacy) object, or empty when none exists
 #
-# Prints exactly one verdict:
-#   proceed                 nothing in the bucket carries this node's seal: init
+# Prints exactly one verdict, checked in this order:
 #   refuse-named-key        a named restore was asked for; a new lineage contradicts it
 #   refuse-same-seal        the newest object IS restorable here; restore it instead
 #   refuse-own-seal-exists  an older object carries this seal -- this lineage's own
 #                           history; restore it with OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL
+#   refuse-unsealed-object  a legacy object's seal is UNKNOWN, not "none" -- it might
+#                           be this node's seal; retag it and re-run
+#   proceed                 nothing in the bucket carries this node's seal, and no
+#                           object has an unknown seal: init
 new_lineage_verdict() {
-    local node_seal=$1 snap_seal=$2 own_latest=$3 snapshot_key=$4
+    local node_seal=$1 snap_seal=$2 own_latest=$3 snapshot_key=$4 unsealed_latest=$5
     if [ -n "$snapshot_key" ]; then printf 'refuse-named-key'; return 0; fi
     if [ "$snap_seal" = "$node_seal" ]; then printf 'refuse-same-seal'; return 0; fi
     if [ -n "$own_latest" ]; then printf 'refuse-own-seal-exists'; return 0; fi
+    if [ -n "$unsealed_latest" ]; then printf 'refuse-unsealed-object'; return 0; fi
     printf 'proceed'
 }
 
@@ -1134,13 +1142,18 @@ rehydrate_openbao() {
     # node's seal. The moved-aside (rc 2) and could-not-list refusals above have
     # already exited before this point, so the switch can never bypass them.
     if [ "${OPENBAO_NEW_LINEAGE:-false}" = "true" ]; then
-        local own_latest verdict
+        local own_latest unsealed_latest verdict
         if ! own_latest=$(latest_snapshot_sealed "$node_seal"); then
             log_message "ERROR" "OPENBAO_NEW_LINEAGE=true, but ${SNAPSHOT_BUCKET} cannot be listed for '${node_seal}' objects."
             log_message "ERROR" "A new lineage is only safe once the bucket is PROVEN to hold none. Nothing has changed yet."
             exit 1
         fi
-        verdict=$(new_lineage_verdict "$node_seal" "$snap_seal" "$own_latest" "${OPENBAO_SNAPSHOT_KEY:-}")
+        if ! unsealed_latest=$(latest_snapshot_sealed ""); then
+            log_message "ERROR" "OPENBAO_NEW_LINEAGE=true, but ${SNAPSHOT_BUCKET} cannot be listed for legacy (seal-less) objects."
+            log_message "ERROR" "A new lineage is only safe once the bucket is PROVEN to hold none. Nothing has changed yet."
+            exit 1
+        fi
+        verdict=$(new_lineage_verdict "$node_seal" "$snap_seal" "$own_latest" "${OPENBAO_SNAPSHOT_KEY:-}" "$unsealed_latest")
         case "$verdict" in
             proceed)
                 log_message "WARN" "OPENBAO_NEW_LINEAGE=true -- STARTING A NEW '${node_seal}' LINEAGE."
@@ -1162,6 +1175,12 @@ rehydrate_openbao() {
                 log_message "ERROR" "OPENBAO_NEW_LINEAGE=true, but ${own_latest} carries this node's seal '${node_seal}':"
                 log_message "ERROR" "this lineage's own history. Restore it instead -- unset OPENBAO_NEW_LINEAGE and re-run"
                 log_message "ERROR" "with OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true. Nothing has changed yet."
+                exit 1 ;;
+            refuse-unsealed-object)
+                log_message "ERROR" "OPENBAO_NEW_LINEAGE=true, but ${unsealed_latest} carries NO seal segment: its seal is"
+                log_message "ERROR" "UNKNOWN, not 'none' -- it may be this node's seal '${node_seal}'. Confirm the seal and"
+                log_message "ERROR" "retag it to <timestamp>-<seal>.snap, or move it to ANOTHER bucket (not a prefix of"
+                log_message "ERROR" "this one, which trips the moved-aside refusal), then re-run. Nothing has changed yet."
                 exit 1 ;;
             *)
                 log_message "ERROR" "new_lineage_verdict returned '${verdict}' -- refusing. Nothing has changed yet."

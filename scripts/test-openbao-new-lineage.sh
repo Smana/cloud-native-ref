@@ -35,31 +35,41 @@ body="$(sed -n '/^new_lineage_verdict() {/,/^}/p' "$SRC")"
 eval "$body"
 
 echo "== the case the switch exists for: a GCP node beside an AWS-only mirror"
-check "proceeds" "proceed" "$(new_lineage_verdict gcpckms awskms "" "")"
+check "proceeds" "proceed" "$(new_lineage_verdict gcpckms awskms "" "" "")"
 
 echo "== an object under this node's seal exists: restore it, never start over"
 check "refuses" "refuse-own-seal-exists" \
-    "$(new_lineage_verdict gcpckms awskms "2026-09-01T000000Z-gcpckms.snap" "")"
+    "$(new_lineage_verdict gcpckms awskms "2026-09-01T000000Z-gcpckms.snap" "" "")"
 
 echo "== the newest object is already restorable here"
 check "refuses" "refuse-same-seal" \
-    "$(new_lineage_verdict gcpckms gcpckms "2026-09-01T000000Z-gcpckms.snap" "")"
-
-echo "== a legacy object with no seal segment, and nothing under this seal"
-check "proceeds" "proceed" "$(new_lineage_verdict gcpckms "" "" "")"
+    "$(new_lineage_verdict gcpckms gcpckms "2026-09-01T000000Z-gcpckms.snap" "" "")"
 
 echo "== a named object contradicts a new lineage"
 check "refuses" "refuse-named-key" \
-    "$(new_lineage_verdict gcpckms awskms "" "2026-09-05T092947Z-awskms.snap")"
+    "$(new_lineage_verdict gcpckms awskms "" "2026-09-05T092947Z-awskms.snap" "")"
+
+echo "== a legacy object with no seal segment: its seal is UNKNOWN, not 'none' -- refuse"
+check "refuses" "refuse-unsealed-object" \
+    "$(new_lineage_verdict gcpckms "" "" "" "2026-09-02T041500Z.snap")"
+
+echo "== the newest object is a foreign mirror, but an older legacy object's seal is unknown too"
+check "refuses" "refuse-unsealed-object" \
+    "$(new_lineage_verdict gcpckms awskms "" "" "2026-09-02T041500Z.snap")"
 
 echo "== wiring inside rehydrate_openbao"
 fn="$(sed -n '/^rehydrate_openbao() {/,/^}/p' "$SRC")"
 contains "reads the switch" "$fn" 'OPENBAO_NEW_LINEAGE:-false'
 contains "asks the verdict with the node's own-seal listing" "$fn" \
     'new_lineage_verdict "$node_seal" "$snap_seal" "$own_latest"'
+contains "the call site never combines with a named OPENBAO_SNAPSHOT_KEY" "$fn" \
+    'new_lineage_verdict "$node_seal" "$snap_seal" "$own_latest" "${OPENBAO_SNAPSHOT_KEY:-}"'
+contains "the call site passes the legacy (unsealed) listing as the 5th argument" "$fn" \
+    'new_lineage_verdict "$node_seal" "$snap_seal" "$own_latest" "${OPENBAO_SNAPSHOT_KEY:-}" "$unsealed_latest"'
 arm="$(printf '%s\n' "$fn" | sed -n '/^[[:space:]]*proceed)/,/;;/p')"
 contains "the proceed arm initialises" "$arm" 'init_openbao'
-for v in refuse-named-key refuse-same-seal refuse-own-seal-exists; do
+contains "the proceed arm returns before falling into the seal gate" "$arm" 'return 0'
+for v in refuse-named-key refuse-same-seal refuse-own-seal-exists refuse-unsealed-object; do
     varm="$(printf '%s\n' "$fn" | sed -n "/^[[:space:]]*${v})/,/;;/p")"
     contains "the ${v} arm exits non-zero" "$varm" 'exit 1'
 done
