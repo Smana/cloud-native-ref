@@ -42,7 +42,7 @@ globals {
   # never derived from TM_CLOUD, whose value changes per invocation.
   #
   # Enforced by ./scripts/validate-idp-topology.sh.
-  primary_cloud = "aws"
+  primary_cloud = "gcp"
 
   # Whether the GCP lane hosts the identity provider, derived once rather than
   # compared at each call site. Five sites need it -- deploy, preview, destroy

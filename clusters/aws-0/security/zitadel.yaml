@@ -12,7 +12,7 @@ spec:
   # An omitted field means the same thing to Flux, but it makes the pair look
   # asymmetric and leaves a reader guessing whether the omission is a decision.
   # ./scripts/validate-idp-topology.sh checks the pair against primary_cloud.
-  suspend: false
+  suspend: true
   prune: true
   interval: 1m0s
   # 15m, not 5m: this must be >= the time the HelmRelease can legitimately take,

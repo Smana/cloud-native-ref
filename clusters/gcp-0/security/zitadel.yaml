@@ -71,7 +71,7 @@ spec:
   # This field is also only half of a live migration: suspending stops Flux
   # reconciling an instance, it does not remove one that is already running.
   # See the warning in the migration guide.
-  suspend: true
+  suspend: false
   prune: true
   interval: 1m0s
   timeout: 10m0s
