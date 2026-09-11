@@ -1196,7 +1196,9 @@ rehydrate_openbao() {
                 log_message "WARN" "  newest object : ${latest} (sealed '${snap_seal:-none}') -- NOT restored"
                 log_message "WARN" "  no top-level '-${node_seal}' object in ${SNAPSHOT_BUCKET} (objects moved aside under a prefix are NOT examined)"
                 log_message "WARN" "  ${ROOT_TOKEN_SECRET_NAME} and ${RECOVERY_KEYS_SECRET_NAME} are REPLACED with this node's new keys."
-                log_message "WARN" "  those two entries are also where the awskms standby reads its pre-copied AWS keys -- re-copy them before relying on that standby. The previous (AWS) versions remain in Secret Manager."
+                if [ "$CLOUD" = "gcp" ]; then
+                    log_message "WARN" "  those two entries are also where the awskms standby reads its pre-copied AWS keys -- re-copy them before relying on that standby. The previous versions remain in Secret Manager."
+                fi
                 init_openbao
                 return 0 ;;
             refuse-named-key)

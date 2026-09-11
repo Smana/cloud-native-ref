@@ -66,7 +66,7 @@ Point gcp-0's shared ExternalSecrets back at `gcpsm`.
 
 ### Positive
 
-- GCP's OpenBao defines everything the 14 OpenBao-backed consumers on gcp-0 read, so none of them fails on a missing policy or mount — validated live in a later run. AWS + GCP still needs GCP's OpenBao seeded and the AWS directory's client secrets, which this ADR leaves out of scope.
+- GCP's OpenBao defines everything the 14 OpenBao-backed consumers on gcp-0 read, so none of them fails on a missing policy or mount — to be validated live in a later run. AWS + GCP still needs GCP's OpenBao seeded and the AWS directory's client secrets, which this ADR leaves out of scope.
 - `scripts/validate-openbao-policies.sh` fails CI when a JWT role names a policy its OpenBao does not define, which is the gap that hid this.
 
 ### Negative
