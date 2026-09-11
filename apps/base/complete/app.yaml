@@ -1,4 +1,9 @@
 # source: https://github.com/Smana/image-gallery.git
+#
+# image-gallery v2, the platform's OpenTelemetry demo app, on BOTH clouds from
+# this one claim. Object storage is per cluster (apps/<cluster>/kustomization.yaml
+# patches: S3 through EKS Pod Identity on aws-0, GCS through GKE Workload
+# Identity on gcp-0). Design: docs/superpowers/specs/2026-09-11-image-gallery-v2-design.md
 ---
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: App
@@ -8,7 +13,7 @@ metadata:
 spec:
   image:
     repository: ghcr.io/smana/image-gallery
-    tag: "1.7.7"
+    tag: "2.0.0" # move together with atlasSchema.ref below and apps/base/complete/loadgen.yaml
     pullPolicy: IfNotPresent
   replicas: 2
   resources:
@@ -45,9 +50,10 @@ spec:
   service:
     port: 8080
 
-  # Application configuration
+  # Web role (image-gallery serve, the image's default command). The worker
+  # sidecar inherits all of this through inheritEnv. STORAGE_* and
+  # OTEL_RESOURCE_ATTRIBUTES are appended per cluster.
   env:
-    # Application settings
     - name: GO_ENV
       value: "production"
     - name: PORT
@@ -56,25 +62,12 @@ spec:
       value: "info"
     - name: LOG_FORMAT
       value: "json"
-
-    # Database connection (from CNPG secret)
     - name: DATABASE_URL
       valueFrom:
         secretKeyRef:
           name: xplane-image-gallery-cnpg-image-gallery
           key: uri
-
-    # S3 Storage configuration
-    - name: STORAGE_ENDPOINT
-      value: "s3.eu-west-3.amazonaws.com"
-    - name: STORAGE_BUCKET
-      value: "eu-west-3-ogenki-xplane-image-gallery"
-    - name: STORAGE_REGION
-      value: "eu-west-3"
-    - name: STORAGE_USE_SSL
-      value: "true"
-
-    # Cache configuration (Valkey from kvStore)
+    # Valkey: the cache AND the job queue (stream image-gallery:jobs).
     - name: CACHE_ENABLED
       value: "true"
     - name: CACHE_ADDRESS
@@ -82,24 +75,56 @@ spec:
     - name: CACHE_PASSWORD
       value: ""
 
-  # Observability configuration
+  # Worker role in the same pod: same image, same ServiceAccount, so the
+  # storage identity (Pod Identity / Workload Identity) and the secrets work
+  # unchanged on both clouds (spec D7).
+  sidecars:
+    - name: worker
+      image: ghcr.io/smana/image-gallery:2.0.0
+      args: ["worker"]
+      inheritEnv: true
+      env:
+        - name: OTEL_SERVICE_NAME
+          value: xplane-image-gallery-worker
+        - name: WORKER_HEALTH_ADDR
+          value: ":8081"
+      ports:
+        - name: worker-health
+          containerPort: 8081
+      livenessProbe:
+        path: /healthz
+        port: 8081
+      readinessProbe:
+        path: /readyz
+        port: 8081
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "256Mi"
+        limits:
+          cpu: "1000m"
+          memory: "512Mi"
+
   observability:
     traces:
       enabled: true
-      samplingRate: 0.2 # 20% sampling to reduce memory pressure from span accumulation
+      samplingRate: 1.0 # 100 %: the OOM causes are fixed (spec 2.4); dropped spans are measured
     metrics:
       enabled: true
+      scrape: false # OTLP push only: there is no /metrics to scrape
+    # Sub-project 2 rewrites these rules. The only change here keeps the one
+    # working alert alive across the semconv rename (plan ruling 5):
+    # http.server.request.count is gone; the duration histogram's count replaces it.
     alertingRules:
       groups:
         - name: http_errors
           interval: 30s
           rules:
-            # Alert on high HTTP 5xx error rate
             - alert: HighHTTPErrorRate
               expr: |
-                sum(rate(http.server.request.count{service.name="xplane-image-gallery",http.response.status_code=~"5.."}[5m]))
+                sum(rate(http.server.request.duration_count{service.name="xplane-image-gallery",http.response.status_code=~"5.."}[5m]))
                 /
-                sum(rate(http.server.request.count{service.name="xplane-image-gallery"}[5m]))
+                sum(rate(http.server.request.duration_count{service.name="xplane-image-gallery"}[5m]))
                 > 0.05
               for: 2m
               labels:
@@ -110,8 +135,6 @@ spec:
                 description: |
                   HTTP 5xx error rate is {{ $value | humanizePercentage }} on image-gallery.
                   This indicates server-side errors are affecting more than 5% of requests.
-
-            # Alert on high HTTP latency
             - alert: HighHTTPLatency
               expr: |
                 histogram_quantile(0.95,
@@ -126,54 +149,12 @@ spec:
                 description: |
                   95th percentile latency is {{ $value }}s on route {{ $labels.http_route }}.
                   Expected latency is below 1 second.
-
-        - name: image_uploads
-          interval: 30s
-          rules:
-            # Alert on failed image uploads
-            - alert: HighImageUploadFailureRate
-              expr: |
-                sum(rate(image_uploads_total{service.name="xplane-image-gallery",status="error"}[5m]))
-                /
-                sum(rate(image_uploads_total{service.name="xplane-image-gallery"}[5m]))
-                > 0.1
-              for: 3m
-              labels:
-                severity: critical
-                service: image-gallery
-                category: business
-              annotations:
-                summary: "High image upload failure rate"
-                description: |
-                  {{ $value | humanizePercentage }} of image uploads are failing.
-                  Check storage connectivity and permissions.
-
-            # Recording rule for cache hit rate
-            - record: image_gallery:cache_hit_rate:5m
-              expr: |
-                sum(rate(image_cache_hits{service.name="xplane-image-gallery"}[5m]))
-                /
-                (sum(rate(image_cache_hits{service.name="xplane-image-gallery"}[5m]))
-                 + sum(rate(image_cache_misses{service.name="xplane-image-gallery"}[5m])))
-
         - name: availability
           interval: 30s
           rules:
-            # Every other rule in this file reads OTel metrics the pod itself emits
-            # — which stop arriving at exactly the moment they would matter most. A
-            # deployment with zero available replicas emits no request rate, no
-            # upload count and no cache hits, so none of those rules can fire; the
-            # app's only `critical` was HighImageUploadFailureRate, a ratio over a
-            # numerator that is gone. This rule reads kube-state-metrics instead, so
-            # it still has a signal when no replica is left to produce one.
-            #
-            # `critical` on purpose: severity is not decoration here. RunLore's
-            # trigger policy matches severity: [critical] exclusively, so a
-            # `warning` on total unavailability would be filed by the agent and
-            # never investigated. Observed on 2026-08-03: the app dropped to 1/2
-            # replicas after a secret it mounts was removed, KubePodNotReady fired
-            # as `warning`, reached RunLore, and was dropped — "filtered by trigger
-            # policy". Nothing was wrong with the pipeline; nothing was critical.
+            # Reads kube-state-metrics, not the app's own telemetry, so it still
+            # fires when no replica is left to emit anything. `critical` because
+            # RunLore's trigger policy only investigates critical alerts.
             - alert: ImageGalleryUnavailable
               expr: |
                 kube_deployment_status_replicas_available{namespace="apps",deployment="xplane-image-gallery"} == 0
@@ -190,16 +171,8 @@ spec:
                   (pods sit in CreateContainerConfigError), the image cannot be pulled, or
                   the CloudNativePG cluster behind DATABASE_URL is refusing connections.
 
-  # Optional non-infrastructure config overrides, read from OpenBao's `apps/`
-  # mount rather than the cloud managed store (ADR-0033 Stage 2). `store` is new
-  # in crossplane-configuration and defaults to `clustersecretstore`, so naming
-  # it here is what moves this one.
-  #
-  # `remoteRef` drops the `apps/` prefix because the store already carries the
-  # mount: `image-gallery/config` resolves to apps/data/image-gallery/config.
-  #
-  # The blob is `{}` today and `envFrom` below is `optional: true`, so this is
-  # the lowest-risk of the three app secrets to move first.
+  # Optional non-infrastructure overrides from OpenBao's `apps/` mount
+  # (ADR-0033 Stage 2). `remoteRef` drops the `apps/` prefix: the store carries the mount.
   externalSecrets:
     - name: image-gallery-app-config
       remoteRef: image-gallery/config
@@ -209,62 +182,32 @@ spec:
         name: image-gallery-app-config
         optional: true
 
-  # Default: private gateway (image-gallery on the cluster private domain)
   route:
     enabled: true
     hostname: "image-gallery"
 
+  # Default-deny. The composition adds the DNS (with the L7 rule), CNPG, Valkey
+  # and object-store egress itself for the enabled backends (plan ruling 1);
+  # listed here is only what it cannot know. The gcp-0 patch appends the GKE
+  # metadata server.
   networkPolicies:
-    enabled: false
+    enabled: true
     ingress:
-      # Allow all ingress controller traffic
       - fromEntities:
           - ingress
         toPorts:
           - ports:
               - port: "8080"
                 protocol: TCP
+      # The in-cluster load generator (apps/base/complete/loadgen.yaml)
+      - fromEndpoints:
+          - matchLabels:
+              "app.kubernetes.io/name": "image-gallery-loadgen"
+        toPorts:
+          - ports:
+              - port: "8080"
+                protocol: TCP
     egress:
-      # DNS resolution
-      - toEndpoints:
-          - matchLabels:
-              "io.kubernetes.pod.namespace": "kube-system"
-              "k8s-app": "kube-dns"
-        toPorts:
-          - ports:
-              - port: "53"
-                protocol: UDP
-              - port: "53"
-                protocol: TCP
-
-      # Database access
-      - toEndpoints:
-          - matchLabels:
-              "cnpg.io/cluster": "xplane-image-gallery-cnpg-cluster"
-        toPorts:
-          - ports:
-              - port: "5432"
-                protocol: TCP
-
-      # Valkey cache access
-      - toEndpoints:
-          - matchLabels:
-              "app.kubernetes.io/instance": "xplane-image-gallery-valkey"
-              "app.kubernetes.io/name": "valkey"
-        toPorts:
-          - ports:
-              - port: "6379"
-                protocol: TCP
-
-      # EKS Pod Identity agent (runs on host network)
-      - toEntities:
-          - host
-        toPorts:
-          - ports:
-              - port: "80"
-                protocol: TCP
-
-      # Observability services (VictoriaMetrics and VictoriaTraces)
       - toEndpoints:
           - matchLabels:
               "io.kubernetes.pod.namespace": "observability"
@@ -282,24 +225,12 @@ spec:
               - port: "10428"
                 protocol: TCP
 
-      # HTTP/HTTPS egress (covers S3 and external services)
-      - toEntities:
-          - world
-        toPorts:
-          - ports:
-              - port: "80"
-                protocol: TCP
-              - port: "443"
-                protocol: TCP
-
-  # Object storage for user uploads
   objectStore:
     enabled: true
     permissions: readwrite
     versioning: true
     retentionDays: 90
 
-  # For caching
   kvStore:
     enabled: true
     size: small
@@ -312,17 +243,9 @@ spec:
     instances: 2
     primaryUpdateStrategy: unsupervised
     createSuperuser: false
-
-    # Enable comprehensive query performance monitoring and plan history
-    # Configures: pg_stat_statements, auto_explain, compute_query_id
-    # MAX VALUES FOR DEBUGGING (defaults are production-safe: sampleRate: 0.2, minDuration: 1000)
+    # Production-safe defaults (sampleRate 0.2, minDuration 1000 ms, no statement logging).
     performanceInsights:
       enabled: true
-      explain:
-        sampleRate: 1.0 # 100% sampling for debugging (default: 0.2 = 20%)
-        minDuration: 0 # Log ALL queries for debugging (default: 1000ms)
-      logStatement: all # Log all SQL statements for debugging (default: none)
-
     roles:
       - name: image-gallery-app
         comment: "Application user for image-gallery"
@@ -334,13 +257,11 @@ spec:
         owner: image-gallery-app
     atlasSchema:
       url: "https://github.com/Smana/image-gallery.git"
-      ref: "v1.7.7"
+      ref: "v2.0.0" # migration 004: processing status + demo_controls
       path: "internal/platform/database/migrations"
-
     backup:
       # SIX-field cron, seconds first -- CNPG uses robfig/cron, not Kubernetes
-      # CronJob syntax, so `0 2 * * *` silently meant hourly at :02.
-      # Full explanation and the measurement: security/base/zitadel/sqlinstance.yaml
+      # CronJob syntax. Full explanation: security/base/zitadel/sqlinstance.yaml
       schedule: "0 0 2 * * *"
-      bucketName: "${region}-ogenki-cnpg-backups"
+      bucketName: "${region}-ogenki-cnpg-backups" # gcp-0 patches this to ${project_id}-
       retentionPolicy: "30d"
