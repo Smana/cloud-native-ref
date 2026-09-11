@@ -5,5 +5,6 @@
 # pinned cert-manager role_id and the two Secret Manager entries, is gone: a
 # JWT login mints nothing long-lived.
 #
-# No human auth method on GCP yet; operators use the root token from
-# openbao-priv-gcp-root-token, as documented.
+# Human logins -- the userpass break-glass and the ZITADEL OIDC method -- come
+# from the shared module (store-of-record.tf). The break-glass password is
+# published to openbao-priv-gcp-admin-credentials.

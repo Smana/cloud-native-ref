@@ -1,6 +1,7 @@
-# Two policies now. The AWS stack also carries admin, pki-admin and app
-# policies; none of those has a consumer on GCP, and the design scopes this
-# stack to PKI only. Add them when something needs them, not before.
+# The cert-manager and snapshot policies below are GCP's own. The Stage 2
+# policies -- admin, pki-admin, secrets-admin, external-secrets and the per-app
+# ones -- come from the shared module in store-of-record.tf, the same set AWS
+# defines inline.
 #
 # `templatefile` rather than `file` so the granted path is derived from the mount
 # and role that actually exist, instead of being restated as a literal that

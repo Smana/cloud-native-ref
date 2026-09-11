@@ -122,3 +122,33 @@ variable "external_secrets_service_account" {
   type        = string
   default     = "external-secrets"
 }
+
+variable "admin_username" {
+  description = "Username of the userpass break-glass login, carrying admin, pki-admin and secrets-admin"
+  type        = string
+  default     = "admin"
+}
+
+variable "admin_credentials_secret_name" {
+  description = "GCP Secret Manager entry this stack publishes the break-glass credentials to, as {username, password, address}"
+  type        = string
+  default     = "openbao-priv-gcp-admin-credentials"
+}
+
+variable "openbao_oidc_secret_id" {
+  description = "GCP Secret Manager entry holding {client_id, client_secret, endpoint} for OpenBao's ZITADEL OIDC client, written by scripts/zitadel-oidc-clients.sh. An entry that does not exist yet disables OIDC rather than failing."
+  type        = string
+  default     = "openbao-oidc"
+}
+
+variable "openbao_oidc_issuer" {
+  description = "ZITADEL issuer URL. Defaults to the `endpoint` field of openbao_oidc_secret_id."
+  type        = string
+  default     = ""
+}
+
+variable "secret_owning_apps" {
+  description = "Apps that own a prefix under apps/ (ADR-0036). Each gets a policy, an external identity group and an alias once OIDC is configured."
+  type        = set(string)
+  default     = []
+}
