@@ -293,11 +293,14 @@ jobs:
       # scripts/test-openbao-new-lineage.sh is the eighth named addition, and pins
       # the rule that lets a new GCP-sealed lineage boot beside the AWS mirror
       # (OPENBAO_NEW_LINEAGE) -- and that it never overrides a restorable lineage.
+      # scripts/test-secret-store-migrate-keys.sh is the ninth, and pins
+      # `migrate --keys`: a cluster whose ExternalSecrets already name OpenBao
+      # paths would otherwise migrate nothing and report success.
       - name: Run the shell test suites
         run: |
           set -uo pipefail
           rc=0
-          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh scripts/test-openbao-snapshot-key.sh scripts/test-openbao-seal-status-tls.sh scripts/test-openbao-root-token-probe.sh scripts/test-openbao-pki-verify.sh scripts/test-access-matrix-sync.sh scripts/test-openbao-new-lineage.sh; do
+          for t in scripts/test-zitadel-*.sh scripts/test-openbao-fallback-address.sh scripts/test-no-secret-argv.sh scripts/test-openbao-snapshot-key.sh scripts/test-openbao-seal-status-tls.sh scripts/test-openbao-root-token-probe.sh scripts/test-openbao-pki-verify.sh scripts/test-access-matrix-sync.sh scripts/test-openbao-new-lineage.sh scripts/test-secret-store-migrate-keys.sh; do
             if bash "$t" > /tmp/zitadel-test.log 2>&1; then
               echo "PASS  $t"
             else
