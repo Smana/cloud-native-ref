@@ -59,4 +59,4 @@ workforce_pool_id = "ogenki-zitadel"
 
 # Must match zitadel_project_id in opentofu/gcp/workforce-identity, which
 # pins the workforce provider audience to it.
-zitadel_project_id = "388445486190712688"
+zitadel_project_id = "388252679236747629"
