@@ -226,9 +226,12 @@ check "case 5: [backend,data] - data -> put [backend], NOT delete" \
 check "case 6: [data] - data -> delete" \
   'delete 3 g3 []' \
   "$(plan 'revoke data c@ogenki.io' '[{"userId":"3","grantId":"g3","roleKeys":["data"]}]')"
-out="$(plan 'grant data a@ogenki.io' '[{"userId":"4","grantId":"g4","roleKeys":["backend"]}]')"
-check "case 7: a user whose only team TRIPPED (so no intent) -> no write" \
-  0 "$(grep -cE '^(post|put|delete) 4 ' <<<"$out")"
+# The planner never SEES a tripped team -- sync_teams drops it (the case 7
+# check under main, below, is the one a leak would fail). What the planner
+# owes case 7 is carrying the tripped team's role through another team's change.
+check "case 7 (planner): a tripped team's role, with no intent, survives another team's change" \
+  'put 4 g4 ["backend","data","platform"]' \
+  "$(plan 'grant platform d@ogenki.io' '[{"userId":"4","grantId":"g4","roleKeys":["backend","data"]}]')"
 check "case 8: already holds exactly the desired roles -> none" \
   'none 5 g5 ["data"]' \
   "$(plan 'grant data e@ogenki.io' '[{"userId":"5","grantId":"g5","roleKeys":["data"]}]')"
@@ -346,6 +349,23 @@ check "CUSTOMER: logs why"               1 "$(grep -c 'C01 (type CUSTOMER)' "$T/
 DIR_BODY='{"members":[{"email":"a@ogenki.io","status":"ACTIVE"}]}'
 check "no type -> __UNREADABLE__"        '__UNREADABLE__' "$(list_group_members data-eng@ogenki.io 2>"$T/err")"
 check "no type: logs why"                1 "$(grep -c 'a@ogenki.io (type missing)' "$T/err")"
+
+echo "== addendum: member status -- ACTIVE is a member, SUSPENDED is not, anything else is UNREADABLE =="
+DIR_BODY='{"members":[{"email":"a@ogenki.io","type":"USER","status":"ACTIVE"},{"email":"b@ogenki.io","type":"USER"}]}'
+check "no status -> __UNREADABLE__"      '__UNREADABLE__' "$(list_group_members data-eng@ogenki.io 2>"$T/err")"
+check "no status: logs why"              1 "$(grep -c 'b@ogenki.io (status missing)' "$T/err")"
+DIR_BODY='{"members":[{"email":"a@ogenki.io","type":"USER","status":"ACTIVE"},{"email":"b@ogenki.io","type":"USER","status":"PENDING"}]}'
+check "PENDING -> __UNREADABLE__"        '__UNREADABLE__' "$(list_group_members data-eng@ogenki.io 2>"$T/err")"
+check "PENDING: logs why"                1 "$(grep -c 'b@ogenki.io (status PENDING)' "$T/err")"
+DIR_BODY='{"members":[{"email":"a@ogenki.io","type":"USER","status":"ACTIVE"},
+  {"email":"b@ogenki.io","type":"USER","status":"ACTIVE"},
+  {"email":"c@ogenki.io","type":"USER","status":"SUSPENDED"}]}'
+members="$(list_group_members data-eng@ogenki.io 2>/dev/null)"
+check "SUSPENDED is not a member"        '["a@ogenki.io","b@ogenki.io"]' "$members"
+out="$(reconcile_team data "$members" '[{"email":"a@ogenki.io","userId":"1"},
+  {"email":"b@ogenki.io","userId":"2"},{"email":"c@ogenki.io","userId":"3"}]' 2>&1)"; rc=$?
+check "a SUSPENDED holder is revoked, within the guards (1 of 3)" \
+  "0:1" "${rc}:$(grep -c '^revoke c@ogenki.io$' <<<"$out")"
 
 curl() { return 22; }
 check "curl fails -> __UNREADABLE__" '__UNREADABLE__' \
@@ -507,6 +527,16 @@ check "no Google token: zero writes"                  0 "$(grep -c . "$WRITES")"
 out="$(load_users() { return 1; }; main --apply 2>&1)"; rc=$?
 check "users unreadable: fails"                       1 "$(nonzero "$rc")"
 check "users unreadable: zero writes"                 0 "$(grep -c . "$WRITES")"
+
+echo "== case 7: what a TRIPPED team printed before tripping never reaches the plan =="
+# reconcile_team's contract: non-zero means "do nothing for this team", never
+# "go on with what was printed". This backend run prints a revoke of d (4, who
+# holds [backend,data]) and then trips -- so d's only intent is a tripped one.
+: >"$WRITES"
+out="$(reconcile_team() { echo "revoke d@ogenki.io"; echo "GUARD blast-radius: simulated"; return 1; }
+       main --apply --team backend 2>&1)"; rc=$?
+check "case 7: the tripped team fails the run"        1 "$(nonzero "$rc")"
+check "case 7: d's grant is untouched -- zero writes" 0 "$(grep -c . "$WRITES")"
 
 echo "== fix 2: main -- an approved revoke the planner must drop (multi-grant user) =="
 # d (4) holds `data` on g4 and a second grant g4b. data's guards approve

@@ -449,18 +449,24 @@ google_token() {
 # requested: its live response shape is unproven), and a CUSTOMER member is
 # everyone in the domain. Either way people holding the role look absent and
 # get REVOKED, under the blast-radius cap. So any member whose type is not
-# USER -- a missing type included -- makes the group __UNREADABLE__, logged
-# with the member an operator has to change.
+# USER -- a missing type included -- makes the group __UNREADABLE__.
+#
+# KNOWN STATUSES ONLY, for the same reason again. ACTIVE is a member and
+# SUSPENDED is not: revoking a suspended user is intended. A missing status,
+# or any other value, would otherwise drop that person from the group
+# silently -- and revoke them -- so it makes the group __UNREADABLE__ too.
+# Either way the log names the member an operator has to look at.
 list_group_members() {
-    local group="$1" body non_users
+    local group="$1" body unplaceable
     body="$(curl -fsS "https://admin.googleapis.com/admin/directory/v1/groups/${group}/members" \
         -K <(printf 'header = "Authorization: Bearer %s"\n' "$GOOGLE_TOKEN"))" \
         || { printf '__UNREADABLE__'; return 0; }
-    non_users="$(jq -r '[.members // [] | .[] | select(.type != "USER")
-                         | "\(.email // .id // "?") (type \(.type // "missing"))"] | join(", ")' \
-                 <<<"$body" 2>/dev/null)"
-    if [ -n "$non_users" ]; then
-        echo "[unreadable] ${group}: non-USER member(s) ${non_users} -- a nested group or customer entry hides people this reconciler cannot see; add those people to ${group} directly" >&2
+    unplaceable="$(jq -r '[.members // [] | .[]
+        | if .type != "USER" then "\(.email // .id // "?") (type \(.type // "missing"))"
+          elif (.status | IN("ACTIVE", "SUSPENDED") | not) then "\(.email // "?") (status \(.status // "missing"))"
+          else empty end] | join(", ")' <<<"$body" 2>/dev/null)"
+    if [ -n "$unplaceable" ]; then
+        echo "[unreadable] ${group}: member(s) this reconciler cannot place: ${unplaceable} -- a nested group or customer entry hides people, and only ACTIVE and SUSPENDED statuses are understood; add people to ${group} directly, or teach the reconciler the new status" >&2
         printf '__UNREADABLE__'
         return 0
     fi
