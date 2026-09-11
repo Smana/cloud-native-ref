@@ -105,7 +105,20 @@ script "deploy" {
         ${global.cloud_gate}
         set -euo pipefail
         cd ../configure
+        # Same two steps gke/configure's own deploy runs before its apply, and
+        # AWS's eks/init runs before its configure apply: the vault provider in
+        # openbao.tf loads .tls/ca.pem (gitignored, so a fresh checkout has
+        # none), and a jwt/gcp-0 mount restored by the lineage must be adopted
+        # rather than created. See gke/configure's deploy for the full story.
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-config.sh" ca \
+          --cloud gcp --project ogenki-435905 \
+          --root-ca-secret-name openbao-priv-gcp-ca-chain --ca-output-file .tls/ca.pem
         ${global.provisioner} init -lock-timeout=5m
+        bash "${terramate.root.path.fs.absolute}/scripts/openbao-adopt-jwt-mount.sh" \
+          --cluster-name gcp-0 --url https://bao.priv.gcp.ogenki.io:8200 \
+          --root-token-secret-name openbao-priv-gcp-root-token \
+          --ca-file .tls/ca.pem --cloud gcp --project ogenki-435905 \
+          -- -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='cilium_version=${global.cilium_version}' -var='gateway_api_version=${global.gateway_api_version}' -var='flux_operator_version=${global.flux_operator_version}' -var='flux_instance_version=${global.flux_instance_version}' $${TF_VAR_flux_git_ref:+-var="flux_git_ref=$${TF_VAR_flux_git_ref}"}
       BASH
       ],
