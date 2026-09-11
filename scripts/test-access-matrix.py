@@ -106,5 +106,23 @@ class TestRender(unittest.TestCase):
         self.assertIn("GENERATED FILE", out.split("\n")[0])
 
 
+class TestRenderFluxUI(unittest.TestCase):
+    def setUp(self):
+        self.teams = access_matrix.load(write(VALID))
+
+    def test_binding_per_team_with_flux_access(self):
+        out = render_access_matrix.render_flux_rbac(self.teams)
+        self.assertIn("name: flux-ui-platform", out)
+        self.assertIn("name: cluster-admin", out)
+        self.assertIn("name: flux-ui-data", out)
+        self.assertIn("name: edit", out)
+
+    def test_none_renders_no_binding(self):
+        doc = VALID.replace("fluxUI: edit", "fluxUI: none")
+        teams = access_matrix.load(write(doc))
+        out = render_access_matrix.render_flux_rbac(teams)
+        self.assertNotIn("flux-ui-data", out)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

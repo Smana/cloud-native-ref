@@ -64,6 +64,21 @@ def render_rbac(teams, cloud):
     return "".join(out)
 
 
+def render_flux_rbac(teams):
+    """Flux UI bindings. Same shape as the cluster RBAC, different name prefix.
+
+    The Flux UI impersonates the user with `groups: "claims.groups"`, so these
+    are ordinary Kubernetes bindings against the same group names -- which is
+    why they are rendered from the same matrix rather than maintained beside it.
+    """
+    out = [HEADER]
+    for t in teams:
+        if t.flux_ui == "none":
+            continue
+        out.append(_binding(f"flux-ui-{t.team}", t.team, t.flux_ui))
+    return "".join(out)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true",
@@ -71,9 +86,11 @@ def main():
     args = ap.parse_args()
 
     teams = access_matrix.load()
+    work = [(path, render_rbac(teams, cloud)) for cloud, path in TARGETS.items()]
+    work.append(("flux/operator/rbac.yaml", render_flux_rbac(teams)))
+
     stale = []
-    for cloud, path in TARGETS.items():
-        want = render_rbac(teams, cloud)
+    for path, want in work:
         p = pathlib.Path(path)
         have = p.read_text(encoding="utf-8") if p.exists() else ""
         if want == have:
@@ -97,7 +114,7 @@ def main():
         print("\nRun: python3 scripts/render_access_matrix.py", file=sys.stderr)
         return 1
     if args.check:
-        print(f"==> {len(TARGETS)} rendered file(s) match the matrix")
+        print(f"==> {len(work)} rendered file(s) match the matrix")
     return 0
 
 
