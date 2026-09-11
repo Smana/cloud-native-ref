@@ -1213,7 +1213,7 @@ rehydrate_openbao() {
                 log_message "ERROR" "with OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true. Nothing has changed yet."
                 exit 1 ;;
             refuse-unsealed-object)
-                log_message "ERROR" "OPENBAO_NEW_LINEAGE=true, but ${unsealed_latest} carries NO seal segment: its seal is"
+                log_message "ERROR" "OPENBAO_NEW_LINEAGE=true, but ${unsealed_latest:-$latest} carries NO seal segment: its seal is"
                 log_message "ERROR" "UNKNOWN, not 'none' -- it may be this node's seal '${node_seal}'. Confirm the seal,"
                 log_message "ERROR" "then retag it to <timestamp>-<seal>.snap, or move it to ANOTHER bucket, then re-run."
                 log_message "ERROR" "Do NOT move it under a prefix in THIS bucket: that only hides it from this check --"
