@@ -92,19 +92,27 @@ ZITADEL_PROJECT_NAME="platform"
 # here. They diverged once already: ADR-0036 shipped OpenBao groups aliased to
 # `app-<name>` roles while this list stayed at four entries, so those groups
 # could never match a token.
-_matrix="$(cd "$(dirname "$0")/.." && pwd)/security/base/access-matrix/matrix.yaml"
+_scripts_dir="$(cd "$(dirname "$0")" && pwd)"
+_matrix="$(cd "$_scripts_dir/.." && pwd)/security/base/access-matrix/matrix.yaml"
 if [ ! -r "$_matrix" ]; then
     echo "[FAILED ] cannot read the access matrix at ${_matrix}" >&2
     exit 1
 fi
-mapfile -t ZITADEL_PROJECT_ROLES < <(
-    python3 -c '
-import sys, yaml
-with open(sys.argv[1]) as fh:
-    for t in (yaml.safe_load(fh) or {}).get("teams", []):
-        print(t["team"])
-' "$_matrix"
-)
+# A plain assignment, not `mapfile < <(...)`: a process substitution's exit
+# status is invisible to errexit, so a matrix that fails validation partway
+# through (access_matrix.load raises MatrixError -- missing column, duplicate
+# team, no `platform` row) would otherwise be swallowed, leaving
+# ZITADEL_PROJECT_ROLES holding whatever printed before the crash instead of
+# failing the script. Going through access_matrix.load() -- the one module
+# Task 1 made responsible for reading this file -- also means every row is
+# validated before anything is printed, not after.
+roles="$(python3 -c '
+import sys
+sys.path.insert(0, sys.argv[2])
+import access_matrix
+print("\n".join(t.team for t in access_matrix.load(sys.argv[1])))
+' "$_matrix" "$_scripts_dir")"
+mapfile -t ZITADEL_PROJECT_ROLES <<< "$roles"
 [ "${#ZITADEL_PROJECT_ROLES[@]}" -gt 0 ] || {
     echo "[FAILED ] the access matrix yielded no roles" >&2; exit 1; }
 

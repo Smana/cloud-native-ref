@@ -171,14 +171,14 @@ resource "vault_jwt_auth_backend_role" "oidc_default" {
 # Role -> policy, by way of an external group
 # -------------------------------------------
 # OpenBao matches a `groups` claim entry against the group ALIAS name, then
-# grants that group's policies. `admin` is the ZITADEL project role granted by
-# `zitadel-oidc-clients.sh --grant-admin <email>`.
+# grants that group's policies. `platform` is the ZITADEL project role granted
+# by `zitadel-oidc-clients.sh --grant-admin <email>`.
 #
 # It carries both `admin` and `pki-admin` because the role vocabulary
-# (admin/backend/frontend/data) is application-shaped and has no secrets-admin
-# distinction -- ADR-0034 records that as a known coarseness rather than
-# pretending otherwise. Splitting it means adding a role in ZITADEL first, at
-# which point a second group here is a two-line change.
+# (platform/backend/frontend/data) is application-shaped and has no
+# secrets-admin distinction -- ADR-0034 records that as a known coarseness
+# rather than pretending otherwise. Splitting it means adding a role in
+# ZITADEL first, at which point a second group here is a two-line change.
 resource "vault_identity_group" "oidc_admin" {
   count = local.oidc_enabled
 
@@ -191,7 +191,7 @@ resource "vault_identity_group_alias" "oidc_admin" {
   count = local.oidc_enabled
 
   # Must equal the value that appears in the token's `groups` array, exactly.
-  name           = "admin"
+  name           = "platform"
   mount_accessor = vault_jwt_auth_backend.oidc[0].accessor
   canonical_id   = vault_identity_group.oidc_admin[0].id
 }

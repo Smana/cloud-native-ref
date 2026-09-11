@@ -87,8 +87,8 @@ CREATES your ZITADEL user — the IdP auto-registers it — so there is nobody t
 authorise before it. Afterwards:
 
 ```bash
-# 4. Give yourself the admin role. Group-based RBAC (cluster-admin via the
-#    `admin` group) does nothing until a user actually holds it.
+# 4. Give yourself the platform role. Group-based RBAC (cluster-admin via the
+#    `platform` group) does nothing until a user actually holds it.
 ./scripts/zitadel-oidc-clients.sh sync $CL --grant-admin you@example.com --apply
 ```
 
