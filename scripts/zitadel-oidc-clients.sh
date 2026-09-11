@@ -70,18 +70,8 @@ APPLY="false"
 WORKFORCE_POOL=""
 ZITADEL_PROJECT_NAME="platform"
 
-# The project roles the platform's OWN RBAC already refers to. These are not a
-# guess: each name is read back out of a manifest in this repo, through the
-# groups/roles claim that zitadel-actions/groups-from-roles.js builds.
-#
-#   platform   security/base/rbac/teams.yaml   Group platform -> cluster-admin
-#              flux-ui ClusterRoleBinding       Group platform -> cluster-admin
-#              Grafana role_attribute_path      'platform'     -> Admin
-#   backend    flux-ui ClusterRoleBinding       Group backend  -> edit
-#              Grafana role_attribute_path      'backend'      -> Editor
-#   data       flux-ui ClusterRoleBinding       Group data     -> edit
-#              Grafana role_attribute_path      'data'         -> Editor
-#   frontend   Grafana role_attribute_path      'frontend'     -> Editor
+# The project roles are the teams in security/base/access-matrix/matrix.yaml;
+# what each one grants, per consumer, is that file's columns -- not listed here.
 #
 # Without them the whole chain is inert: ZITADEL has no role to grant, so the
 # Action emits no claim, so every binding above matches nobody and Grafana falls
@@ -112,9 +102,9 @@ sys.path.insert(0, sys.argv[2])
 import access_matrix
 print("\n".join(t.team for t in access_matrix.load(sys.argv[1])))
 ' "$_matrix" "$_scripts_dir")"
+# Tested on the string: `mapfile <<< ""` yields one empty element, never zero.
+[ -n "$roles" ] || { echo "[FAILED ] the access matrix yielded no roles" >&2; exit 1; }
 mapfile -t ZITADEL_PROJECT_ROLES <<< "$roles"
-[ "${#ZITADEL_PROJECT_ROLES[@]}" -gt 0 ] || {
-    echo "[FAILED ] the access matrix yielded no roles" >&2; exit 1; }
 
 # --grant-admin <email>: give an EXISTING user the `platform` project role.
 #
