@@ -131,14 +131,16 @@ reconcile_team() {
 
     # GUARD 4 -- a member with no ZITADEL user is normal, not an error. A user
     # exists only after their first login, so the grant simply lands on a later
-    # run.
-    local email
+    # run. An email naming MORE than one user is not that: it is emitted as a
+    # grant, which plan_user_changes drops as ambiguous -- failing the run.
+    local email found
     while read -r email; do
         [ -z "$email" ] && continue
-        if zitadel_user_id "$email" >/dev/null 2>&1; then
-            echo "grant ${email}"
-        else
+        zitadel_user_id "$email" >/dev/null 2>&1; found=$?
+        if [ "$found" -eq 1 ]; then
             echo "skip-no-user ${email}"
+        else
+            echo "grant ${email}"
         fi
     done <<<"$to_grant"
 
@@ -156,10 +158,18 @@ reconcile_team() {
 # case-insensitively -- the lookup grant_admin_role in zitadel-oidc-clients.sh
 # already uses in production. An email naming more than one user resolves to
 # NOBODY: granting a role to the wrong person is worse than granting it late.
+# Returns 1 when no user has the email (first login pending), 2 when more than
+# one does -- reconcile_team tells the two apart.
 zitadel_user_id() {
-    jq -er --arg e "${1,,}" '
-        [.[] | select(.email == $e or .userName == $e) | .userId] | unique
-        | if length == 1 then .[0] else empty end' <<<"${USERS_JSON:-[]}"
+    local ids
+    ids="$(jq -r --arg e "${1,,}" \
+        '[.[] | select(.email == $e or .userName == $e) | .userId] | unique | .[]' \
+        <<<"${USERS_JSON:-[]}")" || return 3
+    case "$(grep -c . <<<"$ids")" in
+        0) return 1 ;;
+        1) printf '%s\n' "$ids" ;;
+        *) return 2 ;;
+    esac
 }
 
 # For log lines only.
@@ -206,24 +216,33 @@ team_holders() {
 # so `none` is detected reliably.
 #
 # A grant and a revoke of one team for one user (two aliases of one person)
-# resolve to the grant: this errs toward keeping access. A user holding more
-# than one grant on the project is left untouched and logged -- which one to
-# write would be a guess.
+# resolve to the grant: this errs toward keeping access.
+#
+# An intent the planner cannot place is DROPPED, on its own line:
+#
+#   drop <verb> <team> <email>: <reason>
+#
+# -- an email naming more than one user, or a user holding more than one grant
+# on the project (which one to write would be a guess). apply_user_changes
+# fails the run on it, after applying everything else: a revoke the guards
+# approved must never vanish behind a green run. An email naming NO user is a
+# first login still pending -- normal, logged, not a drop.
 plan_user_changes() {
     local intents="$1" grants="$2" users="$3" line
     jq -rn --arg intents "$intents" --argjson grants "$grants" --argjson users "$users" '
-      def uid($e): [$users[] | select(.email == $e or .userName == $e) | .userId]
-                   | unique | if length == 1 then .[0] else null end;
+      def ids($e): [$users[] | select(.email == $e or .userName == $e) | .userId] | unique;
       [ $intents | split("\n")[] | select(length > 0) | split(" ")
         | {verb: .[0], team: .[1], email: (.[2] | ascii_downcase)}
-        | . + {userId: uid(.email)} ]
-      | (.[] | select(.userId == null)
-         | "# no ZITADEL user for \(.email); \(.verb) \(.team) skipped"),
-        (map(select(.userId != null)) | group_by(.userId)[]
+        | . + {ids: ids(.email)} ]
+      | (.[] | select(.ids | length == 0)
+         | "# no ZITADEL user for \(.email) (first login pending); \(.verb) \(.team) skipped"),
+        (.[] | select(.ids | length > 1)
+         | "drop \(.verb) \(.team) \(.email): the email names \(.ids | length) ZITADEL users (\(.ids | join(", ")))"),
+        (map(select(.ids | length == 1) | . + {userId: .ids[0]}) | group_by(.userId)[]
          | .[0].userId as $u
          | [$grants[] | select(.userId == $u)] as $g
          | if ($g | length) > 1 then
-             "# user \($u) holds \($g | length) grants on the project; leaving it untouched"
+             .[] | "drop \(.verb) \(.team) \(.email): user \($u) holds \($g | length) grants on the project; which one to change would be a guess"
            else
              ($g[0].roleKeys // [] | unique) as $cur
              | (map(select(.verb == "grant")  | .team) | unique) as $add
@@ -261,10 +280,18 @@ write_grant() {
 # one user's failure must not strand everybody else's change -- but the return
 # status is non-zero.
 apply_user_changes() {
-    local op user_id grant_id roles who failed=0 n_change=0 n_none=0 n_failed=0
-    while read -r op user_id grant_id roles; do
+    local line op user_id grant_id roles who failed=0 n_change=0 n_none=0 n_failed=0 n_dropped=0
+    while IFS= read -r line; do
+        read -r op user_id grant_id roles <<<"$line"
         [ -z "$op" ] && continue
-        if [ "$op" = none ]; then n_none=$((n_none + 1)); continue; fi
+        case "$op" in
+            none) n_none=$((n_none + 1)); continue ;;
+            # An intent the planner could not place. Everything else still
+            # applies; the run still fails -- in a dry run too -- so an approved
+            # revoke that never happened cannot hide behind a green CronJob.
+            drop) echo "[DROPPED] ${line#drop }"
+                  failed=1; n_dropped=$((n_dropped + 1)); continue ;;
+        esac
         n_change=$((n_change + 1))
         who="$(zitadel_user_email "$user_id") (${user_id})"
         if [ "$APPLY" != true ]; then
@@ -278,7 +305,7 @@ apply_user_changes() {
             failed=1; n_failed=$((n_failed + 1))
         fi
     done
-    echo "summary: ${n_change} to change, ${n_none} unchanged, ${n_failed} failed ($([ "$APPLY" = true ] && echo applied || echo dry run))"
+    echo "summary: ${n_change} to change, ${n_none} unchanged, ${n_dropped} dropped, ${n_failed} failed ($([ "$APPLY" = true ] && echo applied || echo dry run))"
     return "$failed"
 }
 
@@ -416,11 +443,27 @@ google_token() {
 # PARTIAL truncation -- a few members past the page -- stays under the
 # blast-radius cap, so that guard would not catch it. Fail closed; paginate if
 # a team ever outgrows a page.
+#
+# USER MEMBERS ONLY, for the same reason. A GROUP member is a nested group
+# whose people never appear on this page (includeDerivedMembership is not
+# requested: its live response shape is unproven), and a CUSTOMER member is
+# everyone in the domain. Either way people holding the role look absent and
+# get REVOKED, under the blast-radius cap. So any member whose type is not
+# USER -- a missing type included -- makes the group __UNREADABLE__, logged
+# with the member an operator has to change.
 list_group_members() {
-    local group="$1" body
+    local group="$1" body non_users
     body="$(curl -fsS "https://admin.googleapis.com/admin/directory/v1/groups/${group}/members" \
         -K <(printf 'header = "Authorization: Bearer %s"\n' "$GOOGLE_TOKEN"))" \
         || { printf '__UNREADABLE__'; return 0; }
+    non_users="$(jq -r '[.members // [] | .[] | select(.type != "USER")
+                         | "\(.email // .id // "?") (type \(.type // "missing"))"] | join(", ")' \
+                 <<<"$body" 2>/dev/null)"
+    if [ -n "$non_users" ]; then
+        echo "[unreadable] ${group}: non-USER member(s) ${non_users} -- a nested group or customer entry hides people this reconciler cannot see; add those people to ${group} directly" >&2
+        printf '__UNREADABLE__'
+        return 0
+    fi
     jq -ce 'if has("nextPageToken") then error("paginated")
             else [.members // [] | .[] | select(.status == "ACTIVE") | .email | ascii_downcase]
             end' <<<"$body" 2>/dev/null \

@@ -237,10 +237,17 @@ check "a grant and a revoke of one team for one user -> the grant wins" \
   "$(plan $'grant data a@ogenki.io\nrevoke data a@ogenki.io' '[{"userId":"1","grantId":"g1","roleKeys":["data"]}]')"
 check "an intent for an email with no user -> no line" \
   '' "$(plan 'grant data ghost@ogenki.io' '[]')"
-check "a user holding TWO grants on the project is left untouched" \
-  '' "$(plan 'grant data a@ogenki.io' \
+out="$(plan $'grant data a@ogenki.io\nrevoke backend a@ogenki.io' \
         '[{"userId":"1","grantId":"g1","roleKeys":["admin"]},{"userId":"1","grantId":"g2","roleKeys":["backend"]}]')"
-check "... and says so"        1 "$(grep -c 'grants on the project' "$T/err")"
+check "a user holding TWO grants on the project gets no write" \
+  0 "$(grep -cE '^(post|put|delete) ' <<<"$out")"
+check "fix 2: ... and EACH of its intents is dropped, naming user and reason" \
+  2 "$(grep -c '^drop .* a@ogenki.io: user 1 holds 2 grants on the project' <<<"$out")"
+out="$(plan_user_changes 'revoke data a@ogenki.io' '[{"userId":"1","grantId":"g1","roleKeys":["data"]}]' \
+  '[{"userId":"1","email":"a@ogenki.io","userName":"a@ogenki.io"},{"userId":"7","email":"x@ogenki.io","userName":"a@ogenki.io"}]' \
+  2>/dev/null)"
+check "fix 2: an email naming two users -- its intent is dropped, naming the reason" \
+  1 "$(grep -c '^drop revoke data a@ogenki.io: the email names 2 ZITADEL users' <<<"$out")"
 
 echo "== case 1: dry run performs no writes; --apply performs them =="
 WRITES="$T/writes"
@@ -272,7 +279,20 @@ check "exit non-zero"                  1 "$(nonzero "$rc")"
 check "all three attempted"            3 "$(grep -c . "$WRITES")"
 check "names the failure"              1 "$(grep -c '^\[FAILED' <<<"$out")"
 zitadel_put_grant() { echo "put $*" >>"$WRITES"; }
+
+echo "== fix 2: a DROPPED intent fails the run -- after every other write is applied =="
+DPLAN="$PLAN"$'\n''drop revoke data d@ogenki.io: user 4 holds 2 grants on the project'
+: >"$WRITES"
+out="$(apply_user_changes <<<"$DPLAN" 2>&1)"; rc=$?
+check "apply: exit non-zero"             1 "$(nonzero "$rc")"
+check "apply: the other three writes still happen" 3 "$(grep -c . "$WRITES")"
+check "apply: one [DROPPED] line naming user and reason" \
+  1 "$(grep -c '^\[DROPPED\] revoke data d@ogenki.io: user 4 holds 2 grants' <<<"$out")"
 APPLY=false
+: >"$WRITES"
+out="$(apply_user_changes <<<"$DPLAN" 2>&1)"; rc=$?
+check "dry run: a drop still fails the run" 1 "$(nonzero "$rc")"
+check "dry run: still zero writes"       0 "$(grep -c . "$WRITES")"
 
 echo "== zitadel_api: the PAT reaches curl through -K, never argv =="
 ZITADEL_PAT="fake-token"
@@ -286,17 +306,47 @@ echo "== list_group_members: the Directory API, against a stubbed curl =="
 GOOGLE_TOKEN="fake-token"
 DIR_BODY=""
 curl() { printf '%s\n' "$@" >"$T/curl-argv"; printf '%s' "$DIR_BODY"; }
-DIR_BODY='{"members":[{"email":"A@Ogenki.io","status":"ACTIVE"},{"email":"z@ogenki.io","status":"SUSPENDED"}]}'
+DIR_BODY='{"members":[{"email":"A@Ogenki.io","type":"USER","status":"ACTIVE"},{"email":"z@ogenki.io","type":"USER","status":"SUSPENDED"}]}'
 check "active members, lowercased" '["a@ogenki.io"]' "$(list_group_members data-eng@ogenki.io)"
 check "the request names the group" 1 "$(grep -c 'groups/data-eng@ogenki.io/members' "$T/curl-argv")"
 check "the token is not on argv"    0 "$(grep -c 'fake-token' "$T/curl-argv")"
 DIR_BODY='{"kind":"admin#directory#members"}'
 check "a genuinely empty group"     '[]' "$(list_group_members data-eng@ogenki.io)"
-DIR_BODY='{"members":[{"email":"a@ogenki.io","status":"ACTIVE"}],"nextPageToken":"p2"}'
+DIR_BODY='{"members":[{"email":"a@ogenki.io","type":"USER","status":"ACTIVE"}],"nextPageToken":"p2"}'
 check "nextPageToken -> __UNREADABLE__" '__UNREADABLE__' "$(list_group_members data-eng@ogenki.io)"
 DIR_BODY='not-json'
 check "a body that is not JSON -> __UNREADABLE__" '__UNREADABLE__' \
   "$(list_group_members data-eng@ogenki.io 2>/dev/null)"
+
+echo "== fix 1: a nested GROUP member is UNREADABLE -- its people never appear on the page =="
+DIR_BODY='{"members":[{"email":"a@ogenki.io","type":"USER","status":"ACTIVE"},
+  {"email":"sub-team@ogenki.io","type":"GROUP","status":"ACTIVE"}]}'
+members="$(list_group_members data-eng@ogenki.io 2>"$T/err")"
+out="$(reconcile_team data "$members" '[{"email":"c@ogenki.io","userId":"3"}]' 2>&1)"; rc=$?
+check "nested group: exit non-zero"      1 "$(nonzero "$rc")"
+check "nested group: GUARD unreadable"   1 "$(grep -c 'GUARD unreadable' <<<"$out")"
+check "nested group: zero revocations"   0 "$(grep -c '^revoke' <<<"$out")"
+check "nested group: zero grants"        0 "$(grep -c '^grant' <<<"$out")"
+check "nested group: logs why, naming it" 1 "$(grep -c 'sub-team@ogenki.io (type GROUP)' "$T/err")"
+
+echo "== fix 1: the fail-open shape -- 1 of 3 holders is inside the nested group, under the cap =="
+DIR_BODY='{"members":[{"email":"a@ogenki.io","type":"USER","status":"ACTIVE"},
+  {"email":"b@ogenki.io","type":"USER","status":"ACTIVE"},
+  {"email":"sub-team@ogenki.io","type":"GROUP","status":"ACTIVE"}]}'
+members="$(list_group_members data-eng@ogenki.io 2>/dev/null)"
+out="$(reconcile_team data "$members" '[{"email":"a@ogenki.io","userId":"1"},
+  {"email":"b@ogenki.io","userId":"2"},{"email":"c@ogenki.io","userId":"3"}]' 2>&1)"
+check "c, inside the nested group, is not revoked" 0 "$(grep -c '^revoke c@ogenki.io$' <<<"$out")"
+
+echo "== fix 1: a CUSTOMER member, and a member with no type, are UNREADABLE too =="
+DIR_BODY='{"members":[{"email":"a@ogenki.io","type":"USER","status":"ACTIVE"},
+  {"id":"C01","type":"CUSTOMER","status":"ACTIVE"}]}'
+check "CUSTOMER -> __UNREADABLE__"       '__UNREADABLE__' "$(list_group_members data-eng@ogenki.io 2>"$T/err")"
+check "CUSTOMER: logs why"               1 "$(grep -c 'C01 (type CUSTOMER)' "$T/err")"
+DIR_BODY='{"members":[{"email":"a@ogenki.io","status":"ACTIVE"}]}'
+check "no type -> __UNREADABLE__"        '__UNREADABLE__' "$(list_group_members data-eng@ogenki.io 2>"$T/err")"
+check "no type: logs why"                1 "$(grep -c 'a@ogenki.io (type missing)' "$T/err")"
+
 curl() { return 22; }
 check "curl fails -> __UNREADABLE__" '__UNREADABLE__' \
   "$(list_group_members data-eng@ogenki.io 2>/dev/null)"
@@ -457,6 +507,45 @@ check "no Google token: zero writes"                  0 "$(grep -c . "$WRITES")"
 out="$(load_users() { return 1; }; main --apply 2>&1)"; rc=$?
 check "users unreadable: fails"                       1 "$(nonzero "$rc")"
 check "users unreadable: zero writes"                 0 "$(grep -c . "$WRITES")"
+
+echo "== fix 2: main -- an approved revoke the planner must drop (multi-grant user) =="
+# d (4) holds `data` on g4 and a second grant g4b. data's guards approve
+# revoking d (1 of 2); the planner cannot place it.
+MULTI='[{"userId":"1","grantId":"g1","roleKeys":["admin"]},
+  {"userId":"3","grantId":"g3","roleKeys":["data"]},
+  {"userId":"4","grantId":"g4","roleKeys":["backend","data"]},
+  {"userId":"4","grantId":"g4b","roleKeys":["admin"]}]'
+: >"$WRITES"
+out="$(load_grants() { printf '%s' "$MULTI"; }; main --apply --team data 2>&1)"; rc=$?
+check "multi-grant: exit non-zero"                    1 "$(nonzero "$rc")"
+check "multi-grant: a's write still applies"          1 "$(grep -cFx 'put 1 g1 ["admin","data"]' "$WRITES")"
+check "multi-grant: nothing written for d"            0 "$(grep -cE '^[a-z]+ 4 ' "$WRITES")"
+check "multi-grant: the drop is reported"             1 "$(grep -c '^\[DROPPED\] revoke data d@ogenki.io' <<<"$out")"
+
+echo "== fix 2: main -- an approved revoke of an AMBIGUOUS email =="
+# user 7's userName is d@'s email, so d@ names two users.
+AMBIG_D="$(jq -c '. + [{userId: "7", email: "other@ogenki.io", userName: "d@ogenki.io"}]' <<<"$USERS_JSON")"
+: >"$WRITES"
+out="$(load_users() { printf '%s' "$AMBIG_D"; }; main --apply --team data 2>&1)"; rc=$?
+check "ambiguous revoke: exit non-zero"               1 "$(nonzero "$rc")"
+check "ambiguous revoke: a's write still applies"     1 "$(grep -cFx 'put 1 g1 ["admin","data"]' "$WRITES")"
+check "ambiguous revoke: the drop is reported"        1 "$(grep -c '^\[DROPPED\] revoke data d@ogenki.io' <<<"$out")"
+
+echo "== fix 2: main -- a GRANT to an ambiguous email is a drop, not a pending first login =="
+AMBIG_A="$(jq -c '. + [{userId: "7", email: "other@ogenki.io", userName: "a@ogenki.io"}]' <<<"$USERS_JSON")"
+: >"$WRITES"
+out="$(load_users() { printf '%s' "$AMBIG_A"; }; main --apply --team data 2>&1)"; rc=$?
+check "ambiguous grant: exit non-zero"                1 "$(nonzero "$rc")"
+check "ambiguous grant: reported as DROPPED"          1 "$(grep -c '^\[DROPPED\] grant data a@ogenki.io' <<<"$out")"
+check "ambiguous grant: not called a pending login"   0 "$(grep -c 'skip.*a@ogenki.io' <<<"$out")"
+check "ambiguous grant: d's revoke still applies"     1 "$(grep -cFx 'put 4 g4 ["backend"]' "$WRITES")"
+
+echo "== fix 2: main -- skip-no-user alone stays exit 0 (never logged in is normal) =="
+: >"$WRITES"
+out="$(list_group_members() { echo '["a@ogenki.io","ghost@ogenki.io"]'; }; main --apply --team platform 2>&1)"; rc=$?
+check "skip-no-user only: exit 0"                     0 "$rc"
+check "skip-no-user only: reported as pending login"  1 "$(grep -c '^\[skip   \] platform: ghost@ogenki.io' <<<"$out")"
+check "skip-no-user only: a's grant still applies"    1 "$(grep -cFx 'put 1 g1 ["admin","platform"]' "$WRITES")"
 
 echo "== no test above reached the network =="
 check "tripwire log is empty"  0 "$(grep -c . "$NET_LOG")"
