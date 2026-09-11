@@ -65,9 +65,8 @@ the page to read first regardless of cloud.
 {{< /cards >}}
 
 The two lanes are not equivalent in coverage. AWS runs the full platform; GCP
-runs everything except `image-gallery` (not yet portable — it hardcodes an AWS
-S3 endpoint) and `flux-previews` (excluded by design — previews belong to one
-cluster, not both). The exact split is on
+runs everything except `flux-previews` (excluded by design — previews belong
+to one cluster, not both). The exact split is on
 [Cloud support]({{< relref "/docs/platform/foundations/cloud-support.md" >}}) —
 worth a look before you choose, if you are evaluating rather than just trying it.
 

@@ -1,0 +1,121 @@
+# In-cluster load generator for the image-gallery observability demo.
+#
+# SUSPENDED by default. When resumed it runs `steady` (1 req/s, the mixed API
+# mix) for 14 minutes every 15 minutes, so dashboards always have data.
+# On-demand runs of any scenario: scripts/demo-load.sh <scenario>.
+#
+# The image tag moves with the App's (apps/base/complete/app.yaml): same release, same API.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: image-gallery-loadgen
+  namespace: apps
+  labels:
+    app.kubernetes.io/name: image-gallery-loadgen
+    app.kubernetes.io/part-of: image-gallery
+spec:
+  suspend: true
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: image-gallery-loadgen
+            app.kubernetes.io/part-of: image-gallery
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: loadgen
+              image: ghcr.io/smana/image-gallery:2.0.0
+              imagePullPolicy: IfNotPresent
+              args:
+                - loadgen
+                - --target
+                - http://xplane-image-gallery.apps.svc.cluster.local:8080
+                - --scenario
+                - steady
+                - --duration
+                - 14m
+              env:
+                - name: OTEL_SERVICE_NAME
+                  value: image-gallery-loadgen
+                - name: OTEL_TRACES_SAMPLER
+                  value: always_on # the root of every trace it starts
+                - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+                  value: http://victoria-traces-vt-single-server.observability.svc.cluster.local:10428/insert/opentelemetry/v1/traces
+                - name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+                  value: http://vmsingle-victoria-metrics-k8s-stack.observability.svc.cluster.local:8428/opentelemetry/v1/metrics
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi # in-memory image generation for uploads
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: ["ALL"]
+---
+# Default-deny for the load generator: DNS, the app, and the two telemetry sinks.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: image-gallery-loadgen
+  namespace: apps
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: image-gallery-loadgen
+  enableDefaultDeny:
+    ingress: true
+    egress: true
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: xplane-image-gallery
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vt-single
+      toPorts:
+        - ports:
+            - port: "10428"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmsingle
+      toPorts:
+        - ports:
+            - port: "8428"
+              protocol: TCP
