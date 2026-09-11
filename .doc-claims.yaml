@@ -338,7 +338,7 @@ claims:
       The GCP Workforce Identity Federation pool id is embedded verbatim in
       every RBAC group string it federates
       (`principalSet://…/workforcePools/<id>/group/<role>`, see
-      security/gcp-0/rbac/admin.yaml) and is treated as permanent — renaming
+      security/gcp-0/rbac/teams.yaml) and is treated as permanent — renaming
       is delete+create with a 30-day soft-delete purge window, and every
       binding referencing the old name goes stale the moment a rename lands.
       ADR-0033 quotes the id as part of its measured evidence; pinning it
@@ -497,7 +497,10 @@ claims:
       saying `admin` and validate-doc-claims.sh passed anyway, because no
       claim covered them. The team name is read from the access matrix, the
       single source `scripts/render_access_matrix.py` renders into every RBAC
-      file, so per-user-rbac.md's table cannot drift from it silently again.
+      file, so the Team column of per-user-rbac.md's table cannot drift from it
+      silently again. These claims bind that column ONLY: the Kubernetes,
+      OpenBao, Grafana and Flux UI cells are not checked, and can still go
+      stale unnoticed.
     source:
       file: security/base/access-matrix/matrix.yaml
       pattern: '- team: (\w+)(?:(?!- team:)[\s\S])*?mountAccess: all'
@@ -509,7 +512,8 @@ claims:
 
   - id: access-matrix-team-backend
     why: >-
-      Same hazard as access-matrix-team-platform, for the `backend` row.
+      Same hazard, and the same Team-column-only limit, as
+      access-matrix-team-platform, for the `backend` row.
     source:
       file: security/base/access-matrix/matrix.yaml
       pattern: '- team: (\w+)(?:(?!- team:)[\s\S])*?googleGroup: backend@'
@@ -519,7 +523,8 @@ claims:
 
   - id: access-matrix-team-data
     why: >-
-      Same hazard as access-matrix-team-platform, for the `data` row.
+      Same hazard, and the same Team-column-only limit, as
+      access-matrix-team-platform, for the `data` row.
     source:
       file: security/base/access-matrix/matrix.yaml
       pattern: '- team: (\w+)(?:(?!- team:)[\s\S])*?googleGroup: data-eng@'
@@ -529,7 +534,8 @@ claims:
 
   - id: access-matrix-team-frontend
     why: >-
-      Same hazard as access-matrix-team-platform, for the `frontend` row.
+      Same hazard, and the same Team-column-only limit, as
+      access-matrix-team-platform, for the `frontend` row.
     source:
       file: security/base/access-matrix/matrix.yaml
       pattern: '- team: (\w+)(?:(?!- team:)[\s\S])*?kubernetes: none'

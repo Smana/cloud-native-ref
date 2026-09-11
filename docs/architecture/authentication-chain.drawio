@@ -27,7 +27,7 @@
           <mxGeometry x="70" y="290" width="330" height="126" as="geometry" />
         </mxCell>
 
-        <mxCell id="zproj" value="&lt;b&gt;Project: platform&lt;/b&gt;&#xa;Holds every OIDC client and the four roles:&#xa;admin · backend · frontend · data&#xa;&#xa;Roles are created by zitadel-oidc-clients.sh.&#xa;Granting one to a user stays manual — the&#xa;user only exists after a first login." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+        <mxCell id="zproj" value="&lt;b&gt;Project: platform&lt;/b&gt;&#xa;Holds every OIDC client and the four roles:&#xa;platform · backend · frontend · data&#xa;&#xa;Roles are created by zitadel-oidc-clients.sh.&#xa;Granting one to a user stays manual — the&#xa;user only exists after a first login." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
           <mxGeometry x="430" y="290" width="330" height="126" as="geometry" />
         </mxCell>
 
@@ -64,7 +64,7 @@
         <mxCell id="gcpbox" value="gcp-0 — it cannot, so a proxy stands in" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#F59E0B;verticalAlign=top;fontStyle=1;fontFamily=Helvetica;fontSize=13;fontColor=#1E293B;align=left;spacingLeft=8;spacingTop=4;" vertex="1" parent="1">
           <mxGeometry x="780" y="660" width="700" height="180" as="geometry" />
         </mxCell>
-        <mxCell id="gcpproxy" value="&lt;b&gt;oauth2-proxy&lt;/b&gt;&#xa;Authenticates the human against ZITADEL and&#xa;gates on --allowed-group=admin. Headlamp then&#xa;talks to the API server as its OWN ServiceAccount." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+        <mxCell id="gcpproxy" value="&lt;b&gt;oauth2-proxy&lt;/b&gt;&#xa;Authenticates the human against ZITADEL and&#xa;gates on --allowed-group=platform. Headlamp then&#xa;talks to the API server as its OWN ServiceAccount." style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
           <mxGeometry x="810" y="700" width="640" height="106" as="geometry" />
         </mxCell>
 

@@ -90,7 +90,7 @@
     <rect x="640" y="286" width="380" height="118" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
     <text x="656" y="308" font-weight="bold" fill="#065f46">the API server resolves</text>
     <text x="656" y="330" font-size="11" font-family="monospace" fill="#1E293B">user:   principal://…/subject/&lt;zitadel sub&gt;</text>
-    <text x="656" y="350" font-size="11" font-family="monospace" fill="#1E293B">groups: principalSet://…/group/admin</text>
+    <text x="656" y="350" font-size="11" font-family="monospace" fill="#1E293B">groups: principalSet://…/group/platform</text>
     <line x1="656" y1="362" x2="1004" y2="362" stroke="#a7f3d0" stroke-width="1"/>
     <text x="656" y="382" font-size="11" fill="#065f46">authorised by an ordinary ClusterRoleBinding,</text>
     <text x="656" y="396" font-size="11" fill="#065f46">exactly as on aws-0</text>

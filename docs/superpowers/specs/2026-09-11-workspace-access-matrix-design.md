@@ -68,13 +68,13 @@ teams:
     kubernetes: view
     secrets: own                      # apps/backend/* only
     grafana: Editor
-    fluxUI: edit
+    fluxUI: view                      # was edit; owner, 2026-09-11: read-only, GitOps only
   - team: data
     googleGroup: data-eng@ogenki.io
     kubernetes: view
     secrets: own
     grafana: Editor
-    fluxUI: edit
+    fluxUI: view                      # was edit; owner, 2026-09-11: read-only, GitOps only
   - team: frontend
     googleGroup: frontend@ogenki.io
     kubernetes: none

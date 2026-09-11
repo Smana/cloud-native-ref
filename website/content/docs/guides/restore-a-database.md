@@ -131,8 +131,8 @@ identity providers. All five matched exactly:
 |---|---|---|
 | users | 3 | 3 |
 | OIDC apps | grafana, headlamp, flux-ui, headlamp-proxy, harbor | identical |
-| project roles | platform, backend, frontend, data | identical |
-| grants | one platform grant | identical |
+| project roles | admin (renamed `platform` on 2026-09-11), backend, frontend, data | identical |
+| grants | one admin grant (renamed `platform` on 2026-09-11) | identical |
 | identity providers | Google Workspace | identical |
 
 ## Rotating the seed

@@ -39,8 +39,8 @@ currently says — it is not a second copy to keep in sync by hand:
 | Team | Google group | Kubernetes | OpenBao mount access | Grafana | Flux UI |
 |---|---|---|---|---|---|
 | `platform` | `platform@ogenki.io` | **`cluster-admin`** | all | Admin | cluster-admin |
-| `backend` | `backend@ogenki.io` | view | own | Editor | edit |
-| `data` | `data-eng@ogenki.io` | view | own | Editor | edit |
+| `backend` | `backend@ogenki.io` | view | own | Editor | view |
+| `data` | `data-eng@ogenki.io` | view | own | Editor | view |
 | `frontend` | `frontend@ogenki.io` | none | none | Editor | none |
 
 `platform` is the one team the matrix requires — the reconciler's
@@ -49,6 +49,16 @@ what used to be the hand-written `openbao-admin` OpenBao identity group.
 **Only `platform`, `backend` and `data` get a Kubernetes `ClusterRoleBinding`
 today** — `frontend`'s `kubernetes: none` means the renderer skips it
 entirely; `frontend` gets Grafana access and nothing else.
+
+**`backend` and `data` are read-only on the cluster; every change they make
+goes through GitOps** (owner decision, 2026-09-11). That includes the Flux UI.
+It impersonates the same `groups` claim, so its binding is an ordinary
+`ClusterRoleBinding` on the same group — and on `aws-0`, where EKS takes that
+claim unprefixed, the same binding also applies to `kubectl`. RBAC is a union,
+so **`fluxUI` may never exceed `kubernetes`**, and `access_matrix.load()`
+refuses a row where it does. The earlier `fluxUI: edit` was, in effect,
+cluster-wide `kubectl edit`: every Secret, and pods running as any
+ServiceAccount.
 
 ### Keeping ZITADEL grants in sync
 
@@ -71,6 +81,22 @@ Once it does run, two behaviours are deliberate rather than bugs:
   holding more than one grant on the project, or an email matching two
   ZITADEL users — after applying everything else it could. A member who has
   never logged in is normal and does not fail the run.
+
+**After a rebuild, grant `platform` again by hand.** ZITADEL's database is
+restored from a frozen seed, and a seed older than 2026-09-11 predates the
+rename: it holds the legacy `admin` role and grant, and gives `platform` to
+nobody. Until you run
+
+```bash
+./scripts/zitadel-oidc-clients.sh sync $CL --grant-admin you@example.com --apply
+```
+
+with the same `$CL` flags as [step 4 of Set up single sign-on]({{< relref "/docs/get-started/sso.md" >}}),
+the operator has no OIDC `cluster-admin` on either cloud, no Headlamp on
+`gcp-0`, no Flux UI and no OpenBao OIDC admin, and only Viewer in Grafana. The
+script adds `platform` beside the legacy `admin` rather than replacing it. This
+is not a lockout: `kubectl` through cloud IAM and the OpenBao `userpass` login
+still work.
 
 ## Where the two clouds differ
 

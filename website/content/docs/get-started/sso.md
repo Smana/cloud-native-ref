@@ -52,6 +52,9 @@ first leaves you with OIDC clients and no way to log in through Google.
 
 Every step is idempotent — re-running prints `[skip …]` and changes nothing.
 
+`zitadel-oidc-clients.sh` needs **python3 with PyYAML** on every run, dry runs
+included: it reads the project roles from the access matrix.
+
 ```bash
 # 1. Register the OIDC clients, the project, its roles, and
 #    projectRoleAssertion. That last one is not optional: with it off ZITADEL
