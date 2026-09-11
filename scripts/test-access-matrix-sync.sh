@@ -367,6 +367,21 @@ out="$(reconcile_team data "$members" '[{"email":"a@ogenki.io","userId":"1"},
 check "a SUSPENDED holder is revoked, within the guards (1 of 3)" \
   "0:1" "${rc}:$(grep -c '^revoke c@ogenki.io$' <<<"$out")"
 
+echo "== fix 7: the placeability jq itself failing is UNREADABLE, never 'every member placeable' =="
+# e.g. a jq older than 1.6, which has no IN(). The shim fails only that one
+# program and delegates every other jq call, so the member list itself parses.
+DIR_BODY='{"members":[{"email":"a@ogenki.io","type":"USER","status":"ACTIVE"},
+  {"email":"b@ogenki.io","type":"USER","status":"ACTIVE"}]}'
+jq() { case "$*" in *'IN('*) return 3 ;; esac; command jq "$@"; }
+members="$(list_group_members data-eng@ogenki.io 2>"$T/err")"
+unset -f jq
+check "placeability jq fails -> __UNREADABLE__" '__UNREADABLE__' "$members"
+check "placeability jq fails: logs why" 1 \
+  "$(grep -c '^\[unreadable\] data-eng@ogenki.io: could not check member types/statuses' "$T/err")"
+out="$(reconcile_team data "$members" '[{"email":"a@ogenki.io","userId":"1"},
+  {"email":"c@ogenki.io","userId":"3"}]' 2>&1)"
+check "placeability jq fails: zero revocations" 0 "$(grep -c '^revoke' <<<"$out")"
+
 curl() { return 22; }
 check "curl fails -> __UNREADABLE__" '__UNREADABLE__' \
   "$(list_group_members data-eng@ogenki.io 2>/dev/null)"

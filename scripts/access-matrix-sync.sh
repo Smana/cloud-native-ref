@@ -461,10 +461,15 @@ list_group_members() {
     body="$(curl -fsS "https://admin.googleapis.com/admin/directory/v1/groups/${group}/members" \
         -K <(printf 'header = "Authorization: Bearer %s"\n' "$GOOGLE_TOKEN"))" \
         || { printf '__UNREADABLE__'; return 0; }
+    # A jq failure here (a body that is not JSON, a jq without IN()) must not
+    # read as "nobody unplaceable" -- that is the fail-open this check exists to
+    # close. jq's own stderr stays visible: it is the log, not the decision.
     unplaceable="$(jq -r '[.members // [] | .[]
         | if .type != "USER" then "\(.email // .id // "?") (type \(.type // "missing"))"
           elif (.status | IN("ACTIVE", "SUSPENDED") | not) then "\(.email // "?") (status \(.status // "missing"))"
-          else empty end] | join(", ")' <<<"$body" 2>/dev/null)"
+          else empty end] | join(", ")' <<<"$body")" \
+        || { echo "[unreadable] ${group}: could not check member types/statuses" >&2
+             printf '__UNREADABLE__'; return 0; }
     if [ -n "$unplaceable" ]; then
         echo "[unreadable] ${group}: member(s) this reconciler cannot place: ${unplaceable} -- a nested group or customer entry hides people, and only ACTIVE and SUSPENDED statuses are understood; add people to ${group} directly, or teach the reconciler the new status" >&2
         printf '__UNREADABLE__'
