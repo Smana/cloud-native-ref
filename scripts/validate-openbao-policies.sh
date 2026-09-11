@@ -19,6 +19,12 @@
 # Templated policy names (app-${each.value}) are not literal names and never
 # satisfy a role; the built-in `default` policy is never required.
 #
+# SCOPE EDGES (none reachable today, but honest): roles are read only from
+# opentofu/<cloud>/*/configure/openbao.tf, so a role moved to a sibling file
+# goes unchecked; a `vault_policy` gated to `count = 0` still counts as
+# defined; and a policy name built from a variable, not a literal string, is
+# not resolved either way.
+#
 # Usage: validate-openbao-policies.sh [ROOT_DIR]
 set -euo pipefail
 

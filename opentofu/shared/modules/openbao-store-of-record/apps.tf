@@ -1,13 +1,6 @@
 # Per-app ownership of apps/ (ADR-0036). Gated on OIDC: without the OIDC mount
 # there is no accessor to alias against.
 locals {
-  oidc_enabled = var.oidc_client_id != "" && var.oidc_issuer != "" ? 1 : 0
-
-  # The gate is derived from the caller's OIDC secret payload, so it may arrive
-  # marked sensitive -- and a sensitive value cannot be a for_each argument.
-  # The keys come from a plain list; only the gate needs unwrapping. try()
-  # covers the non-sensitive case, where nonsensitive() would error.
-  oidc_on            = try(nonsensitive(local.oidc_enabled), local.oidc_enabled)
   secret_owning_apps = local.oidc_on == 1 ? var.secret_owning_apps : toset([])
 }
 

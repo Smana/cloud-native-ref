@@ -17,6 +17,10 @@ run "mounts_policies_and_break_glass_without_oidc" {
     error_message = "the two Stage 2 mounts must be platform/ and apps/"
   }
   assert {
+    condition     = vault_mount.platform.type == "kv-v2" && vault_mount.apps.type == "kv-v2"
+    error_message = "both mounts must be kv-v2: the ClusterSecretStores read with version v2"
+  }
+  assert {
     condition     = vault_policy.external_secrets.name == "external-secrets"
     error_message = "the JWT roles reference this policy BY NAME: it must be external-secrets"
   }
@@ -59,5 +63,13 @@ run "oidc_group_and_personas_when_configured" {
   assert {
     condition     = length(vault_policy.app_prefix) == 2
     error_message = "one policy per secret-owning app"
+  }
+  assert {
+    condition     = contains(vault_jwt_auth_backend_role.oidc_default[0].oidc_scopes, "groups") && contains(vault_jwt_auth_backend_role.oidc_default[0].oidc_scopes, "email")
+    error_message = "the default role must request groups and email, or the login dies on `claim \"email\" not found in token`"
+  }
+  assert {
+    condition     = contains(vault_jwt_auth_backend_role.oidc_default[0].allowed_redirect_uris, "https://bao.priv.gcp.ogenki.io:8200/ui/vault/auth/oidc/oidc/callback")
+    error_message = "the UI callback must match what scripts/zitadel-oidc-clients.sh registers"
   }
 }

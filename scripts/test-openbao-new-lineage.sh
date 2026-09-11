@@ -140,6 +140,9 @@ gcp_gcloud() {
 GCLOUD_LISTING='gs://test/2026-09-05T092947Z-awskms.snap'
 check "only sealed (AWS-mirror) objects present: nothing unsealed" "" "$(latest_unsealed_snapshot)"
 
+GCLOUD_LISTING=$'gs://test/2026-09-05T092947Z-awskms.snap\ngs://test/README.md'
+check "a non-.snap top-level object is not a snapshot, so it never blocks" "" "$(latest_unsealed_snapshot)"
+
 GCLOUD_LISTING=$'gs://test/2026-09-05T092947Z-awskms.snap\ngs://test/manual-backup.snap'
 check "a hand-named object (manual-backup.snap) counts as unsealed" \
     "manual-backup.snap" "$(latest_unsealed_snapshot)"
@@ -183,7 +186,8 @@ AWS_JSON='{"Contents":[
   {"Key":"2026-09-05T092947Z-awskms.snap","LastModified":"2026-09-05T09:29:47.000Z"},
   {"Key":"manual-backup.snap","LastModified":"2026-09-01T00:00:00.000Z"},
   {"Key":"2026-09-06T041500Z.snap","LastModified":"2026-09-06T04:15:00.000Z"},
-  {"Key":"aside/2026-09-02T041500Z.snap","LastModified":"2026-09-07T00:00:00.000Z"}
+  {"Key":"aside/2026-09-02T041500Z.snap","LastModified":"2026-09-07T00:00:00.000Z"},
+  {"Key":"README.md","LastModified":"2026-09-08T00:00:00.000Z"}
 ]}'
 check "the newest UNSEALED key by LastModified wins; sealed and prefixed keys excluded" \
     "2026-09-06T041500Z.snap" "$(latest_unsealed_snapshot)"

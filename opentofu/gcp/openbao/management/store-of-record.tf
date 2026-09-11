@@ -9,13 +9,23 @@
 # first turns "ZITADEL not bootstrapped yet" into "OIDC off", so a first deploy
 # converges and the second apply after zitadel-oidc-clients.sh picks it up --
 # the same two-pass shape as opentofu/aws/openbao/management/oidc.tf.
-data "google_secret_manager_secrets" "project" {
+#
+# The gate checks that the SECRET exists, not that it has a VERSION -- the
+# provider has no version-listing data source. zitadel-oidc-clients.sh writes on
+# GCP as create + versions add, so a failed add leaves a version-less secret and
+# this plan then fails on "latest" not found. Recovery: add the version (re-run
+# zitadel-oidc-clients.sh sync --apply) or delete the empty secret
+# (gcloud secrets delete openbao-oidc --project <id>), then re-apply.
+data "google_secret_manager_secrets" "openbao_oidc" {
+  count   = var.openbao_oidc_secret_id == "" ? 0 : 1
   project = var.project_id
+  # Not an exact match in Secret Manager's list filter; contains() below is.
+  filter = "name:${var.openbao_oidc_secret_id}"
 }
 
 locals {
   oidc_secret_present = var.openbao_oidc_secret_id != "" && contains(
-    [for s in data.google_secret_manager_secrets.project.secrets : s.secret_id],
+    [for s in try(data.google_secret_manager_secrets.openbao_oidc[0].secrets, []) : s.secret_id],
     var.openbao_oidc_secret_id
   )
 }

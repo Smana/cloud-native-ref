@@ -2,6 +2,14 @@
 # is count-gated on the caller supplying a client id and an issuer, so a cluster
 # whose ZITADEL is not bootstrapped yet applies cleanly with no OIDC method.
 locals {
+  oidc_enabled = var.oidc_client_id != "" && var.oidc_issuer != "" ? 1 : 0
+
+  # The gate is derived from the caller's OIDC secret payload, so it may arrive
+  # marked sensitive -- and a sensitive value cannot be a for_each argument.
+  # The keys come from a plain list; only the gate needs unwrapping. try()
+  # covers the non-sensitive case, where nonsensitive() would error.
+  oidc_on = try(nonsensitive(local.oidc_enabled), local.oidc_enabled)
+
   # BOTH callbacks are required, and must match the `openbao` entry in
   # scripts/zitadel-oidc-clients.sh. The UI path embeds the mount path twice,
   # which is why `path` below is pinned to "oidc".

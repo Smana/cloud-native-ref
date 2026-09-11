@@ -48,6 +48,13 @@ jobs:
           # What the pre-commit-terraform hooks call instead of `terraform`.
           PCT_TFPATH: tofu
 
+      # The store-of-record module's offline suite (mocked providers): pins the
+      # break-glass secrets-admin grant and the OIDC role shape.
+      - name: Test the OpenBao store-of-record module
+        run: |
+          tofu -chdir=opentofu/shared/modules/openbao-store-of-record init -backend=false -input=false
+          tofu -chdir=opentofu/shared/modules/openbao-store-of-record test
+
   security-scan:
     name: Security scanning 🔒
     runs-on: ubuntu-latest

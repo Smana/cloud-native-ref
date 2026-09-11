@@ -92,6 +92,29 @@ expect "a cloud with roles but no management stack fails" 1 "$r" "no opentofu/gc
 r="$t/empty"; mkdir -p "$r/opentofu"
 expect "a tree with no configure stack at all fails" 1 "$r" "no opentofu/<cloud>/*/configure/openbao.tf"
 
+r="$t/multiline"; mkdir -p "$r/opentofu/aws/k8s/configure" "$r/opentofu/aws/openbao/management"
+cat >"$r/opentofu/aws/k8s/configure/openbao.tf" <<'EOF'
+locals {
+  openbao_roles = {
+    external-secrets = {
+      policies = [
+        "default",
+        "external-secrets",
+      ]
+    }
+  }
+}
+EOF
+expect "a multi-line policies list is read" 1 "$r" 'policy "external-secrets"'
+
+r="$t/token"; mkdir -p "$r/opentofu/aws/k8s/configure" "$r/opentofu/aws/openbao/management"
+cat >"$r/opentofu/aws/k8s/configure/openbao.tf" <<'EOF'
+resource "vault_jwt_auth_backend_role" "r" {
+  token_policies = ["undefined-x"]
+}
+EOF
+expect "a literal token_policies list on a role is a reference too" 1 "$r" 'policy "undefined-x"'
+
 expect "the repository itself passes" 0 "$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 if [ "$failures" -ne 0 ]; then echo "==> ${failures} failure(s)"; exit 1; fi
