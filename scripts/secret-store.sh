@@ -65,7 +65,10 @@
 #       --keys K1,K2,...  walks exactly these managed-store keys instead of the
 #       ones the cluster's ExternalSecrets name. Needed once those ExternalSecrets
 #       already point at OpenBao: they then name OpenBao paths, which the mapping
-#       does not know, and a cluster-derived walk copies nothing.
+#       does not know, and a cluster-derived walk copies nothing. Given with no
+#       usable keys (empty, all blank, or an unset variable substituted in),
+#       --keys refuses rather than silently falling back to the cluster's
+#       ExternalSecrets.
 #
 #   migrate-aws [--apply]
 #       Copy AWS Secrets Manager entries from the old slash-separated names to
@@ -90,7 +93,8 @@ CONTEXT=""
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 PROJECT=""
 APPLY="false"
-KEYS=""  # migrate: explicit managed-store keys; empty = derive from the cluster
+KEYS=""          # migrate: explicit managed-store keys; empty = derive from the cluster
+KEYS_SET="false" # migrate: was --keys given at all, vs. given but empty
 STORE="" # aws|gcp|openbao; defaults to $CLOUD, i.e. that cloud's managed store
 COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
@@ -103,7 +107,7 @@ while [ $# -gt 0 ]; do
         --project) PROJECT="$2"; shift 2 ;;
         --store)   STORE="$2"; shift 2 ;;
         --apply)   APPLY="true"; shift ;;
-        --keys)    KEYS="$2"; shift 2 ;;
+        --keys)    KEYS="$2"; KEYS_SET="true"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -475,9 +479,19 @@ migrate_source_keys() {
 # The source keys `migrate` walks: an explicit --keys list when given, else the
 # keys this cluster's ExternalSecrets ask for. Commas or whitespace separate the
 # list; blanks and duplicates are dropped.
+#
+# --keys given but resolving to zero keys (empty, all blank, or an unset
+# variable substituted in) is refused, not silently treated as "no --keys" --
+# see the header comment for why.
 migrate_keys() {
-    if [ -n "$KEYS" ]; then
-        printf '%s\n' "$KEYS" | tr ', ' '\n\n' | { grep -v '^$' || true; } | sort -u
+    if [ "$KEYS_SET" = "true" ]; then
+        local keys
+        keys="$(printf '%s\n' "$KEYS" | tr ', ' '\n\n' | { grep -v '^$' || true; } | sort -u)"
+        if [ -z "$keys" ]; then
+            echo "--keys was given but names no key -- refusing rather than falling back to the cluster's ExternalSecrets" >&2
+            return 2
+        fi
+        printf '%s\n' "$keys"
     else
         migrate_source_keys
     fi
@@ -494,6 +508,8 @@ cmd_migrate() {
         exit 2
     }
     local copied=0 exists=0 skipped=0 absent=0 key target payload
+    local keys
+    keys="$(migrate_keys)" || exit 2
 
     printf '%-58s %-46s %s\n' "SOURCE KEY" "OPENBAO PATH" "ACTION"
     while IFS= read -r key; do
@@ -528,7 +544,7 @@ cmd_migrate() {
             printf '%-58s %-46s %s\n' "$key" "$target" "would copy"
         fi
         copied=$((copied + 1))
-    done <<<"$(migrate_keys)"
+    done <<<"$keys"
 
     echo
     echo "copied: ${copied}, exists: ${exists}, absent: ${absent}, skipped: ${skipped}"
