@@ -74,7 +74,7 @@ ZITADEL_PROJECT_NAME="platform"
 # what each one grants, per consumer, is that file's columns -- not listed here.
 #
 # Without them the whole chain is inert: ZITADEL has no role to grant, so the
-# Action emits no claim, so every binding above matches nobody and Grafana falls
+# Action emits no claim, so every team binding matches nobody and Grafana falls
 # through to Viewer. gcp-0 came up on 2026-08-28 with zero roles on the project
 # and nothing anywhere said so -- login worked, authorisation silently did not.
 #
