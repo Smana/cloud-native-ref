@@ -124,5 +124,36 @@ class TestRenderFluxUI(unittest.TestCase):
         self.assertNotIn("flux-ui-data", out)
 
 
+import validate_access_matrix  # noqa: E402
+
+
+class TestGrafanaDrift(unittest.TestCase):
+    def setUp(self):
+        self.teams = access_matrix.load(write(VALID))
+
+    def test_agreement_is_clean(self):
+        expr = ("contains(roles[*], 'platform') && 'Admin' || "
+                "contains(roles[*], 'data') && 'Editor' || 'Viewer'")
+        self.assertEqual(validate_access_matrix.check(self.teams, expr), [])
+
+    def test_missing_team_is_reported(self):
+        expr = "contains(roles[*], 'platform') && 'Admin' || 'Viewer'"
+        problems = validate_access_matrix.check(self.teams, expr)
+        self.assertTrue(any("data" in p for p in problems))
+
+    def test_unknown_team_is_reported(self):
+        expr = ("contains(roles[*], 'platform') && 'Admin' || "
+                "contains(roles[*], 'data') && 'Editor' || "
+                "contains(roles[*], 'ghost') && 'Editor' || 'Viewer'")
+        problems = validate_access_matrix.check(self.teams, expr)
+        self.assertTrue(any("ghost" in p for p in problems))
+
+    def test_wrong_grafana_role_is_reported(self):
+        expr = ("contains(roles[*], 'platform') && 'Editor' || "
+                "contains(roles[*], 'data') && 'Editor' || 'Viewer'")
+        problems = validate_access_matrix.check(self.teams, expr)
+        self.assertTrue(any("platform" in p and "Admin" in p for p in problems))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
