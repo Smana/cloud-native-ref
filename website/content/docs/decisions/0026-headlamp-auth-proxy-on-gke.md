@@ -41,7 +41,7 @@ identity_providers = {
 ```
 
 With that, `groups` from `zitadel-actions/groups-from-roles.js` become real
-Kubernetes groups, and `security/base/rbac/admin.yaml` (Group `admin` →
+Kubernetes groups, and `security/base/rbac/teams.yaml` (Group `admin` →
 `cluster-admin`) does the authorising.
 
 **GKE exposes no equivalent.** The managed control plane takes no
@@ -146,6 +146,8 @@ cloud" is exactly the kind of asymmetry this repository exists to remove.
   oauth2-proxy emits `X-Forwarded-Groups`; Headlamp's default is the singular
   `X-Forwarded-Group`, so the flag is set explicitly. Left at defaults the login
   succeeds with no groups and nothing logs an error.
+- The `admin` role/group named throughout this record was renamed `platform`
+  on 2026-09-11 and is now defined in `security/base/access-matrix/matrix.yaml`.
 
 ## Related
 

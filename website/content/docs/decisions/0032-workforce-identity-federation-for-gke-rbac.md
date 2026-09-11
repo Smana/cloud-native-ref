@@ -21,7 +21,7 @@ authorisation control is `allowed-group: admin` on oauth2-proxy — an
 all-or-nothing gate in front of a shared, privileged identity. `aws-0` has none
 of this problem: EKS is told to trust ZITADEL directly
 (`identity_providers` in `opentofu/aws/eks/init/variables.tfvars`), Headlamp
-forwards the user's `id_token`, and `security/base/rbac/admin.yaml` binds
+forwards the user's `id_token`, and `security/base/rbac/teams.yaml` binds
 `Group: admin` to `cluster-admin` per user.
 
 ADR-0026 considered Workforce Identity Federation and dismissed it in one
@@ -216,7 +216,7 @@ Headlamp ──── -proxy-auth-token-header=X-Gke-Token
 GKE API server
   authenticates → principal://…/subject/<zitadel-sub>
   groups        → principalSet://…/group/admin
-  authorises    → ClusterRoleBinding in Git (security/gcp-0/rbac/admin.yaml)
+  authorises    → ClusterRoleBinding in Git (security/gcp-0/rbac/teams.yaml)
 ```
 
 Nothing Google-hosted sits in the request path to the cluster; the only
@@ -230,8 +230,8 @@ presents the user's token and needs no service account of its own.
 ### Positive
 
 - Per-user Kubernetes RBAC is restored on `gcp-0`: the API server can tell
-  users apart again, and `security/gcp-0/rbac/admin.yaml` authorises the same
-  way `security/base/rbac/admin.yaml` does on `aws-0` — same ZITADEL role,
+  users apart again, and `security/gcp-0/rbac/teams.yaml` authorises the same
+  way `security/base/rbac/teams.yaml` does on `aws-0` — same ZITADEL role,
   same `cluster-admin`, a `principalSet://` group instead of a bare group name.
 - `allowed-group: admin` on oauth2-proxy becomes defence in depth rather than
   the whole authorisation model, and the `headlamp` ServiceAccount's own
@@ -266,6 +266,8 @@ presents the user's token and needs no service account of its own.
   plane; the two clouds now reach the same RBAC outcome by genuinely
   different mechanisms; ADR-0007's cloud-abstraction stance treats that as
   acceptable divergence rather than something to unify.
+- The `admin` role/group named throughout this record was renamed `platform`
+  on 2026-09-11 and is now defined in `security/base/access-matrix/matrix.yaml`.
 
 ---
 
@@ -279,7 +281,7 @@ presents the user's token and needs no service account of its own.
   config edit.
 - `workforce_pool_id` is threaded into `gke/configure`'s `flux_cluster_vars`
   (`opentofu/gcp/gke/configure/kubernetes.tf`) so
-  `security/gcp-0/rbac/admin.yaml` can substitute it into the
+  `security/gcp-0/rbac/teams.yaml` can substitute it into the
   `principalSet://` group name; `scripts/flux-schema/check-substitution.py`
   fails the build if that wiring is missing, rather than letting Flux
   silently substitute an empty string.

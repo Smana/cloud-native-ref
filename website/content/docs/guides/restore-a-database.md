@@ -2,7 +2,7 @@
 title: Restore a database from object storage
 weight: 40
 description: How a CloudNativePG cluster bootstraps from a frozen backup, the check that will refuse it, and how to verify the restore actually worked.
-lastVerified: 2026-08-29
+lastVerified: 2026-09-11
 ---
 
 A `SQLInstance` claim can bootstrap a brand-new database from a backup in object
@@ -131,8 +131,8 @@ identity providers. All five matched exactly:
 |---|---|---|
 | users | 3 | 3 |
 | OIDC apps | grafana, headlamp, flux-ui, headlamp-proxy, harbor | identical |
-| project roles | admin, backend, frontend, data | identical |
-| grants | one admin grant | identical |
+| project roles | platform, backend, frontend, data | identical |
+| grants | one platform grant | identical |
 | identity providers | Google Workspace | identical |
 
 ## Rotating the seed

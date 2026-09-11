@@ -489,3 +489,50 @@ claims:
         must_contain: '`{value}/`'
       - path: website/content/docs/decisions/0036-per-app-secret-ownership-via-zitadel-groups.md
         must_contain: '`{value}/`'
+
+  - id: access-matrix-team-platform
+    why: >-
+      `admin` was renamed `platform` on 2026-09-11 and this check exists
+      because that rename is exactly what broke last time: five pages kept
+      saying `admin` and validate-doc-claims.sh passed anyway, because no
+      claim covered them. The team name is read from the access matrix, the
+      single source `scripts/render_access_matrix.py` renders into every RBAC
+      file, so per-user-rbac.md's table cannot drift from it silently again.
+    source:
+      file: security/base/access-matrix/matrix.yaml
+      pattern: '- team: (\w+)(?:(?!- team:)[\s\S])*?mountAccess: all'
+    pages:
+      - path: website/content/docs/platform/security/per-user-rbac.md
+        must_contain: '(?m)^\|\s*`{value}`\s*\|'
+        must_not_contain:
+          - '\|\s*`admin`\s*\|'
+
+  - id: access-matrix-team-backend
+    why: >-
+      Same hazard as access-matrix-team-platform, for the `backend` row.
+    source:
+      file: security/base/access-matrix/matrix.yaml
+      pattern: '- team: (\w+)(?:(?!- team:)[\s\S])*?googleGroup: backend@'
+    pages:
+      - path: website/content/docs/platform/security/per-user-rbac.md
+        must_contain: '(?m)^\|\s*`{value}`\s*\|'
+
+  - id: access-matrix-team-data
+    why: >-
+      Same hazard as access-matrix-team-platform, for the `data` row.
+    source:
+      file: security/base/access-matrix/matrix.yaml
+      pattern: '- team: (\w+)(?:(?!- team:)[\s\S])*?googleGroup: data-eng@'
+    pages:
+      - path: website/content/docs/platform/security/per-user-rbac.md
+        must_contain: '(?m)^\|\s*`{value}`\s*\|'
+
+  - id: access-matrix-team-frontend
+    why: >-
+      Same hazard as access-matrix-team-platform, for the `frontend` row.
+    source:
+      file: security/base/access-matrix/matrix.yaml
+      pattern: '- team: (\w+)(?:(?!- team:)[\s\S])*?kubernetes: none'
+    pages:
+      - path: website/content/docs/platform/security/per-user-rbac.md
+        must_contain: '(?m)^\|\s*`{value}`\s*\|'

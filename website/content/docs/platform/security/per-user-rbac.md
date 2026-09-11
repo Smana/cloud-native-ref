@@ -2,7 +2,7 @@
 title: Per-user RBAC
 weight: 17
 description: One ZITADEL identity, one set of roles, and a ClusterRoleBinding on either cloud — plus the exchange GKE needs because its API server will not trust ZITADEL.
-lastVerified: 2026-09-06
+lastVerified: 2026-09-11
 aliases:
   - /docs/platform/security/gke-per-user-rbac/
 ---
@@ -16,7 +16,7 @@ page, because GKE's API server will not trust ZITADEL directly.
 
 Three steps, the same on `aws-0` and `gcp-0`:
 
-1. **ZITADEL project roles are the source of truth.** `admin`, `backend`,
+1. **ZITADEL project roles are the source of truth.** `platform`, `backend`,
    `frontend`, `data` — granted to a person, not to a cluster.
 2. **A `groups` claim carries them.** ZITADEL has no native groups, so the
    `groupsFromRoles` Action flattens its nested role object into the flat array
@@ -26,22 +26,51 @@ Three steps, the same on `aws-0` and `gcp-0`:
 
 ## Who gets what
 
-The roles are deliberately few, and they are not Kubernetes-specific — the same
-grant drives Grafana and the Flux UI:
+The teams and their permissions are not decided on this page. They are
+defined once, in
+[`security/base/access-matrix/matrix.yaml`](https://github.com/Smana/cloud-native-ref/blob/main/security/base/access-matrix/matrix.yaml),
+and `scripts/render_access_matrix.py` renders that single source into every
+RBAC manifest that enforces it — `security/base/rbac/teams.yaml` on `aws-0`,
+`security/gcp-0/rbac/teams.yaml` on `gcp-0`, and `flux/operator/rbac.yaml` for
+the Flux UI. CI runs the renderer with `--check` and fails if a rendered file
+was hand-edited instead of the matrix. The table below states what the matrix
+currently says — it is not a second copy to keep in sync by hand:
 
-| Role | Intended for | Kubernetes | Grafana | Flux UI |
-|---|---|---|---|---|
-| `admin` | platform operators — the people who run this repo | **`cluster-admin`** | Admin | cluster-admin |
-| `backend` | service teams deploying their own workloads | *(none yet)* | Editor | edit |
-| `data` | data/ML teams | *(none yet)* | Editor | edit |
-| `frontend` | product engineers who need dashboards, not clusters | *(none yet)* | Editor | — |
+| Team | Google group | Kubernetes | OpenBao mount access | Grafana | Flux UI |
+|---|---|---|---|---|---|
+| `platform` | `platform@ogenki.io` | **`cluster-admin`** | all | Admin | cluster-admin |
+| `backend` | `backend@ogenki.io` | view | own | Editor | edit |
+| `data` | `data-eng@ogenki.io` | view | own | Editor | edit |
+| `frontend` | `frontend@ogenki.io` | none | none | Editor | none |
 
-**Only `admin` has a Kubernetes binding today** — `security/base/rbac/admin.yaml`
-on AWS, `security/gcp-0/rbac/admin.yaml` on GCP. The other three are live in
-Grafana and the Flux UI but have no `ClusterRoleBinding`, which is a deliberate
-starting point rather than an oversight: adding one is a four-line file, and
-inventing namespace conventions before there are teams to fit them is how you
-get bindings nobody matches.
+`platform` is the one team the matrix requires — the reconciler's
+never-leave-it-empty guard keys off that name — and its `mountAccess: all` is
+what used to be the hand-written `openbao-admin` OpenBao identity group.
+**Only `platform`, `backend` and `data` get a Kubernetes `ClusterRoleBinding`
+today** — `frontend`'s `kubernetes: none` means the renderer skips it
+entirely; `frontend` gets Grafana access and nothing else.
+
+### Keeping ZITADEL grants in sync
+
+`scripts/access-matrix-sync.sh` reconciles ZITADEL project-role grants from
+each team's Google Workspace group membership, so that adding or removing
+someone in Workspace becomes the only action needed. **It is built and
+fixture-tested, but it is not deployed** — it waits on Google Workspace
+prerequisites that do not exist yet (a service account, domain-wide
+delegation for `admin.directory.group.readonly`, and the team groups
+themselves). Until it runs, role grants are still made by hand, as today.
+
+Once it does run, two behaviours are deliberate rather than bugs:
+
+- **A team's Google group must list its people directly.** A nested group, a
+  customer/domain entry, or a member with an unexpected status makes that
+  team unreadable: the reconciler changes nothing for it, and the run exits
+  non-zero until the group is fixed. It cannot see inside a nested group, and
+  treating its people as absent would revoke them.
+- **A run exits non-zero when it had to drop a change** — a ZITADEL user
+  holding more than one grant on the project, or an email matching two
+  ZITADEL users — after applying everything else it could. A member who has
+  never logged in is normal and does not fail the run.
 
 ## Where the two clouds differ
 
@@ -51,7 +80,7 @@ Exactly one thing: **what the API server is willing to believe.**
 |---|---|---|
 | Trusts ZITADEL directly? | **Yes** — EKS takes a custom OIDC issuer | **No.** GKE accepts none, and Identity Service for GKE is deprecated as of 2026-07-01, unsupported in 1.37+ |
 | What reaches the API server | the user's ZITADEL `id_token`, unchanged | a Google federated token, obtained by exchanging that `id_token` |
-| The group the binding names | `admin` | `principalSet://iam.googleapis.com/locations/global/workforcePools/<pool>/group/admin` |
+| The group the binding names | `platform` | `principalSet://iam.googleapis.com/locations/global/workforcePools/<pool>/group/platform` |
 | Extra moving parts | none | a Workforce Identity pool, and a proxy performing the exchange |
 
 That last row of the group name is the practical consequence, and the reason
@@ -61,8 +90,8 @@ different spelling.
 {{< callout type="warning" >}}
 `${workforce_pool_id}` in the GCP binding comes from the cluster vars ConfigMap.
 Were it undefined, Flux would substitute an **empty string** and produce a
-binding for `.../workforcePools//group/admin` — schema-valid, matching nobody,
-denying silently. `scripts/flux-schema/check-substitution.py` exists to make that
+binding for `.../workforcePools//group/platform` — schema-valid, matching
+nobody, denying silently. `scripts/flux-schema/check-substitution.py` exists to make that
 impossible.
 {{< /callout >}}
 
@@ -104,7 +133,7 @@ Headlamp ─── -proxy-auth-token-header=X-Gke-Token
   ▼
 GKE API server
   authenticates → principal://…/workforcePools/ogenki-zitadel/subject/<zitadel sub>
-  groups        → principalSet://…/workforcePools/ogenki-zitadel/group/admin
+  groups        → principalSet://…/workforcePools/ogenki-zitadel/group/platform
   authorises    → ClusterRoleBinding in security/gcp-0/rbac/
 ```
 
@@ -128,7 +157,7 @@ alternative of authenticating users as Google Workspace humans, whose
 |---|---|---|
 | Workforce pool + ZITADEL provider | `opentofu/gcp/workforce-identity/` | `client_id` = the ZITADEL **project** id; `google.groups ← assertion.groups` |
 | Pool id → cluster vars | `opentofu/gcp/gke/configure/` | published as `workforce_pool_id` |
-| RBAC binding | `security/gcp-0/rbac/admin.yaml` | group `principalSet://…/workforcePools/${workforce_pool_id}/group/admin` |
+| RBAC binding | `security/gcp-0/rbac/teams.yaml` | group `principalSet://…/workforcePools/${workforce_pool_id}/group/platform` |
 | The proxy | `container-images/token-exchange-proxy/` | provider-neutral; all specifics are `TEP_*` env |
 | Its Deployment | `tooling/gcp-0/headlamp/token-exchange.yaml` | the `TEP_*` values, and `runAsUser: 65532` |
 | oauth2-proxy | `tooling/gcp-0/headlamp/oauth2-proxy.yaml` | upstream = the proxy; `pass-authorization-header: true`; the project-audience scope |
@@ -167,7 +196,7 @@ stack's `destroy` script says so loudly before it runs.
 The value reaches manifests as `${workforce_pool_id}` from the cluster vars
 ConfigMap, which is what makes `scripts/flux-schema/check-substitution.py` able to
 catch an undefined variable — Flux would otherwise substitute an empty string and
-produce `workforcePools//group/admin`.
+produce `workforcePools//group/platform`.
 
 ## Diagnosing it
 

@@ -2,7 +2,7 @@
 title: Policies
 weight: 30
 description: Kyverno admission policies, CiliumNetworkPolicy default-deny, RBAC, and the pod security context baseline enforced on every workload.
-lastVerified: 2026-08-30
+lastVerified: 2026-09-11
 ---
 
 Where [OpenBao]({{< relref "/docs/platform/security/openbao.md" >}}) and
@@ -148,18 +148,19 @@ arguments would give the opposite impression.
 ## RBAC
 
 Cluster role bindings follow groups sourced from ZITADEL, not individual
-users — `security/base/rbac/admin.yaml` binds the `admin` OIDC group to
-`cluster-admin`, and that's the only binding in the platform wider than
-namespace scope:
+users. `security/base/rbac/teams.yaml` — generated from
+`security/base/access-matrix/matrix.yaml`, never hand-edited — binds the
+`platform` OIDC group to `cluster-admin`; it also binds `backend` and `data`
+to `view`, the only other groups with a Kubernetes binding today:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: ogenki-admin
+  name: ogenki-platform
 subjects:
   - kind: Group
-    name: admin
+    name: platform
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole

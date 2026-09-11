@@ -220,6 +220,11 @@ decorative.
   *before* OpenBao has an API, so moving them would be circular. The
   `openbao-ca` `ExternalSecret` is the clearest case: the OpenBao-backed stores
   cannot verify OpenBao's certificate without the CA it produces.
+- The ZITADEL role this record calls `admin` (the "Personas" table above) was
+  renamed `platform` on 2026-09-11 and is now defined in
+  `security/base/access-matrix/matrix.yaml` — distinct from the OpenBao
+  external group `openbao-admin` and the OpenBao `admin` policy, which keep
+  their names.
 
 ---
 

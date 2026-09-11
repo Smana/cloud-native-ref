@@ -2,7 +2,7 @@
 title: Authentication
 weight: 15
 description: One Google Workspace identity, brokered by ZITADEL, reaching Grafana, Harbor, the Flux UI, Headlamp and Kubernetes RBAC — and where each cloud differs.
-lastVerified: 2026-08-30
+lastVerified: 2026-09-11
 ---
 
 Every human-facing service on this platform is behind the same identity. You log
@@ -60,9 +60,11 @@ token flow flattens the user's role grants and sets two claims — `groups`
 (Headlamp, Flux UI) and `roles` (Grafana). Two names, one list, because the
 consumers disagree and both are already deployed.
 
-The roles themselves live on the `platform` project: `admin`, `backend`,
-`frontend`, `data`. They are created by `zitadel-oidc-clients.sh`; granting one
-to a *user* is deliberately manual, since a user exists only after a first login.
+The roles themselves live on the `platform` project: `platform`, `backend`,
+`frontend`, `data` — the same four teams defined in
+[`security/base/access-matrix/matrix.yaml`](https://github.com/Smana/cloud-native-ref/blob/main/security/base/access-matrix/matrix.yaml).
+They are created by `zitadel-oidc-clients.sh`; granting one to a *user* is
+deliberately manual, since a user exists only after a first login.
 
 {{< callout type="warning" >}}
 **`projectRoleAssertion` must be true on the project**, and ZITADEL defaults it to
@@ -113,8 +115,9 @@ identity_providers = {
 ```
 
 So a token issued by ZITADEL *is* a Kubernetes identity. The `groups` claim
-becomes real Kubernetes groups, and `security/base/rbac/admin.yaml` binds the
-`admin` group to `cluster-admin`. Headlamp simply forwards the user's token.
+becomes real Kubernetes groups, and `security/base/rbac/teams.yaml` —
+generated from the access matrix, never hand-edited — binds the `platform`
+group to `cluster-admin`. Headlamp simply forwards the user's token.
 
 {{< callout type="warning" >}}
 **`client_id` is a project id, and that is deliberate.** EKS compares it against
@@ -151,8 +154,8 @@ group is merely spelled differently:
 
 | | Kubernetes sees the group as |
 |---|---|
-| `aws-0` | `admin` |
-| `gcp-0` | `principalSet://iam.googleapis.com/locations/global/workforcePools/ogenki-zitadel/group/admin` |
+| `aws-0` | `platform` |
+| `gcp-0` | `principalSet://iam.googleapis.com/locations/global/workforcePools/ogenki-zitadel/group/platform` |
 
 The mechanism, the failure modes and the four defects that only a live cluster
 exposed are in

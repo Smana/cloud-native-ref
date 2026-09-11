@@ -187,6 +187,10 @@ should be rare enough to be worth asking about.
 - Google Workspace remains the upstream identity provider. What changes is only
   where *authorisation* is read from, and the answer is the same as for every
   other consumer.
+- The ZITADEL project role this record calls `admin` was renamed `platform` on
+  2026-09-11 and is now defined in `security/base/access-matrix/matrix.yaml` —
+  distinct from OpenBao's own `admin` policy and `admin` userpass login, which
+  keep their names.
 
 ---
 
