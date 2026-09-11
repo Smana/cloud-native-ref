@@ -1727,6 +1727,12 @@ Use the `EnterWorktree` tool with name `test-gcp-only-live`. It branches from `o
 git merge --ff-only worktree-openbao-stage2-gcp
 ```
 
+**Note:** this `--ff-only` merge only works while `origin/main` is an ancestor
+of this branch. Once the access-matrix PR squash-merges, `origin/main` gains a
+commit this branch lacks and the merge fails. Rebase this branch onto
+`origin/main` first, or, in this fresh throwaway test worktree only (nothing
+can be lost there), run `git reset --hard worktree-openbao-stage2-gcp` instead.
+
 - [ ] **Step 2: Flip the identity-provider gates**
 
 Make these three edits:
@@ -1778,6 +1784,30 @@ Then:
   ```
 
   This counts every issuance, so read the dates to count the last 7 days.
+
+- Check what the first management apply will do with the OIDC secret:
+
+  ```bash
+  gcloud secrets versions access latest --secret openbao-priv-gcp-recovery-keys --project ogenki-435905 >/dev/null
+  gcloud secrets versions list openbao-oidc --project ogenki-435905 --filter='state:ENABLED' --limit=1
+  ```
+
+  The first line confirms the recovery-keys pre-flight can read a version at
+  all, or `rehydrate` refuses before it ever reaches `OPENBAO_NEW_LINEAGE`. The
+  second says which branch the apply takes:
+
+  | `openbao-oidc` state | What happens |
+  |---|---|
+  | absent | OIDC stays off |
+  | exists, with no enabled version | the plan aborts (see store-of-record.tf's comment on the version-less-secret trap) |
+  | exists, with a version (for example from the 2026-08-28 run) | OIDC turns on at the FIRST apply, so Task 10 Step 4's "plan adds …" expectation will not hold |
+
+  **Watch item:** GCP management's remote state may still hold `vault_*`
+  entries from a previous lineage. After a fresh init they refresh as gone and
+  are re-created; a PKI resource whose read errors instead of returning 404
+  would stop the plan. Recovery: `tofu state rm` on the `vault_` and
+  `module.store_of_record.vault_` addresses -- the same ones
+  `tofu-destroy-contained.sh` drops.
 
 - [ ] **Step 2: Deploy**
 
