@@ -65,6 +65,9 @@ MANIFEST_DIRS = [
 NON_MANIFEST_FILES = {
     # Stack registry the App Wizard reads via STACKS_PATH (SPEC-008 FR-006).
     "apps/stacks.yaml",
+    # The access matrix: plain data scripts/render_access_matrix.py reads to
+    # generate the RBAC manifests below it. Not a Kubernetes resource itself.
+    "security/base/access-matrix/matrix.yaml",
 }
 
 # Same fixture values CI passed to kubeconform. Substituted so that

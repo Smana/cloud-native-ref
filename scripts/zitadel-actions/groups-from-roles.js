@@ -95,7 +95,7 @@ function groupsFromRoles(ctx, api) {
   // the name and both are already deployed:
   //
   //   groups   Headlamp, Flux UI      (OIDC groups claim)
-  //   roles    Grafana                (role_attribute_path: contains(roles[*], 'admin') ...)
+  //   roles    Grafana                (role_attribute_path: contains(roles[*], 'platform') ...)
   //
   // Grafana's mapping is in the shared vm-common-helm-values ConfigMap and reads
   // roles[*]. Emitting only `groups` left it matching nothing and falling through

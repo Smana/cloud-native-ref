@@ -247,7 +247,7 @@ data:
           token_url: "${identity_provider_url}/oauth/v2/token"
           api_url: "${identity_provider_url}/oidc/v1/userinfo"
           role_attribute_path: >
-            contains(roles[*], 'admin') && 'Admin' ||
+            contains(roles[*], 'platform') && 'Admin' ||
             contains(roles[*], 'backend') && 'Editor' ||
             contains(roles[*], 'frontend') && 'Editor' ||
             contains(roles[*], 'data') && 'Editor' ||

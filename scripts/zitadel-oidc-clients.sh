@@ -74,9 +74,9 @@ ZITADEL_PROJECT_NAME="platform"
 # guess: each name is read back out of a manifest in this repo, through the
 # groups/roles claim that zitadel-actions/groups-from-roles.js builds.
 #
-#   admin      security/base/rbac/admin.yaml   Group admin    -> cluster-admin
-#              flux-ui ClusterRoleBinding       Group admin    -> cluster-admin
-#              Grafana role_attribute_path      'admin'        -> Admin
+#   platform   security/base/rbac/teams.yaml   Group platform -> cluster-admin
+#              flux-ui ClusterRoleBinding       Group platform -> cluster-admin
+#              Grafana role_attribute_path      'platform'     -> Admin
 #   backend    flux-ui ClusterRoleBinding       Group backend  -> edit
 #              Grafana role_attribute_path      'backend'      -> Editor
 #   data       flux-ui ClusterRoleBinding       Group data     -> edit
@@ -87,9 +87,28 @@ ZITADEL_PROJECT_NAME="platform"
 # Action emits no claim, so every binding above matches nobody and Grafana falls
 # through to Viewer. gcp-0 came up on 2026-08-28 with zero roles on the project
 # and nothing anywhere said so -- login worked, authorisation silently did not.
-ZITADEL_PROJECT_ROLES=(admin backend frontend data)
+#
+# The project roles come from the access matrix, not from a list maintained
+# here. They diverged once already: ADR-0036 shipped OpenBao groups aliased to
+# `app-<name>` roles while this list stayed at four entries, so those groups
+# could never match a token.
+_matrix="$(cd "$(dirname "$0")/.." && pwd)/security/base/access-matrix/matrix.yaml"
+if [ ! -r "$_matrix" ]; then
+    echo "[FAILED ] cannot read the access matrix at ${_matrix}" >&2
+    exit 1
+fi
+mapfile -t ZITADEL_PROJECT_ROLES < <(
+    python3 -c '
+import sys, yaml
+with open(sys.argv[1]) as fh:
+    for t in (yaml.safe_load(fh) or {}).get("teams", []):
+        print(t["team"])
+' "$_matrix"
+)
+[ "${#ZITADEL_PROJECT_ROLES[@]}" -gt 0 ] || {
+    echo "[FAILED ] the access matrix yielded no roles" >&2; exit 1; }
 
-# --grant-admin <email>: give an EXISTING user the `admin` project role.
+# --grant-admin <email>: give an EXISTING user the `platform` project role.
 #
 # Separate from role creation because the two cannot happen at the same time. A
 # human user does not exist in ZITADEL until their FIRST LOGIN -- the Google IdP
@@ -414,7 +433,7 @@ grant_admin_role() {
     [ -n "$email" ] || return 0
     [ -n "$project_id" ] || return 0
     if [ "$project_id" = "DRYRUN-PROJECT" ]; then
-        echo "[dry-run] would grant 'admin' to ${email}"
+        echo "[dry-run] would grant 'platform' to ${email}"
         return 0
     fi
 
@@ -430,18 +449,18 @@ grant_admin_role() {
     resp="$(api_or_fail POST /management/v1/users/grants/_search -d '{"query":{"limit":200}}')" || return 1
     existing="$(jq -r --arg u "$user_id" --arg p "$project_id" \
                     '.result[]? | select(.userId == $u and .projectId == $p) | .roleKeys[]?' <<< "$resp")"
-    if grep -qx "admin" <<< "$existing"; then
-        echo "[skip   ] ${email} already holds 'admin'"
+    if grep -qx "platform" <<< "$existing"; then
+        echo "[skip   ] ${email} already holds 'platform'"
         return 0
     fi
     if [ "$APPLY" != "true" ]; then
-        echo "[dry-run] would grant 'admin' to ${email} (${user_id})"
+        echo "[dry-run] would grant 'platform' to ${email} (${user_id})"
         return 0
     fi
 
-    jq -n --arg p "$project_id" '{projectId: $p, roleKeys: ["admin"]}' \
+    jq -n --arg p "$project_id" '{projectId: $p, roleKeys: ["platform"]}' \
         | api POST "/management/v1/users/${user_id}/grants" -d @- >/dev/null
-    echo "[granted] 'admin' to ${email} (${user_id})"
+    echo "[granted] 'platform' to ${email} (${user_id})"
 }
 
 ensure_project_role_assertion() {

@@ -83,7 +83,7 @@ spec:
       # rather than the whole authorisation model: it stops a non-admin from
       # reaching the shim at all, before RBAC on the GKE side gets a say.
       #
-      # `admin` is the ZITADEL project role, reaching the token through
+      # `platform` is the ZITADEL project role, reaching the token through
       # zitadel-actions/groups-from-roles.js.
       #
       # This gate was briefly REMOVED on 2026-08-28 because it rejected a
@@ -104,7 +104,7 @@ spec:
       # though -- it logs the ENTIRE decoded ID token on failure, which is what
       # identified the real cause in the first place.
       email-domain: "ogenki.io"
-      allowed-group: "admin"
+      allowed-group: "platform"
       oidc-groups-claim: "groups"
       # THE PROJECT-AUDIENCE SCOPE IS LOAD-BEARING, not decoration.
       #

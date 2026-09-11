@@ -3,4 +3,4 @@ kind: Kustomization
 namespace: security
 
 resources:
-  - admin.yaml
+  - teams.yaml
