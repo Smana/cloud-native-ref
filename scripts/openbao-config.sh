@@ -102,6 +102,12 @@ usage() {
     echo "                                             skipping a newer snapshot discards every write"
     echo "                                             after it. Only for a failback, where the"
     echo "                                             foreign-sealed objects are not coming back."
+    echo "  OPENBAO_NEW_LINEAGE=true                  Let 'rehydrate' start a NEW lineage (a plain init) on a"
+    echo "                                             node whose seal NO object in the bucket carries -- the"
+    echo "                                             first boot of a GCP-only lineage beside the AWS mirror."
+    echo "                                             Refused whenever an object under this node's seal exists,"
+    echo "                                             and together with OPENBAO_SNAPSHOT_KEY. REPLACES the"
+    echo "                                             stored root token and recovery keys."
     echo ""
     echo "Example:"
     echo "  $0 init --url https://openbao:8200 --root-token-secret-name openbao/root-token \\"
@@ -749,6 +755,28 @@ latest_snapshot_sealed() {
     fi
 }
 
+# May OPENBAO_NEW_LINEAGE=true start a NEW lineage on this node? A pure decision,
+# lifted into scripts/test-openbao-new-lineage.sh, so the rule is tested without a
+# live node.
+#
+#   $1 this node's seal type     $2 the newest object's seal segment (may be empty)
+#   $3 the newest object carrying $1's seal, or empty when none does
+#   $4 OPENBAO_SNAPSHOT_KEY, empty when unset
+#
+# Prints exactly one verdict:
+#   proceed                 nothing in the bucket carries this node's seal: init
+#   refuse-named-key        a named restore was asked for; a new lineage contradicts it
+#   refuse-same-seal        the newest object IS restorable here; restore it instead
+#   refuse-own-seal-exists  an older object carries this seal -- this lineage's own
+#                           history; restore it with OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL
+new_lineage_verdict() {
+    local node_seal=$1 snap_seal=$2 own_latest=$3 snapshot_key=$4
+    if [ -n "$snapshot_key" ]; then printf 'refuse-named-key'; return 0; fi
+    if [ "$snap_seal" = "$node_seal" ]; then printf 'refuse-same-seal'; return 0; fi
+    if [ -n "$own_latest" ]; then printf 'refuse-own-seal-exists'; return 0; fi
+    printf 'proceed'
+}
+
 # The PKI mount's CA endpoint is unauthenticated, which makes it the one thing a
 # rehydrate can assert without a token: if it answers with a certificate that
 # chains to the CA we already trust, the barrier unwrapped and the mount came
@@ -1096,6 +1124,50 @@ rehydrate_openbao() {
     fi
     snap_seal=$(snapshot_seal_segment "$latest")
     log_message "INFO" "This node's seal is '${node_seal}'; ${latest} carries '${snap_seal:-none}'."
+
+    # THE NEW-LINEAGE SWITCH (docs/superpowers/specs/2026-09-11-openbao-stage2-gcp-design.md).
+    # A GCP-sealed node whose bucket holds only AWS-mirrored objects has no path
+    # in: the gate below refuses the foreign seal, and with the skip it refuses a
+    # plain init -- correctly, since that overwrites a lineage's stored keys on a
+    # guess. OPENBAO_NEW_LINEAGE=true is the operator saying "start this lineage"
+    # out loud, and it is honoured ONLY when nothing in the bucket carries this
+    # node's seal. The moved-aside (rc 2) and could-not-list refusals above have
+    # already exited before this point, so the switch can never bypass them.
+    if [ "${OPENBAO_NEW_LINEAGE:-false}" = "true" ]; then
+        local own_latest verdict
+        if ! own_latest=$(latest_snapshot_sealed "$node_seal"); then
+            log_message "ERROR" "OPENBAO_NEW_LINEAGE=true, but ${SNAPSHOT_BUCKET} cannot be listed for '${node_seal}' objects."
+            log_message "ERROR" "A new lineage is only safe once the bucket is PROVEN to hold none. Nothing has changed yet."
+            exit 1
+        fi
+        verdict=$(new_lineage_verdict "$node_seal" "$snap_seal" "$own_latest" "${OPENBAO_SNAPSHOT_KEY:-}")
+        case "$verdict" in
+            proceed)
+                log_message "WARN" "OPENBAO_NEW_LINEAGE=true -- STARTING A NEW '${node_seal}' LINEAGE."
+                log_message "WARN" "  newest object : ${latest} (sealed '${snap_seal:-none}') -- NOT restored"
+                log_message "WARN" "  '${node_seal}' objects in ${SNAPSHOT_BUCKET}: none"
+                log_message "WARN" "  ${ROOT_TOKEN_SECRET_NAME} and ${RECOVERY_KEYS_SECRET_NAME} are REPLACED with this node's new keys."
+                init_openbao
+                return 0 ;;
+            refuse-named-key)
+                log_message "ERROR" "OPENBAO_NEW_LINEAGE=true and OPENBAO_SNAPSHOT_KEY=${OPENBAO_SNAPSHOT_KEY:-} contradict each other:"
+                log_message "ERROR" "one asks for a new lineage, the other for a named restore. Unset one. Nothing has changed yet."
+                exit 1 ;;
+            refuse-same-seal)
+                log_message "ERROR" "OPENBAO_NEW_LINEAGE=true, but the newest object ${latest} carries this node's seal"
+                log_message "ERROR" "'${node_seal}' and can be restored. A new lineage would discard it. Unset"
+                log_message "ERROR" "OPENBAO_NEW_LINEAGE and re-run. Nothing has changed yet."
+                exit 1 ;;
+            refuse-own-seal-exists)
+                log_message "ERROR" "OPENBAO_NEW_LINEAGE=true, but ${own_latest} carries this node's seal '${node_seal}':"
+                log_message "ERROR" "this lineage's own history. Restore it instead -- unset OPENBAO_NEW_LINEAGE and re-run"
+                log_message "ERROR" "with OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true. Nothing has changed yet."
+                exit 1 ;;
+            *)
+                log_message "ERROR" "new_lineage_verdict returned '${verdict}' -- refusing. Nothing has changed yet."
+                exit 1 ;;
+        esac
+    fi
 
     if [ "$snap_seal" != "$node_seal" ]; then
         local found
