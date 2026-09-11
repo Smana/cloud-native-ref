@@ -404,7 +404,13 @@ OPENBAO_NEW_LINEAGE=true TM_CLOUD=gcp \
   terramate -C opentofu/gcp/openbao/management script run deploy
 ```
 
-The switch has four limits:
+The command above presumes the GCP cluster stack is already up, typically from
+a full deploy that stopped at the seal refusal. The switch also sits behind the
+recovery-keys pre-flight: on a project where `openbao-priv-gcp-recovery-keys`
+has no readable version, the switch is unreachable and `rehydrate` refuses
+before it ever reads `OPENBAO_NEW_LINEAGE`.
+
+The switch has five limits:
 
 - It is honoured only when no top-level object carries the node's own seal, and
   every top-level snapshot's name carries a `-<seal>` segment. A snapshot whose
@@ -416,6 +422,10 @@ The switch has four limits:
   another bucket.
 - It is never honoured together with `OPENBAO_SNAPSHOT_KEY`.
 - It **replaces** the stored root token and recovery keys.
+- These are the same two entries the `awskms` standby reads its pre-copied AWS
+  keys from. After a GCP-only run, re-copy the AWS lineage's keys before
+  relying on the standby. The previous versions remain in Secret Manager
+  (`gcloud secrets versions list openbao-priv-gcp-recovery-keys --project ogenki-435905`).
 
 Every later boot restores the newest `-gcpckms` object. When a mirrored AWS
 object is newer, set `OPENBAO_SNAPSHOT_SKIP_FOREIGN_SEAL=true`, as the refusal

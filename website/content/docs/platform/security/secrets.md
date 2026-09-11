@@ -311,8 +311,8 @@ ZITADEL moved last and alone, deliberately: it is the IdP behind the OIDC login
 that reaches OpenBao itself, so it moved only once the break-glass path above was
 known good.
 
-**GCP.** GCP's OpenBao got the same mounts, policies and logins on 2026-09-11,
-from the shared `openbao-store-of-record` module
+**GCP.** GCP's OpenBao gets the same mounts, policies and logins from the
+shared `openbao-store-of-record` module
 ([ADR-0037]({{< relref "/docs/decisions/0037-gcp-only-runs-its-own-openbao-lineage-and-directory.md" >}})).
 Its data is seeded from GCP Secret Manager with `scripts/secret-store.sh`'s
 `migrate` command:

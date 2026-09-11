@@ -143,8 +143,9 @@ that its own `bao operator init` returns, and after the restore with one minted
 from the lineage's recovery keys. It never reads the stored root token at all,
 which is what lets a rehydrate work on a node whose token store is about to be
 replaced wholesale. Retiring it needs an OIDC login for humans, which is a
-follow-up. `gcp-0` has no `userpass`, see [On GCP](#on-gcp-gcp-0). The
-backend and user are provisioned by Terraform
+follow-up. `gcp-0` has the same login from the shared
+`openbao-store-of-record` module; its password is in Secret Manager as
+`openbao-priv-gcp-admin-credentials`. The backend and user are provisioned by Terraform
 (`opentofu/aws/openbao/management/auth.tf`), not created by hand:
 
 ```bash
@@ -404,10 +405,11 @@ Secrets Manager's role: `openbao-priv-gcp-server-cert`,
 names — a GCP secret ID cannot contain `/`). The deltas from everything
 above:
 
-- **Root namespace only, root token as operator access.** The GCP management
-  stack has no `namespaces.tf` and no `userpass` — operators use the root
-  token from `openbao-priv-gcp-root-token`. There is no `app` namespace and
-  so no tenant AppRole either.
+- **Root namespace only.** The Stage 2 mounts, policies, `userpass`
+  break-glass and ZITADEL OIDC login come from
+  `opentofu/shared/modules/openbao-store-of-record` (ADR-0037); the
+  break-glass password is published to `openbao-priv-gcp-admin-credentials`.
+  There is no `app` namespace and so no tenant AppRole.
 - **Snapshots ship to GCS.** `security/gcp-0/openbao-snapshot/` patches the
   shared CronJob with `CLOUD=gcp`; `scripts/openbao-snapshot.sh` branches to
   `gcloud storage` / `gs://` on that switch. The cluster is single-node Raft,
