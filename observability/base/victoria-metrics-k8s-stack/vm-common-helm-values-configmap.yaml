@@ -355,7 +355,10 @@ data:
             - namespace
           group_interval: 5m
           group_wait: 30s
-          repeat_interval: 3h
+          # Was 3h for every severity, so a warning nagged as often as a page.
+          # This is now only the default for anything that matches no route
+          # below; each severity sets its own.
+          repeat_interval: 12h
           receiver: "slack-monitoring"
           routes:
             - matchers:
@@ -366,9 +369,24 @@ data:
             # decides which alerts it actually investigates.
             - receiver: "runlore"
               continue: true
-            # Explicit Slack catch-all (required because the route above matches all
-            # with continue: true, so the root receiver no longer fires on its own).
+            # One channel carries every severity, so the cadence is what
+            # separates a page from a nag.
+            - matchers:
+                - severity = "critical"
+              receiver: "slack-monitoring"
+              group_wait: 10s
+              repeat_interval: 1h
+            - matchers:
+                - severity = "warning"
+              receiver: "slack-monitoring"
+              repeat_interval: 12h
+            # info, and anything with no severity label at all. This route has no
+            # matchers on purpose: it is the catch-all that keeps an unlabelled
+            # alert reachable. `severity = "critical"` does not match a missing
+            # label, so without this an alert with no severity would match no
+            # route and nobody would ever see it.
             - receiver: "slack-monitoring"
+              repeat_interval: 24h
         receivers:
           - name: "blackhole"
           - name: "runlore"
@@ -428,6 +446,28 @@ data:
                 # The fifth button is gone. It pointed at
                 # .CommonAnnotations.link_url, an annotation no rule in this repo
                 # has ever set, so it rendered with an empty URL on every alert.
+
+        # There were NO inhibit rules: setting alertmanager.config replaces the
+        # chart's defaults wholesale, so every implied alert posted alongside its
+        # cause. An inhibited alert never reaches Slack at all -- that is the
+        # accepted trade, and the reason these are narrow.
+        inhibit_rules:
+          # One alertname firing at two severities: keep the louder one.
+          - source_matchers:
+              - severity = "critical"
+            target_matchers:
+              - severity = "warning"
+            equal: [cluster, alertname, namespace]
+          # Observed 2026-09-12, one minute apart: quorum-at-risk means a peer is
+          # ALREADY lost, so the warning adds nothing. Two different alertnames,
+          # which is why the generic rule above cannot catch it. Add named pairs
+          # as they are observed rather than generalising -- a clever generic
+          # rule mutes things nobody intended.
+          - source_matchers:
+              - alertname = "OpenBaoRaftQuorumAtRisk"
+            target_matchers:
+              - alertname = "OpenBaoRaftNodeLost"
+            equal: [cluster]
 
     defaultDashboards:
       enabled: true
