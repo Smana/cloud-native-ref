@@ -386,7 +386,11 @@ would apply the literal `${var}`. Covered by `scripts/flux-schema/test-check-sub
 of the **two** tests any script in `scripts/flux-schema/` has. The other is `test-render-bundle.py`,
 pinning `render-bundle.py`'s `spec.valuesFrom` resolution — six HelmReleases get most of their
 values that way, and a regression there does not break the build, it quietly shrinks what the build
-checks. **Neither test runs in CI**; both are `python3 scripts/flux-schema/<file>` by hand.
+checks.
+
+Both run in CI, as their own step in `kubernetes-validation` **before** the render — they test the
+scripts that do the rendering. They are deliberately not folded into `validate-manifests.sh`, whose
+contract is manifest validation; run them directly with `python3 scripts/flux-schema/<file>`.
 
 **A fourth check parses the alerting expressions, which nothing else ever did:**
 `scripts/validate-vmrules.sh` extracts each repo-authored `VMRule`'s `.spec` — already the shape of

@@ -138,6 +138,17 @@ jobs:
           key: helm-${{ hashFiles('**/*helmrelease*.yaml', 'flux/sources/**') }}
           restore-keys: helm-
 
+      # Before the render, because these test the scripts that DO the render.
+      # A broken resolve_values does not fail validate-manifests.sh -- it
+      # quietly shrinks what that script checks, which no gate downstream can
+      # report. Kept as their own step rather than folded into
+      # validate-manifests.sh: that script's contract is manifest validation,
+      # and script unit tests do not belong inside it.
+      - name: Unit tests for the validation scripts
+        run: |
+          python3 scripts/flux-schema/test-check-substitution.py
+          python3 scripts/flux-schema/test-render-bundle.py
+
       - name: Validate manifests (flux schema + polaris)
         run: ./scripts/validate-manifests.sh
 

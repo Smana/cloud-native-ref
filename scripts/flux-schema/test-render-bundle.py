@@ -382,8 +382,11 @@ print("real HelmReleases:")
 
 import yaml  # noqa: E402 - after the module load above, deliberately
 
+# Anchored on the module's own REPO_ROOT, not the working directory: CI runs
+# this from the repo root, but a developer running it from scripts/ would
+# otherwise get "found 0" and a confusing failure rather than a real result.
 real = []
-for path in sorted(pathlib.Path("observability/base").rglob("*.yaml")):
+for path in sorted((rb.REPO_ROOT / "observability" / "base").rglob("*.yaml")):
     try:
         docs = [d for d in yaml.safe_load_all(path.read_text()) if isinstance(d, dict)]
     except yaml.YAMLError:
