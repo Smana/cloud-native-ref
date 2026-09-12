@@ -203,7 +203,14 @@ Rules the template follows:
   `resolved after 6m 0s (at 09:11 UTC)`.
 - **No button is ever dead.** runbook → `runbook_url` else the alerting docs
   page; dashboard → `dashboard` else `https://grafana.${private_domain_name}/dashboards`;
-  query → `GeneratorURL`, which vmalert always sets.
+  query → `GeneratorURL`. vmalert always sets it, and that was the assumption
+  that let a dead button ship: the value was `http:/explore?left={...}` — one
+  slash, no host — on every alert on both clusters, because the chart derives
+  vmalert's `-external.url` from a Grafana **Ingress** host and this platform
+  uses a Gateway API HTTPRoute. Slack silently drops an action whose URL is not
+  valid http(s), so the button did not render at all. Fixed by setting
+  `external.grafana.host` in the shared values; *set* is not the same as
+  *usable*, and only the second one matters.
 - **`__alert_silence_link` is redefined by us.** It is defined in the Monzo
   template we are disabling, and losing the Silence button silently would be
   the obvious regression.

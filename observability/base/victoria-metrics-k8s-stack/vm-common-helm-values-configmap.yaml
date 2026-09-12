@@ -73,6 +73,30 @@ data:
           cloud: "${cloud}"
           region: "${region}"
 
+    # vmalert's `-external.url`, and the reason the Query button in every Slack
+    # alert has been dead since the day it was added.
+    #
+    # The chart builds `external.url` from `vm-k8s-stack.grafana.addr`
+    # (_helpers.tpl:470-482), which reads THIS key and otherwise falls back to
+    # the Grafana INGRESS host -- only when `grafana.ingress.enabled` is true.
+    # This platform routes Grafana through a Gateway API HTTPRoute, not an
+    # Ingress, so that fallback never fires, the address resolved to the empty
+    # string, and the helper's unconditional `http://` prefix (line 473-475) left
+    # vmalert running with `-external.url=http://`.
+    #
+    # Every alert therefore carried
+    #   generatorURL = http:/explore?left={"datasource":"VictoriaMetrics",...}
+    # -- one slash, no host. Slack silently DROPS an attachment action whose URL
+    # is not a valid http(s) URL, so the button did not render wrong, it did not
+    # render at all. Confirmed on live gcp-0 across all 23 firing alerts.
+    #
+    # Include the scheme: the helper prefixes `http://` to anything without one.
+    # `private_domain_name` is defined in both clusters' ConfigMaps, so one value
+    # is correct on aws-0 and gcp-0 alike.
+    external:
+      grafana:
+        host: "https://grafana.${private_domain_name}"
+
     alertmanager:
       enabled: true
       spec:
