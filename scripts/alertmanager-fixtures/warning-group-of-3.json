@@ -1,0 +1,15 @@
+{
+  "receiver": "slack-monitoring",
+  "status": "firing",
+  "version": "4",
+  "groupKey": "{}/{}:{alertname=\"KubePodCrashLooping\", cluster=\"gcp-0\"}",
+  "externalURL": "https://vmalertmanager-gcp-0.priv.gcp.ogenki.io",
+  "groupLabels": {"alertname": "KubePodCrashLooping", "cluster": "gcp-0", "severity": "warning", "namespace": "apps"},
+  "commonLabels": {"alertname": "KubePodCrashLooping", "cluster": "gcp-0", "env": "dev", "cloud": "gcp", "region": "europe-west1", "severity": "warning", "namespace": "apps"},
+  "commonAnnotations": {"summary": "Pod is restarting repeatedly.", "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"},
+  "alerts": [
+    {"status": "firing", "labels": {"alertname": "KubePodCrashLooping", "cluster": "gcp-0", "env": "dev", "cloud": "gcp", "region": "europe-west1", "severity": "warning", "namespace": "apps", "pod": "podinfo-7d8f"}, "annotations": {"summary": "Pod is restarting repeatedly.", "description": "12 restarts in 10m", "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"}, "startsAt": "2026-09-12T09:12:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=2&alert_id=1", "fingerprint": "b1"},
+    {"status": "firing", "labels": {"alertname": "KubePodCrashLooping", "cluster": "gcp-0", "env": "dev", "cloud": "gcp", "region": "europe-west1", "severity": "warning", "namespace": "apps", "pod": "podinfo-9f2c"}, "annotations": {"summary": "Pod is restarting repeatedly.", "description": "8 restarts in 10m", "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"}, "startsAt": "2026-09-12T09:12:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=2&alert_id=2", "fingerprint": "b2"},
+    {"status": "firing", "labels": {"alertname": "KubePodCrashLooping", "cluster": "gcp-0", "env": "dev", "cloud": "gcp", "region": "europe-west1", "severity": "warning", "namespace": "apps", "pod": "podinfo-b1a4"}, "annotations": {"summary": "Pod is restarting repeatedly.", "description": "5 restarts in 10m", "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping"}, "startsAt": "2026-09-12T09:12:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=2&alert_id=3", "fingerprint": "b3"}
+  ]
+}

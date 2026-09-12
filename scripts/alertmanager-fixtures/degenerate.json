@@ -1,0 +1,19 @@
+{
+  "receiver": "slack-monitoring",
+  "status": "firing",
+  "version": "4",
+  "groupKey": "{}/{}:{alertname=\"NodeFilesystemAlmostOutOfSpace\"}",
+  "externalURL": "https://vmalertmanager-aws-0.priv.aws.ogenki.io",
+  "groupLabels": {"alertname": "NodeFilesystemAlmostOutOfSpace"},
+  "commonLabels": {"alertname": "NodeFilesystemAlmostOutOfSpace", "cluster": "aws-0", "env": "", "cloud": "", "region": ""},
+  "commonAnnotations": {},
+  "alerts": [
+    {"status": "firing", "labels": {"alertname": "NodeFilesystemAlmostOutOfSpace", "cluster": "aws-0", "instance": "10.0.1.11:9100"}, "annotations": {"description": "Filesystem on /dev/nvme0n1p1 at 10.0.1.11:9100 has only 3.24% available space left and is filling up fast. This host has been reporting steadily decreasing free space for the last six hours and will run out within the day at the current rate, which will evict pods and wedge the kubelet."}, "startsAt": "2026-09-12T07:00:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=5&alert_id=1", "fingerprint": "e1"},
+    {"status": "firing", "labels": {"alertname": "NodeFilesystemAlmostOutOfSpace", "cluster": "aws-0", "instance": "10.0.1.12:9100"}, "annotations": {"description": "Filesystem at 10.0.1.12:9100 has only 4.10% available space left."}, "startsAt": "2026-09-12T07:01:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=5&alert_id=2", "fingerprint": "e2"},
+    {"status": "firing", "labels": {"alertname": "NodeFilesystemAlmostOutOfSpace", "cluster": "aws-0", "instance": "10.0.1.13:9100"}, "annotations": {"description": "Filesystem at 10.0.1.13:9100 has only 4.55% available space left."}, "startsAt": "2026-09-12T07:02:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=5&alert_id=3", "fingerprint": "e3"},
+    {"status": "firing", "labels": {"alertname": "NodeFilesystemAlmostOutOfSpace", "cluster": "aws-0", "instance": "10.0.1.14:9100"}, "annotations": {"description": "Filesystem at 10.0.1.14:9100 has only 4.70% available space left."}, "startsAt": "2026-09-12T07:03:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=5&alert_id=4", "fingerprint": "e4"},
+    {"status": "firing", "labels": {"alertname": "NodeFilesystemAlmostOutOfSpace", "cluster": "aws-0", "instance": "10.0.1.15:9100"}, "annotations": {"description": "Filesystem at 10.0.1.15:9100 has only 4.81% available space left."}, "startsAt": "2026-09-12T07:04:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=5&alert_id=5", "fingerprint": "e5"},
+    {"status": "firing", "labels": {"alertname": "NodeFilesystemAlmostOutOfSpace", "cluster": "aws-0", "instance": "10.0.1.16:9100"}, "annotations": {"description": "Filesystem at 10.0.1.16:9100 has only 4.92% available space left."}, "startsAt": "2026-09-12T07:05:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=5&alert_id=6", "fingerprint": "e6"},
+    {"status": "firing", "labels": {"alertname": "NodeFilesystemAlmostOutOfSpace", "cluster": "aws-0", "instance": "10.0.1.17:9100"}, "annotations": {"description": "Filesystem at 10.0.1.17:9100 has only 4.99% available space left."}, "startsAt": "2026-09-12T07:06:00Z", "endsAt": "0001-01-01T00:00:00Z", "generatorURL": "http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=5&alert_id=7", "fingerprint": "e7"}
+  ]
+}

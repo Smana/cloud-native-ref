@@ -33,6 +33,15 @@ helm = "4.3.0"
 # that `mise install promtool` and `mise which promtool` both honour the pin.
 promtool = "3.14.0"
 
+# amtool renders the Slack notification templates against fixture payloads
+# (scripts/validate-alertmanager-templates.sh) with no cluster and no running
+# Alertmanager. Pinned to the version the victoria-metrics-k8s-stack chart runs
+# (alertmanager.spec.image.tag in its values.yaml), because the renderer IS the
+# gate: a template using a function the cluster's Alertmanager does not have
+# must fail here, not at notification time. amtool ships inside the alertmanager
+# release archive.
+"aqua:prometheus/alertmanager" = "0.32.1"
+
 # Documentation site (website/). "hugo-extended" is deliberate: mise's plain
 # `hugo` entry resolves to the non-extended build, and Hextra targets extended.
 hugo-extended = "0.166.0"
