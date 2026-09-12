@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 #
-# The workforce provider's audience is the ZITADEL PROJECT id. That value is
-# committable while AWS is primary -- its ZITADEL restores from a seed and keeps
-# its ids -- but a GCP-primary bootstrap mints a new instance with a generated
-# id, so the committed value is wrong and the failure is
-# `token exchange 400: invalid_grant` with every component reporting healthy.
+# The workforce provider's audience is the OIDC CLIENT ID of the app whose token
+# is exchanged (headlamp-proxy) -- not the ZITADEL project id.
+#
+# It was the project id until 2026-09-12, on the reasoning that ZITADEL stamps
+# the project id into the `aud` of every token the project issues. It does. But
+# the project audience scope makes `aud` MULTI-VALUED, and OIDC Core 3.1.3.7
+# then requires `azp` to equal the relying party's client id -- which Google STS
+# enforces. `azp` is the client the token was issued TO, never the project, so
+# the exchange returned `invalid_grant` on every request from the day it shipped
+# while every component reported healthy. This test now pins the corrected
+# contract.
 #
 # reconcile_workforce_audience() closes that loop. What this test protects is
 # mostly its SKIP paths: it runs inside a script that configures every OIDC
@@ -13,11 +19,13 @@
 # The function is LIFTED verbatim out of zitadel-oidc-clients.sh via sed, the
 # same technique test-zitadel-oidc-clients-project.sh uses -- the script itself
 # is not sourceable, since it parses argv and demands --cluster/--cloud at the
-# top of the file. A change there is therefore a change under test.
-# WORKFORCE_POOL, APPLY and the STUB_* values are read ONLY by the eval'''d
-# function bodies lifted from the script under test, which shellcheck cannot see
-# through. File-wide because they are set at nearly every test case; the same
-# directive, for the same reason, as test-zitadel-oidc-clients-project.sh.
+# top of the file. A change there is therefore a change under test. That lift is
+# also why the function spells out the app name inline instead of reading a
+# module-level constant: anything outside the body is unbound here under set -u.
+# WORKFORCE_POOL, APPLY, APP_SUFFIX and the STUB_* values are read ONLY by the
+# eval'''d function bodies lifted from the script under test, which shellcheck
+# cannot see through. File-wide because they are set at nearly every test case;
+# the same directive, for the same reason, as test-zitadel-oidc-clients-project.sh.
 # shellcheck disable=SC2034
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -60,8 +68,21 @@ kubectl() {
         *patch*)       return "${STUB_PATCH_RC:-0}" ;;
     esac
 }
+# The ZITADEL side of the lookup. Empty STUB_APP_ID models "the app does not
+# exist yet"; empty STUB_CLIENT_ID models an app whose OIDC config ZITADEL
+# returned without one. Both must SKIP rather than pin a nonsense audience.
+app_id_by_name() {
+    printf 'app_id_by_name %s\n' "$*" >> "$CALLS"
+    printf '%s' "${STUB_APP_ID-app-1}"
+}
+app_get() {
+    printf 'app_get %s\n' "$*" >> "$CALLS"
+    printf '{"app":{"oidcConfig":{"clientId":"%s"}}}' "${STUB_CLIENT_ID-client-abc}"
+}
 calls() { cat "$CALLS" 2>/dev/null; }
 reset_calls() { : > "$CALLS"; }
+
+APP_SUFFIX=""
 
 # ── 1. no workforce pool configured -> do nothing at all ───────────────────
 # This is the AWS-only case, and the common one. It must not warn, fail, or
@@ -76,39 +97,53 @@ WORKFORCE_POOL="ogenki-zitadel"; APPLY="true"; reset_calls; out="$(reconcile_wor
 check "dry-run project: returns success"    "0"  "$rc"
 check "dry-run project: never calls gcloud" ""   "$(calls)"
 
-# ── 3. audience already correct -> no update ───────────────────────────────
+# ── 3. audience already correct -> no update, but still check the other end ─
+# THE AUDIENCE IS THE APP CLIENT ID, not the project id: passing "proj-123" as
+# the project must still pin "client-abc". If this ever passes with the project
+# id again, the 2026-09-12 regression is back.
 WORKFORCE_POOL="ogenki-zitadel"; APPLY="true"; reset_calls
-STUB_CURRENT_AUDIENCE="proj-123"
+STUB_CURRENT_AUDIENCE="client-abc"; STUB_CM_AUDIENCE="proj-123"
 out="$(reconcile_workforce_audience "proj-123" 2>&1)"; rc=$?
 check "already correct: returns success"    "0"  "$rc"
 case "$(calls)" in
     *update-oidc*) check "already correct: does NOT update" "no-update" "updated" ;;
     *)             check "already correct: does NOT update" "no-update" "no-update" ;;
 esac
+# Reconciling the consumer only after an UPDATE meant a correct provider left
+# the ConfigMap unexamined -- the half-fixed state that fails exactly like the
+# unfixed one.
+case "$(calls)" in
+    *kubectl*) check "already correct: still checks the consumer" "checked" "checked" ;;
+    *)         check "already correct: still checks the consumer" "checked" "$(calls)" ;;
+esac
 
 # ── 4. audience differs, but not --apply -> report only ────────────────────
 # The whole script is dry-run by default; this must respect that or a plan
 # would mutate the platform.
 WORKFORCE_POOL="ogenki-zitadel"; APPLY="false"; reset_calls
-STUB_CURRENT_AUDIENCE="old-proj"
+STUB_CURRENT_AUDIENCE="old-client"
 out="$(reconcile_workforce_audience "proj-123" 2>&1)"
 case "$(calls)" in
     *update-oidc*) check "dry-run: does NOT update" "no-update" "updated" ;;
     *)             check "dry-run: does NOT update" "no-update" "no-update" ;;
 esac
 case "$out" in
-    *"old-proj -> proj-123"*) check "dry-run: reports the change" "reported" "reported" ;;
-    *)                        check "dry-run: reports the change" "reported" "$out" ;;
+    *"old-client -> client-abc"*) check "dry-run: reports the change" "reported" "reported" ;;
+    *)                            check "dry-run: reports the change" "reported" "$out" ;;
 esac
 
-# ── 5. audience differs under --apply -> update ────────────────────────────
+# ── 5. audience differs under --apply -> update to the APP CLIENT ID ───────
 WORKFORCE_POOL="ogenki-zitadel"; APPLY="true"; reset_calls
-STUB_CURRENT_AUDIENCE="old-proj"
+STUB_CURRENT_AUDIENCE="old-client"
 out="$(reconcile_workforce_audience "proj-123" 2>&1)"; rc=$?
 check "apply: returns success"              "0"  "$rc"
 case "$(calls)" in
-    *"update-oidc"*"--client-id=proj-123"*) check "apply: updates to the new id" "updated" "updated" ;;
-    *)                                      check "apply: updates to the new id" "updated" "$(calls)" ;;
+    *"update-oidc"*"--client-id=client-abc"*) check "apply: pins the app client id" "updated" "updated" ;;
+    *)                                        check "apply: pins the app client id" "updated" "$(calls)" ;;
+esac
+case "$(calls)" in
+    *"--client-id=proj-123"*) check "apply: never pins the project id" "never" "pinned-the-project" ;;
+    *)                        check "apply: never pins the project id" "never" "never" ;;
 esac
 
 # ── 6. provider does not exist yet -> skip, do not fail the whole sync ─────
@@ -125,14 +160,58 @@ esac
 
 # ── 7. the update itself fails -> warn, but do not abort the sync ──────────
 WORKFORCE_POOL="ogenki-zitadel"; APPLY="true"; reset_calls
-STUB_CURRENT_AUDIENCE="old-proj"; STUB_UPDATE_RC=1
+STUB_CURRENT_AUDIENCE="old-client"; STUB_UPDATE_RC=1
 out="$(reconcile_workforce_audience "proj-123" 2>&1)"; rc=$?
 check "update fails: still returns success" "0"  "$rc"
 case "$out" in
     *invalid_grant*) check "update fails: names the consequence" "named" "named" ;;
     *)               check "update fails: names the consequence" "named" "$out" ;;
 esac
+STUB_UPDATE_RC=0
 
+# ── 7b. the app does not exist yet -> skip before touching gcloud ──────────
+# A FIRST sync creates headlamp-proxy inside the consumer loop, which is why
+# this function runs after it. If it is ever moved back above the loop, this is
+# the assertion that catches it: no app, no audience, and no failed run.
+WORKFORCE_POOL="ogenki-zitadel"; APPLY="true"; reset_calls
+STUB_APP_ID=""; STUB_CURRENT_AUDIENCE="old-client"
+out="$(reconcile_workforce_audience "proj-123" 2>&1)"; rc=$?
+check "no app yet: returns success"         "0"  "$rc"
+case "$(calls)" in
+    *update-oidc*) check "no app yet: does NOT update" "no-update" "updated" ;;
+    *)             check "no app yet: does NOT update" "no-update" "no-update" ;;
+esac
+case "$out" in
+    *"does not exist yet"*) check "no app yet: says which app" "named" "named" ;;
+    *)                      check "no app yet: says which app" "named" "$out" ;;
+esac
+STUB_APP_ID="app-1"
+
+# ── 7c. the app exists but carries no clientId -> skip, do not pin empty ───
+# Pinning an empty client id would make the provider reject every token, which
+# is strictly worse than leaving the stale one in place.
+WORKFORCE_POOL="ogenki-zitadel"; APPLY="true"; reset_calls
+STUB_CLIENT_ID=""; STUB_CURRENT_AUDIENCE="old-client"
+out="$(reconcile_workforce_audience "proj-123" 2>&1)"; rc=$?
+check "no clientId: returns success"        "0"  "$rc"
+case "$(calls)" in
+    *update-oidc*) check "no clientId: does NOT update" "no-update" "updated" ;;
+    *)             check "no clientId: does NOT update" "no-update" "no-update" ;;
+esac
+STUB_CLIENT_ID="client-abc"
+
+# ── 7d. a consuming cluster's app is suffixed -> look up the suffixed name ──
+# APP_SUFFIX is "-<cluster>" for a cluster that only CONSUMES this directory.
+# Looking up the bare name there finds nothing and silently leaves the provider
+# pinned to whatever it had.
+WORKFORCE_POOL="ogenki-zitadel"; APPLY="true"; reset_calls
+APP_SUFFIX="-gcp-0"; STUB_CURRENT_AUDIENCE="old-client"
+out="$(reconcile_workforce_audience "proj-123" 2>&1)"
+case "$(calls)" in
+    *"app_id_by_name proj-123 headlamp-proxy-gcp-0"*) check "suffixed app: looked up by suffixed name" "suffixed" "suffixed" ;;
+    *)                                                check "suffixed app: looked up by suffixed name" "suffixed" "$(calls)" ;;
+esac
+APP_SUFFIX=""
 
 # ── 8. consumer half: scope already correct -> no patch ────────────────────
 # Every AWS-primary run lands here, so a false patch would be constant churn.
@@ -145,8 +224,8 @@ case "$(calls)" in
 esac
 
 # ── 9. consumer half: scope stale -> patch it ──────────────────────────────
-# THE BUG THIS EXISTS FOR. Without it the pool expects the new project id while
-# oauth2-proxy keeps requesting the old one, and every exchange 400s forever
+# THE BUG THIS EXISTS FOR. Without it the pool expects one audience while
+# oauth2-proxy keeps requesting another, and every exchange 400s forever
 # while every component reports healthy.
 reset_calls; STUB_CM_AUDIENCE="old-proj"
 out="$(reconcile_consumer_audience "proj-123" 2>&1)"; rc=$?
