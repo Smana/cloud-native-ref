@@ -42,22 +42,26 @@ resource "google_iam_workforce_pool_provider" "zitadel" {
   oidc {
     issuer_uri = local.identity_provider_url
 
-    # The ZITADEL PROJECT id, not a per-cluster OIDC client id. ZITADEL includes
-    # the project id in the aud of every token issued for that project, and STS
-    # accepts it (measured 2026-09-02). Pinning the project rather than an app
-    # is what lets this stack run before any OIDC client exists.
+    # A BOOTSTRAP PLACEHOLDER. The real value is the OIDC client id of the app
+    # whose token is exchanged (headlamp-proxy), and it is set out of band by
+    # `reconcile_workforce_audience` in scripts/zitadel-oidc-clients.sh once that
+    # app exists. Read that function's header comment before changing anything
+    # here -- it carries the measurement this design rests on.
     #
-    # THAT ONLY HOLDS WHEN THE PROJECT ID IS KNOWN IN ADVANCE, which is true for
-    # an AWS-hosted ZITADEL because its rebuilds restore from a seed and keep
-    # their ids. A GCP-primary bootstrap mints a brand-new instance with a new
-    # project id, so the value cannot be committed ahead of time -- see
-    # `resolve_workforce_audience` in scripts/zitadel-oidc-clients.sh, which
-    # reconciles it once the project exists.
+    # This field held the ZITADEL PROJECT id until 2026-09-12, on the reasoning
+    # that ZITADEL puts the project id in the aud of every token the project
+    # issues, so any client would be accepted and the pool could be created
+    # before a single OIDC app existed. The aud claim does carry it. But asking
+    # for the project audience scope makes aud MULTI-VALUED, and OIDC Core
+    # 3.1.3.7 then requires azp to equal the relying party's client id -- which
+    # Google STS enforces. azp is the client the token was issued TO, never the
+    # project, so the exchange failed `invalid_grant` on every single request
+    # from the day it shipped, with every component reporting healthy.
     #
-    # lifecycle.ignore_changes keeps that script's update from being reverted by
-    # the next apply. The alternative -- tofu overwriting the live audience with
-    # a stale committed value -- fails as a bare `invalid_grant` with every
-    # component reporting healthy.
+    # Keeping a project id here is therefore harmless only because the field is
+    # ignore_changes'd and the script owns the live value; it is NOT a working
+    # configuration on its own. A fresh bootstrap has a non-functional provider
+    # until that script runs, exactly as it did before.
     client_id = var.zitadel_project_id
 
     web_sso_config {
