@@ -34,16 +34,6 @@ spec:
     vmsingle:
       enabled: false
 
-    # NOT the whole Alertmanager config -- only the replica count. Everything
-    # else (route, receivers, the Slack templates) lives in
-    # helmrelease-vmsingle.yaml's spec.values, because the manifest renderer
-    # cannot see spec.valuesFrom and the Slack templates have to be gate-visible.
-    #
-    # This file is commented out of kustomization.yaml today. If you ever swap
-    # this release in for vmsingle, COPY that `alertmanager:` block across
-    # first: without it the chart falls back to its own default config, which
-    # means the Monzo templates return and nothing reaches the #alerts channel
-    # -- a silent, total loss of alerting, with a green Flux reconcile.
     alertmanager:
       spec:
         replicaCount: 2
