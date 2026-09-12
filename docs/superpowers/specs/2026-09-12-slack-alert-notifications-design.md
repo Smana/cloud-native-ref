@@ -181,7 +181,7 @@ so the split between config and template is not cosmetic:
 | `fallback` | receiver | `[FIRING:3] KubePodCrashLooping · gcp-0/dev · warning` — what push notifications and previews show; unset today |
 | `color` | template | `danger` / `warning` / `#439FE0` / `good` |
 | `title` + `title_link` | template | status · count · alertname, linked to the dashboard else `GeneratorURL` |
-| `text` | template | identity line, summary once, then ≤5 per-alert bullets, then `…and N more` |
+| `text` | template | identity line, summary once, then ≤5 per-alert bullets, then ` … showing 5 of N` |
 | `fields` (4, `short: true`) | receiver | Namespace · Severity · Duration · Location |
 | `actions` | receiver | four buttons; the always-empty `link_url` one is deleted |
 
