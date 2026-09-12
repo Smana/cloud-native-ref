@@ -74,6 +74,33 @@ those too. The answer when a package proves untrustworthy is to bound it with
 `allowedVersions`, the way the two rules at the bottom of `renovate.json`
 already do, rather than to narrow the automerge rule.
 
+#### The one carve-out
+
+The **Grafana plugin pins** in
+`observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml`
+never automerge, at any update type. They are *tracked* from GitHub releases and
+*installed* from the Grafana.com catalog, and those publish independently — a tag
+can exist on GitHub days before, or without ever, reaching the catalog. Renovate
+has no catalog datasource, so it cannot see the gap: the bump is green on all six
+checks and `CrashLoopBackOff` on the cluster, because the plugin installer is a
+startup module and Grafana refuses to start rather than start without the plugin.
+That takes observability → tooling → apps down with it.
+
+It has happened twice — #1959 reverted by #1980, #1981 reverted by #1982 — which
+is why the ConfigMap carries the check to run at the point someone is next asked
+to accept a bump:
+
+```bash
+curl -s https://grafana.com/api/plugins/<plugin-id>/versions | jq -r '.items[].version'
+```
+
+The exclusion is matched by **file**, so a third plugin added to that same list
+inherits it without anyone remembering to.
+
+This is the shape to watch for when adding a dependency: not "is this package
+risky", but **does CI observe the same source the cluster installs from?** Where
+it does not, green means nothing, and the package belongs in the carve-out.
+
 ## `ci.yaml` — the six jobs
 
 Runs on every pull request targeting `main`, with no path filter.
