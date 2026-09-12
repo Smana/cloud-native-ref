@@ -1,8 +1,8 @@
 ---
 title: Dashboards & Alerts
 weight: 30
-description: Grafana Operator's folder/dashboard/datasource model, the pinned datasource plugins, VictoriaTraces, VMRule alerting, and Alertmanager routing to RunLore and Slack.
-lastVerified: 2026-08-30
+description: "Grafana Operator's folder/dashboard/datasource model, the pinned datasource plugins, VictoriaTraces, VMRule alerting, the annotation contract, and the Slack message Alertmanager renders for RunLore and humans."
+lastVerified: 2026-09-12
 ---
 
 ## Grafana Operator
@@ -172,41 +172,142 @@ noted:
 
 ### Alertmanager routing
 
-Alertmanager's routing tree (`vm-common-helm-values-configmap.yaml`, applied
-to the `victoria-metrics-k8s-stack` `alertmanager.spec.config`) fans every
-non-blackholed alert to **both** RunLore and Slack:
+Alertmanager's routing tree (`vm-common-helm-values-configmap.yaml`, applied to
+the `victoria-metrics-k8s-stack` `alertmanager.spec.config`) fans every
+non-blackholed alert to **both** RunLore and Slack, then splits by severity so
+one channel can carry a page and a nag without them looking alike:
 
 ```yaml
 route:
   receiver: "slack-monitoring"
+  repeat_interval: 12h
   routes:
     - matchers:
         - alertname =~ "InfoInhibitor|Watchdog|KubeCPUOvercommit"
       receiver: "blackhole"
     - receiver: "runlore"
       continue: true   # falls through to the next route instead of stopping
-    - receiver: "slack-monitoring"
-receivers:
-  - name: "runlore"
-    webhook_configs:
-      - url: "http://runlore.runlore.svc:8080/webhook/alertmanager"
-        http_config:
-          authorization:
-            credentials_file: /etc/vm/secrets/runlore-webhook-token/token
+    - matchers: [severity = "critical"]
+      receiver: "slack-monitoring"
+      group_wait: 10s
+      repeat_interval: 1h
+    - matchers: [severity = "warning"]
+      receiver: "slack-monitoring"
+      repeat_interval: 12h
+    - receiver: "slack-monitoring"   # no matchers — see below
+      repeat_interval: 24h
 ```
 
-RunLore's webhook requires a bearer token (its v0.2.0+ fail-closed
-behavior — alert labels/annotations flow into an LLM prompt, so an
-unauthenticated trigger path was judged unacceptable) mirrored between its
-own `runlore-webhook` `ExternalSecret` and this stack's
-`runlore-webhook-token` `ExternalSecret`. The Slack receiver's `actions:`
-list defines five button blocks: Runbook, Query (the alert's
-`GeneratorURL`), Dashboard, and Silence — each sourced from the firing
-alert's own annotations — plus a fifth built from the Monzo template's
-`link_button_text`/`link_url` helpers. Whether that fifth button actually
-renders on every message or only conditionally (e.g. when `link_url` is set)
-can't be determined from this repo — the Monzo template it calls into isn't
-vendored here, only referenced by name.
+{{< callout type="warning" >}}
+**The final route's absence of matchers is load-bearing.** `severity = "critical"`
+does not match an alert that has *no* `severity` label — a missing label is the
+empty string. That last route is the catch-all keeping an unlabelled alert
+reachable.
+
+The dangerous edit is the well-intentioned one. Giving it an explicit matcher
+like `severity = "info"` reads more precise and would pass review, and an alert
+arriving without a severity label would then match **no route and reach nobody**.
+No gate would fail: `amtool` accepts it, the schema gate sees a valid string, and
+the golden files do not move, because routing changes what is delivered and never
+how it is drawn. The only symptom is an alert that quietly stops arriving.
+{{< /callout >}}
+
+Two inhibit rules, both deliberately narrow:
+
+```yaml
+inhibit_rules:
+  - source_matchers: [severity = "critical"]
+    target_matchers: [severity = "warning"]
+    equal: [cluster, alertname, namespace]
+  - source_matchers: [alertname = "OpenBaoRaftQuorumAtRisk"]
+    target_matchers: [alertname = "OpenBaoRaftNodeLost"]
+    equal: [cluster]
+```
+
+The first catches one alertname firing at two severities. The second exists
+because `OpenBaoRaftQuorumAtRisk` and `OpenBaoRaftNodeLost` are *different*
+alertnames where one implies the other — quorum-at-risk means a peer is already
+lost — and they arrived a minute apart on 2026-09-12. Add named pairs as you
+observe them rather than generalising: an inhibited alert never reaches Slack at
+all, so an over-broad rule silently deletes alerts, which is worse than a
+duplicate.
+
+RunLore's webhook requires a bearer token (its v0.2.0+ fail-closed behavior —
+alert labels/annotations flow into an LLM prompt, so an unauthenticated trigger
+path was judged unacceptable) mirrored between its own `runlore-webhook`
+`ExternalSecret` and this stack's `runlore-webhook-token` `ExternalSecret`.
+
+### The Slack message
+
+Rendered by repo-owned templates shipped through `alertmanager.templateFiles`,
+with the chart's vendored Monzo set disabled — see
+[ADR-0037]({{< relref "/docs/decisions/0037-alertmanager-native-slack-templates.md" >}})
+for why these are Alertmanager-native rather than Block Kit behind a bridge.
+
+```
+:fire: FIRING — OpenBaoRaftQuorumAtRisk
+`aws-0 · dev`
+
+OpenBao raft cluster cannot tolerate a node failure.
+ • 10.0.12.44:8200 — Failure tolerance has been below 1 for 15 minutes: losing
+   one more node loses quorum, and a cluster without quorum cannot issue a
+   certificate or read a secret. If OpenBaoRaftNodeLo…
+
+Namespace  security          Severity  critical
+Duration   14m (since 09:06 UTC)   Location  aws / eu-west-3
+
+[ Runbook ] [ Dashboard ] [ Query ] [ Silence ]
+```
+
+The identity line (`aws-0 · dev`) and the Location field come from labels
+vmalert stamps in `externalLabels` — `cluster`, `env`, `cloud`, `region` — fed
+by each cluster's `flux_cluster_vars` ConfigMap. They are stamped *after* rule
+evaluation, which is the point: most upstream rules aggregate the `cluster`
+label away, and a message once reached Slack reading `on cluster .`
+
+Optional values degrade rather than disappear: a missing namespace renders `—`,
+an empty `cloud` drops that half of Location, and a group of more than five
+alerts shows five bullets and ` … showing 5 of N`.
+
+### The annotation contract
+
+`./scripts/validate-vmrules.sh` enforces the first line of this on every
+repo-authored alert:
+
+| Annotation | Required | Rendered as |
+|---|---|---|
+| `summary` | **yes** — one line, ≤140 chars | the headline |
+| `description` | no, any length | per-alert bullet, truncated at 180 chars |
+| `runbook_url` | no | Runbook button; falls back to this page |
+| `dashboard` | no | Dashboard button and `title_link`; falls back to Grafana's home |
+
+`description` is deliberately left unbounded. Slack truncates it; RunLore
+receives the same annotations over its webhook and reads all of it, so trimming
+operational prose out of a rule to make it fit a chat message would blind the
+agent to the one thing that explains the alert.
+
+### Changing the wording
+
+Edit `templateFiles.ogenki.tmpl`, then:
+
+```bash
+./scripts/validate-alertmanager-templates.sh --update-golden
+git diff scripts/alertmanager-fixtures/golden/   # read it — it IS the message
+./scripts/validate-alertmanager-templates.sh
+```
+
+Two traps bind that block. **Never write a literal `${`** — Flux post-build
+substitution expands `${var}` and replaces an unknown one with an empty string,
+and this applies inside comments too; a bare `$var` (every Go template variable)
+is safe. **Alertmanager ships no sprig** — no `default`, no arithmetic. A
+template calling one fails to execute, and Alertmanager then **drops** the
+notification, which is why the gate exists at all.
+
+The gate checks every rendered Alertmanager config with `amtool check-config`,
+renders every templated string against five fixture payloads, and asserts every
+VMAlert carries an absolute `external.url`. It validates **structure, not
+semantics**: a typo'd `equal` label such as `clustre` is a syntactically valid
+label name and passes. So do a shadowing route and an over-broad inhibit rule.
 
 ## Grafana OnCall (removed)
 

@@ -48,6 +48,11 @@ resource "kubectl_manifest" "flux_cluster_vars" {
       # nothing derives anything else from them.
       storage_class = local.storage_class
       environment   = var.env
+      # Which cloud this cluster runs on, as a plain label value for alerts.
+      # Hardcoded per lane rather than derived from the cluster name: `aws-0`
+      # happens to be prefixed today, and a label that silently follows a naming
+      # convention breaks the first time a cluster is named something else.
+      cloud = "aws"
       # `domain_name` used to sit here as a THIRD key holding
       # var.public_domain_name -- the same value as public_domain_name below,
       # under a second name. It was removed rather than kept as a harmless

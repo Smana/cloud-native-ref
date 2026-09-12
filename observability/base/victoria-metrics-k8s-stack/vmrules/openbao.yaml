@@ -19,7 +19,7 @@ spec:
           labels:
             severity: critical
           annotations:
-            message: OpenBao is unreachable.
+            summary: OpenBao is unreachable.
             description: |
               The OpenBao endpoint has failed to scrape for 5 minutes. Either the
               service is down or its TLS certificate no longer validates against
@@ -43,7 +43,7 @@ spec:
           labels:
             severity: critical
           annotations:
-            message: OpenBao is sealed.
+            summary: OpenBao is sealed.
             description: |
               A node has been sealed for 5 minutes. Auto-unseal uses AWS KMS, so
               this usually means the instance role lost kms:Decrypt on the unseal
@@ -58,7 +58,7 @@ spec:
           labels:
             severity: critical
           annotations:
-            message: No active OpenBao node.
+            summary: No active OpenBao node.
             description: |
               No node has reported itself active for 10 minutes. In ha mode this
               means raft has not elected a leader; check `bao operator raft
@@ -87,7 +87,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            message: OpenBao raft cluster has lost redundancy.
+            summary: OpenBao raft cluster has lost redundancy.
             description: |
               Failure tolerance has been below 2 for 15 minutes, so a five-node
               cluster is no longer tolerating the two failures it is sized for.
@@ -113,7 +113,7 @@ spec:
           labels:
             severity: critical
           annotations:
-            message: OpenBao raft cluster cannot tolerate a node failure.
+            summary: OpenBao raft cluster cannot tolerate a node failure.
             description: |
               Failure tolerance has been below 1 for 15 minutes: losing one more
               node loses quorum, and a cluster without quorum cannot issue a
@@ -131,7 +131,7 @@ spec:
           labels:
             severity: critical
           annotations:
-            message: The OpenBao snapshot job failed.
+            summary: The OpenBao snapshot job failed.
             description: |
               The nightly raft snapshot did not complete. Start with the pod
               logs:
@@ -206,7 +206,7 @@ spec:
           labels:
             severity: critical
           annotations:
-            message: No successful OpenBao snapshot in 36 hours (or none ever).
+            summary: No successful OpenBao snapshot in 36 hours (or none ever).
             description: |
               Either the last successful snapshot is more than 36 hours old
               against a daily schedule, or the CronJob has existed for over 26

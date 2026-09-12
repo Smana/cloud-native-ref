@@ -49,10 +49,13 @@ resource "kubectl_manifest" "flux_cluster_vars" {
     }
     data = {
       # Cloud-neutral — names shared with the AWS ConfigMap.
-      cluster_name        = var.cluster_name
-      cluster_endpoint    = local.cluster_endpoint
-      environment         = var.env
-      region              = var.region
+      cluster_name     = var.cluster_name
+      cluster_endpoint = local.cluster_endpoint
+      environment      = var.env
+      region           = var.region
+      # See the AWS lane's copy of this key: hardcoded per lane, not derived
+      # from the cluster name.
+      cloud               = "gcp"
       private_domain_name = local.init.private_domain_name
       # See local.storage_class for why standard-rwo. Same local feeds Flux's
       # own artifact PVC, so the two cannot disagree.

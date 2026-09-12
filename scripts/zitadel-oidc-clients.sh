@@ -722,32 +722,67 @@ reconcile_consumer_audience() {
     fi
 }
 
-# THE WORKFORCE PROVIDER'S AUDIENCE IS THE ZITADEL PROJECT ID, and on some
-# topologies it cannot be committed ahead of time.
+# THE WORKFORCE PROVIDER'S AUDIENCE IS AN OIDC CLIENT ID, NOT THE PROJECT ID.
 #
-# opentofu/gcp/workforce-identity pins the provider's client_id to the project
-# id, because ZITADEL puts that id in the `aud` of every token the project
-# issues -- so any client is accepted and the pool can be created before a
-# single OIDC app exists. That trick relies on the id being KNOWN in advance,
-# which holds while AWS is primary: its ZITADEL restores from a seed and keeps
-# its ids across rebuilds.
+# This used to pin the provider's client_id to the ZITADEL project id, reasoning
+# that ZITADEL stamps the project id into the `aud` of every token the project
+# issues -- so any client would be accepted and the pool could exist before a
+# single OIDC app did. The `aud` part of that was measured correctly.
 #
-# A GCP-primary bootstrap mints a brand-new ZITADEL, whose project id is
-# generated. The committed value is then wrong, and the failure is the worst
-# kind: `token exchange 400: invalid_grant`, with oauth2-proxy, the exchange
-# proxy and the dashboard all reporting healthy.
+# What it missed is `azp`. Requesting the project audience scope makes `aud`
+# MULTI-VALUED (on gcp-0: six app client ids plus the project id), and for a
+# multi-audience token OIDC Core 3.1.3.7 requires `azp` to be present and to
+# equal the relying party's client id. Google STS enforces exactly that. `azp` is
+# always the client the token was ISSUED TO -- headlamp-proxy -- and never the
+# project, so a project-pinned client_id could not match it and every exchange
+# failed:
 #
-# This script already resolves the project id and already runs after the cluster
-# exists, so it closes that loop. The tofu resource carries
-# `lifecycle.ignore_changes` on the same field so the next apply does not put
-# the stale value back.
+#   token exchange 400: invalid_grant
+#   (azp=388283282036425069 aud=[<six client ids>, 388252679236747629])
+#
+# Measured on gcp-0 2026-09-12: the exchange had never once succeeded since it
+# was deployed, while oauth2-proxy, the exchange proxy, Headlamp and every Flux
+# resource reported healthy -- the same silent failure the old comment warned
+# about, arriving through the very mechanism it recommended.
+#
+# So the provider's client_id must be the client id of the app whose token is
+# presented. That is knowable only after the app exists, which is why this runs
+# AFTER the consumer loop rather than before it, and why the tofu resource keeps
+# `lifecycle.ignore_changes` on the field.
+#
+# The consumer end is unchanged and still keyed on the PROJECT id: that scope is
+# what puts a shared audience in the token at all, and with `azp` now matching
+# the provider, a multi-valued `aud` is accepted.
 reconcile_workforce_audience() {
-    local project_id="$1" current
+    local project_id="$1" current app_name app_id app_json client_id
     [ -n "$WORKFORCE_POOL" ] || return 0
     [ "$project_id" != "DRYRUN-PROJECT" ] || return 0
 
     if ! command -v gcloud >/dev/null 2>&1; then
         echo "workforce: gcloud not available, skipping audience reconciliation" >&2
+        return 0
+    fi
+
+    # The app name is spelled out here rather than held in a module-level
+    # constant on purpose: test-zitadel-workforce-audience.sh LIFTS this function
+    # body out with sed and eval's it, so anything it reads from the enclosing
+    # file is an unbound variable under `set -u` in the harness.
+    #
+    # Suffixed exactly as the consumer loop builds it. A cluster that only
+    # CONSUMES this directory names the app "headlamp-proxy-<cluster>", so
+    # looking up the bare name there would find nothing and silently leave the
+    # provider pinned to whatever it already had.
+    app_name="headlamp-proxy${APP_SUFFIX:-}"
+    app_id="$(app_id_by_name "$project_id" "$app_name")" || return 0
+    if [ -z "$app_id" ]; then
+        echo "workforce: ${app_name} does not exist yet, skipping audience reconciliation" >&2
+        return 0
+    fi
+
+    app_json="$(app_get "$project_id" "$app_id")" || return 0
+    client_id="$(jq -r '.app.oidcConfig.clientId // empty' <<< "$app_json")"
+    if [ -z "$client_id" ]; then
+        echo "workforce: ${app_name} has no oidcConfig.clientId, skipping" >&2
         return 0
     fi
 
@@ -760,12 +795,17 @@ reconcile_workforce_audience() {
         return 0
     fi
 
-    if [ "$current" = "$project_id" ]; then
-        echo "workforce: audience already ${project_id}"
+    if [ "$current" = "$client_id" ]; then
+        echo "workforce: audience already ${client_id} (${app_name})"
+        # Still check the other end. Reconciling the consumer only after an
+        # update meant a correct provider left the ConfigMap unexamined, which
+        # is precisely the half-fixed state the comment above warns is worse
+        # than fixing neither end.
+        reconcile_consumer_audience "$project_id"
         return 0
     fi
 
-    echo "workforce: audience ${current} -> ${project_id}"
+    echo "workforce: audience ${current} -> ${client_id} (${app_name})"
     if [ "$APPLY" != "true" ]; then
         echo "workforce: (dry-run, not applied)"
         return 0
@@ -773,7 +813,7 @@ reconcile_workforce_audience() {
 
     if gcloud iam workforce-pools providers update-oidc zitadel \
          --workforce-pool="$WORKFORCE_POOL" --location=global \
-         --client-id="$project_id" >/dev/null 2>&1; then
+         --client-id="$client_id" >/dev/null 2>&1; then
         echo "workforce: audience updated"
         reconcile_consumer_audience "$project_id"
     else
@@ -805,7 +845,9 @@ cmd_sync() {
     [ -n "$project_id" ] || { echo "could not resolve or create the ZITADEL project" >&2; exit 1; }
 
     ensure_project_role_assertion "$project_id"
-    reconcile_workforce_audience "$project_id"
+    # reconcile_workforce_audience runs AFTER the consumer loop below: it needs
+    # the headlamp-proxy app's client id, which does not exist on a first sync
+    # until that loop creates it.
     ensure_project_roles "$project_id"
     grant_admin_role "$GRANT_ADMIN" "$project_id"
 
@@ -977,6 +1019,12 @@ cmd_sync() {
         echo "[created] ${name} -> ${key} (client ${client_id})"
         created=$((created + 1))
     done
+
+    # Only now is headlamp-proxy guaranteed to exist, so only now can the
+    # workforce provider be pinned to its client id. Deliberately after the loop
+    # and not before it -- see the function's header comment for why the audience
+    # is an app client id rather than the project id.
+    reconcile_workforce_audience "$project_id"
 
     echo
     echo "created: ${created}, updated: ${updated}, unchanged: ${skipped}, converged: ${converged}"

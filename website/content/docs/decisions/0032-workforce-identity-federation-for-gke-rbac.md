@@ -251,11 +251,25 @@ presents the user's token and needs no service account of its own.
     `opentofu/gcp/workforce-identity/variables.tfvars`, and pinned by the
     `workforce-pool-id` doc claim (see Implementation Notes) so the docs
     cannot drift from it silently.
-- The audience the workforce pool provider trusts is the whole ZITADEL
-  **project**, not one OIDC client — any token ZITADEL issues in that project
-  can be exchanged. This is acceptable because exchange only establishes
-  identity; a user without the `admin` role still gets a token that
-  authenticates and authorises nothing.
+- The audience the workforce pool provider trusts is a single OIDC client —
+  `headlamp-proxy`, the app whose token the shim presents.
+
+  It was originally the whole ZITADEL **project**, on the reasoning that any
+  token the project issued would then be exchangeable and the pool could be
+  created before a single OIDC app existed. **That never worked.** Requesting
+  the project audience scope makes `aud` multi-valued; OIDC Core 3.1.3.7 then
+  requires `azp` to be present and to equal the trusted client id; Google STS
+  enforces exactly that; and `azp` is always the client the token was issued
+  to — never the project. Every exchange returned `invalid_grant` from the day
+  it shipped until 2026-09-12, while oauth2-proxy, the shim, Headlamp and every
+  Flux resource reported healthy.
+
+  Narrowing to one client is therefore not a regression from the original
+  design but the only form of it that functions — and it is the tighter grant
+  besides. The client id is not knowable at apply time, so
+  `reconcile_workforce_audience` in `scripts/zitadel-oidc-clients.sh` sets it
+  once the app exists, and the tofu resource keeps `lifecycle.ignore_changes`
+  on the field so the next apply cannot revert it.
 - A new component (the shim) briefly holds user tokens in memory, which is
   why it runs default-deny CiliumNetworkPolicy, restricted PSS, and a
   never-log-a-token rule.

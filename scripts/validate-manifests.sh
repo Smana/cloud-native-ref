@@ -8,6 +8,7 @@
 #   3. generate the schema catalog (XRDs + Envoy AI Gateway CRDs)
 #   4. render the repo into a bundle (kustomize + envsubst + helm template)
 #   5. gate the bundle: flux schema validate, then polaris audit
+#   6. render the Alertmanager Slack notification templates against fixtures
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,7 +32,7 @@ BUNDLE_DIR="${BUNDLE_DIR:-.bundle}"
 # render-bundle.py substitutes its fixtures unconditionally, so a Kustomization
 # missing postBuild renders correctly in the bundle and lands as literal
 # `${var}` text on the cluster. Measured 2026-08-25; see the script's docstring.
-echo "==> [1/5] Checking Flux variable substitution wiring"
+echo "==> [1/6] Checking Flux variable substitution wiring"
 python3 scripts/flux-schema/check-substitution.py
 
 # Also runs before the render, and on source files rather than the bundle: a
@@ -39,24 +40,27 @@ python3 scripts/flux-schema/check-substitution.py
 # proves `expr` is a string in the right place, and polaris does not look at
 # rules at all. See the script's header for why it reads committed VMRules
 # instead of ${BUNDLE_DIR}, and which groups it skips.
-echo "==> [2/5] Checking PromQL expressions in repo-authored VMRules"
+echo "==> [2/6] Checking PromQL expressions in repo-authored VMRules"
 ./scripts/validate-vmrules.sh
 
-echo "==> [3/5] Generating schema catalog"
+echo "==> [3/6] Generating schema catalog"
 ./scripts/flux-schema/gen-catalog.sh > /dev/null
 
-echo "==> [4/5] Rendering manifests into ${BUNDLE_DIR}/"
+echo "==> [4/6] Rendering manifests into ${BUNDLE_DIR}/"
 rm -rf "${BUNDLE_DIR}"
 python3 scripts/flux-schema/render-bundle.py "${BUNDLE_DIR}"
 
-echo "==> [5/5] Gate 1 — flux schema validate (structure + CEL)"
+echo "==> [5/6] Gate 1 — flux schema validate (structure + CEL)"
 "${FLUX_BIN}" schema validate "${BUNDLE_DIR}" --config .fluxschema.yml
 
-echo "==> [5/5] Gate 2 — polaris audit (workload best practices)"
+echo "==> [5/6] Gate 2 — polaris audit (workload best practices)"
 polaris audit \
   --audit-path "${BUNDLE_DIR}" \
   --config .polaris.yaml \
   --set-exit-code-on-danger \
   --only-show-failed-tests
+
+echo "==> [6/6] Gate 3 — Alertmanager Slack templates render"
+./scripts/validate-alertmanager-templates.sh
 
 echo "==> All gates passed"
