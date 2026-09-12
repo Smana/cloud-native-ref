@@ -256,9 +256,31 @@ data:
           {{ template "ogenki.emoji" . }} {{ if eq .Status "firing" }}FIRING{{ if gt (len .Alerts.Firing) 1 }} · {{ len .Alerts.Firing }}{{ end }}{{ else }}RESOLVED{{ end }} — {{ if .CommonLabels.alertname }}{{ .CommonLabels.alertname }}{{ else }}alert{{ end }}
           {{- end }}
 
+          {{/* Two different rules in one template, deliberately. The `dashboard`
+               ANNOTATION is uniform across a group, so any member answers for it
+               and `.Alerts 0` is fine. GeneratorURL is PER-ALERT, so the fallback
+               takes the firing subset -- see slack.ogenki.query_url. */}}
           {{- define "slack.ogenki.title_link" -}}
+          {{- $list := .Alerts -}}
+          {{- if eq .Status "firing" }}{{ $list = .Alerts.Firing }}{{ end -}}
           {{- $a := index .Alerts 0 -}}
-          {{- if $a.Annotations.dashboard }}{{ $a.Annotations.dashboard }}{{ else }}{{ $a.GeneratorURL }}{{ end -}}
+          {{- if $a.Annotations.dashboard }}{{ $a.Annotations.dashboard }}{{ else }}{{ (index $list 0).GeneratorURL }}{{ end -}}
+          {{- end }}
+
+          {{/* The Query button. GeneratorURL is PER-ALERT -- unlike runbook_url and
+               dashboard_url below, which read annotations and so are uniform across
+               the group -- so this takes the firing subset. A Query button on a
+               FIRING message that lands you on a member that has already resolved
+               is the dead-button class this template exists to remove.
+
+               This is the fourth copy of the two-line $list preamble (duration,
+               text, title_link, here). It cannot be factored out: a Go template
+               `define` returns a string, not a list, so there is nothing to
+               capture the firing subset into. */}}
+          {{- define "slack.ogenki.query_url" -}}
+          {{- $list := .Alerts -}}
+          {{- if eq .Status "firing" }}{{ $list = .Alerts.Firing }}{{ end -}}
+          {{- (index $list 0).GeneratorURL -}}
           {{- end }}
 
           {{/* Identity, headline, then at most five bullets. The cap is index
@@ -375,7 +397,7 @@ data:
                     url: '{{ template "slack.ogenki.dashboard_url" . }}'
                   - type: button
                     text: "Query :mag:"
-                    url: "{{ (index .Alerts 0).GeneratorURL }}"
+                    url: '{{ template "slack.ogenki.query_url" . }}'
                   - type: button
                     text: "Silence :no_bell:"
                     url: '{{ template "__alert_silence_link" . }}'

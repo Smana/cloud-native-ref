@@ -8,7 +8,7 @@
 :information_source: FIRING · 2 — CPUThrottlingHigh
 
 ==> title_link
-http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=4&alert_id=3
+http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=4&alert_id=1
 
 ==> text
 `aws-0 · dev`
@@ -36,7 +36,7 @@ https://cnref.ogenki.io/docs/platform/observability/dashboards-and-alerts/
 https://grafana.priv.cluster.local/dashboards
 
 ==> action:Query :mag:
-http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=4&alert_id=3
+http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=4&alert_id=1
 
 ==> action:Silence :no_bell:
 https://vmalertmanager-aws-0.priv.aws.ogenki.io/#/silences/new?filter=%7Bcloud%3D"aws"%2C%20cluster%3D"aws-0"%2C%20env%3D"dev"%2C%20namespace%3D"tooling"%2C%20region%3D"eu-west-3"%2C%20severity%3D"info"%2C%20alertname%3D"CPUThrottlingHigh"%7D
