@@ -23,10 +23,24 @@ globs:
 | Field | Description |
 |-------|-------------|
 | `log.level` | Severity (info, warn, error) |
-| `log.service` | Application service name |
+| `log.service.name` | Application service name |
+| `log.service.version` | Application version |
+| `log.deployment.environment.name` | Environment the workload runs in |
 | `log.trace_id` | OpenTelemetry trace ID |
 | `log.span_id` | OpenTelemetry span ID |
 | `log.error` | Error message content |
+
+> **`log.service` was renamed to `log.service.name`** — do not query the old name.
+> image-gallery 2.0.0 moved its structured log keys onto semconv
+> (`internal/observability/logger.go`: `service.name`, `service.version`,
+> `deployment.environment.name`), so a query or panel keyed on `log.service` matches
+> nothing once that image is deployed. Apps still on the old key emit `log.service`;
+> both may be present while a rollout is in flight.
+>
+> These names contain dots, which LogsQL treats as path separators after
+> `unpack_json` — a bare `log.service.name:x` may need quoting. The exact form is
+> **unverified against a live VictoriaLogs instance**; check it with `vlogscli`
+> before relying on it in a dashboard, rather than trusting this line.
 
 ### Example Queries
 
