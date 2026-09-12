@@ -3,7 +3,7 @@
 **Date**: 2026-09-12
 **Status**: Design — approved, not implemented
 **Touches**: `observability/base/victoria-metrics-k8s-stack/`, both `configure` stacks, `scripts/`
-**Requires before merge**: `website/content/docs/decisions/0037-alertmanager-native-slack-templates.md` (not yet written)
+**Requires before merge**: [ADR-0037](../../../website/content/docs/decisions/0037-alertmanager-native-slack-templates.md)
 
 ## The problem
 
@@ -351,7 +351,7 @@ script reads, keeping CI's single entry point single.
   Alertmanager [has no Block Kit support](https://github.com/prometheus/alertmanager/issues/2217)
   and the issue has been open since 2020. A bridge would add a component to the
   data path and duplicate RunLore's existing Slack integration for formatting
-  alone. Recorded in ADR-0037.
+  alone. Recorded in [ADR-0037](../../../website/content/docs/decisions/0037-alertmanager-native-slack-templates.md).
 - **A channel per severity, per cluster, or per environment.** Rejected in
   favour of one channel carrying better messages; both clusters are `env=dev`
   today, so a split by environment would be a no-op and a split by cluster grows
