@@ -79,6 +79,13 @@ FIXTURE_VARS = {
     "cluster_name": "foobar",
     "region": "eu-west-3",
     "environment": "dev",
+    # Both lanes define `cloud`, so unlike "region" this fixture is not
+    # AWS-shaped by necessity -- it is AWS-shaped because base/ belongs to no
+    # cluster and renders from this merged map. A manifest that branched on the
+    # VALUE of ${cloud} would therefore go unvalidated for gcp-0; nothing does
+    # today, and the label is only ever displayed. CLUSTER_FIXTURE_VARS below
+    # carries the gcp-0 override for anything cluster-scoped.
+    "cloud": "aws",
     # Both clusters define this; the value differs (gp3 / standard-rwo) but the
     # SHAPE does not -- it is an opaque string either way, which is why one
     # fixture is honest here. Contrast "region" above, where a single
@@ -255,6 +262,7 @@ CLUSTER_FIXTURE_VARS = {
     "aws-0": {},
     "gcp-0": {
         "region": "europe-west4",
+        "cloud": "gcp",
         "private_domain_name": "priv.gcp.cluster.local",
         # NOT route53_region. That one is AWS-shaped on gcp-0 ON PURPOSE -- it
         # is the AWS region hint the Route53 solver needs, and gcp-0 really does
