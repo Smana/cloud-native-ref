@@ -129,7 +129,7 @@ on `cluster`; adding them would only lengthen silence URLs.
 |---|---|
 | `opentofu/aws/eks/configure/kubernetes.tf` | `cloud = "aws"` |
 | `opentofu/gcp/gke/configure/kubernetes.tf` | `cloud = "gcp"` |
-| `scripts/flux-schema/render-bundle.py` (`FIXTURES`) | `"cloud": "aws"` |
+| `scripts/flux-schema/render-bundle.py` (`FIXTURE_VARS`) | `"cloud": "aws"` |
 
 `check-substitution.py` needs no edit — it reads both `.tf` files directly and
 picks the key up on its own.
