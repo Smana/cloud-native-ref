@@ -17,9 +17,12 @@
 # both, already Flux-substituted -- so an unsubstituted ${var} or a typo in a
 # field value fails here too.
 #
-# Durations are not golden-compared: `since` measures against wall-clock now,
-# so the Duration field is asserted against a regex instead and masked in the
-# golden output. Everything else is byte-compared.
+# One HALF of one field is not golden-compared: `since` measures against
+# wall-clock now, so the leading duration token of a firing Duration field is
+# asserted against a regex and masked. The clock time it is anchored to is kept,
+# and a resolved Duration is kept whole -- both are derived from the fixture's
+# own timestamps. Everything else is byte-compared. See VOLATILE_FIELD below for
+# why keeping that half matters.
 #
 #   ./scripts/validate-alertmanager-templates.sh                 # check
 #   ./scripts/validate-alertmanager-templates.sh --update-golden # rewrite goldens
@@ -88,9 +91,26 @@ FIXTURE_DIR = pathlib.Path("scripts/alertmanager-fixtures")
 GOLDEN_DIR = FIXTURE_DIR / "golden"
 TEMPLATE_KEY = "ogenki.tmpl"
 RECEIVER = "slack-monitoring"
-# The one field whose rendered value moves with wall-clock time.
+# The one field whose rendered value moves with wall-clock time -- and only
+# PARTLY. `ogenki.duration` renders one of two shapes:
+#
+#   14m 0s (since 09:06 UTC)                 firing
+#   resolved after 6m 0s (at 09:11 UTC)      resolved
+#
+# Just the leading token of the FIRING shape is volatile: it is measured against
+# `now`. Everything else is computed from the fixture's own timestamps and is
+# byte-stable -- including the whole resolved shape, whose duration is
+# EndsAt-StartsAt.
+#
+# Masking the field wholesale therefore threw away the only part that says WHICH
+# alert is being described, and that is not a cosmetic loss: it made the
+# `.Alerts` vs `.Alerts.Firing` selection in `ogenki.duration` untestable.
+# Reverting that fix rendered a byte-identical golden on all five fixtures --
+# a silent regression of the exact defect the template exists to avoid, namely
+# describing a resolved group member's timing under a FIRING title.
 VOLATILE_FIELD = "field:Duration"
-DURATION_RE = re.compile(r"^(\d|resolved after).*")
+FIRING_DURATION_RE = re.compile(r"^(\d[^(]*) (\(since \d{2}:\d{2} UTC\))$")
+RESOLVED_DURATION_RE = re.compile(r"^resolved after \d[^(]* \(at \d{2}:\d{2} UTC\)$")
 
 tmpl_text = None
 slack = None
@@ -177,10 +197,15 @@ try:
             if not out.strip():
                 failures.append((fixture.name, label, "rendered empty"))
             if label == VOLATILE_FIELD:
-                if not DURATION_RE.match(out.strip()):
+                stripped = out.strip()
+                firing = FIRING_DURATION_RE.match(stripped)
+                if firing:
+                    # Only the leading humanized duration is replaced; the clock
+                    # time it is anchored to stays in the golden.
+                    out = "<DURATION> %s" % firing.group(2)
+                elif not RESOLVED_DURATION_RE.match(stripped):
                     failures.append((fixture.name, label,
                                      "does not look like a duration: %r" % out))
-                out = "<DURATION>"
             chunks.append("==> %s\n%s" % (label, out))
 
         actual = "\n\n".join(chunks) + "\n"

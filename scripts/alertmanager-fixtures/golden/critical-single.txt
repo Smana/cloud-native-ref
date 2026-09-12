@@ -23,7 +23,7 @@ security
 critical
 
 ==> field:Duration
-<DURATION>
+<DURATION> (since 09:06 UTC)
 
 ==> field:Location
 aws / eu-west-3

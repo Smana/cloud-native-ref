@@ -23,7 +23,7 @@ kube-system
 warning
 
 ==> field:Duration
-<DURATION>
+resolved after 6m 0s (at 09:11 UTC)
 
 ==> field:Location
 aws / eu-west-3

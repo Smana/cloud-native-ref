@@ -25,7 +25,7 @@ apps
 warning
 
 ==> field:Duration
-<DURATION>
+<DURATION> (since 09:12 UTC)
 
 ==> field:Location
 gcp / europe-west1

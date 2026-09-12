@@ -28,7 +28,7 @@ Filesystem on /dev/nvme0n1p1 at 10.0.1.11:9100 has only 3.24% available space le
 unknown
 
 ==> field:Duration
-<DURATION>
+<DURATION> (since 07:00 UTC)
 
 ==> field:Location
 —
