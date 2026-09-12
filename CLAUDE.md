@@ -382,8 +382,15 @@ bundle looks perfect either way. It reads each cluster's real keys from the `flu
 resource in `opentofu/*/configure/kubernetes.tf`.
 
 It also fails when a Kustomization applies variables with no `postBuild` wired at all, where Flux
-would apply the literal `${var}`. Covered by `scripts/flux-schema/test-check-substitution.py` — the
-only test any script in `scripts/flux-schema/` has.
+would apply the literal `${var}`. Covered by `scripts/flux-schema/test-check-substitution.py`, one
+of the **two** tests any script in `scripts/flux-schema/` has. The other is `test-render-bundle.py`,
+pinning `render-bundle.py`'s `spec.valuesFrom` resolution — six HelmReleases get most of their
+values that way, and a regression there does not break the build, it quietly shrinks what the build
+checks.
+
+Both run in CI, as their own step in `kubernetes-validation` **before** the render — they test the
+scripts that do the rendering. They are deliberately not folded into `validate-manifests.sh`, whose
+contract is manifest validation; run them directly with `python3 scripts/flux-schema/<file>`.
 
 **A fourth check parses the alerting expressions, which nothing else ever did:**
 `scripts/validate-vmrules.sh` extracts each repo-authored `VMRule`'s `.spec` — already the shape of
@@ -420,6 +427,26 @@ in both a green and a red run, and the summary counts skipped groups separately,
 > cert-manager moved to a projected ServiceAccount token. A Secret's keys are created in-cluster at
 > runtime, so they cannot be checked here — those variables are **reported as a note** rather than
 > failed, and rather than silently skipped.
+
+**A fifth check renders the Slack notification, because a broken template loses every alert:**
+`scripts/validate-alertmanager-templates.sh` runs as gate 3 inside `validate-manifests.sh`. It pulls
+the rendered Alertmanager config and the rendered template ConfigMap out of `.bundle/` — **every
+copy, not the first one found**, since the chart renders once per cluster — and then: checks each
+config with `amtool check-config`; renders every templated string in the Slack receiver (`fallback`,
+`title`, `text`, each `fields[].value`, each button URL) against five fixture payloads with
+`amtool template render`, golden-comparing the result; and asserts every `VMAlert` carries an
+**absolute** `external.url`.
+
+That last assertion is not theoretical. vmalert shipped with `external.url: "http://"` — the chart
+derives it from `.Values.external.grafana.host`, which was unset, and only falls back to the Grafana
+*ingress* host, which this platform does not use. Every `generatorURL` was therefore `http:/explore?…`
+with no host, and Slack silently drops an attachment action whose URL is invalid, so the Query button
+never rendered on any alert on either cluster. It sat in the bundle the whole time and no gate could
+fail on it: `flux schema validate` sees a valid string, polaris never reads `extraArgs`.
+
+It validates **structure, not semantics**. A typo'd `equal` label (`clustre`) is a syntactically
+valid label name and passes; so do a shadowing route and an over-broad inhibit rule. Rendering
+wording changes means `--update-golden`, then reading the diff — it *is* the Slack message.
 
 Two properties are load-bearing:
 

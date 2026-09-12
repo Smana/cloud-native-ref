@@ -13,7 +13,7 @@ spec:
       rules:
         - alert: LoggenHTTPError500
           annotations:
-            message: "The application Loggen is throwing too many errors in the last 10 minutes"
+            summary: "The application Loggen is throwing too many errors in the last 10 minutes"
             description: 'The pod `{{ index $labels "kubernetes.pod_name" }}` has `{{ $value }}` server errors in the last 10 minutes'
           expr: 'kubernetes.pod_labels.app.kubernetes.io/instance:"loggen" AND log.status:"5"* | stats by (kubernetes.pod_name) count() as server_errors | filter server_errors:>100'
           labels:

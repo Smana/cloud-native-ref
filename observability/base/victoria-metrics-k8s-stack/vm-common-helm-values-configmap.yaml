@@ -58,6 +58,44 @@ data:
       spec:
         externalLabels:
           cluster: "${cluster_name}"
+          # env/cloud/region join cluster so a Slack message says WHERE without
+          # anyone having to know which cluster runs which workload. They are on
+          # vmalert and deliberately not on vmagent: vmalert attaches them to
+          # alerts and recording-rule output (a few hundred series), whereas the
+          # same four labels on vmagent would attach to every scraped series in
+          # the TSDB -- a real cardinality bill for a presentation feature.
+          #
+          # `cloud` comes from a ConfigMap key added in the same change. Until
+          # both `configure` stacks are applied, Flux substitutes it EMPTY; the
+          # templates guard for that and drop the segment rather than render
+          # "aws-0 · dev · /".
+          env: "${environment}"
+          cloud: "${cloud}"
+          region: "${region}"
+
+    # vmalert's `-external.url`, and the reason the Query button in every Slack
+    # alert has been dead since the day it was added.
+    #
+    # The chart builds `external.url` from `vm-k8s-stack.grafana.addr`
+    # (_helpers.tpl:470-482), which reads THIS key and otherwise falls back to
+    # the Grafana INGRESS host -- only when `grafana.ingress.enabled` is true.
+    # This platform routes Grafana through a Gateway API HTTPRoute, not an
+    # Ingress, so that fallback never fires, the address resolved to the empty
+    # string, and the helper's unconditional `http://` prefix (line 473-475) left
+    # vmalert running with `-external.url=http://`.
+    #
+    # Every alert therefore carried
+    #   generatorURL = http:/explore?left={"datasource":"VictoriaMetrics",...}
+    # -- one slash, no host. Slack silently DROPS an attachment action whose URL
+    # is not a valid http(s) URL, so the button did not render wrong, it did not
+    # render at all. Confirmed on live gcp-0 across all 23 firing alerts.
+    #
+    # Include the scheme: the helper prefixes `http://` to anything without one.
+    # `private_domain_name` is defined in both clusters' ConfigMaps, so one value
+    # is correct on aws-0 and gcp-0 alike.
+    external:
+      grafana:
+        host: "https://grafana.${private_domain_name}"
 
     alertmanager:
       enabled: true
@@ -66,6 +104,243 @@ data:
         secrets:
           - "victoria-metrics-k8s-stack-alertmanager-slack-app"
           - "runlore-webhook-token"
+
+      # The chart vendors Monzo's 2018 templates and enables them by default.
+      # They were written for one cluster: they print no cluster, environment,
+      # cloud, region, label or duration, and they print `message` and
+      # `description` in full -- so a rule whose description is a runbook pastes
+      # that runbook into the channel. Replaced wholesale below.
+      #
+      # Turning this off also deletes `__alert_silence_link`, which is defined in
+      # that template and used by the Silence button. It is redefined in ours.
+      monzoTemplate:
+        enabled: false
+
+      # The chart renders this map into a `<fullname>-extra-tpl` ConfigMap and
+      # appends it to VMAlertmanager.spec.templates itself (see its
+      # _helpers.tpl, `vm.alertmanager.spec`). Values are inserted raw -- no
+      # `tpl` -- so Go template syntax survives Helm untouched.
+      #
+      # TWO RULES FOR EDITING THIS BLOCK:
+      #
+      # 1. Never write a dollar-brace reference -- and note that this rule binds
+      #    the COMMENTS too, which is why none below spells one out. Flux
+      #    post-build substitution rewrites the whole manifest, comments
+      #    included: it expands a dollar-brace name it knows and replaces one it
+      #    does not with an EMPTY STRING. check-substitution.py fails the build
+      #    on the unknown case, so a worked example in a comment here is a
+      #    red gate, not a footnote. Bare `$var` -- every Go template variable
+      #    below -- is untouched and safe. The two references that ARE spelled
+      #    out (externalURL above, private_domain_name further down) are
+      #    deliberate: both are real keys in both clusters' ConfigMaps, and the
+      #    template gate asserts no unsubstituted reference survives rendering.
+      #
+      # 2. Alertmanager ships NO sprig. There is no `default`, and no arithmetic
+      #    (`sub`, `add`, `min`). Available: append base64decode base64encode
+      #    date dict humanizeDuration join list match now reReplaceAll
+      #    routeLabels safeHtml safeUrl since stringSlice title toJson toLower
+      #    toUpper trimSpace tz urlUnescape, plus Go builtins (len index slice
+      #    printf urlquery eq ne lt gt and or not with range).
+      #
+      # ./scripts/validate-alertmanager-templates.sh renders every string below
+      # against five fixture payloads and golden-compares the output. A template
+      # that fails to execute makes Alertmanager DROP the notification, so this
+      # is the difference between a formatting bug and silent total alert loss.
+      templateFiles:
+        ogenki.tmpl: |-
+          {{/* ───────────────────────── helpers ───────────────────────── */}}
+
+          {{/* Severity, never empty. */}}
+          {{- define "ogenki.severity" -}}
+          {{- if .CommonLabels.severity }}{{ .CommonLabels.severity }}{{ else }}unknown{{ end -}}
+          {{- end }}
+
+          {{/* Leading emoji. :lgtm: is a workspace custom emoji already in use. */}}
+          {{- define "ogenki.emoji" -}}
+          {{- if ne .Status "firing" -}}:lgtm:
+          {{- else if eq .CommonLabels.severity "critical" -}}:fire:
+          {{- else if eq .CommonLabels.severity "warning" -}}:warning:
+          {{- else if eq .CommonLabels.severity "info" -}}:information_source:
+          {{- else -}}:question:
+          {{- end -}}
+          {{- end }}
+
+          {{/* "aws-0 · dev". Drops the env segment rather than render a dangling
+               separator when the label is empty. */}}
+          {{- define "ogenki.identity" -}}
+          {{- if .CommonLabels.cluster }}{{ .CommonLabels.cluster }}{{ else }}unknown-cluster{{ end -}}
+          {{- with .CommonLabels.env }} · {{ . }}{{ end -}}
+          {{- end }}
+
+          {{/* "aws / eu-west-3", degrading to either half, then to an em dash.
+               Empty strings are falsy, which is what makes the pre-apply
+               `cloud: ""` state render correctly instead of as " / eu-west-3". */}}
+          {{- define "ogenki.location" -}}
+          {{- if and .CommonLabels.cloud .CommonLabels.region -}}
+          {{ .CommonLabels.cloud }} / {{ .CommonLabels.region }}
+          {{- else if .CommonLabels.cloud -}}{{ .CommonLabels.cloud }}
+          {{- else if .CommonLabels.region -}}{{ .CommonLabels.region }}
+          {{- else -}}—{{- end -}}
+          {{- end }}
+
+          {{/* "14m 0s (since 09:06 UTC)" / "resolved after 6m 0s (at 09:11 UTC)".
+               UTC is explicit and deliberate: `tz` would need tzdata in the
+               container, and a missing zone is a template execution error --
+               which drops the notification.
+
+               $list is the firing subset on a firing notification: a group can
+               carry a resolved member (which gets its own resolved message), and
+               `index .Alerts 0` could otherwise describe that member's timing
+               under a FIRING title. */}}
+          {{- define "ogenki.duration" -}}
+          {{- $list := .Alerts -}}
+          {{- if eq .Status "firing" }}{{ $list = .Alerts.Firing }}{{ end -}}
+          {{- $a := index $list 0 -}}
+          {{- if eq .Status "firing" -}}
+          {{ humanizeDuration (since $a.StartsAt).Seconds }} (since {{ $a.StartsAt.UTC.Format "15:04 MST" }})
+          {{- else -}}
+          resolved after {{ humanizeDuration ($a.EndsAt.Sub $a.StartsAt).Seconds }} (at {{ $a.EndsAt.UTC.Format "15:04 MST" }})
+          {{- end -}}
+          {{- end }}
+
+          {{/* The one-line headline. Group-wide annotations win over the first
+               alert's; summary wins over message wins over description. A rule
+               with only a description lands here with its whole body, so this
+               truncates -- that is the runbook-in-the-channel fix. */}}
+          {{- define "ogenki.headline" -}}
+          {{- $a := index .Alerts 0 -}}
+          {{- $h := "" -}}
+          {{- if .CommonAnnotations.summary }}{{ $h = .CommonAnnotations.summary }}
+          {{- else if .CommonAnnotations.message }}{{ $h = .CommonAnnotations.message }}
+          {{- else if $a.Annotations.summary }}{{ $h = $a.Annotations.summary }}
+          {{- else if $a.Annotations.message }}{{ $h = $a.Annotations.message }}
+          {{- else if .CommonAnnotations.description }}{{ $h = .CommonAnnotations.description }}
+          {{- else if $a.Annotations.description }}{{ $h = $a.Annotations.description }}
+          {{- else }}{{ $h = "(this alert sets no summary annotation)" }}{{ end -}}
+          {{- $h = reReplaceAll "\\s+" " " $h -}}
+          {{- if gt (len $h) 280 }}{{ slice $h 0 280 }}…{{ else }}{{ $h }}{{ end -}}
+          {{- end }}
+
+          {{/* What one alert in the group is ABOUT: the most specific identifier
+               its labels carry. */}}
+          {{- define "ogenki.target" -}}
+          {{- $l := .Labels -}}
+          {{- if and $l.namespace $l.pod -}}{{ $l.namespace }}/{{ $l.pod }}
+          {{- else if $l.pod -}}{{ $l.pod }}
+          {{- else if $l.instance -}}{{ $l.instance }}
+          {{- else if $l.node -}}{{ $l.node }}
+          {{- else if $l.job -}}{{ $l.job }}
+          {{- else if $l.namespace -}}{{ $l.namespace }}
+          {{- else -}}{{ .Fingerprint }}{{- end -}}
+          {{- end }}
+
+          {{/* One bullet per alert. The description is shown only when the alert
+               ALSO has a summary or message -- otherwise the description is
+               already the headline and would print twice. */}}
+          {{- define "ogenki.bullet" -}}
+          {{ template "ogenki.target" . }}
+          {{- if and .Annotations.description (or .Annotations.summary .Annotations.message) -}}
+          {{- $d := reReplaceAll "\\s+" " " .Annotations.description -}}
+          {{- " — " -}}
+          {{- if gt (len $d) 180 }}{{ slice $d 0 180 }}…{{ else }}{{ $d }}{{ end -}}
+          {{- end -}}
+          {{- end }}
+
+          {{/* Silence link. Redefined here because disabling the chart's Monzo
+               template deletes the original. The alertname is appended last so
+               the label list has no trailing separator. */}}
+          {{- define "__alert_silence_link" -}}
+          {{ .ExternalURL }}/#/silences/new?filter=%7B
+          {{- range .CommonLabels.SortedPairs -}}
+          {{- if ne .Name "alertname" -}}
+          {{- .Name }}%3D"{{- .Value | urlquery -}}"%2C%20
+          {{- end -}}
+          {{- end -}}
+          alertname%3D"{{ .CommonLabels.alertname }}"%7D
+          {{- end }}
+
+          {{/* ──────────────────── receiver entry points ──────────────────── */}}
+
+          {{- define "slack.ogenki.color" -}}
+          {{- if ne .Status "firing" -}}good
+          {{- else if eq .CommonLabels.severity "critical" -}}danger
+          {{- else if eq .CommonLabels.severity "warning" -}}warning
+          {{- else -}}#439FE0
+          {{- end -}}
+          {{- end }}
+
+          {{/* What Slack shows in push notifications and channel previews. It
+               was unset before, which is why a phone notification said nothing
+               useful. */}}
+          {{- define "slack.ogenki.fallback" -}}
+          [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ len .Alerts.Firing }}{{ end }}] {{ if .CommonLabels.alertname }}{{ .CommonLabels.alertname }}{{ else }}alert{{ end }} · {{ template "ogenki.identity" . }} · {{ template "ogenki.severity" . }}
+          {{- end }}
+
+          {{- define "slack.ogenki.title" -}}
+          {{ template "ogenki.emoji" . }} {{ if eq .Status "firing" }}FIRING{{ if gt (len .Alerts.Firing) 1 }} · {{ len .Alerts.Firing }}{{ end }}{{ else }}RESOLVED{{ end }} — {{ if .CommonLabels.alertname }}{{ .CommonLabels.alertname }}{{ else }}alert{{ end }}
+          {{- end }}
+
+          {{/* Two different rules in one template, deliberately. The `dashboard`
+               ANNOTATION is uniform across a group, so any member answers for it
+               and `.Alerts 0` is fine. GeneratorURL is PER-ALERT, so the fallback
+               takes the firing subset -- see slack.ogenki.query_url. */}}
+          {{- define "slack.ogenki.title_link" -}}
+          {{- $list := .Alerts -}}
+          {{- if eq .Status "firing" }}{{ $list = .Alerts.Firing }}{{ end -}}
+          {{- $a := index .Alerts 0 -}}
+          {{- if $a.Annotations.dashboard }}{{ $a.Annotations.dashboard }}{{ else }}{{ (index $list 0).GeneratorURL }}{{ end -}}
+          {{- end }}
+
+          {{/* The Query button. GeneratorURL is PER-ALERT -- unlike runbook_url and
+               dashboard_url below, which read annotations and so are uniform across
+               the group -- so this takes the firing subset. A Query button on a
+               FIRING message that lands you on a member that has already resolved
+               is the dead-button class this template exists to remove.
+
+               This is the fourth copy of the two-line $list preamble (duration,
+               text, title_link, here). It cannot be factored out: a Go template
+               `define` returns a string, not a list, so there is nothing to
+               capture the firing subset into. */}}
+          {{- define "slack.ogenki.query_url" -}}
+          {{- $list := .Alerts -}}
+          {{- if eq .Status "firing" }}{{ $list = .Alerts.Firing }}{{ end -}}
+          {{- (index $list 0).GeneratorURL -}}
+          {{- end }}
+
+          {{/* Identity, headline, then at most five bullets. The cap is index
+               based rather than `slice`, because a slice past the end panics and
+               there is no `min` to clamp it with.
+
+               $list matches what the title counts: on a firing notification the
+               title says `FIRING · {{ len .Alerts.Firing }}`, so listing a
+               resolved group member below it would print more bullets than the
+               count. That member gets its own resolved message anyway. */}}
+          {{- define "slack.ogenki.text" -}}
+          {{- $list := .Alerts -}}
+          {{- if eq .Status "firing" }}{{ $list = .Alerts.Firing }}{{ end -}}
+          `{{ template "ogenki.identity" . }}`
+
+          {{ template "ogenki.headline" . }}
+          {{- range $i, $a := $list }}{{ if lt $i 5 }}
+           • {{ template "ogenki.bullet" $a }}{{ end }}{{ end }}
+          {{- if gt (len $list) 5 }}
+           … showing 5 of {{ len $list }}{{ end }}
+          {{- end }}
+
+          {{- define "slack.ogenki.field_namespace" -}}
+          {{- if .CommonLabels.namespace }}{{ .CommonLabels.namespace }}{{ else }}—{{ end -}}
+          {{- end }}
+
+          {{/* No button is ever dead: both fall back to a page that exists. */}}
+          {{- define "slack.ogenki.runbook_url" -}}
+          {{- $a := index .Alerts 0 -}}
+          {{- if $a.Annotations.runbook_url }}{{ $a.Annotations.runbook_url }}{{ else }}https://cnref.ogenki.io/docs/platform/observability/dashboards-and-alerts/{{ end -}}
+          {{- end }}
+
+          {{- define "slack.ogenki.dashboard_url" -}}
+          {{- $a := index .Alerts 0 -}}
+          {{- if $a.Annotations.dashboard }}{{ $a.Annotations.dashboard }}{{ else }}https://grafana.${private_domain_name}/dashboards{{ end -}}
+          {{- end }}
       config:
         global:
           slack_api_url: "https://slack.com/api/chat.postMessage"
@@ -80,7 +355,10 @@ data:
             - namespace
           group_interval: 5m
           group_wait: 30s
-          repeat_interval: 3h
+          # Was 3h for every severity, so a warning nagged as often as a page.
+          # This is now only the default for anything that matches no route
+          # below; each severity sets its own.
+          repeat_interval: 12h
           receiver: "slack-monitoring"
           routes:
             - matchers:
@@ -91,9 +369,24 @@ data:
             # decides which alerts it actually investigates.
             - receiver: "runlore"
               continue: true
-            # Explicit Slack catch-all (required because the route above matches all
-            # with continue: true, so the root receiver no longer fires on its own).
+            # One channel carries every severity, so the cadence is what
+            # separates a page from a nag.
+            - matchers:
+                - severity = "critical"
+              receiver: "slack-monitoring"
+              group_wait: 10s
+              repeat_interval: 1h
+            - matchers:
+                - severity = "warning"
+              receiver: "slack-monitoring"
+              repeat_interval: 12h
+            # info, and anything with no severity label at all. This route has no
+            # matchers on purpose: it is the catch-all that keeps an unlabelled
+            # alert reachable. `severity = "critical"` does not match a missing
+            # label, so without this an alert with no severity would match no
+            # route and nobody would ever see it.
             - receiver: "slack-monitoring"
+              repeat_interval: 24h
         receivers:
           - name: "blackhole"
           - name: "runlore"
@@ -111,26 +404,70 @@ data:
             slack_configs:
               - channel: "#alerts"
                 send_resolved: true
-                title: '{{ template "slack.monzo.title" . }}'
-                icon_emoji: '{{ template "slack.monzo.icon_emoji" . }}'
-                color: '{{ template "slack.monzo.color" . }}'
-                text: '{{ template "slack.monzo.text" . }}'
+                icon_emoji: ":waitwhat:"
+                color: '{{ template "slack.ogenki.color" . }}'
+                # Unset before this change, so a phone notification showed
+                # Slack's own generic preview instead of the alert.
+                fallback: '{{ template "slack.ogenki.fallback" . }}'
+                title: '{{ template "slack.ogenki.title" . }}'
+                title_link: '{{ template "slack.ogenki.title_link" . }}'
+                text: '{{ template "slack.ogenki.text" . }}'
+                mrkdwn_in: ["text"]
+                # `fields` is a STATIC list -- only the values are templated, so
+                # a field cannot be conditionally omitted. Every value template
+                # therefore falls back to an em dash rather than rendering an
+                # empty box.
+                fields:
+                  - title: "Namespace"
+                    value: '{{ template "slack.ogenki.field_namespace" . }}'
+                    short: true
+                  - title: "Severity"
+                    value: '{{ template "ogenki.severity" . }}'
+                    short: true
+                  - title: "Duration"
+                    value: '{{ template "ogenki.duration" . }}'
+                    short: true
+                  - title: "Location"
+                    value: '{{ template "ogenki.location" . }}'
+                    short: true
                 actions:
                   - type: button
                     text: "Runbook :green_book:"
-                    url: "{{ (index .Alerts 0).Annotations.runbook_url }}"
-                  - type: button
-                    text: "Query :mag:"
-                    url: "{{ (index .Alerts 0).GeneratorURL }}"
+                    url: '{{ template "slack.ogenki.runbook_url" . }}'
                   - type: button
                     text: "Dashboard :grafana:"
-                    url: "{{ (index .Alerts 0).Annotations.dashboard }}"
+                    url: '{{ template "slack.ogenki.dashboard_url" . }}'
+                  - type: button
+                    text: "Query :mag:"
+                    url: '{{ template "slack.ogenki.query_url" . }}'
                   - type: button
                     text: "Silence :no_bell:"
                     url: '{{ template "__alert_silence_link" . }}'
-                  - type: button
-                    text: '{{ template "slack.monzo.link_button_text" . }}'
-                    url: "{{ .CommonAnnotations.link_url }}"
+                # The fifth button is gone. It pointed at
+                # .CommonAnnotations.link_url, an annotation no rule in this repo
+                # has ever set, so it rendered with an empty URL on every alert.
+
+        # There were NO inhibit rules: setting alertmanager.config replaces the
+        # chart's defaults wholesale, so every implied alert posted alongside its
+        # cause. An inhibited alert never reaches Slack at all -- that is the
+        # accepted trade, and the reason these are narrow.
+        inhibit_rules:
+          # One alertname firing at two severities: keep the louder one.
+          - source_matchers:
+              - severity = "critical"
+            target_matchers:
+              - severity = "warning"
+            equal: [cluster, alertname, namespace]
+          # Observed 2026-09-12, one minute apart: quorum-at-risk means a peer is
+          # ALREADY lost, so the warning adds nothing. Two different alertnames,
+          # which is why the generic rule above cannot catch it. Add named pairs
+          # as they are observed rather than generalising -- a clever generic
+          # rule mutes things nobody intended.
+          - source_matchers:
+              - alertname = "OpenBaoRaftQuorumAtRisk"
+            target_matchers:
+              - alertname = "OpenBaoRaftNodeLost"
+            equal: [cluster]
 
     defaultDashboards:
       enabled: true

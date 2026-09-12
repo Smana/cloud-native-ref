@@ -3,7 +3,7 @@
 
 Three inputs, one output directory:
   * every top-most kustomize overlay -> `kustomize build` + Flux postBuild envsubst
-  * every HelmRelease                -> `helm template` with its own spec.values
+  * every HelmRelease                -> `helm template` with spec.valuesFrom + spec.values
   * standalone manifests             -> copied verbatim
 
 Rendered output is what Flux actually applies, so it is the only artifact worth
@@ -79,6 +79,13 @@ FIXTURE_VARS = {
     "cluster_name": "foobar",
     "region": "eu-west-3",
     "environment": "dev",
+    # Both lanes define `cloud`, so unlike "region" this fixture is not
+    # AWS-shaped by necessity -- it is AWS-shaped because base/ belongs to no
+    # cluster and renders from this merged map. A manifest that branched on the
+    # VALUE of ${cloud} would therefore go unvalidated for gcp-0; nothing does
+    # today, and the label is only ever displayed. CLUSTER_FIXTURE_VARS below
+    # carries the gcp-0 override for anything cluster-scoped.
+    "cloud": "aws",
     # Both clusters define this; the value differs (gp3 / standard-rwo) but the
     # SHAPE does not -- it is an opaque string either way, which is why one
     # fixture is honest here. Contrast "region" above, where a single
@@ -255,6 +262,7 @@ CLUSTER_FIXTURE_VARS = {
     "aws-0": {},
     "gcp-0": {
         "region": "europe-west4",
+        "cloud": "gcp",
         "private_domain_name": "priv.gcp.cluster.local",
         # NOT route53_region. That one is AWS-shaped on gcp-0 ON PURPOSE -- it
         # is the AWS region hint the Route53 solver needs, and gcp-0 really does
@@ -635,7 +643,14 @@ def render_overlay(overlay, outdir):
     sees realistic values) and chart extraction in main(), which wants the
     HelmRelease exactly as `render_helmrelease` has always received it. Feeding
     substituted values to `helm template` would change what every chart renders
-    — a behaviour change well beyond fixing the dedupe key."""
+    — a behaviour change well beyond fixing the dedupe key.
+
+    One deliberate asymmetry sits on top of that: `resolve_values` DOES
+    substitute the ConfigMaps a `valuesFrom` entry names, before parsing them.
+    Both halves end up identical in the bundle, since chart output is
+    substituted afterwards either way; the difference is only visible to helm
+    itself, where a chart branching on a value (`eq .Values.cloud "aws"`) has to
+    see the substituted one to branch the way it will on the cluster."""
     result = subprocess.run(
         [KUSTOMIZE_BIN, "build", str(overlay), "--load-restrictor=LoadRestrictionsNone"],
         capture_output=True,
@@ -672,6 +687,143 @@ def _resolve_chart(spec, sources, namespace):
     return source, chart_spec.get("chart"), chart_spec.get("version")
 
 
+# Helm values do not all live in `spec.values`. Flux also reads `spec.valuesFrom`,
+# which names ConfigMaps and Secrets IN THE CLUSTER -- and for a ConfigMap that
+# object is a committed manifest, sitting in the very overlay the HelmRelease
+# came from.
+#
+# Until this existed the renderer did `values = spec.get("values") or {}` and
+# nothing else, so SIX HelmReleases had their real values thrown away before
+# `helm template` ever ran:
+#
+#   observability/base/victoria-logs/helmrelease-vlsingle.yaml   vl-common-helm-values
+#   observability/base/victoria-logs/helmrelease-vlcluster.yaml  vl-common-helm-values
+#   observability/base/victoria-metrics-k8s-stack/helmrelease-vmsingle.yaml   vm-common-helm-values
+#   observability/base/victoria-metrics-k8s-stack/helmrelease-vmcluster.yaml  vm-common-helm-values
+#   tooling/base/harbor/helmrelease-harbor.yaml                  harbor-oidc-config (Secret)
+#   flux/operator/helmrelease.yaml                               flux-ui-oidc (Secret)
+#
+# Those charts still rendered -- with chart DEFAULTS -- and passed both gates.
+# Nothing was reported, because nothing failed: a value the bundle never saw
+# cannot be invalid. That is the silent skip SPEC-007 was written to remove
+# (`skipMissingSchemas: false` -- an unknown Kind FAILS the build, it does not
+# get skipped), reappearing one layer up, in the values rather than the schema.
+# It is also how the Alertmanager Slack templates could have shipped unrendered:
+# they live in vm-common-helm-values, so no gate could reach them.
+VALUES_KEY_DEFAULT = "values.yaml"
+
+
+def index_values_objects(pairs):
+    """(namespace, kind, name) -> doc for every ConfigMap/Secret in `pairs`, an
+    iterable of (doc, effective namespace).
+
+    Keyed on kind as well as name because a `valuesFrom` entry names one, and a
+    ConfigMap and a Secret are free to share a name.
+    """
+    index = {}
+    for doc, namespace in pairs:
+        kind = doc.get("kind")
+        if kind not in ("ConfigMap", "Secret"):
+            continue
+        name = (doc.get("metadata") or {}).get("name")
+        if name:
+            index[(namespace, kind, name)] = doc
+    return index
+
+
+def _set_target_path(values, target_path, raw):
+    r"""Place `raw` at a dotted `targetPath`, creating intermediate maps.
+
+    Flux hands the value to helm's strvals parser, which always produces a
+    STRING, so nothing is coerced to bool or int here. A dot inside a key is
+    escaped `\.`, as in helm. No ConfigMap entry in this repo uses targetPath
+    today -- all three that do name Secrets, which cannot be resolved at all --
+    so this path is correct-by-construction rather than exercised.
+    """
+    parts = [part.replace("\\.", ".") for part in re.split(r"(?<!\\)\.", target_path)]
+    node = values
+    for part in parts[:-1]:
+        child = node.get(part)
+        if not isinstance(child, dict):
+            child = {}
+            node[part] = child
+        node = child
+    node[parts[-1]] = raw
+
+
+def resolve_values(spec, namespace, name, value_objects, cluster, stem):
+    """Merged Helm values for one HelmRelease, in Flux's own precedence order:
+    each `spec.valuesFrom` entry in list order, then `spec.values` on top.
+
+    Returns `(values, error)`. `error` is a message when a referenced object or
+    key is missing and the entry is not `optional` -- a values source that
+    vanished is a broken release, not a smaller one, and main() counts it as a
+    render failure.
+
+    NOTHING IS SKIPPED IN SILENCE. A Secret reference cannot be resolved here at
+    all: its keys are written into the cluster at runtime by an ExternalSecret,
+    so no committed manifest carries them. That is reported on stderr on every
+    run, green or red, naming the release and the key -- the same discipline
+    validate-vmrules.sh applies to the rule groups it cannot check. A reader has
+    to be able to see which values the bundle is missing; a quiet `continue` is
+    how this whole function came to be needed.
+    """
+    values = {}
+    for ref in spec.get("valuesFrom") or []:
+        kind, ref_name = ref.get("kind"), ref.get("name")
+        key = ref.get("valuesKey") or VALUES_KEY_DEFAULT
+        where = f"HelmRelease/{namespace}/{name} [{stem}]: valuesFrom {kind}/{ref_name} key {key!r}"
+
+        if kind == "Secret":
+            print(
+                f"note: {where} NOT RESOLVED — a Secret's keys are created in the "
+                "cluster at runtime (ExternalSecret), so no committed manifest "
+                "carries them. The chart below is rendered WITHOUT this value.",
+                file=sys.stderr,
+            )
+            continue
+
+        doc = value_objects.get((namespace, kind, ref_name))
+        if doc is None:
+            if ref.get("optional"):
+                print(f"note: {where} not found, and marked optional — skipped.", file=sys.stderr)
+                continue
+            return None, f"{where}: no such {kind} in the rendered repo"
+
+        raw = (doc.get("data") or {}).get(key)
+        if raw is None:
+            if ref.get("optional"):
+                print(f"note: {where} absent, and marked optional — skipped.", file=sys.stderr)
+                continue
+            return None, f"{where}: {kind}/{ref_name} defines no key {key!r}"
+
+        # Substituted BEFORE parsing. This is an ordinary repo manifest, so
+        # Flux's post-build substitution reaches it exactly as it reaches every
+        # other manifest, and a chart that branches on a value (`eq .Values.cloud
+        # "aws"`) has to see the substituted one to branch the way it will on the
+        # cluster. Chart OUTPUT is substituted after templating (see the bottom
+        # of render_helmrelease); this is the same fixture map, with the same
+        # per-cluster overrides, applied one step earlier to the one input helm
+        # reads directly.
+        raw = substitute(raw, cluster)
+
+        if ref.get("targetPath"):
+            _set_target_path(values, ref["targetPath"], raw)
+            continue
+
+        try:
+            parsed = yaml.load(raw, Loader=YAML_LOADER)
+        except yaml.YAMLError as exc:
+            return None, f"{where}: not parseable as YAML: {exc}"
+        if parsed is None:
+            continue
+        if not isinstance(parsed, dict):
+            return None, f"{where}: expected a mapping, got {type(parsed).__name__}"
+        values = deep_merge(values, parsed)
+
+    return deep_merge(values, spec.get("values") or {}), None
+
+
 def effective_namespace(doc, kustomize_namespace):
     """metadata.namespace > enclosing kustomization's namespace transformer >
     "default". Shared by render_helmrelease and the duplicate-variant dedupe
@@ -680,16 +832,27 @@ def effective_namespace(doc, kustomize_namespace):
     return doc["metadata"].get("namespace") or kustomize_namespace or "default"
 
 
-def render_helmrelease(doc, sources, outdir, namespace, stem):
+def render_helmrelease(doc, sources, outdir, namespace, stem, value_objects):
     """`stem` is the bundle filename fragment identifying WHICH rendering this
     is — `<overlay-slug>` for a chart reached through an overlay, or `direct`
     for a HelmRelease no overlay covers. It exists because one release name can
     legitimately render twice with different values: aws-0 and gcp-0 both
     resolve external-dns to kube-system/external-dns, and keying the output on
     (namespace, name) alone meant only one of them ever reached
-    `helm template`."""
+    `helm template`.
+
+    `value_objects` is the (namespace, kind, name) index `spec.valuesFrom` is
+    resolved against — built from THIS overlay's own output, so a ConfigMap
+    patched per cluster resolves per cluster, exactly like the HelmRelease
+    beside it."""
     meta, spec = doc["metadata"], doc["spec"]
     namespace = effective_namespace(doc, namespace)
+    # One derivation, used for both the values fed in and the manifests that come
+    # back; they must agree on which cluster's fixtures apply. stem is
+    # overlay_slug(overlay), i.e. the path with "/" replaced by "-" — restoring
+    # the first separator is enough for cluster_of, which only reads the second
+    # segment.
+    cluster = cluster_of(stem.replace("-", "/", 1))
 
     source, chart, version = _resolve_chart(spec, sources, namespace)
     if not source or not source.get("url"):
@@ -702,7 +865,11 @@ def render_helmrelease(doc, sources, outdir, namespace, stem):
     # `chart` is None only for a chartRef (the source URL is the chart itself).
     via_ref = chart is None
 
-    values = spec.get("values") or {}
+    values, values_error = resolve_values(
+        spec, namespace, meta["name"], value_objects, cluster, stem
+    )
+    if values_error:
+        return values_error
     overrides = CHART_RENDER_OVERRIDES.get((namespace, meta["name"]))
     if overrides:
         values = deep_merge(values, overrides)
@@ -775,11 +942,8 @@ def render_helmrelease(doc, sources, outdir, namespace, stem):
     except yaml.YAMLError as exc:
         return f"HelmRelease/{namespace}/{meta['name']}: postprocess: {exc}"
 
-    # stem is overlay_slug(overlay), i.e. the path with "/" replaced by "-".
-    # Restoring the first separator is enough for cluster_of, which only reads
-    # the second segment.
     (outdir / f"chart-{stem}-{namespace}-{meta['name']}.yaml").write_text(
-        substitute(rendered, cluster_of(stem.replace("-", "/", 1)))
+        substitute(rendered, cluster)
     )
     return None
 
@@ -808,6 +972,12 @@ def main():
     # unreferenced) duplicates, last in scan order wins. Dropped duplicates
     # are logged, never silent.
     helmreleases = {}
+    # (doc, namespace) for every ConfigMap/Secret, feeding the valuesFrom index
+    # used by HelmReleases no overlay covers (the "direct" path below).
+    # Collected here because this loop already parses every manifest;
+    # overlay-covered releases use their own overlay's index instead, which is
+    # strictly better because it has the kustomize patches applied.
+    repo_values_pairs = []
     for root in MANIFEST_DIRS:
         base = pathlib.Path(root)
         if not base.exists():
@@ -818,6 +988,10 @@ def main():
             docs = load_docs(path)
             in_overlay = any(str(path).startswith(c + "/") for c in covered)
             for doc in docs:
+                if doc.get("kind") in ("ConfigMap", "Secret"):
+                    repo_values_pairs.append(
+                        (doc, effective_namespace(doc, namespaces.get(path.resolve())))
+                    )
                 # A HelmRelease is renderable whether it names its chart inline
                 # (`spec.chart`) or by reference (`spec.chartRef` -> an
                 # OCIRepository/HelmChart). Both produce pods Polaris must
@@ -881,15 +1055,22 @@ def main():
     seen = set()
     for overlay, rendered in overlay_docs:
         stem = overlay_slug(overlay)
-        for doc in load_docs_text(rendered):
+        docs = load_docs_text(rendered)
+        # An overlay's output already carries the kustomization's namespace
+        # transformer, so metadata.namespace is authoritative for every doc here
+        # — both the HelmReleases and the ConfigMaps their valuesFrom names.
+        overlay_objects = index_values_objects(
+            (doc, (doc.get("metadata") or {}).get("namespace") or "default") for doc in docs
+        )
+        for doc in docs:
             spec = doc.get("spec") or {}
             if doc.get("kind") != "HelmRelease" or not (spec.get("chart") or spec.get("chartRef")):
                 continue
-            # An overlay's output already carries the kustomization's namespace
-            # transformer, so metadata.namespace is authoritative here.
             ns = doc["metadata"].get("namespace") or "default"
-            chart_tasks.append((doc, ns, stem))
+            chart_tasks.append((doc, ns, stem, overlay_objects))
             seen.add((ns, doc["metadata"]["name"]))
+
+    repo_values_objects = index_values_objects(repo_values_pairs)
 
     # Fallback: a HelmRelease no overlay covers still has to be rendered, or
     # this change would quietly shrink coverage while looking like a fix. Every
@@ -902,12 +1083,12 @@ def main():
             f"rendering it directly from its source file",
             file=sys.stderr,
         )
-        chart_tasks.append((doc, kustomize_ns, "direct"))
+        chart_tasks.append((doc, kustomize_ns, "direct", repo_values_objects))
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         chart_futures = [
-            pool.submit(render_helmrelease, doc, sources, outdir, ns, stem)
-            for doc, ns, stem in chart_tasks
+            pool.submit(render_helmrelease, doc, sources, outdir, ns, stem, objects)
+            for doc, ns, stem, objects in chart_tasks
         ]
         for future in chart_futures:
             error = future.result()

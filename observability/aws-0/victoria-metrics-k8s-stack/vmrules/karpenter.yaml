@@ -15,7 +15,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            message: Problem with registering new nodes in the cluster.
+            summary: Problem with registering new nodes in the cluster.
             description: |
               Karpenter in the nodepool {{ $labels.nodeppol }} launched new nodes, but some of the nodes did not register in the cluster during 15 minutes.
             runbook_url: "https://karpenter.sh/docs/troubleshooting/"
@@ -27,7 +27,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            message: Nodepool almost full, you should increase limits.
+            summary: Nodepool almost full, you should increase limits.
             description: |
               Nodepool {{ $labels.nodeppol }} has launched {{ $value }}% of {{ $labels.resource_type }} resources of the limit.
             runbook_url: "https://karpenter.sh/docs/troubleshooting/"
@@ -39,7 +39,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            message: Cloud provider errors detected by Karpenter.
+            summary: Cloud provider errors detected by Karpenter.
             description: |
               Karpenter received an error during an API call to the cloud provider.
             runbook_url: "https://karpenter.sh/docs/troubleshooting/"

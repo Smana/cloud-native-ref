@@ -31,10 +31,14 @@ spec:
     # chart ships neither, so the Job ran with privilege escalation allowed.
     #
     # Kept here in spec.values rather than in the shared vm-common-helm-values
-    # ConfigMap: the manifest renderer (scripts/flux-schema/render-bundle.py)
-    # resolves spec.values only, not spec.valuesFrom, so a fix living in the
-    # ConfigMap is invisible to the validation gate. spec.values also layers on
-    # top of valuesFrom in Flux, so this is the authoritative place either way.
+    # ConfigMap. The original reason no longer holds and is worth recording as
+    # gone: render-bundle.py used to resolve spec.values ONLY, so anything in
+    # that ConfigMap was invisible to both validation gates. It resolves
+    # spec.valuesFrom as of 2026-09-12, so the ConfigMap is now just as
+    # well-checked and this could move there (it applies to both variants, and
+    # helmrelease-vmcluster.yaml carries a copy). Left in place because
+    # spec.values layers on top of valuesFrom in Flux either way, and moving
+    # working security config is churn, not a fix.
     syncJob:
       containerSecurityContext:
         allowPrivilegeEscalation: false
