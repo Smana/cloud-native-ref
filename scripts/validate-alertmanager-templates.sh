@@ -27,6 +27,16 @@
 #   ./scripts/validate-alertmanager-templates.sh                 # check
 #   ./scripts/validate-alertmanager-templates.sh --update-golden # rewrite goldens
 #
+# It also asserts one thing that is NOT a template at all: that every rendered
+# VMAlert has an absolute `-external.url`. That argument is the prefix of every
+# alert's generatorURL, which is the Query button's href, so a button whose
+# template renders perfectly is still dead if vmalert was started with
+# `external.url: "http://"`. It was, on both clusters, for the life of the
+# receiver -- see the failure message below for why, and note that no gate in
+# this repo could fail on it: the value is a well-formed string in a valid
+# field, polaris never reads extraArgs, and this script's own fixtures supply
+# their own URLs.
+#
 # Requires a rendered bundle. validate-manifests.sh runs this after the render;
 # standalone, run that script first or set BUNDLE_DIR to an existing bundle.
 set -euo pipefail
@@ -81,6 +91,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 
 import yaml
 
@@ -114,6 +125,7 @@ RESOLVED_DURATION_RE = re.compile(r"^resolved after \d[^(]* \(at \d{2}:\d{2} UTC
 
 tmpl_text = None
 slack = None
+vmalerts = []
 
 for path in sorted(pathlib.Path(bundle_dir).rglob("*.yaml")):
     try:
@@ -127,6 +139,14 @@ for path in sorted(pathlib.Path(bundle_dir).rglob("*.yaml")):
             data = doc.get("data") or {}
             if TEMPLATE_KEY in data:
                 tmpl_text = data[TEMPLATE_KEY]
+        if doc.get("kind") == "VMAlert":
+            extra = (doc.get("spec") or {}).get("extraArgs") or {}
+            vmalerts.append((
+                path.name,
+                (doc.get("metadata") or {}).get("name", "<unnamed>"),
+                extra.get("external.url"),
+                extra.get("external.alert.source"),
+            ))
         if doc.get("kind") == "Secret":
             raw = (doc.get("stringData") or {}).get("alertmanager.yaml")
             if not raw:
@@ -151,6 +171,110 @@ if slack is None:
     print("error: no receiver %r with a slack_configs entry in the rendered "
           "Alertmanager config." % RECEIVER)
     sys.exit(1)
+
+# --- vmalert's -external.url, the prefix of every Query button ----------------
+#
+# Not a rendered target: no fixture can catch this, because a fixture supplies
+# its own generatorURL. It is checked here rather than in .doc-claims.yaml
+# because this script already reads the bundle and already owns "the buttons
+# must work"; doc-claims answers whether documentation is still true, which is a
+# different question from whether config is still correct.
+
+EXTERNAL_URL_CAUSE = """
+    The Query button's href is the alert's generatorURL, which vmalert builds as
+        <-external.url> + <-external.alert.source>
+    The chart derives -external.url from `vm-k8s-stack.grafana.addr`
+    (_helpers.tpl:470-482): it reads `.Values.external.grafana.host`, and falls
+    back to the Grafana INGRESS host ONLY when `grafana.ingress.enabled` is true.
+    Grafana here is routed through a Gateway API HTTPRoute, not an Ingress, so
+    that fallback never fires -- with the key unset the address is the EMPTY
+    STRING, and the helper's unconditional `http://` prefix leaves
+    `external.url: "http://"`.
+
+    Every alert then carries `http:/explore?left={...}` -- one slash, no host.
+    Slack SILENTLY DROPS an attachment action whose URL is not valid http(s), so
+    the button does not render wrong, it does not render at all. That shipped on
+    both clusters and no gate could fail on it.
+
+    Fix: set `external.grafana.host`, WITH a scheme (the helper prefixes
+    `http://` to anything without one), in
+    observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml
+"""
+
+
+def external_url_problem(value):
+    """Why `value` is unusable as a generatorURL prefix, or None if it is fine."""
+    if not isinstance(value, str) or not value.strip():
+        return "unset or empty"
+    parsed = urllib.parse.urlparse(value.strip())
+    if parsed.scheme not in ("http", "https"):
+        return "scheme is %r, expected http or https" % (parsed.scheme or "")
+    if not parsed.netloc:
+        return "no host -- this is the bare scheme that started all of this"
+    return None
+
+
+if not vmalerts:
+    # Finding nothing is a FAILURE, never a quiet pass. A gate that checks zero
+    # objects and reports success is the exact shape of hole this file exists to
+    # close.
+    print("error: no VMAlert found in %s." % bundle_dir)
+    print("       The Query button's URL comes from vmalert's -external.url, so a")
+    print("       bundle with no VMAlert means the render is broken -- not that the")
+    print("       configuration is fine.")
+    sys.exit(1)
+
+# Which VMAlerts this can judge is read from the DATA, not from a hardcoded
+# name -- the same reason validate-vmrules.sh derives its skip predicate from a
+# group's `type` rather than a filename.
+#
+# A VMAlert that sets `external.alert.source` is building deep links into some
+# external UI, so its `external.url` is the prefix of every generatorURL it
+# emits and MUST be absolute. A VMAlert that sets neither is using vmalert's own
+# built-in default (its pod address plus `vmalert/alert?...`), which is a
+# different thing and not something this file can judge.
+url_failures = []
+skipped = []
+checked = 0
+for src, name, url, source in vmalerts:
+    if url is None and source is None:
+        skipped.append((src, name))
+        continue
+    checked += 1
+    # Both failure shapes: a present-but-unusable URL (the bare `http://` that
+    # started this), and deep links configured with no prefix to hang them on.
+    why = external_url_problem(url) if url is not None else \
+        "absent, while external.alert.source IS set -- the deep links have no prefix"
+    if why:
+        url_failures.append((src, name, url, why))
+
+if url_failures:
+    print()
+    for src, name, value, why in url_failures:
+        print("INVALID  VMAlert/%s  [extraArgs external.url]" % name)
+        print("    value: %r — %s" % (value, why))
+        print("    in %s" % src)
+        print()
+    print("%d VMAlert(s) would start with an unusable -external.url." % len(url_failures))
+    print(EXTERNAL_URL_CAUSE)
+    sys.exit(1)
+
+for src, name in skipped:
+    # Named on every run, green or red. This is a REAL pre-existing gap, not a
+    # shrug: observability/base/victoria-logs/vmalert-vl{single,cluster}.yaml
+    # notify the SAME Alertmanager as everything else, so their alerts reach the
+    # same Slack receiver -- with a generatorURL pointing at the vmalert pod's
+    # own in-cluster address, which no browser outside the cluster can open.
+    # Today they evaluate exactly one rule set, the loggen demo VMRule, and
+    # fixing them means choosing a VictoriaLogs Explore deep link (datasource +
+    # LogsQL shape), which is a design decision rather than a value to copy.
+    print("    SKIPPED  VMAlert/%s (in %s) — sets neither external.url nor" % (name, src))
+    print("             external.alert.source, so it uses vmalert's built-in default:")
+    print("             the pod's own address. NOT checked, and not reachable from a")
+    print("             browser. See observability/base/victoria-logs/vmalert-vl*.yaml")
+
+print("==> %d VMAlert(s) carry an absolute external.url. %d skipped and NOT checked%s"
+      % (checked, len(skipped), " (listed above)." if skipped else "."))
 
 # Every templated string the receiver hands to Slack, in render order.
 targets = []
