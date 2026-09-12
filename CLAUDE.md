@@ -382,8 +382,11 @@ bundle looks perfect either way. It reads each cluster's real keys from the `flu
 resource in `opentofu/*/configure/kubernetes.tf`.
 
 It also fails when a Kustomization applies variables with no `postBuild` wired at all, where Flux
-would apply the literal `${var}`. Covered by `scripts/flux-schema/test-check-substitution.py` — the
-only test any script in `scripts/flux-schema/` has.
+would apply the literal `${var}`. Covered by `scripts/flux-schema/test-check-substitution.py`, one
+of the **two** tests any script in `scripts/flux-schema/` has. The other is `test-render-bundle.py`,
+pinning `render-bundle.py`'s `spec.valuesFrom` resolution — six HelmReleases get most of their
+values that way, and a regression there does not break the build, it quietly shrinks what the build
+checks. **Neither test runs in CI**; both are `python3 scripts/flux-schema/<file>` by hand.
 
 **A fourth check parses the alerting expressions, which nothing else ever did:**
 `scripts/validate-vmrules.sh` extracts each repo-authored `VMRule`'s `.spec` — already the shape of
