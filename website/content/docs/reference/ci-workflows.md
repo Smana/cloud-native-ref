@@ -2,7 +2,7 @@
 title: CI Workflows
 weight: 40
 description: Every GitHub Actions job, what it runs, and which six of them can actually block a merge — verified against .github/workflows and the branch protection API.
-lastVerified: 2026-08-30
+lastVerified: 2026-09-12
 ---
 
 CI never applies changes to a cluster. It validates, scans and publishes;
@@ -10,7 +10,7 @@ CI never applies changes to a cluster. It validates, scans and publishes;
 `main`. Five workflow files live in `.github/workflows/`, and exactly six jobs
 — all of them in `ci.yaml` — can block a merge.
 
-![The CI pipeline: a pull request fans into ci.yaml's six jobs and, when their paths change, three path-filtered workflows that are not required checks; the six required checks gate the merge under strict and enforce_admins; after the merge three independent consumers read main — Flux reconciles the cluster, docs.yml publishes the site, and build-container-images pushes to ghcr.io](/images/diagrams/ci-pipeline.svg)
+![The CI pipeline: a pull request fans into ci.yaml's six jobs and, when their paths change, three path-filtered workflows that are not required checks; the six required checks gate the merge under enforce_admins; after the merge three independent consumers read main — Flux reconciles the cluster, docs.yml publishes the site, and build-container-images pushes to ghcr.io](/images/diagrams/ci-pipeline.svg)
 
 ## What blocks a merge
 
@@ -27,13 +27,52 @@ Branch protection on `main` requires these six contexts, and nothing else:
 
 Two protection settings matter as much as the list:
 
-- **`strict: true`** — the branch has to be up to date with `main` before it
-  can merge, so a green check on a stale branch is not enough.
+- **`strict: false`** — since 2026-08-29 a conflict-free branch merges on
+  green **without** being up to date with `main`. It was `true` until then, and
+  every merge cost a rebase-and-rerun cycle with no conflict in sight. What that
+  gives up is the *semantic* conflict, where two PRs each pass alone and break
+  combined; these six jobs render and validate the whole tree, so the next PR
+  surfaces it within minutes.
 - **`enforce_admins: true`** — there is no `gh pr merge --admin` escape
   hatch, for anybody. A stuck check gets re-run, not bypassed.
 
 Required approving reviews are set to **0**: the gates are mechanical, not
 social, which is the whole reason they have to be trustworthy.
+
+Neither setting lives in a file, so nothing in CI can catch them drifting —
+`.doc-claims.yaml` reads repo config, not the GitHub API. The `strict` value
+above was wrong on this page for two weeks after the flip for exactly that
+reason. Re-read it with
+`gh api repos/Smana/cloud-native-ref/branches/main/protection` rather than
+trusting the prose.
+
+### Renovate merges itself
+
+Patch and minor dependency updates carry `automerge: true` in
+`.github/renovate.json`, so GitHub squash-merges them the moment the sixth
+required check reports success. No human step. **Majors never automerge** and
+still wait for someone.
+
+Three properties above are what make that safe rather than reckless, and all
+three have to hold:
+
+1. The six checks are the *only* gate, and they render and validate the entire
+   repository — not a diff.
+2. `strict: false` means a queue of Renovate PRs does not serialize behind a
+   rebase-and-rerun each.
+3. GitHub's native auto-merge waits for branch protection, it does not bypass
+   it. `enforce_admins` and the conversation-resolution requirement apply to an
+   automatic merge exactly as they do to a manual one.
+
+`minimumReleaseAge: "1 day"` holds each PR back a day first, so a release yanked
+hours after publication never reaches `main`.
+
+One cost is accepted knowingly: Renovate calls `0.2.x → 0.3.0` a *minor*, and
+on a 0.x project that is routinely a breaking change — the semantic-router
+chart restructuring its values schema is this repo's own scar. Automerge covers
+those too. The answer when a package proves untrustworthy is to bound it with
+`allowedVersions`, the way the two rules at the bottom of `renovate.json`
+already do, rather than to narrow the automerge rule.
 
 ## `ci.yaml` — the six jobs
 

@@ -489,3 +489,19 @@ claims:
         must_contain: '`{value}/`'
       - path: website/content/docs/decisions/0036-per-app-secret-ownership-via-zitadel-groups.md
         must_contain: '`{value}/`'
+
+  - id: renovate-automerge
+    why: >-
+      The CI reference page tells a reader that patch and minor dependency PRs
+      merge themselves once the six checks are green, and the reader acts on it
+      by not watching them. The branch-protection half of that promise lives in
+      the GitHub API and cannot be pinned from a file -- which is exactly how
+      `strict: true` stayed on that page for two weeks after the flip. The half
+      that *is* a file is this flag: turn it off and the page keeps promising a
+      merge that never arrives, with every gate still green.
+    source:
+      file: .github/renovate.json
+      pattern: '"automerge": (true|false)'
+    pages:
+      - path: website/content/docs/reference/ci-workflows.md
+        must_contain: '`automerge: {value}`'
