@@ -214,7 +214,7 @@ data:
         # so the version half becomes a bogus plugin id on a fail-hard preinstall
         # path and the real plugin installs UNPINNED. Use "<id>@<version>".
         # renovate: datasource=github-releases depName=VictoriaMetrics/victoriametrics-datasource extractVersion=^v(?<version>.+)$
-        - "victoriametrics-metrics-datasource@0.25.2"
+        - "victoriametrics-metrics-datasource@0.26.1"
         # These pins are tracked from GITHUB RELEASES but installed from the
         # GRAFANA.COM CATALOG, and the two publish independently -- a tag can
         # exist on GitHub days before (or without ever) reaching the catalog.
