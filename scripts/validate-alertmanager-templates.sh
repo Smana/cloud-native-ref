@@ -27,8 +27,16 @@
 #   ./scripts/validate-alertmanager-templates.sh                 # check
 #   ./scripts/validate-alertmanager-templates.sh --update-golden # rewrite goldens
 #
-# It also asserts one thing that is NOT a template at all: that every rendered
-# VMAlert has an absolute `-external.url`. That argument is the prefix of every
+# It also asserts two things that are NOT templates at all.
+#
+# First, that `amtool check-config` accepts the rendered Alertmanager config.
+# `flux schema validate` sees that entire config as one opaque string inside a
+# Secret and polaris never looks at it, so a malformed matcher, a route naming a
+# receiver nobody defined, or an inhibit rule with a typo'd `equal` label passes
+# every other gate in this repo -- and the cost is not a formatting bug, it is an
+# alert routed nowhere or muted by a rule that matches more than intended.
+#
+# Second, that every rendered VMAlert has an absolute `-external.url`. That argument is the prefix of every
 # alert's generatorURL, which is the Query button's href, so a button whose
 # template renders perfectly is still dead if vmalert was started with
 # `external.url: "http://"`. It was, on both clusters, for the life of the
@@ -125,6 +133,8 @@ RESOLVED_DURATION_RE = re.compile(r"^resolved after \d[^(]* \(at \d{2}:\d{2} UTC
 
 tmpl_text = None
 slack = None
+am_config = None
+am_config_src = None
 vmalerts = []
 
 for path in sorted(pathlib.Path(bundle_dir).rglob("*.yaml")):
@@ -151,6 +161,11 @@ for path in sorted(pathlib.Path(bundle_dir).rglob("*.yaml")):
             raw = (doc.get("stringData") or {}).get("alertmanager.yaml")
             if not raw:
                 continue
+            # Captured BEFORE the parse attempt below: a config that does not
+            # parse still has to reach amtool, which says WHY, rather than
+            # falling through to "no slack-monitoring receiver" -- true, but a
+            # description of the wrong problem.
+            am_config, am_config_src = raw, path.name
             try:
                 cfg = yaml.safe_load(raw)
             except yaml.YAMLError:
@@ -166,6 +181,49 @@ if tmpl_text is None:
     print("       The Slack templates ship via alertmanager.templateFiles in")
     print("       observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml.")
     sys.exit(1)
+
+if am_config is None:
+    # Finding nothing is a failure, not a pass -- same rule as the VMAlert check
+    # below. An unchecked route tree is exactly what this is here to prevent.
+    print("error: no Secret in %s carries an 'alertmanager.yaml' key." % bundle_dir)
+    print("       The route tree and the inhibit rules would go unchecked, which is")
+    print("       not the same as being correct.")
+    sys.exit(1)
+
+# amtool is the only thing in this repo that reads the route tree and the
+# inhibit rules as STRUCTURE rather than as a string.
+#
+# There is deliberately NO benign-warning allowlist. Measured against the pinned
+# amtool 0.32.1: an unresolvable `templates` glob and a missing
+# `credentials_file` -- the two things that legitimately only resolve inside the
+# pod -- both exit 0 and are not reported at all, while a malformed matcher, a
+# route naming an unknown receiver, a malformed inhibit matcher and a duplicate
+# receiver name all exit 1. A pattern list would therefore be dead code today
+# and a place for a real error to hide tomorrow.
+with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as fh:
+    fh.write(am_config)
+    am_path = fh.name
+try:
+    amcheck = subprocess.run([amtool, "check-config", am_path], capture_output=True, text=True)
+finally:
+    pathlib.Path(am_path).unlink()
+
+if amcheck.returncode != 0:
+    print()
+    print("INVALID  the rendered Alertmanager config (from %s)" % am_config_src)
+    for line in (amcheck.stdout + amcheck.stderr).strip().splitlines():
+        print("    %s" % line)
+    print()
+    print("amtool rejected the config. Nothing else in this repo would have failed:")
+    print("the schema gate sees one opaque string inside a Secret and polaris never")
+    print("looks at it. A bad matcher, or a route naming a receiver nobody defined,")
+    print("ends with an alert reaching no one.")
+    print("Edit alertmanager.config in")
+    print("observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml")
+    sys.exit(1)
+
+found = ", ".join(l.strip(" -") for l in amcheck.stdout.splitlines() if l.strip().startswith("- "))
+print("==> Alertmanager config accepted by amtool (%s)" % found)
 
 if slack is None:
     print("error: no receiver %r with a slack_configs entry in the rendered "
