@@ -131,11 +131,26 @@ VOLATILE_FIELD = "field:Duration"
 FIRING_DURATION_RE = re.compile(r"^(\d[^(]*) (\(since \d{2}:\d{2} UTC\))$")
 RESOLVED_DURATION_RE = re.compile(r"^resolved after \d[^(]* \(at \d{2}:\d{2} UTC\)$")
 
-tmpl_text = None
-slack = None
-am_config = None
-am_config_src = None
+# Keyed by bundle file, NOT collapsed to one winner.
+#
+# The chart renders three times -- aws-0, base, gcp-0 -- and each render is a
+# separate copy of both the template ConfigMap and the Alertmanager config
+# Secret. This used to keep the LAST match of each (`slack = sc`,
+# `tmpl_text = data[TEMPLATE_KEY]`), so which copy got validated was decided by
+# filesystem sort order and the other two went unchecked in silence. Measured
+# 2026-09-12: breaking the critical route's matcher in the `base` render left
+# the gate GREEN; the identical break in `gcp-0` failed it.
+#
+# That matters more here than it would elsewhere. Manifests that render clean
+# for one cluster and wrong for the other are a documented, repeated failure
+# mode in this repo, and a gate that silently picks one render and reports
+# success is that failure mode wearing a green badge.
+renders = {}
 vmalerts = []
+
+
+def render_slot(name):
+    return renders.setdefault(name, {"tmpl": None, "config": None, "slack": None})
 
 for path in sorted(pathlib.Path(bundle_dir).rglob("*.yaml")):
     try:
@@ -148,7 +163,7 @@ for path in sorted(pathlib.Path(bundle_dir).rglob("*.yaml")):
         if doc.get("kind") == "ConfigMap":
             data = doc.get("data") or {}
             if TEMPLATE_KEY in data:
-                tmpl_text = data[TEMPLATE_KEY]
+                render_slot(path.name)["tmpl"] = data[TEMPLATE_KEY]
         if doc.get("kind") == "VMAlert":
             extra = (doc.get("spec") or {}).get("extraArgs") or {}
             vmalerts.append((
@@ -165,7 +180,7 @@ for path in sorted(pathlib.Path(bundle_dir).rglob("*.yaml")):
             # parse still has to reach amtool, which says WHY, rather than
             # falling through to "no slack-monitoring receiver" -- true, but a
             # description of the wrong problem.
-            am_config, am_config_src = raw, path.name
+            render_slot(path.name)["config"] = raw
             try:
                 cfg = yaml.safe_load(raw)
             except yaml.YAMLError:
@@ -174,24 +189,39 @@ for path in sorted(pathlib.Path(bundle_dir).rglob("*.yaml")):
                 if recv.get("name") != RECEIVER:
                     continue
                 for sc in recv.get("slack_configs") or []:
-                    slack = sc
+                    render_slot(path.name)["slack"] = sc
 
-if tmpl_text is None:
+configs = {name: r["config"] for name, r in renders.items() if r["config"]}
+pairs = {name: r for name, r in renders.items() if r["tmpl"] and r["slack"]}
+
+if not any(r["tmpl"] for r in renders.values()):
     print("error: no ConfigMap in %s carries a %r key." % (bundle_dir, TEMPLATE_KEY))
     print("       The Slack templates ship via alertmanager.templateFiles in")
     print("       observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml.")
     sys.exit(1)
 
-if am_config is None:
-    # Finding nothing is a failure, not a pass -- same rule as the VMAlert check
-    # below. An unchecked route tree is exactly what this is here to prevent.
+if not configs:
+    # Finding nothing is a failure, not a pass -- same rule as every other
+    # count in this file. An unchecked route tree is not a correct one.
     print("error: no Secret in %s carries an 'alertmanager.yaml' key." % bundle_dir)
     print("       The route tree and the inhibit rules would go unchecked, which is")
     print("       not the same as being correct.")
     sys.exit(1)
 
+if not pairs:
+    print("error: no receiver %r with a slack_configs entry in any rendered "
+          "Alertmanager config." % RECEIVER)
+    sys.exit(1)
+
+# --- Every rendered Alertmanager config, not the last one ----------------------
+#
 # amtool is the only thing in this repo that reads the route tree and the
-# inhibit rules as STRUCTURE rather than as a string.
+# inhibit rules as STRUCTURE rather than as a string. Each render is checked on
+# its own: the three copies are byte-identical TODAY only because `cluster_of`
+# does not recognise a 3-segment overlay slug, so every chart render gets the
+# merged fixture map. On a real cluster they differ -- each substitutes its own
+# `private_domain_name` -- so per-copy validation is the honest unit, not an
+# identity assertion that happens to hold in the fixture render.
 #
 # There is deliberately NO benign-warning allowlist. Measured against the pinned
 # amtool 0.32.1: an unresolvable `templates` glob and a missing
@@ -200,214 +230,170 @@ if am_config is None:
 # route naming an unknown receiver, a malformed inhibit matcher and a duplicate
 # receiver name all exit 1. A pattern list would therefore be dead code today
 # and a place for a real error to hide tomorrow.
-with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as fh:
-    fh.write(am_config)
-    am_path = fh.name
-try:
-    amcheck = subprocess.run([amtool, "check-config", am_path], capture_output=True, text=True)
-finally:
-    pathlib.Path(am_path).unlink()
+config_failures = []
+found_summary = None
+for name in sorted(configs):
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as fh:
+        fh.write(configs[name])
+        am_path = fh.name
+    try:
+        amcheck = subprocess.run([amtool, "check-config", am_path], capture_output=True, text=True)
+    finally:
+        pathlib.Path(am_path).unlink()
+    if amcheck.returncode != 0:
+        config_failures.append((name, (amcheck.stdout + amcheck.stderr).strip()))
+    elif found_summary is None:
+        found_summary = ", ".join(
+            l.strip(" -") for l in amcheck.stdout.splitlines() if l.strip().startswith("- ")
+        )
 
-if amcheck.returncode != 0:
+if config_failures:
     print()
-    print("INVALID  the rendered Alertmanager config (from %s)" % am_config_src)
-    for line in (amcheck.stdout + amcheck.stderr).strip().splitlines():
-        print("    %s" % line)
-    print()
-    print("amtool rejected the config. Nothing else in this repo would have failed:")
-    print("the schema gate sees one opaque string inside a Secret and polaris never")
-    print("looks at it. A bad matcher, or a route naming a receiver nobody defined,")
-    print("ends with an alert reaching no one.")
+    for name, detail in config_failures:
+        print("INVALID  the rendered Alertmanager config in %s" % name)
+        for line in detail.splitlines():
+            print("    %s" % line)
+        print()
+    print("amtool rejected %d of %d rendered config(s). Nothing else in this repo"
+          % (len(config_failures), len(configs)))
+    print("would have failed: the schema gate sees one opaque string inside a Secret")
+    print("and polaris never looks at it. A bad matcher, or a route naming a receiver")
+    print("nobody defined, ends with an alert reaching no one.")
     print("Edit alertmanager.config in")
     print("observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml")
     sys.exit(1)
 
-found = ", ".join(l.strip(" -") for l in amcheck.stdout.splitlines() if l.strip().startswith("- "))
-print("==> Alertmanager config accepted by amtool (%s)" % found)
+print("==> %d rendered Alertmanager config(s) accepted by amtool (%s)"
+      % (len(configs), found_summary))
 
-if slack is None:
-    print("error: no receiver %r with a slack_configs entry in the rendered "
-          "Alertmanager config." % RECEIVER)
-    sys.exit(1)
-
-# --- vmalert's -external.url, the prefix of every Query button ----------------
+# --- Distinct (template, receiver) pairs --------------------------------------
 #
-# Not a rendered target: no fixture can catch this, because a fixture supplies
-# its own generatorURL. It is checked here rather than in .doc-claims.yaml
-# because this script already reads the bundle and already owns "the buttons
-# must work"; doc-claims answers whether documentation is still true, which is a
-# different question from whether config is still correct.
-
-EXTERNAL_URL_CAUSE = """
-    The Query button's href is the alert's generatorURL, which vmalert builds as
-        <-external.url> + <-external.alert.source>
-    The chart derives -external.url from `vm-k8s-stack.grafana.addr`
-    (_helpers.tpl:470-482): it reads `.Values.external.grafana.host`, and falls
-    back to the Grafana INGRESS host ONLY when `grafana.ingress.enabled` is true.
-    Grafana here is routed through a Gateway API HTTPRoute, not an Ingress, so
-    that fallback never fires -- with the key unset the address is the EMPTY
-    STRING, and the helper's unconditional `http://` prefix leaves
-    `external.url: "http://"`.
-
-    Every alert then carries `http:/explore?left={...}` -- one slash, no host.
-    Slack SILENTLY DROPS an attachment action whose URL is not valid http(s), so
-    the button does not render wrong, it does not render at all. That shipped on
-    both clusters and no gate could fail on it.
-
-    Fix: set `external.grafana.host`, WITH a scheme (the helper prefixes
-    `http://` to anything without one), in
-    observability/base/victoria-metrics-k8s-stack/vm-common-helm-values-configmap.yaml
-"""
-
-
-def external_url_problem(value):
-    """Why `value` is unusable as a generatorURL prefix, or None if it is fine."""
-    if not isinstance(value, str) or not value.strip():
-        return "unset or empty"
-    parsed = urllib.parse.urlparse(value.strip())
-    if parsed.scheme not in ("http", "https"):
-        return "scheme is %r, expected http or https" % (parsed.scheme or "")
-    if not parsed.netloc:
-        return "no host -- this is the bare scheme that started all of this"
-    return None
-
-
-if not vmalerts:
-    # Finding nothing is a FAILURE, never a quiet pass. A gate that checks zero
-    # objects and reports success is the exact shape of hole this file exists to
-    # close.
-    print("error: no VMAlert found in %s." % bundle_dir)
-    print("       The Query button's URL comes from vmalert's -external.url, so a")
-    print("       bundle with no VMAlert means the render is broken -- not that the")
-    print("       configuration is fine.")
-    sys.exit(1)
-
-# Which VMAlerts this can judge is read from the DATA, not from a hardcoded
-# name -- the same reason validate-vmrules.sh derives its skip predicate from a
-# group's `type` rather than a filename.
+# The message is assembled from BOTH halves, and both come from the same chart
+# render, so one render is the honest unit. Renders with identical content are
+# collapsed -- rendering byte-identical input against the same goldens N times
+# proves nothing the first pass did not -- but the collapse is by CONTENT, never
+# by picking a winner, and the group count is printed so a drop is visible.
 #
-# A VMAlert that sets `external.alert.source` is building deep links into some
-# external UI, so its `external.url` is the prefix of every generatorURL it
-# emits and MUST be absolute. A VMAlert that sets neither is using vmalert's own
-# built-in default (its pod address plus `vmalert/alert?...`), which is a
-# different thing and not something this file can judge.
-url_failures = []
-skipped = []
-checked = 0
-for src, name, url, source in vmalerts:
-    if url is None and source is None:
-        skipped.append((src, name))
-        continue
-    checked += 1
-    # Both failure shapes: a present-but-unusable URL (the bare `http://` that
-    # started this), and deep links configured with no prefix to hang them on.
-    why = external_url_problem(url) if url is not None else \
-        "absent, while external.alert.source IS set -- the deep links have no prefix"
-    if why:
-        url_failures.append((src, name, url, why))
+# If a future change makes the copies genuinely differ per cluster (fixing the
+# `cluster_of` slug bug would, since the dashboard fallback embeds
+# private_domain_name), this becomes 2+ groups, each rendered against the SAME
+# golden set -- so the diverging group fails loudly with a golden diff. The fix
+# then is per-cluster goldens, NOT collapsing the groups again.
+variants = {}
+for name in sorted(pairs):
+    key = (pairs[name]["tmpl"], yaml.safe_dump(pairs[name]["slack"], sort_keys=True))
+    variants.setdefault(key, []).append(name)
 
-if url_failures:
+if len(variants) > 1:
+    # A HARD failure, not a warning.
+    #
+    # Rendering each group against the one golden set only catches a divergence
+    # that a fixture happens to exercise: diverging `unknown-cluster` (reached
+    # only when .CommonLabels.cluster is empty, which no fixture does) renders
+    # identically in both groups and would have passed green with a warning
+    # nobody reads. Two different templates in one bundle means one golden set
+    # cannot describe both, and that has to stop the build.
     print()
-    for src, name, value, why in url_failures:
-        print("INVALID  VMAlert/%s  [extraArgs external.url]" % name)
-        print("    value: %r — %s" % (value, why))
-        print("    in %s" % src)
-        print()
-    print("%d VMAlert(s) would start with an unusable -external.url." % len(url_failures))
-    print(EXTERNAL_URL_CAUSE)
+    print("INVALID  %d DISTINCT template/receiver renders in the same bundle" % len(variants))
+    for i, names in enumerate(variants.values(), 1):
+        print("    group %d:" % i)
+        for name in names:
+            print("        %s" % name)
+    print()
+    print("One golden set cannot describe two different renders, so whichever one")
+    print("got compared would be a coin toss -- the bug this check exists to stop.")
+    print("The copies are identical today only because cluster_of() does not")
+    print("recognise a 3-segment overlay slug, so every chart render gets the merged")
+    print("fixture map. If that is fixed, each cluster substitutes its own")
+    print("private_domain_name and this fires legitimately: the answer then is")
+    print("per-cluster golden files, NOT collapsing the groups back together.")
     sys.exit(1)
 
-for src, name in skipped:
-    # Named on every run, green or red. This is a REAL pre-existing gap, not a
-    # shrug: observability/base/victoria-logs/vmalert-vl{single,cluster}.yaml
-    # notify the SAME Alertmanager as everything else, so their alerts reach the
-    # same Slack receiver -- with a generatorURL pointing at the vmalert pod's
-    # own in-cluster address, which no browser outside the cluster can open.
-    # Today they evaluate exactly one rule set, the loggen demo VMRule, and
-    # fixing them means choosing a VictoriaLogs Explore deep link (datasource +
-    # LogsQL shape), which is a design decision rather than a value to copy.
-    print("    SKIPPED  VMAlert/%s (in %s) — sets neither external.url nor" % (name, src))
-    print("             external.alert.source, so it uses vmalert's built-in default:")
-    print("             the pod's own address. NOT checked, and not reachable from a")
-    print("             browser. See observability/base/victoria-logs/vmalert-vl*.yaml")
+print("==> %d rendered template/receiver pair(s), 1 distinct: %s"
+      % (len(pairs), ", ".join(next(iter(variants.values())))))
 
-print("==> %d VMAlert(s) carry an absolute external.url. %d skipped and NOT checked%s"
-      % (checked, len(skipped), " (listed above)." if skipped else "."))
+def target_list(slack):
+    """Every templated string the receiver hands to Slack, in render order."""
+    targets = []
+    for key in ("color", "fallback", "title", "title_link", "text"):
+        if key in slack:
+            targets.append((key, slack[key]))
+    for field in slack.get("fields") or []:
+        targets.append(("field:%s" % field.get("title", "<untitled>"), field.get("value", "")))
+    for action in slack.get("actions") or []:
+        targets.append(("action:%s" % action.get("text", "<untitled>"), action.get("url", "")))
+    return targets
 
-# Every templated string the receiver hands to Slack, in render order.
-targets = []
-for key in ("color", "fallback", "title", "title_link", "text"):
-    if key in slack:
-        targets.append((key, slack[key]))
-for field in slack.get("fields") or []:
-    targets.append(("field:%s" % field.get("title", "<untitled>"), field.get("value", "")))
-for action in slack.get("actions") or []:
-    targets.append(("action:%s" % action.get("text", "<untitled>"), action.get("url", "")))
 
 BAD = (("<no value>", "a template referenced a field that does not exist"),
        ("${", "a Flux variable was never substituted"),
        ("%!", "a Go format verb failed"))
 
-with tempfile.NamedTemporaryFile("w", suffix=".tmpl", delete=False, encoding="utf-8") as fh:
-    fh.write(tmpl_text)
-    tmpl_path = fh.name
+# Exactly one variant survives the check above, so this is the render every
+# cluster gets -- chosen by content, never by sort order.
+(tmpl_text, _), group = next(iter(variants.items()))
+targets = target_list(pairs[group[0]]["slack"])
 
 failures = []
 rendered_files = 0
 
+with tempfile.NamedTemporaryFile("w", suffix=".tmpl", delete=False, encoding="utf-8") as fh:
+    fh.write(tmpl_text)
+    tmpl_path = fh.name
+
 try:
     for fixture in sorted(FIXTURE_DIR.glob("*.json")):
-        chunks = []
-        for label, text in targets:
-            proc = subprocess.run(
-                [amtool, "template", "render",
-                 "--template.glob", tmpl_path,
-                 "--template.text", text,
-                 "--template.data", str(fixture)],
-                capture_output=True, text=True,
-            )
-            if proc.returncode != 0:
-                failures.append((fixture.name, label,
-                                 "amtool failed to render:\n%s" % (proc.stderr.strip() or proc.stdout.strip())))
-                chunks.append("==> %s\n<RENDER FAILED>" % label)
-                continue
-            out = proc.stdout.rstrip("\n")
-            for needle, why in BAD:
-                if needle in out:
-                    failures.append((fixture.name, label,
-                                     "output contains %r — %s:\n%s" % (needle, why, out)))
-            if not out.strip():
-                failures.append((fixture.name, label, "rendered empty"))
-            if label == VOLATILE_FIELD:
-                stripped = out.strip()
-                firing = FIRING_DURATION_RE.match(stripped)
-                if firing:
-                    # Only the leading humanized duration is replaced; the clock
-                    # time it is anchored to stays in the golden.
-                    out = "<DURATION> %s" % firing.group(2)
-                elif not RESOLVED_DURATION_RE.match(stripped):
-                    failures.append((fixture.name, label,
-                                     "does not look like a duration: %r" % out))
-            chunks.append("==> %s\n%s" % (label, out))
+      chunks = []
+      for label, text in targets:
+          proc = subprocess.run(
+              [amtool, "template", "render",
+               "--template.glob", tmpl_path,
+               "--template.text", text,
+               "--template.data", str(fixture)],
+              capture_output=True, text=True,
+          )
+          if proc.returncode != 0:
+              failures.append((fixture.name, label,
+                               "amtool failed to render:\n%s" % (proc.stderr.strip() or proc.stdout.strip())))
+              chunks.append("==> %s\n<RENDER FAILED>" % label)
+              continue
+          out = proc.stdout.rstrip("\n")
+          for needle, why in BAD:
+              if needle in out:
+                  failures.append((fixture.name, label,
+                                   "output contains %r — %s:\n%s" % (needle, why, out)))
+          if not out.strip():
+              failures.append((fixture.name, label, "rendered empty"))
+          if label == VOLATILE_FIELD:
+              stripped = out.strip()
+              firing = FIRING_DURATION_RE.match(stripped)
+              if firing:
+                  # Only the leading humanized duration is replaced; the clock
+                  # time it is anchored to stays in the golden.
+                  out = "<DURATION> %s" % firing.group(2)
+              elif not RESOLVED_DURATION_RE.match(stripped):
+                  failures.append((fixture.name, label,
+                                   "does not look like a duration: %r" % out))
+          chunks.append("==> %s\n%s" % (label, out))
 
-        actual = "\n\n".join(chunks) + "\n"
-        golden = GOLDEN_DIR / (fixture.stem + ".txt")
-        if update:
-            GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
-            golden.write_text(actual, encoding="utf-8")
-            rendered_files += 1
-            continue
-        if not golden.exists():
-            failures.append((fixture.name, "-", "no golden file at %s — run with --update-golden" % golden))
-            continue
-        expected = golden.read_text(encoding="utf-8")
-        if expected != actual:
-            diff = "\n".join(difflib.unified_diff(
-                expected.splitlines(), actual.splitlines(),
-                fromfile=str(golden), tofile="rendered", lineterm="",
-            ))
-            failures.append((fixture.name, "-", "output changed:\n%s" % diff))
-        rendered_files += 1
+      actual = "\n\n".join(chunks) + "\n"
+      golden = GOLDEN_DIR / (fixture.stem + ".txt")
+      if update:
+          GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
+          golden.write_text(actual, encoding="utf-8")
+          rendered_files += 1
+          continue
+      if not golden.exists():
+          failures.append((fixture.name, "-", "no golden file at %s — run with --update-golden" % golden))
+          continue
+      expected = golden.read_text(encoding="utf-8")
+      if expected != actual:
+          diff = "\n".join(difflib.unified_diff(
+              expected.splitlines(), actual.splitlines(),
+              fromfile=str(golden), tofile="rendered", lineterm="",
+          ))
+          failures.append((fixture.name, "-", "output changed:\n%s" % diff))
+      rendered_files += 1
 finally:
     pathlib.Path(tmpl_path).unlink()
 
