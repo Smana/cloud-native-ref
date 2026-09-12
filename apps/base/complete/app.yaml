@@ -74,6 +74,16 @@ spec:
       value: "xplane-image-gallery-valkey:6379"
     - name: CACHE_PASSWORD
       value: ""
+    # Fault injection for the observability demo: serves GET/PUT
+    # /api/settings/demo and POST /api/settings/demo/reset, and builds the
+    # injector in both roles. The application defaults this to true, so the
+    # behaviour here is unchanged — it is stated explicitly because the endpoints
+    # are UNAUTHENTICATED (the app has no authentication at all, so this is an
+    # on/off switch, not access control) and this claim runs with
+    # GO_ENV=production. Exposure is the private tailnet domain. Set to "false"
+    # to remove the endpoints and the injector entirely.
+    - name: DEMO_CONTROLS_ENABLED
+      value: "true"
 
   # Worker role in the same pod: same image, same ServiceAccount, so the
   # storage identity (Pod Identity / Workload Identity) and the secrets work
