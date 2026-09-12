@@ -44,7 +44,7 @@ script "deploy" {
         # undeletes and imports whatever is already there; it is a no-op on a
         # genuinely fresh org. See scripts/gcp-adopt-workforce-pool.sh.
         bash "${terramate.root.path.fs.absolute}/scripts/gcp-adopt-workforce-pool.sh" \
-          --pool "$$(awk -F= '/workforce_pool_id/{gsub(/[ "]/,"",$$2); print $$2}' variables.tfvars)" \
+          --pool "$(awk -F= '/workforce_pool_id/{gsub(/[ "]/,"",$2); print $2}' variables.tfvars)" \
           --apply
         ${global.provisioner} apply -auto-approve -var-file=variables.tfvars -var='deploy_identity_provider=${global.deploy_identity_provider_gcp}'
       BASH
