@@ -152,10 +152,10 @@ clusters.
 ┃ loses quorum, and a cluster without quorum cannot issue a certificate or
 ┃ read a secret. If OpenBaoRaftNodeLost fired first and was not…
 ┃
-┃ Namespace        Severity
-┃ security         critical
-┃ Firing since     Location
-┃ 09:06 (14m)      aws / eu-west-3
+┃ Namespace                 Severity
+┃ security                  critical
+┃ Duration                  Location
+┃ 14m 0s (since 09:06 UTC)  aws / eu-west-3
 ┃
 ┃ [ Runbook 📗 ] [ Dashboard 📊 ] [ Query 🔍 ] [ Silence 🔕 ]
 ```
@@ -169,8 +169,8 @@ clusters.
 ┃  • apps/podinfo-9f2c — 8 restarts in 10m
 ┃  • apps/podinfo-b1a4 — 5 restarts in 10m
 ┃
-┃ Namespace  apps          Severity   warning
-┃ Firing since 09:12 (4m)  Location   gcp / europe-west1
+┃ Namespace  apps                       Severity   warning
+┃ Duration   4m 0s (since 09:12 UTC)    Location   gcp / europe-west1
 ```
 
 `fields` is a static list in the receiver and only its *values* are templated,
@@ -182,7 +182,7 @@ so the split between config and template is not cosmetic:
 | `color` | template | `danger` / `warning` / `#439FE0` / `good` |
 | `title` + `title_link` | template | status · count · alertname, linked to the dashboard else `GeneratorURL` |
 | `text` | template | identity line, summary once, then ≤5 per-alert bullets, then `…and N more` |
-| `fields` (4, `short: true`) | receiver | Namespace · Severity · Firing since · Location |
+| `fields` (4, `short: true`) | receiver | Namespace · Severity · Duration · Location |
 | `actions` | receiver | four buttons; the always-empty `link_url` one is deleted |
 
 Rules the template follows:
@@ -197,8 +197,10 @@ Rules the template follows:
   Slack gets the short form; the agent gets everything.
 - **Missing labels render `—`**, never a blank field box. A node-level alert has
   no namespace and must still look deliberate.
-- **Resolved is uniform** — same anatomy, `good` colour, `:lgtm:`, with *Firing
-  since* replaced by *Resolved after 14m*.
+- **Resolved is uniform** — same anatomy, `good` colour, `:lgtm:`. The field
+  title is the static *Duration* on both, because one receiver serves firing and
+  resolved; only its value changes, from `14m 0s (since 09:06 UTC)` to
+  `resolved after 6m 0s (at 09:11 UTC)`.
 - **No button is ever dead.** runbook → `runbook_url` else the alerting docs
   page; dashboard → `dashboard` else `https://grafana.${private_domain_name}/dashboards`;
   query → `GeneratorURL`, which vmalert always sets.

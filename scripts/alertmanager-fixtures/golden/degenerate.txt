@@ -1,0 +1,46 @@
+==> color
+#439FE0
+
+==> fallback
+[FIRING:7] NodeFilesystemAlmostOutOfSpace · aws-0 · unknown
+
+==> title
+:question: FIRING · 7 — NodeFilesystemAlmostOutOfSpace
+
+==> title_link
+http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=5&alert_id=1
+
+==> text
+`aws-0`
+
+Filesystem on /dev/nvme0n1p1 at 10.0.1.11:9100 has only 3.24% available space left and is filling up fast. This host has been reporting steadily decreasing free space for the last six hours and will run out within the day at the current rate, which will evict pods and wedge the k…
+ • 10.0.1.11:9100
+ • 10.0.1.12:9100
+ • 10.0.1.13:9100
+ • 10.0.1.14:9100
+ • 10.0.1.15:9100
+ … showing 5 of 7
+
+==> field:Namespace
+—
+
+==> field:Severity
+unknown
+
+==> field:Duration
+<DURATION>
+
+==> field:Location
+—
+
+==> action:Runbook :green_book:
+https://cnref.ogenki.io/docs/platform/observability/dashboards-and-alerts/
+
+==> action:Dashboard :grafana:
+https://grafana.priv.cluster.local/dashboards
+
+==> action:Query :mag:
+http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=5&alert_id=1
+
+==> action:Silence :no_bell:
+https://vmalertmanager-aws-0.priv.aws.ogenki.io/#/silences/new?filter=%7Bcloud%3D""%2C%20cluster%3D"aws-0"%2C%20env%3D""%2C%20region%3D""%2C%20alertname%3D"NodeFilesystemAlmostOutOfSpace"%7D
