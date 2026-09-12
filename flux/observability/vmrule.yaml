@@ -9,7 +9,7 @@ spec:
       rules:
         - alert: FluxReconciliationFailure
           annotations:
-            message: Flux resource has been unhealthy for more than 5m
+            summary: Flux resource has been unhealthy for more than 5m
             description: "{{ $labels.kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} reconciliation has been failing for more than ten minutes."
             runbook_url: "https://fluxcd.io/flux/cheatsheets/troubleshooting/"
             dashboard: "https://grafana.${private_domain_name}/dashboards"
@@ -19,7 +19,7 @@ spec:
             severity: warning
         - alert: FluxHelmOperatorErrors
           annotations:
-            message: Flux Helm operator errors
+            summary: Flux Helm operator errors
             description: >
               There is an issue deploying `{{ $labels.release_name }}` release helm chart.
               Errors count `{{ $value }}`.
@@ -31,7 +31,7 @@ spec:
             severity: warning
         - alert: FluxSuspended
           annotations:
-            message: (Flux) Resource suspended for more than 45m
+            summary: (Flux) Resource suspended for more than 45m
             description: "`{{ $labels.kind }}` `{{ $labels.name  }}` in namespace `{{ $labels.exported_namespace }}` is suspended."
             runbook_url: "https://fluxcd.io/flux/cheatsheets/troubleshooting/"
             dashboard: "https://grafana.${private_domain_name}/dashboards"

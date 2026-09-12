@@ -21,7 +21,7 @@ spec:
           labels:
             severity: critical
           annotations:
-            message: Some node's health endpoints are not reachable by agent {{ $labels.namespace }}/{{ $labels.pod }}.
+            summary: Some node's health endpoints are not reachable by agent {{ $labels.namespace }}/{{ $labels.pod }}.
             description: |
               Check what's going on: `kubectl -n {{ $labels.namespace }} logs {{ $labels.pod }}`
             runbook_url: "https://docs.cilium.io/en/stable/operations/troubleshooting/"
@@ -33,7 +33,7 @@ spec:
           labels:
             severity: critical
           annotations:
-            message: Some of the metrics are not coming from the agent {{ $labels.namespace }}/{{ $labels.pod }}.
+            summary: Some of the metrics are not coming from the agent {{ $labels.namespace }}/{{ $labels.pod }}.
             description: |
               Use the following commands to check what's going on:
               - `kubectl -n {{ $labels.namespace }} logs {{ $labels.pod }}`

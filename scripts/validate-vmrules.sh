@@ -196,6 +196,8 @@ def vmrule_files():
 checked_groups = []   # (path, rule_name, group_name, n_rules)
 skipped_groups = []   # (path, rule_name, group_name, why, n_rules)
 failures = []         # (path, detail)
+annotation_failures = []   # (path, rule_name, alert_name, why)
+SUMMARY_MAX = 140
 n_docs = 0
 
 for path, text in vmrule_files():
@@ -220,6 +222,34 @@ for path, text in vmrule_files():
             gname = group.get("name", "<unnamed>")
             gtype = group.get("type")
             n_rules = len(group.get("rules") or [])
+
+            # Annotation contract is language-independent: checked for every
+            # group, including `type: vlogs` groups promtool never sees.
+            for rule in group.get("rules") or []:
+                if not isinstance(rule, dict) or "alert" not in rule:
+                    continue          # recording rules have no annotations
+                alert = rule.get("alert", "<unnamed>")
+                summary = ((rule.get("annotations") or {}).get("summary") or "").strip()
+                if not summary:
+                    annotation_failures.append((
+                        path, name, alert,
+                        "no `annotations.summary` — Slack renders the summary as the "
+                        "headline and falls back to the description, which is where "
+                        "runbook prose lives",
+                    ))
+                elif "\n" in summary:
+                    annotation_failures.append((
+                        path, name, alert,
+                        "`annotations.summary` spans multiple lines — it is one line "
+                        "in a Slack message; put detail in `description`",
+                    ))
+                elif len(summary) > SUMMARY_MAX:
+                    annotation_failures.append((
+                        path, name, alert,
+                        "`annotations.summary` is %d characters (max %d)"
+                        % (len(summary), SUMMARY_MAX),
+                    ))
+
             if gtype not in PROMQL_TYPES:
                 skipped_groups.append((
                     path, name, gname,
@@ -283,6 +313,23 @@ if skipped_groups:
         print("    SKIPPED  %s" % path)
         print("             VMRule %s, group %r (%d rule(s)) — NOT checked" % (name, gname, n))
         print("             %s" % why)
+
+if annotation_failures:
+    print()
+    for path, name, alert, why in annotation_failures:
+        print("INVALID  %s" % path)
+        print("    VMRule %s, alert %s" % (name, alert))
+        print("    %s" % why)
+    print()
+    print(
+        "%d alert(s) do not meet the annotation contract.\n"
+        "`summary` is required: one line, <= %d characters, the sentence a human\n"
+        "reads first in Slack. `description` is optional and unbounded -- Slack\n"
+        "truncates it, RunLore reads all of it.\n"
+        "See docs/superpowers/specs/2026-09-12-slack-alert-notifications-design.md"
+        % (len(annotation_failures), SUMMARY_MAX)
+    )
+    sys.exit(1)
 
 if failures:
     print()
