@@ -52,7 +52,7 @@
           <mxGeometry x="310" y="560" width="530" height="52" as="geometry" />
         </mxCell>
 
-        <mxCell id="gate" value="&lt;b&gt;Six required status checks&lt;/b&gt;&#xa;&#xa;every job in ci.yaml, and only those&#xa;&#xa;strict — the branch must be up to date&#xa;with main before it can merge&#xa;&#xa;enforce_admins — no --admin bypass,&#xa;for anyone" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="gate" value="&lt;b&gt;Six required status checks&lt;/b&gt;&#xa;&#xa;every job in ci.yaml, and only those&#xa;&#xa;enforce_admins — no --admin bypass,&#xa;for anyone&#xa;&#xa;patch + minor deps automerge on green;&#xa;majors wait for a human" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="910" y="150" width="310" height="200" as="geometry" />
         </mxCell>
         <mxCell id="merge" value="&lt;b&gt;Merge to main&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=10;shadow=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;fontColor=#1E293B;fontFamily=Helvetica;fontSize=13;" vertex="1" parent="1">
