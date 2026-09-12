@@ -45,3 +45,24 @@ resources:
   # clusters/gcp-0-llm-platform/README.md as one of two reasons not to resume
   # the LLM umbrella; this closes the first of them.
   - ../base/keda
+  # Atlas Operator, from the SHARED base for the same reason as KEDA. Verified
+  # cloud-neutral before wiring: nothing in the directory mentions IRSA, EKS,
+  # an ARN, S3, a role annotation or a region.
+  #
+  # Wired now because image-gallery needs it. A SQLInstance whose claim sets
+  # `atlasSchema` makes the composition render a GitRepository, a Kustomization,
+  # a ConfigMap and an **AtlasMigration** (see .claude/rules/database-migrations.md),
+  # and apps/base/complete/app.yaml pins `atlasSchema.ref: v2.0.0`.
+  #
+  # gcp-0 had neither the operator nor the CRD, and the failure is a bad one to
+  # debug: measured on the live cluster 2026-09-12, `kubectl get crd | grep atlas`
+  # returns nothing, so the rendered AtlasMigration has no kind to apply against
+  # and the Flux Kustomization fails on it -- while the claim, the database and
+  # every other component look healthy. CI cannot catch this either: it validates
+  # against schemas fetched from the pinned package, not against what a given
+  # cluster actually has installed.
+  #
+  # aws-0 has carried this since the SQLInstance composition gained atlasSchema
+  # (infrastructure/aws-0/kustomization.yaml); gcp-0 simply never did, because no
+  # claim on it used atlasSchema until now.
+  - ../base/atlas-operator
