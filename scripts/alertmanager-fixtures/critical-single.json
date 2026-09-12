@@ -24,7 +24,7 @@
       },
       "startsAt": "2026-09-12T09:06:00Z",
       "endsAt": "0001-01-01T00:00:00Z",
-      "generatorURL": "http://vmalert-victoria-metrics-k8s-stack.observability:8080/vmalert/alert?group_id=1&alert_id=1",
+      "generatorURL": "https://grafana.priv.aws.ogenki.io/explore?left={\"datasource\":\"VictoriaMetrics\",\"queries\":[{\"expr\":%22vault_autopilot_failure_tolerance+%3C+1%22,\"refId\":\"A\"}],\"range\":{\"from\":\"1789203960000\",\"to\":\"now\"}}",
       "fingerprint": "0000000000000001"
     }
   ]
