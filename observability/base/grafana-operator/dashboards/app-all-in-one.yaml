@@ -371,13 +371,13 @@ spec:
         {
           "id": 1001,
           "type": "logs",
-          "title": "Application Error Logs (Click on log line to see ±7 lines of context)",
-          "description": "Shows error-level logs from the application. Click any log line to view surrounding context (±7 lines before/after).",
+          "title": "Application Warnings and Errors (click a line, then View Trace)",
+          "description": "Warning and error logs from BOTH containers of the app. It previously filtered on kubernetes.container_name, which matches only the web container -- every error here comes from the worker, so the panel was always empty. Scoped on log.service.name instead, and widened to warn because the retry attempts behind the red spans in traces log at warn; only the final give-up logs at error.",
           "gridPos": {"x": 0, "y": 20, "w": 24, "h": 10},
           "datasource": {"type": "victoriametrics-logs-datasource", "uid": "$${logs_datasource}"},
           "targets": [
             {
-              "expr": "{kubernetes.container_name=$$service} | unpack_json | log.level:error",
+              "expr": "{kubernetes.pod_namespace=\"apps\"} | unpack_json | log.service.name:~\"image-gallery.*\" | log.level:~\"error|warn\"",
               "refId": "A",
               "queryType": "raw"
             }
