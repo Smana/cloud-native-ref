@@ -22,7 +22,7 @@ A container image and a port:
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: App
 metadata:
-  name: xplane-podinfo
+  name: podinfo
   namespace: apps
 spec:
   image:

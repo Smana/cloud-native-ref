@@ -2,8 +2,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../base/basic
-  - ../base/complete
   # "platform" stack — platform-operated apps (App Wizard, SPEC-008).
   - ../platform
   # "demo" stack — the sandbox the App Wizard offers for first-app onboarding.
@@ -23,7 +21,7 @@ patches:
   - target:
       group: cloud.ogenki.io
       kind: App
-      name: xplane-image-gallery
+      name: image-gallery
     patch: |-
       - op: add
         path: /spec/env/-
@@ -33,7 +31,7 @@ patches:
         value: {name: STORAGE_ENDPOINT, value: s3.eu-west-3.amazonaws.com}
       - op: add
         path: /spec/env/-
-        value: {name: STORAGE_BUCKET, value: eu-west-3-ogenki-xplane-image-gallery}
+        value: {name: STORAGE_BUCKET, value: eu-west-3-ogenki-image-gallery}
       - op: add
         path: /spec/env/-
         value: {name: STORAGE_REGION, value: eu-west-3}

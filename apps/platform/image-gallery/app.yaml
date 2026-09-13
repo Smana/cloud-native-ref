@@ -8,12 +8,12 @@
 apiVersion: cloud.ogenki.io/v1alpha1
 kind: App
 metadata:
-  name: xplane-image-gallery
+  name: image-gallery
   namespace: apps
 spec:
   image:
     repository: ghcr.io/smana/image-gallery
-    tag: "2.0.0" # move together with atlasSchema.ref below and apps/base/complete/loadgen.yaml
+    tag: "2.0.0" # move together with atlasSchema.ref below and apps/platform/image-gallery/loadgen.yaml
     pullPolicy: IfNotPresent
   replicas: 2
   resources:
@@ -95,7 +95,7 @@ spec:
       inheritEnv: true
       env:
         - name: OTEL_SERVICE_NAME
-          value: xplane-image-gallery-worker
+          value: image-gallery-worker
         - name: WORKER_HEALTH_ADDR
           value: ":8081"
       ports:
@@ -132,9 +132,9 @@ spec:
           rules:
             - alert: HighHTTPErrorRate
               expr: |
-                sum(rate(http.server.request.duration_count{service.name="xplane-image-gallery",http.response.status_code=~"5.."}[5m]))
+                sum(rate(http.server.request.duration_count{service.name="image-gallery",http.response.status_code=~"5.."}[5m]))
                 /
-                sum(rate(http.server.request.duration_count{service.name="xplane-image-gallery"}[5m]))
+                sum(rate(http.server.request.duration_count{service.name="image-gallery"}[5m]))
                 > 0.05
               for: 2m
               labels:
@@ -148,7 +148,7 @@ spec:
             - alert: HighHTTPLatency
               expr: |
                 histogram_quantile(0.95,
-                  sum(rate(http.server.request.duration_bucket{service.name="xplane-image-gallery"}[5m])) by (vmrange, http.route)
+                  sum(rate(http.server.request.duration_bucket{service.name="image-gallery"}[5m])) by (vmrange, http.route)
                 ) > 1.0
               for: 5m
               labels:
@@ -167,7 +167,7 @@ spec:
             # RunLore's trigger policy only investigates critical alerts.
             - alert: ImageGalleryUnavailable
               expr: |
-                kube_deployment_status_replicas_available{namespace="apps",deployment="xplane-image-gallery"} == 0
+                kube_deployment_status_replicas_available{namespace="apps",deployment="image-gallery"} == 0
               for: 2m
               labels:
                 severity: critical
@@ -175,7 +175,7 @@ spec:
               annotations:
                 summary: "image-gallery has no available replicas"
                 description: |
-                  The xplane-image-gallery Deployment reports 0 of {{ $labels.deployment }}'s
+                  The image-gallery Deployment reports 0 of {{ $labels.deployment }}'s
                   desired replicas as available — users are served nothing at all.
                   Frequent causes: a Secret or ConfigMap the pod mounts has gone missing
                   (pods sit in CreateContainerConfigError), the image cannot be pulled, or
@@ -209,7 +209,7 @@ spec:
           - ports:
               - port: "8080"
                 protocol: TCP
-      # The in-cluster load generator (apps/base/complete/loadgen.yaml)
+      # The in-cluster load generator (apps/platform/image-gallery/loadgen.yaml)
       - fromEndpoints:
           - matchLabels:
               "app.kubernetes.io/name": "image-gallery-loadgen"

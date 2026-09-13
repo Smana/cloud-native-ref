@@ -626,14 +626,14 @@ GENERATABLE=(
 # they are "seeded here so a rebuild does not depend on someone remembering".
 #
 # It used to be appended under `if [ "$CLOUD" = "aws" ]`, and that was correct
-# when written: apps/base/complete was absent from apps/gcp-0/kustomization.yaml,
+# when written: apps/platform/image-gallery was absent from apps/gcp-0/kustomization.yaml,
 # the application reached S3 with the bucket hardcoded in its container
 # environment, and so gcp-0 had no image-gallery, no SQLInstance for it and no
 # ExternalSecret reading this key. Seeding it there would have created a paid,
 # permanently-unread entry.
 #
 # image-gallery v2 (#2022) made every clause of that false. apps/gcp-0 now
-# includes ../base/complete, the app selects its backend with
+# includes ../platform, the app selects its backend with
 # STORAGE_PROVIDER=gcs against a real GCS bucket, and gcp-0 does have both the
 # SQLInstance and the ExternalSecret. The stale gate then produced precisely the
 # failure the GENERATABLE comment warns about, observed on gcp-0 2026-09-13:
@@ -702,7 +702,7 @@ seed_body() {
         cnpg?xplane-image-gallery?roles?image-gallery-app)
             # Same shape as harbor above, and the username is again load-bearing:
             # `image-gallery-app` is spec.sqlInstance.roles[].name in
-            # apps/base/complete/app.yaml, and also the `owner` of the
+            # apps/platform/image-gallery/app.yaml, and also the `owner` of the
             # image-gallery database there.
             #
             # GENERATED, not derived -- unlike the zitadel arm below, this

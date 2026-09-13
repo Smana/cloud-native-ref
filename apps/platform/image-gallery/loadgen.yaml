@@ -44,7 +44,7 @@ spec:
               args:
                 - loadgen
                 - --target
-                - http://xplane-image-gallery.apps.svc.cluster.local:8080
+                - http://image-gallery.apps.svc.cluster.local:8080
                 - --scenario
                 - steady
                 - --duration
@@ -98,7 +98,7 @@ spec:
               protocol: TCP
     - toEndpoints:
         - matchLabels:
-            app.kubernetes.io/name: xplane-image-gallery
+            app.kubernetes.io/name: image-gallery
       toPorts:
         - ports:
             - port: "8080"
